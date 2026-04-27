@@ -21,7 +21,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 | Command            | What it does                                                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/gaia-init`       | Rename + strip GAIA branding + configure languages + install Claude toolchain (run once)                                                    |
-| `/gaia-update`     | Pull a later GAIA release into the project — three-way diff, drift-safe merge ([[Update Workflow]])                                         |
+| `/update-gaia`     | Pull a later GAIA release into the project — three-way diff, drift-safe merge ([[Update Workflow]])                                         |
 | `/gaia-release`    | **Maintainer-only, stripped from tarball.** Cut a GAIA release — bump, audit, scrub wiki, commit, tag, push ([[Release Workflow]])          |
 | `/new-route`       | Scaffold a route + page + tests + i18n                                                                                                      |
 | `/new-component`   | Scaffold a component with optional test + story                                                                                             |
@@ -134,7 +134,7 @@ These activate automatically based on context.
 
 ### Statusline
 
-GAIA ships a project-scoped statusline wrapper at `.gaia/statusline/gaia-statusline.sh`, wired by `/gaia-init`. The wrapper appends right-aligned hints (`Run /update-deps (N outdated)`, `Run /gaia-update (GAIA <ver> available)`) and delegates the left side in this priority order:
+GAIA ships a project-scoped statusline wrapper at `.gaia/statusline/gaia-statusline.sh`, wired by `/gaia-init`. The wrapper appends right-aligned hints (`Run /update-deps (N outdated)`, `Run /update-gaia (GAIA <ver> available)`) and delegates the left side in this priority order:
 
 1. Sentinel file `.gaia/statusline/.use-vendored-base` (gitignored) → run the vendored renderer `.gaia/statusline/preferred-base.sh`. Project-only mode, no global install.
 2. `~/.claude/settings.json` `statusLine.command` → run that. Adopter's custom statusline appears unchanged inside the GAIA project.

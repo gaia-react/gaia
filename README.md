@@ -28,7 +28,7 @@ Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, prefe
 npx create-gaia my-app
 ```
 
-This pulls the latest tagged release (scrubbed of dev notes), sets up `.gaia/VERSION` for later `/gaia-update` runs, and `git init`s your project. Then open Claude Code in the project and run `/gaia-init` to configure i18n, strip GAIA branding, and install Claude plugins.
+This pulls the latest tagged release (scrubbed of dev notes), sets up `.gaia/VERSION` for later `/update-gaia` runs, and `git init`s your project. Then open Claude Code in the project and run `/gaia-init` to configure i18n, strip GAIA branding, and install Claude plugins.
 
 [Documentation](https://gaia-react.github.io/)
 
@@ -136,7 +136,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <tbody>
 <tr><td><code>/init</code></td><td>Full project initialization (see above)</td></tr>
 <tr><td><code>/orchestrate</code></td><td>Plan a complex feature. Claude structures the work, you approve, then an orchestrator drives focused subagents through execution</td></tr>
-<tr><td><code>/gaia-update</code></td><td>Merges the latest GAIA release without overwriting your customizations</td></tr>
+<tr><td><code>/update-gaia</code></td><td>Merges the latest GAIA release without overwriting your customizations</td></tr>
 <tr><td><code>/update-deps</code></td><td>Upgrades outdated packages and handles any necessary code changes - a superpowered Dependabot</td></tr>
 <tr><td><code>/audit-knowledge</code></td><td>Audit memory, wiki, and auto-loaded files for duplication, conflicting instructions, and bloat</td></tr>
 <tr><td><code>/handoff</code></td><td>Generate a comprehensive session handoff document so you can clear the context with confidence that nothing will get lost</td></tr>

@@ -21,7 +21,7 @@ Append-only. New entries at the TOP.
 - Enabled `eslint-plugin-you-dont-need-lodash-underscore` compatible config (73 rules) across the codebase.
 - Added fix patterns for all three new active rule groups to `.claude/rules/eslint-fixes.md` and [[ESLint Fixes]].
 - Restored `block-eslint-config-edit.sh` hook registration in `settings.json` (had been dropped during a prior merge).
-- Wired statusline cache-bust into `/update-deps` and `/gaia-update` commands.
+- Wired statusline cache-bust into `/update-deps` and `/update-gaia` commands.
 - Updated: [[MSW Handlers]], [[MSW]], [[Storybook Stories]], [[Testing]], [[ESLint Fixes]], [[API Service Pattern]], `.claude/rules/api-service.md`, `.claude/skills/tdd/references/tests-react.md`.
 - Quality gate ✅ typecheck, lint, vitest all green.
 
@@ -48,18 +48,18 @@ Append-only. New entries at the TOP.
 - Quality gate ✅ typecheck, lint, vitest 46/46, build all green on the new lockfile.
 - Key insight: `minimumReleaseAge=10080` is one config line that closes the dominant npm-supply-chain attack window (publish → detection/yank). No infra. No subscription.
 
-## [2026-04-22] feat | release infrastructure — /gaia-release, /gaia-update, create-gaia, tarball scrubbing
+## [2026-04-22] feat | release infrastructure — /gaia-release, /update-gaia, create-gaia, tarball scrubbing
 
 - Added tag-triggered `.github/workflows/release.yml` (extracts CHANGELOG section, builds scrubbed tarball via `git ls-files` + `.gaia/release-exclude`, `gh release create`). Seeded `CHANGELOG.md` with v1.0.0 entry from the 109 commits since `v1.0.0-beta`.
 - Added `.gaia/` directory: `VERSION` (adopter baseline marker), `manifest.json` (349 files classified as `owned`/`shared`/`wiki-owned`), `release-exclude` (tar-exclude list of maintainer-only paths), `scripts/generate-manifest.mjs` (classifier).
 - Added `/gaia-release` — maintainer-only (stripped from tarball via release-exclude). 12-step orchestrator: verify clean, bump, audit, graduate CHANGELOG, scrub `wiki/hot.md` + `wiki/log.md`, regenerate manifest, commit, tag, confirm, push.
-- Added `/gaia-update` — adopter-facing. GSD-inspired three-way diff per file; drifted `owned` prompts, drifted `shared`/`wiki-owned` emits `.gaia-merge/<path>.patch`, atomic version-marker bump.
+- Added `/update-gaia` — adopter-facing. GSD-inspired three-way diff per file; drifted `owned` prompts, drifted `shared`/`wiki-owned` emits `.gaia-merge/<path>.patch`, atomic version-marker bump.
 - Separate `create-gaia` npm package scaffolded at `../create-gaia/` — zero-dep Node CLI that downloads the release tarball from GitHub, extracts, `git init`, `npm install`. Replaces `npx create-react-router --template gaia-react/gaia` in the README quick-start (old command preserved under an "Alternative" fold).
 - CI made fork-safe: `tests.yml` + `chromatic.yml` fall back secrets to placeholders so forks pass lint/typecheck/unit. Chromatic split into a `has-chromatic-token` check job so it skips cleanly when the token is absent.
 - PR/issue templates added (`.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/{bug_report,feature_request,config}.yml`).
 - Pages created: [[Release Workflow]], [[Update Workflow]].
 - Pages updated: [[Claude Integration]] (commands table), [[index]], [[hot]].
-- Key insight: the manifest's implicit-adopter-owned category (anything NOT listed) is what makes `/gaia-update` drift-safe — adopter-created wiki pages, `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, and any file outside GAIA's shipped surface are invisible to the update walk. Sentinel sentinels can't be accidentally re-added by the classifier regenerating the manifest.
+- Key insight: the manifest's implicit-adopter-owned category (anything NOT listed) is what makes `/update-gaia` drift-safe — adopter-created wiki pages, `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, and any file outside GAIA's shipped surface are invisible to the update walk. Sentinel sentinels can't be accidentally re-added by the classifier regenerating the manifest.
 
 ## [2026-04-21] chore | Claude hooks governance — rules migrated to machine-enforced hooks
 
