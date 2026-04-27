@@ -8,6 +8,8 @@ tags: [concept, lint]
 
 # ESLint Fixes
 
+> Rules now live in [[gaia-lint]] (`/src/configs/`). The fixes below still apply unchanged — they're rule-level, not config-level.
+
 Source: `.claude/rules/eslint-fixes.md`. Patterns for resolving specific ESLint errors. Always fix in source, never in config (a hook blocks edits to `eslint.config.mjs`).
 
 | Rule                                 | Fix                                                                                     |
@@ -21,4 +23,4 @@ Source: `.claude/rules/eslint-fixes.md`. Patterns for resolving specific ESLint 
 | `testing-library/await-async-events` | `await userEvent.click(el)` — all `userEvent` methods are async                         |
 | `jest-dom/prefer-*`                  | Use jest-dom matchers: `toHaveValue`, `toBeChecked`, `toHaveTextContent`, etc.          |
 
-See [[Zod]], [[React Testing Library]].
+See [[Zod]], [[React Testing Library]], [[gaia-lint]].

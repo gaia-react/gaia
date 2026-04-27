@@ -71,6 +71,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[i18next]]
 - [[Tailwind]]
 - [[FontAwesome]]
+- [[gaia-lint]]
 - [[Vitest]]
 - [[React Testing Library]]
 - [[Playwright]]
