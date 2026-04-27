@@ -20,7 +20,7 @@ tags: [source, initial]
 - `docs/architecture/{folder-structure,routes,components,pages,services,sessions,state,middleware,hooks,languages,utils,styles,types,assets}.md`
 - `docs/tech-stack/{foundation,code-quality,testing/index,testing/unit-and-integration,testing/visual,testing/e2e}.md`
 - `.claude/CLAUDE.md` (project) + `.claude/rules/*.md` (full)
-- `.claude/commands/*.md` (full set: audit-code, gaia-init, migrate, new-component, new-hook, new-route, new-service)
+- `.claude/commands/*.md` (full set: audit-code, gaia-init, new-component, new-hook, new-route, new-service, update-deps)
 - `.claude/hooks/*.sh` (all 4)
 - `.claude/agents/code-review-audit.md`
 - `.claude/settings.json`

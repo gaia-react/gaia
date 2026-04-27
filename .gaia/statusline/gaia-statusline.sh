@@ -64,7 +64,7 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
 
   segments=()
   if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-    segments+=("$(printf '\033[01;33mRun /migrate (%d outdated)\033[00m' "$outdated_count")")
+    segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
   fi
   if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
     segments+=("$(printf '\033[01;36mRun /gaia-update (GAIA %s available)\033[00m' "$gaia_latest")")

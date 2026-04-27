@@ -22,7 +22,7 @@ The full-stack web framework GAIA is built on. Provides SSR, file-based routing,
 - `@react-router/remix-routes-option-adapter`
 - `react-router-dom`
 
-The `/migrate` command upgrades all of these together when react-router is selected.
+The `/update-deps` command upgrades all of these together when react-router is selected.
 
 ## Used by
 

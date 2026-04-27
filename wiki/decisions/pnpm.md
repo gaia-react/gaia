@@ -39,11 +39,11 @@ Caret ranges (`^x.y.z`) are kept in `package.json`. The lockfile is the authorit
 
 ## Override audit
 
-Overrides drift. `/migrate` Phase 0 toggles each `pnpm.overrides` key out, runs `pnpm install`, scans `pnpm ls` for peer-dep errors, and removes any override that is no longer needed. Phase 6 re-checks retained overrides after a wave updates surrounding packages.
+Overrides drift. `/update-deps` Phase 0 toggles each `pnpm.overrides` key out, runs `pnpm install`, scans `pnpm ls` for peer-dep errors, and removes any override that is no longer needed. Phase 6 re-checks retained overrides after a wave updates surrounding packages.
 
 ## Source of truth
 
-This page. Mechanics: `package.json`, `.npmrc`, `pnpm-lock.yaml`, `.github/workflows/tests.yml`, `.github/workflows/chromatic.yml`. Bootstrap: `.claude/commands/gaia-init.md` Step 0. Migration tooling: `.claude/commands/migrate.md`.
+This page. Mechanics: `package.json`, `.npmrc`, `pnpm-lock.yaml`, `.github/workflows/tests.yml`, `.github/workflows/chromatic.yml`. Bootstrap: `.claude/commands/gaia-init.md` Step 0. Migration tooling: `.claude/commands/update-deps.md`.
 
 > [!key-insight] minimumReleaseAge is the cheap supply-chain win
 > Most npm supply-chain attacks are caught and yanked within hours. A 7-day quarantine cuts the dominant attack window for the cost of one config line. No infra. No subscription. No agent.

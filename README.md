@@ -137,7 +137,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <tr><td><code>/init</code></td><td>Full project initialization (see above)</td></tr>
 <tr><td><code>/orchestrate</code></td><td>Plan a complex feature. Claude structures the work, you approve, then an orchestrator drives focused subagents through execution</td></tr>
 <tr><td><code>/gaia-update</code></td><td>Merges the latest GAIA release without overwriting your customizations</td></tr>
-<tr><td><code>/migrate</code></td><td>Upgrades outdated packages and handles any necessary code changes - a superpowered Dependabot</td></tr>
+<tr><td><code>/update-deps</code></td><td>Upgrades outdated packages and handles any necessary code changes - a superpowered Dependabot</td></tr>
 <tr><td><code>/audit-knowledge</code></td><td>Audit memory, wiki, and auto-loaded files for duplication, conflicting instructions, and bloat</td></tr>
 <tr><td><code>/handoff</code></td><td>Generate a comprehensive session handoff document so you can clear the context with confidence that nothing will get lost</td></tr>
 <tr><td><code>/pickup</code></td><td>Restore context from handoff and continue work</td></tr>

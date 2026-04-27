@@ -11,7 +11,7 @@
     ".claude/commands/gaia-init.md": "owned",
     ".claude/commands/gaia-update.md": "owned",
     ".claude/commands/handoff.md": "owned",
-    ".claude/commands/migrate.md": "owned",
+    ".claude/commands/update-deps.md": "owned",
     ".claude/commands/new-component.md": "owned",
     ".claude/commands/new-hook.md": "owned",
     ".claude/commands/new-route.md": "owned",
