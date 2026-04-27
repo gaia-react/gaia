@@ -9,7 +9,7 @@
     ".claude/commands/audit-code.md": "owned",
     ".claude/commands/audit-knowledge.md": "owned",
     ".claude/commands/gaia-init.md": "owned",
-    ".claude/commands/gaia-update.md": "owned",
+    ".claude/commands/update-gaia.md": "owned",
     ".claude/commands/handoff.md": "owned",
     ".claude/commands/update-deps.md": "owned",
     ".claude/commands/new-component.md": "owned",

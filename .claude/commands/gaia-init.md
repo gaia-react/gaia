@@ -130,7 +130,7 @@ GAIA bundles `tdd` and `playwright-cli` skills at `.claude/skills/` — they shi
 
 ### Wire the GAIA statusline
 
-Add the project-scoped GAIA statusline to **project** `.claude/settings.json` so the user gets `/update-deps` and `/gaia-update` hints automatically. The wrapper at `.gaia/statusline/gaia-statusline.sh` delegates the left-side render and only appends GAIA addons inside this project.
+Add the project-scoped GAIA statusline to **project** `.claude/settings.json` so the user gets `/update-deps` and `/update-gaia` hints automatically. The wrapper at `.gaia/statusline/gaia-statusline.sh` delegates the left-side render and only appends GAIA addons inside this project.
 
 Make `.gaia/statusline/*.sh` executable: `chmod +x .gaia/statusline/*.sh` (idempotent — safe to run regardless).
 

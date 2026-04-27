@@ -12,7 +12,7 @@ tags: [release, claude, maintainer, versioning]
 How GAIA cuts a public release. Two surfaces — the template repo (`gaia-react/gaia`) and the bootstrapper (`gaia-react/create-gaia`) — ship on independent cadences.
 
 > [!note] Audience
-> The `/gaia-release` command is **maintainer-only** and stripped from distribution tarballs by `.gaia/release-exclude`. Adopters never see it. This page documents the flow so adopters understand what each GAIA release contains and why `/gaia-update` behaves the way it does.
+> The `/gaia-release` command is **maintainer-only** and stripped from distribution tarballs by `.gaia/release-exclude`. Adopters never see it. This page documents the flow so adopters understand what each GAIA release contains and why `/update-gaia` behaves the way it does.
 
 ## Primitives
 

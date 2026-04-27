@@ -129,7 +129,7 @@ echo "$LATEST" > .gaia/VERSION
 
 If the walk was aborted mid-way (user cancels, disk error), leave `.gaia/VERSION` at `BASELINE` so a re-run resumes cleanly. Any files already overwritten are safe — their new state is recorded via `.gaia-backup/`.
 
-Also copy `.gaia/manifest.json` from `$LATEST_DIR/.gaia/manifest.json` into the project so the next `/gaia-update` has the right baseline.
+Also copy `.gaia/manifest.json` from `$LATEST_DIR/.gaia/manifest.json` into the project so the next `/update-gaia` has the right baseline.
 
 ## Step 9: Summary
 
@@ -146,7 +146,7 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
 ```
 
-Then bust the statusline cache so the "Run /gaia-update (GAIA $LATEST available)" hint doesn't linger from the pre-update snapshot:
+Then bust the statusline cache so the "Run /update-gaia (GAIA $LATEST available)" hint doesn't linger from the pre-update snapshot:
 
 ```bash
 rm -f .gaia/cache/statusline-update-check.json
