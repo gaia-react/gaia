@@ -121,8 +121,8 @@ importers:
         specifier: 10.4.0
         version: 10.4.0
       '@gaia-react/lint':
-        specifier: 1.0.0
-        version: 1.0.0(@testing-library/dom@10.4.1)(@typescript-eslint/eslint-plugin@8.59.0(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(@typescript-eslint/utils@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint-plugin-import-x@4.16.2(@typescript-eslint/utils@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint@9.39.4(jiti@2.6.1)))(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.3)(storybook@10.3.5(@testing-library/dom@10.4.1)(prettier@3.8.3)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(tailwindcss@4.2.4)(typescript@6.0.3)(vitest@4.1.5)
+        specifier: 1.1.0
+        version: 1.1.0(@testing-library/dom@10.4.1)(@typescript-eslint/eslint-plugin@8.59.0(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(@typescript-eslint/utils@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint-plugin-import-x@4.16.2(@typescript-eslint/utils@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint@9.39.4(jiti@2.6.1)))(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.3)(storybook@10.3.5(@testing-library/dom@10.4.1)(prettier@3.8.3)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(stylelint@17.9.0(typescript@6.0.3))(tailwindcss@4.2.4)(typescript@6.0.3)(vitest@4.1.5)
       '@msw/data':
         specifier: 1.1.5
         version: 1.1.5
@@ -228,9 +228,6 @@ importers:
       prettier:
         specifier: 3.8.3
         version: 3.8.3
-      prettier-plugin-tailwindcss:
-        specifier: 0.7.3
-        version: 0.7.3(prettier@3.8.3)
       remix-flat-routes:
         specifier: 0.8.5
         version: 0.8.5
@@ -243,18 +240,6 @@ importers:
       stylelint:
         specifier: 17.9.0
         version: 17.9.0(typescript@6.0.3)
-      stylelint-config-clean-order:
-        specifier: 8.0.1
-        version: 8.0.1(stylelint-order@8.1.1(stylelint@17.9.0(typescript@6.0.3)))(stylelint@17.9.0(typescript@6.0.3))
-      stylelint-config-standard:
-        specifier: 40.0.0
-        version: 40.0.0(stylelint@17.9.0(typescript@6.0.3))
-      stylelint-config-tailwindcss:
-        specifier: 1.0.1
-        version: 1.0.1(stylelint@17.9.0(typescript@6.0.3))(tailwindcss@4.2.4)
-      stylelint-order:
-        specifier: 8.1.1
-        version: 8.1.1(stylelint@17.9.0(typescript@6.0.3))
       tailwindcss:
         specifier: 4.2.4
         version: 4.2.4
@@ -741,15 +726,18 @@ packages:
       '@fortawesome/fontawesome-svg-core': ~6 || ~7
       react: ^18.0.0 || ^19.0.0
 
-  '@gaia-react/lint@1.0.0':
-    resolution: {integrity: sha512-R//2FxfFjAXcx6WStrM2aszOPMOT0JBbiknWzjVgQ6/OGF0QhRISJv3V/7SkhEe8x2uhx/nk+7EzxE8d5lEB6w==}
+  '@gaia-react/lint@1.1.0':
+    resolution: {integrity: sha512-/uV5sQV1H9tSDfdfcZnobsyl9SqgctF5g8jQHBeCD78kzUuxdpjQYrGmA/0BBepenSG2DcZPuRweAOvqKAQhJA==}
     engines: {node: '>=22.19.0'}
     peerDependencies:
       eslint: ^9.0.0
       prettier: ^3.0.0
+      stylelint: ^17.0.0
       typescript: ^5.0.0 || ^6.0.0
     peerDependenciesMeta:
       prettier:
+        optional: true
+      stylelint:
         optional: true
 
   '@humanfs/core@0.19.2':
@@ -5405,7 +5393,7 @@ snapshots:
       '@fortawesome/fontawesome-svg-core': 7.2.0
       react: 19.2.5
 
-  '@gaia-react/lint@1.0.0(@testing-library/dom@10.4.1)(@typescript-eslint/eslint-plugin@8.59.0(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(@typescript-eslint/utils@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint-plugin-import-x@4.16.2(@typescript-eslint/utils@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint@9.39.4(jiti@2.6.1)))(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.3)(storybook@10.3.5(@testing-library/dom@10.4.1)(prettier@3.8.3)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(tailwindcss@4.2.4)(typescript@6.0.3)(vitest@4.1.5)':
+  '@gaia-react/lint@1.1.0(@testing-library/dom@10.4.1)(@typescript-eslint/eslint-plugin@8.59.0(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(@typescript-eslint/utils@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint-plugin-import-x@4.16.2(@typescript-eslint/utils@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint@9.39.4(jiti@2.6.1)))(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.6.1))(prettier@3.8.3)(storybook@10.3.5(@testing-library/dom@10.4.1)(prettier@3.8.3)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(stylelint@17.9.0(typescript@6.0.3))(tailwindcss@4.2.4)(typescript@6.0.3)(vitest@4.1.5)':
     dependencies:
       '@eslint-community/eslint-plugin-eslint-comments': 4.7.1(eslint@9.39.4(jiti@2.6.1))
       '@eslint/compat': 2.0.5(eslint@9.39.4(jiti@2.6.1))
@@ -5429,21 +5417,43 @@ snapshots:
       eslint-plugin-unicorn: 64.0.0(eslint@9.39.4(jiti@2.6.1))
       eslint-plugin-unused-imports: 4.4.1(@typescript-eslint/eslint-plugin@8.59.0(@typescript-eslint/parser@8.59.0(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint@9.39.4(jiti@2.6.1))(typescript@6.0.3))(eslint@9.39.4(jiti@2.6.1))
       eslint-plugin-you-dont-need-lodash-underscore: 6.14.0
+      prettier-plugin-tailwindcss: 0.7.3(prettier@3.8.3)
+      stylelint-config-clean-order: 8.0.1(stylelint-order@8.1.1(stylelint@17.9.0(typescript@6.0.3)))(stylelint@17.9.0(typescript@6.0.3))
+      stylelint-config-standard: 40.0.0(stylelint@17.9.0(typescript@6.0.3))
+      stylelint-config-tailwindcss: 1.0.1(stylelint@17.9.0(typescript@6.0.3))(tailwindcss@4.2.4)
+      stylelint-order: 8.1.1(stylelint@17.9.0(typescript@6.0.3))
       typescript: 6.0.3
     optionalDependencies:
       prettier: 3.8.3
+      stylelint: 17.9.0(typescript@6.0.3)
     transitivePeerDependencies:
       - '@eslint/css'
+      - '@ianvs/prettier-plugin-sort-imports'
+      - '@prettier/plugin-hermes'
+      - '@prettier/plugin-oxc'
+      - '@prettier/plugin-pug'
+      - '@shopify/prettier-plugin-liquid'
       - '@testing-library/dom'
+      - '@trivago/prettier-plugin-sort-imports'
       - '@types/eslint'
       - '@typescript-eslint/eslint-plugin'
       - '@typescript-eslint/parser'
       - '@typescript-eslint/utils'
+      - '@zackad/prettier-plugin-twig'
       - eslint-import-resolver-node
       - eslint-import-resolver-webpack
       - eslint-plugin-import
       - eslint-plugin-import-x
       - oxlint
+      - prettier-plugin-astro
+      - prettier-plugin-css-order
+      - prettier-plugin-jsdoc
+      - prettier-plugin-marko
+      - prettier-plugin-multiline-arrays
+      - prettier-plugin-organize-attributes
+      - prettier-plugin-organize-imports
+      - prettier-plugin-sort-imports
+      - prettier-plugin-svelte
       - storybook
       - supports-color
       - tailwindcss
