@@ -29,7 +29,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 | `/new-hook`        | Scaffold a custom hook + test                                                                                                               |
 | `/audit-code`      | Run the full [[Quality Gate]]                                                                                                               |
 | `/audit-knowledge` | Audit memory + wiki + auto-loaded files for dupes, stale entries, and bloat ([[Audit-Knowledge Command]])                                   |
-| `/migrate`         | Autonomous Dependabot — discover all outdated packages, audit `pnpm.overrides`, apply codebase migrations for major bumps, run quality gate |
+| `/update-deps`     | Autonomous Dependabot — discover all outdated packages, audit `pnpm.overrides`, apply codebase migrations for major bumps, run quality gate |
 | `/handoff`         | Generate a session handoff doc at `.claude/handoff/HANDOFF-{date}-{slug}.md` ([[Handoff Command]])                                          |
 | `/pickup`          | Resume from the latest handoff; falls back to `wiki/hot.md` ([[Pickup Command]])                                                            |
 
@@ -134,7 +134,7 @@ These activate automatically based on context.
 
 ### Statusline
 
-GAIA ships a project-scoped statusline wrapper at `.gaia/statusline/gaia-statusline.sh`, wired by `/gaia-init`. The wrapper appends right-aligned hints (`Run /migrate (N outdated)`, `Run /gaia-update (GAIA <ver> available)`) and delegates the left side in this priority order:
+GAIA ships a project-scoped statusline wrapper at `.gaia/statusline/gaia-statusline.sh`, wired by `/gaia-init`. The wrapper appends right-aligned hints (`Run /update-deps (N outdated)`, `Run /gaia-update (GAIA <ver> available)`) and delegates the left side in this priority order:
 
 1. Sentinel file `.gaia/statusline/.use-vendored-base` (gitignored) → run the vendored renderer `.gaia/statusline/preferred-base.sh`. Project-only mode, no global install.
 2. `~/.claude/settings.json` `statusLine.command` → run that. Adopter's custom statusline appears unchanged inside the GAIA project.

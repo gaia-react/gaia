@@ -26,7 +26,7 @@ pnpm install
 
 If install fails, stop and report the error. Do not continue.
 
-Then run `/migrate` to bring all packages to their latest compatible versions before continuing. If `/migrate` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/migrate` runs its own quality gate at the end — if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
+Then run `/update-deps` to bring all packages to their latest compatible versions before continuing. If `/update-deps` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/update-deps` runs its own quality gate at the end — if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
 
 ## Step 2: Gather user input
 
@@ -130,7 +130,7 @@ GAIA bundles `tdd` and `playwright-cli` skills at `.claude/skills/` — they shi
 
 ### Wire the GAIA statusline
 
-Add the project-scoped GAIA statusline to **project** `.claude/settings.json` so the user gets `/migrate` and `/gaia-update` hints automatically. The wrapper at `.gaia/statusline/gaia-statusline.sh` delegates the left-side render and only appends GAIA addons inside this project.
+Add the project-scoped GAIA statusline to **project** `.claude/settings.json` so the user gets `/update-deps` and `/gaia-update` hints automatically. The wrapper at `.gaia/statusline/gaia-statusline.sh` delegates the left-side render and only appends GAIA addons inside this project.
 
 Make `.gaia/statusline/*.sh` executable: `chmod +x .gaia/statusline/*.sh` (idempotent — safe to run regardless).
 
