@@ -65,7 +65,7 @@
   },
   "devDependencies": {
     "@faker-js/faker": "10.4.0",
-    "@gaia-react/lint": "file:../lint",
+    "@gaia-react/lint": "^1.0.0",
     "@msw/data": "1.1.5",
     "@playwright-testing-library/test": "4.5.0",
     "@playwright/test": "1.59.1",
