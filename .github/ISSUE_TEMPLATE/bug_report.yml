@@ -57,7 +57,7 @@ body:
         - Tooling (build, test, lint, Storybook, Playwright)
         - create-gaia CLI
         - /gaia-init
-        - /gaia-update
+        - /update-gaia
         - Other
     validations:
       required: true

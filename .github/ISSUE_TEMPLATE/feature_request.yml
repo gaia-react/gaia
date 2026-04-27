@@ -27,7 +27,7 @@ body:
         - New scaffold (route, component, hook, service)
         - Existing code pattern or convention
         - Tooling or CI
-        - create-gaia / /gaia-init / /gaia-update
+        - create-gaia / /gaia-init / /update-gaia
         - Other
     validations:
       required: true
