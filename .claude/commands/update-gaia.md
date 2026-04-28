@@ -7,6 +7,20 @@ Pull the latest GAIA release into this project without clobbering customizations
 
 Backups land in `.gaia-backup/<timestamp>/`. Conflict patches land in `.gaia-merge/`.
 
+## Pre-flight: Branch check
+
+```bash
+git branch --show-current
+```
+
+If the current branch is `main` or `master`, create and switch to a new branch:
+
+```bash
+git checkout -b chore/update-gaia-$(date +%Y-%m-%d-%H-%M)
+```
+
+Otherwise proceed on the current branch.
+
 ## Step 1: Read baseline version
 
 ```bash
@@ -55,7 +69,21 @@ Print the notes to the user. Then use `AskUserQuestion`:
 
 On `Abort`, exit cleanly with no filesystem changes.
 
-## Step 5: Fetch baseline and latest tarballs
+## Model selection
+
+After the user confirms, determine the model for the execution agent:
+
+- Compare `LATEST` major vs `BASELINE` major (leading integer).
+- **Major bump** → spawn an **Opus agent** (`model: "opus"`).
+- **Minor or patch bump** → spawn a **Sonnet agent** (`model: "sonnet"`).
+
+Spawn the agent for Steps 5–10, passing `BASELINE`, `LATEST`, and `LATEST_TAG` as context.
+
+---
+
+## Steps 5–10 (execution agent)
+
+### Step 5: Fetch baseline and latest tarballs
 
 Cache under `.gaia/cache/` (gitignored) so repeated runs don't redownload:
 
@@ -78,7 +106,7 @@ done
 
 If the baseline tarball is unavailable (older release, pre-manifest), stop and explain — the adopter can manually cherry-pick changes by comparing their project to the `$LATEST_DIR`.
 
-## Step 6: Load the latest manifest
+### Step 6: Load the latest manifest
 
 ```bash
 LATEST_MANIFEST="$LATEST_DIR/.gaia/manifest.json"
@@ -86,7 +114,7 @@ LATEST_MANIFEST="$LATEST_DIR/.gaia/manifest.json"
 
 Iterate keys of `.files`. For each `<path>, <class>` entry, apply the decision table below. Track counts per outcome for the summary.
 
-## Step 7: Per-file decision table
+### Step 7: Per-file decision table
 
 For every file `P` in the latest manifest:
 
@@ -119,7 +147,7 @@ Print per-file progress as you go:
 [keep]      app/utils/legacy.ts                   (upstream deleted, you customized)
 ```
 
-## Step 8: Bump `.gaia/VERSION`
+### Step 8: Bump `.gaia/VERSION`
 
 **Only** after the full walk completes without errors:
 
@@ -131,7 +159,7 @@ If the walk was aborted mid-way (user cancels, disk error), leave `.gaia/VERSION
 
 Also copy `.gaia/manifest.json` from `$LATEST_DIR/.gaia/manifest.json` into the project so the next `/update-gaia` has the right baseline.
 
-## Step 9: Summary
+### Step 9: Summary
 
 Print a table:
 
@@ -154,7 +182,7 @@ rm -f .gaia/cache/statusline-update-check.json
 
 The next statusline render fires the background refresher; the render after that reflects the post-update state.
 
-## Step 10: Next steps for the user
+### Step 10: Next steps for the user
 
 Tell the user:
 
