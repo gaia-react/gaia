@@ -25,7 +25,7 @@ npm-debug.log*
 /playwright
 .playwright/.cache/
 .playwright/output/
-.playwright-mcp
+.playwright-cli/
 coverage
 .jest-cache
 
