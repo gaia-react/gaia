@@ -1,6 +1,26 @@
 Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts — just execute.
 
-## Phase 0: Override audit
+## Pre-flight: Branch check
+
+```bash
+git branch --show-current
+```
+
+If the current branch is `main` or `master`, create and switch to a new branch:
+
+```bash
+git checkout -b chore/update-deps-$(date +%Y-%m-%d-%H-%M)
+```
+
+Otherwise proceed on the current branch.
+
+## Phase 0–4: Haiku agent
+
+Spawn a **Haiku agent** (`model: "haiku"`) to run Phases 0–4. Pass it these instructions verbatim:
+
+---
+
+### Phase 0: Override audit
 
 For each key in `pnpm.overrides` (in `package.json`):
 
@@ -12,7 +32,7 @@ For each key in `pnpm.overrides` (in `package.json`):
 
 Operate on one key at a time. Always `pnpm install` after each toggle.
 
-## Phase 1: Discover outdated packages
+### Phase 1: Discover outdated packages
 
 ```bash
 pnpm outdated --json
@@ -30,7 +50,7 @@ Parse the JSON. For each entry record:
 
 If nothing is outdated after this filtering, print `All packages are up to date.` and exit.
 
-## Phase 2: Resolve companion groups
+### Phase 2: Resolve companion groups
 
 Map each outdated package into its group. **When any member of a group is outdated, include all members present in `package.json`** in the update — even ones not flagged outdated — so the group moves together.
 
@@ -56,12 +76,12 @@ Map each outdated package into its group. **When any member of a group is outdat
 
 Packages not matched form singleton groups.
 
-## Phase 3: Classify into waves
+### Phase 3: Classify into waves
 
 - **Wave A** — groups whose members all have minor or patch bumps only. Batched into one install.
 - **Wave B** — groups containing at least one major bump. Processed individually, ordered: `react-router`, `react`, `tailwindcss`, `storybook`, `vitest`, `playwright`, `eslint`, then remaining alphabetically.
 
-## Phase 4: Wave A (batch minor/patch)
+### Phase 4: Wave A (batch minor/patch)
 
 1. Build install args. For each package: if `is_pinned` use exact target, else use `^<latest>`. Example: `pnpm add foo@1.2.3 bar@^4.5.0 ...`.
 2. Run the single `pnpm add` command.
@@ -70,9 +90,44 @@ Packages not matched form singleton groups.
 5. If still failing: revert the offending packages (`pnpm add <pkg>@<previous>`) and log them as **skipped** with the reason.
 6. Run quality gate (Phase 7). If it fails, revert the entire Wave A batch.
 
+### Phase 7: Quality gate
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test --run
+pnpm pw
+pnpm build
+```
+
+### Return value
+
+Report back to the orchestrator with:
+
+- Override audit results (removed / retained)
+- Wave A results (updated packages, any skipped)
+- **Wave B groups** — list each group name and its major bump (e.g. `react-router: 6 → 7`)
+- Quality gate results
+
+---
+
 ## Phase 5: Wave B (per-group major bumps)
 
-For each Wave B group, in the order from Phase 3:
+After the Haiku agent returns, if there are no Wave B groups, skip to Phase 6.
+
+For each Wave B group, classify complexity and assign a model:
+
+**Opus** (`model: "opus"`): `react-router`, `react`, `typescript`, `storybook`, `eslint`
+
+**Sonnet** (`model: "sonnet"`): all other groups
+
+Spawn one agent per group (or sequentially if resource-constrained), passing it these instructions:
+
+---
+
+### Wave B group instructions
+
+You are upgrading the `{GROUP}` dependency group from `{FROM}` to `{TO}`.
 
 1. **Fetch migration guide** via WebFetch using the table below. If no URL applies, scan the GitHub release notes.
 2. **Install** the group:
@@ -80,7 +135,15 @@ For each Wave B group, in the order from Phase 3:
    - All others: `pnpm add <pkg1>@<latest> <pkg2>@<latest> ...` for every group member present in `package.json`.
 3. **Conflict check**: `pnpm ls 2>&1`. On peer-dep error, attempt one `pnpm.overrides` fix. If still failing, revert the group and skip with reason.
 4. **Apply breaking changes**: from the migration guide, identify code-affecting changes (renamed APIs, removed exports, config schema changes). `grep` the codebase for affected patterns and edit the matching files.
-5. **Quality gate** (Phase 7). On failure, attempt fixes inferred from the migration guide. If unfixable after a reasonable attempt, revert the entire group and log as skipped.
+5. **Quality gate**:
+   ```bash
+   pnpm typecheck
+   pnpm lint
+   pnpm test --run
+   pnpm pw
+   pnpm build
+   ```
+   On failure, attempt fixes inferred from the migration guide. If unfixable after a reasonable attempt, revert the entire group and log as skipped.
 
 Migration guide URLs:
 
@@ -97,21 +160,13 @@ Migration guide URLs:
 | msw          | `https://mswjs.io/docs/migrations`                                         |
 | vite         | `https://vite.dev/guide/migration`                                         |
 
+Report back: updated packages, breaking changes applied, any skipped reason, quality gate results.
+
+---
+
 ## Phase 6: Post-update override audit
 
-For every override that was **retained** in Phase 0, repeat the Phase 0 toggle test now that surrounding packages have moved. New versions may have resolved the original conflict.
-
-## Phase 7: Quality gate
-
-```bash
-pnpm typecheck
-pnpm lint
-pnpm test --run
-pnpm pw
-pnpm build
-```
-
-Run after Wave A completes, then once per Wave B group. Stop on first failure within a wave/group and follow the revert rules above.
+For every override that was **retained** in Phase 0, repeat the Phase 0 toggle test now that surrounding packages have moved. New versions may have resolved the original conflict. Run this as a **Haiku agent**.
 
 ## Phase 8: Final report
 
