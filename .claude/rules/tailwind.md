@@ -34,10 +34,6 @@ Prefer the project's semantic `@utility` tokens over raw paired classes:
 | `border-disabled`  | `border-gray-300 dark:border-gray-700` |
 | `input-invalid`    | error ring + border combo              |
 
-## Responsive breakpoint
-
-`sm:` (≥ 640 px) is the only breakpoint used in component code. Order mobile-first: base → `sm:` → `md:` → `lg:`.
-
 ## No arbitrary colors
 
 Use palette tokens (`blue-500`, `red-600`) with opacity modifiers (`bg-blue-900/15`). No hex literals in `[]`.
