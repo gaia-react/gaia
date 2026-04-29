@@ -19,7 +19,7 @@ The dev server runs on [http://localhost:3000](http://localhost:3000).
 
 ## Useful Claude commands
 
-This project ships with [GAIA](https://gaia-react.github.io/) — a workflow built on Claude Code with slash commands for common tasks:
+This project ships with [GAIA](https://gaiareact.com/) — a workflow built on Claude Code with slash commands for common tasks:
 
 - `/update-gaia` — pull the latest GAIA release into the project (three-way merge, preserves your customizations)
 - `/update-deps` — autonomous dependency upgrades; audits overrides, applies safe bumps, runs the quality gate
@@ -36,4 +36,4 @@ Run any of these from inside Claude Code.
 
 ## Learn more
 
-- GAIA docs: [https://gaia-react.github.io/](https://gaia-react.github.io/)
+- GAIA docs: [https://gaiareact.com/](https://gaiareact.com/)

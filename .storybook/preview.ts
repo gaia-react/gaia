@@ -14,7 +14,7 @@ const BRAND = {
   brandImage,
   brandTarget: '_blank',
   brandTitle: 'GAIA',
-  brandUrl: 'https://gaia-react.github.io/docs/',
+  brandUrl: 'https://gaiareact.com/docs/',
 };
 
 const preview: Preview = {

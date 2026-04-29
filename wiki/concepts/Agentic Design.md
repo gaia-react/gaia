@@ -2,129 +2,129 @@
 type: concept
 status: active
 created: 2026-04-25
-updated: 2026-04-25
+updated: 2026-04-29
 tags: [concept, philosophy, claude, agent]
 ---
 
 # Agentic Design
 
-Agentic design is the discipline of building AI systems that act autonomously toward goals rather than passively responding to prompts. Where a traditional LLM call is a one-shot question-answer exchange, an agentic system reasons, observes the effects of its actions, adjusts, and iterates — often using tools, spawning sub-agents, and persisting knowledge across sessions.
+Agentic design is the discipline of building AI systems that reason, observe, act on tools, and iterate toward goals rather than passively responding to one-shot prompts. The [canonical taxonomy](https://zeljkoavramovic.github.io/agentic-design-patterns/) catalogs 29 patterns across five categories: Core, Reasoning & Strategy, Orchestration, Infrastructure & State, and Reliability & Control.
 
-GAIA implements all four canonical agentic patterns and all four foundational agentic principles as first-class features.
+GAIA implements 12 of those 29 structurally. "Structurally" means the implementation is wired in through hooks, agents, rules, commands, or wiki conventions. It runs the same way every session, every engineer, every model variant. Not as emergent model behavior on top of a vanilla Claude Code setup. That distinction is GAIA's defensible thesis: agentic behavior has to be structural to be predictable enough to stake production code on.
 
-## The four canonical patterns
+## The 12 patterns GAIA implements
 
-### Reflection
+### Core
 
-An agent generates output, evaluates its own work against criteria, identifies failures, and corrects them in a loop until quality thresholds are met.
+#### Routing
 
-**GAIA's implementation:**
+Path-scoped rules in `.claude/rules/*.md` carry a `paths:` frontmatter and auto-load only when Claude is editing matching files. The i18n rule activates on `app/pages/**/*` and `app/components/**/*`; the API service rule activates on `app/services/**/*`. Conditional `Bash` hooks in `.claude/settings.json` route commands by shape: `Bash(pnpm *)` to the bare-test blocker, `Bash(git *)` to the destructive-git blocker, `Bash(gh pr merge:*)` to the audit-check reminder. Constraints are routed to context, not loaded globally.
 
-- The [[Code Review Audit Agent]] is a dedicated reflection agent. After every feature branch it reads the diff, evaluates every change against security, performance, code-smell, and antipattern criteria, and returns a tiered report (Critical / Important / Suggestions). It does not allow the merge to proceed until Critical and Important issues are fixed and committed.
-- The [[Quality Gate]] (typecheck + lint + tests + build) is a hard reflection gate before every commit. Claude cannot commit code that fails the gate — the pre-commit hook blocks it.
-- The quality gate runs again inside every Task Orchestration phase before the orchestrator advances. Each phase is self-correcting.
+#### Parallelization
 
-### ReAct (Reason + Act)
+The [[Code Review Audit Agent]] dispatches three specialist subagents and `react-doctor` in parallel from a single tool-call message. [[Task Orchestration]] dispatches implementation sub-agents per phase in parallel where dependencies allow. Both fan out work and collect results before advancing.
 
-ReAct interleaves reasoning steps with actions: observe the environment, reason about what to do, act (use a tool), observe the result, reason again. The loop continues until the goal is satisfied.
+#### Tool Use
 
-**GAIA's implementation:**
+GAIA composes a project-specific tool surface for Claude on React projects: ESLint with 20+ plugins, TypeScript, Vitest with React Testing Library, Playwright, Storybook with Chromatic, MSW, the `gh` CLI, `react-doctor`, the Obsidian wiki, the `claude-obsidian` plugin, and `typescript-lsp`. Each tool has a curated role; nothing is bolted on by accident.
 
-Claude's workflow in GAIA is a natural ReAct loop:
+### Reasoning & Strategy
 
-1. **Observe** — read the relevant wiki pages before touching code; read ESLint and TypeScript errors after writing code.
-2. **Reason** — apply scoped rules to determine the correct approach; consult references inside skills for deep-dive context.
-3. **Act** — write code, run Vitest, run Playwright, run the linter.
-4. **Observe** — read test output, lint output, type errors.
-5. **Reason + Act** — iterate until all gates pass.
+#### Reflection
 
-The Obsidian wiki is Claude's primary observation source for project knowledge. The `claude-obsidian` plugin (`/wiki-query`, `/wiki-ingest`, `/autoresearch`) is the tool interface. ESLint, Vitest, and Playwright are the feedback tools after code changes.
+Two distinct reflection layers, both blocking. The [[Quality Gate]] (typecheck + lint + test + build) is a pre-commit gate that loops until clean. The [[Code Review Audit Agent]] is a pre-merge gate that evaluates the branch diff against security, performance, architecture, accessibility, and project rules, returning Critical / Important / Suggestion findings. The gate runs again between Task Orchestration phases; each phase is self-correcting before the next begins.
 
-### Planning
+#### Planning
 
-Agents decompose large goals into smaller, executable steps — a task graph — and execute them in sequence or in parallel, with gates between phases.
+[[Task Orchestration]] is GAIA's planning layer. `/orchestrate` writes durable file artifacts to `.claude/plans/<slug>/`: per-task docs self-contained for fresh sub-agents, a `README.md` task graph with phases and frozen interface contracts, an `ORCHESTRATOR.md` execution playbook, and a `KICKOFF.md` entry-point. The user must approve the plan before any execution begins. Plans are concrete files, not chain-of-thought scribbles.
 
-**GAIA's implementation:**
+### Orchestration
 
-[[Task Orchestration]] is GAIA's planning layer. For features spanning 5+ files or multiple subsystems:
+#### Multi-Agent Collaboration
 
-1. Claude authors per-task docs in `.claude/plans/<feature>/` — each self-contained for a fresh-context sub-agent.
-2. A `README.md` records the full task graph: phases, parallelism, and frozen interface contracts.
-3. An `ORCHESTRATOR.md` prompt specifies phase execution, per-phase quality gates, and stop conditions.
-4. Claude does **not** execute the plan until the user explicitly approves it.
+The [[Code Review Audit Agent]] is a manager-and-specialists system. The lead reviewer dispatches React Patterns, TypeScript & Architecture, and Translation subagents in parallel. Subagents have file-scope gates (`.tsx` files trigger React Patterns; files containing `t(` calls trigger Translation). Extension files in `.claude/agents/code-review-audit/*.md` inject library-specific rules into the right specialist at runtime via `subagents:` frontmatter, a configurable dispatch system at the file level. The orchestrator pattern in `/orchestrate` follows the same shape.
 
-This is Human-in-the-Loop planning: the agent proposes, the human reviews, execution begins only on explicit approval.
+#### Resource-Aware Optimization
 
-### Multi-Agent Systems
+Model tier follows task complexity. [[Audit-Knowledge Command]] runs Stage 1 (research) on Opus with `ultrathink` and Stage 2 (mechanical apply) on Sonnet. `/orchestrate` asks the user whether to use Opus for planning, defaulting to yes; per-task implementation sub-agents inherit the running model (typically Sonnet). The Code Review Audit declares `model: sonnet` in its frontmatter so the structured rule-based review runs cheaply, leaving Opus for harder reasoning. Cost and quality discipline is wired in, not left to the user.
 
-Specialized agents collaborate in parallel, each focused on a narrow domain, coordinated by an orchestrator that manages sequencing and gates.
+### Infrastructure & State
 
-**GAIA's implementation:**
+#### Memory Management
 
-- The [[Code Review Audit Agent]] is itself a multi-agent system. After its own full-pass review it spawns three specialist subagents in parallel:
-  - **React Patterns** — component structure, hook usage, rendering antipatterns
-  - **TypeScript & Architecture** — type safety, module boundaries, structural correctness
-  - **Translation** — i18n string coverage, key consistency, missing translations
-- The orchestrator pattern from [[Task Orchestration]] dispatches implementation agents per phase in parallel where dependencies allow, then gates on build + lint before the next phase begins.
-- Extension files in `.claude/agents/code-review-audit/*.md` inject library-specific rules into the relevant specialist subagent at runtime — a configurable multi-agent dispatch system.
+Five tiers of memory with explicit scope and decay:
 
-## The four foundational principles
+- **Long-term**: the wiki at `wiki/`. Architecture, decisions, flows, concepts, dependencies, sources, all versioned with the repo.
+- **Hot cache**: `wiki/hot.md`. Auto-loaded each session, ≤200 words, the recent-context summary every session starts with.
+- **Episodic**: [[Handoff Command]] writes a structured doc; [[Pickup Command]] reads it and reconstitutes context cold.
+- **Agent memory**: `.claude/agent-memory/code-review-audit/MEMORY.md` accumulates patterns across reviews and is auto-loaded into the agent's prompt.
+- **User auto-memory**: `~/.claude/projects/<project>/memory/`. Typed memories (user / feedback / project / reference) indexed by `MEMORY.md`.
 
-### Autonomy
+[[Audit-Knowledge Command]] is a periodic two-stage sweep that detects duplication, stale entries, and auto-load bloat. Memory is not a pile; it has a maintenance loop.
 
-Agents make decisions based on goals and constraints, without requiring human approval for every action.
+#### Session Isolation
 
-**GAIA's implementation:** Path-scoped rules give Claude a precise, bounded decision space. Claude can autonomously choose how to implement a component because the rules encode the acceptable solution space — it doesn't need to ask "should I use `useTranslation` here?" because the i18n rule makes it unambiguous. Autonomy is enabled by constraint, not by absence of constraint.
+Sub-agents in [[Task Orchestration]] run in fresh-context isolation dispatched via the Agent tool. Each task doc is self-contained for a fresh sub-agent. The `ORCHESTRATOR.md` offers a git-worktree branch for filesystem-level isolation when the user is starting from `main`. The Code Review Audit's specialist subagents run in isolated agent contexts. `/audit-knowledge` separates research and apply across two isolated stages so reasoning cannot contaminate the mechanical applier.
 
-### Tool Use
+### Reliability & Control
 
-Agents interface with external systems — APIs, file systems, test runners — to take real-world actions and collect observations.
+#### The Stop Hook
 
-**GAIA's tool layer for Claude:**
+GAIA's hook layer is the canonical Stop Hook pattern, by name. Pre-tool-use hooks intercept dangerous commands and reject the call:
 
-| Tool                  | Purpose                                             |
-| --------------------- | --------------------------------------------------- |
-| ESLint                | Static analysis feedback after every code write     |
-| Vitest                | Unit/integration test execution                     |
-| Playwright            | E2E test execution and browser observation          |
-| Storybook + Chromatic | Component isolation and visual regression detection |
-| MSW                   | API mock layer for tests and Storybook              |
-| Obsidian wiki         | Persistent project knowledge retrieval              |
-| `gh` CLI              | PR creation, merge, and CI status                   |
+- `block-main-destructive-git.sh` blocks `git commit` on `main` and force-push to `main`.
+- `block-bare-test.sh` blocks `pnpm test` (which would start watch mode and never stop), requires `--run`.
+- `block-eslint-config-edit.sh` blocks edits to `eslint.config.mjs` so debt is fixed at the source rather than silenced.
+- `block-vitest-globals-tsconfig.sh` blocks adding vitest globals.
+- `pr-merge-audit-check.sh` reminds before `gh pr merge`.
 
-### Memory & Context
+Pre-commit Husky + lint-staged hooks are stop-hooks at the git layer. The [[Quality Gate]] command itself is a stop-hook protocol: stop and report before committing.
 
-Agents retain and retrieve relevant knowledge across sessions to avoid re-deriving context from scratch.
+#### Human-in-the-Loop
 
-**GAIA's implementation:**
-
-- **Obsidian wiki** — the primary persistent knowledge store. Architecture decisions, module maps, flows, dependency choices, and concepts are authored once and retrieved on demand. Claude fetches the one page it needs rather than loading the entire knowledge base.
-- **`/handoff` + `/pickup`** — explicit session continuity protocol. `/handoff` writes a structured synthesis of accomplishments, decisions, gaps, and next actions. `/pickup` reads it and reconstitutes working context cold. See [[Handoff Command]] and [[Pickup Command]].
-- **Code Review Audit memory** — `.claude/agent-memory/code-review-audit/MEMORY.md` accumulates patterns and recurring issues across reviews. The agent learns from prior reviews.
-- **`/audit-knowledge`** — periodic maintenance to sweep memory, wiki, and autoloaded files for duplication, conflicts, and stale instructions. See [[Audit-Knowledge Command]].
-- **Scoped rules** — rules activate only for the files Claude is currently editing. Relevant constraints load automatically; irrelevant ones stay out of the context window.
-
-### Human-in-the-Loop
-
-Incorporating human oversight at key decision points to ensure safety, quality, and alignment.
-
-**GAIA's checkpoints:**
+Six structurally enforced checkpoints between Claude's intent and impact:
 
 | Checkpoint                  | When           | What it guards                                                                |
 | --------------------------- | -------------- | ----------------------------------------------------------------------------- |
-| Quality gate                | Pre-commit     | No broken types, lint errors, failing tests, or build failures reach the repo |
-| Code-review audit           | Pre-merge      | No security, performance, or code-quality issues reach `main`                 |
-| Task Orchestration approval | Pre-execution  | No large multi-file plan executes without explicit user sign-off              |
-| Orchestrator phase gates    | Between phases | No phase begins if the prior phase's build + lint fails                       |
-| Destructive git hook        | Always         | Claude cannot commit to `main` or force-push — human must act                 |
+| [[Quality Gate]]            | Pre-commit     | No broken types, lint errors, failing tests, or build failures reach the repo |
+| [[Code Review Audit Agent]] | Pre-merge      | No security, performance, or code-quality issues reach `main`                 |
+| Orchestrate plan approval   | Pre-execution  | No multi-file plan executes without explicit user sign-off                    |
+| Orchestrator phase gates    | Between phases | No phase begins if the prior phase's gate failed                              |
+| Destructive-git hook        | Always         | No commit-to-`main`, no force-push to `main`                                  |
+| `gh pr merge` reminder hook | Pre-merge      | Reminds to run the code-review audit                                          |
 
-Human-in-the-Loop in GAIA is not advisory — it is enforced. Hooks block the operations that bypass it.
+Human-in-the-Loop in GAIA is enforced by hooks. The bypass paths are blocked at the hook layer.
 
-## Why this matters
+#### Guardrails & Safety
 
-Most Claude setups treat agentic behavior as emergent: give the model a good prompt and hope it reasons well. GAIA makes agentic behavior structural. The reflection loops, the observation-action cycles, the planning gates, the specialist dispatch — these are wired in, not prompted in. They run the same way every time, by any engineer on the team, whether or not they understand the underlying agentic theory.
+Defense in depth, layered from filesystem up:
 
-The result is a system where Claude's autonomy is bounded, its quality is enforced, and its knowledge persists — an agentic framework that is predictable enough to stake production code on.
+- **Filesystem deny list** in `.claude/settings.json`: `Read(.env)`, `Read(**/secrets/*)`, `Read(**/*credential*)`, `Read(**/*.pem)`, `Read(**/*.key)`.
+- **Tool allow list** scopes Bash and Edit surfaces.
+- **Block hooks** in `.claude/hooks/` reject debt-accumulating patterns at the source (eslint-config edits, vitest globals, watch-mode tests, destructive git).
+- **Code Review Audit security dimension**: XSS, SSRF, IDOR, secret exposure, timing attacks, dependency vulnerabilities are explicit checklist items.
+- **Accessibility guardrails**: rules block hardcoded English strings, missing `alt`, missing keyboard handlers; the audit subagent enforces semantic HTML, focus management, ARIA.
+- **Coding-rule guardrails**: no `eslint-disable react-hooks/exhaustive-deps`, no `.catch(() => {})`, no `interface` (use `type`), no `switch`, no enums, no untyped exports.
+
+Each rule prevents a class of debt at the source rather than catching it downstream.
+
+## Honest non-features
+
+A handful of patterns from the canonical taxonomy are deliberately absent in GAIA, and several others are partial. Worth naming so the structural claims stay defensible:
+
+- **Dynamic Scaffolding**: absent by design. GAIA pre-curates a stable tool surface; tool sprawl is a non-goal.
+- **Parallel Fusion**: absent. GAIA's parallelism is divide-and-conquer (specialist subagents on different scopes), not redundant attempts on the same task.
+- **The Ralph Wiggum Loop**: explicitly rejected. GAIA fail-stops and surfaces to the user rather than looping until the environment passes.
+- **Vector RAG**: wiki retrieval is symbolic (paths, grep, `wiki/index.md`, backlinks), not embedding-based. Closer to "structured-markdown retrieval-on-demand" than canonical RAG.
+- **Code-Then-Execute**: a Claude Code runtime capability, not a GAIA convention.
+
+The full pattern-by-pattern grading (12 Strong, 13 Partial, 1 Inferential, 3 Absent), with evidence per pattern and an honest discussion of overclaims to retire, lives in [`branding/research/AGENTIC_DESIGN.md`](../../../branding/research/AGENTIC_DESIGN.md). That report is the source of truth for these claims.
+
+## Why structural matters
+
+Most Claude setups treat agentic behavior as emergent: give the model a good prompt and hope it reasons well. GAIA makes agentic behavior structural. Reflection loops, observation-action cycles, planning gates, specialist dispatch, model tiering, memory tiering. These are wired in, not prompted in. They run the same way every session, by any engineer on the team, whether or not they understand the underlying agentic theory.
+
+The result is a system where Claude's autonomy is bounded, its quality is enforced, and its knowledge persists. Agentic behavior is predictable enough to stake production code on.
 
 ## See also
 
@@ -132,8 +132,10 @@ The result is a system where Claude's autonomy is bounded, its quality is enforc
 - [[Task Orchestration]]
 - [[Code Review Audit Agent]]
 - [[Claude Hooks]]
+- [[Quality Gate]]
 - [[Handoff Command]]
 - [[Pickup Command]]
 - [[Audit-Knowledge Command]]
-- [[Quality Gate]]
 - [[PR Merge Workflow]]
+- [Source taxonomy: 29 agentic design patterns](https://zeljkoavramovic.github.io/agentic-design-patterns/)
+- Internal audit: [`branding/research/AGENTIC_DESIGN.md`](../../../branding/research/AGENTIC_DESIGN.md)

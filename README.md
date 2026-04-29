@@ -30,7 +30,7 @@ npx create-gaia my-app
 
 This pulls the latest tagged release (scrubbed of dev notes), sets up `.gaia/VERSION` for later `/update-gaia` runs, and `git init`s your project. Then open Claude Code in the project and run `/gaia-init` to configure i18n, strip GAIA branding, and install Claude plugins.
 
-[Documentation](https://gaia-react.github.io/)
+[Documentation](https://gaiareact.com/)
 
 ## The two problems GAIA solves
 
@@ -64,7 +64,7 @@ Context bloat isn't just `CLAUDE.md` sprawl. Instructions get dropped into globa
 
 ## Tech Stack
 
-Every piece of GAIA's [tech stack](https://gaia-react.github.io/#stack) is pre-configured and wired into the Claude layer.
+Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configured and wired into the Claude layer.
 
 - **20+ ESLint plugins** with [Prettier](https://prettier.io/) and [Stylelint](https://stylelint.io/) for clean, consistent code from the first commit
 - **Pre-commit hooks** ([Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged)) — typecheck, lint, and test before CI
@@ -103,16 +103,16 @@ Only GAIA comes with Claude tooling built-in. It includes path-scoped rules, enf
 
 ## Agentic Design
 
-Agentic design is the discipline of building AI systems that act autonomously toward goals rather than passively responding to prompts. The canonical patterns — Reflection, ReAct, Planning, and Multi-Agent collaboration — are all first-class in GAIA.
+GAIA implements 12 of the 29 [canonical agentic design patterns](https://zeljkoavramovic.github.io/agentic-design-patterns/) structurally. Every load-bearing pattern is wired in through hooks, agents, rules, commands, or wiki conventions, so it runs the same way every session, every engineer, every model variant. The six below are the patterns with the clearest file-level evidence. The [features page](https://gaiareact.com/features/#agentic-design) breaks down all twelve.
 
-| Pattern         | How GAIA implements it                                                                                                                                                                            |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Reflection**  | Code-review audit evaluates every branch diff for security, performance, and antipatterns; quality gate enforces clean output before every commit                                                 |
-| **ReAct**       | Claude consults the Obsidian wiki before acting, uses ESLint / Vitest / Playwright as observation tools, and iterates until gates pass                                                            |
-| **Planning**    | For complex features, Claude plans before it codes — then an orchestrator drives focused subagents through each phase, keeping context tight and nothing running without your sign-off            |
-| **Multi-Agent** | Code-review audit spawns three specialist subagents in parallel (React Patterns, TypeScript & Architecture, Translation); the orchestrator pattern dispatches implementation agents across phases |
-
-Principles including Autonomy, Tool Use, Memory & Context, and Exception Handling & Recovery are each enforced structurally. Scoped rules bound Claude's decision space; ESLint, Vitest, Playwright, and MSW are Claude's tool layer; the Obsidian wiki and `/handoff` + `/pickup` provide persistent memory; and the quality gate plus code-review audit are mandatory checkpoints before commits and merges.
+| Pattern                         | How GAIA implements it                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The Stop Hook**               | Pre-tool-use hooks intercept dangerous commands at the source. `block-main-destructive-git.sh` rejects commits and force-pushes against `main`; `block-bare-test.sh` blocks watch-mode `pnpm test`; `block-eslint-config-edit.sh` forces fixing source instead of silencing rules; `pr-merge-audit-check.sh` runs before `gh pr merge`. All in `.claude/hooks/`, wired through `.claude/settings.json`. |
+| **Resource-Aware Optimization** | Model tier follows task complexity. `/audit-knowledge` runs Stage 1 (research) on Opus with `ultrathink` and Stage 2 (mechanical apply) on Sonnet (`.claude/commands/audit-knowledge.md`). `/orchestrate` defaults Opus for planning; the code-review audit declares `model: sonnet` in `.claude/agents/code-review-audit.md`.                                                       |
+| **Session Isolation**           | Sub-agents run in fresh contexts via the Agent tool. `/orchestrate` writes per-task docs into `.claude/plans/{slug}/`, each self-contained for a fresh-context sub-agent, and offers a git-worktree branch for filesystem-level isolation. `/audit-knowledge` splits research and apply across two isolated stages.                                                                 |
+| **Routing**                     | Path-scoped rules auto-load only when Claude is editing matching files. `.claude/rules/i18n.md` activates on `app/pages/**/*` and `app/components/**/*`; `.claude/rules/api-service.md` activates on `app/services/**/*`. Conditional `Bash` hooks in `.claude/settings.json` route commands to specific scripts based on command shape.                                            |
+| **Multi-Agent Collaboration**   | `code-review-audit` is a manager agent that dispatches React Patterns, TypeScript and Architecture, and Translation specialists in parallel from a single tool-call message, plus `react-doctor`. Extension files in `.claude/agents/code-review-audit/*.md` inject library-specific rules into the right subagent at runtime.                                                      |
+| **Guardrails & Safety**         | Filesystem deny list in `.claude/settings.json` covers `Read(.env)`, `Read(**/secrets/*)`, `Read(**/*credential*)`, `Read(**/*.pem)`, `Read(**/*.key)`. Tool allow list scopes Bash and Edit surfaces. Block hooks reject debt-accumulating patterns at the source. The audit's security dimension covers XSS, SSRF, IDOR, secret exposure, timing attacks, and dependency vulns.    |
 
 ## One-Command Initialization
 
