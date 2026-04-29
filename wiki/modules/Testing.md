@@ -63,10 +63,10 @@ Always use Storybook stories with `composeStory`. Never manually mock framework 
 
 Test files (`**/*.test.ts?(x)`) enforce two additional plugin configs:
 
-| Plugin | Config | Rules |
-| --- | --- | --- |
-| `eslint-plugin-testing-library` | `flat/react` | 22 rules — prefer `screen` queries, `await` all `userEvent` calls, no `act()` wrappers, no manual cleanup, etc. |
-| `eslint-plugin-jest-dom` | `flat/recommended` | 11 rules — prefer jest-dom matchers (`toHaveValue`, `toBeChecked`, `toHaveTextContent`, etc.) over raw DOM property checks |
+| Plugin                          | Config             | Rules                                                                                                                      |
+| ------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `eslint-plugin-testing-library` | `flat/react`       | 22 rules — prefer `screen` queries, `await` all `userEvent` calls, no `act()` wrappers, no manual cleanup, etc.            |
+| `eslint-plugin-jest-dom`        | `flat/recommended` | 11 rules — prefer jest-dom matchers (`toHaveValue`, `toBeChecked`, `toHaveTextContent`, etc.) over raw DOM property checks |
 
 See [[ESLint Fixes]] for fix patterns.
 

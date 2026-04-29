@@ -83,21 +83,21 @@ Opinionated starter templates solve different slices of the "day-zero engineerin
 
 ### Foundation
 
-|                          |       GAIA        |   Epic Stack   | create-t3-app |     RedwoodJS     |
-| ------------------------ | :---------------: | :------------: | :-----------: | :---------------: |
-| Routing                  |  React Router 7   | React Router 7 |    Next.js    | @redwoodjs/router |
-| TypeScript               |        ✅         |       ✅       |      ✅       |        ✅         |
-| Tailwind                 |        ✅         |       ✅       |      ✅       |        ❌         |
-| Unit / integration tests |      Vitest       |     Vitest     |      ❌       |       Jest        |
-| E2E tests                |    Playwright     |   Playwright   |      ❌       |        ❌         |
-| Storybook                |        ✅         |       ❌       |      ❌       |        ✅         |
-| Visual regression tests  |     Chromatic     |       ❌       |      ❌       |        ❌         |
-| Dark mode                |        ✅         |       ✅       |      ❌       |        ❌         |
-| i18n                     |        ✅         |       ❌       |      ❌       |        ❌         |
-| Mock API                 |        MSW        |       ❌       |      ❌       |        ❌         |
-| Forms                    |   Conform + Zod   |       ❌       |      ❌       |        ❌         |
-| Accessibility guardrails |        ✅         |       ❌       |      ❌       |        ❌         |
-| Lint rules               |       1,592       |      748       |      637      |        626        |
+|                          |      GAIA      |   Epic Stack   | create-t3-app |     RedwoodJS     |
+| ------------------------ | :------------: | :------------: | :-----------: | :---------------: |
+| Routing                  | React Router 7 | React Router 7 |    Next.js    | @redwoodjs/router |
+| TypeScript               |       ✅       |       ✅       |      ✅       |        ✅         |
+| Tailwind                 |       ✅       |       ✅       |      ✅       |        ❌         |
+| Unit / integration tests |       ✅       |       ✅       |      ❌       |        ✅         |
+| E2E tests                |       ✅       |       ✅       |      ❌       |        ❌         |
+| Storybook                |       ✅       |       ❌       |      ❌       |        ✅         |
+| Visual regression tests  |       ✅       |       ❌       |      ❌       |        ❌         |
+| Dark mode                |       ✅       |       ✅       |      ❌       |        ❌         |
+| i18n                     |       ✅       |       ❌       |      ❌       |        ❌         |
+| Mock API                 |       ✅       |       ❌       |      ❌       |        ❌         |
+| Forms                    |       ✅       |       ❌       |      ❌       |        ❌         |
+| Accessibility guardrails |       ✅       |       ❌       |      ❌       |        ❌         |
+| Lint rules               |     1,592      |      748       |      637      |        626        |
 
 Every lint rule is a check Claude has to clear. GAIA ships more than twice as many as any other starter, including 85 Stylelint rules none of the others have. The extras catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS.
 
@@ -109,14 +109,14 @@ Only GAIA ships with the Claude layer wired in: path-scoped rules, enforcement h
 
 GAIA implements 12 of the 29 [canonical agentic design patterns](https://zeljkoavramovic.github.io/agentic-design-patterns/) structurally. Every load-bearing pattern is wired in through hooks, agents, rules, commands, or wiki conventions, so it runs the same way every session, every engineer, every model variant. The six below are the patterns with the clearest file-level evidence. The [features page](https://gaiareact.com/features/#agentic-design) breaks down all twelve.
 
-| Pattern                         | How GAIA implements it                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pattern                         | How GAIA implements it                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **The Stop Hook**               | Pre-tool-use hooks intercept dangerous commands at the source. `block-main-destructive-git.sh` rejects commits and force-pushes against `main`; `block-bare-test.sh` blocks watch-mode `pnpm test`; `block-eslint-config-edit.sh` forces fixing source instead of silencing rules; `pr-merge-audit-check.sh` runs before `gh pr merge`. All in `.claude/hooks/`, wired through `.claude/settings.json`. |
-| **Resource-Aware Optimization** | Model tier follows task complexity. `/audit-knowledge` runs Stage 1 (research) on Opus with `ultrathink` and Stage 2 (mechanical apply) on Sonnet (`.claude/commands/audit-knowledge.md`). `/orchestrate` defaults Opus for planning; the code-review audit declares `model: sonnet` in `.claude/agents/code-review-audit.md`.                                                       |
-| **Session Isolation**           | Sub-agents run in fresh contexts via the Agent tool. `/orchestrate` writes per-task docs into `.claude/plans/{slug}/`, each self-contained for a fresh-context sub-agent, and offers a git-worktree branch for filesystem-level isolation. `/audit-knowledge` splits research and apply across two isolated stages.                                                                 |
-| **Routing**                     | Path-scoped rules auto-load only when Claude is editing matching files. `.claude/rules/i18n.md` activates on `app/pages/**/*` and `app/components/**/*`; `.claude/rules/api-service.md` activates on `app/services/**/*`. Conditional `Bash` hooks in `.claude/settings.json` route commands to specific scripts based on command shape.                                            |
-| **Multi-Agent Collaboration**   | `code-review-audit` is a manager agent that dispatches React Patterns, TypeScript and Architecture, and Translation specialists in parallel from a single tool-call message, plus `react-doctor`. Extension files in `.claude/agents/code-review-audit/*.md` inject library-specific rules into the right subagent at runtime.                                                      |
-| **Guardrails & Safety**         | Filesystem deny list in `.claude/settings.json` covers `Read(.env)`, `Read(**/secrets/*)`, `Read(**/*credential*)`, `Read(**/*.pem)`, `Read(**/*.key)`. Tool allow list scopes Bash and Edit surfaces. Block hooks reject debt-accumulating patterns at the source. The audit's security dimension covers XSS, SSRF, IDOR, secret exposure, timing attacks, and dependency vulns.    |
+| **Resource-Aware Optimization** | Model tier follows task complexity. `/audit-knowledge` runs Stage 1 (research) on Opus with `ultrathink` and Stage 2 (mechanical apply) on Sonnet (`.claude/commands/audit-knowledge.md`). `/orchestrate` defaults Opus for planning; the code-review audit declares `model: sonnet` in `.claude/agents/code-review-audit.md`.                                                                          |
+| **Session Isolation**           | Sub-agents run in fresh contexts via the Agent tool. `/orchestrate` writes per-task docs into `.claude/plans/{slug}/`, each self-contained for a fresh-context sub-agent, and offers a git-worktree branch for filesystem-level isolation. `/audit-knowledge` splits research and apply across two isolated stages.                                                                                     |
+| **Routing**                     | Path-scoped rules auto-load only when Claude is editing matching files. `.claude/rules/i18n.md` activates on `app/pages/**/*` and `app/components/**/*`; `.claude/rules/api-service.md` activates on `app/services/**/*`. Conditional `Bash` hooks in `.claude/settings.json` route commands to specific scripts based on command shape.                                                                |
+| **Multi-Agent Collaboration**   | `code-review-audit` is a manager agent that dispatches React Patterns, TypeScript and Architecture, and Translation specialists in parallel from a single tool-call message, plus `react-doctor`. Extension files in `.claude/agents/code-review-audit/*.md` inject library-specific rules into the right subagent at runtime.                                                                          |
+| **Guardrails & Safety**         | Filesystem deny list in `.claude/settings.json` covers `Read(.env)`, `Read(**/secrets/*)`, `Read(**/*credential*)`, `Read(**/*.pem)`, `Read(**/*.key)`. Tool allow list scopes Bash and Edit surfaces. Block hooks reject debt-accumulating patterns at the source. The audit's security dimension covers XSS, SSRF, IDOR, secret exposure, timing attacks, and dependency vulns.                       |
 
 ## One-Command Initialization
 

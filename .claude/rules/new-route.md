@@ -6,7 +6,7 @@ paths:
 
 # Route & Page Conventions
 
-For scaffolding a new route, run `/new-route` — it owns the canonical templates. This file covers the conventions that apply when *editing* existing routes/pages.
+For scaffolding a new route, run `/new-route` — it owns the canonical templates. This file covers the conventions that apply when _editing_ existing routes/pages.
 
 - **Route files are thin.** `app/routes/` handles loader, action, meta-via-loader, and rendering the page. All UI lives in `app/pages/`.
 - **Route groups** (remix-flat-routes `+` suffix): `_public+` (unauthenticated), `_session+` (auth-guarded hook), `_legal+` (terms, privacy), `actions+` (form endpoints).

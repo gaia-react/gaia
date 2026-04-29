@@ -57,19 +57,19 @@ email: z.string().email(),
 email: z.email(),
 ```
 
-## you-dont-need-lodash-underscore/*
+## you-dont-need-lodash-underscore/\*
 
 Use native JavaScript instead of lodash/underscore equivalents.
 
 ```tsx
 // BAD
 import _ from 'lodash';
-const first = _.find(items, item => item.active);
-const names = _.map(items, item => item.name);
+const first = _.find(items, (item) => item.active);
+const names = _.map(items, (item) => item.name);
 
 // GOOD
-const first = items.find(item => item.active);
-const names = items.map(item => item.name);
+const first = items.find((item) => item.active);
+const names = items.map((item) => item.name);
 ```
 
 ## testing-library/prefer-screen-queries
@@ -98,7 +98,7 @@ userEvent.click(button);
 await userEvent.click(button);
 ```
 
-## jest-dom/prefer-*
+## jest-dom/prefer-\*
 
 Use jest-dom matchers instead of raw DOM property checks.
 
