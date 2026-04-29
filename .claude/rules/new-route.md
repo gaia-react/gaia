@@ -4,67 +4,13 @@ paths:
   - 'app/pages/**/*'
 ---
 
-# New Route Pattern
+# Route & Page Conventions
 
-## Route Files Are Thin
+For scaffolding a new route, run `/new-route` — it owns the canonical templates. This file covers the conventions that apply when *editing* existing routes/pages.
 
-Route files in `app/routes/` handle only: loader, action, meta (via loader), and rendering the page component. All UI lives in `app/pages/`.
-
-## Route Groups
-
-Uses remix-flat-routes conventions with `+` suffix folders:
-
-- `_public+` — unauthenticated pages
-- `_session+` — hook point for auth-guarded pages (stub — add your own guard loader)
-- `_legal+` — terms, privacy, etc.
-- `actions+` — form action endpoints
-
-## Page Components
-
-Place in `app/pages/{Group}/{PascalName}Page/index.tsx`:
-
-- `app/pages/Public/IndexPage/`
-- `app/pages/Session/MyPage/` (add when you have auth-guarded pages)
-
-## Meta Tags
-
-Set meta in the loader using server-side i18n, render in the route component:
-
-```tsx
-// app/routes/_public+/_index.tsx
-import type {RouterContextProvider} from 'react-router';
-import {useLoaderData} from 'react-router';
-import {getInstance} from '~/middleware/i18next';
-import IndexPage from '~/pages/Public/IndexPage';
-import type {Route} from './+types/_index';
-
-export const loader = async ({context}: Route.LoaderArgs) => {
-  const i18next = getInstance(context as RouterContextProvider);
-  const title = i18next.t('index.meta.title', {ns: 'pages'});
-  const description = i18next.t('index.meta.description', {ns: 'pages'});
-
-  return {description, title};
-};
-
-const IndexRoute = () => {
-  const {description, title} = useLoaderData<typeof loader>();
-
-  return (
-    <>
-      <title>{title}</title>
-      <meta content={description} name="description" />
-      <IndexPage />
-    </>
-  );
-};
-
-export default IndexRoute;
-```
-
-## i18n
-
-All user-facing strings use `useTranslation()` with `keyPrefix`. Add keys to all language files under `app/languages/`.
-
-## Actions
-
-Use Zod + Conform for form validation in actions. Parse with `parseWithZod(formData, {schema})`.
+- **Route files are thin.** `app/routes/` handles loader, action, meta-via-loader, and rendering the page. All UI lives in `app/pages/`.
+- **Route groups** (remix-flat-routes `+` suffix): `_public+` (unauthenticated), `_session+` (auth-guarded hook), `_legal+` (terms, privacy), `actions+` (form endpoints).
+- **Page dirs**: `app/pages/{Group}/{PascalName}Page/index.tsx` — e.g. `app/pages/Public/IndexPage/`.
+- **Meta tags**: set `title`/`description` in the loader via `getInstance(context).t(...)`, render as `<title>` / `<meta>` in the route component (see `app/routes/_public+/_index.tsx`).
+- **i18n**: all user-facing strings via `useTranslation('pages', {keyPrefix})`. Add keys to every folder under `app/languages/`.
+- **Actions**: Zod + Conform — `parseWithZod(formData, {schema})`.

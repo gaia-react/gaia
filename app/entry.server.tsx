@@ -26,13 +26,13 @@ if (env.NODE_ENV !== 'production' && env.MSW_ENABLED) {
 
 const streamTimeout = 5000;
 
-export default async function handleRequest(
+const handleRequest = async (
   request: Request,
   responseStatusCode: number,
   responseHeaders: Headers,
   entryContext: EntryContext,
   routerContext: RouterContextProvider
-) {
+) => {
   let shellRendered = false;
 
   const url = new URL(request.url);
@@ -125,4 +125,6 @@ export default async function handleRequest(
 
     setTimeout(abort, streamTimeout + 1000);
   });
-}
+};
+
+export default handleRequest;

@@ -6,57 +6,29 @@ paths:
 
 # Storybook Conventions
 
+The `/new-component` command scaffolds the canonical story shape. This rule covers what to do when authoring or extending a story beyond that scaffold.
+
 ## When to write a story
 
-Write a story for every component scaffolded with `/new-component`. Skip stories only for
-pure-utility components with no visual output (e.g. context providers, HOCs with no markup).
+Write a story for every component scaffolded with `/new-component`. Skip stories only for pure-utility components with no visual output (e.g. context providers, HOCs with no markup).
 
-## File location and naming
+## File location
 
-Stories live in the component's `tests/` subfolder as `index.stories.tsx`. Discovered via
-`app/**/*.stories.tsx`.
+Stories live in the component's `tests/` subfolder as `index.stories.tsx`.
 
 ## Typing
 
-Always use `Meta` and `StoryFn` from `@storybook/react-vite`. Never use `Story` (deprecated alias).
-
-```tsx
-import type {Meta, StoryFn} from '@storybook/react-vite';
-import MyComponent from '..';
-
-const meta: Meta = {
-  component: MyComponent,
-  parameters: {controls: {hideNoControlsWarning: true}},
-  title: 'Components/MyComponent',
-};
-
-export default meta;
-
-export const Default: StoryFn = () => <MyComponent />;
-```
+Use `Meta` and `StoryFn` from `@storybook/react-vite`. Never use `Story` (deprecated alias).
 
 ## Title convention
 
-Use slash-separated paths matching the component hierarchy:
-
-- `Components/MyComponent`
-- `Form/InputText`
-- `Components/Loaders/Spinner`
+Slash-separated paths mirror the component's parent directory: `Components/MyComponent`, `Form/InputText`, `Components/Loaders/Spinner`.
 
 ## Decorator order
 
-Apply stubs in this order (outermost → innermost): `state` then `reactRouter`.
+Apply stubs outermost → innermost: `state` then `reactRouter`. Only include stubs the component actually needs (`stubs.state()` only when the component reads from `~/state`). Import from `test/stubs`.
 
-```tsx
-decorators: [stubs.state(), stubs.reactRouter()],
-```
-
-Only include stubs the component actually needs. Add `stubs.state()` only when the component
-reads from `~/state`. Import from `test/stubs`.
-
-`stubs.reactRouter()` options: `path` (default `/`), `loader`, `action` (string storyId,
-`Record<Method, storyId>`, or full `ActionFunction`), and `routes` (`{path, storyId}[]` —
-navigates to a story when the path loads).
+`stubs.reactRouter()` options: `path` (default `/`), `loader`, `action` (string storyId, `Record<Method, storyId>`, or full `ActionFunction`), and `routes` (`{path, storyId}[]` — navigates to a story when the path loads).
 
 ```tsx
 decorators: [
@@ -70,11 +42,7 @@ decorators: [
 
 ## Padding / layout
 
-Layout is `fullscreen`. Use `parameters.wrap` for padding instead of wrapper divs in JSX:
-
-```tsx
-parameters: {wrap: 'p-4'},
-```
+Layout is `fullscreen`. Use `parameters.wrap: 'p-4'` for padding instead of wrapper divs in JSX.
 
 ## Story variant naming
 
@@ -89,8 +57,7 @@ parameters: {wrap: 'p-4'},
 
 ## Dark-mode and Chromatic
 
-`ChromaticDecorator` renders light + dark side-by-side automatically — no per-story setup needed.
-Override via story-level parameters:
+`ChromaticDecorator` renders light + dark side-by-side automatically — no per-story setup needed. Override via story-level parameters:
 
 ```tsx
 parameters: {
@@ -104,8 +71,7 @@ parameters: {
 
 ## i18n in stories
 
-i18n is global — no setup needed. Use `useTranslation()` inside the story function to vary
-content by locale (`i18n.language`).
+i18n is global — no setup needed. Use `useTranslation()` inside the story function to vary content by locale (`i18n.language`).
 
 ## Test data
 
