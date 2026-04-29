@@ -1,6 +1,6 @@
 ---
 name: tailwind
-description: Patterns and conventions for all Tailwind styling. Use this skill whenever writing Tailwind class names, combining conditional classes, building component variants, or choosing between twJoin and twMerge. Also trigger when the user asks about custom values, rem vs px, responsive breakpoints, or avoiding template literal class strings.
+description: Patterns and conventions for all Tailwind styling. Use this skill whenever writing Tailwind class names, combining conditional classes, building component variants, or choosing between twJoin and twMerge. Also trigger when the user asks about custom values, defining @theme tokens or CSS variables, naming color/spacing tokens, rem vs px, responsive breakpoints, or avoiding template literal class strings.
 ---
 
 # Tailwind
@@ -55,6 +55,34 @@ function Button({className}: {className?: string}) {
 <Button className="bg-red-500" />;
 ```
 
+## Conditional classes
+
+Pass falsy values directly to `twJoin` / `twMerge` — they're skipped.
+
+```tsx
+// correct
+twJoin('base', isActive && 'bg-blue-500', error && 'border-red-500');
+
+// ternaries that produce two positive values are fine
+twJoin('base', condition ? 'a' : 'b');
+```
+
+Don't wrap class lists in template literals to concatenate — pass each class as a separate argument. Template literals inside `twJoin` / `twMerge` are acceptable **only** when interpolating a pre-built string from a lookup table (e.g., `ICON_POSITION[iconPosition]` from a `Record<string, string>`).
+
+## Variant / size lookup tables
+
+Extract multi-class variant strings into `Record` constants at the top of the file, then reference them positionally — not via interpolation.
+
+```ts
+const VARIANTS: Record<Variant, string> = {
+  primary: 'border border-blue-400 bg-blue-500 text-white ...',
+  secondary: '...',
+};
+
+// usage
+twJoin('rounded-sm px-3 py-2', VARIANTS[variant]);
+```
+
 ## Custom Values
 
 When Tailwind's built-in scale doesn't have an exact value, use an arbitrary value with `rem`, never `px`:
@@ -68,3 +96,27 @@ When Tailwind's built-in scale doesn't have an exact value, use an arbitrary val
 ```
 
 Use arbitrary values sparingly. If the same custom value appears more than once, add it to the tailwind.css `@theme` instead.
+
+## Custom Theme Tokens
+
+When adding `@theme` tokens to `app/styles/tailwind.css`, name them by **role**, not by the utility they'll be used with. The CSS variable suffix becomes the suffix on every generated utility (`bg-`, `text-`, `border-`, `ring-`, `fill-`, `stroke-`, `from-`, `to-`, etc.), so a token containing a utility prefix produces stuttering class names.
+
+**Lint check before naming:** mentally expand `bg-{name}`, `text-{name}`, `border-{name}`. If any reads as a stutter or nonsense, rename.
+
+```css
+/* BAD — produces bg-bg, text-bg, border-bg-tint, text-text-muted */
+--color-bg: #141413;
+--color-bg-tint: #181c1e;
+--color-text: #e0e0e0;
+--color-text-muted: #999;
+
+/* GOOD — produces bg-canvas, bg-surface, text-ink, text-muted */
+--color-canvas: #141413;
+--color-surface: #181c1e;
+--color-ink: #e0e0e0;
+--color-muted: #999;
+```
+
+Role vocabulary that survives the lint check: `canvas`, `surface`, `surface-raised`, `ink`, `muted`, `subtle`, `accent`, `brand-*`, `success`, `warning`, `danger`, palette-style names like `claude-500`. Avoid token names starting with `bg-`, `text-`, `border-`, `ring-`, `fill-`, `stroke-`, `from-`, `to-`, `outline-`, `shadow-`.
+
+For paired light/dark colors, prefer defining an `@utility` (like the existing `bg-body`, `text-body`) over a single `@theme` token — `@utility` binds two palette values together; a `@theme` token exposes one hex on every utility prefix.
