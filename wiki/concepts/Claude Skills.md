@@ -28,11 +28,11 @@ See [[modules/Claude Integration|the modules page]] for the full skills inventor
 
 GAIA's `.claude/` surface places each kind of guidance in the layer that loads it most efficiently. Use this matrix when adding new guidance:
 
-| Layer                    | Loads when…                                            | Use for                                                                            |
-| ------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Hook (`.claude/hooks/`)  | Tool call matches a registered event                   | Mechanical enforcement (block / advise) on a specific tool shape — no judgment     |
-| Rule (`.claude/rules/`)  | Matching `paths:` glob in scope (or always when empty) | File-path-bound conventions: project-wide style, route layout, accessibility, i18n |
-| Skill (`.claude/skills/`) | `description:` matches user intent / context          | Cross-file reasoning patterns: refactor playbooks, error-fix recipes, TDD loop     |
+| Layer                     | Loads when…                                            | Use for                                                                            |
+| ------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Hook (`.claude/hooks/`)   | Tool call matches a registered event                   | Mechanical enforcement (block / advise) on a specific tool shape — no judgment     |
+| Rule (`.claude/rules/`)   | Matching `paths:` glob in scope (or always when empty) | File-path-bound conventions: project-wide style, route layout, accessibility, i18n |
+| Skill (`.claude/skills/`) | `description:` matches user intent / context           | Cross-file reasoning patterns: refactor playbooks, error-fix recipes, TDD loop     |
 
 Heuristic when migrating:
 
