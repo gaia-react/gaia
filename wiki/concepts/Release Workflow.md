@@ -36,17 +36,17 @@ How GAIA cuts a public release. Two surfaces — the template repo (`gaia-react/
 Run `/gaia-release` on a clean `main`. The command is a 12-step orchestrator:
 
 1. Verify clean working tree + on `main`.
-2. Ask: `patch` / `minor` / `major` (or explicit version).
+2. Auto-determine bump by analyzing commits since last tag. `patch`/`minor` proceed automatically; `major` stops and asks.
 3. Run the [[Quality Gate]]. Stop on failure.
-4. Bump `package.json` version + `.gaia/VERSION`.
-5. Graduate `## [Unreleased]` to `## [vX.Y.Z] — YYYY-MM-DD`; seed a new empty `## [Unreleased]`.
-6. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
-7. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
-8. Regenerate `.gaia/manifest.json` via the classifier script.
-9. Commit: `chore(release): vX.Y.Z`.
-10. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`.
-11. Confirm with user, then `git push origin main --tags`.
-12. Report tag + expected GitHub Release URL.
+4. Create `release/vX.Y.Z` branch.
+5. Bump `package.json` + `.gaia/VERSION`.
+6. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [vX.Y.Z] — YYYY-MM-DD` and seed a new empty `## [Unreleased]`.
+7. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
+8. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
+9. Regenerate `.gaia/manifest.json` via the classifier script.
+10. Commit: `chore(release): vX.Y.Z`.
+11. Push branch, open PR, print PR URL.
+12. Schedule a background agent that polls for the PR to merge, then tags the merge commit and pushes automatically. The maintainer only needs to merge the PR — everything else is hands-off.
 
 The tag push triggers [`release.yml`](../../.github/workflows/release.yml), which produces the scrubbed tarball.
 
