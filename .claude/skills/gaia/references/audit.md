@@ -23,12 +23,10 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 Spawn one `Agent`:
 
 - `subagent_type`: `"general-purpose"`
-- `model`: `"opus"`
+- `model`: `"sonnet"`
 - `description`: `"Knowledge audit (research)"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `ultrathink.`
-  >
   > `You are Stage 1 of a two-stage knowledge audit. Your job is to PRODUCE A REPORT ONLY — do not mutate any files outside .claude/audit/. A separate Sonnet agent will execute the actions later.`
   >
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
@@ -52,7 +50,7 @@ Spawn one `Agent`:
 - `description`: `"Knowledge audit (apply)"`
 - `prompt`: the string below (literal):
 
-  > `You are Stage 2 of a two-stage knowledge audit. Stage 1 (Opus) produced a report. Your job is to execute the unchecked actions MECHANICALLY — do not reason about whether an action is correct, do not expand scope, do not merge or split actions.`
+  > `You are Stage 2 of a two-stage knowledge audit. Stage 1 produced a report. Your job is to execute the unchecked actions MECHANICALLY — do not reason about whether an action is correct, do not expand scope, do not merge or split actions.`
   >
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
   >
@@ -189,7 +187,7 @@ Write `$PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md`. Create `$PRO
 ````markdown
 ---
 generated: {YYYY-MM-DD HH:MM}
-generator: audit-knowledge stage-1 opus-ultrathink
+generator: audit-knowledge stage-1 sonnet
 project_root: {resolved PROJECT_ROOT}
 memory_dir: {resolved MEMORY_DIR}
 agent_memory_dir: {resolved AGENT_MEMORY_DIR}
