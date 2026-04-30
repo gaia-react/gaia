@@ -46,7 +46,7 @@ Ask the user using AskUserQuestion (multiSelect where appropriate):
 Run in one shell:
 
 ```bash
-rm -rf .github/FUNDING.yml .storybook/static/gaia-logo.png app/assets/images/gaia-logo.svg app/components/GaiaLogo
+rm -rf .github/FUNDING.yml app/components/GaiaLogo
 ```
 
 Replace the root `README.md` with the project-agnostic template and substitute the project title (use the value collected in Step 2; use Title Case):
@@ -63,11 +63,7 @@ Then edit `app/components/Header/index.tsx`:
 - Remove the `GaiaLogo` import
 - Replace `<GaiaLogo className="h-7 sm:h-9" role="img" />` with a text wordmark: `<span className="text-body text-xl font-bold">{t('meta.siteName')}</span>`
 
-Then edit `.storybook/preview.ts`:
-
-- Remove the `brandImage` import (if any)
-- Remove the `BRAND` constant (if any)
-- Remove any `...BRAND` spreads from `darkMode.dark` and `darkMode.light`
+Then replace `app/assets/images/gaia-logo.svg` with the project's own logo SVG. The Storybook brand logo imports it directly — no `preview.ts` edits needed.
 
 ## Step 4: Update CODEOWNERS
 
@@ -181,7 +177,7 @@ Append-only. New entries at the TOP.
 
 - Project name: <PROJECT_TITLE>
 - Languages: en + <OTHER_LANGS>
-- Removed: GAIA branding (FUNDING.yml, gaia-logo.svg/png, GaiaLogo component, Storybook BRAND)
+- Removed: GAIA branding (FUNDING.yml, GaiaLogo component); replaced gaia-logo.svg with project logo
 - Installed: React Doctor, TDD, Playwright CLI skills; typescript-lsp, claude-obsidian plugins
 ```
 
