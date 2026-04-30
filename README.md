@@ -28,13 +28,13 @@ Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, prefe
 npx create-gaia my-app
 ```
 
-This pulls the latest tagged release (scrubbed of dev notes), sets up `.gaia/VERSION` for later `/update-gaia` runs, and `git init`s your project. Then open Claude Code in the project and run `/gaia-init` to configure i18n, strip GAIA branding, and install Claude plugins.
+Then open Claude Code in the project folder and run `/init` to walk through the GAIA setup process.
 
 [Documentation](https://gaiareact.com/)
 
 ## The two problems GAIA solves
 
-Most React setups treat Claude as a tool you hold. They bolt a `CLAUDE.md` onto the root and hope the model figures out the rest. GAIA treats Claude as an engineer you _manage_. That shift exposes two failure modes the bolt-on approach papers over.
+Most setups treat Claude as a tool you hold. They bolt a `CLAUDE.md` onto the root and hope the model figures out the rest. GAIA treats Claude as an engineer you _manage_. That shift exposes two failure modes the bolt-on approach papers over.
 
 ### Trust
 
@@ -60,7 +60,7 @@ Context bloat isn't just `CLAUDE.md` sprawl. Instructions get dropped into globa
 - **[Obsidian](https://obsidian.md) wiki, fetched on demand.** Project knowledge lives as focused, linked Markdown pages. Claude opens the one page it needs (_"How does dark mode wire through?"_) instead of preloading the whole manual.
 - **Wiki behavior tailored to GAIA.** Session hooks keep Obsidian's workflow (ingest cadence, cache discipline, link hygiene) aligned with the project's conventions.
 - **Periodic knowledge audit** sweeps memory, wiki, and autoloaded files for duplication, conflicts, and stale instructions before they start costing tokens.
-- **Session continuity.** `/handoff` + `/pickup` replace re-briefing Claude from scratch at every session start.
+- **Session continuity.** `/gaia handoff` + `/gaia pickup` replace re-briefing Claude from scratch at every session start.
 
 ## Tech Stack
 
@@ -111,23 +111,23 @@ GAIA implements 12 of the 29 [canonical agentic design patterns](https://zeljkoa
 
 | Pattern                         | How GAIA implements it                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **The Stop Hook**               | Pre-tool-use hooks intercept dangerous commands at the source. `block-main-destructive-git.sh` rejects commits and force-pushes against `main`; `block-bare-test.sh` blocks watch-mode `pnpm test`; `block-eslint-config-edit.sh` forces fixing source instead of silencing rules; `pr-merge-audit-check.sh` runs before `gh pr merge`. All in `.claude/hooks/`, wired through `.claude/settings.json`. |
-| **Resource-Aware Optimization** | Model tier follows task complexity. `/audit-knowledge` runs Stage 1 (research) on Opus with `ultrathink` and Stage 2 (mechanical apply) on Sonnet (`.claude/commands/audit-knowledge.md`). `/orchestrate` defaults Opus for planning; the code-review audit declares `model: sonnet` in `.claude/agents/code-review-audit.md`.                                                                          |
-| **Session Isolation**           | Sub-agents run in fresh contexts via the Agent tool. `/orchestrate` writes per-task docs into `.claude/plans/{slug}/`, each self-contained for a fresh-context sub-agent, and offers a git-worktree branch for filesystem-level isolation. `/audit-knowledge` splits research and apply across two isolated stages.                                                                                     |
+| **The Stop Hook**               | Pre-tool-use hooks intercept dangerous commands at the source. `block-main-destructive-git.sh` rejects commits and force-pushes against `main`; `block-bare-test.sh` blocks watch-mode `pnpm test`; `block-eslint-config-edit.sh` forces fixing source instead of silencing rules; `pr-merge-audit-check.sh` runs before `gh pr merge`; `block-rm-rf.sh` blocks destructive file removal; `block-env-write.sh` and `block-secrets-write.sh` block writes to env and credential files; `block-lockfile-edit.sh` blocks direct lockfile edits. All in `.claude/hooks/`, wired through `.claude/settings.json`. |
+| **Resource-Aware Optimization** | Model tier follows task complexity. `/gaia audit` runs Stage 1 (research) and Stage 2 (mechanical apply) on Sonnet (`.claude/skills/gaia/references/audit.md`). `/gaia plan` defaults Opus for planning; the code-review audit declares `model: sonnet` in `.claude/agents/code-review-audit.md`.                                                                                                       |
+| **Session Isolation**           | Sub-agents run in fresh contexts via the Agent tool. `/gaia plan` writes per-task docs into `.claude/plans/{slug}/`, each self-contained for a fresh-context sub-agent, and offers a git-worktree branch for filesystem-level isolation. `/gaia audit` splits research and apply across two isolated stages.                                                                                            |
 | **Routing**                     | Path-scoped rules auto-load only when Claude is editing matching files. `.claude/rules/i18n.md` activates on `app/pages/**/*` and `app/components/**/*`; `.claude/rules/api-service.md` activates on `app/services/**/*`. Conditional `Bash` hooks in `.claude/settings.json` route commands to specific scripts based on command shape.                                                                |
 | **Multi-Agent Collaboration**   | `code-review-audit` is a manager agent that dispatches React Patterns, TypeScript and Architecture, and Translation specialists in parallel from a single tool-call message, plus `react-doctor`. Extension files in `.claude/agents/code-review-audit/*.md` inject library-specific rules into the right subagent at runtime.                                                                          |
 | **Guardrails & Safety**         | Filesystem deny list in `.claude/settings.json` covers `Read(.env)`, `Read(**/secrets/*)`, `Read(**/*credential*)`, `Read(**/*.pem)`, `Read(**/*.key)`. Tool allow list scopes Bash and Edit surfaces. Block hooks reject debt-accumulating patterns at the source. The audit's security dimension covers XSS, SSRF, IDOR, secret exposure, timing attacks, and dependency vulns.                       |
 
 ## One-Command Initialization
 
-GAIA ships clean. `/init` finishes the last-mile setup:
+GAIA ships clean. `/gaia-init` finishes the last-mile setup:
 
 - **Configures your project.** Prompts for a title, sets the package name, docs title, CODEOWNERS, and localized site titles.
 - **Installs dependencies.** Bootstraps pnpm via `corepack` and runs `pnpm install` for you.
 - **Configures i18n.** Prompts for your language set, scaffolds the matching language files, and updates the component and Storybook wiring.
 - **Installs Claude skills and plugins.** [React Doctor](https://github.com/millionco/react-doctor), [Playwright CLI](https://github.com/microsoft/playwright-cli), `typescript-lsp`, and [`claude-obsidian`](https://github.com/AgriciDaniel/claude-obsidian).
 
-After `/init` finishes, you have a clean app shell **and** a fully-configured Claude workflow ready to use.
+After `/gaia-init` finishes, you have a clean app shell **and** a fully-configured Claude workflow ready to use.
 
 ## Claude Workflow
 
@@ -138,13 +138,10 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <table>
 <thead><tr><th nowrap>Command</th><th>What it does</th></tr></thead>
 <tbody>
-<tr><td><code>/init</code></td><td>Full project initialization (see above)</td></tr>
-<tr><td><code>/orchestrate</code></td><td>Plan a complex feature. Claude structures the work, you approve, then an orchestrator drives focused subagents through execution</td></tr>
-<tr><td><code>/update-gaia</code></td><td>Merges the latest GAIA release without overwriting your customizations</td></tr>
-<tr><td><code>/update-deps</code></td><td>Upgrades outdated packages and handles any necessary code changes - a superpowered Dependabot</td></tr>
-<tr><td><code>/audit-knowledge</code></td><td>Audit memory, wiki, and auto-loaded files for duplication, conflicting instructions, and bloat</td></tr>
-<tr><td><code>/handoff</code></td><td>Generate a comprehensive session handoff document so you can clear the context with confidence that nothing will get lost</td></tr>
-<tr><td><code>/pickup</code></td><td>Restore context from handoff and continue work</td></tr>
+<tr><td><code>/gaia plan</code></td><td>Plan a complex feature. Claude structures the work, you approve, then an orchestrator drives focused subagents through execution</td></tr>
+<tr><td><code>/gaia audit</code></td><td>Audit memory, wiki, and auto-loaded files for duplication, conflicting instructions, and bloat</td></tr>
+<tr><td><code>/gaia handoff</code></td><td>Generate a comprehensive session handoff document so you can clear the context with confidence that nothing will get lost</td></tr>
+<tr><td><code>/gaia pickup</code></td><td>Restore context from handoff and continue work</td></tr>
 </tbody>
 </table>
 
@@ -152,15 +149,27 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 
 - **Path-scoped rules** cover TypeScript, React, Tailwind, testing, i18n, accessibility, and state management. Ask Claude about any of them; they're in `.claude/rules/`.
 - **Hooks** guard the quality gate and keep the wiki fresh. Ask Claude what they do.
-- **Bundled skills** (`typescript`, `react-code`, `tailwind`, `skeleton-loaders`, `tdd`, `playwright-cli`) autoload for matching tasks.
+- **Bundled skills** (`typescript`, `react-code`, `tailwind`, `skeleton-loaders`, `tdd`, `playwright-cli`, `eslint-fixes`) autoload for matching tasks. Scaffolding skills (`new-component`, `new-hook`, `new-route`, `new-service`) fire on natural-language asks.
 
 ### Code review before merge
 
 Every merge runs through a code-review pass against the branch diff (security, performance, code smells, antipatterns), and blocks until the issues are fixed and committed.
 
+### Staying up to date
+
+GAIA keeps package dependencies and GAIA itself up to date. At session start, a background check runs; when updates are available, Claude will ask if you want to update now or later.
+
+#### Dependencies
+
+GAIA will update outdated packages, handle breaking-change migrations, and run the quality gate to make sure everything still works as expected.
+
+#### GAIA Releases
+
+When GAIA itself is updated, it will pull the latest version and perform three-way merges on affected files so any customizations or natural drift over the lifetime of a project survive.
+
 ### Wiki
 
-GAIA ships with an [Obsidian](https://obsidian.md) wiki knowledge base (architecture, modules, dependencies, decisions, flows, concepts) committed to git and shared across the team. The [`claude-obsidian`](https://github.com/AgriciDaniel/claude-obsidian) plugin (installed by `/init`) adds `/wiki-ingest`, `/wiki-query`, `/wiki-lint`, `/autoresearch`, and `/save` for working with the vault. Open `wiki/` in Obsidian for graph view, backlinks, and search.
+GAIA ships with an [Obsidian](https://obsidian.md) wiki knowledge base (architecture, modules, dependencies, decisions, flows, concepts) committed to git and shared across the team. The [`claude-obsidian`](https://github.com/AgriciDaniel/claude-obsidian) plugin (installed by `/gaia-init`) adds `/wiki-ingest`, `/wiki-query`, `/wiki-lint`, `/autoresearch`, and `/save` for working with the vault. Open `wiki/` in Obsidian for graph view, backlinks, and search.
 
 ## Development
 
