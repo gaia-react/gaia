@@ -1,6 +1,6 @@
 ---
 name: update-gaia
-description: Pull the latest GAIA release into this project without clobbering customizations. Three-way merge per file using .gaia/manifest.json classes.
+description: Pull the latest GAIA release into this project without clobbering customizations. Three-way merge per file using .gaia/manifest.json classes. Trigger when the user accepts a SessionStart prompt to apply a GAIA template update, asks "update GAIA", "pull the latest GAIA", "apply the new GAIA release", or accepts the statusline `Run update-gaia` nudge.
 ---
 
 Pull the latest GAIA release into this project without clobbering customizations. Does a three-way comparison per file (adopter / baseline / latest) and respects explicit classes in `.gaia/manifest.json`:
