@@ -192,7 +192,7 @@ The next statusline render fires the background refresher; the render after that
 Tell the user:
 
 1. Review any conflict patches in `.gaia-merge/` and reconcile manually. Delete the patch file once resolved.
-2. Run `/audit-code` to verify the updated code still passes the quality gate.
+2. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
 3. Inspect the diff (`git diff`) before committing.
 4. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
 

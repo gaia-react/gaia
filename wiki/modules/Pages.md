@@ -36,4 +36,4 @@ See [[Components]] for the same convention applied to shared UI.
 
 ## Standard page shape
 
-Pages are `FC` components with a default export, using `useTranslation` for all user-facing strings. `/new-route` emits this shape. See [[i18n]] for translation conventions.
+Pages are `FC` components with a default export. All user-facing strings use `useTranslation('pages', {keyPrefix})` — the namespace is always `'pages'` and `keyPrefix` scopes keys to the page. Add keys to every locale folder under `app/languages/`. `/new-route` emits this shape. See [[i18n]] for translation conventions.
