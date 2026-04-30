@@ -15,9 +15,6 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: [
-      '@fortawesome/fontawesome-svg-core',
-      '@fortawesome/free-solid-svg-icons',
-      '@fortawesome/react-fontawesome',
       '@msw/data',
       'accept-language-parser',
       'date-fns',
@@ -45,8 +42,5 @@ export default defineConfig({
   },
   server: {
     open: true,
-  },
-  ssr: {
-    noExternal: ['@fortawesome/react-fontawesome'],
   },
 });

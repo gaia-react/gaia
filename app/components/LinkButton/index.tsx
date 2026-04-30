@@ -1,6 +1,5 @@
 import type {AnchorHTMLAttributes, FC} from 'react';
 import {Link, NavLink} from 'react-router';
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
 import {twJoin, twMerge} from 'tailwind-merge';
 import type {IconUnion, Variant} from '~/components/Button';
 import {ICON_POSITION, ICON_SIZES, SIZES, VARIANTS} from '~/components/Button';
@@ -31,13 +30,10 @@ const LinkButton: FC<LinkButtonProps> = ({
   variant = 'primary',
   ...props
 }) => {
+  const Icon = icon;
   const iconComponent =
-    icon ?
-      <FontAwesomeIcon
-        className={twJoin(children && 'flex-none', classNameIcon)}
-        icon={icon}
-        size="1x"
-      />
+    Icon ?
+      <Icon className={twJoin(children && 'flex-none', classNameIcon)} />
     : null;
 
   const innerSpan = (

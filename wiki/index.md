@@ -70,7 +70,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Ky]]
 - [[i18next]]
 - [[Tailwind]]
-- [[FontAwesome]]
+- [[react-icons]]
 - [[gaia-lint]]
 - [[Vitest]]
 - [[React Testing Library]]

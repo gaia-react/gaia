@@ -1,4 +1,3 @@
-import {config} from '@fortawesome/fontawesome-svg-core';
 import type {Preview} from '@storybook/react-vite';
 import {themes} from 'storybook/theming';
 import {decorators} from './chromatic';
@@ -7,8 +6,6 @@ import brandImage from './static/gaia-logo.png';
 import viewport from './viewport';
 import './env';
 import '~/styles/tailwind.css';
-
-config.autoAddCss = false;
 
 const BRAND = {
   brandImage,

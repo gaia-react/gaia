@@ -1,8 +1,7 @@
 import type {FC} from 'react';
 import {useState} from 'react';
+import {IoClose} from 'react-icons/io5';
 import {useActionData} from 'react-router';
-import {faClose} from '@fortawesome/free-solid-svg-icons';
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
 import {twMerge} from 'tailwind-merge';
 
 type FormActionData = {
@@ -39,7 +38,7 @@ const FormError: FC<FormResultProps> = ({className, hide}) => {
       type="button"
     >
       <span role="alert">{result}</span>
-      <FontAwesomeIcon icon={faClose} />
+      <IoClose />
     </button>
   );
 };

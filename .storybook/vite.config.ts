@@ -10,7 +10,7 @@ export default defineConfig(({mode}) => {
       tsconfigPaths: true,
     },
     ssr: {
-      noExternal: ['lodash', '@fortawesome/react-fontawesome'],
+      noExternal: ['lodash'],
       optimizeDeps: {
         include: ['lodash'],
       },

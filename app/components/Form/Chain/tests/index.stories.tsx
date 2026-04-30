@@ -1,4 +1,4 @@
-import {faSearch} from '@fortawesome/free-solid-svg-icons';
+import {IoSearch} from 'react-icons/io5';
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import Button from '~/components/Button';
 import InputText from '~/components/Form/InputText';
@@ -43,7 +43,7 @@ export const Default: StoryFn = () => (
         placeholder="Labeled Input"
       />
       <InputText name="bar3" placeholder="Input" />
-      <Button icon={faSearch} variant="primary" />
+      <Button icon={IoSearch} variant="primary" />
       <Select
         label="Choice"
         name="baz1"
@@ -77,7 +77,7 @@ export const FullWidth: StoryFn = () => (
         placeholder="Labeled Input"
       />
       <InputText name="full-baz1" placeholder="Input" />
-      <Button icon={faSearch} variant="primary" />
+      <Button icon={IoSearch} variant="primary" />
       <Select
         label="Choice"
         name="full-bar3"

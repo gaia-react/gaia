@@ -1,8 +1,7 @@
 import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
+import {IoDesktopOutline, IoMoon, IoSunny} from 'react-icons/io5';
 import {data, redirect, useFetcher, useFetchers} from 'react-router';
-import {faDesktop, faMoon, faSun} from '@fortawesome/free-solid-svg-icons';
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
 import {z} from 'zod';
 import {useOptionalHints} from '~/utils/client-hints';
 import {useOptionalRequestInfo} from '~/utils/request-info';
@@ -86,9 +85,9 @@ const NEXT_MODE: Record<
 };
 
 const ICONS = {
-  dark: faMoon,
-  light: faSun,
-  system: faDesktop,
+  dark: IoMoon,
+  light: IoSunny,
+  system: IoDesktopOutline,
 } as const;
 
 const LABEL_KEYS = {
@@ -113,11 +112,11 @@ export const ThemeSwitch: FC<ThemeSwitchProps> = ({userPreference}) => {
         className="text-body relative flex size-4.5 items-center gap-2"
         type="submit"
       >
-        <FontAwesomeIcon
-          icon={ICONS[mode]}
-          size="sm"
-          transform={mode === 'dark' ? {rotate: -20} : undefined}
-        />
+        {(() => {
+          const ThemeIcon = ICONS[mode];
+
+          return <ThemeIcon />;
+        })()}
       </button>
     </fetcher.Form>
   );

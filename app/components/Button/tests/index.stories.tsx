@@ -1,5 +1,5 @@
 import {Fragment} from 'react';
-import {faStar} from '@fortawesome/free-solid-svg-icons';
+import {IoStar} from 'react-icons/io5';
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import {twJoin} from 'tailwind-merge';
 import type {Size} from '~/types';
@@ -57,7 +57,7 @@ const render = (
             key={variant}
             className="col-span-2 capitalize"
             disabled={disabled}
-            icon={icon ? faStar : undefined}
+            icon={icon ? IoStar : undefined}
             isLoading={isLoading}
             size={size}
             variant={variant}

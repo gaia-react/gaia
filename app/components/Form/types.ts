@@ -1,11 +1,11 @@
 import type {ComponentProps, ReactNode} from 'react';
-import type {IconProp} from '@fortawesome/fontawesome-svg-core';
+import type {IconType} from 'react-icons';
 
 export type InputProps = ComponentProps<'input'> &
   SharedInputProps & {
     classNameIcon?: string;
     classNameInput?: string;
-    icon?: IconProp;
+    icon?: IconType;
     iconPosition?: 'left' | 'right';
   };
 
