@@ -1,3 +1,8 @@
+---
+name: update-deps
+description: Autonomous Dependabot — auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate.
+---
+
 Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts — just execute.
 
 ## Pre-flight: Branch check
@@ -88,9 +93,9 @@ Packages not matched form singleton groups.
 3. Run `pnpm ls 2>&1`. Scan for peer-dep errors.
 4. On error: try one targeted `pnpm.overrides` fix (e.g. add a `parent>child` pin), then `pnpm install` again.
 5. If still failing: revert the offending packages (`pnpm add <pkg>@<previous>`) and log them as **skipped** with the reason.
-6. Run quality gate (Phase 7). If it fails, revert the entire Wave A batch.
+6. Run the quality gate (below). If it fails, revert the entire Wave A batch.
 
-### Phase 7: Quality gate
+### Quality gate
 
 ```bash
 pnpm typecheck
@@ -168,7 +173,7 @@ Report back: updated packages, breaking changes applied, any skipped reason, qua
 
 For every override that was **retained** in Phase 0, repeat the Phase 0 toggle test now that surrounding packages have moved. New versions may have resolved the original conflict. Run this as a **Haiku agent**.
 
-## Phase 8: Final report
+## Phase 7: Final report
 
 Print this report. Do not commit.
 

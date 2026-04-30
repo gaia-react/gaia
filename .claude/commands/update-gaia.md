@@ -1,3 +1,8 @@
+---
+name: update-gaia
+description: Pull the latest GAIA release into this project without clobbering customizations. Three-way merge per file using .gaia/manifest.json classes.
+---
+
 Pull the latest GAIA release into this project without clobbering customizations. Does a three-way comparison per file (adopter / baseline / latest) and respects explicit classes in `.gaia/manifest.json`:
 
 - **`owned`** — GAIA controls fully. Overwrites silently if unchanged from baseline; prompts if drifted.

@@ -1,7 +1,6 @@
 ---
-paths:
-  - 'app/**/*.ts'
-  - 'app/**/*.tsx'
+name: eslint-fixes
+description: Resolve specific ESLint errors and warnings that appear in this project. Use when fixing lint failures, ESLint reported issues, or autofix conflicts (e.g. no-void, canonical/export-specifier-newline vs prettier, no-shadow trailing underscores, sonarjs/deprecation, you-dont-need-lodash-underscore, testing-library/prefer-screen-queries, testing-library/await-async-events, jest-dom/prefer-*).
 ---
 
 # ESLint Fix Patterns

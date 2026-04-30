@@ -1,3 +1,8 @@
+---
+name: gaia-init
+description: Initialize a new project from the GAIA React template — renames, strips GAIA branding, configures i18n, installs Claude skills/plugins.
+---
+
 Initialize a new project from the GAIA React template. The template already ships clean (no example code, no docs site, no auth). This command renames, strips GAIA-specific branding, configures i18n, installs Claude skills/plugins, and hands you a ready-to-build project.
 
 ## Step 0: Ensure pnpm is available
@@ -115,7 +120,7 @@ If any install step fails, print the command so the user can run it manually.
 
 ### Install tools
 
-GAIA bundles `tdd` and `playwright-cli` skills at `.claude/skills/` — they ship with the clone. Two external tools still need per-machine setup:
+GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`) — they ship with the clone. Two external tools still need per-machine setup:
 
 - [React Doctor](https://github.com/millionco/react-doctor): `curl -fsSL https://react.doctor/install-skill.sh | bash`
   Installs the `react-doctor` skill to `~/.claude/skills/`. Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
@@ -196,7 +201,7 @@ In all three sub-cases, write the project-level wrapper into `.claude/settings.j
 
 The template ships with a wiki shaped for the upstream GAIA project. Refresh the two files that encode "where we are right now" so the new project starts with a clean context:
 
-### 9a. Overwrite `wiki/hot.md`
+### 10a. Overwrite `wiki/hot.md`
 
 Replace the entire file with:
 
@@ -218,7 +223,7 @@ updated: <TODAY_ISO>
 - None.
 ```
 
-### 9b. Overwrite `wiki/log.md`
+### 10b. Overwrite `wiki/log.md`
 
 Replace the entire `wiki/log.md` file with the following content (the GAIA development log is irrelevant to the new project):
 

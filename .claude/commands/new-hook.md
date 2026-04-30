@@ -1,3 +1,8 @@
+---
+name: new-hook
+description: Scaffold a new custom React hook with a test file.
+---
+
 Scaffold a new custom React hook with a test file.
 
 ## Step 1: Gather user input

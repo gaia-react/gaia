@@ -4,7 +4,7 @@ path: .claude/
 status: active
 purpose: Claude Code integration — commands, rules, hooks, agents, skills
 created: 2026-04-20
-updated: 2026-04-21
+updated: 2026-04-30
 tags: [module, claude, hooks]
 ---
 
@@ -14,7 +14,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 
 ## Layout
 
-`.claude/` contains `settings.json` (hooks, env, plugins), `settings.local.json` (gitignored personal overrides), `agents/`, `agent-memory/` (versioned persistent memory), `commands/`, `hooks/`, `rules/`, and `skills/`.
+`.claude/` contains `settings.json` (hooks, env, plugins), `settings.local.json` (gitignored personal overrides), `agents/`, `agent-memory/` (gitignored, ephemeral; **not** a source of truth — durable knowledge belongs in the wiki), `audit/` (gitignored hook output, e.g. `wiki-evaluator-{sha}.log`), `commands/`, `hooks/`, `rules/`, and `skills/`.
 
 ## Commands (slash)
 
@@ -42,7 +42,6 @@ Rules activate automatically based on file paths — no need to invoke them.
 | Rule                                   | Applies to                                              |
 | -------------------------------------- | ------------------------------------------------------- |
 | [[Coding Guidelines]]                  | All code                                                |
-| [[Component Testing]]                  | `app/**/tests/**`, `test/**`                            |
 | `new-route.md` ([[Routing]])           | `app/routes/**`, `app/pages/**`                         |
 | [[API Service Pattern]]                | `app/services/**`, `test/mocks/**`                      |
 | `state-pattern.md` ([[State]])         | `app/state/**`                                          |
@@ -51,7 +50,6 @@ Rules activate automatically based on file paths — no need to invoke them.
 | `playwright.md` ([[Playwright]])       | `.playwright/**`, `playwright.config.*`                 |
 | `i18n.md` ([[i18n]])                   | `app/pages/**`, `app/components/**`, `app/languages/**` |
 | [[Accessibility]]                      | `app/components/**`, `app/pages/**`                     |
-| [[ESLint Fixes]]                       | ESLint-related files                                    |
 | [[Git Workflow]]                       | All `git` commands (hook-enforced)                      |
 | [[Quality Gate]]                       | Commits (source + gate-affecting config only)           |
 | [[PR Merge Workflow]]                  | PR merges                                               |
@@ -63,23 +61,32 @@ Bash hooks wired through `.claude/settings.json`. Mixed event types.
 
 ### PreToolUse (Edit/Write/MultiEdit)
 
-| Hook                               | Type         | Behavior                                                                                   |
-| ---------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
-| `block-eslint-config-edit.sh`      | **Blocking** | Prevents modifying `eslint.config.mjs` to fix lint errors. Fix the source, not the config. |
-| `block-vitest-globals-tsconfig.sh` | **Blocking** | Prevents adding `vitest/globals` to `tsconfig.json`. Use explicit imports.                 |
-| `check-i18n-strings.sh`            | Advisory     | Reminds to use `t()` for user-facing strings in pages/components                           |
-| `check-story-exists.sh`            | Advisory     | Reminds to add a Storybook story for new components                                        |
+| Hook                               | Type         | Behavior                                                                                                                       |
+| ---------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `block-env-write.sh`               | **Blocking** | Denies writes to `.env` / `.env.*` (allow `.env.example`). Local secrets must remain gitignored and edited by hand.            |
+| `block-eslint-config-edit.sh`      | **Blocking** | Prevents modifying `eslint.config.mjs` to fix lint errors. Fix the source, not the config.                                     |
+| `block-lockfile-edit.sh`           | **Blocking** | Denies direct edits to `pnpm-lock.yaml`. Run `pnpm install` / `pnpm add` / `pnpm remove` and let pnpm regenerate the lockfile. |
+| `block-secrets-write.sh`           | **Blocking** | Detects AWS keys, GH PATs, PEM headers, and high-entropy secret-like values in writes; allows placeholders / templated refs.   |
+| `block-vitest-globals-tsconfig.sh` | **Blocking** | Prevents adding `vitest/globals` to `tsconfig.json`. Use explicit imports.                                                     |
+| `check-i18n-strings.sh`            | Advisory     | Reminds to use `t()` for user-facing strings in pages/components                                                               |
+| `check-story-exists.sh`            | Advisory     | Reminds to add a Storybook story for new components                                                                            |
 
 ### PreToolUse (Bash)
 
 Each entry uses an `if:` pattern so the hook only runs for the matching command shape.
 
-| Hook                            | `if` pattern                     | Type         | Behavior                                                                                                                   |
-| ------------------------------- | -------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `block-bare-test.sh`            | `Bash(pnpm *)` and `Bash(npm *)` | **Blocking** | Denies bare `pnpm test` / `npm test` (watch mode). Requires `--run` for a one-shot pass.                                   |
-| `block-main-destructive-git.sh` | `Bash(git *)`                    | **Blocking** | Denies `git commit` while HEAD is `main`/`master`, and denies force-push to `main`/`master`. See [[Git Workflow]].         |
-| `pr-merge-audit-check.sh`       | `Bash(gh pr merge:*)`            | Advisory     | Reminds to run `code-review-audit` before merging. See [[PR Merge Workflow]].                                              |
-| `wiki-maintenance-check.sh`     | `Bash(git commit:*)`             | Advisory     | On `git commit`, emits the wiki-update checklist (when to file, when to skip, process). Criteria live in the hook heredoc. |
+| Hook                            | `if` pattern                     | Type         | Behavior                                                                                                                                               |
+| ------------------------------- | -------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `block-bare-test.sh`            | `Bash(pnpm *)` and `Bash(npm *)` | **Blocking** | Denies bare `pnpm test` / `npm test` (watch mode). Requires `--run` for a one-shot pass.                                                               |
+| `block-main-destructive-git.sh` | `Bash(git *)`                    | **Blocking** | Denies `git commit` on `main`/`master`, plain `git push` from `main`/`master` (PR-only flow), and force-push to `main`/`master`. See [[Git Workflow]]. |
+| `block-rm-rf.sh`                | `Bash(rm *)`                     | **Blocking** | Denies `rm -rf` of `/`, `~`, `.git`, and other root-level / repo-critical paths.                                                                       |
+| `pr-merge-audit-check.sh`       | `Bash(gh pr merge:*)`            | Advisory     | Reminds to run `code-review-audit` before merging. See [[PR Merge Workflow]].                                                                          |
+
+### PostToolUse (Bash)
+
+| Hook                       | `if` pattern         | Type         | Behavior                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------- | -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wiki-update-evaluator.sh` | `Bash(git commit:*)` | Non-blocking | After each `git commit` (skips `--amend` and `wiki:*` subjects), backgrounds `claude -p --model sonnet` to evaluate the commit diff against the wiki and apply any warranted updates. The sub-agent commits independently with `wiki: evaluator update for <sha>`. Output lands in `.claude/audit/wiki-evaluator-{sha}.log` (gitignored). The `wiki-squash-autocommits.sh` Stop hook folds the chain. |
 
 ### UserPromptSubmit
 
@@ -110,7 +117,7 @@ Runs automatically before every PR merge (per [[PR Merge Workflow]]). Reviews:
 - Robustness & edge cases
 - Maintainability
 
-Pre-seeded with GAIA's architecture knowledge. Persistent memory in `.claude/agent-memory/code-review-audit/MEMORY.md`.
+Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/code-review-audit/` directory exists for ephemeral session state only and is gitignored — treat it as cache, not source of truth.
 
 After its own review, it spawns 3 parallel specialist subagents to audit changed `.ts/.tsx` files against:
 
@@ -124,11 +131,13 @@ After its own review, it spawns 3 parallel specialist subagents to audit changed
 
 | Skill              | Use                                                                                                  |
 | ------------------ | ---------------------------------------------------------------------------------------------------- |
+| `eslint-fixes`     | Resolve specific ESLint errors / autofix conflicts encountered in this project ([[ESLint Fixes]])    |
+| `playwright-cli`   | Drive Playwright browser automation from Claude (e2e tests, screenshots, form filling)               |
 | `react-code`       | React component/hook patterns                                                                        |
-| `typescript`       | TypeScript conventions                                                                               |
-| `tailwind`         | Tailwind class conventions                                                                           |
 | `skeleton-loaders` | Pixel-perfect loading states                                                                         |
+| `tailwind`         | Tailwind class conventions                                                                           |
 | `tdd`              | Red-green-refactor TDD workflow with a `references/tests-react.md` companion ([[Component Testing]]) |
+| `typescript`       | TypeScript conventions                                                                               |
 
 These activate automatically based on context.
 
@@ -144,4 +153,6 @@ GAIA ships a project-scoped statusline wrapper at `.gaia/statusline/gaia-statusl
 
 ## settings.json
 
-Registers the PreToolUse hooks on `Edit|Write|MultiEdit` and `Bash` matchers, the `intercept-init.sh` UserPromptSubmit hook, and the `SessionStart` / `Stop` wiki-coherence hooks. Enables the `typescript-lsp@claude-plugins-official` plugin.
+Registers the PreToolUse hooks on `Edit|Write|MultiEdit` and `Bash` matchers, the PostToolUse `wiki-update-evaluator.sh` on `Bash(git commit:*)`, the `intercept-init.sh` UserPromptSubmit hook, and the `SessionStart` / `Stop` wiki-coherence hooks. Enables the `typescript-lsp@claude-plugins-official` plugin.
+
+`permissions.allow` covers routine git / gh / pnpm operations plus scoped edits for `.claude/**`, `.gaia/**`, `wiki/**`, and `CHANGELOG.md`. `permissions.deny` covers `.env` writes, `pnpm-lock.yaml` writes, `.husky/_/**` internals, force-push variants on `main`/`master`, and `git reset --hard HEAD~*`. Both lists are alphabetized; path globs are repo-relative (no leading `/`).

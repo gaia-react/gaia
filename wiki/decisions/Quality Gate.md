@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-04-21
+updated: 2026-04-30
 tags: [decision, ci, quality]
 ---
 
@@ -70,4 +70,4 @@ Invocation stub: `.claude/commands/audit-code.md` (read this page and execute).
 > [!key-insight] Zero warnings is non-negotiable
 > Most projects accept warnings as "noise we'll clean up later." GAIA treats warnings as **failures**. Console warnings in tests count too. The cost of fixing one missing i18n key now is trivial; the cost of finding it in production after 200 keys silently broke is not.
 
-See [[Pre-commit Hooks]], [[PR Merge Workflow]], [[Task Orchestration]].
+See [[Pre-commit Hooks]], [[PR Merge Workflow]], [[Task Orchestration]], [[Claude Hooks]] (the source-edit and Bash safeguards keep `.env`, lockfile, secrets, and destructive-git footguns out of the staged surface before the gate ever runs).

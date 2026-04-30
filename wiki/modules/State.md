@@ -17,7 +17,7 @@ GAIA uses plain React Context+Provider for global state — no Redux, Zustand, e
 
 The template ships with **no global state slices** — `<State>` is currently a passthrough. It exists as the established hook point so consumers can register their own providers (auth, feature flags, etc.) without touching `root.tsx`.
 
-Theme used to live here as `ThemeProvider` but moved to a cookie + client-hint pipeline that derives the theme from the loader on every render — no React state needed. See [[Theme Flow]] and [[Dark Mode Modernization]].
+Theme is not a state slice. It is derived in the loader on every render from a cookie + `Sec-CH-Prefers-Color-Scheme` client hint, so no React state is required. See [[Theme Flow]] and [[Dark Mode Modernization]].
 
 ## Canonical Pattern
 

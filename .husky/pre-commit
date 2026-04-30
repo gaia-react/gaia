@@ -9,9 +9,9 @@ then
   printf "\x1b[33m"
   printf "⚠️ Changes detected - running lint-staged\n"
   printf "\x1b[0m"
-	npm run typecheck
-	npx lint-staged
-	npm run test:lint-staged
+	pnpm typecheck
+	pnpm exec lint-staged
+	pnpm test:lint-staged
 else
   printf "\x1b[32m"
   printf "✅ No changed files -- skipping lint-staged\n\n"

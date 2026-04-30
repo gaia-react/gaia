@@ -3,7 +3,7 @@ type: concept
 title: Claude Integration Conventions
 status: active
 created: 2026-04-21
-updated: 2026-04-21
+updated: 2026-04-30
 tags: [claude, meta, configuration]
 ---
 
@@ -15,15 +15,15 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 
 ## 1. Directory overview
 
-| Directory / File        | Purpose                                                                  | Loaded                       |
-| ----------------------- | ------------------------------------------------------------------------ | ---------------------------- |
-| `.claude/agents/`       | Named subagents (`.md` per agent); extension dirs for review-type agents | Manual (Task tool)           |
-| `.claude/commands/`     | Slash commands (`/new-route`, `/gaia-init`, etc.)                        | Manual (slash invocation)    |
-| `.claude/hooks/`        | Bash scripts wired in `settings.json`                                    | Auto on matched tool events  |
-| `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter            | Auto (global) or path-scoped |
-| `.claude/skills/`       | Context-triggered skills (`react-code`, `typescript`, etc.)              | Auto on context/intent match |
-| `.claude/agent-memory/` | Persistent agent memory (versioned, committed)                           | Auto per named agent         |
-| `wiki/`                 | Knowledge base — architecture, decisions, patterns                       | Manual (on-demand fetch)     |
+| Directory / File        | Purpose                                                                     | Loaded                       |
+| ----------------------- | --------------------------------------------------------------------------- | ---------------------------- |
+| `.claude/agents/`       | Named subagents (`.md` per agent); extension dirs for review-type agents    | Manual (Task tool)           |
+| `.claude/commands/`     | Slash commands (`/new-route`, `/gaia-init`, etc.)                           | Manual (slash invocation)    |
+| `.claude/hooks/`        | Bash scripts wired in `settings.json`                                       | Auto on matched tool events  |
+| `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter               | Auto (global) or path-scoped |
+| `.claude/skills/`       | Context-triggered skills (`react-code`, `typescript`, etc.)                 | Auto on context/intent match |
+| `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo — not source of truth) | Auto per named agent         |
+| `wiki/`                 | Knowledge base — architecture, decisions, patterns (source of truth)        | Manual (on-demand fetch)     |
 
 See [[modules/Claude Integration|the modules page]] for the inventory of current commands, rules, hooks, and skills.
 
@@ -38,7 +38,25 @@ What this means in practice:
 - **DragonScale is opt-out.** The v1.6.0 release adds an optional memory layer (fold operator, deterministic addresses, semantic tiling, boundary-first autoresearch). GAIA declines all four. See [[DragonScale Opt-Out]] for the per-mechanism reasoning and the reversal path for any adopter who wants it.
 - **Plugin upgrades require uninstall + install.** A plain `claude plugin marketplace update` does not re-pin the cache. Use `claude plugin uninstall claude-obsidian@claude-obsidian-marketplace` followed by `claude plugin install claude-obsidian@claude-obsidian-marketplace` to flip `installPath` to the new version. This is a Claude Code plugin CLI quirk worth remembering when bumping the baseline.
 
-## 2. Agent extensions (review-type agents only)
+## 2. Rules vs. skills vs. hooks — decision criteria
+
+Three layers, three triggers. Pick the layer that loads guidance only when it's actually needed.
+
+| Layer | Loads when…                                        | Use for                                                                            |
+| ----- | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Hook  | Tool call matches a registered event               | Mechanical block / advice on a specific tool shape — no judgment required          |
+| Rule  | `paths:` glob matches an in-scope file (or always) | File-path-bound conventions: project-wide style, route layout, accessibility, i18n |
+| Skill | `description:` matches user intent / context       | Cross-file reasoning patterns: refactor playbooks, error-fix recipes, TDD loop     |
+
+Layer-selection heuristics:
+
+- **Hook** when the guidance is a deterministic block on a specific tool call (e.g. `block-bare-test.sh` denies bare `pnpm test`).
+- **Skill** when the guidance is intent-triggered, not file-path-triggered, and benefits from references that load on demand (e.g. `eslint-fixes` only matters when fixing lint, not on every edit).
+- **Rule** when the guidance must auto-apply whenever an in-scope file is touched, regardless of intent (`i18n.md`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
+
+Cross-link: [[Claude Skills]] § Rules vs. Skills — decision criteria.
+
+## 3. Agent extensions (review-type agents only)
 
 Review-type agents — agents that spawn multiple specialist subagents — support a directory-based extension mechanism. Single-subagent agents do not need it.
 
@@ -55,7 +73,7 @@ At dispatch the agent Globs `*.md` in its extension directory (skipping `README.
 
 Convention applies to **review-type agents only** — currently just `code-review-audit`. Cross-link: [[Code Review Audit Agent]].
 
-## 3. Skill references convention
+## 4. Skill references convention
 
 `SKILL.md` is stack-agnostic lazy philosophy — it auto-loads into context, so it must stay concise.
 
@@ -67,7 +85,7 @@ Skill descriptions should hint at available references when useful.
 
 Cross-link: [[Claude Skills]].
 
-## 4. Rule `paths:` frontmatter
+## 5. Rule `paths:` frontmatter
 
 Rules in `.claude/rules/*.md` with a `paths:` YAML list auto-load **only** when a matching file is in scope. Rules without `paths:` auto-load every session. Keep the always-load list tight.
 
@@ -81,7 +99,7 @@ paths:
 
 Examples of path-scoped rules: `i18n.md` (pages + components + languages), `new-route.md` (routes + pages), `state-pattern.md` (state directory). Always-load rules: `quality-gate.md`, `coding-guidelines.md`.
 
-## 5. Monorepo retrofit playbook
+## 6. Monorepo retrofit playbook
 
 **Container folder name is a project decision** — `apps/`, `projects/`, `packages/`, etc. Substitute `{CONTAINER}/{APP}` throughout.
 
@@ -93,11 +111,11 @@ Steps (all mechanical):
    - `check-story-exists.sh` — regex on `app/components/…`
    - `block-eslint-config-edit.sh` — already path-agnostic post GAP §2A-1; no change needed.
 3. **Update scaffolding templates** — in `.claude/commands/new-*.md`, path outputs must become `{CONTAINER}/{APP}/app/…`.
-4. **Split CLAUDE.md** — add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §9).
+4. **Split CLAUDE.md** — add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §10).
 5. **Verify hook scripts** — confirm no script hardcodes a specific container folder name. If found, fix.
 6. **Leave wiki hooks alone** — `wiki-session-start.sh` / `wiki-session-stop.sh` are git-level and path-agnostic.
 
-## 6. External-service rule pattern
+## 7. External-service rule pattern
 
 When adding an external service (Supabase, Firebase, Stripe, Auth0, etc.):
 
@@ -105,7 +123,7 @@ When adding an external service (Supabase, Firebase, Stripe, Auth0, etc.):
 - Optionally add `.claude/agents/code-review-audit/{service}.md` with `subagents:` frontmatter for specialist review hooks.
 - Document the service in `wiki/dependencies/{Service}.md`.
 
-## 7. Per-stack quality gate
+## 8. Per-stack quality gate
 
 Multiple gates coexist via path scoping:
 
@@ -114,7 +132,7 @@ Multiple gates coexist via path scoping:
 
 Each gate defines its own runner commands. The default `quality-gate.md` stays stack-neutral and delegates to stack-specific gates. Cross-link: [[Quality Gate]].
 
-## 8. API service layer swap
+## 9. API service layer swap
 
 When replacing the default API layer (Ky + Zod) with Supabase, Firebase, GraphQL, or another REST client:
 
@@ -125,7 +143,7 @@ When replacing the default API layer (Ky + Zod) with Supabase, Firebase, GraphQL
 5. Update `{CONTAINER}/{APP}/CLAUDE.md` (or root) with dev-server commands for the new service.
 6. Update `test/mocks/` — remove MSW handlers that shimmed the old layer if the new layer has its own test fakes.
 
-## 9. Per-app CLAUDE.md hierarchy (monorepo)
+## 10. Per-app CLAUDE.md hierarchy (monorepo)
 
 GAIA ships single-app; do not preemptively split `CLAUDE.md`. When monorepo-converting:
 
@@ -134,7 +152,7 @@ GAIA ships single-app; do not preemptively split `CLAUDE.md`. When monorepo-conv
 
 Loading is cwd-based: the closest-up `CLAUDE.md` wins per Claude Code's convention.
 
-## 10. Domain isolation (MANDATORY)
+## 11. Domain isolation (MANDATORY)
 
 The governing rule from root `CLAUDE.md`: **don't cross-load domains.**
 
@@ -146,7 +164,7 @@ When adding new wiki top-level folders, keep them single-domain. Claude must ref
 
 See root `CLAUDE.md` § Wiki for the authoritative directive.
 
-## 11. React Doctor (per-machine install)
+## 12. React Doctor (per-machine install)
 
 Do **not** vendor `react-doctor` into the repo. Do not symlink it. Install per-machine via the upstream install script, invoked by `/gaia-init`.
 

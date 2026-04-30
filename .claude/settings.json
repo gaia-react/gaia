@@ -46,7 +46,19 @@
         "hooks": [
           {
             "type": "command",
+            "command": ".claude/hooks/block-env-write.sh"
+          },
+          {
+            "type": "command",
             "command": ".claude/hooks/block-eslint-config-edit.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-lockfile-edit.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-secrets-write.sh"
           },
           {
             "type": "command",
@@ -83,13 +95,26 @@
           },
           {
             "type": "command",
-            "command": ".claude/hooks/pr-merge-audit-check.sh",
-            "if": "Bash(gh pr merge:*)",
-            "statusMessage": "Checking PR-merge audit gate…"
+            "command": ".claude/hooks/block-rm-rf.sh",
+            "if": "Bash(rm *)",
+            "statusMessage": "Checking rm -rf safety…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-maintenance-check.sh",
+            "command": ".claude/hooks/pr-merge-audit-check.sh",
+            "if": "Bash(gh pr merge:*)",
+            "statusMessage": "Checking PR-merge audit gate…"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/wiki-update-evaluator.sh",
             "if": "Bash(git commit:*)"
           }
         ]
@@ -98,33 +123,73 @@
   },
   "permissions": {
     "allow": [
-      "Bash(mkdir -p .claude/plans)",
+      "Bash(corepack enable pnpm)",
+      "Bash(gh issue *)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git show:*)",
+      "Bash(git stash:*)",
+      "Bash(git status:*)",
+      "Bash(git switch:*)",
+      "Bash(git symbolic-ref:*)",
+      "Bash(git worktree *)",
       "Bash(mkdir -p .claude/handoff/archive)",
-      "Bash(pnpm install:*)",
+      "Bash(mkdir -p .claude/plans)",
       "Bash(pnpm add:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm chromatic:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm dlx:*)",
+      "Bash(pnpm format)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm lint-dry)",
       "Bash(pnpm ls:*)",
       "Bash(pnpm outdated:*)",
-      "Bash(pnpm lint)",
+      "Bash(pnpm pw-ui:*)",
       "Bash(pnpm pw:*)",
-      "Bash(pnpm test:ci:*)",
-      "Bash(pnpm typecheck:*)",
       "Bash(pnpm remove:*)",
-      "Bash(pnpm dlx:*)",
-      "Bash(corepack enable pnpm)",
-      "Write(.claude/plans/**)",
-      "Edit(.claude/plans/**)",
-      "Edit(/app/**)",
-      "Edit(/public/**)",
-      "Edit(/test/**)",
-      "Edit(/.playwright/**)",
-      "Edit(/.storybook/**)"
+      "Bash(pnpm storybook:*)",
+      "Bash(pnpm stylelint)",
+      "Bash(pnpm test:ci)",
+      "Bash(pnpm test:ci:*)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(rm -f .gaia/cache/*)",
+      "Bash(rm -rf .claude/plans/*)",
+      "Edit(.claude/**)",
+      "Edit(.gaia/**)",
+      "Edit(.playwright/**)",
+      "Edit(.storybook/**)",
+      "Edit(CHANGELOG.md)",
+      "Edit(app/**)",
+      "Edit(public/**)",
+      "Edit(test/**)",
+      "Edit(wiki/**)",
+      "WebFetch(domain:context7.com)",
+      "Write(.claude/plans/**)"
     ],
     "deny": [
-      "Read(.env)",
-      "Read(**/secrets/*)",
-      "Read(**/*credential*)",
+      "Bash(git push --force-with-lease *main*)",
+      "Bash(git push --force-with-lease *master*)",
+      "Bash(git reset --hard HEAD~*)",
+      "Edit(.env)",
+      "Edit(.husky/_/**)",
+      "Edit(pnpm-lock.yaml)",
+      "Read(**/*.key)",
       "Read(**/*.pem)",
-      "Read(**/*.key)"
+      "Read(**/*credential*)",
+      "Read(**/secrets/*)",
+      "Read(.env)",
+      "Write(.env)",
+      "Write(pnpm-lock.yaml)"
     ]
   },
   "enabledPlugins": {

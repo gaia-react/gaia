@@ -1,3 +1,8 @@
+---
+name: new-route
+description: Scaffold a new route with its page component, test, and optional i18n keys.
+---
+
 Scaffold a new route with its page component, test, and optional i18n keys.
 
 ## Step 1: Gather user input

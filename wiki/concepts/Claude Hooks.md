@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-04-21
+updated: 2026-04-30
 tags: [concept, claude, hooks]
 ---
 
@@ -18,31 +18,45 @@ Exit code semantics:
 
 ## Bundled hooks
 
-### Blocking (Edit|Write|MultiEdit)
+Hooks are grouped by the safeguard they enforce, not by event type.
+
+### Source-edit safeguards (Edit|Write|MultiEdit)
 
 - **`block-eslint-config-edit.sh`** — refuses edits to `eslint.config.mjs`. Reason: lint errors should be fixed in source code, not silenced in config.
 - **`block-vitest-globals-tsconfig.sh`** — refuses adding `vitest/globals` to `tsconfig.json`. Reason: explicit imports (`import {describe, expect, test} from 'vitest'`) are clearer and per-file.
+- **`block-lockfile-edit.sh`** — refuses direct edits to `pnpm-lock.yaml`. Lockfile changes must come from `pnpm install` / `pnpm add` / `pnpm remove`; manual edits routinely produce broken lockfiles. See [[pnpm]].
+
+### Secrets safeguards (Edit|Write|MultiEdit)
+
+- **`block-env-write.sh`** — refuses writes targeting any `.env` / `.env.*` file (allows `.env.example`). Closes the gap left by the Read-only `.env` deny rule in `settings.json`; `.env` files must remain gitignored and edited manually.
+- **`block-secrets-write.sh`** — scans `new_string` / `content` / MultiEdit `edits[].new_string` payloads for secret-shaped values (AWS access keys, GitHub PATs, PEM private-key headers, dotenv-style `_TOKEN` / `_SECRET` / `_KEY` / `_PASSWORD` assignments with non-placeholder values). Allows known placeholders (`changeme`, `<…>`, `${VAR}`, `your-…`, etc.).
 
 ### Advisory (Edit|Write|MultiEdit)
 
 - **`check-i18n-strings.sh`** — on edits to `app/pages/**/*.tsx` or `app/components/**/*.tsx`, prints a reminder to use `t()` from `useTranslation()`.
 - **`check-story-exists.sh`** — on edits to `app/components/{Name}/index.tsx`, checks for `tests/index.stories.tsx` and reminds to add one if missing.
 
-### Blocking (Bash)
+### Bash safeguards (Bash)
 
-- **`block-bare-test.sh`** (`if: Bash(pnpm *)` and `if: Bash(npm *)`) — denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. Replaces the former `.claude/rules/test-runner.md`.
-- **`block-main-destructive-git.sh`** (`if: Bash(git *)`) — denies `git commit` while HEAD is `main`/`master`, and denies force-push to `main`/`master`. Authoritative rule: [[Git Workflow]].
+- **`block-bare-test.sh`** (`if: Bash(pnpm *)` and `if: Bash(npm *)`) — denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. See [[Test Runner]].
+- **`block-main-destructive-git.sh`** (`if: Bash(git *)`) — denies (1) `git commit` while HEAD is `main`/`master`, (2) force-push to `main`/`master`, and (3) plain `git push` originating from `main`/`master` (PR-only flow — closes the "forgot to switch branches" footgun). Authoritative rule: [[Git Workflow]].
+- **`block-rm-rf.sh`** (`if: Bash(rm *)`) — denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `node_modules`. Allows scoped scratch paths (`.claude/plans/*`, `.claude/audit/*`, `.gaia/cache/*`, `dist/*`, `build/*`).
 
 ### Advisory (Bash)
 
 - **`pr-merge-audit-check.sh`** (`if: Bash(gh pr merge:*)`) — reminds to spawn `code-review-audit`, fix issues, and push fixes before merging. See [[PR Merge Workflow]].
-- **`wiki-maintenance-check.sh`** (`if: Bash(git commit:*)`) — emits the wiki-update checklist on every `git commit`. Replaces the former `.claude/rules/wiki-maintenance.md` — the checklist now lives in the hook's heredoc.
+
+### Wiki coherence (multiple events)
+
+- **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop) / **`wiki-squash-autocommits.sh`** (Stop) — wiki coherence and `hot.md` refresh. See [[Claude Integration Conventions]] § Wiki vendor relationship for the full pair.
+- **`wiki-update-evaluator.sh`** (PostToolUse, `if: Bash(git commit:*)`) — autonomous post-commit wiki evaluator. Captures the new HEAD sha, backgrounds a `claude -p --model sonnet --permission-mode bypassPermissions` sub-agent that reads the diff against `wiki/index.md` and either edits the relevant pages + appends to `wiki/log.md` (subject `wiki: evaluator update for <sha>`) or exits with `NO_UPDATE_NEEDED`. The sub-agent commits independently; subsequent wiki commits get folded by `wiki-squash-autocommits.sh` into the standard wiki-branch PR flow on main. Logs to `.claude/audit/wiki-evaluator-{sha}.log` (gitignored). Skips merge / amend / wiki auto-commit subjects to avoid loops; never blocks the user's commit (always exits 0).
 
 ### Other events
 
 - **`intercept-init.sh`** (UserPromptSubmit) — blocks the built-in `/init` and auto-invokes `/gaia-init`.
-- **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop) / **`wiki-squash-autocommits.sh`** (Stop) — wiki coherence and `hot.md` refresh. See [[Claude Integration]] for the full pair.
 
 ## Adding hooks
 
-Ask Claude to add a hook — Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` under `hooks.PreToolUse` via the `update-config` skill.
+Ask Claude to add a hook — Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` via the `update-config` skill. Naming convention: `block-{noun}.sh` for blockers, `check-{noun}.sh` for advisory, `pre-{event}-{noun}.sh` for pre-event reminders. Blocker scripts begin with `#!/usr/bin/env bash` + `set -euo pipefail`, read stdin via `jq`, and either `exit 0`/`exit 2` or emit the structured `hookSpecificOutput.permissionDecision` JSON.
+
+See [[Quality Gate]], [[Pre-commit Hooks]], [[Git Workflow]], [[Claude Integration Conventions]].
