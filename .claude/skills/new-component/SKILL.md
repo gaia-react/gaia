@@ -1,6 +1,6 @@
 ---
 name: new-component
-description: Scaffold a new React component with optional test and story files.
+description: Scaffold a new React component with optional Storybook story and Vitest test files. Use this skill whenever the user asks to "create a component", "make a button", "scaffold a card", "add a new component", or asks for a new file under `app/components/` following the project's component pattern (PascalCase folder, index.tsx, tests/).
 ---
 
 Scaffold a new React component with optional test and story files.
