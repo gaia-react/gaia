@@ -81,8 +81,6 @@ Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configur
 
 Opinionated starter templates solve different slices of the "day-zero engineering setup" problem. GAIA focuses on making Claude a first-class collaborator.
 
-### Foundation
-
 |                          |      GAIA      |   Epic Stack   | create-t3-app |     RedwoodJS     |
 | ------------------------ | :------------: | :------------: | :-----------: | :---------------: |
 | Routing                  | React Router 7 | React Router 7 |    Next.js    | @redwoodjs/router |
