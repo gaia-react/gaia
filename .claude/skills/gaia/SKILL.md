@@ -1,9 +1,249 @@
 ---
-name: audit-knowledge
-description: Audit memory + wiki + auto-loaded files for duplication and load cost; wiki wins as source of truth
-argument-hint: '[--apply]'
-allowed-tools: [Agent]
+name: gaia
+description: GAIA workflow router. Dispatches to the four user-invoked GAIA workflows - plan (task orchestration), handoff (session handoff doc), pickup (resume from handoff), audit (knowledge audit). Trigger on `/gaia <subcommand>` or natural-language asks like "kick off a plan", "write a handoff", "pick up where we left off", "audit the knowledge stores".
 ---
+
+# GAIA Router
+
+User-invoked GAIA workflows. The first argument selects the sub-command.
+
+## Routing
+
+Parse the first whitespace-separated token of `$ARGUMENTS`:
+
+| First arg | Section to follow |
+| --- | --- |
+| `plan` | `## /gaia plan` |
+| `handoff` | `## /gaia handoff` |
+| `pickup` | `## /gaia pickup` |
+| `audit` | `## /gaia audit` |
+| (anything else, including empty) | print help |
+
+Help message format:
+
+    Usage: /gaia <subcommand> [args]
+
+      plan [description]   Plan a feature using task orchestration
+      handoff [notes]      Generate a session handoff document
+      pickup               Restore context from the most recent handoff
+      audit [--apply]      Audit memory + wiki for duplication and load cost
+
+Strip the first arg before passing the remainder to the selected branch (i.e. inside the branch, `$ARGUMENTS` semantically refers to whatever followed the sub-command).
+
+## /gaia plan
+
+Plan a complex feature using the task orchestration pattern. Do not implement anything.
+
+## Steps
+
+### 1. Get description
+
+If `$ARGUMENTS` (the args after `plan`) is non-empty, use it as the feature description.
+
+Otherwise, ask: **"What do you want me to orchestrate?"** and wait for the response before continuing.
+
+### 2. Check model
+
+Check your current model from session context.
+
+- If you are on Opus, skip to step 3.
+- If not, ask: **"You're on [model name]. Use Opus for planning? (Y/n)"** — default yes.
+  - Yes (or Enter): spawn the agent with `model: opus`.
+  - No: spawn without a model override (inherit current).
+
+### 3. Spawn planning agent
+
+Launch a `general-purpose` Agent with the model determined above and this prompt:
+
+---
+
+You are planning a feature using task orchestration. Do not implement anything.
+
+**Feature:** {feature description from step 1}
+
+First, read `wiki/concepts/Task Orchestration.md`.
+
+Then create the following in `.claude/plans/{slug}/` where `{slug}` is a short kebab-case slug derived from the feature description:
+
+1. **One task doc per parallel workstream** — name each `task-{name}.md`. Each must be fully self-contained for a fresh-context sub-agent and include:
+   - Context and motivation
+   - Interface contracts (types, function signatures, file exports)
+   - Files to touch (with line-range hints where possible)
+   - Acceptance criteria (concrete and testable)
+   - Dependencies on other tasks in this plan
+
+2. **`README.md`** — task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks.
+
+3. **`ORCHESTRATOR.md`** — instructions for running the plan. Must cover:
+   - **Pre-flight branch policy.** Check the current branch. If HEAD is on `main`/`master`, the orchestrator ASKS the user whether to (a) create a feature branch in place or (b) create a git worktree, then acts on the answer. If HEAD is on any other branch, assume it is the work branch and proceed.
+   - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`).
+   - **Sub-agent invocation:** the verbatim prompt template for each task sub-agent. Sub-agents do NOT commit, push, or open/update the PR — they only edit files and report. The orchestrator owns all git operations.
+   - **Orchestrator-owned git flow.** After each phase that produces changes (and only once the quality gate is clean), the orchestrator stages, commits with a meaningful message, and pushes. The orchestrator opens the PR after the first phase's commit lands on the remote (using `gh pr create`) and updates it with subsequent commits. Never commit a broken state.
+   - **Stop conditions.** On any sub-agent failure or quality-gate failure: STOP and surface to the user. Do not "fix and continue", do not commit, do not push.
+   - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder (`rm -rf .claude/plans/{slug}/`, absolute path) so scaffolding does not persist locally. Then check `git check-ignore .claude/plans/{slug}/` — if `.claude/plans/` is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
+
+4. **`KICKOFF.md`** — the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt — no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline.
+
+Report the files created and the absolute path to `KICKOFF.md`.
+
+---
+
+### 4. Report to user
+
+Output a short summary of what's in `.claude/plans/{slug}/`, then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold. The prompt is a single fenced code block containing exactly:
+
+```
+Read /Users/.../absolute/path/to/.claude/plans/{slug}/KICKOFF.md and execute it.
+```
+
+Use the absolute path to the `KICKOFF.md` you just created. Do not include any other instruction in the code block — the orchestrator's behavior lives in `KICKOFF.md`.
+
+## /gaia handoff
+
+Write a self-contained handoff doc so the next session can pick up cold without re-reading this conversation.
+
+**When:** end of session, context break, or when state is non-obvious.
+
+## Inputs
+
+- `$ARGUMENTS` (the args after `handoff`) — optional inline notes from the user (decisions, gaps, open questions).
+- Conversation transcript — primary source for accomplishments, decisions, gaps.
+- Git state — branch, last commit, dirty files.
+
+## Steps
+
+### 1. Gather
+
+Run in parallel:
+
+- `git rev-parse --abbrev-ref HEAD` + `git log -1 --oneline` + `git status --short`
+- Extract from conversation: files edited, commands run, decisions ("let's…", "go with…"), gaps ("missing", "TODO"), unresolved questions.
+- Derive a kebab-case slug for the filename from the session's main thread (e.g. `watch-voice-cues`, `coach-voice-s04`).
+
+### 2. Write
+
+Path: `.claude/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
+
+Use the template below. **Omit any section with no real content** — don't leave empty headings. Keep entries factual and concrete (file paths, commit hashes, command invocations). Cross-reference files with `@path/to/file:line` so the next session can jump straight in.
+
+```markdown
+# Session Handoff
+
+**Date:** {YYYY-MM-DD HH:MM – HH:MM}
+**Branch:** `{branch}`
+**Context:** {one-sentence summary of the session's work}
+
+---
+
+## Accomplishments
+
+- {what shipped / was built — include commit hashes if committed}
+
+## Decisions
+
+| Decision          | Rationale | Impact                           |
+| ----------------- | --------- | -------------------------------- |
+| {what was chosen} | {why}     | {effect on the codebase/product} |
+
+## Gaps & Open Questions
+
+### {Gap or question title}
+
+**Status:** FIXED / PARTIAL / UNKNOWN / DEFERRED / INTENTIONAL
+**Notes:** {what's known, what's uncertain, what's the likely culprit}
+**Next check:** {concrete diagnostic or test to run}
+**Reference:** `@path/to/file:line`
+
+## Environment State
+
+- **Branch:** `{branch}` — {pushed/dirty}
+- **Background processes:** {e.g. `pnpm dev` still running}
+- **Devices / simulators:** {physical device IDs, sim names, build installed}
+- **Test user / data:** {relevant fixtures}
+
+## Reference Files
+```
+
+@path/one
+@path/two
+
+```
+
+## Next Actions
+
+| # | Action | Effort |
+|---|--------|--------|
+| 1 | {concrete, testable step} | {5–30 min} |
+
+---
+
+**Resume:** `/pickup`
+```
+
+### 3. Confirm
+
+Report in one line: saved path + count of accomplishments / decisions / gaps / next-actions. No ASCII boxes.
+
+## Rules
+
+- Do **not** dump the conversation verbatim — synthesize.
+- Every "Next Action" must be concrete enough to execute without context.
+- Every "Gap" must name a file and a diagnostic, not just "look into X".
+- Skip empty sections entirely rather than writing "N/A".
+- Never fabricate commit hashes, file paths, or device IDs — if unsure, omit.
+
+## /gaia pickup
+
+Rebuild "where did we leave off" at session start and suggest the next action.
+
+## Steps
+
+### 1. Locate
+
+Find the most recent handoff:
+
+- `ls -t .claude/handoff/HANDOFF-*.md | head -1`
+- If none exists, fall back to `wiki/hot.md` (already loaded) and report "No handoff found — resuming from hot cache."
+
+### 2. Read
+
+Read the handoff file in full. Also run in parallel:
+
+- `git rev-parse --abbrev-ref HEAD` + `git status --short` + `git log -1 --oneline`
+
+Compare the handoff's stated branch/commit against current git state. Flag drift (new commits, different branch, dirty files) — the handoff may be stale.
+
+### 3. Report
+
+Give the user a tight status block (≤15 lines):
+
+```
+Branch: {current} {(drift from handoff if any)}
+Last handoff: {filename} ({date})
+Context: {one-line from handoff}
+
+State:
+- {1–3 bullets on what's done / in-flight}
+
+Open:
+- {1–3 bullets on gaps or next actions}
+
+Suggested next: {highest-priority action from handoff, or "confirm direction"}
+```
+
+Do **not** paste the whole handoff back — the user wrote it, they know the shape. Synthesize.
+
+### 4. Archive (after user confirms direction)
+
+Once the user commits to a direction (picks an action, starts editing, or says "go"), move the consumed handoff to `.claude/handoff/archive/` so it doesn't pollute future pickups. Create the dir if missing. Do not archive until work has actually begun.
+
+## Rules
+
+- Hot cache (`wiki/hot.md`) auto-loads — don't re-read it unless the handoff is missing.
+- If git state has diverged significantly from the handoff, say so explicitly before suggesting next actions.
+- Never archive a handoff until the user has acted on it — premature archive loses context on a context-break mid-pickup.
+
+## /gaia audit
 
 ## Execution model — READ FIRST
 
@@ -46,7 +286,7 @@ Spawn one `Agent`:
   >
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
-  > `Read $PROJECT_ROOT/.claude/commands/audit-knowledge.md and execute the "Research procedure" section (Steps 1–6). Write the report to $PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/SKILL.md and execute the "Research procedure" section (Steps 1–6). Write the report to $PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
 
 **If `$ARGUMENTS` contains `--apply` → apply mode**
 
@@ -69,7 +309,7 @@ Spawn one `Agent`:
   >
   > `Compare these to the "project_root" / "memory_dir" fields recorded in the report's frontmatter. If they differ, STOP and print a clear error — do not improvise.`
   >
-  > `Read $PROJECT_ROOT/.claude/commands/audit-knowledge.md and execute the "Apply procedure" section (Step 7). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/SKILL.md and execute the "Apply procedure" section (Step 7). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
 
 ### After the subagent returns
 
@@ -321,7 +561,7 @@ Stage 2 must apply actions in this order: `fix-link` → `shrink` → `delete-en
 
 ## To apply
 
-Run `/audit-knowledge --apply` within 24h.
+Run `/gaia audit --apply` within 24h.
 
 ```
 
@@ -333,7 +573,7 @@ You are executing, not reasoning. Follow this loop exactly.
 
 ### Pre-flight
 
-1. Find the newest `$PROJECT_ROOT/.claude/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /audit-knowledge first`.
+1. Find the newest `$PROJECT_ROOT/.claude/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /gaia audit first`.
 2. Parse the report's frontmatter. Verify `project_root`, `memory_dir`, and `agent_memory_dir` match the values you resolved at startup. If any differ, stop and print a clear error — the report was generated on a different machine or in a different clone.
 3. Run `git rev-parse HEAD` — if it differs from `git_head` in the report, print a warning but continue. Run `git status --short` — any file that is currently dirty AND appears as a target in the report is marked `SKIP (dirty)` before any action runs.
 4. Read the `## Ordering` section. Process actions in that order.
