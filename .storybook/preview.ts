@@ -2,7 +2,7 @@ import type {Preview} from '@storybook/react-vite';
 import {themes} from 'storybook/theming';
 import {decorators} from './chromatic';
 import i18n from './i18next';
-import brandImage from './static/gaia-logo.png';
+import brandImage from '~/assets/images/gaia-logo.svg';
 import viewport from './viewport';
 import './env';
 import '~/styles/tailwind.css';
