@@ -32,11 +32,23 @@ Launch a `general-purpose` Agent with the model determined above and this prompt
 
 You are planning a feature using task orchestration. Do not implement anything.
 
+**You cannot Write files.** The Claude Code harness blocks Write for research-classified subagents. Do not attempt Write — it will fail and waste tokens. Investigate, then return your output as structured text. The parent will write the files verbatim.
+
+**Output format (required):**
+
+    ## File: /absolute/path/to/file.md
+
+    ```markdown
+    <verbatim file content>
+    ```
+
+Repeat the `## File:` heading + fenced block for each file. Use the language tag matching the file extension (`markdown` for `.md`).
+
 **Feature:** {feature description from step 1}
 
 First, read `wiki/concepts/Task Orchestration.md`.
 
-Then create the following in `.claude/plans/{slug}/` where `{slug}` is a short kebab-case slug derived from the feature description:
+Then specify the following files for the parent to write under `.claude/plans/{slug}/` where `{slug}` is a short kebab-case slug derived from the feature description:
 
 1. **One task doc per parallel workstream** — name each `task-{name}.md`. Each must be fully self-contained for a fresh-context sub-agent and include:
    - Context and motivation
@@ -58,9 +70,15 @@ Then create the following in `.claude/plans/{slug}/` where `{slug}` is a short k
 
 4. **`KICKOFF.md`** — the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt — no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline.
 
-Report the files created and the absolute path to `KICKOFF.md`.
+Return all file specifications using the output format above. End with the absolute path to `KICKOFF.md` so the parent knows which path to surface to the user.
 
 ---
+
+### 3.5. Write the plan files
+
+Parse the agent's structured output. For each `## File: <absolute path>` heading followed by a fenced block, Write the fenced content verbatim to that path. Create the parent directory first via `mkdir -p` if needed.
+
+Use the Write tool directly — the permission scope (`Write(.claude/plans/**)`) covers it. Verify all files exist before proceeding to step 4.
 
 ### 4. Report to user
 
