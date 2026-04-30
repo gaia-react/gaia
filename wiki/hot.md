@@ -13,7 +13,7 @@ type: meta
 title: Hot Cache
 status: active
 created: 2026-04-20
-updated: 2026-04-27
+updated: 2026-04-30
 tags: [meta]
 
 ---
@@ -22,18 +22,19 @@ tags: [meta]
 
 ## Last Updated
 
-2026-04-27. Branch `feat/update-msw-data-and-eslint`.
+2026-04-30. Release-prep audit complete on `main`.
 
 ## Key Facts
 
-- `@mswjs/data` replaced by `@msw/data@1.1.5`. `database.ts` is now a `Collection` re-export barrel with async `resetTestData()`.
-- ESLint overhaul: inlined `eslint-plugin-typescript-enum` + `eslint-plugin-no-switch-statements` as local plugins; replaced `eslint-plugin-eslint-comments` with `@eslint-community` fork; dropped `eslint-plugin-jest-formatting`; wired `eslint-plugin-testing-library` (flat/react, 22 rules on test files); activated `eslint-plugin-jest-dom` (flat/recommended); enabled `eslint-plugin-you-dont-need-lodash-underscore` compatible config (73 rules).
-- Theme state fully removed — `app/state/index.tsx` is a passthrough. Theme is cookie-based (Epic Stack pattern, landed 2026-04-26).
+- Rules/skills rebalance: `eslint-fixes` rule → skill; `component-testing` rule retired (Conform/`useInputControl` content moved to `tdd` references); `api-service` rule slimmed to a wiki pointer.
+- New safeguard hooks: `block-rm-rf`, `block-secrets-write`, `block-env-write`, `block-lockfile-edit`. `block-main-destructive-git` now denies plain `git push` from main/master too. New `wiki-update-evaluator` PostToolUse hook autonomously triages each commit via a backgrounded `claude -p` sub-agent; output folds into the standard wiki branch flow.
+- `.claude/settings.json`: permissions `allow` 21 → 52, `deny` 5 → 13; leading-slash glob bug fixed.
+- Dockerfile + husky + playwright.config now pnpm-native.
 
 ## Recent Changes
 
-- Updated: [[MSW Handlers]], [[MSW]], [[Storybook Stories]], [[Testing]], [[ESLint Fixes]], [[API Service Pattern]], [[overview]], [[log]]. New rule patterns: `you-dont-need-lodash-underscore`, `testing-library`, `jest-dom`.
+- Updated: [[Claude Hooks]], [[Claude Skills]], [[Claude Integration Conventions]], [[Code Review Audit Agent]], [[Quality Gate]], [[index]], [[log]].
 
 ## Active Threads
 
-- Wiki lint run 2026-04-27 complete; all issues fixed.
+- Release-prep plan folder gets self-deleted by orchestrator (Phase 5; gitignored).

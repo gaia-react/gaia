@@ -3,13 +3,22 @@ type: meta
 title: Log
 status: active
 created: 2026-04-20
-updated: 2026-04-27
+updated: 2026-04-30
 tags: [meta, log]
 ---
 
 # Log
 
 Append-only. New entries at the TOP.
+
+## [2026-04-30] chore | release-prep audit — rules/skills rebalance + new safeguard hooks + permissions overhaul + wiki sync
+
+- Rules ↔ skills rebalance: `eslint-fixes` and `component-testing` rules retired; `eslint-fixes` reborn as a description-triggered skill (`.claude/skills/eslint-fixes/SKILL.md`); the unique Conform `useInputControl` content from `component-testing` merged into `.claude/skills/tdd/references/tests-react.md`. `api-service` rule trimmed to point at [[MSW Handlers]]. Eight slash commands gained YAML frontmatter; `gaia-init` bundled-skills list updated to `eslint-fixes, playwright-cli, react-code, skeleton-loaders, tailwind, tdd, typescript`.
+- New PreToolUse blocker hooks (Phase 2): `block-rm-rf.sh`, `block-secrets-write.sh`, `block-env-write.sh`, `block-lockfile-edit.sh`. `block-main-destructive-git.sh` extended to deny plain `git push` from main/master in addition to force-push. New PostToolUse hook `wiki-update-evaluator.sh` on `Bash(git commit:*)` autonomously evaluates the diff via a backgrounded `claude -p --model sonnet --permission-mode bypassPermissions` sub-agent; sub-agent commits independently as `wiki: evaluator update for <sha>` and gets folded by `wiki-squash-autocommits.sh`. Logs to `.claude/audit/wiki-evaluator-{sha}.log`. Superseded `wiki-maintenance-check.sh` removed.
+- `.claude/settings.json` permissions overhaul (Phase 3): `allow` 21 → 52 entries (alphabetized): routine git/gh/pnpm ops + scoped `Edit(.claude/**|.gaia/**|wiki/**|CHANGELOG.md|app/**|public/**|test/**)`; `deny` 5 → 13 covers `.env` writes, `pnpm-lock.yaml` writes, `.husky/_/**` internals, force-with-lease on main/master, `git reset --hard HEAD~*`. Fixed leading-slash glob bug (`Edit(/app/**)` → `Edit(app/**)`).
+- `code-review-audit` agent: `agent-memory` framing downgraded — wiki is the source of truth; `agent-memory/` is gitignored / discouraged. `npx` invocation aligned to canonical form.
+- Dockerfile bumped to `node:22.19-alpine` and migrated from npm to pnpm via corepack. `.husky/pre-commit` now uses `pnpm` / `pnpm exec`. `playwright.config.ts` webServer uses `pnpm dev`.
+- Wiki: rewrote [[Claude Hooks]] (grouped by safeguard category, all six new hooks documented), restructured [[Claude Skills]] (project-local skill table + rules-vs-skills criteria + recent rebalance log), updated [[Code Review Audit Agent]] (`Persistent memory` → `Durable knowledge`, agent-memory downgraded), added §2 Rules-vs-skills decision criteria to [[Claude Integration Conventions]] (renumbered §3–§12 downstream; `agent-memory/` row reframed as ephemeral / gitignored), cross-linked [[Claude Hooks]] from [[Quality Gate]].
 
 ## [2026-04-27] feat | @msw/data migration + ESLint overhaul
 
