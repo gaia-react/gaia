@@ -131,6 +131,51 @@ Mock at **system boundaries** only:
 
 MSW handlers run in Vitest, Storybook, AND Playwright — one mock layer, three testing scopes.
 
+## Testing Forms with Conform
+
+For components using `@conform-to/react`, create a story that wraps the component with `useForm`:
+
+```tsx
+export const Default: StoryFn = () => {
+  const [form, fields] = useForm({
+    onValidate: ({formData}) => parseWithZod(formData, {schema}),
+  });
+
+  return (
+    <Form {...getFormProps(form)}>
+      <MyFormComponent fields={fields} />
+    </Form>
+  );
+};
+```
+
+### Custom form components: use `useInputControl`
+
+When using custom form components (like `YearMonthDay`, `TimePicker`, etc.) that manage their own internal state, you **must** use `useInputControl` to properly integrate them with Conform's validation state:
+
+```tsx
+// BAD - Local state conflicts with Conform's validation
+const [value, setValue] = useState(savedData?.field ?? DEFAULT);
+const handleChange = useCallback((newValue) => {
+  setValue(newValue);
+}, []);
+
+<CustomComponent onChange={handleChange} value={value} />;
+
+// GOOD - useInputControl keeps component synced with Conform
+const fieldControl = useInputControl(fields.fieldName);
+
+<CustomComponent
+  onBlur={fieldControl.blur}
+  onChange={fieldControl.change}
+  value={fieldControl.value ?? DEFAULT}
+/>;
+```
+
+**Why this matters**: When validation fails, Conform takes control of the field value. If you use local `useState`, the component becomes disconnected from Conform's state and stops responding to changes after validation errors occur.
+
+See `app/components/Form/YearMonthDay/tests/` for a complete example of this pattern in action.
+
 ## Bad Tests
 
 ```tsx

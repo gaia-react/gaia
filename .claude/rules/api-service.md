@@ -57,43 +57,9 @@ export default {resources};
 
 ## MSW Mocks
 
-Mirror the service structure in `test/mocks/{domain}/`:
+Mirror the service structure in `test/mocks/{domain}/` (handlers by HTTP method, `index.ts` barrel, `data.ts` for the Zod schema + `Collection`). Register handlers in `test/mocks/index.ts` and re-export the collection + `reset*` from `test/mocks/database.ts`. Handler URLs **must** resolve via the shared `url()` helper so `API_URL` is applied consistently.
 
-- `get.ts`, `post.ts`, `put.ts`, `delete.ts` — handlers by HTTP method
-- `index.ts` — barrel combining all handlers
-- `data.ts` — server-shape Zod schema, `Collection` instance, seed records, and `reset*` for that domain
-
-Register handlers in `test/mocks/index.ts` and re-export the collection + reset from `test/mocks/database.ts`. Handler URLs **must** resolve to the same path as the service-layer request — use the shared `url()` helper so `API_URL` is applied consistently. See `wiki/modules/MSW Handlers.md` for the full contract.
-
-### `@msw/data` — collection conventions
-
-- **Schema**: `new Collection({schema: zodServerSchema})`. The Zod schema in `data.ts` is the Standard Schema — there is no separate mock schema.
-- **Reads are sync**: `things.findFirst((q) => q.where({id: x}))`, `things.findMany(undefined)` (all), `things.findMany((q) => q.where({...}))` (filtered).
-- **Mutations are async**: `await things.create({...})`, `await things.update((q) => q.where({id: x}), {data(rec) { rec.field = value; }})`, `await things.delete((q) => q.where({id: x}))`, `await things.deleteMany((q) => q)` (clear all).
-- **Query syntax is predicate-builder**: `(q) => q.where({field: value})`, with optional function predicates per field (`q.where({name: (n) => n.startsWith('a')})`) or at the top level (`q.where((rec) => rec.posts.length > 0)`).
-- **`resetTestData()` is async.** Inside `beforeEach`/`afterEach`, `await` it: `afterEach(async () => { await resetTestData(); });`. Returning the promise from a non-async arrow also works (`afterEach(() => resetTestData())`); naked sync calls leave a floating promise and fail `@typescript-eslint/no-floating-promises`.
-- **Handlers are manual.** Write `http.get/post/put/delete` and call collection methods inside — no automatic handler generation.
-
-Worked example handler:
-
-```ts
-import {http, HttpResponse} from 'msw';
-import {GAIA_URLS} from '~/services/gaia/urls';
-import {things} from './data';
-import {url} from '../url';
-
-export default [
-  http.get(url(GAIA_URLS.things), () =>
-    HttpResponse.json(things.findMany(undefined))
-  ),
-  http.get(url(GAIA_URLS.thingsId), ({params}) => {
-    const record = things.findFirst((q) => q.where({id: params.id}));
-    return record ?
-        HttpResponse.json(record)
-      : new HttpResponse(null, {status: 404});
-  }),
-];
-```
+For the full `@msw/data` collection conventions (sync reads vs async mutations, predicate-builder query syntax, `resetTestData()` async semantics) and a worked handler example, see `wiki/modules/MSW Handlers.md`.
 
 ## Checklist for New Service
 

@@ -1,3 +1,8 @@
+---
+name: new-component
+description: Scaffold a new React component with optional test and story files.
+---
+
 Scaffold a new React component with optional test and story files.
 
 ## Step 1: Gather user input

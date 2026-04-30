@@ -1,3 +1,8 @@
+---
+name: new-service
+description: Scaffold a new API service with request functions, Zod schemas, URL constants, and optional MSW mock handlers.
+---
+
 Scaffold a new API service with request functions, Zod schemas, URL constants, and optional MSW mock handlers.
 
 ## Step 1: Gather user input

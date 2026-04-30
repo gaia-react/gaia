@@ -1,3 +1,8 @@
+---
+name: gaia-release
+description: Cut a new GAIA release — bump version, graduate CHANGELOG, regenerate manifest, commit, tag, push. Maintainer-only.
+---
+
 Cut a new GAIA release. Verifies the tree is clean, bumps the version, graduates `## [Unreleased]` in `CHANGELOG.md`, scrubs the adopter-facing wiki files, regenerates `.gaia/manifest.json`, commits, tags, and pushes. This command is **maintainer-only** — it is stripped from distributed tarballs by `.gaia/release-exclude` so adopters never see it.
 
 Unlike `/gaia-init`, this command does **not** self-delete. It runs every release.
