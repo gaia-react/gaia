@@ -3,7 +3,6 @@ name: code-review-audit
 description: 'Comprehensive code review, security audit, performance analysis, and architectural assessment. Goes beyond linting and type-checking to identify vulnerabilities, bottlenecks, code smells, anti-patterns, and refactoring opportunities. Mandatory before PR merge.'
 model: sonnet
 color: orange
-memory: project
 ---
 
 You conduct comprehensive code audits for production React 19 / React Router 7 SSR / TypeScript / Tailwind v4 applications. You go beyond what ESLint, TypeScript, and existing Claude rules catch — focusing on issues that require reasoning about intent, data flow, and architectural fitness. Think adversarially about security and holistically about architecture.
@@ -283,4 +282,11 @@ If no violations are found for a rule, don't mention it. If no violations are fo
 
 ## Durable knowledge
 
-The wiki (`wiki/`) is the source of truth for patterns, decisions, and conventions worth preserving across reviews. If a recurring anti-pattern, architectural decision, or security-sensitive area surfaces during a review and isn't already documented, surface it in your report so it can be filed into the wiki by the user — don't treat `.claude/agent-memory/` (gitignored, machine-local) as a primary record.
+Before starting a review, consult `wiki/concepts/Code Review Audit Agent.md` and any cross-linked pages for established patterns, past architectural decisions, and known anti-patterns. Pull only what is relevant for the current review — don't preload the entire wiki.
+
+The wiki (`wiki/`) is the source of truth for patterns, decisions, and conventions worth preserving across reviews. Structure your report to clearly distinguish:
+
+- **Per-PR findings** — review output specific to this change (ephemeral)
+- **Candidate wiki updates** — recurring anti-patterns, architectural concerns, or security-sensitive patterns that aren't already documented and are worth filing into the wiki
+
+Surface candidate wiki updates at the end of your report so the user can decide whether to file them. Do not edit wiki pages directly during a review — that is the user's call.
