@@ -48,13 +48,13 @@ Three layers, three triggers. Pick the layer that loads guidance only when it's 
 | Rule   | `paths:` glob matches an in-scope file (or always)     | File-path-bound conventions: project-wide style, route layout, accessibility, i18n |
 | Skill  | `description:` matches user intent / context           | Cross-file reasoning patterns: refactor playbooks, error-fix recipes, TDD loop     |
 
-Migration heuristics:
+Layer-selection heuristics:
 
-- **Rule → hook** when guidance is a deterministic block on a specific tool call (`block-bare-test.sh` replaced `.claude/rules/test-runner.md`).
-- **Rule → skill** when guidance is intent-triggered, not file-path-triggered, and benefits from references that load on demand (e.g. `eslint-fixes` only matters when fixing lint, not on every edit).
-- **Keep as rule** when guidance must auto-apply whenever an in-scope file is touched, regardless of intent (`i18n.md`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
+- **Hook** when the guidance is a deterministic block on a specific tool call (e.g. `block-bare-test.sh` denies bare `pnpm test`).
+- **Skill** when the guidance is intent-triggered, not file-path-triggered, and benefits from references that load on demand (e.g. `eslint-fixes` only matters when fixing lint, not on every edit).
+- **Rule** when the guidance must auto-apply whenever an in-scope file is touched, regardless of intent (`i18n.md`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
 
-Cross-link: [[Claude Skills]] § Rules vs. Skills — decision criteria for the recent rebalance log.
+Cross-link: [[Claude Skills]] § Rules vs. Skills — decision criteria.
 
 ## 3. Agent extensions (review-type agents only)
 

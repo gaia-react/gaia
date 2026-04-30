@@ -26,7 +26,7 @@ See [[modules/Claude Integration|the modules page]] for the full skills inventor
 
 ## Rules vs. Skills — decision criteria
 
-GAIA rebalanced its `.claude/` surface so each kind of guidance lives in the layer that loads it most efficiently. Use this matrix when adding new guidance:
+GAIA's `.claude/` surface places each kind of guidance in the layer that loads it most efficiently. Use this matrix when adding new guidance:
 
 | Layer                    | Loads when…                                            | Use for                                                                            |
 | ------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
@@ -39,14 +39,6 @@ Heuristic when migrating:
 - **Rule → hook** when the guidance can be phrased as a deterministic block on a specific tool call (e.g. "no bare `pnpm test`" → `block-bare-test.sh`).
 - **Rule → skill** when the guidance is a body of patterns triggered by intent rather than file path (e.g. ESLint fix recipes only matter when fixing lint, not on every edit) and benefits from references that load on demand.
 - **Keep as rule** when it must auto-apply whenever a file in scope is touched, regardless of user intent (e.g. `i18n.md` for `app/pages/**`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
-
-### Recent rebalances
-
-- `.claude/rules/eslint-fixes.md` → `.claude/skills/eslint-fixes/SKILL.md`. Description-triggered: only loads when actually fixing lint, not on every edit. Same content, smaller default context.
-- `.claude/rules/component-testing.md` → deleted; the unique Conform `useInputControl` test pattern merged into `.claude/skills/tdd/references/tests-react.md`. The rest was already covered by [[Component Testing]] in the wiki, which remains the source of truth.
-- `.claude/rules/api-service.md` trimmed to point at [[MSW Handlers]] for the canonical MSW + service contract instead of restating it.
-- `.claude/rules/test-runner.md` → `.claude/hooks/block-bare-test.sh` (machine-enforced; documented historically in [[Test Runner]]).
-- `.claude/rules/wiki-maintenance.md` → checklist now lives inside the `wiki-update-evaluator.sh` PostToolUse hook prompt (replaced the prior `wiki-maintenance-check.sh` advisory).
 
 ## Skill references convention
 

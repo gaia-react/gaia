@@ -38,7 +38,7 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 
 ### Bash safeguards (Bash)
 
-- **`block-bare-test.sh`** (`if: Bash(pnpm *)` and `if: Bash(npm *)`) — denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. Replaces the former `.claude/rules/test-runner.md`.
+- **`block-bare-test.sh`** (`if: Bash(pnpm *)` and `if: Bash(npm *)`) — denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. See [[Test Runner]].
 - **`block-main-destructive-git.sh`** (`if: Bash(git *)`) — denies (1) `git commit` while HEAD is `main`/`master`, (2) force-push to `main`/`master`, and (3) plain `git push` originating from `main`/`master` (PR-only flow — closes the "forgot to switch branches" footgun). Authoritative rule: [[Git Workflow]].
 - **`block-rm-rf.sh`** (`if: Bash(rm *)`) — denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `node_modules`. Allows scoped scratch paths (`.claude/plans/*`, `.claude/audit/*`, `.gaia/cache/*`, `dist/*`, `build/*`).
 

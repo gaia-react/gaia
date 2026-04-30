@@ -55,8 +55,6 @@ Rules activate automatically based on file paths — no need to invoke them.
 | [[PR Merge Workflow]]                  | PR merges                                               |
 | [[Task Orchestration]]                 | Multi-file work                                         |
 
-> The former `eslint-fixes` and `component-testing` rules were retired in the 2026-04-30 release-prep audit. `eslint-fixes` is now a description-triggered skill; the unique Conform / `useInputControl` content from `component-testing` was merged into `skills/tdd/references/tests-react.md`. See the skills table below and [[Component Testing]] / [[ESLint Fixes]] wiki pages.
-
 ## Hooks
 
 Bash hooks wired through `.claude/settings.json`. Mixed event types.
