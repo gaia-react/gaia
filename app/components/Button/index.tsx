@@ -21,6 +21,14 @@ export const ICON_SIZES: Record<Size, string> = {
   xs: 'px-1.5',
 };
 
+export const ICON_ONLY_SIZES: Record<Size, string> = {
+  base: 'size-10',
+  lg: 'size-11',
+  sm: 'size-8',
+  xl: 'size-12',
+  xs: 'size-6',
+};
+
 export const ICON_POSITION: Record<'left' | 'right', string> = {
   left: '',
   right: 'flex-row-reverse',
@@ -93,6 +101,9 @@ const Button: FC<ButtonProps> = ({
 
   const innerClassName = twJoin(
     icon &&
+      !children &&
+      `flex items-center justify-center ${ICON_ONLY_SIZES[size]}`,
+    icon &&
       children &&
       `flex items-center justify-center gap-1.5 ${ICON_POSITION[iconPosition]}`
   );
@@ -105,6 +116,7 @@ const Button: FC<ButtonProps> = ({
         VARIANTS[variant],
         SIZES[size],
         icon && ICON_SIZES[size],
+        icon && !children && 'p-0',
         variant !== 'custom' && 'rounded-sm transition-colors duration-200',
         isLoading ? 'cursor-wait' : (
           'disabled:cursor-not-allowed disabled:opacity-50'
