@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 - **Minor** — new skills, commands, or wiki concept pages; opt-in features.
 - **Patch** — bugfixes, docs, and in-range dependency bumps.
 
+## [Unreleased]
+
+## [1.0.1] — 2026-05-01
+
+### Fixed
+
+- `/init` interceptor now reliably redirects to `/gaia-init`. The previous implementation used `UserPromptSubmit` + `exit 2`, which blocked the turn entirely so the model never ran. Switched to `UserPromptExpansion` (matcher: `init`) with `additionalContext` only — the model receives `/init`'s expansion plus a system-reminder override telling it to invoke `/gaia-init` via the Skill tool. The user-visible "blocked by hook" banner is gone.
+
 ## [1.0.0] — 2026-04-30
 
 ### Initial release
@@ -26,4 +34,6 @@ GAIA v1.0.0 is the inaugural public release of the GAIA React workflow — a Cla
 - **Quality gate.** Mandatory pre-commit pipeline: simplify, localization check, typecheck, lint, unit tests, E2E tests, dev smoke test, build. Zero warnings tolerated.
 - **Release tooling.** Tag-triggered `release.yml` builds a scrubbed tarball; `create-gaia` bootstrapper consumes it via `npx create-gaia my-app`.
 
+[Unreleased]: https://github.com/gaia-react/gaia/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/gaia-react/gaia/releases/tag/v1.0.1
 [1.0.0]: https://github.com/gaia-react/gaia/releases/tag/v1.0.0
