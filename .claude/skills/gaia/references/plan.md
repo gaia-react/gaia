@@ -15,9 +15,14 @@ Otherwise, ask: **"What do you want me to orchestrate?"** and wait for the respo
 Check your current model from session context.
 
 - If you are on Opus, skip to step 3.
-- If not, ask: **"You're on [model name]. Use Opus for planning? (Y/n)"** — default yes.
-  - Yes (or Enter): spawn the agent with `model: opus`.
-  - No: spawn without a model override (inherit current).
+- If not, call `AskUserQuestion` with:
+  - question: `"You're on [model name]. Use Opus for planning?"`
+  - header: `"Model"`
+  - options:
+    - `{ label: "Use Opus (Recommended)", description: "Spawn the planning agent on Opus 4.7 for higher-quality plans." }`
+    - `{ label: "Use [model name]", description: "Keep the current model." }`
+  - If user picks option 1: spawn the agent with `model: opus`.
+  - If user picks option 2: spawn without a model override (inherit current).
 
 ### 3. Spawn planning agent
 

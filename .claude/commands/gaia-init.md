@@ -129,6 +129,49 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
 - `claude plugin marketplace add AgriciDaniel/claude-obsidian`
 - `claude plugin install claude-obsidian@claude-obsidian-marketplace`
 
+### Install the GAIA statusline (optional)
+
+The GAIA statusline shows: **project folder | git branch | active model | context window usage**.
+
+Show the user a live preview by running:
+
+```bash
+echo '{"workspace":{"current_dir":"'"$(pwd)"'"},"model":{"display_name":"Claude Opus 4.7"},"context_window":{"used_percentage":42}}' \
+  | bash .gaia/statusline/preferred-base.sh; echo
+```
+
+The Bash output renders with ANSI colors in the chat. Then `AskUserQuestion`:
+
+> Install the GAIA statusline (project | branch | model | context bar)?
+>
+> - **Globally (Recommended)** — show this statusline in every project on this machine.
+> - **Only in this project** — show only when Claude is launched in this GAIA project.
+> - **Skip** — keep Claude's default statusline.
+
+Apply the answer:
+
+- **Globally** → copy `.gaia/statusline/preferred-base.sh` to `~/.claude/preferred-base.sh`, `chmod +x ~/.claude/preferred-base.sh`, then write into `~/.claude/settings.json` (insert alphabetically, preserving existing keys):
+
+  ```json
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/preferred-base.sh"
+  }
+  ```
+
+- **Only in this project** → write into `.claude/settings.json` (insert alphabetically, preserving existing keys):
+
+  ```json
+  "statusLine": {
+    "type": "command",
+    "command": "bash .gaia/statusline/preferred-base.sh"
+  }
+  ```
+
+- **Skip** → no action.
+
+Before writing either settings file, read its current contents so you merge rather than overwrite. Use jq or manual JSON editing — never truncate the file.
+
 ## Step 10: Refresh the wiki
 
 The template ships with a wiki shaped for the upstream GAIA project. Refresh the two files that encode "where we are right now" so the new project starts with a clean context:
