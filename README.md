@@ -75,13 +75,11 @@ Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configur
 - **[Storybook](https://storybook.js.org/)** with React Router + i18n + dark mode + [MSW](https://mswjs.io/) integration
 - **API mocking** with [Mock Service Worker](https://mswjs.io/) and [msw/data](https://github.com/mswjs/data), working handlers for tests and Storybook
 - **Toast notifications** with [remix-toast](https://remix.run/resources/remix-toast) and [Sonner](https://sonner.emilkowal.ski/)
-- Built on [React Router 7](https://reactrouter.com/), [Tailwind](https://tailwindcss.com/), and [FontAwesome](https://fontawesome.com/) icons
+- Built with [React Router 7](https://reactrouter.com/), [Tailwind](https://tailwindcss.com/), and [react-icons](https://react-icons.github.io/react-icons/)
 
 ## How GAIA Compares
 
 Opinionated starter templates solve different slices of the "day-zero engineering setup" problem. GAIA focuses on making Claude a first-class collaborator.
-
-### Foundation
 
 |                          |      GAIA      |   Epic Stack   | create-t3-app |     RedwoodJS     |
 | ------------------------ | :------------: | :------------: | :-----------: | :---------------: |

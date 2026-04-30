@@ -1,7 +1,6 @@
 /* eslint-disable react/button-has-type */
 import type {ComponentProps, FC, ReactNode} from 'react';
-import type {IconProp} from '@fortawesome/fontawesome-svg-core';
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
+import type {IconType} from 'react-icons';
 import {twJoin, twMerge} from 'tailwind-merge';
 import Spinner from '~/components/Loaders/Spinner';
 import type {Size} from '~/types';
@@ -61,14 +60,14 @@ export type IconUnion = MaybeIcon | OnlyIcon;
 type MaybeIcon = {
   children: ReactNode;
   classNameIcon?: string;
-  icon?: IconProp;
+  icon?: IconType;
   iconPosition?: 'left' | 'right';
 };
 
 type OnlyIcon = {
   children?: never;
   classNameIcon?: string;
-  icon: IconProp;
+  icon: IconType;
   iconPosition?: never;
 };
 
@@ -86,13 +85,10 @@ const Button: FC<ButtonProps> = ({
   variant = 'primary',
   ...props
 }) => {
+  const Icon = icon;
   const iconComponent =
-    icon ?
-      <FontAwesomeIcon
-        className={twJoin(children && 'flex-none', classNameIcon)}
-        icon={icon}
-        size="1x"
-      />
+    Icon ?
+      <Icon className={twJoin(children && 'flex-none', classNameIcon)} />
     : null;
 
   const innerClassName = twJoin(

@@ -1,13 +1,12 @@
 import type {FC} from 'react';
 import {useCallback, useEffect, useRef, useState} from 'react';
-import type {IconProp} from '@fortawesome/fontawesome-svg-core';
+import type {IconType} from 'react-icons';
 import {
-  faCheckCircle,
-  faExclamationTriangle,
-  faInfoCircle,
-  faXmark,
-} from '@fortawesome/free-solid-svg-icons';
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
+  IoCheckmarkCircle,
+  IoClose,
+  IoInformationCircle,
+  IoWarning,
+} from 'react-icons/io5';
 import type {ToastMessage} from 'remix-toast';
 import {toast} from 'sonner';
 import {twJoin} from 'tailwind-merge';
@@ -23,11 +22,11 @@ const COLOR: Record<ToastType, string> = {
   warning: 'bg-yellow-600',
 };
 
-const ICON: Record<ToastType, IconProp> = {
-  error: faExclamationTriangle,
-  info: faInfoCircle,
-  success: faCheckCircle,
-  warning: faExclamationTriangle,
+const ICON: Record<ToastType, IconType> = {
+  error: IoWarning,
+  info: IoInformationCircle,
+  success: IoCheckmarkCircle,
+  warning: IoWarning,
 };
 
 const ICON_COLOR: Record<ToastType, string> = {
@@ -100,11 +99,15 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
         onClick={handleClose}
         type="button"
       >
-        <FontAwesomeIcon className="size-4" icon={faXmark} />
+        <IoClose className="size-4" />
       </button>
       {message && (
         <div className="flex items-start gap-1">
-          <FontAwesomeIcon className={ICON_COLOR[type]} icon={ICON[type]} />
+          {(() => {
+            const ToastIcon = ICON[type];
+
+            return <ToastIcon className={ICON_COLOR[type]} />;
+          })()}
           <div
             className="-mt-0.5 leading-tight font-semibold text-pretty"
             dangerouslySetInnerHTML={{__html: message}}

@@ -1,5 +1,5 @@
 import {Fragment} from 'react';
-import {faStar} from '@fortawesome/free-solid-svg-icons';
+import {IoStar} from 'react-icons/io5';
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import stubs from 'test/stubs';
 import type {Variant} from '~/components/Button';
@@ -49,7 +49,7 @@ const render = (icon?: boolean, iconText?: boolean, disabled?: boolean) => (
             aria-label={`${variant}-${size}`}
             className="col-span-2 capitalize"
             disabled={disabled}
-            icon={icon ? faStar : undefined}
+            icon={icon ? IoStar : undefined}
             size={size}
             to="/"
             variant={variant}

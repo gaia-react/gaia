@@ -1,7 +1,6 @@
 import type {ChangeEvent, ComponentProps, FC, ReactNode} from 'react';
 import {useState} from 'react';
-import type {IconProp} from '@fortawesome/fontawesome-svg-core';
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
+import type {IconType} from 'react-icons';
 import {twJoin, twMerge} from 'tailwind-merge';
 import Field from '~/components/Form/Field';
 import type {SelectOption} from './types';
@@ -13,13 +12,13 @@ export type SelectProps = ComponentProps<'select'> & {
   description?: ReactNode;
   error?: string;
   extra?: ReactNode;
-  icon?: IconProp;
+  icon?: IconType;
   iconPosition?: 'left' | 'right';
   label?: ReactNode;
   name: string;
   options: SelectOption[];
   unselected?: string;
-  unselectedIcon?: IconProp;
+  unselectedIcon?: IconType;
 };
 
 const Select: FC<SelectProps> = ({
@@ -117,18 +116,25 @@ const Select: FC<SelectProps> = ({
               </option>
           )}
         </select>
-        {icon && (
-          <div
-            className={twMerge(
-              'pointer-events-none absolute left-[0.8rem]',
-              disabled ? 'text-disabled' : !currentValue && 'text-placeholder',
-              !classNameIcon?.includes('top-') && 'top-[0.575rem]',
-              classNameIcon
-            )}
-          >
-            <FontAwesomeIcon icon={icon} />
-          </div>
-        )}
+        {icon &&
+          (() => {
+            const Icon = icon;
+
+            return (
+              <div
+                className={twMerge(
+                  'pointer-events-none absolute left-[0.8rem]',
+                  disabled ? 'text-disabled' : (
+                    !currentValue && 'text-placeholder'
+                  ),
+                  !classNameIcon?.includes('top-') && 'top-[0.575rem]',
+                  classNameIcon
+                )}
+              >
+                <Icon />
+              </div>
+            );
+          })()}
       </div>
     </Field>
   );

@@ -1,6 +1,5 @@
 import type {ChangeEvent, FC} from 'react';
 import {useCallback, useState} from 'react';
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
 import {twJoin, twMerge} from 'tailwind-merge';
 import Field from '../Field';
 import type {InputProps} from '../types';
@@ -87,16 +86,20 @@ const InputText: FC<InputProps> = ({
           type={type}
           {...props}
         />
-        {icon && (
-          <FontAwesomeIcon
-            className={twMerge(
-              'absolute top-[0.825rem] text-gray-400 dark:text-gray-600',
-              iconPosition === 'left' ? 'left-3' : 'right-3',
-              classNameIcon
-            )}
-            icon={icon}
-          />
-        )}
+        {icon &&
+          (() => {
+            const Icon = icon;
+
+            return (
+              <Icon
+                className={twMerge(
+                  'absolute top-[0.825rem] text-gray-400 dark:text-gray-600',
+                  iconPosition === 'left' ? 'left-3' : 'right-3',
+                  classNameIcon
+                )}
+              />
+            );
+          })()}
       </div>
     </Field>
   );

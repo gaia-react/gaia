@@ -2,7 +2,6 @@ import type {FC} from 'react';
 import {useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 import {data, Outlet, useLoaderData} from 'react-router';
-import {config} from '@fortawesome/fontawesome-svg-core';
 import {getToast, setToastCookieOptions} from 'remix-toast';
 import Document from '~/components/Document';
 import RootErrorBoundary from '~/components/Errors/RootErrorBoundary';
@@ -17,8 +16,6 @@ import {getTheme} from '~/utils/theme.server';
 import type {Route} from './+types/root';
 import {env, envClient} from './env.server';
 import './styles/tailwind.css';
-
-config.autoAddCss = false;
 
 export const middleware = [i18nextMiddleware];
 

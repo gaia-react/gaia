@@ -1,6 +1,5 @@
 import type {FC} from 'react';
-import {faCopy} from '@fortawesome/free-solid-svg-icons';
-import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
+import {IoCopyOutline} from 'react-icons/io5';
 import {twJoin, twMerge} from 'tailwind-merge';
 
 type ErrorStackProps = {
@@ -50,7 +49,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
             onClick={handleClick}
             type="button"
           >
-            <FontAwesomeIcon icon={faCopy} />
+            <IoCopyOutline />
             <span>Copy to clipboard</span>
           </button>
         </div>

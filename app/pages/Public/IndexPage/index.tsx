@@ -1,6 +1,6 @@
 import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
-import {faGithub} from '@fortawesome/free-brands-svg-icons';
+import {FaGithub} from 'react-icons/fa6';
 import LinkButton from '~/components/LinkButton';
 
 const CHIPS = [
@@ -56,7 +56,7 @@ const IndexPage: FC = () => {
           <div className="flex">
             <LinkButton
               className="border-claude-500 text-claude-500 hover:bg-claude-500/10 dark:border-claude-400 dark:text-claude-300 dark:hover:bg-claude-500/15"
-              icon={faGithub}
+              icon={FaGithub}
               size="lg"
               to="https://github.com/gaia-react/gaia"
               variant="secondary"

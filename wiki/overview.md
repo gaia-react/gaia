@@ -24,7 +24,7 @@ See [[GAIA Philosophy]] for the long version.
 
 - **Framework**: [[React Router 7]] (SSR, file-based routing via [[remix-flat-routes]])
 - **Forms**: [[Conform]] + [[Zod]] — the star of the template, see [[Form Components]]
-- **Styling**: [[Tailwind]] v4 with `tailwind-merge`, plus [[FontAwesome]] icons
+- **Styling**: [[Tailwind]] v4 with `tailwind-merge`, plus [[react-icons]] icons
 - **i18n**: [[remix-i18next]] with TypeScript language files (not JSON)
 - **State**: minimal — `app/state/index.tsx` is a passthrough; theme is cookie-based (no React state for theme)
 - **Testing**: [[Vitest]] + [[React Testing Library]] + [[Playwright]] + [[Chromatic]] — all sharing one MSW mocking layer
