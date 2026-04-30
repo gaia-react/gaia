@@ -118,7 +118,7 @@
     @apply read-only:focus-visible:border-gray-400 read-only:focus-visible:ring-transparent;
     @apply dark:text-white;
     @apply read-only:text-disabled;
-    @apply placeholder:text-placeholder disabled:placeholder:text-disabled;
+    @apply placeholder:text-gray-400 disabled:placeholder:text-gray-400 dark:placeholder:text-gray-600 dark:disabled:placeholder:text-gray-600;
   }
 
   [type='checkbox'] {
