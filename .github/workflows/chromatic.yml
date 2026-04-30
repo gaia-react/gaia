@@ -21,7 +21,7 @@ jobs:
   chromatic:
     name: Run Chromatic
     needs: has-chromatic-token
-    if: needs.has-chromatic-token.outputs.present == 'true' && github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore:') && !startsWith(github.ref, 'refs/heads/wiki/') && !startsWith(github.ref, 'refs/heads/chore/')
+    if: needs.has-chromatic-token.outputs.present == 'true' && github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore:') && !startsWith(github.ref, 'refs/heads/wiki/') && !startsWith(github.ref, 'refs/heads/chore/') && !startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
