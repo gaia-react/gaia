@@ -54,6 +54,7 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 ### Other events
 
 - **`intercept-init.sh`** (UserPromptSubmit) — blocks the built-in `/init` and auto-invokes `/gaia-init`.
+- **`gaia-session-update-prompt.sh`** (SessionStart, `startup|resume`) — reads `.gaia/cache/statusline-update-check.json` (the same TTL-cached file the statusline consumes) and emits a `<system-reminder>` asking the user whether to run the `update-deps` skill (when outdated packages are detected) and/or the `update-gaia` skill (when a newer GAIA release is available). Silent on missing cache or missing `jq`. Never blocks. See [[Claude Skills]] § SessionStart update prompt.
 
 ## Adding hooks
 

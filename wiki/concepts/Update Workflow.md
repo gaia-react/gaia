@@ -44,7 +44,7 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 6. Walk the latest manifest. For each file, apply the decision table below.
 7. Only after the full walk succeeds, bump `.gaia/VERSION` and replace `.gaia/manifest.json` with the latest version's copy.
 8. Report summary: overwritten / added / skipped / conflicts / deleted / backed up.
-9. Remind the adopter to review `.gaia-merge/`, run `/audit-code`, and commit manually.
+9. Remind the adopter to review `.gaia-merge/`, run the [[Quality Gate]], and commit manually.
 
 ## Decision table
 
@@ -81,4 +81,4 @@ After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cad
 ## See also
 
 - [[Release Workflow]] — maintainer-side flow that produces the artifacts `/update-gaia` consumes.
-- [[Quality Gate]] — run `/audit-code` after `/update-gaia` finishes and before committing.
+- [[Quality Gate]] — run the gate after the `update-gaia` skill finishes and before committing.

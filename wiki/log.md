@@ -11,6 +11,16 @@ tags: [meta, log]
 
 Append-only. New entries at the TOP.
 
+## [2026-04-30] docs | wiki sync — `.claude/` skills surface
+
+- Renamed concept pages to match the canonical `/gaia` router shape: `Audit-Knowledge Command.md` → `GAIA Audit.md`, `Handoff Command.md` → `GAIA Handoff.md`, `Pickup Command.md` → `GAIA Pickup.md`. Added new `GAIA Plan.md`. All four describe the corresponding `.claude/skills/gaia/references/{plan,handoff,pickup,audit}.md` reference files.
+- [[Task Orchestration]] now invoked via `/gaia plan`, with the orchestrator's mandatory final summary (phases, sub-agents, files touched, commits, PR URL, gate status) and clipboard-copy resume handoff (probes `pbcopy` / `wl-copy` / `xclip` / `xsel` / `clip.exe` / `clip`).
+- [[GAIA Audit]] runs both stages on Sonnet — drift checks (sha256 + verbatim before/after) carry the safety. Removed Opus + `ultrathink` framing wherever it lingered.
+- [[modules/Claude Integration]] split into `Commands` (maintainer-only `/gaia-init`, `/gaia-release`) and `Skills` (`/gaia` router + scaffolders + context-triggered). New SessionStart row for `gaia-session-update-prompt.sh` which surfaces `update-deps` and `update-gaia` from the statusline cache.
+- [[Claude Skills]] reorganized into three groups (router, scaffolders, context-triggered) with the SessionStart update-prompt section. [[Claude Hooks]] picks up the new SessionStart entry. [[Claude Integration Conventions]] points scaffolding-template paths at `.claude/skills/new-*/`.
+- Stale `/audit-code` references retired from [[Quality Gate]], [[overview]], [[Update Workflow]], [[Release Workflow]]. `rules/new-route.md` references in [[Thin Routes]] retargeted to `rules/routes.md`. [[Sources/Initial Ingest]] inventory updated to list the current `.claude/skills/` and `.claude/commands/` set.
+- [[hot]] refreshed; [[index]] entries swapped for the four GAIA workflow pages.
+
 ## [2026-04-30] chore | release-prep audit — rules/skills rebalance + new safeguard hooks + permissions overhaul + wiki sync
 
 - Rules ↔ skills rebalance: `eslint-fixes` and `component-testing` rules retired; `eslint-fixes` reborn as a description-triggered skill (`.claude/skills/eslint-fixes/SKILL.md`); the unique Conform `useInputControl` content from `component-testing` merged into `.claude/skills/tdd/references/tests-react.md`. `api-service` rule trimmed to point at [[MSW Handlers]]. Eight slash commands gained YAML frontmatter; `gaia-init` bundled-skills list updated to `eslint-fixes, playwright-cli, react-code, skeleton-loaders, tailwind, tdd, typescript`.

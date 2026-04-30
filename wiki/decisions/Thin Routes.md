@@ -29,7 +29,7 @@ Form actions use Zod + Conform: `parseWithZod(formData, {schema})`.
 
 ## Enforcement
 
-- `app/routes/**` rule guides code review
-- `/new-route` scaffolds in this exact pattern
+- `app/routes/**` rule (`.claude/rules/routes.md`) guides code review
+- The `new-route` skill scaffolds in this exact pattern
 
-See [[Routing]], [[Pages]], and the `new-route` rule at `.claude/rules/new-route.md`.
+See [[Routing]], [[Pages]], and the `routes` rule at `.claude/rules/routes.md`.

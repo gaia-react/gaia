@@ -18,22 +18,12 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 
 ## Commands (slash)
 
-| Command            | What it does                                                                                                                                |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/gaia-init`       | Rename + strip GAIA branding + configure languages + install Claude toolchain (run once)                                                    |
-| `/update-gaia`     | Pull a later GAIA release into the project — three-way diff, drift-safe merge ([[Update Workflow]])                                         |
-| `/gaia-release`    | **Maintainer-only, stripped from tarball.** Cut a GAIA release — bump, audit, scrub wiki, commit, tag, push ([[Release Workflow]])          |
-| `/new-route`       | Scaffold a route + page + tests + i18n                                                                                                      |
-| `/new-component`   | Scaffold a component with optional test + story                                                                                             |
-| `/new-service`     | Scaffold an API service + Zod + URL constants + MSW mocks                                                                                   |
-| `/new-hook`        | Scaffold a custom hook + test                                                                                                               |
-| `/audit-code`      | Run the full [[Quality Gate]]                                                                                                               |
-| `/audit-knowledge` | Audit memory + wiki + auto-loaded files for dupes, stale entries, and bloat ([[Audit-Knowledge Command]])                                   |
-| `/update-deps`     | Autonomous Dependabot — discover all outdated packages, audit `pnpm.overrides`, apply codebase migrations for major bumps, run quality gate |
-| `/handoff`         | Generate a session handoff doc at `.claude/handoff/HANDOFF-{date}-{slug}.md` ([[Handoff Command]])                                          |
-| `/pickup`          | Resume from the latest handoff; falls back to `wiki/hot.md` ([[Pickup Command]])                                                            |
+The maintainer-only commands live under `.claude/commands/`; everything user-invokable is a skill (next section).
 
-See individual rules for the patterns each command produces.
+| Command         | What it does                                                                                                                       |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `/gaia-init`    | Rename + strip GAIA branding + configure languages + install Claude toolchain (run once on a fresh `create-gaia` scaffold)        |
+| `/gaia-release` | **Maintainer-only, stripped from tarball.** Cut a GAIA release — bump, audit, scrub wiki, commit, tag, push ([[Release Workflow]]) |
 
 ## Rules
 
@@ -42,7 +32,7 @@ Rules activate automatically based on file paths — no need to invoke them.
 | Rule                                   | Applies to                                              |
 | -------------------------------------- | ------------------------------------------------------- |
 | [[Coding Guidelines]]                  | All code                                                |
-| `new-route.md` ([[Routing]])           | `app/routes/**`, `app/pages/**`                         |
+| `routes.md` ([[Routing]])              | `app/routes/**`, `app/pages/**`                         |
 | [[API Service Pattern]]                | `app/services/**`, `test/mocks/**`                      |
 | `state-pattern.md` ([[State]])         | `app/state/**`                                          |
 | `storybook.md` ([[Storybook Stories]]) | `app/**/*.stories.tsx`, `.storybook/**`                 |
@@ -54,6 +44,7 @@ Rules activate automatically based on file paths — no need to invoke them.
 | [[Quality Gate]]                       | Commits (source + gate-affecting config only)           |
 | [[PR Merge Workflow]]                  | PR merges                                               |
 | [[Task Orchestration]]                 | Multi-file work                                         |
+| `shell-cwd.md`                         | Bash `cd` discipline (relative-path hooks)              |
 
 ## Hooks
 
@@ -94,6 +85,12 @@ Each entry uses an `if:` pattern so the hook only runs for the matching command 
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `intercept-init.sh` | Blocks the built-in `/init` and auto-invokes the `/gaia-init` skill instead. Protects the curated `CLAUDE.md` from overwrite. Removes itself (hook + settings entry) when `/gaia-init` completes. |
 
+### SessionStart (update prompts)
+
+| Hook                            | Event                          | Behavior                                                                                                                                                                                                                                                                                                |
+| ------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gaia-session-update-prompt.sh` | SessionStart (`startup\|resume`) | Reads `.gaia/cache/statusline-update-check.json` (the same TTL-cached file the statusline consumes) and emits a `<system-reminder>` asking the user whether to run the `update-deps` and/or `update-gaia` skills. Silent when the cache is missing or `jq` isn't installed. Never blocks the session.   |
+
 ### SessionStart / Stop (wiki coherence)
 
 Pair of hooks that compensates for a gap in the `claude-obsidian` plugin: its `PostToolUse` hook auto-commits `wiki/` changes, so by Stop time the plugin's own diff-check against HEAD is always empty and its `wiki/hot.md` refresh prompt never fires.
@@ -127,7 +124,30 @@ After its own review, it spawns 3 parallel specialist subagents to audit changed
 
 ## Skills
 
-`.claude/skills/`:
+`.claude/skills/` holds three groups: a `/gaia` router for user-invoked workflows, scaffolders, and context-triggered guidance. See [[Claude Skills]] for the full grouped table; the entries here are the inventory.
+
+### `/gaia` router
+
+| Skill              | Use                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| `gaia`             | Routes `/gaia <subcommand>` to one of the four references below. See [[Claude Skills]] for help text. |
+| → `plan` ref       | Plan a feature using [[Task Orchestration]] without implementing. See [[GAIA Plan]].               |
+| → `handoff` ref    | Generate a session handoff doc. See [[GAIA Handoff]].                                              |
+| → `pickup` ref     | Resume from the latest handoff. See [[GAIA Pickup]].                                               |
+| → `audit` ref      | Two-stage knowledge-store audit (Sonnet + Sonnet). See [[GAIA Audit]].                             |
+
+### Scaffolders
+
+| Skill           | Use                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
+| `new-component` | Scaffold a component (PascalCase folder + `index.tsx` + `tests/`) with optional Storybook story    |
+| `new-hook`      | Scaffold a custom `use*` hook + Vitest test                                                          |
+| `new-route`     | Scaffold a route + `app/pages/{Group}/{PageName}/` + tests + i18n keys                               |
+| `new-service`   | Scaffold an API service under `app/services/gaia/{name}/` (parsers, types, requests) + MSW collections |
+| `update-deps`   | Autonomous Dependabot — discover outdated packages, audit `pnpm.overrides`, apply major-bump migrations, run [[Quality Gate]] |
+| `update-gaia`   | Pull a later GAIA release into the project — three-way diff, drift-safe merge ([[Update Workflow]]) |
+
+### Context-triggered
 
 | Skill              | Use                                                                                                  |
 | ------------------ | ---------------------------------------------------------------------------------------------------- |
@@ -139,7 +159,7 @@ After its own review, it spawns 3 parallel specialist subagents to audit changed
 | `tdd`              | Red-green-refactor TDD workflow with a `references/tests-react.md` companion ([[Component Testing]]) |
 | `typescript`       | TypeScript conventions                                                                               |
 
-These activate automatically based on context.
+The router and scaffolder skills are user-invoked (slash command or natural-language trigger). Context-triggered skills activate automatically when their `description:` matches the user's intent.
 
 ### Statusline
 

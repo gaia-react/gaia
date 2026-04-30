@@ -18,10 +18,10 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 | Directory / File        | Purpose                                                                     | Loaded                       |
 | ----------------------- | --------------------------------------------------------------------------- | ---------------------------- |
 | `.claude/agents/`       | Named subagents (`.md` per agent); extension dirs for review-type agents    | Manual (Task tool)           |
-| `.claude/commands/`     | Slash commands (`/new-route`, `/gaia-init`, etc.)                           | Manual (slash invocation)    |
+| `.claude/commands/`     | Maintainer-only slash commands (`/gaia-init`, `/gaia-release`)              | Manual (slash invocation)    |
 | `.claude/hooks/`        | Bash scripts wired in `settings.json`                                       | Auto on matched tool events  |
 | `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter               | Auto (global) or path-scoped |
-| `.claude/skills/`       | Context-triggered skills (`react-code`, `typescript`, etc.)                 | Auto on context/intent match |
+| `.claude/skills/`       | Skills — both context-triggered (`react-code`, `typescript`) and user-invoked (`/gaia` router, `new-component`, `update-deps`) | Auto on context/intent match |
 | `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo — not source of truth) | Auto per named agent         |
 | `wiki/`                 | Knowledge base — architecture, decisions, patterns (source of truth)        | Manual (on-demand fetch)     |
 
@@ -97,7 +97,7 @@ paths:
 ---
 ```
 
-Examples of path-scoped rules: `i18n.md` (pages + components + languages), `new-route.md` (routes + pages), `state-pattern.md` (state directory). Always-load rules: `quality-gate.md`, `coding-guidelines.md`.
+Examples of path-scoped rules: `i18n.md` (pages + components + languages), `routes.md` (routes + pages), `state-pattern.md` (state directory). Always-load rules: `quality-gate.md`, `coding-guidelines.md`.
 
 ## 6. Monorepo retrofit playbook
 
@@ -110,7 +110,7 @@ Steps (all mechanical):
    - `check-i18n-strings.sh` — regex on `app/(pages|components)/…`
    - `check-story-exists.sh` — regex on `app/components/…`
    - `block-eslint-config-edit.sh` — already path-agnostic post GAP §2A-1; no change needed.
-3. **Update scaffolding templates** — in `.claude/commands/new-*.md`, path outputs must become `{CONTAINER}/{APP}/app/…`.
+3. **Update scaffolding templates** — in `.claude/skills/new-*/SKILL.md` (and any `references/`), path outputs must become `{CONTAINER}/{APP}/app/…`.
 4. **Split CLAUDE.md** — add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §10).
 5. **Verify hook scripts** — confirm no script hardcodes a specific container folder name. If found, fix.
 6. **Leave wiki hooks alone** — `wiki-session-start.sh` / `wiki-session-stop.sh` are git-level and path-agnostic.
@@ -137,7 +137,7 @@ Each gate defines its own runner commands. The default `quality-gate.md` stays s
 When replacing the default API layer (Ky + Zod) with Supabase, Firebase, GraphQL, or another REST client:
 
 1. Delete or archive `.claude/rules/api-service.md` (GAIA's default Ky pattern).
-2. Delete `.claude/commands/new-service.md` if it scaffolds the outgoing pattern.
+2. Delete `.claude/skills/new-service/` if it scaffolds the outgoing pattern.
 3. Add `.claude/rules/{new-service}.md` with `paths:` scoped to affected directories.
 4. Add `.claude/agents/code-review-audit/{new-service}.md` with `subagents: [react-patterns, typescript]`.
 5. Update `{CONTAINER}/{APP}/CLAUDE.md` (or root) with dev-server commands for the new service.
