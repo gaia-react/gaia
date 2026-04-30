@@ -8,7 +8,7 @@ updated: 2026-05-01
 
 ## Last Updated
 
-2026-05-01. Released as GAIA v1.0.1. Fresh slate.
+2026-05-01. Released as GAIA v1.0.2. Fresh slate.
 
 ## Active Threads
 

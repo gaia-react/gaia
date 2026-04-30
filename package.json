@@ -1,6 +1,6 @@
 {
   "name": "gaia",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "GAIA: The React workflow for Claude",
   "author": "Steven Sacks <stevensacks@gmail.com>",
   "sideEffects": false,
@@ -107,7 +107,8 @@
     "vitest": "4.1.5"
   },
   "pnpm": {
-    "overrides": {}
+    "overrides": {},
+    "onlyBuiltDependencies": ["core-js-pure", "esbuild", "msw", "unrs-resolver"]
   },
   "msw": {
     "workerDirectory": "public"
