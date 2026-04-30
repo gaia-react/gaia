@@ -61,7 +61,7 @@ The `{{PROJECT_TITLE}}` placeholder is the exact token in the template; the `sed
 Then edit `app/components/Header/index.tsx`:
 
 - Remove the `GaiaLogo` import
-- Replace `<GaiaLogo className="h-7 sm:h-9" role="img" />` with a text wordmark: `<span className="text-body text-xl font-bold">{t('meta.siteName')}</span>`
+- Replace `<GaiaLogo className="h-6 sm:h-7" />` with a text wordmark: `<span className="text-body text-xl font-bold">{t('meta.siteName')}</span>`
 
 Then replace `app/assets/images/gaia-logo.svg` with the project's own logo SVG. The Storybook brand logo imports it directly — no `preview.ts` edits needed.
 
