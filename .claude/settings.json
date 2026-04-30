@@ -33,9 +33,9 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
+    "UserPromptExpansion": [
       {
-        "matcher": "",
+        "matcher": "init",
         "hooks": [
           {
             "type": "command",
