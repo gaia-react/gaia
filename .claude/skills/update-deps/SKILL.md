@@ -1,6 +1,6 @@
 ---
 name: update-deps
-description: Autonomous Dependabot - auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user accepts a SessionStart prompt to run dependency updates, asks "update dependencies", "bump deps", "run dependabot", or accepts the statusline `Run update-deps` nudge.
+description: Autonomous Dependabot - auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user accepts a SessionStart prompt to run dependency updates, asks "update dependencies", "bump deps", "run dependabot".
 ---
 
 Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts — just execute.
@@ -52,6 +52,8 @@ Parse the JSON. For each entry record:
 - `is_pinned` (no `^` or `~` prefix in the spec found in `package.json`)
 
 **ESLint cap:** if `eslint` or `@eslint/js` show a `latest` whose major is `>= 10`, find the highest available `9.x` (`pnpm view eslint versions --json` and pick the highest `9.x.y`) and treat that as the target. If already on the latest `9.x`, drop the entry.
+
+Apply this silently. Capped packages MUST NOT appear anywhere in the final report — not in Updated, not in Skipped, not in Breaking changes. Adopters know about the cap; surfacing it on every run is noise.
 
 If nothing is outdated after this filtering, print `All packages are up to date.` and exit.
 
@@ -200,12 +202,12 @@ Print this report. Do not commit.
 | --- | --- |
 ```
 
-After printing the report, bust the statusline cache so the "Run /update-deps (N outdated)" hint doesn't linger from the pre-update snapshot:
+After printing the report, bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session:
 
 ```bash
-rm -f .gaia/cache/statusline-update-check.json
+rm -f .gaia/cache/update-check.json
 ```
 
-The next statusline render fires the background refresher; the render after that reflects the post-update state.
+The next SessionStart hook fires the background refresher; the session after that sees zero outdated packages.
 
 Stop and wait for user review.

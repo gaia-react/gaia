@@ -1,7 +1,7 @@
 #!/bin/bash
-# GAIA statusline background update checker.
+# GAIA SessionStart update checker.
 #
-# Writes .gaia/cache/statusline-update-check.json with:
+# Writes .gaia/cache/update-check.json with:
 #   - outdatedCount  (from `pnpm outdated --json | jq length`)
 #   - gaiaCurrent    (from .gaia/VERSION)
 #   - gaiaLatest     (from `gh release list` or curl GitHub API)
@@ -9,7 +9,8 @@
 #   - checkedAt      (Unix epoch seconds)
 #
 # TTL is 6 hours (21600s). Re-runs within the TTL exit immediately so the
-# statusline can fire this on every render without paying the cost.
+# SessionStart hook can fire this in the background without paying the cost
+# on every session.
 #
 # Partial failures are tolerated — exit 0 even if some fields could not be
 # refreshed. Do NOT add `set -e`.
@@ -21,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
 CACHE_DIR="$GAIA_DIR/cache"
-CACHE_FILE="$CACHE_DIR/statusline-update-check.json"
+CACHE_FILE="$CACHE_DIR/update-check.json"
 VERSION_FILE="$GAIA_DIR/VERSION"
 
 now=$(date +%s)
@@ -116,7 +117,7 @@ if [ -n "$gaia_current" ] && [ -n "$gaia_latest" ] && [ "$gaia_current" != "$gai
 fi
 
 # ---------- Write cache atomically ----------
-tmp_file="$(mktemp "$CACHE_DIR/.statusline-update-check.XXXXXX" 2>/dev/null)"
+tmp_file="$(mktemp "$CACHE_DIR/.update-check.XXXXXX" 2>/dev/null)"
 if [ -z "$tmp_file" ]; then
   tmp_file="$CACHE_FILE.tmp.$$"
 fi

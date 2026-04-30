@@ -87,9 +87,9 @@ Each entry uses an `if:` pattern so the hook only runs for the matching command 
 
 ### SessionStart (update prompts)
 
-| Hook                            | Event                          | Behavior                                                                                                                                                                                                                                                                                                |
-| ------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gaia-session-update-prompt.sh` | SessionStart (`startup\|resume`) | Reads `.gaia/cache/statusline-update-check.json` (the same TTL-cached file the statusline consumes) and emits a `<system-reminder>` asking the user whether to run the `update-deps` and/or `update-gaia` skills. Silent when the cache is missing or `jq` isn't installed. Never blocks the session.   |
+| Hook                            | Event                            | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gaia-session-update-prompt.sh` | SessionStart (`startup\|resume`) | Reads `.gaia/cache/update-check.json` and emits a `<system-reminder>` asking the user whether to run the `update-deps` or `update-gaia` skill. Sequences deps before gaia (one prompt per session; falls through to gaia when deps is snoozed). Snoozes 6h after each emit. Background-fires `.gaia/scripts/check-updates.sh` (TTL 6h) when the cache is stale. Silent when the cache is missing or `jq` isn't installed. Never blocks. |
 
 ### SessionStart / Stop (wiki coherence)
 
@@ -160,16 +160,6 @@ After its own review, it spawns 3 parallel specialist subagents to audit changed
 | `typescript`       | TypeScript conventions                                                                               |
 
 The router and scaffolder skills are user-invoked (slash command or natural-language trigger). Context-triggered skills activate automatically when their `description:` matches the user's intent.
-
-### Statusline
-
-GAIA ships a project-scoped statusline wrapper at `.gaia/statusline/gaia-statusline.sh`, wired by `/gaia-init`. The wrapper appends right-aligned hints (`Run /update-deps (N outdated)`, `Run /update-gaia (GAIA <ver> available)`) and delegates the left side in this priority order:
-
-1. Sentinel file `.gaia/statusline/.use-vendored-base` (gitignored) → run the vendored renderer `.gaia/statusline/preferred-base.sh`. Project-only mode, no global install.
-2. `~/.claude/settings.json` `statusLine.command` → run that. Adopter's custom statusline appears unchanged inside the GAIA project.
-3. Fallback → run `.gaia/statusline/preferred-base.sh` directly.
-
-`/gaia-init` shows a colored preview and asks adopters on Claude's default statusline whether to install the GAIA layout globally, project-only (writes the sentinel), or skip. Update checks are TTL-cached (6h) in `.gaia/cache/statusline-update-check.json`. Opt-out entirely by removing the `statusLine` key from `.claude/settings.json`.
 
 ## settings.json
 

@@ -34,8 +34,8 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 | `new-hook`      | "create a useFoo hook", "add a hook under app/hooks" — drops a `useThing.ts` + Vitest test  |
 | `new-route`     | "add a new page", "scaffold /dashboard" — wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys |
 | `new-service`   | "add a service", "scaffold the projects API" — drops `app/services/gaia/{name}/` (parsers, types, requests) and matching MSW collections |
-| `update-deps`   | Autonomous Dependabot — fired by `/gaia-init`, accepted from the SessionStart update prompt, statusline nudge, or "update dependencies" |
-| `update-gaia`   | Pull a later GAIA release into the project — accepted from the SessionStart update prompt, statusline nudge, or "pull the latest GAIA" |
+| `update-deps`   | Autonomous Dependabot — fired by `/gaia-init`, accepted from the SessionStart update prompt, or "update dependencies" |
+| `update-gaia`   | Pull a later GAIA release into the project — accepted from the SessionStart update prompt, or "pull the latest GAIA" |
 
 ### Context-triggered
 
@@ -51,7 +51,7 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 
 ### SessionStart update prompt
 
-`update-deps` and `update-gaia` are also surfaced by `.claude/hooks/gaia-session-update-prompt.sh` (registered on `SessionStart: startup|resume`). The hook reads `.gaia/cache/statusline-update-check.json` (the same cache the statusline uses, TTL 6h) and emits a `<system-reminder>` asking the user whether to run the relevant skill when outdated dependencies or a newer GAIA release are available. Silent on missing cache, never blocks. See [[Claude Hooks]].
+`update-deps` and `update-gaia` are surfaced by `.claude/hooks/gaia-session-update-prompt.sh` (registered on `SessionStart: startup|resume`). The hook reads `.gaia/cache/update-check.json` and emits a `<system-reminder>` asking the user whether to run the relevant skill when outdated dependencies or a newer GAIA release are available. Only one prompt fires per session — `update-deps` takes priority; if it's snoozed, the hook falls through to `update-gaia`. Each kind snoozes for 6h after emit (state in `.gaia/cache/update-prompt-state.json`). When the cache is stale the hook background-fires `.gaia/scripts/check-updates.sh` (TTL 6h) so the next session sees fresh data. Silent on missing cache, never blocks. See [[Claude Hooks]].
 
 ## Rules vs. Skills — decision criteria
 
