@@ -3,7 +3,7 @@ name: gaia-release
 description: Cut a new GAIA release — bump version, graduate CHANGELOG, regenerate manifest, open release PR, then tag on merge. Maintainer-only.
 ---
 
-Cut a new GAIA release. Verifies the tree is clean, bumps the version, graduates `## [Unreleased]` in `CHANGELOG.md`, scrubs the adopter-facing wiki files, regenerates `.gaia/manifest.json`, commits to a `release/v<NEW_VERSION>` branch, opens a PR, and — after the maintainer merges — tags the merge commit on `main` and pushes the tag. This command is **maintainer-only** — it is stripped from distributed tarballs by `.gaia/release-exclude` so adopters never see it.
+Cut a new GAIA release. Verifies the tree is clean, auto-determines the version bump, graduates `CHANGELOG.md` with entries auto-drafted from git history, scrubs the adopter-facing wiki files, regenerates `.gaia/manifest.json`, commits to a `release/v<NEW_VERSION>` branch, opens a PR, and schedules a background agent to tag the merge commit automatically after the maintainer merges. This command is **maintainer-only** — it is stripped from distributed tarballs by `.gaia/release-exclude` so adopters never see it.
 
 Unlike `/gaia-init`, this command does **not** self-delete. It runs every release.
 
@@ -25,14 +25,28 @@ git -C . rev-list --count origin/main..main  # must be 0
 git -C . rev-list --count main..origin/main  # if >0, pull --ff-only
 ```
 
-## Step 2: Ask the user which bump
+## Step 2: Determine the version bump
 
-Use `AskUserQuestion`:
+Read `.gaia/VERSION` for the current version. Then run:
 
-- **Question**: "Which version bump?"
-- **Options**: `patch` (bugfixes) / `minor` (new features, backwards-compatible) / `major` (breaking). Offer "Other" implicitly for an explicit version override.
+```bash
+git -C . log v<CURRENT_VERSION>...HEAD --no-merges --oneline
+```
 
-Compute the new version from `.gaia/VERSION` + the bump. Persist it as `NEW_VERSION` for the rest of the flow.
+Analyze each commit message using conventional-commit prefixes to classify the bump:
+
+| Commit type | Bump |
+|---|---|
+| `feat:` / `feat(...):` | minor |
+| `fix:` / `docs:` / `chore:` / `refactor:` / `perf:` / `ci:` / `test:` / `style:` | patch |
+| `BREAKING CHANGE` in body, or `!` suffix (e.g. `feat!:`) | **major → STOP** |
+
+Rules:
+- The highest-severity commit wins (minor beats patch; major beats both).
+- If **major** is indicated, stop and report the breaking commits. Ask the maintainer to confirm before proceeding. Only continue on explicit confirmation.
+- If **minor** or **patch**, proceed automatically. Report: `Detected <bump> bump → v<NEW_VERSION>`.
+
+Compute `NEW_VERSION` from the current version + bump. Persist it for the rest of the flow.
 
 ## Step 3: Run the quality gate
 
@@ -53,15 +67,46 @@ If the branch already exists (e.g. a previous attempt aborted mid-flow), stop an
 - Update `package.json` `"version"` to `NEW_VERSION`.
 - Update `.gaia/VERSION` to `NEW_VERSION` (single line).
 
-## Step 6: Graduate CHANGELOG
+## Step 6: Draft and graduate CHANGELOG
 
-In `CHANGELOG.md`:
+Run:
 
-1. Find the `## [Unreleased]` heading. If absent (e.g. immediately after a release that didn't seed it), draft the new release entry directly without aborting.
-2. If the section below it is empty (no Added/Changed/Fixed bullets), stop and ask the maintainer to write release notes first.
-3. Replace `## [Unreleased]` with `## [NEW_VERSION] — YYYY-MM-DD` (today's ISO date).
-4. Insert a fresh `## [Unreleased]` section (empty) above the newly-dated section.
-5. Update the comparison link footer at the bottom of the file — add a line like `[NEW_VERSION]: https://github.com/gaia-react/gaia/releases/tag/vNEW_VERSION` and update the `[Unreleased]` link to compare from the new tag.
+```bash
+git -C . log v<CURRENT_VERSION>...HEAD --no-merges --oneline
+```
+
+Map each commit to a Keep-a-Changelog section using its conventional-commit prefix:
+
+| Prefix | Section |
+|---|---|
+| `feat` | Added |
+| `fix` | Fixed |
+| `refactor` / `perf` | Changed |
+| `docs` | Changed |
+| `chore` / `ci` / `test` / `style` | (omit — not user-visible) |
+
+Strip the prefix/scope from the message body; write each entry as a plain bullet. Group bullets under their section headings. Omit sections that have no entries.
+
+Present the draft to the maintainer:
+
+```
+CHANGELOG draft for v<NEW_VERSION>:
+
+### Added
+- ...
+
+### Fixed
+- ...
+
+Proceed, or edit before continuing?
+```
+
+On approval (or if the maintainer says "looks good"), write the entry to `CHANGELOG.md`:
+
+1. Find the `## [Unreleased]` heading. Replace it with `## [NEW_VERSION] — YYYY-MM-DD` (today's ISO date).
+2. Insert a fresh empty `## [Unreleased]` section above the newly-dated section.
+3. Paste the approved draft below the dated heading.
+4. Update the comparison link footer — add `[NEW_VERSION]: https://github.com/gaia-react/gaia/releases/tag/vNEW_VERSION` and update the `[Unreleased]` link to compare from the new tag.
 
 ## Step 7: Scrub `wiki/hot.md`
 
@@ -172,66 +217,42 @@ If a pre-commit hook fails, stop and report — fix the issue and create a **new
 git -C . push -u origin "release/v<NEW_VERSION>"
 ```
 
-Then open the PR with `gh pr create` against `main`:
+Then open the PR with `gh pr create` against `main` and immediately enable auto-merge:
 
 ```bash
 gh pr create --base main --head "release/v<NEW_VERSION>" \
   --title "chore: release v<NEW_VERSION>" \
   --body "<release summary — link the CHANGELOG entry, list highlights, include the quality-gate checklist>"
+
+gh pr merge --auto --merge "release/v<NEW_VERSION>"
 ```
 
-Print the PR URL.
+Print the PR URL. The PR will merge automatically once required checks pass (release branches skip tests and Chromatic, so this happens within seconds).
 
-## Step 12: STOP and wait for the maintainer to merge
+## Step 12: Schedule the post-merge tagging agent
 
-The release commit cannot land on `main` without a PR review/merge. Stop here, surface the PR URL, and wait for the maintainer to confirm the merge before continuing.
+Immediately after the PR is opened, invoke the `schedule` skill to create a one-time background agent that monitors the PR and tags automatically once merged.
 
-When the maintainer says it's merged, proceed to Step 13.
+The scheduled agent's task (pass as its prompt):
 
-## Step 13: Tag the merge commit and push
+> Poll `gh pr view <PR_NUMBER> --json state` in the `gaia-react/gaia` repo every 3 minutes.  
+> When `state` is `MERGED`:  
+> 1. `git -C /Users/stevensacks/Development/gaia-react/gaia checkout main`  
+> 2. `git -C /Users/stevensacks/Development/gaia-react/gaia pull --ff-only origin main`  
+> 3. Verify HEAD is the merge commit (log it).  
+> 4. `git -C /Users/stevensacks/Development/gaia-react/gaia tag -a "v<NEW_VERSION>" HEAD -m "Release v<NEW_VERSION>"`  
+> 5. `git -C /Users/stevensacks/Development/gaia-react/gaia push origin "v<NEW_VERSION>"`  
+> 6. Report: tag pushed → `https://github.com/gaia-react/gaia/releases/tag/v<NEW_VERSION>` (workflow takes ~1 min).  
+> Stop polling after tagging, or after 2 hours with no merge (report timeout).
 
-After the maintainer merges the PR:
-
-```bash
-git -C . checkout main
-git -C . pull --ff-only origin main
-git -C . log --oneline -1   # confirm the merge commit is at HEAD
-```
-
-Capture the merge commit SHA. Then create the annotated tag on that commit and confirm with the maintainer before pushing.
-
-```bash
-MERGE_SHA=$(git -C . rev-parse HEAD)
-git -C . tag -a "v<NEW_VERSION>" "$MERGE_SHA" -m "Release v<NEW_VERSION>"
-```
-
-Use `-s` instead of `-a` if the maintainer has gpg/ssh signing configured.
-
-**Ask the maintainer explicitly** before pushing the tag. Show exactly what will be pushed:
+After scheduling, print to the maintainer:
 
 ```
-About to push:
-  tag: v<NEW_VERSION> → <short SHA> (chore(release): v<NEW_VERSION> (#<PR>))
-  to:  origin
-
-Proceed? (y/n)
+PR: <PR_URL>
+Background agent is watching for the merge. Merge the PR when ready — tagging and the GitHub Release will happen automatically.
 ```
 
-On `y`:
-
-```bash
-git -C . push origin "v<NEW_VERSION>"
-```
-
-The tag push triggers `.github/workflows/release.yml`, which builds the scrubbed tarball and creates the GitHub Release.
-
-## Step 14: Report
-
-Print:
-
-- Tag name and short SHA of the merge commit.
-- Expected GitHub Release URL: `https://github.com/gaia-react/gaia/releases/tag/v<NEW_VERSION>` — workflow takes ~1 minute.
-- Reminder: if publishing `create-gaia` as well, bump its pinned default version to `v<NEW_VERSION>` and publish.
+The maintainer's only remaining action is to merge the PR on GitHub. No need to return to this session.
 
 ## Recovery: I tagged on the wrong commit
 
