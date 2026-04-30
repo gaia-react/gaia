@@ -20,8 +20,9 @@ tags: [source, initial]
 - `docs/architecture/{folder-structure,routes,components,pages,services,sessions,state,middleware,hooks,languages,utils,styles,types,assets}.md`
 - `docs/tech-stack/{foundation,code-quality,testing/index,testing/unit-and-integration,testing/visual,testing/e2e}.md`
 - `.claude/CLAUDE.md` (project) + `.claude/rules/*.md` (full)
-- `.claude/commands/*.md` (full set: audit-code, gaia-init, new-component, new-hook, new-route, new-service, update-deps)
-- `.claude/hooks/*.sh` (all 4)
+- `.claude/commands/*.md` (`gaia-init`, `gaia-release`)
+- `.claude/skills/*/SKILL.md` (router: `gaia`; scaffolders: `new-component`, `new-hook`, `new-route`, `new-service`, `update-deps`, `update-gaia`; context-triggered: `eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`) + `.claude/skills/gaia/references/*.md`
+- `.claude/hooks/*.sh` (all)
 - `.claude/agents/code-review-audit.md`
 - `.claude/settings.json`
 - Folder listings for `app/`, `test/`, `.storybook/`, `.playwright/e2e/`
@@ -38,7 +39,7 @@ tags: [source, initial]
   - TypeScript language files instead of JSON. ([[TypeScript Language Files]])
   - Husky runs tests on commit, not just lint. ([[Pre-commit Hooks]])
   - Form components are the headline feature. ([[Form Components]])
-- **Claude integration is first-class**: commands, rules, hooks, a review agent + specialists, and skills — see [[Claude Integration]] for the current inventory.
+- **Claude integration is first-class**: skills (a `/gaia` router + scaffolders + context-triggered guidance), rules, hooks, a review agent + specialists, and two maintainer slash commands — see [[Claude Integration]] for the current inventory.
 
 ## Pages created
 

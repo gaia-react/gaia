@@ -1,8 +1,4 @@
----
-name: pickup
-description: Restore context from handoff and continue work
-allowed-tools: [Read, Glob, Bash]
----
+# /gaia pickup
 
 Rebuild "where did we leave off" at session start and suggest the next action.
 

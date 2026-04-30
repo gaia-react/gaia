@@ -1,9 +1,4 @@
----
-name: handoff
-description: Generate comprehensive session handoff document
-argument-hint: '[context notes]'
-allowed-tools: [Read, Write, Bash, Glob]
----
+# /gaia handoff
 
 Write a self-contained handoff doc so the next session can pick up cold without re-reading this conversation.
 
@@ -11,7 +6,7 @@ Write a self-contained handoff doc so the next session can pick up cold without 
 
 ## Inputs
 
-- `$ARGUMENTS` — optional inline notes from the user (decisions, gaps, open questions).
+- `$ARGUMENTS` (the args after `handoff`) — optional inline notes from the user (decisions, gaps, open questions).
 - Conversation transcript — primary source for accomplishments, decisions, gaps.
 - Git state — branch, last commit, dirty files.
 

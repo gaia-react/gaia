@@ -48,6 +48,5 @@ coverage
 
 # GAIA release/update working directories
 .gaia/cache/
-.gaia/statusline/.use-vendored-base
 .gaia-backup/
 .gaia-merge/

@@ -29,7 +29,7 @@ Compute the new version from `.gaia/VERSION` + the bump. Persist it as `NEW_VERS
 
 ## Step 3: Run the quality gate
 
-Invoke `/audit-code`. It must pass before continuing. If anything fails, stop and report — the maintainer fixes, recommits, then re-runs `/gaia-release`.
+Run the quality gate per `wiki/decisions/Quality Gate.md`. It must pass before continuing. If anything fails, stop and report — the maintainer fixes, recommits, then re-runs `/gaia-release`.
 
 ## Step 4: Bump version files
 

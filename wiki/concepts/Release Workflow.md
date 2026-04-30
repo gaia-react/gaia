@@ -37,7 +37,7 @@ Run `/gaia-release` on a clean `main`. The command is a 12-step orchestrator:
 
 1. Verify clean working tree + on `main`.
 2. Ask: `patch` / `minor` / `major` (or explicit version).
-3. Run `/audit-code` ([[Quality Gate]]). Stop on failure.
+3. Run the [[Quality Gate]]. Stop on failure.
 4. Bump `package.json` version + `.gaia/VERSION`.
 5. Graduate `## [Unreleased]` to `## [vX.Y.Z] — YYYY-MM-DD`; seed a new empty `## [Unreleased]`.
 6. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).

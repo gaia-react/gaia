@@ -10,7 +10,7 @@ tags: [decision, ci, quality]
 
 # Decision: Mandatory Quality Gate
 
-Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; the `/audit-code` command runs the full pipeline. Claude must run the gate before any `git commit` that touches source — **unless the gate has nothing to check**.
+Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Claude runs the full pipeline below before any `git commit` that touches source — **unless the gate has nothing to check**.
 
 ## Steps
 
@@ -63,9 +63,7 @@ Localization: all user-facing strings must be localized — no hardcoded strings
 
 ## Source of truth
 
-This page is the source of truth for quality gate steps.
-
-Invocation stub: `.claude/commands/audit-code.md` (read this page and execute).
+This page is the source of truth for quality gate steps. The always-loaded `.claude/rules/quality-gate.md` rule points commits at this page.
 
 > [!key-insight] Zero warnings is non-negotiable
 > Most projects accept warnings as "noise we'll clean up later." GAIA treats warnings as **failures**. Console warnings in tests count too. The cost of fixing one missing i18n key now is trivial; the cost of finding it in production after 200 keys silently broke is not.

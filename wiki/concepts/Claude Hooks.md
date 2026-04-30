@@ -54,6 +54,7 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 ### Other events
 
 - **`intercept-init.sh`** (UserPromptSubmit) — blocks the built-in `/init` and auto-invokes `/gaia-init`.
+- **`gaia-session-update-prompt.sh`** (SessionStart, `startup|resume`) — reads `.gaia/cache/update-check.json` and emits a `<system-reminder>` asking the user whether to run the `update-deps` skill (when outdated packages are detected) or the `update-gaia` skill (when a newer GAIA release is available). Sequences `deps` before `gaia` — only one prompt per session; if the deps prompt is snoozed, the hook falls through to gaia. Snoozes each kind for 6h after emit via `.gaia/cache/update-prompt-state.json`. Background-fires `.gaia/scripts/check-updates.sh` (TTL 6h) when the cache is stale. Silent on missing cache or missing `jq`. Never blocks. See [[Claude Skills]] § SessionStart update prompt.
 
 ## Adding hooks
 

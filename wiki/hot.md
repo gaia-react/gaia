@@ -8,27 +8,25 @@ CACHE DISCIPLINE — enforced on every rewrite (Stop hook):
 -->
 
 ---
-
 type: meta
 title: Hot Cache
 status: active
 created: 2026-04-20
 updated: 2026-04-30
 tags: [meta]
-
 ---
 
 # Recent Context
 
 ## Last Updated
 
-2026-04-30. Working branch `chore/gaia-release-prep` open as PR #48; awaiting review and merge.
+2026-04-30. Working branch `feat/gaia-skills` open as PR #49; wiki sync just landed on top of it.
 
 ## Active Threads
 
-- PR #48 (release-prep audit) awaiting merge.
-- Once merged: orchestrator deletes the gitignored plan folder at `.claude/plans/gaia-release-prep/` (Phase 5 of the audit). No commit needed.
+- PR #49 (`.claude/` surface area: skills router + scaffolders + SessionStart update prompt) awaiting merge.
+- Once merged: tarball still excludes `.claude/commands/gaia-release.md` — adopters get only `/gaia-init` plus the `/gaia` router and skills.
 
 ## Recent Wiki Touchpoints
 
-[[Claude Hooks]], [[Claude Skills]], [[Claude Integration Conventions]], [[Code Review Audit Agent]], [[Quality Gate]], [[modules/Claude Integration|Claude Integration (modules)]].
+[[Claude Skills]], [[Claude Hooks]], [[Claude Integration Conventions]], [[modules/Claude Integration|Claude Integration (modules)]], [[GAIA Plan]], [[GAIA Handoff]], [[GAIA Pickup]], [[GAIA Audit]], [[Task Orchestration]], [[Quality Gate]].

@@ -68,11 +68,11 @@ See [[Routing]].
 
 ## Quality Gate
 
-Every change passes through [[Quality Gate]]: typecheck → lint → unit test → E2E → dev smoke → build. Pre-commit hooks enforce a subset on every commit; the `/audit-code` command runs the full pipeline. **Zero tolerance for warnings.**
+Every change passes through [[Quality Gate]]: typecheck → lint → unit test → E2E → dev smoke → build. Pre-commit hooks enforce a subset on every commit; Claude runs the full pipeline before any source-touching commit. **Zero tolerance for warnings.**
 
 ## Knowledge Hygiene
 
-`/audit-knowledge` runs a two-stage audit (Opus researches → Sonnet applies) over memory, wiki, auto-loaded `CLAUDE.md` files, and `.claude/rules/`. Flags duplication, stale entries, broken wikilinks, and auto-load bloat — with wiki as the source of truth. See [[Audit-Knowledge Command]].
+`/gaia audit` runs a two-stage Sonnet audit (research → mechanical apply, gated by sha256 + verbatim drift checks) over memory, wiki, auto-loaded `CLAUDE.md` files, and `.claude/rules/`. Flags duplication, stale entries, broken wikilinks, and auto-load bloat — with wiki as the source of truth. See [[GAIA Audit]].
 
 ## What's Different vs. Other Templates
 
@@ -87,7 +87,7 @@ Every change passes through [[Quality Gate]]: typecheck → lint → unit test �
 | Form validation    |       Conform + Zod       |     —      |      —      |    —    |
 | Dark mode          |        end-to-end         |     —      |      —      |    —    |
 | API mocking        |      MSW everywhere       |     —      |      —      |    —    |
-| Claude Code        | commands + rules + agents |     —      |      —      |    —    |
+| Claude Code        | skills + rules + hooks + agents |     —      |      —      |    —    |
 
 ## Where to Go Next
 

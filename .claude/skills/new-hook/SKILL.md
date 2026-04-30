@@ -1,6 +1,6 @@
 ---
 name: new-hook
-description: Scaffold a new custom React hook with a test file.
+description: Scaffold a new custom React hook with a Vitest test file. Use this skill whenever the user asks to "create a hook", "make a useFoo hook", "scaffold a custom React hook", "add a hook under app/hooks", or describes a piece of reusable React state/effect logic that warrants extraction into a named `use*` hook.
 ---
 
 Scaffold a new custom React hook with a test file.

@@ -1,6 +1,6 @@
 ---
 name: update-gaia
-description: Pull the latest GAIA release into this project without clobbering customizations. Three-way merge per file using .gaia/manifest.json classes.
+description: Pull the latest GAIA release into this project without clobbering customizations. Three-way merge per file using .gaia/manifest.json classes. Trigger when the user accepts a SessionStart prompt to apply a GAIA template update, asks "update GAIA", "pull the latest GAIA", "apply the new GAIA release".
 ---
 
 Pull the latest GAIA release into this project without clobbering customizations. Does a three-way comparison per file (adopter / baseline / latest) and respects explicit classes in `.gaia/manifest.json`:
@@ -179,20 +179,20 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
 ```
 
-Then bust the statusline cache so the "Run /update-gaia (GAIA $LATEST available)" hint doesn't linger from the pre-update snapshot:
+Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session:
 
 ```bash
-rm -f .gaia/cache/statusline-update-check.json
+rm -f .gaia/cache/update-check.json
 ```
 
-The next statusline render fires the background refresher; the render after that reflects the post-update state.
+The next SessionStart hook fires the background refresher; the session after that sees no GAIA update available.
 
 ### Step 10: Next steps for the user
 
 Tell the user:
 
 1. Review any conflict patches in `.gaia-merge/` and reconcile manually. Delete the patch file once resolved.
-2. Run `/audit-code` to verify the updated code still passes the quality gate.
+2. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
 3. Inspect the diff (`git diff`) before committing.
 4. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
 

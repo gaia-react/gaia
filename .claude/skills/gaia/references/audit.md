@@ -1,9 +1,4 @@
----
-name: audit-knowledge
-description: Audit memory + wiki + auto-loaded files for duplication and load cost; wiki wins as source of truth
-argument-hint: '[--apply]'
-allowed-tools: [Agent]
----
+# /gaia audit
 
 ## Execution model — READ FIRST
 
@@ -28,12 +23,10 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 Spawn one `Agent`:
 
 - `subagent_type`: `"general-purpose"`
-- `model`: `"opus"`
+- `model`: `"sonnet"`
 - `description`: `"Knowledge audit (research)"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `ultrathink.`
-  >
   > `You are Stage 1 of a two-stage knowledge audit. Your job is to PRODUCE A REPORT ONLY — do not mutate any files outside .claude/audit/. A separate Sonnet agent will execute the actions later.`
   >
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
@@ -46,7 +39,7 @@ Spawn one `Agent`:
   >
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
-  > `Read $PROJECT_ROOT/.claude/commands/audit-knowledge.md and execute the "Research procedure" section (Steps 1–6). Write the report to $PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–6). Write the report to $PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
 
 **If `$ARGUMENTS` contains `--apply` → apply mode**
 
@@ -57,7 +50,7 @@ Spawn one `Agent`:
 - `description`: `"Knowledge audit (apply)"`
 - `prompt`: the string below (literal):
 
-  > `You are Stage 2 of a two-stage knowledge audit. Stage 1 (Opus) produced a report. Your job is to execute the unchecked actions MECHANICALLY — do not reason about whether an action is correct, do not expand scope, do not merge or split actions.`
+  > `You are Stage 2 of a two-stage knowledge audit. Stage 1 produced a report. Your job is to execute the unchecked actions MECHANICALLY — do not reason about whether an action is correct, do not expand scope, do not merge or split actions.`
   >
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
   >
@@ -69,7 +62,7 @@ Spawn one `Agent`:
   >
   > `Compare these to the "project_root" / "memory_dir" fields recorded in the report's frontmatter. If they differ, STOP and print a clear error — do not improvise.`
   >
-  > `Read $PROJECT_ROOT/.claude/commands/audit-knowledge.md and execute the "Apply procedure" section (Step 7). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Apply procedure" section (Step 7). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
 
 ### After the subagent returns
 
@@ -194,7 +187,7 @@ Write `$PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md`. Create `$PRO
 ````markdown
 ---
 generated: {YYYY-MM-DD HH:MM}
-generator: audit-knowledge stage-1 opus-ultrathink
+generator: audit-knowledge stage-1 sonnet
 project_root: {resolved PROJECT_ROOT}
 memory_dir: {resolved MEMORY_DIR}
 agent_memory_dir: {resolved AGENT_MEMORY_DIR}
@@ -321,7 +314,7 @@ Stage 2 must apply actions in this order: `fix-link` → `shrink` → `delete-en
 
 ## To apply
 
-Run `/audit-knowledge --apply` within 24h.
+Run `/gaia audit --apply` within 24h.
 
 ```
 
@@ -333,7 +326,7 @@ You are executing, not reasoning. Follow this loop exactly.
 
 ### Pre-flight
 
-1. Find the newest `$PROJECT_ROOT/.claude/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /audit-knowledge first`.
+1. Find the newest `$PROJECT_ROOT/.claude/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /gaia audit first`.
 2. Parse the report's frontmatter. Verify `project_root`, `memory_dir`, and `agent_memory_dir` match the values you resolved at startup. If any differ, stop and print a clear error — the report was generated on a different machine or in a different clone.
 3. Run `git rev-parse HEAD` — if it differs from `git_head` in the report, print a warning but continue. Run `git status --short` — any file that is currently dirty AND appears as a target in the report is marked `SKIP (dirty)` before any action runs.
 4. Read the `## Ordering` section. Process actions in that order.

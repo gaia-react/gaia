@@ -1,6 +1,6 @@
 ---
 name: new-service
-description: Scaffold a new API service with request functions, Zod schemas, URL constants, and optional MSW mock handlers.
+description: Scaffold a new API service with request functions, Zod schemas, URL constants, and optional MSW mock handlers. Use this skill whenever the user asks to "add a service", "create the projects API", "scaffold a new GAIA service", "wire up CRUD for users", or anything implying a new folder under `app/services/gaia/{name}/` with parsers/types/requests + matching `test/mocks/{name}/` collections.
 ---
 
 Scaffold a new API service with request functions, Zod schemas, URL constants, and optional MSW mock handlers.
