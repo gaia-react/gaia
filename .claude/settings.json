@@ -46,7 +46,19 @@
         "hooks": [
           {
             "type": "command",
+            "command": ".claude/hooks/block-env-write.sh"
+          },
+          {
+            "type": "command",
             "command": ".claude/hooks/block-eslint-config-edit.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-lockfile-edit.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-secrets-write.sh"
           },
           {
             "type": "command",
@@ -83,13 +95,26 @@
           },
           {
             "type": "command",
-            "command": ".claude/hooks/pr-merge-audit-check.sh",
-            "if": "Bash(gh pr merge:*)",
-            "statusMessage": "Checking PR-merge audit gate…"
+            "command": ".claude/hooks/block-rm-rf.sh",
+            "if": "Bash(rm *)",
+            "statusMessage": "Checking rm -rf safety…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-maintenance-check.sh",
+            "command": ".claude/hooks/pr-merge-audit-check.sh",
+            "if": "Bash(gh pr merge:*)",
+            "statusMessage": "Checking PR-merge audit gate…"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/wiki-update-evaluator.sh",
             "if": "Bash(git commit:*)"
           }
         ]
