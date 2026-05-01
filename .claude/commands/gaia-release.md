@@ -3,12 +3,12 @@ name: gaia-release
 description: Cut a new GAIA release — bump version, graduate CHANGELOG, regenerate manifest, open release PR, then tag on merge. Maintainer-only.
 ---
 
-Cut a new GAIA release. Verifies the tree is clean, auto-determines the version bump, graduates `CHANGELOG.md` with entries auto-drafted from git history, scrubs the adopter-facing wiki files, regenerates `.gaia/manifest.json`, commits to a `release/v<NEW_VERSION>` branch, opens a PR, and schedules a background agent to tag the merge commit automatically after the maintainer merges. This command is **maintainer-only** — it is stripped from distributed tarballs by `.gaia/release-exclude` so adopters never see it.
+Cut a new GAIA release. Verifies the tree is clean, auto-determines the version bump, graduates `CHANGELOG.md` with entries auto-drafted from git history, scrubs the adopter-facing wiki files, regenerates `.gaia/manifest.json`, commits to a `release/v<NEW_VERSION>` branch, opens and merges the PR, then tags the merge commit. This command is **maintainer-only** — it is stripped from distributed tarballs by `.gaia/release-exclude` so adopters never see it.
 
 Unlike `/gaia-init`, this command does **not** self-delete. It runs every release.
 
 > [!important] `main` is protected
-> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit *after* it lands on `main`. Do not tag locally before the PR merges — the tag must point at the merge commit, not the pre-merge release commit.
+> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit *after* it lands on `main`. There are no required checks on release branches, so the PR is merged immediately by the command itself — no manual merge step needed.
 
 ## Step 1: Verify clean tree, on `main`
 
@@ -211,48 +211,40 @@ If a pre-commit hook fails, stop and report — fix the issue and create a **new
 
 **Do not tag yet.** The tag must point at the merge commit on `main`, which doesn't exist until after the PR merges. Tagging the local pre-merge commit and then pushing leads to a tag that doesn't match `main`'s history.
 
-## Step 11: Push the release branch and open the PR
+## Step 11: Push the release branch, open the PR, and merge it
 
 ```bash
 git -C . push -u origin "release/v<NEW_VERSION>"
 ```
 
-Then open the PR with `gh pr create` against `main` and immediately enable auto-merge:
+Open the PR:
 
 ```bash
 gh pr create --base main --head "release/v<NEW_VERSION>" \
   --title "chore: release v<NEW_VERSION>" \
   --body "<release summary — link the CHANGELOG entry, list highlights, include the quality-gate checklist>"
-
-gh pr merge --auto --merge "release/v<NEW_VERSION>"
 ```
 
-Print the PR URL. The PR will merge automatically once required checks pass (release branches skip tests and Chromatic, so this happens within seconds).
+Print the PR URL. Then immediately merge it — there are no required checks on release branches, so it merges instantly:
 
-## Step 12: Schedule the post-merge tagging agent
-
-Immediately after the PR is opened, invoke the `schedule` skill to create a one-time background agent that monitors the PR and tags automatically once merged.
-
-The scheduled agent's task (pass as its prompt):
-
-> Poll `gh pr view <PR_NUMBER> --json state` in the `gaia-react/gaia` repo every 3 minutes.  
-> When `state` is `MERGED`:  
-> 1. `git -C /Users/stevensacks/Development/gaia-react/gaia checkout main`  
-> 2. `git -C /Users/stevensacks/Development/gaia-react/gaia pull --ff-only origin main`  
-> 3. Verify HEAD is the merge commit (log it).  
-> 4. `git -C /Users/stevensacks/Development/gaia-react/gaia tag -a "v<NEW_VERSION>" HEAD -m "Release v<NEW_VERSION>"`  
-> 5. `git -C /Users/stevensacks/Development/gaia-react/gaia push origin "v<NEW_VERSION>"`  
-> 6. Report: tag pushed → `https://github.com/gaia-react/gaia/releases/tag/v<NEW_VERSION>` (workflow takes ~1 min).  
-> Stop polling after tagging, or after 2 hours with no merge (report timeout).
-
-After scheduling, print to the maintainer:
-
-```
-PR: <PR_URL>
-Background agent is watching for the merge. Merge the PR when ready — tagging and the GitHub Release will happen automatically.
+```bash
+gh pr merge --merge "release/v<NEW_VERSION>"
 ```
 
-The maintainer's only remaining action is to merge the PR on GitHub. No need to return to this session.
+## Step 12: Pull main and push the tag
+
+Sleep 5 seconds to let GitHub settle, then pull the merge commit and tag it:
+
+```bash
+sleep 5
+git -C . checkout main
+git -C . pull --ff-only origin main
+git -C . log -1 --oneline  # verify this is the merge commit
+git -C . tag -a "v<NEW_VERSION>" HEAD -m "Release v<NEW_VERSION>"
+git -C . push origin "v<NEW_VERSION>"
+```
+
+Report: tag pushed → `https://github.com/gaia-react/gaia/releases/tag/v<NEW_VERSION>` (GitHub Release workflow takes ~1 min to build the artifact).
 
 ## Recovery: I tagged on the wrong commit
 
