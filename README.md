@@ -28,7 +28,7 @@ Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, prefe
 npx create-gaia my-app
 ```
 
-Then open Claude Code in the project folder and run `/init` to walk through the GAIA setup process.
+One simple command. GAIA takes care of the rest.
 
 [Documentation](https://gaiareact.com/)
 
