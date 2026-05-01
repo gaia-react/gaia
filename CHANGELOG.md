@@ -10,6 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.0.4] — 2026-05-01
+
+### Fixed
+
+- Handle `git -C <path>` in block-main-destructive-git hook
+
+### Changed
+
+- Wiki lint + audit hygiene sweep
+
 ## [1.0.3] — 2026-05-01
 
 ### Fixed
@@ -46,7 +56,8 @@ GAIA v1.0.0 is the inaugural public release of the GAIA React workflow — a Cla
 - **Quality gate.** Mandatory pre-commit pipeline: simplify, localization check, typecheck, lint, unit tests, E2E tests, dev smoke test, build. Zero warnings tolerated.
 - **Release tooling.** Tag-triggered `release.yml` builds a scrubbed tarball; `create-gaia` bootstrapper consumes it via `npx create-gaia my-app`.
 
-[Unreleased]: https://github.com/gaia-react/gaia/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/gaia-react/gaia/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/gaia-react/gaia/releases/tag/v1.0.4
 [1.0.3]: https://github.com/gaia-react/gaia/releases/tag/v1.0.3
 [1.0.2]: https://github.com/gaia-react/gaia/releases/tag/v1.0.2
 [1.0.1]: https://github.com/gaia-react/gaia/releases/tag/v1.0.1
