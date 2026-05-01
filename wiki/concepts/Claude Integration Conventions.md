@@ -3,7 +3,7 @@ type: concept
 title: Claude Integration Conventions
 status: active
 created: 2026-04-21
-updated: 2026-04-30
+updated: 2026-05-01
 tags: [claude, meta, configuration]
 ---
 
@@ -15,15 +15,15 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 
 ## 1. Directory overview
 
-| Directory / File        | Purpose                                                                     | Loaded                       |
-| ----------------------- | --------------------------------------------------------------------------- | ---------------------------- |
-| `.claude/agents/`       | Named subagents (`.md` per agent); extension dirs for review-type agents    | Manual (Task tool)           |
-| `.claude/commands/`     | Maintainer-only slash commands (`/gaia-init`, `/gaia-release`)              | Manual (slash invocation)    |
-| `.claude/hooks/`        | Bash scripts wired in `settings.json`                                       | Auto on matched tool events  |
-| `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter               | Auto (global) or path-scoped |
+| Directory / File        | Purpose                                                                                                                        | Loaded                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| `.claude/agents/`       | Named subagents (`.md` per agent); extension dirs for review-type agents                                                       | Manual (Task tool)           |
+| `.claude/commands/`     | Maintainer-only slash commands (`/gaia-init`, `/gaia-release`)                                                                 | Manual (slash invocation)    |
+| `.claude/hooks/`        | Bash scripts wired in `settings.json`                                                                                          | Auto on matched tool events  |
+| `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter                                                                  | Auto (global) or path-scoped |
 | `.claude/skills/`       | Skills — both context-triggered (`react-code`, `typescript`) and user-invoked (`/gaia` router, `new-component`, `update-deps`) | Auto on context/intent match |
-| `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo — not source of truth) | Auto per named agent         |
-| `wiki/`                 | Knowledge base — architecture, decisions, patterns (source of truth)        | Manual (on-demand fetch)     |
+| `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo — not source of truth)                                                    | Auto per named agent         |
+| `wiki/`                 | Knowledge base — architecture, decisions, patterns (source of truth)                                                           | Manual (on-demand fetch)     |
 
 See [[modules/Claude Integration|the modules page]] for the inventory of current commands, rules, hooks, and skills.
 

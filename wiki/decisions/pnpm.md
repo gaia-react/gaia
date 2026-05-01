@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-01
 tags: [decision, tooling, package-manager, security]
 ---
 

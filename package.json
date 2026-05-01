@@ -108,7 +108,12 @@
   },
   "pnpm": {
     "overrides": {},
-    "onlyBuiltDependencies": ["core-js-pure", "esbuild", "msw", "unrs-resolver"]
+    "onlyBuiltDependencies": [
+      "core-js-pure",
+      "esbuild",
+      "msw",
+      "unrs-resolver"
+    ]
   },
   "msw": {
     "workerDirectory": "public"

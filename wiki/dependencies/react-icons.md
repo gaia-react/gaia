@@ -28,15 +28,15 @@ interface Props {
 
 // Rendering
 const Icon = icon;
-<Icon className="h-4 w-4" />
+<Icon className="h-4 w-4" />;
 ```
 
 ## Icon sets used
 
-| Package | Purpose | Example |
-|---|---|---|
+| Package           | Purpose                                       | Example                                      |
+| ----------------- | --------------------------------------------- | -------------------------------------------- |
 | `react-icons/io5` | UI icons (search, close, info, warning, etc.) | `IoSearch`, `IoClose`, `IoInformationCircle` |
-| `react-icons/fa6` | Brand icons (GitHub, etc.) | `FaGithub` |
+| `react-icons/fa6` | Brand icons (GitHub, etc.)                    | `FaGithub`                                   |
 
 ## Why react-icons
 

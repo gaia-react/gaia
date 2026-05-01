@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-04-30
+updated: 2026-05-01
 tags: [concept, claude, skills]
 ---
 
@@ -18,24 +18,24 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 
 ### `/gaia` router
 
-| Skill                        | Triggers on                                                                            |
-| ---------------------------- | -------------------------------------------------------------------------------------- |
-| `gaia` (router)              | `/gaia <subcommand>` or natural-language asks; dispatches to one of the four refs below |
-| → `references/plan.md`       | Plan a feature using [[Task Orchestration]]. See [[GAIA Plan]].                        |
-| → `references/handoff.md`    | Write a session handoff doc. See [[GAIA Handoff]].                                     |
-| → `references/pickup.md`     | Resume from the most recent handoff. See [[GAIA Pickup]].                              |
-| → `references/audit.md`      | Two-stage knowledge-store audit (Sonnet + Sonnet). See [[GAIA Audit]].                 |
+| Skill                     | Triggers on                                                                             |
+| ------------------------- | --------------------------------------------------------------------------------------- |
+| `gaia` (router)           | `/gaia <subcommand>` or natural-language asks; dispatches to one of the four refs below |
+| → `references/plan.md`    | Plan a feature using [[Task Orchestration]]. See [[GAIA Plan]].                         |
+| → `references/handoff.md` | Write a session handoff doc. See [[GAIA Handoff]].                                      |
+| → `references/pickup.md`  | Resume from the most recent handoff. See [[GAIA Pickup]].                               |
+| → `references/audit.md`   | Two-stage knowledge-store audit (Sonnet + Sonnet). See [[GAIA Audit]].                  |
 
 ### Scaffolders
 
-| Skill           | Triggers on                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------- |
-| `new-component` | "create a component", "scaffold a card" — drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir |
-| `new-hook`      | "create a useFoo hook", "add a hook under app/hooks" — drops a `useThing.ts` + Vitest test  |
-| `new-route`     | "add a new page", "scaffold /dashboard" — wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys |
+| Skill           | Triggers on                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `new-component` | "create a component", "scaffold a card" — drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir          |
+| `new-hook`      | "create a useFoo hook", "add a hook under app/hooks" — drops a `useThing.ts` + Vitest test                                               |
+| `new-route`     | "add a new page", "scaffold /dashboard" — wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                               |
 | `new-service`   | "add a service", "scaffold the projects API" — drops `app/services/gaia/{name}/` (parsers, types, requests) and matching MSW collections |
-| `update-deps`   | Autonomous Dependabot — fired by `/gaia-init`, accepted from the SessionStart update prompt, or "update dependencies" |
-| `update-gaia`   | Pull a later GAIA release into the project — accepted from the SessionStart update prompt, or "pull the latest GAIA" |
+| `update-deps`   | Autonomous Dependabot — fired by `/gaia-init`, accepted from the SessionStart update prompt, or "update dependencies"                    |
+| `update-gaia`   | Pull a later GAIA release into the project — accepted from the SessionStart update prompt, or "pull the latest GAIA"                     |
 
 ### Context-triggered
 

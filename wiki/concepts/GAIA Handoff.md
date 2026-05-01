@@ -3,7 +3,7 @@ type: concept
 title: GAIA Handoff
 status: active
 created: 2026-04-20
-updated: 2026-04-30
+updated: 2026-05-01
 tags: [concept, claude, skill, session]
 ---
 

@@ -2,7 +2,7 @@
 type: meta
 title: 'Dashboard'
 created: 2026-04-26
-updated: 2026-04-27
+updated: 2026-05-01
 tags: [meta, dashboard]
 status: active
 ---

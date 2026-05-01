@@ -8,7 +8,7 @@ Cut a new GAIA release. Verifies the tree is clean, auto-determines the version 
 Unlike `/gaia-init`, this command does **not** self-delete. It runs every release.
 
 > [!important] `main` is protected
-> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit *after* it lands on `main`. There are no required checks on release branches, so the PR is merged immediately by the command itself — no manual merge step needed.
+> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit _after_ it lands on `main`. There are no required checks on release branches, so the PR is merged immediately by the command itself — no manual merge step needed.
 
 ## Step 1: Verify clean tree, on `main`
 
@@ -35,13 +35,14 @@ git -C . log v<CURRENT_VERSION>...HEAD --no-merges --oneline
 
 Analyze each commit message using conventional-commit prefixes to classify the bump:
 
-| Commit type | Bump |
-|---|---|
-| `feat:` / `feat(...):` | minor |
-| `fix:` / `docs:` / `chore:` / `refactor:` / `perf:` / `ci:` / `test:` / `style:` | patch |
-| `BREAKING CHANGE` in body, or `!` suffix (e.g. `feat!:`) | **major → STOP** |
+| Commit type                                                                      | Bump             |
+| -------------------------------------------------------------------------------- | ---------------- |
+| `feat:` / `feat(...):`                                                           | minor            |
+| `fix:` / `docs:` / `chore:` / `refactor:` / `perf:` / `ci:` / `test:` / `style:` | patch            |
+| `BREAKING CHANGE` in body, or `!` suffix (e.g. `feat!:`)                         | **major → STOP** |
 
 Rules:
+
 - The highest-severity commit wins (minor beats patch; major beats both).
 - If **major** is indicated, stop and report the breaking commits. Ask the maintainer to confirm before proceeding. Only continue on explicit confirmation.
 - If **minor** or **patch**, proceed automatically. Report: `Detected <bump> bump → v<NEW_VERSION>`.
@@ -77,12 +78,12 @@ git -C . log v<CURRENT_VERSION>...HEAD --no-merges --oneline
 
 Map each commit to a Keep-a-Changelog section using its conventional-commit prefix:
 
-| Prefix | Section |
-|---|---|
-| `feat` | Added |
-| `fix` | Fixed |
-| `refactor` / `perf` | Changed |
-| `docs` | Changed |
+| Prefix                            | Section                   |
+| --------------------------------- | ------------------------- |
+| `feat`                            | Added                     |
+| `fix`                             | Fixed                     |
+| `refactor` / `perf`               | Changed                   |
+| `docs`                            | Changed                   |
 | `chore` / `ci` / `test` / `style` | (omit — not user-visible) |
 
 Strip the prefix/scope from the message body; write each entry as a plain bullet. Group bullets under their section headings. Omit sections that have no entries.

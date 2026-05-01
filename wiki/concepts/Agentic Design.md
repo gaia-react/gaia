@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-25
-updated: 2026-04-29
+updated: 2026-05-01
 tags: [concept, philosophy, claude, agent]
 ---
 
