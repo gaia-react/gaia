@@ -83,30 +83,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-bare-test.sh",
-            "if": "Bash(pnpm *)"
-          },
-          {
-            "type": "command",
-            "command": ".claude/hooks/block-bare-test.sh",
-            "if": "Bash(npm *)"
+            "command": ".claude/hooks/block-bare-test.sh"
           },
           {
             "type": "command",
             "command": ".claude/hooks/block-main-destructive-git.sh",
-            "if": "Bash(git *)",
             "statusMessage": "Checking main-branch protection…"
           },
           {
             "type": "command",
             "command": ".claude/hooks/block-rm-rf.sh",
-            "if": "Bash(rm *)",
             "statusMessage": "Checking rm -rf safety…"
           },
           {
             "type": "command",
             "command": ".claude/hooks/pr-merge-audit-check.sh",
-            "if": "Bash(gh pr merge:*)",
             "statusMessage": "Checking PR-merge audit gate…"
           }
         ]
@@ -118,8 +109,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-update-evaluator.sh",
-            "if": "Bash(git commit:*)"
+            "command": ".claude/hooks/wiki-update-evaluator.sh"
           }
         ]
       }
