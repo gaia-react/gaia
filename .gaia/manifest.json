@@ -254,7 +254,6 @@
     "public/site.webmanifest": "owned",
     "react-router.config.ts": "owned",
     "README.md": "shared",
-    "RELEASE_NOTES.md": "owned",
     "stylelint.config.mjs": "owned",
     "test/mocks/database.ts": "owned",
     "test/mocks/faker.ts": "owned",
