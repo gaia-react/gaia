@@ -66,7 +66,7 @@ Context bloat isn't just `CLAUDE.md` sprawl. Instructions get dropped into globa
 
 Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configured and wired into the Claude layer.
 
-- **20+ ESLint plugins** with [Prettier](https://prettier.io/) and [Stylelint](https://stylelint.io/) for clean, consistent code from the first commit
+- **1,592 lint rules** across 20+ ESLint plugins, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/) — including 85 Stylelint rules that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS
 - **Pre-commit hooks** ([Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged)): typecheck, lint, and test before CI
 - **Four testing layers sharing one mock layer**: [Vitest](https://vitest.dev) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for unit/integration, [Playwright](https://playwright.dev/docs/intro) for E2E, [Chromatic](https://chromatic.com/) for visual regression
 - **Internationalization** via [remix-i18next](https://github.com/sergiodxa/remix-i18next) with working examples
@@ -76,32 +76,6 @@ Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configur
 - **API mocking** with [Mock Service Worker](https://mswjs.io/) and [msw/data](https://github.com/mswjs/data), working handlers for tests and Storybook
 - **Toast notifications** with [remix-toast](https://remix.run/resources/remix-toast) and [Sonner](https://sonner.emilkowal.ski/)
 - Built with [React Router 7](https://reactrouter.com/), [Tailwind](https://tailwindcss.com/), and [react-icons](https://react-icons.github.io/react-icons/)
-
-## How GAIA Compares
-
-Opinionated starter templates solve different slices of the "day-zero engineering setup" problem. GAIA focuses on making Claude a first-class collaborator.
-
-|                          |      GAIA      |   Epic Stack   | create-t3-app |     RedwoodJS     |
-| ------------------------ | :------------: | :------------: | :-----------: | :---------------: |
-| Routing                  | React Router 7 | React Router 7 |    Next.js    | @redwoodjs/router |
-| TypeScript               |       ✅       |       ✅       |      ✅       |        ✅         |
-| Tailwind                 |       ✅       |       ✅       |      ✅       |        ❌         |
-| Unit / integration tests |       ✅       |       ✅       |      ❌       |        ✅         |
-| E2E tests                |       ✅       |       ✅       |      ❌       |        ❌         |
-| Storybook                |       ✅       |       ❌       |      ❌       |        ✅         |
-| Visual regression tests  |       ✅       |       ❌       |      ❌       |        ❌         |
-| Dark mode                |       ✅       |       ✅       |      ❌       |        ❌         |
-| i18n                     |       ✅       |       ❌       |      ❌       |        ❌         |
-| Mock API                 |       ✅       |       ❌       |      ❌       |        ❌         |
-| Forms                    |       ✅       |       ❌       |      ❌       |        ❌         |
-| Accessibility guardrails |       ✅       |       ❌       |      ❌       |        ❌         |
-| Lint rules               |     1,592      |      748       |      637      |        626        |
-
-Every lint rule is a check Claude has to clear. GAIA ships more than twice as many as any other starter, including 85 Stylelint rules none of the others have. The extras catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS.
-
-### Built for Claude
-
-Only GAIA ships with the Claude layer wired in: path-scoped rules, enforcement hooks, commands, skills, a code-review audit agent, and Obsidian wiki integration. GAIA was strict before Claude existed; that discipline is what keeps Claude's code clean now.
 
 ## Agentic Design
 
