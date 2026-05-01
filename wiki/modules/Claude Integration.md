@@ -4,7 +4,7 @@ path: .claude/
 status: active
 purpose: Claude Code integration — commands, rules, hooks, agents, skills
 created: 2026-04-20
-updated: 2026-04-30
+updated: 2026-05-01
 tags: [module, claude, hooks]
 ---
 
@@ -22,7 +22,7 @@ The maintainer-only commands live under `.claude/commands/`; everything user-inv
 
 | Command         | What it does                                                                                                                       |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `/gaia-init`    | Rename + strip GAIA branding + configure languages + install Claude toolchain (run once on a fresh `create-gaia` scaffold)        |
+| `/gaia-init`    | Rename + strip GAIA branding + configure languages + install Claude toolchain (run once on a fresh `create-gaia` scaffold)         |
 | `/gaia-release` | **Maintainer-only, stripped from tarball.** Cut a GAIA release — bump, audit, scrub wiki, commit, tag, push ([[Release Workflow]]) |
 
 ## Rules
@@ -87,8 +87,8 @@ Each entry uses an `if:` pattern so the hook only runs for the matching command 
 
 ### SessionStart (update prompts)
 
-| Hook                            | Event                            | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hook                            | Event                            | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `gaia-session-update-prompt.sh` | SessionStart (`startup\|resume`) | Reads `.gaia/cache/update-check.json` and emits a `<system-reminder>` asking the user whether to run the `update-deps` or `update-gaia` skill. Sequences deps before gaia (one prompt per session; falls through to gaia when deps is snoozed). Snoozes 6h after each emit. Background-fires `.gaia/scripts/check-updates.sh` (TTL 6h) when the cache is stale. Silent when the cache is missing or `jq` isn't installed. Never blocks. |
 
 ### SessionStart / Stop (wiki coherence)
@@ -128,24 +128,24 @@ After its own review, it spawns 3 parallel specialist subagents to audit changed
 
 ### `/gaia` router
 
-| Skill              | Use                                                                                                |
-| ------------------ | -------------------------------------------------------------------------------------------------- |
-| `gaia`             | Routes `/gaia <subcommand>` to one of the four references below. See [[Claude Skills]] for help text. |
-| → `plan` ref       | Plan a feature using [[Task Orchestration]] without implementing. See [[GAIA Plan]].               |
-| → `handoff` ref    | Generate a session handoff doc. See [[GAIA Handoff]].                                              |
-| → `pickup` ref     | Resume from the latest handoff. See [[GAIA Pickup]].                                               |
-| → `audit` ref      | Two-stage knowledge-store audit (Sonnet + Sonnet). See [[GAIA Audit]].                             |
+| Skill           | Use                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| `gaia`          | Routes `/gaia <subcommand>` to one of the four references below. See [[Claude Skills]] for help text. |
+| → `plan` ref    | Plan a feature using [[Task Orchestration]] without implementing. See [[GAIA Plan]].                  |
+| → `handoff` ref | Generate a session handoff doc. See [[GAIA Handoff]].                                                 |
+| → `pickup` ref  | Resume from the latest handoff. See [[GAIA Pickup]].                                                  |
+| → `audit` ref   | Two-stage knowledge-store audit (Sonnet + Sonnet). See [[GAIA Audit]].                                |
 
 ### Scaffolders
 
-| Skill           | Use                                                                                                  |
-| --------------- | ---------------------------------------------------------------------------------------------------- |
-| `new-component` | Scaffold a component (PascalCase folder + `index.tsx` + `tests/`) with optional Storybook story    |
-| `new-hook`      | Scaffold a custom `use*` hook + Vitest test                                                          |
-| `new-route`     | Scaffold a route + `app/pages/{Group}/{PageName}/` + tests + i18n keys                               |
-| `new-service`   | Scaffold an API service under `app/services/gaia/{name}/` (parsers, types, requests) + MSW collections |
+| Skill           | Use                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `new-component` | Scaffold a component (PascalCase folder + `index.tsx` + `tests/`) with optional Storybook story                               |
+| `new-hook`      | Scaffold a custom `use*` hook + Vitest test                                                                                   |
+| `new-route`     | Scaffold a route + `app/pages/{Group}/{PageName}/` + tests + i18n keys                                                        |
+| `new-service`   | Scaffold an API service under `app/services/gaia/{name}/` (parsers, types, requests) + MSW collections                        |
 | `update-deps`   | Autonomous Dependabot — discover outdated packages, audit `pnpm.overrides`, apply major-bump migrations, run [[Quality Gate]] |
-| `update-gaia`   | Pull a later GAIA release into the project — three-way diff, drift-safe merge ([[Update Workflow]]) |
+| `update-gaia`   | Pull a later GAIA release into the project — three-way diff, drift-safe merge ([[Update Workflow]])                           |
 
 ### Context-triggered
 

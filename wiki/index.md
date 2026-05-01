@@ -3,7 +3,7 @@ type: meta
 title: Index
 status: active
 created: 2026-04-20
-updated: 2026-04-30
+updated: 2026-05-01
 tags: [meta]
 ---
 
@@ -11,7 +11,7 @@ tags: [meta]
 
 Master catalog of every page in the wiki. Newly created pages must be added here.
 
-> **Domain isolation:** Technical work fetches from `wiki/app/` and related technical folders only. Brand/business work fetches from `wiki/brand/` or `wiki/business/` only. Cross-load only when the task genuinely spans both domains.
+> **Domain isolation:** Technical work fetches from `wiki/modules/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/components/`, `wiki/flows/`, `wiki/dependencies/`. Cross-load with `wiki/entities/` or `wiki/sources/` only when the task genuinely spans both.
 
 ## Top-level
 
@@ -126,6 +126,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 - [[README]] — vault schema, mode declaration, conventions
 - [[dashboard]]
+- [[lint-report-2026-05-01]]
 - [[lint-report-2026-04-27]]
 - [[lint-report-2026-04-26]]
 - [[lint-report-2026-04-21]]

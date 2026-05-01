@@ -1,7 +1,10 @@
 ---
 type: meta
 title: Hot Cache
+status: active
+created: 2026-04-20
 updated: 2026-05-01
+tags: [meta]
 ---
 
 # Recent Context

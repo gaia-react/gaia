@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-04-22
+updated: 2026-05-01
 tags: [release, claude, maintainer, versioning]
 ---
 

@@ -34,3 +34,11 @@ Decades of greenfield projects, learning the hard way what works, what breaks at
 ## See also
 
 [[Agentic Design]] — how GAIA structures the Claude Code workflow for agentic tasks.
+
+## Positioning & Naming
+
+GAIA is **not just a React template** — it is a complete workflow for building React sites with Claude. Calling it a "template" undersells the scope.
+
+The current implementation uses React Router, but the roadmap is to support multiple React frameworks. **Taglines, marketing copy, og:description, README hero text, and any positioning must not bind to a specific framework** (no "React Router template", no "Remix workflow"). Lead with "workflow" / "system" / "Claude-first" framing. The README's "Claude as your lead engineer" line is on-brand; "React Router template" phrasing should be revised when touched.
+
+_Recorded 2026-04-27 after explicit correction during branding tagline review._

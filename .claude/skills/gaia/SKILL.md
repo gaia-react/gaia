@@ -11,13 +11,13 @@ User-invoked GAIA workflows. The first argument selects the sub-command.
 
 Parse the first whitespace-separated token of `$ARGUMENTS`:
 
-| First arg | Action |
-| --- | --- |
-| `plan` | Read `references/plan.md` and follow it. |
-| `handoff` | Read `references/handoff.md` and follow it. |
-| `pickup` | Read `references/pickup.md` and follow it. |
-| `audit` | Read `references/audit.md` and follow it. |
-| (anything else, including empty) | print help |
+| First arg                        | Action                                      |
+| -------------------------------- | ------------------------------------------- |
+| `plan`                           | Read `references/plan.md` and follow it.    |
+| `handoff`                        | Read `references/handoff.md` and follow it. |
+| `pickup`                         | Read `references/pickup.md` and follow it.  |
+| `audit`                          | Read `references/audit.md` and follow it.   |
+| (anything else, including empty) | print help                                  |
 
 Reference paths are relative to this skill (`.claude/skills/gaia/`). Strip the first arg before passing the remainder; inside the reference, `$ARGUMENTS` semantically refers to whatever followed the sub-command (e.g. `--apply` for audit).
 

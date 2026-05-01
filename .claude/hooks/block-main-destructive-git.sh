@@ -20,34 +20,48 @@ deny() {
   exit 0
 }
 
+# Normalize: strip -C <path> for regex matching; capture path for git queries.
+# Handles `git -C /abs/path <subcommand>` (required by shell-cwd rule).
+# Uses sed — bash 3.2 (macOS default) doesn't populate BASH_REMATCH reliably.
+git_cwd=$(echo "$cmd" | sed -nE 's/.*git -C ([^ ]+).*/\1/p')
+norm=$(echo "$cmd" | sed -E 's/git -C [^ ]+ /git /')
+
+current_branch() {
+  if [[ -n "$git_cwd" ]]; then
+    git -C "$git_cwd" symbolic-ref --short HEAD 2>/dev/null || echo ""
+  else
+    git symbolic-ref --short HEAD 2>/dev/null || echo ""
+  fi
+}
+
 # 1. Block commits while HEAD is on main or master.
-if [[ "$cmd" =~ git[[:space:]]+commit([[:space:]]|$) ]]; then
-  branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+if [[ "$norm" =~ git[[:space:]]+commit([[:space:]]|$) ]]; then
+  branch=$(current_branch)
   if [[ "$branch" == "main" || "$branch" == "master" ]]; then
     deny "Commits to '$branch' are forbidden (wiki/concepts/Git Workflow.md). Create a feature branch first."
   fi
 fi
 
 # 2. Block force-push when target mentions main or master.
-if [[ "$cmd" =~ git[[:space:]]+push ]] \
-   && [[ "$cmd" =~ (--force|--force-with-lease|[[:space:]]-f([[:space:]]|$)) ]] \
-   && [[ "$cmd" =~ (main|master)([[:space:]]|$|:) ]]; then
+if [[ "$norm" =~ git[[:space:]]+push ]] \
+   && [[ "$norm" =~ (--force|--force-with-lease|[[:space:]]-f([[:space:]]|$)) ]] \
+   && [[ "$norm" =~ (main|master)([[:space:]]|$|:) ]]; then
   deny "Force-push to main/master is forbidden (wiki/concepts/Git Workflow.md)."
 fi
 
 # 3. Block any `git push` originating from main/master (PR-only flow).
 #    Triggers when HEAD is on main/master OR when the push refspec explicitly
 #    names main/master/HEAD as the source. Closes the "forgot to switch
-#    branches" footgun. See open question #1 in the release-prep README.
-if [[ "$cmd" =~ git[[:space:]]+push ]]; then
-  branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+#    branches" footgun.
+if [[ "$norm" =~ git[[:space:]]+push ]]; then
+  branch=$(current_branch)
   on_main=0
   [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 
   # Refspec-targeted push from main/master/HEAD: e.g. `git push origin main`,
   # `git push origin HEAD:main`, `git push origin main:main`.
   refspec_main=0
-  if [[ "$cmd" =~ git[[:space:]]+push[[:space:]]+[^[:space:]]+[[:space:]]+(HEAD|main|master)([[:space:]]|:|$) ]]; then
+  if [[ "$norm" =~ git[[:space:]]+push[[:space:]]+[^[:space:]]+[[:space:]]+(HEAD|main|master)([[:space:]]|:|$) ]]; then
     refspec_main=1
   fi
 

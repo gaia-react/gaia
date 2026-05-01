@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-04-22
+updated: 2026-05-01
 tags: [release, claude, adopter, drift]
 ---
 
@@ -82,3 +82,11 @@ After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cad
 
 - [[Release Workflow]] — maintainer-side flow that produces the artifacts `/update-gaia` consumes.
 - [[Quality Gate]] — run the gate after the `update-gaia` skill finishes and before committing.
+
+## Communications Guidance (User-Facing Docs)
+
+The update flow is **fully automatic from the adopter's perspective**: the `gaia-session-update-prompt.sh` SessionStart hook detects available updates and presents the choice. **Do not mention `/update-gaia`, the `update-gaia` skill, or any manual update step in user-facing release notes, README, CHANGELOG, or marketing docs.** Surfacing a manual command implies adopters need to remember to run it — which is wrong.
+
+The skill and command files in `.claude/skills/update-gaia/` exist as the implementation but must not be promoted as a user-invoked workflow in external-facing copy.
+
+_Recorded 2026-05-01._

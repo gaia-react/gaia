@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Page-specific UI components, organized by route group
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-01
 tags: [module, pages]
 ---
 

@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-04-30
+updated: 2026-05-01
 tags: [decision, ci, quality]
 ---
 
