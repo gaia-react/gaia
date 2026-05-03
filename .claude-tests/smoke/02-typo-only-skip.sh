@@ -48,6 +48,7 @@ git add README.md
 git commit --quiet -m "fix: typo in README"
 
 before_files=$(find wiki -type f | wc -l | tr -d ' ')
+pre_claude_head=$(git rev-parse HEAD)
 
 claude -p --model sonnet --permission-mode bypassPermissions \
   "Run /wiki-sync. Report what was done." > /dev/null 2>&1
@@ -62,9 +63,8 @@ after_files=$(find wiki -type f | wc -l | tr -d ' ')
 [ -f wiki/log.md ] || { echo "FAIL: wiki/log.md not created"; exit 1; }
 grep -q "SKIP" wiki/log.md || { echo "FAIL: wiki/log.md missing SKIP entry"; exit 1; }
 
-# State should still advance
+# State should advance to the evaluated SHA (pre-sync HEAD), even on skip-only runs
 new_state=$(jq -r '.last_evaluated_sha' wiki/.state.json)
-head=$(git rev-parse HEAD)
-[ "$new_state" = "$head" ] || { echo "FAIL: state did not advance"; exit 1; }
+[ "$new_state" = "$pre_claude_head" ] || { echo "FAIL: state did not advance to evaluated SHA ($new_state vs $pre_claude_head)"; exit 1; }
 
 echo "PASS: 02-typo-only-skip"
