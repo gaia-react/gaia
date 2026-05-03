@@ -5,6 +5,8 @@ description: Deterministic runbook that strips the entire i18next stack from a G
 
 # Remove i18n
 
+All paths in this file are repo-relative. The executing agent runs from the project root.
+
 Execute every section in order, top to bottom. No skipping, no reordering. After Section I passes, Section J self-deletes this file.
 
 This runbook takes no variables — i18n removal is identical for every project.
@@ -18,7 +20,7 @@ If any verification command in Section I fails, **stop** and report the failure 
 Discover every call site:
 
 ```bash
-grep -rln "useTranslation\|i18next" /Users/stevensacks/Development/gaia-react/gaia/app /Users/stevensacks/Development/gaia-react/gaia/test
+grep -rln "useTranslation\|i18next" app test
 ```
 
 For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`, `app/languages/`, `app/sessions.server/language.ts`, `app/routes/actions+/set-language.ts`, `app/components/LanguageSelect/` — those are deleted in Section C):
@@ -26,22 +28,22 @@ For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`,
 1. Open the file.
 2. Delete the import line: `import {useTranslation} from 'react-i18next';`
 3. Delete the destructure: `const {t} = useTranslation();` (or `useTranslation('namespace')`).
-4. Replace every `t('key')` and `t('key', {…})` call with the literal English string from `/Users/stevensacks/Development/gaia-react/gaia/app/languages/en/`.
+4. Replace every `t('key')` and `t('key', {…})` call with the literal English string from `app/languages/en/`.
 5. If the file used `<Trans>` from `react-i18next`, replace the JSX with the literal English markup.
 
 The seeded list of files known to use `t()` (verify against the grep output — add any newcomers, drop any that have already been unwrapped):
 
-- `/Users/stevensacks/Development/gaia-react/gaia/app/components/Header/index.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/components/Footer/index.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/routes/_legal+/terms.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/routes/_legal+/privacy.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/routes/_public+/_index.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/pages/Public/IndexPage/index.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/routes/resources+/theme-switch.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/components/Form/InputEmail/index.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/components/Form/InputPassword/index.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/components/Form/YearMonthDay/index.tsx`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/components/Form/Field/FieldLabel/FieldRequiredText/index.tsx`
+- `app/components/Header/index.tsx`
+- `app/components/Footer/index.tsx`
+- `app/routes/_legal+/terms.tsx`
+- `app/routes/_legal+/privacy.tsx`
+- `app/routes/_public+/_index.tsx`
+- `app/pages/Public/IndexPage/index.tsx`
+- `app/routes/resources+/theme-switch.tsx`
+- `app/components/Form/InputEmail/index.tsx`
+- `app/components/Form/InputPassword/index.tsx`
+- `app/components/Form/YearMonthDay/index.tsx`
+- `app/components/Form/Field/FieldLabel/FieldRequiredText/index.tsx`
 - All `tests/index.stories.tsx` and `tests/index.test.tsx` files alongside the above components
 
 Resolve translation keys via the `app/languages/en/` files. Example: `t('meta.siteName')` → look up `meta.siteName` in `app/languages/en/common.ts` and inline the resolved string.
@@ -54,7 +56,7 @@ After unwrapping all source files, re-run the grep. If any matches remain in `ap
 
 These three files have structural i18n wiring that the regex-style unwrap in Section A does not cover. Apply the diffs below verbatim.
 
-### B1. `/Users/stevensacks/Development/gaia-react/gaia/app/root.tsx`
+### B1. `app/root.tsx`
 
 Remove these imports:
 
@@ -117,7 +119,7 @@ dir="ltr"
 lang="en"
 ```
 
-### B2. `/Users/stevensacks/Development/gaia-react/gaia/app/entry.client.tsx`
+### B2. `app/entry.client.tsx`
 
 Replace the entire file body with:
 
@@ -159,7 +161,7 @@ const hydrate = async () => {
 await hydrate();
 ```
 
-### B3. `/Users/stevensacks/Development/gaia-react/gaia/app/entry.server.tsx`
+### B3. `app/entry.server.tsx`
 
 Remove these imports:
 
@@ -209,30 +211,30 @@ The `routerContext` parameter is now unused — drop it from the `handleRequest`
 
 ```bash
 rm -rf \
-  /Users/stevensacks/Development/gaia-react/gaia/app/i18n.ts \
-  /Users/stevensacks/Development/gaia-react/gaia/app/middleware/i18next.ts \
-  /Users/stevensacks/Development/gaia-react/gaia/app/types/i18n \
-  /Users/stevensacks/Development/gaia-react/gaia/app/languages \
-  /Users/stevensacks/Development/gaia-react/gaia/app/sessions.server/language.ts \
-  /Users/stevensacks/Development/gaia-react/gaia/app/routes/actions+/set-language.ts \
-  /Users/stevensacks/Development/gaia-react/gaia/app/components/LanguageSelect \
-  /Users/stevensacks/Development/gaia-react/gaia/.storybook/i18next.ts \
-  /Users/stevensacks/Development/gaia-react/gaia/.playwright/e2e/language-switch.spec.ts \
-  /Users/stevensacks/Development/gaia-react/gaia/.claude/rules/i18n.md \
-  /Users/stevensacks/Development/gaia-react/gaia/.claude/agents/code-review-audit/react-i18next.md \
-  /Users/stevensacks/Development/gaia-react/gaia/.claude/skills/react-code/references/translation-patterns.md \
-  /Users/stevensacks/Development/gaia-react/gaia/.claude/hooks/check-i18n-strings.sh \
-  /Users/stevensacks/Development/gaia-react/gaia/wiki/modules/i18n.md \
-  /Users/stevensacks/Development/gaia-react/gaia/wiki/flows/Language\ Flow.md \
-  /Users/stevensacks/Development/gaia-react/gaia/wiki/dependencies/i18next.md \
-  /Users/stevensacks/Development/gaia-react/gaia/wiki/dependencies/remix-i18next.md
+  app/i18n.ts \
+  app/middleware/i18next.ts \
+  app/types/i18n \
+  app/languages \
+  app/sessions.server/language.ts \
+  app/routes/actions+/set-language.ts \
+  app/components/LanguageSelect \
+  .storybook/i18next.ts \
+  .playwright/e2e/language-switch.spec.ts \
+  .claude/rules/i18n.md \
+  .claude/agents/code-review-audit/react-i18next.md \
+  .claude/skills/react-code/references/translation-patterns.md \
+  .claude/hooks/check-i18n-strings.sh \
+  wiki/modules/i18n.md \
+  "wiki/flows/Language Flow.md" \
+  wiki/dependencies/i18next.md \
+  wiki/dependencies/remix-i18next.md
 ```
 
 ---
 
 ## Section D — Storybook preview, test infra
 
-### D1. `/Users/stevensacks/Development/gaia-react/gaia/.storybook/preview.ts`
+### D1. `.storybook/preview.ts`
 
 Remove:
 
@@ -257,7 +259,7 @@ Remove the `i18n` key from `parameters`:
 i18n,
 ```
 
-### D2. `/Users/stevensacks/Development/gaia-react/gaia/test/rtl.tsx`
+### D2. `test/rtl.tsx`
 
 Remove:
 
@@ -265,7 +267,7 @@ Remove:
 import '../.storybook/i18next';
 ```
 
-### D3. `/Users/stevensacks/Development/gaia-react/gaia/test/utils.ts`
+### D3. `test/utils.ts`
 
 Remove:
 
@@ -288,7 +290,7 @@ The remaining file should export only `DELAY` and `date`.
 After this edit, grep for `getLanguage` across the repo and unwrap any callers (typically loaders/actions in `app/routes/`):
 
 ```bash
-grep -rln "getLanguage" /Users/stevensacks/Development/gaia-react/gaia/app /Users/stevensacks/Development/gaia-react/gaia/test
+grep -rln "getLanguage" app test
 ```
 
 For each caller, drop the import and replace any usage with the literal `'en'`.
@@ -297,7 +299,7 @@ For each caller, drop the import and replace any usage with the literal `'en'`.
 
 ## Section E — package.json
 
-Open `/Users/stevensacks/Development/gaia-react/gaia/package.json` and:
+Open `package.json` and:
 
 Remove these keys from `dependencies`:
 
@@ -324,19 +326,19 @@ pnpm install
 
 ## Section F — `.claude/` skills, rules, hooks, agents
 
-### F1. `/Users/stevensacks/Development/gaia-react/gaia/.claude/agents/code-review-audit.md`
+### F1. `.claude/agents/code-review-audit.md`
 
 Delete the entire `### Subagent 3: Translation Audit` section (and its body up to the next `###` or `##` heading).
 
 In the routing block (Step 3 / "Parse each file's `subagents:` frontmatter field"), drop `translation` from the list of legal values.
 
-### F2. `/Users/stevensacks/Development/gaia-react/gaia/.claude/agents/code-review-audit/README.md`
+### F2. `.claude/agents/code-review-audit/README.md`
 
 Delete the row in the extension table that mentions `react-i18next.md` and `translation`.
 
 Search for any `subagents:` lists and drop `translation` from them.
 
-### F3. `/Users/stevensacks/Development/gaia-react/gaia/.claude/skills/react-code/SKILL.md`
+### F3. `.claude/skills/react-code/SKILL.md`
 
 Delete the `### Gate 3: Translation Check` section in its entirety.
 
@@ -344,7 +346,7 @@ In the References list, delete the line referencing `references/translation-patt
 
 If there is an "Adding New Keys" section that references `app/languages/`, delete that section.
 
-### F4. `/Users/stevensacks/Development/gaia-react/gaia/.claude/skills/new-route/SKILL.md`
+### F4. `.claude/skills/new-route/SKILL.md`
 
 Delete the `## Step 6: Create i18n keys (if requested)` section.
 
@@ -366,15 +368,15 @@ import {getInstance} from '~/middleware/i18next';
 
 Replace any `i18next.t('…')` calls in the loader template with literal placeholder strings.
 
-### F5. `/Users/stevensacks/Development/gaia-react/gaia/.claude/rules/routes.md`
+### F5. `.claude/rules/routes.md`
 
 In the conventions parenthetical, drop `i18n keys, ` (or `, i18n keys` depending on its position).
 
-### F6. `/Users/stevensacks/Development/gaia-react/gaia/.claude/rules/storybook.md`
+### F6. `.claude/rules/storybook.md`
 
 Delete the `## i18n in stories` section.
 
-### F7. `/Users/stevensacks/Development/gaia-react/gaia/.claude/settings.json`
+### F7. `.claude/settings.json`
 
 In `hooks.PreToolUse`, find the entry whose `matcher` is `Edit|Write|MultiEdit`. Inside its `hooks` array, remove the entry whose `command` is `.claude/hooks/check-i18n-strings.sh`. Preserve every other hook in the array.
 
@@ -382,7 +384,7 @@ In `hooks.PreToolUse`, find the entry whose `matcher` is `Edit|Write|MultiEdit`.
 
 ## Section G — `.gaia/manifest.json`
 
-Open `/Users/stevensacks/Development/gaia-react/gaia/.gaia/manifest.json` and remove every key whose path matches any of:
+Open `.gaia/manifest.json` and remove every key whose path matches any of:
 
 - `app/languages/*` (every entry under `app/languages/`)
 - `app/i18n.ts`
@@ -405,7 +407,7 @@ Open `/Users/stevensacks/Development/gaia-react/gaia/.gaia/manifest.json` and re
 Discovery sweep — confirm no leftover entries:
 
 ```bash
-grep -nE "i18n|languages/|LanguageSelect|set-language|check-i18n|react-i18next|translation-patterns|Language Flow" /Users/stevensacks/Development/gaia-react/gaia/.gaia/manifest.json
+grep -nE "i18n|languages/|LanguageSelect|set-language|check-i18n|react-i18next|translation-patterns|Language Flow" .gaia/manifest.json
 ```
 
 Should print nothing.
@@ -414,21 +416,21 @@ Should print nothing.
 
 ## Section H — wiki
 
-Edit each:
+Edit each (skip any file that does not exist in this project):
 
-- `/Users/stevensacks/Development/gaia-react/gaia/wiki/index.md` — drop the lines `[[i18n]]`, `[[remix-i18next]]`, `[[i18next]]`.
-- `/Users/stevensacks/Development/gaia-react/gaia/wiki/overview.md` — drop the i18n bullet from "What's in the box". Drop `languages/` and `middleware/i18next.ts` mentions from the folder map. Drop any "i18n examples" row from feature tables.
-- `/Users/stevensacks/Development/gaia-react/gaia/wiki/modules/Folder Structure.md` (if it exists) — drop `languages/` and `middleware/i18next.ts` mentions.
-- `/Users/stevensacks/Development/gaia-react/gaia/wiki/modules/Middleware.md` (if it exists) — drop the `i18nextMiddleware` entry/section.
-- `/Users/stevensacks/Development/gaia-react/gaia/wiki/decisions/Quality Gate.md` — replace any "missing i18n keys" example with a generic "missing strings".
-- `/Users/stevensacks/Development/gaia-react/gaia/wiki/concepts/Component Testing.md` — drop "Render with i18n provider configured" if present.
-- `/Users/stevensacks/Development/gaia-react/gaia/wiki/dependencies/Storybook.md` (if it exists) — drop `storybook-react-i18next` from the addons list.
-- `/Users/stevensacks/Development/gaia-react/gaia/wiki/dependencies/React Router 7.md` (if it exists) — drop `[[remix-i18next]]` from related-deps lists.
+- `wiki/index.md` — drop the lines `[[i18n]]`, `[[remix-i18next]]`, `[[i18next]]`.
+- `wiki/overview.md` — drop the i18n bullet from "What's in the box". Drop `languages/` and `middleware/i18next.ts` mentions from the folder map. Drop any "i18n examples" row from feature tables.
+- `wiki/modules/Folder Structure.md` — drop `languages/` and `middleware/i18next.ts` mentions.
+- `wiki/modules/Middleware.md` — drop the `i18nextMiddleware` entry/section.
+- `wiki/decisions/Quality Gate.md` — replace any "missing i18n keys" example with a generic "missing strings".
+- `wiki/concepts/Component Testing.md` — drop "Render with i18n provider configured" if present.
+- `wiki/dependencies/Storybook.md` — drop `storybook-react-i18next` from the addons list.
+- `wiki/dependencies/React Router 7.md` — drop `[[remix-i18next]]` from related-deps lists.
 
 Discovery sweep:
 
 ```bash
-grep -rln "i18n\|useTranslation\|languages/\|i18next" /Users/stevensacks/Development/gaia-react/gaia/wiki /Users/stevensacks/Development/gaia-react/gaia/.claude
+grep -rln "i18n\|useTranslation\|languages/\|i18next" wiki .claude
 ```
 
 Review every match. Edit or delete each — the only acceptable surviving matches are inside this very file (`remove-i18n.md`) and inside the `add-locale.md` template. Both will be self-deleted after they run.
@@ -438,10 +440,7 @@ Review every match. Edit or delete each — the only acceptable surviving matche
 ## Section I — Verify
 
 ```bash
-pnpm -C /Users/stevensacks/Development/gaia-react/gaia typecheck && \
-  pnpm -C /Users/stevensacks/Development/gaia-react/gaia lint && \
-  pnpm -C /Users/stevensacks/Development/gaia-react/gaia test --run && \
-  pnpm -C /Users/stevensacks/Development/gaia-react/gaia build
+pnpm typecheck && pnpm lint && pnpm test --run && pnpm build
 ```
 
 If any step fails, **stop** and report the failing command + output verbatim. Do **not** proceed to Section J.
@@ -453,7 +452,7 @@ If any step fails, **stop** and report the failing command + output verbatim. Do
 On full verification success:
 
 ```bash
-rm /Users/stevensacks/Development/gaia-react/gaia/.claude/instructions/remove-i18n.md
+rm .claude/instructions/remove-i18n.md
 ```
 
 Print: `remove-i18n — done`.

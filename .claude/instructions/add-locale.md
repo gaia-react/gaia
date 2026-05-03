@@ -5,6 +5,8 @@ description: Add a single locale to the GAIA i18n setup. Parameterized — subst
 
 # add-locale instruction
 
+All paths in this file are repo-relative. The executing agent runs from the project root.
+
 ## Variable substitution
 
 Before executing any step, verify all four variables below have been replaced with real values. If any variable is still in `{{...}}` form, **refuse to proceed** and report which variables are unsubstituted.
@@ -20,16 +22,16 @@ Before executing any step, verify all four variables below have been replaced wi
 
 ## Step 1 — Mirror the English language tree
 
-For each file under `/Users/stevensacks/Development/gaia-react/gaia/app/languages/en/`, create the same path under `/Users/stevensacks/Development/gaia-react/gaia/app/languages/{{LOCALE_CODE}}/` with the same TypeScript module shape (same keys, same exports).
+For each file under `app/languages/en/`, create the same path under `app/languages/{{LOCALE_CODE}}/` with the same TypeScript module shape (same keys, same exports).
 
 Files to create (mirroring the `en/` tree):
 
-- `/Users/stevensacks/Development/gaia-react/gaia/app/languages/{{LOCALE_CODE}}/common.ts`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/languages/{{LOCALE_CODE}}/errors.ts`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/languages/{{LOCALE_CODE}}/index.ts`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/languages/{{LOCALE_CODE}}/pages/_index.ts`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/languages/{{LOCALE_CODE}}/pages/index.ts`
-- `/Users/stevensacks/Development/gaia-react/gaia/app/languages/{{LOCALE_CODE}}/pages/legal.ts`
+- `app/languages/{{LOCALE_CODE}}/common.ts`
+- `app/languages/{{LOCALE_CODE}}/errors.ts`
+- `app/languages/{{LOCALE_CODE}}/index.ts`
+- `app/languages/{{LOCALE_CODE}}/pages/_index.ts`
+- `app/languages/{{LOCALE_CODE}}/pages/index.ts`
+- `app/languages/{{LOCALE_CODE}}/pages/legal.ts`
 
 Translation rules:
 
@@ -41,7 +43,7 @@ Translation rules:
 
 ## Step 2 — Register the locale
 
-Edit `/Users/stevensacks/Development/gaia-react/gaia/app/languages/index.ts`:
+Edit `app/languages/index.ts`:
 
 1. Add `import {{LOCALE_CODE}} from './{{LOCALE_CODE}}';` in alphabetical order among existing locale imports.
 2. Append `'{{LOCALE_CODE}}'` to the `LANGUAGES` array, keeping the array alphabetically sorted.
@@ -52,7 +54,7 @@ Edit `/Users/stevensacks/Development/gaia-react/gaia/app/languages/index.ts`:
 
 ## Step 3 — LanguageSelect
 
-Edit `/Users/stevensacks/Development/gaia-react/gaia/app/components/LanguageSelect/index.tsx`:
+Edit `app/components/LanguageSelect/index.tsx`:
 
 Append `{label: '{{LANGUAGE_NAME_NATIVE}}', value: '{{LOCALE_CODE}}'}` to the `OPTIONS` array.
 
@@ -62,7 +64,7 @@ Ordering rule: English (`en`) stays at the top of the array. All other options a
 
 ## Step 4 — Storybook preview
 
-Edit `/Users/stevensacks/Development/gaia-react/gaia/.storybook/preview.ts`:
+Edit `.storybook/preview.ts`:
 
 Inside `initialGlobals.locales`, add an entry for the new locale:
 
@@ -102,11 +104,11 @@ If `{{LOCALE_CODE}}` is not in the table above, use the locale code in brackets 
 
 **Only execute this step when `{{IS_RTL}}` is `true`.**
 
-Verify that `/Users/stevensacks/Development/gaia-react/gaia/app/root.tsx` already uses `i18n.dir(i18n.language)` for the `dir` attribute on the HTML element. The seeded template sets this up — i18next handles RTL natively for locales in its known-RTL list.
+Verify that `app/root.tsx` already uses `i18n.dir(i18n.language)` for the `dir` attribute on the HTML element. The seeded template sets this up — i18next handles RTL natively for locales in its known-RTL list.
 
 No additional work is needed for the four standard ISO 639-1 RTL codes that i18next recognizes natively: `ar`, `he`, `fa`, `ur`.
 
-For RTL locales **outside** that standard four (e.g. a custom or less common code), edit `/Users/stevensacks/Development/gaia-react/gaia/app/i18n.ts` to add the locale to the `i18n.services.languageUtils.formatLanguageCode` override list so that i18next returns `'rtl'` for `i18n.dir()` calls with that code.
+For RTL locales **outside** that standard four (e.g. a custom or less common code), edit `app/i18n.ts` to add the locale to the `i18n.services.languageUtils.formatLanguageCode` override list so that i18next returns `'rtl'` for `i18n.dir()` calls with that code.
 
 **If `{{IS_RTL}}` is `false`, skip this step entirely.**
 
@@ -114,7 +116,7 @@ For RTL locales **outside** that standard four (e.g. a custom or less common cod
 
 ## Step 6 — Playwright spec
 
-Check whether `/Users/stevensacks/Development/gaia-react/gaia/.playwright/e2e/language-switch.spec.ts` exists.
+Check whether `.playwright/e2e/language-switch.spec.ts` exists.
 
 **If the file does not exist**, create it as a new spec. The spec must:
 
@@ -133,7 +135,7 @@ Check whether `/Users/stevensacks/Development/gaia-react/gaia/.playwright/e2e/la
 
 ## Step 7 — Manifest
 
-Edit `/Users/stevensacks/Development/gaia-react/gaia/.gaia/manifest.json`:
+Edit `.gaia/manifest.json`:
 
 Add the following six entries into the `"files"` object in alphabetical order (mirroring how the `en/` entries are listed):
 
@@ -152,13 +154,13 @@ Insert these entries so the overall `"files"` object remains sorted alphabetical
 
 ## Step 8 — Verify
 
-Run the following from the project root:
+Run from the project root:
 
 ```
 pnpm typecheck && pnpm lint
 ```
 
-If either `pnpm typecheck` or `pnpm lint` fails:
+If either command fails:
 
 - **STOP immediately.**
 - Report the exact error output.
@@ -173,7 +175,7 @@ Only proceed to Step 9 if both commands exit with code 0.
 On success (both `pnpm typecheck` and `pnpm lint` pass):
 
 ```
-rm /Users/stevensacks/Development/gaia-react/gaia/.claude/instructions/add-locale.md
+rm .claude/instructions/add-locale.md
 ```
 
 Print a one-line summary:
