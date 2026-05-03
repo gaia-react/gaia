@@ -13,7 +13,7 @@ concurrency:
 jobs:
   tests:
     name: Vitest and Playwright
-    if: (github.event_name == 'pull_request') && !startsWith(github.head_ref, 'wiki/') && !startsWith(github.head_ref, 'chore/') && !startsWith(github.head_ref, 'release/')
+    if: github.event_name == 'pull_request'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     env:
