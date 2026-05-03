@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-05-01
+updated: 2026-05-03
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -33,20 +33,21 @@ How GAIA cuts a public release. Two surfaces — the template repo (`gaia-react/
 
 ## Cutting a release
 
-Run `/gaia-release` on a clean `main`. The command is a 12-step orchestrator:
+Run `/gaia-release` on a clean `main`. The command is a 13-step orchestrator:
 
 1. Verify clean working tree + on `main`.
-2. Auto-determine bump by analyzing commits since last tag. `patch`/`minor` proceed automatically; `major` stops and asks.
-3. Run the [[Quality Gate]]. Stop on failure.
-4. Create `release/vX.Y.Z` branch.
-5. Bump `package.json` + `.gaia/VERSION`.
-6. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [vX.Y.Z] — YYYY-MM-DD` and seed a new empty `## [Unreleased]`.
-7. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
-8. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
-9. Regenerate `.gaia/manifest.json` via the classifier script.
-10. Commit: `chore(release): vX.Y.Z`.
-11. Push branch, open PR, print PR URL.
-12. Schedule a background agent that polls for the PR to merge, then tags the merge commit and pushes automatically. The maintainer only needs to merge the PR — everything else is hands-off.
+2. Verify `wiki/.state.json` `last_evaluated_sha == HEAD`. If drift exists, STOP — the wiki is stale and the release would ship out-of-date adopter docs. Maintainer runs `/wiki-sync` first. See [[Wiki Sync]].
+3. Auto-determine bump by analyzing commits since last tag. `patch`/`minor` proceed automatically; `major` stops and asks.
+4. Run the [[Quality Gate]]. Stop on failure.
+5. Create `release/vX.Y.Z` branch.
+6. Bump `package.json` + `.gaia/VERSION`.
+7. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [vX.Y.Z] — YYYY-MM-DD` and seed a new empty `## [Unreleased]`.
+8. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
+9. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
+10. Regenerate `.gaia/manifest.json` via the classifier script.
+11. Commit on the release branch: `chore(release): vX.Y.Z`. The pre-commit dance updates `wiki/.state.json`'s `last_evaluated_sha` to the new commit's own SHA via amend, so adopters' state files match their release commit on first scaffold.
+12. Push branch, open PR via `gh`, merge inline via `gh pr merge --merge`. Release branches have no required checks, so the merge is immediate.
+13. Pull `main`, tag the merge commit (`v<NEW_VERSION>`), push the tag.
 
 The tag push triggers [`release.yml`](../../.github/workflows/release.yml), which produces the scrubbed tarball.
 
@@ -81,4 +82,5 @@ The CLI is deliberately thin — heavy lifting (i18n, branding strip, plugin ins
 
 - [[Update Workflow]] — how adopters pull later releases into an initialized project without clobbering drift.
 - [[Quality Gate]] — must pass before `/gaia-release` will let you tag.
+- [[Wiki Sync]] — drift gate at Step 2; release is blocked until `wiki/.state.json` matches HEAD.
 - [[Git Workflow]] — destructive-on-main hook that `/gaia-release` coexists with (the final push is gated behind explicit user confirmation).
