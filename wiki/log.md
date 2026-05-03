@@ -1,5 +1,10 @@
 # Log
 
+## 2026-05-04 | /wiki-sync f23915a..647b850
+
+- 2026-05-04 647b850 - WORTHY: relax /gaia-release Step 2 gate to allow wiki-prefix-only drift + make /wiki-sync Step 7 branch-aware → wiki/concepts/Release Workflow.md, wiki/concepts/Wiki Sync.md (already updated in-commit)
+- 2026-05-04 1d51882 - SKIP: wiki: prefix (previous wiki-sync squash artifact)
+
 ## 2026-05-04 | /wiki-sync 6686f26..f23915a
 
 - 2026-05-04 f23915a - WORTHY: statusline replaces SessionStart hook for /update-deps and /update-gaia indicators → wiki/concepts/Claude Hooks.md, wiki/concepts/Claude Skills.md, wiki/modules/Claude Integration.md (already updated in-commit)
