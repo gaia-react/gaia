@@ -3,7 +3,7 @@ type: meta
 title: Index
 status: active
 created: 2026-04-20
-updated: 2026-05-01
+updated: 2026-05-03
 tags: [meta]
 ---
 
@@ -116,6 +116,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Handoff]] — `/gaia handoff`: session handoff doc.
 - [[GAIA Pickup]] — `/gaia pickup`: resume from the latest handoff.
 - [[GAIA Audit]] — `/gaia audit`: two-stage knowledge-store hygiene sweep.
+- [[Wiki Sync]] — `/wiki-sync` + drift hooks: keep the wiki convergent with code without spawned sub-Claudes.
 - [[Chromatic Opt-Out]]
 
 ## Sources
