@@ -28,7 +28,22 @@
           },
           {
             "type": "command",
+            "command": ".claude/hooks/wiki-stop-safety-net.sh"
+          },
+          {
+            "type": "command",
             "command": ".claude/hooks/wiki-squash-autocommits.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/wiki-drift-check.sh"
           }
         ]
       }
@@ -109,7 +124,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-update-evaluator.sh"
+            "command": ".claude/hooks/wiki-commit-nudge.sh"
           }
         ]
       }
