@@ -183,28 +183,54 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
 - `claude plugin marketplace add AgriciDaniel/claude-obsidian`
 - `claude plugin install claude-obsidian@claude-obsidian-marketplace`
 
-### Install the GAIA statusline (optional)
+### Wire the GAIA statusline
 
-The GAIA statusline shows: **project folder | git branch | active model | context window usage**.
+Add the project-scoped GAIA statusline to **project** `.claude/settings.json` so the user gets `/update-deps` and `/update-gaia` hints automatically. The wrapper at `.gaia/statusline/gaia-statusline.sh` delegates the left-side render and only appends GAIA addons inside this project.
 
-Show the user a live preview by running:
+Make `.gaia/statusline/*.sh` executable: `chmod +x .gaia/statusline/*.sh` (idempotent — safe to run regardless).
+
+Inspect `~/.claude/settings.json` for a top-level `statusLine` key, then branch:
+
+#### Branch A — adopter has a custom global statusline (`statusLine` exists in `~/.claude/settings.json`)
+
+Show the user a colored preview of the wrapped result by running:
 
 ```bash
-echo '{"workspace":{"current_dir":"'"$(pwd)"'"},"model":{"display_name":"Claude Opus 4.7"},"context_window":{"used_percentage":42}}' \
-  | bash .gaia/statusline/preferred-base.sh; echo
+GAIA_PREVIEW_TMP="$(mktemp -d)/gaia-example"
+mkdir -p "$GAIA_PREVIEW_TMP" && git -C "$GAIA_PREVIEW_TMP" init -q -b feat/example-name \
+  && git -C "$GAIA_PREVIEW_TMP" -c user.email=x@x -c user.name=x commit -q --allow-empty -m preview
+mkdir -p .gaia/cache
+cat > .gaia/cache/update-check.json <<'JSON'
+{"checkedAt":9999999999,"outdatedCount":3,"gaiaCurrent":"1.0.0","gaiaLatest":"1.2.0","gaiaHasUpdate":true}
+JSON
+echo '{"workspace":{"current_dir":"'"$GAIA_PREVIEW_TMP"'"},"model":{"display_name":"Claude Opus 4.7"},"context_window":{"used_percentage":42}}' \
+  | bash .gaia/statusline/gaia-statusline.sh; echo
+rm -rf "$(dirname "$GAIA_PREVIEW_TMP")"
+rm -f .gaia/cache/update-check.json
 ```
 
-The Bash output renders with ANSI colors in the chat. Then `AskUserQuestion`:
+The Bash output renders with ANSI colors in the chat. The `gaia-example` / `feat/example-name` placeholders keep the preview stable regardless of the adopter's real cwd or branch — once wired, the live statusline reflects their actual project + branch. Tell the user: "GAIA addons will append to your existing global statusline only when Claude is launched in this project." Then write the project-level wrapper into `.claude/settings.json` (insert alphabetically):
 
-> Install the GAIA statusline (project | branch | model | context bar)?
+```json
+"statusLine": {
+  "type": "command",
+  "command": "bash .gaia/statusline/gaia-statusline.sh"
+}
+```
+
+#### Branch B — adopter is on the default Claude statusline (no global `statusLine`)
+
+Render the same colored preview as Branch A. Then `AskUserQuestion`:
+
+> Install GAIA's recommended statusline (project + branch + model + context bar)?
 >
-> - **Globally (Recommended)** — show this statusline in every project on this machine.
-> - **Only in this project** — show only when Claude is launched in this GAIA project.
-> - **Skip** — keep Claude's default statusline.
+> - **Globally** — show this layout in every project, plus GAIA addons inside GAIA projects (Recommended).
+> - **Only in this GAIA project** — show only when Claude is launched here.
+> - **Skip** — keep Claude's default; GAIA addons still append in this project.
 
 Apply the answer:
 
-- **Globally** → copy `.gaia/statusline/preferred-base.sh` to `~/.claude/preferred-base.sh`, `chmod +x ~/.claude/preferred-base.sh`, then write into `~/.claude/settings.json` (insert alphabetically, preserving existing keys):
+- **Globally** → copy `.gaia/statusline/preferred-base.sh` to `~/.claude/preferred-base.sh`, `chmod +x` it, and write into `~/.claude/settings.json`:
 
   ```json
   "statusLine": {
@@ -213,16 +239,13 @@ Apply the answer:
   }
   ```
 
-- **Only in this project** → write into `.claude/settings.json` (insert alphabetically, preserving existing keys):
+  (Insert alphabetically into the user-level JSON. Preserve any existing keys.)
 
-  ```json
-  "statusLine": {
-    "type": "command",
-    "command": "bash .gaia/statusline/preferred-base.sh"
-  }
-  ```
+- **Only in this GAIA project** → `touch .gaia/statusline/.use-vendored-base`. The sentinel is gitignored; the wrapper detects it and routes to the vendored base.
 
-- **Skip** → no action.
+- **Skip** → no extra action.
+
+In all three sub-cases, write the project-level wrapper into `.claude/settings.json` exactly as in Branch A.
 
 Before writing either settings file, read its current contents so you merge rather than overwrite. Use jq or manual JSON editing — never truncate the file.
 

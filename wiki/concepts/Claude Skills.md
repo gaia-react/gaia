@@ -49,9 +49,11 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 | `tdd`              | Red-green-refactor; integration tests; test-first development                                                |
 | `typescript`       | Naming, exports, Zod schemas, function params, no-switch / no-enum patterns                                  |
 
-### SessionStart update prompt
+### Statusline update indicators
 
-`update-deps` and `update-gaia` are surfaced by `.claude/hooks/gaia-session-update-prompt.sh` (registered on `SessionStart: startup|resume`). The hook reads `.gaia/cache/update-check.json` and emits a `<system-reminder>` asking the user whether to run the relevant skill when outdated dependencies or a newer GAIA release are available. Only one prompt fires per session — `update-deps` takes priority; if it's snoozed, the hook falls through to `update-gaia`. Each kind snoozes for 6h after emit (state in `.gaia/cache/update-prompt-state.json`). When the cache is stale the hook background-fires `.gaia/scripts/check-updates.sh` (TTL 6h) so the next session sees fresh data. Silent on missing cache, never blocks. See [[Claude Hooks]].
+`update-deps` and `update-gaia` are surfaced by the **statusline**, not by a hook. `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns a yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segment when applicable. The wrapper delegates left-side rendering to `~/.claude/settings.json`'s existing `statusLine.command` (or falls back to `.gaia/statusline/preferred-base.sh` via the `.use-vendored-base` sentinel) so the adopter's existing statusline appears unchanged. The hot path is cache-only — no network, no `pnpm` calls — and a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. Silent on missing cache or missing `jq`.
+
+A prior design used a `SessionStart` `<system-reminder>` hook. It was dropped because the reminder is invisible to the user (only the model sees it), so prompts fired and snoozed without the user ever being shown a choice. The statusline is always visible, has no snooze state, and clears itself the moment the underlying cache reports clean.
 
 ## Rules vs. Skills — decision criteria
 

@@ -10,10 +10,6 @@
           {
             "type": "command",
             "command": ".claude/hooks/wiki-session-start.sh"
-          },
-          {
-            "type": "command",
-            "command": ".claude/hooks/gaia-session-update-prompt.sh"
           }
         ]
       }
@@ -203,5 +199,9 @@
   },
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": true
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash .gaia/statusline/gaia-statusline.sh"
   }
 }
