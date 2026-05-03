@@ -128,7 +128,7 @@ Update `wiki/.state.json`:
 }
 ```
 
-## Step 7: Commit
+## Step 7: Commit (branch-aware)
 
 Stage:
 
@@ -136,12 +136,41 @@ Stage:
 - `wiki/log.md`
 - `wiki/.state.json`
 
-Commit:
+Then check the current branch and pick the landing strategy:
+
+```bash
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+```
+
+### Case A — on `main` (or `master`)
+
+`main` is push-protected, so commit-in-place would dead-end. Branch first, commit, push, open PR, merge, return to `main`:
+
+```bash
+sync_branch="wiki/sync-$(date +%F)"
+git checkout -b "$sync_branch"
+git add wiki/
+git commit -m "wiki: sync through {short_sha} ({N_worthy} updated, {N_skipped} skipped)"
+git push -u origin "$sync_branch"
+gh pr create --title "wiki: sync through {short_sha} ({N_worthy} updated, {N_skipped} skipped)" \
+  --body "<short summary of WORTHY/SKIP decisions>"
+gh pr merge --squash --delete-branch  # release branches have no required checks; sync PRs typically pass quickly
+git checkout main
+git pull --ff-only
+```
+
+If the branch name collides (a previous incomplete sync), append `-2`, `-3`, etc. — never delete the existing branch silently.
+
+### Case B — on any other branch (feature, fix, release, worktree)
+
+The maintainer is mid-task on a non-protected branch. Commit in place — branching would fragment their working state across PRs they didn't ask for:
 
 ```bash
 git add wiki/
 git commit -m "wiki: sync through {short_sha} ({N_worthy} updated, {N_skipped} skipped)"
 ```
+
+This applies to git worktrees too: a worktree is by definition not on `main`, so commit on the worktree's branch directly.
 
 This commit is intentionally NOT prefixed `wiki: auto-commit` — it's a deliberate sync, not an auto-commit. The squash-autocommits hook will not fold it. Different audit trail.
 
