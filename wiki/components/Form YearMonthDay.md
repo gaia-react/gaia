@@ -31,7 +31,10 @@ Three [[Form Select]]s (year, month, day) feeding one hidden `<input type="hidde
 
 When the user changes year or month, `getSafeValue` computes the new ISO string, clamping the day to the last valid day of the new month. Prevents 2024-02-29 from rolling over to 2023-02-29.
 
-## > [!warning] Conform integration — two non-obvious gotchas
+## Conform integration — two non-obvious gotchas
+
+> [!warning]
+> The two pitfalls below are non-obvious. Skip them and submission breaks silently.
 
 ### 1. Block native `input` events from bubbling to Conform
 
