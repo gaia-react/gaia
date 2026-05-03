@@ -47,6 +47,83 @@ If Claude generates a change that fights an existing rule, the rule wins. If you
 - Framework swaps. The current stack is React Router 7, Tailwind, Vitest, Playwright, MSW, Conform, Zod. If you want to add support for Next.js, Astro, or TanStack Start, open an issue first. That's a roadmap conversation, not a PR.
 - Cosmetic-only changes to working code.
 
+## Wiki sync system
+
+GAIA's wiki is a living knowledge layer. Adopters scaffold from a release tarball and inherit whatever wiki state the tarball ships. So the maintainer-side discipline is: **the wiki must be in sync with HEAD before every release.** The system below enforces it.
+
+### How it works (quick tour)
+
+Three Claude Code hooks keep Claude informed about wiki state:
+
+- `wiki-drift-check.sh` — UserPromptSubmit, once per session. Compares `wiki/.state.json` to HEAD; nudges if drifted.
+- `wiki-commit-nudge.sh` — PostToolUse on Bash. Injects diff summary + drift count after each `git commit`.
+- `wiki-stop-safety-net.sh` — Stop hook. Reminds at session end if commits landed but state didn't advance.
+
+The workhorse is `/wiki-sync`. It's the only thing that writes `wiki/.state.json`. Hooks are read-only consumers.
+
+`/gaia-release` will refuse to bump version if `wiki/.state.json` SHA != HEAD. There is no opt-out.
+
+For the full design, read `.claude/plans/wiki-sync-system/README.md` if the plan folder still exists, or `wiki/concepts/Wiki Sync.md` if it has been merged.
+
+### Running the tests
+
+#### Hook tests (free, every commit)
+
+```bash
+bats .claude-tests/hooks/
+```
+
+Requires `bats-core` (`brew install bats-core`). Tests are deterministic, run in tmp git repos, take a few seconds total. Add to your local commit hook if you want them on every commit.
+
+These cover the bulk of the system: drift math, marker file behavior, hook input parsing, edge cases (missing state, unreachable SHA, malformed JSON).
+
+#### Smoke tests (manual, billable)
+
+```bash
+bash .claude-tests/smoke/run-all.sh
+```
+
+Requires `claude` CLI on PATH and a working subscription / `ANTHROPIC_API_KEY`. Costs ~$0.10 per full run on Sonnet. Tests Claude's judgment in real scenarios:
+
+- 01: meaningful change → wiki updated
+- 02: typo-only commit → SKIP, no wiki edits
+- 03: multi-commit catch-up
+- 04: non-Claude merge detected at next session
+
+Run before every release. See `.claude-tests/smoke/README.md` for individual scenario commands and cost discipline.
+
+### Pre-release checklist
+
+Before running `/gaia-release`, you should have:
+
+- [ ] `pnpm typecheck` clean
+- [ ] `pnpm lint` clean
+- [ ] `pnpm test:ci` clean
+- [ ] `bats .claude-tests/hooks/` clean
+- [ ] `/wiki-sync` run, with all returned WORTHY commits resulting in defensible wiki edits
+- [ ] (Recommended) `bash .claude-tests/smoke/run-all.sh` clean
+- [ ] Working tree clean
+
+If `/wiki-sync` reports drift but you decide a commit doesn't warrant a wiki update, the `/wiki-sync` command logs that as a SKIP entry in `wiki/log.md`. State still advances. That's the convergence: wiki is "in sync" once every commit has been classified as either WORTHY (and the page updated) or SKIP (and the reason logged).
+
+### What ships, what doesn't
+
+| Path                                  | Ships to adopters?            |
+|---------------------------------------|-------------------------------|
+| `.claude/hooks/wiki-*.sh`             | Yes                           |
+| `.claude/commands/wiki-sync.md`       | Yes                           |
+| `.claude/commands/wiki-lint.md`       | Yes                           |
+| `wiki/.state.json`                    | Yes (committed)               |
+| `wiki/concepts/Wiki Sync.md`          | Yes                           |
+| `.claude-tests/`                      | **No** — `.gaia/release-exclude` excludes the whole tree |
+| `.claude/wiki-{drift,safety}-checked` | **No** — gitignored, never committed |
+
+### Troubleshooting
+
+- **Drift check is too noisy.** It only fires on the first prompt of each session. If you're seeing it more often, check `.claude/wiki-drift-checked` — the marker file should match your current `session_id`. If a hook is failing to write the marker, that's the bug.
+- **`/wiki-sync` reports zero drift but you know there were commits.** Check `wiki/.state.json`'s `last_evaluated_sha` — it may already match HEAD if a prior `/wiki-sync` ran. Or the SHA may be unreachable (rebase) and the hook silently skipped.
+- **Smoke tests are failing in CI.** They shouldn't be — smoke tests are MANUAL only. CI should run only `bats .claude-tests/hooks/`. If a CI workflow is invoking smoke, that's a misconfiguration; remove it.
+
 ## Code of conduct
 
 By contributing, you agree to abide by the [Code of Conduct](./CODE_OF_CONDUCT.md).

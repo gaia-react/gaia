@@ -24,6 +24,9 @@ wiki/concepts/Release Workflow.md
 .gaia/release-exclude
 .gaia/scripts
 
+# Test harness (maintainer-only — adopters don't run these)
+.claude-tests
+
 # Plans / handoff artifacts (machine-local)
 .claude/handoff
 .claude/worktrees
