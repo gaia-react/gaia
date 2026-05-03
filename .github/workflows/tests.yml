@@ -24,7 +24,7 @@ jobs:
       SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'ci-placeholder-session-secret-not-real' }}
       SITE_URL: ${{ secrets.SITE_URL || 'http://localhost:3000' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       # Detect non-doc changes. Doc-only PRs report this required check green
@@ -42,7 +42,7 @@ jobs:
         uses: pnpm/action-setup@v4
       - if: steps.filter.outputs.code == 'true'
         name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
