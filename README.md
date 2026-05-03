@@ -8,17 +8,15 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-**The React workflow for Claude.** GAIA makes Claude trustworthy enough to own features end to end, and disciplined enough to do it at scale.
+**Claude is raw power. GAIA is order and focus.**
 
-Every convention is enforced in code, not described in prose. Per-request token cost stays low because rules and wiki pages load on demand, not preloaded.
+The React workflow that keeps Claude-shipped code production-grade as your team scales. Every convention enforced in code. Every shortcut blocked at the source. Every merge audited before it lands.
 
 ## Who it's for
 
-- Solo developers shipping Claude-built projects
-- Product teams standardizing how Claude works across the org
-- Agencies that want a templated starting point for client work
-
-If Claude writes most of your code, GAIA is the substrate that makes it trustworthy.
+- Engineering teams whose AI output is outpacing their review process
+- Engineering leads standardizing how Claude works across the org
+- Solo developers and agencies who want production-grade defaults from day one
 
 ## Quick Start
 
@@ -66,7 +64,7 @@ Context bloat isn't just `CLAUDE.md` sprawl. Instructions get dropped into globa
 
 Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configured and wired into the Claude layer.
 
-- **1,592 lint rules** across 20+ ESLint plugins, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/) — including 85 Stylelint rules that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS
+- **1,592 lint rules** across 20+ ESLint plugins, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/), including 85 Stylelint rules that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS
 - **Pre-commit hooks** ([Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged)): typecheck, lint, and test before CI
 - **Four testing layers sharing one mock layer**: [Vitest](https://vitest.dev) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for unit/integration, [Playwright](https://playwright.dev/docs/intro) for E2E, [Chromatic](https://chromatic.com/) for visual regression
 - **Internationalization** via [remix-i18next](https://github.com/sergiodxa/remix-i18next) with working examples
