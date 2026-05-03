@@ -72,6 +72,11 @@ EOF
 git add app/services/Gemini.ts
 git commit --quiet -m "feat: add Gemini service for image generation"
 
+# Capture HEAD before claude runs. /wiki-sync advances state to the SHA it
+# evaluated (the pre-sync HEAD), then commits the wiki updates as a new commit
+# on top — so post-sync state == pre_claude_head, not current HEAD.
+pre_claude_head=$(git rev-parse HEAD)
+
 # Now run claude -p with /wiki-sync
 output=$(claude -p --model sonnet --permission-mode bypassPermissions \
   "Run /wiki-sync. Report what was done." 2>&1)
@@ -80,10 +85,9 @@ output=$(claude -p --model sonnet --permission-mode bypassPermissions \
 echo "$output" | grep -q "Gemini" || { echo "FAIL: Gemini not mentioned in /wiki-sync output"; exit 1; }
 [ -f wiki/services/Gemini.md ] || { echo "FAIL: wiki/services/Gemini.md not created"; exit 1; }
 
-# State should have advanced
+# State should have advanced to the SHA we wanted evaluated
 new_state=$(jq -r '.last_evaluated_sha' wiki/.state.json)
-head=$(git rev-parse HEAD)
-[ "$new_state" = "$head" ] || { echo "FAIL: state did not advance to HEAD ($new_state vs $head)"; exit 1; }
+[ "$new_state" = "$pre_claude_head" ] || { echo "FAIL: state did not advance to evaluated SHA ($new_state vs $pre_claude_head)"; exit 1; }
 
 # wiki/log.md should have an entry
 grep -q "WORTHY" wiki/log.md || { echo "FAIL: wiki/log.md missing WORTHY entry"; exit 1; }

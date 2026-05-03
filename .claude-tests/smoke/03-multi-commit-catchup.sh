@@ -107,9 +107,12 @@ rm package.json.bak
 git add package.json
 git commit --quiet -m "chore(deps): bump react to 18.3.1"
 
-# Sanity: 5 commits between init_sha and HEAD
+# Sanity: 6 drifted commits — the "init state" commit + 5 feature commits.
+# init_sha was captured before "init state" was written, so drift counts both.
 drift=$(git rev-list --count "$init_sha"..HEAD)
-[ "$drift" = "5" ] || { echo "FAIL: expected 5 drifted commits, got $drift"; exit 1; }
+[ "$drift" = "6" ] || { echo "FAIL: expected 6 drifted commits, got $drift"; exit 1; }
+
+pre_claude_head=$(git rev-parse HEAD)
 
 claude -p --model sonnet --permission-mode bypassPermissions \
   "Run /wiki-sync. Report what was done." > /dev/null 2>&1
@@ -117,7 +120,8 @@ claude -p --model sonnet --permission-mode bypassPermissions \
 # Assertions
 [ -f wiki/log.md ] || { echo "FAIL: wiki/log.md not created"; exit 1; }
 
-# Log should have at least 5 entries (one per commit). Count short-SHA-looking lines.
+# Log should have at least 5 entries (one per drifted commit, minus possible
+# fold of the wiki-only "init state" commit).
 log_entries=$(grep -cE '\b[0-9a-f]{7,40}\b' wiki/log.md || true)
 [ "$log_entries" -ge 5 ] || { echo "FAIL: wiki/log.md has $log_entries entries, expected >= 5"; exit 1; }
 
@@ -128,9 +132,8 @@ worthy_pages=$(find wiki -type f -name '*.md' ! -name 'index.md' ! -name 'log.md
 # At least one SKIP entry expected (the typo)
 grep -q "SKIP" wiki/log.md || { echo "FAIL: wiki/log.md missing SKIP entry for typo commit"; exit 1; }
 
-# State should advance to HEAD
+# State should advance to the evaluated SHA (pre-sync HEAD)
 new_state=$(jq -r '.last_evaluated_sha' wiki/.state.json)
-head=$(git rev-parse HEAD)
-[ "$new_state" = "$head" ] || { echo "FAIL: state did not advance to HEAD ($new_state vs $head)"; exit 1; }
+[ "$new_state" = "$pre_claude_head" ] || { echo "FAIL: state did not advance to evaluated SHA ($new_state vs $pre_claude_head)"; exit 1; }
 
 echo "PASS: 03-multi-commit-catchup"
