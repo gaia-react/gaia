@@ -1,5 +1,11 @@
 # Log
 
+## 2026-05-04 | /wiki-sync 6686f26..f23915a
+
+- 2026-05-04 f23915a - WORTHY: statusline replaces SessionStart hook for /update-deps and /update-gaia indicators → wiki/concepts/Claude Hooks.md, wiki/concepts/Claude Skills.md, wiki/modules/Claude Integration.md (already updated in-commit)
+- 2026-05-04 fd27c0a - WORTHY: language-aware /gaia-init + new .claude/instructions/ folder → wiki/concepts/Claude Skills.md (decision matrix), wiki/modules/Claude Integration.md (folder list)
+- 2026-05-04 5203732 - SKIP: wiki: prefix (backfill commit, advances state itself)
+
 ## 2026-05-03 | Backfill /wiki-sync from v1.0.0
 
 - 2026-05-03 6686f26 - SKIP: smoke test fix, no behavior change
