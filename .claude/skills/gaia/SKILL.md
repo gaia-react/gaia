@@ -28,4 +28,4 @@ Help message format:
       plan [description]   Plan a feature using task orchestration
       handoff [notes]      Generate a session handoff document
       pickup               Restore context from the most recent handoff
-      audit [--apply]      Audit memory + wiki for duplication and load cost
+      audit [--apply]      Audit memory + wiki and apply changes (--apply: re-apply existing report only)

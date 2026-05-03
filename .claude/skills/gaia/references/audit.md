@@ -2,7 +2,9 @@
 
 ## Execution model — READ FIRST
 
-**Do not execute the playbook yourself in the current conversation.** Dispatch exactly one subagent via the `Agent` tool. The model depends on the mode. Each subagent runs in isolated context.
+**Do not execute the playbook yourself in the current conversation.** Dispatch subagents via the `Agent` tool. Each subagent runs in isolated context.
+
+Calling `/gaia audit` is the intent to apply. The default chains research and apply: Stage 1 produces a report, Stage 2 executes it. The two-stage split exists for technical reasons (different reasoning loads, drift-check between stages), not as a user-confirmation gate.
 
 ### Path resolution (portable — no hardcoding)
 
@@ -18,16 +20,25 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 
 ### Branch on `$ARGUMENTS`
 
-**If `$ARGUMENTS` does NOT contain `--apply` → research mode**
+**Default (`/gaia audit`)** → Stage 1, then Stage 2.
 
-Spawn one `Agent`:
+1. Spawn the Stage 1 (Research) subagent below. Wait for it to return.
+2. If Stage 1 succeeded (a report path was printed), spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest report by mtime — no path argument needed.
+3. Relay both summaries verbatim, in order.
+4. If Stage 1 failed, do not spawn Stage 2. Surface the error.
+
+**`/gaia audit --apply`** → Stage 2 only.
+
+Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-apply an existing report after fixing drift, or to retry without re-researching.
+
+### Stage 1 subagent (Research)
 
 - `subagent_type`: `"general-purpose"`
 - `model`: `"sonnet"`
 - `description`: `"Knowledge audit (research)"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are Stage 1 of a two-stage knowledge audit. Your job is to PRODUCE A REPORT ONLY — do not mutate any files outside .claude/audit/. A separate Sonnet agent will execute the actions later.`
+  > `You are Stage 1 of a two-stage knowledge audit. Your job is to PRODUCE A REPORT ONLY — do not mutate any files outside .claude/audit/. The Stage 2 agent will execute the actions immediately after you return.`
   >
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
   >
@@ -41,9 +52,7 @@ Spawn one `Agent`:
   >
   > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–6). Write the report to $PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
 
-**If `$ARGUMENTS` contains `--apply` → apply mode**
-
-Spawn one `Agent`:
+### Stage 2 subagent (Apply)
 
 - `subagent_type`: `"general-purpose"`
 - `model`: `"sonnet"`
@@ -64,9 +73,9 @@ Spawn one `Agent`:
   >
   > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Apply procedure" section (Step 7). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
 
-### After the subagent returns
+### After the subagent(s) return
 
-Relay its final summary verbatim (report path + action counts, or done/skipped/failed counts). Do not re-do the work. Do not inline the report body.
+Relay each subagent's final summary verbatim (report path + action counts, then done/skipped/failed counts). Do not re-do the work. Do not inline the report body.
 
 ---
 
@@ -312,13 +321,13 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
 
 Stage 2 must apply actions in this order: `fix-link` → `shrink` → `delete-entry` → `merge` → `promote` → `delete`. Rationale: shrinks never reference content that later gets merged; deletes come last so earlier pointers don't go stale.
 
-## To apply
+## To re-apply
 
-Run `/gaia audit --apply` within 24h.
+Apply runs immediately after this report. To re-apply later (e.g., after fixing drift): `/gaia audit --apply` within 24h.
 
 ```
 
-End the research run by printing: report path, total actions per category, and the apply command.
+End the research run by printing: report path and total actions per category. (Stage 2 runs next automatically.)
 
 ## Step 7 — Apply procedure (Stage 2, Sonnet)
 
