@@ -23,7 +23,7 @@ The React workflow that keeps Claude-shipped code production-grade as your team 
 Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, preferably via [nvm](https://github.com/nvm-sh/nvm).
 
 ```bash
-npx create-gaia my-app
+npx create-gaia@latest my-app
 ```
 
 One simple command. GAIA takes care of the rest.

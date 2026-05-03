@@ -66,7 +66,7 @@ Adopters who download the v1.0.0 tarball get 348 files, ~550 KB. The scrubbed `w
 
 ## create-gaia bootstrapper
 
-Separate repo, separate npm package (`create-gaia`). Zero runtime deps. When an adopter runs `npx create-gaia my-app`:
+Separate repo, separate npm package (`create-gaia`). Zero runtime deps. When an adopter runs `npx create-gaia@latest my-app`:
 
 1. Resolves the target version (flag, or latest GitHub release).
 2. Downloads the release tarball from `github.com/gaia-react/gaia/releases/download/vX.Y.Z/gaia-vX.Y.Z.tar.gz`.

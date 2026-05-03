@@ -5,7 +5,7 @@ GAIA is opinionated. The conventions, rules, and hooks aren't suggestions. They'
 ## Before you contribute
 
 - Read the [README](./README.md). The whole thing.
-- Install with `npx create-gaia my-app` and walk through `/gaia-init` so you understand what a fresh project looks like.
+- Install with `npx create-gaia@latest my-app` and walk through `/gaia-init` so you understand what a fresh project looks like.
 - Run the quality gate locally: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`. All four green, no warnings.
 - Browse the wiki under `wiki/`. That's where the project's reasoning lives.
 
