@@ -115,7 +115,7 @@ Branch on the answers from Step 2:
 For each locale in `LOCALES` where the locale is NOT `en`:
 
 1. Resolve the locale's English display name (e.g. `Polish`), native display name (e.g. `Polski`), and RTL flag (`true` for `ar`/`he`/`fa`/`ur`, otherwise `false`).
-2. Read `/Users/stevensacks/Development/gaia-react/gaia/.claude/instructions/add-locale.md`.
+2. Read `.claude/instructions/add-locale.md`.
 3. Substitute the four template variables: `{{LOCALE_CODE}}`, `{{LANGUAGE_NAME_EN}}`, `{{LANGUAGE_NAME_NATIVE}}`, `{{IS_RTL}}`.
 4. Execute every step in the substituted instruction. Stop on any failure.
 
@@ -125,11 +125,11 @@ For each locale in `LOCALES` where the locale is NOT `en`:
 
 Two sub-cases:
 - If the single locale is `en`: nothing to do (already seeded).
-- If the single locale is NOT `en`: run `add-locale.md` for that locale (as in Branch A), then edit `/Users/stevensacks/Development/gaia-react/gaia/app/languages/index.ts` to make that locale the default fallback (swap `fallbackLng: 'en'` in `app/i18n.ts` if the project wants the new locale as default — confirm with the user before flipping this).
+- If the single locale is NOT `en`: run `add-locale.md` for that locale (as in Branch A), then edit `app/languages/index.ts` to make that locale the default fallback (swap `fallbackLng: 'en'` in `app/i18n.ts` if the project wants the new locale as default — confirm with the user before flipping this).
 
 ### Branch C — Single locale, strip i18n (`len(LOCALES) == 1` and Q3 == No)
 
-Read `/Users/stevensacks/Development/gaia-react/gaia/.claude/instructions/remove-i18n.md` and execute every step. Stop on any failure.
+Read `.claude/instructions/remove-i18n.md` and execute every step. Stop on any failure.
 
 ## Step 6: Rename the project
 

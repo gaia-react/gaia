@@ -1,20 +1,21 @@
-# Instruction Files
+# Template-Distributed File Paths
 
-Files under `.claude/instructions/` are template-distributed runbooks. They ship inside the GAIA template and get installed onto end-user machines via the scaffold, so any path baked into them must be portable.
+Files under `.claude/instructions/`, `.claude/commands/`, `.claude/skills/`, `.claude/agents/`, and `.claude/rules/` ship inside the GAIA template and get installed onto end-user machines via the scaffold. Any path baked into them must be portable.
 
 ## Rule
 
-**All paths in instruction files must be repo-relative.** Use `app/i18n.ts`, not `/Users/<name>/.../app/i18n.ts`. The executing agent's working directory is always the project root, so repo-relative paths resolve correctly on every machine.
+**All paths in template-distributed Claude files must be repo-relative.** Use `app/i18n.ts`, not `/Users/<name>/.../app/i18n.ts`. The executing agent's working directory is always the project root, so repo-relative paths resolve correctly on every machine.
 
 ## Why
 
-The maintainer authoring an instruction file works on `/Users/<maintainer>/...`. End users running `/gaia-init` (or any descendant skill that dispatches to these files) work on `~/projects/<their-project>` or wherever they cloned. An absolute path embedded in the runbook fails everywhere except the maintainer's machine.
+The maintainer authoring these files works on `/Users/<maintainer>/...`. End users running `/gaia-init` (or any descendant skill that dispatches to these files) work on `~/projects/<their-project>` or wherever they cloned. An absolute path embedded in a runbook, command, or skill fails everywhere except the maintainer's machine.
 
 ## How to apply
 
-When authoring or editing any file under `.claude/instructions/`:
+When authoring or editing any file under `.claude/`:
 
 - File references in prose: `app/i18n.ts`, `.gaia/manifest.json`, `.claude/rules/i18n.md`.
+- Cross-file dispatches in a skill or command: ``Read `.claude/instructions/add-locale.md` ``.
 - Shell commands (`rm`, `grep`, `find`): repo-relative paths — they resolve from the agent's pwd which is the project root.
 - Self-delete steps: `rm .claude/instructions/<file>.md`.
 - Verification commands: prefer the package-script form (`pnpm typecheck`, `pnpm lint`) over `pnpm -C <path>` because `-C` requires an absolute path.
@@ -30,10 +31,10 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 
 ## Audit
 
-Before merging changes to `.claude/instructions/`:
+Before merging changes to any file under `.claude/`:
 
 ```bash
-grep -rn "/Users/\|/home/" .claude/instructions/
+grep -rn "/Users/\|/home/" .claude/
 ```
 
-Should print nothing. Any match is a bug.
+Any match outside this rule's prose (where `/Users/<name>/...` is shown as a counter-example) is a bug.
