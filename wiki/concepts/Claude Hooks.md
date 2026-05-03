@@ -2,13 +2,13 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-01
+updated: 2026-05-03
 tags: [concept, claude, hooks]
 ---
 
 # Claude Hooks
 
-Bash scripts that run on Claude Code tool calls. Configured in `.claude/settings.json` under `hooks.PreToolUse` (and other event types). The `Bash` matcher supports per-hook `if:` patterns so a single matcher block can fan out to command-specific hooks.
+Bash scripts that run on Claude Code tool calls. Configured in `.claude/settings.json` under `hooks.PreToolUse` (and other event types). Hook scripts filter by command content internally — they do not use per-hook `if:` patterns. (Claude Code's `if:` field requires `ToolUseContext` which isn't always available, surfacing as `"ToolUseContext is required for prompt hooks"` errors. Removed in v1.0.3.)
 
 Exit code semantics:
 
@@ -38,22 +38,29 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 
 ### Bash safeguards (Bash)
 
-- **`block-bare-test.sh`** (`if: Bash(pnpm *)` and `if: Bash(npm *)`) — denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. See [[Test Runner]].
-- **`block-main-destructive-git.sh`** (`if: Bash(git *)`) — denies (1) `git commit` while HEAD is `main`/`master`, (2) force-push to `main`/`master`, and (3) plain `git push` originating from `main`/`master` (PR-only flow — closes the "forgot to switch branches" footgun). Authoritative rule: [[Git Workflow]].
-- **`block-rm-rf.sh`** (`if: Bash(rm *)`) — denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `node_modules`. Allows scoped scratch paths (`.claude/plans/*`, `.claude/audit/*`, `.gaia/cache/*`, `dist/*`, `build/*`).
+Each script reads `tool_input.command` from stdin and filters by content — there is no `if:` annotation on the hook entry.
+
+- **`block-bare-test.sh`** — denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. See [[Test Runner]].
+- **`block-main-destructive-git.sh`** — denies (1) `git commit` while HEAD is `main`/`master`, (2) force-push to `main`/`master`, and (3) plain `git push` originating from `main`/`master` (PR-only flow — closes the "forgot to switch branches" footgun). Handles `git -C <path>` invocations correctly. Authoritative rule: [[Git Workflow]].
+- **`block-rm-rf.sh`** — denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `node_modules`. Allows scoped scratch paths (`.claude/plans/*`, `.claude/audit/*`, `.gaia/cache/*`, `dist/*`, `build/*`).
 
 ### Advisory (Bash)
 
-- **`pr-merge-audit-check.sh`** (`if: Bash(gh pr merge:*)`) — reminds to spawn `code-review-audit`, fix issues, and push fixes before merging. See [[PR Merge Workflow]].
+- **`pr-merge-audit-check.sh`** — reminds to spawn `code-review-audit`, fix issues, and push fixes before merging. See [[PR Merge Workflow]].
 
 ### Wiki coherence (multiple events)
 
-- **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop) / **`wiki-squash-autocommits.sh`** (Stop) — wiki coherence and `hot.md` refresh. See [[Claude Integration Conventions]] § Wiki vendor relationship for the full pair.
-- **`wiki-update-evaluator.sh`** (PostToolUse, `if: Bash(git commit:*)`) — autonomous post-commit wiki evaluator. Captures the new HEAD sha, backgrounds a `claude -p --model sonnet --permission-mode bypassPermissions` sub-agent that reads the diff against `wiki/index.md` and either edits the relevant pages + appends to `wiki/log.md` (subject `wiki: evaluator update for <sha>`) or exits with `NO_UPDATE_NEEDED`. The sub-agent commits independently; subsequent wiki commits get folded by `wiki-squash-autocommits.sh` into the standard wiki-branch PR flow on main. Logs to `.claude/audit/wiki-evaluator-{sha}.log` (gitignored). Skips merge / amend / wiki auto-commit subjects to avoid loops; never blocks the user's commit (always exits 0).
+The wiki sync system is convergent: the user's already-paid-for Claude session does the work via `/wiki-sync`. Hooks only keep Claude *informed* — they never spawn `claude -p` sub-processes. See [[Wiki Sync]] for the full design.
+
+- **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop) — wiki coherence and `hot.md` refresh. See [[Claude Integration Conventions]] § Wiki vendor relationship for the full pair.
+- **`wiki-drift-check.sh`** (UserPromptSubmit) — first prompt of each session, compares `wiki/.state.json`'s `last_evaluated_sha` to HEAD; if drifted, injects a `[wiki state]` reminder. Once-per-session via `.claude/wiki-drift-checked` marker.
+- **`wiki-commit-nudge.sh`** (PostToolUse, Bash) — fires after `git commit` invocations. Injects a `[wiki nudge]` line with the short SHA, subject, file count, and current drift count. Skips merge / amend / `wiki:` subjects to avoid loops. Never spawns sub-processes.
+- **`wiki-stop-safety-net.sh`** (Stop) — at session end, if the session committed but `wiki/.state.json` did not advance, injects `[wiki end-of-session]` reminder. Once-per-session via `.claude/wiki-safety-checked` marker.
+- **`wiki-squash-autocommits.sh`** (Stop) — folds adjacent `wiki: auto-commit` subjects into a single PR-branch commit. The reset-on-PR-failure path is gated so a failed `gh pr create` / `gh pr merge` no longer silently discards working-tree changes (the silent-loss bug fixed in v1.0.5).
 
 ### Other events
 
-- **`intercept-init.sh`** (UserPromptSubmit) — blocks the built-in `/init` and auto-invokes `/gaia-init`.
+- **`intercept-init.sh`** (UserPromptExpansion, matcher `init`) — emits `additionalContext` that overrides the built-in `/init` expansion and tells the model to invoke `/gaia-init` via the Skill tool. Does not block the turn — earlier `UserPromptSubmit + exit-2` design blocked the model from running at all.
 - **`gaia-session-update-prompt.sh`** (SessionStart, `startup|resume`) — reads `.gaia/cache/update-check.json` and emits a `<system-reminder>` asking the user whether to run the `update-deps` skill (when outdated packages are detected) or the `update-gaia` skill (when a newer GAIA release is available). Sequences `deps` before `gaia` — only one prompt per session; if the deps prompt is snoozed, the hook falls through to gaia. Snoozes each kind for 6h after emit via `.gaia/cache/update-prompt-state.json`. Background-fires `.gaia/scripts/check-updates.sh` (TTL 6h) when the cache is stale. Silent on missing cache or missing `jq`. Never blocks. See [[Claude Skills]] § SessionStart update prompt.
 
 ## Adding hooks

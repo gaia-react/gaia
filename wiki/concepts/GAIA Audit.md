@@ -3,7 +3,7 @@ type: concept
 title: GAIA Audit
 status: active
 created: 2026-04-20
-updated: 2026-05-01
+updated: 2026-05-03
 tags: [concept, claude, skill, knowledge, hygiene]
 ---
 
@@ -19,12 +19,14 @@ tags: [concept, claude, skill, knowledge, hygiene]
 
 ## Two-stage execution
 
-| Stage | Model  | Mode                  | Output                                                      |
-| ----- | ------ | --------------------- | ----------------------------------------------------------- |
-| 1     | Sonnet | `/gaia audit`         | Research report at `.claude/audit/KNOWLEDGE-{timestamp}.md` |
-| 2     | Sonnet | `/gaia audit --apply` | Applies unchecked actions mechanically                      |
+`/gaia audit` is the intent to apply. The default chains both stages — Stage 1 produces a report, Stage 2 executes it. The two-stage split is for technical reasons (different reasoning loads, drift-check between stages), not as a user-confirmation gate.
 
-Stage 1 proposes actions — `delete`, `delete-entry`, `promote`, `shrink`, `merge`, `fix-link` — each with verbatim `expect` snippets and sha256 drift signals. Stage 2 reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Both stages run on Sonnet — drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model.
+| Invocation            | Stages                  | When to use                                                |
+| --------------------- | ----------------------- | ---------------------------------------------------------- |
+| `/gaia audit`         | Stage 1 → Stage 2       | Default. Research, then apply, in sequence                 |
+| `/gaia audit --apply` | Stage 2 only            | Retry against the most recent existing report (after drift fix or interrupted apply) |
+
+Stage 1 (Sonnet) proposes actions — `delete`, `delete-entry`, `promote`, `shrink`, `merge`, `fix-link` — each with verbatim `expect` snippets and sha256 drift signals, written to `.claude/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model.
 
 ## What it catches
 
