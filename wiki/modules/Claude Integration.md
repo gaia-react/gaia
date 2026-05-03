@@ -14,7 +14,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 
 ## Layout
 
-`.claude/` contains `settings.json` (hooks, env, plugins), `settings.local.json` (gitignored personal overrides), `agents/`, `agent-memory/` (gitignored, ephemeral; **not** a source of truth — durable knowledge belongs in the wiki), `audit/` (gitignored hook output, e.g. `wiki-evaluator-{sha}.log`), `commands/`, `hooks/`, `rules/`, and `skills/`.
+`.claude/` contains `settings.json` (hooks, env, plugins), `settings.local.json` (gitignored personal overrides), `agents/`, `agent-memory/` (gitignored, ephemeral; **not** a source of truth — durable knowledge belongs in the wiki), `audit/` (gitignored hook output, e.g. `wiki-evaluator-{sha}.log`), `commands/`, `hooks/`, `instructions/` (parameterized one-shot runbooks dispatched by commands like `/gaia-init`; self-deleting after use), `rules/`, and `skills/`.
 
 ## Commands (slash)
 
