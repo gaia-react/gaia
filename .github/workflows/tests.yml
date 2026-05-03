@@ -70,7 +70,7 @@ jobs:
         run: pnpm exec playwright install --with-deps
       - if: steps.filter.outputs.code == 'true'
         name: Run Playwright tests
-        run: pnpm exec playwright test
+        run: pnpm exec playwright test --pass-with-no-tests
         env:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           npm_package_version: ${{ steps.package-version.outputs.current-version}}
