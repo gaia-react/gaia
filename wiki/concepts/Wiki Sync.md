@@ -72,7 +72,7 @@ For each commit since `last_evaluated_sha`:
 2. **Second-pass on WORTHY only:** read the diff. Edit the relevant `wiki/services/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/dependencies/`, etc. pages. If a commit looks worthy from its subject but turns out to be a refactor on diff inspection, demote to SKIP.
 3. **Log every decision** (worthy and skipped) to `wiki/log.md` with a one-line reason.
 4. **Advance state** to current HEAD.
-5. **Commit** the wiki changes as `wiki: sync through <short_sha> (N updated, N skipped)`.
+5. **Commit** the wiki changes as `wiki: sync through <short_sha> (N updated, N skipped)`. The landing strategy is branch-aware: on `main` (push-protected), it creates `wiki/sync-YYYY-MM-DD`, pushes, opens a PR, and squash-merges; on any other branch (feature/fix/release/worktree), it commits in place so the maintainer's working state isn't fragmented.
 
 The skip-with-reason audit trail is load-bearing: a project that always says "skipped: typo" tells you the system is running. A project with no log entries tells you the system has stopped. `wiki-lint` check #11 surfaces this drift.
 
