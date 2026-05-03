@@ -261,7 +261,10 @@ Replace the entire file with:
 ---
 type: meta
 title: Hot Cache
+status: active
+created: <TODAY_ISO>
 updated: <TODAY_ISO>
+tags: [meta, cache]
 ---
 
 # Recent Context

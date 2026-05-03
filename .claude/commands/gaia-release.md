@@ -142,7 +142,10 @@ Overwrite `wiki/hot.md` entirely with:
 ---
 type: meta
 title: Hot Cache
+status: active
+created: <TODAY_ISO>
 updated: <TODAY_ISO>
+tags: [meta, cache]
 ---
 
 # Recent Context
@@ -156,11 +159,22 @@ updated: <TODAY_ISO>
 - None.
 ```
 
+The `status`, `created`, and `tags` fields are required by `/wiki-lint` (per the upstream `claude-obsidian:wiki-lint` skill). Earlier release templates omitted them and produced a recurring lint regression on every release; the fix is to include the full required set here.
+
 ## Step 9: Scrub `wiki/log.md`
 
 Overwrite `wiki/log.md` entirely with:
 
 ```md
+---
+type: meta
+title: Log
+status: active
+created: <TODAY_ISO>
+updated: <TODAY_ISO>
+tags: [meta, log]
+---
+
 # Log
 
 ## [v<NEW_VERSION>] <TODAY_ISO> | Released
@@ -168,7 +182,7 @@ Overwrite `wiki/log.md` entirely with:
 See CHANGELOG.md for details.
 ```
 
-(The full development history remains in `git log`; adopters do not need it in the wiki.)
+(The full development history remains in `git log`; adopters do not need it in the wiki. Frontmatter is required for the same `/wiki-lint` reason as Step 8.)
 
 ## Step 10: Regenerate `.gaia/manifest.json`
 

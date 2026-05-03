@@ -10,6 +10,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.0.5] — 2026-05-04
+
+### Added
+
+- v1.0.5 wiki sync system — drift-check, commit-nudge, stop-safety-net hooks plus `/wiki-sync` workhorse for a convergent wiki-update model.
+
+### Changed
+
+- `/gaia-init` i18n setup is now language-aware: asks the user's primary language and optional additional locales, with an opt-out path that strips i18n entirely. Per-locale `add-locale` and `remove-i18n` instructions ship as parameterized runbooks under `.claude/instructions/`.
+- Pin docs install command to `npx create-gaia@latest`.
+
+### Fixed
+
+- Restore statusline indicators for `/update-deps` and `/update-gaia`. The prior SessionStart hook approach was invisible to users — system-reminders only reach the model, and a 6h snooze locked in regardless of whether the user ever saw a prompt. Statusline indicators are passive and always visible.
+- `/gaia-release` Step 2 gate now allows wiki-prefix-only drift, and `/wiki-sync` Step 7 is branch-aware (branch+PR on `main`, in-place commit elsewhere). Together they make the `/wiki-sync` → `/gaia-release` flow self-consistent.
+- `/gaia audit` now chains research and apply by default; `--apply` is the retry escape hatch.
+- Wiki sync system: smoke test assertions match the frozen interface.
+- `/gaia-release` and `/gaia-init` scrub templates for `wiki/hot.md` (and `/gaia-release` Step 9 for `wiki/log.md`) now include the full frontmatter required by `/wiki-lint` (`status`, `created`, `tags`), eliminating a recurring lint regression on every release.
+
 ## [1.0.4] — 2026-05-01
 
 ### Fixed
@@ -56,7 +75,8 @@ GAIA v1.0.0 is the inaugural public release of the GAIA React workflow — a Cla
 - **Quality gate.** Mandatory pre-commit pipeline: simplify, localization check, typecheck, lint, unit tests, E2E tests, dev smoke test, build. Zero warnings tolerated.
 - **Release tooling.** Tag-triggered `release.yml` builds a scrubbed tarball; `create-gaia` bootstrapper consumes it via `npx create-gaia@latest my-app`.
 
-[Unreleased]: https://github.com/gaia-react/gaia/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/gaia-react/gaia/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/gaia-react/gaia/releases/tag/v1.0.5
 [1.0.4]: https://github.com/gaia-react/gaia/releases/tag/v1.0.4
 [1.0.3]: https://github.com/gaia-react/gaia/releases/tag/v1.0.3
 [1.0.2]: https://github.com/gaia-react/gaia/releases/tag/v1.0.2
