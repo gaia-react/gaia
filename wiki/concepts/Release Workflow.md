@@ -36,7 +36,7 @@ How GAIA cuts a public release. Two surfaces — the template repo (`gaia-react/
 Run `/gaia-release` on a clean `main`. The command is a 13-step orchestrator:
 
 1. Verify clean working tree + on `main`.
-2. Verify `wiki/.state.json` `last_evaluated_sha == HEAD`. If drift exists, STOP — the wiki is stale and the release would ship out-of-date adopter docs. Maintainer runs `/wiki-sync` first. See [[Wiki Sync]].
+2. Verify `wiki/.state.json` is current — either `last_evaluated_sha == HEAD`, or the only drift commits are wiki-sync squash artifacts (subjects starting with `wiki:`). Substantive non-wiki drift STOPs the release; the wiki is stale and would ship out-of-date adopter docs. Maintainer runs `/wiki-sync` first. The `wiki:`-prefix bypass exists because PR squash-merging always rewrites the SHA, so the standard flow (`/wiki-sync` → merge → `/gaia-release`) leaves the state pointer one squash-commit behind even when content is current; without the bypass the gate is unsatisfiable. See [[Wiki Sync]].
 3. Auto-determine bump by analyzing commits since last tag. `patch`/`minor` proceed automatically; `major` stops and asks.
 4. Run the [[Quality Gate]]. Stop on failure.
 5. Create `release/vX.Y.Z` branch.

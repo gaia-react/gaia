@@ -27,7 +27,7 @@ git -C . rev-list --count main..origin/main  # if >0, pull --ff-only
 
 ## Step 2: Verify wiki is in sync with HEAD
 
-Read `wiki/.state.json`. The `last_evaluated_sha` must equal current HEAD; otherwise the wiki is stale and the release would ship out-of-date knowledge to adopters.
+Read `wiki/.state.json`. The `last_evaluated_sha` must equal current HEAD — OR the only drift commits must be wiki-sync squash artifacts (`wiki:` prefix). Otherwise the wiki is stale and the release would ship out-of-date knowledge to adopters.
 
 ```bash
 state_sha=$(jq -r '.last_evaluated_sha' wiki/.state.json 2>/dev/null)
@@ -35,19 +35,20 @@ head_sha=$(git rev-parse HEAD)
 ```
 
 - If `wiki/.state.json` is missing or invalid JSON: STOP. Report "wiki/.state.json missing or invalid; run /wiki-sync to initialize." Maintainer must run `/wiki-sync` and re-run `/gaia-release`.
+- If `state_sha == head_sha`: report "✓ Wiki in sync with HEAD ({short_sha})." and proceed to Step 3.
 - If `state_sha != head_sha`:
-  - Compute drift: `drift=$(git rev-list --count "$state_sha..HEAD")`
-  - STOP. Report:
+  - List drift subjects: `git log "$state_sha..HEAD" --pretty=format:'%s'`
+  - **If every drift subject starts with `wiki:`** (the wiki-sync's own squash-merge artifact — the wiki content is current, only the `.state.json` pointer trails its own commit by one SHA): report "✓ Wiki content in sync; advancing state through {N} wiki-prefix commits during release." and proceed to Step 3. The release commit's amend in Step 11 will move state forward to the release SHA.
+  - **Otherwise** (drift contains substantive non-wiki commits): STOP. Compute drift count `drift=$(git rev-list --count "$state_sha..HEAD")` and report:
 
     ```
-    Wiki is {drift} commits behind HEAD. /gaia-release is blocked until the wiki is in sync.
+    Wiki is {drift} commits behind HEAD with substantive changes. /gaia-release is blocked until the wiki is in sync.
 
     Run /wiki-sync first, verify the wiki updates make sense, commit if needed, then re-run /gaia-release.
     ```
   - Maintainer runs `/wiki-sync`, reviews, then re-invokes `/gaia-release`.
-- If `state_sha == head_sha`: report "✓ Wiki in sync with HEAD ({short_sha})." and proceed to Step 3.
 
-This guard exists because the wiki is an adopter-facing knowledge layer, not just internal scaffolding. Shipping a release with stale wiki ships misleading documentation to every new `create-gaia` user.
+This guard exists because the wiki is an adopter-facing knowledge layer, not just internal scaffolding. Shipping a release with stale wiki ships misleading documentation to every new `create-gaia` user. The `wiki:`-prefix bypass exists because PR squash-merging a wiki-sync always creates a new SHA that `wiki/.state.json` cannot have known about in advance — without the bypass the gate is unsatisfiable in the standard flow (run `/wiki-sync` → merge PR → run `/gaia-release`).
 
 ## Step 3: Determine the version bump
 
