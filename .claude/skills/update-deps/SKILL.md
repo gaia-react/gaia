@@ -1,6 +1,6 @@
 ---
 name: update-deps
-description: Autonomous Dependabot - auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user accepts a SessionStart prompt to run dependency updates, asks "update dependencies", "bump deps", "run dependabot".
+description: Autonomous Dependabot - auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /update-deps` indicator or asks "update dependencies", "bump deps", "run dependabot".
 ---
 
 Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts — just execute.

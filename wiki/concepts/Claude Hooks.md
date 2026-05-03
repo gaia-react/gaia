@@ -61,7 +61,8 @@ The wiki sync system is convergent: the user's already-paid-for Claude session d
 ### Other events
 
 - **`intercept-init.sh`** (UserPromptExpansion, matcher `init`) — emits `additionalContext` that overrides the built-in `/init` expansion and tells the model to invoke `/gaia-init` via the Skill tool. Does not block the turn — earlier `UserPromptSubmit + exit-2` design blocked the model from running at all.
-- **`gaia-session-update-prompt.sh`** (SessionStart, `startup|resume`) — reads `.gaia/cache/update-check.json` and emits a `<system-reminder>` asking the user whether to run the `update-deps` skill (when outdated packages are detected) or the `update-gaia` skill (when a newer GAIA release is available). Sequences `deps` before `gaia` — only one prompt per session; if the deps prompt is snoozed, the hook falls through to gaia. Snoozes each kind for 6h after emit via `.gaia/cache/update-prompt-state.json`. Background-fires `.gaia/scripts/check-updates.sh` (TTL 6h) when the cache is stale. Silent on missing cache or missing `jq`. Never blocks. See [[Claude Skills]] § SessionStart update prompt.
+
+`update-deps` and `update-gaia` are surfaced via the **statusline** (not a hook) — see [[Claude Skills]] § Statusline update indicators. The earlier SessionStart `<system-reminder>` approach was dropped because the reminder is invisible to the user (only the model sees it), so prompts could fire and snooze without the user ever knowing.
 
 ## Adding hooks
 
