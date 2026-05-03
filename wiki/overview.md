@@ -40,7 +40,7 @@ app/
 ├── assets/           images, svgs
 ├── components/       shared UI (Button, Form/*, Toast, Layout, ...)
 ├── hooks/            useBreakpoint, useComponentRect, useTimeout
-├── languages/        TS-based i18n (en, ja by default)
+├── languages/        TS-based i18n (en by default)
 ├── middleware/       i18next middleware
 ├── pages/            page-specific UI
 ├── routes/           thin route files (loader/action only)
@@ -83,7 +83,7 @@ Every change passes through [[Quality Gate]]: typecheck → lint → unit test �
 | Unit + integration |          Vitest + RTL           |     —      |      —      |    —    |
 | E2E                |           Playwright            |     —      |      —      |    —    |
 | Visual regression  |          Chromatic CI           |     —      |      —      |    —    |
-| i18n examples      |             2 langs             |     —      |      —      |    —    |
+| i18n examples      |        1 lang (en)              |     —      |      —      |    —    |
 | Form validation    |          Conform + Zod          |     —      |      —      |    —    |
 | Dark mode          |           end-to-end            |     —      |      —      |    —    |
 | API mocking        |         MSW everywhere          |     —      |      —      |    —    |

@@ -8,7 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 cd "$TMP"
 
 # (Same scaffold as 01 — extract to a helper if duplication grows annoying)
-GAIA_REPO="${GAIA_REPO:-/Users/stevensacks/Development/gaia-react/gaia}"
+GAIA_REPO="${GAIA_REPO:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 git init --quiet --initial-branch=main
 git config user.email "smoke@example.com"
 git config user.name "Smoke"

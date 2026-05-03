@@ -3,10 +3,7 @@ import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
 import {twMerge} from 'tailwind-merge';
 
-const OPTIONS = [
-  {label: 'English', value: 'en'},
-  {label: '日本語', value: 'ja'},
-];
+const OPTIONS = [{label: 'English', value: 'en'}];
 
 type LanguageSelectProps = {
   className?: string;

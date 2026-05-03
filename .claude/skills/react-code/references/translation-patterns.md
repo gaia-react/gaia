@@ -101,7 +101,7 @@ Before adding a new key:
 - **Generic UI actions** (Save, Cancel, Edit, etc.) → already in `common`
 - **Page-specific content** → page's namespace
 
-**Japanese placeholder:** copy the English string verbatim — no empty strings, no TODO comments. Translation happens in a separate pass.
+**Locale placeholders:** when adding a new locale folder, copy the English string verbatim — no empty strings, no TODO comments. Translation happens in a separate pass.
 
 ## Plurals
 
@@ -118,4 +118,4 @@ exerciseCount_other: '{{count}} exercises',
 t('exerciseCount', {count: n});
 ```
 
-Always define both `_one` and `_other`. For Japanese, use `_other` only (Japanese has no grammatical plural).
+Always define both `_one` and `_other`. For locales without grammatical plural (e.g. Japanese, Chinese), define only `_other`.

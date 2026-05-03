@@ -20,7 +20,6 @@ const preview: Preview = {
     locale: 'en',
     locales: {
       en: {left: '🇺🇸', right: 'en', title: 'English'},
-      ja: {left: '🇯🇵', right: 'ja', title: '日本語'},
     },
   },
   parameters: {

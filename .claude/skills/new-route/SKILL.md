@@ -139,7 +139,7 @@ export default {
 
 Then update `app/languages/en/pages/index.ts` — add the import and export for the new i18n key, maintaining alphabetical order.
 
-Also update any other language folders that exist under `app/languages/` (e.g. `ja/`) with the same structure.
+Also update any other language folders that exist under `app/languages/` with the same structure.
 
 ## Step 7: Verify
 

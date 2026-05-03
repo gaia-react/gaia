@@ -72,7 +72,7 @@ See `references/conform-forms.md` for full Conform + Zod wiring.
 
 Every string a user can see or hear — labels, headings, placeholders, button text, error messages, tooltips, descriptions, status text, `aria-label` attributes, `alt` text, and `title` attributes — must come from a `t()` call. Hard-coded English strings in JSX are bugs. This applies to new components, new UI sections, and modifications that add visible text. The only exceptions are punctuation-only strings, single-character symbols, and developer-facing content (console.log, comments, test assertions).
 
-1. Add the translation key to the appropriate namespace file in `app/languages/en/` (and `app/languages/ja/` with a placeholder)
+1. Add the translation key to the appropriate namespace file in `app/languages/en/` (and any other locale folders present, copying the English string verbatim as a placeholder)
 2. Use `t('key')` in the component — never a string literal
 3. **One `useTranslation()` per component** — never multiple calls for different namespaces
 4. Use `{ns: 'other'}` as second arg to `t()` for cross-namespace access

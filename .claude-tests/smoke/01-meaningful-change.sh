@@ -16,7 +16,7 @@ git config commit.gpgsign false
 mkdir -p wiki/services .claude/hooks .claude/commands app/services
 
 # Copy the hooks from the gaia repo into the smoke fixture
-GAIA_REPO="${GAIA_REPO:-/Users/stevensacks/Development/gaia-react/gaia}"
+GAIA_REPO="${GAIA_REPO:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-stop-safety-net.sh" .claude/hooks/

@@ -1,8 +1,7 @@
 import en from './en';
-import ja from './ja';
 
-export const LANGUAGES = ['en', 'ja'];
+export const LANGUAGES = ['en'];
 
-export type Language = 'en' | 'ja';
+export type Language = 'en';
 
-export default {en, ja} as const;
+export default {en} as const;
