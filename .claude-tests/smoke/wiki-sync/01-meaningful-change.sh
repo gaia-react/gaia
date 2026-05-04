@@ -62,7 +62,10 @@ EOF
 git add wiki/.state.json
 git commit --quiet -m "init state"
 
-# Add a meaningful change: new service
+# Add a meaningful change: new service with a body-mentioned invariant.
+# Under the post-Serena rubric, services-only commits are SKIP unless the
+# body carries durable knowledge (trade-off / invariant / gotcha / workaround).
+# The "Invariant:" line is what flips this commit to WORTHY.
 cat > app/services/Gemini.ts <<'EOF'
 // New Gemini integration service
 export class GeminiService {
@@ -70,7 +73,14 @@ export class GeminiService {
 }
 EOF
 git add app/services/Gemini.ts
-git commit --quiet -m "feat: add Gemini service for image generation"
+git commit --quiet -F - <<'EOF'
+feat: add Gemini service for image generation
+
+Invariant: Gemini's REST API requires the GAIA_PROJECT_ID header on
+every request. Without it billing falls back to a free quota that caps
+at 100 calls/day, which silently breaks production. The service wrapper
+enforces the header at construction so requests fail fast on misconfig.
+EOF
 
 # Capture HEAD before claude runs. /wiki-sync advances state to the SHA it
 # evaluated (the pre-sync HEAD), then commits the wiki updates as a new commit

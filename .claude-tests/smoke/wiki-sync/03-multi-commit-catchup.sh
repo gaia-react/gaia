@@ -82,7 +82,11 @@ EOF
 git add app/components/PaymentForm.tsx
 git commit --quiet -m "feat: add PaymentForm component"
 
-# Commit 3: bug fix in service
+# Commit 3: bug fix in service, body carries an invariant.
+# Under the post-Serena rubric, services-only commits are SKIP unless the
+# body mentions a trade-off / invariant / gotcha / workaround. The
+# "Invariant:" line below is what flips this commit to WORTHY — it's the
+# only one in the batch that should produce a wiki page.
 cat > app/services/Stripe.ts <<'EOF'
 // Stripe payment service
 export class StripeService {
@@ -93,7 +97,13 @@ export class StripeService {
 }
 EOF
 git add app/services/Stripe.ts
-git commit --quiet -m "fix: validate amount in StripeService.charge"
+git commit --quiet -F - <<'EOF'
+fix: validate amount in StripeService.charge
+
+Invariant: charge amounts must be > 0. Prior tests caught a $0 ghost
+charge that the Stripe sandbox accepted silently and counted toward
+the dispute window — production would have hit the same path.
+EOF
 
 # Commit 4: typo only
 sed -i.bak 's/test fixture/test harness/' README.md
@@ -129,8 +139,15 @@ log_entries=$(grep -cE '\b[0-9a-f]{7,40}\b' wiki/log.md || true)
 worthy_pages=$(find wiki -type f -name '*.md' ! -name 'index.md' ! -name 'log.md' | wc -l | tr -d ' ')
 [ "$worthy_pages" -ge 1 ] || { echo "FAIL: no wiki pages written for the worthy commits"; exit 1; }
 
-# At least one SKIP entry expected (the typo)
-grep -q "SKIP" wiki/log.md || { echo "FAIL: wiki/log.md missing SKIP entry for typo commit"; exit 1; }
+# At least one SKIP entry expected (the typo, plus the Serena-inventory ones)
+grep -q "SKIP" wiki/log.md || { echo "FAIL: wiki/log.md missing SKIP entry"; exit 1; }
+
+# Post-Serena rubric: commits 1 and 2 (Stripe service add, PaymentForm
+# component add) carry no decision body, so they should land as
+# `SKIP: Serena handles inventory — ...`. The literal substring
+# "Serena handles inventory" is the greppable marker the wiki-sync
+# command guarantees for this skip class.
+grep -q "Serena handles inventory" wiki/log.md || { echo "FAIL: wiki/log.md missing Serena-policy SKIP marker for inventory-class commits"; exit 1; }
 
 # State should advance to the evaluated SHA (pre-sync HEAD)
 new_state=$(jq -r '.last_evaluated_sha' wiki/.state.json)

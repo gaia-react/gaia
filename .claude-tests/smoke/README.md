@@ -1,52 +1,31 @@
 # Smoke tests
 
-End-to-end tests that drive `claude -p` (headless) through real wiki-sync scenarios. Costs ~$0.10 per full run on Sonnet under your subscription or API key.
+Two subtrees. Both are maintainer-only — neither runs in CI, both inform release decisions.
 
-These are MANUAL / pre-release. Not run in CI. Run them before cutting a GAIA release to verify the wiki-sync system works under real Claude judgment.
+## Layout
 
-## Prerequisites
-
-- `claude` CLI on PATH with a working subscription or `ANTHROPIC_API_KEY`
-- `bash`, `git`, `jq`, `mktemp`
-- Internet access
-- ~$0.50 of headroom on your Anthropic account (each scenario can take 30s-2min and cost up to $0.10)
+- `wiki-sync/` — bash-driven E2E scenarios that spin up tmp git repos and drive `claude -p` through `/wiki-sync` runs. Billable (~$0.10/full run on Sonnet). See `wiki-sync/README.md`.
+- `serena/` — python-driven scanner that reads existing Claude Code transcripts and reports Serena vs grep usage. Free (no API calls). See `serena/README.md`.
 
 ## Running
 
-### All scenarios
+### Wiki-sync E2E (billable)
 
 ```bash
 bash .claude-tests/smoke/run-all.sh
 ```
 
-Prints PASS/FAIL per scenario and a final summary. Exits non-zero on any failure.
+Walks every `wiki-sync/*.sh` scenario, prints PASS/FAIL, exits non-zero on any failure.
 
-### Individual scenario
+### Serena usage scan (free, diagnostic)
 
 ```bash
-bash .claude-tests/smoke/01-meaningful-change.sh
+python3 .claude-tests/smoke/serena/usage_scan.py --days 7
 ```
 
-Each scenario:
-- Creates a tmp directory
-- Scaffolds a minimal GAIA-like project with the wiki-sync hooks installed
-- Drives `claude -p` through prompts
-- Asserts the expected behavior
-- Cleans up
+Reports tool-call counts from your actual sessions. No PASS/FAIL — it's a measurement.
 
-## Cost discipline
+## When to run
 
-Scenarios use Sonnet (not Opus) to keep cost low. A full run touches ~5 sessions of 5–15K tokens each = ~30–75K tokens total ≈ $0.05–0.15.
-
-If you're iterating on a hook and want a single fast check, run just `01-meaningful-change.sh`.
-
-## Scenarios
-
-- `01-meaningful-change.sh` — Real change → drift detected → /wiki-sync runs → wiki updated → state advances
-- `02-typo-only-skip.sh` — Typo commit → drift detected → /wiki-sync runs → SKIP logged, no wiki edits, state advances
-- `03-multi-commit-catchup.sh` — N commits accumulated → drift detected on session start → /wiki-sync handles all → log has N entries
-- `04-non-claude-merge.sh` — Commit made via shell (bypassing Claude) → next Claude session detects drift on first prompt → /wiki-sync catches up
-
-## Updating
-
-When you add hooks or change reminder text, update the scenario's expected-output assertions to match. The fixtures in each scenario are intentionally minimal so they're cheap to update.
+- **Before cutting a GAIA release** — wiki-sync E2E. Verifies the wiki-sync system works under real Claude judgment, including the post-Serena WORTHY narrowing.
+- **Periodically during the Serena dogfooding window** — usage scan. Tracks whether the routing rule is actually changing behavior.

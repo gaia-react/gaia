@@ -58,12 +58,13 @@ Decide WORTHY / SKIP based on subject + stats alone, without reading diffs. Wort
 - Body explicitly mentions a trade-off, invariant, gotcha, workaround, or non-obvious decision
 - Touches `wiki/decisions/`, `wiki/concepts/`, `wiki/flows/`, `wiki/dependencies/`, or `wiki/entities/` directly
 - Touches `app/middleware/**`, `app/routes.ts`, `app/i18n.ts`, or `app/sessions.server/**` (flows-relevant)
-- Adds, removes, or replaces a dependency in `package.json` (the dep wiki layer still owns "why we use this")
+- Adds or removes a dependency in `package.json`, or swaps one dependency for another (e.g. `axios` → `ofetch`). The dep wiki layer owns "why we use this" — adding, removing, or swapping a dep changes the why. A version bump does **not** change the why and is SKIP regardless of subject prefix.
 - Subject prefixed `feat:` AND the diff introduces a new pattern not previously expressed in the codebase (e.g. first state Provider, first server-only utility) — judgment call, log the reasoning
 
 Skip if any of:
 
-- `chore(release):`, `wiki:`, `Merge pull request`, `style:`, `chore(deps):` prefixes (existing)
+- `chore(release):`, `wiki:`, `Merge pull request`, or `style:` prefixes (existing)
+- `chore(deps):` prefix when the diff is a version bump only — no dep added, removed, or swapped. If a `chore(deps):` commit actually adds or removes a dep, the dep WORTHY rule above wins.
 - Touches only `app/components/**`, `app/hooks/**`, `app/services/**`, or `app/pages/**` AND adds/refactors files without a body mentioning trade-offs / decisions / invariants — Serena handles the inventory; log as `SKIP: Serena handles inventory — {context}`
 - Pure formatting / typo / comment-only changes
 - Test-only changes (no `app/**` non-test files in the diff)

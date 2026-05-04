@@ -1,25 +1,33 @@
 #!/usr/bin/env bash
-# Run all smoke scenarios, report pass/fail.
+# Run all wiki-sync smoke scenarios, report pass/fail.
+# Walks .claude-tests/smoke/wiki-sync/*.sh in lexicographic order.
+#
+# The serena/ subtree is intentionally NOT run from here — usage_scan.py
+# is a measurement, not a test, and shouldn't gate a release.
 set -u
 
-cd "$(dirname "$0")"
+SMOKE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WIKI_SYNC_DIR="$SMOKE_DIR/wiki-sync"
 
-scenarios=(
-  "01-meaningful-change.sh"
-  "02-typo-only-skip.sh"
-  "03-multi-commit-catchup.sh"
-  "04-non-claude-merge.sh"
-)
+shopt -s nullglob
+scenarios=("$WIKI_SYNC_DIR"/*.sh)
+shopt -u nullglob
+
+if [ ${#scenarios[@]} -eq 0 ]; then
+  echo "No scenarios found in $WIKI_SYNC_DIR" >&2
+  exit 1
+fi
 
 results=()
 overall=0
 
 for s in "${scenarios[@]}"; do
-  printf '\n=== %s ===\n' "$s"
-  if bash "./$s"; then
-    results+=("PASS  $s")
+  name="$(basename "$s")"
+  printf '\n=== %s ===\n' "$name"
+  if bash "$s"; then
+    results+=("PASS  $name")
   else
-    results+=("FAIL  $s")
+    results+=("FAIL  $name")
     overall=1
   fi
 done
