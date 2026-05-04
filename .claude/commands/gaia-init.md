@@ -190,7 +190,7 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
   claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.2.0 serena start-mcp-server --open-web-dashboard false
   ```
 
-  `-s user` registers Serena globally for the user's Claude Code (not project-scoped), and the pinned ref keeps every GAIA install on the same Serena baseline. `--open-web-dashboard false` keeps Serena headless — its dashboard at `http://localhost:24282/dashboard/` (logs, tool-call history, config view) defaults to auto-opening on every server launch, which becomes a tab-spawning nuisance during normal Claude Code use. Users who want it can drop the flag locally, or visit the URL manually. If the `claude mcp add` invocation itself fails (network, registry change, etc.), surface the error verbatim and halt `/gaia-init` so the user can retry the command manually after addressing the cause.
+  `-s user` registers Serena globally for the user's Claude Code; `--open-web-dashboard false` keeps it headless. The pinned ref keeps every GAIA install on the same Serena baseline. If the `claude mcp add` invocation itself fails (network, registry change, etc.), surface the error verbatim and halt `/gaia-init` so the user can retry the command manually after addressing the cause.
 
 ### Install plugins
 
