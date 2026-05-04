@@ -120,7 +120,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 - **Path-scoped rules** cover TypeScript, React, Tailwind, testing, i18n, accessibility, and state management. Ask Claude about any of them; they're in `.claude/rules/`.
 - **Hooks** guard the quality gate and keep the wiki fresh. Ask Claude what they do.
 - **Bundled skills** (`typescript`, `react-code`, `tailwind`, `skeleton-loaders`, `tdd`, `playwright-cli`, `eslint-fixes`) autoload for matching tasks. Scaffolding skills (`new-component`, `new-hook`, `new-route`, `new-service`) fire on natural-language asks.
-- **MCP servers.** [Serena](https://github.com/oraios/serena) gives Claude LSP-backed code intelligence — symbol lookups, references, and types instead of grepping the codebase.
+- **MCP servers.** [Serena](https://github.com/oraios/serena) gives Claude LSP-backed code intelligence. Symbol lookups, references, and types instead of grepping the codebase.
 
 ### Code review before merge
 
