@@ -27,7 +27,7 @@ When constructing each specialist subagent's prompt below, append the full conte
 Work happens in two layers, dispatched in parallel:
 
 - **Main agent (you)** — cross-cutting concerns: security reasoning, architectural fit, performance at the module/data-flow level, accessibility, edge cases, maintainability. Do this yourself.
-- **Specialist subagents** — line-level rule compliance against the project's skills/rules files. Spawned in parallel from a single tool call, alongside `react-doctor`.
+- **Specialist subagents** — line-level rule compliance against the project's skills/rules files. Spawned in parallel from a single tool call, alongside `react-doctor` and `pnpm knip --reporter json`.
 
 Don't duplicate work: if a subagent is going to check every `useEffect` against the react-code skill, you don't need to do that line by line too. Focus your own review on the issues only a full-context reviewer can catch.
 
@@ -134,11 +134,11 @@ Include only when there are specific, concrete patterns worth reinforcing. Skip 
 5. **Be specific** — never say "this could be improved" without saying exactly how and why
 6. **Be proportionate** — don't nitpick formatting when there are security holes; focus energy on what matters most
 7. **Respect existing patterns** — if the codebase has an established way of doing something, don't suggest alternatives unless there's a concrete benefit
-8. **Dispatch in parallel** — once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor` from a single tool-call message so they run concurrently with your own review
+8. **Dispatch in parallel** — once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor` and `pnpm knip --reporter json` from a single tool-call message so they run concurrently with your own review
 
-## Rules-Based Audit (Specialist Subagents + react-doctor)
+## Rules-Based Audit (Specialist Subagents + react-doctor + knip)
 
-Rule-based line-level checks are done by specialist subagents in parallel with `react-doctor`. This runs concurrently with your own cross-cutting review.
+Rule-based line-level checks are done by specialist subagents in parallel with `react-doctor` and `pnpm knip --reporter json`. This runs concurrently with your own cross-cutting review.
 
 ### How to run
 
@@ -151,7 +151,18 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 3. **Dispatch in parallel, in one tool-call message**:
    - 1 × `Agent` call per surviving subagent (foreground — results merge on return)
    - 1 × `Bash` call for `npx -y react-doctor@latest . --verbose --diff` (also foreground, runs alongside)
+   - 1 × `Bash` call for `pnpm knip --reporter json` (also foreground, runs alongside) — pre-merge is post-task by design, so the noise concern from `.claude/rules/knip.md` doesn't apply here
 4. **Merge findings** into your report under Critical/Important/Suggestions. Deduplicate against your own findings, keeping the more detailed version. Many react-doctor barrel-import and multiple-useState warnings are false positives in this codebase — cross-reference against project conventions before including them.
+
+### Knip findings
+
+Parse the JSON output from `pnpm knip --reporter json` (an `issues[]` array keyed by file with `files`, `dependencies`, `devDependencies`, `unlisted`, `binaries`, `unresolved`, `exports`, `types`, `enumMembers`, `duplicates`). For each finding, classify into one of the three buckets from `.claude/rules/knip.md`:
+
+1. **Real dead code** — unused file/export/type with no remaining callers. Recommend deletion.
+2. **Library API exposed for downstream use** — intentionally exported even though this repo doesn't consume it (common for `app/components/`, `app/hooks/`, `app/utils/`, `app/services/`, `app/types/` — see template-aware config). Recommend adding to `entry` globs in `knip.config.ts`.
+3. **Implicit dependency** — package used via config plugin, CSS, or runtime resolution that knip can't trace. Recommend adding to `ignoreDependencies` in `knip.config.ts`.
+
+Knip findings are **advisory, not blocking** — like react-doctor's. Surface them in the audit summary with the recommended bucket and action so the user can decide. Do not auto-delete or auto-edit `knip.config.ts` during the review.
 
 ### Subagent 1: React Patterns & Accessibility Audit
 

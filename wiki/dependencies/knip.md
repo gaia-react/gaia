@@ -5,7 +5,7 @@ package: knip
 version: ^6.11.0
 role: dead-code-detection
 created: 2026-05-04
-updated: 2026-05-04
+updated: 2026-05-05
 tags: [dependency, quality]
 ---
 
@@ -16,8 +16,9 @@ Reports unused files, exports, types, and dependencies across the codebase. Devt
 ## Conventions
 
 - Config: `knip.config.ts` (repo root)
-- Run: `pnpm knip`
-- Not part of the [[Quality Gate]] — in-progress work routinely flags exports that haven't been wired up yet, which drowns the signal.
+- Run: `pnpm knip` (manual) or `pnpm knip --reporter json` (machine-readable, used by the audit agent)
+- Runs automatically pre-merge inside the [[Code Review Audit Agent]] (alongside `react-doctor`) — pre-merge is post-task by design, so the in-progress noise concern doesn't apply.
+- Not part of the [[Quality Gate]] (pre-commit) — in-progress work routinely flags exports that haven't been wired up yet, which drowns the signal.
 
 ## Template-aware config
 
