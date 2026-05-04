@@ -72,6 +72,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Tailwind]]
 - [[react-icons]]
 - [[gaia-lint]]
+- [[knip]]
 - [[Vitest]]
 - [[React Testing Library]]
 - [[Playwright]]
