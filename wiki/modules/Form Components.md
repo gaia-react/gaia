@@ -6,7 +6,7 @@ language: typescript
 purpose: Conform + Zod-powered form components — the star of GAIA
 depends_on: [[Conform]], [[Zod]]
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-04
 tags: [module, components, forms]
 ---
 
@@ -15,27 +15,20 @@ tags: [module, components, forms]
 > [!key-insight] The star of GAIA
 > GAIA's form components are the headline feature. Built on [[Conform]] + [[Zod]], they handle label association, validation state, error display, and accessibility automatically.
 
-## Bundled
-
-`app/components/Form/`:
-
-| Component                                      | Deep dive             | Use                                               |
-| ---------------------------------------------- | --------------------- | ------------------------------------------------- |
-| `Field`                                        | [[Form Field]]        | Label + input + error wrapper                     |
-| `FormActions`                                  | [[Form Layout]]       | Action button row (submit/cancel)                 |
-| `FormError`                                    | [[Form Layout]]       | Form-level error display (reads `useActionData`)  |
-| `Chain`                                        | [[Form Layout]]       | Compose multiple inputs in a single field         |
-| `InputText`, `InputEmail`, `InputPassword`     | [[Form Text Inputs]]  | Text-style inputs                                 |
-| `TextArea`                                     | [[Form Text Inputs]]  | Multi-line text (uses `autosize`)                 |
-| `Select`                                       | [[Form Select]]       | Native select with icon, optgroup, placeholder    |
-| `Checkbox`, `Checkboxes`, `CheckboxRadioGroup` | [[Form Choices]]      | Checkbox primitives + groups                      |
-| `InputRadio`, `RadioButtons`                   | [[Form Choices]]      | Radio primitives + groups                         |
-| `YearMonthDay`                                 | [[Form YearMonthDay]] | Composite date input — Conform gotchas documented |
-| `types.ts`                                     | —                     | Shared form types                                 |
-
 ## Replace native inputs
 
 Per [[Coding Guidelines]] — use these instead of native `<input>`, `<select>`, `<textarea>`. Exceptions: `<input type="hidden">`, `<input type="file">`, `<input type="radio">` inside custom radio groups.
+
+## Deep dives by component family
+
+- [[Form Field]] — label + input + error wrapper that every other Form component composes
+- [[Form Layout]] — `Chain`, `FormActions`, `FormError`
+- [[Form Text Inputs]] — `InputText`, `InputEmail`, `InputPassword`, `TextArea`
+- [[Form Select]] — native select with icon, optgroup, placeholder
+- [[Form Choices]] — `Checkbox` / `Checkboxes` / `RadioButtons` / `BaseRadioButtons`
+- [[Form YearMonthDay]] — composite date input; documents the Conform gotchas
+
+For the current bundled inventory, query Serena (`.claude/rules/code-search.md`).
 
 ## Conform + custom components
 

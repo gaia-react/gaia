@@ -6,42 +6,33 @@ language: css
 purpose: Tailwind setup and shared utilities
 depends_on: [[Tailwind]]
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-04
 tags: [module, styles, tailwind]
 ---
 
 # Styles
 
-`app/styles/tailwind.css` is the entry point for [[Tailwind]] v4 and the place to define shared `@layer` utilities/components.
+`app/styles/tailwind.css` is the entry point for [[Tailwind]] v4 and the place to define shared `@layer` utilities/components. Component-specific CSS lives in `app/components/{Name}/styles.module.css` (CSS Modules) — co-located with the component, not centralized here.
 
-## Tailwind setup
-
-GAIA ships:
-
-- **tailwindcss** v4 + `@tailwindcss/vite`
-- `@tailwindcss/forms`, `@tailwindcss/typography`
-- **Class management**: `tailwind-merge` for conditional class merging
-- **Linting**: `eslint-plugin-better-tailwindcss`, `prettier-plugin-tailwindcss`, `stylelint-config-tailwindcss`
-
-## Conventions
+## Conventions (load-bearing)
 
 See the `tailwind` skill (`.claude/skills/tailwind/`) and the `tailwind` rule (`.claude/rules/tailwind.md`):
 
-- No `px` units in Tailwind classes — use spacing scale or `rem` for custom values
-- Prefer `twJoin` for static class lists, `twMerge` only when classes can conflict
+- **No `px` units** in Tailwind classes — use the spacing scale or `rem` for custom values
+- **`twJoin`** for static class lists, **`twMerge`** only when classes can conflict
+- **No template-literal class strings** — they defeat Tailwind's static analysis
 
-## Component-scoped styles
+## Dark mode pipeline (no React state)
 
-Component-specific CSS lives in `app/components/{Name}/styles.module.css` (CSS Modules).
+> [!key-insight] Cookie + client hints, not React state
+> Dark mode is wired through a cookie + `Sec-CH-Prefers-Color-Scheme` client hint, then rendered via Tailwind's `dark:` variant. No React state, no flash of incorrect theme on hydration. See [[Theme Flow]].
 
-## Dark mode
+The pipeline (query Serena for current paths):
 
-Dark mode is wired through cookie + client hints (no React state). The pipeline:
+- `app/utils/theme.server.ts` — reads/writes the `__theme` cookie
+- `app/utils/client-hints.tsx` — exposes `getHints` and `<ClientHintCheck/>`; subscribes to OS `prefers-color-scheme` changes and revalidates the loader
+- `app/routes/resources+/theme-switch.tsx` — action + `ThemeSwitch` UI + `useOptionalTheme` hook
+- Tailwind's `dark:` variant via `@custom-variant dark` in `tailwind.css`
+- Storybook's `@vueless/storybook-dark-mode` addon (unchanged)
 
-- `app/utils/theme.server.ts` — reads/writes the `__theme` cookie.
-- `app/utils/client-hints.tsx` — exposes `getHints` and `<ClientHintCheck/>`; subscribes to OS `prefers-color-scheme` changes and revalidates the loader.
-- `app/routes/resources+/theme-switch.tsx` — action + `ThemeSwitch` UI + `useOptionalTheme` hook.
-- Tailwind's `dark:` variant via `@custom-variant dark` in `tailwind.css`.
-- Storybook's `@vueless/storybook-dark-mode` addon (unchanged).
-
-See [[Theme Flow]].
+For the current Tailwind plugin inventory, query Serena or `package.json`.

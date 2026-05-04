@@ -6,7 +6,7 @@ language: typescript
 purpose: API client (Ky wrapper) and domain-specific service layers
 depends_on: [[Ky]], [[Zod]]
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-04
 tags: [module, services, api]
 ---
 
@@ -14,27 +14,19 @@ tags: [module, services, api]
 
 `app/services/` is where API calls and business logic live.
 
-## `api/` — the Ky wrapper
+## `api/` vs `gaia/` — the convention
 
-`app/services/api/index.ts` wraps [[Ky]] with a `create()` factory, path/search-param interpolation, snake_case ↔ camelCase conversion, and shared `setApiAuthorization` / `setApiLanguage` hooks. See [[Ky]] for full details.
+- `app/services/api/` — the [[Ky]] wrapper. A `create()` factory plus path/search-param interpolation, snake_case ↔ camelCase conversion, and shared `setApiAuthorization` / `setApiLanguage` hooks. **Reusable across domains.**
+- `app/services/gaia/` — the GAIA template's domain layer. Rename to your company name or 3rd-party API name; Claude updates imports, barrels, and references across the app.
 
-## `gaia/` — domain service
+The pattern: each domain owns its own `Ky` instance (`api.ts`), its URL constants (`urls.ts`), and a server-only barrel (`index.server.ts`). Domain subfolders (`auth/`, `users/`, etc.) hold request functions, types, and parsers. `/new-service` scaffolds the full pattern.
 
-`app/services/gaia/` is the GAIA template's domain layer. Ask Claude to rename it to your company name or 3rd-party API name — Claude will update imports, barrels, and references across the app.
+## Why URL constants are mandatory
 
-```
-gaia/
-├── api.ts                   # created Ky instance for this domain
-├── urls.ts                  # URL constants
-└── index.server.ts          # barrel export
-```
+`GAIA_URLS` in `app/services/gaia/urls.ts` is the contract between the service layer and the MSW mocks ([[MSW Handlers]]). Both sides import the same constant — when a path changes, both sides update together. Hardcoding paths breaks the contract and lets requests escape to the real network in tests.
 
-Ask Claude to add domain subfolders (`auth/`, `users/`, etc.) as needed — `/new-service` scaffolds the full pattern. See [[API Service Pattern]].
+## See also
 
-## URL constants & request functions
-
-`app/services/gaia/urls.ts` holds `GAIA_URLS` constants; `/new-service` populates them alongside matching request functions. See [[API Service Pattern]] for the full pattern.
-
-## MSW mocks
-
-Every service has a matching mock layer in `test/mocks/{domain}/` — same folder structure, with `get.ts`, `post.ts`, `put.ts`, `delete.ts` handlers and `data.ts` seed data. See [[MSW Handlers]].
+- [[Ky]] — full Ky wrapper details
+- [[API Service Pattern]] — service folder shape and conventions
+- [[MSW Handlers]] — mock-side contract

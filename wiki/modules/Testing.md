@@ -6,71 +6,54 @@ language: typescript
 purpose: Four-layer testing setup — unit, integration, E2E, visual regression
 depends_on: [[Vitest]], [[React Testing Library]], [[Playwright]], [[Chromatic]], [[MSW]]
 created: 2026-04-20
-updated: 2026-04-27
+updated: 2026-05-04
 tags: [module, testing]
 ---
 
 # Testing
 
-GAIA ships **four layers** of testing, all sharing a common [[MSW Handlers|MSW]] mocking layer.
+GAIA ships **four layers** of testing, all sharing a common [[MSW Handlers|MSW]] mocking layer:
 
-| Layer             | Tool                               | Where                                           |
-| ----------------- | ---------------------------------- | ----------------------------------------------- |
-| Unit              | [[Vitest]]                         | `app/utils/tests/`, `app/hooks/tests/`          |
-| Integration       | Vitest + [[React Testing Library]] | `app/components/*/tests/`, `app/pages/*/tests/` |
-| E2E               | [[Playwright]]                     | `.playwright/e2e/*.spec.ts`                     |
-| Visual regression | [[Chromatic]] (CI only)            | Storybook stories                               |
+- Unit — [[Vitest]] in `app/utils/tests/`, `app/hooks/tests/`
+- Integration — Vitest + [[React Testing Library]] in `app/components/*/tests/`, `app/pages/*/tests/`
+- E2E — [[Playwright]] in `.playwright/e2e/*.spec.ts`
+- Visual regression — [[Chromatic]] (CI only), driven by Storybook stories
 
-## Vitest config
+The `composeStory` pattern means integration tests and visual regression share one source of truth. See [[Component Testing]].
 
-- `vitest.config.ts` at root
-- Looks for `*.test.{ts,tsx}` anywhere in `app/`
-- Runs against `happy-dom`
-- See [[Test Runner]] rule: never run bare `pnpm test` in CI; use `pnpm test --run`
+## Vitest
 
-## test/ folder
+Config at `vitest.config.ts`. Looks for `*.test.{ts,tsx}` anywhere in `app/`. Runs against `happy-dom`.
 
-| File             | Purpose                                                                          |
-| ---------------- | -------------------------------------------------------------------------------- |
-| `mocks/`         | MSW handlers + `@msw/data` collections — see [[MSW Handlers]] for full structure |
-| `stubs/`         | Storybook decorators (`reactRouter()`, `state()`)                                |
-| `msw.server.ts`  | MSW server entry used by `entry.server.tsx` when `MSW_ENABLED=true`              |
-| `rtl.tsx`        | RTL setup with i18n strings + auto-cleanup                                       |
-| `setup.ts`       | Vitest setup file                                                                |
-| `test.server.ts` | MSW server for Vitest                                                            |
-| `utils.ts`       | Test helpers (delay, date generators)                                            |
-| `worker.ts`      | MSW browser worker handlers                                                      |
+> [!warning] Never run bare `pnpm test` in CI
+> Bare `pnpm test` enters watch mode and never exits. Use `pnpm test --run`. See [[Test Runner]].
 
 ## Component test pattern
 
-Always use Storybook stories with `composeStory`. Never manually mock framework deps. See [[Component Testing]] for the pattern.
+Always use Storybook stories with `composeStory`. Never manually mock framework deps (`react-router`, `react-i18next`, etc.). See [[Component Testing]] for the canonical pattern.
 
 ## Playwright
 
-- Tests in `.playwright/e2e/*.spec.ts`
-- Config in `playwright.config.ts`
+- Tests in `.playwright/e2e/*.spec.ts`, config in `playwright.config.ts`
 - Use the bundled `hydration(page)` helper after `page.goto()` to wait for React Router hydration before interacting
-- Sample tests: `language-switch.spec.ts`
 
 ## Chromatic
 
 - Visual regression on every PR
-- `pnpm chromatic` (run in CI)
-- `CHROMATIC_PROJECT_TOKEN` env var on CI
+- `pnpm chromatic` (run in CI), `CHROMATIC_PROJECT_TOKEN` env var on CI
 - See [[Chromatic Opt-Out]] if you want to remove it
 
 ## ESLint rules on test files
 
-Test files (`**/*.test.ts?(x)`) enforce two additional plugin configs:
+Test files (`**/*.test.ts?(x)`) enforce two additional plugin configs that change how tests are written:
 
-| Plugin                          | Config             | Rules                                                                                                                      |
-| ------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `eslint-plugin-testing-library` | `flat/react`       | 22 rules — prefer `screen` queries, `await` all `userEvent` calls, no `act()` wrappers, no manual cleanup, etc.            |
-| `eslint-plugin-jest-dom`        | `flat/recommended` | 11 rules — prefer jest-dom matchers (`toHaveValue`, `toBeChecked`, `toHaveTextContent`, etc.) over raw DOM property checks |
+- `eslint-plugin-testing-library` — prefer `screen` queries, `await` all `userEvent` calls, no `act()` wrappers, no manual cleanup
+- `eslint-plugin-jest-dom` — prefer jest-dom matchers (`toHaveValue`, `toBeChecked`, `toHaveTextContent`) over raw DOM property checks
 
 See [[ESLint Fixes]] for fix patterns.
 
 ## Pre-commit
 
-- `lint-staged` runs `vitest --run --changed` (only files affected by the staged changes)
-- See [[Quality Gate]]
+`lint-staged` runs `vitest --run --changed` (only files affected by the staged changes). See [[Quality Gate]].
+
+For the current `test/` folder inventory and helper signatures, query Serena (`.claude/rules/code-search.md`).

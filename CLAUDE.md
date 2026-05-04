@@ -15,6 +15,10 @@ When reporting information to me, be extremely concise and sacrifice grammar for
 
 The machine-local auto-memory (`~/.claude/projects/.../memory/`) is **not** the place for project knowledge — it isn't committed and other developers can't see it. Save durable knowledge to the wiki or `.claude/rules/` instead. Only keep genuinely machine-local personal prefs in memory.
 
+## Code Search
+
+For TS/TSX symbol queries (definitions, references, types, module exports), prefer Serena MCP tools over Read+grep. See @.claude/rules/code-search.md for routing rules and when grep is still right.
+
 ## Universal Principles
 
 - No hardcoded secrets or tokens in source — use environment variables

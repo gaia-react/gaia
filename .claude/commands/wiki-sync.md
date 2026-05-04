@@ -54,20 +54,20 @@ Build a working list. For each commit:
 
 Decide WORTHY / SKIP based on subject + stats alone, without reading diffs. Worthy if any of:
 
-- Adds / removes / replaces a service, component family, hook, pattern, route group
-- Adds / updates / removes a dependency (`package.json` or lockfile in stat)
-- Has `feat:`, `feat!:`, `BREAKING CHANGE` markers
-- Has explicit ADR-class subject (`docs(decision):`, `chore(adr):`)
-- Touches `wiki/decisions/`, `wiki/concepts/`, or `wiki/flows/` directly
-- Body mentions a non-obvious invariant, gotcha, or workaround
+- Subject prefixed `docs(decision):`, `feat!:`, `chore(adr):`, or `BREAKING CHANGE` in body
+- Body explicitly mentions a trade-off, invariant, gotcha, workaround, or non-obvious decision
+- Touches `wiki/decisions/`, `wiki/concepts/`, `wiki/flows/`, `wiki/dependencies/`, or `wiki/entities/` directly
+- Touches `app/middleware/**`, `app/routes.ts`, `app/i18n.ts`, or `app/sessions.server/**` (flows-relevant)
+- Adds or removes a dependency in `package.json`, or swaps one dependency for another (e.g. `axios` → `ofetch`). The dep wiki layer owns "why we use this" — adding, removing, or swapping a dep changes the why. A version bump does **not** change the why and is SKIP regardless of subject prefix.
+- Subject prefixed `feat:` AND the diff introduces a new pattern not previously expressed in the codebase (e.g. first state Provider, first server-only utility) — judgment call, log the reasoning
 
-Skip if subject matches:
+Skip if any of:
 
-- `chore(release):`
-- `wiki:` prefix
-- `Merge pull request`
-- `style:`, `chore(deps):` for routine bumps with no behavior change
-- Pure formatting / typo / comment-only subjects with no `app/**` substantive changes
+- `chore(release):`, `wiki:`, `Merge pull request`, or `style:` prefixes (existing)
+- `chore(deps):` prefix when the diff is a version bump only — no dep added, removed, or swapped. If a `chore(deps):` commit actually adds or removes a dep, the dep WORTHY rule above wins.
+- Touches only `app/components/**`, `app/hooks/**`, `app/services/**`, or `app/pages/**` AND adds/refactors files without a body mentioning trade-offs / decisions / invariants — Serena handles the inventory; log as `SKIP: Serena handles inventory — {context}`
+- Pure formatting / typo / comment-only changes
+- Test-only changes (no `app/**` non-test files in the diff)
 
 If unsure: mark WORTHY (false positive better than false negative). Log the decision.
 
@@ -113,6 +113,7 @@ For each commit (worthy or skipped), prepend ONE line to `wiki/log.md` in this f
 
 - WORTHY example: `2026-05-03 abc1234 - WORTHY: added /services/Gemini integration → wiki/services/Gemini.md`
 - SKIP example: `2026-05-03 def5678 - SKIP: typo-only commit`
+- Serena-policy SKIP example: `2026-05-03 9a0b1c2 - SKIP: Serena handles inventory — added Button variant in app/components/Button`
 
 Newest entries on top. Group by date if helpful.
 

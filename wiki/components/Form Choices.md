@@ -6,35 +6,35 @@ language: typescript
 purpose: Checkbox and radio primitives plus grouped variants
 depends_on: [[Form Components]], [[Form Field]]
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-04
 tags: [component, forms, checkbox, radio]
 ---
 
 # Form Choices
 
-Checkboxes and radios share a layout primitive and a sizing table.
+Checkboxes and radios share a layout primitive (`CheckboxRadioGroup`) and a `Size` sizing table from `~/types` (`xs | sm | base | lg | xl`). Each component maps `size` to a `size-{n}` box class and a `text-{size}` label class so primitives stay visually consistent.
 
-## Sizes — `Size` from `~/types`
+## Why these exist as separate primitives
 
-`xs | sm | base | lg | xl`. Each component maps `size` to a `size-{n}` class (box) and a `text-{size}` class (label). Consistent across [[Form Choices#Checkbox|Checkbox]] and [[Form Choices#InputRadio|InputRadio]].
+- `Checkbox` / `InputRadio` are bare inputs — usable inline or inside group wrappers
+- `Checkboxes` / `RadioButtons` add field chrome ([[Form Field]]) and group wiring
+- `BaseRadioButtons` is the field-chrome-less variant for radios rendered outside a Field — keyed by `md5(option)` (`~/utils/object`) so duplicate values don't collide
 
-## Components
+## Non-obvious behaviour
 
-| Component            | Renders                                        | Disabled when                         | Notes                                                                                                                                      |
-| -------------------- | ---------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CheckboxRadioGroup` | `role="group"` flex container                  | —                                     | `isHorizontal` toggles `flex-col` vs row; used by `Checkboxes` and `BaseRadioButtons`                                                      |
-| `Checkbox`           | `<input type="checkbox">` + optional `<label>` | `readOnly` implies disabled           | `required` only set once an error surfaces (prevents native browser stealing focus); wraps in `FieldStatus` when description/error present |
-| `Checkboxes`         | Grouped `Checkbox` list                        | `disabled ?? options.every(disabled)` | Keyed by each option's own `name`; `isRequired` only when every option is required                                                         |
-| `InputRadio`         | `<input type="radio">` + `<label>`             | per-option `disabled`                 | `id={name}-{value}` synthesized; same `required && error` gate as Checkbox                                                                 |
-| `RadioButtons`       | `InputRadio` group wrapped in [[Form Field]]   | —                                     | Use this for the standard field-chrome layout                                                                                              |
-| `BaseRadioButtons`   | Bare radio group, no field chrome              | —                                     | Keyed by `md5(option)` (`~/utils/object`) to handle duplicate values; use when rendering outside a Field                                   |
+> [!warning] `required` is gated on error state
+> Both `Checkbox` and `InputRadio` only set `required` once an error surfaces. Setting it earlier makes the native browser steal focus on submit and breaks Conform's validation flow.
 
-## Which one to reach for
+- `Checkboxes` derives `disabled` and `isRequired` by inspecting every option (`every(disabled)`, `every(required)`) — a single non-required option opts the group out of required
+- `Checkbox` only wraps in `FieldStatus` when `description` or `error` is present — keeps the bare-input case clean
 
-| Need                                         | Use                                                            |
-| -------------------------------------------- | -------------------------------------------------------------- |
-| Single checkbox (e.g. "I agree to terms")    | [[Form Choices#Checkbox\|Checkbox]]                            |
-| Group of independent checkboxes              | [[Form Choices#Checkboxes\|Checkboxes]]                        |
-| Single radio (rare — usually inside a group) | [[Form Choices#InputRadio\|InputRadio]]                        |
-| Group of mutually exclusive radios           | [[Form Choices#RadioButtons + BaseRadioButtons\|RadioButtons]] |
-| Radios rendered outside any Field chrome     | `BaseRadioButtons`                                             |
+## Decision tree
+
+| Need                                         | Use                |
+| -------------------------------------------- | ------------------ |
+| Single checkbox (e.g. "I agree to terms")    | `Checkbox`         |
+| Group of independent checkboxes              | `Checkboxes`       |
+| Group of mutually exclusive radios           | `RadioButtons`     |
+| Radios rendered outside any Field chrome     | `BaseRadioButtons` |
+
+For prop signatures and exact sub-component rosters, query Serena (`.claude/rules/code-search.md`).

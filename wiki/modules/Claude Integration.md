@@ -4,163 +4,97 @@ path: .claude/
 status: active
 purpose: Claude Code integration — commands, rules, hooks, agents, skills
 created: 2026-04-20
-updated: 2026-05-01
+updated: 2026-05-04
 tags: [module, claude, hooks]
 ---
 
 # Claude Integration
 
-GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everything in `.claude/` is checked in and shared with the team.
+GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everything in `.claude/` is checked in and shared with the team — except the `.local` / gitignored exceptions noted below.
 
-## Layout
+## Layout convention
 
-`.claude/` contains `settings.json` (hooks, env, plugins), `settings.local.json` (gitignored personal overrides), `agents/`, `agent-memory/` (gitignored, ephemeral; **not** a source of truth — durable knowledge belongs in the wiki), `audit/` (gitignored hook output, e.g. `wiki-evaluator-{sha}.log`), `commands/`, `hooks/`, `instructions/` (parameterized one-shot runbooks dispatched by commands like `/gaia-init`; self-deleting after use), `rules/`, and `skills/`.
+`.claude/` is split by lifecycle, not by feature:
 
-## Commands (slash)
+- `settings.json` — committed; hooks, env, plugins
+- `settings.local.json` — gitignored; personal overrides
+- `agent-memory/` — gitignored, ephemeral; **not** a source of truth — durable knowledge belongs in the wiki
+- `audit/` — gitignored hook output (e.g. `wiki-evaluator-{sha}.log`)
+- `agents/` — sub-agent definitions
+- `commands/` — maintainer-only slash commands
+- `hooks/` — bash hooks invoked by `settings.json`
+- `instructions/` — parameterized one-shot runbooks dispatched by commands like `/gaia-init`; self-deleting after use
+- `rules/` — auto-attached guidance, file-path scoped
+- `skills/` — user-invokable workflows, scaffolders, context-triggered guidance
 
-The maintainer-only commands live under `.claude/commands/`; everything user-invokable is a skill (next section).
+## Commands vs. skills
 
-| Command         | What it does                                                                                                                       |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `/gaia-init`    | Rename + strip GAIA branding + configure languages + install Claude toolchain (run once on a fresh `create-gaia` scaffold)         |
-| `/gaia-release` | **Maintainer-only, stripped from tarball.** Cut a GAIA release — bump, audit, scrub wiki, commit, tag, push ([[Release Workflow]]) |
+Maintainer-only commands live under `.claude/commands/`. Everything user-invokable is a skill in `.claude/skills/`. The `/gaia` skill routes user-invoked workflows (plan / handoff / pickup / audit). For the current inventory, query Serena or list the folder directly.
 
-## Rules
+## Rules — auto-attached
 
-Rules activate automatically based on file paths — no need to invoke them.
+Rules activate automatically based on file paths — no need to invoke them. Each rule scopes itself to a glob in `.claude/rules/{name}.md` frontmatter. The set covers code conventions ([[Coding Guidelines]], [[State]], [[Routing]], [[i18n]], [[Tailwind]], [[API Service Pattern]], [[Storybook Stories]], [[Playwright]]), workflow ([[Git Workflow]], [[Quality Gate]], [[PR Merge Workflow]], [[Task Orchestration]]), and harness discipline (`shell-cwd.md`, `instruction-files.md`, `code-search.md`).
 
-| Rule                                   | Applies to                                              |
-| -------------------------------------- | ------------------------------------------------------- |
-| [[Coding Guidelines]]                  | All code                                                |
-| `routes.md` ([[Routing]])              | `app/routes/**`, `app/pages/**`                         |
-| [[API Service Pattern]]                | `app/services/**`, `test/mocks/**`                      |
-| `state-pattern.md` ([[State]])         | `app/state/**`                                          |
-| `storybook.md` ([[Storybook Stories]]) | `app/**/*.stories.tsx`, `.storybook/**`                 |
-| `tailwind.md` ([[Tailwind]])           | `app/**/*.{tsx,css}`                                    |
-| `playwright.md` ([[Playwright]])       | `.playwright/**`, `playwright.config.*`                 |
-| `i18n.md` ([[i18n]])                   | `app/pages/**`, `app/components/**`, `app/languages/**` |
-| [[Accessibility]]                      | `app/components/**`, `app/pages/**`                     |
-| [[Git Workflow]]                       | All `git` commands (hook-enforced)                      |
-| [[Quality Gate]]                       | Commits (source + gate-affecting config only)           |
-| [[PR Merge Workflow]]                  | PR merges                                               |
-| [[Task Orchestration]]                 | Multi-file work                                         |
-| `shell-cwd.md`                         | Bash `cd` discipline (relative-path hooks)              |
+For the current full rule list, query Serena or list `.claude/rules/`.
 
-## Hooks
+## Hooks — wired through `settings.json`
 
-Bash hooks wired through `.claude/settings.json`. Mixed event types.
+Hooks are bash scripts wired through `.claude/settings.json`. The set covers four event types:
 
-### PreToolUse (Edit/Write/MultiEdit)
+### Blocking hooks (deny risky actions)
 
-| Hook                               | Type         | Behavior                                                                                                                       |
-| ---------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `block-env-write.sh`               | **Blocking** | Denies writes to `.env` / `.env.*` (allow `.env.example`). Local secrets must remain gitignored and edited by hand.            |
-| `block-eslint-config-edit.sh`      | **Blocking** | Prevents modifying `eslint.config.mjs` to fix lint errors. Fix the source, not the config.                                     |
-| `block-lockfile-edit.sh`           | **Blocking** | Denies direct edits to `pnpm-lock.yaml`. Run `pnpm install` / `pnpm add` / `pnpm remove` and let pnpm regenerate the lockfile. |
-| `block-secrets-write.sh`           | **Blocking** | Detects AWS keys, GH PATs, PEM headers, and high-entropy secret-like values in writes; allows placeholders / templated refs.   |
-| `block-vitest-globals-tsconfig.sh` | **Blocking** | Prevents adding `vitest/globals` to `tsconfig.json`. Use explicit imports.                                                     |
-| `check-i18n-strings.sh`            | Advisory     | Reminds to use `t()` for user-facing strings in pages/components                                                               |
-| `check-story-exists.sh`            | Advisory     | Reminds to add a Storybook story for new components                                                                            |
+These are the load-bearing safety net. They block the action outright and return a message:
 
-### PreToolUse (Bash)
+- `block-env-write.sh` — denies writes to `.env` / `.env.*` (allows `.env.example`). Local secrets must stay gitignored.
+- `block-eslint-config-edit.sh` — prevents modifying `eslint.config.mjs` to fix lint errors. Fix the source, not the config.
+- `block-lockfile-edit.sh` — denies direct edits to `pnpm-lock.yaml`. Use `pnpm install` / `add` / `remove`.
+- `block-secrets-write.sh` — detects AWS keys, GH PATs, PEM headers, high-entropy secret-like values; allows placeholders.
+- `block-vitest-globals-tsconfig.sh` — prevents adding `vitest/globals` to `tsconfig.json`. Use explicit imports.
+- `block-bare-test.sh` — denies bare `pnpm test` / `npm test` (watch mode). Requires `--run`.
+- `block-main-destructive-git.sh` — denies `git commit` on `main`/`master`, plain `git push` from `main`/`master` (PR-only flow), and force-push to `main`/`master`. See [[Git Workflow]].
+- `block-rm-rf.sh` — denies `rm -rf` of `/`, `~`, `.git`, and other root-level / repo-critical paths.
 
-Each entry uses an `if:` pattern so the hook only runs for the matching command shape.
+### Advisory hooks (nudge, don't block)
 
-| Hook                            | `if` pattern                     | Type         | Behavior                                                                                                                                               |
-| ------------------------------- | -------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `block-bare-test.sh`            | `Bash(pnpm *)` and `Bash(npm *)` | **Blocking** | Denies bare `pnpm test` / `npm test` (watch mode). Requires `--run` for a one-shot pass.                                                               |
-| `block-main-destructive-git.sh` | `Bash(git *)`                    | **Blocking** | Denies `git commit` on `main`/`master`, plain `git push` from `main`/`master` (PR-only flow), and force-push to `main`/`master`. See [[Git Workflow]]. |
-| `block-rm-rf.sh`                | `Bash(rm *)`                     | **Blocking** | Denies `rm -rf` of `/`, `~`, `.git`, and other root-level / repo-critical paths.                                                                       |
-| `pr-merge-audit-check.sh`       | `Bash(gh pr merge:*)`            | Advisory     | Reminds to run `code-review-audit` before merging. See [[PR Merge Workflow]].                                                                          |
+- `check-i18n-strings.sh` — reminds to use `t()` for user-facing strings in pages/components
+- `check-story-exists.sh` — reminds to add a Storybook story for new components
+- `pr-merge-audit-check.sh` — reminds to run `code-review-audit` before merging. See [[PR Merge Workflow]].
 
-### PostToolUse (Bash)
+### Wiki coherence (a layered system)
 
-| Hook                       | `if` pattern         | Type         | Behavior                                                                                                                                                                                                                                                                                                                                                                                              |
-| -------------------------- | -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `wiki-update-evaluator.sh` | `Bash(git commit:*)` | Non-blocking | After each `git commit` (skips `--amend` and `wiki:*` subjects), backgrounds `claude -p --model sonnet` to evaluate the commit diff against the wiki and apply any warranted updates. The sub-agent commits independently with `wiki: evaluator update for <sha>`. Output lands in `.claude/audit/wiki-evaluator-{sha}.log` (gitignored). The `wiki-squash-autocommits.sh` Stop hook folds the chain. |
+> [!key-insight] Why three hooks for one job
+> The `claude-obsidian` plugin auto-commits `wiki/` changes via its own `PostToolUse` hook, so by Stop time its diff-check against HEAD is always empty and its `wiki/hot.md` refresh prompt never fires. GAIA's `wiki-session-start.sh` + `wiki-session-stop.sh` pair fills that gap, and `wiki-squash-autocommits.sh` keeps history clean by squashing the auto-commit chain into one `wiki:` commit per session.
 
-### UserPromptSubmit
+`wiki-update-evaluator.sh` (PostToolUse on `git commit:*`) skips `--amend` and `wiki:*` subjects, then backgrounds `claude -p --model sonnet` to evaluate the commit diff against the wiki and apply any warranted updates. Output lands in `.claude/audit/` (gitignored).
 
-| Hook                | Behavior                                                                                                                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `intercept-init.sh` | Blocks the built-in `/init` and auto-invokes the `/gaia-init` skill instead. Protects the curated `CLAUDE.md` from overwrite. Removes itself (hook + settings entry) when `/gaia-init` completes. |
+### `/init` interception
 
-### Statusline (update indicators)
+`intercept-init.sh` (UserPromptSubmit) blocks the built-in `/init` and auto-invokes `/gaia-init` instead, protecting the curated `CLAUDE.md` from overwrite. It removes itself when `/gaia-init` completes.
 
-`update-deps` and `update-gaia` are surfaced via the statusline, not a hook. The wrapper at `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns a yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segment whenever applicable. Left-side rendering delegates to whatever `statusLine.command` is set in `~/.claude/settings.json` (or to `.gaia/statusline/preferred-base.sh` if the project sentinel `.gaia/statusline/.use-vendored-base` exists). The hot path is cache-only; a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. The statusline is always visible to the user, so no snooze state is needed.
+### Statusline (no hook)
 
-### SessionStart / Stop (wiki coherence)
-
-Pair of hooks that compensates for a gap in the `claude-obsidian` plugin: its `PostToolUse` hook auto-commits `wiki/` changes, so by Stop time the plugin's own diff-check against HEAD is always empty and its `wiki/hot.md` refresh prompt never fires.
-
-| Hook                         | Event        | Behavior                                                                                                                                                            |
-| ---------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `wiki-session-start.sh`      | SessionStart | Writes current HEAD SHA to `.git/claude-session-start` as a session marker.                                                                                         |
-| `wiki-session-stop.sh`       | Stop         | If commits between the marker and HEAD touched `wiki/`, emits a `WIKI_CHANGED:` prompt and advances the marker. Silently resets on unreachable SHAs (rebase/reset). |
-| `wiki-squash-autocommits.sh` | Stop         | Squashes the chain of `claude-obsidian` PostToolUse auto-commits made during the session into a single `wiki:` commit. Keeps git history clean.                     |
+`update-deps` and `update-gaia` are surfaced via the statusline, not a hook. The wrapper at `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segments. The hot path is cache-only; a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh.
 
 ## Agents
 
-### [[Code Review Audit Agent]]
+[[Code Review Audit Agent]] runs automatically before every PR merge (per [[PR Merge Workflow]]). After its own pass over security / performance / smells / architecture / robustness / maintainability, it spawns 3 parallel specialist subagents covering React patterns, TypeScript & architecture, and translation rules.
 
-Runs automatically before every PR merge (per [[PR Merge Workflow]]). Reviews:
-
-- Security vulnerabilities (auth, injection, data exposure)
-- Performance (N+1, re-renders, bundle size)
-- Code smells & anti-patterns
-- Architectural concerns
-- Robustness & edge cases
-- Maintainability
-
-Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/code-review-audit/` directory exists for ephemeral session state only and is gitignored — treat it as cache, not source of truth.
-
-After its own review, it spawns 3 parallel specialist subagents to audit changed `.ts/.tsx` files against:
-
-1. React patterns
-2. TypeScript & architecture
-3. Translation rules
+Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/code-review-audit/` directory is gitignored cache, not source of truth.
 
 ## Skills
 
-`.claude/skills/` holds three groups: a `/gaia` router for user-invoked workflows, scaffolders, and context-triggered guidance. See [[Claude Skills]] for the full grouped table; the entries here are the inventory.
+`.claude/skills/` holds three groups:
 
-### `/gaia` router
+- **`/gaia` router** — routes `/gaia <subcommand>` to plan / handoff / pickup / audit references
+- **Scaffolders** — `new-component`, `new-hook`, `new-route`, `new-service`, `update-deps`, `update-gaia`
+- **Context-triggered** — `eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`
 
-| Skill           | Use                                                                                                   |
-| --------------- | ----------------------------------------------------------------------------------------------------- |
-| `gaia`          | Routes `/gaia <subcommand>` to one of the four references below. See [[Claude Skills]] for help text. |
-| → `plan` ref    | Plan a feature using [[Task Orchestration]] without implementing. See [[GAIA Plan]].                  |
-| → `handoff` ref | Generate a session handoff doc. See [[GAIA Handoff]].                                                 |
-| → `pickup` ref  | Resume from the latest handoff. See [[GAIA Pickup]].                                                  |
-| → `audit` ref   | Two-stage knowledge-store audit (Sonnet + Sonnet). See [[GAIA Audit]].                                |
-
-### Scaffolders
-
-| Skill           | Use                                                                                                                           |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `new-component` | Scaffold a component (PascalCase folder + `index.tsx` + `tests/`) with optional Storybook story                               |
-| `new-hook`      | Scaffold a custom `use*` hook + Vitest test                                                                                   |
-| `new-route`     | Scaffold a route + `app/pages/{Group}/{PageName}/` + tests + i18n keys                                                        |
-| `new-service`   | Scaffold an API service under `app/services/gaia/{name}/` (parsers, types, requests) + MSW collections                        |
-| `update-deps`   | Autonomous Dependabot — discover outdated packages, audit `pnpm.overrides`, apply major-bump migrations, run [[Quality Gate]] |
-| `update-gaia`   | Pull a later GAIA release into the project — three-way diff, drift-safe merge ([[Update Workflow]])                           |
-
-### Context-triggered
-
-| Skill              | Use                                                                                                  |
-| ------------------ | ---------------------------------------------------------------------------------------------------- |
-| `eslint-fixes`     | Resolve specific ESLint errors / autofix conflicts encountered in this project ([[ESLint Fixes]])    |
-| `playwright-cli`   | Drive Playwright browser automation from Claude (e2e tests, screenshots, form filling)               |
-| `react-code`       | React component/hook patterns                                                                        |
-| `skeleton-loaders` | Pixel-perfect loading states                                                                         |
-| `tailwind`         | Tailwind class conventions                                                                           |
-| `tdd`              | Red-green-refactor TDD workflow with a `references/tests-react.md` companion ([[Component Testing]]) |
-| `typescript`       | TypeScript conventions                                                                               |
-
-The router and scaffolder skills are user-invoked (slash command or natural-language trigger). Context-triggered skills activate automatically when their `description:` matches the user's intent.
+The router and scaffolder skills are user-invoked. Context-triggered skills activate automatically when their `description:` matches the user's intent. See [[Claude Skills]] for the full grouped table; for the current file inventory, query Serena.
 
 ## settings.json
 
-Registers the PreToolUse hooks on `Edit|Write|MultiEdit` and `Bash` matchers, the PostToolUse `wiki-update-evaluator.sh` on `Bash(git commit:*)`, the `intercept-init.sh` UserPromptSubmit hook, and the `SessionStart` / `Stop` wiki-coherence hooks. Enables the `typescript-lsp@claude-plugins-official` plugin.
+Registers PreToolUse hooks on `Edit|Write|MultiEdit` and `Bash` matchers, the PostToolUse `wiki-update-evaluator.sh` on `Bash(git commit:*)`, the `intercept-init.sh` UserPromptSubmit hook, and the `SessionStart` / `Stop` wiki-coherence hooks. Enables the `typescript-lsp@claude-plugins-official` plugin and Serena MCP (see [[Serena Integration]]).
 
 `permissions.allow` covers routine git / gh / pnpm operations plus scoped edits for `.claude/**`, `.gaia/**`, `wiki/**`, and `CHANGELOG.md`. `permissions.deny` covers `.env` writes, `pnpm-lock.yaml` writes, `.husky/_/**` internals, force-push variants on `main`/`master`, and `git reset --hard HEAD~*`. Both lists are alphabetized; path globs are repo-relative (no leading `/`).
+
+For the current verbatim contents of `settings.json`, read it directly via Serena.

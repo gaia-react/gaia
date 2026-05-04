@@ -6,46 +6,33 @@ language: typescript
 purpose: Native select dropdown with icon, optgroup, and placeholder support
 depends_on: [[Form Components]], [[Form Field]]
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-04
 tags: [component, forms, select]
 ---
 
 # Form Select
 
-Native `<select>` wrapped by [[Form Field]]. No custom dropdown UI — deliberate. Keeps it accessible and mobile-friendly for free.
+Native `<select>` wrapped by [[Form Field]]. **No custom dropdown UI — deliberate.** Native selects are accessible and mobile-friendly for free; rebuilding them in JS forfeits both.
 
-## Options — `SelectOption`
+## Option shape — flat or grouped
 
-Defined in `Select/types.ts`:
+`SelectOption` (defined in `Select/types.ts`) is a discriminated union: a single option gives `{value, label}`; a group gives `{label, options: Option[]}` and renders as `<optgroup>`. **No nested groups** — HTML `<optgroup>` doesn't support nesting, and the type prevents the mistake at the call site.
 
-```ts
-type SelectOption = (
-  | {options: Option[]; value?: never}
-  | {options?: never; value: string}
-) & {disabled?: boolean; label: string};
-```
+## Placeholder coloring — `unselected`
 
-A single option gives `{value, label}`. A group gives `{label, options: Option[]}` and renders as `<optgroup>`. No nested groups.
+When `unselected` is passed, the component renders a top `<option value="">`. Text color flips between `text-placeholder` (while empty) and `text-body` (once a real option is picked). The flip is driven by a local `currentValue` — purely cosmetic.
 
-## Props
+## Controlled / uncontrolled duality
 
-`ComponentProps<'select'>` plus `options`, `unselected`, `unselectedIcon`, `icon`, `iconPosition`, `error`, `description`, `extra`, `label`, `classNameIcon|Label|Select`. `name` is required.
-
-## Placeholder behavior — `unselected`
-
-When `unselected` is passed, renders a disabled (when `required`) `<option value="">` at the top. Text color switches to `text-placeholder` while `currentValue` is empty, then to `text-body` once a real option is picked.
-
-## Controlled/uncontrolled duality
-
-Tracks `currentValue` locally (initialized from `value ?? defaultValue ?? ''`) only to drive placeholder coloring. The actual value is whatever React gives the `<select>` — Select stays controllable via `value` or `defaultValue`. Consumer `onChange` still fires.
+`currentValue` exists **only** to drive placeholder coloring. The actual submitted value is whatever React gives the `<select>` — Select stays controllable via `value` or `defaultValue`. Consumer `onChange` still fires.
 
 > [!warning] Don't use raw Select inside custom stateful components without Conform
-> If you bundle Select into a parent that manages state (like [[Form YearMonthDay\|YearMonthDay]]) and submit via Conform, you need `useInputControl`. The local state here is cosmetic; it is not the submission source of truth.
+> If you bundle Select into a parent that manages state (like [[Form YearMonthDay]]) and submit via Conform, you need `useInputControl`. The local state here is cosmetic; it is not the submission source of truth.
 
 ## Icon positioning
 
 - Left icon absorbs `pl-[2.3rem]` on the `<select>`; right icon uses `pr-[2.3rem]`
 - Icon color follows disabled/placeholder state
-- `classNameIcon` can override `top-*` for custom vertical centering (e.g. larger option text)
+- `classNameIcon` overrides `top-*` for custom vertical centering (e.g. larger option text)
 
-See [[Form YearMonthDay]] for the three-Select composite.
+For prop signatures, query Serena (`.claude/rules/code-search.md`). See [[Form YearMonthDay]] for the three-Select composite.
