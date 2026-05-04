@@ -1,0 +1,34 @@
+import type {KnipConfig} from 'knip';
+
+export default {
+  entry: [
+    '.storybook/**/*.{ts,tsx}',
+    'app/components/**/*.{ts,tsx}',
+    'app/hooks/**/*.ts',
+    'app/middleware/**/*.ts',
+    'app/services/**/*.{ts,tsx}',
+    'app/types/**/*.ts',
+    'app/utils/**/*.ts',
+    'test/**/*.{ts,tsx}',
+  ],
+  ignoreDependencies: [
+    '@epic-web/invariant',
+    '@msw/data',
+    '@playwright-testing-library/test',
+    '@react-router/fs-routes',
+    '@storybook/addon-docs',
+    '@tailwindcss/forms',
+    '@tailwindcss/typography',
+    'lru-cache',
+    'msw-storybook-addon',
+    'nanoid',
+    'react-router-dom',
+    'remix-utils',
+    'stylelint-config-clean-order',
+    'stylelint-config-standard',
+    'stylelint-config-tailwindcss',
+    'stylelint-order',
+    'tailwindcss',
+  ],
+  project: ['app/**/*.{ts,tsx}', 'test/**/*.{ts,tsx}'],
+} satisfies KnipConfig;
