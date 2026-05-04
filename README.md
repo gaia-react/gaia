@@ -20,7 +20,7 @@ The React workflow that keeps Claude-shipped code production-grade as your team 
 
 ## Quick Start
 
-Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, preferably via [nvm](https://github.com/nvm-sh/nvm).
+Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, preferably via [nvm](https://github.com/nvm-sh/nvm), and [uv](https://astral.sh/uv) (required for the Serena MCP server — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ```bash
 npx create-gaia@latest my-app
@@ -120,6 +120,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 - **Path-scoped rules** cover TypeScript, React, Tailwind, testing, i18n, accessibility, and state management. Ask Claude about any of them; they're in `.claude/rules/`.
 - **Hooks** guard the quality gate and keep the wiki fresh. Ask Claude what they do.
 - **Bundled skills** (`typescript`, `react-code`, `tailwind`, `skeleton-loaders`, `tdd`, `playwright-cli`, `eslint-fixes`) autoload for matching tasks. Scaffolding skills (`new-component`, `new-hook`, `new-route`, `new-service`) fire on natural-language asks.
+- **MCP servers.** `/gaia-init` registers [Serena](https://github.com/oraios/serena) as a user-scope MCP server. Serena is LSP-backed code intelligence — Claude uses it for symbol lookups, references, and types instead of running grep across the codebase. Requires `uv` (the Astral Python toolchain runner; see Quick Start). To remove: `claude mcp remove serena -s user`.
 
 ### Code review before merge
 

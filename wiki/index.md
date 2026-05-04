@@ -65,6 +65,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[remix-flat-routes]]
 - [[remix-i18next]]
 - [[remix-toast]]
+- [[Serena]]
 - [[Conform]]
 - [[Zod]]
 - [[Ky]]

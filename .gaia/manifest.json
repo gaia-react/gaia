@@ -31,6 +31,7 @@
     ".claude/instructions/remove-i18n.md": "owned",
     ".claude/rules/accessibility.md": "owned",
     ".claude/rules/api-service.md": "owned",
+    ".claude/rules/code-search.md": "owned",
     ".claude/rules/coding-guidelines.md": "owned",
     ".claude/rules/i18n.md": "owned",
     ".claude/rules/instruction-files.md": "owned",
@@ -307,6 +308,7 @@
     "wiki/concepts/Git Workflow.md": "wiki-owned",
     "wiki/concepts/PR Merge Workflow.md": "wiki-owned",
     "wiki/concepts/Pre-commit Hooks.md": "wiki-owned",
+    "wiki/concepts/Serena Integration.md": "wiki-owned",
     "wiki/concepts/Task Orchestration.md": "wiki-owned",
     "wiki/concepts/Test Runner.md": "wiki-owned",
     "wiki/concepts/Update Workflow.md": "wiki-owned",
@@ -335,6 +337,7 @@
     "wiki/dependencies/remix-flat-routes.md": "wiki-owned",
     "wiki/dependencies/remix-i18next.md": "wiki-owned",
     "wiki/dependencies/remix-toast.md": "wiki-owned",
+    "wiki/dependencies/Serena.md": "wiki-owned",
     "wiki/dependencies/Storybook.md": "wiki-owned",
     "wiki/dependencies/Tailwind.md": "wiki-owned",
     "wiki/dependencies/Vitest.md": "wiki-owned",
@@ -361,8 +364,7 @@
     "wiki/modules/Testing.md": "wiki-owned",
     "wiki/modules/Utils.md": "wiki-owned",
     "wiki/overview.md": "wiki-owned",
-    "wiki/README.md": "wiki-owned",
-    "wiki/sources/Initial Ingest.md": "wiki-owned"
+    "wiki/README.md": "wiki-owned"
   },
   "generated": "2026-05-03T18:05:57.593Z",
   "version": "1.0.5"
