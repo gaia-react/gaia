@@ -8,7 +8,7 @@ paths:
 
 # Code Search
 
-GAIA registers Serena (LSP-backed MCP server) during `/gaia-init`. For symbol-level queries on TS/TSX files, prefer Serena's MCP tools over Read+grep.
+For symbol-level queries on TS/TSX files, prefer [Serena](https://github.com/oraios/serena)'s MCP tools over Read+grep. Serena is LSP-backed — it returns canonical, type-resolved answers instead of string matches.
 
 ## When to prefer Serena
 
@@ -37,6 +37,4 @@ Serena returns canonical, LSP-resolved answers. Read+grep returns string matches
 
 ## Reference
 
-- Serena: https://github.com/oraios/serena
-- Pinned ref in `/gaia-init`: see `.claude/commands/gaia-init.md`
 - Division of labor with the wiki: `wiki/concepts/Serena Integration.md`

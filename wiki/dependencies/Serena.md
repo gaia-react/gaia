@@ -13,12 +13,11 @@ tags: [dependency, mcp, code-search]
 
 LSP-backed MCP server. Gives Claude live, always-fresh access to symbol definitions, references, types, and module structure across the project's TS/TSX files.
 
-## Conventions
+## Pin
 
-- Registered globally (`-s user` scope) by `/gaia-init` Step 9.
-- Pinned at `v1.2.0`.
-- Requires `uv` (Astral Python toolchain runner). If `uv` is missing at init time, registration is skipped with a print-out hint; `/gaia-init` does not abort.
-- Routing rule: `.claude/rules/code-search.md`.
+- Version: `v1.2.0`.
+- Scope: user (registered globally for the user's Claude Code, not project-scoped).
+- Runtime: requires `uv` (Astral Python toolchain runner).
 
 ## When to use
 
@@ -28,7 +27,7 @@ Symbol-level queries on TS/TSX:
 - References: "what calls `Y`?"
 - Types: "what's the type of `Z`?"
 
-For prose / string / cross-language search, fall back to Read+grep.
+For prose / string / cross-language search, fall back to Read+grep. Routing rule: `.claude/rules/code-search.md`.
 
 ## Limits
 
@@ -36,10 +35,4 @@ For prose / string / cross-language search, fall back to Read+grep.
 - Indexes only files reachable from `tsconfig.json`.
 - Doesn't see gitignored or generated files.
 
-## Removal
-
-```
-claude mcp remove serena -s user
-```
-
-See [[Serena Integration]], [[Quality Gate]].
+See [[Serena Integration]].

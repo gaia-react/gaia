@@ -8,7 +8,7 @@ tags: [concept, claude, code-search, mcp]
 
 # Serena Integration
 
-GAIA registers [Serena](https://github.com/oraios/serena) as a default-on MCP server during `/gaia-init`. Serena is the live-code layer; the wiki is the institutional-memory layer. They don't overlap.
+[Serena](https://github.com/oraios/serena) is the live-code layer; the wiki is the institutional-memory layer. They don't overlap.
 
 ## What Serena handles
 
