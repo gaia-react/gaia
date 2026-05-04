@@ -28,6 +28,7 @@ npm-debug.log*
 .playwright-cli/
 coverage
 .jest-cache
+.smoke
 
 # Storybook
 /storybook-static/
