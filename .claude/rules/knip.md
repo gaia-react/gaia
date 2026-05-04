@@ -2,16 +2,20 @@
 
 `pnpm knip` reports unused files, exports, types, and dependencies. Configured at `knip.config.ts`.
 
-## When to suggest running
+## When it runs automatically
 
-Suggest `pnpm knip` after:
+Knip runs automatically pre-merge inside the `code-review-audit` agent (`.claude/agents/code-review-audit.md`), in the same parallel batch as `react-doctor`. Pre-merge is post-task by design — work is finished, audit fires, then merge — so the noise concern below does not apply at that point.
+
+## When to suggest running manually
+
+Outside the pre-merge audit, suggest `pnpm knip` after:
 
 - A refactor that removes or restructures modules
 - Deleting a feature, route, page, or component
 - Removing or replacing a dependency
 - Before opening a release-candidate PR
 
-Do **not** run knip mid-task or as part of the Quality Gate — in-progress work routinely flags exports that haven't been wired up yet, and the noise drowns the signal.
+Do **not** run knip mid-task or as part of the Quality Gate (pre-commit) — in-progress work routinely flags exports that haven't been wired up yet, and the noise drowns the signal. The pre-merge auto-run inside `code-review-audit` is the only automated invocation; everything else is manual or suggestion-driven.
 
 ## Acting on output
 
