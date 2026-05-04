@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Shared UI components used across pages
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-04
 tags: [module, components]
 ---
 
@@ -36,25 +36,16 @@ Each component lives in `app/components/{PascalName}/`:
 
 Not strict, but a strong default. Refactoring is easier when the folder hierarchy mirrors actual usage.
 
-## Bundled components
-
-| Component                    | Purpose                                           |
-| ---------------------------- | ------------------------------------------------- |
-| `Button`, `LinkButton`       | Primary action elements                           |
-| `Document`                   | HTML document root (used by `root.tsx`)           |
-| `Errors/`                    | `RootErrorBoundary` and friends                   |
-| `Footer`, `Header`, `Layout` | Page chrome                                       |
-| `GaiaLogo`                   | Inline SVG brand mark (replaced on `/gaia-init`)  |
-| `Form/`                      | The headline feature — see [[Form Components]]    |
-| `LanguageSelect`             | Language switcher tied to `actions+/set-language` |
-| `Loaders/`                   | Loading spinners and placeholders                 |
-| `Toast`                      | Wrapper around `sonner` + `remix-toast`           |
-
-The theme switcher (`ThemeSwitch`) is co-located with its action and hooks in `app/routes/resources+/theme-switch.tsx` rather than `app/components/`. See [[Theme Flow]].
-
 ## Naming conventions
 
 - PascalCase folder names
 - `index.tsx` for the main file (configurable in ESLint if you prefer `ComponentName.tsx`)
+
+## Where to look up the inventory
+
+The current set of bundled components changes over time. Use Serena (`.claude/rules/code-search.md`) to list `app/components/` rather than maintaining a roster here. Notable exceptions:
+
+- `Form/` — the headline feature with its own deep dives ([[Form Components]])
+- `ThemeSwitch` lives at `app/routes/resources+/theme-switch.tsx` (co-located with its action and hook), not under `app/components/`. See [[Theme Flow]].
 
 See [[Component Testing]] for the `composeStory` test pattern.

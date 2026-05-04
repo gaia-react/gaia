@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: React Router 7 middleware
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-05-04
 tags: [module, middleware]
 ---
 
@@ -13,14 +13,8 @@ tags: [module, middleware]
 
 `app/middleware/` is for [React Router 7 middleware](https://reactrouter.com/how-to/middleware).
 
-GAIA ships one out of the box:
+## Hook point, not a feature surface
 
-## `i18next.ts`
+Middleware is the right home for per-request setup that loaders shouldn't have to repeat — i18n is the canonical example. Add new middleware here when a concern needs to run on every request before any loader executes.
 
-Sets up the i18next instance per request and exposes:
-
-- `i18nextMiddleware` — registered in `root.tsx` (`export const middleware = [i18nextMiddleware]`)
-- `getLanguage(context)` — returns the active language for the request
-- `getInstance(context)` — returns the i18next instance for server-side `t()` calls in loaders
-
-Used by every route loader that needs to translate meta tags. See [[i18n]].
+The current i18next middleware exposes `i18nextMiddleware` (registered in `root.tsx`), `getLanguage(context)`, and `getInstance(context)` for server-side `t()` calls in loaders. See [[i18n]] for usage. For the current file inventory and signatures, query Serena (`.claude/rules/code-search.md`).
