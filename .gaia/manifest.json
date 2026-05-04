@@ -325,6 +325,7 @@
     "wiki/dependencies/gaia-lint.md": "wiki-owned",
     "wiki/dependencies/Husky.md": "wiki-owned",
     "wiki/dependencies/i18next.md": "wiki-owned",
+    "wiki/dependencies/knip.md": "wiki-owned",
     "wiki/dependencies/Ky.md": "wiki-owned",
     "wiki/dependencies/MSW.md": "wiki-owned",
     "wiki/dependencies/Playwright.md": "wiki-owned",
