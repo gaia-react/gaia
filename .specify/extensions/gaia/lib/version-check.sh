@@ -1,144 +1,149 @@
 #!/usr/bin/env bash
-# version-check.sh - Verify spec-kit's installed version matches the GAIA pin.
+# version-check.sh — Verify spec-kit's installed version against GAIA's pin.
 #
-# Reads the JSON hook payload from stdin (or $SPECKIT_HOOK_PAYLOAD), extracts
-# requires.speckit_version from .specify/extensions/gaia/extension.yml, and
-# compares it to the runtime version (payload.speckit_version, or `specify
-# version` as fallback).
+# Usage:
+#   version-check.sh [<repo_root>]
+#
+# When <repo_root> is omitted, $PWD is used. Reads requires.speckit_version
+# from <repo_root>/.specify/extensions/gaia/extension.yml and compares it to
+# the runtime spec-kit version reported by `specify --version` (or `specify
+# version`). Caches the result for the calendar day at
+# .gaia/local/cache/version-check.lock to avoid re-running on every hook.
 #
 # Behavior:
-#   - Match  -> exit 0, no stdout, refresh cache file with timestamp.
-#   - Drift  -> exit non-zero, clear stderr message naming both versions and
-#               the upgrade command.
-#   - Cache  -> first successful check writes
-#               .gaia/local/cache/version-check.lock (timestamped). Subsequent
-#               calls within the same wall-clock day reuse the cache and
-#               short-circuit (avoids re-running on every hook).
+#   - Match: exit 0, no stdout, refresh cache.
+#   - Drift: exit 1, clear stderr message naming both versions and the
+#            upgrade command.
+#   - Tooling problem: exit 1, stderr explains.
 #
-# Caller (before_specify.sh) wraps a non-zero exit into
-#   {"action": "block", "reason": "<stderr>"}.
+# Caller (commands/constitution-check.md, fired via the before_specify hook)
+# surfaces stderr verbatim to the user and halts.
+#
+# Pin format: `requires.speckit_version: ">=X.Y.Z[,<X.Y.Z+1.0]"` per the real
+# extension schema. `==X.Y.Z` is also accepted (legacy form). The script
+# resolves the floor of the specifier set and compares.
 #
 # UAT: UAT-018.
 set -euo pipefail
 
-# --- jq availability ---
-if ! command -v jq > /dev/null 2>&1; then
-  echo "version-check.sh requires jq; install jq and retry." >&2
-  exit 1
-fi
+repo_root="${1:-$PWD}"
+extension_yml="$repo_root/.specify/extensions/gaia/extension.yml"
 
-# --- Read payload from stdin or env var fallback ---
-payload=""
-if [ -n "${SPECKIT_HOOK_PAYLOAD:-}" ]; then
-  payload="$SPECKIT_HOOK_PAYLOAD"
-elif [ ! -t 0 ]; then
-  payload="$(cat)"
-fi
-
-if [ -z "$payload" ]; then
-  echo "version-check.sh: empty payload (expected JSON on stdin or \$SPECKIT_HOOK_PAYLOAD)." >&2
-  exit 1
-fi
-
-if ! printf '%s' "$payload" | jq -e . > /dev/null 2>&1; then
-  echo "version-check.sh: payload is not valid JSON." >&2
-  exit 1
-fi
-
-cwd="$(printf '%s' "$payload" | jq -r '.cwd // ""')"
-runtime_version="$(printf '%s' "$payload" | jq -r '.speckit_version // ""')"
-
-if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
-  echo "version-check.sh: payload.cwd is missing or not a directory." >&2
-  exit 1
-fi
-
-extension_yml="$cwd/.specify/extensions/gaia/extension.yml"
 if [ ! -f "$extension_yml" ]; then
-  echo "version-check.sh: extension manifest missing at .specify/extensions/gaia/extension.yml." >&2
+  echo "version-check.sh: extension manifest missing at $extension_yml" >&2
   exit 1
 fi
 
-# --- Extract pinned version from extension.yml (no yq dependency) ---
-# Match `speckit_version: "==vX.Y.Z"` or `speckit_version: ==vX.Y.Z`. Strip
-# quotes and the `==` operator so we are left with the bare version string.
+# --- Extract pinned version (specifier-set string) ---
 pinned_raw="$(grep -E '^[[:space:]]*speckit_version:' "$extension_yml" | head -n 1 || true)"
 if [ -z "$pinned_raw" ]; then
-  echo "version-check.sh: requires.speckit_version not found in extension.yml." >&2
+  echo "version-check.sh: requires.speckit_version not found in $extension_yml" >&2
   exit 1
 fi
 
-pinned="${pinned_raw#*:}"
-pinned="${pinned// /}"
-pinned="${pinned//\"/}"
-pinned="${pinned//\'/}"
-pinned="${pinned#==}"
+# Strip everything up to and including the first colon, surrounding whitespace,
+# wrapping quotes.
+pinned_spec="${pinned_raw#*:}"
+pinned_spec="${pinned_spec// /}"
+pinned_spec="${pinned_spec//\"/}"
+pinned_spec="${pinned_spec//\'/}"
 
-if [ -z "$pinned" ]; then
-  echo "version-check.sh: pinned spec-kit version parses to empty string from extension.yml." >&2
+if [ -z "$pinned_spec" ]; then
+  echo "version-check.sh: pinned spec-kit version parses to empty string from $extension_yml" >&2
+  exit 1
+fi
+
+# Resolve the floor of the specifier set. Accept either `>=X.Y.Z[,<...]` or
+# the legacy `==X.Y.Z`.
+floor=""
+case "$pinned_spec" in
+  '>='*)
+    floor="${pinned_spec#>=}"
+    floor="${floor%%,*}"
+    ;;
+  '=='*)
+    floor="${pinned_spec#==}"
+    ;;
+  *)
+    floor="$pinned_spec"
+    ;;
+esac
+floor="${floor#v}"
+
+if [ -z "$floor" ]; then
+  echo "version-check.sh: could not resolve pin floor from '$pinned_spec'" >&2
   exit 1
 fi
 
 # --- Cache short-circuit ---
-# Skip re-running if the cache file is from today and matches the pinned version.
-cache_dir="$cwd/.gaia/local/cache"
+cache_dir="$repo_root/.gaia/local/cache"
 cache_file="$cache_dir/version-check.lock"
 today="$(date -u +%Y-%m-%d)"
 
 if [ -f "$cache_file" ]; then
-  cached_pin="$(jq -r '.pinned // ""' "$cache_file" 2>/dev/null || echo "")"
-  cached_day="$(jq -r '.day // ""' "$cache_file" 2>/dev/null || echo "")"
-  if [ "$cached_pin" = "$pinned" ] && [ "$cached_day" = "$today" ]; then
+  cached_pin="$(awk -F'"' '/"pinned":/ {print $4; exit}' "$cache_file" 2>/dev/null || echo "")"
+  cached_day="$(awk -F'"' '/"day":/ {print $4; exit}' "$cache_file" 2>/dev/null || echo "")"
+  if [ "$cached_pin" = "$pinned_spec" ] && [ "$cached_day" = "$today" ]; then
     exit 0
   fi
 fi
 
-# --- Resolve runtime version ---
-# Prefer payload.speckit_version (the wrapper resolves spec-kit and stamps it
-# in). Fall back to `specify version` if the binary is on PATH. If neither
-# resolves, treat as drift (cannot verify pin -> block).
+# --- Resolve runtime spec-kit version ---
 installed=""
-if [ -n "$runtime_version" ] && [ "$runtime_version" != "null" ]; then
-  installed="$runtime_version"
-elif command -v specify > /dev/null 2>&1; then
-  installed="$(specify version 2> /dev/null | head -n 1 | tr -d '[:space:]' || true)"
+if command -v specify > /dev/null 2>&1; then
+  installed="$(specify --version 2>/dev/null | head -n 1 | awk '{print $NF}' | tr -d '[:space:]' || true)"
+  if [ -z "$installed" ]; then
+    installed="$(specify version 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  fi
 fi
 
 if [ -z "$installed" ]; then
   cat >&2 <<EOF
 spec-kit version check failed: could not determine installed version.
-  Pinned: $pinned (from .specify/extensions/gaia/extension.yml)
+  Pinned:    $pinned_spec (from $extension_yml)
   Installed: <unresolved>
-  Upgrade: uvx --from git+https://github.com/github/spec-kit.git@$pinned specify --help
+  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor specify --help
 EOF
   exit 1
 fi
 
-# Normalize: strip a leading `v` from both sides for comparison-friendliness.
-norm() { printf '%s' "${1#v}"; }
-pinned_n="$(norm "$pinned")"
-installed_n="$(norm "$installed")"
+installed_n="${installed#v}"
+floor_n="$floor"
 
-if [ "$pinned_n" != "$installed_n" ]; then
-  cat >&2 <<EOF
+# --- Compare. For exact pins we require equality; for `>=` we require
+#     installed >= floor. We do a coarse semver compare via sort -V, which is
+#     adequate for the spec-kit release cadence (no pre-release tags). ---
+case "$pinned_spec" in
+  '=='*)
+    if [ "$installed_n" != "$floor_n" ]; then
+      cat >&2 <<EOF
 spec-kit version drift detected.
-  Pinned:    $pinned (from .specify/extensions/gaia/extension.yml)
+  Pinned:    $pinned_spec (exact, from $extension_yml)
   Installed: $installed
-  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@$pinned specify --help
-The GAIA extension is pinned lockstep with a specific spec-kit release; aligning versions is required before /gaia spec can run.
+  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_n specify --help
 EOF
-  exit 1
-fi
+      exit 1
+    fi
+    ;;
+  *)
+    lower="$(printf '%s\n%s\n' "$installed_n" "$floor_n" | sort -V | head -n 1)"
+    if [ "$lower" != "$floor_n" ]; then
+      cat >&2 <<EOF
+spec-kit version drift detected.
+  Pinned:    $pinned_spec (from $extension_yml)
+  Installed: $installed (below pin floor)
+  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_n specify --help
+EOF
+      exit 1
+    fi
+    ;;
+esac
 
-# --- Match - refresh cache ---
+# --- Match — refresh cache ---
 mkdir -p "$cache_dir"
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
-jq -n \
-  --arg pinned "$pinned" \
-  --arg installed "$installed" \
-  --arg day "$today" \
-  --arg ts "$ts" \
-  '{pinned:$pinned, installed:$installed, day:$day, verified_at:$ts}' \
-  > "$cache_file"
+cat > "$cache_file" <<EOF
+{"pinned":"$pinned_spec","installed":"$installed","day":"$today","verified_at":"$ts"}
+EOF
 
 exit 0

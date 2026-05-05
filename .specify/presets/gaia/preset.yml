@@ -1,0 +1,32 @@
+schema_version: "1.0"
+
+preset:
+  id: "gaia"
+  name: "GAIA"
+  version: "0.1.0"
+  description: "GAIA-shaped artifacts for spec-kit: every /speckit-specify produces a GAIA frontmatter spec, saved to .gaia/local/specs/SPEC-NNN.md."
+  author: "GAIA"
+  repository: "https://github.com/gaia-react/gaia"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.8.5,<0.10.0"
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.specify"
+      file: "commands/speckit.specify.md"
+      description: "Wraps core /speckit-specify; redirects output to .gaia/local/specs/SPEC-NNN.md."
+      replaces: "speckit.specify"
+
+    - type: "template"
+      name: "spec-template"
+      file: "templates/spec-template.md"
+      description: "GAIA-shaped artifact skeleton with frontmatter (spec_id, immutable, wiki_promote_default, chain_trigger, frozen UAT-NNN ids)."
+      replaces: "spec-template"
+
+tags:
+  - "gaia"
+  - "socratic"
+  - "uat"

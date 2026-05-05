@@ -10,10 +10,26 @@ Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact 
    - `.specify/**`
    - `.gaia/local/cache/**`
    - `.gaia/local/telemetry/**`
-   Never edit source files (`app/**`, `src/**`, repo root configs, etc.). The `after_specify` hook audits this; you enforce it at the agent-instruction level.
+   Never edit source files (`app/**`, `src/**`, repo root configs, etc.). The `after_specify` lint command audits this; you enforce it at the agent-instruction level.
 3. **One question at a time.** No multi-question forms. Closed-set questions go through `AskUserQuestion` with options ordered: recommended FIRST, then alternatives, then `Other` (free text), then `Discuss this` (escape to plain Q&A). Open-ended questions use a plain prompt with no enumerated options.
 4. **Two-gate ceremony.** Confirm intent + UATs in plain English BEFORE authoring the artifact. Confirm the rendered artifact BEFORE saving to disk. No silent advances between gates.
 5. **Coach tone, not interrogator.** Mirror back, name trade-offs, propose candidates when the human is stuck. Never punt research to the human.
+
+## How spec-kit fires GAIA hooks
+
+Spec-kit's hooks are **not** shell scripts. When core invokes `/speckit-specify` (or any other core skill), it reads `.specify/extensions.yml` for the relevant event and emits an `EXECUTE_COMMAND: <id>` markdown directive into the agent's reasoning context. The agent then invokes the rendered slash-command (e.g., `/speckit-gaia-constitution-check`) as a normal Claude skill. There is no JSON payload, no stdin pipe, no env var.
+
+The three GAIA hooks declared in `.specify/extensions/gaia/extension.yml`:
+
+| Event           | Slash command                          | Source body                                     |
+|-----------------|----------------------------------------|-------------------------------------------------|
+| `before_specify` | `/speckit-gaia-constitution-check`     | `.specify/extensions/gaia/commands/constitution-check.md` |
+| `after_clarify`  | `/speckit-gaia-self-review`            | `.specify/extensions/gaia/commands/self-review.md`        |
+| `after_specify`  | `/speckit-gaia-lint`                   | `.specify/extensions/gaia/commands/lint.md`               |
+
+Each hook fires automatically — the agent reads the directive and invokes the slash command without prompting. "Block" semantics live inside the hook command: a block is a refusal message that the wrapper agent reads and chooses not to proceed past. There is no machine-enforced halt.
+
+There is no `on_save` event. The chain-trigger to `/gaia plan` lives inline at the end of this orchestration (Step 11), not in a hook.
 
 ## Steps
 
@@ -23,26 +39,25 @@ If `$ARGUMENTS` (the args after `spec`) is non-empty, use it as the feature desc
 
 Otherwise, ask: **"What do you want to spec?"** and wait for the response before continuing. This is open-ended — use a plain prompt, not `AskUserQuestion`.
 
-### 2. Pre-flight (before_specify hook)
+### 2. Resume-vs-start-new prompt (pre-flight)
 
-Invoke the `before_specify` hook (registered by `.specify/extensions/gaia/extension.yml`). The hook performs two checks:
+Run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an in-progress SPEC already exists. Surface via `AskUserQuestion`:
 
-- **Constitution placeholder check.** If `.specify/memory/constitution.md` contains placeholder text from spec-kit's default template, the hook returns `{"action": "block", "reason": "..."}` or `{"action": "prompt", ...}` asking the user to run `/speckit.constitution` first. Do not proceed silently against an unpopulated constitution. Surface the hook's prompt or block message verbatim.
-- **Resume-vs-start-new prompt.** If an in-progress SPEC already exists at `.gaia/local/specs/SPEC-NNN.md` (frontmatter `status: in-progress`), the hook returns a prompt. Surface it via `AskUserQuestion`:
-  - question: `"Resume SPEC-NNN, or start new (leaves SPEC-NNN open)?"`
-  - header: `"Existing SPEC"`
-  - options:
-    - `{ label: "Resume SPEC-NNN (Recommended)", description: "Continue the existing in-progress SPEC." }`
-    - `{ label: "Start new", description: "Begin a fresh SPEC; SPEC-NNN remains open." }`
-  - Honor the user's choice. Never silently overwrite, never silently start new.
+- question: `"Resume SPEC-NNN, or start new (leaves SPEC-NNN open)?"`
+- header: `"Existing SPEC"`
+- options:
+  - `{ label: "Resume SPEC-NNN (Recommended)", description: "Continue the existing in-progress SPEC." }`
+  - `{ label: "Start new", description: "Begin a fresh SPEC; SPEC-NNN remains open." }`
 
-If the hook returns `{"action": "proceed"}`, continue to step 3.
+Honor the user's choice. Never silently overwrite, never silently start new. If the user picks "Start new", continue with a fresh allocation; if "Resume", load the existing SPEC into the working draft and skip Step 3 (you are amending, not creating).
 
-### 3. /speckit.specify (initial draft)
+### 3. /speckit-specify (initial draft)
 
-Invoke `/speckit.specify` with the description from step 1. spec-kit applies the GAIA preset overrides at template resolution time — coach-tone system prompt, AskUserQuestion-formatted Q&A copy, GAIA frontmatter fields (`spec_id`, `immutable`, `wiki_promote_default`, `chain_trigger`), and topic-exhaustion checkpoint phrasing. The output is an in-memory draft (not yet saved to disk) — written to `.specify/cache/draft.md` for downstream hooks to read.
+Invoke `/speckit-specify` with the description from step 1. The GAIA preset (registered via `specify preset add`) wraps core with `{CORE_TEMPLATE}` and replaces `spec-template`, so the artifact is GAIA-shaped (frontmatter, immutable flag, `SPEC-NNN` id) and lands at `.gaia/local/specs/SPEC-NNN.md`. The preset's body invokes `lib/spec-allocator.sh next "$PWD"` to allocate the SPEC id.
 
-Allocate the next SPEC ID via `.specify/extensions/gaia/lib/spec-allocator.sh` and stamp it into the draft frontmatter as `spec_id: SPEC-NNN` (zero-padded, monotonic).
+Spec-kit fires the `before_specify` hook (constitution + version-pin check) automatically before this step runs. If the hook blocks, surface its message and halt.
+
+When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN.md`. Cache the working draft path; you will read and re-render it across the rest of these steps.
 
 ### 4. Gate 1 — shape confirmation
 
@@ -62,13 +77,13 @@ Use a plain prompt — not `AskUserQuestion`. The user reads, confirms, or revis
 
 If the user revises, fold revisions into the draft and re-present until they confirm.
 
-On confirmation, **cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The `after_clarify` hook reads this cache to detect scope drift between gate 1 and gate 2 (UAT-016).
+On confirmation, **cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The `after_clarify` hook (self-review) reads this cache to detect scope drift between gate 1 and gate 2 (UAT-016).
 
 Only after gate-1 confirmation may you proceed to step 5.
 
-### 5. /speckit.clarify (Socratic loop)
+### 5. /speckit-clarify (Socratic loop)
 
-Invoke `/speckit.clarify`. spec-kit's clarify primitive runs sequential, coverage-based questioning over the draft. The GAIA preset tailors the loop with the rules below — follow them strictly.
+Invoke `/speckit-clarify`. Spec-kit's clarify primitive runs sequential, coverage-based questioning over the draft. The GAIA tailoring (coach tone, AskUserQuestion mediation, exhaustion checkpoints, research dispatch) is enforced by the agent driving this skill — see the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` for the canonical phrasing.
 
 #### 5a. AskUserQuestion mediation (closed-set questions)
 
@@ -119,21 +134,14 @@ Then spawn a `general-purpose` Agent with a focused research prompt. When findin
 
 If the user has selected `Discuss this` on a question that turns out to need research, dispatch the research subagent and surface findings in the discussion before requesting settlement.
 
-### 6. after_clarify hook
+### 6. after_clarify hook (self-review)
 
-Invoke the `after_clarify` hook. It performs:
+Spec-kit fires this hook automatically after `/speckit-clarify` completes. The agent receives an `EXECUTE_COMMAND: speckit.gaia.self-review` directive and invokes `/speckit-gaia-self-review`, which:
 
-- **Self-review pass (UAT-016).** Reads the draft and the gate-1 cache at `.gaia/local/cache/gate1-<spec_id>.json`. Checks for placeholder text, scope drift relative to gate-1 confirmation (intent diverged, UAT IDs renumbered, success_criteria added/removed without clarification), internal inconsistency between fields, and ambiguous UAT phrasing. The hook returns issues via `{"action": "prompt", ...}` and you fix them in the draft before gate 2.
-- **clarifications.pending block-or-defer (UAT-017).** For each item in `clarifications.pending[]`, surface via `AskUserQuestion`:
-  - question: `"Pending clarification: <item>. Answer now, or defer with rationale?"`
-  - header: `"Pending"`
-  - options:
-    - `{ label: "Answer now", description: "Resolve the clarification before save." }`
-    - `{ label: "Defer with rationale", description: "Record a rationale and proceed; item remains pending." }`
-    - `{ label: "Discuss this", description: "Drop to plain Q&A on this clarification." }`
-  - On `Answer now`: collect the answer and move the item to `clarifications.answered[]`.
-  - On `Defer with rationale`: collect the rationale via plain prompt and record it alongside the pending item.
-  - Save is blocked while any pending item is unresolved (neither answered nor explicitly deferred).
+- Audits the draft for placeholders, scope drift relative to the gate-1 snapshot, internal inconsistency, and ambiguous UAT phrasing. Surfaces findings; the wrapper folds fixes back in before gate 2.
+- For each item in `clarifications.pending[]`, surfaces a block-or-defer prompt via `AskUserQuestion` (UAT-017) with the three options: Answer now / Defer with rationale / Discuss this. Save remains blocked while any pending item is unresolved.
+
+Read the self-review report. Apply fixes to the draft for any drift, ambiguity, or inconsistency findings before proceeding to gate 2.
 
 ### 7. Gate 2 — artifact confirmation
 
@@ -151,41 +159,38 @@ If the user revises, fold revisions into the draft and re-present until they con
 
 Only after gate-2 confirmation may you proceed to step 8.
 
-### 8. after_specify hook (immutability lint)
+### 8. Save to .gaia/local/specs/SPEC-NNN.md
 
-Invoke the `after_specify` hook. It lints frontmatter for:
-
-- `immutable: true` present
-- `status: in-progress` present
-- All `UAT-NNN` IDs present, well-formed, and (if amending an existing SPEC) frozen relative to the prior version
-- No placeholder text anywhere in the draft
-- All required schema fields populated (`spec_id`, `intent`, `success_criteria`, `uats`, `scope_boundaries`, `clarifications`, `research_summary`, `created`, `updated`)
-- Every write target during the session was inside the allowlist (path-allowlist audit)
-
-On lint pass: the hook returns `{"action": "proceed"}` and you continue to step 9.
-
-On lint fail: surface the failure reason verbatim. The user can fix and re-run, or defer with rationale (which loops back to step 6's pending handling).
-
-For mutations of an already-saved SPEC: the hook enforces the explicit reopen ceremony — rationale recorded in the SPEC body, status flipped to `reopened`, UAT diff captured before the mutation is allowed (UAT-011). Do not bypass this.
-
-### 9. Save to .gaia/local/specs/SPEC-NNN.md
-
-Write the confirmed, lint-clean artifact to `.gaia/local/specs/SPEC-NNN.md` (using the `spec_id` allocated in step 3). This is the canonical save location — never anywhere else, never duplicate copies.
+Write the confirmed draft to `.gaia/local/specs/SPEC-NNN.md` (using the `spec_id` allocated in step 3). This is the canonical save location — never anywhere else, never duplicate copies.
 
 Update the frontmatter `updated` field to today's date.
 
+### 9. after_specify hook (immutability lint)
+
+Spec-kit fires this hook automatically after the spec is written. The agent receives an `EXECUTE_COMMAND: speckit.gaia.lint` directive and invokes `/speckit-gaia-lint`, which runs `bash .specify/extensions/gaia/lib/lint.sh <spec-path>` and surfaces findings.
+
+On lint pass: continue to step 10.
+
+On lint fail: surface the failures verbatim. The user can fix and re-run the lint, or defer with rationale (which loops back to step 6's pending handling). For mutations of an already-saved SPEC, the helper enforces the explicit reopen ceremony — `## Reopen rationale` and `## UAT diff` sections required (UAT-011).
+
 ### 10. Optional GH Issue mirror
 
-Dispatch `.specify/extensions/gaia/lib/gh-mirror.sh` AFTER the SPEC has been written to disk in step 9 and BEFORE invoking the `on_save` hook in step 11. Pipe the same JSON hook payload (per `.specify/extensions/gaia/lib/hook-payload.md`) on stdin, with `spec_id` and `spec_path` populated for the just-saved artifact. The script handles the conditional logic:
+After save, run:
 
-- If `gh auth status` succeeds AND `gh api repos/{owner}/{repo}` reports Issues enabled AND the viewer has admin or write permission, the script creates a GitHub Issue titled `"<spec-id>: <intent first line>"` with the SPEC body, then stamps the issue URL into the SPEC frontmatter as `gh_issue_url`.
-- Otherwise, the script appends a skip record to `.gaia/local/telemetry/gh-mirror.jsonl`, exits 0, and does not modify the SPEC. Absence does not block save and never propagates as an error to the lifecycle.
+```bash
+bash .specify/extensions/gaia/lib/gh-mirror.sh "$PWD" "<spec-id>" ".gaia/local/specs/<spec-id>.md"
+```
+
+The script handles the conditional logic without intervention:
+
+- If `gh auth status` succeeds AND `gh api repos/{owner}/{repo}` reports Issues enabled AND the viewer has write or admin permission, it creates a GitHub Issue titled `"<spec-id>: <intent first line>"` with the SPEC body, then stamps the issue URL into the SPEC frontmatter as `gh_issue_url`.
+- Otherwise, it appends a skip record to `.gaia/local/telemetry/gh-mirror.jsonl`, exits 0, and does not modify the SPEC. Absence does not block save and never propagates as an error.
 
 If the project uses non-GitHub remote tracking (GitLab, Bitbucket, none), the mirror step is a no-op. Do not prompt to mirror to alternative trackers — that is `ask_first` territory and out of SPEC-001 scope.
 
-### 11. on_save hook (chain prompt to /gaia plan)
+### 11. Inline chain-trigger to /gaia plan
 
-Invoke the `on_save` hook. It surfaces a chain-trigger prompt via `AskUserQuestion`:
+There is no `on_save` hook in spec-kit. The chain-trigger lives here, inline, after save and after the optional GH mirror. Surface via `AskUserQuestion`:
 
 - question: `"SPEC-NNN saved. Trigger /gaia plan now?"`
 - header: `"Chain"`
