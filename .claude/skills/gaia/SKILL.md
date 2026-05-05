@@ -14,6 +14,7 @@ Parse the first whitespace-separated token of `$ARGUMENTS`:
 | First arg                        | Action                                      |
 | -------------------------------- | ------------------------------------------- |
 | `plan`                           | Read `references/plan.md` and follow it.    |
+| `spec`                           | Read `references/spec.md` and follow it.    |
 | `handoff`                        | Read `references/handoff.md` and follow it. |
 | `pickup`                         | Read `references/pickup.md` and follow it.  |
 | `audit`                          | Read `references/audit.md` and follow it.   |
@@ -26,6 +27,7 @@ Help message format:
     Usage: /gaia <subcommand> [args]
 
       plan [description]   Plan a feature using task orchestration
+      spec [description]   Socratic discovery to author an immutable SPEC artifact
       handoff [notes]      Generate a session handoff document
       pickup               Restore context from the most recent handoff
       audit [--apply]      Audit memory + wiki and apply changes (--apply: re-apply existing report only)
