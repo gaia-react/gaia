@@ -1,0 +1,45 @@
+schema_version: "1.0"
+extension:
+  id: gaia
+  name: "GAIA Socratic Discovery"
+  version: "0.1.0"
+  description: "GAIA-tailored Socratic discovery, immutability lint, and chain trigger over spec-kit."
+  author: "GAIA"
+  repository: "https://github.com/gaia-react/gaia"
+  license: "MIT"
+requires:
+  speckit_version: "==v0.8.5"
+  speckit_invocation: "uvx --from git+https://github.com/github/spec-kit.git@v0.8.5"
+provides:
+  commands:
+    - name: "speckit.gaia.spec"
+      file: "commands/spec.md"
+      description: "GAIA Socratic discovery wrapper around /speckit.specify and /speckit.clarify"
+  presets:
+    - path: "templates/"
+      strategy: "override"
+hooks:
+  before_specify:
+    command: "speckit.gaia.before_specify"
+    optional: false
+    description: "Constitution placeholder check + resume-vs-start-new prompt"
+  after_specify:
+    command: "speckit.gaia.after_specify"
+    optional: false
+    description: "Immutability lint: frontmatter, UAT-NNN IDs frozen, no placeholders"
+  after_clarify:
+    command: "speckit.gaia.after_clarify"
+    optional: false
+    description: "Self-review pass; clarifications.pending block-or-defer prompt"
+  before_implement:
+    command: "speckit.gaia.before_implement"
+    optional: true
+    description: "[SLOT - Playwright UAT auto-write phase, future SPEC]"
+  after_implement:
+    command: "speckit.gaia.after_implement"
+    optional: true
+    description: "[SLOT - wiki promotion at PR merge, future SPEC]"
+  on_save:
+    command: "speckit.gaia.on_save"
+    optional: false
+    description: "Chain-trigger prompt to /gaia plan after SPEC save"
