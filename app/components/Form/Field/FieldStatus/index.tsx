@@ -39,7 +39,7 @@ const FieldStatus: FC<FieldStatusProps> = ({
     error && error !== true ? <FieldError error={error} /> : null;
 
   return (
-    <div className={twMerge('mt-1 ml-px', className)} role="status">
+    <div className={twMerge('ml-px mt-1', className)} role="status">
       {!hideMaxLength && maxLength && length !== undefined ?
         <>
           <div className="flex items-start justify-between">
