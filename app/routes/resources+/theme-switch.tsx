@@ -109,7 +109,7 @@ export const ThemeSwitch: FC<ThemeSwitchProps> = ({userPreference}) => {
       <input name="theme" type="hidden" value={next} />
       <button
         aria-label={t(LABEL_KEYS[mode])}
-        className="text-body relative flex size-4.5 items-center gap-2"
+        className="text-body size-4.5 relative flex items-center gap-2"
         type="submit"
       >
         {(() => {

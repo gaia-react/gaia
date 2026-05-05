@@ -5,7 +5,7 @@ type FieldExtraProps = {
 };
 
 const FieldExtra: FC<FieldExtraProps> = ({children}) => (
-  <div className="ml-4 w-fit py-px text-xs font-normal select-none">
+  <div className="ml-4 w-fit select-none py-px text-xs font-normal">
     {children}
   </div>
 );
