@@ -46,6 +46,28 @@ if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
   exit 0
 fi
 
+# --- Step 0: spec-kit version pin check (UAT-018) ---
+# Run BEFORE the constitution check so drift errors land before any discovery
+# precondition work. Non-zero exit -> block with stderr as the reason; the
+# script also caches its result to .gaia/local/cache/version-check.lock to
+# short-circuit on subsequent calls within the same day.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+version_check="$script_dir/../lib/version-check.sh"
+
+if [ -x "$version_check" ]; then
+  vc_stderr_file="$(mktemp)"
+  if ! printf '%s' "$payload" | "$version_check" 2> "$vc_stderr_file"; then
+    vc_reason="$(cat "$vc_stderr_file" 2> /dev/null || echo "spec-kit version pin check failed.")"
+    rm -f "$vc_stderr_file"
+    if [ -z "$vc_reason" ]; then
+      vc_reason="spec-kit version pin check failed."
+    fi
+    jq -n --arg reason "$vc_reason" '{action:"block", reason:$reason}'
+    exit 0
+  fi
+  rm -f "$vc_stderr_file"
+fi
+
 # --- Step 1: Constitution placeholder check (UAT-007) ---
 # spec-kit ships .specify/memory/constitution.md with placeholder values that
 # must be populated before useful specs are produced. Block if any sentinel remains.
@@ -72,7 +94,6 @@ fi
 # If a SPEC with status: in-progress exists in .gaia/local/specs/, prompt the user.
 # When the wrapper re-invokes the hook with .user_answer set, skip the prompt
 # (the wrapper has already collected the choice).
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 allocator="$script_dir/../lib/spec-allocator.sh"
 
 in_progress="none"

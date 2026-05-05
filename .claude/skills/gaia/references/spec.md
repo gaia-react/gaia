@@ -176,10 +176,10 @@ Update the frontmatter `updated` field to today's date.
 
 ### 10. Optional GH Issue mirror
 
-Invoke `.specify/extensions/gaia/lib/gh-mirror.sh` (created by `task-integration`). The script handles the conditional logic:
+Dispatch `.specify/extensions/gaia/lib/gh-mirror.sh` AFTER the SPEC has been written to disk in step 9 and BEFORE invoking the `on_save` hook in step 11. Pipe the same JSON hook payload (per `.specify/extensions/gaia/lib/hook-payload.md`) on stdin, with `spec_id` and `spec_path` populated for the just-saved artifact. The script handles the conditional logic:
 
-- If `gh auth status` succeeds AND `gh api repos/{owner}/{repo}` reports Issues enabled AND the user has write permission, the script mirrors the SPEC body to a GitHub Issue.
-- Otherwise, no mirror, no error, no degradation. Absence does not block save.
+- If `gh auth status` succeeds AND `gh api repos/{owner}/{repo}` reports Issues enabled AND the viewer has admin or write permission, the script creates a GitHub Issue titled `"<spec-id>: <intent first line>"` with the SPEC body, then stamps the issue URL into the SPEC frontmatter as `gh_issue_url`.
+- Otherwise, the script appends a skip record to `.gaia/local/telemetry/gh-mirror.jsonl`, exits 0, and does not modify the SPEC. Absence does not block save and never propagates as an error to the lifecycle.
 
 If the project uses non-GitHub remote tracking (GitLab, Bitbucket, none), the mirror step is a no-op. Do not prompt to mirror to alternative trackers — that is `ask_first` territory and out of SPEC-001 scope.
 
