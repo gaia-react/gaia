@@ -4,7 +4,7 @@ description: "GAIA-wrapped /speckit-specify: writes through core, then relocates
 
 # /speckit-specify (GAIA preset)
 
-This is the body that replaces the core `speckit.specify` command body when the GAIA preset is installed. The `{CORE_TEMPLATE}` substitution below is resolved at preset install time and inlines the bundled core specify body verbatim.
+This is the body that replaces the core speckit.specify command body when the GAIA preset is installed. The core specify body is inlined below at preset install time via the `wrap` strategy.
 
 ## Step 0 — GAIA pre-checks
 

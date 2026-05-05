@@ -19,12 +19,14 @@ provides:
       file: "commands/speckit.specify.md"
       description: "Wraps core /speckit-specify; redirects output to .gaia/local/specs/SPEC-NNN.md."
       replaces: "speckit.specify"
+      strategy: "wrap"
 
     - type: "template"
       name: "spec-template"
       file: "templates/spec-template.md"
       description: "GAIA-shaped artifact skeleton with frontmatter (spec_id, immutable, wiki_promote_default, chain_trigger, frozen UAT-NNN ids)."
       replaces: "spec-template"
+      strategy: "replace"
 
 tags:
   - "gaia"
