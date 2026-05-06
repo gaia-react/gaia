@@ -14,9 +14,11 @@ Spawn:
 - `description`: `"Wiki sync"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are running the GAIA /wiki-sync workflow in a fresh context. Read .claude/commands/wiki-sync.md from the project root and execute the "Playbook" section (Steps 1–8) verbatim. Your working directory is the project root. Print only the final summary block from Step 8 — no preamble, no recap, no narration of intermediate steps.`
+  > `You are running the GAIA /wiki-sync workflow in a fresh context. Read .claude/commands/wiki-sync.md from the project root and execute the "Playbook" section (Steps 1–9) verbatim. Your working directory is the project root. Print only the final summary block from Step 8 followed by the CONSOLIDATE_TRIGGERED line from Step 9 — no preamble, no recap, no narration of intermediate steps.`
 
 When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
+
+**Consolidation gate.** The summary's last line is `CONSOLIDATE_TRIGGERED: <true|false>` (Step 9 emits it). If `true`, immediately invoke `/wiki-consolidate` after relaying the summary — the gate determined per-domain page-add accumulation has crossed the threshold and consolidation is warranted. If `false`, do nothing further. Never run consolidate yourself in this conversation; `/wiki-consolidate` dispatches its own subagent.
 
 ---
 
@@ -24,7 +26,7 @@ When the subagent returns, relay its final summary verbatim. Do not redo the wor
 
 Evaluate every commit between `wiki/.state.json` `last_evaluated_sha` and HEAD. For each, decide whether the wiki needs an update. Edit pages, log decisions, advance state, commit.
 
-This is the only command that writes `wiki/.state.json`. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-stop-safety-net`) are read-only consumers.
+`wiki/.state.json` is written by two commands: this command writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/wiki-consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-stop-safety-net`) are read-only consumers.
 
 ## Step 1: Read state and compute drift
 
@@ -38,8 +40,8 @@ If state exists:
   ```bash
   git rev-list --count <sha>..HEAD
   ```
-- If 0: report `Wiki already in sync at {short_sha}.` Exit.
-- If `<sha>` is unreachable from HEAD (rebase scenario): re-anchor — set `last_evaluated_sha` to HEAD, write a `wiki/log.md` entry `{date} - {short_sha} - re-anchored after history rewrite`, commit, exit.
+- If 0: skip the evaluation pass (no commits to evaluate) but DO NOT exit yet — fall through to Step 9 (consolidate gate). The gate may still trigger consolidate based on accumulated page-adds since last consolidate run, even when this sync is a no-op. The Step 8 report still prints; just substitute `Wiki already in sync at {short_sha}.` for the regular summary block, then run Step 9.
+- If `<sha>` is unreachable from HEAD (rebase scenario): re-anchor — set `last_evaluated_sha` to HEAD, write a `wiki/log.md` entry `{date} - {short_sha} - re-anchored after history rewrite`, commit, exit. Skip Step 9 — re-anchor wipes drift baseline; running consolidate against an unreachable past makes no sense.
 - Otherwise proceed with the evaluation pass.
 
 ## Step 2: Drift cap check
@@ -138,13 +140,14 @@ Newest entries on top. Group by date if helpful.
 
 ## Step 6: Advance state file
 
-Update `wiki/.state.json`:
+Update `wiki/.state.json`. Read the existing file first to preserve `last_consolidated_sha` (owned by `/wiki-consolidate`). On the first write that ever sees a missing `last_consolidated_sha`, bootstrap it to the new HEAD value — this gives the consolidate gate a baseline so subsequent runs accumulate from a known point.
 
 ```json
 {
   "version": 1,
   "last_evaluated_sha": "<new HEAD SHA, full 40-char>",
-  "last_evaluated_at": "<now, ISO 8601 UTC>"
+  "last_evaluated_at": "<now, ISO 8601 UTC>",
+  "last_consolidated_sha": "<preserved if present; bootstrapped to last_evaluated_sha if absent>"
 }
 ```
 
@@ -209,6 +212,64 @@ Wiki sync complete.
   ADRs created: {list, if any}
   State advanced to {head_sha}.
 ```
+
+(On the no-op path from Step 1's drift=0 branch: print `Wiki already in sync at {short_sha}.` instead of the block above.)
+
+After the summary block, append the Step 9 result line `CONSOLIDATE_TRIGGERED: <true|false>` on its own line (no leading whitespace). The wrapper reads this to decide whether to invoke `/wiki-consolidate`.
+
+## Step 9: Consolidate gate
+
+Cheap precheck. Decides whether `/wiki-consolidate` should fire next based on per-domain new-page accumulation since the last consolidate run.
+
+### 9a. Read state
+
+```bash
+CONSOLIDATED_SHA=$(jq -r '.last_consolidated_sha // empty' wiki/.state.json)
+HEAD_SHA=$(git rev-parse HEAD)
+```
+
+If `CONSOLIDATED_SHA` is empty (the bootstrap case from Step 6 wasn't reached because Step 6 was skipped on the drift=0 path AND no prior sync ever wrote the field): emit `CONSOLIDATE_TRIGGERED: false` and exit. Step 6 will bootstrap the field on the next non-zero-drift sync. Do not bootstrap from inside Step 9 — keep this step read-only on the state file.
+
+### 9b. Count added pages per domain
+
+```bash
+git diff --name-only --diff-filter=A "$CONSOLIDATED_SHA"..HEAD -- \
+  wiki/decisions/ wiki/concepts/ wiki/modules/ wiki/flows/ wiki/components/ wiki/dependencies/
+```
+
+Group the output by parent directory (the domain). Count pages per domain. Skip files in `wiki/_archived/` (handled by the path filter — `_archived/` is not in the list).
+
+### 9c. Threshold check
+
+If any single domain has ≥ 2 added pages since `CONSOLIDATED_SHA`: emit `CONSOLIDATE_TRIGGERED: true`. Otherwise: emit `CONSOLIDATE_TRIGGERED: false`.
+
+The threshold rationale: cross-page redundancy emerges when multiple SPECs land in the same domain. One SPEC promoting to one domain has nothing to consolidate against. Two SPECs in the same domain is the minimum case where supersession or near-collision can occur.
+
+### 9d. Append to summary
+
+Add the trigger line to the report from Step 8. Example final summary on a triggered sync:
+
+```
+Wiki sync complete.
+
+  Range:    abc123..def456
+  Total:    5 commits
+  Worthy:   3
+  Skipped:  2
+  Pages edited: wiki/decisions/auth-strategy.md, wiki/modules/Sessions.md
+  ADRs created: wiki/decisions/auth-strategy.md
+  State advanced to def456.
+
+CONSOLIDATE_TRIGGERED: true
+```
+
+The wrapper reads the last line and decides whether to invoke `/wiki-consolidate`. The gate itself never invokes consolidate directly — it stays a read-only check.
+
+### 9e. Edge cases
+
+- **Drift=0 sync (no commits since last sync).** Gate still runs. The page-add count is computed against `last_consolidated_sha`, not against the sync's evaluation range, so accumulated adds from earlier syncs may still meet threshold.
+- **Re-anchor (rebase).** Step 1 exits before Step 9. After re-anchor, the next sync's Step 6 will preserve any existing `last_consolidated_sha`; the gate resumes counting from there. If the anchor change put `last_consolidated_sha` upstream of HEAD by an unreachable path, the next gate's `git diff` returns empty → `false`. Acceptable; the maintainer can run consolidate manually.
+- **Consolidate's own commits in the diff.** If a previous consolidate run produced commits that landed (retirements moving pages to `wiki/_archived/`, near-collision renames inside an active domain), those appear in the next gate's diff. `_archived/` is excluded by path. Renames inside an active domain show as added paths and may trigger a redundant consolidate fire. Living with that — the false positive is cheap (consolidate runs, finds nothing new, advances state, returns).
 
 ## Failure modes
 

@@ -1,32 +1,102 @@
 ---
 name: speckit-gaia-spec-close
-description: Drain deferred wiki-promote cache for a SPEC; re-runs promotion if the PR has now merged.
+description: Close a SPEC after implementation+merge. Optional drain of deferred wiki-promote, then disposition prompt (archive / delete / keep) for the local SPEC artifact.
 ---
 
-# Spec Close — Wiki-Promote Drain
+# Spec Close — Lifecycle
 
-Minimal scope for SPEC-004: re-run wiki-promote against a SPEC whose `after_implement` hook deferred. Full `/gaia spec close` lifecycle (status transitions, archive ceremony) is a separate downstream SPEC.
+Closes a SPEC after its implementing PR has merged. Two responsibilities:
 
-## Step 1 — Resolve target
+1. **Drain a deferred wiki-promote**, if `/speckit-implement` saw the PR unmerged and cached a defer flag.
+2. **Prompt for SPEC artifact disposition** — archive, delete, or keep in place — once the wiki side is settled.
 
-If `$ARGUMENTS` matches `SPEC-NNN`, target that SPEC. Otherwise list `.gaia/local/cache/wiki-promote/*.json` and ask the user via `AskUserQuestion` which to drain.
+Auto-triggered from `wiki-promote` Step 8 on the immediate-merge path. Also invokable manually as `/gaia spec close [SPEC-NNN]` for the deferred path or for retroactive disposition.
 
-## Step 2 — Re-probe PR merge
+## Step 1 — Resolve target SPEC
 
-Read the cache file. Run `gh pr list --head <branch> --state merged --json number,mergedAt,url,body --limit 1`.
+If `$ARGUMENTS` matches `SPEC-NNN`, target that SPEC.
 
-If still unmerged: report `SPEC-NNN: PR for branch <branch> not yet merged. Try again after the PR merges.` and exit. Do not delete the cache.
+Otherwise, build the candidate list:
 
-If merged: continue.
+1. Caches (deferred-drain candidates): `ls .gaia/local/cache/wiki-promote/*.json 2>/dev/null` → SPEC IDs awaiting drain.
+2. Specs (in-flight or pending disposition): `ls .gaia/local/specs/SPEC-*.md 2>/dev/null` → SPEC IDs (excludes `archived/`).
 
-## Step 3 — Re-fire wiki-promote
+If exactly one candidate exists, default to it. If multiple, surface via `AskUserQuestion`:
 
-Re-invoke `/speckit-gaia-wiki-promote` with the SPEC ID as context. The wiki-promote command's Step 3 will now find the merged PR and proceed to Steps 4–7. It will delete the cache file when it finishes.
+- Question: `Multiple SPECs eligible for close. Which one?`
+- Header: `SPEC close`
+- Options: one per candidate, labeled `<spec_id> — <intent first line>` with description noting `(awaiting drain)` if the cache exists.
 
-## Step 4 — Report
+If no candidates: report `spec-close: no SPECs to close.` and exit.
 
-`SPEC-NNN drained: <N> wiki pages staged. Wiki-sync invoked for commit.`
+## Step 2 — Conditional drain
 
-## Known followup
+Test for `.gaia/local/cache/wiki-promote/<spec_id>.json`.
 
-The drain re-fires `/speckit-gaia-wiki-promote`, which re-prompts on `wiki_promote_default: ask` by design. Because the user already confirmed at deferral time, the second prompt is redundant. Accepted for now; a future enhancement can pass a `--drained` context flag to suppress the re-prompt.
+**If the cache exists** (deferred path):
+
+1. Read the cache. Run `gh pr list --head "$branch" --state merged --json number,mergedAt,url,body --limit 1`.
+2. If still unmerged: report `<spec_id>: PR for branch <branch> not yet merged. Re-run after merge.` and exit. Do not delete the cache. Do not proceed to disposition — the SPEC is not closed yet.
+3. If merged: re-invoke `/speckit-gaia-wiki-promote` with the SPEC ID as context. Wiki-promote's Step 3 detects the merged PR, runs Steps 4–7, and deletes the cache. **Wiki-promote's Step 8 chain is suppressed in this drain context** to avoid re-entering spec-close — pass `drained: true` in the chain context (see wiki-promote Step 8 for the guard).
+
+**If no cache exists** (immediate-merge or never-promoted path): skip drain. Proceed to Step 3.
+
+Track `drained = <bool>` for telemetry and the final report.
+
+## Step 3 — Disposition prompt
+
+Resolve the SPEC artifact path: `.gaia/local/specs/<spec_id>.md`.
+
+If the file is missing, set `disposition = "skipped"`, skip Step 4, and continue to Step 5. Report line surfaces "(artifact missing; nothing to dispose)".
+
+Surface via `AskUserQuestion`:
+
+- Question: `<spec_id> implementation complete and PR merged. Disposition?`
+- Header: `SPEC dispose`
+- Options:
+  - `{ label: "Archive (Recommended)", description: "Move to .gaia/local/specs/archived/ with status=archived. Preserves the SPEC artifact for posterity. Wiki content was already promoted at implement time; no re-summarization." }`
+  - `{ label: "Delete", description: "Remove the SPEC artifact. Local-only (.gaia/local/ is gitignored), so the SPEC is not recoverable from git history." }`
+  - `{ label: "Keep in place", description: "Leave the artifact at .gaia/local/specs/<spec_id>.md unchanged. Choose if undecided — re-run /gaia spec close <spec_id> later to revisit." }`
+
+## Step 4 — Apply disposition
+
+**On `Archive`:**
+
+1. `mkdir -p .gaia/local/specs/archived/`.
+2. Read `.gaia/local/specs/<spec_id>.md`. Update frontmatter: set `status: archived`; set `archived_at: <ISO 8601 UTC>`. Preserve all other fields verbatim.
+3. Write the updated artifact to `.gaia/local/specs/archived/<spec_id>.md`.
+4. `rm .gaia/local/specs/<spec_id>.md`.
+
+**On `Delete`:**
+
+1. `rm .gaia/local/specs/<spec_id>.md`.
+
+**On `Keep in place`:**
+
+1. No-op.
+
+## Step 5 — Telemetry
+
+Append to `.gaia/local/telemetry/spec-pacing.jsonl`:
+
+    { "event": "spec_closed", "spec_id": "<id>", "disposition": "archive|delete|keep|skipped", "drained": <bool>, "ts": "<ISO 8601 UTC>" }
+
+Append via `printf '%s\n' '<json>' >> .gaia/local/telemetry/spec-pacing.jsonl`. Failure to append never blocks the flow.
+
+## Step 6 — Report
+
+Print one of (prefix with `Drained <N> wiki pages. ` if Step 2 drained, where `<N>` is the count from wiki-promote's report):
+
+- `<spec_id> closed. Archived to .gaia/local/specs/archived/<spec_id>.md.`
+- `<spec_id> closed. SPEC artifact deleted.`
+- `<spec_id> closed. SPEC artifact kept at .gaia/local/specs/<spec_id>.md.`
+- `<spec_id> closed. (Artifact missing; nothing to dispose.)`
+
+If wiki content was promoted, also surface: `Run /wiki-consolidate periodically to keep the wiki coherent across SPECs.`
+
+## Notes
+
+- **Disposition does NOT re-summarize into the wiki.** `wiki-promote` (the `after_implement` hook) already wrote `wiki/<domain>/<slug>.md` pages with `promoted_from: <spec_id>` provenance at implement time. Re-summarizing here would duplicate. To consolidate redundant or superseded wiki pages across SPECs, run `/wiki-consolidate`.
+- This command never touches `wiki/`. The wiki-promote → wiki-sync chain owns wiki writes.
+- Archive is reversible (rename back). Delete is local-only — `.gaia/local/` is gitignored, so the SPEC is not recoverable from git history. Default to Archive if uncertain.
+- The chain from wiki-promote Step 8 fires only on the immediate-merge path. The deferred-drain path runs spec-close once and does not re-enter via the chain (see Step 2's `drained: true` guard).

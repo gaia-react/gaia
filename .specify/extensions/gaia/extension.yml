@@ -44,7 +44,7 @@ provides:
 
     - name: "speckit.gaia.spec-close"
       file: "commands/spec-close.md"
-      description: "Drain deferred wiki-promote cache for a SPEC."
+      description: "Close a SPEC after implementation+merge: optional drain of deferred wiki-promote, then archive/delete/keep prompt for the local SPEC artifact."
 
     - name: "speckit.gaia.wiki-promote"
       file: "commands/wiki-promote.md"
