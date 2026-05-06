@@ -122,6 +122,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Pickup]] — `/gaia pickup`: resume from the latest handoff.
 - [[GAIA Audit]] — `/gaia audit`: two-stage knowledge-store hygiene sweep.
 - [[Wiki Sync]] — `/wiki-sync` + drift hooks: keep the wiki convergent with code without spawned sub-Claudes.
+- [[Wiki Consolidate]] — `/wiki-consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
 - [[Serena Integration]] — Serena handles live code; the wiki handles institutional memory.
 - [[Chromatic Opt-Out]]
 
