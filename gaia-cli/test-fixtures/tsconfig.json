@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "outDir": "./dist-fixtures"
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["./dist-fixtures", "../node_modules"]
+}

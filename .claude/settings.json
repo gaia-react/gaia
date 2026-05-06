@@ -123,6 +123,15 @@
             "command": ".claude/hooks/wiki-commit-nudge.sh"
           }
         ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/telemetry-task-postuse.sh"
+          }
+        ]
       }
     ]
   },

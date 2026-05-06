@@ -286,11 +286,60 @@ In all three sub-cases, write the project-level wrapper into `.claude/settings.j
 
 Before writing either settings file, read its current contents so you merge rather than overwrite. Use jq or manual JSON editing — never truncate the file.
 
-## Step 10: Refresh the wiki
+## Step 10: Mentorship opt-in
+
+Tell the user (in their language): "GAIA includes an optional mentorship layer that learns how you work and adapts in-session — fully on your machine, never sent off it. Let's set the default."
+
+Then show the privacy explainer (this block stays English regardless of UI language — it's the canonical contract):
+
+> **GAIA's mentorship layer (experimental, optional)**
+>
+> GAIA can quietly learn how you work — which kinds of specs you find easy or hard, where you tend to need more context — and adapt in-session to help you ship better specs and code over time.
+>
+> **What it observes:** which kinds of specs you find easy or hard, where you need more context, when you amend specs after closing.
+>
+> **What it never observes:** when you work, how fast you type, what you read, your mood, your behavior outside GAIA's workflow.
+>
+> **Where it lives:** on your machine only, in your Claude project folder. Never in your project's git. Never sent to a server unless you opt into anonymous fine-tuning analytics (which comes with mentorship).
+>
+> **Read more:** https://gaiareact.com/mentorship
+
+Use AskUserQuestion with these three options in this exact order:
+
+- **Not now (you can enable later if you like)** (Recommended) — `mentorship.enabled = false`, `analytics.enabled = false`. Init proceeds.
+- **Yes, enable mentorship + anonymous analytics** — `mentorship.enabled = true`, `analytics.enabled = true`. Provision mentorship tree with `chmod 700/600`. Init proceeds.
+- **Tell me more before I decide** — drop into a free-form Q&A loop where Claude answers questions about mentorship; on user signal of completion, re-present the same three-option AskUserQuestion. Init does not proceed until either "Not now" or "Yes, enable" is selected.
+
+### Apply the answer
+
+**On "Not now":**
+
+```bash
+bin/gaia mentorship _internal-write-config --enabled false --analytics false --decided-via gaia-init
+```
+
+(Internal subcommand — see notes.)
+
+**On "Yes, enable":**
+
+```bash
+bin/gaia mentorship _internal-write-config --enabled true --analytics true --decided-via gaia-init
+bin/gaia mentorship _internal-provision-dirs
+```
+
+`_internal-provision-dirs` calls `ensureMentorshipDirs(roots)` from the storage-paths module and exits 0 silently. The chmod 700/600 is applied at create time.
+
+**On "Tell me more":**
+
+Drop into Q&A. Claude has the design notes available in context (the explainer above + `studio/decisions/telemetry-v1-design.md` and `studio/decisions/local-adaptive-mentorship.md` if needed for deeper questions). See `.claude/rules/mentorship-display.md` for the project-wide contract on what Claude does with mentorship data. When the user signals they're done (e.g. "ok ready to decide"), re-present the same AskUserQuestion. Loop until the user picks Not now or Yes.
+
+End of Step 10.
+
+## Step 11: Refresh the wiki
 
 The template ships with a wiki shaped for the upstream GAIA project. Refresh the two files that encode "where we are right now" so the new project starts with a clean context:
 
-### 10a. Overwrite `wiki/hot.md`
+### 11a. Overwrite `wiki/hot.md`
 
 Replace the entire file with:
 
@@ -315,7 +364,7 @@ tags: [meta, cache]
 - None.
 ```
 
-### 10b. Overwrite `wiki/log.md`
+### 11b. Overwrite `wiki/log.md`
 
 Replace the entire `wiki/log.md` file with the following content (the GAIA development log is irrelevant to the new project):
 
@@ -341,7 +390,7 @@ Append-only. New entries at the TOP.
 - Installed: React Doctor, TDD, Playwright CLI skills; typescript-lsp, claude-obsidian plugins
 ```
 
-## Step 11: Complete
+## Step 12: Complete
 
 1. Remove the `/init` interceptor — it protects the template's curated `CLAUDE.md` and is no longer needed once a project has been initialized:
    - Delete `.claude/hooks/intercept-init.sh`

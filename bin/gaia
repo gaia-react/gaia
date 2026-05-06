@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# gaia CLI shim. Invoked by hooks, slash-commands, and `pnpm exec gaia`.
+# Resolves to the project-local Node entrypoint. Prefers compiled
+# dist/ when present (faster cold start); falls back to tsx for dev/
+# unbuilt environments (hook context post-clone, pre-`pnpm install`).
+
+set -euo pipefail
+
+# Resolve repo root from this script's location: bin/gaia → repo root.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+DIST_ENTRY="${REPO_ROOT}/gaia-cli/dist/index.js"
+SRC_ENTRY="${REPO_ROOT}/gaia-cli/src/index.ts"
+
+if [[ -f "${DIST_ENTRY}" ]]; then
+  exec node "${DIST_ENTRY}" "$@"
+fi
+
+# Dev path: run TypeScript source via tsx loader.
+TSX_BIN="${REPO_ROOT}/node_modules/.bin/tsx"
+if [[ -x "${TSX_BIN}" ]]; then
+  exec "${TSX_BIN}" "${SRC_ENTRY}" "$@"
+fi
+
+# Fallback: try Node's built-in tsx-via-pnpm exec resolution.
+exec node --import tsx "${SRC_ENTRY}" "$@"

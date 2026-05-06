@@ -30,5 +30,6 @@
     ".react-router/types/**/*",
     ".storybook/**/*",
     ".playwright/**/*"
-  ]
+  ],
+  "exclude": ["gaia-cli", "node_modules", "build", "coverage", "storybook-static"]
 }

@@ -2,6 +2,18 @@
 
 Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN.md` and prompts to chain into `/gaia plan`. Do not implement anything — this skill produces an artifact and stops.
 
+## Profile-driven coaching preamble (UAT-033/034)
+
+Before composing the system prompt for this skill's agent context, fetch any active coaching adaptation:
+
+```bash
+COACHING=$(bin/gaia _internal-fetch-coaching --agent-type human --area-tags spec)
+```
+
+If `$COACHING` is non-empty, prepend its contents to the system prompt as the first section. If empty (the v1.0.0 default — pattern detection ships wired-but-inert), the prompt is byte-identical to the non-mentorship path (UAT-034). The fetcher always exits 0 on a valid `--agent-type`, never blocks the flow, and writes `.gaia/cache/coaching-active.txt` only when a coaching block is actually returned (lights up the 🧭 statusline indicator per UAT-037).
+
+`--area-tags` is `spec` for the pre-Gate-2 phase; once the SPEC's UAT clusters are known, downstream callers can re-fetch with the richer tag set. v1 wires only this `/gaia spec` PO path; Lead → Senior/Junior dispatch wiring lands with Sequel features.
+
 ## Hard constraints
 
 1. **No machine-local memory for project decisions.** Never call any tool that writes to `~/.claude/projects/.../memory/`. Project-relevant decisions belong ONLY in the SPEC artifact, the wiki, or `.claude/rules/`. Personal preferences (tone, formatting) remain allowed in machine-local memory. This is the no-machine-local-memory rule and it is non-negotiable.
@@ -41,6 +53,30 @@ Append a JSON Lines record to `.gaia/local/telemetry/spec-pacing.jsonl` at each 
 
 Append via `printf '%s\n' '<json>' >> .gaia/local/telemetry/spec-pacing.jsonl`. Failure to append never blocks the flow.
 
+### Session-shape cache (`spec-session-<spec_id>.json`)
+
+Used for the `time_to_resolved_spec` mentorship emit at Gate-2 save (UAT-022, UAT-027) and at abandoned-exit branches. The file lives at `.gaia/local/cache/spec-session-<spec_id>.json` and is the only place where elapsed-time and Q&A-count state are tracked across the multi-step flow. Schema:
+
+    {
+      "spec_id": "SPEC-NNN",
+      "start_at": "2026-05-06T18:00:00.000Z",
+      "question_count": 0
+    }
+
+Three operations:
+
+- **Init.** At step 2 (`spec_started` telemetry append, both fresh and resumed paths), write the file if it does not exist with `start_at` = current ISO-8601 UTC ms, `question_count` = 0. On resume, leave any existing file untouched — its `start_at` is the original session start (one continuous wall-clock duration across resumes is the correct semantic for `time_to_resolved_spec`).
+- **Increment.** At every site that appends a `clarify_question` telemetry event (steps 5a, 5b, 5c, 5d, and the per-topic revisit prompt), bump `question_count` by 1. Inline shell:
+
+      jq '.question_count += 1' .gaia/local/cache/spec-session-<spec_id>.json \
+        > .gaia/local/cache/spec-session-<spec_id>.json.tmp \
+        && mv .gaia/local/cache/spec-session-<spec_id>.json.tmp \
+           .gaia/local/cache/spec-session-<spec_id>.json || true
+
+- **Read & delete.** At step 8 (after canonical save) and at every abandoned-exit branch (the `Save partial and resume later` escape). Read both fields, compute `duration_seconds = floor((now_ms - start_at_ms) / 1000)`, fire the emit, then `rm -f .gaia/local/cache/spec-session-<spec_id>.json`.
+
+Failure of any cache read/write must never block the flow — the emit gracefully degrades to absent metrics or a skipped emit.
+
 Schema (one record per line, ISO-8601 UTC timestamps):
 
     { "event": "spec_started", "spec_id": "SPEC-NNN", "resumed": <bool>, "ts": "..." }
@@ -58,7 +94,11 @@ Schema (one record per line, ISO-8601 UTC timestamps):
 
 ### Working-draft checkpoint (`draft-<spec_id>.md`)
 
-After each clarify fold (step 5), each gate confirmation (steps 4 + 7), each research-result fold (step 5e), and each self-review apply (step 6), write the current in-flight draft to `.gaia/local/cache/draft-<spec_id>.md`. Atomic overwrite. Step 8's canonical save deletes this cache as its final action.
+After each clarify fold (step 5), each gate confirmation (steps 4 + 7), each research-result fold (step 5e), and each self-review apply (step 6), persist the current in-flight draft to `.gaia/local/cache/draft-<spec_id>.md`. Step 8's canonical save deletes this cache as its final action.
+
+**Single-`Write` rule.** Compose the full updated draft in working memory, then emit ONE `Write` tool call that overwrites the cache file. Never use a sequence of `Edit` calls for a single fold. The Q&A loop runs many turns per session and each `Edit` renders a full diff in the user's chat — multiple per-turn diffs are visual noise the user has flagged as unwanted. The per-turn budget is exactly: one `Write` for the fold, one `Bash` for telemetry. Nothing else.
+
+**Per-turn fold contents.** When folding a Q&A turn (closed-set selection, `Other` text, open-ended answer, or Discuss-this settlement): add to `clarifications.answered[]` as `{ q, a }`, remove the topic from `clarifications.pending[]`, and update any statusline fields the answer touches — all in the same `Write`.
 
 This makes interrupted sessions resumable: step 2 reads the cache if it is newer than the canonical artifact.
 
@@ -68,7 +108,44 @@ Closed-set `AskUserQuestion` calls during the clarify loop append a fifth option
 
     { label: "Save partial and resume later", description: "Write the draft to cache and stop; re-invoke /gaia spec to continue." }
 
-Selection triggers: write draft cache (above), append `session_paused` telemetry, print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia spec to resume.`), and exit gracefully.
+Selection triggers: write draft cache (above), append `session_paused` telemetry, emit a `time_to_resolved_spec` mentorship event with `--abandoned true` per the abandoned-exit primitive below, print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia spec to resume.`), and exit gracefully.
+
+The session-shape cache is NOT deleted on the `Save partial and resume later` path — a future resume reads it and continues counting questions against the same `start_at`. (Cache deletion happens only on canonical save at step 8, or on the `Discard SPEC-NNN draft cache` branch in step 2 — see step 2 for the discard handler.)
+
+#### Abandoned-exit emit (UAT-022)
+
+For the `Save partial and resume later` escape and any other branch that exits the wrapper without reaching step 8, fire a `time_to_resolved_spec` event with `--abandoned true`:
+
+```bash
+CACHE=".gaia/local/cache/spec-session-${SPEC_ID}.json"
+if [[ -f "$CACHE" ]]; then
+  START_AT="$(jq -r '.start_at' "$CACHE" 2>/dev/null || echo "")"
+  Q_COUNT="$(jq -r '.question_count' "$CACHE" 2>/dev/null || echo 0)"
+else
+  START_AT=""
+  Q_COUNT=0
+fi
+if [[ -n "$START_AT" ]]; then
+  NOW_S=$(date -u +%s)
+  START_S=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "${START_AT%.*}" +%s 2>/dev/null \
+            || date -u -d "$START_AT" +%s 2>/dev/null || echo "$NOW_S")
+  DURATION=$((NOW_S - START_S))
+else
+  DURATION=0
+fi
+bin/gaia telemetry emit time_to_resolved_spec \
+  --spec-id "$SPEC_ID" \
+  --question-count "$Q_COUNT" \
+  --duration-seconds "$DURATION" \
+  --area-tags spec \
+  --abandoned true \
+  --agent-type human || true
+```
+
+Notes:
+- On the `Save partial and resume later` path, the cache file remains so a future resume continues against the same `start_at`. Only canonical save (step 8) and the explicit cache-discard branch in step 2 delete it. The abandoned emit is a snapshot, not a teardown.
+- `area-tags` is `spec` (v1.0.0 default) for abandoned exits — clusters can't be reliably extracted from a partial draft. Step 8 derives richer tags from the saved SPEC's UAT clusters.
+- Failure of the emit must never block the user's exit — note the trailing `|| true`.
 
 ### Per-topic revisit counter
 
@@ -131,14 +208,14 @@ Read `$WORKING` and extract: intent first line, UAT count, frontmatter `updated`
 
 Honor the user's choice. Never silently overwrite, never silently start new.
 
-- **Resume:** load `$WORKING` into the working draft, append `spec_started` telemetry with `resumed: true`, and pick up at the right step (skip earlier steps that are already done):
+- **Resume:** load `$WORKING` into the working draft, append `spec_started` telemetry with `resumed: true`, initialize the session-shape cache per the operational primitive (write only if absent — the original `start_at` survives across resumes), and pick up at the right step (skip earlier steps that are already done):
   - If `.gaia/local/cache/gate1-<spec_id>.json` does NOT exist → resume at step 4 (gate 1).
   - If gate-1 cache exists AND the draft has any `clarifications.pending[]` entries → resume at step 6.
   - If gate-1 cache exists AND no pending clarifications → resume at step 7 (gate 2).
   - Step 3 (initial draft) is always skipped on resume.
   - Never re-snapshot the gate-1 cache; its purpose is immutable drift detection.
-- **Start new:** continue with a fresh allocation (Step 3 onward). The in-progress SPEC remains untouched. Append `spec_started` telemetry with `resumed: false`.
-- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH"`, then continue with a fresh allocation. Note: the canonical SPEC artifact is untouched; the allocator will continue to flag SPEC-NNN as in-progress until the artifact itself is renamed or relabeled (out of scope for this step).
+- **Start new:** continue with a fresh allocation (Step 3 onward). The in-progress SPEC remains untouched. Append `spec_started` telemetry with `resumed: false`, then initialize the session-shape cache per the operational primitive once the new `spec_id` is known (step 3).
+- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json`, then continue with a fresh allocation. Note: the canonical SPEC artifact is untouched; the allocator will continue to flag SPEC-NNN as in-progress until the artifact itself is renamed or relabeled (out of scope for this step).
 
 ### 3. /speckit-specify (initial draft)
 
@@ -147,6 +224,16 @@ Invoke `/speckit-specify` with the description from step 1. The GAIA preset (reg
 Spec-kit fires the `before_specify` hook (constitution + version-pin check) automatically before this step runs. If the hook blocks, surface its message and halt.
 
 When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN.md`. Cache the working draft path; you will read and re-render it across the rest of these steps. (Step 2 already appended `spec_started` telemetry for both fresh and resumed flows.)
+
+Initialize the session-shape cache for the just-allocated SPEC id (no-op if it already exists from a resume):
+
+```bash
+CACHE=".gaia/local/cache/spec-session-${SPEC_ID}.json"
+if [[ ! -f "$CACHE" ]]; then
+  printf '{"spec_id":"%s","start_at":"%s","question_count":0}\n' \
+    "$SPEC_ID" "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" > "$CACHE" || true
+fi
+```
 
 ### 4. Gate 1 — shape confirmation
 
@@ -179,7 +266,7 @@ Only after gate-1 confirmation may you proceed to step 5.
 
 Invoke `/speckit-clarify`. Spec-kit's clarify primitive runs sequential, coverage-based questioning over the draft and is **hard-capped at 5 total questions** (see "Spec-kit's 5-question cap" in operational primitives). The GAIA tailoring (coach tone, AskUserQuestion mediation, exhaustion checkpoints, research dispatch) is enforced by the agent driving this skill — read the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load — see operational primitives).
 
-For every question asked, append a `clarify_question` telemetry event with `topic` and `kind` (`closed`, `open`, or `discuss`).
+For every question asked, append a `clarify_question` telemetry event with `topic` and `kind` (`closed`, `open`, or `discuss`), and increment `question_count` in the session-shape cache per the operational primitive (`spec-session-<spec_id>.json`). The same per-question budget covers steps 5a, 5b, 5c, 5d, and the per-topic revisit prompt — every distinct user-facing prompt counts as one question for the `time_to_resolved_spec` emit.
 
 #### 5a. AskUserQuestion mediation (closed-set questions)
 
@@ -193,19 +280,20 @@ For every question with discrete possible answers, surface it via `AskUserQuesti
 
 Ask exactly one question per turn. No multi-question forms. No silent stacking.
 
+After the user selects an option (or supplies `Other` text), persist the fold via a single `Write` per the working-draft checkpoint primitive (answer into `clarifications.answered[]`, topic removed from `clarifications.pending[]`, statusline updated — all in one call). `Discuss this` and `Save partial and resume later` follow their own paths (5b and the escape primitive respectively).
+
 #### 5b. Discuss-this escape (UAT-004)
 
-When the user picks `Discuss this`, drop the structured loop and engage in plain Q&A on that single topic. Mirror, name trade-offs, propose candidates. When the user signals settlement (an explicit "ok, that one" or equivalent), do three things:
+When the user picks `Discuss this`, drop the structured loop and engage in plain Q&A on that single topic. Mirror, name trade-offs, propose candidates. When the user signals settlement (an explicit "ok, that one" or equivalent):
 
-1. Record the discussion outcome in `clarifications.answered[]` of the in-progress draft as `{ q: "<original question>", a: "<settled outcome from discussion>" }`. Once folded, **do not re-quote the raw Q&A** — see operational primitives.
-2. Write the working-draft cache (operational primitive).
-3. Resume the structured loop on the next topic.
+1. Persist the fold per the working-draft checkpoint primitive — single `Write` covering: discussion outcome appended to `clarifications.answered[]` as `{ q: "<original question>", a: "<settled outcome from discussion>" }`, topic removed from `clarifications.pending[]`, statusline updated. Once folded, **do not re-quote the raw Q&A** in downstream prompts.
+2. Resume the structured loop on the next topic.
 
 Do not loop back to the same closed-set options after a Discuss-this settlement. The discussion replaces the structured choice for that topic.
 
 #### 5c. Open-ended questions
 
-For genuinely open-ended questions (no clean discrete option set), use a plain prompt — not `AskUserQuestion`. Coach tone, never interrogator. Ask one at a time. After each answer, fold into `clarifications.answered[]` and write the draft cache.
+For genuinely open-ended questions (no clean discrete option set), use a plain prompt — not `AskUserQuestion`. Coach tone, never interrogator. Ask one at a time. After each answer, persist the fold via a single `Write` per the working-draft checkpoint primitive (answer into `clarifications.answered[]`, topic removed from `clarifications.pending[]`, statusline updated — all in one call).
 
 #### 5d. Per-topic exhaustion checkpoint (UAT-005)
 
@@ -275,7 +363,7 @@ Append a `self_review_findings` telemetry event with the counts (`low`, `medium`
 
 #### 6b. Apply findings (severity-gated)
 
-- **low + medium findings:** apply each `suggested_fix` to the draft directly. Write the draft cache after each apply (operational primitive).
+- **low + medium findings:** apply ALL `suggested_fix`es to the draft in working memory, then persist via a single `Write` per the operational primitive — never one Write per finding.
 - **high findings:** surface to the user before applying. Never silently revert intentional clarify-loop evolution. Use a plain prompt per finding:
 
   > Self-review flagged a scope-level concern in `<location>`:
@@ -336,6 +424,53 @@ Update the frontmatter `updated` field to today's date.
 After the canonical write succeeds:
 1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md`. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
 2. **Append telemetry:** `spec_saved` event.
+3. **Emit `time_to_resolved_spec` (UAT-027):** read the session-shape cache, derive `area_tags` from the SPEC's UAT clusters, fire one mentorship event, then delete the cache. Failure to emit must NEVER block the save:
+
+```bash
+SPEC_PATH=".gaia/local/specs/${SPEC_ID}.md"
+CACHE=".gaia/local/cache/spec-session-${SPEC_ID}.json"
+if [[ -f "$CACHE" ]]; then
+  START_AT="$(jq -r '.start_at' "$CACHE" 2>/dev/null || echo "")"
+  Q_COUNT="$(jq -r '.question_count' "$CACHE" 2>/dev/null || echo 0)"
+else
+  START_AT=""
+  Q_COUNT=0
+fi
+if [[ -n "$START_AT" ]]; then
+  NOW_S=$(date -u +%s)
+  START_S=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "${START_AT%.*}" +%s 2>/dev/null \
+            || date -u -d "$START_AT" +%s 2>/dev/null || echo "$NOW_S")
+  DURATION=$((NOW_S - START_S))
+else
+  DURATION=0
+fi
+# Derive area_tags from the SPEC YAML's per-UAT area_tags or required_skills,
+# deduped + comma-separated. Fall back to "spec" if nothing parses cleanly.
+AREA_TAGS=$(awk '
+  /^uats:/ {in_uats=1; next}
+  in_uats && /^[a-zA-Z_]+:/ {in_uats=0}
+  in_uats && /area_tags:|required_skills:/ {
+    sub(/.*:[[:space:]]*/, "")
+    gsub(/[][\047"]/, "")
+    gsub(/,/, " ")
+    print
+  }
+' "$SPEC_PATH" 2>/dev/null \
+  | tr ' ' '\n' | grep -v '^$' | sort -u | paste -sd, -)
+if [[ -z "$AREA_TAGS" ]]; then
+  AREA_TAGS="spec"
+fi
+bin/gaia telemetry emit time_to_resolved_spec \
+  --spec-id "$SPEC_ID" \
+  --question-count "$Q_COUNT" \
+  --duration-seconds "$DURATION" \
+  --area-tags "$AREA_TAGS" \
+  --abandoned false \
+  --agent-type human || true
+rm -f "$CACHE"
+```
+
+The emit is the strongest signal for the intent-clarity-gap pattern; the `|| true` guard ensures emit failures never block the save. The cache file is deleted unconditionally after the emit attempt so a re-saved SPEC starts a fresh session window.
 
 ### 9. after_specify hook (immutability lint)
 

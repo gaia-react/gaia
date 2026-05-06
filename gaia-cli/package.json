@@ -1,0 +1,14 @@
+{
+  "name": "@gaia-react/cli",
+  "private": true,
+  "type": "module",
+  "description": "GAIA CLI — telemetry emit primitive and mentorship subcommand surface.",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p ./tsconfig.json"
+  },
+  "dependencies": {
+    "ulid": "2.4.0",
+    "zod": "4.4.3"
+  }
+}

@@ -24,3 +24,4 @@ For TS/TSX symbol queries (definitions, references, types, module exports), pref
 - No hardcoded secrets or tokens in source — use environment variables
 - Prefer structured logs/errors over ad hoc console text
 - Keep files focused — split when a file exceeds ~400 lines
+- Mentorship raw event files are not Claude-displayable. See `.claude/rules/mentorship-display.md`.

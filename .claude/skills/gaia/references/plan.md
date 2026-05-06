@@ -139,6 +139,53 @@ test -f "$PLAN_DIR/README.md" \
 
 If any required file is missing, surface the failure to the user with the planner's return payload. Do not retry silently — the user decides whether to re-spawn or investigate. Never proceed to step 5 with an incomplete plan folder.
 
+### 4.6. Telemetry: revision detection (UAT-028)
+
+If the slug-collision suffix from step 3 is greater than 1 (i.e. `PLAN_DIR` ends with `-2`, `-3`, …) AND `SPEC_PATH` was set in step 1a, this plan is a revision of a prior plan. Emit a `plan_revised` mentorship event so the over-time pattern detector sees it.
+
+Derive the prior plan directory and item counts, then emit. Failure to emit must NEVER block the user's flow — wrap in `|| true`:
+
+```bash
+# Re-derive the suffix from PLAN_DIR (the same suffix used in step 3).
+PLAN_BASENAME="$(basename "$PLAN_DIR")"
+# PLAN_BASENAME is `${SLUG}-N` for N>=2 collisions; ${SLUG} for the first.
+if [[ "$PLAN_BASENAME" =~ -([0-9]+)$ ]]; then
+  SUFFIX="${BASH_REMATCH[1]}"
+  if [[ "$SUFFIX" -gt 1 && -n "${SPEC_PATH:-}" ]]; then
+    BASE_SLUG="${PLAN_BASENAME%-${SUFFIX}}"
+    PRIOR_SUFFIX=$((SUFFIX - 1))
+    if [[ "$PRIOR_SUFFIX" -eq 1 ]]; then
+      PRIOR_DIR="${ROOT}/.gaia/local/plans/${BASE_SLUG}"
+    else
+      PRIOR_DIR="${ROOT}/.gaia/local/plans/${BASE_SLUG}-${PRIOR_SUFFIX}"
+    fi
+    NEW_TASKS=$(ls "$PLAN_DIR"/task-*.md 2>/dev/null | wc -l | tr -d ' ')
+    PRIOR_TASKS=$(ls "$PRIOR_DIR"/task-*.md 2>/dev/null | wc -l | tr -d ' ')
+    DIFF=$((NEW_TASKS - PRIOR_TASKS))
+    if [[ "$DIFF" -ge 0 ]]; then
+      ITEMS_ADDED=$DIFF
+      ITEMS_REMOVED=0
+    else
+      ITEMS_ADDED=0
+      ITEMS_REMOVED=$((-DIFF))
+    fi
+    SPEC_ID="$(basename "$SPEC_PATH" .md)"
+    bin/gaia telemetry emit plan_revised \
+      --plan-id "$PLAN_BASENAME" \
+      --spec-id "$SPEC_ID" \
+      --revision-class scope_change \
+      --items-added "$ITEMS_ADDED" \
+      --items-removed "$ITEMS_REMOVED" \
+      --agent-type human || true
+  fi
+fi
+```
+
+Notes:
+- `revision-class` is hardcoded to `scope_change` in v1.0.0 — the most common case. Future refinement may compute the class from the diff between prior and new task lists.
+- The emit fires only when `SPEC_PATH` is set, because `plan_revised` requires `--spec-id`. Plans authored without a SPEC reference do not currently emit revision events; that surface lands when consumer-driven cloud event payloads ship.
+- The emit is not gated on mentorship opt-in here; the CLI itself short-circuits for mentorship-disabled state and always emits the cloud projection (UAT-009).
+
 ### 5. Report to user
 
 Output a short summary of what's in `$PLAN_DIR/`, then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
