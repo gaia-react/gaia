@@ -38,6 +38,10 @@ provides:
       file: "commands/self-review.md"
       description: "Pre-gate-2 self-review pass; surfaces drift, ambiguity, and pending clarifications before save."
 
+    - name: "speckit.gaia.uat-write"
+      file: "commands/uat-write.md"
+      description: "before_implement hook: render PO-authored UATs into Playwright e2e specs at .playwright/e2e/spec-NNN/."
+
     - name: "speckit.gaia.spec-close"
       file: "commands/spec-close.md"
       description: "Drain deferred wiki-promote cache for a SPEC."
@@ -63,6 +67,12 @@ hooks:
     command: "speckit.gaia.lint"
     optional: false
     description: "Immutability lint: frontmatter, UAT-NNN ids, no placeholders, write-allowlist audit."
+    condition: null
+
+  before_implement:
+    command: "speckit.gaia.uat-write"
+    optional: false
+    description: "Auto-write Playwright e2e specs from SPEC UATs before /speckit-implement edits source."
     condition: null
 
   after_implement:
