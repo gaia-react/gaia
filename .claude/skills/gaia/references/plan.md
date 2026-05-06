@@ -48,7 +48,7 @@ Repeat the `## File:` heading + fenced block for each file. Use the language tag
 
 First, read `wiki/concepts/Task Orchestration.md`.
 
-Then specify the following files for the parent to write under `.claude/plans/{slug}/` where `{slug}` is a short kebab-case slug derived from the feature description:
+Then specify the following files for the parent to write under `.gaia/local/plans/{slug}/` where `{slug}` is a short kebab-case slug derived from the feature description:
 
 1. **One task doc per parallel workstream** — name each `task-{name}.md`. Each must be fully self-contained for a fresh-context sub-agent and include:
    - Context and motivation
@@ -66,7 +66,7 @@ Then specify the following files for the parent to write under `.claude/plans/{s
    - **Orchestrator-owned git flow.** After each phase that produces changes (and only once the quality gate is clean), the orchestrator stages, commits with a meaningful message, and pushes. The orchestrator opens the PR after the first phase's commit lands on the remote (using `gh pr create`) and updates it with subsequent commits. Never commit a broken state.
    - **Stop conditions.** On any sub-agent failure or quality-gate failure: STOP and surface to the user. Do not "fix and continue", do not commit, do not push.
    - **Final summary.** After all implementation phases pass and the final commit is pushed, before awaiting merge confirmation, print a brief summary to the user: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, and quality-gate status. Keep it tight — a few lines, not a recap of every change.
-   - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder (`rm -rf .claude/plans/{slug}/`, absolute path) so scaffolding does not persist locally. Then check `git check-ignore .claude/plans/{slug}/` — if `.claude/plans/` is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
+   - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder (`rm -rf .gaia/local/plans/{slug}/`, absolute path) so scaffolding does not persist locally. Then check `git check-ignore .gaia/local/plans/{slug}/` — if `.gaia/local/plans/` is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
 
 4. **`KICKOFF.md`** — the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt — no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline.
 
@@ -78,16 +78,16 @@ Return all file specifications using the output format above. End with the absol
 
 Parse the agent's structured output. For each `## File: <absolute path>` heading followed by a fenced block, Write the fenced content verbatim to that path. Create the parent directory first via `mkdir -p` if needed.
 
-Use the Write tool directly — the permission scope (`Write(.claude/plans/**)`) covers it. Verify all files exist before proceeding to step 4.
+Use the Write tool directly — the permission scope (`Write(.gaia/local/plans/**)`) covers it. Verify all files exist before proceeding to step 4.
 
 ### 4. Report to user
 
-Output a short summary of what's in `.claude/plans/{slug}/`, then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
+Output a short summary of what's in `.gaia/local/plans/{slug}/`, then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
 
 The prompt is a single line, exactly:
 
 ```
-Read /Users/.../absolute/path/to/.claude/plans/{slug}/KICKOFF.md and execute it.
+Read /Users/.../absolute/path/to/.gaia/local/plans/{slug}/KICKOFF.md and execute it.
 ```
 
 Use the absolute path to the `KICKOFF.md` you just created. Do not include any other instruction — the orchestrator's behavior lives in `KICKOFF.md`.

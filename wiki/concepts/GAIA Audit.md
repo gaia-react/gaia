@@ -26,7 +26,7 @@ tags: [concept, claude, skill, knowledge, hygiene]
 | `/gaia audit`         | Stage 1 → Stage 2 | Default. Research, then apply, in sequence                                           |
 | `/gaia audit --apply` | Stage 2 only      | Retry against the most recent existing report (after drift fix or interrupted apply) |
 
-Stage 1 (Sonnet) proposes actions — `delete`, `delete-entry`, `promote`, `shrink`, `merge`, `fix-link` — each with verbatim `expect` snippets and sha256 drift signals, written to `.claude/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model.
+Stage 1 (Sonnet) proposes actions — `delete`, `delete-entry`, `promote`, `shrink`, `merge`, `fix-link` — each with verbatim `expect` snippets and sha256 drift signals, written to `.gaia/local/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model.
 
 ## What it catches
 
@@ -37,7 +37,7 @@ Stage 1 (Sonnet) proposes actions — `delete`, `delete-entry`, `promote`, `shri
 - **Broken wikilinks** and **dead file paths**
 - **Stale entries** referencing removed code, branches, or features
 
-Guardrails and portability details live in `.claude/skills/gaia/references/audit.md`. Key invariants: Stage 2 never deletes unless Stage 1 named the wiki target; never runs `git add` / `git commit`; reports gitignored under `.claude/audit/`.
+Guardrails and portability details live in `.claude/skills/gaia/references/audit.md`. Key invariants: Stage 2 never deletes unless Stage 1 named the wiki target; never runs `git add` / `git commit`; reports gitignored under `.gaia/local/audit/`.
 
 ## Pairs with
 

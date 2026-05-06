@@ -42,7 +42,7 @@ Each script reads `tool_input.command` from stdin and filters by content — the
 
 - **`block-bare-test.sh`** — denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. See [[Test Runner]].
 - **`block-main-destructive-git.sh`** — denies (1) `git commit` while HEAD is `main`/`master`, (2) force-push to `main`/`master`, and (3) plain `git push` originating from `main`/`master` (PR-only flow — closes the "forgot to switch branches" footgun). Handles `git -C <path>` invocations correctly. Authoritative rule: [[Git Workflow]].
-- **`block-rm-rf.sh`** — denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `node_modules`. Allows scoped scratch paths (`.claude/plans/*`, `.claude/audit/*`, `.gaia/cache/*`, `dist/*`, `build/*`).
+- **`block-rm-rf.sh`** — denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `node_modules`. Allows scoped scratch paths (`.gaia/local/plans/*`, `.gaia/local/audit/*`, `.gaia/local/handoff/*`, `.gaia/cache/*`, `dist/*`, `build/*`).
 
 ### Advisory (Bash)
 

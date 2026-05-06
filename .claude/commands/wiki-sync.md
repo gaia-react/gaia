@@ -3,6 +3,25 @@ name: wiki-sync
 description: Evaluate commits since last sync and update the wiki where warranted. Two-pass: subjects first, deep-read only the worthy ones. Updates wiki/.state.json on completion.
 ---
 
+## Execution model — READ FIRST
+
+**Do not execute the playbook yourself in the current conversation.** Dispatch a Sonnet subagent via the `Agent` tool. The work is mechanical (rule-based WORTHY/SKIP classification, file edits, structured commits) — Sonnet is sufficient, and a fresh context avoids dragging git diffs and log content into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
+
+Spawn:
+
+- `subagent_type`: `"general-purpose"`
+- `model`: `"sonnet"`
+- `description`: `"Wiki sync"`
+- `prompt`: the string below (literal, no paraphrasing):
+
+  > `You are running the GAIA /wiki-sync workflow in a fresh context. Read .claude/commands/wiki-sync.md from the project root and execute the "Playbook" section (Steps 1–8) verbatim. Your working directory is the project root. Print only the final summary block from Step 8 — no preamble, no recap, no narration of intermediate steps.`
+
+When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
+
+---
+
+## Playbook
+
 Evaluate every commit between `wiki/.state.json` `last_evaluated_sha` and HEAD. For each, decide whether the wiki needs an update. Edit pages, log decisions, advance state, commit.
 
 This is the only command that writes `wiki/.state.json`. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-stop-safety-net`) are read-only consumers.

@@ -40,10 +40,7 @@ coverage
 
 # Claude files
 .claude/agent-memory/
-.claude/audit/
 .claude/worktrees/
-.claude/handoff/
-.claude/plans/
 .claude/scheduled_tasks.lock
 
 # Wiki sync system markers (project-local, never commit)

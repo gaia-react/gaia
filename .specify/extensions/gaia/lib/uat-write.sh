@@ -28,8 +28,7 @@
 # Idempotency: re-running on an unchanged SPEC produces a zero-diff repo.
 # Hash compare per file uses sha256.
 #
-# Interface contract: README "Frozen interface contracts — Renderer library"
-# in .claude/plans/spec-003-before-implement-uat-write/.
+# Interface contract: SPEC-003 — see .specify/specs/SPEC-003-*/README.md.
 #
 # UATs covered: UAT-001, UAT-002, UAT-003, UAT-004, UAT-007, UAT-008.
 set -euo pipefail

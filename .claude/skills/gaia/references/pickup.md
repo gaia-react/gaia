@@ -8,7 +8,7 @@ Rebuild "where did we leave off" at session start and suggest the next action.
 
 Find the most recent handoff:
 
-- `ls -t .claude/handoff/HANDOFF-*.md | head -1`
+- `ls -t .gaia/local/handoff/HANDOFF-*.md | head -1`
 - If none exists, fall back to `wiki/hot.md` (already loaded) and report "No handoff found — resuming from hot cache."
 
 ### 2. Read
@@ -41,7 +41,7 @@ Do **not** paste the whole handoff back — the user wrote it, they know the sha
 
 ### 4. Archive (after user confirms direction)
 
-Once the user commits to a direction (picks an action, starts editing, or says "go"), move the consumed handoff to `.claude/handoff/archive/` so it doesn't pollute future pickups. Create the dir if missing. Do not archive until work has actually begun.
+Once the user commits to a direction (picks an action, starts editing, or says "go"), move the consumed handoff to `.gaia/local/handoff/archive/` so it doesn't pollute future pickups. Create the dir if missing. Do not archive until work has actually begun.
 
 ## Rules
 

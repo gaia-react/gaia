@@ -4,7 +4,7 @@
 #
 # Why: drift-check catches drift across sessions; this catches drift within.
 # Together they ensure the wiki converges to HEAD before meaningful work
-# proceeds. See .claude/plans/wiki-sync-system/README.md for the full contract.
+# proceeds. See wiki/concepts/Wiki Sync.md for the full contract.
 
 set -euo pipefail
 trap 'exit 0' ERR

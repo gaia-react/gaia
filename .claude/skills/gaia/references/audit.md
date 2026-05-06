@@ -38,7 +38,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
 - `description`: `"Knowledge audit (research)"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are Stage 1 of a two-stage knowledge audit. Your job is to PRODUCE A REPORT ONLY — do not mutate any files outside .claude/audit/. The Stage 2 agent will execute the actions immediately after you return.`
+  > `You are Stage 1 of a two-stage knowledge audit. Your job is to PRODUCE A REPORT ONLY — do not mutate any files outside .gaia/local/audit/. The Stage 2 agent will execute the actions immediately after you return.`
   >
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
   >
@@ -50,7 +50,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
   >
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
-  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–6). Write the report to $PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–6). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
 
 ### Stage 2 subagent (Apply)
 
@@ -103,14 +103,14 @@ The report you produce is a **contract** to a Sonnet-level executor. Assume it c
 
 ## Step 0 — Prune old reports
 
-Before writing the new report, self-maintain `$PROJECT_ROOT/.claude/audit/`:
+Before writing the new report, self-maintain `$PROJECT_ROOT/.gaia/local/audit/`:
 
 - **Keep the newest 5 reports regardless of age** (floor — protects long gaps between runs).
 - Of anything beyond the newest 5, **delete reports older than 30 days**.
 
 ```bash
-if [ -d "$PROJECT_ROOT/.claude/audit" ]; then
-  ls -t "$PROJECT_ROOT"/.claude/audit/KNOWLEDGE-*.md 2>/dev/null | tail -n +6 | while IFS= read -r f; do
+if [ -d "$PROJECT_ROOT/.gaia/local/audit" ]; then
+  ls -t "$PROJECT_ROOT"/.gaia/local/audit/KNOWLEDGE-*.md 2>/dev/null | tail -n +6 | while IFS= read -r f; do
     if [ -n "$(find "$f" -mtime +30 -print 2>/dev/null)" ]; then
       rm -- "$f"
     fi
@@ -189,7 +189,7 @@ In every auto-loaded file (CLAUDE.md hierarchy, `wiki/hot.md`, rules):
 
 ## Step 6 — Report
 
-Write `$PROJECT_ROOT/.claude/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md`. Create `$PROJECT_ROOT/.claude/audit/` if missing. Also snapshot `git status --short` into the report's frontmatter so Stage 2 can detect drift.
+Write `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md`. Create `$PROJECT_ROOT/.gaia/local/audit/` if missing. Also snapshot `git status --short` into the report's frontmatter so Stage 2 can detect drift.
 
 ### Report template (strict schema — Stage 2 parses this)
 
@@ -335,7 +335,7 @@ You are executing, not reasoning. Follow this loop exactly.
 
 ### Pre-flight
 
-1. Find the newest `$PROJECT_ROOT/.claude/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /gaia audit first`.
+1. Find the newest `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /gaia audit first`.
 2. Parse the report's frontmatter. Verify `project_root`, `memory_dir`, and `agent_memory_dir` match the values you resolved at startup. If any differ, stop and print a clear error — the report was generated on a different machine or in a different clone.
 3. Run `git rev-parse HEAD` — if it differs from `git_head` in the report, print a warning but continue. Run `git status --short` — any file that is currently dirty AND appears as a target in the report is marked `SKIP (dirty)` before any action runs.
 4. Read the `## Ordering` section. Process actions in that order.

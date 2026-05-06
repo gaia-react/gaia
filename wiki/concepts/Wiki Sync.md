@@ -62,7 +62,7 @@ The drift check itself is free (~30 tokens of injection once per session). The c
 
 If drift exceeds 30 commits, `/wiki-sync` asks before proceeding — long-skipped projects shouldn't surprise-bill.
 
-All cost lives in the user's existing Claude Code session. There are no spawned sub-Claudes and no separate API calls.
+`/wiki-sync` dispatches a Sonnet subagent in a fresh context to run the playbook — Sonnet is sufficient for the rule-based work, and the fresh context keeps git diffs and log content out of the parent (which may be on Opus). All cost still lives in the user's Claude Code session; there are no `claude -p` background invocations.
 
 ## What `/wiki-sync` does
 

@@ -11,8 +11,9 @@
 #   - rm -rf node_modules (anywhere — must use pnpm clean / explicit path)
 #
 # Allowed (whitelist of safe scratch paths):
-#   - .claude/plans/*
-#   - .claude/audit/*
+#   - .gaia/local/plans/*
+#   - .gaia/local/audit/*
+#   - .gaia/local/handoff/*
 #   - .gaia/cache/*
 #   - dist/*
 #   - build/*
@@ -82,10 +83,13 @@ for tok in "${tokens[@]}"; do
     node_modules|./node_modules|*/node_modules|node_modules/*)
       deny "BLOCKED: rm -rf of node_modules is forbidden — use 'pnpm store prune' or remove deliberately."
       ;;
-    .claude/plans/*|./.claude/plans/*)
+    .gaia/local/plans/*|./.gaia/local/plans/*)
       : # whitelisted
       ;;
-    .claude/audit/*|./.claude/audit/*)
+    .gaia/local/audit/*|./.gaia/local/audit/*)
+      : # whitelisted
+      ;;
+    .gaia/local/handoff/*|./.gaia/local/handoff/*)
       : # whitelisted
       ;;
     .gaia/cache/*|./.gaia/cache/*)
