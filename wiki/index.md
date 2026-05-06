@@ -130,6 +130,8 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 - [[README]] — vault schema, mode declaration, conventions
 - [[dashboard]]
+- [[lint-report-2026-05-06]]
+- [[lint-report-2026-05-04]]
 - [[lint-report-2026-05-03]]
 - [[lint-report-2026-05-01]]
 - [[lint-report-2026-04-27]]

@@ -4,7 +4,10 @@ path: app/components/Form/YearMonthDay/
 status: active
 language: typescript
 purpose: Composite date-of-birth input — three locale-aware Selects + hidden ISO date
-depends_on: [[Form Select]], [[Conform]], [[Form Components]]
+depends_on:
+  - "[[Form Select]]"
+  - "[[Conform]]"
+  - "[[Form Components]]"
 created: 2026-04-20
 updated: 2026-05-04
 tags: [component, forms, date, gotcha]

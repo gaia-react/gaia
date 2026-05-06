@@ -4,7 +4,9 @@ path: app/routes/
 status: active
 language: typescript
 purpose: File-based routing using remix-flat-routes on top of React Router 7
-depends_on: [[remix-flat-routes]], [[React Router 7]]
+depends_on:
+  - "[[remix-flat-routes]]"
+  - "[[React Router 7]]"
 created: 2026-04-20
 updated: 2026-05-04
 tags: [module, routing]

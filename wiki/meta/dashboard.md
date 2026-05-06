@@ -2,7 +2,7 @@
 type: meta
 title: 'Dashboard'
 created: 2026-04-26
-updated: 2026-05-01
+updated: 2026-05-06
 tags: [meta, dashboard]
 status: active
 ---
@@ -38,3 +38,10 @@ TABLE length(rows) AS "Count" FROM "wiki" GROUP BY type SORT length(rows) DESC
 ```dataview
 TABLE type, updated FROM "wiki" WHERE file.size > 5000 SORT file.size DESC
 ```
+
+## Last Lint
+
+- Run: 2026-05-06
+- Pages scanned: 92
+- Issues: 26 (3 critical, 14 warnings, 9 suggestions)
+- Report: [[lint-report-2026-05-06]]

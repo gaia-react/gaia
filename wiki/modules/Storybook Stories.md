@@ -4,7 +4,9 @@ path: .storybook/
 status: active
 language: typescript
 purpose: Storybook setup with React Router, i18n, dark mode, and Chromatic snapshots
-depends_on: [[Storybook]], [[MSW]]
+depends_on:
+  - "[[Storybook]]"
+  - "[[MSW]]"
 created: 2026-04-20
 updated: 2026-05-04
 tags: [module, storybook, testing]

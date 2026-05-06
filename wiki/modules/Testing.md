@@ -4,7 +4,12 @@ path: test/, .playwright/
 status: active
 language: typescript
 purpose: Four-layer testing setup — unit, integration, E2E, visual regression
-depends_on: [[Vitest]], [[React Testing Library]], [[Playwright]], [[Chromatic]], [[MSW]]
+depends_on:
+  - "[[Vitest]]"
+  - "[[React Testing Library]]"
+  - "[[Playwright]]"
+  - "[[Chromatic]]"
+  - "[[MSW]]"
 created: 2026-04-20
 updated: 2026-05-04
 tags: [module, testing]

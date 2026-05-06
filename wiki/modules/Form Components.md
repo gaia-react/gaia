@@ -4,7 +4,9 @@ path: app/components/Form/
 status: active
 language: typescript
 purpose: Conform + Zod-powered form components — the star of GAIA
-depends_on: [[Conform]], [[Zod]]
+depends_on:
+  - "[[Conform]]"
+  - "[[Zod]]"
 created: 2026-04-20
 updated: 2026-05-04
 tags: [module, components, forms]
