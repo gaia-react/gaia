@@ -1,11 +1,11 @@
+import {EXIT_CODES} from '../exit.js';
 /**
  * `gaia telemetry` subcommand router.
  *
- * Phase 2 (this task) wires `emit`. `compute-profile` is provisioned as a
- * stub here so the top-level CLI router resolves the subcommand path; the
- * real implementation lands in Phase 5 (`task-compute-profile.md`).
+ * Phase 2 wires `emit`. Phase 5 wires `compute-profile` via
+ * `gaia-cli/src/profile/index.ts` `computeProfile()`.
  */
-import {EXIT_CODES} from '../exit.js';
+import {computeProfile} from '../profile/index.js';
 import {structuredError} from '../stderr.js';
 import {handleEmit} from './emit.js';
 
@@ -39,13 +39,7 @@ export const run = async (argv: readonly string[]): Promise<number> => {
   }
 
   if (subcommand === 'compute-profile') {
-    structuredError({
-      code: 'subcommand_not_implemented',
-      message: 'compute-profile lands in SPEC-001 Phase 5',
-      subcommand: 'telemetry compute-profile',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return computeProfile();
   }
 
   structuredError({

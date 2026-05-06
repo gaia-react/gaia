@@ -11,6 +11,7 @@
  * is the canonical replacement for top-level CLI routing).
  */
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
+import {run as runFetchCoaching} from './adaptation/inject.js';
 import {EXIT_CODES} from './exit.js';
 import {structuredError} from './stderr.js';
 
@@ -70,6 +71,16 @@ const main = async (): Promise<number> => {
     printHelp();
 
     return EXIT_CODES.OK;
+  }
+
+  // Internal subcommand consumed by the `/gaia spec` skill (and future
+  // dispatch-time callers) to fetch profile-driven coaching text. Wired
+  // top-level rather than under `mentorship` because it's an
+  // implementation detail consumed by skill scaffolding, not a
+  // user-facing surface — kept out of the help text to match the
+  // `mentorship _internal-*` precedent.
+  if (subcommand === '_internal-fetch-coaching') {
+    return runFetchCoaching(rest);
   }
 
   const modulePath = SUBCOMMAND_MODULES[subcommand];

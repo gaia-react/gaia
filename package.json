@@ -18,6 +18,7 @@
     "lint": "pnpm exec eslint --fix --max-warnings=0 --ext js,jsx,ts,tsx app gaia-cli --cache --cache-location ./node_modules/.cache/eslint .",
     "lint-dry": "pnpm exec eslint --fix-dry-run --max-warnings=0 --ext js,jsx,ts,tsx app gaia-cli --cache --cache-location ./node_modules/.cache/eslint .",
     "lint-all": "pnpm typecheck && pnpm lint && pnpm format && pnpm stylelint",
+    "fixtures:build": "tsx gaia-cli/test-fixtures/profile/build.ts",
     "format": "prettier --ignore-path .prettierignore --write \"**/*.{ts,tsx,html,md,mdx,css,json}\"",
     "knip": "knip",
     "stylelint": "stylelint --fix app/**/*.css",
