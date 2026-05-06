@@ -50,7 +50,7 @@ Each script reads `tool_input.command` from stdin and filters by content — the
 
 ### Wiki coherence (multiple events)
 
-The wiki sync system is convergent: the user's already-paid-for Claude session does the work via `/wiki-sync`. Hooks only keep Claude *informed* — they never spawn `claude -p` sub-processes. See [[Wiki Sync]] for the full design.
+The wiki sync system is convergent: the user's already-paid-for Claude session does the work via `/wiki-sync`. Hooks only keep Claude _informed_ — they never spawn `claude -p` sub-processes. See [[Wiki Sync]] for the full design.
 
 - **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop) — wiki coherence and `hot.md` refresh. See [[Claude Integration Conventions]] § Wiki vendor relationship for the full pair.
 - **`wiki-drift-check.sh`** (UserPromptSubmit) — first prompt of each session, compares `wiki/.state.json`'s `last_evaluated_sha` to HEAD; if drifted, injects a `[wiki state]` reminder. Once-per-session via `.claude/wiki-drift-checked` marker.

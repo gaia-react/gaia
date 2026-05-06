@@ -28,6 +28,7 @@ bash .claude-tests/smoke/wiki-sync/01-meaningful-change.sh
 ```
 
 Each scenario:
+
 - Creates a tmp directory
 - Scaffolds a minimal GAIA-like project with the wiki-sync hooks installed
 - Drives `claude -p` through prompts

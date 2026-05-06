@@ -197,16 +197,16 @@ feature at hand. Each topic carries a `Suggest` field — a fallback
 candidate the PO offers when the user shrugs or asks "what would you
 pick?" (borrowed from SEED's prevent-dead-ends pattern).
 
-| Topic              | First question to seed it                                          | Suggest                                    |
-|--------------------|--------------------------------------------------------------------|--------------------------------------------|
-| Intent             | What outcome are you actually trying to create here?               | The shortest sentence that survives review. |
-| User               | Who is this for, and how do you know?                              | The user you talked to last about this.    |
-| Success            | What signals success after five real uses?                         | The metric you'd quote to a stakeholder.   |
-| Scope              | What's in, what's deliberately out, what's adjacent?               | The cut that ships in one week.            |
-| UATs               | What three observations would prove this works?                    | One UAT per success criterion.             |
-| Trade-offs         | What are you giving up to ship this version?                       | Naming the cost honestly.                  |
-| Risk               | What's the most likely way this lands and we regret it?            | The failure mode you've seen before.       |
-| Prior art          | What does the closest existing thing do, and where does it fall short? | Dispatch research subagent.            |
+| Topic      | First question to seed it                                              | Suggest                                     |
+| ---------- | ---------------------------------------------------------------------- | ------------------------------------------- |
+| Intent     | What outcome are you actually trying to create here?                   | The shortest sentence that survives review. |
+| User       | Who is this for, and how do you know?                                  | The user you talked to last about this.     |
+| Success    | What signals success after five real uses?                             | The metric you'd quote to a stakeholder.    |
+| Scope      | What's in, what's deliberately out, what's adjacent?                   | The cut that ships in one week.             |
+| UATs       | What three observations would prove this works?                        | One UAT per success criterion.              |
+| Trade-offs | What are you giving up to ship this version?                           | Naming the cost honestly.                   |
+| Risk       | What's the most likely way this lands and we regret it?                | The failure mode you've seen before.        |
+| Prior art  | What does the closest existing thing do, and where does it fall short? | Dispatch research subagent.                 |
 
 The topic bank is editable. Adding a topic here makes it available
 to every future `/gaia spec` session.

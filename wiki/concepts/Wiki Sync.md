@@ -55,7 +55,7 @@ The drift check itself is free (~30 tokens of injection once per session). The c
 `/wiki-sync` is where the real cost lives. Two-pass design keeps it bounded:
 
 | Drift size | Approximate token spend | Approximate $ on Sonnet |
-|------------|-------------------------|-------------------------|
+| ---------- | ----------------------- | ----------------------- |
 | 1–3        | ~10K                    | ~$0.03                  |
 | 5–10       | ~30K                    | ~$0.10                  |
 | 20+        | ~80K                    | ~$0.25                  |

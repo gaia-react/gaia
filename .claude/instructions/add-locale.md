@@ -11,12 +11,12 @@ All paths in this file are repo-relative. The executing agent runs from the proj
 
 Before executing any step, verify all four variables below have been replaced with real values. If any variable is still in `{{...}}` form, **refuse to proceed** and report which variables are unsubstituted.
 
-| Variable                  | Expected form                                      |
-| ------------------------- | -------------------------------------------------- |
-| `{{LOCALE_CODE}}`         | ISO 639-1 lowercase, e.g. `pl`, `es`, `ja`, `ar`  |
-| `{{LANGUAGE_NAME_EN}}`    | English display name, e.g. `Polish`                |
-| `{{LANGUAGE_NAME_NATIVE}}`| Native display name, e.g. `Polski`, `العربية`      |
-| `{{IS_RTL}}`              | `true` or `false`                                  |
+| Variable                   | Expected form                                    |
+| -------------------------- | ------------------------------------------------ |
+| `{{LOCALE_CODE}}`          | ISO 639-1 lowercase, e.g. `pl`, `es`, `ja`, `ar` |
+| `{{LANGUAGE_NAME_EN}}`     | English display name, e.g. `Polish`              |
+| `{{LANGUAGE_NAME_NATIVE}}` | Native display name, e.g. `Polski`, `العربية`    |
+| `{{IS_RTL}}`               | `true` or `false`                                |
 
 ---
 

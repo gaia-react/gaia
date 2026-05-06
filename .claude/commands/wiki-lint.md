@@ -65,11 +65,11 @@ HEAD_SHORT=$(git rev-parse --short HEAD)
 
 ### 2d. Classify and append
 
-| Drift count | Severity | Section to append                                                                                       |
-| ----------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| 0           | OK       | `✓ Wiki in sync with HEAD ({HEAD_SHORT}).`                                                              |
-| 1–4         | INFO     | `ℹ {DRIFT} commits behind HEAD. Run /wiki-sync at next opportunity.`                                    |
-| 5–9         | WARN     | `⚠ {DRIFT} commits behind HEAD. Run /wiki-sync soon.` + recent commits list                             |
+| Drift count | Severity | Section to append                                                                                        |
+| ----------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| 0           | OK       | `✓ Wiki in sync with HEAD ({HEAD_SHORT}).`                                                               |
+| 1–4         | INFO     | `ℹ {DRIFT} commits behind HEAD. Run /wiki-sync at next opportunity.`                                     |
+| 5–9         | WARN     | `⚠ {DRIFT} commits behind HEAD. Run /wiki-sync soon.` + recent commits list                              |
 | 10+         | ERROR    | `✗ {DRIFT} commits behind HEAD. Wiki is significantly out of date. Run /wiki-sync now.` + recent commits |
 
 For **WARN** and **ERROR**, list up to 5 most recent unsynced commit subjects:
@@ -85,9 +85,9 @@ Example WARN section:
 
 ⚠ 7 commits behind HEAD. Run `/wiki-sync` soon. Recent unsynced commits:
 
-  - a1b2c3d feat: add new module
-  - d4e5f6g fix: edge case in router
-  - h7i8j9k chore: bump deps
+- a1b2c3d feat: add new module
+- d4e5f6g fix: edge case in router
+- h7i8j9k chore: bump deps
 ```
 
 Example ERROR section:
@@ -97,11 +97,11 @@ Example ERROR section:
 
 ✗ 14 commits behind HEAD. Wiki is significantly out of date. Run `/wiki-sync` now. Recent unsynced commits:
 
-  - a1b2c3d feat: ...
-  - d4e5f6g fix: ...
-  - h7i8j9k chore: ...
-  - l0m1n2o docs: ...
-  - p3q4r5s refactor: ...
+- a1b2c3d feat: ...
+- d4e5f6g fix: ...
+- h7i8j9k chore: ...
+- l0m1n2o docs: ...
+- p3q4r5s refactor: ...
 ```
 
 ## Step 3: Surface to the user

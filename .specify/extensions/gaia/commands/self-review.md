@@ -1,5 +1,5 @@
 ---
-description: "GAIA after_clarify hook: pre-gate-2 self-review pass on the in-progress SPEC draft."
+description: 'GAIA after_clarify hook: pre-gate-2 self-review pass on the in-progress SPEC draft.'
 ---
 
 # Self-review pass before gate 2

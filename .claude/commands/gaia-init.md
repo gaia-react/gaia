@@ -50,6 +50,7 @@ Use AskUserQuestion. Ask up to three questions, in this exact order:
 > - Other (you'll specify the ISO 639-1 code and English name in a follow-up free-text prompt)
 
 If the user picks "Other", follow up with a free-text question:
+
 > Enter the ISO 639-1 code (e.g. `pl`) and the English name (e.g. `Polish`).
 
 ### Q2 — Additional languages
@@ -64,6 +65,7 @@ If the user picks "Other", follow up with a free-text question:
 Compute `LOCALES = unique(Q1 code, Q2 codes)`. If `len(LOCALES) > 1`, skip Q3.
 
 Otherwise, ask:
+
 > You've picked one language. Plan to localize later?
 >
 > - Yes — keep i18n scaffolding wired up; translations will be English-only for now.
@@ -124,6 +126,7 @@ For each locale in `LOCALES` where the locale is NOT `en`:
 ### Branch B — Single locale, keep i18n (`len(LOCALES) == 1` and Q3 == Yes)
 
 Two sub-cases:
+
 - If the single locale is `en`: nothing to do (already seeded).
 - If the single locale is NOT `en`: run `add-locale.md` for that locale (as in Branch A), then edit `app/languages/index.ts` to make that locale the default fallback (swap `fallbackLng: 'en'` in `app/i18n.ts` if the project wants the new locale as default — confirm with the user before flipping this).
 

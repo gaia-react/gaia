@@ -1,6 +1,6 @@
 ---
 type: meta
-title: "Lint Report 2026-05-04"
+title: 'Lint Report 2026-05-04'
 status: developing
 created: 2026-05-04
 updated: 2026-05-04

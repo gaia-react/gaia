@@ -1,5 +1,5 @@
 ---
-description: "GAIA after_specify hook: immutability lint over the just-written SPEC artifact."
+description: 'GAIA after_specify hook: immutability lint over the just-written SPEC artifact.'
 ---
 
 # Immutability lint pass

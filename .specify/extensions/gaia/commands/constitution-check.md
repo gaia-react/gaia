@@ -1,5 +1,5 @@
 ---
-description: "GAIA before_specify hook: constitution placeholder check + spec-kit version-pin drift detection."
+description: 'GAIA before_specify hook: constitution placeholder check + spec-kit version-pin drift detection.'
 ---
 
 # Constitution + version-pin precondition check

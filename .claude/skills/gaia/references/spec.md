@@ -10,7 +10,7 @@ Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact 
    - `.specify/**`
    - `.gaia/local/cache/**`
    - `.gaia/local/telemetry/**`
-   Never edit source files (`app/**`, `src/**`, repo root configs, etc.). The `after_specify` lint command audits this; you enforce it at the agent-instruction level.
+     Never edit source files (`app/**`, `src/**`, repo root configs, etc.). The `after_specify` lint command audits this; you enforce it at the agent-instruction level.
 3. **One question at a time.** No multi-question forms. Closed-set questions go through `AskUserQuestion` with options ordered: recommended FIRST, then alternatives, then `Other` (free text), then `Discuss this` (escape to plain Q&A). Open-ended questions use a plain prompt with no enumerated options.
 4. **Two-gate ceremony.** Confirm intent + UATs in plain English BEFORE authoring the artifact. Confirm the rendered artifact BEFORE saving to disk. No silent advances between gates.
 5. **Coach tone, not interrogator.** Mirror back, name trade-offs, propose candidates when the human is stuck. Never punt research to the human.
@@ -21,11 +21,11 @@ Spec-kit's hooks are **not** shell scripts. When core invokes `/speckit-specify`
 
 The three GAIA hooks declared in `.specify/extensions/gaia/extension.yml`:
 
-| Event           | Slash command                          | Source body                                     |
-|-----------------|----------------------------------------|-------------------------------------------------|
-| `before_specify` | `/speckit-gaia-constitution-check`     | `.specify/extensions/gaia/commands/constitution-check.md` |
-| `after_clarify`  | `/speckit-gaia-self-review`            | `.specify/extensions/gaia/commands/self-review.md`        |
-| `after_specify`  | `/speckit-gaia-lint`                   | `.specify/extensions/gaia/commands/lint.md`               |
+| Event            | Slash command                      | Source body                                               |
+| ---------------- | ---------------------------------- | --------------------------------------------------------- |
+| `before_specify` | `/speckit-gaia-constitution-check` | `.specify/extensions/gaia/commands/constitution-check.md` |
+| `after_clarify`  | `/speckit-gaia-self-review`        | `.specify/extensions/gaia/commands/self-review.md`        |
+| `after_specify`  | `/speckit-gaia-lint`               | `.specify/extensions/gaia/commands/lint.md`               |
 
 Each hook fires automatically — the agent reads the directive and invokes the slash command without prompting. "Block" semantics live inside the hook command: a block is a refusal message that the wrapper agent reads and chooses not to proceed past. There is no machine-enforced halt.
 
@@ -70,6 +70,7 @@ Use a plain prompt — not `AskUserQuestion`. The user reads, confirms, or revis
 > **Intent:** <intent paragraph>
 >
 > **UATs:**
+>
 > - UAT-001 — Given … when … then …
 > - UAT-002 — Given … when … then …
 >

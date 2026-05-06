@@ -1,5 +1,5 @@
 ---
-description: "GAIA-wrapped /speckit-specify: writes through core, then relocates the artifact to .gaia/local/specs/SPEC-NNN.md and stamps GAIA frontmatter."
+description: 'GAIA-wrapped /speckit-specify: writes through core, then relocates the artifact to .gaia/local/specs/SPEC-NNN.md and stamps GAIA frontmatter.'
 ---
 
 # /speckit-specify (GAIA preset)

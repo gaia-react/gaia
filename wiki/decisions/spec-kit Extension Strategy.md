@@ -68,10 +68,10 @@ specify preset add --dev .specify/presets/gaia
 
 The first attempt (PR #84, SPEC-001) built against assumed contracts that diverged from spec-kit's actual extension API. SPEC-002 corrected the contracts via direct sandbox probing of v0.8.5 source. Three UATs changed shape:
 
-| UAT | Original design | Corrected design |
-|-----|-----------------|------------------|
-| UAT-008 | `hooks/after_specify.sh` shell script | `commands/lint.md` slash command via `after_specify` hook |
-| UAT-010 | Fictional `on_save` hook | Inline `AskUserQuestion` in `/gaia spec` Step 11 |
+| UAT     | Original design                                                       | Corrected design                                                       |
+| ------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| UAT-008 | `hooks/after_specify.sh` shell script                                 | `commands/lint.md` slash command via `after_specify` hook              |
+| UAT-010 | Fictional `on_save` hook                                              | Inline `AskUserQuestion` in `/gaia spec` Step 11                       |
 | UAT-018 | `==X.Y.Z` literal pin + fictional `requires.speckit_invocation` field | `requires.speckit_version: ">=0.8.5,<0.10.0"` + `lib/version-check.sh` |
 
 The salvage map and per-commit verdict for the rewrite live in `.gaia/local/specs/SPEC-001-refit-decision.md`. The empirical contract source-of-truth is `.gaia/local/specs/SPEC-001-revised-contracts.md`.

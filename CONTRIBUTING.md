@@ -108,15 +108,15 @@ If `/wiki-sync` reports drift but you decide a commit doesn't warrant a wiki upd
 
 ### What ships, what doesn't
 
-| Path                                  | Ships to adopters?            |
-|---------------------------------------|-------------------------------|
-| `.claude/hooks/wiki-*.sh`             | Yes                           |
-| `.claude/commands/wiki-sync.md`       | Yes                           |
-| `.claude/commands/wiki-lint.md`       | Yes                           |
-| `wiki/.state.json`                    | Yes (committed)               |
-| `wiki/concepts/Wiki Sync.md`          | Yes                           |
+| Path                                  | Ships to adopters?                                       |
+| ------------------------------------- | -------------------------------------------------------- |
+| `.claude/hooks/wiki-*.sh`             | Yes                                                      |
+| `.claude/commands/wiki-sync.md`       | Yes                                                      |
+| `.claude/commands/wiki-lint.md`       | Yes                                                      |
+| `wiki/.state.json`                    | Yes (committed)                                          |
+| `wiki/concepts/Wiki Sync.md`          | Yes                                                      |
 | `.claude-tests/`                      | **No** — `.gaia/release-exclude` excludes the whole tree |
-| `.claude/wiki-{drift,safety}-checked` | **No** — gitignored, never committed |
+| `.claude/wiki-{drift,safety}-checked` | **No** — gitignored, never committed                     |
 
 ### Troubleshooting
 

@@ -31,7 +31,7 @@ two states is your work.
   surfaces a contradiction, name it kindly: "You said X earlier and
   Y just now — which one is the real shape?"
 - **Name trade-offs out loud.** Every closed-set question has a
-  recommended option. Say *why* you'd pick it and what you'd give up
+  recommended option. Say _why_ you'd pick it and what you'd give up
   by picking it. The human shouldn't have to read your mind.
 - **Propose candidates when the human is stuck.** If the human says
   "I don't know" or shrugs, you offer the most likely answer with a
@@ -67,7 +67,7 @@ for the Socratic loop:
 4. **Research subagent dispatch is your job, not the human's.** When
    a question needs prior-art lookup, repo-convention inspection, or
    competitive comparison, announce `"Dispatching research agent for
-   <question>"` and dispatch. Fold findings into `research_summary`.
+<question>"` and dispatch. Fold findings into `research_summary`.
    Never punt the research to the human.
 5. **Two-gate ceremony.** After discovery is materially complete:
    - **Gate 1 — shape confirmation.** Present intent + UATs in plain
@@ -110,14 +110,14 @@ this, but I couldn't have written it down this clearly on my own."
 
 Common stall patterns and how to handle them:
 
-| Pattern                                  | Move                                                                    |
-|------------------------------------------|-------------------------------------------------------------------------|
-| "I don't know."                          | Offer the most likely answer with a one-sentence reason. "I'd guess X — does that feel right?" |
-| "Whatever you think."                    | Decline to decide alone. Name 2-3 options with trade-offs and ask them to pick. |
-| "Both, I guess."                         | Surface the cost of both. "Both means we ship later. If we had to pick one for v1, which?" |
-| Vague success criteria.                  | Ask for the smallest concrete observation. "After five real uses, what would you point at to say it worked?" |
-| Scope creep mid-loop.                    | Mirror the new scope back; ask if it should replace something or land in a follow-up SPEC. |
-| Conflict with an earlier answer.         | Name the conflict directly; ask which framing is the real one.          |
+| Pattern                          | Move                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| "I don't know."                  | Offer the most likely answer with a one-sentence reason. "I'd guess X — does that feel right?"               |
+| "Whatever you think."            | Decline to decide alone. Name 2-3 options with trade-offs and ask them to pick.                              |
+| "Both, I guess."                 | Surface the cost of both. "Both means we ship later. If we had to pick one for v1, which?"                   |
+| Vague success criteria.          | Ask for the smallest concrete observation. "After five real uses, what would you point at to say it worked?" |
+| Scope creep mid-loop.            | Mirror the new scope back; ask if it should replace something or land in a follow-up SPEC.                   |
+| Conflict with an earlier answer. | Name the conflict directly; ask which framing is the real one.                                               |
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 type: meta
-title: "Lint Report 2026-05-03"
+title: 'Lint Report 2026-05-03'
 created: 2026-05-03
 updated: 2026-05-03
 tags: [meta, lint]
@@ -43,12 +43,14 @@ False positives surfaced and dismissed:
 ## Empty Sections
 
 - **`wiki/components/Form YearMonthDay.md:34`**: heading `## > [!warning] Conform integration — two non-obvious gotchas` has a stray `>` prefix in the heading text. Likely an `H2` + adjacent callout that got merged on edit. Should be either:
+
   ```markdown
   ## Conform integration — two non-obvious gotchas
 
   > [!warning]
   > ...
   ```
+
   or just a top-level callout with no `## `.
 
 (Other matches from the empty-section scan were false positives — H2 parents whose content is delegated to H3 children, e.g. `## The 12 patterns GAIA implements` in `Agentic Design.md`. Legitimate structural pattern.)
