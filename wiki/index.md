@@ -3,7 +3,7 @@ type: meta
 title: Index
 status: active
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-05-06
 tags: [meta]
 ---
 
@@ -66,6 +66,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[remix-i18next]]
 - [[remix-toast]]
 - [[Serena]]
+- [[spec-kit]]
 - [[Conform]]
 - [[Zod]]
 - [[Ky]]
@@ -93,6 +94,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Quality Gate]]
 - [[pnpm]]
 - [[DragonScale Opt-Out]]
+- [[spec-kit Extension Strategy]]
 
 ## Concepts
 
@@ -114,6 +116,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Skills]]
 - [[Release Workflow]] — Maintainer flow: `/gaia-release`, `release.yml`, tarball scrubbing, `create-gaia` bootstrapper.
 - [[Update Workflow]] — Adopter flow: `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.
+- [[GAIA Spec]] — `/gaia spec`: Socratic discovery wrapper around spec-kit; produces an immutable SPEC artifact and chains into `/gaia plan`.
 - [[GAIA Plan]] — `/gaia plan`: feature plan + orchestrator scaffolding, clipboard handoff to a fresh session.
 - [[GAIA Handoff]] — `/gaia handoff`: session handoff doc.
 - [[GAIA Pickup]] — `/gaia pickup`: resume from the latest handoff.
