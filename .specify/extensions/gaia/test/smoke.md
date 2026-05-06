@@ -221,20 +221,19 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 - `gh-mirror.sh` exits 0 (no error to lifecycle).
 - A telemetry record `{status:"skipped", event:"<gh_auth_failed|issues_disabled|no_write_permission>"}` is appended.
 - The SPEC is unchanged; no `gh_issue_url` field is stamped.
-- The wrapper continues to `on_save` without warning.
+- The wrapper continues to the inline chain-trigger prompt without warning.
 
 **UATs covered.** UAT-012.
 
 ---
 
-## Step 15 — `on_save` chain prompt
+## Step 15 — Inline chain-trigger prompt
 
-**Action.** Wait for the wrapper to invoke the `on_save` hook.
+**Action.** After save (and any optional GH mirror), the `/gaia spec` wrapper executes Step 11 of `.claude/skills/gaia/references/spec.md` — an inline `AskUserQuestion`. There is no `on_save` hook in spec-kit v0.8.5; the chain trigger lives in the wrapper itself.
 
 **Expected outcome.**
 
-- `on_save.sh` returns `{"action": "prompt", "prompt": "SPEC-NNN saved. Trigger /gaia plan now?", "default": "yes"}`.
-- The wrapper surfaces it via `AskUserQuestion` (header `"Chain"`, two options: Yes (Recommended), No).
+- The wrapper surfaces an `AskUserQuestion` (header `"Chain"`, two options: Yes (Recommended), No) prompting `"SPEC-NNN saved. Trigger /gaia plan now?"`.
 - On `Yes`: `/gaia plan` dispatches with the SPEC path as input.
 - On `No`: the wrapper stops and prints the final confirmation line; no chain fires.
 
