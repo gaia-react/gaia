@@ -21,7 +21,8 @@
 #
 # Pin format: `requires.speckit_version: ">=X.Y.Z[,<X.Y.Z+1.0]"` per the real
 # extension schema. `==X.Y.Z` is also accepted (legacy form). The script
-# resolves the floor of the specifier set and compares.
+# resolves the floor and the optional exclusive ceiling of the specifier set
+# and enforces both: drift below the floor *or* at-or-above the ceiling fails.
 #
 # UAT: UAT-018.
 set -euo pipefail
@@ -74,6 +75,16 @@ if [ -z "$floor" ]; then
   echo "version-check.sh: could not resolve pin floor from '$pinned_spec'" >&2
   exit 1
 fi
+
+# Resolve the optional exclusive ceiling (`,<X.Y.Z`). Empty when absent.
+ceiling=""
+case "$pinned_spec" in
+  *,'<'*)
+    ceiling="${pinned_spec#*,<}"
+    ceiling="${ceiling%%,*}"
+    ceiling="${ceiling#v}"
+    ;;
+esac
 
 # --- Cache short-circuit ---
 cache_dir="$repo_root/.gaia/local/cache"
@@ -135,6 +146,18 @@ spec-kit version drift detected.
   Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_n specify --help
 EOF
       exit 1
+    fi
+    if [ -n "$ceiling" ]; then
+      below_ceiling="$(printf '%s\n%s\n' "$installed_n" "$ceiling" | sort -V | head -n 1)"
+      if [ "$below_ceiling" = "$ceiling" ]; then
+        cat >&2 <<EOF
+spec-kit version drift detected.
+  Pinned:    $pinned_spec (from $extension_yml)
+  Installed: $installed (at or above exclusive pin ceiling <$ceiling)
+  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_n specify --help
+EOF
+        exit 1
+      fi
     fi
     ;;
 esac
