@@ -46,6 +46,7 @@ head_sha=$(git rev-parse HEAD)
 
     Run /wiki-sync first, verify the wiki updates make sense, commit if needed, then re-run /gaia-release.
     ```
+
   - Maintainer runs `/wiki-sync`, reviews, then re-invokes `/gaia-release`.
 
 This guard exists because the wiki is an adopter-facing knowledge layer, not just internal scaffolding. Shipping a release with stale wiki ships misleading documentation to every new `create-gaia` user. The `wiki:`-prefix bypass exists because PR squash-merging a wiki-sync always creates a new SHA that `wiki/.state.json` cannot have known about in advance — without the bypass the gate is unsatisfiable in the standard flow (run `/wiki-sync` → merge PR → run `/gaia-release`).

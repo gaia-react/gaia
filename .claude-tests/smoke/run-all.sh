@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Run all wiki-sync smoke scenarios, report pass/fail.
-# Walks .claude-tests/smoke/wiki-sync/*.sh in lexicographic order.
+# Run all release-gate smoke scenarios, report pass/fail.
+# Walks .claude-tests/smoke/wiki-sync/*.sh in lexicographic order, then
+# invokes wiki-promote/run.sh and uat-write/run.sh — both are structural
+# release-gate harnesses with PASS/FAIL semantics, so they belong in this
+# driver.
 #
-# The serena/ subtree is intentionally NOT run from here — usage_scan.py
-# is a measurement, not a test, and shouldn't gate a release.
+# The observability/serena/ subtree (relocated from .claude-tests/smoke/serena/
+# per SPEC-005 §Resolutions Q8) is intentionally NOT run from here —
+# usage_scan.py is a measurement, not a test, and shouldn't gate a release.
 set -u
 
 SMOKE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,6 +35,30 @@ for s in "${scenarios[@]}"; do
     overall=1
   fi
 done
+
+# Run the wiki-promote structural smoke (release-gate harness; PASS/FAIL).
+WIKI_PROMOTE_RUN="$SMOKE_DIR/wiki-promote/run.sh"
+if [ -x "$WIKI_PROMOTE_RUN" ]; then
+  printf '\n=== wiki-promote/run.sh ===\n'
+  if bash "$WIKI_PROMOTE_RUN"; then
+    results+=("PASS  wiki-promote/run.sh")
+  else
+    results+=("FAIL  wiki-promote/run.sh")
+    overall=1
+  fi
+fi
+
+# Run the uat-write structural smoke (matches wiki-promote shape).
+UAT_WRITE_RUN="$SMOKE_DIR/uat-write/run.sh"
+if [ -x "$UAT_WRITE_RUN" ]; then
+  printf '\n=== uat-write/run.sh ===\n'
+  if bash "$UAT_WRITE_RUN"; then
+    results+=("PASS  uat-write/run.sh")
+  else
+    results+=("FAIL  uat-write/run.sh")
+    overall=1
+  fi
+fi
 
 printf '\n=== Summary ===\n'
 for r in "${results[@]}"; do

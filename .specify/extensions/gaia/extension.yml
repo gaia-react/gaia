@@ -1,0 +1,88 @@
+schema_version: "1.0"
+
+extension:
+  id: "gaia"
+  name: "GAIA Socratic Discovery"
+  version: "0.1.0"
+  description: "Socratic-loop wrapper for spec-kit: coach-tone Q&A, immutable UATs, two-gate ceremony, lint pass, chain into /gaia plan."
+  author: "GAIA"
+  repository: "https://github.com/gaia-react/gaia"
+  license: "MIT"
+  homepage: "https://gaiareact.com"
+
+requires:
+  speckit_version: ">=0.8.5,<0.10.0"
+  tools:
+    - name: "git"
+      required: false
+    - name: "gh"
+      required: false
+    - name: "jq"
+      required: false
+
+provides:
+  commands:
+    - name: "speckit.gaia.spec"
+      file: "commands/spec.md"
+      description: "GAIA Socratic discovery wrapper around /speckit.specify and /speckit.clarify."
+
+    - name: "speckit.gaia.constitution-check"
+      file: "commands/constitution-check.md"
+      description: "Verify .specify/memory/constitution.md has no placeholder text before /speckit.specify runs."
+
+    - name: "speckit.gaia.lint"
+      file: "commands/lint.md"
+      description: "Immutability lint over a saved SPEC artifact: frontmatter, frozen UAT-NNN ids, no placeholders."
+
+    - name: "speckit.gaia.self-review"
+      file: "commands/self-review.md"
+      description: "Pre-gate-2 self-review pass; surfaces drift, ambiguity, and pending clarifications before save."
+
+    - name: "speckit.gaia.uat-write"
+      file: "commands/uat-write.md"
+      description: "before_implement hook: render PO-authored UATs into Playwright e2e specs at .playwright/e2e/spec-NNN/."
+
+    - name: "speckit.gaia.spec-close"
+      file: "commands/spec-close.md"
+      description: "Drain deferred wiki-promote cache for a SPEC."
+
+    - name: "speckit.gaia.wiki-promote"
+      file: "commands/wiki-promote.md"
+      description: "Promote merged SPEC content into the GAIA wiki."
+
+hooks:
+  before_specify:
+    command: "speckit.gaia.constitution-check"
+    optional: false
+    description: "Constitution placeholder check + version-pin drift detection."
+    condition: null
+
+  after_clarify:
+    command: "speckit.gaia.self-review"
+    optional: false
+    description: "Self-review pass; pending-clarifications block-or-defer prompt before gate 2."
+    condition: null
+
+  after_specify:
+    command: "speckit.gaia.lint"
+    optional: false
+    description: "Immutability lint: frontmatter, UAT-NNN ids, no placeholders, write-allowlist audit."
+    condition: null
+
+  before_implement:
+    command: "speckit.gaia.uat-write"
+    optional: false
+    description: "Auto-write Playwright e2e specs from SPEC UATs before /speckit-implement edits source."
+    condition: null
+
+  after_implement:
+    command: "speckit.gaia.wiki-promote"
+    optional: false
+    description: "Promote SPEC content to wiki at PR merge; wiki-sync handles commit."
+    condition: null
+
+tags:
+  - "socratic"
+  - "discovery"
+  - "uat"
+  - "gaia"

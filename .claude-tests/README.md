@@ -5,8 +5,8 @@ Internal tests for GAIA's Claude Code hooks, commands, and wiki sync system. Not
 ## Layout
 
 - `hooks/` — bats tests for shell hooks. Free, deterministic, runs on every commit.
-- `smoke/wiki-sync/` — claude-driven E2E scenarios for `/wiki-sync`. Costs ~$0.10 per full run on Sonnet. Manual / pre-release.
-- `smoke/serena/` — python scanner that reports Serena vs grep usage from real Claude transcripts. Free. Diagnostic, not pass/fail.
+- `smoke/` — release-gate harnesses with PASS/FAIL semantics. Subdirs: `wiki-sync/`, `wiki-promote/`, `uat-write/`. Routing rule: `.claude/rules/smoke-harness-convention.md`. See `smoke/README.md`.
+- `observability/` — measurement tools that watch agent behavior over time and report metrics. NO PASS/FAIL. Subdirs: `serena/`. See `observability/serena/README.md` (no observability tree-level README needed for a single-occupant tree; revisit if a second observability tool lands).
 
 ## Running
 
@@ -29,10 +29,10 @@ Requires `claude` CLI on PATH and a working subscription or API key. See `smoke/
 ### Serena usage scan (free, diagnostic)
 
 ```bash
-python3 .claude-tests/smoke/serena/usage_scan.py
+python3 .claude-tests/observability/serena/usage_scan.py
 ```
 
-Reads `~/.claude/projects/.../*.jsonl` and prints tool-call counts. See `smoke/serena/README.md`.
+Reads `~/.claude/projects/.../*.jsonl` and prints tool-call counts. See `observability/serena/README.md`.
 
 ## Why a separate folder
 

@@ -30,11 +30,11 @@ Checkboxes and radios share a layout primitive (`CheckboxRadioGroup`) and a `Siz
 
 ## Decision tree
 
-| Need                                         | Use                |
-| -------------------------------------------- | ------------------ |
-| Single checkbox (e.g. "I agree to terms")    | `Checkbox`         |
-| Group of independent checkboxes              | `Checkboxes`       |
-| Group of mutually exclusive radios           | `RadioButtons`     |
-| Radios rendered outside any Field chrome     | `BaseRadioButtons` |
+| Need                                      | Use                |
+| ----------------------------------------- | ------------------ |
+| Single checkbox (e.g. "I agree to terms") | `Checkbox`         |
+| Group of independent checkboxes           | `Checkboxes`       |
+| Group of mutually exclusive radios        | `RadioButtons`     |
+| Radios rendered outside any Field chrome  | `BaseRadioButtons` |
 
 For prop signatures and exact sub-component rosters, query Serena (`.claude/rules/code-search.md`).

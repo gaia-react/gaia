@@ -115,8 +115,8 @@ lang={i18n.language}
 with:
 
 ```tsx
-dir="ltr"
-lang="en"
+dir = 'ltr';
+lang = 'en';
 ```
 
 ### B2. `app/entry.client.tsx`

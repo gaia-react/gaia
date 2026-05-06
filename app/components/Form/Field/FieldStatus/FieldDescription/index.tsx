@@ -16,7 +16,7 @@ const FieldDescription: FC<FieldDescriptionProps> = ({
 }) => (
   <div
     className={twJoin(
-      'text-xs whitespace-pre-line',
+      'whitespace-pre-line text-xs',
       maxLength && 'flex-1 pr-1',
       disabled ? 'text-disabled' : 'text-secondary'
     )}

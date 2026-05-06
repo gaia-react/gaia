@@ -84,7 +84,7 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
   return (
     <div
       className={twJoin(
-        'relative w-88 rounded-sm p-3 text-sm text-white',
+        'w-88 relative rounded-sm p-3 text-sm text-white',
         COLOR[type]
       )}
       onMouseEnter={() => {
@@ -109,7 +109,7 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
             return <ToastIcon className={ICON_COLOR[type]} />;
           })()}
           <div
-            className="-mt-0.5 leading-tight font-semibold text-pretty"
+            className="-mt-0.5 text-pretty font-semibold leading-tight"
             dangerouslySetInnerHTML={{__html: message}}
           />
         </div>

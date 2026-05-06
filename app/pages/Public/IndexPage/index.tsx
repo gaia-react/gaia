@@ -29,14 +29,14 @@ const IndexPage: FC = () => {
       />
 
       {/* Top accent bar */}
-      <div className="bg-claude-500 dark:bg-claude-400 absolute top-0 left-0 z-10 h-0.5 w-full" />
+      <div className="bg-claude-500 dark:bg-claude-400 absolute left-0 top-0 z-10 h-0.5 w-full" />
 
       <section
         aria-labelledby="hero-title"
         className="relative z-10 flex flex-1 flex-col justify-center p-8 sm:px-16 sm:py-12"
       >
         <div className="max-w-3xl">
-          <p className="text-claude-500 dark:text-claude-400 mb-4 font-mono text-xs tracking-widest uppercase sm:text-sm">
+          <p className="text-claude-500 dark:text-claude-400 mb-4 font-mono text-xs uppercase tracking-widest sm:text-sm">
             {t('eyebrow')}
           </p>
 
@@ -71,7 +71,7 @@ const IndexPage: FC = () => {
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:flex sm:flex-wrap sm:gap-x-10">
           {CHIPS.map((key) => (
             <div key={key} className="flex flex-col gap-0.5">
-              <dt className="text-secondary font-mono text-xs tracking-widest uppercase">
+              <dt className="text-secondary font-mono text-xs uppercase tracking-widest">
                 {t(`${key}Label`)}
               </dt>
               <dd className="text-body text-sm font-medium">

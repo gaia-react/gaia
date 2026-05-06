@@ -50,6 +50,7 @@ Use AskUserQuestion. Ask up to three questions, in this exact order:
 > - Other (you'll specify the ISO 639-1 code and English name in a follow-up free-text prompt)
 
 If the user picks "Other", follow up with a free-text question:
+
 > Enter the ISO 639-1 code (e.g. `pl`) and the English name (e.g. `Polish`).
 
 ### Q2 — Additional languages
@@ -64,6 +65,7 @@ If the user picks "Other", follow up with a free-text question:
 Compute `LOCALES = unique(Q1 code, Q2 codes)`. If `len(LOCALES) > 1`, skip Q3.
 
 Otherwise, ask:
+
 > You've picked one language. Plan to localize later?
 >
 > - Yes — keep i18n scaffolding wired up; translations will be English-only for now.
@@ -124,6 +126,7 @@ For each locale in `LOCALES` where the locale is NOT `en`:
 ### Branch B — Single locale, keep i18n (`len(LOCALES) == 1` and Q3 == Yes)
 
 Two sub-cases:
+
 - If the single locale is `en`: nothing to do (already seeded).
 - If the single locale is NOT `en`: run `add-locale.md` for that locale (as in Branch A), then edit `app/languages/index.ts` to make that locale the default fallback (swap `fallbackLng: 'en'` in `app/i18n.ts` if the project wants the new locale as default — confirm with the user before flipping this).
 
@@ -197,6 +200,25 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
 - `claude plugin install typescript-lsp@claude-plugins-official`
 - `claude plugin marketplace add AgriciDaniel/claude-obsidian`
 - `claude plugin install claude-obsidian@claude-obsidian-marketplace`
+
+### Initialize spec-kit and install the GAIA extension + preset
+
+The GAIA `/gaia spec` Socratic discovery workflow runs on top of [spec-kit](https://github.com/github/spec-kit). The template already ships the GAIA extension at `.specify/extensions/gaia/` and the GAIA preset at `.specify/presets/gaia/` — they need spec-kit's runtime registered around them.
+
+Pin spec-kit at the version declared in `.specify/extensions/gaia/extension.yml` `requires.speckit_version` (currently `>=0.8.5,<0.10.0`; the floor is the runtime pin). Tell the user: "Initializing spec-kit and registering the GAIA extension + preset…" then run:
+
+```bash
+SPECKIT_PIN="v0.8.5"
+uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify init --here --ai claude --force
+yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev .specify/extensions/gaia
+yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev .specify/presets/gaia
+```
+
+`specify init --here --ai claude --force` writes `.specify/{extensions.yml, integration.json, integrations/, memory/constitution.md, scripts/, templates/, workflows/}` and `.claude/skills/speckit-*` plus `CLAUDE.md`. The `--force` flag is required because the GAIA template ships some `.specify/` paths already; `specify init` refuses without it.
+
+After install, `.specify/extensions/.registry` lists the `gaia` extension with all four registered commands (`speckit.gaia.spec`, `speckit.gaia.constitution-check`, `speckit.gaia.lint`, `speckit.gaia.self-review`); `.specify/presets/.registry` lists the `gaia` preset (priority 10, replaces `speckit.specify` and `spec-template`); `.claude/skills/speckit-gaia-*/SKILL.md` exist for each GAIA hook target; and `.claude/skills/speckit-specify/SKILL.md` is the GAIA preset wrap (core body spliced in via `{CORE_TEMPLATE}` substitution under `strategy: wrap`).
+
+If any step fails, surface the error verbatim and halt — do not silently continue. The user can re-run the failing command manually and resume `/gaia-init` once spec-kit is in place.
 
 ### Wire the GAIA statusline
 

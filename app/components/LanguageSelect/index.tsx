@@ -38,7 +38,7 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
     >
       <input name="redirectUrl" type="hidden" value={redirectUrl} />
       <select
-        className="cursor-pointer border-none bg-transparent! bg-none p-0 text-sm ring-0!"
+        className="bg-transparent! ring-0! cursor-pointer border-none bg-none p-0 text-sm"
         defaultValue={language}
         name="language"
       >

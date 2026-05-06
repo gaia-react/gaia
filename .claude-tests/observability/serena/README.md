@@ -20,16 +20,16 @@ The scan is the quantitative half of that decision. It tells you whether Serena 
 
 ```bash
 # Last 7 days (default)
-python3 .claude-tests/smoke/serena/usage_scan.py
+python3 .claude-tests/observability/serena/usage_scan.py
 
 # Last day
-python3 .claude-tests/smoke/serena/usage_scan.py --days 1
+python3 .claude-tests/observability/serena/usage_scan.py --days 1
 
 # Since a specific date
-python3 .claude-tests/smoke/serena/usage_scan.py --since 2026-05-04
+python3 .claude-tests/observability/serena/usage_scan.py --since 2026-05-04
 
 # Per-session breakdown
-python3 .claude-tests/smoke/serena/usage_scan.py --per-session
+python3 .claude-tests/observability/serena/usage_scan.py --per-session
 ```
 
 ## Reading the output
