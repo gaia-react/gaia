@@ -3,7 +3,7 @@ type: meta
 title: Log
 status: active
 created: 2026-05-04
-updated: 2026-05-06
+updated: 2026-05-07
 tags: [meta, log]
 ---
 
@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-07 320335e - WORTHY: SPEC-001 telemetry v1 — gaia-cli/ workspace, three-stream architecture, mentorship opt-in, profile detection, adaptation injection → wiki/concepts/Telemetry.md (new), wiki/index.md
+- 2026-05-07 b27f060 - SKIP: README-only update (no architectural decision)
+- 2026-05-07 5ddfe48 - SKIP: wiki already updated in-commit (wiki/dependencies/Husky.md updated for lint-staged v17 + .lintstagedrc.json rename in the same commit); react-router + other bumps are version-only
+- 2026-05-07 dab5338 - SKIP: wiki sync + lint fixes already landed in-commit (squash PR included wiki: sync through f54f730 and wiki: lint fixes sub-commits)
 - 2026-05-06 f54f730 - WORTHY: /wiki-consolidate command + consolidation gate in /wiki-sync + state schema change → wiki/concepts/Wiki Consolidate.md (new), wiki/concepts/Wiki Sync.md, wiki/index.md
 - 2026-05-06 7dd6e44 - SKIP: /gaia plan + /gaia spec skill refactor (implementation details in skill refs; user-facing wiki surface unchanged)
 - 2026-05-06 7a2c8fb - SKIP: wiki pages updated in-commit (gaia state path .claude/ → .gaia/local/; all wiki edits landed in the commit)
