@@ -58,7 +58,11 @@ Schema (one record per line, ISO-8601 UTC timestamps):
 
 ### Working-draft checkpoint (`draft-<spec_id>.md`)
 
-After each clarify fold (step 5), each gate confirmation (steps 4 + 7), each research-result fold (step 5e), and each self-review apply (step 6), write the current in-flight draft to `.gaia/local/cache/draft-<spec_id>.md`. Atomic overwrite. Step 8's canonical save deletes this cache as its final action.
+After each clarify fold (step 5), each gate confirmation (steps 4 + 7), each research-result fold (step 5e), and each self-review apply (step 6), persist the current in-flight draft to `.gaia/local/cache/draft-<spec_id>.md`. Step 8's canonical save deletes this cache as its final action.
+
+**Single-`Write` rule.** Compose the full updated draft in working memory, then emit ONE `Write` tool call that overwrites the cache file. Never use a sequence of `Edit` calls for a single fold. The Q&A loop runs many turns per session and each `Edit` renders a full diff in the user's chat — multiple per-turn diffs are visual noise the user has flagged as unwanted. The per-turn budget is exactly: one `Write` for the fold, one `Bash` for telemetry. Nothing else.
+
+**Per-turn fold contents.** When folding a Q&A turn (closed-set selection, `Other` text, open-ended answer, or Discuss-this settlement): add to `clarifications.answered[]` as `{ q, a }`, remove the topic from `clarifications.pending[]`, and update any statusline fields the answer touches — all in the same `Write`.
 
 This makes interrupted sessions resumable: step 2 reads the cache if it is newer than the canonical artifact.
 
@@ -193,19 +197,20 @@ For every question with discrete possible answers, surface it via `AskUserQuesti
 
 Ask exactly one question per turn. No multi-question forms. No silent stacking.
 
+After the user selects an option (or supplies `Other` text), persist the fold via a single `Write` per the working-draft checkpoint primitive (answer into `clarifications.answered[]`, topic removed from `clarifications.pending[]`, statusline updated — all in one call). `Discuss this` and `Save partial and resume later` follow their own paths (5b and the escape primitive respectively).
+
 #### 5b. Discuss-this escape (UAT-004)
 
-When the user picks `Discuss this`, drop the structured loop and engage in plain Q&A on that single topic. Mirror, name trade-offs, propose candidates. When the user signals settlement (an explicit "ok, that one" or equivalent), do three things:
+When the user picks `Discuss this`, drop the structured loop and engage in plain Q&A on that single topic. Mirror, name trade-offs, propose candidates. When the user signals settlement (an explicit "ok, that one" or equivalent):
 
-1. Record the discussion outcome in `clarifications.answered[]` of the in-progress draft as `{ q: "<original question>", a: "<settled outcome from discussion>" }`. Once folded, **do not re-quote the raw Q&A** — see operational primitives.
-2. Write the working-draft cache (operational primitive).
-3. Resume the structured loop on the next topic.
+1. Persist the fold per the working-draft checkpoint primitive — single `Write` covering: discussion outcome appended to `clarifications.answered[]` as `{ q: "<original question>", a: "<settled outcome from discussion>" }`, topic removed from `clarifications.pending[]`, statusline updated. Once folded, **do not re-quote the raw Q&A** in downstream prompts.
+2. Resume the structured loop on the next topic.
 
 Do not loop back to the same closed-set options after a Discuss-this settlement. The discussion replaces the structured choice for that topic.
 
 #### 5c. Open-ended questions
 
-For genuinely open-ended questions (no clean discrete option set), use a plain prompt — not `AskUserQuestion`. Coach tone, never interrogator. Ask one at a time. After each answer, fold into `clarifications.answered[]` and write the draft cache.
+For genuinely open-ended questions (no clean discrete option set), use a plain prompt — not `AskUserQuestion`. Coach tone, never interrogator. Ask one at a time. After each answer, persist the fold via a single `Write` per the working-draft checkpoint primitive (answer into `clarifications.answered[]`, topic removed from `clarifications.pending[]`, statusline updated — all in one call).
 
 #### 5d. Per-topic exhaustion checkpoint (UAT-005)
 
@@ -275,7 +280,7 @@ Append a `self_review_findings` telemetry event with the counts (`low`, `medium`
 
 #### 6b. Apply findings (severity-gated)
 
-- **low + medium findings:** apply each `suggested_fix` to the draft directly. Write the draft cache after each apply (operational primitive).
+- **low + medium findings:** apply ALL `suggested_fix`es to the draft in working memory, then persist via a single `Write` per the operational primitive — never one Write per finding.
 - **high findings:** surface to the user before applying. Never silently revert intentional clarify-loop evolution. Use a plain prompt per finding:
 
   > Self-review flagged a scope-level concern in `<location>`:
