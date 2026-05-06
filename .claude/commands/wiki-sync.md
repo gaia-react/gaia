@@ -18,7 +18,13 @@ Spawn:
 
 When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
 
-**Consolidation gate.** The summary's last line is `CONSOLIDATE_TRIGGERED: <true|false>` (Step 9 emits it). If `true`, immediately invoke `/wiki-consolidate` after relaying the summary — the gate determined per-domain page-add accumulation has crossed the threshold and consolidation is warranted. If `false`, do nothing further. Never run consolidate yourself in this conversation; `/wiki-consolidate` dispatches its own subagent.
+**Post-sync chain.** Step 9 emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on partial-sync interruptions (Step 7 failure mode) — both leave the wiki in a known-incomplete state. Branch on its presence:
+
+- **Line absent** — skip both `/wiki-consolidate` and `/wiki-lint`. The maintainer needs to address the exceptional state first.
+- **`CONSOLIDATE_TRIGGERED: true`** — invoke `/wiki-consolidate`, then `/wiki-lint`.
+- **`CONSOLIDATE_TRIGGERED: false`** — skip consolidate, invoke `/wiki-lint` directly.
+
+Lint runs last because consolidate may move, rename, or archive pages, and lint's orphan/dead-link/drift checks need the true post-state. `/wiki-consolidate` and `/wiki-lint` each dispatch their own subagents — never run their playbooks yourself in this conversation.
 
 ---
 
