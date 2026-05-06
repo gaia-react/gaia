@@ -19,6 +19,10 @@ The machine-local auto-memory (`~/.claude/projects/.../memory/`) is **not** the 
 
 For TS/TSX symbol queries (definitions, references, types, module exports), prefer Serena MCP tools over Read+grep. See @.claude/rules/code-search.md for routing rules and when grep is still right.
 
+## Smoke Harnesses
+
+Two trees: `.specify/extensions/gaia/test/` for UAT runbooks (maintainer-reading evidence) and `.claude-tests/smoke/` for release-gate harnesses (machine-running, exit-code-reporting). Routing rule: @.claude/rules/smoke-harness-convention.md.
+
 ## Universal Principles
 
 - No hardcoded secrets or tokens in source — use environment variables
