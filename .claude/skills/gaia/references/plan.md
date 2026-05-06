@@ -10,6 +10,24 @@ If `$ARGUMENTS` (the args after `plan`) is non-empty, use it as the feature desc
 
 Otherwise, ask: **"What do you want me to orchestrate?"** and wait for the response before continuing.
 
+#### 1a. Detect SPEC reference
+
+Check the description for a SPEC reference. The canonical form (emitted by `/gaia spec`) is:
+
+    SPEC-NNN: <intent first line> — see .gaia/local/specs/SPEC-NNN.md
+
+Match either pattern:
+- A path matching `.gaia/local/specs/SPEC-\d+\.md`
+- A `SPEC-\d+:` prefix at the start of the description
+
+If matched:
+
+1. Read the referenced SPEC file. Its full content is the source-of-truth feature description; the short string passed via `$ARGUMENTS` is just the dispatch summary.
+2. Extract the SPEC id (e.g. `SPEC-005`). Cache the lowercased form (`spec-005`) as `SPEC_SLUG_SEED` for use in step 3.
+3. Cache the absolute SPEC path as `SPEC_PATH` for use in the planner prompt (step 4) — the planner will reference it in `README.md`.
+
+If no SPEC reference is detected, `SPEC_SLUG_SEED` and `SPEC_PATH` are unset; step 3 falls back to deriving a slug from the description directly.
+
 ### 2. Check model
 
 Check your current model from session context.
@@ -24,65 +42,106 @@ Check your current model from session context.
   - If user picks option 1: spawn the agent with `model: opus`.
   - If user picks option 2: spawn without a model override (inherit current).
 
-### 3. Spawn planning agent
+### 3. Resolve plan directory
 
-Launch a `general-purpose` Agent with the model determined above and this prompt:
+Derive a short kebab-case slug from the feature description (e.g. "auth rework" → `auth-rework`).
+
+**If `SPEC_SLUG_SEED` was set in step 1a, the slug MUST start with it** (e.g. `spec-005-cards-layout`, not `cards-layout`). This makes plan→SPEC discovery a one-line `ls .gaia/local/plans/ | grep ^spec-005-` and groups all plans for a given SPEC together.
+
+Resolve the absolute plan directory, suffixing with `-2`, `-3`, … if one already exists, then create it:
+
+```bash
+ROOT="$(git rev-parse --show-toplevel)"
+SLUG="<kebab-slug, prefixed with $SPEC_SLUG_SEED if set>"
+PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}"
+n=2
+while [[ -e "$PLAN_DIR" ]]; do
+  PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}-${n}"
+  n=$((n+1))
+done
+mkdir -p "$PLAN_DIR"
+```
+
+Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia plan` invocations (including multiple slices dispatched from one `/gaia spec`) coexist without overwriting each other.
+
+### 4. Spawn planning agent
+
+Launch a `general-purpose` Agent with the model determined above and this prompt. Interpolate every `{PLAN_DIR}` token with the absolute path resolved in step 3. If `SPEC_PATH` was set in step 1a, interpolate every `{SPEC_PATH}` token with that absolute path; if unset, delete the `**Source SPEC**` paragraph below before sending.
 
 ---
 
-You are planning a feature using task orchestration. Do not implement anything.
+You are planning a feature using task orchestration. Do not implement anything. Investigate the codebase, then write the plan files directly to disk.
 
-**You cannot Write files.** The Claude Code harness blocks Write for research-classified subagents. Do not attempt Write — it will fail and waste tokens. Investigate, then return your output as structured text. The parent will write the files verbatim.
+**Plan directory:** `{PLAN_DIR}`
 
-**Output format (required):**
+**Source SPEC:** `{SPEC_PATH}` — read this file FIRST. Its `intent`, `UATs`, and `clarifications.answered[]` are authoritative for what to plan; the dispatch summary in `Feature:` below is just a label. Reference the SPEC id in `README.md`'s `## Source SPEC` section.
 
-    ## File: /absolute/path/to/file.md
+**Write rules.**
 
-    ```markdown
-    <verbatim file content>
-    ```
-
-Repeat the `## File:` heading + fenced block for each file. Use the language tag matching the file extension (`markdown` for `.md`).
+- You may write only under `{PLAN_DIR}/`. Never edit source files, configs, or anything outside this directory.
+- Final plan artifacts go directly under `{PLAN_DIR}/` (no subdirectories for deliverables).
+- For ephemeral scratch (mid-investigation notes, intermediate research dumps), create a unique subdirectory under `{PLAN_DIR}/.work/` via `mktemp -d "{PLAN_DIR}/.work/<role>.XXXXXX"`. Never write directly to `.work/`, and never touch another subdir there — peer agents may own it. Delete your own subdir before returning.
+- If you spawn sub-subagents in parallel, each must create its own `mktemp -d` scratch subdir under `{PLAN_DIR}/.work/`. The parent does a defensive `rm -rf {PLAN_DIR}/.work` after you return; treat that as belt-and-suspenders, not as your cleanup.
 
 **Feature:** {feature description from step 1}
 
 First, read `wiki/concepts/Task Orchestration.md`.
 
-Then specify the following files for the parent to write under `.gaia/local/plans/{slug}/` where `{slug}` is a short kebab-case slug derived from the feature description:
+Then write the following files directly to `{PLAN_DIR}/`:
 
-1. **One task doc per parallel workstream** — name each `task-{name}.md`. Each must be fully self-contained for a fresh-context sub-agent and include:
+1. **One task doc per parallel workstream** — `{PLAN_DIR}/task-{name}.md`. Each must be fully self-contained for a fresh-context sub-agent and include:
    - Context and motivation
    - Interface contracts (types, function signatures, file exports)
    - Files to touch (with line-range hints where possible)
    - Acceptance criteria (concrete and testable)
    - Dependencies on other tasks in this plan
 
-2. **`README.md`** — task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks.
+2. **`{PLAN_DIR}/README.md`** — task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks. **If `{SPEC_PATH}` was provided** (i.e. this plan was derived from a SPEC), the README MUST open with a `## Source SPEC` section naming the SPEC id and the absolute path, so plan→SPEC discovery is one read away. Format: `Derived from {SPEC-id} ({SPEC_PATH}).`
 
-3. **`ORCHESTRATOR.md`** — instructions for running the plan. Must cover:
+3. **`{PLAN_DIR}/ORCHESTRATOR.md`** — instructions for running the plan. Must cover:
    - **Pre-flight branch policy.** Check the current branch. If HEAD is on `main`/`master`, the orchestrator ASKS the user whether to (a) create a feature branch in place or (b) create a git worktree, then acts on the answer. If HEAD is on any other branch, assume it is the work branch and proceed.
    - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`).
    - **Sub-agent invocation:** the verbatim prompt template for each task sub-agent. Sub-agents do NOT commit, push, or open/update the PR — they only edit files and report. The orchestrator owns all git operations.
    - **Orchestrator-owned git flow.** After each phase that produces changes (and only once the quality gate is clean), the orchestrator stages, commits with a meaningful message, and pushes. The orchestrator opens the PR after the first phase's commit lands on the remote (using `gh pr create`) and updates it with subsequent commits. Never commit a broken state.
    - **Stop conditions.** On any sub-agent failure or quality-gate failure: STOP and surface to the user. Do not "fix and continue", do not commit, do not push.
    - **Final summary.** After all implementation phases pass and the final commit is pushed, before awaiting merge confirmation, print a brief summary to the user: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, and quality-gate status. Keep it tight — a few lines, not a recap of every change.
-   - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder (`rm -rf .gaia/local/plans/{slug}/`, absolute path) so scaffolding does not persist locally. Then check `git check-ignore .gaia/local/plans/{slug}/` — if `.gaia/local/plans/` is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
+   - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder (`rm -rf {PLAN_DIR}/`) so scaffolding does not persist locally. Then check `git check-ignore .gaia/local/plans/` — if it is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
 
-4. **`KICKOFF.md`** — the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt — no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline.
+4. **`{PLAN_DIR}/KICKOFF.md`** — the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt — no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline.
 
-Return all file specifications using the output format above. End with the absolute path to `KICKOFF.md` so the parent knows which path to surface to the user.
+Before returning, delete `{PLAN_DIR}/.work/` if you created it.
+
+**Return format (required).** Return only a small structured payload — no file contents, no recap of what's inside the files. The parent reads the files itself if it needs to.
+
+    Plan directory: {PLAN_DIR}
+    Files written:
+      - {PLAN_DIR}/README.md
+      - {PLAN_DIR}/ORCHESTRATOR.md
+      - {PLAN_DIR}/KICKOFF.md
+      - {PLAN_DIR}/task-<name1>.md
+      - {PLAN_DIR}/task-<name2>.md
+      ...
+    Kickoff path: {PLAN_DIR}/KICKOFF.md
 
 ---
 
-### 3.5. Write the plan files
+### 4.5. Verify the planner's output
 
-Parse the agent's structured output. For each `## File: <absolute path>` heading followed by a fenced block, Write the fenced content verbatim to that path. Create the parent directory first via `mkdir -p` if needed.
+After the planner returns, run defensive cleanup and confirm the required artifacts exist:
 
-Use the Write tool directly — the permission scope (`Write(.gaia/local/plans/**)`) covers it. Verify all files exist before proceeding to step 4.
+```bash
+rm -rf "$PLAN_DIR/.work"
+test -f "$PLAN_DIR/README.md" \
+  && test -f "$PLAN_DIR/ORCHESTRATOR.md" \
+  && test -f "$PLAN_DIR/KICKOFF.md" \
+  && ls "$PLAN_DIR"/task-*.md >/dev/null 2>&1
+```
 
-### 4. Report to user
+If any required file is missing, surface the failure to the user with the planner's return payload. Do not retry silently — the user decides whether to re-spawn or investigate. Never proceed to step 5 with an incomplete plan folder.
 
-Output a short summary of what's in `.gaia/local/plans/{slug}/`, then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
+### 5. Report to user
+
+Output a short summary of what's in `$PLAN_DIR/`, then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
 
 The prompt is a single line, exactly:
 
@@ -90,7 +149,7 @@ The prompt is a single line, exactly:
 Read /Users/.../absolute/path/to/.gaia/local/plans/{slug}/KICKOFF.md and execute it.
 ```
 
-Use the absolute path to the `KICKOFF.md` you just created. Do not include any other instruction — the orchestrator's behavior lives in `KICKOFF.md`.
+Use `$PLAN_DIR/KICKOFF.md` (the absolute path resolved in step 3). Do not include any other instruction — the orchestrator's behavior lives in `KICKOFF.md`.
 
 **Try to copy the prompt to the system clipboard** with the first available tool. Probe in this order — the first match wins; if none exist, skip silently:
 
