@@ -17,6 +17,7 @@ wiki/concepts/Release Workflow.md
 # Scratch + transient
 .raw
 .gaia/cache
+.gaia/local
 .gaia-backup
 .gaia-merge
 
@@ -26,6 +27,8 @@ wiki/concepts/Release Workflow.md
 
 # Test harness (maintainer-only — adopters don't run these)
 .claude-tests
+.claude/rules/_internal
+.specify/extensions/gaia/test
 
 # Plans / handoff artifacts (machine-local)
 .claude/handoff

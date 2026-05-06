@@ -1,6 +1,6 @@
 # Smoke harness convention
 
-GAIA's verification artifacts split across two trees: `.specify/extensions/gaia/test/` for **UAT runbooks** (maintainer-reading, walk-through narrative, judgment-allowed steps) and `.claude-tests/smoke/` for **release-gate harnesses** (machine-running, exit-code + PASS/FAIL log, fully deterministic). The classifying axis is **shape** (procedural-determinism vs maintainer-judgment), not **origin** (which SPEC the artifact came from). A SPEC-evidence artifact whose every step is procedural-deterministic belongs in the release-gate-harness tree. Resolved in `/Users/stevensacks/Development/gaia-react/gaia/.gaia/local/specs/SPEC-005.md` §Resolutions.
+GAIA's verification artifacts split across two trees: `.specify/extensions/gaia/test/` for **UAT runbooks** (maintainer-reading, walk-through narrative, judgment-allowed steps) and `.claude-tests/smoke/` for **release-gate harnesses** (machine-running, exit-code + PASS/FAIL log, fully deterministic). The classifying axis is **shape** (procedural-determinism vs maintainer-judgment), not **origin** (which SPEC the artifact came from). A SPEC-evidence artifact whose every step is procedural-deterministic belongs in the release-gate-harness tree.
 
 ## Decision table
 
@@ -17,8 +17,8 @@ GAIA's verification artifacts split across two trees: `.specify/extensions/gaia/
 ## Naming convention
 
 - UAT runbooks: `.specify/extensions/gaia/test/smoke-<feature>.md`.
-- Release-gate harnesses: `.claude-tests/smoke/<feature>/{run.sh, README.md, fixture/}` — matches `wiki-promote/`, `wiki-sync/`, `serena/` precedent.
-- Pre-SPEC-005 artifacts (`smoke.md`, `uat-evidence.md`, `v2-validation.md`) are grandfathered by name and retain their original filenames.
+- Release-gate harnesses: `.claude-tests/smoke/<feature>/{run.sh, README.md, fixture/}` — matches `wiki-promote/`, `wiki-sync/` precedent.
+- Existing artifacts that pre-date this convention (`smoke.md`, `uat-evidence.md`, `v2-validation.md`) are grandfathered by name and retain their original filenames.
 
 ## Precedent shapes
 

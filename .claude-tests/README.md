@@ -5,7 +5,7 @@ Internal tests for GAIA's Claude Code hooks, commands, and wiki sync system. Not
 ## Layout
 
 - `hooks/` — bats tests for shell hooks. Free, deterministic, runs on every commit.
-- `smoke/` — release-gate harnesses with PASS/FAIL semantics. Subdirs: `wiki-sync/`, `wiki-promote/`, `uat-write/`. Routing rule: `.claude/rules/smoke-harness-convention.md`. See `smoke/README.md`.
+- `smoke/` — release-gate harnesses with PASS/FAIL semantics. Subdirs: `wiki-sync/`, `wiki-promote/`, `uat-write/`. Routing rule: `.claude/rules/_internal/smoke.md`. See `smoke/README.md`.
 - `observability/` — measurement tools that watch agent behavior over time and report metrics. NO PASS/FAIL. Subdirs: `serena/`. See `observability/serena/README.md` (no observability tree-level README needed for a single-occupant tree; revisit if a second observability tool lands).
 
 ## Running
