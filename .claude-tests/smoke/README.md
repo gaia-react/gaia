@@ -2,7 +2,7 @@
 
 Two subtrees. Both are maintainer-only — neither runs in CI, both inform release decisions.
 
-Artifacts here are runnable release-gate harnesses: bash scripts with `pass()`/`fail()`/exit-code reporting, fully deterministic, every step machine-checkable. Audience is the machine, not a maintainer reading. Lifetime is until the feature is ripped out. See `.claude/rules/smoke-harness-convention.md` for the full convention.
+Artifacts here are runnable release-gate harnesses: bash scripts with `pass()`/`fail()`/exit-code reporting, fully deterministic, every step machine-checkable. Audience is the machine, not a maintainer reading. Lifetime is until the feature is ripped out. See `.claude/rules/_internal/smoke.md` for the full convention.
 
 Artifacts that should NOT be here are markdown walk-through runbooks tied to a specific SPEC's UATs — those are UAT runbooks and live at `.specify/extensions/gaia/test/` instead. Measurement tools (telemetry scanners with no PASS/FAIL) live at `.claude-tests/observability/` — see the root umbrella `.claude-tests/README.md`. The classifying axis is shape, not origin.
 

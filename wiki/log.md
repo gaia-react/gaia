@@ -11,6 +11,25 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-06 f54f730 - WORTHY: /wiki-consolidate command + consolidation gate in /wiki-sync + state schema change → wiki/concepts/Wiki Consolidate.md (new), wiki/concepts/Wiki Sync.md, wiki/index.md
+- 2026-05-06 7dd6e44 - SKIP: /gaia plan + /gaia spec skill refactor (implementation details in skill refs; user-facing wiki surface unchanged)
+- 2026-05-06 7a2c8fb - SKIP: wiki pages updated in-commit (gaia state path .claude/ → .gaia/local/; all wiki edits landed in the commit)
+- 2026-05-06 114b5b2 - WORTHY: .claude/rules/_internal/ + .specify/extensions/gaia/test/ + .gaia/local/ added to release-exclude → wiki/concepts/Release Workflow.md
+- 2026-05-06 57671bf - SKIP: tree READMEs + inventory audit (docs-only; no new architectural decision)
+- 2026-05-06 c40fe5a - SKIP: Serena handles inventory — internal test tree reorganization (.specify/ + .claude-tests/); no new wiki concept
+- 2026-05-06 6a2be93 - SKIP: docs-only (manual smoke procedure for before_implement hook; no new wiki concept)
+- 2026-05-06 b9f3818 - SKIP: test-only (wiki-promote smoke harness)
+- 2026-05-06 c4748ca - SKIP: Serena handles inventory — wire before_implement hook into extension.yml; no new wiki concept
+- 2026-05-06 3cee28d - SKIP: Serena handles inventory — wiki-promote handoff + revised-contracts amendment in .specify/; no new wiki concept
+- 2026-05-06 10945b8 - SKIP: Serena handles inventory — before_implement UAT renderer in .specify/; no new wiki concept
+- 2026-05-06 71c9d27 - SKIP: Serena handles inventory — wiki-promote routing + page render in .specify/; no new wiki concept
+- 2026-05-06 d7a0aa6 - SKIP: Serena handles inventory — wiki-promote PR-merge detection in .specify/; no new wiki concept
+- 2026-05-06 ce9ced2 - WORTHY: UAT divergence policy rule (.claude/rules/uat-divergence.md); cosmetic-vs-logical contract for Playwright UATs → wiki/concepts/GAIA Spec.md
+- 2026-05-06 cfed5a5 - SKIP: Serena handles inventory — wiki-promote manifest entry in .specify/; no new wiki concept
+- 2026-05-06 3cb80a6 - SKIP: bug fix in spec-kit version-check.sh (exclusive ceiling enforcement); no architectural decision
+- 2026-05-06 4d7a979 - SKIP: docs-only (scrub fictional on_save references from smoke.md)
+- 2026-05-06 2e5ef3b - SKIP: style (lint+prettier sweep)
+- 2026-05-06 84e1a6d - SKIP: wiki: prefix (wiki sync commit itself)
 - 2026-05-06 ef53be1 - WORTHY: gaia-init installs spec-kit + GAIA extension + preset → wiki/decisions/spec-kit Extension Strategy.md, wiki/dependencies/spec-kit.md
 - 2026-05-06 24f694b - SKIP: test-only (UAT-001..UAT-018 evidence map); architecture captured in wiki/decisions/spec-kit Extension Strategy.md
 - 2026-05-06 d5f7b6d - SKIP: test-only (sandbox v2 validation transcript); architecture captured in wiki/decisions/spec-kit Extension Strategy.md

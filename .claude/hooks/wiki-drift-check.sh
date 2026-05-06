@@ -4,7 +4,7 @@
 #
 # Why: the wiki only stays accurate if drift is surfaced. Hooks are read-only
 # consumers of state; only /wiki-sync writes wiki/.state.json. See
-# .claude/plans/wiki-sync-system/README.md for the full contract.
+# wiki/concepts/Wiki Sync.md for the full contract.
 
 set -euo pipefail
 

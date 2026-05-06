@@ -2,7 +2,7 @@
 type: meta
 status: active
 created: 2026-04-20
-updated: 2026-04-21
+updated: 2026-05-06
 tags: [meta, schema]
 ---
 
@@ -22,7 +22,6 @@ wiki/
 ├── log.md              # chronological ingest log (newest at TOP)
 ├── hot.md              # ~200-word recent context cache (Stop-hook enforced)
 ├── overview.md         # executive summary
-├── sources/            # one summary page per ingested source
 ├── modules/            # major architectural areas (routing, auth, i18n, etc.)
 ├── components/         # reusable UI components (Form, Toast, Layout, etc.)
 ├── decisions/          # ADRs — why GAIA chose X over Y
@@ -36,7 +35,7 @@ wiki/
 ## Conventions
 
 - All notes use YAML frontmatter: type, status, created, updated, tags (minimum)
-- Wikilinks use `[[Note Name]]` — filenames are unique, no paths needed
+- Wikilinks use `[[overview]]` — filenames are unique, no paths needed
 - `.raw/` contains source documents — never modify them
 - `wiki/index.md` is the master catalog — update on every ingest
 - `wiki/log.md` is append-only — new entries at the TOP

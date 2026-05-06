@@ -1,0 +1,227 @@
+---
+name: wiki-consolidate
+description: Audit the wiki for redundancy, supersession, reversed decisions, and subject-orphans across promoted pages. Surfaces findings as proposals (apply / keep both / skip); applies on user confirm. Keeps the living spec coherent across multiple SPECs.
+---
+
+## Execution model — READ FIRST
+
+**Do not execute the playbook yourself in the current conversation.** Dispatch a Sonnet subagent via the `Agent` tool. The audit reads many wiki pages and per-page `promoted_from` provenance; fresh context keeps that out of the parent.
+
+Spawn:
+
+- `subagent_type`: `"general-purpose"`
+- `model`: `"sonnet"`
+- `description`: `"Wiki consolidate"`
+- `prompt`: the string below (literal, no paraphrasing):
+
+  > `You are running the GAIA /wiki-consolidate workflow in a fresh context. Read .claude/commands/wiki-consolidate.md from the project root and execute the "Playbook" section (Steps 1–6) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 6 — no recap of the report contents.`
+
+When the subagent returns, relay its summary verbatim. If any HIGH-severity supersession or reversed-decision finding was applied, surface that prominently.
+
+---
+
+## Playbook
+
+This skill complements but does not replace `wiki-promote` (per-SPEC writes), `wiki-sync` (commit-driven updates), or `wiki-lint` (broken-thing detection). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
+
+Wiki pages emitted by `wiki-promote` carry `promoted_from: SPEC-NNN` and `promoted_at: <ISO>` frontmatter. Those fields are the consolidation seam — they tie pages back to source SPECs and let the audit detect when newer SPECs have superseded older ones.
+
+## Step 1 — Build the page index
+
+Walk these domains: `wiki/decisions/`, `wiki/concepts/`, `wiki/modules/`, `wiki/flows/`, `wiki/components/`, `wiki/dependencies/`.
+
+Skip: `wiki/_archived/`, `wiki/meta/`, `wiki/entities/`, `wiki/log.md`, `wiki/index.md`, `wiki/hot.md`, `wiki/overview.md`, `wiki/README.md`, and per-domain `_index.md` files.
+
+For each page, parse frontmatter and capture:
+
+- `path` — relative path from repo root
+- `domain` — parent folder (`decisions`, `concepts`, etc.)
+- `title` — H1 of the file body (first `# ` line)
+- `slug` — last path component without `.md`
+- `promoted_from` — string, list, or null
+- `promoted_at` — ISO or null
+- `status` — `active`, `superseded`, `archived`, or null (treat null as `active`)
+- `consolidation_ack` — list of slugs the user previously confirmed should coexist (skip-flags written by prior runs)
+
+Pages with `status: superseded` or `status: archived` are excluded as the **newer** side of a comparison but remain visible as the **older** side (used to suppress already-handled findings).
+
+## Step 2 — Detection passes
+
+Run all four passes; collect findings before prompting any actions.
+
+### 2a. Same-subject across SPECs (supersession)
+
+For each pair of pages in the same `domain`, compare:
+
+- **Title match** — case-insensitive equality OR Jaccard similarity ≥ 0.7 over title tokens (split on whitespace + punctuation, lowercase, drop tokens shorter than 3 chars).
+- **Provenance gap** — both pages have non-null `promoted_from`, the values differ, and `promoted_at` of one is at least 30 days newer than the other.
+
+When both conditions hold, flag a **supersession candidate**: newer page is the canonical, older is the supersession candidate.
+
+### 2b. Reversed decisions
+
+Scope: `wiki/decisions/` only.
+
+For each pair of decision pages where one is newer than the other (by `promoted_at`), scan the newer page's body for negation patterns referencing the older page's title:
+
+- `"no longer use"`, `"replaces"`, `"supersedes"`, `"deprecated in favor of"`, `"reversed"`, `"obsoletes"` (case-insensitive)
+
+If a match references the older page's title (substring, case-insensitive), flag the older page for **retirement**.
+
+### 2c. Near-collision slugs
+
+Group pages by `domain`. Within each domain, compare every pair of slugs:
+
+- Levenshtein distance ≤ 3, OR
+- One slug is a prefix of the other (length difference ≥ 3 chars)
+
+Flag as **near-collision** candidates. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
+
+### 2d. Subject-orphaned pages
+
+For each page, run a body grep across `wiki/concepts/` and `wiki/modules/` for the page's title (case-insensitive substring match). If zero matches AND the page has not been touched in 90+ days (`git log -1 --format=%aI -- <path>`), flag as **subject-orphaned**.
+
+### 2e. Suppress acknowledged findings
+
+For every candidate, check the canonical page's `consolidation_ack` frontmatter array. If it contains the comparison page's slug, drop the finding — the user already said keep both.
+
+## Step 3 — Render the report
+
+Write to `wiki/meta/consolidate-report-<YYYY-MM-DD>.md`. Overwrite if a same-day report exists.
+
+Frontmatter:
+
+```yaml
+---
+type: meta
+title: Consolidate Report — <YYYY-MM-DD>
+status: active
+created: <YYYY-MM-DD>
+updated: <YYYY-MM-DD>
+tags: [meta, consolidate]
+---
+```
+
+Body sections (omit any section with zero findings — do not emit empty H2s):
+
+```markdown
+# Consolidate Report — <YYYY-MM-DD>
+
+Run summary: <total> findings across <domain count> domains.
+
+## Supersession candidates (<count>)
+
+### <domain>: <newer-title> supersedes <older-title>
+
+- **Newer:** [[<newer-title>]] (`<newer-path>`) — promoted from `<spec_id_new>` on `<date>`
+- **Older:** [[<older-title>]] (`<older-path>`) — promoted from `<spec_id_old>` on `<date>`
+- **Action:** merge older into newer; mark older `status: superseded`; retire older to `wiki/_archived/<older-slug>.md`.
+
+## Reversed decisions (<count>)
+
+### <newer-title> reverses <older-title>
+
+- **Newer:** [[<newer-title>]] — promoted from `<spec_id>` on `<date>`
+- **Older:** [[<older-title>]] — promoted from `<spec_id>` on `<date>`
+- **Negation phrase:** "<phrase>"
+- **Action:** retire older to `wiki/_archived/<older-slug>.md`.
+
+## Near-collision slugs (<count>)
+
+### <domain>: <slug-a> vs <slug-b>
+
+- **Page A:** [[<title-a>]] (`<path-a>`)
+- **Page B:** [[<title-b>]] (`<path-b>`)
+- **Distance:** <int>
+- **Action:** rename one or merge.
+
+## Subject-orphaned pages (<count>)
+
+### [[<title>]]
+
+- **Path:** `<path>`
+- **No references** in `wiki/concepts/` or `wiki/modules/`
+- **Last touched:** <N> days ago
+- **Action:** retire to `wiki/_archived/<slug>.md` OR confirm still relevant (sets `consolidation_ack: [self]` on the page).
+```
+
+## Step 4 — Action prompts (interactive)
+
+For each finding in the report, surface via `AskUserQuestion`:
+
+- Question: `<short finding label>. Action?` (e.g. `decisions: auth-strategy supersedes auth-flow. Action?`)
+- Header: `Consolidate`
+- Options:
+  - `{ label: "Apply (Recommended)", description: "<short summary of the merge or retire>." }`
+  - `{ label: "Keep both", description: "Mark consolidation_ack on the canonical page; suppresses re-flagging on future runs." }`
+  - `{ label: "Skip", description: "Defer to the next consolidate run; finding remains active." }`
+
+Process findings in this order: **supersession → reversed → near-collision → subject-orphan**. Most-impactful first.
+
+### Apply actions
+
+**Supersession / reversed:**
+
+1. Read older page body. Extract any content not already present in the newer page (LLM judgment — preserve newer page's structure, no duplication).
+2. If non-empty unique content: append to newer page under H2 `## Historical context (from <older-title>)`. If older page's `promoted_from` is informative, mention the source SPEC in the section preamble.
+3. Update older page's frontmatter: `status: superseded`, `superseded_by: <newer-slug>`, `superseded_at: <ISO>`. Preserve `created`, `promoted_from`, `promoted_at`.
+4. Move older page: `mkdir -p wiki/_archived/ && git mv <older-path> wiki/_archived/<older-slug>.md`. (Use `mv` if `git mv` fails due to staging state.)
+5. Update `wiki/index.md`: remove the older page's entry from its domain section. The wikilink in any newer page's "Related" section becomes a broken link — `wiki-lint` will surface and the maintainer can fix on the next lint pass; do not autofix here (consolidate is conservative about page-body edits beyond the targeted merge).
+6. Update newer page's `promoted_from`: if currently a string, convert to a list `[<old_provenance>, <new_provenance>]` so future wiki-promote runs treat it as a known consolidated page. If already a list, append.
+
+**Near-collision:**
+
+1. Surface a follow-up `AskUserQuestion`: `Which slug should be canonical?` with options for each candidate slug. (Do not assume newer wins — slug choice is editorial.)
+2. Rename the non-canonical page: `git mv <non-canonical-path> <canonical-domain>/<canonical-slug>.md`.
+3. Run a wikilink update: `grep -rn "\[\[<old-title>\]\]" wiki/ --include="*.md"` and replace with `[[<canonical-title>]]` across all matches.
+4. Update `wiki/index.md` to drop the old entry and ensure the canonical entry is present.
+
+**Subject-orphan:**
+
+1. Surface a follow-up `AskUserQuestion`: `Retire <title>, or confirm still relevant?`.
+2. **Retire:** move to `wiki/_archived/<slug>.md`, set `status: archived`, drop entry from `wiki/index.md`.
+3. **Confirm relevant:** add `consolidation_ack: [self]` to the page's frontmatter. Suppresses future subject-orphan flags for this page.
+
+### Keep both
+
+Append the comparison page's slug to the canonical page's `consolidation_ack` frontmatter array. Create the field if absent. No other changes.
+
+### Skip
+
+No-op. Finding remains active and will re-surface on the next consolidate run.
+
+## Step 5 — Advance consolidate state
+
+Update `wiki/.state.json`:
+
+1. Read the existing file (it should exist — `/wiki-sync` creates it on first run; if missing, skip this step entirely and emit a warning in the Step 6 summary).
+2. Set `last_consolidated_sha` to `git rev-parse HEAD` (full 40-char SHA at consolidate-completion time, before any of this run's edits get committed).
+3. Add `last_consolidated_at: <ISO 8601 UTC>`.
+4. Preserve all other fields verbatim — `last_evaluated_sha`, `last_evaluated_at`, and any future fields owned by other commands.
+5. Write the file atomically (`jq ... > tmp && mv tmp wiki/.state.json`).
+
+Advance state on every completion regardless of how many findings were applied — including zero findings and all-skip runs. The consolidate gate in `/wiki-sync` Step 9 reads `last_consolidated_sha` to decide when to auto-fire; not advancing would cause the gate to re-fire immediately on the next sync with the same data.
+
+The `wiki/.state.json` file is committed by `/wiki-sync` (or by the maintainer manually if consolidate ran outside a sync). Consolidate itself does not commit — see Step 6.
+
+## Step 6 — Hand off and report
+
+Do NOT commit. Applied edits are staged; `/wiki-sync` (or the `wiki-commit-nudge` hook) handles the commit per its branch-aware rules.
+
+Print:
+
+1. The report path (e.g. `wiki/meta/consolidate-report-2026-05-06.md`).
+2. One-line summary: `<applied> applied, <kept> kept, <skipped> skipped across <total> findings.`
+
+If anything was applied, suggest: `Run /wiki-sync to commit.`
+
+If any HIGH-severity supersession or reversed-decision was applied, prefix the summary with `WIKI CONSOLIDATE: ` so the parent agent surfaces it prominently.
+
+## Notes
+
+- **Boundary with `wiki-promote`.** wiki-promote writes per-SPEC; wiki-consolidate merges across SPECs. After a merge action, the canonical page's `promoted_from` becomes a list so future wiki-promote runs treat it as a known consolidated page (no `foreign-collision` skip).
+- **Boundary with `wiki-lint`.** wiki-lint finds broken things (dead links, missing frontmatter, stale claims). wiki-consolidate finds redundant things (two pages with competing claims). Run lint before consolidate so structural issues don't get misinterpreted as content redundancy.
+- **`wiki/_archived/`** is excluded from the index and from future consolidation candidacy. Pages there remain readable but are out of the live spec.
+- **Idempotence.** Re-running consolidate on the same wiki state surfaces the same findings, minus those acknowledged via `consolidation_ack`. Apply actions are not idempotent (they mutate); the apply guard is "did the user already say apply" — implicit in "the older page is no longer in its original domain," which the page index would reflect on the next run.
+- **Auto-invocation via the wiki-sync gate.** `/wiki-sync` Step 9 runs a cheap precheck after every sync (including no-op syncs): if any single wiki domain has ≥2 added pages since `last_consolidated_sha`, the sync's wrapper invokes `/wiki-consolidate` automatically. Manual invocation remains available — `/wiki-consolidate` shows ALL current findings regardless of trigger source. Findings the user `Skip`s on a gate-triggered run will not auto-resurface until new pages accumulate; revisit them by running `/wiki-consolidate` manually.
+- **Shared state file ownership.** `wiki/.state.json` holds fields written by both `/wiki-sync` (`last_evaluated_sha`, `last_evaluated_at`) and this command (`last_consolidated_sha`, `last_consolidated_at`). Each writer must preserve the other's fields. Do not delete `wiki/.state.json` — both gates depend on it.

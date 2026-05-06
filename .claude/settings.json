@@ -145,8 +145,9 @@
       "Bash(git switch:*)",
       "Bash(git symbolic-ref:*)",
       "Bash(git worktree *)",
-      "Bash(mkdir -p .claude/handoff/archive)",
-      "Bash(mkdir -p .claude/plans)",
+      "Bash(mkdir -p .gaia/local/audit)",
+      "Bash(mkdir -p .gaia/local/handoff/archive)",
+      "Bash(mkdir -p .gaia/local/plans)",
       "Bash(pnpm add:*)",
       "Bash(pnpm build:*)",
       "Bash(pnpm chromatic:*)",
@@ -168,7 +169,7 @@
       "Bash(pnpm typecheck)",
       "Bash(pnpm typecheck:*)",
       "Bash(rm -f .gaia/cache/*)",
-      "Bash(rm -rf .claude/plans/*)",
+      "Bash(rm -rf .gaia/local/plans/*)",
       "Edit(.claude/**)",
       "Edit(.gaia/**)",
       "Edit(.playwright/**)",
@@ -179,7 +180,9 @@
       "Edit(test/**)",
       "Edit(wiki/**)",
       "WebFetch(domain:context7.com)",
-      "Write(.claude/plans/**)"
+      "Write(.gaia/local/audit/**)",
+      "Write(.gaia/local/handoff/**)",
+      "Write(.gaia/local/plans/**)"
     ],
     "deny": [
       "Bash(git push --force-with-lease *main*)",

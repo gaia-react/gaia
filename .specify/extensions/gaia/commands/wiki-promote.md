@@ -311,3 +311,17 @@ Wiki promote complete for SPEC-NNN.
 If any pages were skipped due to hand-edit detection, include a one-line note:
 
 `Hand-edited skips can be resolved by re-running /gaia spec close SPEC-NNN --force (TBD; for now resolve manually).`
+
+## Step 8 — Chain to spec-close (immediate-merge path only)
+
+This step fires only when Step 3 found a merged PR and Steps 4–7 ran full. On the deferred path, Step 3 exits before reaching here. On the silent-skip path (`wiki_promote_default: no`) and the preview path (`--preview`), Step 2 exits before reaching here. So an unconditional invoke at this step is safe — the only way to land here is the immediate-merge full-run.
+
+**Suppression guard.** If wiki-promote was re-fired from `/speckit-gaia-spec-close` Step 2's drain (deferred path), spec-close passes the context flag `drained: true` to wiki-promote. Detect that flag in the invoking conversation context — if present, skip this step (spec-close is the parent in that case and will handle disposition itself once wiki-promote returns).
+
+Otherwise, invoke `/speckit-gaia-spec-close` directly:
+
+`Invoke /speckit-gaia-spec-close <spec_id> now. wiki-promote completed inline; the cache is already cleared. Spec-close will skip drain and go straight to the disposition prompt.`
+
+This presents the user with the archive / delete / keep prompt for the local SPEC artifact. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<spec_id>.md`.
+
+If `/speckit-gaia-spec-close` fails or refuses, exit with the warning `wiki-promote: pages staged and committed; spec-close chain failed. Run /gaia spec close <spec_id> manually to dispose of the SPEC artifact.` Do NOT retry the chain — the wiki side is already settled.

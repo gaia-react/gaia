@@ -3,6 +3,25 @@ name: wiki-lint
 description: Health check the GAIA wiki — runs the upstream claude-obsidian wiki-lint, then appends GAIA-specific checks (drift between wiki/.state.json and HEAD).
 ---
 
+## Execution model — READ FIRST
+
+**Do not execute the playbook yourself in the current conversation.** Dispatch a Sonnet subagent via the `Agent` tool. The work is mechanical (rule-based orphan/dead-link/frontmatter checks plus a deterministic drift severity table) — Sonnet is sufficient, and a fresh context avoids dragging the upstream skill's large wiki-page reads into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
+
+Spawn:
+
+- `subagent_type`: `"general-purpose"`
+- `model`: `"sonnet"`
+- `description`: `"Wiki lint"`
+- `prompt`: the string below (literal, no paraphrasing):
+
+  > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–3) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 3 — no recap of the report contents.`
+
+When the subagent returns, relay its summary verbatim. If the drift severity is **ERROR**, prefix the surfaced line with `WIKI DRIFT:` per Step 3.
+
+---
+
+## Playbook
+
 GAIA-local wrapper around the upstream `claude-obsidian:wiki-lint` skill. Runs the upstream lint flow first, then appends GAIA-specific check **#11: Wiki drift check** to the report.
 
 Do **not** modify the upstream skill (`~/.claude/plugins/marketplaces/claude-obsidian-marketplace/skills/wiki-lint/SKILL.md`) — it is read-only territory. Extensions live here.
@@ -116,5 +135,5 @@ If drift is in **ERROR** severity, surface it prominently (separate line, prefix
 ## Notes
 
 - Hooks (drift-check, commit-nudge, stop-safety-net) are read-only consumers of `wiki/.state.json`. Only `/wiki-sync` writes to it. This command also does not write `wiki/.state.json`.
-- Drift count semantics match the rules in `.claude/plans/wiki-sync-system/README.md` § 5: missing state file or unreachable SHA are surfaced as advisories, not silent zeroes.
+- Drift count semantics: missing state file or unreachable SHA are surfaced as advisories, not silent zeroes. See [[Wiki Sync]] for the full design.
 - Severity table thresholds are the canonical thresholds for this plan; if changing, update both this command and any sibling tooling that classifies drift.

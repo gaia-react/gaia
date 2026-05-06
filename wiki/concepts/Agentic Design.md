@@ -36,7 +36,7 @@ Two distinct reflection layers, both blocking. The [[Quality Gate]] (typecheck +
 
 #### Planning
 
-[[Task Orchestration]] is GAIA's planning layer. [[GAIA Plan|`/gaia plan`]] writes durable file artifacts to `.claude/plans/<slug>/`: per-task docs self-contained for fresh sub-agents, a `README.md` task graph with phases and frozen interface contracts, an `ORCHESTRATOR.md` execution playbook, and a `KICKOFF.md` entry-point. The user must approve the plan before any execution begins. Plans are concrete files, not chain-of-thought scribbles.
+[[Task Orchestration]] is GAIA's planning layer. [[GAIA Plan|`/gaia plan`]] writes durable file artifacts to `.gaia/local/plans/<slug>/`: per-task docs self-contained for fresh sub-agents, a `README.md` task graph with phases and frozen interface contracts, an `ORCHESTRATOR.md` execution playbook, and a `KICKOFF.md` entry-point. The user must approve the plan before any execution begins. Plans are concrete files, not chain-of-thought scribbles.
 
 ### Orchestration
 

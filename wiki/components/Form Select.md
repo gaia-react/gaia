@@ -4,7 +4,9 @@ path: app/components/Form/Select/
 status: active
 language: typescript
 purpose: Native select dropdown with icon, optgroup, and placeholder support
-depends_on: [[Form Components]], [[Form Field]]
+depends_on:
+  - "[[Form Components]]"
+  - "[[Form Field]]"
 created: 2026-04-20
 updated: 2026-05-04
 tags: [component, forms, select]

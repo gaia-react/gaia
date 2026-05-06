@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-03
-updated: 2026-05-03
+updated: 2026-05-06
 tags: [concept, claude, workflow, wiki]
 ---
 
@@ -20,7 +20,7 @@ The wiki only stays accurate if drift between code and knowledge is detected and
 
 4. **`/wiki-sync` command.** The workhorse. Reads commits between `last_evaluated_sha` and `HEAD`, classifies each as WORTHY or SKIP (subjects-and-stats first, deep-read only the worthy ones), edits relevant pages, appends `wiki/log.md`, advances `wiki/.state.json`, commits.
 
-`wiki/.state.json` is the single source of truth. Only `/wiki-sync` writes to it. The hooks are read-only.
+`wiki/.state.json` is the single source of truth for sync state. Two commands write to it: `/wiki-sync` owns `last_evaluated_sha` and `last_evaluated_at`; `/wiki-consolidate` owns `last_consolidated_sha` and `last_consolidated_at`. Each writer preserves the other's fields. The hooks are read-only.
 
 ## Convergence, not real-time
 
@@ -40,11 +40,15 @@ This handles the case that broke the previous design (`wiki-update-evaluator.sh`
 {
   "version": 1,
   "last_evaluated_sha": "<full 40-char SHA>",
-  "last_evaluated_at": "<ISO 8601 UTC>"
+  "last_evaluated_at": "<ISO 8601 UTC>",
+  "last_consolidated_sha": "<full 40-char SHA>",
+  "last_consolidated_at": "<ISO 8601 UTC>"
 }
 ```
 
 `last_evaluated_sha` is the commit through which `/wiki-sync` has fully evaluated. Drift = `git rev-list --count <last_evaluated_sha>..HEAD`.
+
+`last_consolidated_sha` is owned by `/wiki-consolidate`. On the first sync that bootstraps this field, it is set to the new HEAD value, giving the consolidate gate a baseline to accumulate from.
 
 If the file is missing, the hooks treat the project as fresh (silent — no nag). The first `/wiki-sync` run initializes it.
 
@@ -62,7 +66,7 @@ The drift check itself is free (~30 tokens of injection once per session). The c
 
 If drift exceeds 30 commits, `/wiki-sync` asks before proceeding — long-skipped projects shouldn't surprise-bill.
 
-All cost lives in the user's existing Claude Code session. There are no spawned sub-Claudes and no separate API calls.
+`/wiki-sync` dispatches a Sonnet subagent in a fresh context to run the playbook — Sonnet is sufficient for the rule-based work, and the fresh context keeps git diffs and log content out of the parent (which may be on Opus). All cost still lives in the user's Claude Code session; there are no `claude -p` background invocations.
 
 ## What `/wiki-sync` does
 
@@ -75,6 +79,12 @@ For each commit since `last_evaluated_sha`:
 5. **Commit** the wiki changes as `wiki: sync through <short_sha> (N updated, N skipped)`. The landing strategy is branch-aware: on `main` (push-protected), it creates `wiki/sync-YYYY-MM-DD`, pushes, opens a PR, and squash-merges; on any other branch (feature/fix/release/worktree), it commits in place so the maintainer's working state isn't fragmented.
 
 The skip-with-reason audit trail is load-bearing: a project that always says "skipped: typo" tells you the system is running. A project with no log entries tells you the system has stopped. `wiki-lint` check #11 surfaces this drift.
+
+## Consolidation gate
+
+After every sync (including no-op syncs), `/wiki-sync` runs a cheap precheck: if any single wiki domain (`decisions/`, `concepts/`, `modules/`, `flows/`, `components/`, `dependencies/`) has ≥ 2 added pages since `last_consolidated_sha`, the sync wrapper automatically invokes [[Wiki Consolidate|`/wiki-consolidate`]]. The gate emits `CONSOLIDATE_TRIGGERED: true` in that case.
+
+The threshold is calibrated so cross-page redundancy is detectable: one SPEC promoting to one domain has nothing to consolidate against; two SPECs in the same domain is the minimum case where supersession or near-collision can occur.
 
 ## When to run `/wiki-sync`
 

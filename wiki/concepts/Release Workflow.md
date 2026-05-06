@@ -61,7 +61,9 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
    - `.gaia/release-exclude`, `.gaia/scripts/`
    - `wiki/entities/`, `wiki/meta/`
    - `.obsidian/workspace.json`
-   - machine-local dirs: `.claude/{handoff,worktrees,agent-memory,audit}/`
+   - `.claude/rules/_internal/` — maintainer-only rules (e.g. smoke harness convention) whose `@`-imports would dangle on adopter installs
+   - `.specify/extensions/gaia/test/` — GAIA SPEC UAT runbooks; adopters don't run these
+   - `.gaia/local/` — defense-in-depth; already gitignored
 
 Adopters who download the v1.0.0 tarball get 348 files, ~550 KB. The scrubbed `wiki/hot.md` + `wiki/log.md` contain only the release marker — none of GAIA's internal session cache.
 

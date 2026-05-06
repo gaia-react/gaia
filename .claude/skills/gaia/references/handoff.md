@@ -22,7 +22,7 @@ Run in parallel:
 
 ### 2. Write
 
-Path: `.claude/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
+Path: `.gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
 
 Use the template below. **Omit any section with no real content** — don't leave empty headings. Keep entries factual and concrete (file paths, commit hashes, command invocations). Cross-reference files with `@path/to/file:line` so the next session can jump straight in.
 

@@ -63,7 +63,7 @@ The workhorse is `/wiki-sync`. It's the only thing that writes `wiki/.state.json
 
 `/gaia-release` will refuse to bump version if `wiki/.state.json` SHA != HEAD. There is no opt-out.
 
-For the full design, read `.claude/plans/wiki-sync-system/README.md` if the plan folder still exists, or `wiki/concepts/Wiki Sync.md` if it has been merged.
+For the full design, see `wiki/concepts/Wiki Sync.md`.
 
 ### Running the tests
 

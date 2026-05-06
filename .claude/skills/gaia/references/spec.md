@@ -31,6 +31,70 @@ Each hook fires automatically — the agent reads the directive and invokes the 
 
 There is no `on_save` event. The chain-trigger to `/gaia plan` lives inline at the end of this orchestration (Step 11), not in a hook.
 
+## Operational primitives
+
+Used by multiple steps below. Defined once here to keep step-level prose tight.
+
+### Pacing telemetry (`spec-pacing.jsonl`)
+
+Append a JSON Lines record to `.gaia/local/telemetry/spec-pacing.jsonl` at each named event. Append-only; never read during the live session. The maintainer queries the log later to tune prompts and spot pacing problems.
+
+Append via `printf '%s\n' '<json>' >> .gaia/local/telemetry/spec-pacing.jsonl`. Failure to append never blocks the flow.
+
+Schema (one record per line, ISO-8601 UTC timestamps):
+
+    { "event": "spec_started", "spec_id": "SPEC-NNN", "resumed": <bool>, "ts": "..." }
+    { "event": "gate1_confirmed", "spec_id": "SPEC-NNN", "intent_words": <int>, "uat_count": <int>, "ts": "..." }
+    { "event": "clarify_question", "spec_id": "SPEC-NNN", "topic": "<topic>", "kind": "closed|open|discuss", "ts": "..." }
+    { "event": "topic_revisit", "spec_id": "SPEC-NNN", "topic": "<topic>", "revisit_count": <int>, "ts": "..." }
+    { "event": "research_dispatched", "spec_id": "SPEC-NNN", "question": "<short>", "ts": "..." }
+    { "event": "research_returned", "spec_id": "SPEC-NNN", "outcome": "found|inconclusive|error|contradictory", "ts": "..." }
+    { "event": "self_review_findings", "spec_id": "SPEC-NNN", "low": <int>, "medium": <int>, "high": <int>, "ts": "..." }
+    { "event": "gate2_confirmed", "spec_id": "SPEC-NNN", "revisions": <int>, "ts": "..." }
+    { "event": "spec_saved", "spec_id": "SPEC-NNN", "ts": "..." }
+    { "event": "lint_attempt", "spec_id": "SPEC-NNN", "outcome": "pass|fail", "cycle": <int>, "ts": "..." }
+    { "event": "plan_dispatched", "spec_id": "SPEC-NNN", "plan_idx": <int>, "plan_dir": "<abs>", "ts": "..." }
+    { "event": "session_paused", "spec_id": "SPEC-NNN", "step": "<step-id>", "ts": "..." }
+
+### Working-draft checkpoint (`draft-<spec_id>.md`)
+
+After each clarify fold (step 5), each gate confirmation (steps 4 + 7), each research-result fold (step 5e), and each self-review apply (step 6), write the current in-flight draft to `.gaia/local/cache/draft-<spec_id>.md`. Atomic overwrite. Step 8's canonical save deletes this cache as its final action.
+
+This makes interrupted sessions resumable: step 2 reads the cache if it is newer than the canonical artifact.
+
+### Escape option (used in step 5 AskUserQuestion sets)
+
+Closed-set `AskUserQuestion` calls during the clarify loop append a fifth option after `Discuss this`:
+
+    { label: "Save partial and resume later", description: "Write the draft to cache and stop; re-invoke /gaia spec to continue." }
+
+Selection triggers: write draft cache (above), append `session_paused` telemetry, print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia spec to resume.`), and exit gracefully.
+
+### Per-topic revisit counter
+
+Track `push_deeper[<topic>] = <count>` in working memory. Increment on every "Push deeper on <topic>" selection at step 5d. When `count == 3` for any topic, replace the standard step 5d prompt with:
+
+- question: `"<topic> has been revisited 3 times. Settle on a candidate, defer with rationale, or push deeper anyway?"`
+- options:
+  - `{ label: "Settle on the recommended option (Recommended)", description: "Accept the PO's best-judgment candidate and move on." }`
+  - `{ label: "Defer <topic> with rationale", description: "Mark unresolved with a note for the planner." }`
+  - `{ label: "Push deeper anyway", description: "Mine the topic further despite repeated revisits." }`
+  - `{ label: "Save partial and resume later", description: "Write the draft to cache and stop." }`
+
+Append a `topic_revisit` telemetry event with the count.
+
+### Spec-kit's 5-question cap
+
+Spec-kit's `/clarify` primitive is hard-capped at **5 total questions per session** (see `.specify/extensions/gaia/templates/clarify-prompts.md` and spec-kit's own `clarify.md` Behavior rules: "Maximum of 5 total questions"). The wrapper inherits this cap — the GAIA Socratic loop runs at most 5 turns. The per-topic revisit counter and escape option above fit inside that 5-question budget; never invoke `/clarify` twice in one session to extend the budget.
+
+### Don't re-quote folded clarifications
+
+Once a Q&A pair has been folded into the draft's `clarifications.answered[]` (step 5b) or `clarifications.deferred[]` (step 6c), it is canonical. Do NOT re-paste the raw question or answer text into downstream prompts (gate 2, self-review, gate 2 revisions). Reference the draft's structured arrays instead. This keeps wrapper context lean across the multi-step flow.
+
+### Lazy template loading
+
+Read `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only at step 5's first invocation, not earlier. They are reference templates, not preamble.
+
 ## Steps
 
 ### 1. Get description
@@ -41,15 +105,40 @@ Otherwise, ask: **"What do you want to spec?"** and wait for the response before
 
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
-Run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an in-progress SPEC already exists. Surface via `AskUserQuestion`:
+Run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an in-progress SPEC already exists.
 
-- question: `"Resume SPEC-NNN, or start new (leaves SPEC-NNN open)?"`
+Before prompting, gather context for an informed choice. The newer of the canonical artifact and the working-draft cache is the actual resume point:
+
+```bash
+SPEC_ID="<from allocator>"
+SPEC_PATH=".gaia/local/specs/${SPEC_ID}.md"
+DRAFT_PATH=".gaia/local/cache/draft-${SPEC_ID}.md"
+if [[ -f "$DRAFT_PATH" && "$DRAFT_PATH" -nt "$SPEC_PATH" ]]; then
+  WORKING="$DRAFT_PATH"
+else
+  WORKING="$SPEC_PATH"
+fi
+```
+
+Read `$WORKING` and extract: intent first line, UAT count, frontmatter `updated` timestamp (or filesystem mtime if absent). Surface via `AskUserQuestion`:
+
+- question: `"SPEC-NNN in progress (last touched <updated>, <UAT count> UATs drafted): \"<intent first line>\". Resume, start new, or discard?"`
 - header: `"Existing SPEC"`
 - options:
-  - `{ label: "Resume SPEC-NNN (Recommended)", description: "Continue the existing in-progress SPEC." }`
+  - `{ label: "Resume SPEC-NNN (Recommended)", description: "Continue from the latest draft (working cache preferred over canonical if newer)." }`
   - `{ label: "Start new", description: "Begin a fresh SPEC; SPEC-NNN remains open." }`
+  - `{ label: "Discard SPEC-NNN draft cache", description: "Remove the working-draft cache (the canonical artifact remains). Confirm before deleting." }`
 
-Honor the user's choice. Never silently overwrite, never silently start new. If the user picks "Start new", continue with a fresh allocation; if "Resume", load the existing SPEC into the working draft and skip Step 3 (you are amending, not creating).
+Honor the user's choice. Never silently overwrite, never silently start new.
+
+- **Resume:** load `$WORKING` into the working draft, append `spec_started` telemetry with `resumed: true`, and pick up at the right step (skip earlier steps that are already done):
+  - If `.gaia/local/cache/gate1-<spec_id>.json` does NOT exist → resume at step 4 (gate 1).
+  - If gate-1 cache exists AND the draft has any `clarifications.pending[]` entries → resume at step 6.
+  - If gate-1 cache exists AND no pending clarifications → resume at step 7 (gate 2).
+  - Step 3 (initial draft) is always skipped on resume.
+  - Never re-snapshot the gate-1 cache; its purpose is immutable drift detection.
+- **Start new:** continue with a fresh allocation (Step 3 onward). The in-progress SPEC remains untouched. Append `spec_started` telemetry with `resumed: false`.
+- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH"`, then continue with a fresh allocation. Note: the canonical SPEC artifact is untouched; the allocator will continue to flag SPEC-NNN as in-progress until the artifact itself is renamed or relabeled (out of scope for this step).
 
 ### 3. /speckit-specify (initial draft)
 
@@ -57,7 +146,7 @@ Invoke `/speckit-specify` with the description from step 1. The GAIA preset (reg
 
 Spec-kit fires the `before_specify` hook (constitution + version-pin check) automatically before this step runs. If the hook blocks, surface its message and halt.
 
-When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN.md`. Cache the working draft path; you will read and re-render it across the rest of these steps.
+When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN.md`. Cache the working draft path; you will read and re-render it across the rest of these steps. (Step 2 already appended `spec_started` telemetry for both fresh and resumed flows.)
 
 ### 4. Gate 1 — shape confirmation
 
@@ -78,13 +167,19 @@ Use a plain prompt — not `AskUserQuestion`. The user reads, confirms, or revis
 
 If the user revises, fold revisions into the draft and re-present until they confirm.
 
-On confirmation, **cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The `after_clarify` hook (self-review) reads this cache to detect scope drift between gate 1 and gate 2 (UAT-016).
+On confirmation:
+
+1. **Cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The `after_clarify` hook (self-review) reads this cache to detect scope drift between gate 1 and gate 2 (UAT-016). **Skip this write if the snapshot already exists for this `spec_id` (resumed session); its purpose is immutable drift detection.**
+2. **Write the working-draft cache** per the operational primitive (`.gaia/local/cache/draft-<spec_id>.md`).
+3. **Append telemetry**: `gate1_confirmed` event with `intent_words` + `uat_count`.
 
 Only after gate-1 confirmation may you proceed to step 5.
 
 ### 5. /speckit-clarify (Socratic loop)
 
-Invoke `/speckit-clarify`. Spec-kit's clarify primitive runs sequential, coverage-based questioning over the draft. The GAIA tailoring (coach tone, AskUserQuestion mediation, exhaustion checkpoints, research dispatch) is enforced by the agent driving this skill — see the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` for the canonical phrasing.
+Invoke `/speckit-clarify`. Spec-kit's clarify primitive runs sequential, coverage-based questioning over the draft and is **hard-capped at 5 total questions** (see "Spec-kit's 5-question cap" in operational primitives). The GAIA tailoring (coach tone, AskUserQuestion mediation, exhaustion checkpoints, research dispatch) is enforced by the agent driving this skill — read the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load — see operational primitives).
+
+For every question asked, append a `clarify_question` telemetry event with `topic` and `kind` (`closed`, `open`, or `discuss`).
 
 #### 5a. AskUserQuestion mediation (closed-set questions)
 
@@ -94,21 +189,23 @@ For every question with discrete possible answers, surface it via `AskUserQuesti
 2. **Alternatives** — remaining viable options, in descending order of plausibility.
 3. **`Other`** — free-text escape for an answer not in the list.
 4. **`Discuss this`** — escape to plain Q&A (see 5b).
+5. **`Save partial and resume later`** — escape per the operational primitive.
 
 Ask exactly one question per turn. No multi-question forms. No silent stacking.
 
 #### 5b. Discuss-this escape (UAT-004)
 
-When the user picks `Discuss this`, drop the structured loop and engage in plain Q&A on that single topic. Mirror, name trade-offs, propose candidates. When the user signals settlement (an explicit "ok, that one" or equivalent), do two things:
+When the user picks `Discuss this`, drop the structured loop and engage in plain Q&A on that single topic. Mirror, name trade-offs, propose candidates. When the user signals settlement (an explicit "ok, that one" or equivalent), do three things:
 
-1. Record the discussion outcome in `clarifications.answered[]` of the in-progress draft as `{ q: "<original question>", a: "<settled outcome from discussion>" }`.
-2. Resume the structured loop on the next topic.
+1. Record the discussion outcome in `clarifications.answered[]` of the in-progress draft as `{ q: "<original question>", a: "<settled outcome from discussion>" }`. Once folded, **do not re-quote the raw Q&A** — see operational primitives.
+2. Write the working-draft cache (operational primitive).
+3. Resume the structured loop on the next topic.
 
 Do not loop back to the same closed-set options after a Discuss-this settlement. The discussion replaces the structured choice for that topic.
 
 #### 5c. Open-ended questions
 
-For genuinely open-ended questions (no clean discrete option set), use a plain prompt — not `AskUserQuestion`. Coach tone, never interrogator. Ask one at a time.
+For genuinely open-ended questions (no clean discrete option set), use a plain prompt — not `AskUserQuestion`. Coach tone, never interrogator. Ask one at a time. After each answer, fold into `clarifications.answered[]` and write the draft cache.
 
 #### 5d. Per-topic exhaustion checkpoint (UAT-005)
 
@@ -120,8 +217,9 @@ When the natural well of follow-ups on a topic runs dry, announce explicitly via
   - `{ label: "Move to <next topic> (Recommended)", description: "Advance to the next discovery area." }`
   - `{ label: "Push deeper on <topic>", description: "Mine the current topic further." }`
   - `{ label: "Other", description: "Free-text alternative." }`
+  - `{ label: "Save partial and resume later", description: "Write the draft to cache and stop." }`
 
-Silent topic advance is forbidden.
+Silent topic advance is forbidden. On `Push deeper on <topic>`, increment `push_deeper[<topic>]`. When that counter reaches 3 for any topic, switch to the revisit-counter prompt (see operational primitives) instead of repeating this checkpoint.
 
 #### 5e. Research subagent dispatch (UAT-014)
 
@@ -131,22 +229,83 @@ For any question that requires prior-art lookup, repo-convention investigation, 
 
 > Dispatching research agent for `<question>`
 
-Then spawn a `general-purpose` Agent with a focused research prompt. When findings return, fold them into `research_summary` of the draft. Cite sources where the agent provided them.
+Append a `research_dispatched` telemetry event. Spawn a `general-purpose` Agent with a focused research prompt. Handle the return based on outcome:
+
+- **Found (useful findings).** Fold into `research_summary` of the draft. Cite sources. Append `research_returned` telemetry with `outcome: "found"`. Write draft cache. Continue the loop.
+- **Inconclusive (agent searched but found nothing definitive).** Fold the inconclusive note into `research_summary` as a known gap. Append `research_returned` telemetry with `outcome: "inconclusive"`. Re-prompt the original closed-set question with the research context attached as a footnote so the user can decide informed.
+- **Error (agent did not return findings or returned an error).** Append `research_returned` telemetry with `outcome: "error"`. Surface to the user via plain prompt: `"Research agent did not return findings on \"<question>\". Answer manually, defer with rationale, or skip this question?"`. Wait for direction. Do not silently continue.
+- **Contradictory (agent returned multiple plausible answers).** Append `research_returned` telemetry with `outcome: "contradictory"`. Surface both candidates via `AskUserQuestion` with each candidate as an option (plus `Other` and `Save partial and resume later`). Let the user pick.
 
 If the user has selected `Discuss this` on a question that turns out to need research, dispatch the research subagent and surface findings in the discussion before requesting settlement.
 
 ### 6. after_clarify hook (self-review)
 
-Spec-kit fires this hook automatically after `/speckit-clarify` completes. The agent receives an `EXECUTE_COMMAND: speckit.gaia.self-review` directive and invokes `/speckit-gaia-self-review`, which:
+Spec-kit fires this hook automatically after `/speckit-clarify` completes. The agent receives an `EXECUTE_COMMAND: speckit.gaia.self-review` directive — but rather than running the audit in the wrapper's own context (which would re-load the full draft + gate-1 snapshot into wrapper memory), **dispatch the audit as a `general-purpose` Agent** so the heavy reads stay in fresh context and only structured findings flow back. This is the largest token saver in the spec flow.
 
-- Audits the draft for placeholders, scope drift relative to the gate-1 snapshot, internal inconsistency, and ambiguous UAT phrasing. Surfaces findings; the wrapper folds fixes back in before gate 2.
-- For each item in `clarifications.pending[]`, surfaces a block-or-defer prompt via `AskUserQuestion` (UAT-017) with the three options: Answer now / Defer with rationale / Discuss this. Save remains blocked while any pending item is unresolved.
+#### 6a. Dispatch the self-review agent
 
-Read the self-review report. Apply fixes to the draft for any drift, ambiguity, or inconsistency findings before proceeding to gate 2.
+Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and `<spec_id>`):
+
+> Run the self-review audit defined in `.specify/extensions/gaia/commands/self-review.md` over the draft at `<DRAFT_PATH>` against the gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json`.
+>
+> Return a structured JSON payload — no narrative, no draft excerpts beyond what each finding's `excerpt` field needs:
+>
+>     {
+>       "findings": [
+>         {
+>           "severity": "low" | "medium" | "high",
+>           "kind": "placeholder" | "ambiguity" | "inconsistency" | "drift" | "scope_change" | "missing_uat" | "other",
+>           "location": "<section heading or UAT-NNN>",
+>           "excerpt": "<short verbatim excerpt — keep under 200 chars>",
+>           "issue": "<one sentence — what is wrong>",
+>           "suggested_fix": "<one sentence — what to change to resolve>"
+>         }
+>       ],
+>       "pending_clarifications": [
+>         { "topic": "<topic>", "question": "<verbatim>" }
+>       ]
+>     }
+>
+> Severity guidance:
+> - **low** — placeholder text ("TODO", vague adjectives), terminology inconsistency
+> - **medium** — internal inconsistency, ambiguous UAT phrasing
+> - **high** — drift from gate-1 snapshot, scope change, removed UAT, added UAT not present at gate 1
+
+Append a `self_review_findings` telemetry event with the counts (`low`, `medium`, `high`) once the agent returns.
+
+#### 6b. Apply findings (severity-gated)
+
+- **low + medium findings:** apply each `suggested_fix` to the draft directly. Write the draft cache after each apply (operational primitive).
+- **high findings:** surface to the user before applying. Never silently revert intentional clarify-loop evolution. Use a plain prompt per finding:
+
+  > Self-review flagged a scope-level concern in `<location>`:
+  >
+  > **Issue:** <issue>
+  >
+  > **Excerpt:** "<excerpt>"
+  >
+  > **Suggested fix:** <suggested_fix>
+  >
+  > Apply the fix, keep the current draft, or revise differently?
+
+  Wait for user direction. Apply or skip per the answer; if `revise differently`, fold the user's revision and re-cache.
+
+#### 6c. Pending clarifications block-or-defer (UAT-017)
+
+For each item in `pending_clarifications[]`, surface via `AskUserQuestion`:
+
+- options:
+  - `{ label: "Answer now", description: "Resolve <topic> inline." }`
+  - `{ label: "Defer with rationale", description: "Mark unresolved; capture rationale in clarifications.deferred[]." }`
+  - `{ label: "Discuss this", description: "Drop to plain Q&A, then settle." }`
+
+Save remains blocked while any pending item is unresolved. Once folded into `clarifications.deferred[]`, do not re-quote the raw Q&A in downstream prompts (see operational primitives).
+
+After all findings are applied and pending items are resolved, write the draft cache and proceed to gate 2.
 
 ### 7. Gate 2 — artifact confirmation
 
-Render the full draft artifact in markdown form (frontmatter plus body) and present it to the user. This is gate 2.
+Render the full draft artifact in markdown form (frontmatter plus body) and present it to the user. This is gate 2. Track `gate2_revisions = 0` in working memory.
 
 Use a plain prompt — not `AskUserQuestion`. Suggested phrasing:
 
@@ -156,7 +315,15 @@ Use a plain prompt — not `AskUserQuestion`. Suggested phrasing:
 > <full rendered artifact>
 > ```
 
-If the user revises, fold revisions into the draft and re-present until they confirm.
+If the user revises:
+1. Fold revisions into the draft.
+2. Increment `gate2_revisions`.
+3. Write the draft cache (operational primitive).
+4. Re-present until they confirm. Do not re-quote raw clarify Q&A in revision prompts — reference the draft's `clarifications.answered[]` and `clarifications.deferred[]` arrays as canonical.
+
+On confirmation:
+1. Write the final draft cache.
+2. Append `gate2_confirmed` telemetry with `revisions: <gate2_revisions>`.
 
 Only after gate-2 confirmation may you proceed to step 8.
 
@@ -166,13 +333,30 @@ Write the confirmed draft to `.gaia/local/specs/SPEC-NNN.md` (using the `spec_id
 
 Update the frontmatter `updated` field to today's date.
 
+After the canonical write succeeds:
+1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md`. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
+2. **Append telemetry:** `spec_saved` event.
+
 ### 9. after_specify hook (immutability lint)
 
 Spec-kit fires this hook automatically after the spec is written. The agent receives an `EXECUTE_COMMAND: speckit.gaia.lint` directive and invokes `/speckit-gaia-lint`, which runs `bash .specify/extensions/gaia/lib/lint.sh <spec-path>` and surfaces findings.
 
+Track `lint_cycle = <count>` in working memory (initialize to 1 on the first attempt). Append a `lint_attempt` telemetry event per cycle with `outcome` and `cycle`.
+
 On lint pass: continue to step 10.
 
-On lint fail: surface the failures verbatim. The user can fix and re-run the lint, or defer with rationale (which loops back to step 6's pending handling). For mutations of an already-saved SPEC, the helper enforces the explicit reopen ceremony — `## Reopen rationale` and `## UAT diff` sections required (UAT-011).
+On lint fail (cycles 1–2): surface the failures verbatim. The user can fix and re-run the lint, or defer with rationale (which loops back to step 6's pending handling). For mutations of an already-saved SPEC, the helper enforces the explicit reopen ceremony — `## Reopen rationale` and `## UAT diff` sections required (UAT-011). Increment `lint_cycle` and continue.
+
+**On lint fail at cycle 3 (3 failed cycles in a row):** surface via `AskUserQuestion`:
+
+- question: `"Lint has failed 3 times. Step back to gate 2 to restructure the artifact, defer all remaining lint findings with rationale, or push another fix attempt?"`
+- header: `"Lint thrash"`
+- options:
+  - `{ label: "Step back to gate 2 (Recommended)", description: "Repeated lint failures usually indicate the artifact is not shaped right. Re-render and revise." }`
+  - `{ label: "Defer remaining findings", description: "Capture each finding as a deferred clarification with rationale; loop to step 6c." }`
+  - `{ label: "Push another fix attempt", description: "Try once more — but this is the third escape." }`
+
+Reset `lint_cycle = 0` on user choice. Step-back-to-gate-2 returns to step 7 with the existing draft; the user can revise and re-save (steps 7→8→9 again).
 
 ### 10. Optional GH Issue mirror
 
@@ -199,8 +383,60 @@ There is no `on_save` hook in spec-kit. The chain-trigger lives here, inline, af
   - `{ label: "Yes, trigger /gaia plan (Recommended)", description: "Run the autonomous downstream pipeline starting with /gaia plan." }`
   - `{ label: "No, defer", description: "Stop here; the human can invoke /gaia plan later." }`
 
-The chain only fires on explicit confirmation. On `Yes`, dispatch `/gaia plan` with the SPEC path as input. On `No`, stop and report to the user that the SPEC is saved and `/gaia plan` can be invoked when ready.
+On `No`, stop and report to the user that the SPEC is saved and `/gaia plan` can be invoked when ready. On `Yes`, enter the plan-dispatch loop. All plans dispatched through the loop share the slug prefix `spec-NNN-*`, so `ls .gaia/local/plans/ | grep ^spec-NNN-` discovers them as a group.
 
-Print a final confirmation line:
+**Each `/gaia plan` invocation runs in its own `general-purpose` Agent**, not in-session. The wrapper's context stays bounded regardless of plan count — each Agent reads the SPEC, runs the plan skill end-to-end, and returns only the resolved `PLAN_DIR` and the kickoff prompt. The wrapper never sees the planner's investigation, the per-task docs, or any intermediate output.
+
+#### 11a. First plan dispatch
+
+Construct the dispatch input string in this exact form (literal interpolation, no quotes around the result):
+
+    SPEC-NNN: <intent first line> — see <absolute path to .gaia/local/specs/SPEC-NNN.md>
+
+where:
+- `SPEC-NNN` is the allocated SPEC id
+- `<intent first line>` is the first sentence of the SPEC's `intent` paragraph (truncated at the first period or newline)
+- `<absolute path…>` is the absolute path to the saved SPEC artifact
+
+Spawn a `general-purpose` Agent with this prompt (interpolate the dispatch input):
+
+> Read `.claude/skills/gaia/references/plan.md` and follow its steps using this feature description as `$ARGUMENTS`:
+>
+>     <dispatch input>
+>
+> Run the entire plan skill end-to-end, including spawning the planner sub-Agent at its step 4. When complete, return ONLY this two-field payload — no narrative, no file lists, no recap of the plan contents:
+>
+>     PLAN_DIR: <absolute path>
+>     KICKOFF_PROMPT: <verbatim copy of the kickoff prompt the plan skill printed to its user>
+
+When the Agent returns, parse the two fields. Append the `PLAN_DIR` to a running `PLAN_DIRS[]`. Print the kickoff prompt to the user as a fenced code block. Append `plan_dispatched` telemetry with `plan_idx: 1` and the `PLAN_DIR`.
+
+#### 11b. Subsequent plans (multi-plan loop)
+
+After each `/gaia plan` Agent completes, surface via `AskUserQuestion`:
+
+- question: `"Plan another slice of SPEC-NNN, or done?"`
+- header: `"Plans"`
+- options:
+  - `{ label: "Done (Recommended)", description: "All plan slices for this SPEC have been authored." }`
+  - `{ label: "Plan another slice", description: "Author another plan covering a different part of the SPEC." }`
+
+On `Plan another slice`, ask via plain prompt (open-ended, not `AskUserQuestion`): `"What slice of SPEC-NNN should this plan cover?"`. Use the answer to construct a fresh dispatch input:
+
+    SPEC-NNN: <user's slice description> — see <absolute path to SPEC>
+
+Spawn a fresh Agent with the same template as 11a. Parse its return, append the resolved `PLAN_DIR` to `PLAN_DIRS[]`, print the kickoff prompt as a fenced block, append `plan_dispatched` telemetry with `plan_idx: <next>`. Loop until the user picks `Done`.
+
+**Clipboard caveat.** The plan skill attempts a `pbcopy`-style clipboard write inside each Agent's context. Across multiple plans, the LAST Agent's copy wins (or none, if the Agent's clipboard reach is unreliable). The wrapper-printed fenced blocks are the authoritative source the user copies from — clipboard is convenience only.
+
+#### 11c. Final confirmation
+
+Print a single summary block after the loop exits:
 
 > SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN.md`.
+> Plans authored: <count>
+>   - <PLAN_DIRS[0]>
+>   - <PLAN_DIRS[1]>
+>   …
+>
+> Discover later with: `ls .gaia/local/plans/ | grep ^spec-nnn-`

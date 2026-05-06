@@ -35,6 +35,13 @@ The wrapper is implemented as a spec-kit extension plus preset; the architectura
 10. **Optional GH Issue mirror.** `lib/gh-mirror.sh` creates an Issue if `gh auth status` succeeds, the repo has Issues enabled, and the viewer has write/admin permission. Otherwise appends a skip record to `.gaia/local/telemetry/gh-mirror.jsonl` and exits 0. Absence never blocks save.
 11. **Inline chain-trigger to `/gaia plan`.** No `on_save` hook exists in spec-kit; the chain lives here, inline. `AskUserQuestion` offers "Yes, trigger /gaia plan (Recommended)" or "No, defer". On Yes, dispatch `/gaia plan` with the SPEC path; on No, stop.
 
+## UAT divergence contract
+
+Auto-generated Playwright specs (written by the `before_implement` hook via `lib/uat-write.sh`) carry an inline header referencing `.claude/rules/uat-divergence.md`. That rule defines the cosmetic-vs-logical boundary:
+
+- **Cosmetic divergence** (selector text, button labels, copy, URL slugs, layout assertions): editable by the implementer without reopening the SPEC.
+- **Logical divergence** (user flow, success criteria, error branches, preconditions, post-state): forbidden. Implementer must raise the divergence; the SPEC is reopened and the UAT rewritten before re-running `/speckit-implement`.
+
 ## Pairs with
 
 - [[spec-kit Extension Strategy]] — the architectural decision that produced this workflow.

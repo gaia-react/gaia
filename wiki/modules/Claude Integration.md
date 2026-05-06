@@ -19,7 +19,6 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 - `settings.json` — committed; hooks, env, plugins
 - `settings.local.json` — gitignored; personal overrides
 - `agent-memory/` — gitignored, ephemeral; **not** a source of truth — durable knowledge belongs in the wiki
-- `audit/` — gitignored hook output (e.g. `wiki-evaluator-{sha}.log`)
 - `agents/` — sub-agent definitions
 - `commands/` — maintainer-only slash commands
 - `hooks/` — bash hooks invoked by `settings.json`
@@ -65,7 +64,7 @@ These are the load-bearing safety net. They block the action outright and return
 > [!key-insight] Why three hooks for one job
 > The `claude-obsidian` plugin auto-commits `wiki/` changes via its own `PostToolUse` hook, so by Stop time its diff-check against HEAD is always empty and its `wiki/hot.md` refresh prompt never fires. GAIA's `wiki-session-start.sh` + `wiki-session-stop.sh` pair fills that gap, and `wiki-squash-autocommits.sh` keeps history clean by squashing the auto-commit chain into one `wiki:` commit per session.
 
-`wiki-update-evaluator.sh` (PostToolUse on `git commit:*`) skips `--amend` and `wiki:*` subjects, then backgrounds `claude -p --model sonnet` to evaluate the commit diff against the wiki and apply any warranted updates. Output lands in `.claude/audit/` (gitignored).
+`wiki-update-evaluator.sh` (PostToolUse on `git commit:*`) skips `--amend` and `wiki:*` subjects, then backgrounds `claude -p --model sonnet` to evaluate the commit diff against the wiki and apply any warranted updates. Output lands in `.gaia/local/audit/` (gitignored).
 
 ### `/init` interception
 
