@@ -1,5 +1,7 @@
 {
   "files": {
+    ".claude-tests/smoke/telemetry-v1/README.md": "owned",
+    ".claude-tests/smoke/telemetry-v1/run.sh": "owned",
     ".claude/agents/code-review-audit.md": "owned",
     ".claude/agents/code-review-audit/conform.md": "owned",
     ".claude/agents/code-review-audit/form-components.md": "owned",
@@ -101,6 +103,7 @@
     ".nvmrc": "owned",
     ".playwright/utils.ts": "owned",
     ".prettierignore": "owned",
+    ".specify/extensions/gaia/test/smoke-telemetry-v1.md": "owned",
     ".storybook/chromatic/decorator.tsx": "owned",
     ".storybook/chromatic/index.ts": "owned",
     ".storybook/decorators/ToastDecorator.tsx": "owned",
