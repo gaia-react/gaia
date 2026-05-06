@@ -94,7 +94,7 @@
     ".github/workflows/tests.yml": "shared",
     ".gitignore": "owned",
     ".husky/pre-commit": "owned",
-    ".lintstagedrc": "owned",
+    ".lintstagedrc.json": "owned",
     ".node-version": "owned",
     ".npmrc": "owned",
     ".nvmrc": "owned",
