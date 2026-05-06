@@ -1,0 +1,20 @@
+feat(spec-999): synthetic implementing PR for wiki-promote smoke
+
+Implements SPEC-999 — a fixture-only SPEC used by the wiki-promote smoke
+harness. No real product code lands; the body is here so downstream tests
+that exercise the implementation-notes capture path (OQ-4) have a sample
+shape to read.
+
+## Summary
+
+- Adds a fixture SPEC at `.gaia/local/specs/SPEC-999.md` (synthetic).
+- Exercises the `wiki_promote_default: yes` + multi-target routing path.
+- Exercises sibling cross-link rendering (`decisions` + `concepts`).
+
+## Test plan
+
+- [x] `bash .claude-tests/smoke/wiki-promote/run.sh` exits 0.
+- [x] Manifest declares `speckit.gaia.wiki-promote` and registers the
+      `after_implement` hook.
+
+Co-Authored-By: GAIA Smoke Fixture <smoke@example.com>
