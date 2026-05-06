@@ -269,8 +269,45 @@ Match the existing wiki voice: declarative, no preamble, concrete examples where
 
 ## Step 6 — Hand off to wiki-sync
 
-(filled in by Phase 4 task-wiki-sync-handoff)
+The wiki-promote command does NOT commit or push. The existing `/wiki-sync` skill handles branch-aware commits.
+
+Emit a structured payload to stdout (the next agent reads it as conversation context):
+
+```json
+{
+  "source": "wiki-promote",
+  "spec_id": "SPEC-NNN",
+  "pr_number": <NNN>,
+  "pr_url": "<full URL>",
+  "pages_written": ["wiki/<subdomain>/<slug>.md", ...],
+  "pages_updated": [...],
+  "pages_skipped": [...],
+  "log_line": "<YYYY-MM-DD> <short_pr_sha> - PROMOTED: SPEC-NNN → <comma-separated paths>"
+}
+```
+
+Then invoke `/wiki-sync` directly:
+
+`Invoke /wiki-sync now to handle the branch-aware commit step for these pages.`
+
+(`/wiki-sync` will read the staged-but-uncommitted wiki changes from `git status`, write to `wiki/log.md` and `wiki/.state.json`, then commit per its branch-aware rules.)
+
+If `/wiki-sync` fails or refuses, exit with the warning `wiki-promote: pages staged but wiki-sync handoff failed. Run /wiki-sync manually.` Do NOT attempt to commit from this command body.
 
 ## Step 7 — Report
 
-(filled in by Phase 4 task-wiki-sync-handoff)
+Print a brief summary:
+
+```
+Wiki promote complete for SPEC-NNN.
+
+  PR:               <pr_url>
+  Pages written:    <count> (<comma-separated paths>)
+  Pages updated:    <count> (<comma-separated paths>)
+  Pages skipped:    <count> (<comma-separated paths with reason>)
+  Wiki-sync:        invoked
+```
+
+If any pages were skipped due to hand-edit detection, include a one-line note:
+
+`Hand-edited skips can be resolved by re-running /gaia spec close SPEC-NNN --force (TBD; for now resolve manually).`
