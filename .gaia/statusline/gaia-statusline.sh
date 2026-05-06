@@ -64,6 +64,11 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
 
   segments=()
+  # 🧭 mentorship-active indicator (UAT-037/038)
+  COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
+  if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
+    segments+=("🧭")
+  fi
   if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
     segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
   fi
