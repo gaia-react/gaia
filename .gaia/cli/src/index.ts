@@ -13,6 +13,7 @@ import {run as runMentorship} from './mentorship/index.js';
 import {run as runScaffold} from './scaffold/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
+import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia <subcommand> [args]
 
@@ -21,6 +22,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   mentorship enable|disable|purge|status
   mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
+  wiki state|commit-classify|state-bump|log-prepend|page-index|orphans|near-collisions
 `;
 
 const printHelp = (): void => {
@@ -37,6 +39,7 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   mentorship: runMentorship,
   scaffold: runScaffold,
   telemetry: runTelemetry,
+  wiki: runWiki,
 };
 
 const main = async (): Promise<number> => {

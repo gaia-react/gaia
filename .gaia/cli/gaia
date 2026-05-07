@@ -797,10 +797,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path17) {
-  if (!path17)
+function getElementAtPath(obj, path22) {
+  if (!path22)
     return obj;
-  return path17.reduce((acc, key) => acc?.[key], obj);
+  return path22.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -1209,11 +1209,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path17, issues) {
+function prefixIssues(path22, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path17);
+    iss.path.unshift(path22);
     return iss;
   });
 }
@@ -1360,16 +1360,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path17 = []) => {
+  const processError = (error52, path22 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path17, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path22, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path22, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path22, ...issue2.path]);
       } else {
-        const fullpath = [...path17, ...issue2.path];
+        const fullpath = [...path22, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -1396,17 +1396,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path17 = []) => {
+  const processError = (error52, path22 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path17, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path22, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path22, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path22, ...issue2.path]);
       } else {
-        const fullpath = [...path17, ...issue2.path];
+        const fullpath = [...path22, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -1438,8 +1438,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path17 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path17) {
+  const path22 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path22) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -14131,13 +14131,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path17 = ref.slice(1).split("/").filter(Boolean);
-  if (path17.length === 0) {
+  const path22 = ref.slice(1).split("/").filter(Boolean);
+  if (path22.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path17[0] === defsKey) {
-    const key = path17[1];
+  if (path22[0] === defsKey) {
+    const key = path22[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -18757,35 +18757,1281 @@ var run17 = async (argv) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
+// src/wiki/util/git.ts
+import { execFileSync } from "node:child_process";
+var runGit = (args, options = {}) => {
+  const cwd = options.cwd ?? process.cwd();
+  const result = execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  return result.toString();
+};
+var tryRunGit = (args, options = {}) => {
+  try {
+    return runGit(args, options);
+  } catch {
+    return null;
+  }
+};
+var resolveRepoRoot3 = (cwd = process.cwd()) => runGit(["rev-parse", "--show-toplevel"], { cwd }).trim();
+var headSha = (cwd) => runGit(["rev-parse", "HEAD"], { cwd }).trim();
+var shortSha = (sha, cwd) => {
+  const result = tryRunGit(["rev-parse", "--short=7", sha], { cwd });
+  if (result === null) return sha.slice(0, 7);
+  return result.trim();
+};
+var isReachable = (sha, cwd) => {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", sha, "HEAD"], {
+      cwd,
+      stdio: ["ignore", "ignore", "ignore"]
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+var commitsAhead = (sha, cwd) => {
+  const result = tryRunGit(["rev-list", "--count", `${sha}..HEAD`], { cwd });
+  if (result === null) return 0;
+  const parsed = Number.parseInt(result.trim(), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+var recentCommits = (sinceSha, cwd, limit = 5) => {
+  const result = tryRunGit(
+    [
+      "log",
+      "--no-merges",
+      "--reverse",
+      "--format=%h%x09%s",
+      `${sinceSha}..HEAD`
+    ],
+    { cwd }
+  );
+  if (result === null) return [];
+  const lines = result.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+  return lines.slice(-limit).map((line) => {
+    const tabIndex = line.indexOf("	");
+    const sha = tabIndex === -1 ? line : line.slice(0, tabIndex);
+    const subject = tabIndex === -1 ? "" : line.slice(tabIndex + 1);
+    return { sha, subject };
+  });
+};
+var parseShortStat = (stat3) => {
+  let filesChanged = 0;
+  let insertions = 0;
+  let deletions = 0;
+  const filesMatch = /(\d+)\s+files?\s+changed/u.exec(stat3);
+  if (filesMatch !== null) filesChanged = Number.parseInt(filesMatch[1], 10);
+  const insertMatch = /(\d+)\s+insertions?\(\+\)/u.exec(stat3);
+  if (insertMatch !== null) insertions = Number.parseInt(insertMatch[1], 10);
+  const deleteMatch = /(\d+)\s+deletions?\(-\)/u.exec(stat3);
+  if (deleteMatch !== null) deletions = Number.parseInt(deleteMatch[1], 10);
+  return { deletions, files_changed: filesChanged, insertions };
+};
+var fileListForCommit = (sha, cwd) => {
+  const result = tryRunGit(
+    ["diff-tree", "--no-commit-id", "--name-only", "-r", sha],
+    { cwd }
+  );
+  if (result === null) return [];
+  return result.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+};
+var parseChunk = (chunk) => {
+  const trimmed = chunk.replace(/^[\s\n]+/u, "").replace(/[\s\n]+$/u, "");
+  if (trimmed === "") return { precedingStat: "", record: null };
+  const lines = trimmed.split("\n");
+  const commitLineIndex = lines.findIndex((line) => line.startsWith("COMMIT "));
+  if (commitLineIndex === -1) {
+    return { precedingStat: trimmed, record: null };
+  }
+  const statLines = lines.slice(0, commitLineIndex);
+  const precedingStat = statLines.find(
+    (line) => /\d+\s+files?\s+changed/u.test(line)
+  ) ?? "";
+  const commitBlock = lines.slice(commitLineIndex);
+  const sha = (commitBlock[0] ?? "").replace(/^COMMIT\s+/u, "").trim();
+  const subject = commitBlock[1] ?? "";
+  const bodyLines = commitBlock.slice(2);
+  while (bodyLines.length > 0 && (bodyLines.at(-1) ?? "").trim() === "") {
+    bodyLines.pop();
+  }
+  return {
+    precedingStat,
+    record: { body: bodyLines.join("\n"), sha, subject }
+  };
+};
+var commitDetails = (sinceSha, cwd) => {
+  const recordSeparator = "---END-COMMIT---";
+  const raw = tryRunGit(
+    [
+      "log",
+      "--no-merges",
+      "--reverse",
+      "--shortstat",
+      `--format=COMMIT %H%n%s%n%b%n${recordSeparator}`,
+      `${sinceSha}..HEAD`
+    ],
+    { cwd }
+  );
+  if (raw === null) return [];
+  const chunks = raw.split(recordSeparator);
+  const records = [];
+  const stats = [];
+  let pendingStat = null;
+  for (const chunk of chunks) {
+    const { precedingStat, record: record2 } = parseChunk(chunk);
+    if (record2 !== null) {
+      records.push(record2);
+      if (records.length > 1) stats.push(precedingStat);
+      pendingStat = null;
+    } else {
+      pendingStat = precedingStat;
+    }
+  }
+  if (records.length > 0) {
+    stats.push(pendingStat ?? "");
+  }
+  return records.map((record2, index) => {
+    const stat3 = stats[index] ?? "";
+    const parsed = parseShortStat(stat3);
+    const files = fileListForCommit(record2.sha, cwd);
+    return {
+      body: record2.body,
+      deletions: parsed.deletions,
+      files,
+      files_changed: parsed.files_changed,
+      insertions: parsed.insertions,
+      sha: record2.sha,
+      subject: record2.subject
+    };
+  });
+};
+
+// src/wiki/commit-classify.ts
+var HELP_TEXT7 = `Usage: gaia wiki commit-classify --since <sha> [--json]
+
+  Emit a deterministic WORTHY/SKIP suggestion for every commit in
+  <sha>..HEAD. Without --json, prints a tabular summary.
+`;
+var HELP_TOKENS5 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var takeValue2 = (argv, index, flag) => {
+  const value = argv[index];
+  if (value === void 0) return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var parseFlags6 = (argv) => {
+  let since;
+  let json2 = false;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--since") {
+      const taken = takeValue2(argv, index + 1, "--since");
+      if (!taken.ok) return taken;
+      since = taken.value;
+      index += 1;
+      continue;
+    }
+    if (token === "--json") {
+      json2 = true;
+      continue;
+    }
+    return { message: `unknown flag: ${token}`, ok: false };
+  }
+  if (since === void 0) {
+    return { message: "--since <sha> is required", ok: false };
+  }
+  return { flags: { json: json2, since }, ok: true };
+};
+var ARCH_BODY_PATTERN = /BREAKING CHANGE|architecture|trade-?off|invariant|gotcha|workaround|decision/iu;
+var WIKI_HEAVY_DOMAINS = [
+  "wiki/decisions/",
+  "wiki/concepts/",
+  "wiki/flows/",
+  "wiki/dependencies/",
+  "wiki/entities/"
+];
+var FLOWS_RELEVANT_PATHS = [
+  "app/middleware/",
+  "app/routes.ts",
+  "app/i18n.ts",
+  "app/sessions.server/"
+];
+var APP_INVENTORY_PREFIXES = [
+  "app/components/",
+  "app/hooks/",
+  "app/services/",
+  "app/pages/"
+];
+var touchesAny = (files, prefixes) => files.some((file2) => prefixes.some((prefix) => file2.startsWith(prefix)));
+var touchesAppNonTest = (files) => files.some((file2) => file2.startsWith("app/") && !file2.includes(".test."));
+var touchesOnlyTests = (files) => files.length > 0 && files.every((file2) => file2.includes(".test."));
+var classify = (commit) => {
+  const subject = commit.subject;
+  const body = commit.body;
+  const files = commit.files;
+  if (subject.startsWith("Merge pull request")) {
+    return { reason: "merge commit", suggestion: "SKIP" };
+  }
+  if (subject.startsWith("chore(release):")) {
+    return { reason: "chore(release): release plumbing", suggestion: "SKIP" };
+  }
+  if (subject.startsWith("style:")) {
+    return { reason: "style: formatting only", suggestion: "SKIP" };
+  }
+  if (subject.startsWith("feat!:") || /BREAKING CHANGE/u.test(body)) {
+    return { reason: "breaking change signal", suggestion: "WORTHY" };
+  }
+  if (subject.startsWith("docs(decision):") || subject.startsWith("chore(adr):")) {
+    return { reason: "explicit ADR signal", suggestion: "WORTHY" };
+  }
+  if (touchesAny(files, WIKI_HEAVY_DOMAINS)) {
+    return { reason: "touches wiki-heavy domain", suggestion: "WORTHY" };
+  }
+  if (touchesAny(files, FLOWS_RELEVANT_PATHS)) {
+    return { reason: "touches flows-relevant path", suggestion: "WORTHY" };
+  }
+  if (subject.startsWith("chore(deps):")) {
+    if (ARCH_BODY_PATTERN.test(body)) {
+      return {
+        reason: "chore(deps): body mentions architecture / decision",
+        suggestion: "WORTHY"
+      };
+    }
+    return { reason: "chore(deps): version bump only", suggestion: "SKIP" };
+  }
+  if (subject.startsWith("chore(cli):")) {
+    if (ARCH_BODY_PATTERN.test(body)) {
+      return {
+        reason: "chore(cli): body mentions architecture / decision",
+        suggestion: "WORTHY"
+      };
+    }
+    return { reason: "chore(cli): tooling-internal", suggestion: "SKIP" };
+  }
+  if (subject.startsWith("wiki:")) {
+    if (ARCH_BODY_PATTERN.test(body)) {
+      return { reason: "wiki: body mentions architecture", suggestion: "WORTHY" };
+    }
+    return { reason: "wiki: self-referential", suggestion: "SKIP" };
+  }
+  const isFeatureCommit = subject.startsWith("feat:") || subject.startsWith("fix:") || subject.startsWith("refactor:");
+  if (isFeatureCommit) {
+    if (touchesOnlyTests(files)) {
+      return {
+        reason: "feat/fix/refactor: tests-only",
+        suggestion: "SKIP"
+      };
+    }
+    const onlyInventory = files.length > 0 && files.every((file2) => APP_INVENTORY_PREFIXES.some((prefix) => file2.startsWith(prefix)));
+    if (onlyInventory && !ARCH_BODY_PATTERN.test(body)) {
+      return {
+        reason: "feat/fix/refactor: only inventory paths (Serena handles inventory)",
+        suggestion: "SKIP"
+      };
+    }
+    if (touchesAppNonTest(files)) {
+      return {
+        reason: "feat/fix/refactor: app/** non-test",
+        suggestion: "WORTHY"
+      };
+    }
+    return {
+      reason: "feat/fix/refactor: defer to human review",
+      suggestion: "WORTHY"
+    };
+  }
+  if (subject.startsWith("chore:")) {
+    if (ARCH_BODY_PATTERN.test(body)) {
+      return { reason: "chore: body mentions architecture", suggestion: "WORTHY" };
+    }
+    return { reason: "chore: generic chore", suggestion: "SKIP" };
+  }
+  if (subject.startsWith("docs:")) {
+    return { reason: "docs: prose-only", suggestion: "SKIP" };
+  }
+  if (subject.startsWith("test:")) {
+    return { reason: "test: test-only change", suggestion: "SKIP" };
+  }
+  return {
+    reason: "no matching prefix \u2014 defer to human review",
+    suggestion: "WORTHY"
+  };
+};
+var printHuman = (classification) => {
+  if (classification.commits.length === 0) {
+    process.stdout.write("No commits to classify.\n");
+    return;
+  }
+  const lines = [`Classified ${classification.commits.length} commit(s):`, ""];
+  for (const commit of classification.commits) {
+    lines.push(
+      `  ${commit.sha.slice(0, 7)}  ${commit.suggestion.padEnd(7)}  ${commit.subject}`
+    );
+    lines.push(`            reason: ${commit.suggestion_reason}`);
+    lines.push(
+      `            ${commit.files_changed} files, +${commit.insertions} -${commit.deletions}`
+    );
+  }
+  process.stdout.write(`${lines.join("\n")}
+`);
+};
+var run18 = (argv, options = {}) => {
+  if (argv.length === 0 || HELP_TOKENS5.has(argv[0])) {
+    process.stdout.write(HELP_TEXT7);
+    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+  }
+  const parsed = parseFlags6(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "wiki commit-classify"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let repoRoot2;
+  try {
+    repoRoot2 = resolveRepoRoot3(options.cwd ?? process.cwd());
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki commit-classify must run inside a git repository",
+      subcommand: "wiki commit-classify"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let details;
+  try {
+    details = commitDetails(parsed.flags.since, repoRoot2);
+  } catch (error51) {
+    structuredError({
+      code: "git_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "wiki commit-classify"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const classification = {
+    commits: details.map((detail) => {
+      const decision = classify(detail);
+      return {
+        body: detail.body,
+        deletions: detail.deletions,
+        files_changed: detail.files_changed,
+        insertions: detail.insertions,
+        sha: detail.sha,
+        subject: detail.subject,
+        suggestion: decision.suggestion,
+        suggestion_reason: decision.reason
+      };
+    })
+  };
+  if (parsed.flags.json) {
+    process.stdout.write(`${JSON.stringify(classification)}
+`);
+  } else {
+    printHuman(classification);
+  }
+  return EXIT_CODES.OK;
+};
+
+// src/wiki/log-prepend.ts
+import { existsSync as existsSync17, readFileSync as readFileSync13, renameSync as renameSync3, writeFileSync as writeFileSync9 } from "node:fs";
+import path17 from "node:path";
+var HELP_TEXT8 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP> --reason "..."
+
+  Prepends one canonical line to wiki/log.md after the frontmatter.
+`;
+var HELP_TOKENS6 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var VALID_DECISIONS = /* @__PURE__ */ new Set(["SKIP", "WORTHY"]);
+var FRONTMATTER_FENCE = "---";
+var takeValue3 = (argv, index, flag) => {
+  const value = argv[index];
+  if (value === void 0) {
+    return { message: `${flag} requires a value`, ok: false };
+  }
+  return { ok: true, value };
+};
+var parseFlags7 = (argv) => {
+  let sha;
+  let decision;
+  let reason;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--sha") {
+      const taken = takeValue3(argv, index + 1, "--sha");
+      if (!taken.ok) return taken;
+      sha = taken.value;
+      index += 1;
+      continue;
+    }
+    if (token === "--decision") {
+      const taken = takeValue3(argv, index + 1, "--decision");
+      if (!taken.ok) return taken;
+      decision = taken.value;
+      index += 1;
+      continue;
+    }
+    if (token === "--reason") {
+      const taken = takeValue3(argv, index + 1, "--reason");
+      if (!taken.ok) return taken;
+      reason = taken.value;
+      index += 1;
+      continue;
+    }
+    return { message: `unknown flag: ${token}`, ok: false };
+  }
+  if (sha === void 0) return { message: "--sha is required", ok: false };
+  if (decision === void 0) return { message: "--decision is required", ok: false };
+  if (reason === void 0) return { message: "--reason is required", ok: false };
+  if (!VALID_DECISIONS.has(decision)) {
+    return {
+      message: `--decision must be WORTHY or SKIP (got: "${decision}")`,
+      ok: false
+    };
+  }
+  return { flags: { decision, reason, sha }, ok: true };
+};
+var todayUtc = () => {
+  const now = /* @__PURE__ */ new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+var scanFrontmatter = (lines) => {
+  if ((lines[0] ?? "").trim() !== FRONTMATTER_FENCE) {
+    return { kind: "missing" };
+  }
+  for (let index = 1; index < lines.length; index += 1) {
+    if ((lines[index] ?? "").trim() === FRONTMATTER_FENCE) {
+      return { endLineIndex: index, kind: "present" };
+    }
+  }
+  return { kind: "malformed" };
+};
+var findInsertionIndex = (lines, endFenceIndex) => {
+  for (let index = endFenceIndex + 1; index < lines.length; index += 1) {
+    const line = (lines[index] ?? "").trim();
+    if (line.startsWith("## ")) {
+      const candidate = index + 1;
+      const after = (lines[candidate] ?? "").trim();
+      if (after === "") return candidate + 1;
+      return candidate;
+    }
+  }
+  return endFenceIndex + 1;
+};
+var run19 = (argv, options = {}) => {
+  if (argv.length === 0) {
+    process.stdout.write(HELP_TEXT8);
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const first = argv[0];
+  if (HELP_TOKENS6.has(first)) {
+    process.stdout.write(HELP_TEXT8);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags7(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "wiki log-prepend"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let repoRoot2;
+  try {
+    repoRoot2 = resolveRepoRoot3(options.cwd ?? process.cwd());
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki log-prepend must run inside a git repository",
+      subcommand: "wiki log-prepend"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const logPath = path17.join(repoRoot2, "wiki", "log.md");
+  if (!existsSync17(logPath)) {
+    structuredError({
+      code: "log_missing",
+      message: "wiki/log.md does not exist",
+      subcommand: "wiki log-prepend"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const raw = readFileSync13(logPath, "utf8");
+  const lines = raw.split("\n");
+  const scan = scanFrontmatter(lines);
+  if (scan.kind === "missing" || scan.kind === "malformed") {
+    structuredError({
+      code: "frontmatter_invalid",
+      message: "wiki/log.md frontmatter is missing or malformed",
+      subcommand: "wiki log-prepend"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const date5 = options.today ?? todayUtc();
+  const newLine = `- ${date5} ${parsed.flags.sha} ${parsed.flags.decision} \u2014 ${parsed.flags.reason}`;
+  const insertionIndex = findInsertionIndex(lines, scan.endLineIndex);
+  const next = [
+    ...lines.slice(0, insertionIndex),
+    newLine,
+    ...lines.slice(insertionIndex)
+  ].join("\n");
+  const tmpPath = `${logPath}.tmp`;
+  writeFileSync9(tmpPath, next, "utf8");
+  renameSync3(tmpPath, logPath);
+  return EXIT_CODES.OK;
+};
+
+// src/wiki/near-collisions.ts
+import { existsSync as existsSync18, readdirSync as readdirSync5, statSync as statSync3 } from "node:fs";
+import path18 from "node:path";
+var HELP_TEXT9 = `Usage: gaia wiki near-collisions [--max-distance 3]
+
+  Per-domain Levenshtein over slugs. Emits tab-separated rows:
+  <domain>  <slugA>  <slugB>  <distance>
+`;
+var HELP_TOKENS7 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var DEFAULT_MAX_DISTANCE = 3;
+var DOMAIN_DIRS = [
+  "components",
+  "concepts",
+  "decisions",
+  "dependencies",
+  "entities",
+  "flows",
+  "modules"
+];
+var SKIPPED_FILES = /* @__PURE__ */ new Set(["_index.md", "README.md"]);
+var normalizeSlug = (raw) => raw.toLowerCase().replaceAll("_", "-");
+var levenshtein = (a, b) => {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  const current = Array.from({ length: b.length + 1 }, () => 0);
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+      current[j] = Math.min(
+        (current[j - 1] ?? 0) + 1,
+        (previous[j] ?? 0) + 1,
+        (previous[j - 1] ?? 0) + cost
+      );
+    }
+    for (let j = 0; j <= b.length; j += 1) {
+      previous[j] = current[j] ?? 0;
+    }
+  }
+  return current[b.length] ?? 0;
+};
+var collectDomainSlugs = (wikiRoot) => {
+  const collected = [];
+  for (const domain2 of DOMAIN_DIRS) {
+    const domainDir = path18.join(wikiRoot, domain2);
+    if (!existsSync18(domainDir) || !statSync3(domainDir).isDirectory()) continue;
+    const entries = readdirSync5(domainDir, { withFileTypes: true });
+    const slugs = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith(".md")) continue;
+      if (SKIPPED_FILES.has(entry.name)) continue;
+      if (entry.name.startsWith("_")) continue;
+      slugs.push(entry.name.replace(/\.md$/u, ""));
+    }
+    slugs.sort();
+    if (slugs.length >= 2) collected.push({ domain: domain2, slugs });
+  }
+  return collected;
+};
+var findCollisions = (domainGroups, maxDistance) => {
+  const results = [];
+  for (const { domain: domain2, slugs } of domainGroups) {
+    for (let i = 0; i < slugs.length; i += 1) {
+      const slugA = slugs[i];
+      const normA = normalizeSlug(slugA);
+      for (let j = i + 1; j < slugs.length; j += 1) {
+        const slugB = slugs[j];
+        const normB = normalizeSlug(slugB);
+        if (slugA === slugB) continue;
+        const distance = levenshtein(normA, normB);
+        if (distance <= maxDistance) {
+          results.push({ distance, domain: domain2, slugA, slugB });
+        }
+      }
+    }
+  }
+  results.sort((left, right) => {
+    if (left.domain !== right.domain) return left.domain.localeCompare(right.domain);
+    if (left.distance !== right.distance) return left.distance - right.distance;
+    if (left.slugA !== right.slugA) return left.slugA.localeCompare(right.slugA);
+    return left.slugB.localeCompare(right.slugB);
+  });
+  return results;
+};
+var takeValue4 = (argv, index, flag) => {
+  const value = argv[index];
+  if (value === void 0) return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var parseFlags8 = (argv) => {
+  let maxDistance = DEFAULT_MAX_DISTANCE;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--max-distance") {
+      const taken = takeValue4(argv, index + 1, "--max-distance");
+      if (!taken.ok) return taken;
+      const parsed = Number.parseInt(taken.value, 10);
+      if (Number.isNaN(parsed) || parsed < 1) {
+        return {
+          message: `--max-distance must be a positive integer (got: "${taken.value}")`,
+          ok: false
+        };
+      }
+      maxDistance = parsed;
+      index += 1;
+      continue;
+    }
+    return { message: `unknown flag: ${token}`, ok: false };
+  }
+  return { flags: { maxDistance }, ok: true };
+};
+var run20 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS7.has(argv[0])) {
+    process.stdout.write(HELP_TEXT9);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags8(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "wiki near-collisions"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let repoRoot2;
+  try {
+    repoRoot2 = resolveRepoRoot3(options.cwd ?? process.cwd());
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki near-collisions must run inside a git repository",
+      subcommand: "wiki near-collisions"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const wikiRoot = path18.join(repoRoot2, "wiki");
+  const domainGroups = collectDomainSlugs(wikiRoot);
+  const collisions = findCollisions(domainGroups, parsed.flags.maxDistance);
+  if (collisions.length === 0) return EXIT_CODES.OK;
+  const lines = collisions.map(
+    (collision) => `${collision.domain}	${collision.slugA}	${collision.slugB}	${collision.distance}`
+  );
+  process.stdout.write(`${lines.join("\n")}
+`);
+  return EXIT_CODES.OK;
+};
+
+// src/wiki/page-index.ts
+import { existsSync as existsSync19, readdirSync as readdirSync6, readFileSync as readFileSync14, statSync as statSync4 } from "node:fs";
+import path19 from "node:path";
+
+// src/wiki/util/frontmatter.ts
+var FRONTMATTER_FENCE2 = "---";
+var SCALAR_PATTERN = /^([\w-]+)\s*:\s*(.*)$/u;
+var stripQuotes = (raw) => {
+  if (raw.length < 2) return raw;
+  const first = raw.charAt(0);
+  const last = raw.charAt(raw.length - 1);
+  if (first === '"' && last === '"' || first === "'" && last === "'") {
+    return raw.slice(1, -1);
+  }
+  return raw;
+};
+var parseScalar = (raw) => {
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed === "null" || trimmed === "~") return null;
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    const inner = trimmed.slice(1, -1).trim();
+    if (inner === "") return [];
+    return inner.split(",").map((entry) => stripQuotes(entry.trim())).filter((entry) => entry.length > 0);
+  }
+  if (/^-?\d+(\.\d+)?$/u.test(trimmed)) {
+    return Number(trimmed);
+  }
+  return stripQuotes(trimmed);
+};
+var parseFrontmatter = (raw) => {
+  const lines = raw.split("\n");
+  if ((lines[0] ?? "").trim() !== FRONTMATTER_FENCE2) {
+    return { body: raw, frontmatter: {}, hasFrontmatter: false };
+  }
+  let closingIndex = -1;
+  for (let index = 1; index < lines.length; index += 1) {
+    if ((lines[index] ?? "").trim() === FRONTMATTER_FENCE2) {
+      closingIndex = index;
+      break;
+    }
+  }
+  if (closingIndex === -1) {
+    return { body: raw, frontmatter: {}, hasFrontmatter: false };
+  }
+  const yamlLines = lines.slice(1, closingIndex);
+  const frontmatter = {};
+  for (const line of yamlLines) {
+    if (line.trim() === "" || line.trim().startsWith("#")) continue;
+    const match = SCALAR_PATTERN.exec(line);
+    if (match === null) continue;
+    const key = match[1];
+    const value = match[2].trim();
+    frontmatter[key] = parseScalar(value);
+  }
+  const body = lines.slice(closingIndex + 1).join("\n");
+  return { body, frontmatter, hasFrontmatter: true };
+};
+
+// src/wiki/util/wikilinks.ts
+var WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
+var extractWikilinks = (body) => {
+  const targets = [];
+  let match = WIKILINK_PATTERN.exec(body);
+  while (match !== null) {
+    const raw = match[1].trim();
+    const aliasIndex = raw.indexOf("|");
+    const withoutAlias = aliasIndex === -1 ? raw : raw.slice(0, aliasIndex);
+    const anchorIndex = withoutAlias.indexOf("#");
+    const target = (anchorIndex === -1 ? withoutAlias : withoutAlias.slice(0, anchorIndex)).trim();
+    if (target.length > 0) targets.push(target);
+    match = WIKILINK_PATTERN.exec(body);
+  }
+  return targets;
+};
+
+// src/wiki/page-index.ts
+var HELP_TEXT10 = `Usage: gaia wiki page-index [--json]
+
+  Walk wiki/<domain>/*.md, parse frontmatter, and count inbound/outbound
+  wikilinks. Without --json, prints a tabular summary.
+`;
+var HELP_TOKENS8 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var DOMAIN_DIRS2 = [
+  "components",
+  "concepts",
+  "decisions",
+  "dependencies",
+  "entities",
+  "flows",
+  "modules",
+  "meta"
+];
+var SKIPPED_FILES2 = /* @__PURE__ */ new Set(["_index.md", "README.md"]);
+var slugFromPath = (filePath) => path19.basename(filePath, ".md");
+var extractTitle = (body, fallback) => {
+  const lines = body.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("# ")) {
+      return trimmed.slice(2).trim() || fallback;
+    }
+  }
+  return fallback;
+};
+var stringValue = (value) => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return null;
+};
+var arrayOfStrings = (value) => {
+  if (Array.isArray(value)) return value.filter((entry) => typeof entry === "string");
+  if (typeof value === "string" && value.length > 0) return [value];
+  return [];
+};
+var collectPages = (wikiRoot) => {
+  const pages = [];
+  for (const domain2 of DOMAIN_DIRS2) {
+    const domainDir = path19.join(wikiRoot, domain2);
+    if (!existsSync19(domainDir) || !statSync4(domainDir).isDirectory()) continue;
+    const entries = readdirSync6(domainDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith(".md")) continue;
+      if (SKIPPED_FILES2.has(entry.name)) continue;
+      if (entry.name.startsWith("_")) continue;
+      const absPath = path19.join(domainDir, entry.name);
+      const raw = readFileSync14(absPath, "utf8");
+      const { body, frontmatter } = parseFrontmatter(raw);
+      const slug = slugFromPath(entry.name);
+      const title = extractTitle(body, slug);
+      const targets = extractWikilinks(body);
+      pages.push({
+        body,
+        domain: domain2,
+        outboundTargets: targets,
+        relativePath: path19.posix.join("wiki", domain2, entry.name),
+        slug,
+        status: stringValue(frontmatter.status),
+        tags: arrayOfStrings(frontmatter.tags),
+        title,
+        type: stringValue(frontmatter.type)
+      });
+    }
+  }
+  return pages;
+};
+var buildIndex = (pages) => {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const page of pages) {
+    byKey.set(page.slug.toLowerCase(), page);
+    byKey.set(page.title.toLowerCase(), page);
+  }
+  const inboundCounts = /* @__PURE__ */ new Map();
+  for (const page of pages) {
+    for (const target of page.outboundTargets) {
+      const matched = byKey.get(target.toLowerCase());
+      if (matched === void 0) continue;
+      const key = matched.relativePath;
+      inboundCounts.set(key, (inboundCounts.get(key) ?? 0) + 1);
+    }
+  }
+  return {
+    pages: pages.map((page) => ({
+      domain: page.domain,
+      inbound_links: inboundCounts.get(page.relativePath) ?? 0,
+      outbound_links: page.outboundTargets.length,
+      path: page.relativePath,
+      status: page.status,
+      tags: page.tags,
+      title: page.title,
+      type: page.type
+    }))
+  };
+};
+var printHuman2 = (index) => {
+  if (index.pages.length === 0) {
+    process.stdout.write("No wiki pages found.\n");
+    return;
+  }
+  const lines = [`Indexed ${index.pages.length} page(s):`, ""];
+  for (const page of index.pages) {
+    lines.push(
+      `  ${page.domain.padEnd(14)} ${page.title.padEnd(40)} in:${page.inbound_links} out:${page.outbound_links}`
+    );
+  }
+  process.stdout.write(`${lines.join("\n")}
+`);
+};
+var computePageIndex = (cwd) => {
+  const repoRoot2 = resolveRepoRoot3(cwd);
+  const wikiRoot = path19.join(repoRoot2, "wiki");
+  const pages = collectPages(wikiRoot);
+  return buildIndex(pages);
+};
+var run21 = (argv, options = {}) => {
+  let json2 = false;
+  for (const token of argv) {
+    if (HELP_TOKENS8.has(token)) {
+      process.stdout.write(HELP_TEXT10);
+      return EXIT_CODES.OK;
+    }
+    if (token === "--json") {
+      json2 = true;
+      continue;
+    }
+    structuredError({
+      code: "invalid_arguments",
+      message: `unknown flag: ${token}`,
+      subcommand: "wiki page-index"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let repoRoot2;
+  try {
+    repoRoot2 = resolveRepoRoot3(options.cwd ?? process.cwd());
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki page-index must run inside a git repository",
+      subcommand: "wiki page-index"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const wikiRoot = path19.join(repoRoot2, "wiki");
+  const pages = collectPages(wikiRoot);
+  const index = buildIndex(pages);
+  if (json2) {
+    process.stdout.write(`${JSON.stringify(index)}
+`);
+  } else {
+    printHuman2(index);
+  }
+  return EXIT_CODES.OK;
+};
+
+// src/wiki/orphans.ts
+var HELP_TEXT11 = `Usage: gaia wiki orphans
+
+  Newline-separated list of wiki pages with zero inbound wikilinks.
+`;
+var HELP_TOKENS9 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var run22 = (argv, options = {}) => {
+  for (const token of argv) {
+    if (HELP_TOKENS9.has(token)) {
+      process.stdout.write(HELP_TEXT11);
+      return EXIT_CODES.OK;
+    }
+    structuredError({
+      code: "invalid_arguments",
+      message: `unknown flag: ${token}`,
+      subcommand: "wiki orphans"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let cwd;
+  try {
+    cwd = options.cwd ?? process.cwd();
+    const index = computePageIndex(cwd);
+    const orphans = index.pages.filter((page) => page.inbound_links === 0).map((page) => page.path);
+    if (orphans.length > 0) {
+      process.stdout.write(`${orphans.join("\n")}
+`);
+    }
+    return EXIT_CODES.OK;
+  } catch (error51) {
+    structuredError({
+      code: "orphans_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "wiki orphans"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+};
+
+// src/wiki/state.ts
+import { existsSync as existsSync20, readdirSync as readdirSync7, readFileSync as readFileSync15, statSync as statSync5 } from "node:fs";
+import path20 from "node:path";
+var HELP_TEXT12 = `Usage: gaia wiki state [--json]
+`;
+var HELP_TOKENS10 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var classifySeverity = (commitCount) => {
+  if (commitCount <= 0) return "none";
+  if (commitCount <= 5) return "low";
+  if (commitCount <= 20) return "medium";
+  return "high";
+};
+var DOMAIN_DIRS3 = [
+  "components",
+  "concepts",
+  "decisions",
+  "dependencies",
+  "entities",
+  "flows",
+  "meta",
+  "modules"
+];
+var countDomainPages = (wikiRoot) => {
+  const counts = {};
+  for (const domain2 of DOMAIN_DIRS3) {
+    const domainDir = path20.join(wikiRoot, domain2);
+    if (!existsSync20(domainDir) || !statSync5(domainDir).isDirectory()) {
+      counts[domain2] = 0;
+      continue;
+    }
+    const entries = readdirSync7(domainDir, { withFileTypes: true });
+    let count = 0;
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith(".md")) continue;
+      if (entry.name === "_index.md") continue;
+      count += 1;
+    }
+    counts[domain2] = count;
+  }
+  return counts;
+};
+var readStateFile = (statePath) => {
+  if (!existsSync20(statePath)) return null;
+  const raw = readFileSync15(statePath, "utf8");
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+var printHuman3 = (state) => {
+  const lines = [
+    "Wiki state",
+    `  HEAD:           ${state.head_short}`,
+    `  Last evaluated: ${state.state_sha}`,
+    `  Reachable:      ${state.reachable ? "yes" : "no"}`,
+    `  Drift:          ${state.commits_ahead} commits (${state.drift_severity})`
+  ];
+  if (state.recent_commits.length > 0) {
+    lines.push("  Recent unsynced:");
+    for (const commit of state.recent_commits) {
+      lines.push(`    - ${commit.sha} ${commit.subject}`);
+    }
+  }
+  lines.push("  Per-domain pages:");
+  for (const [domain2, count] of Object.entries(state.per_domain_page_counts)) {
+    lines.push(`    ${domain2}: ${count}`);
+  }
+  process.stdout.write(`${lines.join("\n")}
+`);
+};
+var run23 = (argv, options = {}) => {
+  let json2 = false;
+  for (const token of argv) {
+    if (HELP_TOKENS10.has(token)) {
+      process.stdout.write(HELP_TEXT12);
+      return EXIT_CODES.OK;
+    }
+    if (token === "--json") {
+      json2 = true;
+      continue;
+    }
+    structuredError({
+      code: "invalid_arguments",
+      message: `unknown flag: ${token}`,
+      subcommand: "wiki state"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let repoRoot2;
+  try {
+    repoRoot2 = resolveRepoRoot3(options.cwd ?? process.cwd());
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki state must run inside a git repository",
+      subcommand: "wiki state"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const wikiRoot = path20.join(repoRoot2, "wiki");
+  const statePath = path20.join(wikiRoot, ".state.json");
+  const stateFile = readStateFile(statePath);
+  const stateSha = stateFile?.last_evaluated_sha ?? "";
+  const head = headSha(repoRoot2);
+  const headShort = shortSha(head, repoRoot2);
+  const stateShort = stateSha === "" ? "" : shortSha(stateSha, repoRoot2);
+  const reachable = stateSha !== "" && isReachable(stateSha, repoRoot2);
+  const ahead = stateSha === "" || !reachable ? 0 : commitsAhead(stateSha, repoRoot2);
+  const recent = stateSha === "" || !reachable ? [] : recentCommits(stateSha, repoRoot2, 5);
+  const severity = classifySeverity(ahead);
+  const counts = countDomainPages(wikiRoot);
+  const state = {
+    commits_ahead: ahead,
+    drift_severity: severity,
+    head_short: headShort,
+    per_domain_page_counts: counts,
+    reachable,
+    recent_commits: recent,
+    state_sha: stateShort
+  };
+  if (json2) {
+    process.stdout.write(`${JSON.stringify(state)}
+`);
+  } else {
+    printHuman3(state);
+  }
+  return EXIT_CODES.OK;
+};
+
+// src/wiki/state-bump.ts
+import { existsSync as existsSync21, readFileSync as readFileSync16, renameSync as renameSync4, writeFileSync as writeFileSync10 } from "node:fs";
+import path21 from "node:path";
+var HELP_TEXT13 = `Usage: gaia wiki state-bump <field> <value>
+
+  Updates a single field in wiki/.state.json. Sibling fields and key order
+  are preserved. <value> is parsed as JSON when it parses (numbers,
+  booleans, null, arrays, objects); otherwise treated as a string.
+`;
+var HELP_TOKENS11 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var tryParseJson = (raw) => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+var reorderObject = (source, field, newValue) => {
+  const next = {};
+  if (Object.hasOwn(source, field)) {
+    for (const key of Object.keys(source)) {
+      next[key] = key === field ? newValue : source[key];
+    }
+    return next;
+  }
+  for (const key of Object.keys(source)) {
+    next[key] = source[key];
+  }
+  next[field] = newValue;
+  return next;
+};
+var run24 = (argv, options = {}) => {
+  if (argv.length === 0) {
+    process.stdout.write(HELP_TEXT13);
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (HELP_TOKENS11.has(argv[0])) {
+    process.stdout.write(HELP_TEXT13);
+    return EXIT_CODES.OK;
+  }
+  const positional = [];
+  for (const token of argv) {
+    if (token.startsWith("--")) {
+      structuredError({
+        code: "invalid_arguments",
+        message: `unknown flag: ${token}`,
+        subcommand: "wiki state-bump"
+      });
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
+    positional.push(token);
+  }
+  if (positional.length !== 2) {
+    structuredError({
+      code: "invalid_arguments",
+      message: "state-bump requires exactly <field> and <value>",
+      subcommand: "wiki state-bump"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const [field, valueRaw] = positional;
+  let repoRoot2;
+  try {
+    repoRoot2 = resolveRepoRoot3(options.cwd ?? process.cwd());
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki state-bump must run inside a git repository",
+      subcommand: "wiki state-bump"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const statePath = path21.join(repoRoot2, "wiki", ".state.json");
+  if (!existsSync21(statePath)) {
+    structuredError({
+      code: "state_missing",
+      message: "wiki/.state.json does not exist",
+      subcommand: "wiki state-bump"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const raw = readFileSync16(statePath, "utf8");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    structuredError({
+      code: "state_malformed",
+      message: "wiki/.state.json is not valid JSON",
+      subcommand: "wiki state-bump"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    structuredError({
+      code: "state_malformed",
+      message: "wiki/.state.json must be a JSON object",
+      subcommand: "wiki state-bump"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const source = parsed;
+  const next = reorderObject(source, field, tryParseJson(valueRaw));
+  const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+  const serialized = `${JSON.stringify(next, null, 2)}${trailingNewline}`;
+  const tmpPath = `${statePath}.tmp`;
+  writeFileSync10(tmpPath, serialized, "utf8");
+  renameSync4(tmpPath, statePath);
+  return EXIT_CODES.OK;
+};
+
+// src/wiki/index.ts
+var HELP_TEXT14 = `Usage: gaia wiki <subcommand> [args]
+
+  state [--json]                              Drift report.
+  commit-classify --since <sha> [--json]      Per-commit WORTHY/SKIP.
+  state-bump <field> <value>                  Atomic field bump in wiki/.state.json.
+  log-prepend --sha <h> --decision <D> --reason "..."
+                                              Prepend a decision line to wiki/log.md.
+  page-index [--json]                         Frontmatter + wikilink walk.
+  orphans                                     Pages with zero inbound links.
+  near-collisions [--max-distance N]          Per-domain Levenshtein over slugs.
+`;
+var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var SUBCOMMAND_HANDLERS = {
+  "commit-classify": run18,
+  "log-prepend": run19,
+  "near-collisions": run20,
+  "orphans": run22,
+  "page-index": run21,
+  "state": run23,
+  "state-bump": run24
+};
+var run25 = async (argv) => {
+  const subcommand = argv[0];
+  const rest = argv.slice(1);
+  if (subcommand === void 0 || HELP_TOKENS12.has(subcommand)) {
+    process.stdout.write(HELP_TEXT14);
+    return EXIT_CODES.OK;
+  }
+  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  if (handler !== void 0) {
+    const result = await handler(rest);
+    return typeof result === "number" ? result : EXIT_CODES.OK;
+  }
+  structuredError({
+    code: "unknown_subcommand",
+    message: `unknown wiki subcommand: ${subcommand}`,
+    subcommand: `wiki ${subcommand}`
+  });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+
 // src/index.ts
-var HELP_TEXT7 = `Usage: gaia <subcommand> [args]
+var HELP_TEXT15 = `Usage: gaia <subcommand> [args]
 
   telemetry emit <event_type> [--field value ...]
   telemetry compute-profile
   mentorship enable|disable|purge|status
   mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
+  wiki state|commit-classify|state-bump|log-prepend|page-index|orphans|near-collisions
 `;
 var printHelp2 = () => {
-  process.stdout.write(HELP_TEXT7);
+  process.stdout.write(HELP_TEXT15);
 };
-var HELP_TOKENS5 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var SUBCOMMAND_HANDLERS = {
+var HELP_TOKENS13 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var SUBCOMMAND_HANDLERS2 = {
   mentorship: run11,
   scaffold: run16,
-  telemetry: run17
+  telemetry: run17,
+  wiki: run25
 };
 var main = async () => {
   const subcommand = process.argv[2];
   const rest = process.argv.slice(3);
-  if (subcommand === void 0 || HELP_TOKENS5.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS13.has(subcommand)) {
     printHelp2();
     return EXIT_CODES.OK;
   }
   if (subcommand === "_internal-fetch-coaching") {
     return run(rest);
   }
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  const handler = SUBCOMMAND_HANDLERS2[subcommand];
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
