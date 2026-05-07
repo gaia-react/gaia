@@ -126,51 +126,16 @@ gaia wiki state-bump last_evaluated_at "$NEW_HEAD_AT"
 
 If `last_consolidated_sha` is absent on the existing state (first sync ever): bootstrap it with `gaia wiki state-bump last_consolidated_sha "$NEW_HEAD"`. This gives the consolidate gate a baseline so subsequent runs accumulate from a known point.
 
-## Step 7: Commit (branch-aware)
+## Step 7 — Land
 
-Stage:
+Run: `gaia wiki sync land --branch-aware`
 
-- All edited / created `wiki/**` files
-- `wiki/log.md`
-- `wiki/.state.json`
+Exit codes:
+- 0 — landed (CLI summary line shows how)
+- 1 — refused (CLI stderr explains why; surface to user verbatim)
+- 2 — unexpected (surface to user; do NOT retry)
 
-Then check the current branch and pick the landing strategy:
-
-```bash
-current_branch=$(git rev-parse --abbrev-ref HEAD)
-```
-
-### Case A — on `main` (or `master`)
-
-`main` is push-protected, so commit-in-place would dead-end. Branch first, commit, push, open PR, merge, return to `main`:
-
-```bash
-sync_branch="wiki/sync-$(date +%F)"
-git checkout -b "$sync_branch"
-git add wiki/
-git commit -m "wiki: sync through {short_sha} ({N_worthy} updated, {N_skipped} skipped)"
-git push -u origin "$sync_branch"
-gh pr create --title "wiki: sync through {short_sha} ({N_worthy} updated, {N_skipped} skipped)" \
-  --body "<short summary of WORTHY/SKIP decisions>"
-gh pr merge --squash --delete-branch  # release branches have no required checks; sync PRs typically pass quickly
-git checkout main
-git pull --ff-only
-```
-
-If the branch name collides (a previous incomplete sync), append `-2`, `-3`, etc. — never delete the existing branch silently.
-
-### Case B — on any other branch (feature, fix, release, worktree)
-
-The maintainer is mid-task on a non-protected branch. Commit in place — branching would fragment their working state across PRs they didn't ask for:
-
-```bash
-git add wiki/
-git commit -m "wiki: sync through {short_sha} ({N_worthy} updated, {N_skipped} skipped)"
-```
-
-This applies to git worktrees too: a worktree is by definition not on `main`, so commit on the worktree's branch directly.
-
-This commit is intentionally NOT prefixed `wiki: auto-commit` — it's a deliberate sync, not an auto-commit. The squash-autocommits hook will not fold it. Different audit trail.
+Do NOT inline branch logic, manual `gh pr` calls, or any push narrative. The CLI is authoritative.
 
 ## Step 8: Report
 

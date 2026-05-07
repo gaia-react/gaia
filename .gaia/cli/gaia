@@ -19959,8 +19959,242 @@ var run24 = (argv, options = {}) => {
   return EXIT_CODES.OK;
 };
 
+// src/wiki/util/branch.ts
+import { spawnSync } from "node:child_process";
+var defaultRunner = (command, args, options) => spawnSync(command, args, {
+  cwd: options.cwd,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"]
+});
+var PROTECTED_BRANCHES = /* @__PURE__ */ new Set(["main", "master"]);
+var expectSuccess = (result, command, args) => {
+  if (result.error !== void 0) {
+    throw new Error(
+      `${command} ${args.join(" ")} failed: ${result.error.message}`
+    );
+  }
+  if ((result.status ?? -1) !== 0) {
+    const stderr = (result.stderr ?? "").trim();
+    throw new Error(
+      `${command} ${args.join(" ")} exited ${result.status ?? -1}: ${stderr}`
+    );
+  }
+  return result.stdout ?? "";
+};
+var currentBranch = (cwd, runner = defaultRunner) => {
+  const args = ["rev-parse", "--abbrev-ref", "HEAD"];
+  const out = expectSuccess(runner("git", args, { cwd }), "git", args);
+  return out.trim();
+};
+var isProtectedBranch = (branch) => PROTECTED_BRANCHES.has(branch);
+var inspectWorkingTree = (cwd, runner = defaultRunner) => {
+  const args = ["status", "--porcelain=v1", "-uall"];
+  const out = expectSuccess(runner("git", args, { cwd }), "git", args);
+  const paths = [];
+  for (const rawLine of out.split("\n")) {
+    const line = rawLine.replace(/\r$/u, "");
+    if (line.length === 0) continue;
+    const payload = line.slice(3);
+    const renameSplit = payload.indexOf(" -> ");
+    if (renameSplit === -1) {
+      paths.push(payload);
+    } else {
+      paths.push(payload.slice(0, renameSplit));
+      paths.push(payload.slice(renameSplit + 4));
+    }
+  }
+  let hasWikiChanges = false;
+  let hasNonWikiChanges = false;
+  for (const candidate of paths) {
+    if (candidate.startsWith("wiki/")) {
+      hasWikiChanges = true;
+    } else {
+      hasNonWikiChanges = true;
+    }
+  }
+  return { hasNonWikiChanges, hasWikiChanges, paths };
+};
+
+// src/wiki/sync-land.ts
+var HELP_TEXT14 = `Usage: gaia wiki sync land [--branch-aware]
+
+  Land staged wiki changes via the correct branch strategy:
+    - on main/master: refuses unless --branch-aware (then branch + PR + auto-merge)
+    - elsewhere:      in-place commit on the current branch
+
+  Exit codes:
+    0  success
+    1  user-correctable refusal (dirty tree, missing flag, ...)
+    2  unexpected (git/gh failure)
+`;
+var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT = 2;
+var parseFlags9 = (argv) => {
+  let branchAware = false;
+  for (const token of argv) {
+    if (token === "--branch-aware") {
+      branchAware = true;
+      continue;
+    }
+    return { message: `unknown flag: ${token}`, ok: false };
+  }
+  return { flags: { branchAware }, ok: true };
+};
+var refuse = (message) => {
+  process.stderr.write(`${message}
+`);
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+var runStep = (runner, step, cwd) => runner(step.command, step.args, { cwd });
+var passthroughFailure = (result, step) => {
+  const stderr = (result.stderr ?? "").trim();
+  const errorPart = result.error !== void 0 ? ` (${result.error.message})` : "";
+  const status = result.status ?? -1;
+  process.stderr.write(
+    `sync-land: ${step.command} ${step.args.join(" ")} exited ${status}${errorPart}
+`
+  );
+  if (stderr.length > 0) {
+    process.stderr.write(`${stderr}
+`);
+  }
+  return UNEXPECTED_EXIT;
+};
+var stepSucceeded = (result) => result.error === void 0 && (result.status ?? -1) === 0;
+var inPlaceLanding = (ctx) => {
+  const message = `wiki: sync through ${ctx.shortHead}`;
+  const sequence = [
+    { args: ["add", "wiki"], command: "git" },
+    { args: ["commit", "-m", message], command: "git" }
+  ];
+  for (const step of sequence) {
+    const result = runStep(ctx.runner, step, ctx.cwd);
+    if (!stepSucceeded(result)) return passthroughFailure(result, step);
+  }
+  process.stdout.write(
+    `sync-land: landed via in-place commit ${ctx.shortHead}
+`
+  );
+  return EXIT_CODES.OK;
+};
+var todayUtc2 = (now = /* @__PURE__ */ new Date()) => {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+var protectedBranchLanding = (ctx, options) => {
+  const branchName = `wiki-sync/${options.today}-${ctx.shortHead}`;
+  const message = `wiki: sync through ${ctx.shortHead}`;
+  const prTitle = message;
+  const prBody = `Automated wiki sync landed via \`gaia wiki sync land --branch-aware\`. State advanced to ${ctx.shortHead}.`;
+  const sequence = [
+    { args: ["checkout", "-b", branchName], command: "git" },
+    { args: ["add", "wiki"], command: "git" },
+    { args: ["commit", "-m", message], command: "git" },
+    { args: ["push", "-u", "origin", branchName], command: "git" },
+    { args: ["pr", "create", "--title", prTitle, "--body", prBody], command: "gh" },
+    { args: ["pr", "merge", "--squash", "--auto"], command: "gh" }
+  ];
+  for (const step of sequence) {
+    const result = runStep(ctx.runner, step, ctx.cwd);
+    if (!stepSucceeded(result)) return passthroughFailure(result, step);
+  }
+  process.stdout.write(
+    `sync-land: landed via branch-and-PR commit ${ctx.shortHead}
+`
+  );
+  return EXIT_CODES.OK;
+};
+var run25 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS12.has(argv[0])) {
+    process.stdout.write(HELP_TEXT14);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags9(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "wiki sync land"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwdOption = options.cwd ?? process.cwd();
+  const runner = options.runner ?? defaultRunner;
+  let repoRoot2;
+  try {
+    repoRoot2 = resolveRepoRoot3(cwdOption);
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki sync land must run inside a git repository",
+      subcommand: "wiki sync land"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let branch;
+  let workingTree;
+  try {
+    branch = currentBranch(repoRoot2, runner);
+    workingTree = inspectWorkingTree(repoRoot2, runner);
+  } catch (error51) {
+    process.stderr.write(
+      `sync-land: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return UNEXPECTED_EXIT;
+  }
+  if (workingTree.hasNonWikiChanges) {
+    return refuse(
+      "sync-land: working tree has non-wiki changes; aborting"
+    );
+  }
+  if (!workingTree.hasWikiChanges) {
+    return refuse("sync-land: nothing to land");
+  }
+  if (isProtectedBranch(branch) && !parsed.flags.branchAware) {
+    return refuse(
+      "sync-land: refusing to land directly on main; pass --branch-aware or check out a feature branch"
+    );
+  }
+  let shortHead;
+  try {
+    const head = spawnHead(runner, repoRoot2);
+    shortHead = shortSha(head, repoRoot2);
+  } catch (error51) {
+    process.stderr.write(
+      `sync-land: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return UNEXPECTED_EXIT;
+  }
+  const ctx = {
+    cwd: repoRoot2,
+    runner,
+    shortHead
+  };
+  if (isProtectedBranch(branch)) {
+    return protectedBranchLanding(ctx, { today: options.today ?? todayUtc2() });
+  }
+  return inPlaceLanding(ctx);
+};
+var spawnHead = (runner, cwd) => {
+  const result = runner("git", ["rev-parse", "HEAD"], { cwd });
+  if (result.error !== void 0) {
+    throw new Error(`git rev-parse HEAD failed: ${result.error.message}`);
+  }
+  if ((result.status ?? -1) !== 0) {
+    const stderr = (result.stderr ?? "").trim();
+    throw new Error(
+      `git rev-parse HEAD exited ${result.status ?? -1}: ${stderr}`
+    );
+  }
+  return (result.stdout ?? "").trim();
+};
+
 // src/wiki/index.ts
-var HELP_TEXT14 = `Usage: gaia wiki <subcommand> [args]
+var HELP_TEXT15 = `Usage: gaia wiki <subcommand> [args]
 
   state [--json]                              Drift report.
   commit-classify --since <sha> [--json]      Per-commit WORTHY/SKIP.
@@ -19970,8 +20204,31 @@ var HELP_TEXT14 = `Usage: gaia wiki <subcommand> [args]
   page-index [--json]                         Frontmatter + wikilink walk.
   orphans                                     Pages with zero inbound links.
   near-collisions [--max-distance N]          Per-domain Levenshtein over slugs.
+  sync land [--branch-aware]                  Branch-aware landing of staged wiki changes.
 `;
-var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
+
+  land [--branch-aware]                       Land staged wiki changes via the correct
+                                              branch strategy.
+`;
+var HELP_TOKENS13 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var runSync = async (args) => {
+  const subcommand = args[0];
+  const rest = args.slice(1);
+  if (subcommand === void 0 || HELP_TOKENS13.has(subcommand)) {
+    process.stdout.write(SYNC_HELP_TEXT);
+    return EXIT_CODES.OK;
+  }
+  if (subcommand === "land") {
+    return run25(rest);
+  }
+  structuredError({
+    code: "unknown_subcommand",
+    message: `unknown wiki sync subcommand: ${subcommand}`,
+    subcommand: `wiki sync ${subcommand}`
+  });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
 var SUBCOMMAND_HANDLERS = {
   "commit-classify": run18,
   "log-prepend": run19,
@@ -19979,13 +20236,14 @@ var SUBCOMMAND_HANDLERS = {
   "orphans": run22,
   "page-index": run21,
   "state": run23,
-  "state-bump": run24
+  "state-bump": run24,
+  "sync": runSync
 };
-var run25 = async (argv) => {
+var run26 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS12.has(subcommand)) {
-    process.stdout.write(HELP_TEXT14);
+  if (subcommand === void 0 || HELP_TOKENS13.has(subcommand)) {
+    process.stdout.write(HELP_TEXT15);
     return EXIT_CODES.OK;
   }
   const handler = SUBCOMMAND_HANDLERS[subcommand];
@@ -20002,7 +20260,7 @@ var run25 = async (argv) => {
 };
 
 // src/index.ts
-var HELP_TEXT15 = `Usage: gaia <subcommand> [args]
+var HELP_TEXT16 = `Usage: gaia <subcommand> [args]
 
   telemetry emit <event_type> [--field value ...]
   telemetry compute-profile
@@ -20012,19 +20270,19 @@ var HELP_TEXT15 = `Usage: gaia <subcommand> [args]
   wiki state|commit-classify|state-bump|log-prepend|page-index|orphans|near-collisions
 `;
 var printHelp2 = () => {
-  process.stdout.write(HELP_TEXT15);
+  process.stdout.write(HELP_TEXT16);
 };
-var HELP_TOKENS13 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS14 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS2 = {
   mentorship: run11,
   scaffold: run16,
   telemetry: run17,
-  wiki: run25
+  wiki: run26
 };
 var main = async () => {
   const subcommand = process.argv[2];
   const rest = process.argv.slice(3);
-  if (subcommand === void 0 || HELP_TOKENS13.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS14.has(subcommand)) {
     printHelp2();
     return EXIT_CODES.OK;
   }

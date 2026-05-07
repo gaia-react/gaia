@@ -17,6 +17,7 @@ import {run as runOrphans} from './orphans.js';
 import {run as runPageIndex} from './page-index.js';
 import {run as runState} from './state.js';
 import {run as runStateBump} from './state-bump.js';
+import {run as runSyncLand} from './sync-land.js';
 
 const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
 
@@ -28,6 +29,13 @@ const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
   page-index [--json]                         Frontmatter + wikilink walk.
   orphans                                     Pages with zero inbound links.
   near-collisions [--max-distance N]          Per-domain Levenshtein over slugs.
+  sync land [--branch-aware]                  Branch-aware landing of staged wiki changes.
+`;
+
+const SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
+
+  land [--branch-aware]                       Land staged wiki changes via the correct
+                                              branch strategy.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -35,6 +43,31 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 type SubcommandHandler = (
   args: readonly string[]
 ) => number | Promise<number>;
+
+const runSync: SubcommandHandler = async (
+  args: readonly string[]
+): Promise<number> => {
+  const subcommand = args[0] as string | undefined;
+  const rest = args.slice(1);
+
+  if (subcommand === undefined || HELP_TOKENS.has(subcommand)) {
+    process.stdout.write(SYNC_HELP_TEXT);
+
+    return EXIT_CODES.OK;
+  }
+
+  if (subcommand === 'land') {
+    return runSyncLand(rest);
+  }
+
+  structuredError({
+    code: 'unknown_subcommand',
+    message: `unknown wiki sync subcommand: ${subcommand}`,
+    subcommand: `wiki sync ${subcommand}`,
+  });
+
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
   'commit-classify': runCommitClassify,
@@ -44,6 +77,7 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   'page-index': runPageIndex,
   'state': runState,
   'state-bump': runStateBump,
+  'sync': runSync,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {
