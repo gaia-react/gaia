@@ -5,9 +5,9 @@ Default: last 7 days of transcripts for the gaia-react/gaia project.
 Override with --days N or --since YYYY-MM-DD.
 
 Usage:
-    python3 .claude-tests/observability/serena/usage_scan.py
-    python3 .claude-tests/observability/serena/usage_scan.py --days 1
-    python3 .claude-tests/observability/serena/usage_scan.py --since 2026-05-04
+    python3 .gaia/tests/observability/serena/usage_scan.py
+    python3 .gaia/tests/observability/serena/usage_scan.py --days 1
+    python3 .gaia/tests/observability/serena/usage_scan.py --since 2026-05-04
 """
 import argparse
 import json

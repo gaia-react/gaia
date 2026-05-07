@@ -1,6 +1,6 @@
 # Distribution tests
 
-Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the release bundle via category 3 (`.claude-tests/`). Audience is the machine — every scenario reports PASS/FAIL with a deterministic exit code. Convention: `.claude/rules/_internal/smoke.md`.
+Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the release bundle via category 3 (`.gaia/tests/`). Audience is the machine — every scenario reports PASS/FAIL with a deterministic exit code. Convention: `.claude/rules/_internal/smoke.md`.
 
 ## When to run
 
@@ -14,7 +14,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 ## Layout
 
 ```
-.claude-tests/distribution/
+.gaia/tests/distribution/
 ├── run-all.sh             # top-level driver
 ├── lib/
 │   ├── lib.sh             # pass/fail/log/require_cmd, PROJECT_ROOT
@@ -31,7 +31,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 ## Running
 
 ```bash
-bash .claude-tests/distribution/run-all.sh
+bash .gaia/tests/distribution/run-all.sh
 ```
 
 Walks `*.sh` (excluding `run-all.sh` and anything under `lib/`/`diagnostic/`) in lexicographic order, prints PASS/FAIL per scenario, exits non-zero on any failure.
@@ -39,7 +39,7 @@ Walks `*.sh` (excluding `run-all.sh` and anything under `lib/`/`diagnostic/`) in
 Individual scenarios are runnable directly:
 
 ```bash
-bash .claude-tests/distribution/01-files-present.sh
+bash .gaia/tests/distribution/01-files-present.sh
 ```
 
 ## Prerequisites
@@ -65,5 +65,5 @@ Skips automatically if `corepack` is not on the host PATH (Node 16.13+ ships cor
 
 ## See also
 
-- `.claude-tests/smoke/README.md` — sibling smoke kit, same shape.
+- `.gaia/tests/smoke/README.md` — sibling smoke kit, same shape.
 - `wiki/concepts/Release Workflow.md` — what the staged tarball is and how it's built.

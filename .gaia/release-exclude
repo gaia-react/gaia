@@ -31,7 +31,7 @@ wiki/decisions/Bundle-time Scrub.md
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked
 # from an adopter's project. _internal/ rules belong to the same harness.
-.claude-tests
+.gaia/tests
 .claude/rules/_internal
 .specify/extensions/gaia/test
 

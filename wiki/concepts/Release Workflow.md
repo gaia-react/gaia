@@ -90,7 +90,7 @@ Other wiki pages under `wiki/concepts/`, `wiki/decisions/`, `wiki/dependencies/`
 
 ### 3. Test harnesses and audit harnesses
 
-- `.claude-tests/` — bats / smoke harness invoked by maintainer CI.
+- `.gaia/tests/` — bats / smoke harness invoked by maintainer CI.
 - `.claude/rules/_internal/` — rules consumed only by the smoke harness; their `@`-imports would dangle on adopter installs.
 - `.specify/extensions/gaia/test/` — GAIA SPEC UAT runbooks.
 

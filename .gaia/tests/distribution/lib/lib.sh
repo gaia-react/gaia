@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared primitives for .claude-tests/distribution scenarios.
+# Shared primitives for .gaia/tests/distribution scenarios.
 #
 # Sourced by every scenario at the top:
 #   source "$(dirname "$0")/lib/lib.sh"

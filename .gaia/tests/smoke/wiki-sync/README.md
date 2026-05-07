@@ -16,7 +16,7 @@ These are MANUAL / pre-release. Not run in CI. Run them before cutting a GAIA re
 ### All wiki-sync scenarios
 
 ```bash
-bash .claude-tests/smoke/run-all.sh
+bash .gaia/tests/smoke/run-all.sh
 ```
 
 Prints PASS/FAIL per scenario and a final summary. Exits non-zero on any failure.
@@ -24,7 +24,7 @@ Prints PASS/FAIL per scenario and a final summary. Exits non-zero on any failure
 ### Individual scenario
 
 ```bash
-bash .claude-tests/smoke/wiki-sync/01-meaningful-change.sh
+bash .gaia/tests/smoke/wiki-sync/01-meaningful-change.sh
 ```
 
 Each scenario:

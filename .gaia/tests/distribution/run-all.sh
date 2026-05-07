@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run all distribution-validation scenarios, report pass/fail.
-# Walks .claude-tests/distribution/*.sh in lexicographic order, excluding
+# Walks .gaia/tests/distribution/*.sh in lexicographic order, excluding
 # run-all.sh itself and anything under lib/ or diagnostic/. Naming
 # convention is NN-name.sh so order is deterministic.
 #

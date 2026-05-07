@@ -26,7 +26,7 @@ What this smoke does NOT cover:
 ## Run
 
 ```bash
-bash .claude-tests/smoke/telemetry-v1/run.sh
+bash .gaia/tests/smoke/telemetry-v1/run.sh
 ```
 
 Exit `0` when every check passes; `1` on the first failure (continues all tests so the report shows the full surface). Pre-flight failure (missing `.gaia/cli/gaia`, missing fixture, missing `node_modules/.bin/tsx`) exits `2`.

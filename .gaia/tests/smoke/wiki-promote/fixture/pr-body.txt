@@ -13,7 +13,7 @@ shape to read.
 
 ## Test plan
 
-- [x] `bash .claude-tests/smoke/wiki-promote/run.sh` exits 0.
+- [x] `bash .gaia/tests/smoke/wiki-promote/run.sh` exits 0.
 - [x] Manifest declares `speckit.gaia.wiki-promote` and registers the
       `after_implement` hook.
 
