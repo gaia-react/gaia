@@ -118,6 +118,13 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 
 `tests.yml` and `chromatic.yml` DO ship; both are adopter-relevant. Their `paths-filter` allowlists are written without reference to maintainer-only paths so the filter stays meaningful on an adopter clone.
 
+### 10. Maintainer-only health-audit infrastructure
+
+- `.gaia/cli/health/` — health-audit taxonomy and per-cycle run state. Documents the issue classes prior independent audits found and the "decided / not findings" list so future audits don't re-litigate settled questions.
+- `.gaia/cli/src/health/` — health-audit orchestrator + check primitives (added post-PR-#97 on a separate branch). Not imported by `.gaia/cli/src/index.ts`, so esbuild tree-shakes it out of the bundled `gaia` binary.
+
+Adopters audit their own app via the standard `code-review-audit` agent under `.claude/agents/`; the GAIA-template-specific health audit is maintainer-only because its taxonomy and detections target the GAIA repo's surface, not an adopter project.
+
 ### Adopter-owned sentinels
 
 These ARE distributed but excluded from `.gaia/manifest.json` by the classifier (not by `.gaia/release-exclude`) because adopters take ownership at first install and `/update-gaia` must never touch them:

@@ -82,3 +82,13 @@ wiki/concepts/Release Workflow.md
 # silent passengers at best and confusing CI failures at worst.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
+
+# --- 10. Maintainer-only health-audit infrastructure ---
+# `.gaia/cli/health/` holds the audit taxonomy, run state, and (post-#97)
+# the orchestrator's per-cycle outputs. Only maintainers run health audits
+# against the GAIA template; adopters audit their own app via the standard
+# `code-review-audit` agent. The bundled `gaia` binary does not import
+# from `src/health/`, so esbuild tree-shakes any future health code out
+# of the adopter binary by construction.
+.gaia/cli/health
+.gaia/cli/src/health
