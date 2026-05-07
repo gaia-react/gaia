@@ -1,4 +1,4 @@
-import {factory as ulidFactory} from 'ulid';
+import {monotonicFactory as ulidFactory} from 'ulid';
 /**
  * Programmatic builder for the profile pattern-detection fixture set.
  *

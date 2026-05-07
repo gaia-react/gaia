@@ -177,7 +177,19 @@ For every override that was **retained** in Phase 0, repeat the Phase 0 toggle t
 
 ## Phase 7: Final report
 
-Print this report. Do not commit.
+Build the report **only** from the agent reports returned to you. Do not add rows from your own memory of the run.
+
+**What goes in each section:**
+
+- **Updated packages** — every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
+- **Breaking changes applied** — only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
+- **Overrides audited** — only what the Phase 0 / Phase 6 audit reports. If `pnpm.overrides` was empty, write "None" and move on.
+- **Skipped packages** — *only* packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the Phase 1 ESLint 9.x cap). Those are silent by design — surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
+- **Quality gate** — the gate result reported by the agents, verbatim.
+
+If a section would be empty, write "None" rather than leaving it blank or fabricating filler.
+
+Print the report. Do not commit.
 
 ```
 ## Migration Report

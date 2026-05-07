@@ -11,7 +11,7 @@
     "gaia": "tsx ./src/index.ts"
   },
   "dependencies": {
-    "ulid": "2.4.0",
+    "ulid": "3.0.2",
     "zod": "4.4.3"
   },
   "devDependencies": {
@@ -22,6 +22,8 @@
     "vitest": "4.1.5"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

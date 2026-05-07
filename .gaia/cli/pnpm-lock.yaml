@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       ulid:
-        specifier: 2.4.0
-        version: 2.4.0
+        specifier: 3.0.2
+        version: 3.0.2
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -699,8 +699,8 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  ulid@2.4.0:
-    resolution: {integrity: sha512-fIRiVTJNcSRmXKPZtGzFQv9WRrZ3M9eoptl/teFJvjOzmpU+/K/JH6HZ8deBfb5vMEpicJcLn7JmvdknlMq7Zg==}
+  ulid@3.0.2:
+    resolution: {integrity: sha512-yu26mwteFYzBAot7KVMqFGCVpsF6g8wXfJzQUHvu1no3+rRRSFcSV2nKeYvNPLD2J4b08jYBDhHUjeH0ygIl9w==}
     hasBin: true
 
   undici-types@7.19.2:
@@ -1295,7 +1295,7 @@ snapshots:
 
   typescript@6.0.3: {}
 
-  ulid@2.4.0: {}
+  ulid@3.0.2: {}
 
   undici-types@7.19.2: {}
 
