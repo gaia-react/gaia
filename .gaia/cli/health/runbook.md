@@ -109,27 +109,40 @@ Reports: per-grep line (pattern, match count, triage breakdown). One-line verdic
 
 Reads: none.
 
-Commands (note: `block-rm-rf.sh` PreToolUse hook denies any unquoted absolute-path token to `rm -rf`. The audit `rm -rf "$STAGING"` line below is intentionally written in **variable form** — the hook tokenizes statically and sees the literal `"$STAGING"`, not its expansion, so the cleanup passes. Do not inline the absolute path; keep the variable):
+Commands. Two notes before reading the block:
+
+1. `block-rm-rf.sh` PreToolUse hook denies any literal absolute-path token to `rm -rf`. All cleanup paths below live in variables — the hook tokenizes statically, sees the literal `"$STAGING"` / `"$ALL_TRACKED"` / etc., and lets the rm through. Do not inline `/tmp/...` paths inside the trap or anywhere else; keep them in variables.
+2. Cleanup is `trap`-protected so an early non-zero exit (e.g. the wikilink `grep` returning 1 on no-match under `set -e`) cannot orphan the staging dir. The wikilink `grep` is also explicitly suffixed with `|| true` for the same reason — empty output is the success signal, exit 1 is not a failure.
 
 ```bash
-git ls-files > /tmp/all-tracked.txt
+STAGING="/tmp/gaia-vAUDIT$(date +%s)"
+ALL_TRACKED="/tmp/gaia-audit-all.$$"
+EXCLUDE_REGEX="/tmp/gaia-audit-exclude.$$"
+INCLUDE="/tmp/gaia-audit-include.$$"
+trap 'rm -rf "$STAGING" "$ALL_TRACKED" "$EXCLUDE_REGEX" "$INCLUDE"' EXIT
+mkdir -p "$STAGING"
+git ls-files > "$ALL_TRACKED"
 awk '/^[[:space:]]*#/ {next} NF==0 {next} {print}' .gaia/release-exclude \
   | sed 's|[][\\.*^$()+?{}|]|\\&|g' \
   | awk '{print "^"$0"(/|$)"}' \
-  > /tmp/exclude-regex.txt
-grep -vE -f /tmp/exclude-regex.txt /tmp/all-tracked.txt > /tmp/include.txt
-STAGING="/tmp/gaia-vAUDIT$(date +%s)"
-mkdir -p "$STAGING"
-rsync -a --files-from=/tmp/include.txt . "$STAGING"/
+  > "$EXCLUDE_REGEX"
+grep -vE -f "$EXCLUDE_REGEX" "$ALL_TRACKED" > "$INCLUDE"
+rsync -a --files-from="$INCLUDE" . "$STAGING"/
 ./.gaia/cli/gaia release scrub "$STAGING"
 ./.gaia/cli/gaia release runtime-deps --staging "$STAGING"
 find "$STAGING" -name "*.md" -exec grep -l "gaia:maintainer-only" {} \;
-grep -rEn "\[\[(Release Workflow|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta)\]\]" "$STAGING/wiki/"
-rm -rf "$STAGING"
-rm /tmp/all-tracked.txt /tmp/exclude-regex.txt /tmp/include.txt
+grep -rEn "\[\[(Release Workflow|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta)\]\]" "$STAGING/wiki/" || true
 ```
 
-Reports: staged file count; `release scrub` stdout; `release runtime-deps` stdout; marker-fragment scan result (must be empty); wikilink-to-excluded scan result (must be empty). One-line verdict: "bundle clean" or "N anomalies". Under 250 words.
+After the script exits, run a one-line **post-cleanup verification** in the Auditor's shell (this stays out of the trapped block on purpose — it observes the post-trap state):
+
+```bash
+ls -d /tmp/gaia-vAUDIT* 2>/dev/null | wc -l
+```
+
+Expected output: `0`. Any non-zero value indicates an orphan from this run or a prior run; investigate before grading.
+
+Reports: staged file count; `release scrub` stdout; `release runtime-deps` stdout; marker-fragment scan result (must be empty); wikilink-to-excluded scan result (must be empty); **post-cleanup leftover-staging count (must be `0`)**. One-line verdict: "bundle clean" or "N anomalies". Under 250 words.
 
 ## Bucket D — Cross-class enforcement walk
 
