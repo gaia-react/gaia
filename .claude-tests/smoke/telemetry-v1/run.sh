@@ -163,8 +163,8 @@ test_envelope_end_to_end() {
     today="$(today_utc)"
 
     # Pass `--local '{...}'` so the mentorship envelope carries the `_local`
-    # namespace (UAT-003). The token has no identity-bearing keys; cloud
-    # projection strips `_local` entirely so cloud line stays clean.
+    # namespace. The token has no identity-bearing keys; cloud projection
+    # strips `_local` entirely so cloud line stays clean.
     if ! run_gaia "$TEST_REPO" "$TEST_HOME" telemetry emit uat_pass \
         --uat-id UAT-007 --spec-id SPEC-014 --task-id TASK-093 \
         --attempts 1 --area-tags visual,react,form --agent-type Senior \
@@ -192,7 +192,7 @@ test_envelope_end_to_end() {
         return
     fi
 
-    # Mentorship line carries _local; cloud line does not. (UAT-008, UAT-013.)
+    # Mentorship line carries _local; cloud line does not.
     if grep -q '"_local"' "$mfile"; then
         pass "test1: mentorship line carries _local namespace"
     else
@@ -239,7 +239,7 @@ test_envelope_end_to_end() {
         return
     fi
     if [ "$(line_count "$mfile")" = "1" ] && [ "$(line_count "$cfile")" = "1" ]; then
-        pass "test1: idempotent re-emit produced no second line (UAT-012)"
+        pass "test1: idempotent re-emit produced no second line"
     else
         fail "test1: idempotent re-emit added a duplicate line (mentorship=$(line_count "$mfile"), cloud=$(line_count "$cfile"))"
     fi
@@ -390,7 +390,7 @@ test_compute_profile_idempotent() {
     fi
 
     if head -n 1 "$profile_path" | grep -q "DO NOT EDIT"; then
-        pass "test4: profile.md carries DO NOT EDIT header (UAT-036)"
+        pass "test4: profile.md carries DO NOT EDIT header"
     else
         fail "test4: profile.md missing DO NOT EDIT header"
     fi
@@ -398,7 +398,7 @@ test_compute_profile_idempotent() {
     # The render embeds `Generated: <now ISO>` so a strict full-file digest
     # would differ between runs by that single line. Strip the Generated
     # line before comparing — the rest of the file is deterministic against
-    # the fixture (UAT-035 idempotency on the same input).
+    # the fixture (idempotency on the same input).
     local stable_a stable_b
     stable_a="$(grep -v '^Generated:' "$profile_path" | shasum -a 256 | awk '{print $1}')"
 
@@ -418,7 +418,7 @@ test_compute_profile_idempotent() {
     local profile_mode
     profile_mode="$(mode_octal "$profile_path")"
     if [ "$profile_mode" = "600" ]; then
-        pass "test4: profile.md mode 600 (UAT-035 atomic write contract)"
+        pass "test4: profile.md mode 600 (atomic write contract)"
     else
         fail "test4: profile.md mode is $profile_mode, expected 600"
     fi
@@ -501,13 +501,13 @@ test_mentorship_disabled_short_circuit() {
     today="$(today_utc)"
 
     if [ "$(line_count "${cdir}/events-${today}.jsonl")" = "1" ]; then
-        pass "test6: cloud line written despite mentorship disabled (UAT-009)"
+        pass "test6: cloud line written despite mentorship disabled"
     else
         fail "test6: expected 1 cloud line, got $(line_count "${cdir}/events-${today}.jsonl")"
     fi
 
     if [ ! -d "$mdir" ] || [ ! -f "${mdir}/events-${today}.jsonl" ]; then
-        pass "test6: mentorship file absent (UAT-009)"
+        pass "test6: mentorship file absent"
     else
         fail "test6: mentorship file present despite mentorship disabled"
     fi
@@ -520,7 +520,7 @@ test_mentorship_disabled_short_circuit() {
     stderr_log="${WORK}/t6/compute.stderr"
     if run_gaia "$TEST_REPO" "$TEST_HOME" telemetry compute-profile \
         >"$stdout_log" 2>"$stderr_log"; then
-        pass "test6: compute-profile exits 0 when mentorship disabled (UAT-040)"
+        pass "test6: compute-profile exits 0 when mentorship disabled"
     else
         fail "test6: compute-profile non-zero when mentorship disabled"
     fi
@@ -530,7 +530,7 @@ test_mentorship_disabled_short_circuit() {
         fail "test6: profile.md leaked at $profile_path despite mentorship disabled"
     fi
     if [ ! -s "$stdout_log" ]; then
-        pass "test6: compute-profile silent on stdout when disabled (UAT-026 chain trigger contract)"
+        pass "test6: compute-profile silent on stdout when disabled (chain trigger contract)"
     else
         fail "test6: compute-profile wrote stdout when disabled: $(cat "$stdout_log")"
     fi

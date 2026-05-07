@@ -23,8 +23,6 @@
 # extension schema. `==X.Y.Z` is also accepted (legacy form). The script
 # resolves the floor and the optional exclusive ceiling of the specifier set
 # and enforces both: drift below the floor *or* at-or-above the ceiling fails.
-#
-# UAT: UAT-018.
 set -euo pipefail
 
 repo_root="${1:-$PWD}"

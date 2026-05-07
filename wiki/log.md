@@ -3,7 +3,7 @@ type: meta
 title: Log
 status: active
 created: 2026-05-04
-updated: 2026-05-07
+updated: 2026-05-08
 tags: [meta, log]
 ---
 
@@ -11,6 +11,47 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-08 158c86b - SKIP: docs(claude-integration): codify UAT/SPEC narrative-ref discipline (wiki-style + wiki-lint)
+- 2026-05-08 b4b9ce5 - SKIP: docs(claude-integration): audit #13 — ship check-updates, scrub SPEC IDs in extension surfaces
+- 2026-05-08 5c005da - SKIP: docs(claude-integration): close wikilink-to-excluded class across full corpus
+- 2026-05-08 0f5dc0b - SKIP: docs(claude-integration): scrub wiki-index wikilink leaks; codify wikilink class
+- 2026-05-08 163c7bd - SKIP: docs(claude-integration): scrub maintainer-governance leaks; release-exclude root governance
+- 2026-05-08 23d0ed7 - SKIP: docs(claude-integration): scrub protected mentorship paths and tighten taxonomy detection
+- 2026-05-08 f3b4bc8 - SKIP: docs(claude-integration): scrub maintainer-path leaks and obscurity-rule disclosures
+- 2026-05-08 ac7c019 - SKIP: docs(claude-integration): scrub maintainer-path leaks and stale phase comments
+- 2026-05-08 67b8220 - SKIP: docs(claude-integration): seed maintainer-only health-audit taxonomy
+- 2026-05-08 e665b40 - SKIP: docs(claude-integration): surface wiki primitives in CLI help and Wiki Management
+- 2026-05-08 6a39be4 - SKIP: docs(claude-integration): scrub zombie wiki-stop-safety-net.sh refs
+- 2026-05-08 98f7a62 - SKIP: ci: scrub maintainer leakage from adopter-shipped workflows
+- 2026-05-08 c6eeecc - SKIP: ci(tests): split maintainer CLI tests off the app workflow
+- 2026-05-08 a8a4b75 - SKIP: ci(chromatic): invert paths-filter to allowlist Storybook-relevant changes
+- 2026-05-08 4bd9c26 - SKIP: docs(claude-integration): A+ polish — Storybook H1, audit grep precision
+- 2026-05-08 ed94f49 - SKIP: feat(claude-integration): A+ pass — manifest regen, orphans walker, distribution-boundary docs
+- 2026-05-08 8730d15 - SKIP: docs(claude-integration): A pass — drop @-imports, scrub stale refs
+- 2026-05-08 111c21b - SKIP: feat(claude-integration): A- pass — telemetry to TS, dead-paths primitive, rule cleanup
+- 2026-05-08 4fd7e19 - SKIP: wiki: consolidate via two-stage flow — 1 finding, kept both
+- 2026-05-08 ca6cc0a - SKIP: docs(wiki-consolidate): two-stage flow with parent-side apply loop
+- 2026-05-08 134f2f3 - SKIP: wiki: consolidate report 2026-05-07 — 9 near-collision findings
+- 2026-05-08 c7e4b18 - SKIP: docs(rules): wiki-style — extend to cover SPEC-NNN references
+- 2026-05-08 b7d88bd - SKIP: wiki: sync through 868f05b (19 commits, 11 worthy pages — init/release/update workflows)
+- 2026-05-07 868f05b - SKIP: docs(wiki): scrub UAT and SPEC-NNN references from body prose (wiki maintenance, no architectural change)
+- 2026-05-07 ce6bc10 - SKIP: docs(rules): wiki-style — present tense rules already committed; no wiki narrative update needed
+- 2026-05-07 d886b5c - WORTHY: docs(plan): add SUMMARY.md findings ledger to orchestrator contract → wiki/concepts/Task Orchestration.md
+- 2026-05-07 df25fee - SKIP: fix(statusline): shorten /setup-gaia indicator text (UI-only change)
+- 2026-05-07 8c9b0ec - WORTHY: feat: clone-setup gate, mentorship rule relocation, wiki primitive expansions → wiki/hot.md, wiki/index.md
+- 2026-05-07 d238697 - WORTHY: feat(cli): gaia init subcommands (strip-branding, configure-i18n, rename, wire-statusline, finalize, resume) → wiki/concepts/Init Workflow.md (new), wiki/index.md
+- 2026-05-07 fc69dde - WORTHY: feat(cli): gaia release namespace (preflight, bump, changelog, scrub-wiki, manifest, commit-and-tag) → wiki/concepts/Release Workflow.md, wiki/index.md
+- 2026-05-07 71674d7 - WORTHY: feat(cli): gaia update merge — three-way file compare with manifest classes → wiki/concepts/Update Merge.md (new), wiki/index.md
+- 2026-05-07 3704e6c - WORTHY: feat(cli): gaia wiki sync land — deterministic branch-aware push → wiki/concepts/Wiki Sync.md
+- 2026-05-07 4e85e08 - SKIP: refactor(commands): wire wiki-sync, wiki-lint, wiki-consolidate (implementation plumbing; concepts already documented)
+- 2026-05-07 a3f2a0c - WORTHY: feat(cli): wiki primitives (state, commit-classify, state-bump, log-prepend, page-index, orphans, near-collisions) → wiki/concepts/Wiki Sync.md, wiki/decisions/Wiki Management.md (new)
+- 2026-05-07 0a443c1 - WORTHY: feat(cli): scaffold component/hook/route/service subcommands → wiki/modules/CLI Scaffolding.md (new), wiki/index.md
+- 2026-05-07 86db352 - WORTHY: feat(cli): scaffold shared infrastructure (template loader, barrel insert) → wiki/modules/CLI Scaffolding.md
+- 2026-05-07 3da4cc3 - SKIP: chore(claude): quick wins (model swaps, hook simplifications, playwright split; no architectural change)
+- 2026-05-07 2b57eed - SKIP: chore(deps): bump vite 8.0.10 → 8.0.11; clamp /update-deps Wave B (dependency maintenance)
+- 2026-05-07 5847b5b - SKIP: chore(deps): bump ulid 2 → 3, +11 minor/patch (dependency maintenance)
+- 2026-05-07 ebaaec6 - WORTHY: chore(cli): relocate to .gaia/cli, ship as bundled binary, scrub internal refs → wiki/concepts/CLI Architecture.md (updated), wiki/index.md
+- 2026-05-07 54d8b4b - SKIP: wiki: consolidate + lint reports (meta audit output)
 - 2026-05-07 320335e - WORTHY: SPEC-001 telemetry v1 — gaia-cli/ workspace, three-stream architecture, mentorship opt-in, profile detection, adaptation injection → wiki/concepts/Telemetry.md (new), wiki/index.md
 - 2026-05-07 b27f060 - SKIP: README-only update (no architectural decision)
 - 2026-05-07 5ddfe48 - SKIP: wiki already updated in-commit (wiki/dependencies/Husky.md updated for lint-staged v17 + .lintstagedrc.json rename in the same commit); react-router + other bumps are version-only
@@ -35,7 +76,7 @@ tags: [meta, log]
 - 2026-05-06 2e5ef3b - SKIP: style (lint+prettier sweep)
 - 2026-05-06 84e1a6d - SKIP: wiki: prefix (wiki sync commit itself)
 - 2026-05-06 ef53be1 - WORTHY: gaia-init installs spec-kit + GAIA extension + preset → wiki/decisions/spec-kit Extension Strategy.md, wiki/dependencies/spec-kit.md
-- 2026-05-06 24f694b - SKIP: test-only (UAT-001..UAT-018 evidence map); architecture captured in wiki/decisions/spec-kit Extension Strategy.md
+- 2026-05-06 24f694b - SKIP: test-only (UAT evidence map); architecture captured in wiki/decisions/spec-kit Extension Strategy.md
 - 2026-05-06 d5f7b6d - SKIP: test-only (sandbox v2 validation transcript); architecture captured in wiki/decisions/spec-kit Extension Strategy.md
 - 2026-05-06 22fbcc0 - WORTHY: real spec-kit extension + preset for GAIA → wiki/concepts/GAIA Spec.md, wiki/decisions/spec-kit Extension Strategy.md
 - 2026-05-06 05204a2 - WORTHY: salvaged GAIA wrapper scaffold from PR #84 → folded into wiki/concepts/GAIA Spec.md

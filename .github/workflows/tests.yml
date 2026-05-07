@@ -27,17 +27,26 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # Detect non-doc changes. Doc-only PRs report this required check green
-      # without running the full suite. Skipped jobs do not satisfy required
-      # checks under classic branch protection, so we gate steps instead.
+      # Allowlist of paths that affect the test suite. Anything outside this
+      # list reports the required check green without running. Skipped jobs do
+      # not satisfy required checks under classic branch protection, so we
+      # gate steps instead.
       - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
             code:
-              - '!**/*.md'
-              - '!wiki/**'
-              - '!.claude/**'
+              - 'app/**'
+              - 'test/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vite.config.*'
+              - 'vitest.config.*'
+              - 'playwright.config.*'
+              - 'eslint.config.*'
+              - '.node-version'
+              - '.github/workflows/tests.yml'
       - if: steps.filter.outputs.code == 'true'
         uses: pnpm/action-setup@v4
       - if: steps.filter.outputs.code == 'true'

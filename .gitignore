@@ -46,6 +46,7 @@ coverage
 # Wiki sync system markers (project-local, never commit)
 .claude/wiki-drift-checked
 .claude/wiki-safety-checked
+.claude/i18n-strings-checked
 
 # GAIA release/update working directories
 .gaia/cache/

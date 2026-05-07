@@ -1,6 +1,6 @@
 # Wiki-promote smoke
 
-Static structural smoke for the SPEC-004 `after_implement` wiki-promote feature. Verifies the manifest + command files + revised-contracts amendment landed and parse cleanly. Maps to UAT-006 (manifest declaration check).
+Static structural smoke for the `after_implement` wiki-promote feature. Verifies the manifest + command files + revised-contracts amendment landed and parse cleanly.
 
 ## Scope
 

@@ -1,3 +1,8 @@
+---
+paths:
+  - '.claude/**'
+---
+
 # Template-Distributed File Paths
 
 Files under `.claude/instructions/`, `.claude/commands/`, `.claude/skills/`, `.claude/agents/`, and `.claude/rules/` ship inside the GAIA template and get installed onto end-user machines via the scaffold. Any path baked into them must be portable.

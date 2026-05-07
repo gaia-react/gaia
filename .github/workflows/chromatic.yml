@@ -28,15 +28,21 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # Doc-only pushes report this required check green without running Chromatic.
+      # Allowlist of paths that can affect a Storybook build. Anything outside
+      # this list reports the required check green without running Chromatic.
       - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
             code:
-              - '!**/*.md'
-              - '!wiki/**'
-              - '!.claude/**'
+              - 'app/**'
+              - '.storybook/**'
+              - 'public/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - 'vite.config.*'
+              - '.github/workflows/chromatic.yml'
       - if: steps.filter.outputs.code == 'true'
         uses: pnpm/action-setup@v4
       - if: steps.filter.outputs.code == 'true'

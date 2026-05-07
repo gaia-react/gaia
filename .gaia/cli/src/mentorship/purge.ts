@@ -26,6 +26,7 @@ import {structuredError} from '../stderr.js';
 import {readOrCreateInstallId, resolveStorageRoots} from '../storage/index.js';
 import type {StorageRoots} from '../storage/index.js';
 import {askConfirm} from './ask.js';
+import {removeDisplayRule} from './display-rule-memory.js';
 
 type RunOptions = {
   roots?: StorageRoots;
@@ -131,6 +132,9 @@ export const run = async (
   try {
     deleteMentorshipSubtree(roots);
     deleteAnalyticsReports(roots);
+    // The mentorship-display rule lives in per-machine memory; remove it
+    // alongside the rest of the mentorship surface area.
+    removeDisplayRule(roots);
   } catch (error) {
     structuredError({
       code: 'storage_inaccessible',

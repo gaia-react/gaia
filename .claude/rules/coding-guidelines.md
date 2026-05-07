@@ -1,9 +1,3 @@
----
-paths:
-  - 'app/**/*'
-  - 'test/**/*'
----
-
 # Coding Guidelines
 
 ## File Naming
@@ -30,11 +24,11 @@ Define verifiable success criteria before starting; loop until verified. For mul
 
 ## 5. Always Use Test Driven Development
 
-When building new features or fixing bugs, always follow the instructions in @.claude/skills/tdd/SKILL.md.
+When building new features or fixing bugs, follow the TDD workflow described in `.claude/skills/tdd/SKILL.md` (read it on demand — do not preload).
 
 - Use Vitest to test individual functions and components work in isolation
 - Use Playwright to test user flows required by the feature specifications
 
 ## 6. Always Verify Your Work
 
-Run the Quality Gate Process defined in @.claude/rules/quality-gate.md.
+Run the Quality Gate Process defined in `.claude/rules/quality-gate.md` (always-loaded as a rule; no `@`-import needed).

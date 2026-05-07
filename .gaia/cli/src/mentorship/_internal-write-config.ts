@@ -15,6 +15,7 @@ import {structuredError} from '../stderr.js';
 import {resolveStorageRoots} from '../storage/index.js';
 import type {StorageRoots} from '../storage/index.js';
 import {writeMentorshipConfig} from './config.js';
+import {installDisplayRule, removeDisplayRule} from './display-rule-memory.js';
 
 const DECIDED_VIA_VALUES = [
   'gaia-init',
@@ -120,6 +121,26 @@ export const run = (
     });
 
     return EXIT_CODES.CONFIG_INVALID;
+  }
+
+  // Project the mentorship-display rule into per-machine user memory.
+  // gaia-init calls this subcommand with both enabled=true and enabled=false
+  // outcomes — install on opt-in, remove on opt-out so the rule never
+  // wastes context tokens for users who declined mentorship.
+  try {
+    if (flags.enabled) {
+      installDisplayRule(roots);
+    } else {
+      removeDisplayRule(roots);
+    }
+  } catch (error) {
+    structuredError({
+      code: 'storage_inaccessible',
+      message: error instanceof Error ? error.message : String(error),
+      path: roots.memoryDir,
+    });
+
+    return EXIT_CODES.STORAGE_INACCESSIBLE;
   }
   process.stdout.write(
     `${JSON.stringify({

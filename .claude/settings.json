@@ -24,10 +24,6 @@
           },
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-stop-safety-net.sh"
-          },
-          {
-            "type": "command",
             "command": ".claude/hooks/wiki-squash-autocommits.sh"
           }
         ]

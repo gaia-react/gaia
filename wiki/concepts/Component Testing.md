@@ -8,8 +8,6 @@ tags: [concept, testing]
 
 # Component Testing
 
-Source: `.claude/rules/component-testing.md`.
-
 ## Why `composeStory` is mandatory
 
 Component tests use Storybook stories with `composeStory`, never standalone `render()` calls. The reason: stories already encode the setup the component needs (decorators, stubs, mocked context, i18n). Re-deriving that setup inside a `.test.tsx` file duplicates the wiring and lets the two drift. Visual regression (Chromatic) and integration tests share one source of truth.

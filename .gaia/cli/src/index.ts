@@ -9,9 +9,15 @@
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
 import {run as runFetchCoaching} from './adaptation/inject.js';
 import {EXIT_CODES} from './exit.js';
+import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
+import {run as runRelease} from './release/index.js';
+import {run as runScaffold} from './scaffold/index.js';
+import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
+import {run as runUpdate} from './update/index.js';
+import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia <subcommand> [args]
 
@@ -19,6 +25,12 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   telemetry compute-profile
   mentorship enable|disable|purge|status
   mentorship analytics enable|disable|dry-run
+  scaffold component|hook|route|service
+  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
+  update merge --baseline <dir> --latest <dir> --manifest <path>
+  release preflight|bump|changelog|scrub-wiki|manifest|commit-and-tag
+  init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
+  setup status|mark-step|finalize
 `;
 
 const printHelp = (): void => {
@@ -32,8 +44,14 @@ type SubcommandHandler = (
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+  init: runInit,
   mentorship: runMentorship,
+  release: runRelease,
+  scaffold: runScaffold,
+  setup: runSetup,
   telemetry: runTelemetry,
+  update: runUpdate,
+  wiki: runWiki,
 };
 
 const main = async (): Promise<number> => {

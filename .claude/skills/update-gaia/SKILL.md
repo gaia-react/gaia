@@ -119,38 +119,38 @@ LATEST_MANIFEST="$LATEST_DIR/.gaia/manifest.json"
 
 Iterate keys of `.files`. For each `<path>, <class>` entry, apply the decision table below. Track counts per outcome for the summary.
 
-### Step 7: Per-file decision table
+### Step 7: Three-way merge
 
-For every file `P` in the latest manifest:
+Run:
 
-| Condition                                                                                        | Action                                                                                                                                                                                                                                      |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adopter[P]` does not exist AND `baseline[P]` does not exist                                     | **New file**: copy `latest[P]` into the project (default yes; prompt if the user opted into step-through).                                                                                                                                  |
-| `adopter[P]` does not exist AND `baseline[P]` exists                                             | Adopter deleted this file. **Respect**: skip.                                                                                                                                                                                               |
-| `adopter[P] == baseline[P]`                                                                      | No drift. **Overwrite** with `latest[P]` silently (applies to all classes).                                                                                                                                                                 |
-| `adopter[P] != baseline[P]` AND `latest[P] == baseline[P]`                                       | Drift only from adopter. **Skip** — upstream made no change.                                                                                                                                                                                |
-| `adopter[P] != baseline[P]` AND `latest[P] != baseline[P]` AND class is `owned`                  | Show unified diff (`latest[P]` vs `adopter[P]`). Prompt: `skip` (default) / `overwrite` (copy latest, back up adopter to `.gaia-backup/`) / `backup-and-overwrite` (same as overwrite but retains adopter's content as `<path>.local` too). |
-| `adopter[P] != baseline[P]` AND `latest[P] != baseline[P]` AND class is `shared` or `wiki-owned` | Do **not** auto-modify. Write `.gaia-merge/<path>.patch` containing a three-way diff (baseline / latest / adopter) so the user can resolve manually. Record the conflict in the summary.                                                    |
-
-Files present in `baseline` but **absent** in `latest` (upstream deleted/renamed):
-
-| Condition                   | Action                                                                           |
-| --------------------------- | -------------------------------------------------------------------------------- |
-| `adopter[P]` does not exist | Already gone. Skip.                                                              |
-| `adopter[P] == baseline[P]` | Upstream removed it; your copy is pristine. Prompt: `delete` (default) / `keep`. |
-| `adopter[P] != baseline[P]` | You customized it; upstream removed it. Prompt: `keep` (default) / `delete`.     |
-
-File equality comparison: byte-for-byte (`cmp -s`). No line-ending normalization — the template is LF throughout.
-
-Print per-file progress as you go:
-
+```bash
+gaia update merge --baseline "$BASELINE_DIR" --latest "$LATEST_DIR" --manifest "$LATEST_MANIFEST" --json
 ```
-[skip]      .claude/settings.json                 (shared, no drift)
-[overwrite] .claude/skills/tdd/SKILL.md           (owned, pristine)
-[merge]     wiki/decisions/Quality Gate.md        (wiki-owned, conflict → .gaia-merge/)
-[add]       wiki/concepts/New Pattern.md          (new)
-[keep]      app/utils/legacy.ts                   (upstream deleted, you customized)
+
+Parse the JSON output. Shape (`UpdateMergeReport`):
+
+```ts
+{
+  overwrite: string[];   // upstream-owned files written into the working tree
+  skip: string[];        // user-owned or no-drift; left alone
+  merge: string[];       // clean three-way merges written into the working tree
+  add: string[];         // new files copied from latest
+  delete: string[];      // upstream-deleted files; the CLI does NOT remove them
+  conflicts: Array<{
+    path: string;
+    class: 'owned' | 'shared' | 'upstream';
+    patch_path: string;  // .gaia-merge/<path>.patch
+  }>;
+}
 ```
+
+For each entry:
+
+- `overwrite[]`, `skip[]`, `merge[]`, `add[]`: **report counts only — no per-file narrative**. Do not read bytes; the CLI already wrote the correct file.
+- `delete[]`: **ASK the user before removing** each path. The CLI surfaces these but never auto-deletes.
+- `conflicts[]`: read the patch under `.gaia-merge/<path>.patch` and walk the user through the decision per file.
+
+Do **not** read bytes for any file the CLI did not surface as a conflict or deletion. The decision table baked into `gaia update merge` is canonical; the JSON it emits is the contract the skill walks.
 
 ### Step 8: Bump `.gaia/VERSION`
 

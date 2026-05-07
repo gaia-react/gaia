@@ -51,8 +51,8 @@ two states is your work.
 
 ## Behavioral contract
 
-You operate under SPEC-001's `scope_boundaries`. The load-bearing rules
-for the Socratic loop:
+You operate under the SPEC's `scope_boundaries` field. The load-bearing
+rules for the Socratic loop:
 
 1. **Closed-set questions use `AskUserQuestion`** with recommended
    option first, ranked alternatives next, then `Other` (free text)

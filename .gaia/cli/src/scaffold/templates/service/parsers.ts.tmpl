@@ -1,0 +1,7 @@
+import {z} from 'zod';
+
+export const {{singular}}Schema = z.object({
+{{#each fields}}{{this}}
+{{/each}}});
+
+export const {{plural}}Schema = z.array({{singular}}Schema);

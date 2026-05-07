@@ -19,7 +19,7 @@ Read the draft and the gate-1 snapshot. Surface findings under each heading; do 
 
 Scan for `[PLACEHOLDER]`, `<TODO>`, `<TBD>`, `FIXME`, and bare `TBD` tokens. Any hit is a finding: name the field and the offending line.
 
-### 2. Scope drift relative to gate 1 (UAT-016)
+### 2. Scope drift relative to gate 1
 
 Compare draft fields against the gate-1 snapshot:
 
@@ -45,7 +45,7 @@ Each UAT must be testable. Flag UATs that:
 - Lack a falsifiable `then`.
 - Reference an undefined system (e.g. "the orchestrator" without prior naming).
 
-### 5. Pending clarifications block-or-defer (UAT-017)
+### 5. Pending clarifications block-or-defer
 
 For each item in `clarifications.pending[]`, surface via `AskUserQuestion`:
 
@@ -83,4 +83,4 @@ If every section is clean:
 
 - This hook is the last automated gate before the human-facing gate 2. Be thorough but not noisy — surface real issues, skip nits.
 - Self-review never edits the draft; the wrapper does. This skill produces a report; the wrapper consumes it.
-- The pending-clarifications gate is itself a UAT-required behavior (UAT-017). The wrapper is responsible for honoring the user's choice and looping until pending is resolved.
+- The pending-clarifications gate is itself a required behavior. The wrapper is responsible for honoring the user's choice and looping until pending is resolved.

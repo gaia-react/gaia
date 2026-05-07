@@ -1,0 +1,10 @@
+import {http, HttpResponse} from 'msw';
+import {{{NAME_UPPER}}_URLS} from '~/services/gaia/{{name}}/urls';
+import {url} from '../url';
+import {{{plural}}} from './data';
+
+export default http.delete(url({{NAME_UPPER}}_URLS.{{plural}}Id), async ({params}) => {
+  const data = await {{plural}}.delete((q) => q.where({id: String(params.id)}));
+
+  return HttpResponse.json({data});
+});

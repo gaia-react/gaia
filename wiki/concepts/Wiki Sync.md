@@ -119,4 +119,4 @@ This system is part of GAIA's standard scaffolding. Anyone who runs `create-gaia
 
 Adopters customize the wiki content (services, decisions, etc.) but inherit the sync discipline. The system stays out of the way until it has something to surface.
 
-See [[Quality Gate]], [[GAIA Plan]], [[Release Workflow]], [[Claude Hooks]].
+See [[Quality Gate]], [[GAIA Plan]], [[Claude Hooks]].

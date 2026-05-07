@@ -1,0 +1,12 @@
+import {http, HttpResponse} from 'msw';
+import {{{NAME_UPPER}}_URLS} from '~/services/gaia/{{name}}/urls';
+import {url} from '../url';
+import {{{plural}}, type Server{{Singular}}} from './data';
+
+export default http.post(url({{NAME_UPPER}}_URLS.{{plural}}), async ({request}) => {
+  const form = await request.formData();
+  const record = Object.fromEntries(form) as unknown as Server{{Singular}};
+  const data = await {{plural}}.create(record);
+
+  return HttpResponse.json({data});
+});

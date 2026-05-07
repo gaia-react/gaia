@@ -1,0 +1,35 @@
+{{#hasLoader}}import type {RouterContextProvider} from 'react-router';
+import {useLoaderData} from 'react-router';
+import {getInstance} from '~/middleware/i18next';
+{{/hasLoader}}import {{pageName}} from '~/pages/{{groupSegment}}/{{pageName}}';
+{{#needsRouteType}}import type {Route} from './+types/{{routeFile}}';
+{{/needsRouteType}}
+{{#hasLoader}}export const loader = async ({context}: Route.LoaderArgs) => {
+  const i18next = getInstance(context as RouterContextProvider);
+  const title = i18next.t('{{i18nKey}}.meta.title', {ns: 'pages'});
+  const description = i18next.t('{{i18nKey}}.meta.description', {ns: 'pages'});
+
+  return {description, title};
+};
+
+{{/hasLoader}}{{#hasAction}}export const action = async ({request}: Route.ActionArgs) => {
+  // TODO: implement action
+  await request.formData();
+
+  return {result: 'success'} as const;
+};
+
+{{/hasAction}}const {{routeName}}Route = () => {
+{{#hasLoader}}  const {description, title} = useLoaderData<typeof loader>();
+
+  return (
+    <>
+      <title>{title}</title>
+      <meta content={description} name="description" />
+      <{{pageName}} />
+    </>
+  );
+{{/hasLoader}}{{#noLoader}}  return <{{pageName}} />;
+{{/noLoader}}};
+
+export default {{routeName}}Route;

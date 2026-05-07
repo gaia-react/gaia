@@ -57,7 +57,7 @@ Five tiers of memory with explicit scope and decay:
 - **Long-term**: the wiki at `wiki/`. Architecture, decisions, flows, concepts, dependencies, sources, all versioned with the repo.
 - **Hot cache**: `wiki/hot.md`. Auto-loaded each session, ≤200 words, the recent-context summary every session starts with.
 - **Episodic**: [[GAIA Handoff]] writes a structured doc; [[GAIA Pickup]] reads it and reconstitutes context cold.
-- **Agent memory**: `.claude/agent-memory/code-review-audit/MEMORY.md` accumulates patterns across reviews and is auto-loaded into the agent's prompt.
+- **Agent memory**: `.claude/agent-memory/<agent-name>/MEMORY.md` accumulates patterns across reviews and is auto-loaded into the agent's prompt. Created on demand per agent.
 - **User auto-memory**: `~/.claude/projects/<project>/memory/`. Typed memories (user / feedback / project / reference) indexed by `MEMORY.md`.
 
 [[GAIA Audit]] is a periodic two-stage sweep that detects duplication, stale entries, and auto-load bloat. Memory is not a pile; it has a maintenance loop.
@@ -118,7 +118,7 @@ A handful of patterns from the canonical taxonomy are deliberately absent in GAI
 - **Vector RAG**: wiki retrieval is symbolic (paths, grep, `wiki/index.md`, backlinks), not embedding-based. Closer to "structured-markdown retrieval-on-demand" than canonical RAG.
 - **Code-Then-Execute**: a Claude Code runtime capability, not a GAIA convention.
 
-The full pattern-by-pattern grading (12 Strong, 13 Partial, 1 Inferential, 3 Absent), with evidence per pattern and an honest discussion of overclaims to retire, lives in [`studio/strategy/research/AGENTIC_DESIGN.md`](../../../studio/strategy/research/AGENTIC_DESIGN.md). That report is the source of truth for these claims.
+The full pattern-by-pattern grading is 12 Strong, 13 Partial, 1 Inferential, 3 Absent.
 
 ## Why structural matters
 
@@ -139,4 +139,3 @@ The result is a system where Claude's autonomy is bounded, its quality is enforc
 - [[GAIA Audit]]
 - [[PR Merge Workflow]]
 - [Source taxonomy: 29 agentic design patterns](https://zeljkoavramovic.github.io/agentic-design-patterns/)
-- Internal audit: [`studio/strategy/research/AGENTIC_DESIGN.md`](../../../studio/strategy/research/AGENTIC_DESIGN.md)

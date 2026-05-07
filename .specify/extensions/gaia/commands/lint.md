@@ -49,7 +49,7 @@ The helper emits a JSON result on stdout: `{"ok": true, "findings": []}` on pass
 - `spec_id` matches `SPEC-NNN`.
 - Every UAT entry has a frozen `uat_id: UAT-NNN`.
 - No placeholder text (`[PLACEHOLDER]`, `<TODO>`, `<TBD>`, `FIXME`, bare `TBD`).
-- For `status: reopened`: body contains `## Reopen rationale` and `## UAT diff` sections (UAT-011 ceremony).
+- For `status: reopened`: body contains `## Reopen rationale` and `## UAT diff` sections (the reopen ceremony).
 
 ## Notes
 

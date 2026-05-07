@@ -1,6 +1,7 @@
 ---
 name: tailwind
 description: Patterns and conventions for all Tailwind styling. Use this skill whenever writing Tailwind class names, combining conditional classes, building component variants, or choosing between twJoin and twMerge. Also trigger when the user asks about custom values, defining @theme tokens or CSS variables, naming color/spacing tokens, rem vs px, responsive breakpoints, or avoiding template literal class strings.
+model: haiku
 ---
 
 # Tailwind

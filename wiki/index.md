@@ -11,13 +11,14 @@ tags: [meta]
 
 Master catalog of every page in the wiki. Newly created pages must be added here.
 
-> **Domain isolation:** Technical work fetches from `wiki/modules/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/components/`, `wiki/flows/`, `wiki/dependencies/`. Cross-load with `wiki/entities/` only when the task genuinely spans both.
+> **Domain isolation:** Technical work fetches from `wiki/modules/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/components/`, `wiki/flows/`, `wiki/dependencies/`. Only pull from other domains when the task genuinely spans both.
 
 ## Top-level
 
 - [[overview]] — executive summary
 - [[hot]] — recent context cache (~200 words)
 - [[log]] — chronological ingest log
+- [[README]] — vault schema, mode declaration, conventions
 
 ## Modules (architecture)
 
@@ -38,6 +39,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Storybook Stories]]
 - [[MSW Handlers]]
 - [[Claude Integration]]
+- [[CLI Scaffolding]] — component/hook/route/service generators
 
 ## Components (Form deep dives)
 
@@ -53,11 +55,6 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Theme Flow]]
 - [[Language Flow]]
 - [[Form Submit Flow]]
-
-## Entities
-
-- [[GAIA]]
-- [[Steven Sacks]]
 
 ## Dependencies
 
@@ -95,6 +92,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[pnpm]]
 - [[DragonScale Opt-Out]]
 - [[spec-kit Extension Strategy]]
+- [[Wiki Management]] — wiki primitives, state file, deterministic classification
 
 ## Concepts
 
@@ -114,8 +112,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Hooks]]
 - [[Claude Integration Conventions]] — Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
 - [[Claude Skills]]
-- [[Release Workflow]] — Maintainer flow: `/gaia-release`, `release.yml`, tarball scrubbing, `create-gaia` bootstrapper.
-- [[Update Workflow]] — Adopter flow: `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.
+- [[Update Workflow]] — `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.
 - [[GAIA Spec]] — `/gaia spec`: Socratic discovery wrapper around spec-kit; produces an immutable SPEC artifact and chains into `/gaia plan`.
 - [[GAIA Plan]] — `/gaia plan`: feature plan + orchestrator scaffolding, clipboard handoff to a fresh session.
 - [[GAIA Handoff]] — `/gaia handoff`: session handoff doc.
@@ -123,20 +120,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Audit]] — `/gaia audit`: two-stage knowledge-store hygiene sweep.
 - [[Wiki Sync]] — `/wiki-sync` + drift hooks: keep the wiki convergent with code without spawned sub-Claudes.
 - [[Wiki Consolidate]] — `/wiki-consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
-- [[Telemetry]] — SPEC-001 three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.
+- [[Init Workflow]] — `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, finalize, resume.
+- [[Update Merge]] — `gaia update merge`: three-way file comparison with manifest-driven inventory.
+- [[Telemetry]] — three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.
 - [[Serena Integration]] — Serena handles live code; the wiki handles institutional memory.
 - [[Chromatic Opt-Out]]
 
-## Meta
-
-- [[README]] — vault schema, mode declaration, conventions
-- [[dashboard]]
-- [[lint-report-2026-05-07]]
-- [[consolidate-report-2026-05-07]]
-- [[lint-report-2026-05-06]]
-- [[lint-report-2026-05-04]]
-- [[lint-report-2026-05-03]]
-- [[lint-report-2026-05-01]]
-- [[lint-report-2026-04-27]]
-- [[lint-report-2026-04-26]]
-- [[lint-report-2026-04-21]]

@@ -1,0 +1,46 @@
+name: CLI Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cli-tests:
+    name: Vitest (.gaia/cli)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Maintainer-only surface. PRs that don't touch the CLI source report
+      # this required check green without installing or running anything.
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '.gaia/cli/**'
+              - '.github/workflows/cli-tests.yml'
+      - if: steps.filter.outputs.code == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.filter.outputs.code == 'true'
+        name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+          cache-dependency-path: '.gaia/cli/pnpm-lock.yaml'
+      - if: steps.filter.outputs.code == 'true'
+        name: Install CLI dependencies
+        run: pnpm -C .gaia/cli install --frozen-lockfile
+      - if: steps.filter.outputs.code == 'true'
+        name: Typecheck
+        run: pnpm -C .gaia/cli typecheck
+      - if: steps.filter.outputs.code == 'true'
+        name: Run Vitest tests
+        run: pnpm -C .gaia/cli test --run

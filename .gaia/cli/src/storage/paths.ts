@@ -18,6 +18,7 @@ export type StorageRoots = {
   analyticsDir: string;
   cloudDir: string;
   installIdPath: string;
+  memoryDir: string;
   mentorshipDir: string;
   profilePath: string;
   projectIdPath: string;
@@ -78,11 +79,13 @@ export const resolveStorageRoots = (args?: ResolveArgs): StorageRoots => {
   const installIdPath = path.join(claudeProjectDir, 'install-id.txt');
   const projectIdPath = path.join(repoRoot, '.gaia', 'local', '.project-id');
   const profilePath = path.join(claudeProjectDir, 'profile.md');
+  const memoryDir = path.join(home, '.claude', 'projects', slug, 'memory');
 
   return {
     analyticsDir,
     cloudDir,
     installIdPath,
+    memoryDir,
     mentorshipDir,
     profilePath,
     projectIdPath,

@@ -55,7 +55,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
 ### Stage 2 subagent (Apply)
 
 - `subagent_type`: `"general-purpose"`
-- `model`: `"sonnet"`
+- `model`: `"haiku"`
 - `description`: `"Knowledge audit (apply)"`
 - `prompt`: the string below (literal):
 

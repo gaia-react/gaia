@@ -22,7 +22,7 @@ tags: [concept, philosophy]
 
 ## Origin
 
-Decades of greenfield projects, learning the hard way what works, what breaks at scale, and what pays off long-term. Refined over 4+ years across multiple production teams. See [[GAIA]] entity.
+Decades of greenfield projects, learning the hard way what works, what breaks at scale, and what pays off long-term. Refined over 4+ years across multiple production teams.
 
 ## What GAIA explicitly avoids
 

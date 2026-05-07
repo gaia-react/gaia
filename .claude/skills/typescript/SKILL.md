@@ -1,6 +1,7 @@
 ---
 name: typescript
 description: Patterns and conventions for all TypeScript code. Use this skill whenever writing or reviewing TypeScript — naming identifiers, typing exports, choosing between type and interface, using Zod schemas, structuring function parameters, or enforcing code patterns like avoiding switch statements and enums.
+model: haiku
 ---
 
 # TypeScript

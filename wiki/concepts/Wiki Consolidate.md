@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-06
-updated: 2026-05-06
+updated: 2026-05-07
 tags: [concept, claude, workflow, wiki]
 ---
 
@@ -26,10 +26,16 @@ Three wiki commands with non-overlapping scopes:
 
 1. **Supersession candidates.** Two pages in the same domain whose titles are near-identical (Jaccard ≥ 0.7) and whose `promoted_from` provenance differs by ≥ 30 days. Newer is canonical; older is the candidate.
 2. **Reversed decisions.** A newer decision page whose body references the older page's title with negation phrases (`"no longer use"`, `"supersedes"`, `"replaces"`, etc.). Older page is flagged for retirement.
-3. **Near-collision slugs.** Pairs of slugs in the same domain with Levenshtein distance ≤ 3 or prefix overlap ≥ 3 chars. Editorial disambiguation prompt.
+3. **Near-collision slugs.** Pairs of slugs in the same domain with Levenshtein distance ≤ 2 or prefix overlap ≥ 3 chars. Editorial disambiguation prompt. Distance 2 is the floor — distance 3 produces excessive false positives in dense domains with short slugs.
 4. **Subject-orphaned pages.** Pages with no wikilink references in `wiki/concepts/` or `wiki/modules/` that haven't been touched in 90+ days.
 
 Findings where the user previously selected "Keep both" are suppressed via `consolidation_ack` frontmatter on the canonical page.
+
+## Execution model
+
+The skill runs in two stages. Detection (page-index walk, frontmatter reads, the four detection passes, report rendering) runs in a Sonnet subagent so the heavy reads stay out of the parent context. The detection subagent returns a structured findings JSON and stops. The parent then iterates findings via `AskUserQuestion`, applies the chosen action per finding, advances state, and prints the summary.
+
+The split is forced by `AskUserQuestion`: dispatched subagents cannot surface it to the user. Keeping the apply loop in the parent is the only way the interactive prompts work.
 
 ## Apply actions
 

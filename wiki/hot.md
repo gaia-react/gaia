@@ -3,7 +3,7 @@ type: meta
 title: Hot Cache
 status: active
 created: 2026-05-04
-updated: 2026-05-04
+updated: 2026-05-07
 tags: [meta, cache]
 ---
 
@@ -11,8 +11,10 @@ tags: [meta, cache]
 
 ## Last Updated
 
-2026-05-04. Released as GAIA v1.0.5. Fresh slate.
+2026-05-07. 19 commits since last sync: CLI infrastructure consolidation (wiki primitives, scaffolding, init/release/update workflows), mentorship gate relocation, wiki maintenance (UAT/SPEC scrubbing), dependency bumps.
 
 ## Active Threads
 
-- None.
+- CLI feature completion: init subcommands (strip-branding, configure-i18n, rename, wire-statusline, finalize, resume) + release namespace (preflight, bump, changelog, scrub-wiki, manifest, commit-and-tag) + update merge (three-way diff).
+- Wiki automation: primitives for state management, commit classification, near-collision detection, orphan finding, sibling-monorepo path detection.
+- Health-audit taxonomy seeded under `.gaia/cli/health/` (maintainer-only); distribution-boundary checks codified.

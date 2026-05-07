@@ -1,28 +1,28 @@
 ---
 name: wiki-lint
-description: Health check the GAIA wiki — runs the upstream claude-obsidian wiki-lint, then appends GAIA-specific checks (drift between wiki/.state.json and HEAD).
+description: Health check the GAIA wiki — runs the upstream claude-obsidian wiki-lint, then appends GAIA-specific checks (wiki drift, dead repo-relative paths, UAT/SPEC narrative-ref drift across instruction files and shipped extension surfaces).
 ---
 
 ## Execution model — READ FIRST
 
-**Do not execute the playbook yourself in the current conversation.** Dispatch a Sonnet subagent via the `Agent` tool. The work is mechanical (rule-based orphan/dead-link/frontmatter checks plus a deterministic drift severity table) — Sonnet is sufficient, and a fresh context avoids dragging the upstream skill's large wiki-page reads into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
+**Do not execute the playbook yourself in the current conversation.** Dispatch a Haiku subagent via the `Agent` tool. The work is mechanical (rule-based orphan/dead-link/frontmatter checks plus a deterministic drift severity table) — Haiku is sufficient, and a fresh context avoids dragging the upstream skill's large wiki-page reads into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
 
 Spawn:
 
 - `subagent_type`: `"general-purpose"`
-- `model`: `"sonnet"`
+- `model`: `"haiku"`
 - `description`: `"Wiki lint"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–3) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 3 — no recap of the report contents.`
+  > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–5) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 5 — no recap of the report contents.`
 
-When the subagent returns, relay its summary verbatim. If the drift severity is **ERROR**, prefix the surfaced line with `WIKI DRIFT:` per Step 3.
+When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 5. If the subagent returns a `WIKI DEAD-PATHS:` line, surface it too. If the subagent returns a `UAT-SPEC DRIFT:` line, surface it too.
 
 ---
 
 ## Playbook
 
-GAIA-local wrapper around the upstream `claude-obsidian:wiki-lint` skill. Runs the upstream lint flow first, then appends GAIA-specific check **#11: Wiki drift check** to the report.
+GAIA-local wrapper around the upstream `claude-obsidian:wiki-lint` skill. Runs the upstream lint flow first, then appends GAIA-specific checks **#11: Wiki drift check**, **#12: Dead repo-relative paths**, and **#13: UAT/SPEC narrative-ref drift** to the report.
 
 Do **not** modify the upstream skill (`~/.claude/plugins/marketplaces/claude-obsidian-marketplace/skills/wiki-lint/SKILL.md`) — it is read-only territory. Extensions live here.
 
@@ -40,15 +40,15 @@ Do **not** restructure the upstream report format. Append GAIA sections at the b
 
 ## Step 2: GAIA check #11 — Wiki drift
 
-After the upstream lint finishes, run the drift check below and append a `## #11: Wiki drift check` section to the report file.
+After the upstream lint finishes, run `gaia wiki state --json` and append a `## #11: Wiki drift check` section to the report file based on its output.
 
-### 2a. Read state file
+### 2a. Run the primitive
 
 ```bash
-test -f wiki/.state.json && cat wiki/.state.json | jq -r '.last_evaluated_sha' || echo MISSING
+gaia wiki state --json
 ```
 
-If the result is `MISSING` or `jq` returns null, append:
+The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` | `high`), `head_short`, `state_sha`, `commits_ahead`, `reachable`, and `recent_commits`. If the command exits non-zero with `state_missing` (or equivalent reason), append:
 
 ```markdown
 ## #11: Wiki drift check
@@ -56,48 +56,32 @@ If the result is `MISSING` or `jq` returns null, append:
 ⚠ `wiki/.state.json` missing — system has never run `/wiki-sync`. Run `/wiki-sync` to initialize.
 ```
 
-Then stop the drift check (no further sub-steps).
+Then stop the drift check.
 
-### 2b. Verify SHA reachable from HEAD
-
-```bash
-STATE_SHA=$(jq -r '.last_evaluated_sha' wiki/.state.json)
-git merge-base --is-ancestor "$STATE_SHA" HEAD 2>/dev/null
-```
-
-If the exit status is non-zero, the recorded SHA is not in HEAD's history (rebase, reset, or shallow clone). Append:
+If `reachable === false`, append:
 
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` `last_evaluated_sha` (`<short_sha>`) is not reachable from HEAD (history rewritten or shallow clone). Run `/wiki-sync` to re-anchor.
+⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (history rewritten or shallow clone). Run `/wiki-sync` to re-anchor.
 ```
 
-Then stop. `<short_sha>` is `git rev-parse --short "$STATE_SHA"` (fall back to the first 7 chars if the rev-parse fails).
+Then stop.
 
-### 2c. Compute drift count
+### 2b. Classify and append
 
-```bash
-DRIFT=$(git rev-list --count "$STATE_SHA"..HEAD)
-HEAD_SHORT=$(git rev-parse --short HEAD)
-```
+Map the CLI's `drift_severity` and `commits_ahead` to the report section:
 
-### 2d. Classify and append
+| `drift_severity` | Section to append                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `none`           | `✓ Wiki in sync with HEAD ({head_short}).`                                                                              |
+| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /wiki-sync at next opportunity.`                                            |
+| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /wiki-sync soon.` + recent commits list                                     |
+| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /wiki-sync now.` + recent commits list   |
 
-| Drift count | Severity | Section to append                                                                                        |
-| ----------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| 0           | OK       | `✓ Wiki in sync with HEAD ({HEAD_SHORT}).`                                                               |
-| 1–4         | INFO     | `ℹ {DRIFT} commits behind HEAD. Run /wiki-sync at next opportunity.`                                     |
-| 5–9         | WARN     | `⚠ {DRIFT} commits behind HEAD. Run /wiki-sync soon.` + recent commits list                              |
-| 10+         | ERROR    | `✗ {DRIFT} commits behind HEAD. Wiki is significantly out of date. Run /wiki-sync now.` + recent commits |
+For **medium** and **high**, list up to 5 of the `recent_commits` from the CLI output as `  - <sha> <subject>`.
 
-For **WARN** and **ERROR**, list up to 5 most recent unsynced commit subjects:
-
-```bash
-git log "$STATE_SHA"..HEAD --no-merges --reverse --format='  - %h %s' | tail -5
-```
-
-Example WARN section:
+Example WARN (`medium`) section:
 
 ```markdown
 ## #11: Wiki drift check
@@ -109,7 +93,7 @@ Example WARN section:
 - h7i8j9k chore: bump deps
 ```
 
-Example ERROR section:
+Example ERROR (`high`) section:
 
 ```markdown
 ## #11: Wiki drift check
@@ -123,17 +107,107 @@ Example ERROR section:
 - p3q4r5s refactor: ...
 ```
 
-## Step 3: Surface to the user
+## Step 3: GAIA check #12 — Dead repo-relative paths
+
+Run the dead-paths primitive and append a `## #12: Dead repo-relative paths` section. Detects backticked paths in wiki body prose that reference files no longer present on disk (e.g. a hook removed in a refactor still cited in a concept page).
+
+### 3a. Run the primitive
+
+```bash
+gaia wiki dead-paths --json
+```
+
+Returns `{ "dead": [{ "filePath": "...", "line": N, "path": "..." }, ...] }`. Empty array means clean.
+
+### 3b. Append the section
+
+If `dead.length === 0`:
+
+```markdown
+## #12: Dead repo-relative paths
+
+✓ No dead repo-relative paths detected in wiki body prose.
+```
+
+Otherwise:
+
+```markdown
+## #12: Dead repo-relative paths
+
+⚠ {dead.length} dead path reference(s) in wiki/ — files no longer exist on disk:
+
+- `wiki/concepts/Foo.md:23` → `.claude/hooks/old-hook.sh`
+- `wiki/concepts/Bar.md:45` → `.claude/hooks/missing-helper.sh`
+```
+
+List every dead reference (one per line). Do not truncate — the count is small enough to be actionable.
+
+## Step 4: GAIA check #13 — UAT/SPEC narrative-ref drift
+
+Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and shipped extension surfaces (`.specify/extensions/gaia/{README.md, commands, lib, rules, templates}`) plus the maintainer-only `.claude-tests/` smoke harnesses. The rule rationale + structural-vs-narrative triage table lives in `.claude/rules/wiki-style.md` (Exceptions section).
+
+### 4a. Run the greps
+
+Two scans, run from the repo root:
+
+```bash
+# UAT-NNN narrative-ref candidates
+grep -rEn "UAT-[0-9]{3}" \
+  .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
+  .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
+  .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
+  .specify/extensions/gaia/templates/ \
+  .claude-tests/
+
+# Concrete maintainer SPEC IDs
+grep -rEn "\bSPEC-00[1-9]\b" \
+  .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
+  .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
+  .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
+  .specify/extensions/gaia/templates/
+```
+
+### 4b. Triage and append
+
+Both scans return raw match lines. Apply the structural-vs-narrative filter from `wiki-style.md`:
+
+- **Skip (structural — not findings):** template format examples (`> - UAT-NNN — Given …`), CLI argument values (`--uat-id UAT-007`), JS/Python/YAML literals (`uat_id: 'UAT-099'`), regex targets that match SPEC YAML structure, filename literals (`uat-001.spec.ts`), illustrative `(e.g. SPEC-002)` examples in usage docs, generic placeholders (`SPEC-NNN`, `SPEC-NNN.md`), variable-name fragments (`uat_id`, `uats_block`).
+- **Flag (narrative — findings):** section-header parentheticals (`#### 5b. Discuss-this escape (UAT-004)`), inline narrative parentheticals (`(UAT-022, UAT-027)`), comments naming specific working-doc IDs, pass/fail label prefixes (`pass "UAT-001 …"`), prose using a maintainer SPEC ID as a system-wide constant (`operate under SPEC-001's scope_boundaries`).
+
+If both scans produce zero narrative findings (all matches are structural):
+
+```markdown
+## #13: UAT/SPEC narrative-ref drift
+
+✓ No narrative `UAT-NNN` or concrete maintainer `SPEC-NNN` references detected outside the structural exemptions in `.claude/rules/wiki-style.md`.
+```
+
+Otherwise:
+
+```markdown
+## #13: UAT/SPEC narrative-ref drift
+
+⚠ {N} narrative ref(s) found in instruction files / shipped extension surfaces:
+
+- `.claude/skills/foo/SKILL.md:42` — `(UAT-012)` parenthetical in section header
+- `.specify/extensions/gaia/commands/bar.md:88` — `operate under SPEC-001's scope_boundaries` prose
+```
+
+List every narrative finding (one per line). Structural matches are not listed — they are the regex's false positives by design.
+
+## Step 5: Surface to the user
 
 Print to the user:
 
 1. The report path (e.g. `wiki/meta/lint-report-2026-05-03.md`).
-2. A one-line summary that includes the drift severity and count.
+2. A one-line summary that includes the drift severity and count, plus dead-path count if non-zero, plus narrative-ref count if non-zero.
 
-If drift is in **ERROR** severity, surface it prominently (separate line, prefixed with `WIKI DRIFT:`).
+If `drift_severity` is **`high`**, surface it prominently (separate line, prefixed with `WIKI DRIFT:`).
+If `dead.length > 0`, surface as a separate line prefixed with `WIKI DEAD-PATHS:` followed by the count.
+If narrative-ref findings > 0, surface as a separate line prefixed with `UAT-SPEC DRIFT:` followed by the count.
 
 ## Notes
 
-- Hooks (drift-check, commit-nudge, stop-safety-net) are read-only consumers of `wiki/.state.json`. Only `/wiki-sync` writes to it. This command also does not write `wiki/.state.json`.
+- Hooks (drift-check, commit-nudge, session-stop) are read-only consumers of `wiki/.state.json`. Only `/wiki-sync` writes to it. This command also does not write `wiki/.state.json`.
 - Drift count semantics: missing state file or unreachable SHA are surfaced as advisories, not silent zeroes. See [[Wiki Sync]] for the full design.
 - Severity table thresholds are the canonical thresholds for this plan; if changing, update both this command and any sibling tooling that classifies drift.

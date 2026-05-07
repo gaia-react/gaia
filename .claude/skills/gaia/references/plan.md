@@ -101,11 +101,12 @@ Then write the following files directly to `{PLAN_DIR}/`:
 3. **`{PLAN_DIR}/ORCHESTRATOR.md`** — instructions for running the plan. Must cover:
    - **Pre-flight branch policy.** Check the current branch. If HEAD is on `main`/`master`, the orchestrator ASKS the user whether to (a) create a feature branch in place or (b) create a git worktree, then acts on the answer. If HEAD is on any other branch, assume it is the work branch and proceed.
    - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`).
-   - **Sub-agent invocation:** the verbatim prompt template for each task sub-agent. Sub-agents do NOT commit, push, or open/update the PR — they only edit files and report. The orchestrator owns all git operations.
+   - **Sub-agent invocation:** the verbatim prompt template for each task sub-agent. Sub-agents do NOT commit, push, or open/update the PR — they only edit files and report. The orchestrator owns all git operations. **The prompt template MUST require sub-agents to end their return with a `## Notes for orchestrator` section** containing any of: `### Findings` (non-obvious things they noticed), `### Deviations from plan` (where the task spec was wrong / they had to work around it), `### Follow-ups` (work the user should consider after merge). Subsections may be empty or omitted; only non-trivial signal belongs here — routine "phase done, tests green" status does NOT.
    - **Orchestrator-owned git flow.** After each phase that produces changes (and only once the quality gate is clean), the orchestrator stages, commits with a meaningful message, and pushes. The orchestrator opens the PR after the first phase's commit lands on the remote (using `gh pr create`) and updates it with subsequent commits. Never commit a broken state.
-   - **Stop conditions.** On any sub-agent failure or quality-gate failure: STOP and surface to the user. Do not "fix and continue", do not commit, do not push.
-   - **Final summary.** After all implementation phases pass and the final commit is pushed, before awaiting merge confirmation, print a brief summary to the user: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, and quality-gate status. Keep it tight — a few lines, not a recap of every change.
-   - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder (`rm -rf {PLAN_DIR}/`) so scaffolding does not persist locally. Then check `git check-ignore .gaia/local/plans/` — if it is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
+   - **Phase findings ledger (`{PLAN_DIR}/SUMMARY.md`).** Append-only file the orchestrator maintains across the run, so sub-agent observations survive context compression. After each phase, the orchestrator appends a `## Phase N — <title>` block containing the phase's commit short-SHA and the merged `Notes for orchestrator` content from every sub-agent in that phase. If a phase produced no notes (all sub-agents reported only routine status), append the phase heading with `_No notes._` so the ledger reflects the full run. Sub-agents do not write to this file directly; the orchestrator owns it.
+   - **Stop conditions.** On any sub-agent failure or quality-gate failure: STOP and surface to the user. Do not "fix and continue", do not commit, do not push. Before stopping, append the failure context (which phase, which sub-agent, error) to `SUMMARY.md` under a `## Phase N — <title> (HALTED)` block so the user and any follow-up session see the same record.
+   - **Final summary.** After all implementation phases pass and the final commit is pushed, before awaiting merge confirmation, **read `{PLAN_DIR}/SUMMARY.md`** and print a brief summary to the user: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, quality-gate status, and the highest-signal findings/deviations/follow-ups drawn from `SUMMARY.md` so nothing is lost to context compression. Keep it tight — a few lines plus the surfaced notes, not a recap of every change.
+   - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder (`rm -rf {PLAN_DIR}/`) so scaffolding does not persist locally. This removes `SUMMARY.md` along with everything else — by this point its content has already been surfaced in the Final summary. Then check `git check-ignore .gaia/local/plans/` — if it is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
 
 4. **`{PLAN_DIR}/KICKOFF.md`** — the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt — no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline.
 
@@ -139,7 +140,7 @@ test -f "$PLAN_DIR/README.md" \
 
 If any required file is missing, surface the failure to the user with the planner's return payload. Do not retry silently — the user decides whether to re-spawn or investigate. Never proceed to step 5 with an incomplete plan folder.
 
-### 4.6. Telemetry: revision detection (UAT-028)
+### 4.6. Telemetry: revision detection
 
 If the slug-collision suffix from step 3 is greater than 1 (i.e. `PLAN_DIR` ends with `-2`, `-3`, …) AND `SPEC_PATH` was set in step 1a, this plan is a revision of a prior plan. Emit a `plan_revised` mentorship event so the over-time pattern detector sees it.
 
@@ -184,7 +185,7 @@ fi
 Notes:
 - `revision-class` is hardcoded to `scope_change` in v1.0.0 — the most common case. Future refinement may compute the class from the diff between prior and new task lists.
 - The emit fires only when `SPEC_PATH` is set, because `plan_revised` requires `--spec-id`. Plans authored without a SPEC reference do not currently emit revision events; that surface lands when consumer-driven cloud event payloads ship.
-- The emit is not gated on mentorship opt-in here; the CLI itself short-circuits for mentorship-disabled state and always emits the cloud projection (UAT-009).
+- The emit is not gated on mentorship opt-in here; the CLI itself short-circuits for mentorship-disabled state and always emits the cloud projection.
 
 ### 5. Report to user
 
@@ -193,10 +194,10 @@ Output a short summary of what's in `$PLAN_DIR/`, then emit the copy-paste promp
 The prompt is a single line, exactly:
 
 ```
-Read /Users/.../absolute/path/to/.gaia/local/plans/{slug}/KICKOFF.md and execute it.
+Read <absolute-path-to>/.gaia/local/plans/{slug}/KICKOFF.md and execute it.
 ```
 
-Use `$PLAN_DIR/KICKOFF.md` (the absolute path resolved in step 3). Do not include any other instruction — the orchestrator's behavior lives in `KICKOFF.md`.
+Use `$PLAN_DIR/KICKOFF.md` (the absolute path resolved in step 3). The path MUST be absolute so the cold Claude session has no working-directory ambiguity. Do not include any other instruction — the orchestrator's behavior lives in `KICKOFF.md`.
 
 **Try to copy the prompt to the system clipboard** with the first available tool. Probe in this order — the first match wins; if none exist, skip silently:
 

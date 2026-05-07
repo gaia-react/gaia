@@ -8,9 +8,13 @@
 GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
 git rev-parse HEAD > "$GIT_DIR/claude-session-start" 2>/dev/null || true
 
-# Clear telemetry coaching-active cache at session start (SPEC-001 UAT-038).
-# Phase 5 task-adaptation-inject writes `1` on each non-empty injection;
-# clearing here ensures stale state from a prior session doesn't carry over.
+# Clear stale per-session caches so state from a prior session doesn't carry over.
 rm -f .gaia/cache/coaching-active.txt 2>/dev/null
+
+# Idempotent best-effort re-assertion of per-machine memory contracts.
+# Always exits 0; guarded with `|| true` for defense in depth.
+if [ -x .gaia/cli/gaia ]; then
+  .gaia/cli/gaia mentorship _internal-assert-memory-rules >/dev/null 2>&1 || true
+fi
 
 exit 0

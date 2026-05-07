@@ -27,10 +27,6 @@
 #
 # Idempotency: re-running on an unchanged SPEC produces a zero-diff repo.
 # Hash compare per file uses sha256.
-#
-# Interface contract: SPEC-003 — see .specify/specs/SPEC-003-*/README.md.
-#
-# UATs covered: UAT-001, UAT-002, UAT-003, UAT-004, UAT-007, UAT-008.
 set -euo pipefail
 
 # --- Argument / usage handling ---
@@ -263,7 +259,7 @@ fi
 
 # --- Render loop ---
 generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-divergence_rule_path=".claude/rules/uat-divergence.md"
+divergence_rule_path=".specify/extensions/gaia/rules/uat-divergence.md"
 
 # Track which UAT files we wrote so we can find orphans afterwards.
 seen_uat_files=""

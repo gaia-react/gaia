@@ -12,7 +12,7 @@ updated: 2026-05-04
 tags: [module, storybook, testing]
 ---
 
-# Storybook
+# Storybook Stories
 
 Storybook v10 with the `@storybook/react-vite` framework. Configured to discover `*.stories.tsx` anywhere in `app/`.
 

@@ -15,8 +15,6 @@
 # On success: `gh issue create --title "<spec-id>: <intent first line>"
 # --body-file <spec_path>`, then write the issue URL into the SPEC frontmatter
 # under a new `gh_issue_url` field, and emit a success telemetry record.
-#
-# UAT: UAT-012.
 set -uo pipefail
 
 if [ "$#" -ne 3 ]; then

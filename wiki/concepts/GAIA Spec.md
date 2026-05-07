@@ -37,7 +37,7 @@ The wrapper is implemented as a spec-kit extension plus preset; the architectura
 
 ## UAT divergence contract
 
-Auto-generated Playwright specs (written by the `before_implement` hook via `lib/uat-write.sh`) carry an inline header referencing `.claude/rules/uat-divergence.md`. That rule defines the cosmetic-vs-logical boundary:
+Auto-generated Playwright specs (written by the `before_implement` hook via `lib/uat-write.sh`) carry an inline header defining the cosmetic-vs-logical boundary:
 
 - **Cosmetic divergence** (selector text, button labels, copy, URL slugs, layout assertions): editable by the implementer without reopening the SPEC.
 - **Logical divergence** (user flow, success criteria, error branches, preconditions, post-state): forbidden. Implementer must raise the divergence; the SPEC is reopened and the UAT rewritten before re-running `/speckit-implement`.

@@ -14,7 +14,7 @@
 #
 # Pure: reads the file under audit only. No writes. No side effects.
 #
-# Checks performed (UAT-008, UAT-011):
+# Checks performed:
 #   - frontmatter present (--- ... ---)
 #   - required frontmatter fields: spec_id, type, status, immutable, wiki_promote_default,
 #     chain_trigger, intent, success_criteria, uats, scope_boundaries, clarifications,
@@ -219,7 +219,7 @@ if grep -nE '(^|[^A-Za-z<])TBD([^A-Za-z>]|$)' "$spec_file" > /dev/null; then
   add_finding "placeholder" "Placeholder token 'TBD' detected" "line:$first_hit"
 fi
 
-# --- Reopen ceremony check (UAT-011) ---
+# --- Reopen ceremony check ---
 # When status == reopened, body must include a rationale block AND a UAT diff capture.
 if [ "$status_val" = "reopened" ]; then
   # Look for case-insensitive markers in the body.

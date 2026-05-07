@@ -10,7 +10,7 @@ tags: [concept, lint]
 
 > Rules now live in [[gaia-lint]] (`/src/configs/`). The non-obvious fixes below still apply unchanged — they're rule-level, not config-level.
 
-Source: `.claude/rules/eslint-fixes.md`. **Always fix in source, never in config** (a hook blocks edits to `eslint.config.mjs`).
+**Always fix in source, never in config** (a hook blocks edits to `eslint.config.mjs`).
 
 The rules below are the ones whose fix isn't obvious from the rule name. Trivial cases ("use the modern API name") aren't listed — query the `eslint-fixes` skill (`.claude/skills/eslint-fixes/`) for the full rule-by-rule playbook.
 

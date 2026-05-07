@@ -1,0 +1,13 @@
+import {composeStory} from '@storybook/react-vite';
+import {describe, expect, test} from 'vitest';
+import {render, screen} from 'test/rtl';
+import Meta, {Default} from './index.stories';
+
+const {{pageName}} = composeStory(Default, Meta);
+
+describe('{{pageName}}', () => {
+  test('renders', () => {
+    render(<{{pageName}} />);
+    expect(screen.getByRole('heading', {level: 1})).toBeInTheDocument();
+  });
+});

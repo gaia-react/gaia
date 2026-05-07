@@ -80,7 +80,6 @@ After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cad
 
 ## See also
 
-- [[Release Workflow]] — maintainer-side flow that produces the artifacts `/update-gaia` consumes.
 - [[Quality Gate]] — run the gate after the `update-gaia` skill finishes and before committing.
 
 ## Communications Guidance (User-Facing Docs)

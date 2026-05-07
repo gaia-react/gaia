@@ -5,18 +5,48 @@ description: Audit the wiki for redundancy, supersession, reversed decisions, an
 
 ## Execution model — READ FIRST
 
-**Do not execute the playbook yourself in the current conversation.** Dispatch a Sonnet subagent via the `Agent` tool. The audit reads many wiki pages and per-page `promoted_from` provenance; fresh context keeps that out of the parent.
+This skill is two-stage. **Detection (Steps 1–3) runs in a Sonnet subagent** so the heavy page-index walk and frontmatter reads stay out of the parent context. **Apply, state, and report (Steps 4–6) run in the parent** because Step 4 calls `AskUserQuestion` per finding, and `AskUserQuestion` is unavailable inside dispatched subagents — the parent must own the interactive loop.
 
-Spawn:
+### Stage 1 — detection subagent
+
+Dispatch a Sonnet subagent via the `Agent` tool:
 
 - `subagent_type`: `"general-purpose"`
 - `model`: `"sonnet"`
-- `description`: `"Wiki consolidate"`
+- `description`: `"Wiki consolidate (detection)"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are running the GAIA /wiki-consolidate workflow in a fresh context. Read .claude/commands/wiki-consolidate.md from the project root and execute the "Playbook" section (Steps 1–6) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 6 — no recap of the report contents.`
+  > `You are running the detection stage of the GAIA /wiki-consolidate workflow in a fresh context. Read .claude/commands/wiki-consolidate.md from the project root and execute Steps 1–3 of the "Playbook" section verbatim, then STOP. Do NOT execute Steps 4–6. Your working directory is the project root. After writing the report file in Step 3, return ONLY a JSON payload on stdout — no preamble, no narration:`
+  >
+  > ```json
+  > {
+  >   "report_path": "wiki/meta/consolidate-report-YYYY-MM-DD.md",
+  >   "findings": [
+  >     {
+  >       "id": "<stable id, e.g. supersession-0, near-collision-2>",
+  >       "kind": "supersession" | "reversed" | "near_collision" | "subject_orphan",
+  >       "domain": "<domain>",
+  >       "label": "<short label suitable for a question, e.g. 'decisions: auth-strategy supersedes auth-flow'>",
+  >       "canonical": { "path": "<rel path>", "title": "<title>", "slug": "<slug>" },
+  >       "other":     { "path": "<rel path>", "title": "<title>", "slug": "<slug>" },
+  >       "summary":   "<one-sentence summary of what the apply action would do>"
+  >     }
+  >   ]
+  > }
+  > ```
 
-When the subagent returns, relay its summary verbatim. If any HIGH-severity supersession or reversed-decision finding was applied, surface that prominently.
+The subagent MUST stop after Step 3 and emit this payload. The parent then consumes the payload and runs Steps 4–6 in its own context.
+
+### Stage 2 — parent loop
+
+After the subagent returns, the parent (i.e. the agent reading this file in the live conversation):
+
+1. Parses the `findings[]` payload.
+2. Iterates findings in order **supersession → reversed → near-collision → subject-orphan** (most-impactful first), surfacing each via `AskUserQuestion` per Step 4 of the playbook.
+3. Applies the user's chosen action (Apply / Keep both / Skip) per Step 4's per-kind rules.
+4. Runs Step 5 (advance state) and Step 6 (hand off + report) directly.
+
+If any HIGH-severity supersession or reversed-decision finding is applied, surface it prominently (prefix the final summary line with `WIKI CONSOLIDATE:`).
 
 ---
 
@@ -24,26 +54,22 @@ When the subagent returns, relay its summary verbatim. If any HIGH-severity supe
 
 This skill complements but does not replace `wiki-promote` (per-SPEC writes), `wiki-sync` (commit-driven updates), or `wiki-lint` (broken-thing detection). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
 
+**Follow `.claude/rules/wiki-style.md` when writing prose during apply actions.** Present tense; no UAT-NNN, SPEC-NNN, PR-number, or commit-SHA references in body prose. The `## Historical context (from <older-title>)` archival heading defined in Step 4 is a deliberate exception — it labels content lifted from a superseded page so it remains discoverable.
+
 Wiki pages emitted by `wiki-promote` carry `promoted_from: SPEC-NNN` and `promoted_at: <ISO>` frontmatter. Those fields are the consolidation seam — they tie pages back to source SPECs and let the audit detect when newer SPECs have superseded older ones.
 
 ## Step 1 — Build the page index
 
-Walk these domains: `wiki/decisions/`, `wiki/concepts/`, `wiki/modules/`, `wiki/flows/`, `wiki/components/`, `wiki/dependencies/`.
+Run `gaia wiki page-index --json` and use the returned shape. The CLI walks the canonical domains (`wiki/decisions/`, `wiki/concepts/`, `wiki/modules/`, `wiki/flows/`, `wiki/components/`, `wiki/dependencies/`), skipping `wiki/_archived/`, `wiki/meta/`, `wiki/entities/`, `wiki/log.md`, `wiki/index.md`, `wiki/hot.md`, `wiki/overview.md`, `wiki/README.md`, and per-domain `_index.md` files.
 
-Skip: `wiki/_archived/`, `wiki/meta/`, `wiki/entities/`, `wiki/log.md`, `wiki/index.md`, `wiki/hot.md`, `wiki/overview.md`, `wiki/README.md`, and per-domain `_index.md` files.
+Each entry in `pages[]` provides `path`, `domain`, `title`, `type`, `status`, `tags`, `inbound_links`, and `outbound_links`. Augment with the consolidation-only fields the CLI does not surface — read each page's frontmatter for:
 
-For each page, parse frontmatter and capture:
-
-- `path` — relative path from repo root
-- `domain` — parent folder (`decisions`, `concepts`, etc.)
-- `title` — H1 of the file body (first `# ` line)
-- `slug` — last path component without `.md`
+- `slug` — last path component of `path` without `.md`
 - `promoted_from` — string, list, or null
 - `promoted_at` — ISO or null
-- `status` — `active`, `superseded`, `archived`, or null (treat null as `active`)
 - `consolidation_ack` — list of slugs the user previously confirmed should coexist (skip-flags written by prior runs)
 
-Pages with `status: superseded` or `status: archived` are excluded as the **newer** side of a comparison but remain visible as the **older** side (used to suppress already-handled findings).
+Treat a missing `status` as `active`. Pages with `status: superseded` or `status: archived` are excluded as the **newer** side of a comparison but remain visible as the **older** side (used to suppress already-handled findings).
 
 ## Step 2 — Detection passes
 
@@ -70,22 +96,21 @@ If a match references the older page's title (substring, case-insensitive), flag
 
 ### 2c. Near-collision slugs
 
-Group pages by `domain`. Within each domain, compare every pair of slugs:
+Run `gaia wiki near-collisions --max-distance 2` and surface its output. The CLI emits per-domain pairs that are within Levenshtein distance 2 (or where one slug is a prefix of the other) as tabular text. Flag each as a **near-collision** candidate. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
 
-- Levenshtein distance ≤ 3, OR
-- One slug is a prefix of the other (length difference ≥ 3 chars)
-
-Flag as **near-collision** candidates. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
+Distance 2 is the right floor: distance 3 produces excessive false positives in dense domains with short slugs (e.g. `Ky` matches every dependency, `State` collides with `Styles`).
 
 ### 2d. Subject-orphaned pages
 
-For each page, run a body grep across `wiki/concepts/` and `wiki/modules/` for the page's title (case-insensitive substring match). If zero matches AND the page has not been touched in 90+ days (`git log -1 --format=%aI -- <path>`), flag as **subject-orphaned**.
+Run `gaia wiki orphans` to enumerate pages with zero inbound wikilinks. For each candidate, refine: keep only pages where the body title also has zero case-insensitive substring matches in `wiki/concepts/` and `wiki/modules/`, AND the page has not been touched in 90+ days (`git log -1 --format=%aI -- <path>`). Flag the survivors as **subject-orphaned**.
 
 ### 2e. Suppress acknowledged findings
 
 For every candidate, check the canonical page's `consolidation_ack` frontmatter array. If it contains the comparison page's slug, drop the finding — the user already said keep both.
 
-## Step 3 — Render the report
+## Step 3 — Render the report (subagent-final step)
+
+This is the last step the detection subagent runs. After writing the report file and emitting the findings JSON per the execution-model contract, the subagent STOPS — it does NOT proceed to Steps 4–6.
 
 Write to `wiki/meta/consolidate-report-<YYYY-MM-DD>.md`. Overwrite if a same-day report exists.
 
@@ -145,11 +170,13 @@ Run summary: <total> findings across <domain count> domains.
 - **Action:** retire to `wiki/_archived/<slug>.md` OR confirm still relevant (sets `consolidation_ack: [self]` on the page).
 ```
 
-## Step 4 — Action prompts (interactive)
+## Step 4 — Action prompts (parent-side, interactive)
 
-For each finding in the report, surface via `AskUserQuestion`:
+The parent (the agent reading this file in the live conversation) iterates the findings JSON returned by the detection subagent and surfaces each via `AskUserQuestion`. The subagent does not run this step.
 
-- Question: `<short finding label>. Action?` (e.g. `decisions: auth-strategy supersedes auth-flow. Action?`)
+For each finding:
+
+- Question: use the finding's `label` followed by `. Action?` (e.g. `decisions: auth-strategy supersedes auth-flow. Action?`)
 - Header: `Consolidate`
 - Options:
   - `{ label: "Apply (Recommended)", description: "<short summary of the merge or retire>." }`
@@ -163,7 +190,7 @@ Process findings in this order: **supersession → reversed → near-collision �
 **Supersession / reversed:**
 
 1. Read older page body. Extract any content not already present in the newer page (LLM judgment — preserve newer page's structure, no duplication).
-2. If non-empty unique content: append to newer page under H2 `## Historical context (from <older-title>)`. If older page's `promoted_from` is informative, mention the source SPEC in the section preamble.
+2. If non-empty unique content: append to newer page under H2 `## Historical context (from <older-title>)`. The heading itself is the archival label; do NOT add a SPEC-NNN reference in the preamble (per `.claude/rules/wiki-style.md`).
 3. Update older page's frontmatter: `status: superseded`, `superseded_by: <newer-slug>`, `superseded_at: <ISO>`. Preserve `created`, `promoted_from`, `promoted_at`.
 4. Move older page: `mkdir -p wiki/_archived/ && git mv <older-path> wiki/_archived/<older-slug>.md`. (Use `mv` if `git mv` fails due to staging state.)
 5. Update `wiki/index.md`: remove the older page's entry from its domain section. The wikilink in any newer page's "Related" section becomes a broken link — `wiki-lint` will surface and the maintainer can fix on the next lint pass; do not autofix here (consolidate is conservative about page-body edits beyond the targeted merge).
@@ -192,13 +219,13 @@ No-op. Finding remains active and will re-surface on the next consolidate run.
 
 ## Step 5 — Advance consolidate state
 
-Update `wiki/.state.json`:
+Update `wiki/.state.json` via the CLI primitive (preserves sibling fields and key order automatically):
 
-1. Read the existing file (it should exist — `/wiki-sync` creates it on first run; if missing, skip this step entirely and emit a warning in the Step 6 summary).
-2. Set `last_consolidated_sha` to `git rev-parse HEAD` (full 40-char SHA at consolidate-completion time, before any of this run's edits get committed).
-3. Add `last_consolidated_at: <ISO 8601 UTC>`.
-4. Preserve all other fields verbatim — `last_evaluated_sha`, `last_evaluated_at`, and any future fields owned by other commands.
-5. Write the file atomically (`jq ... > tmp && mv tmp wiki/.state.json`).
+1. Confirm the file exists. It should — `/wiki-sync` creates it on first run. If missing, skip this step entirely and emit a warning in the Step 6 summary.
+2. Run `gaia wiki state-bump last_consolidated_sha "$(git rev-parse HEAD)"` (full 40-char SHA at consolidate-completion time, before any of this run's edits get committed).
+3. Run `gaia wiki state-bump last_consolidated_at "$(date -u +%FT%TZ)"`.
+
+`state-bump` performs an atomic write (`writeFileSync` to `.tmp` + `renameSync`) and preserves `last_evaluated_sha`, `last_evaluated_at`, and any future sibling fields verbatim.
 
 Advance state on every completion regardless of how many findings were applied — including zero findings and all-skip runs. The consolidate gate in `/wiki-sync` Step 9 reads `last_consolidated_sha` to decide when to auto-fire; not advancing would cause the gate to re-fire immediately on the next sync with the same data.
 

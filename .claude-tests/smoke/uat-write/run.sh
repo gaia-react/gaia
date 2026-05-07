@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Smoke: structural check for the SPEC-003 before_implement UAT-write hook.
+# Smoke: structural check for the before_implement UAT-write hook.
 #
 # Drives the renderer (.specify/extensions/gaia/lib/uat-write.sh) against a
 # sandbox SPEC fixture (.gaia/local/specs/SPEC-099.md, copied from
 # fixture/SPEC-099.md) and asserts the renderer's structural contracts:
 # write/rewrite/delete branches, idempotency, fixme heuristic, cache mirror,
-# and manifest declarations. Maps to UAT-001..UAT-008 of SPEC-003.
+# and manifest declarations.
 #
 # Does NOT exercise the live /speckit-implement hook fire — that requires a
 # real spec-kit invocation and is out of scope for the smoke layer (same
-# caveat as wiki-promote/run.sh). UAT-005's manifest rows are checked
-# structurally; the EXECUTE_COMMAND directive emission is hand-verified.
-# UAT-006's four-step SPEC resolution is checked by grepping the slash-
-# command body for the algorithm; the live UI-driven steps (AskUserQuestion,
-# explicit $ARGUMENTS) are out of harness scope.
+# caveat as wiki-promote/run.sh). The manifest rows for the implement-time
+# hook are checked structurally; the EXECUTE_COMMAND directive emission is
+# hand-verified. The four-step SPEC resolution is checked by grepping the
+# slash-command body for the algorithm; the live UI-driven steps
+# (AskUserQuestion, explicit $ARGUMENTS) are out of harness scope.
 set -euo pipefail
 
 # Resolve repo root from the script's own location so the harness works
@@ -92,13 +92,13 @@ pass "renderer present and executable at $RENDERER"
 TMPDIR_RUN="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_RUN"; cleanup' EXIT
 
-# --- UAT-001 — N UATs render to N stable spec files ---------------------------
+# --- N UATs render to N stable spec files ------------------------------------
 
 run1_stdout="$TMPDIR_RUN/run1.stdout"
 if bash "$RENDERER" "$SPEC_PATH" > "$run1_stdout" 2>/dev/null; then
-    pass "UAT-001 renderer first run exits 0"
+    pass "renderer first run exits 0"
 else
-    fail "UAT-001 renderer first run failed (non-zero exit)"
+    fail "renderer first run failed (non-zero exit)"
 fi
 
 # Three files exist with expected names.
@@ -107,11 +107,11 @@ all_present=1
 for f in "${expected_files[@]}"; do
     if [ ! -f "$SPEC_DIR/$f" ]; then
         all_present=0
-        fail "UAT-001 expected spec file missing: $SPEC_DIR/$f"
+        fail "expected spec file missing: $SPEC_DIR/$f"
     fi
 done
 if [ "$all_present" -eq 1 ]; then
-    pass "UAT-001 three spec files exist under $SPEC_DIR/"
+    pass "three spec files exist under $SPEC_DIR/"
 fi
 
 # Each file imports playwright + carries the UAT-NNN — SPEC-099 test name.
@@ -133,18 +133,18 @@ done
 
 # Stdout JSON: summary.written == 3 and each detail entry has a sha256 hash.
 if grep -qE '"summary":\{"written":3,"rewritten":0,"deleted":0,"fixme":0,"unchanged":0\}' "$run1_stdout"; then
-    pass "UAT-001 stdout summary.written == 3 (all branches written)"
+    pass "stdout summary.written == 3 (all branches written)"
 else
-    fail "UAT-001 stdout missing expected summary {written:3, ...} block"
+    fail "stdout missing expected summary {written:3, ...} block"
 fi
 hash_count=$(grep -oE '"hash":"sha256:[0-9a-f]+"' "$run1_stdout" | wc -l | tr -d ' ')
 if [ "$hash_count" -eq 3 ]; then
-    pass "UAT-001 stdout includes sha256 hash for each of the 3 detail entries"
+    pass "stdout includes sha256 hash for each of the 3 detail entries"
 else
-    fail "UAT-001 stdout sha256-hash detail count is $hash_count (expected 3)"
+    fail "stdout sha256-hash detail count is $hash_count (expected 3)"
 fi
 
-# --- UAT-002 — Red-state baseline fails as assertions, not parse errors -------
+# --- Red-state baseline fails as assertions, not parse errors ----------------
 
 if command -v pnpm >/dev/null 2>&1; then
     pw_out="$TMPDIR_RUN/pw.out"
@@ -153,42 +153,42 @@ if command -v pnpm >/dev/null 2>&1; then
     pw_exit=$?
     set -e
     if [ "$pw_exit" -ne 0 ]; then
-        pass "UAT-002 pnpm pw exits non-zero on unimplemented SPEC"
+        pass "pnpm pw exits non-zero on unimplemented SPEC"
     else
-        fail "UAT-002 pnpm pw exited 0 on unimplemented SPEC (red-state expected)"
+        fail "pnpm pw exited 0 on unimplemented SPEC (red-state expected)"
     fi
     if grep -qE 'SyntaxError|Cannot find module|Test file is empty' "$pw_out"; then
-        fail "UAT-002 pnpm pw output contains parse/import error (renderer bug)"
+        fail "pnpm pw output contains parse/import error (renderer bug)"
     else
-        pass "UAT-002 pnpm pw output has no parse-error / missing-import signature"
+        pass "pnpm pw output has no parse-error / missing-import signature"
     fi
 else
-    pass "UAT-002 SKIPPED: pnpm not on PATH (red-state baseline check requires Playwright runner)"
+    pass "SKIPPED: pnpm not on PATH (red-state baseline check requires Playwright runner)"
 fi
 
-# --- UAT-003a — Idempotency on re-run -----------------------------------------
+# --- Idempotency on re-run ---------------------------------------------------
 
 run2_stdout="$TMPDIR_RUN/run2.stdout"
 if bash "$RENDERER" "$SPEC_PATH" > "$run2_stdout" 2>/dev/null; then
-    pass "UAT-003a renderer second run exits 0"
+    pass "renderer second run exits 0"
 else
-    fail "UAT-003a renderer second run failed (non-zero exit)"
+    fail "renderer second run failed (non-zero exit)"
 fi
 if grep -qE '"summary":\{"written":0,"rewritten":0,"deleted":0,"fixme":0,"unchanged":3\}' "$run2_stdout"; then
-    pass "UAT-003a re-run on unchanged SPEC reports unchanged:3, written:0, rewritten:0"
+    pass "re-run on unchanged SPEC reports unchanged:3, written:0, rewritten:0"
 else
-    fail "UAT-003a re-run summary block is not the all-unchanged shape"
+    fail "re-run summary block is not the all-unchanged shape"
 fi
 # Hashes should be byte-identical between run1 and run2 detail entries.
 hashes_run1=$(grep -oE '"hash":"sha256:[0-9a-f]+"' "$run1_stdout" | sort)
 hashes_run2=$(grep -oE '"hash":"sha256:[0-9a-f]+"' "$run2_stdout" | sort)
 if [ "$hashes_run1" = "$hashes_run2" ]; then
-    pass "UAT-003a per-UAT sha256 hashes are byte-identical across re-run"
+    pass "per-UAT sha256 hashes are byte-identical across re-run"
 else
-    fail "UAT-003a sha256 hashes diverged between run1 and run2 (idempotency broken)"
+    fail "sha256 hashes diverged between run1 and run2 (idempotency broken)"
 fi
 
-# --- UAT-003b — Modify one UAT, re-run, only that file rewrites ---------------
+# --- Modify one UAT, re-run, only that file rewrites -------------------------
 
 # Snapshot all three rendered files for byte-compare after the targeted rewrite.
 mkdir -p "$TMPDIR_RUN/snap1"
@@ -196,8 +196,8 @@ for f in "${expected_files[@]}"; do
     cp "$SPEC_DIR/$f" "$TMPDIR_RUN/snap1/$f"
 done
 
-# Mutate UAT-002's then-clause in the SPEC fixture in place.
-# Replace the existing UAT-002 then-line with a new (still concrete) value.
+# Mutate the second UAT's then-clause in the SPEC fixture in place.
+# Replace the existing then-line with a new (still concrete) value.
 python3 - <<'PYEOF' "$SPEC_PATH"
 import sys
 path = sys.argv[1]
@@ -206,7 +206,7 @@ with open(path, encoding="utf-8") as f:
 old = 'then: The page navigates to "/" and the "Sign in" button is visible again.'
 new = 'then: The page navigates to "/login" and the "Sign in" button is visible again.'
 if old not in txt:
-    sys.exit("UAT-003b mutation: old then-line not found in SPEC fixture")
+    sys.exit("mutation: old then-line not found in SPEC fixture")
 txt = txt.replace(old, new, 1)
 with open(path, "w", encoding="utf-8") as f:
     f.write(txt)
@@ -214,41 +214,41 @@ PYEOF
 
 run3_stdout="$TMPDIR_RUN/run3.stdout"
 if bash "$RENDERER" "$SPEC_PATH" > "$run3_stdout" 2>/dev/null; then
-    pass "UAT-003b renderer post-mutation run exits 0"
+    pass "renderer post-mutation run exits 0"
 else
-    fail "UAT-003b renderer post-mutation run failed (non-zero exit)"
+    fail "renderer post-mutation run failed (non-zero exit)"
 fi
 if grep -qE '"summary":\{"written":0,"rewritten":1,"deleted":0,"fixme":0,"unchanged":2\}' "$run3_stdout"; then
-    pass "UAT-003b summary is rewritten:1, unchanged:2 (selective rewrite)"
+    pass "summary is rewritten:1, unchanged:2 (selective rewrite)"
 else
-    fail "UAT-003b summary is not the selective-rewrite shape"
+    fail "summary is not the selective-rewrite shape"
 fi
 # Confirm only uat-002.spec.ts changed on disk.
 if ! cmp -s "$TMPDIR_RUN/snap1/uat-001.spec.ts" "$SPEC_DIR/uat-001.spec.ts"; then
-    fail "UAT-003b uat-001.spec.ts changed (should be byte-identical to run1)"
+    fail "uat-001.spec.ts changed (should be byte-identical to run1)"
 else
-    pass "UAT-003b uat-001.spec.ts unchanged byte-for-byte"
+    pass "uat-001.spec.ts unchanged byte-for-byte"
 fi
 if ! cmp -s "$TMPDIR_RUN/snap1/uat-003.spec.ts" "$SPEC_DIR/uat-003.spec.ts"; then
-    fail "UAT-003b uat-003.spec.ts changed (should be byte-identical to run1)"
+    fail "uat-003.spec.ts changed (should be byte-identical to run1)"
 else
-    pass "UAT-003b uat-003.spec.ts unchanged byte-for-byte"
+    pass "uat-003.spec.ts unchanged byte-for-byte"
 fi
 if cmp -s "$TMPDIR_RUN/snap1/uat-002.spec.ts" "$SPEC_DIR/uat-002.spec.ts"; then
-    fail "UAT-003b uat-002.spec.ts unchanged (should have been rewritten)"
+    fail "uat-002.spec.ts unchanged (should have been rewritten)"
 else
-    pass "UAT-003b uat-002.spec.ts content was rewritten"
+    pass "uat-002.spec.ts content was rewritten"
 fi
 # The new then-clause should appear in the rewritten file.
 if grep -qF '/login' "$SPEC_DIR/uat-002.spec.ts"; then
-    pass "UAT-003b rewritten uat-002.spec.ts carries the new then-clause"
+    pass "rewritten uat-002.spec.ts carries the new then-clause"
 else
-    fail "UAT-003b rewritten uat-002.spec.ts does not contain mutated then-clause"
+    fail "rewritten uat-002.spec.ts does not contain mutated then-clause"
 fi
 
-# --- UAT-004 — Deleted UAT triggers hard-delete -------------------------------
+# --- Deleted UAT triggers hard-delete ----------------------------------------
 
-# Strip the entire UAT-003 block (uat_id line + its given/when/then) from the SPEC.
+# Strip the third UAT block (uat_id line + its given/when/then) from the SPEC.
 python3 - <<'PYEOF' "$SPEC_PATH"
 import re, sys
 path = sys.argv[1]
@@ -259,7 +259,7 @@ pattern = re.compile(
     r"  - uat_id: UAT-003\n(?:    [a-z_]+:[^\n]*\n){3}"
 )
 if not pattern.search(txt):
-    sys.exit("UAT-004 mutation: UAT-003 block not found in SPEC fixture")
+    sys.exit("mutation: UAT-003 block not found in SPEC fixture")
 txt = pattern.sub("", txt, count=1)
 with open(path, "w", encoding="utf-8") as f:
     f.write(txt)
@@ -267,36 +267,36 @@ PYEOF
 
 run4_stdout="$TMPDIR_RUN/run4.stdout"
 if bash "$RENDERER" "$SPEC_PATH" > "$run4_stdout" 2>/dev/null; then
-    pass "UAT-004 renderer post-deletion run exits 0"
+    pass "renderer post-deletion run exits 0"
 else
-    fail "UAT-004 renderer post-deletion run failed (non-zero exit)"
+    fail "renderer post-deletion run failed (non-zero exit)"
 fi
 if grep -qE '"deleted":1' "$run4_stdout"; then
-    pass "UAT-004 summary.deleted == 1"
+    pass "summary.deleted == 1"
 else
-    fail "UAT-004 summary.deleted != 1"
+    fail "summary.deleted != 1"
 fi
 if [ ! -f "$SPEC_DIR/uat-003.spec.ts" ]; then
-    pass "UAT-004 uat-003.spec.ts hard-deleted from $SPEC_DIR/"
+    pass "uat-003.spec.ts hard-deleted from $SPEC_DIR/"
 else
-    fail "UAT-004 uat-003.spec.ts still present (hard-delete violation)"
+    fail "uat-003.spec.ts still present (hard-delete violation)"
 fi
 if [ ! -d "$SPEC_DIR/_archived" ]; then
-    pass "UAT-004 no _archived/ directory created (hard-delete contract honored)"
+    pass "no _archived/ directory created (hard-delete contract honored)"
 else
-    fail "UAT-004 _archived/ directory created (resolution #3 violated)"
+    fail "_archived/ directory created (resolution #3 violated)"
 fi
 
-# --- UAT-005 — Manifest declarations ------------------------------------------
+# --- Manifest declarations ---------------------------------------------------
 # (Live /speckit-implement EXECUTE_COMMAND directive emission is out of scope.)
 
 if [ ! -f "$MANIFEST" ]; then
-    fail "UAT-005 manifest missing at $MANIFEST"
+    fail "manifest missing at $MANIFEST"
 else
     if grep -q 'name: "speckit.gaia.uat-write"' "$MANIFEST"; then
-        pass "UAT-005 manifest declares speckit.gaia.uat-write in provides.commands[]"
+        pass "manifest declares speckit.gaia.uat-write in provides.commands[]"
     else
-        fail "UAT-005 manifest missing speckit.gaia.uat-write in provides.commands[]"
+        fail "manifest missing speckit.gaia.uat-write in provides.commands[]"
     fi
 
     # before_implement.command == "speckit.gaia.uat-write".
@@ -308,9 +308,9 @@ else
         in_block && /^[[:space:]]{2}[a-zA-Z_-]+:/ && !/^[[:space:]]+(command|optional|description|condition):/ { in_block = 0 }
         END { exit !found }
     ' "$MANIFEST"; then
-        pass "UAT-005 manifest registers speckit.gaia.uat-write under hooks.before_implement"
+        pass "manifest registers speckit.gaia.uat-write under hooks.before_implement"
     else
-        fail "UAT-005 manifest does not register speckit.gaia.uat-write under hooks.before_implement"
+        fail "manifest does not register speckit.gaia.uat-write under hooks.before_implement"
     fi
 
     # before_implement.optional == false.
@@ -322,20 +322,20 @@ else
         in_block && /^[[:space:]]{2}[a-zA-Z_-]+:/ && !/^[[:space:]]+(command|optional|description|condition):/ { in_block = 0 }
         END { exit !found }
     ' "$MANIFEST"; then
-        pass "UAT-005 manifest declares hooks.before_implement.optional == false"
+        pass "manifest declares hooks.before_implement.optional == false"
     else
-        fail "UAT-005 manifest does not declare hooks.before_implement.optional == false"
+        fail "manifest does not declare hooks.before_implement.optional == false"
     fi
 fi
 
-# --- UAT-006 — SPEC resolution algorithm (4 steps) ----------------------------
+# --- SPEC resolution algorithm (4 steps) -------------------------------------
 # (Live slash-command invocation steps are UI-driven and out of harness scope.
 #  Static check: the slash-command body documents the four-step algorithm.)
 
 if [ ! -f "$COMMAND_BODY" ]; then
-    fail "UAT-006 slash-command body missing at $COMMAND_BODY"
+    fail "slash-command body missing at $COMMAND_BODY"
 else
-    pass "UAT-006 slash-command body present at $COMMAND_BODY"
+    pass "slash-command body present at $COMMAND_BODY"
     missing_steps=()
     if ! grep -qE '^1\. .*\$ARGUMENTS' "$COMMAND_BODY"; then
         missing_steps+=("step 1 (\$ARGUMENTS)")
@@ -350,16 +350,16 @@ else
         missing_steps+=("step 4 (AskUserQuestion)")
     fi
     if [ ${#missing_steps[@]} -eq 0 ]; then
-        pass "UAT-006 slash-command body documents all four resolution steps"
+        pass "slash-command body documents all four resolution steps"
     else
-        fail "UAT-006 slash-command body missing: ${missing_steps[*]}"
+        fail "slash-command body missing: ${missing_steps[*]}"
     fi
 fi
 
-# --- UAT-007 — Too-abstract UAT renders as test.fixme() with blocker ----------
+# --- Too-abstract UAT renders as test.fixme() with blocker -------------------
 
-# Restore the SPEC fixture (UAT-004's deletion is destructive), then mutate
-# UAT-001's then-clause to an abstract form.
+# Restore the SPEC fixture (the prior deletion test is destructive), then mutate
+# the first UAT's then-clause to an abstract form.
 cp "$FIXTURE_SPEC" "$SPEC_PATH"
 
 python3 - <<'PYEOF' "$SPEC_PATH"
@@ -370,7 +370,7 @@ with open(path, encoding="utf-8") as f:
 old = 'then: The page navigates to "/sign-in" and a heading reading "Sign in" is visible.'
 new = 'then: The system feels right and the user is delighted.'
 if old not in txt:
-    sys.exit("UAT-007 mutation: UAT-001 original then-line not found")
+    sys.exit("mutation: original then-line not found")
 txt = txt.replace(old, new, 1)
 with open(path, "w", encoding="utf-8") as f:
     f.write(txt)
@@ -378,34 +378,34 @@ PYEOF
 
 run5_stdout="$TMPDIR_RUN/run5.stdout"
 if bash "$RENDERER" "$SPEC_PATH" > "$run5_stdout" 2>/dev/null; then
-    pass "UAT-007 renderer post-abstraction run exits 0"
+    pass "renderer post-abstraction run exits 0"
 else
-    fail "UAT-007 renderer post-abstraction run failed (non-zero exit)"
+    fail "renderer post-abstraction run failed (non-zero exit)"
 fi
 if grep -qE '"fixme":1' "$run5_stdout"; then
-    pass "UAT-007 summary.fixme == 1"
+    pass "summary.fixme == 1"
 else
-    fail "UAT-007 summary.fixme != 1"
+    fail "summary.fixme != 1"
 fi
 if [ -f "$SPEC_DIR/uat-001.spec.ts" ]; then
     if grep -qF 'test.fixme(' "$SPEC_DIR/uat-001.spec.ts"; then
-        pass "UAT-007 uat-001.spec.ts uses test.fixme() for the abstract UAT"
+        pass "uat-001.spec.ts uses test.fixme() for the abstract UAT"
     else
-        fail "UAT-007 uat-001.spec.ts does not use test.fixme()"
+        fail "uat-001.spec.ts does not use test.fixme()"
     fi
     if grep -qiE 'abstraction blocker' "$SPEC_DIR/uat-001.spec.ts"; then
-        pass "UAT-007 uat-001.spec.ts carries an abstraction-blocker comment"
+        pass "uat-001.spec.ts carries an abstraction-blocker comment"
     else
-        fail "UAT-007 uat-001.spec.ts missing abstraction-blocker comment"
+        fail "uat-001.spec.ts missing abstraction-blocker comment"
     fi
 else
-    fail "UAT-007 uat-001.spec.ts missing after abstraction mutation (must not be silently dropped)"
+    fail "uat-001.spec.ts missing after abstraction mutation (must not be silently dropped)"
 fi
 
-# --- UAT-008 — Cache file mirrors stdout JSON ---------------------------------
+# --- Cache file mirrors stdout JSON ------------------------------------------
 
 if [ -f "$CACHE_FILE" ]; then
-    pass "UAT-008 cache file present at $CACHE_FILE"
+    pass "cache file present at $CACHE_FILE"
     # Cache contents must match the most recent renderer stdout (modulo
     # trailing newline). Compare the trimmed forms.
     cache_trim="$TMPDIR_RUN/cache.trim"
@@ -413,12 +413,12 @@ if [ -f "$CACHE_FILE" ]; then
     awk 'NF { print }' "$CACHE_FILE" > "$cache_trim"
     awk 'NF { print }' "$run5_stdout" > "$stdout_trim"
     if cmp -s "$cache_trim" "$stdout_trim"; then
-        pass "UAT-008 cache file contents match renderer stdout (modulo trailing newline)"
+        pass "cache file contents match renderer stdout (modulo trailing newline)"
     else
-        fail "UAT-008 cache file contents diverge from renderer stdout"
+        fail "cache file contents diverge from renderer stdout"
     fi
 else
-    fail "UAT-008 cache file missing at $CACHE_FILE"
+    fail "cache file missing at $CACHE_FILE"
 fi
 
 # --- Summary ------------------------------------------------------------------
