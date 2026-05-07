@@ -27,9 +27,7 @@ wiki/
 ├── decisions/          # ADRs — why GAIA chose X over Y
 ├── dependencies/       # external deps with role + version
 ├── flows/              # data flows (auth, theme, language, form submit)
-├── entities/           # project entities (people, services, third-party actors)
-├── concepts/           # ideas/patterns (Quality Gate, Co-location, Thin Routes)
-└── meta/               # dashboards, lint reports
+└── concepts/           # ideas/patterns (Quality Gate, Co-location, Thin Routes)
 ```
 
 ## Conventions

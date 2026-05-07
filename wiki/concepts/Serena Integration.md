@@ -23,7 +23,7 @@ tags: [concept, claude, code-search, mcp]
 - Flows that span files (`wiki/flows/`)
 - Conventions and rules-of-thumb (`wiki/modules/`, `wiki/concepts/`)
 - Dependency context — why we use it, how it's wired (`wiki/dependencies/`)
-- Entity-level institutional memory (`wiki/entities/`)
+- Entity-level institutional memory
 
 ## Boundary tests
 

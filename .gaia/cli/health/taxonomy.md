@@ -4,7 +4,7 @@ Living document. Maintainer-only. Excluded from adopter distribution via `.gaia/
 
 ## Purpose
 
-Eleven independent audits of the Claude integration optimization (PR #97) found different things each pass. Trajectory: B+ → A− → A → A → A+ → A → A+ → A → A → A → A. Each audit caught at least one class previous audits missed. Without a shared baseline, fresh audit agents re-discover settled questions and burn tokens on re-litigation.
+Twelve independent audits of the Claude integration optimization (PR #97) found different things each pass. Trajectory: B+ → A− → A → A → A+ → A → A+ → A → A → A → A → A−. Each audit caught at least one class previous audits missed. Without a shared baseline, fresh audit agents re-discover settled questions and burn tokens on re-litigation.
 
 This file is the baseline. An audit reads it first, then walks the integration. Items in **Issue classes** must be verified absent (regressions matter). Items in **Decided / not findings** are not raised. Anything else — known class still present, or a genuinely new pattern — is the audit's output.
 
@@ -55,8 +55,9 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 
 **Shipped wiki pages link to release-excluded targets via wikilinks.** A `[[X]]` wikilink in an adopter-shipped wiki page resolves to a page under `wiki/entities/`, `wiki/meta/`, `wiki/_archived/`, or any other release-excluded location. Adopter sees a dangling reference, and the link itself signposts maintainer-only content even when the destination is excluded. `gaia wiki dead-paths` only catches backticked filesystem paths, not wikilinks; `gaia wiki orphans` is the inverse direction (pages with no inbound links).
 - Detection (manual until automated): `grep -rEn '\[\[' wiki/index.md wiki/README.md wiki/overview.md wiki/concepts/ wiki/decisions/ wiki/modules/ wiki/components/ wiki/flows/ wiki/dependencies/` and cross-check each target slug against pages whose path matches a `.gaia/release-exclude` pattern or lives under `wiki/entities/|wiki/meta/|wiki/_archived/`.
-- Suggested codification: extend `gaia wiki dead-paths` (or add a sibling primitive) to walk wikilinks via `gaia wiki page-index --json` and flag any link resolving to a release-excluded target.
-- Prior: `wiki/index.md` carried `## Entities` and `## Meta` sections plus a `[[Release Workflow]]` bullet, all resolving to release-excluded pages (audit #11 fix).
+- **Process gate (load-bearing):** when fixing an instance of this class, rerun the detection across the FULL list of shipped wiki domains above, not just the file the original finding lived in. Spot-fixing one page does not close the class. Audit #11 fixed only `wiki/index.md` and audit #12 found five regressions of the same class in other domains.
+- Suggested codification: extend `gaia wiki dead-paths` (or add a sibling primitive) to walk wikilinks via `gaia wiki page-index --json` and flag any link resolving to a release-excluded target. Until automated, the bundle-time-scrub plan (post-#97) will subsume this with build-time grep enforcement against the scrubbed staging directory.
+- Prior: `wiki/index.md` carried `## Entities` and `## Meta` sections plus a `[[Release Workflow]]` bullet, all resolving to release-excluded pages (audit #11 fix). `[[Release Workflow]]` wikilinks in `Update Workflow.md`, `Wiki Sync.md`, `Telemetry.md`, `Update Merge.md` and a `[[GAIA]]` wikilink in `GAIA Philosophy.md` were missed by audit #11's spot-fix and caught by audit #12.
 
 ### Claude integration surfaces
 

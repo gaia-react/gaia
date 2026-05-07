@@ -28,5 +28,3 @@ When a project cloned from GAIA needs to incorporate template updates (bug fixes
 ## Integration
 
 Invoked via `/gaia update merge` (the skill), which walks the user through reviewing and confirming the merge. Can also be run manually as `gaia update merge` from the project root.
-
-See [[Release Workflow]] for how upstream updates are published to the template.

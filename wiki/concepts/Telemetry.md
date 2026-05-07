@@ -78,4 +78,3 @@ Statusline shows a compass segment when mentorship is enabled (wired in `.gaia/s
 - [[GAIA Spec]] — emits time_to_resolved_spec; receives coaching injection via `_internal-fetch-coaching`
 - [[GAIA Plan]] — emits plan_revised on slug collision
 - [[Claude Hooks]] — PostToolUse Task hook backstops engineer-return and code-review-audit events
-- [[Release Workflow]] — mentorship dirs + project identity excluded from adopter bundle via `.gaia/release-exclude`
