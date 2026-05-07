@@ -1,5 +1,5 @@
 /**
- * Tests for `gaia mentorship _internal-assert-display-rule`.
+ * Tests for `gaia mentorship _internal-assert-memory-rules`.
  *
  * Exercises the behavior the session-start hook relies on: install-on-enabled,
  * remove-on-disabled, never-fail-the-hook semantics.
@@ -11,7 +11,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {resolveStorageRoots} from '../../storage/index.js';
 import type {StorageRoots} from '../../storage/index.js';
 import {writeMentorshipConfig} from '../config.js';
-import {run} from '../_internal-assert-display-rule.js';
+import {run} from '../_internal-assert-memory-rules.js';
 import {
   DISPLAY_RULE_FILE_NAME,
   DISPLAY_RULE_INDEX_LINE,
@@ -43,7 +43,7 @@ const setupSandbox = (): Sandbox => {
   };
 };
 
-describe('mentorship _internal-assert-display-rule', () => {
+describe('mentorship _internal-assert-memory-rules', () => {
   let sandbox: Sandbox;
   let stdoutCapture: string[];
   let stdoutSpy: ReturnType<typeof vi.spyOn>;

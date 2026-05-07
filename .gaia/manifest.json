@@ -289,12 +289,9 @@
     "app/utils/tests/string.test.ts": "owned",
     "app/utils/theme.server.ts": "owned",
     "CLAUDE.md": "shared",
-    "CODE_OF_CONDUCT.md": "owned",
-    "CONTRIBUTING.md": "owned",
     "Dockerfile": "owned",
     "eslint.config.mjs": "owned",
     "knip.config.ts": "owned",
-    "LICENSE": "owned",
     "package.json": "shared",
     "playwright.config.ts": "owned",
     "pnpm-lock.yaml": "owned",
@@ -309,9 +306,7 @@
     "public/mockServiceWorker.js": "owned",
     "public/site.webmanifest": "owned",
     "react-router.config.ts": "owned",
-    "README.md": "shared",
     "stylelint.config.mjs": "owned",
-    "SUPPORTERS.md": "owned",
     "test/mocks/database.ts": "owned",
     "test/mocks/faker.ts": "owned",
     "test/mocks/index.ts": "owned",
@@ -426,6 +421,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-07T13:24:38.831Z",
+  "generated": "2026-05-07T14:20:10.293Z",
   "version": "1.0.5"
 }

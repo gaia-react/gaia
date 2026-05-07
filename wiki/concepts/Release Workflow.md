@@ -125,12 +125,24 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 
 Adopters audit their own app via the standard `code-review-audit` agent under `.claude/agents/`; the GAIA-template-specific health audit is maintainer-only because its taxonomy and detections target the GAIA repo's surface, not an adopter project.
 
+### 11. Maintainer-only project governance
+
+Adopters use GAIA as a template via `npx create-gaia` to scaffold an independent project. Maintainers clone or fork the GAIA repo itself to contribute upstream. The GAIA template's governance documents describe GAIA, not the adopter's downstream project, and they ship empty consequences for adopters: a CONTRIBUTING file pointing at GAIA test harnesses, a CHANGELOG with GAIA's release history, a SUPPORTERS list of GAIA's supporters, an MIT LICENSE that pre-decides license choice, etc.
+
+- `CHANGELOG.md` — GAIA's release history. Adopters write their own as they ship.
+- `CODE_OF_CONDUCT.md` — GAIA's community standards. Adopters set their own (or none).
+- `CONTRIBUTING.md` — how to contribute to GAIA. Adopter projects may not accept contributors at all.
+- `LICENSE` — GAIA's MIT license. Adopters choose their own license.
+- `README.md` — GAIA's marketing and architecture description. `/gaia-init` regenerates it from `.gaia/templates/README.md` (which DOES ship) substituting the project name.
+- `SUPPORTERS.md` — list of GAIA's financial supporters. Adopters maintain their own if they want one.
+
+The README template at `.gaia/templates/README.md` is the only governance-style file that ships, because `/gaia-init` consumes it as a strip-branding source.
+
 ### Adopter-owned sentinels
 
 These ARE distributed but excluded from `.gaia/manifest.json` by the classifier (not by `.gaia/release-exclude`) because adopters take ownership at first install and `/update-gaia` must never touch them:
 
 - `wiki/hot.md`, `wiki/log.md` — adopter's session cache and change ledger.
-- `CHANGELOG.md` — adopter's project changelog.
 - `.gaia/VERSION`, `.gaia/manifest.json` — bumped only by `/update-gaia`.
 
 The classifier is in `.gaia/cli/src/release/manifest.ts` — `ADOPTER_OWNED_SENTINELS` constant.

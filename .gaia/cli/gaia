@@ -16169,7 +16169,7 @@ var assertDisplayRule = (roots) => {
   };
 };
 
-// src/mentorship/_internal-assert-display-rule.ts
+// src/mentorship/_internal-assert-memory-rules.ts
 var run9 = (_argv, options = {}) => {
   const roots = options.roots ?? resolveStorageRoots();
   let enabled;
@@ -16977,7 +16977,7 @@ var HELP_TEXT8 = `Usage: gaia mentorship <subcommand> [args]
 `;
 var HELP_TOKENS8 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TOP_LEVEL_HANDLERS = {
-  "_internal-assert-display-rule": run9,
+  "_internal-assert-memory-rules": run9,
   "_internal-provision-dirs": run10,
   "_internal-write-config": run11,
   disable: run15,

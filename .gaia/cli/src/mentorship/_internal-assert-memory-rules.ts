@@ -1,24 +1,14 @@
 /**
- * Internal subcommand: re-assert the mentorship-display rule's projection
- * into per-machine user memory.
+ * Internal subcommand: re-assert per-machine memory rules consumed by
+ * the session-start hook.
  *
- *   gaia mentorship _internal-assert-display-rule
+ *   gaia mentorship _internal-assert-memory-rules
  *
- * Reads the current mentorship config:
- *   - enabled === true  → call `assertDisplayRule(roots)` (idempotent install).
- *   - enabled === false → call `removeDisplayRule(roots)` (idempotent remove).
- *
- * Designed to run from a session-start hook every time Claude opens the
- * project, so the rule self-heals if the user accidentally edits or
- * deletes the memory file. Exits 0 on every path so the hook never
- * blocks session start.
- *
- * Emits a single JSON line on stdout describing the outcome:
- *
- *   { code, mentorship_enabled, body_written, index_line_added }
- *
- * Hooks ignore stdout by default; humans inspecting the hook trail can
- * see what changed.
+ * Reads the current mentorship config and idempotently aligns the
+ * projected memory contracts with the configured state. Exits 0 on
+ * every path so the hook never blocks session start. Emits a single
+ * JSON line on stdout describing the outcome; hooks ignore stdout by
+ * default.
  */
 import {EXIT_CODES} from '../exit.js';
 import {resolveStorageRoots} from '../storage/index.js';
