@@ -64,10 +64,6 @@ specify preset add --dev .specify/presets/gaia
 
 `specify init --here` populates `.specify/` with core skills. The two `add --dev` calls register GAIA's local extension and preset against that core install.
 
-## Sandbox validation
-
-`.specify/extensions/gaia/test/v2-validation.md` captures live evidence against `/tmp/specify-validate-001/` confirming each invariant: extension + preset install, `{CORE_TEMPLATE}` substitution under `strategy: wrap`, `HookExecutor.format_hook_message` emits `EXECUTE_COMMAND` for the three GAIA hooks, `on_save` renders `(no hooks)`, and `specify preset resolve spec-template` returns the GAIA preset path.
-
 ## Related
 
 - [[GAIA Spec]] — the wrapper workflow this strategy enables.

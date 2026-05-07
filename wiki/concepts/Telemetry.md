@@ -17,7 +17,7 @@ Events flow into one of three independent streams:
 
 | Stream | Location | Permissions | Purpose |
 |---|---|---|---|
-| **Mentorship** | `~/.claude/projects/<slug>/gaia/telemetry/mentorship/events-*.jsonl` | `700/600` | Full identity; in-session adaptation. Off-project, machine-local. |
+| **Mentorship** | machine-local, off-project | `700/600` | Full identity; in-session adaptation. |
 | **Cloud projection** | `.gaia/local/telemetry/cloud/` | `755/644` | Strict whitelist + denylist sweep. No user paths, text, or identity. |
 | **Analytics** | `.gaia/local/telemetry/analytics/` | `755/644` | Daily aggregate reports; auto-attested (audit-attest.ts throws on drift). |
 
@@ -44,16 +44,12 @@ Every emit writes a `UniversalEnvelope` (Zod schema in `src/schemas/envelope.ts`
 
 - `cloudDir` = `.gaia/local/telemetry/cloud/` (mode 755)
 - `analyticsDir` = `.gaia/local/telemetry/analytics/` (mode 755)
-- `mentorshipDir` = `~/.claude/projects/<slug>/gaia/telemetry/mentorship/` (mode 700)
-- `profilePath` = `~/.claude/projects/<slug>/gaia/profile.md`
-- `installIdPath` = `~/.claude/projects/<slug>/gaia/install-id.txt`
 - `projectIdPath` = `.gaia/local/.project-id`
-
-`<slug>` = repo root path with `/` replaced by `-`.
+- Mentorship + per-project Claude state resolve into machine-local paths off-project (mode 700/600 for mentorship, 644 for displayable aggregates).
 
 ## Mentorship opt-in
 
-`gaia-init` Step 10 presents a verbatim privacy explainer and a three-option `AskUserQuestion`. Opt-in state lives in `~/.claude/projects/<slug>/gaia/telemetry/mentorship/config.json`. Mentorship is disabled by default; emits that target the mentorship stream short-circuit when `enabled === false`.
+`gaia-init` Step 10 presents a verbatim privacy explainer and a three-option `AskUserQuestion`. Opt-in state is machine-local. Mentorship is disabled by default; emits that target the mentorship stream short-circuit when `enabled === false`.
 
 ## Profile computation
 
@@ -76,10 +72,6 @@ Detectors are wired-but-inert at v1.0.0: production behavior requires N ≥ 10 e
 | `spec-close` Step 5 | chains `compute-profile` after pacing append |
 
 Statusline shows a compass segment when mentorship is enabled (wired in `.gaia/statusline/gaia-statusline.sh`). Session-start clears `.gaia/cache/coaching-active.txt` so stale injections never persist.
-
-## Release-gate harness
-
-`.claude-tests/smoke/telemetry-v1/run.sh` — 6 tests, 28 deterministic assertions: envelope correctness + idempotency, cloud-projection drift exit 12, file modes, compute-profile idempotency + DO-NOT-EDIT header, analytics audit attestation, mentorship-disabled short-circuit.
 
 ## Pairs with
 

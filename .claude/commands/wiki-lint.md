@@ -137,7 +137,7 @@ Otherwise:
 ⚠ {dead.length} dead path reference(s) in wiki/ — files no longer exist on disk:
 
 - `wiki/concepts/Foo.md:23` → `.claude/hooks/old-hook.sh`
-- `wiki/concepts/Bar.md:45` → `.gaia/cli/src/removed/index.ts`
+- `wiki/concepts/Bar.md:45` → `.claude/hooks/missing-helper.sh`
 ```
 
 List every dead reference (one per line). Do not truncate — the count is small enough to be actionable.

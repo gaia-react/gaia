@@ -16,5 +16,5 @@ tags: [meta, cache]
 ## Active Threads
 
 - CLI feature completion: init subcommands (strip-branding, configure-i18n, rename, wire-statusline, finalize, resume) + release namespace (preflight, bump, changelog, scrub-wiki, manifest, commit-and-tag) + update merge (three-way diff).
-- Wiki automation: primitives for state management, commit classification, near-collision detection, orphan finding.
-- Mentorship rule moved from `.claude/rules/` to `.gaia/cli/src/mentorship/` binding.
+- Wiki automation: primitives for state management, commit classification, near-collision detection, orphan finding, sibling-monorepo path detection.
+- Health-audit taxonomy seeded under `.gaia/cli/health/` (maintainer-only); distribution-boundary checks codified.
