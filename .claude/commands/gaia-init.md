@@ -79,40 +79,29 @@ After the language questions, also ask (single AskUserQuestion is fine):
 
 - GitHub username for CODEOWNERS (suggest @username format)
 - The title of their project (default: "GAIA React App")
+- The kebab-case slug derived from the title (default: kebab-case of title)
+- Statusline mode: `global` (write to `~/.claude/settings.json`), `project` (write to `.claude/settings.json` only), or `skip` (no statusline change)
 
-## Step 3: Strip GAIA-specific branding
+## Step 3: Run the init CLI
 
-Run in one shell:
+The deterministic surface lives behind `gaia init`. Each subcommand is idempotent and records its own state in `.gaia/init-state.json`, so a failed step can be resumed via `gaia init resume`.
+
+Compute the boolean `STRIP_I18N`: `true` when `len(LOCALES) == 1` AND the user picked "No" in Q3, otherwise `false`.
+
+Run sequentially, stopping at the first non-zero exit:
 
 ```bash
-rm -rf .github/FUNDING.yml app/components/GaiaLogo
+.gaia/cli/gaia init strip-branding --title "<Project Title>"
+.gaia/cli/gaia init configure-i18n --locales "<comma-separated locale list>" --strip <STRIP_I18N>
+.gaia/cli/gaia init rename --title "<Project Title>" --kebab "<kebab-slug>"
+.gaia/cli/gaia init wire-statusline --mode <global|project|skip>
 ```
 
-Replace the root `README.md` with the project-agnostic template and substitute the project title (use the value collected in Step 2; use Title Case):
+If any of these exit non-zero, surface the structured error verbatim (the CLI prints a JSON line to stderr) and stop. The user can re-run the failing command manually after addressing the cause, then resume with `.gaia/cli/gaia init resume` — completed steps are skipped automatically.
 
-```bash
-cp .gaia/templates/README.md README.md
-sed -i.bak 's/{{PROJECT_TITLE}}/<Project Title>/g' README.md && rm README.md.bak
-```
+## Step 4: Locale-specific scaffolding (when not stripping i18n)
 
-The `{{PROJECT_TITLE}}` placeholder is the exact token in the template; the `sed -i.bak … && rm …bak` form is BSD/macOS-compatible and works on GNU sed as well.
-
-Then edit `app/components/Header/index.tsx`:
-
-- Remove the `GaiaLogo` import
-- Replace `<GaiaLogo className="h-6 sm:h-7" />` with a text wordmark: `<span className="text-body text-xl font-bold">{t('meta.siteName')}</span>`
-
-Then replace `app/assets/images/gaia-logo.svg` with the project's own logo SVG. The Storybook brand logo imports it directly — no `preview.ts` edits needed.
-
-## Step 4: Update CODEOWNERS
-
-Replace `.github/CODEOWNERS` contents with just the user's GitHub username (the whole file becomes a single line like `* @username`).
-
-## Step 5: Configure i18n based on Step 2 answers
-
-Branch on the answers from Step 2:
-
-### Branch A — Multiple locales (`len(LOCALES) > 1`)
+If `STRIP_I18N == false`, also run the prose locale instructions for every non-`en` locale in `LOCALES`:
 
 For each locale in `LOCALES` where the locale is NOT `en`:
 
@@ -121,43 +110,18 @@ For each locale in `LOCALES` where the locale is NOT `en`:
 3. Substitute the four template variables: `{{LOCALE_CODE}}`, `{{LANGUAGE_NAME_EN}}`, `{{LANGUAGE_NAME_NATIVE}}`, `{{IS_RTL}}`.
 4. Execute every step in the substituted instruction. Stop on any failure.
 
-(English is already seeded — no add-locale invocation needed for `en`.)
+If `STRIP_I18N == true`, read `.claude/instructions/remove-i18n.md` and execute every step. Stop on any failure.
 
-### Branch B — Single locale, keep i18n (`len(LOCALES) == 1` and Q3 == Yes)
+## Step 5: Replace the logo + update CODEOWNERS
 
-Two sub-cases:
+- Replace `app/assets/images/gaia-logo.svg` with the project's own logo SVG. The Storybook brand logo imports it directly — no `preview.ts` edits needed.
+- Replace `.github/CODEOWNERS` contents with just the user's GitHub username (the whole file becomes a single line like `* @username`).
 
-- If the single locale is `en`: nothing to do (already seeded).
-- If the single locale is NOT `en`: run `add-locale.md` for that locale (as in Branch A), then edit `app/languages/index.ts` to make that locale the default fallback (swap `fallbackLng: 'en'` in `app/i18n.ts` if the project wants the new locale as default — confirm with the user before flipping this).
-
-### Branch C — Single locale, strip i18n (`len(LOCALES) == 1` and Q3 == No)
-
-Read `.claude/instructions/remove-i18n.md` and execute every step. Stop on any failure.
-
-## Step 6: Rename the project
-
-Use the project title from Step 2.
-
-- `package.json` `"name"` field → kebab-case of project title (e.g. `"hello-world"`)
-- `CLAUDE.md` — replace the `# GAIA React` heading with `# <Project Title>` (Title Case, e.g. `# Hello World`)
-
-**If i18n is still present (Branch A or B from Step 5):**
-
-- `app/languages/en/pages/_index.ts` — update `meta.title`, `title`, and `heroTitle` to the project title
-- `app/languages/en/common.ts` — update `meta.siteName` to the project title
-- Do the same for every other `app/languages/<lang>/pages/_index.ts` and `common.ts` file that exists after Step 5 (translate the title if appropriate, otherwise use the English project title). Only loop over locales that actually exist — do not reference any locale that was not added in Step 5.
-
-**If i18n was stripped (Branch C from Step 5):**
-
-- Edit the relevant components and route files directly with raw English strings:
-  - Replace `t('meta.siteName')` with the literal project title string wherever it appears (e.g. `app/components/Header/index.tsx` — already handled by Step 3's wordmark, verify)
-  - Replace any remaining `t('meta.title')`, `t('title')`, `t('heroTitle')` references in route/page files with the literal project title string
-
-## Step 7: Check `.env`
+## Step 6: Check `.env`
 
 If a `.env` file does not exist, rename `.env.example` to `.env`. If `.env` already exists, leave it.
 
-## Step 8: Verify the build
+## Step 7: Verify the build
 
 Run sequentially, stopping at the first failure:
 
@@ -167,7 +131,7 @@ pnpm typecheck && pnpm lint && pnpm test:ci && pnpm build
 
 Fix any issues before moving on.
 
-## Step 9: Claude configuration
+## Step 8: Claude configuration
 
 If any install step fails, print the command so the user can run it manually.
 
@@ -220,73 +184,17 @@ After install, `.specify/extensions/.registry` lists the `gaia` extension with a
 
 If any step fails, surface the error verbatim and halt — do not silently continue. The user can re-run the failing command manually and resume `/gaia-init` once spec-kit is in place.
 
-### Wire the GAIA statusline
+### Make the statusline executable
 
-Add the project-scoped GAIA statusline to **project** `.claude/settings.json` so the user gets `/update-deps` and `/update-gaia` hints automatically. The wrapper at `.gaia/statusline/gaia-statusline.sh` delegates the left-side render and only appends GAIA addons inside this project.
-
-Make `.gaia/statusline/*.sh` executable: `chmod +x .gaia/statusline/*.sh` (idempotent — safe to run regardless).
-
-Inspect `~/.claude/settings.json` for a top-level `statusLine` key, then branch:
-
-#### Branch A — adopter has a custom global statusline (`statusLine` exists in `~/.claude/settings.json`)
-
-Show the user a colored preview of the wrapped result by running:
+The CLI in Step 3 wired the statusline command into Claude settings; the wrapper still needs the executable bit:
 
 ```bash
-GAIA_PREVIEW_TMP="$(mktemp -d)/gaia-example"
-mkdir -p "$GAIA_PREVIEW_TMP" && git -C "$GAIA_PREVIEW_TMP" init -q -b feat/example-name \
-  && git -C "$GAIA_PREVIEW_TMP" -c user.email=x@x -c user.name=x commit -q --allow-empty -m preview
-mkdir -p .gaia/cache
-cat > .gaia/cache/update-check.json <<'JSON'
-{"checkedAt":9999999999,"outdatedCount":3,"gaiaCurrent":"1.0.0","gaiaLatest":"1.2.0","gaiaHasUpdate":true}
-JSON
-echo '{"workspace":{"current_dir":"'"$GAIA_PREVIEW_TMP"'"},"model":{"display_name":"Claude Opus 4.7"},"context_window":{"used_percentage":42}}' \
-  | bash .gaia/statusline/gaia-statusline.sh; echo
-rm -rf "$(dirname "$GAIA_PREVIEW_TMP")"
-rm -f .gaia/cache/update-check.json
+chmod +x .gaia/statusline/*.sh
 ```
 
-The Bash output renders with ANSI colors in the chat. The `gaia-example` / `feat/example-name` placeholders keep the preview stable regardless of the adopter's real cwd or branch — once wired, the live statusline reflects their actual project + branch. Tell the user: "GAIA addons will append to your existing global statusline only when Claude is launched in this project." Then write the project-level wrapper into `.claude/settings.json` (insert alphabetically):
+(Idempotent — safe to run regardless.)
 
-```json
-"statusLine": {
-  "type": "command",
-  "command": "bash .gaia/statusline/gaia-statusline.sh"
-}
-```
-
-#### Branch B — adopter is on the default Claude statusline (no global `statusLine`)
-
-Render the same colored preview as Branch A. Then `AskUserQuestion`:
-
-> Install GAIA's recommended statusline (project + branch + model + context bar)?
->
-> - **Globally** — show this layout in every project, plus GAIA addons inside GAIA projects (Recommended).
-> - **Only in this GAIA project** — show only when Claude is launched here.
-> - **Skip** — keep Claude's default; GAIA addons still append in this project.
-
-Apply the answer:
-
-- **Globally** → copy `.gaia/statusline/preferred-base.sh` to `~/.claude/preferred-base.sh`, `chmod +x` it, and write into `~/.claude/settings.json`:
-
-  ```json
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude/preferred-base.sh"
-  }
-  ```
-
-  (Insert alphabetically into the user-level JSON. Preserve any existing keys.)
-
-- **Only in this GAIA project** → `touch .gaia/statusline/.use-vendored-base`. The sentinel is gitignored; the wrapper detects it and routes to the vendored base.
-
-- **Skip** → no extra action.
-
-In all three sub-cases, write the project-level wrapper into `.claude/settings.json` exactly as in Branch A.
-
-Before writing either settings file, read its current contents so you merge rather than overwrite. Use jq or manual JSON editing — never truncate the file.
-
-## Step 10: Mentorship opt-in
+## Step 9: Mentorship opt-in
 
 Tell the user (in their language): "GAIA includes an optional mentorship layer that learns how you work and adapts in-session — fully on your machine, never sent off it. Let's set the default."
 
@@ -333,13 +241,13 @@ Use AskUserQuestion with these three options in this exact order:
 
 Drop into Q&A. Claude has the design notes available in context (the explainer above + `studio/decisions/telemetry-v1-design.md` and `studio/decisions/local-adaptive-mentorship.md` if needed for deeper questions). See `.claude/rules/mentorship-display.md` for the project-wide contract on what Claude does with mentorship data. When the user signals they're done (e.g. "ok ready to decide"), re-present the same AskUserQuestion. Loop until the user picks Not now or Yes.
 
-End of Step 10.
+End of Step 9.
 
-## Step 11: Refresh the wiki
+## Step 10: Refresh the wiki
 
 The template ships with a wiki shaped for the upstream GAIA project. Refresh the two files that encode "where we are right now" so the new project starts with a clean context:
 
-### 11a. Overwrite `wiki/hot.md`
+### 10a. Overwrite `wiki/hot.md`
 
 Replace the entire file with:
 
@@ -364,7 +272,7 @@ tags: [meta, cache]
 - None.
 ```
 
-### 11b. Overwrite `wiki/log.md`
+### 10b. Overwrite `wiki/log.md`
 
 Replace the entire `wiki/log.md` file with the following content (the GAIA development log is irrelevant to the new project):
 
@@ -390,10 +298,22 @@ Append-only. New entries at the TOP.
 - Installed: React Doctor, TDD, Playwright CLI skills; typescript-lsp, claude-obsidian plugins
 ```
 
-## Step 12: Complete
+## Step 11: Finalize
 
-1. Remove the `/init` interceptor — it protects the template's curated `CLAUDE.md` and is no longer needed once a project has been initialized:
-   - Delete `.claude/hooks/intercept-init.sh`
-   - Edit `.claude/settings.json`: from `hooks.UserPromptSubmit`, remove only the matcher entry whose inner `hooks[].command` is `.claude/hooks/intercept-init.sh`. Preserve any other entries the user may have added. If removing it leaves `UserPromptSubmit` as an empty array, also remove the `UserPromptSubmit` key itself.
-2. Delete this command file so it can't be run again: `rm .claude/commands/gaia-init.md`
-3. Output: "<Project Title> is ready for development. Restart Claude to pick up the new plugin and skill state."
+Run the CLI's finalize step — it removes the `/init` interceptor hook, prunes the matching entry from `.claude/settings.json`, and deletes this command file:
+
+```bash
+.gaia/cli/gaia init finalize
+```
+
+Then output: "<Project Title> is ready for development. Restart Claude to pick up the new plugin and skill state."
+
+## On failure: resume
+
+If any `gaia init <step>` invocation exits non-zero, the structured-error JSON on stderr explains the cause. After fixing the cause, re-run with:
+
+```bash
+.gaia/cli/gaia init resume
+```
+
+Resume reads `.gaia/init-state.json`, skips already-complete steps, and replays remaining steps using the saved arguments. Use `--from-step <N>` to force restart from a specific step (1-indexed: 1=strip-branding, 2=configure-i18n, 3=rename, 4=wire-statusline, 5=finalize).

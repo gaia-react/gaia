@@ -9,6 +9,7 @@
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
 import {run as runFetchCoaching} from './adaptation/inject.js';
 import {EXIT_CODES} from './exit.js';
+import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
 import {run as runRelease} from './release/index.js';
 import {run as runScaffold} from './scaffold/index.js';
@@ -27,6 +28,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   wiki state|commit-classify|state-bump|log-prepend|page-index|orphans|near-collisions
   update merge --baseline <dir> --latest <dir> --manifest <path>
   release preflight|bump|changelog|scrub-wiki|manifest|commit-and-tag
+  init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
 `;
 
 const printHelp = (): void => {
@@ -40,6 +42,7 @@ type SubcommandHandler = (
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+  init: runInit,
   mentorship: runMentorship,
   release: runRelease,
   scaffold: runScaffold,
