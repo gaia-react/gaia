@@ -67,16 +67,15 @@ FILE_VER="$(tr -d '[:space:]' < "$STAGING/.gaia/VERSION")"
 [ "$PKG_VER" = "$FILE_VER" ] \
   || { fail ".gaia/VERSION ($FILE_VER) != package.json version ($PKG_VER)"; exit 1; }
 
-# wiki/hot.md and wiki/log.md should NOT contain dev-history phrasing.
-# Per `wiki/concepts/Release Workflow.md` Step 8 + 9 of `/gaia-release`,
-# both files get overwritten with release-baseline content. Sniff for
-# the marker phrase that release.ts writes (specifics live in the CLI;
-# at minimum, the file should be small — under 50 lines).
-HOT_LINES=$(wc -l < "$STAGING/wiki/hot.md")
-LOG_LINES=$(wc -l < "$STAGING/wiki/log.md")
-[ "$HOT_LINES" -lt 50 ] \
-  || { fail "wiki/hot.md has $HOT_LINES lines — looks like dev content, expected release baseline (<50 lines)"; exit 1; }
-[ "$LOG_LINES" -lt 50 ] \
-  || { fail "wiki/log.md has $LOG_LINES lines — looks like dev content, expected release baseline (<50 lines)"; exit 1; }
+# wiki/hot.md and wiki/log.md should carry the release-marker strings
+# that `gaia release scrub-wiki` writes (Step 8 + 9 of `/gaia-release`).
+# Asserting on the actual rendered content is stricter than a line-count
+# proxy — it catches "scrub-wiki didn't run" AND "scrub-wiki wrote the
+# wrong version". Marker shapes are pinned to scrub-wiki.ts:renderHotMd /
+# renderLogMd.
+grep -qF "## [v$PKG_VER]" "$STAGING/wiki/log.md" \
+  || { fail "wiki/log.md missing '## [v$PKG_VER]' release marker — scrub-wiki did not run or wrote a wrong version"; exit 1; }
+grep -qF "GAIA v$PKG_VER" "$STAGING/wiki/hot.md" \
+  || { fail "wiki/hot.md missing 'GAIA v$PKG_VER' release marker — scrub-wiki did not run or wrote a wrong version"; exit 1; }
 
 pass "manifest, exclude list, and sentinels all consistent with staging"
