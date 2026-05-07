@@ -87,10 +87,14 @@ wiki/decisions/Bundle-time Scrub.md
 # `release.yml` cuts releases of the GAIA template itself (triggered by
 # `v*.*.*` tags); adopters never release GAIA. `cli-tests.yml` runs the
 # .gaia/cli/ vitest suite; adopters receive only the bundled binary, so
-# the test workflow has nothing to test on their side. Both would be
-# silent passengers at best and confusing CI failures at worst.
+# the test workflow has nothing to test on their side. `distribution.yml`
+# runs the maintainer-only `.gaia/tests/distribution/` harness against a
+# staged release tree using a Claude OAuth org secret; adopters never
+# distribute GAIA. All three would be silent passengers at best and
+# confusing CI failures at worst.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
+.github/workflows/distribution.yml
 
 # --- 10. Maintainer-only health-audit infrastructure ---
 # `.gaia/cli/health/` holds the audit taxonomy, run state, and (post-#97)

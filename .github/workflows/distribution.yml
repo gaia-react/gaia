@@ -1,0 +1,51 @@
+name: Distribution
+
+# Runs `.gaia/tests/distribution/run-all.sh` on a GitHub runner. Layers 0 + 1
+# need only Node + pnpm; Layer 2 additionally needs Docker (pre-installed on
+# ubuntu-latest) and a Claude OAuth token (from org secrets).
+#
+# Trigger is manual (`workflow_dispatch`) until the workflow has proven itself
+# clean on `main`. The intended steady-state trigger is `release.published`
+# only — the maintainer is the only role that can publish releases, so
+# contributors structurally cannot trigger Layer 2 spend.
+#
+# IMPORTANT: never use `pull_request_target`. That trigger exposes secrets to
+# fork PRs, which would let any contributor exfiltrate
+# CLAUDE_CODE_OAUTH_TOKEN.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  distribution:
+    name: Distribution tests (Layers 0+1+2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - name: Verify bundled CLI binary is present
+        run: |
+          if [ ! -x .gaia/cli/gaia ]; then
+            echo "::error::.gaia/cli/gaia missing or not executable. Maintainer must commit the bundled binary." >&2
+            exit 1
+          fi
+          .gaia/cli/gaia --version || true
+
+      - name: Run distribution scenarios
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: bash .gaia/tests/distribution/run-all.sh
