@@ -117,7 +117,6 @@
     ".github/ISSUE_TEMPLATE/feature_request.yml": "owned",
     ".github/pull_request_template.md": "owned",
     ".github/workflows/chromatic.yml": "shared",
-    ".github/workflows/release.yml": "shared",
     ".github/workflows/tests.yml": "shared",
     ".gitignore": "owned",
     ".husky/pre-commit": "owned",
@@ -427,6 +426,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-07T11:52:24.223Z",
+  "generated": "2026-05-07T12:22:19.269Z",
   "version": "1.0.5"
 }
