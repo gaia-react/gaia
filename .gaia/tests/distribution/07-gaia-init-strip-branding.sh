@@ -54,14 +54,17 @@ fi
 [ -x "$SCAFFOLD/.gaia/cli/gaia" ] \
   || { fail "staged tree missing or non-executable .gaia/cli/gaia (bundled CLI)"; exit 1; }
 
-cd "$SCAFFOLD"
-
-# Run strip-branding. Capture stdout — the contract is "no stdout on
-# success" per the subcommand's --help.
+# Run strip-branding from inside $SCAFFOLD via a subshell so the CLI's
+# default `process.cwd()` resolves there. The parent scenario keeps its
+# own pwd — never `cd "$SCAFFOLD"` at scenario scope, since other
+# scenarios sourced or invoked from `run-all.sh` may rely on $PWD.
 TITLE="Test Project"
-STDOUT="$(./.gaia/cli/gaia init strip-branding --title "$TITLE" 2>/dev/null)" || {
+STDOUT="$(cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" 2>/dev/null)" || {
+  # Re-run with stderr unsuppressed for diagnosis. The `fail; exit 1`
+  # below runs unconditionally — the diagnostic re-run's exit code is
+  # intentionally ignored (`|| :`).
   log "gaia init strip-branding exited non-zero; rerunning with stderr:"
-  ./.gaia/cli/gaia init strip-branding --title "$TITLE" || true
+  ( cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" ) || :
   fail "gaia init strip-branding exited non-zero on staged tree"
   exit 1
 }
