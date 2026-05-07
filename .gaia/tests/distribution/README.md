@@ -27,6 +27,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 ├── 05-clean-env.sh              # PATH-stripped subshell (Layer 1)
 ├── 06-claude-runs-staged.sh     # Claude-in-Docker auth + cwd smoke (Layer 2)
 ├── 07-gaia-init-strip-branding.sh  # Adopter-flow regression: gaia init strip-branding
+├── 08-gaia-init-cli-sequence.sh    # Adopter-flow regression: full gaia init CLI sequence
 └── diagnostic/
     └── claude-auth-in-docker.md
 ```
@@ -76,7 +77,9 @@ Skips automatically if Docker is unavailable OR `CLAUDE_CODE_OAUTH_TOKEN` is uns
 
 `07-gaia-init-strip-branding.sh` runs `gaia init strip-branding --title "Test Project"` and asserts the four documented post-conditions: `README.md` is regenerated from `.gaia/templates/README.md` with the title substituted, `app/components/GaiaLogo/` is removed, `app/components/Header/index.tsx` no longer references `GaiaLogo`, and the subcommand exits 0 with no stdout per its contract. Catches the failure mode where `release-exclude` accidentally strips a file the subcommand needs (template, deletion target, edit target) — Layers 0+1+2 stay green; only this scenario fails.
 
-Future adopter-flow scenarios cover the rest of `gaia init` (`configure-i18n`, `rename`, `wire-statusline`, `finalize`) and `gaia setup` subcommands.
+`08-gaia-init-cli-sequence.sh` runs the full deterministic sequence behind `/gaia-init` Step 3 — `strip-branding` → `configure-i18n --strip false` → `rename` → `wire-statusline --mode project` → `finalize` — and asserts each step's post-conditions on the staged tree. Catches release-exclude drift on every CLI surface the slash command dispatches to: the `existsSync` guards in `configure-i18n`/`rename`/`finalize` mean a missing target file silently no-ops rather than erroring, so this scenario is the gate that turns a no-op into a failure. `--mode project` for `wire-statusline` keeps the merge inside the scaffold's `.claude/settings.json` and never writes to the host's `~/.claude`. The `configure-i18n --strip true` path (full i18n removal via the prose `remove-i18n.md` instruction) is out of scope here — that path is orchestrated by the slash command, not the CLI alone.
+
+Future adopter-flow scenarios cover the `--strip true` removal path and the `gaia setup` subcommands.
 
 #### Local setup for maintainers
 
