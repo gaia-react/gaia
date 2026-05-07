@@ -26,6 +26,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 ├── 04-scaffold-runs.sh          # extract + pnpm install + typecheck/lint/test/build
 ├── 05-clean-env.sh              # PATH-stripped subshell (Layer 1)
 ├── 06-claude-runs-staged.sh     # Claude-in-Docker auth + cwd smoke (Layer 2)
+├── 07-gaia-init-strip-branding.sh  # Adopter-flow regression: gaia init strip-branding
 └── diagnostic/
     └── claude-auth-in-docker.md
 ```
@@ -51,7 +52,7 @@ bash .gaia/tests/distribution/01-files-present.sh
 
 ## Layered isolation
 
-Layer 0 — host pnpm available, scenarios run with the maintainer's PATH (default). Layer 1 — PATH-stripped subshell (`05-clean-env.sh`) verifies the bootstrapper extracts cleanly with only `/usr/bin:/bin`. Layer 2 — Docker (`06-claude-runs-staged.sh`) verifies the Claude-in-container plumbing against a staged release tree.
+Layer 0 — host pnpm available, scenarios run with the maintainer's PATH (default). Layer 1 — PATH-stripped subshell (`05-clean-env.sh`) verifies the bootstrapper extracts cleanly with only `/usr/bin:/bin`. Layer 2 — Docker (`06-claude-runs-staged.sh`) verifies the Claude-in-container plumbing against a staged release tree. Adopter-flow regressions (`07-`+) run on the host or runner without Docker and exercise the bundled CLI against a writable copy of the staged tree.
 
 ### Layer 1: clean-env bootstrap (`05-clean-env.sh`)
 
@@ -68,6 +69,14 @@ Builds a `gaia-dist-claude` image (`node:22-bullseye-slim` + `claude.ai/install.
 What it covers: image build, claude binary on PATH inside the container, OAuth auth from container to Anthropic, staged tree reachable as the container's working directory. What it does NOT cover: adopter flows like `/gaia-init` or `/setup-gaia` — those exercise interactive skills and live in follow-up scenarios; this is the harness smoke that proves Layer 2 is wired.
 
 Skips automatically if Docker is unavailable OR `CLAUDE_CODE_OAUTH_TOKEN` is unset, so contributors without auth can still run Layers 0 + 1 via `run-all.sh`. Both skips report as soft PASS.
+
+### Adopter-flow regressions (`07-`+)
+
+`06-claude-runs-staged.sh` proves the harness wiring (Docker, OAuth auth, claude binary on PATH), but does NOT prove any GAIA-specific flow works in the shipped tarball. Adopter-flow scenarios fill that gap by running the bundled `.gaia/cli/gaia` binary directly against a writable copy of the staged tree.
+
+`07-gaia-init-strip-branding.sh` runs `gaia init strip-branding --title "Test Project"` and asserts the four documented post-conditions: `README.md` is regenerated from `.gaia/templates/README.md` with the title substituted, `app/components/GaiaLogo/` is removed, `app/components/Header/index.tsx` no longer references `GaiaLogo`, and the subcommand exits 0 with no stdout per its contract. Catches the failure mode where `release-exclude` accidentally strips a file the subcommand needs (template, deletion target, edit target) — Layers 0+1+2 stay green; only this scenario fails.
+
+Future adopter-flow scenarios cover the rest of `gaia init` (`configure-i18n`, `rename`, `wire-statusline`, `finalize`) and `gaia setup` subcommands.
 
 #### Local setup for maintainers
 
