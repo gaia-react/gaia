@@ -610,7 +610,7 @@ function $constructor(name, initializer3, params) {
   Object.defineProperty(_, "name", { value: name });
   return _;
 }
-var $brand = Symbol("zod_brand");
+var $brand = /* @__PURE__ */ Symbol("zod_brand");
 var $ZodAsyncError = class extends Error {
   constructor() {
     super(`Encountered Promise during synchronous parse. Use .parseAsync() instead.`);
@@ -10353,8 +10353,8 @@ function yo_default() {
 
 // node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/registries.js
 var _a2;
-var $output = Symbol("ZodOutput");
-var $input = Symbol("ZodInput");
+var $output = /* @__PURE__ */ Symbol("ZodOutput");
+var $input = /* @__PURE__ */ Symbol("ZodInput");
 var $ZodRegistry = class {
   constructor() {
     this._map = /* @__PURE__ */ new WeakMap();
@@ -11391,7 +11391,7 @@ function _stringbool(Classes, _params) {
     type: "pipe",
     in: stringSchema,
     out: booleanSchema,
-    transform: (input, payload) => {
+    transform: ((input, payload) => {
       let data = input;
       if (params.case !== "sensitive")
         data = data.toLowerCase();
@@ -11410,14 +11410,14 @@ function _stringbool(Classes, _params) {
         });
         return {};
       }
-    },
-    reverseTransform: (input, _payload) => {
+    }),
+    reverseTransform: ((input, _payload) => {
       if (input === true) {
         return truthyArray[0] || "true";
       } else {
         return falsyArray[0] || "false";
       }
-    },
+    }),
     error: params.error
   });
   return codec2;
@@ -20993,7 +20993,7 @@ function chooseScalarStyle(string4, singleLineOnly, indentPerLevel, lineWidth, t
   return quotingType === QUOTING_TYPE_DOUBLE ? STYLE_DOUBLE : STYLE_SINGLE;
 }
 function writeScalar(state, string4, level, iskey, inblock) {
-  state.dump = function() {
+  state.dump = (function() {
     if (string4.length === 0) {
       return state.quotingType === QUOTING_TYPE_DOUBLE ? '""' : "''";
     }
@@ -21031,7 +21031,7 @@ function writeScalar(state, string4, level, iskey, inblock) {
       default:
         throw new exception("impossible error: invalid scalar style");
     }
-  }();
+  })();
 }
 function blockHeader(string4, indentPerLevel) {
   var indentIndicator = needIndentIndicator(string4) ? String(indentPerLevel) : "";
@@ -21045,12 +21045,12 @@ function dropEndingNewline(string4) {
 }
 function foldString(string4, width) {
   var lineRe = /(\n+)([^\n]*)/g;
-  var result = function() {
+  var result = (function() {
     var nextLF = string4.indexOf("\n");
     nextLF = nextLF !== -1 ? nextLF : string4.length;
     lineRe.lastIndex = nextLF;
     return foldLine(string4.slice(0, nextLF), width);
-  }();
+  })();
   var prevMoreIndented = string4[0] === "\n" || string4[0] === " ";
   var moreIndented;
   var match;
@@ -22281,6 +22281,9 @@ var REACT_HOOK_KEYWORDS = [
   "useState"
 ];
 var detectReactImports = (paramsString, returnsAnnotation) => {
+  void paramsString;
+  void returnsAnnotation;
+  void REACT_HOOK_KEYWORDS;
   return "";
 };
 var resolveTemplateFile = (filename) => {
@@ -23539,6 +23542,8 @@ var AuditDriftError = class extends Error {
     this.detail = detail;
     this.name = "AuditDriftError";
   }
+  assertion;
+  detail;
 };
 var deriveFieldsPresent = (report) => Object.keys(report).toSorted((a, b) => a.localeCompare(b));
 var computeAuditBlock = (report) => {
@@ -24833,6 +24838,8 @@ var ArgParseError = class extends Error {
     this.arg = arg;
     this.name = "ArgParseError";
   }
+  issue;
+  arg;
 };
 var parseValueByKind = {
   json: (token, valueToken) => {
