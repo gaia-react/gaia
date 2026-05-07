@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-05-07
+updated: 2026-05-08
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -53,9 +53,20 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
 
 ## Tarball scrubbing
 
-`release.yml` builds the tarball from `git ls-files` (not a raw `tar .`) and then subtracts `.gaia/release-exclude` patterns. Two-layer filter: `git ls-files` already ignores anything in `.gitignore` (no `.DS_Store`, `node_modules`, build output, `.idea/`); `.gaia/release-exclude` additionally strips tracked-but-maintainer-only content. The same exclusion list drives `gaia release manifest`, so the manifest never references files an adopter cannot have. The categories are spelled out in the next section.
+`release.yml` builds the tarball in four phases:
+
+1. **Stage** — drive the file set from `git ls-files` (not a raw `tar .`) and subtract `.gaia/release-exclude` patterns. `git ls-files` already ignores anything in `.gitignore` (no `.DS_Store`, `node_modules`, build output, `.idea/`); `.gaia/release-exclude` strips the tracked-but-maintainer-only content. `rsync` materializes the include list into `/tmp/gaia-vX.Y.Z/`.
+2. **Bundle-time scrub** — `gaia release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak. See [[Bundle-time Scrub]] for rationale.
+3. **Runtime-deps verification** — `gaia release runtime-deps --staging /tmp/gaia-vX.Y.Z` walks shipped shell scripts and verifies every explicit path constant resolves to a shipped path, an adopter-owned sentinel, or a runtime-allocated location. Catches the leak class scrubbing cannot see — runtime references survive lexical strip.
+4. **Tar** — `tar -czf gaia-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`. The same release-exclude list drives `gaia release manifest`, so the manifest never references files an adopter cannot have. The categories are spelled out in the next section.
 
 The scrubbed `wiki/hot.md` + `wiki/log.md` contain only the release marker — none of GAIA's internal session cache.
+
+### Bundle-time enforcement
+
+Marker-delimited maintainer-only blocks let the source repo carry content useful to maintainers (entity pages, internal cross-references, audit-decision rationale) without leaking into adopter scaffolds. Wrap a block in `<!-- gaia:maintainer-only:start -->` / `<!-- gaia:maintainer-only:end -->`; `gaia release scrub` strips the block before tar.
+
+The leak-check pass is the convergence mechanism the post-#97 audit trajectory predicted: free-form audits found roughly one novel issue class per round; codified detection patterns running against the staging tree close the loop. New leak patterns become explicit `.gaia/release-scrub.yml` entries — visible, reviewable, deterministic.
 
 ## Distribution Boundary
 
@@ -73,6 +84,7 @@ The other `/gaia-*` commands (`plan`, `handoff`, `pickup`, `audit`) are adopter-
 - `wiki/meta/` — lint and consolidate audit reports; references specific commits and dates.
 - `wiki/.obsidian/workspace.json` — per-machine Obsidian layout state.
 - `wiki/concepts/Release Workflow.md` — this page; documents GAIA administration, not adopter workflow.
+- `wiki/decisions/Bundle-time Scrub.md` — ADR for the bundle-time enforcement primitives; describes maintainer release machinery.
 
 Other wiki pages under `wiki/concepts/`, `wiki/decisions/`, `wiki/dependencies/`, `wiki/modules/`, `wiki/components/`, `wiki/flows/`, `wiki/sources/` ship as `wiki-owned` and are intended for adopter projects to extend.
 
@@ -95,6 +107,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 ### 5. Release-time maintainer tooling
 
 - `.gaia/release-exclude` — this exclusion file itself.
+- `.gaia/release-scrub.yml` — bundle-time scrub config consumed by `gaia release scrub`. Adopters never run releases.
 
 `.gaia/scripts/` ships to adopters: `check-updates.sh` is the background refresher the statusline invokes to populate `Run /update-deps` and `Run /update-gaia` indicators.
 
@@ -166,4 +179,5 @@ The CLI is deliberately thin — heavy lifting (i18n, branding strip, plugin ins
 - [[Update Workflow]] — how adopters pull later releases into an initialized project without clobbering drift.
 - [[Quality Gate]] — must pass before `/gaia-release` will let you tag.
 - [[Wiki Sync]] — drift gate at Step 2; release is blocked until `wiki/.state.json` matches HEAD.
+- [[Bundle-time Scrub]] — rationale for marker-strip + leak-check + runtime-deps; what the system catches, what it does not.
 - [[Git Workflow]] — destructive-on-main hook that `/gaia-release` coexists with (the final push is gated behind explicit user confirmation).

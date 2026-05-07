@@ -27,7 +27,13 @@ wiki/
 ├── decisions/          # ADRs — why GAIA chose X over Y
 ├── dependencies/       # external deps with role + version
 ├── flows/              # data flows (auth, theme, language, form submit)
-└── concepts/           # ideas/patterns (Quality Gate, Co-location, Thin Routes)
+<!-- gaia:maintainer-only:start -->
+├── entities/           # GAIA project, contributors, ecosystem actors
+<!-- gaia:maintainer-only:end -->
+├── concepts/           # ideas/patterns (Quality Gate, Co-location, Thin Routes)
+<!-- gaia:maintainer-only:start -->
+└── meta/               # dashboards, lint reports
+<!-- gaia:maintainer-only:end -->
 ```
 
 ## Conventions

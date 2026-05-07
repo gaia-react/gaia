@@ -15,6 +15,8 @@ import {run as runChangelog} from './changelog.js';
 import {run as runCommitAndTag} from './commit-and-tag.js';
 import {run as runManifest} from './manifest.js';
 import {run as runPreflight} from './preflight.js';
+import {run as runRuntimeDeps} from './runtime-deps.js';
+import {run as runScrub} from './scrub.js';
 import {run as runScrubWiki} from './scrub-wiki.js';
 
 const HELP_TEXT = `Usage: gaia release <subcommand> [args]
@@ -24,6 +26,11 @@ const HELP_TEXT = `Usage: gaia release <subcommand> [args]
   changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
   scrub-wiki [--version <X.Y.Z>] [--date <D>] Reset wiki/hot.md and wiki/log.md.
   manifest [--out <path>] [--stdout]          Regenerate .gaia/manifest.json.
+  manifest --check [--json]                   Verify committed manifest is fresh + lint classifier sets.
+  scrub <staging-dir> [--config <path>] [--json]
+                                              Apply bundle-time marker-strip + leak-check.
+  runtime-deps [--staging <dir>] [--manifest <path>] [--json]
+                                              Verify shipped scripts only call shipped paths.
   commit-and-tag (--commit | --tag) [--no-push]
                                               Commit + amend state, or tag + push.
 `;
@@ -40,6 +47,8 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   'commit-and-tag': runCommitAndTag,
   'manifest': runManifest,
   'preflight': runPreflight,
+  'runtime-deps': runRuntimeDeps,
+  'scrub': runScrub,
   'scrub-wiki': runScrubWiki,
 };
 

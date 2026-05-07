@@ -28,7 +28,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   scaffold component|hook|route|service
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   update merge --baseline <dir> --latest <dir> --manifest <path>
-  release preflight|bump|changelog|scrub-wiki|manifest|commit-and-tag
+  release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize
 `;

@@ -56,6 +56,13 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Language Flow]]
 - [[Form Submit Flow]]
 
+<!-- gaia:maintainer-only:start -->
+## Entities
+
+- [[GAIA]]
+- [[Steven Sacks]]
+<!-- gaia:maintainer-only:end -->
+
 ## Dependencies
 
 - [[React Router 7]]
@@ -93,6 +100,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[DragonScale Opt-Out]]
 - [[spec-kit Extension Strategy]]
 - [[Wiki Management]] — wiki primitives, state file, deterministic classification
+<!-- gaia:maintainer-only:start -->
+- [[Bundle-time Scrub]] — marker-strip + leak-check + runtime-deps; closes the audit-round loop with build-time enforcement.
+<!-- gaia:maintainer-only:end -->
 
 ## Concepts
 
@@ -113,6 +123,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Integration Conventions]] — Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
 - [[Claude Skills]]
 - [[Update Workflow]] — `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.
+<!-- gaia:maintainer-only:start -->
+- [[Release Workflow]] — Maintainer flow: `/gaia-release`, `release.yml`, tarball scrubbing, `create-gaia` bootstrapper.
+<!-- gaia:maintainer-only:end -->
 - [[GAIA Spec]] — `/gaia spec`: Socratic discovery wrapper around spec-kit; produces an immutable SPEC artifact and chains into `/gaia plan`.
 - [[GAIA Plan]] — `/gaia plan`: feature plan + orchestrator scaffolding, clipboard handoff to a fresh session.
 - [[GAIA Handoff]] — `/gaia handoff`: session handoff doc.
@@ -125,4 +138,10 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Telemetry]] — three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.
 - [[Serena Integration]] — Serena handles live code; the wiki handles institutional memory.
 - [[Chromatic Opt-Out]]
+
+<!-- gaia:maintainer-only:start -->
+## Meta
+
+- [[dashboard]]
+<!-- gaia:maintainer-only:end -->
 

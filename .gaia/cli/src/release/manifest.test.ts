@@ -17,7 +17,13 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {buildManifest, classifyPath, parseExcludePatterns, run} from './manifest.js';
+import {
+  buildManifest,
+  classifyPath,
+  lintClassifierSets,
+  parseExcludePatterns,
+  run,
+} from './manifest.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -291,6 +297,269 @@ describe('run (CLI)', () => {
     expect(stdio.errors.join('')).toContain('manifest_build_failed');
   });
 });
+
+describe('lintClassifierSets', () => {
+  test('returns empty when no classifier entry is also excluded', () => {
+    const patterns = parseExcludePatterns('.gaia/scripts\nwiki/entities\n');
+    expect(lintClassifierSets(patterns)).toEqual([]);
+  });
+
+  test('flags exact-set entry that is also excluded', () => {
+    const patterns = parseExcludePatterns('CLAUDE.md\n');
+    const overlaps = lintClassifierSets(patterns);
+    expect(overlaps).toHaveLength(1);
+    expect(overlaps[0]).toMatchObject({
+      entry: 'CLAUDE.md',
+      setName: 'SHARED',
+    });
+  });
+
+  test('flags prefix-set entry that is also excluded', () => {
+    const patterns = parseExcludePatterns('wiki/concepts\n');
+    const overlaps = lintClassifierSets(patterns);
+    expect(overlaps).toHaveLength(1);
+    expect(overlaps[0]).toMatchObject({
+      entry: 'wiki/concepts',
+      setName: 'WIKI_OWNED_PREFIXES',
+    });
+  });
+
+  test('flags adopter-sentinel that is also excluded', () => {
+    const patterns = parseExcludePatterns('wiki/hot.md\n');
+    const overlaps = lintClassifierSets(patterns);
+    expect(overlaps).toHaveLength(1);
+    expect(overlaps[0]).toMatchObject({
+      entry: 'wiki/hot.md',
+      setName: 'ADOPTER_OWNED_SENTINELS',
+    });
+  });
+});
+
+describe('run --check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+    sandbox = setupSandbox();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  const seedAndGenerate = (extraFiles: Record<string, string> = {}): void => {
+    sandbox.commit('seed', {
+      '.gaia/VERSION': '1.0.0\n',
+      '.gaia/release-exclude': '# none\n',
+      'CLAUDE.md': '# CLAUDE\n',
+      'app/foo.ts': 'export {};\n',
+      'wiki/concepts/Bar.md': '# bar\n',
+      'wiki/index.md': '# index\n',
+      ...extraFiles,
+    });
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+    expect(exit).toBe(0);
+    stdio.outputs.length = 0;
+  };
+
+  test('clean case: exits 0 with empty diff', () => {
+    seedAndGenerate();
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('clean');
+    expect(stdio.errors.join('')).toBe('');
+  });
+
+  test('missing entry: exits non-zero and names the missing file', () => {
+    seedAndGenerate();
+
+    const manifestPath = path.join(sandbox.root, '.gaia/manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Record<string, unknown>;
+    };
+    delete manifest.files['app/foo.ts'];
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(1);
+    const out = stdio.outputs.join('');
+    expect(out).toContain('missing from manifest');
+    expect(out).toContain('app/foo.ts');
+  });
+
+  test('extra entry: exits non-zero and names the extra file', () => {
+    seedAndGenerate();
+
+    const manifestPath = path.join(sandbox.root, '.gaia/manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Record<string, string>;
+    };
+    manifest.files['app/ghost.ts'] = 'owned';
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(1);
+    const out = stdio.outputs.join('');
+    expect(out).toContain('extra in manifest');
+    expect(out).toContain('app/ghost.ts');
+  });
+
+  test('classification drift: exits non-zero and names the drift', () => {
+    seedAndGenerate();
+
+    const manifestPath = path.join(sandbox.root, '.gaia/manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Record<string, string>;
+    };
+    manifest.files['app/foo.ts'] = 'shared';
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(1);
+    const out = stdio.outputs.join('');
+    expect(out).toContain('class drift');
+    expect(out).toContain('app/foo.ts');
+    expect(out).toContain('shared → owned');
+  });
+
+  test('version drift: exits non-zero and names both versions', () => {
+    seedAndGenerate();
+
+    const manifestPath = path.join(sandbox.root, '.gaia/manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Record<string, string>;
+      version: string;
+    };
+    manifest.version = '0.9.0';
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(1);
+    const out = stdio.outputs.join('');
+    expect(out).toContain('version drift');
+    expect(out).toContain('0.9.0');
+    expect(out).toContain('1.0.0');
+  });
+
+  test('missing manifest file: exits non-zero with manifest_missing error', () => {
+    sandbox.commit('seed', {
+      '.gaia/VERSION': '1.0.0\n',
+      '.gaia/release-exclude': '# none\n',
+      'app/foo.ts': 'export {};\n',
+    });
+
+    const exit = run(['--check'], {cwd: sandbox.root});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('manifest_missing');
+  });
+
+  test('--check is incompatible with --out', () => {
+    sandbox.commit('seed', {
+      '.gaia/VERSION': '1.0.0\n',
+      '.gaia/release-exclude': '# none\n',
+    });
+
+    const exit = run(['--check', '--out', 'foo.json'], {cwd: sandbox.root});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('incompatible');
+  });
+
+  test('--json requires --check', () => {
+    sandbox.commit('seed', {
+      '.gaia/VERSION': '1.0.0\n',
+      '.gaia/release-exclude': '# none\n',
+    });
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('--json requires --check');
+  });
+
+  test('--check --json emits structured report', () => {
+    seedAndGenerate();
+
+    const manifestPath = path.join(sandbox.root, '.gaia/manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Record<string, string>;
+    };
+    manifest.files['app/extra.ts'] = 'owned';
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const exit = run(['--check', '--json'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(1);
+    const parsed = JSON.parse(stdio.outputs.join('')) as ManifestDriftJson;
+    expect(parsed.extra).toEqual([{actual: 'owned', file: 'app/extra.ts'}]);
+    expect(parsed.missing).toEqual([]);
+    expect(parsed.drift).toEqual([]);
+  });
+
+  test('classifier-set overlap: exits non-zero and names the overlap', () => {
+    sandbox.commit('seed', {
+      '.gaia/VERSION': '1.0.0\n',
+      // CLAUDE.md is in the SHARED classifier set; if release-exclude
+      // also matches it, the SHARED entry is dead code.
+      '.gaia/release-exclude': 'CLAUDE.md\n',
+      'CLAUDE.md': '# CLAUDE\n',
+      'app/foo.ts': 'export {};\n',
+    });
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+    expect(exit).toBe(0);
+    stdio.outputs.length = 0;
+
+    const checkExit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(checkExit).toBe(1);
+    const out = stdio.outputs.join('');
+    expect(out).toContain('classifier-set overlaps');
+    expect(out).toContain('SHARED');
+    expect(out).toContain('CLAUDE.md');
+  });
+});
+
+type ManifestDriftJson = {
+  drift: Array<{actual: string; expected: string; file: string}>;
+  extra: Array<{actual: string; file: string}>;
+  missing: Array<{expected: string; file: string}>;
+};
 
 describe('byte-identity vs generate-manifest.mjs', () => {
   /**

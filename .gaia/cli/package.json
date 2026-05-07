@@ -11,12 +11,14 @@
     "gaia": "tsx ./src/index.ts"
   },
   "dependencies": {
+    "js-yaml": "4.1.1",
     "ulid": "3.0.2",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "25.6.0",
-    "esbuild": "0.23.1",
+    "@types/js-yaml": "4.0.9",
+    "@types/node": "25.6.1",
+    "esbuild": "0.28.0",
     "tsx": "4.21.0",
     "typescript": "6.0.3",
     "vitest": "4.1.5"

@@ -12,9 +12,12 @@
 
 # --- 1. Maintainer-only Claude surface ---
 # /gaia-release cuts releases of the GAIA template itself; adopters never
-# release GAIA. Other /gaia-* commands (plan, handoff, pickup, audit) are
-# adopter-useful and must NOT be added here.
+# release GAIA. /health-audit is the maintainer-only autonomous audit +
+# auto-heal loop (runbook lives under .gaia/cli/health/, already excluded
+# wholesale via category 10). Other /gaia-* commands (plan, handoff,
+# pickup, audit) are adopter-useful and must NOT be added here.
 .claude/commands/gaia-release.md
+.claude/commands/health-audit.md
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that
@@ -23,6 +26,7 @@ wiki/entities
 wiki/meta
 wiki/.obsidian/workspace.json
 wiki/concepts/Release Workflow.md
+wiki/decisions/Bundle-time Scrub.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked
@@ -48,11 +52,14 @@ wiki/concepts/Release Workflow.md
 .gaia/cli/dist
 
 # --- 5. Release-time maintainer tooling ---
-# This file itself — adopters don't run GAIA releases. Note: `.gaia/scripts/`
-# DOES ship: `check-updates.sh` is the background refresher invoked by the
-# adopter-facing statusline (writes the cache the statusline reads for
-# `Run /update-deps` and `Run /update-gaia` indicators).
+# This file itself — adopters don't run GAIA releases. The release-scrub
+# config drives `gaia release scrub` (bundle-time marker-strip + leak-check)
+# and is consumed only by the maintainer's release.yml. Note:
+# `.gaia/scripts/` DOES ship: `check-updates.sh` is the background refresher
+# invoked by the adopter-facing statusline (writes the cache the statusline
+# reads for `Run /update-deps` and `Run /update-gaia` indicators).
 .gaia/release-exclude
+.gaia/release-scrub.yml
 
 # --- 6. Maintainer dev-tool configs ---
 # Per-machine tool configs initialized by `setup-gaia` on the adopter's
