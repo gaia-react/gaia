@@ -14,9 +14,9 @@ Spawn:
 - `description`: `"Wiki lint"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–4) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 4 — no recap of the report contents.`
+  > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–5) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 5 — no recap of the report contents.`
 
-When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 4. If the subagent returns a `WIKI DEAD-PATHS:` line, surface it too.
+When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 5. If the subagent returns a `WIKI DEAD-PATHS:` line, surface it too. If the subagent returns a `UAT-SPEC DRIFT:` line, surface it too.
 
 ---
 
