@@ -5,13 +5,13 @@ status: active
 priority: 1
 date: 2026-05-06
 created: 2026-05-06
-updated: 2026-05-06
+updated: 2026-05-07
 tags: [decision, claude, spec-kit, architecture]
 ---
 
 # spec-kit Extension Strategy
 
-GAIA's `/gaia spec` workflow runs on top of [GitHub spec-kit](https://github.com/github/spec-kit) v0.8.5. This page records the load-bearing contract decisions that emerged from SPEC-002's empirical contract correction.
+GAIA's `/gaia spec` workflow runs on top of [GitHub spec-kit](https://github.com/github/spec-kit) v0.8.5. This page records the load-bearing contract decisions for that integration.
 
 ## Decision
 
@@ -24,7 +24,7 @@ GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` and a s
 
 ## Contract invariants
 
-These five facts are the hard-won output of sandbox probing v0.8.5's actual implementation. Earlier drafts assumed a different contract; they were wrong.
+Five contract facts about spec-kit v0.8.5's extension API:
 
 ### 1. Hooks are slash commands, not shell scripts
 
@@ -44,7 +44,7 @@ GAIA's `speckit.specify` replacement uses `wrap`. The `spec-template` replacemen
 
 ### 4. Version pin is a range with runtime drift detection
 
-The extension and preset declare `requires.speckit_version: ">=0.8.5,<0.10.0"`. There is no `requires.speckit_invocation` field — that was a SPEC-001 fiction. Drift is enforced at runtime by `lib/version-check.sh`, which reads the active spec-kit version and surfaces a warning when it falls outside the range.
+The extension and preset declare `requires.speckit_version: ">=0.8.5,<0.10.0"`. Drift is enforced at runtime by `lib/version-check.sh`, which reads the active spec-kit version and surfaces a warning when it falls outside the range.
 
 `/gaia-init` pins the install at `v0.8.5` exactly via `uvx --from git+https://github.com/github/spec-kit.git@v0.8.5 specify ...`.
 
@@ -64,23 +64,9 @@ specify preset add --dev .specify/presets/gaia
 
 `specify init --here` populates `.specify/` with core skills. The two `add --dev` calls register GAIA's local extension and preset against that core install.
 
-## What changed vs. the original design
-
-The first attempt (PR #84, SPEC-001) built against assumed contracts that diverged from spec-kit's actual extension API. SPEC-002 corrected the contracts via direct sandbox probing of v0.8.5 source. Three UATs changed shape:
-
-| UAT     | Original design                                                       | Corrected design                                                       |
-| ------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| UAT-008 | `hooks/after_specify.sh` shell script                                 | `commands/lint.md` slash command via `after_specify` hook              |
-| UAT-010 | Fictional `on_save` hook                                              | Inline `AskUserQuestion` in `/gaia spec` Step 11                       |
-| UAT-018 | `==X.Y.Z` literal pin + fictional `requires.speckit_invocation` field | `requires.speckit_version: ">=0.8.5,<0.10.0"` + `lib/version-check.sh` |
-
-The salvage map and per-commit verdict for the rewrite live in `.gaia/local/specs/SPEC-001-refit-decision.md`. The empirical contract source-of-truth is `.gaia/local/specs/SPEC-001-revised-contracts.md`.
-
 ## Sandbox validation
 
-`.specify/extensions/gaia/test/v2-validation.md` captures live evidence against `/tmp/specify-validate-001/` confirming each invariant: extension+preset install, `{CORE_TEMPLATE}` substitution under `strategy: wrap`, `HookExecutor.format_hook_message` emits `EXECUTE_COMMAND` for the three GAIA hooks, `on_save` renders `(no hooks)`, and `specify preset resolve spec-template` returns the GAIA preset path.
-
-`.specify/extensions/gaia/test/uat-evidence.md` cross-references each of SPEC-001's 18 UATs to the artifact (manifest, command body, helper script, or sandbox transcript) that satisfies it.
+`.specify/extensions/gaia/test/v2-validation.md` captures live evidence against `/tmp/specify-validate-001/` confirming each invariant: extension + preset install, `{CORE_TEMPLATE}` substitution under `strategy: wrap`, `HookExecutor.format_hook_message` emits `EXECUTE_COMMAND` for the three GAIA hooks, `on_save` renders `(no hooks)`, and `specify preset resolve spec-template` returns the GAIA preset path.
 
 ## Related
 

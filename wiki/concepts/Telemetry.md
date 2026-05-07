@@ -9,7 +9,7 @@ tags: [concept, cli, telemetry, mentorship]
 
 # Telemetry
 
-GAIA's telemetry system (SPEC-001) captures structured events across the dev workflow to power mentorship feedback and aggregated analytics. It ships as a single self-contained bundled binary at `.gaia/cli/gaia` — invoked by hooks and slash-command emits.
+GAIA's telemetry system captures structured events across the dev workflow to power mentorship feedback and aggregated analytics. It ships as a single self-contained bundled binary at `.gaia/cli/gaia` — invoked by hooks and slash-command emits.
 
 ## Three-stream architecture
 

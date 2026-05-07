@@ -41,7 +41,7 @@ specify preset add --dev .specify/presets/gaia
 
 GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` (declares `speckit.gaia.spec` and three hook-target commands) and a **preset** at `.specify/presets/gaia/` (replaces `speckit.specify` under `strategy: wrap` and replaces `spec-template`). Both are GAIA-internal — not published to spec-kit's catalog; distribution is via the GAIA template.
 
-Full contract details and the SPEC-002 correction history: [[spec-kit Extension Strategy]].
+Full contract details: [[spec-kit Extension Strategy]].
 
 ## Limits
 
