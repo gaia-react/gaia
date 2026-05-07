@@ -42,7 +42,7 @@ export default defineConfig(({mode}) => {
       env: process.env,
       environment: 'happy-dom',
       globals: true,
-      include: ['./app/**/*.test.{ts,tsx}', './gaia-cli/**/*.test.{ts,tsx}'],
+      include: ['./app/**/*.test.{ts,tsx}'],
       onConsoleLog: (message) => {
         if (ignoreWarnings.some((warning) => message.includes(warning))) {
           return false;

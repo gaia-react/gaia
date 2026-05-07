@@ -54,5 +54,3 @@ coverage
 .gaia-backup/
 .gaia-merge/
 
-# GAIA CLI build output (compiled by `pnpm gaia-cli:build`)
-gaia-cli/dist/

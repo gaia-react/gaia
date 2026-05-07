@@ -29,15 +29,15 @@ What this smoke does NOT cover:
 bash .claude-tests/smoke/telemetry-v1/run.sh
 ```
 
-Exit `0` when every check passes; `1` on the first failure (continues all tests so the report shows the full surface). Pre-flight failure (missing `bin/gaia`, missing fixture, missing `node_modules/.bin/tsx`) exits `2`.
+Exit `0` when every check passes; `1` on the first failure (continues all tests so the report shows the full surface). Pre-flight failure (missing `.gaia/cli/gaia`, missing fixture, missing `node_modules/.bin/tsx`) exits `2`.
 
 The harness creates one `mktemp -d` scratch tree per run with six per-test subdirectories underneath. Cleanup runs unconditionally on every exit path via a single `trap … EXIT`. The harness never reads or writes the user's real `~/.claude/projects/...` tree — every test runs under `HOME=<scratch>` with the scratch dir as `cwd` so `paths.ts` resolves storage roots into the scratch.
 
 ## How the scratch isolation works
 
-The CLI binary `bin/gaia` is a thin bash shim that `exec`s the Node entrypoint. Node inherits the caller's `cwd` and `HOME` env. Two facts make the harness work:
+The CLI binary `.gaia/cli/gaia` is a self-contained ESM bundle invoked directly by Node via shebang. Node inherits the caller's `cwd` and `HOME` env. Two facts make the harness work:
 
-1. **`process.cwd()` falls through.** `paths.ts::resolveRepoRoot` calls `git rev-parse --show-toplevel`. The scratch dir is not a git repo, so that throws and the `catch` falls back to `process.cwd()`. We invoke `bin/gaia` from a sub-shell with `cd "$WORK"` so `process.cwd()` is the scratch.
+1. **`process.cwd()` falls through.** `paths.ts::resolveRepoRoot` calls `git rev-parse --show-toplevel`. The scratch dir is not a git repo, so that throws and the `catch` falls back to `process.cwd()`. We invoke `.gaia/cli/gaia` from a sub-shell with `cd "$WORK"` so `process.cwd()` is the scratch.
 2. **`os.homedir()` reads the env.** Node's `os.homedir()` returns `$HOME` when set. We pass `HOME=<scratch>/home` to every CLI invocation. The mentorship subtree at `~/.claude/projects/<slug>/gaia/...` lands under the scratch home.
 
 `pwd -P` is used to canonicalize both scratch paths because macOS exposes `/tmp` and `/var/folders/...` as symlinks to `/private/...` — `process.cwd()` returns the resolved variant, so the harness has to mirror it to look up the file the CLI writes.
@@ -51,7 +51,7 @@ Sub-shell `(cd "$WORK" && …)` is allowed per `.claude/rules/shell-cwd.md` (the
 
 ## Companion fixture
 
-The harness reads `gaia-cli/test-fixtures/profile/articulation-fire.jsonl` from the real repo (no copy — the file is checked in alongside the other Phase 5 fixtures). Phase 5's fixture catalog is at `gaia-cli/test-fixtures/profile/README.md`.
+The harness reads `.gaia/cli/test-fixtures/profile/articulation-fire.jsonl` from the real repo (no copy — the file is checked in alongside the other Phase 5 fixtures). Phase 5's fixture catalog is at `.gaia/cli/test-fixtures/profile/README.md`.
 
 ## Projection-drift test strategy
 

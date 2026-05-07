@@ -8,13 +8,13 @@ The two artifacts are siblings, not duplicates. Per `.claude/rules/_internal/smo
 
 Walk it once start-to-finish during SPEC verification. Each cluster has a setup, an action, and an assertion. Where a step is mechanically deterministic and could equally land in a harness, the brief calls that out and points at the specific harness test that covers it — run that subset first via `bash .claude-tests/smoke/telemetry-v1/run.sh` to fast-fail if the regression is structural rather than experiential.
 
-Pattern-detection clusters explicitly note "wired-but-inert; assertion is against synthetic fixture, not live data" — at v1.0.0 internal-testing scale, real-usage events have not accumulated past the 10-event sample threshold. UAT-029/030/031 verify the *code paths* against the Phase 5 fixtures at `gaia-cli/test-fixtures/profile/*.jsonl`; production behavior is wired-but-inert by design.
+Pattern-detection clusters explicitly note "wired-but-inert; assertion is against synthetic fixture, not live data" — at v1.0.0 internal-testing scale, real-usage events have not accumulated past the 10-event sample threshold. UAT-029/030/031 verify the *code paths* against the Phase 5 fixtures at `.gaia/cli/test-fixtures/profile/*.jsonl`; production behavior is wired-but-inert by design.
 
 ## Prerequisites
 
 - The implementation has landed (Phases 1–5 of `.gaia/local/plans/spec-001-telemetry-v1/`).
 - `pnpm install` has run so `node_modules/.bin/tsx` is on disk.
-- `bin/gaia` is executable.
+- `.gaia/cli/gaia` is executable.
 - The harness has passed at least once locally: `bash .claude-tests/smoke/telemetry-v1/run.sh` exits 0.
 - A scratch dir for any per-step manual experiments: `WORK=$(mktemp -d)` — clean up at the end.
 
@@ -24,7 +24,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Setup.** Fresh repo with `gaia-init` not yet run, mentorship choice unset.
 
-**Action.** Run `bin/gaia telemetry emit pr_opened --pr-number 1` (any cloud-only event will do).
+**Action.** Run `.gaia/cli/gaia telemetry emit pr_opened --pr-number 1` (any cloud-only event will do).
 
 **Expected.**
 
@@ -57,14 +57,14 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Setup.** A repo with mentorship enabled, an open SPEC `SPEC-014` with `UAT-007`.
 
-**Action.** Run `bin/gaia telemetry emit uat_pass --uat-id UAT-007 --spec-id SPEC-014 --task-id TASK-093 --attempts 1 --area-tags visual,react,form`.
+**Action.** Run `.gaia/cli/gaia telemetry emit uat_pass --uat-id UAT-007 --spec-id SPEC-014 --task-id TASK-093 --attempts 1 --area-tags visual,react,form`.
 
 **Expected.**
 
 - **UAT-008.** Exactly one NDJSON line lands in today's mentorship events file with the full universal envelope plus `_local` namespace, and exactly one NDJSON line lands in today's cloud events file with `_local` absent and no forbidden field present; CLI exits 0 silently (no stdout writes on the happy path).
-- **UAT-009.** Disable mentorship (`bin/gaia mentorship disable --yes`) and re-run the same emit. Zero lines are written to mentorship or analytics files; one line is written to the cloud stream (cloud is independent of mentorship opt-in); CLI exits 0 silently.
-- **UAT-010.** Run `bin/gaia telemetry emit unknown_event_type --uat-id whatever`. The CLI exits non-zero with a structured error to stderr naming the unknown event type; no lines are written to any stream. Expected exit 10 (`UNKNOWN_EVENT_TYPE`).
-- **UAT-011.** Run `bin/gaia telemetry emit uat_pass --uat-id UAT-007` (missing required `spec-id`, `task-id`, `attempts`, `area-tags`). The Zod schema validator rejects the payload; the CLI exits non-zero (11, `PAYLOAD_VALIDATION_FAILED`); no lines are written; stderr names the missing fields.
+- **UAT-009.** Disable mentorship (`.gaia/cli/gaia mentorship disable --yes`) and re-run the same emit. Zero lines are written to mentorship or analytics files; one line is written to the cloud stream (cloud is independent of mentorship opt-in); CLI exits 0 silently.
+- **UAT-010.** Run `.gaia/cli/gaia telemetry emit unknown_event_type --uat-id whatever`. The CLI exits non-zero with a structured error to stderr naming the unknown event type; no lines are written to any stream. Expected exit 10 (`UNKNOWN_EVENT_TYPE`).
+- **UAT-011.** Run `.gaia/cli/gaia telemetry emit uat_pass --uat-id UAT-007` (missing required `spec-id`, `task-id`, `attempts`, `area-tags`). The Zod schema validator rejects the payload; the CLI exits non-zero (11, `PAYLOAD_VALIDATION_FAILED`); no lines are written; stderr names the missing fields.
 - **UAT-012.** Run the original UAT-008 emit twice in succession. Exactly one NDJSON line exists in the mentorship file; the cloud file likewise contains exactly one line; the second emit detects the existing `event_id` and exits 0 without writing.
 
 **Harness fast-path.** Test 1 covers UAT-008 and UAT-012; Test 6 covers UAT-009. UAT-010 and UAT-011 are deterministic but the harness focuses on the green path; verify manually here.
@@ -93,16 +93,16 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-016.** A `uat_pass` event records `payload.uat_id`, `spec_id`, `task_id`, `attempts: 1`, `area_tags`. Run `bin/gaia telemetry emit uat_pass --uat-id UAT-300 --spec-id SPEC-300 --task-id TASK-300 --attempts 1 --area-tags visual` and grep the mentorship line.
-- **UAT-017.** A `uat_fail` event with `failure_class: exception` distinguishes from `assertion`, `timeout`, `setup`, or `flake_suspected`. `bin/gaia telemetry emit uat_fail --uat-id UAT-300 --spec-id SPEC-300 --task-id TASK-300 --attempts 1 --area-tags visual --failure-class exception`.
-- **UAT-018.** A `needs_context_returned` event with `context_request_class: unclear_acceptance_criteria`. `bin/gaia telemetry emit needs_context_returned --spec-id SPEC-300 --task-id TASK-300 --area-tags visual --agent-type Senior --context-request-class unclear_acceptance_criteria`.
-- **UAT-019.** A `blocked_returned` event with `classification: intent`. `bin/gaia telemetry emit blocked_returned --spec-id SPEC-300 --task-id TASK-300 --area-tags visual --agent-type Senior --classification intent`. (Mentorship pattern detection weights `intent` and `spec` events; `code` is dropped from mentorship's pattern detection.)
-- **UAT-020.** A `spec_amended` event with `fields_changed: ["uats"]`, `amendment_reason` quoted from the reopen rationale, `time_since_close_seconds ≈ 14400`. `bin/gaia telemetry emit spec_amended --spec-id SPEC-300 --fields-changed uats --amendment-reason "missed empty-state UAT" --time-since-close-seconds 14400`.
-- **UAT-021.** A `plan_revised` event with `revision_class: scope_change`, `items_added: 2`, `items_removed: 0`. `bin/gaia telemetry emit plan_revised --spec-id SPEC-300 --plan-id PLAN-300 --revision-class scope_change --items-added 2 --items-removed 0`.
-- **UAT-022.** A `time_to_resolved_spec` event with `question_count: 12`, `duration_seconds: 1850`, `abandoned: false`, `area_tags`. `bin/gaia telemetry emit time_to_resolved_spec --spec-id SPEC-300 --area-tags visual --question-count 12 --duration-seconds 1850`.
-- **UAT-023.** A `code_review_audit_finding` event with `finding_class: type_hole`, `severity: warning`, `pr_number`, `area_tags`. `bin/gaia telemetry emit code_review_audit_finding --spec-id SPEC-300 --area-tags react --pr-number 88 --finding-class type_hole --severity warning --auditor-type code-review-audit`.
+- **UAT-016.** A `uat_pass` event records `payload.uat_id`, `spec_id`, `task_id`, `attempts: 1`, `area_tags`. Run `.gaia/cli/gaia telemetry emit uat_pass --uat-id UAT-300 --spec-id SPEC-300 --task-id TASK-300 --attempts 1 --area-tags visual` and grep the mentorship line.
+- **UAT-017.** A `uat_fail` event with `failure_class: exception` distinguishes from `assertion`, `timeout`, `setup`, or `flake_suspected`. `.gaia/cli/gaia telemetry emit uat_fail --uat-id UAT-300 --spec-id SPEC-300 --task-id TASK-300 --attempts 1 --area-tags visual --failure-class exception`.
+- **UAT-018.** A `needs_context_returned` event with `context_request_class: unclear_acceptance_criteria`. `.gaia/cli/gaia telemetry emit needs_context_returned --spec-id SPEC-300 --task-id TASK-300 --area-tags visual --agent-type Senior --context-request-class unclear_acceptance_criteria`.
+- **UAT-019.** A `blocked_returned` event with `classification: intent`. `.gaia/cli/gaia telemetry emit blocked_returned --spec-id SPEC-300 --task-id TASK-300 --area-tags visual --agent-type Senior --classification intent`. (Mentorship pattern detection weights `intent` and `spec` events; `code` is dropped from mentorship's pattern detection.)
+- **UAT-020.** A `spec_amended` event with `fields_changed: ["uats"]`, `amendment_reason` quoted from the reopen rationale, `time_since_close_seconds ≈ 14400`. `.gaia/cli/gaia telemetry emit spec_amended --spec-id SPEC-300 --fields-changed uats --amendment-reason "missed empty-state UAT" --time-since-close-seconds 14400`.
+- **UAT-021.** A `plan_revised` event with `revision_class: scope_change`, `items_added: 2`, `items_removed: 0`. `.gaia/cli/gaia telemetry emit plan_revised --spec-id SPEC-300 --plan-id PLAN-300 --revision-class scope_change --items-added 2 --items-removed 0`.
+- **UAT-022.** A `time_to_resolved_spec` event with `question_count: 12`, `duration_seconds: 1850`, `abandoned: false`, `area_tags`. `.gaia/cli/gaia telemetry emit time_to_resolved_spec --spec-id SPEC-300 --area-tags visual --question-count 12 --duration-seconds 1850`.
+- **UAT-023.** A `code_review_audit_finding` event with `finding_class: type_hole`, `severity: warning`, `pr_number`, `area_tags`. `.gaia/cli/gaia telemetry emit code_review_audit_finding --spec-id SPEC-300 --area-tags react --pr-number 88 --finding-class type_hole --severity warning --auditor-type code-review-audit`.
 
-**Harness fast-path.** None — the harness exercises only `uat_pass`. The other seven event types are validated by the schemas' unit tests (`gaia-cli/src/schemas/__tests__/`); this cluster is the integration sanity check.
+**Harness fast-path.** None — the harness exercises only `uat_pass`. The other seven event types are validated by the schemas' unit tests (`.gaia/cli/src/schemas/__tests__/`); this cluster is the integration sanity check.
 
 ---
 
@@ -112,9 +112,9 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-024.** A Senior agent finishes a task but fails to inline-emit `uat_pass` despite verification succeeding. The PostToolUse `engineer-return` hook reads the agent's structured return payload, infers the missing event(s), and emits via `bin/gaia telemetry emit`. The stream contains exactly one `uat_pass` event for the work item. Verify by inspecting the hook script (`.claude/hooks/`) and the resulting JSONL.
+- **UAT-024.** A Senior agent finishes a task but fails to inline-emit `uat_pass` despite verification succeeding. The PostToolUse `engineer-return` hook reads the agent's structured return payload, infers the missing event(s), and emits via `.gaia/cli/gaia telemetry emit`. The stream contains exactly one `uat_pass` event for the work item. Verify by inspecting the hook script (`.claude/hooks/`) and the resulting JSONL.
 - **UAT-025.** A Senior agent inline-emits `uat_pass` AND the engineer-return hook subsequently attempts the same emit. Both invocations complete; idempotency by content-derived `event_id` ULID ensures exactly one event lands; the hook's second invocation detects the duplicate and exits without writing.
-- **UAT-026.** A `/gaia spec` session canonically saves a SPEC. The save completes; a `spec_close` chain fires `bin/gaia telemetry compute-profile`, regenerating `profile.md` with the 30-day rolling window applied. Verify the `compute-profile` invocation lands in the slash-command's `## Step 5 — Telemetry` block.
+- **UAT-026.** A `/gaia spec` session canonically saves a SPEC. The save completes; a `spec_close` chain fires `.gaia/cli/gaia telemetry compute-profile`, regenerating `profile.md` with the 30-day rolling window applied. Verify the `compute-profile` invocation lands in the slash-command's `## Step 5 — Telemetry` block.
 
 **Harness fast-path.** Test 6 covers the silent-success short-circuit that UAT-026's chain trigger depends on (compute-profile must exit 0 quietly when mentorship is disabled, otherwise spec_close would fail loudly on every disabled repo). UAT-024 / UAT-025 require a live agent dispatch; assert by reading the hook script + grepping for the inline-emit call site.
 
@@ -135,7 +135,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 ## Cluster 8 — Pattern detection (UATs 29, 30, 31, 32) — fixture-driven
 
-**Setup.** Wired-but-inert at v1.0.0; assertion is against synthetic fixture, not live data. Use the fixtures at `gaia-cli/test-fixtures/profile/`.
+**Setup.** Wired-but-inert at v1.0.0; assertion is against synthetic fixture, not live data. Use the fixtures at `.gaia/cli/test-fixtures/profile/`.
 
 **Expected.**
 
@@ -144,7 +144,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - **UAT-031.** Drop `articulation-fade.jsonl` (two-segment fixture: rate 0.40 prior weeks, ~0.18 last week). Run `compute-profile`. The adaptation's strength scales down on the sliding-fade curve; effective strength falls below threshold; the adaptation moves to `## Faded adaptations` and ceases injection.
 - **UAT-032.** Drop `flake-downweight.jsonl` (48 events, 16 `flake_suspected` failures). Run `compute-profile`. The flake-suspected events are downweighted by factor 0.25 relative to assertion/exception failures (effective failure count: `4 + 4 + (16 * 0.25) = 12`, not 24).
 
-**Harness fast-path.** Test 4 drops `articulation-fire.jsonl` end-to-end and asserts `profile.md` writes correctly with the DO NOT EDIT header. The detector aggregations themselves are unit-tested at `gaia-cli/src/profile/__tests__/`.
+**Harness fast-path.** Test 4 drops `articulation-fire.jsonl` end-to-end and asserts `profile.md` writes correctly with the DO NOT EDIT header. The detector aggregations themselves are unit-tested at `.gaia/cli/src/profile/__tests__/`.
 
 ---
 
@@ -193,13 +193,13 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-039.** With mentorship currently disabled, run `bin/gaia mentorship enable` interactively. An `AskUserQuestion` confirms; on confirm, `mentorship.enabled = true`; `bin/gaia mentorship status` reflects the change immediately.
-- **UAT-040.** With mentorship enabled and N event files on disk, run `bin/gaia mentorship disable`. Subsequent emits no longer write mentorship events; existing files remain untouched; `compute-profile` short-circuits and `profile.md` is not regenerated.
-- **UAT-041.** With mentorship accumulated event files plus an analytics report, run `bin/gaia mentorship purge`. An `AskUserQuestion` requires explicit "Yes, delete all mentorship data" confirmation; on confirm, all files under `~/.claude/projects/<slug>/gaia/telemetry/mentorship/`, `profile.md`, and `.gaia/local/telemetry/analytics/*.json` are deleted; `install-id.txt` is regenerated as a fresh ULID; cloud stream files are NOT deleted.
-- **UAT-042.** With mentorship enabled, run `bin/gaia mentorship status`. stdout prints structured state: enabled flag, analytics flag, install-id, mentorship-dir absolute path, last-event timestamp, active-pattern count, active-adaptation count.
-- **UAT-043.** Run `bin/gaia mentorship analytics dry-run`. stdout prints the exact JSON payload that would be uploaded to the v1.x endpoint, with the `audit` block self-attesting (`no_event_data`, `no_user_paths`, `no_user_text`, `no_project_identifiers` all literally `true`) and `fields_present` matching actual top-level keys; dry-run does NOT perform any network call.
-- **UAT-044.** With both mentorship and analytics enabled, run `bin/gaia mentorship analytics disable`. `mentorship.enabled` remains `true`; `mentorship.analytics.enabled` becomes `false`; analytics report generation halts; mentorship JSONL writes continue.
-- **UAT-045.** Run any of the five `bin/gaia mentorship` subcommands in a non-interactive (CI / scripted) context with `--yes`. The `--yes` flag is honored; the command proceeds without prompting; structured stdout/stderr remains parseable.
+- **UAT-039.** With mentorship currently disabled, run `.gaia/cli/gaia mentorship enable` interactively. An `AskUserQuestion` confirms; on confirm, `mentorship.enabled = true`; `.gaia/cli/gaia mentorship status` reflects the change immediately.
+- **UAT-040.** With mentorship enabled and N event files on disk, run `.gaia/cli/gaia mentorship disable`. Subsequent emits no longer write mentorship events; existing files remain untouched; `compute-profile` short-circuits and `profile.md` is not regenerated.
+- **UAT-041.** With mentorship accumulated event files plus an analytics report, run `.gaia/cli/gaia mentorship purge`. An `AskUserQuestion` requires explicit "Yes, delete all mentorship data" confirmation; on confirm, all files under `~/.claude/projects/<slug>/gaia/telemetry/mentorship/`, `profile.md`, and `.gaia/local/telemetry/analytics/*.json` are deleted; `install-id.txt` is regenerated as a fresh ULID; cloud stream files are NOT deleted.
+- **UAT-042.** With mentorship enabled, run `.gaia/cli/gaia mentorship status`. stdout prints structured state: enabled flag, analytics flag, install-id, mentorship-dir absolute path, last-event timestamp, active-pattern count, active-adaptation count.
+- **UAT-043.** Run `.gaia/cli/gaia mentorship analytics dry-run`. stdout prints the exact JSON payload that would be uploaded to the v1.x endpoint, with the `audit` block self-attesting (`no_event_data`, `no_user_paths`, `no_user_text`, `no_project_identifiers` all literally `true`) and `fields_present` matching actual top-level keys; dry-run does NOT perform any network call.
+- **UAT-044.** With both mentorship and analytics enabled, run `.gaia/cli/gaia mentorship analytics disable`. `mentorship.enabled` remains `true`; `mentorship.analytics.enabled` becomes `false`; analytics report generation halts; mentorship JSONL writes continue.
+- **UAT-045.** Run any of the five `.gaia/cli/gaia mentorship` subcommands in a non-interactive (CI / scripted) context with `--yes`. The `--yes` flag is honored; the command proceeds without prompting; structured stdout/stderr remains parseable.
 
 **Harness fast-path.** Test 5 covers UAT-043 (audit attestation + fields_present match) end-to-end. Test 6 covers UAT-040 (disable short-circuit). The remaining UATs are mechanically deterministic but require interactive `AskUserQuestion` rendering or a populated mentorship-state to inspect; verify in this runbook against a scratch repo.
 
@@ -216,7 +216,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - mentorship has `time_to_resolved_spec` (from spec close), `plan_revised` (if the plan revised midway), `uat_pass` (from the engineer's verify cycle), and `code_review_audit_finding` (from the audit hook firing post-merge);
 - cloud has the structurally-projected counterparts (the same event types, with `_local` stripped and unexpected-field guard intact);
 - `profile.md` regenerates after `spec_close`;
-- `bin/gaia mentorship analytics dry-run` emits a payload whose `audit` block all-true assertions match the actual fields.
+- `.gaia/cli/gaia mentorship analytics dry-run` emits a payload whose `audit` block all-true assertions match the actual fields.
 
 **Harness fast-path.** The deterministic *structural* subset of UAT-046 is the entirety of `.claude-tests/smoke/telemetry-v1/run.sh`. The live workflow walk-through above is the maintainer-judgment companion — the harness gates the structural surface; the runbook gates the experiential one.
 
@@ -230,7 +230,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-047.** Claude refuses and points the user at `profile.md` (Claude-displayable aggregate) or `bin/gaia mentorship --tail` (CLI surface). Enforcement: a project-wide rule lives at `.claude/rules/mentorship-display.md` stating the contract; the rule is loaded via `CLAUDE.md` like other GAIA rules; every GAIA skill that handles mentorship state references the rule.
+- **UAT-047.** Claude refuses and points the user at `profile.md` (Claude-displayable aggregate) or `.gaia/cli/gaia mentorship --tail` (CLI surface). Enforcement: a project-wide rule lives at `.claude/rules/mentorship-display.md` stating the contract; the rule is loaded via `CLAUDE.md` like other GAIA rules; every GAIA skill that handles mentorship state references the rule.
 
 **Harness fast-path.** None — this is a Claude-behavior assertion, not a CLI assertion. **Maintainer judgment.** Try three or four phrasings and judge: does Claude refuse cleanly? Does it suggest the right alternative?
 

@@ -7,7 +7,7 @@ Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact 
 Before composing the system prompt for this skill's agent context, fetch any active coaching adaptation:
 
 ```bash
-COACHING=$(bin/gaia _internal-fetch-coaching --agent-type human --area-tags spec)
+COACHING=$(.gaia/cli/gaia _internal-fetch-coaching --agent-type human --area-tags spec)
 ```
 
 If `$COACHING` is non-empty, prepend its contents to the system prompt as the first section. If empty (the v1.0.0 default — pattern detection ships wired-but-inert), the prompt is byte-identical to the non-mentorship path (UAT-034). The fetcher always exits 0 on a valid `--agent-type`, never blocks the flow, and writes `.gaia/cache/coaching-active.txt` only when a coaching block is actually returned (lights up the 🧭 statusline indicator per UAT-037).
@@ -133,7 +133,7 @@ if [[ -n "$START_AT" ]]; then
 else
   DURATION=0
 fi
-bin/gaia telemetry emit time_to_resolved_spec \
+.gaia/cli/gaia telemetry emit time_to_resolved_spec \
   --spec-id "$SPEC_ID" \
   --question-count "$Q_COUNT" \
   --duration-seconds "$DURATION" \
@@ -460,7 +460,7 @@ AREA_TAGS=$(awk '
 if [[ -z "$AREA_TAGS" ]]; then
   AREA_TAGS="spec"
 fi
-bin/gaia telemetry emit time_to_resolved_spec \
+.gaia/cli/gaia telemetry emit time_to_resolved_spec \
   --spec-id "$SPEC_ID" \
   --question-count "$Q_COUNT" \
   --duration-seconds "$DURATION" \
