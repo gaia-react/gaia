@@ -5,18 +5,48 @@ description: Audit the wiki for redundancy, supersession, reversed decisions, an
 
 ## Execution model — READ FIRST
 
-**Do not execute the playbook yourself in the current conversation.** Dispatch a Sonnet subagent via the `Agent` tool. The audit reads many wiki pages and per-page `promoted_from` provenance; fresh context keeps that out of the parent.
+This skill is two-stage. **Detection (Steps 1–3) runs in a Sonnet subagent** so the heavy page-index walk and frontmatter reads stay out of the parent context. **Apply, state, and report (Steps 4–6) run in the parent** because Step 4 calls `AskUserQuestion` per finding, and `AskUserQuestion` is unavailable inside dispatched subagents — the parent must own the interactive loop.
 
-Spawn:
+### Stage 1 — detection subagent
+
+Dispatch a Sonnet subagent via the `Agent` tool:
 
 - `subagent_type`: `"general-purpose"`
 - `model`: `"sonnet"`
-- `description`: `"Wiki consolidate"`
+- `description`: `"Wiki consolidate (detection)"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are running the GAIA /wiki-consolidate workflow in a fresh context. Read .claude/commands/wiki-consolidate.md from the project root and execute the "Playbook" section (Steps 1–6) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 6 — no recap of the report contents.`
+  > `You are running the detection stage of the GAIA /wiki-consolidate workflow in a fresh context. Read .claude/commands/wiki-consolidate.md from the project root and execute Steps 1–3 of the "Playbook" section verbatim, then STOP. Do NOT execute Steps 4–6. Your working directory is the project root. After writing the report file in Step 3, return ONLY a JSON payload on stdout — no preamble, no narration:`
+  >
+  > ```json
+  > {
+  >   "report_path": "wiki/meta/consolidate-report-YYYY-MM-DD.md",
+  >   "findings": [
+  >     {
+  >       "id": "<stable id, e.g. supersession-0, near-collision-2>",
+  >       "kind": "supersession" | "reversed" | "near_collision" | "subject_orphan",
+  >       "domain": "<domain>",
+  >       "label": "<short label suitable for a question, e.g. 'decisions: auth-strategy supersedes auth-flow'>",
+  >       "canonical": { "path": "<rel path>", "title": "<title>", "slug": "<slug>" },
+  >       "other":     { "path": "<rel path>", "title": "<title>", "slug": "<slug>" },
+  >       "summary":   "<one-sentence summary of what the apply action would do>"
+  >     }
+  >   ]
+  > }
+  > ```
 
-When the subagent returns, relay its summary verbatim. If any HIGH-severity supersession or reversed-decision finding was applied, surface that prominently.
+The subagent MUST stop after Step 3 and emit this payload. The parent then consumes the payload and runs Steps 4–6 in its own context.
+
+### Stage 2 — parent loop
+
+After the subagent returns, the parent (i.e. the agent reading this file in the live conversation):
+
+1. Parses the `findings[]` payload.
+2. Iterates findings in order **supersession → reversed → near-collision → subject-orphan** (most-impactful first), surfacing each via `AskUserQuestion` per Step 4 of the playbook.
+3. Applies the user's chosen action (Apply / Keep both / Skip) per Step 4's per-kind rules.
+4. Runs Step 5 (advance state) and Step 6 (hand off + report) directly.
+
+If any HIGH-severity supersession or reversed-decision finding is applied, surface it prominently (prefix the final summary line with `WIKI CONSOLIDATE:`).
 
 ---
 
@@ -66,7 +96,9 @@ If a match references the older page's title (substring, case-insensitive), flag
 
 ### 2c. Near-collision slugs
 
-Run `gaia wiki near-collisions --max-distance 3` and surface its output. The CLI emits per-domain pairs that are within Levenshtein distance 3 (or where one slug is a prefix of the other) as tabular text. Flag each as a **near-collision** candidate. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
+Run `gaia wiki near-collisions --max-distance 2` and surface its output. The CLI emits per-domain pairs that are within Levenshtein distance 2 (or where one slug is a prefix of the other) as tabular text. Flag each as a **near-collision** candidate. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
+
+Distance 2 is the right floor: distance 3 produces excessive false positives in dense domains with short slugs (e.g. `Ky` matches every dependency, `State` collides with `Styles`).
 
 ### 2d. Subject-orphaned pages
 
@@ -76,7 +108,9 @@ Run `gaia wiki orphans` to enumerate pages with zero inbound wikilinks. For each
 
 For every candidate, check the canonical page's `consolidation_ack` frontmatter array. If it contains the comparison page's slug, drop the finding — the user already said keep both.
 
-## Step 3 — Render the report
+## Step 3 — Render the report (subagent-final step)
+
+This is the last step the detection subagent runs. After writing the report file and emitting the findings JSON per the execution-model contract, the subagent STOPS — it does NOT proceed to Steps 4–6.
 
 Write to `wiki/meta/consolidate-report-<YYYY-MM-DD>.md`. Overwrite if a same-day report exists.
 
@@ -136,11 +170,13 @@ Run summary: <total> findings across <domain count> domains.
 - **Action:** retire to `wiki/_archived/<slug>.md` OR confirm still relevant (sets `consolidation_ack: [self]` on the page).
 ```
 
-## Step 4 — Action prompts (interactive)
+## Step 4 — Action prompts (parent-side, interactive)
 
-For each finding in the report, surface via `AskUserQuestion`:
+The parent (the agent reading this file in the live conversation) iterates the findings JSON returned by the detection subagent and surfaces each via `AskUserQuestion`. The subagent does not run this step.
 
-- Question: `<short finding label>. Action?` (e.g. `decisions: auth-strategy supersedes auth-flow. Action?`)
+For each finding:
+
+- Question: use the finding's `label` followed by `. Action?` (e.g. `decisions: auth-strategy supersedes auth-flow. Action?`)
 - Header: `Consolidate`
 - Options:
   - `{ label: "Apply (Recommended)", description: "<short summary of the merge or retire>." }`
@@ -154,7 +190,7 @@ Process findings in this order: **supersession → reversed → near-collision �
 **Supersession / reversed:**
 
 1. Read older page body. Extract any content not already present in the newer page (LLM judgment — preserve newer page's structure, no duplication).
-2. If non-empty unique content: append to newer page under H2 `## Historical context (from <older-title>)`. If older page's `promoted_from` is informative, mention the source SPEC in the section preamble.
+2. If non-empty unique content: append to newer page under H2 `## Historical context (from <older-title>)`. The heading itself is the archival label; do NOT add a SPEC-NNN reference in the preamble (per `.claude/rules/wiki-style.md`).
 3. Update older page's frontmatter: `status: superseded`, `superseded_by: <newer-slug>`, `superseded_at: <ISO>`. Preserve `created`, `promoted_from`, `promoted_at`.
 4. Move older page: `mkdir -p wiki/_archived/ && git mv <older-path> wiki/_archived/<older-slug>.md`. (Use `mv` if `git mv` fails due to staging state.)
 5. Update `wiki/index.md`: remove the older page's entry from its domain section. The wikilink in any newer page's "Related" section becomes a broken link — `wiki-lint` will surface and the maintainer can fix on the next lint pass; do not autofix here (consolidate is conservative about page-body edits beyond the targeted merge).
