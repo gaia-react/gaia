@@ -1,6 +1,6 @@
 ---
 name: wiki-lint
-description: Health check the GAIA wiki — runs the upstream claude-obsidian wiki-lint, then appends GAIA-specific checks (drift between wiki/.state.json and HEAD).
+description: Health check the GAIA wiki — runs the upstream claude-obsidian wiki-lint, then appends GAIA-specific checks (wiki drift, dead repo-relative paths, UAT/SPEC narrative-ref drift across instruction files and shipped extension surfaces).
 ---
 
 ## Execution model — READ FIRST
@@ -22,7 +22,7 @@ When the subagent returns, relay its summary verbatim. If the drift severity is 
 
 ## Playbook
 
-GAIA-local wrapper around the upstream `claude-obsidian:wiki-lint` skill. Runs the upstream lint flow first, then appends GAIA-specific checks **#11: Wiki drift check** and **#12: Dead repo-relative paths** to the report.
+GAIA-local wrapper around the upstream `claude-obsidian:wiki-lint` skill. Runs the upstream lint flow first, then appends GAIA-specific checks **#11: Wiki drift check**, **#12: Dead repo-relative paths**, and **#13: UAT/SPEC narrative-ref drift** to the report.
 
 Do **not** modify the upstream skill (`~/.claude/plugins/marketplaces/claude-obsidian-marketplace/skills/wiki-lint/SKILL.md`) — it is read-only territory. Extensions live here.
 
@@ -142,15 +142,69 @@ Otherwise:
 
 List every dead reference (one per line). Do not truncate — the count is small enough to be actionable.
 
-## Step 4: Surface to the user
+## Step 4: GAIA check #13 — UAT/SPEC narrative-ref drift
+
+Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and shipped extension surfaces (`.specify/extensions/gaia/{README.md, commands, lib, rules, templates}`) plus the maintainer-only `.claude-tests/` smoke harnesses. The rule rationale + structural-vs-narrative triage table lives in `.claude/rules/wiki-style.md` (Exceptions section).
+
+### 4a. Run the greps
+
+Two scans, run from the repo root:
+
+```bash
+# UAT-NNN narrative-ref candidates
+grep -rEn "UAT-[0-9]{3}" \
+  .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
+  .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
+  .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
+  .specify/extensions/gaia/templates/ \
+  .claude-tests/
+
+# Concrete maintainer SPEC IDs
+grep -rEn "\bSPEC-00[1-9]\b" \
+  .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
+  .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
+  .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
+  .specify/extensions/gaia/templates/
+```
+
+### 4b. Triage and append
+
+Both scans return raw match lines. Apply the structural-vs-narrative filter from `wiki-style.md`:
+
+- **Skip (structural — not findings):** template format examples (`> - UAT-NNN — Given …`), CLI argument values (`--uat-id UAT-007`), JS/Python/YAML literals (`uat_id: 'UAT-099'`), regex targets that match SPEC YAML structure, filename literals (`uat-001.spec.ts`), illustrative `(e.g. SPEC-002)` examples in usage docs, generic placeholders (`SPEC-NNN`, `SPEC-NNN.md`), variable-name fragments (`uat_id`, `uats_block`).
+- **Flag (narrative — findings):** section-header parentheticals (`#### 5b. Discuss-this escape (UAT-004)`), inline narrative parentheticals (`(UAT-022, UAT-027)`), comments naming specific working-doc IDs, pass/fail label prefixes (`pass "UAT-001 …"`), prose using a maintainer SPEC ID as a system-wide constant (`operate under SPEC-001's scope_boundaries`).
+
+If both scans produce zero narrative findings (all matches are structural):
+
+```markdown
+## #13: UAT/SPEC narrative-ref drift
+
+✓ No narrative `UAT-NNN` or concrete maintainer `SPEC-NNN` references detected outside the structural exemptions in `.claude/rules/wiki-style.md`.
+```
+
+Otherwise:
+
+```markdown
+## #13: UAT/SPEC narrative-ref drift
+
+⚠ {N} narrative ref(s) found in instruction files / shipped extension surfaces:
+
+- `.claude/skills/foo/SKILL.md:42` — `(UAT-012)` parenthetical in section header
+- `.specify/extensions/gaia/commands/bar.md:88` — `operate under SPEC-001's scope_boundaries` prose
+```
+
+List every narrative finding (one per line). Structural matches are not listed — they are the regex's false positives by design.
+
+## Step 5: Surface to the user
 
 Print to the user:
 
 1. The report path (e.g. `wiki/meta/lint-report-2026-05-03.md`).
-2. A one-line summary that includes the drift severity and count, plus dead-path count if non-zero.
+2. A one-line summary that includes the drift severity and count, plus dead-path count if non-zero, plus narrative-ref count if non-zero.
 
 If `drift_severity` is **`high`**, surface it prominently (separate line, prefixed with `WIKI DRIFT:`).
 If `dead.length > 0`, surface as a separate line prefixed with `WIKI DEAD-PATHS:` followed by the count.
+If narrative-ref findings > 0, surface as a separate line prefixed with `UAT-SPEC DRIFT:` followed by the count.
 
 ## Notes
 
