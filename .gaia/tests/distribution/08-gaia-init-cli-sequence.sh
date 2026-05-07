@@ -119,8 +119,11 @@ run_step() {
   local label="$1"; shift
   local stdout
   stdout="$(cd "$SCAFFOLD" && "$GAIA" "$@" 2>/dev/null)" || {
+    # Re-run with stderr unsuppressed for diagnosis. The `fail; exit 1`
+    # below runs unconditionally — the diagnostic re-run's exit code is
+    # intentionally ignored (`|| :`).
     log "gaia $* exited non-zero; rerunning with stderr:"
-    ( cd "$SCAFFOLD" && "$GAIA" "$@" ) || true
+    ( cd "$SCAFFOLD" && "$GAIA" "$@" ) || :
     fail "gaia $* exited non-zero on staged tree (step: $label)"
     exit 1
   }
@@ -190,7 +193,7 @@ node -e "JSON.parse(require('node:fs').readFileSync('$SETTINGS','utf8'))" 2>/dev
   || { fail "wire-statusline produced invalid JSON in .claude/settings.json"; exit 1; }
 grep -q '"command": "bash .gaia/statusline/gaia-statusline.sh"' "$SETTINGS" \
   || { fail "wire-statusline did not insert canonical statusline command"; exit 1; }
-grep -q '"statusLine"' "$SETTINGS" \
+grep -q '"statusLine":' "$SETTINGS" \
   || { fail "wire-statusline did not insert statusLine key"; exit 1; }
 
 # Step 5 — finalize. Removes the interceptor hook + command file, prunes

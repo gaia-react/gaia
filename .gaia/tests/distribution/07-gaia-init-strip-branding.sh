@@ -60,8 +60,11 @@ fi
 # scenarios sourced or invoked from `run-all.sh` may rely on $PWD.
 TITLE="Test Project"
 STDOUT="$(cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" 2>/dev/null)" || {
+  # Re-run with stderr unsuppressed for diagnosis. The `fail; exit 1`
+  # below runs unconditionally — the diagnostic re-run's exit code is
+  # intentionally ignored (`|| :`).
   log "gaia init strip-branding exited non-zero; rerunning with stderr:"
-  ( cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" ) || true
+  ( cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" ) || :
   fail "gaia init strip-branding exited non-zero on staged tree"
   exit 1
 }
