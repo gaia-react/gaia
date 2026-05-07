@@ -1,210 +1,10 @@
 #!/usr/bin/env node
 import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);
-var __create = Object.create;
 var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
-var __commonJS = (cb, mod) => function __require2() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-
-// node_modules/.pnpm/ulid@2.4.0/node_modules/ulid/dist/index.umd.js
-var require_index_umd = __commonJS({
-  "node_modules/.pnpm/ulid@2.4.0/node_modules/ulid/dist/index.umd.js"(exports, module) {
-    (function(global, factory) {
-      typeof exports === "object" && typeof module !== "undefined" ? factory(exports) : typeof define === "function" && define.amd ? define(["exports"], factory) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, factory(global.ULID = {}));
-    })(exports, function(exports2) {
-      "use strict";
-      function createError(message) {
-        const err = new Error(message);
-        err.source = "ulid";
-        return err;
-      }
-      const ENCODING = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-      const ENCODING_LEN = ENCODING.length;
-      const TIME_MAX = Math.pow(2, 48) - 1;
-      const TIME_LEN = 10;
-      const RANDOM_LEN = 16;
-      function replaceCharAt(str, index, char) {
-        if (index > str.length - 1) {
-          return str;
-        }
-        return str.substr(0, index) + char + str.substr(index + 1);
-      }
-      function incrementBase32(str) {
-        let done = void 0;
-        let index = str.length;
-        let char;
-        let charIndex;
-        const maxCharIndex = ENCODING_LEN - 1;
-        while (!done && index-- >= 0) {
-          char = str[index];
-          charIndex = ENCODING.indexOf(char);
-          if (charIndex === -1) {
-            throw createError("incorrectly encoded string");
-          }
-          if (charIndex === maxCharIndex) {
-            str = replaceCharAt(str, index, ENCODING[0]);
-            continue;
-          }
-          done = replaceCharAt(str, index, ENCODING[charIndex + 1]);
-        }
-        if (typeof done === "string") {
-          return done;
-        }
-        throw createError("cannot increment this string");
-      }
-      function randomChar(prng) {
-        let rand = Math.floor(prng() * ENCODING_LEN);
-        if (rand === ENCODING_LEN) {
-          rand = ENCODING_LEN - 1;
-        }
-        return ENCODING.charAt(rand);
-      }
-      function encodeTime(now, len) {
-        if (isNaN(now)) {
-          throw new Error(now + " must be a number");
-        }
-        if (now > TIME_MAX) {
-          throw createError("cannot encode time greater than " + TIME_MAX);
-        }
-        if (now < 0) {
-          throw createError("time must be positive");
-        }
-        if (Number.isInteger(Number(now)) === false) {
-          throw createError("time must be an integer");
-        }
-        let mod;
-        let str = "";
-        for (; len > 0; len--) {
-          mod = now % ENCODING_LEN;
-          str = ENCODING.charAt(mod) + str;
-          now = (now - mod) / ENCODING_LEN;
-        }
-        return str;
-      }
-      function encodeRandom(len, prng) {
-        let str = "";
-        for (; len > 0; len--) {
-          str = randomChar(prng) + str;
-        }
-        return str;
-      }
-      function decodeTime2(id) {
-        if (id.length !== TIME_LEN + RANDOM_LEN) {
-          throw createError("malformed ulid");
-        }
-        var time3 = id.substr(0, TIME_LEN).split("").reverse().reduce((carry, char, index) => {
-          const encodingIndex = ENCODING.indexOf(char);
-          if (encodingIndex === -1) {
-            throw createError("invalid character found: " + char);
-          }
-          return carry += encodingIndex * Math.pow(ENCODING_LEN, index);
-        }, 0);
-        if (time3 > TIME_MAX) {
-          throw createError("malformed ulid, timestamp too large");
-        }
-        return time3;
-      }
-      function detectPrng(allowInsecure = false, root) {
-        if (!root) {
-          root = typeof window !== "undefined" ? window : null;
-        }
-        const browserCrypto = root && (root.crypto || root.msCrypto);
-        if (browserCrypto) {
-          return () => {
-            const buffer = new Uint8Array(1);
-            browserCrypto.getRandomValues(buffer);
-            return buffer[0] / 255;
-          };
-        } else {
-          try {
-            const nodeCrypto = __require("crypto");
-            return () => nodeCrypto.randomBytes(1).readUInt8() / 255;
-          } catch (e) {
-          }
-        }
-        if (allowInsecure) {
-          try {
-            console.error("secure crypto unusable, falling back to insecure Math.random()!");
-          } catch (e) {
-          }
-          return () => Math.random();
-        }
-        throw createError("secure crypto unusable, insecure Math.random not allowed");
-      }
-      function factory(currPrng) {
-        if (!currPrng) {
-          currPrng = detectPrng();
-        }
-        return function ulid6(seedTime) {
-          if (isNaN(seedTime)) {
-            seedTime = Date.now();
-          }
-          return encodeTime(seedTime, TIME_LEN) + encodeRandom(RANDOM_LEN, currPrng);
-        };
-      }
-      function monotonicFactory(currPrng) {
-        if (!currPrng) {
-          currPrng = detectPrng();
-        }
-        let lastTime = 0;
-        let lastRandom;
-        return function ulid6(seedTime) {
-          if (isNaN(seedTime)) {
-            seedTime = Date.now();
-          }
-          if (seedTime <= lastTime) {
-            const incrementedRandom = lastRandom = incrementBase32(lastRandom);
-            return encodeTime(lastTime, TIME_LEN) + incrementedRandom;
-          }
-          lastTime = seedTime;
-          const newRandom = lastRandom = encodeRandom(RANDOM_LEN, currPrng);
-          return encodeTime(seedTime, TIME_LEN) + newRandom;
-        };
-      }
-      const ulid5 = factory();
-      exports2.decodeTime = decodeTime2;
-      exports2.detectPrng = detectPrng;
-      exports2.encodeRandom = encodeRandom;
-      exports2.encodeTime = encodeTime;
-      exports2.factory = factory;
-      exports2.incrementBase32 = incrementBase32;
-      exports2.monotonicFactory = monotonicFactory;
-      exports2.randomChar = randomChar;
-      exports2.replaceCharAt = replaceCharAt;
-      exports2.ulid = ulid5;
-    });
-  }
-});
 
 // src/adaptation/inject.ts
 import { existsSync as existsSync6, mkdirSync as mkdirSync3, writeFileSync as writeFileSync4 } from "node:fs";
@@ -14850,8 +14650,118 @@ var structuredError = (payload) => {
 `);
 };
 
+// node_modules/.pnpm/ulid@3.0.2/node_modules/ulid/dist/node/index.js
+import crypto from "node:crypto";
+var ENCODING = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+var ENCODING_LEN = 32;
+var RANDOM_LEN = 16;
+var TIME_LEN = 10;
+var TIME_MAX = 281474976710655;
+var ULIDErrorCode;
+(function(ULIDErrorCode2) {
+  ULIDErrorCode2["Base32IncorrectEncoding"] = "B32_ENC_INVALID";
+  ULIDErrorCode2["DecodeTimeInvalidCharacter"] = "DEC_TIME_CHAR";
+  ULIDErrorCode2["DecodeTimeValueMalformed"] = "DEC_TIME_MALFORMED";
+  ULIDErrorCode2["EncodeTimeNegative"] = "ENC_TIME_NEG";
+  ULIDErrorCode2["EncodeTimeSizeExceeded"] = "ENC_TIME_SIZE_EXCEED";
+  ULIDErrorCode2["EncodeTimeValueMalformed"] = "ENC_TIME_MALFORMED";
+  ULIDErrorCode2["PRNGDetectFailure"] = "PRNG_DETECT";
+  ULIDErrorCode2["ULIDInvalid"] = "ULID_INVALID";
+  ULIDErrorCode2["Unexpected"] = "UNEXPECTED";
+  ULIDErrorCode2["UUIDInvalid"] = "UUID_INVALID";
+})(ULIDErrorCode || (ULIDErrorCode = {}));
+var ULIDError = class extends Error {
+  constructor(errorCode, message) {
+    super(`${message} (${errorCode})`);
+    this.name = "ULIDError";
+    this.code = errorCode;
+  }
+};
+function randomChar(prng) {
+  const randomPosition = Math.floor(prng() * ENCODING_LEN) % ENCODING_LEN;
+  return ENCODING.charAt(randomPosition);
+}
+function decodeTime(id) {
+  if (id.length !== TIME_LEN + RANDOM_LEN) {
+    throw new ULIDError(ULIDErrorCode.DecodeTimeValueMalformed, "Malformed ULID");
+  }
+  const time3 = id.substr(0, TIME_LEN).toUpperCase().split("").reverse().reduce((carry, char, index) => {
+    const encodingIndex = ENCODING.indexOf(char);
+    if (encodingIndex === -1) {
+      throw new ULIDError(ULIDErrorCode.DecodeTimeInvalidCharacter, `Time decode error: Invalid character: ${char}`);
+    }
+    return carry += encodingIndex * Math.pow(ENCODING_LEN, index);
+  }, 0);
+  if (time3 > TIME_MAX) {
+    throw new ULIDError(ULIDErrorCode.DecodeTimeValueMalformed, `Malformed ULID: timestamp too large: ${time3}`);
+  }
+  return time3;
+}
+function detectPRNG(root) {
+  const rootLookup = detectRoot();
+  const globalCrypto = rootLookup && (rootLookup.crypto || rootLookup.msCrypto) || (typeof crypto !== "undefined" ? crypto : null);
+  if (typeof globalCrypto?.getRandomValues === "function") {
+    return () => {
+      const buffer = new Uint8Array(1);
+      globalCrypto.getRandomValues(buffer);
+      return buffer[0] / 256;
+    };
+  } else if (typeof globalCrypto?.randomBytes === "function") {
+    return () => globalCrypto.randomBytes(1).readUInt8() / 256;
+  } else if (crypto?.randomBytes) {
+    return () => crypto.randomBytes(1).readUInt8() / 256;
+  }
+  throw new ULIDError(ULIDErrorCode.PRNGDetectFailure, "Failed to find a reliable PRNG");
+}
+function detectRoot() {
+  if (inWebWorker())
+    return self;
+  if (typeof window !== "undefined") {
+    return window;
+  }
+  if (typeof global !== "undefined") {
+    return global;
+  }
+  if (typeof globalThis !== "undefined") {
+    return globalThis;
+  }
+  return null;
+}
+function encodeRandom(len, prng) {
+  let str = "";
+  for (; len > 0; len--) {
+    str = randomChar(prng) + str;
+  }
+  return str;
+}
+function encodeTime(now, len = TIME_LEN) {
+  if (isNaN(now)) {
+    throw new ULIDError(ULIDErrorCode.EncodeTimeValueMalformed, `Time must be a number: ${now}`);
+  } else if (now > TIME_MAX) {
+    throw new ULIDError(ULIDErrorCode.EncodeTimeSizeExceeded, `Cannot encode a time larger than ${TIME_MAX}: ${now}`);
+  } else if (now < 0) {
+    throw new ULIDError(ULIDErrorCode.EncodeTimeNegative, `Time must be positive: ${now}`);
+  } else if (Number.isInteger(now) === false) {
+    throw new ULIDError(ULIDErrorCode.EncodeTimeValueMalformed, `Time must be an integer: ${now}`);
+  }
+  let mod, str = "";
+  for (let currentLen = len; currentLen > 0; currentLen--) {
+    mod = now % ENCODING_LEN;
+    str = ENCODING.charAt(mod) + str;
+    now = (now - mod) / ENCODING_LEN;
+  }
+  return str;
+}
+function inWebWorker() {
+  return typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+}
+function ulid3(seedTime, prng) {
+  const currentPRNG = prng || detectPRNG();
+  const seed = !seedTime || isNaN(seedTime) ? Date.now() : seedTime;
+  return encodeTime(seed, TIME_LEN) + encodeRandom(RANDOM_LEN, currentPRNG);
+}
+
 // src/storage/install-id.ts
-var import_ulid = __toESM(require_index_umd(), 1);
 import { chmodSync, existsSync as existsSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "node:fs";
 var readOrCreateInstallId = (roots) => {
   const filePath = roots.installIdPath;
@@ -14861,7 +14771,7 @@ var readOrCreateInstallId = (roots) => {
       return existing;
     }
   }
-  const id = (0, import_ulid.ulid)();
+  const id = ulid3();
   writeFileSync2(filePath, `${id}
 `, { mode: 384 });
   chmodSync(filePath, 384);
@@ -15906,6 +15816,45 @@ var run11 = async (argv) => {
   return typeof result === "number" ? result : EXIT_CODES.OK;
 };
 
+// src/scaffold/index.ts
+var HELP_TEXT2 = `Usage: gaia scaffold <subcommand> [args]
+
+  component <Name>         Scaffold a new React component (Phase 2).
+  hook <useFoo>            Scaffold a new custom hook (Phase 2).
+  route <name>             Scaffold a new route + page (Phase 2).
+  service <name>           Scaffold a new API service (Phase 2).
+`;
+var HELP_TOKENS2 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var STUBBED_KINDS = /* @__PURE__ */ new Set(["component", "hook", "route", "service"]);
+var printNotImplemented = (kind) => {
+  structuredError({
+    code: "not_implemented",
+    message: `scaffold ${kind}: not yet implemented (Phase 2)`,
+    subcommand: `scaffold ${kind}`
+  });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+var run12 = (argv) => {
+  const subcommand = argv[0];
+  if (subcommand === void 0) {
+    process.stderr.write(HELP_TEXT2);
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (HELP_TOKENS2.has(subcommand)) {
+    process.stdout.write(HELP_TEXT2);
+    return EXIT_CODES.OK;
+  }
+  if (STUBBED_KINDS.has(subcommand)) {
+    return printNotImplemented(subcommand);
+  }
+  structuredError({
+    code: "unknown_subcommand",
+    message: `unknown scaffold subcommand: ${subcommand}`,
+    subcommand: `scaffold ${subcommand}`
+  });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+
 // src/analytics/audit-attest.ts
 var EVENT_DATA_KEYS = /* @__PURE__ */ new Set([
   "_local",
@@ -16012,7 +15961,6 @@ var computeAuditBlock = (report) => {
 };
 
 // src/analytics/generator.ts
-var import_ulid2 = __toESM(require_index_umd(), 1);
 import { existsSync as existsSync10, readdirSync as readdirSync4, readFileSync as readFileSync7 } from "node:fs";
 import path8 from "node:path";
 var REPORT_WINDOW_DAYS = 30;
@@ -16041,7 +15989,7 @@ var readGaiaVersion = (roots) => {
 };
 var computeWeeksSinceInstall = (installId, generatedAt) => {
   try {
-    const installMs = (0, import_ulid2.decodeTime)(installId);
+    const installMs = decodeTime(installId);
     const deltaMs = generatedAt.getTime() - installMs;
     if (deltaMs <= 0) return 0;
     return Math.floor(deltaMs / MS_PER_WEEK);
@@ -16152,7 +16100,7 @@ var generateAnalyticsReport = async (args) => {
     gaia_version: readGaiaVersion(roots),
     patterns: buildPatternAggregates(patternResults),
     report_generated_at: generatedAt.toISOString(),
-    report_id: (0, import_ulid2.ulid)(generatedAt.getTime()),
+    report_id: ulid3(generatedAt.getTime()),
     report_window_days: REPORT_WINDOW_DAYS,
     schema_version: 1
   };
@@ -17572,17 +17520,17 @@ var handleEmit = async (argv, options = {}) => {
 };
 
 // src/telemetry/index.ts
-var HELP_TEXT2 = `Usage: gaia telemetry <subcommand> [args]
+var HELP_TEXT3 = `Usage: gaia telemetry <subcommand> [args]
 
   emit <event_type> [--field value ...]   Emit one telemetry event.
   compute-profile                          Regenerate profile.md from events.
 `;
-var HELP_TOKENS2 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var run12 = async (argv) => {
+var HELP_TOKENS3 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var run13 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS2.has(subcommand)) {
-    process.stdout.write(HELP_TEXT2);
+  if (subcommand === void 0 || HELP_TOKENS3.has(subcommand)) {
+    process.stdout.write(HELP_TEXT3);
     return EXIT_CODES.OK;
   }
   if (subcommand === "emit") {
@@ -17599,25 +17547,27 @@ var run12 = async (argv) => {
 };
 
 // src/index.ts
-var HELP_TEXT3 = `Usage: gaia <subcommand> [args]
+var HELP_TEXT4 = `Usage: gaia <subcommand> [args]
 
   telemetry emit <event_type> [--field value ...]
   telemetry compute-profile
   mentorship enable|disable|purge|status
   mentorship analytics enable|disable|dry-run
+  scaffold component|hook|route|service
 `;
 var printHelp = () => {
-  process.stdout.write(HELP_TEXT3);
+  process.stdout.write(HELP_TEXT4);
 };
-var HELP_TOKENS3 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS4 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS = {
   mentorship: run11,
-  telemetry: run12
+  scaffold: run12,
+  telemetry: run13
 };
 var main = async () => {
   const subcommand = process.argv[2];
   const rest = process.argv.slice(3);
-  if (subcommand === void 0 || HELP_TOKENS3.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS4.has(subcommand)) {
     printHelp();
     return EXIT_CODES.OK;
   }

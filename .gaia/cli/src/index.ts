@@ -10,6 +10,7 @@
 import {run as runFetchCoaching} from './adaptation/inject.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runMentorship} from './mentorship/index.js';
+import {run as runScaffold} from './scaffold/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
 
@@ -19,6 +20,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   telemetry compute-profile
   mentorship enable|disable|purge|status
   mentorship analytics enable|disable|dry-run
+  scaffold component|hook|route|service
 `;
 
 const printHelp = (): void => {
@@ -33,6 +35,7 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
   mentorship: runMentorship,
+  scaffold: runScaffold,
   telemetry: runTelemetry,
 };
 
