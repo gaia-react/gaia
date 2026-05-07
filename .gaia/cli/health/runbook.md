@@ -12,28 +12,32 @@ Operational protocol for the autonomous audit + auto-heal loop, invoked by `/hea
 
 - **Orchestrator** — top-level coordinator. Owns the cycle loop, the circuit breakers, and the final verdict. Spawns a Triager per cycle. Never fixes anything itself.
 - **Triager** (per cycle) — runs the Audit Team (buckets A–D), waits for reports, classifies findings, updates the taxonomy directly for non-fix cases, and either reports clean to Orchestrator or dispatches Fixers.
-- **Auditors** — bucket executors. The Triager MAY execute the four buckets directly via parallel tool calls, OR dispatch fresh `general-purpose` subagents (one per bucket). Both modes are acceptable so long as: each bucket's spec below is followed verbatim, the four buckets run in parallel (not serially), and outputs are captured as independently-checkable artifacts (stdout, file reads). The verifiable property is the artifact, not the dispatch mechanism. Prefer fresh-subagent dispatch when a bucket is expected to produce high finding volume (preserves Triager context budget) or when the human explicitly requests strict isolation (e.g. compliance audit).
+- **Auditors** — bucket executors. The Triager MAY execute the four buckets directly via parallel tool calls, OR dispatch fresh `general-purpose` subagents (one per bucket). Both modes are acceptable so long as: each bucket's spec below is followed verbatim, the four buckets run in parallel (not serially), and outputs are captured as independently-checkable artifacts (stdout, file reads). The verifiable property is the artifact, not the dispatch mechanism. Prefer fresh-subagent dispatch when a bucket is expected to produce high finding volume (preserves Triager context budget) or when the human explicitly requests strict isolation (e.g. compliance audit). Auditors write raw outputs to `.gaia/local/audit/c<N>/<bucket>/` (paths specified per bucket below) and return summary + file path in their report — not raw content. The Triager reads files on demand for triage. This avoids subagent return-budget truncation in dirty cycles.
 - **Fixers** — fix agents, lane-aware so multiple run in parallel without merge conflicts.
 
 ## Cycle loop
 
 ```
+Orchestrator initializes .gaia/local/audit/ (archives any stale prior run)
 For cycle in 1..3:
+  Triager creates c<N>/ and bucket sub-dirs under .gaia/local/audit/
   spawn Triager → Triager runs Audit Team in parallel (buckets A–D) → reports
-  if clean (0 findings, Bucket D verdict A+ readiness): grade A+, exit
-  Triager classifies findings
-  Orchestrator checks fingerprints vs prior cycle → if oscillation: escalate
+  if clean (0 findings, Bucket D verdict A+ readiness):
+    Orchestrator removes .gaia/local/audit/c* (whitelisted; top-level dir kept as marker)
+    grade A+, exit
+  Triager classifies findings → writes c<N>/findings.json
+  Orchestrator checks fingerprints vs prior cycle (mechanical diff via jq) → if oscillation: escalate (Orchestrator preserves all c*/ dirs, surfaces paths in escalation report)
   Triager dispatches parallel Fixers (lane-aware)
   Fixers complete, Triager reports post-fix state to Orchestrator
   Orchestrator shuts down the team, starts the next cycle
-After cycle 3 without clean: escalate (max loops hit)
+After cycle 3 without clean: escalate (max loops hit; Orchestrator preserves all c*/ dirs, surfaces paths in escalation report)
 ```
 
 ## Termination
 
 - **Clean** — Audit Team reports zero findings AND Bucket D returns "A+ readiness" (every § Distribution boundary class fully enforced, high confidence). Orchestrator grades A+ and exits.
 - **Max loops** — three cycles without a clean report. Orchestrator escalates with the outstanding findings list.
-- **Oscillation** — same finding fingerprint (`{check-id}:{file}:{line}:{match-prefix}`) appears in two consecutive Auditor reports. Escalate immediately; don't burn the third cycle.
+- **Oscillation** — same finding fingerprint appears in `c<N>/findings.json` AND `c<N-1>/findings.json`. Detection is mechanical: `comm -12 <(jq -r '.findings[].fingerprint' c<N-1>/findings.json | sort) <(jq -r '.findings[].fingerprint' c<N>/findings.json | sort)` — non-empty intersection means a finding survived a Fixer dispatch. Escalate immediately; don't burn the third cycle.
 
 ## Circuit breakers
 
@@ -75,6 +79,10 @@ pnpm -C .gaia/cli test --run
 
 Reports: typecheck pass/fail; test count (passed/total); test files (passed/total); wall-clock duration. Under 100 words.
 
+**Outputs:** `.gaia/local/audit/c<N>/bucket-a.txt`
+
+Crash-safety: read-only commands; no scratch state. Phase 2 redirection to `bucket-a.txt` is recoverable — partial file on crash is overwritten on cycle re-spawn.
+
 ## Bucket B — Source-tree audit greps
 
 Reads (in order):
@@ -103,7 +111,13 @@ Triage rules (per match — apply in order; first hit wins):
 - Gitignored (e.g. `.claude/settings.local.json`) → skip.
 - Otherwise → genuine finding.
 
+Triage decisions are written to `.gaia/local/audit/c<N>/bucket-b/triage.md` — one section per grep, listing each match and its disposition (skip / finding) with the rule that decided it.
+
 Reports: per-grep line (pattern, match count, triage breakdown). One-line verdict: "all matches accounted for" or "N genuine finding(s)". Under 400 words.
+
+**Outputs:** `.gaia/local/audit/c<N>/bucket-b/grep-1.txt` … `grep-8.txt`, `.gaia/local/audit/c<N>/bucket-b/triage.md`
+
+Crash-safety: read-only commands; no scratch state. Phase 2 redirection to `bucket-b/grep-N.txt` files is recoverable — partial files on crash are overwritten on cycle re-spawn.
 
 ## Bucket C — Bundle simulation
 
@@ -144,6 +158,10 @@ Expected output: `0`. Any non-zero value indicates an orphan from this run or a 
 
 Reports: staged file count; `release scrub` stdout; `release runtime-deps` stdout; marker-fragment scan result (must be empty); wikilink-to-excluded scan result (must be empty); **post-cleanup leftover-staging count (must be `0`)**. One-line verdict: "bundle clean" or "N anomalies". Under 250 words.
 
+**Outputs:** `.gaia/local/audit/c<N>/bucket-c.txt`
+
+Crash-safety: `trap`-protected (see commands above). Phase 2 redirection to `bucket-c.txt` is in addition to the trap; both protections are independent.
+
 ## Bucket D — Cross-class enforcement walk
 
 Reads (in order):
@@ -169,6 +187,10 @@ Verdict:
 - `wikilink-to-excluded` enforces only an enumerated list of release-excluded slugs in `release-scrub.yml`. A *new* release-excluded wiki page whose slug is not in the enumeration would slip through. Bucket D may grade A+ if (a) every release-excluded wiki page in the current manifest snapshot is covered by the enumeration, and (b) the ADR / scrub config explicitly notes this is enumeration-driven. If a release-excluded wiki page exists with no matching enumeration entry, downgrade to **A−** and dispatch a Fixer.
 
 Under 600 words. Read-only — no commands beyond file reads.
+
+**Outputs:** `.gaia/local/audit/c<N>/bucket-d.md`
+
+Crash-safety: read-only file reads; no scratch state. Phase 2 redirection to `bucket-d.md` is recoverable — partial file on crash is overwritten on cycle re-spawn.
 
 ## Fixer lanes
 
@@ -203,11 +225,57 @@ Orchestrator escalates to human (returns control with structured report) on:
 - Triager can't classify a finding (not in taxonomy, not allowlist, not structural).
 - Fixer reports unable to fix (e.g. test failure that requires a product decision).
 
+## Audit artifacts
+
+Per-cycle artifacts are stored under `.gaia/local/audit/c<N>/` (`.gaia/local/` is gitignored, release-excluded, and `block-rm-rf.sh`-whitelisted for these paths).
+
+```
+.gaia/local/audit/c<N>/
+  bucket-a.txt              # typecheck + test stdout
+  bucket-b/
+    grep-1.txt … grep-8.txt # raw per-grep stdout
+    triage.md               # per-match triage decisions
+  bucket-c.txt              # scrub + rdeps + post-cleanup count
+  bucket-d.md               # cross-class enforcement table + verdict
+  findings.json             # canonical findings list
+```
+
+`findings.json` schema:
+
+```json
+{
+  "cycle": 1,
+  "branch": "feat/...",
+  "verdict": "A+ readiness | A | A−",
+  "findings": [
+    {
+      "id": "c1-f001",
+      "bucket": "B",
+      "fingerprint": "<check-id>:<file>:<line>:<first-40-chars>",
+      "lane": "wiki-content | claude-surface | source-ts | config-yaml-md",
+      "action": "real-fix | taxonomy-update | false-positive | decided-not-finding"
+    }
+  ]
+}
+```
+
+Lifecycle:
+
+- **At `/health-audit` start**: Orchestrator runs `[ -d .gaia/local/audit ] && mv .gaia/local/audit .gaia/local/audit.prev-$(date +%s) ; mkdir -p .gaia/local/audit`. Archives stale dirs from prior interrupted runs.
+- **At cycle start**: Triager creates `c<N>/` and bucket sub-dirs.
+- **Auditors**: write raw outputs to their per-cycle paths; return summary + file path in their report (not the full content).
+- **Triager**: reads bucket files for triage; writes `c<N>/findings.json`.
+- **Orchestrator (oscillation detection)**: mechanical diff via `jq -r '.findings[].fingerprint' .gaia/local/audit/c<N>/findings.json | sort` against the prior cycle's same. Non-empty intersection → oscillation, escalate.
+- **Clean A+ exit**: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker.
+- **Escalation**: Orchestrator preserves all `c*/` dirs and surfaces their paths in the escalation report for human review.
+
 ## State
 
-Cycle reports live in conversation only. The audit doesn't write to `wiki/log.md` or `wiki/hot.md`.
+Cycle artifacts persist in `.gaia/local/audit/c<N>/` for the duration of the audit. On clean A+ exit, the Orchestrator removes all `c*/` dirs (`rm -rf .gaia/local/audit/c*` — whitelisted; top-level dir kept as run marker). On escalation, all `c*/` dirs are preserved and surfaced in the escalation report for human review.
 
-Fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`. Used only for oscillation detection.
+The audit does not write to `wiki/log.md` or `wiki/hot.md`.
+
+Fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`. Stored in `c<N>/findings.json`. Compared mechanically across cycles for oscillation detection via `jq` + `comm`.
 
 ## Pointers
 

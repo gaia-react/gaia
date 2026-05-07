@@ -15,15 +15,22 @@ Read `.gaia/cli/health/runbook.md` end-to-end before doing anything else. The ru
 Execute the cycle loop from the runbook (max N=3):
 
 ```
+if .gaia/local/audit/ exists: mv it to .gaia/local/audit.prev-$(date +%s)/
+mkdir -p .gaia/local/audit
+
 For cycle in 1..3:
   spawn fresh Triager → Triager runs Audit Team in parallel (buckets A–D)
+  Triager writes findings to .gaia/local/audit/c<N>/findings.json
   if clean (0 findings + Bucket D = A+ readiness): grade A+, exit
-  Triager classifies findings; you check fingerprints vs prior cycle
-  if oscillation: escalate
+  Triager classifies findings; compare fingerprints between c<N>/findings.json
+    and c<N-1>/findings.json (jq + comm) — escalate on intersection
   Triager dispatches parallel Fixers (lane-aware)
   Fixers complete, Triager reports post-fix state to you
   shut down the team, start the next cycle
 After cycle 3 without clean: escalate (max loops hit)
+
+On clean A+: rm -rf .gaia/local/audit/c* (whitelisted)
+On escalation: preserve all c*/ dirs; surface paths in escalation report
 ```
 
 A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cycle's verification. Within a cycle, the Triager may execute buckets directly via parallel tool calls or dispatch fresh subagents — see runbook §Roles.
@@ -47,6 +54,7 @@ On clean exit:
 HEALTH AUDIT: A+
 Cycles: <N>
 Findings closed: <count> (per cycle: <breakdown>)
+Artifacts: cleaned (.gaia/local/audit/c* removed)
 ```
 
 On escalation:
@@ -56,6 +64,7 @@ HEALTH AUDIT: ESCALATED
 Reason: <max-loops | oscillation | circuit-breaker | unclassified-finding | fixer-unable-to-fix>
 Outstanding findings: <list with fingerprints>
 Cycles run: <N>
+Artifacts: preserved at .gaia/local/audit/c1/, c2/, c3/ (see findings.json in each)
 ```
 
 ## What you do NOT do
@@ -65,5 +74,6 @@ Cycles run: <N>
 - Do not commit. Fixers leave the working tree dirty; the human commits.
 - Do not write to `wiki/log.md` or `wiki/hot.md`.
 - Do not edit the runbook mid-loop. If the runbook needs changing, escalate first.
+- Do not delete `.gaia/local/audit/c*/` on escalation. Preserve everything for human review.
 
 Begin by reading `.gaia/cli/health/runbook.md`.
