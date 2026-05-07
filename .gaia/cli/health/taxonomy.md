@@ -4,7 +4,7 @@ Living document. Maintainer-only. Excluded from adopter distribution via `.gaia/
 
 ## Purpose
 
-Six independent audits of the Claude integration optimization (PR #97) found different things each pass. Trajectory: B+ → A− → A → A → A+ → A → A+. Each audit caught at least one class previous audits missed. Without a shared baseline, fresh audit agents re-discover settled questions and burn tokens on re-litigation.
+Eleven independent audits of the Claude integration optimization (PR #97) found different things each pass. Trajectory: B+ → A− → A → A → A+ → A → A+ → A → A → A → A. Each audit caught at least one class previous audits missed. Without a shared baseline, fresh audit agents re-discover settled questions and burn tokens on re-litigation.
 
 This file is the baseline. An audit reads it first, then walks the integration. Items in **Issue classes** must be verified absent (regressions matter). Items in **Decided / not findings** are not raised. Anything else — known class still present, or a genuinely new pattern — is the audit's output.
 
@@ -52,6 +52,11 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 **Wiki documentation surface drift.** Decision/concept pages enumerating CLI primitives or features fall behind the actual surface as new primitives land.
 - Detection: cross-reference enumerated lists in `wiki/decisions/` and `wiki/concepts/` against `.gaia/cli/src/*/index.ts` HELP_TEXT for that domain
 - Prior: `wiki/decisions/Wiki Management.md` listed 7 of 10 wiki primitives (e665b40)
+
+**Shipped wiki pages link to release-excluded targets via wikilinks.** A `[[X]]` wikilink in an adopter-shipped wiki page resolves to a page under `wiki/entities/`, `wiki/meta/`, `wiki/_archived/`, or any other release-excluded location. Adopter sees a dangling reference, and the link itself signposts maintainer-only content even when the destination is excluded. `gaia wiki dead-paths` only catches backticked filesystem paths, not wikilinks; `gaia wiki orphans` is the inverse direction (pages with no inbound links).
+- Detection (manual until automated): `grep -rEn '\[\[' wiki/index.md wiki/README.md wiki/overview.md wiki/concepts/ wiki/decisions/ wiki/modules/ wiki/components/ wiki/flows/ wiki/dependencies/` and cross-check each target slug against pages whose path matches a `.gaia/release-exclude` pattern or lives under `wiki/entities/|wiki/meta/|wiki/_archived/`.
+- Suggested codification: extend `gaia wiki dead-paths` (or add a sibling primitive) to walk wikilinks via `gaia wiki page-index --json` and flag any link resolving to a release-excluded target.
+- Prior: `wiki/index.md` carried `## Entities` and `## Meta` sections plus a `[[Release Workflow]]` bullet, all resolving to release-excluded pages (audit #11 fix).
 
 ### Claude integration surfaces
 
@@ -112,14 +117,19 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 - Detection: cross-reference `release-exclude` paths against manifest entries; should be zero overlap
 - Prior: `release.yml` was `shared` in manifest until 98f7a62 moved it to category 9
 
+**Classifier sets contain release-excluded paths (dead code).** `ADOPTER_OWNED_SENTINELS`, `SHARED`, `WIKI_OWNED_EXACT` in `.gaia/cli/src/release/manifest.ts` enumerate paths whose classification is overridden by `.gaia/release-exclude` running first in `buildManifest`. Such entries are dead — the classifier never sees them — and rot the contract that the classifier expresses.
+- Detection: cross-reference each string in `ADOPTER_OWNED_SENTINELS|SHARED|WIKI_OWNED_EXACT` against `.gaia/release-exclude` patterns; expect zero overlap.
+- Prior: `CHANGELOG.md` in `ADOPTER_OWNED_SENTINELS` and `README.md` in `SHARED` were dead after release-exclude category 11 added root governance files (audit #11 fix).
+
 **Maintainer paths referenced in adopter-shipped files.** Distributed workflows, wiki pages, instruction files (skills, commands, agents, rules), `.claude/hooks/`, `.gaia/statusline/`, root-level files (CLAUDE.md, etc.), or hook script comments mention `.gaia/cli/src/`, `.specify/extensions/gaia/test/`, `.claude-tests/`, `release-exclude`, etc. — paths that don't exist on adopter clones.
-- Detection (broad): `grep -rEn "\.gaia/cli/src/|\.gaia/cli/test-fixtures/|\.gaia/cli/__tests__/|\.specify/extensions/gaia/test/|\.claude-tests/|\.claude/rules/_internal/" CLAUDE.md .claude/ wiki/ .gaia/statusline/ --include="*.md" --include="*.sh" --include="*.yml"` (run from repo root). Every match outside the allowlist is a leak. Note the scope: must include root `CLAUDE.md`, `.gaia/statusline/`, and shipped hooks under `.claude/hooks/` — pre-9th-audit greps were `.claude/`-scoped and missed root + statusline.
+- Detection (broad): `grep -rEn "\.gaia/cli/src/|\.gaia/cli/test-fixtures/|\.gaia/cli/__tests__/|\.gaia/cli/health/|\.specify/extensions/gaia/test/|\.claude-tests/|\.claude/rules/_internal/" CLAUDE.md .claude/ wiki/ .gaia/statusline/ --include="*.md" --include="*.sh" --include="*.yml"` (run from repo root). Every match outside the allowlist is a leak. Note the scope: must include root `CLAUDE.md`, `.gaia/statusline/`, and shipped hooks under `.claude/hooks/` — pre-9th-audit greps were `.claude/`-scoped and missed root + statusline.
 - Allowlist:
   - `wiki/concepts/Release Workflow.md` Distribution Boundary section legitimately describes the maintainer surface.
   - `wiki/concepts/Telemetry.md` body after the "Maintainer source lives at `.gaia/cli/src/`" framing line — that section documents the maintainer architecture by design and the framing line caveats it.
   - `.claude/rules/instruction-files.md` counter-example prose.
   - `.claude/commands/gaia-release.md` — itself maintainer-only (release-exclude category 1); not adopter-shipped, so internal references are fine.
   - `wiki/log.md` — append-only change ledger, exempt by design (per `wiki-style.md` Exceptions list); historical SHAs and paths are the point.
+  - `wiki/hot.md` — auto-loaded recent-context cache, exempt by design (per `wiki-style.md` Exceptions list); overwritten with release-baseline content by `/gaia-release` Step 8, so maintainer-only path mentions in working content do not survive into adopter scaffolds.
 - Per-class: for `.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, and `.claude/hooks/`: every path mention should be a path that ships.
 - Prior: `tests.yml` body comment cited `.gaia/`, `.specify/`, `.claude/`, `cli-tests.yml` (98f7a62); `.claude/skills/update-gaia/SKILL.md` cited `.gaia/cli/src/update/merge.ts` (ac7c019); `.claude/hooks/telemetry-task-postuse.sh` cited `.gaia/cli/src/telemetry/parse-stdin.ts` (ac7c019); `wiki/concepts/Telemetry.md:82` cited `.claude-tests/smoke/telemetry-v1/run.sh` (23d0ed7); `wiki/decisions/spec-kit Extension Strategy.md:69` cited `.specify/extensions/gaia/test/v2-validation.md` (23d0ed7); `.claude/commands/wiki-lint.md:140` synthetic example used `.gaia/cli/src/removed/index.ts` (23d0ed7); `.claude/hooks/wiki-session-start.sh:16-25` named the obscurity rule + protected memory path + `_internal-assert-display-rule` CLI subcommand (10th audit fix; CLI subcommand renamed to `_internal-assert-memory-rules`).
 
@@ -188,6 +198,8 @@ Things audits keep re-discovering. None of these are findings.
 **Pre-existing low-stakes near-collisions in `gaia wiki near-collisions` output.** Domains containing pages with short slugs produce Levenshtein-2 collisions that are semantically distinct. The `--max-distance` flag exists for tuning. Not a finding unless titles are actually duplicates.
 
 **The taxonomy itself is exempt from `wiki-style.md`.** `.claude/rules/wiki-style.md` scopes to `wiki/**` body prose and `app/**` source comments. This file lives at `.gaia/cli/health/taxonomy.md` — outside both scopes. Historical phrasing here ("Prior: …", "fixed in commit abc") is the point.
+
+**Bundled binary contains obscurity-rule prose verbatim.** `strings .gaia/cli/gaia` returns the rule name, the protected path, and "Claude must not display…" prose. By construction — `display-rule-memory.ts` writes the rule into per-machine user memory, and esbuild inlines the writer source into the shipped binary. The binary is not part of Claude's session-start reading surface; the obscurity threat model targets auto-loaded markdown / instruction files (CLAUDE.md, slash commands, wiki pages, hooks). Running `strings` on the binary is a different surface that the rule never claimed to defend.
 
 ## How to extend
 

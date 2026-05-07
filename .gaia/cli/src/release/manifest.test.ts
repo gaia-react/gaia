@@ -92,7 +92,6 @@ describe('classifyPath', () => {
   test('adopter sentinels return null', () => {
     expect(classifyPath('wiki/hot.md')).toBeNull();
     expect(classifyPath('wiki/log.md')).toBeNull();
-    expect(classifyPath('CHANGELOG.md')).toBeNull();
     expect(classifyPath('.gaia/VERSION')).toBeNull();
     expect(classifyPath('.gaia/manifest.json')).toBeNull();
   });
@@ -101,7 +100,6 @@ describe('classifyPath', () => {
     expect(classifyPath('.claude/settings.json')).toBe('shared');
     expect(classifyPath('package.json')).toBe('shared');
     expect(classifyPath('CLAUDE.md')).toBe('shared');
-    expect(classifyPath('README.md')).toBe('shared');
     expect(classifyPath('wiki/index.md')).toBe('shared');
     expect(classifyPath('.github/workflows/release.yml')).toBe('shared');
     expect(classifyPath('.github/CODEOWNERS')).toBe('shared');
@@ -124,6 +122,12 @@ describe('classifyPath', () => {
     expect(classifyPath('app/components/Foo/index.tsx')).toBe('owned');
     expect(classifyPath('.claude/skills/tdd/SKILL.md')).toBe('owned');
     expect(classifyPath('tsconfig.json')).toBe('owned');
+    // Root governance files reach the classifier as 'owned' but are
+    // filtered out earlier in `buildManifest` by `.gaia/release-exclude`
+    // category 11 (maintainer-only project governance).
+    expect(classifyPath('CHANGELOG.md')).toBe('owned');
+    expect(classifyPath('README.md')).toBe('owned');
+    expect(classifyPath('LICENSE')).toBe('owned');
   });
 });
 
@@ -308,6 +312,8 @@ describe('byte-identity vs generate-manifest.mjs', () => {
           '.claude/commands/gaia-release.md',
           '.gaia/scripts',
           '.gaia/release-exclude',
+          'CHANGELOG.md',
+          'README.md',
           'wiki/entities',
           'wiki/meta',
           '',
@@ -319,9 +325,9 @@ describe('byte-identity vs generate-manifest.mjs', () => {
         '.gaia/scripts/legacy.mjs': '// excluded\n', // excluded
         '.github/CODEOWNERS': '* @maintainer\n',
         '.github/workflows/release.yml': 'name: release\n',
-        'CHANGELOG.md': '# changelog\n', // sentinel
+        'CHANGELOG.md': '# changelog\n', // excluded (root governance, category 11)
         'CLAUDE.md': '# CLAUDE\n',
-        'README.md': '# README\n',
+        'README.md': '# README\n', // excluded (root governance, category 11)
         'app/components/Foo/index.tsx': 'export {};\n',
         'package.json': '{"name":"x"}\n',
         'wiki/concepts/Foo.md': '# foo\n',

@@ -126,4 +126,27 @@ describe('wiki orphans', () => {
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
   });
+
+  test('skips wiki/meta/ and wiki/entities/ pages with no inbound links', () => {
+    sandbox.writePage(
+      'wiki/concepts/Hub.md',
+      '---\ntype: concept\n---\n\n# Hub\n\nLinks to [[Spoke]].\n'
+    );
+    sandbox.writePage(
+      'wiki/concepts/Spoke.md',
+      '---\ntype: concept\n---\n\n# Spoke\n\nMentions [[Hub]].\n'
+    );
+    sandbox.writePage(
+      'wiki/meta/lint-report-2026-05-07.md',
+      '---\ntype: report\n---\n\n# Lint Report\n\nStandalone audit artifact.\n'
+    );
+    sandbox.writePage(
+      'wiki/entities/SomeProject.md',
+      '---\ntype: entity\n---\n\n# Some Project\n\nMaintainer-only entity page.\n'
+    );
+
+    const exit = run([], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toBe('');
+  });
 });

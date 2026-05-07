@@ -36,10 +36,13 @@ const HELP_TEXT = `Usage: gaia release manifest [--out <path>] [--stdout]
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
+// Root governance files (CHANGELOG.md, CODE_OF_CONDUCT.md, CONTRIBUTING.md,
+// LICENSE, README.md, SUPPORTERS.md) are handled by `.gaia/release-exclude`
+// category 11 (maintainer-only project governance) and never reach this
+// classifier. Don't add them to the sets below.
 const ADOPTER_OWNED_SENTINELS = new Set([
   '.gaia/manifest.json',
   '.gaia/VERSION',
-  'CHANGELOG.md',
   'wiki/hot.md',
   'wiki/log.md',
 ]);
@@ -50,7 +53,6 @@ const SHARED = new Set([
   '.github/FUNDING.yml',
   'CLAUDE.md',
   'package.json',
-  'README.md',
   'wiki/index.md',
 ]);
 
