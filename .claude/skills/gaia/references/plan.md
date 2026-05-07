@@ -194,10 +194,10 @@ Output a short summary of what's in `$PLAN_DIR/`, then emit the copy-paste promp
 The prompt is a single line, exactly:
 
 ```
-Read /Users/.../absolute/path/to/.gaia/local/plans/{slug}/KICKOFF.md and execute it.
+Read <absolute-path-to>/.gaia/local/plans/{slug}/KICKOFF.md and execute it.
 ```
 
-Use `$PLAN_DIR/KICKOFF.md` (the absolute path resolved in step 3). Do not include any other instruction — the orchestrator's behavior lives in `KICKOFF.md`.
+Use `$PLAN_DIR/KICKOFF.md` (the absolute path resolved in step 3). The path MUST be absolute so the cold Claude session has no working-directory ambiguity. Do not include any other instruction — the orchestrator's behavior lives in `KICKOFF.md`.
 
 **Try to copy the prompt to the system clipboard** with the first available tool. Probe in this order — the first match wins; if none exist, skip silently:
 

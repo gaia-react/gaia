@@ -2,17 +2,22 @@ import {EXIT_CODES} from '../exit.js';
 /**
  * `gaia telemetry` subcommand router.
  *
- * Wires `emit` and `compute-profile` (the latter via
- * `.gaia/cli/src/profile/index.ts` `computeProfile()`).
+ * Wires `emit`, `compute-profile`, and `parse-stdin` (the latter consumes a
+ * PostToolUse `Task` hook payload on stdin and dispatches emits derived from
+ * the agent's structured-trailer block — replaces the legacy awk parser
+ * that lived in `.claude/hooks/telemetry-task-postuse.sh`).
  */
 import {computeProfile} from '../profile/index.js';
 import {structuredError} from '../stderr.js';
 import {handleEmit} from './emit.js';
+import {handleParseStdin} from './parse-stdin.js';
 
 const HELP_TEXT = `Usage: gaia telemetry <subcommand> [args]
 
   emit <event_type> [--field value ...]   Emit one telemetry event.
   compute-profile                          Regenerate profile.md from events.
+  parse-stdin                              Read PostToolUse hook JSON on stdin,
+                                           dispatch emits from trailer YAML.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -40,6 +45,10 @@ export const run = async (argv: readonly string[]): Promise<number> => {
 
   if (subcommand === 'compute-profile') {
     return computeProfile();
+  }
+
+  if (subcommand === 'parse-stdin') {
+    return handleParseStdin();
   }
 
   structuredError({

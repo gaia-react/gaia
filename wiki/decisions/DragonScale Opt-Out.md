@@ -49,7 +49,7 @@ Any GAIA adopter who scales their wiki past ~200 pages, starts running `/autores
 1. Confirm `claude-obsidian` plugin is installed (it is, post-v1.6.0 baseline).
 2. Run `bash ~/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian/<version>/bin/setup-dragonscale.sh` from the project root.
 3. Install local prerequisites only for the mechanisms they want — `ollama` + `nomic-embed-text` for tiling, `python3` for boundary scoring.
-4. Update their fork's `wiki/CLAUDE.md` (or equivalent schema doc) to permit `address: c-NNNNNN`.
+4. Update their fork's wiki schema doc (e.g. `wiki/index.md` or a top-level `CLAUDE.md`) to permit `address: c-NNNNNN`.
 
 The script is idempotent and per-vault, so opt-in is reversible by deleting `.vault-meta/` and `wiki/folds/`. Nothing in the GAIA template needs to change for an adopter to take this path.
 

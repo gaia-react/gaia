@@ -57,7 +57,7 @@ Five tiers of memory with explicit scope and decay:
 - **Long-term**: the wiki at `wiki/`. Architecture, decisions, flows, concepts, dependencies, sources, all versioned with the repo.
 - **Hot cache**: `wiki/hot.md`. Auto-loaded each session, ≤200 words, the recent-context summary every session starts with.
 - **Episodic**: [[GAIA Handoff]] writes a structured doc; [[GAIA Pickup]] reads it and reconstitutes context cold.
-- **Agent memory**: `.claude/agent-memory/code-review-audit/MEMORY.md` accumulates patterns across reviews and is auto-loaded into the agent's prompt.
+- **Agent memory**: `.claude/agent-memory/<agent-name>/MEMORY.md` accumulates patterns across reviews and is auto-loaded into the agent's prompt. Created on demand per agent.
 - **User auto-memory**: `~/.claude/projects/<project>/memory/`. Typed memories (user / feedback / project / reference) indexed by `MEMORY.md`.
 
 [[GAIA Audit]] is a periodic two-stage sweep that detects duplication, stale entries, and auto-load bloat. Memory is not a pile; it has a maintenance loop.

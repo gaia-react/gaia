@@ -14,15 +14,15 @@ Spawn:
 - `description`: `"Wiki lint"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–3) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 3 — no recap of the report contents.`
+  > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–4) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 4 — no recap of the report contents.`
 
-When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 3.
+When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 4. If the subagent returns a `WIKI DEAD-PATHS:` line, surface it too.
 
 ---
 
 ## Playbook
 
-GAIA-local wrapper around the upstream `claude-obsidian:wiki-lint` skill. Runs the upstream lint flow first, then appends GAIA-specific check **#11: Wiki drift check** to the report.
+GAIA-local wrapper around the upstream `claude-obsidian:wiki-lint` skill. Runs the upstream lint flow first, then appends GAIA-specific checks **#11: Wiki drift check** and **#12: Dead repo-relative paths** to the report.
 
 Do **not** modify the upstream skill (`~/.claude/plugins/marketplaces/claude-obsidian-marketplace/skills/wiki-lint/SKILL.md`) — it is read-only territory. Extensions live here.
 
@@ -107,14 +107,50 @@ Example ERROR (`high`) section:
 - p3q4r5s refactor: ...
 ```
 
-## Step 3: Surface to the user
+## Step 3: GAIA check #12 — Dead repo-relative paths
+
+Run the dead-paths primitive and append a `## #12: Dead repo-relative paths` section. Detects backticked paths in wiki body prose that reference files no longer present on disk (e.g. a hook removed in a refactor still cited in a concept page).
+
+### 3a. Run the primitive
+
+```bash
+gaia wiki dead-paths --json
+```
+
+Returns `{ "dead": [{ "filePath": "...", "line": N, "path": "..." }, ...] }`. Empty array means clean.
+
+### 3b. Append the section
+
+If `dead.length === 0`:
+
+```markdown
+## #12: Dead repo-relative paths
+
+✓ No dead repo-relative paths detected in wiki body prose.
+```
+
+Otherwise:
+
+```markdown
+## #12: Dead repo-relative paths
+
+⚠ {dead.length} dead path reference(s) in wiki/ — files no longer exist on disk:
+
+- `wiki/concepts/Foo.md:23` → `.claude/hooks/old-hook.sh`
+- `wiki/concepts/Bar.md:45` → `.gaia/cli/src/removed/index.ts`
+```
+
+List every dead reference (one per line). Do not truncate — the count is small enough to be actionable.
+
+## Step 4: Surface to the user
 
 Print to the user:
 
 1. The report path (e.g. `wiki/meta/lint-report-2026-05-03.md`).
-2. A one-line summary that includes the drift severity and count.
+2. A one-line summary that includes the drift severity and count, plus dead-path count if non-zero.
 
 If `drift_severity` is **`high`**, surface it prominently (separate line, prefixed with `WIKI DRIFT:`).
+If `dead.length > 0`, surface as a separate line prefixed with `WIKI DEAD-PATHS:` followed by the count.
 
 ## Notes
 
