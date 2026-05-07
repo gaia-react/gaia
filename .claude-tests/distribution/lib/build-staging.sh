@@ -61,5 +61,13 @@ rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIR/"
 # Phase 2 — Scrub. Same invocation as release.yml line 82.
 "$PROJECT_ROOT/.gaia/cli/gaia" release scrub "$OUTPUT_DIR"
 
+# Phase 2.5 — Scrub-wiki. Resets wiki/hot.md and wiki/log.md to release-
+# baseline state. release.yml does NOT do this — it runs in the local
+# `/gaia-release` runbook BEFORE the release PR is merged. We replicate
+# it against the staging tree so the harness mirrors what an adopter
+# receives in a published tarball, regardless of which source-commit
+# state we built from.
+( cd "$OUTPUT_DIR" && "$PROJECT_ROOT/.gaia/cli/gaia" release scrub-wiki )
+
 # Phase 3 — Runtime-deps. Same invocation as release.yml line 87.
 "$PROJECT_ROOT/.gaia/cli/gaia" release runtime-deps --staging "$OUTPUT_DIR"
