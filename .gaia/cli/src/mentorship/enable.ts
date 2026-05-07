@@ -14,6 +14,7 @@ import {
 import type {StorageRoots} from '../storage/index.js';
 import {askConfirm} from './ask.js';
 import {readMentorshipConfig, writeMentorshipConfig} from './config.js';
+import {installDisplayRule} from './display-rule-memory.js';
 
 type RunOptions = {
   roots?: StorageRoots;
@@ -89,6 +90,18 @@ export const run = async (
       code: 'storage_inaccessible',
       message: error instanceof Error ? error.message : String(error),
       path: roots.mentorshipDir,
+    });
+
+    return EXIT_CODES.STORAGE_INACCESSIBLE;
+  }
+
+  try {
+    installDisplayRule(roots);
+  } catch (error) {
+    structuredError({
+      code: 'storage_inaccessible',
+      message: error instanceof Error ? error.message : String(error),
+      path: roots.memoryDir,
     });
 
     return EXIT_CODES.STORAGE_INACCESSIBLE;

@@ -57,8 +57,30 @@ fi
 [ -z "$left" ] && left="Claude Code"
 
 # ---------- Right side from cache ----------
+# Per-machine setup gate: when .gaia/local/setup-state.json is missing or
+# its completed_at is null, the right side shows ONLY `Run /setup-gaia` —
+# the other indicators are suppressed until the developer has run through
+# the per-clone setup at least once. The setup file is gitignored, so each
+# clone gets its own state.
+SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
+setup_complete="false"
+if [ -f "$SETUP_STATE_FILE" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
+      setup_complete="true"
+    fi
+  else
+    # Fallback: a complete state has a non-null completed_at value.
+    if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
+      setup_complete="true"
+    fi
+  fi
+fi
+
 right=""
-if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
+if [ "$setup_complete" != "true" ]; then
+  right="$(printf '\033[01;35mRun /setup-gaia (per-machine setup pending)\033[00m')"
+elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
   gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
   gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)

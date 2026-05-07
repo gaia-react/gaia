@@ -13,6 +13,7 @@ import {structuredError} from '../stderr.js';
 import {resolveStorageRoots} from '../storage/index.js';
 import type {StorageRoots} from '../storage/index.js';
 import {readMentorshipConfig, writeMentorshipConfig} from './config.js';
+import {removeDisplayRule} from './display-rule-memory.js';
 
 type RunOptions = {
   roots?: StorageRoots;
@@ -63,6 +64,12 @@ export const run = (
 
     return EXIT_CODES.CONFIG_INVALID;
   }
+
+  // Remove the mentorship-display rule from per-machine memory. Idempotent —
+  // a no-op when the rule was never installed (e.g. the user is disabling
+  // an enable that was set via the legacy `.claude/rules/` path).
+  removeDisplayRule(roots);
+
   process.stdout.write(
     `${JSON.stringify({
       at: new Date().toISOString(),

@@ -118,6 +118,6 @@ If `drift_severity` is **`high`**, surface it prominently (separate line, prefix
 
 ## Notes
 
-- Hooks (drift-check, commit-nudge, stop-safety-net) are read-only consumers of `wiki/.state.json`. Only `/wiki-sync` writes to it. This command also does not write `wiki/.state.json`.
+- Hooks (drift-check, commit-nudge, session-stop) are read-only consumers of `wiki/.state.json`. Only `/wiki-sync` writes to it. This command also does not write `wiki/.state.json`.
 - Drift count semantics: missing state file or unreachable SHA are surfaced as advisories, not silent zeroes. See [[Wiki Sync]] for the full design.
 - Severity table thresholds are the canonical thresholds for this plan; if changing, update both this command and any sibling tooling that classifies drift.

@@ -1,8 +1,9 @@
 /**
- * `gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP> --reason "..."` handler.
+ * `gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."` handler.
  *
  * Prepends a single canonical line to `wiki/log.md` immediately after the
- * frontmatter block. Replaces the prose recipe in `wiki-sync.md` Step 5.
+ * frontmatter block. Replaces the prose recipe in `wiki-sync.md` Step 5
+ * and the manual re-anchor write in `wiki-sync.md` Step 1.
  *
  * Line shape:
  *
@@ -12,6 +13,11 @@
  * `## [Unreleased]` heading the log already uses; we insert immediately
  * after the heading line if present, otherwise after the closing `---`
  * frontmatter fence.
+ *
+ * Decisions:
+ *   - WORTHY    — sync evaluated this commit and wiki was updated.
+ *   - SKIP      — sync evaluated this commit and decided no wiki change.
+ *   - RE_ANCHOR — sync re-anchored state after a history rewrite (rebase/squash).
  */
 import {existsSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
@@ -19,13 +25,13 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from './util/git.js';
 
-const HELP_TEXT = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP> --reason "..."
+const HELP_TEXT = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
   Prepends one canonical line to wiki/log.md after the frontmatter.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-const VALID_DECISIONS = new Set(['SKIP', 'WORTHY']);
+const VALID_DECISIONS = new Set(['RE_ANCHOR', 'SKIP', 'WORTHY']);
 const FRONTMATTER_FENCE = '---';
 
 type ParsedFlags = {
@@ -104,7 +110,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
   if (!VALID_DECISIONS.has(decision)) {
     return {
-      message: `--decision must be WORTHY or SKIP (got: "${decision}")`,
+      message: `--decision must be WORTHY, SKIP, or RE_ANCHOR (got: "${decision}")`,
       ok: false,
     };
   }

@@ -17,12 +17,14 @@ import {run as runOrphans} from './orphans.js';
 import {run as runPageIndex} from './page-index.js';
 import {run as runState} from './state.js';
 import {run as runStateBump} from './state-bump.js';
+import {run as runStateInit} from './state-init.js';
 import {run as runSyncLand} from './sync-land.js';
 
 const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
 
   state [--json]                              Drift report.
   commit-classify --since <sha> [--json]      Per-commit WORTHY/SKIP.
+  state-init <sha>                            Create wiki/.state.json (refuses if exists).
   state-bump <field> <value>                  Atomic field bump in wiki/.state.json.
   log-prepend --sha <h> --decision <D> --reason "..."
                                               Prepend a decision line to wiki/log.md.
@@ -77,6 +79,7 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   'page-index': runPageIndex,
   'state': runState,
   'state-bump': runStateBump,
+  'state-init': runStateInit,
   'sync': runSync,
 };
 

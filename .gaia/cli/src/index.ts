@@ -13,6 +13,7 @@ import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
 import {run as runRelease} from './release/index.js';
 import {run as runScaffold} from './scaffold/index.js';
+import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
 import {run as runUpdate} from './update/index.js';
@@ -29,6 +30,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   update merge --baseline <dir> --latest <dir> --manifest <path>
   release preflight|bump|changelog|scrub-wiki|manifest|commit-and-tag
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
+  setup status|mark-step|finalize
 `;
 
 const printHelp = (): void => {
@@ -46,6 +48,7 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   mentorship: runMentorship,
   release: runRelease,
   scaffold: runScaffold,
+  setup: runSetup,
   telemetry: runTelemetry,
   update: runUpdate,
   wiki: runWiki,

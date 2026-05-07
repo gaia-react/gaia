@@ -24,4 +24,4 @@ For TS/TSX symbol queries (definitions, references, types, module exports), pref
 - No hardcoded secrets or tokens in source — use environment variables
 - Prefer structured logs/errors over ad hoc console text
 - Keep files focused — split when a file exceeds ~400 lines
-- Mentorship raw event files are not Claude-displayable. See `.claude/rules/mentorship-display.md`.
+- Mentorship raw event files are not Claude-displayable. The binding rule lives in per-machine user memory, projected from `.gaia/cli/src/mentorship/display-rule.ts` whenever mentorship is enabled. Removed/added by the mentorship CLI lifecycle (`enable` / `disable` / `purge` / `gaia mentorship _internal-write-config`); a session-start hook re-asserts it each session.

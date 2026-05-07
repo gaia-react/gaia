@@ -125,6 +125,28 @@ describe('wiki log-prepend', () => {
     expect(written).toContain('- 2026-05-07 0123456 WORTHY — added module');
   });
 
+  test('prepends a RE_ANCHOR entry', () => {
+    sandbox = setupSandbox(SAMPLE_LOG);
+
+    const exit = run(
+      [
+        '--sha',
+        'feedbac',
+        '--decision',
+        'RE_ANCHOR',
+        '--reason',
+        're-anchored after history rewrite',
+      ],
+      {cwd: sandbox.root, today: '2026-05-07'}
+    );
+    expect(exit).toBe(0);
+
+    const written = readFileSync(sandbox.logPath, 'utf8');
+    expect(written).toContain(
+      '- 2026-05-07 feedbac RE_ANCHOR — re-anchored after history rewrite'
+    );
+  });
+
   test('rejects invalid --decision', () => {
     sandbox = setupSandbox(SAMPLE_LOG);
 
@@ -134,6 +156,7 @@ describe('wiki log-prepend', () => {
     );
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--decision must be');
+    expect(stdio.errors.join('')).toContain('RE_ANCHOR');
   });
 
   test('rejects missing --sha', () => {

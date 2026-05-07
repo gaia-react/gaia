@@ -1,4 +1,3 @@
-// See .claude/rules/mentorship-display.md — Claude must not display raw mentorship event files.
 /**
  * `gaia mentorship` subcommand router.
  *
@@ -10,11 +9,17 @@
  *   gaia mentorship analytics enable|disable|dry-run
  *   gaia mentorship _internal-write-config (consumed by gaia-init)
  *   gaia mentorship _internal-provision-dirs (consumed by gaia-init)
+ *   gaia mentorship _internal-assert-display-rule (consumed by the session-start hook)
+ *
+ * The mentorship-display rule (Claude must not surface raw mentorship
+ * event files) is bundled in `display-rule.ts` and projected into
+ * per-machine user memory by the enable / disable / purge / init paths.
  *
  * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {run as runInternalAssertDisplayRule} from './_internal-assert-display-rule.js';
 import {run as runInternalProvisionDirectories} from './_internal-provision-dirs.js';
 import {run as runInternalWriteConfig} from './_internal-write-config.js';
 import {run as runAnalyticsDisable} from './analytics-disable.js';
@@ -43,6 +48,7 @@ type Handler = (
 ) => number | Promise<number | undefined> | undefined;
 
 const TOP_LEVEL_HANDLERS: Readonly<Partial<Record<string, Handler>>> = {
+  '_internal-assert-display-rule': runInternalAssertDisplayRule,
   '_internal-provision-dirs': runInternalProvisionDirectories,
   '_internal-write-config': runInternalWriteConfig,
   disable: runDisable,

@@ -16,7 +16,7 @@ import {
 } from '../paths.js';
 
 describe('resolveStorageRoots', () => {
-  test('produces the six SPEC-mandated paths under repoRoot + homeDir', () => {
+  test('produces the SPEC-mandated paths under repoRoot + homeDir', () => {
     const repoRoot = '/tmp/fake-repo';
     const homeDirectory = '/tmp/fake-home';
     const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
@@ -34,6 +34,9 @@ describe('resolveStorageRoots', () => {
     expect(roots.projectIdPath).toBe('/tmp/fake-repo/.gaia/local/.project-id');
     expect(roots.profilePath).toBe(
       '/tmp/fake-home/.claude/projects/-tmp-fake-repo/gaia/profile.md'
+    );
+    expect(roots.memoryDir).toBe(
+      '/tmp/fake-home/.claude/projects/-tmp-fake-repo/memory'
     );
   });
 

@@ -13,4 +13,15 @@ git rev-parse HEAD > "$GIT_DIR/claude-session-start" 2>/dev/null || true
 # clearing here ensures stale state from a prior session doesn't carry over.
 rm -f .gaia/cache/coaching-active.txt 2>/dev/null
 
+# Re-assert the mentorship-display rule's projection into per-machine memory.
+# When mentorship is enabled, this rewrites
+# ~/.claude/projects/<slug>/memory/feedback_mentorship_display.md from the
+# bundled CLI text and ensures MEMORY.md indexes it. When disabled, it
+# removes both. Idempotent and best-effort — never blocks session start.
+# The CLI subcommand always exits 0; we still guard with `|| true` for
+# defense in depth.
+if [ -x .gaia/cli/gaia ]; then
+  .gaia/cli/gaia mentorship _internal-assert-display-rule >/dev/null 2>&1 || true
+fi
+
 exit 0

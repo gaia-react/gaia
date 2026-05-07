@@ -181,13 +181,13 @@ No-op. Finding remains active and will re-surface on the next consolidate run.
 
 ## Step 5 — Advance consolidate state
 
-Update `wiki/.state.json`:
+Update `wiki/.state.json` via the CLI primitive (preserves sibling fields and key order automatically):
 
-1. Read the existing file (it should exist — `/wiki-sync` creates it on first run; if missing, skip this step entirely and emit a warning in the Step 6 summary).
-2. Set `last_consolidated_sha` to `git rev-parse HEAD` (full 40-char SHA at consolidate-completion time, before any of this run's edits get committed).
-3. Add `last_consolidated_at: <ISO 8601 UTC>`.
-4. Preserve all other fields verbatim — `last_evaluated_sha`, `last_evaluated_at`, and any future fields owned by other commands.
-5. Write the file atomically (`jq ... > tmp && mv tmp wiki/.state.json`).
+1. Confirm the file exists. It should — `/wiki-sync` creates it on first run. If missing, skip this step entirely and emit a warning in the Step 6 summary.
+2. Run `gaia wiki state-bump last_consolidated_sha "$(git rev-parse HEAD)"` (full 40-char SHA at consolidate-completion time, before any of this run's edits get committed).
+3. Run `gaia wiki state-bump last_consolidated_at "$(date -u +%FT%TZ)"`.
+
+`state-bump` performs an atomic write (`writeFileSync` to `.tmp` + `renameSync`) and preserves `last_evaluated_sha`, `last_evaluated_at`, and any future sibling fields verbatim.
 
 Advance state on every completion regardless of how many findings were applied — including zero findings and all-skip runs. The consolidate gate in `/wiki-sync` Step 9 reads `last_consolidated_sha` to decide when to auto-fire; not advancing would cause the gate to re-fire immediately on the next sync with the same data.
 

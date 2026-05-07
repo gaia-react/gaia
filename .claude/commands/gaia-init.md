@@ -239,7 +239,7 @@ Use AskUserQuestion with these three options in this exact order:
 
 **On "Tell me more":**
 
-Drop into Q&A. Claude has the design notes available in context (the explainer above + `studio/decisions/telemetry-v1-design.md` and `studio/decisions/local-adaptive-mentorship.md` if needed for deeper questions). See `.claude/rules/mentorship-display.md` for the project-wide contract on what Claude does with mentorship data. When the user signals they're done (e.g. "ok ready to decide"), re-present the same AskUserQuestion. Loop until the user picks Not now or Yes.
+Drop into Q&A. Claude has the design notes available in context (the explainer above + `studio/decisions/telemetry-v1-design.md` and `studio/decisions/local-adaptive-mentorship.md` if needed for deeper questions). The mentorship-display rule (Claude must not surface raw mentorship event files) is bundled in the gaia CLI binary and projected into per-machine user memory by `gaia mentorship _internal-write-config` based on the user's choice — no extra step here. When the user signals they're done (e.g. "ok ready to decide"), re-present the same AskUserQuestion. Loop until the user picks Not now or Yes.
 
 End of Step 9.
 

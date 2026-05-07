@@ -32,15 +32,15 @@ Lint runs last because consolidate may move, rename, or archive pages, and lint'
 
 Evaluate every commit between `wiki/.state.json` `last_evaluated_sha` and HEAD. For each, decide whether the wiki needs an update. Edit pages, log decisions, advance state, commit.
 
-`wiki/.state.json` is written by two commands: this command writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/wiki-consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-stop-safety-net`) are read-only consumers.
+`wiki/.state.json` is written by two commands: this command writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/wiki-consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) are read-only consumers.
 
 ## Step 1: Read state and compute drift
 
 Run `gaia wiki state --json` and parse the result. Use `head_short`, `state_sha`, `commits_ahead`, and `reachable` directly.
 
-- If the command exits non-zero with a `state_missing` (or equivalent) reason, this is a fresh project (no prior sync). Treat the first commit as the baseline. Initialize `wiki/.state.json` (write a minimal `{"version":1,"last_evaluated_sha":"<first_sha>"}` then run `gaia wiki state-bump last_evaluated_at "<now>"` if needed), commit it as `wiki: initialize state at {short_sha}`. Stop — no commits to evaluate yet. (`state-bump` requires the file to already exist; the bootstrap write is intentionally manual.)
+- If the command exits non-zero with a `state_missing` (or equivalent) reason, this is a fresh project (no prior sync). Treat the first commit as the baseline. Run `gaia wiki state-init "$(git rev-list --max-parents=0 HEAD | tail -1)"` to create `wiki/.state.json` with `{version, last_evaluated_sha, last_evaluated_at}`, then commit as `wiki: initialize state at {short_sha}`. Stop — no commits to evaluate yet.
 - If `commits_ahead === 0`: skip the evaluation pass (no commits to evaluate) but DO NOT exit yet — fall through to Step 9 (consolidate gate). The gate may still trigger consolidate based on accumulated page-adds since last consolidate run, even when this sync is a no-op. The Step 8 report still prints; just substitute `Wiki already in sync at {short_sha}.` for the regular summary block, then run Step 9.
-- If `reachable === false`: the recorded SHA is not in HEAD's history (rebase scenario). Re-anchor — run `gaia wiki state-bump last_evaluated_sha "$(git rev-parse HEAD)"`, append a `wiki/log.md` entry `{date} - {short_sha} - re-anchored after history rewrite` (the `log-prepend` primitive only accepts `WORTHY`/`SKIP`, so write this line manually), commit, exit. Skip Step 9 — re-anchor wipes drift baseline; running consolidate against an unreachable past makes no sense.
+- If `reachable === false`: the recorded SHA is not in HEAD's history (rebase scenario). Re-anchor — run `gaia wiki state-bump last_evaluated_sha "$(git rev-parse HEAD)"`, then `gaia wiki log-prepend --sha "$(git rev-parse --short HEAD)" --decision RE_ANCHOR --reason "re-anchored after history rewrite"`, commit, exit. Skip Step 9 — re-anchor wipes drift baseline; running consolidate against an unreachable past makes no sense.
 - Otherwise proceed with the evaluation pass.
 
 ## Step 2: Drift cap check
