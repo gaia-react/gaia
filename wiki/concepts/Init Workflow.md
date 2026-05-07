@@ -4,6 +4,7 @@ status: active
 created: 2026-05-07
 updated: 2026-05-07
 tags: [concept, claude, cli, workflow]
+consolidation_ack: [Git Workflow]
 ---
 
 # Init Workflow
