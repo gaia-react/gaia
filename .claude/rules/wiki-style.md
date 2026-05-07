@@ -11,7 +11,7 @@ Body prose and code comments describe **what is** in present tense. The historic
 ## Rules
 
 - **Present tense only.** Do not write "was changed from X to Y", "previously did A, now does B", "moved from a to b". State the current behavior directly.
-- **No UAT references in prose or comments.** `UAT-NNN` identifies entries inside SPECs — working documents that get superseded, renumbered, or deleted. A reader querying the wiki about a feature gets no value from "implements UAT-012". Drop the reference; describe what the feature does.
+- **No UAT or SPEC references in prose or comments.** `UAT-NNN` identifies entries inside SPECs; `SPEC-NNN` identifies the SPECs themselves. Both are working documents — they get superseded, renumbered, or deleted. A reader querying the wiki about a feature gets no value from "implements UAT-012" or "from SPEC-005". Drop the reference; describe what the feature does and why.
 - **No inline PR / commit / date-of-change references in body prose.** Don't write "added in PR #97", "commit abc123 introduced …", "as of 2026-05-07 …". The git log answers those questions and stays accurate when prose drifts.
 
 ## Why
@@ -31,11 +31,11 @@ Wiki readers (maintainers, adopters) need to understand the system as it is now.
 Before merging changes that touch `wiki/**` or `app/**` comments, and before running `/wiki-sync` / `/wiki-lint` / `/wiki-consolidate`:
 
 ```bash
-# UAT refs in wiki body prose (excluding log.md and meta/ audit reports)
-grep -rEn "UAT-[0-9]+" wiki/ --include="*.md" --exclude="log.md" --exclude-dir="meta"
+# UAT / SPEC refs in wiki body prose (excluding log.md and meta/ audit reports)
+grep -rEn "UAT-[0-9]+|SPEC-[0-9]+" wiki/ --include="*.md" --exclude="log.md" --exclude-dir="meta"
 
-# UAT refs in source comments
-grep -rEn "// .*UAT-[0-9]+|/\*.*UAT-[0-9]+|\*.*UAT-[0-9]+" app/
+# UAT / SPEC refs in source comments
+grep -rEn "// .*(UAT|SPEC)-[0-9]+|/\*.*(UAT|SPEC)-[0-9]+|\*.*(UAT|SPEC)-[0-9]+" app/
 
 # Historical-style phrasing in wiki body prose
 grep -rEn "changed from|was changed|previously|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude-dir="meta"

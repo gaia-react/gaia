@@ -24,7 +24,7 @@ When the subagent returns, relay its summary verbatim. If any HIGH-severity supe
 
 This skill complements but does not replace `wiki-promote` (per-SPEC writes), `wiki-sync` (commit-driven updates), or `wiki-lint` (broken-thing detection). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
 
-**Follow `.claude/rules/wiki-style.md` when writing prose during apply actions.** Present tense; no UAT-NNN, PR-number, or commit-SHA references in body prose. The `## Historical context (from <older-title>)` archival heading defined in Step 4 is a deliberate exception — it labels content lifted from a superseded page so it remains discoverable.
+**Follow `.claude/rules/wiki-style.md` when writing prose during apply actions.** Present tense; no UAT-NNN, SPEC-NNN, PR-number, or commit-SHA references in body prose. The `## Historical context (from <older-title>)` archival heading defined in Step 4 is a deliberate exception — it labels content lifted from a superseded page so it remains discoverable.
 
 Wiki pages emitted by `wiki-promote` carry `promoted_from: SPEC-NNN` and `promoted_at: <ISO>` frontmatter. Those fields are the consolidation seam — they tie pages back to source SPECs and let the audit detect when newer SPECs have superseded older ones.
 
