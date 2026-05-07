@@ -123,10 +123,16 @@ Crash-safety: read-only commands; no scratch state. Phase 2 redirection to `buck
 
 Reads: none.
 
-Commands. Two notes before reading the block:
+Commands. Three notes before reading the block:
 
 1. `block-rm-rf.sh` PreToolUse hook denies any literal absolute-path token to `rm -rf`. All cleanup paths below live in variables — the hook tokenizes statically, sees the literal `"$STAGING"` / `"$ALL_TRACKED"` / etc., and lets the rm through. Do not inline `/tmp/...` paths inside the trap or anywhere else; keep them in variables.
 2. Cleanup is `trap`-protected so an early non-zero exit (e.g. the wikilink `grep` returning 1 on no-match under `set -e`) cannot orphan the staging dir. The wikilink `grep` is also explicitly suffixed with `|| true` for the same reason — empty output is the success signal, exit 1 is not a failure.
+3. **The `trap … EXIT` only fires when the shell that registered it exits.** This matters because the post-cleanup verification (below) must observe the *post-trap* state — i.e. cleanup must have already happened. Two ways to ensure this, pick one:
+   - **Separate shell invocations** — run the trap-protected block as one shell command, then the verification as a second, independent command. The trap fires when the first shell exits, before the second starts.
+   - **Subshell wrapping in a single invocation** — if you combine both into one shell call (e.g. one Bash tool call), wrap the trap-protected block in a **subshell** `(...)`, NOT a **brace group** `{...}`. A subshell forks; its EXIT fires when the subshell exits, *before* the parent reaches the verification. A brace group runs in the same shell, so the trap waits for the parent to exit — by which time the verification has already observed the pre-cleanup state and the report is wrong. Example:
+     ```bash
+     ( STAGING="…"; trap '…' EXIT; mkdir …; … ) ; ls -d /tmp/gaia-vAUDIT* 2>/dev/null | wc -l
+     ```
 
 ```bash
 STAGING="/tmp/gaia-vAUDIT$(date +%s)"
@@ -148,7 +154,7 @@ find "$STAGING" -name "*.md" -exec grep -l "gaia:maintainer-only" {} \;
 grep -rEn "\[\[(Release Workflow|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta)\]\]" "$STAGING/wiki/" || true
 ```
 
-After the script exits, run a one-line **post-cleanup verification** in the Auditor's shell (this stays out of the trapped block on purpose — it observes the post-trap state):
+After the trap-protected block exits and cleanup fires (see note 3 above), run a one-line **post-cleanup verification** to observe the post-trap state:
 
 ```bash
 ls -d /tmp/gaia-vAUDIT* 2>/dev/null | wc -l
