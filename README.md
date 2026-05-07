@@ -147,6 +147,19 @@ GAIA keeps the wiki current and pruned as the project grows. Commits drive incre
 
 GAIA ships with an [Obsidian](https://obsidian.md) wiki knowledge base (architecture, modules, dependencies, decisions, flows, concepts) committed to git and shared across the team. The [`claude-obsidian`](https://github.com/AgriciDaniel/claude-obsidian) plugin (installed by `/gaia-init`) adds `/wiki-ingest`, `/wiki-query`, `/wiki-lint`, `/autoresearch`, and `/save` for working with the vault. Open `wiki/` in Obsidian for graph view, backlinks, and search.
 
+### Mentorship
+
+GAIA includes an optional, local-only adaptive mentorship layer that observes your patterns through GAIA's structured event stream and adapts Claude's responses to you over time. Default off. Opt in during `/gaia-init` or any time afterward.
+
+```bash
+gaia mentorship enable      # turn on
+gaia mentorship disable     # stop emit and adaptation
+gaia mentorship status      # show state and file location
+gaia mentorship purge       # delete all mentorship data
+```
+
+[Read more](https://gaiareact.com/mentorship/) about what it observes, what it never observes, where data lives, and how privacy is built into the design.
+
 ## Development
 
 GAIA is driven through Claude. Ask for what you need.
