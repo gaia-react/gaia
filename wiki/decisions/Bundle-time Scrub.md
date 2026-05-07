@@ -52,7 +52,7 @@ The markers are HTML comments to keep them invisible in rendered Markdown (Obsid
 The scrub is lexical. It does not understand semantics. Things outside its reach:
 
 - **Runtime dependency chains** — caught by `runtime-deps`, not scrub.
-- **Wikilinks resolving to release-excluded pages** — `[[Release Workflow]]` in a shipped page is a dead link on the adopter side. Detection lives in `gaia wiki dead-paths` (for backticked filesystem paths) and the `/wiki-lint` health check; the scrub does not flag it.
+- **Novel wikilink targets to release-excluded pages.** The `wikilink-to-excluded` check enumerates the known release-excluded slugs (`Release Workflow`, `Bundle-time Scrub`, `GAIA`, `Steven Sacks`, `dashboard`, `Entities`, `Meta`) and flags any unwrapped `[[…]]` in shipped wiki pages. A new release-excluded page added without updating the check's pattern would still slip through. `gaia wiki dead-paths` covers backticked filesystem paths; the wikilink check covers the named slugs.
 - **Behaviorally maintainer-only logic** — code that calls a release-excluded source path through dynamic require / variable string concatenation. The bundle architecture (esbuild bundles `.gaia/cli/src/` into the shipped binary; nothing else imports from `src/`) makes this unlikely in practice but is not prevented by the scrub.
 
 ## How to extend

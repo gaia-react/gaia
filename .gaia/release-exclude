@@ -12,9 +12,12 @@
 
 # --- 1. Maintainer-only Claude surface ---
 # /gaia-release cuts releases of the GAIA template itself; adopters never
-# release GAIA. Other /gaia-* commands (plan, handoff, pickup, audit) are
-# adopter-useful and must NOT be added here.
+# release GAIA. /health-audit is the maintainer-only autonomous audit +
+# auto-heal loop (runbook lives under .gaia/cli/health/, already excluded
+# wholesale via category 10). Other /gaia-* commands (plan, handoff,
+# pickup, audit) are adopter-useful and must NOT be added here.
 .claude/commands/gaia-release.md
+.claude/commands/health-audit.md
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that

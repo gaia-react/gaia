@@ -50,6 +50,9 @@ jobs:
           fi
           echo "notes-path=release-notes.md" >> "$GITHUB_OUTPUT"
 
+      - name: Verify manifest is fresh
+        run: ./.gaia/cli/gaia release manifest --check
+
       - name: Stage release tree
         run: |
           TAG="${{ steps.version.outputs.tag }}"

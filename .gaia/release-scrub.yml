@@ -97,6 +97,11 @@ transforms:
           - ".claude/**"
           - "wiki/**"
           - ".gaia/statusline/**"
+          # Adopter-shipped CI workflows (release.yml + cli-tests.yml are
+          # release-excluded; tests.yml + chromatic.yml ship). Prior
+          # occurrence: tests.yml body comment cited maintainer paths
+          # (98f7a62).
+          - ".github/workflows/**"
           - ".specify/extensions/gaia/README.md"
           - ".specify/extensions/gaia/commands/**"
           - ".specify/extensions/gaia/lib/**"
@@ -153,3 +158,100 @@ transforms:
         path-allowlist:
           # The rule's own counter-example prose documents this pattern.
           - ".claude/rules/instruction-files.md"
+
+      # ---- Obscurity-rule contract: rule-name leakage ----
+      # The mentorship-display rule is projected into per-machine user
+      # memory precisely so Claude is told *what not to do* without
+      # signposting either the contract or the artifact location. Naming
+      # the rule on any shared / adopter-shipped surface defeats it.
+      # Tighter than the taxonomy's reference grep (`mentorship.*display`)
+      # to avoid the known false positive on
+      # `wiki/concepts/Telemetry.md:48` ("displayable aggregates").
+      - id: obscurity-rule-name
+        description: "Obscurity contract: mentorship-display rule named in shipped surfaces"
+        pattern: "mentorship[- ]display rule|raw mentorship|mentorship events?\\s+(file|path)|Claude must not display"
+        scope:
+          - "CLAUDE.md"
+          - ".claude/**"
+          - "wiki/**"
+          - ".gaia/statusline/**"
+        path-allowlist:
+          # Adopter-owned sentinels carry release-baseline content after
+          # `gaia release scrub-wiki`; same carve-out as maintainer-paths.
+          - "wiki/hot.md"
+          - "wiki/log.md"
+
+      # ---- Obscurity-rule contract: protected-path leakage ----
+      # Naming the protected event-file path or feedback-memory file in
+      # shared surfaces is path-leakage that draws attention to the
+      # artifact location.
+      - id: obscurity-protected-path
+        description: "Obscurity contract: mentorship event-file paths or feedback memory file named in shipped surfaces"
+        pattern: "telemetry/mentorship/events|events-[^/[:space:]]*\\.jsonl|feedback_mentorship_display\\.md"
+        scope:
+          - "CLAUDE.md"
+          - ".claude/**"
+          - "wiki/**"
+          - ".gaia/statusline/**"
+        path-allowlist:
+          - "wiki/hot.md"
+          - "wiki/log.md"
+
+      # ---- Obscurity-rule contract: CLI subcommand-name leakage ----
+      # The `_internal-assert-display-rule` subcommand was renamed to
+      # `_internal-assert-memory-rules` in the 10th audit precisely to
+      # remove the path/contract signposting. The old name must not
+      # reappear in shared surfaces. (The bundled `gaia` binary contains
+      # source strings verbatim — this is a different surface, exempt by
+      # the "Decided / not findings" entry.)
+      - id: obscurity-cli-subcommand
+        description: "Obscurity contract: deprecated CLI subcommand name in shipped surfaces"
+        pattern: "_internal-assert-display-rule"
+        scope:
+          - ".claude/**"
+
+      # ---- Maintainer-only governance files at staging root ----
+      # Release-exclude category 11 keeps these out of the staging tree.
+      # If the exclude lines are reverted by mistake, the files would
+      # silently ship and adopters would inherit GAIA's governance. Using
+      # `.*` as the pattern means any line (including the empty file
+      # `LICENSE`) triggers a leak — file presence is the signal.
+      - id: governance-files
+        description: "Maintainer governance files present at staging root"
+        pattern: ".*"
+        scope:
+          - "CHANGELOG.md"
+          - "CODE_OF_CONDUCT.md"
+          - "CONTRIBUTING.md"
+          - "LICENSE"
+          - "README.md"
+          - "SUPPORTERS.md"
+
+      # ---- Wikilinks resolving to release-excluded slugs ----
+      # Marker-strip catches blocks the maintainer wraps with
+      # gaia:maintainer-only markers. This check defends the case where
+      # the maintainer forgets to wrap a wikilink whose target is
+      # release-excluded — the link survives the strip but resolves to
+      # nothing on the adopter side. The pattern enumerates the known
+      # excluded slugs; a new excluded page requires updating this list.
+      - id: wikilink-to-excluded
+        description: "Wikilinks pointing at release-excluded wiki slugs"
+        pattern: "\\[\\[(Release Workflow|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta)\\]\\]"
+        scope:
+          - "wiki/**/*.md"
+        path-allowlist:
+          - "wiki/hot.md"
+          - "wiki/log.md"
+
+      # ---- Workflow paths-filter denylist syntax ----
+      # `paths-ignore:` and inverted `!pattern` entries fail quiet: a new
+      # top-level path added to the repo silently passes the filter and
+      # the workflow runs (or skips) when it shouldn't. Allowlists fail
+      # loud (skip when expected to run) and are the only safe shape.
+      # Prior occurrences: chromatic.yml + tests.yml denylists missed
+      # `.gaia/`, `.specify/`, `studio/` (a8a4b75, c6eeecc).
+      - id: workflow-denylist
+        description: "Workflow paths-ignore or inverted !pattern entries — denylists fail quiet"
+        pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!"
+        scope:
+          - ".github/workflows/**"

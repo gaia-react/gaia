@@ -17764,6 +17764,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync as existsSync20, readFileSync as readFileSync17, writeFileSync as writeFileSync15 } from "node:fs";
 import path18 from "node:path";
 var HELP_TEXT12 = `Usage: gaia release manifest [--out <path>] [--stdout]
+       gaia release manifest --check [--json]
 
   Regenerate .gaia/manifest.json. Walks git ls-files, subtracts
   release-exclude patterns and adopter-owned sentinels, classifies the
@@ -17772,10 +17773,15 @@ var HELP_TEXT12 = `Usage: gaia release manifest [--out <path>] [--stdout]
   Flags:
     --out <path>   Override output path (default: .gaia/manifest.json).
     --stdout       Print manifest JSON to stdout instead of writing the file.
+    --check        Verify the committed manifest matches what the
+                   classifier would produce against the current source,
+                   and lint classifier sets against release-exclude for
+                   dead-code overlap. Exits non-zero on drift / overlap.
+    --json         (with --check) Emit a structured JSON drift report.
 
   Exit codes:
-    0  success
-    1  user-correctable error
+    0  success / check clean
+    1  user-correctable error / check found drift or overlap
     2  unexpected (filesystem / git failure)
 `;
 var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -17850,12 +17856,152 @@ var buildManifest = (cwd, options = {}) => {
 };
 var serialize = (manifest) => `${JSON.stringify(manifest, null, 2)}
 `;
+var lintClassifierSets = (excludePatterns) => {
+  const overlaps = [];
+  const findOverlap = (entry, setName) => {
+    const matched = excludePatterns.find((pattern) => pattern.test(entry));
+    if (matched !== void 0) {
+      overlaps.push({ entry, excludePattern: matched.source, setName });
+    }
+  };
+  for (const entry of ADOPTER_OWNED_SENTINELS) findOverlap(entry, "ADOPTER_OWNED_SENTINELS");
+  for (const entry of SHARED) findOverlap(entry, "SHARED");
+  for (const entry of WIKI_OWNED_EXACT) findOverlap(entry, "WIKI_OWNED_EXACT");
+  for (const prefix of SHARED_PREFIXES) {
+    findOverlap(prefix.replace(/\/$/, ""), "SHARED_PREFIXES");
+  }
+  for (const prefix of WIKI_OWNED_PREFIXES) {
+    findOverlap(prefix.replace(/\/$/, ""), "WIKI_OWNED_PREFIXES");
+  }
+  return overlaps;
+};
+var computeDrift = (expected, actual, classifierOverlaps) => {
+  const missing = [];
+  const extra = [];
+  const drift = [];
+  for (const [file2, expectedClass] of Object.entries(expected.files)) {
+    const actualClass = actual.files[file2];
+    if (actualClass === void 0) {
+      missing.push({ expected: expectedClass, file: file2 });
+      continue;
+    }
+    if (actualClass !== expectedClass) {
+      drift.push({ actual: actualClass, expected: expectedClass, file: file2 });
+    }
+  }
+  for (const [file2, actualClass] of Object.entries(actual.files)) {
+    if (expected.files[file2] === void 0) {
+      extra.push({ actual: actualClass, file: file2 });
+    }
+  }
+  missing.sort((a, b) => a.file.localeCompare(b.file));
+  extra.sort((a, b) => a.file.localeCompare(b.file));
+  drift.sort((a, b) => a.file.localeCompare(b.file));
+  const versionDrift = expected.version === actual.version ? void 0 : { actual: actual.version, expected: expected.version };
+  return { classifierOverlaps, drift, extra, missing, versionDrift };
+};
+var renderCheckReport = (result, jsonMode) => {
+  if (jsonMode) return `${JSON.stringify(result, null, 2)}
+`;
+  const out = [];
+  const total = result.missing.length + result.extra.length + result.drift.length + result.classifierOverlaps.length + (result.versionDrift === void 0 ? 0 : 1);
+  if (total === 0) {
+    out.push("release manifest --check: clean (manifest fresh, classifier sets coherent)");
+    return `${out.join("\n")}
+`;
+  }
+  out.push(`release manifest --check: ${total} issue(s)`);
+  if (result.versionDrift !== void 0) {
+    out.push(
+      "",
+      `version drift:`,
+      `  manifest version: ${result.versionDrift.actual}`,
+      `  .gaia/VERSION:    ${result.versionDrift.expected}`
+    );
+  }
+  if (result.missing.length > 0) {
+    out.push("", `missing from manifest (${result.missing.length}):`);
+    for (const entry of result.missing) {
+      out.push(`  + ${entry.file}  [${entry.expected}]`);
+    }
+  }
+  if (result.extra.length > 0) {
+    out.push("", `extra in manifest (${result.extra.length}):`);
+    for (const entry of result.extra) {
+      out.push(`  - ${entry.file}  [${entry.actual}]`);
+    }
+  }
+  if (result.drift.length > 0) {
+    out.push("", `class drift (${result.drift.length}):`);
+    for (const entry of result.drift) {
+      out.push(`  ~ ${entry.file}  ${entry.actual} \u2192 ${entry.expected}`);
+    }
+  }
+  if (result.classifierOverlaps.length > 0) {
+    out.push(
+      "",
+      `classifier-set overlaps with release-exclude (${result.classifierOverlaps.length}):`
+    );
+    for (const overlap of result.classifierOverlaps) {
+      out.push(`  ${overlap.setName}: ${overlap.entry} (matched by /${overlap.excludePattern}/)`);
+    }
+  }
+  return `${out.join("\n")}
+`;
+};
+var runCheck = (cwd, generatedAt, jsonMode) => {
+  let repoRoot2;
+  let expected;
+  let excludePatterns;
+  try {
+    repoRoot2 = resolveRepoRoot2(cwd);
+    expected = buildManifest(cwd, { generatedAt, repoRoot: repoRoot2 });
+    excludePatterns = parseExcludePatterns(
+      readFileSync17(path18.resolve(repoRoot2, ".gaia/release-exclude"), "utf8")
+    );
+  } catch (error51) {
+    structuredError({
+      code: "manifest_build_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release manifest"
+    });
+    return UNEXPECTED_EXIT10;
+  }
+  const manifestPath = path18.resolve(repoRoot2, ".gaia/manifest.json");
+  if (!existsSync20(manifestPath)) {
+    structuredError({
+      code: "manifest_missing",
+      message: `committed manifest not found at ${manifestPath}; run \`gaia release manifest\` to generate it`,
+      subcommand: "release manifest"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let actual;
+  try {
+    actual = JSON.parse(readFileSync17(manifestPath, "utf8"));
+  } catch (error51) {
+    structuredError({
+      code: "manifest_parse_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      path: manifestPath,
+      subcommand: "release manifest"
+    });
+    return UNEXPECTED_EXIT10;
+  }
+  const classifierOverlaps = lintClassifierSets(excludePatterns);
+  const result = computeDrift(expected, actual, classifierOverlaps);
+  process.stdout.write(renderCheckReport(result, jsonMode));
+  const hasIssue = result.missing.length > 0 || result.extra.length > 0 || result.drift.length > 0 || result.classifierOverlaps.length > 0 || result.versionDrift !== void 0;
+  return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+};
 var takeValue7 = (argv, index, flag) => {
   const value = argv[index];
   if (value === void 0) return { message: `${flag} requires a value`, ok: false };
   return { ok: true, value };
 };
 var parseFlags11 = (argv) => {
+  let check2 = false;
+  let json3 = false;
   let outPath;
   let stdout = false;
   for (let index = 0; index < argv.length; index += 1) {
@@ -17871,9 +18017,23 @@ var parseFlags11 = (argv) => {
       stdout = true;
       continue;
     }
+    if (token === "--check") {
+      check2 = true;
+      continue;
+    }
+    if (token === "--json") {
+      json3 = true;
+      continue;
+    }
     return { message: `unknown flag: ${token}`, ok: false };
   }
-  return { flags: { outPath, stdout }, ok: true };
+  if (check2 && (outPath !== void 0 || stdout)) {
+    return { message: "--check is incompatible with --out / --stdout", ok: false };
+  }
+  if (!check2 && json3) {
+    return { message: "--json requires --check", ok: false };
+  }
+  return { flags: { check: check2, json: json3, outPath, stdout }, ok: true };
 };
 var run23 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS12.has(argv[0])) {
@@ -17890,6 +18050,9 @@ var run23 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const cwd = options.cwd ?? process.cwd();
+  if (parsed.flags.check) {
+    return runCheck(cwd, options.generatedAt, parsed.flags.json);
+  }
   let manifest;
   let repoRoot2;
   try {
@@ -21688,6 +21851,7 @@ var HELP_TEXT18 = `Usage: gaia release <subcommand> [args]
   changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
   scrub-wiki [--version <X.Y.Z>] [--date <D>] Reset wiki/hot.md and wiki/log.md.
   manifest [--out <path>] [--stdout]          Regenerate .gaia/manifest.json.
+  manifest --check [--json]                   Verify committed manifest is fresh + lint classifier sets.
   scrub <staging-dir> [--config <path>] [--json]
                                               Apply bundle-time marker-strip + leak-check.
   runtime-deps [--staging <dir>] [--manifest <path>] [--json]

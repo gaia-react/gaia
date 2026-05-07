@@ -26,6 +26,7 @@ const HELP_TEXT = `Usage: gaia release <subcommand> [args]
   changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
   scrub-wiki [--version <X.Y.Z>] [--date <D>] Reset wiki/hot.md and wiki/log.md.
   manifest [--out <path>] [--stdout]          Regenerate .gaia/manifest.json.
+  manifest --check [--json]                   Verify committed manifest is fresh + lint classifier sets.
   scrub <staging-dir> [--config <path>] [--json]
                                               Apply bundle-time marker-strip + leak-check.
   runtime-deps [--staging <dir>] [--manifest <path>] [--json]
