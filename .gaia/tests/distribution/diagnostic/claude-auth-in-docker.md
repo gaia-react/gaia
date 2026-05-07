@@ -26,8 +26,9 @@ What the docs do NOT settle, and what this runbook still has to verify:
   silently bill as API?~~ **Resolved 2026-05-08** (see `## Findings`):
   attributes to subscription on a Claude Max host. No API/pay-as-you-go
   billing observed for in-container calls.
-- **Token lifetime and refresh behavior.** `setup-token` says
-  "long-lived" but doesn't pin a duration. Not yet measured.
+- ~~Token lifetime and refresh behavior.~~ **Resolved 2026-05-08**:
+  `claude setup-token` issues a 1-year OAuth token. Rotation cadence,
+  failure mode on expiry, and refresh procedure documented in `## Findings`.
 
 ## Why this matters
 
@@ -220,9 +221,28 @@ on contributors with active Max subscriptions.
 
 ### Token expiry / refresh
 
-Not measured in this run — token was generated and used in a single
-session. A later run should test the same token after >24h, >7d, and
->30d to characterize lifetime; record outcomes here.
+**Lifetime: 1 year from issuance.** Tokens issued by `claude setup-token`
+expire ~365 days after generation.
+
+The CI org secret was first populated 2026-05-08, so rotation is due by
+**2027-05-08**. Failure mode after expiry: in-container `claude --print`
+calls return an auth error and Layer 2 scenarios fail with a non-zero
+exit; the pre-publish gate inside `release.yml` halts the release until
+the secret is rotated.
+
+Rotation procedure:
+
+1. On a host with an active Claude subscription, run `claude setup-token`
+   to issue a fresh token.
+2. Update GAIA's GitHub organization secret `CLAUDE_CODE_OAUTH_TOKEN`
+   (Settings → Secrets and variables → Actions → Organization secrets).
+3. Optionally run `gh workflow run distribution.yml --ref main` to
+   confirm the new token authenticates from a runner before the next
+   release.
+
+Refresh-without-replay (renewing an existing token in place) is not
+supported — `setup-token` always issues a new token; rotation means
+generating + replacing.
 
 ### Bugs found and corrected during this run
 
