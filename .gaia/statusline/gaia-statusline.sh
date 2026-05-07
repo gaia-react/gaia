@@ -79,7 +79,7 @@ fi
 
 right=""
 if [ "$setup_complete" != "true" ]; then
-  right="$(printf '\033[01;35mRun /setup-gaia (per-machine setup pending)\033[00m')"
+  right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
 elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
   gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
