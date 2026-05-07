@@ -16,7 +16,7 @@ Spawn:
 
   > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–3) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 3 — no recap of the report contents.`
 
-When the subagent returns, relay its summary verbatim. If the drift severity is **ERROR**, prefix the surfaced line with `WIKI DRIFT:` per Step 3.
+When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 3.
 
 ---
 
@@ -40,15 +40,15 @@ Do **not** restructure the upstream report format. Append GAIA sections at the b
 
 ## Step 2: GAIA check #11 — Wiki drift
 
-After the upstream lint finishes, run the drift check below and append a `## #11: Wiki drift check` section to the report file.
+After the upstream lint finishes, run `gaia wiki state --json` and append a `## #11: Wiki drift check` section to the report file based on its output.
 
-### 2a. Read state file
+### 2a. Run the primitive
 
 ```bash
-test -f wiki/.state.json && cat wiki/.state.json | jq -r '.last_evaluated_sha' || echo MISSING
+gaia wiki state --json
 ```
 
-If the result is `MISSING` or `jq` returns null, append:
+The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` | `high`), `head_short`, `state_sha`, `commits_ahead`, `reachable`, and `recent_commits`. If the command exits non-zero with `state_missing` (or equivalent reason), append:
 
 ```markdown
 ## #11: Wiki drift check
@@ -56,48 +56,32 @@ If the result is `MISSING` or `jq` returns null, append:
 ⚠ `wiki/.state.json` missing — system has never run `/wiki-sync`. Run `/wiki-sync` to initialize.
 ```
 
-Then stop the drift check (no further sub-steps).
+Then stop the drift check.
 
-### 2b. Verify SHA reachable from HEAD
-
-```bash
-STATE_SHA=$(jq -r '.last_evaluated_sha' wiki/.state.json)
-git merge-base --is-ancestor "$STATE_SHA" HEAD 2>/dev/null
-```
-
-If the exit status is non-zero, the recorded SHA is not in HEAD's history (rebase, reset, or shallow clone). Append:
+If `reachable === false`, append:
 
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` `last_evaluated_sha` (`<short_sha>`) is not reachable from HEAD (history rewritten or shallow clone). Run `/wiki-sync` to re-anchor.
+⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (history rewritten or shallow clone). Run `/wiki-sync` to re-anchor.
 ```
 
-Then stop. `<short_sha>` is `git rev-parse --short "$STATE_SHA"` (fall back to the first 7 chars if the rev-parse fails).
+Then stop.
 
-### 2c. Compute drift count
+### 2b. Classify and append
 
-```bash
-DRIFT=$(git rev-list --count "$STATE_SHA"..HEAD)
-HEAD_SHORT=$(git rev-parse --short HEAD)
-```
+Map the CLI's `drift_severity` and `commits_ahead` to the report section:
 
-### 2d. Classify and append
+| `drift_severity` | Section to append                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `none`           | `✓ Wiki in sync with HEAD ({head_short}).`                                                                              |
+| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /wiki-sync at next opportunity.`                                            |
+| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /wiki-sync soon.` + recent commits list                                     |
+| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /wiki-sync now.` + recent commits list   |
 
-| Drift count | Severity | Section to append                                                                                        |
-| ----------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| 0           | OK       | `✓ Wiki in sync with HEAD ({HEAD_SHORT}).`                                                               |
-| 1–4         | INFO     | `ℹ {DRIFT} commits behind HEAD. Run /wiki-sync at next opportunity.`                                     |
-| 5–9         | WARN     | `⚠ {DRIFT} commits behind HEAD. Run /wiki-sync soon.` + recent commits list                              |
-| 10+         | ERROR    | `✗ {DRIFT} commits behind HEAD. Wiki is significantly out of date. Run /wiki-sync now.` + recent commits |
+For **medium** and **high**, list up to 5 of the `recent_commits` from the CLI output as `  - <sha> <subject>`.
 
-For **WARN** and **ERROR**, list up to 5 most recent unsynced commit subjects:
-
-```bash
-git log "$STATE_SHA"..HEAD --no-merges --reverse --format='  - %h %s' | tail -5
-```
-
-Example WARN section:
+Example WARN (`medium`) section:
 
 ```markdown
 ## #11: Wiki drift check
@@ -109,7 +93,7 @@ Example WARN section:
 - h7i8j9k chore: bump deps
 ```
 
-Example ERROR section:
+Example ERROR (`high`) section:
 
 ```markdown
 ## #11: Wiki drift check
@@ -130,7 +114,7 @@ Print to the user:
 1. The report path (e.g. `wiki/meta/lint-report-2026-05-03.md`).
 2. A one-line summary that includes the drift severity and count.
 
-If drift is in **ERROR** severity, surface it prominently (separate line, prefixed with `WIKI DRIFT:`).
+If `drift_severity` is **`high`**, surface it prominently (separate line, prefixed with `WIKI DRIFT:`).
 
 ## Notes
 

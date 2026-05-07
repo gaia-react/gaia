@@ -28,22 +28,16 @@ Wiki pages emitted by `wiki-promote` carry `promoted_from: SPEC-NNN` and `promot
 
 ## Step 1 — Build the page index
 
-Walk these domains: `wiki/decisions/`, `wiki/concepts/`, `wiki/modules/`, `wiki/flows/`, `wiki/components/`, `wiki/dependencies/`.
+Run `gaia wiki page-index --json` and use the returned shape. The CLI walks the canonical domains (`wiki/decisions/`, `wiki/concepts/`, `wiki/modules/`, `wiki/flows/`, `wiki/components/`, `wiki/dependencies/`), skipping `wiki/_archived/`, `wiki/meta/`, `wiki/entities/`, `wiki/log.md`, `wiki/index.md`, `wiki/hot.md`, `wiki/overview.md`, `wiki/README.md`, and per-domain `_index.md` files.
 
-Skip: `wiki/_archived/`, `wiki/meta/`, `wiki/entities/`, `wiki/log.md`, `wiki/index.md`, `wiki/hot.md`, `wiki/overview.md`, `wiki/README.md`, and per-domain `_index.md` files.
+Each entry in `pages[]` provides `path`, `domain`, `title`, `type`, `status`, `tags`, `inbound_links`, and `outbound_links`. Augment with the consolidation-only fields the CLI does not surface — read each page's frontmatter for:
 
-For each page, parse frontmatter and capture:
-
-- `path` — relative path from repo root
-- `domain` — parent folder (`decisions`, `concepts`, etc.)
-- `title` — H1 of the file body (first `# ` line)
-- `slug` — last path component without `.md`
+- `slug` — last path component of `path` without `.md`
 - `promoted_from` — string, list, or null
 - `promoted_at` — ISO or null
-- `status` — `active`, `superseded`, `archived`, or null (treat null as `active`)
 - `consolidation_ack` — list of slugs the user previously confirmed should coexist (skip-flags written by prior runs)
 
-Pages with `status: superseded` or `status: archived` are excluded as the **newer** side of a comparison but remain visible as the **older** side (used to suppress already-handled findings).
+Treat a missing `status` as `active`. Pages with `status: superseded` or `status: archived` are excluded as the **newer** side of a comparison but remain visible as the **older** side (used to suppress already-handled findings).
 
 ## Step 2 — Detection passes
 
@@ -70,16 +64,11 @@ If a match references the older page's title (substring, case-insensitive), flag
 
 ### 2c. Near-collision slugs
 
-Group pages by `domain`. Within each domain, compare every pair of slugs:
-
-- Levenshtein distance ≤ 3, OR
-- One slug is a prefix of the other (length difference ≥ 3 chars)
-
-Flag as **near-collision** candidates. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
+Run `gaia wiki near-collisions --max-distance 3` and surface its output. The CLI emits per-domain pairs that are within Levenshtein distance 3 (or where one slug is a prefix of the other) as tabular text. Flag each as a **near-collision** candidate. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
 
 ### 2d. Subject-orphaned pages
 
-For each page, run a body grep across `wiki/concepts/` and `wiki/modules/` for the page's title (case-insensitive substring match). If zero matches AND the page has not been touched in 90+ days (`git log -1 --format=%aI -- <path>`), flag as **subject-orphaned**.
+Run `gaia wiki orphans` to enumerate pages with zero inbound wikilinks. For each candidate, refine: keep only pages where the body title also has zero case-insensitive substring matches in `wiki/concepts/` and `wiki/modules/`, AND the page has not been touched in 90+ days (`git log -1 --format=%aI -- <path>`). Flag the survivors as **subject-orphaned**.
 
 ### 2e. Suppress acknowledged findings
 

@@ -36,18 +36,11 @@ Evaluate every commit between `wiki/.state.json` `last_evaluated_sha` and HEAD. 
 
 ## Step 1: Read state and compute drift
 
-Read `wiki/.state.json`. If it doesn't exist:
+Run `gaia wiki state --json` and parse the result. Use `head_short`, `state_sha`, `commits_ahead`, and `reachable` directly.
 
-- This is a fresh project (no prior sync). Treat the first commit as the baseline. Initialize state to the first commit SHA, write the file, commit it as `wiki: initialize state at {short_sha}`. Stop — no commits to evaluate yet.
-
-If state exists:
-
-- Get `last_evaluated_sha` and run:
-  ```bash
-  git rev-list --count <sha>..HEAD
-  ```
-- If 0: skip the evaluation pass (no commits to evaluate) but DO NOT exit yet — fall through to Step 9 (consolidate gate). The gate may still trigger consolidate based on accumulated page-adds since last consolidate run, even when this sync is a no-op. The Step 8 report still prints; just substitute `Wiki already in sync at {short_sha}.` for the regular summary block, then run Step 9.
-- If `<sha>` is unreachable from HEAD (rebase scenario): re-anchor — set `last_evaluated_sha` to HEAD, write a `wiki/log.md` entry `{date} - {short_sha} - re-anchored after history rewrite`, commit, exit. Skip Step 9 — re-anchor wipes drift baseline; running consolidate against an unreachable past makes no sense.
+- If the command exits non-zero with a `state_missing` (or equivalent) reason, this is a fresh project (no prior sync). Treat the first commit as the baseline. Initialize `wiki/.state.json` (write a minimal `{"version":1,"last_evaluated_sha":"<first_sha>"}` then run `gaia wiki state-bump last_evaluated_at "<now>"` if needed), commit it as `wiki: initialize state at {short_sha}`. Stop — no commits to evaluate yet. (`state-bump` requires the file to already exist; the bootstrap write is intentionally manual.)
+- If `commits_ahead === 0`: skip the evaluation pass (no commits to evaluate) but DO NOT exit yet — fall through to Step 9 (consolidate gate). The gate may still trigger consolidate based on accumulated page-adds since last consolidate run, even when this sync is a no-op. The Step 8 report still prints; just substitute `Wiki already in sync at {short_sha}.` for the regular summary block, then run Step 9.
+- If `reachable === false`: the recorded SHA is not in HEAD's history (rebase scenario). Re-anchor — run `gaia wiki state-bump last_evaluated_sha "$(git rev-parse HEAD)"`, append a `wiki/log.md` entry `{date} - {short_sha} - re-anchored after history rewrite` (the `log-prepend` primitive only accepts `WORTHY`/`SKIP`, so write this line manually), commit, exit. Skip Step 9 — re-anchor wipes drift baseline; running consolidate against an unreachable past makes no sense.
 - Otherwise proceed with the evaluation pass.
 
 ## Step 2: Drift cap check
@@ -62,41 +55,15 @@ If drift > 30 commits, ASK the user via `AskUserQuestion`:
 
 Only proceed automatically when drift ≤ 30.
 
-## Step 3: First-pass — read subjects + stats
+## Step 3: First-pass — classify commits
 
 Run:
 
 ```bash
-git log <state_sha>..HEAD --no-merges --reverse --format='COMMIT %H%n%s%n%b%n---END-COMMIT---' --stat
+gaia wiki commit-classify --since $(jq -r .last_evaluated_sha wiki/.state.json) --json
 ```
 
-Note `--reverse` so commits are processed oldest-first. Each commit gets:
-
-- Full SHA
-- Subject
-- Body (may be empty)
-- File stat block
-
-Build a working list. For each commit:
-
-Decide WORTHY / SKIP based on subject + stats alone, without reading diffs. Worthy if any of:
-
-- Subject prefixed `docs(decision):`, `feat!:`, `chore(adr):`, or `BREAKING CHANGE` in body
-- Body explicitly mentions a trade-off, invariant, gotcha, workaround, or non-obvious decision
-- Touches `wiki/decisions/`, `wiki/concepts/`, `wiki/flows/`, `wiki/dependencies/`, or `wiki/entities/` directly
-- Touches `app/middleware/**`, `app/routes.ts`, `app/i18n.ts`, or `app/sessions.server/**` (flows-relevant)
-- Adds or removes a dependency in `package.json`, or swaps one dependency for another (e.g. `axios` → `ofetch`). The dep wiki layer owns "why we use this" — adding, removing, or swapping a dep changes the why. A version bump does **not** change the why and is SKIP regardless of subject prefix.
-- Subject prefixed `feat:` AND the diff introduces a new pattern not previously expressed in the codebase (e.g. first state Provider, first server-only utility) — judgment call, log the reasoning
-
-Skip if any of:
-
-- `chore(release):`, `wiki:`, `Merge pull request`, or `style:` prefixes (existing)
-- `chore(deps):` prefix when the diff is a version bump only — no dep added, removed, or swapped. If a `chore(deps):` commit actually adds or removes a dep, the dep WORTHY rule above wins.
-- Touches only `app/components/**`, `app/hooks/**`, `app/services/**`, or `app/pages/**` AND adds/refactors files without a body mentioning trade-offs / decisions / invariants — Serena handles the inventory; log as `SKIP: Serena handles inventory — {context}`
-- Pure formatting / typo / comment-only changes
-- Test-only changes (no `app/**` non-test files in the diff)
-
-If unsure: mark WORTHY (false positive better than false negative). Log the decision.
+The CLI emits a deterministic `suggestion` field per commit (`WORTHY` or `SKIP`) along with `subject`, `body`, file stats, and `suggestion_reason`. Treat the `WORTHY` subset as candidates for deep-read. Trust the CLI's classification — do not re-derive WORTHY/SKIP rules in prose. Log the `suggestion_reason` verbatim alongside the decision in Step 5.
 
 ## Step 4: Second-pass — read diffs for WORTHY commits only
 
@@ -132,30 +99,32 @@ If a commit's diff turns out NOT to be wiki-worthy on closer inspection (e.g. su
 
 ## Step 5: Append to wiki/log.md
 
-For each commit (worthy or skipped), prepend ONE line to `wiki/log.md` in this format:
+For each commit (worthy or skipped), run:
 
+```bash
+gaia wiki log-prepend --sha <short_sha> --decision <WORTHY|SKIP> --reason "<one-line reason>"
 ```
-- {YYYY-MM-DD} {short_sha} - {decision}: {one-line reason}
-```
 
-- WORTHY example: `2026-05-03 abc1234 - WORTHY: added /services/Gemini integration → wiki/services/Gemini.md`
-- SKIP example: `2026-05-03 def5678 - SKIP: typo-only commit`
-- Serena-policy SKIP example: `2026-05-03 9a0b1c2 - SKIP: Serena handles inventory — added Button variant in app/components/Button`
+The CLI inserts a single canonical line `- <YYYY-MM-DD> <sha> <decision> — <reason>` at the top of `wiki/log.md` (after frontmatter), atomically, newest entries on top. Examples:
 
-Newest entries on top. Group by date if helpful.
+- WORTHY: `gaia wiki log-prepend --sha abc1234 --decision WORTHY --reason "added /services/Gemini integration → wiki/services/Gemini.md"`
+- SKIP: `gaia wiki log-prepend --sha def5678 --decision SKIP --reason "typo-only commit"`
+- Serena-policy SKIP: `gaia wiki log-prepend --sha 9a0b1c2 --decision SKIP --reason "Serena handles inventory — added Button variant in app/components/Button"`
 
 ## Step 6: Advance state file
 
-Update `wiki/.state.json`. Read the existing file first to preserve `last_consolidated_sha` (owned by `/wiki-consolidate`). On the first write that ever sees a missing `last_consolidated_sha`, bootstrap it to the new HEAD value — this gives the consolidate gate a baseline so subsequent runs accumulate from a known point.
+Run:
 
-```json
-{
-  "version": 1,
-  "last_evaluated_sha": "<new HEAD SHA, full 40-char>",
-  "last_evaluated_at": "<now, ISO 8601 UTC>",
-  "last_consolidated_sha": "<preserved if present; bootstrapped to last_evaluated_sha if absent>"
-}
+```bash
+NEW_HEAD=$(git rev-parse HEAD)
+NEW_HEAD_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+gaia wiki state-bump last_evaluated_sha "$NEW_HEAD"
+gaia wiki state-bump last_evaluated_at "$NEW_HEAD_AT"
 ```
+
+`state-bump` writes atomically — preserving sibling fields (`last_consolidated_sha` owned by `/wiki-consolidate`) and key order.
+
+If `last_consolidated_sha` is absent on the existing state (first sync ever): bootstrap it with `gaia wiki state-bump last_consolidated_sha "$NEW_HEAD"`. This gives the consolidate gate a baseline so subsequent runs accumulate from a known point.
 
 ## Step 7: Commit (branch-aware)
 
