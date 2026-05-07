@@ -14,12 +14,6 @@ name: Distribution
 # CLAUDE_CODE_OAUTH_TOKEN.
 on:
   workflow_dispatch:
-  # TEMPORARY: pre-merge CI verification on this branch only. Remove before
-  # merging to main — the steady-state trigger is workflow_dispatch only,
-  # eventually narrowing to release.published.
-  push:
-    branches:
-      - test/distribution-layer-2
 
 permissions:
   contents: read
