@@ -189,6 +189,8 @@ Verdict:
 - **A** — at least one partial-enforcement note or low confidence, but no fully unenforced classes.
 - **A−** — at least one D-B class is unenforced.
 
+Bucket D grades enforcement-primitive completeness only. Findings volume in the current cycle does not enter the grade — a cycle with open findings can still warrant "A+ readiness" when every primitive is intact (the primitives detected the findings, after all). The Orchestrator combines this verdict with the findings count for the cycle's clean-exit determination per §Termination; do not pre-combine them inside Bucket D.
+
 **Acknowledged structural carve-outs** (do not block A+ on their own):
 - `wikilink-to-excluded` enforces only an enumerated list of release-excluded slugs in `release-scrub.yml`. A *new* release-excluded wiki page whose slug is not in the enumeration would slip through. Bucket D may grade A+ if (a) every release-excluded wiki page in the current manifest snapshot is covered by the enumeration, and (b) the ADR / scrub config explicitly notes this is enumeration-driven. If a release-excluded wiki page exists with no matching enumeration entry, downgrade to **A−** and dispatch a Fixer.
 
@@ -264,6 +266,8 @@ Per-cycle artifacts are stored under `.gaia/local/audit/c<N>/` (`.gaia/local/` i
   ]
 }
 ```
+
+The `verdict` field stores Bucket D's verdict verbatim — it is *not* a synthesized cycle grade. It reports enforcement-primitive completeness independent of `findings.length` (see §Bucket D). The Orchestrator's clean-exit signal is `findings.length === 0 AND verdict === "A+ readiness"` per §Termination; conflating findings volume into the verdict double-counts on one side and obscures whether the enforcement machinery itself is sound.
 
 Lifecycle:
 
