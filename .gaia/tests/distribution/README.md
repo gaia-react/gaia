@@ -91,7 +91,10 @@ The image tag defaults to `gaia-dist-claude:latest`; override via `GAIA_DIST_IMA
 
 #### CI
 
-`.github/workflows/distribution.yml` runs `run-all.sh` on `ubuntu-latest` with `CLAUDE_CODE_OAUTH_TOKEN` injected from GAIA's GitHub organization secrets. Trigger is `workflow_dispatch` only (manual, maintainer-initiated). The intended steady-state trigger is `release.published` — only the maintainer publishes releases, so contributors structurally cannot trigger Layer 2 spend. The workflow never uses `pull_request_target` (that trigger would expose the secret to fork PRs).
+Two entry points, both consuming `CLAUDE_CODE_OAUTH_TOKEN` from GAIA's GitHub organization secrets:
+
+- **Pre-publish gate inside `release.yml`.** The tag-triggered release workflow runs `bash .gaia/tests/distribution/run-all.sh` after the staging + scrub + runtime-deps phases and before the tarball is built. If any scenario fails the release halts — the tarball never builds and `gh release create` never runs, so a broken release cannot publish. This is the production gate.
+- **Manual `distribution.yml`.** `workflow_dispatch` only — used to run the harness on a feature branch (no tag) for ad-hoc verification of harness changes themselves. Never `pull_request_target` (that trigger would expose the secret to fork PRs).
 
 ## Claude auth status
 

@@ -86,6 +86,26 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           ./.gaia/cli/gaia release runtime-deps --staging "/tmp/gaia-${TAG}"
 
+      # Pre-publish distribution-test gate. Runs Layers 0+1+2 against an
+      # independently-staged tree (build-staging.sh re-runs the same
+      # ls-files + exclude + scrub + runtime-deps the steps above did).
+      # If any scenario fails the release halts before the tarball is
+      # uploaded and `gh release create` runs, so a broken release
+      # cannot publish. ~3-4 min on ubuntu-latest, $0 on Claude Max via
+      # the org OAuth token.
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - name: Distribution test gate (Layers 0+1+2)
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: bash .gaia/tests/distribution/run-all.sh
+
       - name: Build tarball
         run: |
           TAG="${{ steps.version.outputs.tag }}"
