@@ -53,12 +53,13 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
 
 ## Tarball scrubbing
 
-`release.yml` builds the tarball in four phases:
+`release.yml` builds the tarball in five phases:
 
 1. **Stage** — drive the file set from `git ls-files` (not a raw `tar .`) and subtract `.gaia/release-exclude` patterns. `git ls-files` already ignores anything in `.gitignore` (no `.DS_Store`, `node_modules`, build output, `.idea/`); `.gaia/release-exclude` strips the tracked-but-maintainer-only content. `rsync` materializes the include list into `/tmp/gaia-vX.Y.Z/`.
 2. **Bundle-time scrub** — `gaia release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak. See [[Bundle-time Scrub]] for rationale.
 3. **Runtime-deps verification** — `gaia release runtime-deps --staging /tmp/gaia-vX.Y.Z` walks shipped shell scripts and verifies every explicit path constant resolves to a shipped path, an adopter-owned sentinel, or a runtime-allocated location. Catches the leak class scrubbing cannot see — runtime references survive lexical strip.
-4. **Tar** — `tar -czf gaia-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`. The same release-exclude list drives `gaia release manifest`, so the manifest never references files an adopter cannot have. The categories are spelled out in the next section.
+4. **Distribution test gate** — `bash .gaia/tests/distribution/run-all.sh` runs Layers 0+1+2 against an independently-staged tree (`build-staging.sh` re-runs the same `git ls-files` + scrub + runtime-deps phases above). Layer 0 confirms an adopter scaffold typechecks, lints, tests, and builds; Layer 1 confirms the bootstrap path survives in a PATH-stripped subshell; Layer 2 builds a Claude-in-Docker image and probes OAuth auth. The gate's `CLAUDE_CODE_OAUTH_TOKEN` comes from GAIA's GitHub organization secrets; per-run cost is $0 on the maintainer's Claude Max subscription. If any scenario fails the release halts — the tarball is never built and `gh release create` never runs, so a broken release cannot publish.
+5. **Tar** — `tar -czf gaia-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`. The same release-exclude list drives `gaia release manifest`, so the manifest never references files an adopter cannot have. The categories are spelled out in the next section.
 
 The scrubbed `wiki/hot.md` + `wiki/log.md` contain only the release marker — none of GAIA's internal session cache.
 
@@ -129,6 +130,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 
 - `.github/workflows/release.yml` — cuts releases of the GAIA template itself, triggered by `v*.*.*` tags against `.gaia/VERSION`. Adopters never release GAIA, so the workflow is at best a silent passenger and at worst a CI failure if they accidentally tag with `v*`.
 - `.github/workflows/cli-tests.yml` — runs `.gaia/cli/` typecheck and vitest. Adopters receive only the bundled binary at `.gaia/cli/gaia`, so there is nothing for the workflow to test on their side.
+- `.github/workflows/distribution.yml` — runs the `.gaia/tests/distribution/` harness on a GitHub runner. Manual trigger only (`workflow_dispatch`); the maintainer's `CLAUDE_CODE_OAUTH_TOKEN` org secret authenticates the in-container `claude` calls used by Layer 2 scenarios. Adopters never run distribution tests against their own scaffold, so the workflow is irrelevant on their side.
 
 `tests.yml` and `chromatic.yml` DO ship; both are adopter-relevant. Their `paths-filter` allowlists are written without reference to maintainer-only paths so the filter stays meaningful on an adopter clone.
 
