@@ -1,7 +1,7 @@
 # Claude Auth in Docker — Verification Runbook
 
-**Status:** Auth mechanism documented; billing attribution unverified. Run
-the experiment below and update this file with the outcome.
+**Status:** Verified 2026-05-08: `CLAUDE_CODE_OAUTH_TOKEN` attributes to
+subscription, cost $0/run on a Claude Max host. See `## Findings` below.
 
 ## What's settled vs. what isn't
 
@@ -22,14 +22,12 @@ removed.
 
 What the docs do NOT settle, and what this runbook still has to verify:
 
-- **Does `CLAUDE_CODE_OAUTH_TOKEN` attribute to subscription billing**, or
-  does it silently bill against API pay-as-you-go? The doc lists it
-  alongside `ANTHROPIC_API_KEY` as alternative auth, strongly implying
-  different billing paths, but never says so explicitly. The cost
-  difference compounds across CI runs; we need to confirm before wiring
-  Layer 2 tests.
+- ~~Does `CLAUDE_CODE_OAUTH_TOKEN` attribute to subscription billing, or
+  silently bill as API?~~ **Resolved 2026-05-08** (see `## Findings`):
+  attributes to subscription on a Claude Max host. No API/pay-as-you-go
+  billing observed for in-container calls.
 - **Token lifetime and refresh behavior.** `setup-token` says
-  "long-lived" but doesn't pin a duration.
+  "long-lived" but doesn't pin a duration. Not yet measured.
 
 ## Why this matters
 
@@ -85,7 +83,7 @@ FROM node:22-bullseye-slim
 RUN apt-get update && apt-get install -y curl ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://claude.ai/install.sh | bash
-ENV PATH="/root/.claude/local:${PATH}"
+ENV PATH="/root/.local/bin:${PATH}"
 WORKDIR /work
 EOF
 docker build -t gaia-claude-probe .
@@ -103,7 +101,7 @@ behavior at runtime.)
 docker run --rm \
   --env-file /tmp/claude-probe.env \
   gaia-claude-probe \
-  claude /status
+  claude --version
 
 docker run --rm \
   --env-file /tmp/claude-probe.env \
@@ -111,16 +109,25 @@ docker run --rm \
   claude --print "Reply with the single word: ok"
 ```
 
-Then check **Anthropic Console → Usage**:
+(Slash commands like `claude /status` need an interactive REPL and don't
+work under `docker run` without a TTY — use `claude --version` as the
+sanity-check sentinel that the binary is on PATH and runnable.)
 
-- Calls appearing under **subscription** usage → OAuth token attributes
-  to subscription. **Layer 2 tests are $0/run.** This is the desired
-  outcome.
-- Calls appearing under **API** usage → OAuth token silently bills as
-  API. **Layer 2 tests are ~$X/run.** Still feasible at API cost; weigh
-  against budget before wiring Layer 2.
-- No call recorded → check container logs; likely a network or token
-  expiry issue.
+Then check **Anthropic Console → Usage** at
+<https://console.anthropic.com/settings/usage>. Note: `console.anthropic.com`
+is the **API** console — subscription/Max usage is NOT itemized there.
+Interpret as follows:
+
+- **Nothing recorded on console.anthropic.com → Usage** + container call
+  succeeded (returned a real response, no auth error) → OAuth token
+  attributed to subscription. **Layer 2 tests are $0/run.** This is the
+  desired outcome. The absence is the positive signal; per-call
+  itemization on Max plans isn't exposed.
+- Calls appearing under **API / pay-as-you-go** usage → OAuth token
+  silently bills as API. **Layer 2 tests are ~$X/run.** Still feasible
+  at API cost; weigh against budget before wiring Layer 2.
+- Container call returned an auth error or the request failed → check
+  container logs; likely a network issue or token expiry.
 
 ### Step 5 — API-key fallback cost reference
 
@@ -159,6 +166,80 @@ Then add a `## Findings` section below with:
 - Anthropic Console attribution screenshot or quote (subscription vs API).
 - Cost-per-run measurement.
 - Token expiry / refresh observations.
+
+## Findings
+
+**Verified 2026-05-08** by Steven Sacks.
+
+### Host environment
+
+- **OS:** macOS 26.4.1 (build 25E253)
+- **Docker:** 29.4.2 (build 055a478)
+- **Claude Code on host:** 2.1.132
+- **Claude Code in container:** 2.1.132 (installed via `claude.ai/install.sh`
+  inside `node:22-bullseye-slim`; resolved to `/root/.local/bin/claude` →
+  `/root/.local/share/claude/versions/2.1.132`)
+- **Subscription tier:** Claude Max (20x), org `stevensacks@gmail.com's Organization`
+
+### Working docker invocation
+
+```bash
+docker run --rm \
+  --env-file /tmp/claude-probe.env \
+  gaia-claude-probe \
+  claude --print "Reply with the single word: ok"
+```
+
+Returned `ok` — auth via `CLAUDE_CODE_OAUTH_TOKEN` succeeded, model
+produced a real response.
+
+### Anthropic Console attribution
+
+Checked <https://console.anthropic.com/settings/usage> repeatedly across
+hour / day / month scopes for 2026-05-08. **No entry recorded** for the
+container call (and no API usage anywhere in May 2026 on this account).
+
+The Claude Max (20x) plan's usage view at claude.ai does not itemize
+per-call usage at the 20x tier — a single small prompt does not visibly
+move the consumption indicator — so positive subscription-side
+itemization could not be observed.
+
+The combination — successful in-container response + no auth error +
+zero API/pay-as-you-go billing — confirms by elimination that
+`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` attributes to the
+Max subscription, not API pay-as-you-go.
+
+### Cost-per-run measurement
+
+**$0 marginal** on a Claude Max host. Layer 2 distribution tests that
+shell out to `claude --print` from inside Docker run at zero per-run cost
+on contributors with active Max subscriptions.
+
+(API-key baseline not measured; Step 5 was skipped per the runbook's
+"skip if Step 4 attributed to subscription" instruction.)
+
+### Token expiry / refresh
+
+Not measured in this run — token was generated and used in a single
+session. A later run should test the same token after >24h, >7d, and
+>30d to characterize lifetime; record outcomes here.
+
+### Bugs found and corrected during this run
+
+- **Step 3 Dockerfile PATH was wrong.** `claude.ai/install.sh` installs
+  to `/root/.local/bin/claude` (symlinked to
+  `/root/.local/share/claude/versions/<version>`), not `/root/.claude/local/`.
+  Step 3 corrected.
+- **Step 4 `claude /status` doesn't work in headless `docker run`.** Slash
+  commands need an interactive REPL; the non-TTY container exits with
+  `Cannot find module '/work/claude'` because node's docker-entrypoint
+  falls back to treating `claude` as a JS path. Step 4 now uses
+  `claude --version` as the sanity-check sentinel instead.
+- **Step 4 attribution interpretation was misleading.** The original
+  text implied subscription usage would appear in console.anthropic.com.
+  It does not — `console.anthropic.com` is the API console; Max usage is
+  not itemized there. Reworded so absence-from-API + successful container
+  call is the correct positive signal.
 
 ## When to revisit
 
