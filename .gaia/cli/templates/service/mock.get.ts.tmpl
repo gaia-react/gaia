@@ -1,0 +1,18 @@
+import {http, HttpResponse} from 'msw';
+import {{{NAME_UPPER}}_URLS} from '~/services/gaia/{{name}}/urls';
+import {url} from '../url';
+import {{{plural}}} from './data';
+
+const list = http.get(url({{NAME_UPPER}}_URLS.{{plural}}), () => {
+  const data = {{plural}}.findMany(undefined);
+
+  return HttpResponse.json({data});
+});
+
+const single = http.get(url({{NAME_UPPER}}_URLS.{{plural}}Id), ({params}) => {
+  const data = {{plural}}.findFirst((q) => q.where({id: String(params.id)}));
+
+  return HttpResponse.json({data});
+});
+
+export default [list, single];

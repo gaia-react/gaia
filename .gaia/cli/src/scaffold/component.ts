@@ -1,0 +1,423 @@
+/**
+ * `gaia scaffold component <Name>` handler.
+ *
+ * Replaces the prose-only `new-component` skill with deterministic file
+ * emission. Produces three files (or two with `--no-story`) under
+ * `app/components/<Name>/` matching the project's existing component
+ * convention (`app/components/Button/`, `app/components/GaiaLogo/`, etc.).
+ *
+ * Output shape (default invocation, `gaia scaffold component Foo`):
+ *
+ *   app/components/Foo/index.tsx
+ *   app/components/Foo/tests/index.test.tsx
+ *   app/components/Foo/tests/index.stories.tsx
+ *
+ * The `--no-story` flag drops the stories file and rewires the test imports
+ * so the test is self-contained (no `composeStory` round-trip).
+ *
+ * The `--props "name:type,name:type"` flag turns the bare `FC` signature
+ * into a typed `FC<NameProps>` and emits a Props type alias plus a
+ * destructured signature. Each entry must be `name:type` — empty entries
+ * and malformed pairs are rejected with exit 1.
+ *
+ * The handler uses the shared scaffold utilities (`writeFileIfAbsent`,
+ * `loadTemplate`, `renderTemplate`) so behavior matches the other
+ * scaffolders shipped in Phase 2.
+ */
+import {existsSync, statSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {EXIT_CODES} from '../exit.js';
+import {structuredError} from '../stderr.js';
+import {writeFileIfAbsent} from './fs.js';
+import {renderTemplate} from './template.js';
+import type {ScaffoldResult} from './types.js';
+
+const PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
+const PROP_ENTRY_PATTERN = /^([A-Za-z_][\w$]*)\s*:\s*(.+)$/u;
+const TEMPLATES_DIR = 'component';
+const COMPONENTS_DEFAULT_PARENT = 'app/components';
+
+type ParsedFlags = {
+  json: boolean;
+  name: string;
+  parent: string;
+  props: PropEntry[];
+  story: boolean;
+};
+
+type PropEntry = {
+  name: string;
+  type: string;
+};
+
+type FlagParseSuccess = {
+  flags: ParsedFlags;
+  ok: true;
+};
+
+type FlagParseFailure = {
+  message: string;
+  ok: false;
+};
+
+type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
+
+  --no-story          Skip the index.stories.tsx file
+  --parent <dir>      Parent dir under app/components/ (default: app/components/)
+  --props "a:string,b:number"
+                      Typed props rendered as a Props type alias
+  --json              Emit ScaffoldResult JSON on stdout
+`;
+
+const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+
+const parseProps = (raw: string): FlagParseResult => {
+  const entries = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (entries.length === 0) {
+    return {message: '--props requires at least one name:type entry', ok: false};
+  }
+
+  const props: PropEntry[] = [];
+
+  for (const entry of entries) {
+    const match = PROP_ENTRY_PATTERN.exec(entry);
+
+    if (match === null) {
+      return {
+        message: `--props entry must be name:type (got: "${entry}")`,
+        ok: false,
+      };
+    }
+
+    props.push({name: match[1] as string, type: (match[2] as string).trim()});
+  }
+
+  return {
+    flags: {
+      json: false,
+      name: '',
+      parent: '',
+      props,
+      story: true,
+    },
+    ok: true,
+  };
+};
+
+const takeValue = (
+  argv: readonly string[],
+  index: number,
+  flag: string
+): FlagParseResult | string => {
+  const value = argv[index];
+
+  if (value === undefined || value.startsWith('--')) {
+    return {message: `${flag} requires a value`, ok: false};
+  }
+
+  return value;
+};
+
+const parseFlags = (argv: readonly string[]): FlagParseResult => {
+  let name: string | undefined;
+  let parent = COMPONENTS_DEFAULT_PARENT;
+  let story = true;
+  let json = false;
+  let props: PropEntry[] = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] as string;
+
+    if (token === '--no-story') {
+      story = false;
+      continue;
+    }
+
+    if (token === '--json') {
+      json = true;
+      continue;
+    }
+
+    if (token === '--parent') {
+      const value = takeValue(argv, index + 1, '--parent');
+
+      if (typeof value !== 'string') return value;
+      parent = value;
+      index += 1;
+      continue;
+    }
+
+    if (token === '--props') {
+      const value = takeValue(argv, index + 1, '--props');
+
+      if (typeof value !== 'string') return value;
+      const parsed = parseProps(value);
+
+      if (!parsed.ok) return parsed;
+      props = parsed.flags.props;
+      index += 1;
+      continue;
+    }
+
+    if (token.startsWith('--')) {
+      return {message: `unknown flag: ${token}`, ok: false};
+    }
+
+    if (name === undefined) {
+      name = token;
+      continue;
+    }
+
+    return {message: `unexpected positional argument: ${token}`, ok: false};
+  }
+
+  if (name === undefined) {
+    return {message: 'component name is required', ok: false};
+  }
+
+  if (!PASCAL_CASE_PATTERN.test(name)) {
+    return {
+      message: `component name must be PascalCase (got: "${name}")`,
+      ok: false,
+    };
+  }
+
+  return {flags: {json, name, parent, props, story}, ok: true};
+};
+
+const buildPropsTypeBlock = (
+  componentName: string,
+  props: readonly PropEntry[]
+): string => {
+  if (props.length === 0) return '';
+  const entries = props.map((prop) => `  ${prop.name}: ${prop.type};`).join('\n');
+
+  return `\ntype ${componentName}Props = {\n${entries}\n};\n`;
+};
+
+const buildPropsGeneric = (
+  componentName: string,
+  props: readonly PropEntry[]
+): string => (props.length === 0 ? '' : `<${componentName}Props>`);
+
+const buildTestImports = (componentName: string, withStory: boolean): string => {
+  if (withStory) {
+    return [
+      "import {composeStory} from '@storybook/react-vite';",
+      "import {describe, expect, test} from 'vitest';",
+      "import {render} from 'test/rtl';",
+      "import Meta, {Default} from './index.stories';",
+      '',
+      `const ${componentName} = composeStory(Default, Meta);`,
+    ].join('\n');
+  }
+
+  return [
+    "import {describe, expect, test} from 'vitest';",
+    "import {render} from 'test/rtl';",
+    `import ${componentName} from '../index';`,
+  ].join('\n');
+};
+
+const buildStoryTitle = (parent: string, componentName: string): string => {
+  // parent is repo-relative, e.g. "app/components" or "app/components/Form".
+  // Strip the "app/components" prefix so titles look like "Components/Foo"
+  // (matching the existing pattern, see app/components/Button/tests/index.stories.tsx).
+  const stripped = parent.replace(/^app\/components\/?/u, '');
+
+  if (stripped === '') return `Components/${componentName}`;
+
+  return `Components/${stripped}/${componentName}`;
+};
+
+type RunOptions = {
+  /** Repo root used to resolve relative paths. Defaults to `process.cwd()`. */
+  cwd?: string;
+  /** Returns true if `absPath` is an existing directory. Default uses fs. */
+  isDirectory?: (absPath: string) => boolean;
+};
+
+const defaultIsDirectory = (absPath: string): boolean =>
+  existsSync(absPath) && statSync(absPath).isDirectory();
+
+const renderComponentFile = (
+  templatesRoot: string,
+  componentName: string,
+  props: readonly PropEntry[]
+): string => {
+  const templatePath = path.join(templatesRoot, `${TEMPLATES_DIR}/index.tsx.tmpl`);
+  const propsTypeBlock = buildPropsTypeBlock(componentName, props);
+  const propsGeneric = buildPropsGeneric(componentName, props);
+  const propsParam =
+    props.length === 0 ? '' : `{${props.map((prop) => prop.name).join(', ')}}`;
+
+  return renderTemplate(templatePath, {
+    Name: componentName,
+    propsGeneric,
+    propsParam,
+    propsTypeBlock,
+  });
+};
+
+const renderTestFile = (
+  templatesRoot: string,
+  componentName: string,
+  withStory: boolean
+): string => {
+  const templatePath = path.join(
+    templatesRoot,
+    `${TEMPLATES_DIR}/index.test.tsx.tmpl`
+  );
+
+  return renderTemplate(templatePath, {
+    Name: componentName,
+    testImports: buildTestImports(componentName, withStory),
+  });
+};
+
+const renderStoryFile = (
+  templatesRoot: string,
+  componentName: string,
+  parent: string
+): string => {
+  const templatePath = path.join(
+    templatesRoot,
+    `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
+  );
+
+  return renderTemplate(templatePath, {
+    Name: componentName,
+    storyTitle: buildStoryTitle(parent, componentName),
+  });
+};
+
+const resolveTemplatesRoot = (): string => {
+  // template.ts hard-codes the templates dir resolution; we mirror it here so
+  // we can build per-file paths without re-implementing renderTemplate.
+  const here = fileURLToPath(import.meta.url);
+
+  return path.join(path.dirname(here), 'templates');
+};
+
+const writeOne = (
+  absPath: string,
+  contents: string,
+  result: ScaffoldResult
+): void => {
+  const {written} = writeFileIfAbsent(absPath, contents);
+
+  if (written) {
+    result.written.push(absPath);
+  } else {
+    result.skipped.push(absPath);
+  }
+};
+
+const printHumanResult = (result: ScaffoldResult, componentName: string): void => {
+  const lines = [`Scaffolded component ${componentName}.`];
+
+  if (result.written.length > 0) {
+    lines.push('Written:');
+    for (const filePath of result.written) lines.push(`  ${filePath}`);
+  }
+
+  if (result.skipped.length > 0) {
+    lines.push('Skipped (unchanged):');
+    for (const filePath of result.skipped) lines.push(`  ${filePath}`);
+  }
+  process.stdout.write(`${lines.join('\n')}\n`);
+};
+
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  const subcommand = argv[0];
+
+  if (subcommand !== undefined && HELP_TOKENS.has(subcommand)) {
+    process.stdout.write(HELP_TEXT);
+
+    return EXIT_CODES.OK;
+  }
+
+  const parsed = parseFlags(argv);
+
+  if (!parsed.ok) {
+    structuredError({
+      code: 'invalid_arguments',
+      message: parsed.message,
+      subcommand: 'scaffold component',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  const {flags} = parsed;
+  const cwd = options.cwd ?? process.cwd();
+  const isDirectory = options.isDirectory ?? defaultIsDirectory;
+  const parentAbs = path.resolve(cwd, flags.parent);
+
+  if (!isDirectory(parentAbs)) {
+    structuredError({
+      code: 'parent_not_found',
+      message: `parent dir does not exist: ${flags.parent}`,
+      path: parentAbs,
+      subcommand: 'scaffold component',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  const componentDir = path.join(parentAbs, flags.name);
+  const indexPath = path.join(componentDir, 'index.tsx');
+  const testsDir = path.join(componentDir, 'tests');
+  const testPath = path.join(testsDir, 'index.test.tsx');
+  const storyPath = path.join(testsDir, 'index.stories.tsx');
+
+  const templatesRoot = resolveTemplatesRoot();
+  const result: ScaffoldResult = {edited: [], skipped: [], written: []};
+
+  try {
+    writeOne(
+      indexPath,
+      renderComponentFile(templatesRoot, flags.name, flags.props),
+      result
+    );
+    writeOne(
+      testPath,
+      renderTestFile(templatesRoot, flags.name, flags.story),
+      result
+    );
+
+    if (flags.story) {
+      writeOne(
+        storyPath,
+        renderStoryFile(templatesRoot, flags.name, flags.parent),
+        result
+      );
+    }
+  } catch (error) {
+    structuredError({
+      code: 'write_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'scaffold component',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  } else {
+    printHumanResult(result, flags.name);
+  }
+
+  return EXIT_CODES.OK;
+};

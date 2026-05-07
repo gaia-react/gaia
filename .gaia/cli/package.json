@@ -4,7 +4,7 @@
   "type": "module",
   "description": "GAIA CLI — telemetry emit primitive and mentorship subcommand surface. Maintainer source; ships to adopters as a single bundled binary at .gaia/cli/gaia.",
   "scripts": {
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --banner:js=$'#!/usr/bin/env node\\nimport { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia && chmod +x gaia",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --banner:js=$'#!/usr/bin/env node\\nimport { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia && chmod +x gaia && rm -rf templates && cp -r src/scaffold/templates templates",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "test": "vitest --run --passWithNoTests",
     "fixtures:build": "tsx ./test-fixtures/profile/build.ts",

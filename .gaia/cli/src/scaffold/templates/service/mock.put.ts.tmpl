@@ -1,0 +1,23 @@
+import {http, HttpResponse} from 'msw';
+import {{{NAME_UPPER}}_URLS} from '~/services/gaia/{{name}}/urls';
+import {url} from '../url';
+import {{{plural}}} from './data';
+
+export default http.put(
+  url({{NAME_UPPER}}_URLS.{{plural}}Id),
+  async ({params, request}) => {
+    const form = await request.formData();
+    const data = await {{plural}}.update(
+      (q) => q.where({id: String(params.id)}),
+      {
+        data(record) {
+          for (const [key, value] of form.entries()) {
+            (record as Record<string, unknown>)[key] = value;
+          }
+        },
+      }
+    );
+
+    return HttpResponse.json({data});
+  }
+);

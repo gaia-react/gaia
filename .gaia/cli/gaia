@@ -797,10 +797,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path12) {
-  if (!path12)
+function getElementAtPath(obj, path17) {
+  if (!path17)
     return obj;
-  return path12.reduce((acc, key) => acc?.[key], obj);
+  return path17.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -1209,11 +1209,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path12, issues) {
+function prefixIssues(path17, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path12);
+    iss.path.unshift(path17);
     return iss;
   });
 }
@@ -1360,16 +1360,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path12 = []) => {
+  const processError = (error52, path17 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path12, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path17, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
       } else {
-        const fullpath = [...path12, ...issue2.path];
+        const fullpath = [...path17, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -1396,17 +1396,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path12 = []) => {
+  const processError = (error52, path17 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path12, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path17, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path12, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path17, ...issue2.path]);
       } else {
-        const fullpath = [...path12, ...issue2.path];
+        const fullpath = [...path17, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -1438,8 +1438,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path12 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path12) {
+  const path17 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path17) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -14131,13 +14131,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path12 = ref.slice(1).split("/").filter(Boolean);
-  if (path12.length === 0) {
+  const path17 = ref.slice(1).split("/").filter(Boolean);
+  if (path17.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path12[0] === defsKey) {
-    const key = path12[1];
+  if (path17[0] === defsKey) {
+    const key = path17[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -14800,14 +14800,14 @@ var resolveRepoRoot = () => {
   }
   return cachedRepoRoot;
 };
-var deriveClaudeSlug = (repoRoot) => repoRoot.replaceAll("/", "-");
+var deriveClaudeSlug = (repoRoot2) => repoRoot2.replaceAll("/", "-");
 var resolveStorageRoots = (args) => {
-  const repoRoot = args?.repoRoot ?? resolveRepoRoot();
+  const repoRoot2 = args?.repoRoot ?? resolveRepoRoot();
   const home = args?.homeDir ?? homedir();
-  const slug = deriveClaudeSlug(repoRoot);
-  const cloudDir = path2.join(repoRoot, ".gaia", "local", "telemetry", "cloud");
+  const slug = deriveClaudeSlug(repoRoot2);
+  const cloudDir = path2.join(repoRoot2, ".gaia", "local", "telemetry", "cloud");
   const analyticsDir = path2.join(
-    repoRoot,
+    repoRoot2,
     ".gaia",
     "local",
     "telemetry",
@@ -14816,7 +14816,7 @@ var resolveStorageRoots = (args) => {
   const claudeProjectDir = path2.join(home, ".claude", "projects", slug, "gaia");
   const mentorshipDir = path2.join(claudeProjectDir, "telemetry", "mentorship");
   const installIdPath = path2.join(claudeProjectDir, "install-id.txt");
-  const projectIdPath = path2.join(repoRoot, ".gaia", "local", ".project-id");
+  const projectIdPath = path2.join(repoRoot2, ".gaia", "local", ".project-id");
   const profilePath = path2.join(claudeProjectDir, "profile.md");
   return {
     analyticsDir,
@@ -14902,8 +14902,8 @@ var readOrCreateProjectId = (roots) => {
   if (!existsSync4(parent)) {
     mkdirSync2(parent, { mode: 493, recursive: true });
   }
-  const repoRoot = filePath.replace(/\/\.gaia\/local\/\.project-id$/u, "");
-  const id = deriveProjectId(repoRoot);
+  const repoRoot2 = filePath.replace(/\/\.gaia\/local\/\.project-id$/u, "");
+  const id = deriveProjectId(repoRoot2);
   writeFileSync3(filePath, `${id}
 `, { mode: 420 });
   return id;
@@ -14969,10 +14969,10 @@ ${body}
 var resolveCachePath = (deps) => {
   if (deps.cachePath !== void 0) return deps.cachePath;
   const roots = deps.roots ?? resolveStorageRoots();
-  const repoRoot = path4.dirname(
+  const repoRoot2 = path4.dirname(
     path4.dirname(path4.dirname(roots.projectIdPath))
   );
-  return path4.join(repoRoot, ".gaia", "cache", "coaching-active.txt");
+  return path4.join(repoRoot2, ".gaia", "cache", "coaching-active.txt");
 };
 var markCoachingActive = (cachePath) => {
   const parent = path4.dirname(cachePath);
@@ -15816,16 +15816,1215 @@ var run11 = async (argv) => {
   return typeof result === "number" ? result : EXIT_CODES.OK;
 };
 
+// src/scaffold/component.ts
+import { existsSync as existsSync11, statSync as statSync2 } from "node:fs";
+import path9 from "node:path";
+import { fileURLToPath } from "node:url";
+
+// src/scaffold/fs.ts
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync5 } from "node:fs";
+import path8 from "node:path";
+var ensureDir = (absPath) => {
+  mkdirSync5(absPath, { recursive: true });
+};
+var writeFileIfAbsent = (absPath, contents) => {
+  if (existsSync10(absPath)) {
+    const existing = readFileSync7(absPath, "utf8");
+    if (existing === contents) return { written: false };
+    throw new Error(`refusing to overwrite ${absPath}`);
+  }
+  ensureDir(path8.dirname(absPath));
+  writeFileSync5(absPath, contents, "utf8");
+  return { written: true };
+};
+
+// src/scaffold/template.ts
+import { readFileSync as readFileSync8 } from "node:fs";
+var VAR_PATTERN = /\{\{\s*([\w.]+)\s*\}\}/gu;
+var SECTION_PATTERN = /\{\{#\s*(\w+)\s*\}\}([\s\S]*?)\{\{\/\s*\1\s*\}\}/gu;
+var EACH_PATTERN = /\{\{#each\s+(\w+)\s*\}\}([\s\S]*?)\{\{\/each\s*\}\}/gu;
+var THIS_PATTERN = /\{\{\s*this\s*\}\}/gu;
+var isTruthy = (value) => {
+  if (value === void 0 || value === false) return false;
+  if (value === true) return true;
+  if (typeof value === "string") return value.length > 0;
+  return Array.isArray(value) && value.length > 0;
+};
+var renderEachBlocks = (template, vars) => template.replaceAll(EACH_PATTERN, (_match, name, body) => {
+  const value = vars[name];
+  if (!Array.isArray(value)) return "";
+  return value.map((item) => body.replaceAll(THIS_PATTERN, String(item))).join("");
+});
+var renderBooleanSections = (template, vars) => template.replaceAll(SECTION_PATTERN, (_match, name, body) => {
+  if (name === "each") return _match;
+  return isTruthy(vars[name]) ? body : "";
+});
+var renderScalars = (template, vars) => template.replaceAll(VAR_PATTERN, (_match, name) => {
+  if (name === "this") return _match;
+  const value = vars[name];
+  if (value === void 0) return "";
+  if (Array.isArray(value)) return value.join(",");
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return value;
+});
+var renderTemplate = (templatePath, vars) => {
+  const raw = readFileSync8(templatePath, "utf8");
+  const eached = renderEachBlocks(raw, vars);
+  const sectioned = renderBooleanSections(eached, vars);
+  return renderScalars(sectioned, vars);
+};
+
+// src/scaffold/component.ts
+var PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
+var PROP_ENTRY_PATTERN = /^([A-Za-z_][\w$]*)\s*:\s*(.+)$/u;
+var TEMPLATES_DIR = "component";
+var COMPONENTS_DEFAULT_PARENT = "app/components";
+var HELP_TEXT2 = `Usage: gaia scaffold component <Name> [flags]
+
+  --no-story          Skip the index.stories.tsx file
+  --parent <dir>      Parent dir under app/components/ (default: app/components/)
+  --props "a:string,b:number"
+                      Typed props rendered as a Props type alias
+  --json              Emit ScaffoldResult JSON on stdout
+`;
+var HELP_TOKENS2 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var parseProps = (raw) => {
+  const entries = raw.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  if (entries.length === 0) {
+    return { message: "--props requires at least one name:type entry", ok: false };
+  }
+  const props = [];
+  for (const entry of entries) {
+    const match = PROP_ENTRY_PATTERN.exec(entry);
+    if (match === null) {
+      return {
+        message: `--props entry must be name:type (got: "${entry}")`,
+        ok: false
+      };
+    }
+    props.push({ name: match[1], type: match[2].trim() });
+  }
+  return {
+    flags: {
+      json: false,
+      name: "",
+      parent: "",
+      props,
+      story: true
+    },
+    ok: true
+  };
+};
+var takeValue = (argv, index, flag) => {
+  const value = argv[index];
+  if (value === void 0 || value.startsWith("--")) {
+    return { message: `${flag} requires a value`, ok: false };
+  }
+  return value;
+};
+var parseFlags3 = (argv) => {
+  let name;
+  let parent = COMPONENTS_DEFAULT_PARENT;
+  let story = true;
+  let json2 = false;
+  let props = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--no-story") {
+      story = false;
+      continue;
+    }
+    if (token === "--json") {
+      json2 = true;
+      continue;
+    }
+    if (token === "--parent") {
+      const value = takeValue(argv, index + 1, "--parent");
+      if (typeof value !== "string") return value;
+      parent = value;
+      index += 1;
+      continue;
+    }
+    if (token === "--props") {
+      const value = takeValue(argv, index + 1, "--props");
+      if (typeof value !== "string") return value;
+      const parsed = parseProps(value);
+      if (!parsed.ok) return parsed;
+      props = parsed.flags.props;
+      index += 1;
+      continue;
+    }
+    if (token.startsWith("--")) {
+      return { message: `unknown flag: ${token}`, ok: false };
+    }
+    if (name === void 0) {
+      name = token;
+      continue;
+    }
+    return { message: `unexpected positional argument: ${token}`, ok: false };
+  }
+  if (name === void 0) {
+    return { message: "component name is required", ok: false };
+  }
+  if (!PASCAL_CASE_PATTERN.test(name)) {
+    return {
+      message: `component name must be PascalCase (got: "${name}")`,
+      ok: false
+    };
+  }
+  return { flags: { json: json2, name, parent, props, story }, ok: true };
+};
+var buildPropsTypeBlock = (componentName, props) => {
+  if (props.length === 0) return "";
+  const entries = props.map((prop) => `  ${prop.name}: ${prop.type};`).join("\n");
+  return `
+type ${componentName}Props = {
+${entries}
+};
+`;
+};
+var buildPropsGeneric = (componentName, props) => props.length === 0 ? "" : `<${componentName}Props>`;
+var buildTestImports = (componentName, withStory) => {
+  if (withStory) {
+    return [
+      "import {composeStory} from '@storybook/react-vite';",
+      "import {describe, expect, test} from 'vitest';",
+      "import {render} from 'test/rtl';",
+      "import Meta, {Default} from './index.stories';",
+      "",
+      `const ${componentName} = composeStory(Default, Meta);`
+    ].join("\n");
+  }
+  return [
+    "import {describe, expect, test} from 'vitest';",
+    "import {render} from 'test/rtl';",
+    `import ${componentName} from '../index';`
+  ].join("\n");
+};
+var buildStoryTitle = (parent, componentName) => {
+  const stripped = parent.replace(/^app\/components\/?/u, "");
+  if (stripped === "") return `Components/${componentName}`;
+  return `Components/${stripped}/${componentName}`;
+};
+var defaultIsDirectory = (absPath) => existsSync11(absPath) && statSync2(absPath).isDirectory();
+var renderComponentFile = (templatesRoot, componentName, props) => {
+  const templatePath = path9.join(templatesRoot, `${TEMPLATES_DIR}/index.tsx.tmpl`);
+  const propsTypeBlock = buildPropsTypeBlock(componentName, props);
+  const propsGeneric = buildPropsGeneric(componentName, props);
+  const propsParam = props.length === 0 ? "" : `{${props.map((prop) => prop.name).join(", ")}}`;
+  return renderTemplate(templatePath, {
+    Name: componentName,
+    propsGeneric,
+    propsParam,
+    propsTypeBlock
+  });
+};
+var renderTestFile = (templatesRoot, componentName, withStory) => {
+  const templatePath = path9.join(
+    templatesRoot,
+    `${TEMPLATES_DIR}/index.test.tsx.tmpl`
+  );
+  return renderTemplate(templatePath, {
+    Name: componentName,
+    testImports: buildTestImports(componentName, withStory)
+  });
+};
+var renderStoryFile = (templatesRoot, componentName, parent) => {
+  const templatePath = path9.join(
+    templatesRoot,
+    `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
+  );
+  return renderTemplate(templatePath, {
+    Name: componentName,
+    storyTitle: buildStoryTitle(parent, componentName)
+  });
+};
+var resolveTemplatesRoot = () => {
+  const here = fileURLToPath(import.meta.url);
+  return path9.join(path9.dirname(here), "templates");
+};
+var writeOne = (absPath, contents, result) => {
+  const { written } = writeFileIfAbsent(absPath, contents);
+  if (written) {
+    result.written.push(absPath);
+  } else {
+    result.skipped.push(absPath);
+  }
+};
+var printHumanResult = (result, componentName) => {
+  const lines = [`Scaffolded component ${componentName}.`];
+  if (result.written.length > 0) {
+    lines.push("Written:");
+    for (const filePath of result.written) lines.push(`  ${filePath}`);
+  }
+  if (result.skipped.length > 0) {
+    lines.push("Skipped (unchanged):");
+    for (const filePath of result.skipped) lines.push(`  ${filePath}`);
+  }
+  process.stdout.write(`${lines.join("\n")}
+`);
+};
+var run12 = (argv, options = {}) => {
+  const subcommand = argv[0];
+  if (subcommand !== void 0 && HELP_TOKENS2.has(subcommand)) {
+    process.stdout.write(HELP_TEXT2);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags3(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "scaffold component"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const { flags } = parsed;
+  const cwd = options.cwd ?? process.cwd();
+  const isDirectory = options.isDirectory ?? defaultIsDirectory;
+  const parentAbs = path9.resolve(cwd, flags.parent);
+  if (!isDirectory(parentAbs)) {
+    structuredError({
+      code: "parent_not_found",
+      message: `parent dir does not exist: ${flags.parent}`,
+      path: parentAbs,
+      subcommand: "scaffold component"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const componentDir = path9.join(parentAbs, flags.name);
+  const indexPath = path9.join(componentDir, "index.tsx");
+  const testsDir = path9.join(componentDir, "tests");
+  const testPath = path9.join(testsDir, "index.test.tsx");
+  const storyPath = path9.join(testsDir, "index.stories.tsx");
+  const templatesRoot = resolveTemplatesRoot();
+  const result = { edited: [], skipped: [], written: [] };
+  try {
+    writeOne(
+      indexPath,
+      renderComponentFile(templatesRoot, flags.name, flags.props),
+      result
+    );
+    writeOne(
+      testPath,
+      renderTestFile(templatesRoot, flags.name, flags.story),
+      result
+    );
+    if (flags.story) {
+      writeOne(
+        storyPath,
+        renderStoryFile(templatesRoot, flags.name, flags.parent),
+        result
+      );
+    }
+  } catch (error51) {
+    structuredError({
+      code: "write_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "scaffold component"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(result)}
+`);
+  } else {
+    printHumanResult(result, flags.name);
+  }
+  return EXIT_CODES.OK;
+};
+
+// src/scaffold/hook.ts
+import { execSync as execSync2 } from "node:child_process";
+import path10 from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+var HOOK_NAME_PATTERN = /^use[A-Z][A-Za-z0-9]*$/u;
+var TEMPLATE_DIR_NAME = "hook";
+var HOOK_TEMPLATE_FILE = "hook.ts.tmpl";
+var TEST_TEMPLATE_FILE = "hook.test.ts.tmpl";
+var parseParams = (raw) => {
+  if (raw === void 0 || raw.trim().length === 0) return [];
+  return raw.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0).map((entry) => {
+    const colonIndex = entry.indexOf(":");
+    if (colonIndex === -1) {
+      return { name: entry, type: "unknown" };
+    }
+    const name = entry.slice(0, colonIndex).trim();
+    const type = entry.slice(colonIndex + 1).trim();
+    return { name, type: type.length > 0 ? type : "unknown" };
+  });
+};
+var readFlags = (argv) => {
+  const positional = [];
+  let json2 = false;
+  let paramsRaw;
+  let returns;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--json") {
+      json2 = true;
+      continue;
+    }
+    if (token === "--params") {
+      paramsRaw = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (token === "--returns") {
+      returns = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (token !== void 0 && token.startsWith("--")) {
+      throw new Error(`unknown flag: ${token}`);
+    }
+    if (token !== void 0) positional.push(token);
+  }
+  return {
+    flags: {
+      json: json2,
+      params: parseParams(paramsRaw),
+      returns: returns !== void 0 && returns.length > 0 ? returns : void 0
+    },
+    positional
+  };
+};
+var formatParamsString = (params) => params.map((param) => `${param.name}: ${param.type}`).join(", ");
+var sentinelForType = (type) => {
+  const trimmed = type.trim();
+  if (trimmed === "string") return "''";
+  if (trimmed === "number") return "0";
+  if (trimmed === "boolean") return "false";
+  if (trimmed.endsWith("[]") || trimmed.startsWith("Array<")) return "[]";
+  return "undefined as never";
+};
+var formatCallArgs = (params) => params.map((param) => sentinelForType(param.type)).join(", ");
+var REACT_HOOK_KEYWORDS = [
+  "useCallback",
+  "useEffect",
+  "useMemo",
+  "useRef",
+  "useState"
+];
+var detectReactImports = (paramsString, returnsAnnotation) => {
+  return "";
+};
+var resolveTemplateFile = (filename) => {
+  const here = fileURLToPath2(import.meta.url);
+  return path10.join(path10.dirname(here), "templates", TEMPLATE_DIR_NAME, filename);
+};
+var resolveRepoRoot2 = () => {
+  try {
+    const out = execSync2("git rev-parse --show-toplevel", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return out.length > 0 ? out : process.cwd();
+  } catch {
+    return process.cwd();
+  }
+};
+var emitFiles = (options) => {
+  const { hookFilePath, name, params, returns, testFilePath } = options;
+  const paramsString = formatParamsString(params);
+  const returnsAnnotation = returns === void 0 ? "" : `: ${returns}`;
+  const imports = detectReactImports(paramsString, returnsAnnotation);
+  const hookContents = renderTemplate(resolveTemplateFile(HOOK_TEMPLATE_FILE), {
+    imports,
+    name,
+    paramsString,
+    returnsAnnotation
+  });
+  const testContents = renderTemplate(resolveTemplateFile(TEST_TEMPLATE_FILE), {
+    callArgs: formatCallArgs(params),
+    name
+  });
+  const written = [];
+  const skipped = [];
+  for (const [filePath, contents] of [
+    [hookFilePath, hookContents],
+    [testFilePath, testContents]
+  ]) {
+    const result = writeFileIfAbsent(filePath, contents);
+    if (result.written) {
+      written.push(filePath);
+    } else {
+      skipped.push(filePath);
+    }
+  }
+  return { edited: [], skipped, written };
+};
+var printResult = (result, jsonMode) => {
+  if (jsonMode) {
+    process.stdout.write(`${JSON.stringify(result)}
+`);
+    return;
+  }
+  for (const file2 of result.written) {
+    process.stdout.write(`written: ${file2}
+`);
+  }
+  for (const file2 of result.skipped) {
+    process.stdout.write(`skipped: ${file2}
+`);
+  }
+};
+var run13 = (argv, options = {}) => {
+  let parsed;
+  try {
+    parsed = readFlags(argv);
+  } catch (error51) {
+    structuredError({
+      code: "invalid_flag",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "scaffold hook"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const name = parsed.positional[0];
+  if (name === void 0) {
+    structuredError({
+      code: "missing_argument",
+      message: "expected hook name (e.g. useFoo)",
+      subcommand: "scaffold hook"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (!HOOK_NAME_PATTERN.test(name)) {
+    structuredError({
+      code: "invalid_hook_name",
+      message: `hook name must start with 'use' and be camelCase; got '${name}'`,
+      subcommand: "scaffold hook"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const repoRoot2 = options.repoRoot ?? resolveRepoRoot2();
+  const hooksDir = path10.join(repoRoot2, "app", "hooks");
+  const hookFilePath = path10.join(hooksDir, `${name}.ts`);
+  const testFilePath = path10.join(hooksDir, "tests", `${name}.test.ts`);
+  let result;
+  try {
+    result = emitFiles({
+      hookFilePath,
+      name,
+      params: parsed.flags.params,
+      returns: parsed.flags.returns,
+      testFilePath
+    });
+  } catch (error51) {
+    structuredError({
+      code: "scaffold_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "scaffold hook"
+    });
+    return EXIT_CODES.PAYLOAD_VALIDATION_FAILED;
+  }
+  printResult(result, parsed.flags.json);
+  return EXIT_CODES.OK;
+};
+
+// src/scaffold/route.ts
+import { existsSync as existsSync12, readFileSync as readFileSync9, writeFileSync as writeFileSync6 } from "node:fs";
+import path11 from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+var VALID_GROUPS = /* @__PURE__ */ new Set(["_public+", "_session+"]);
+var GROUP_TO_SEGMENT = {
+  "_public+": "Public",
+  "_session+": "Session"
+};
+var KEBAB_PATTERN = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
+var HELP_TEXT3 = `Usage: gaia scaffold route <name> --group <_public+|_session+> [flags]
+
+  --group     required, _public+ or _session+
+  --loader    emit a loader stub
+  --action    emit an action stub
+  --i18n      emit a locale file and wire the locale barrel
+  --json      print ScaffoldResult as JSON
+`;
+var userError = (message, subcommand = "scaffold route") => {
+  structuredError({ code: "invalid_input", message, subcommand });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+var parseFlags4 = (rest) => {
+  const flags = {
+    action: false,
+    group: null,
+    i18n: false,
+    json: false,
+    loader: false
+  };
+  for (let index = 0; index < rest.length; index += 1) {
+    const flag = rest[index];
+    if (flag === "--group") {
+      const value = rest[index + 1];
+      if (value === void 0) return null;
+      flags.group = value;
+      index += 1;
+    } else if (flag === "--loader") {
+      flags.loader = true;
+    } else if (flag === "--action") {
+      flags.action = true;
+    } else if (flag === "--i18n") {
+      flags.i18n = true;
+    } else if (flag === "--json") {
+      flags.json = true;
+    } else {
+      return null;
+    }
+  }
+  return flags;
+};
+var toPascalCase = (kebab) => kebab.split("-").map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join("");
+var toCamelCase = (kebab) => {
+  const parts = kebab.split("-");
+  const [first, ...rest] = parts;
+  return [first, ...rest.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)].join("");
+};
+var repoRoot = () => {
+  const here = fileURLToPath3(import.meta.url);
+  return path11.resolve(path11.dirname(here), "..", "..", "..", "..");
+};
+var templateDir = () => {
+  const here = fileURLToPath3(import.meta.url);
+  return path11.join(path11.dirname(here), "templates", "route");
+};
+var insertIntoLocaleBarrel = (barrelPath, importName, folderName) => {
+  if (!existsSync12(barrelPath)) return "missing";
+  const original = readFileSync9(barrelPath, "utf8");
+  const importLine = `import ${importName} from './${folderName}';`;
+  if (original.includes(importLine)) return "present";
+  const lines = original.split("\n");
+  const importLines = [];
+  for (const [idx, line] of lines.entries()) {
+    if (/^import\s/u.test(line)) importLines.push(idx);
+  }
+  let importInsertIdx = importLines.length === 0 ? 0 : (importLines.at(-1) ?? 0) + 1;
+  for (const idx of importLines) {
+    const existing = lines[idx];
+    if (existing === void 0) continue;
+    const match = existing.match(/^import\s+(\w+)\s+from/u);
+    if (match && match[1] !== void 0 && importName.localeCompare(match[1]) < 0) {
+      importInsertIdx = idx;
+      break;
+    }
+  }
+  lines.splice(importInsertIdx, 0, importLine);
+  const openIdx = lines.findIndex((line) => /export\s+default\s+\{/u.test(line));
+  const closeIdx = lines.findIndex(
+    (line, idx) => idx > openIdx && /^\s*\}\s*;?\s*$/u.test(line)
+  );
+  if (openIdx === -1 || closeIdx === -1) {
+    return "missing";
+  }
+  const entryPattern = /^(\s+)(\w+),?\s*$/u;
+  const existingEntries = [];
+  for (let idx = openIdx + 1; idx < closeIdx; idx += 1) {
+    const line = lines[idx];
+    if (line === void 0) continue;
+    const match = line.match(entryPattern);
+    if (match && match[1] !== void 0 && match[2] !== void 0) {
+      existingEntries.push({ indent: match[1], key: match[2], lineIdx: idx });
+    }
+  }
+  const indent = existingEntries[0]?.indent ?? "  ";
+  const newEntryLine = `${indent}${importName},`;
+  if (existingEntries.length === 0) {
+    lines.splice(openIdx + 1, 0, newEntryLine);
+  } else {
+    let inserted = false;
+    for (const entry of existingEntries) {
+      if (importName.localeCompare(entry.key) < 0) {
+        lines.splice(entry.lineIdx, 0, newEntryLine);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) {
+      const lastEntry = existingEntries.at(-1);
+      if (lastEntry !== void 0) {
+        const lastLine = lines[lastEntry.lineIdx];
+        if (lastLine !== void 0 && !lastLine.endsWith(",")) {
+          lines[lastEntry.lineIdx] = `${lastLine},`;
+        }
+        lines.splice(lastEntry.lineIdx + 1, 0, newEntryLine);
+      }
+    }
+  }
+  writeFileSync6(barrelPath, lines.join("\n"), "utf8");
+  return "inserted";
+};
+var templatePaths = () => {
+  const dir = templateDir();
+  return {
+    locale: path11.join(dir, "locale.ts.tmpl"),
+    pageIndex: path11.join(dir, "page.index.tsx.tmpl"),
+    pageStories: path11.join(dir, "page.stories.tsx.tmpl"),
+    pageTest: path11.join(dir, "page.test.tsx.tmpl"),
+    route: path11.join(dir, "route.tsx.tmpl")
+  };
+};
+var resolveNames = (kebabName, group) => {
+  const pascal = toPascalCase(kebabName);
+  const segment = GROUP_TO_SEGMENT[group] ?? "";
+  return {
+    groupSegment: segment,
+    i18nKey: toCamelCase(kebabName),
+    pageName: pascal,
+    routeName: pascal
+  };
+};
+var buildRouteVars = (names, flags, kebabName) => ({
+  groupSegment: names.groupSegment,
+  hasAction: flags.action,
+  hasLoader: flags.loader,
+  i18nKey: names.i18nKey,
+  needsRouteType: flags.loader || flags.action,
+  noLoader: !flags.loader,
+  pageName: names.pageName,
+  routeFile: kebabName,
+  routeName: names.routeName
+});
+var writeFile = (result, absPath, contents) => {
+  const { written } = writeFileIfAbsent(absPath, contents);
+  if (written) {
+    result.written.push(absPath);
+  } else {
+    result.skipped.push(absPath);
+  }
+};
+var printHumanReadable = (result) => {
+  for (const file2 of result.written) process.stdout.write(`written  ${file2}
+`);
+  for (const file2 of result.edited) process.stdout.write(`edited   ${file2}
+`);
+  for (const file2 of result.skipped) process.stdout.write(`skipped  ${file2}
+`);
+};
+var printJson = (result) => {
+  process.stdout.write(`${JSON.stringify(result)}
+`);
+};
+var run14 = (rest) => {
+  const [first] = rest;
+  if (first === void 0 || first === "--help" || first === "-h") {
+    process.stdout.write(HELP_TEXT3);
+    return first === void 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+  }
+  const name = first;
+  const flags = parseFlags4(rest.slice(1));
+  if (flags === null) {
+    return userError("invalid or unknown flag (see --help)");
+  }
+  if (!KEBAB_PATTERN.test(name)) {
+    return userError(
+      `route name must be kebab-case (lowercase letters, digits, hyphens): got "${name}"`
+    );
+  }
+  if (flags.group === null) {
+    return userError("--group is required (one of: _public+, _session+)");
+  }
+  if (!VALID_GROUPS.has(flags.group)) {
+    return userError(
+      `--group must be one of: _public+, _session+ (got "${flags.group}")`
+    );
+  }
+  const root = repoRoot();
+  const names = resolveNames(name, flags.group);
+  const tmpls = templatePaths();
+  const result = { edited: [], skipped: [], written: [] };
+  try {
+    const routeVars = buildRouteVars(names, flags, name);
+    const routeAbs = path11.join(root, "app", "routes", flags.group, `${name}.tsx`);
+    writeFile(result, routeAbs, renderTemplate(tmpls.route, routeVars));
+    const pageDir = path11.join(root, "app", "pages", names.groupSegment, names.pageName);
+    const pageVars = {
+      groupSegment: names.groupSegment,
+      hasI18n: flags.i18n,
+      i18nKey: names.i18nKey,
+      noI18n: !flags.i18n,
+      pageName: names.pageName
+    };
+    writeFile(
+      result,
+      path11.join(pageDir, "index.tsx"),
+      renderTemplate(tmpls.pageIndex, pageVars)
+    );
+    writeFile(
+      result,
+      path11.join(pageDir, "tests", "index.test.tsx"),
+      renderTemplate(tmpls.pageTest, pageVars)
+    );
+    writeFile(
+      result,
+      path11.join(pageDir, "tests", "index.stories.tsx"),
+      renderTemplate(tmpls.pageStories, pageVars)
+    );
+    if (flags.i18n) {
+      const localeFile = path11.join(
+        root,
+        "app",
+        "languages",
+        "en",
+        "pages",
+        names.pageName,
+        "index.ts"
+      );
+      const localeVars = {
+        i18nKey: names.i18nKey,
+        pageName: names.pageName,
+        routeName: name
+      };
+      writeFile(result, localeFile, renderTemplate(tmpls.locale, localeVars));
+      const localeBarrel = path11.join(
+        root,
+        "app",
+        "languages",
+        "en",
+        "pages",
+        "index.ts"
+      );
+      const importName = names.i18nKey;
+      const status = insertIntoLocaleBarrel(localeBarrel, importName, names.pageName);
+      if (status === "inserted") result.edited.push(localeBarrel);
+      else if (status === "present") result.skipped.push(localeBarrel);
+    }
+  } catch (error51) {
+    return userError(error51 instanceof Error ? error51.message : String(error51));
+  }
+  if (flags.json) printJson(result);
+  else printHumanReadable(result);
+  return EXIT_CODES.OK;
+};
+
+// src/scaffold/service.ts
+import { existsSync as existsSync13, readFileSync as readFileSync10, writeFileSync as writeFileSync7 } from "node:fs";
+import path12 from "node:path";
+import { fileURLToPath as fileURLToPath4 } from "node:url";
+var KEBAB_PATTERN2 = /^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u;
+var NAME_TOKEN_PATTERN = /^[a-zA-Z][a-zA-Z\d]*(?::[a-zA-Z][a-zA-Z\d]*(?:\([^)]*\))?)?$/u;
+var ALL_ENDPOINTS = ["get", "post", "put", "delete"];
+var HELP_TEXT4 = `Usage: gaia scaffold service <name> --endpoints "get,post,put,delete" --schema "id:string,name:string"
+
+  --endpoints "get,post,put,delete"  required: comma-separated subset of get/post/put/delete
+  --schema "id:string,name:string"   required: comma-separated <name>:<type> pairs
+                                      type ::= string | number | boolean | datetime |
+                                               enum(<a>,<b>,...) | <type>?
+  --mocks                            also emit MSW mock collection under test/mocks/<name>/
+  --json                             emit ScaffoldResult JSON on stdout
+`;
+var printHelp = () => {
+  process.stdout.write(HELP_TEXT4);
+};
+var userError2 = (message, subcommand) => {
+  structuredError({ code: "invalid_arguments", message, subcommand });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+var parseFlags5 = (argv) => {
+  const result = { json: false, mocks: false, positional: [] };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--mocks") {
+      result.mocks = true;
+    } else if (arg === "--json") {
+      result.json = true;
+    } else if (arg === "--endpoints") {
+      result.endpoints = argv[index + 1];
+      index += 1;
+    } else if (arg === "--schema") {
+      result.schema = argv[index + 1];
+      index += 1;
+    } else if (arg !== void 0 && !arg.startsWith("--")) {
+      result.positional.push(arg);
+    }
+  }
+  return result;
+};
+var parseEndpoints = (raw) => {
+  const tokens = raw.split(",").map((token) => token.trim().toLowerCase()).filter((token) => token.length > 0);
+  if (tokens.length === 0) return null;
+  const endpoints = [];
+  for (const token of tokens) {
+    if (!ALL_ENDPOINTS.includes(token)) return null;
+    endpoints.push(token);
+  }
+  return endpoints;
+};
+var ENUM_PATTERN = /^enum\((.+)\)$/u;
+var ZOD_TYPE_BUILDERS = {
+  boolean: () => "z.boolean()",
+  datetime: () => "z.iso.datetime()",
+  number: () => "z.number()",
+  string: () => "z.string()"
+};
+var buildZodExpression = (typeToken) => {
+  const optional2 = typeToken.endsWith("?");
+  const base = optional2 ? typeToken.slice(0, -1) : typeToken;
+  const enumMatch = ENUM_PATTERN.exec(base);
+  let expression = null;
+  if (enumMatch !== null) {
+    const variants = (enumMatch[1] ?? "").split(",").map((value) => value.trim()).filter((value) => value.length > 0);
+    if (variants.length === 0) return null;
+    const quoted = variants.map((value) => `'${value}'`).join(", ");
+    expression = `z.enum([${quoted}])`;
+  } else {
+    const builder = ZOD_TYPE_BUILDERS[base];
+    expression = builder === void 0 ? null : builder();
+  }
+  if (expression === null) return null;
+  return optional2 ? `${expression}.nullish()` : expression;
+};
+var parseSchema = (raw) => {
+  const tokens = raw.split(",").reduce((accumulator, piece) => {
+    const last = accumulator.at(-1);
+    const lastOpen = (last?.match(/\(/gu) ?? []).length;
+    const lastClose = (last?.match(/\)/gu) ?? []).length;
+    if (last !== void 0 && lastOpen > lastClose) {
+      accumulator[accumulator.length - 1] = `${last},${piece}`;
+    } else {
+      accumulator.push(piece);
+    }
+    return accumulator;
+  }, []).map((part) => part.trim()).filter((part) => part.length > 0);
+  if (tokens.length === 0) return null;
+  const fields = [];
+  for (const token of tokens) {
+    const colon = token.indexOf(":");
+    if (colon === -1) return null;
+    const name = token.slice(0, colon).trim();
+    const typeToken = token.slice(colon + 1).trim();
+    if (name.length === 0 || !NAME_TOKEN_PATTERN.test(name)) return null;
+    const zodExpression = buildZodExpression(typeToken);
+    if (zodExpression === null) return null;
+    fields.push({ name, zodExpression });
+  }
+  return fields;
+};
+var parseArgs = (argv) => {
+  const flags = parseFlags5(argv);
+  const name = flags.positional[0];
+  if (name === void 0) return "missing required <name>";
+  if (!KEBAB_PATTERN2.test(name)) {
+    return `<name> must be kebab-case (e.g. "projects", "user-settings"); got: ${name}`;
+  }
+  if (flags.endpoints === void 0 || flags.endpoints.length === 0) {
+    return "--endpoints is required";
+  }
+  if (flags.schema === void 0 || flags.schema.length === 0) {
+    return "--schema is required";
+  }
+  const endpoints = parseEndpoints(flags.endpoints);
+  if (endpoints === null) {
+    return `--endpoints must be a comma-separated subset of ${ALL_ENDPOINTS.join(",")}`;
+  }
+  const fields = parseSchema(flags.schema);
+  if (fields === null) {
+    return '--schema entries must look like "name:string" (allowed types: string, number, boolean, datetime, enum(a,b,...); append "?" for optional)';
+  }
+  return {
+    endpoints: new Set(endpoints),
+    fields,
+    json: flags.json,
+    mocks: flags.mocks,
+    name
+  };
+};
+var toPascal = (kebab) => kebab.split("-").filter((part) => part.length > 0).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("");
+var toCamel = (kebab) => {
+  const pascal = toPascal(kebab);
+  return pascal.charAt(0).toLowerCase() + pascal.slice(1);
+};
+var toUpperConst = (kebab) => kebab.toUpperCase().replaceAll("-", "_");
+var singularize = (kebab) => {
+  if (kebab.endsWith("ies") && kebab.length > 3) {
+    return `${kebab.slice(0, -3)}y`;
+  }
+  if (kebab.endsWith("sses")) {
+    return kebab.slice(0, -2);
+  }
+  if (kebab.endsWith("xes") || kebab.endsWith("ches") || kebab.endsWith("shes")) {
+    return kebab.slice(0, -2);
+  }
+  if (kebab.endsWith("s") && !kebab.endsWith("ss")) {
+    return kebab.slice(0, -1);
+  }
+  return kebab;
+};
+var deriveNames = (name) => {
+  const singularKebab = singularize(name);
+  return {
+    NAME_UPPER: toUpperConst(name),
+    Plural: toPascal(name),
+    Singular: toPascal(singularKebab),
+    name,
+    plural: toCamel(name),
+    singular: toCamel(singularKebab)
+  };
+};
+var camelToSnake = (camel) => camel.replaceAll(/[A-Z]/gu, (match) => `_${match.toLowerCase()}`);
+var renderClientFields = (fields) => fields.map(({ name, zodExpression }) => `  ${name}: ${zodExpression},`);
+var renderServerFields = (fields) => fields.map(({ name, zodExpression }) => {
+  const snake = camelToSnake(name);
+  const key = snake === name ? name : snake;
+  return `  ${key}: ${zodExpression},`;
+});
+var MOCK_IMPORT_LINES = {
+  delete: "import del from './delete';",
+  get: "import get from './get';",
+  post: "import post from './post';",
+  put: "import put from './put';"
+};
+var MOCK_ARRAY_TOKENS = {
+  delete: "del",
+  get: "...get",
+  post: "post",
+  put: "put"
+};
+var composeMockBarrel = (endpoints) => {
+  const imports = ALL_ENDPOINTS.filter((endpoint) => endpoints.has(endpoint)).map((endpoint) => MOCK_IMPORT_LINES[endpoint]).join("\n");
+  const handlersArray = ALL_ENDPOINTS.filter((endpoint) => endpoints.has(endpoint)).map((endpoint) => MOCK_ARRAY_TOKENS[endpoint]).join(", ");
+  return { handlersArray, imports };
+};
+var updateDatabaseBarrel = (databasePath, derived) => {
+  const raw = readFileSync10(databasePath, "utf8");
+  const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
+  const resetCall = `reset${derived.Plural}()`;
+  if (raw.includes(importLine)) return { written: false };
+  const next = applyDatabaseEdits(raw, derived, importLine, resetCall);
+  if (next === raw) return { written: false };
+  writeFileSync7(databasePath, next, "utf8");
+  return { written: true };
+};
+var insertImportAlphabetically = (source, importLine) => {
+  const lines = source.split("\n");
+  const importPattern = /^import\s.*from\s+'\.\/[^']+\/data';$/u;
+  let firstImportIndex = -1;
+  let lastImportIndex = -1;
+  let insertIndex = -1;
+  for (const [index, line] of lines.entries()) {
+    if (importPattern.test(line)) {
+      if (firstImportIndex === -1) firstImportIndex = index;
+      lastImportIndex = index;
+      if (insertIndex === -1 && importLine.localeCompare(line) < 0) {
+        insertIndex = index;
+      }
+    }
+  }
+  if (firstImportIndex === -1) {
+    let topInsert = 0;
+    while (topInsert < lines.length && (lines[topInsert]?.startsWith("//") === true || lines[topInsert]?.trim().length === 0)) {
+      topInsert += 1;
+    }
+    return [
+      ...lines.slice(0, topInsert),
+      importLine,
+      "",
+      ...lines.slice(topInsert)
+    ].join("\n");
+  }
+  const target = insertIndex === -1 ? lastImportIndex + 1 : insertIndex;
+  return [...lines.slice(0, target), importLine, ...lines.slice(target)].join(
+    "\n"
+  );
+};
+var insertResetCallAlphabetically = (source, derived) => {
+  const pattern = /Promise\.all\(\[([^\]]*)\]\)/u;
+  const match = pattern.exec(source);
+  if (match === null) return source;
+  const inner = (match[1] ?? "").trim();
+  const newCall = `reset${derived.Plural}()`;
+  if (inner.length === 0) {
+    return source.replace(pattern, `Promise.all([${newCall}])`);
+  }
+  const calls = inner.split(",").map((token) => token.trim()).filter((token) => token.length > 0);
+  if (calls.includes(newCall)) return source;
+  calls.push(newCall);
+  calls.sort((leftCall, rightCall) => leftCall.localeCompare(rightCall));
+  const replaced = `Promise.all([${calls.join(", ")}])`;
+  return source.replace(pattern, replaced);
+};
+var insertCollectionExportAlphabetically = (source, derived) => {
+  const seedPattern = /export default \{\} as Record<string, never>;/u;
+  if (seedPattern.test(source)) {
+    return source.replace(seedPattern, `export default {${derived.plural}};`);
+  }
+  const populatedPattern = /export default \{([^}]*)\};/u;
+  const match = populatedPattern.exec(source);
+  if (match === null) return source;
+  const inner = (match[1] ?? "").trim();
+  const collections = inner.split(",").map((token) => token.trim()).filter((token) => token.length > 0);
+  if (collections.includes(derived.plural)) return source;
+  collections.push(derived.plural);
+  collections.sort(
+    (leftCollection, rightCollection) => leftCollection.localeCompare(rightCollection)
+  );
+  return source.replace(
+    populatedPattern,
+    `export default {${collections.join(", ")}};`
+  );
+};
+var applyDatabaseEdits = (source, derived, importLine, resetCall) => {
+  let next = source;
+  next = insertImportAlphabetically(next, importLine);
+  if (!next.includes(resetCall)) {
+    next = insertResetCallAlphabetically(next, derived);
+  }
+  next = insertCollectionExportAlphabetically(next, derived);
+  return next;
+};
+var TEMPLATES_DIR2 = path12.join(
+  path12.dirname(fileURLToPath4(import.meta.url)),
+  "templates"
+);
+var renderServiceTemplate = (templateName, vars) => renderTemplate(path12.join(TEMPLATES_DIR2, templateName), vars);
+var writeRendered = (absPath, contents, result) => {
+  const { written } = writeFileIfAbsent(absPath, contents);
+  if (written) {
+    result.written.push(absPath);
+  } else {
+    result.skipped.push(absPath);
+  }
+};
+var emitServiceFiles = (context, result) => {
+  const { derived, endpoints, fields, repoRoot: repoRoot2 } = context;
+  const serviceDir = path12.join(repoRoot2, "app", "services", "gaia", derived.name);
+  ensureDir(serviceDir);
+  const baseVars = {
+    NAME_UPPER: derived.NAME_UPPER,
+    Plural: derived.Plural,
+    Singular: derived.Singular,
+    name: derived.name,
+    plural: derived.plural,
+    singular: derived.singular
+  };
+  const parsersBody = renderServiceTemplate("service/parsers.ts.tmpl", {
+    ...baseVars,
+    fields: renderClientFields(fields)
+  });
+  writeRendered(path12.join(serviceDir, "parsers.ts"), parsersBody, result);
+  const typesBody = renderServiceTemplate("service/types.ts.tmpl", baseVars);
+  writeRendered(path12.join(serviceDir, "types.ts"), typesBody, result);
+  const requestsBody = renderServiceTemplate("service/requests.ts.tmpl", {
+    ...baseVars,
+    hasDelete: endpoints.has("delete"),
+    hasGet: endpoints.has("get"),
+    hasPost: endpoints.has("post"),
+    hasPut: endpoints.has("put")
+  });
+  writeRendered(path12.join(serviceDir, "requests.ts"), requestsBody, result);
+  const urlsBody = renderServiceTemplate("service/urls.ts.tmpl", baseVars);
+  writeRendered(path12.join(serviceDir, "urls.ts"), urlsBody, result);
+  const indexBody = renderServiceTemplate("service/index.ts.tmpl", baseVars);
+  writeRendered(path12.join(serviceDir, "index.ts"), indexBody, result);
+};
+var emitMockFiles = (context, result) => {
+  const { derived, endpoints, fields, repoRoot: repoRoot2 } = context;
+  const mockDir = path12.join(repoRoot2, "test", "mocks", derived.name);
+  ensureDir(mockDir);
+  const baseVars = {
+    NAME_UPPER: derived.NAME_UPPER,
+    Plural: derived.Plural,
+    Singular: derived.Singular,
+    name: derived.name,
+    plural: derived.plural,
+    singular: derived.singular
+  };
+  const dataBody = renderServiceTemplate("service/mock.data.ts.tmpl", {
+    ...baseVars,
+    serverFields: renderServerFields(fields)
+  });
+  writeRendered(path12.join(mockDir, "data.ts"), dataBody, result);
+  if (endpoints.has("get")) {
+    writeRendered(
+      path12.join(mockDir, "get.ts"),
+      renderServiceTemplate("service/mock.get.ts.tmpl", baseVars),
+      result
+    );
+  }
+  if (endpoints.has("post")) {
+    writeRendered(
+      path12.join(mockDir, "post.ts"),
+      renderServiceTemplate("service/mock.post.ts.tmpl", baseVars),
+      result
+    );
+  }
+  if (endpoints.has("put")) {
+    writeRendered(
+      path12.join(mockDir, "put.ts"),
+      renderServiceTemplate("service/mock.put.ts.tmpl", baseVars),
+      result
+    );
+  }
+  if (endpoints.has("delete")) {
+    writeRendered(
+      path12.join(mockDir, "delete.ts"),
+      renderServiceTemplate("service/mock.delete.ts.tmpl", baseVars),
+      result
+    );
+  }
+  const barrelBody = renderServiceTemplate("service/mock.index.ts.tmpl", {
+    ...baseVars,
+    ...composeMockBarrel(endpoints)
+  });
+  writeRendered(path12.join(mockDir, "index.ts"), barrelBody, result);
+  const databasePath = path12.join(repoRoot2, "test", "mocks", "database.ts");
+  if (existsSync13(databasePath)) {
+    const { written } = updateDatabaseBarrel(databasePath, derived);
+    if (written) result.edited.push(databasePath);
+    else result.skipped.push(databasePath);
+  }
+};
+var run15 = (argv, options = {}) => {
+  if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
+    printHelp();
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseArgs(argv);
+  if (typeof parsed === "string") {
+    return userError2(parsed, "scaffold service");
+  }
+  const result = { edited: [], skipped: [], written: [] };
+  const context = {
+    derived: deriveNames(parsed.name),
+    endpoints: parsed.endpoints,
+    fields: parsed.fields,
+    mocks: parsed.mocks,
+    repoRoot: options.cwd ?? process.cwd()
+  };
+  try {
+    emitServiceFiles(context, result);
+    if (parsed.mocks) emitMockFiles(context, result);
+  } catch (error51) {
+    structuredError({
+      code: "scaffold_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "scaffold service"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (parsed.json) {
+    process.stdout.write(`${JSON.stringify(result)}
+`);
+  } else {
+    for (const created of result.written) process.stdout.write(`+ ${created}
+`);
+    for (const edited of result.edited) process.stdout.write(`~ ${edited}
+`);
+    for (const skipped of result.skipped) process.stdout.write(`= ${skipped}
+`);
+  }
+  return EXIT_CODES.OK;
+};
+
 // src/scaffold/index.ts
-var HELP_TEXT2 = `Usage: gaia scaffold <subcommand> [args]
+var HELP_TEXT5 = `Usage: gaia scaffold <subcommand> [args]
 
   component <Name>         Scaffold a new React component (Phase 2).
   hook <useFoo>            Scaffold a new custom hook (Phase 2).
   route <name>             Scaffold a new route + page (Phase 2).
   service <name>           Scaffold a new API service (Phase 2).
 `;
-var HELP_TOKENS2 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var STUBBED_KINDS = /* @__PURE__ */ new Set(["component", "hook", "route", "service"]);
+var HELP_TOKENS3 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var STUBBED_KINDS = /* @__PURE__ */ new Set();
 var printNotImplemented = (kind) => {
   structuredError({
     code: "not_implemented",
@@ -15834,15 +17033,27 @@ var printNotImplemented = (kind) => {
   });
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
-var run12 = (argv) => {
+var run16 = (argv) => {
   const subcommand = argv[0];
   if (subcommand === void 0) {
-    process.stderr.write(HELP_TEXT2);
+    process.stderr.write(HELP_TEXT5);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (HELP_TOKENS2.has(subcommand)) {
-    process.stdout.write(HELP_TEXT2);
+  if (HELP_TOKENS3.has(subcommand)) {
+    process.stdout.write(HELP_TEXT5);
     return EXIT_CODES.OK;
+  }
+  if (subcommand === "component") {
+    return run12(argv.slice(1));
+  }
+  if (subcommand === "hook") {
+    return run13(argv.slice(1));
+  }
+  if (subcommand === "route") {
+    return run14(argv.slice(1));
+  }
+  if (subcommand === "service") {
+    return run15(argv.slice(1));
   }
   if (STUBBED_KINDS.has(subcommand)) {
     return printNotImplemented(subcommand);
@@ -15961,8 +17172,8 @@ var computeAuditBlock = (report) => {
 };
 
 // src/analytics/generator.ts
-import { existsSync as existsSync10, readdirSync as readdirSync4, readFileSync as readFileSync7 } from "node:fs";
-import path8 from "node:path";
+import { existsSync as existsSync14, readdirSync as readdirSync4, readFileSync as readFileSync11 } from "node:fs";
+import path13 from "node:path";
 var REPORT_WINDOW_DAYS = 30;
 var MS_PER_DAY = 864e5;
 var MS_PER_WEEK = MS_PER_DAY * 7;
@@ -15974,13 +17185,13 @@ var isoDateUtc = (date5) => {
   return `${year}-${month}-${day}`;
 };
 var readGaiaVersion = (roots) => {
-  const repoRoot = path8.dirname(
-    path8.dirname(path8.dirname(roots.projectIdPath))
+  const repoRoot2 = path13.dirname(
+    path13.dirname(path13.dirname(roots.projectIdPath))
   );
-  const packagePath = path8.join(repoRoot, "package.json");
-  if (!existsSync10(packagePath)) return "unknown";
+  const packagePath = path13.join(repoRoot2, "package.json");
+  if (!existsSync14(packagePath)) return "unknown";
   try {
-    const raw = readFileSync7(packagePath, "utf8");
+    const raw = readFileSync11(packagePath, "utf8");
     const parsed = JSON.parse(raw);
     return typeof parsed.version === "string" ? parsed.version : "unknown";
   } catch {
@@ -16040,7 +17251,7 @@ var accumulateEvent = (line, bounds, counts) => {
 var consumeFile = (filePath, bounds, counts) => {
   let raw;
   try {
-    raw = readFileSync7(filePath, "utf8");
+    raw = readFileSync11(filePath, "utf8");
   } catch {
     return;
   }
@@ -16050,7 +17261,7 @@ var consumeFile = (filePath, bounds, counts) => {
 };
 var readMentorshipEngagement = (roots, bounds) => {
   const counts = newEngagementCounts();
-  if (!existsSync10(roots.mentorshipDir)) return counts;
+  if (!existsSync14(roots.mentorshipDir)) return counts;
   let entries;
   try {
     entries = readdirSync4(roots.mentorshipDir);
@@ -16062,7 +17273,7 @@ var readMentorshipEngagement = (roots, bounds) => {
     const match = MENTORSHIP_FILENAME_REGEX.exec(entry);
     const fileDate = match?.[1];
     if (fileDate !== void 0 && fileDate >= startDate) {
-      consumeFile(path8.join(roots.mentorshipDir, entry), bounds, counts);
+      consumeFile(path13.join(roots.mentorshipDir, entry), bounds, counts);
     }
   }
   return counts;
@@ -16109,17 +17320,17 @@ var generateAnalyticsReport = async (args) => {
 };
 
 // src/analytics/writer.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync5, renameSync as renameSync2, writeFileSync as writeFileSync5 } from "node:fs";
-import path9 from "node:path";
+import { existsSync as existsSync15, mkdirSync as mkdirSync6, renameSync as renameSync2, writeFileSync as writeFileSync8 } from "node:fs";
+import path14 from "node:path";
 var ANALYTICS_DIR_MODE = 493;
 var REPORT_FILE_MODE = 420;
 var writeAnalyticsReport = async (args) => {
   const { report, roots } = args;
   const generatedAt = args.generatedAt ?? /* @__PURE__ */ new Date();
   const dateSegment = isoDateUtc(generatedAt);
-  const filePath = path9.join(roots.analyticsDir, `report-${dateSegment}.json`);
-  if (!existsSync11(roots.analyticsDir)) {
-    mkdirSync5(roots.analyticsDir, {
+  const filePath = path14.join(roots.analyticsDir, `report-${dateSegment}.json`);
+  if (!existsSync15(roots.analyticsDir)) {
+    mkdirSync6(roots.analyticsDir, {
       mode: ANALYTICS_DIR_MODE,
       recursive: true
     });
@@ -16127,7 +17338,7 @@ var writeAnalyticsReport = async (args) => {
   const contents = `${JSON.stringify(report, null, 2)}
 `;
   const temporaryPath = `${filePath}.tmp-${process.pid}-${process.hrtime.bigint().toString()}`;
-  writeFileSync5(temporaryPath, contents, { mode: REPORT_FILE_MODE });
+  writeFileSync8(temporaryPath, contents, { mode: REPORT_FILE_MODE });
   renameSync2(temporaryPath, filePath);
   return { filePath };
 };
@@ -16384,7 +17595,7 @@ var runAllPatternDetectors = (args) => {
 
 // src/profile/reader.ts
 import { readFile } from "node:fs/promises";
-import path10 from "node:path";
+import path15 from "node:path";
 
 // src/schemas/mentorship-payloads.ts
 var SPEC_ID_REGEX = /^SPEC-\d{3,}$/;
@@ -16568,7 +17779,7 @@ var readMentorshipEvents = async (args) => {
   const dates = enumerateWindowDates(now, windowDays);
   const events = [];
   for (const date5 of dates) {
-    const filePath = path10.join(roots.mentorshipDir, `events-${date5}.jsonl`);
+    const filePath = path15.join(roots.mentorshipDir, `events-${date5}.jsonl`);
     const raw = await readFileIfExists(filePath);
     if (raw !== null) events.push(...parseFileLines(raw, filePath));
   }
@@ -16576,7 +17787,7 @@ var readMentorshipEvents = async (args) => {
 };
 
 // src/profile/writer.ts
-import { rename, writeFile } from "node:fs/promises";
+import { rename, writeFile as writeFile2 } from "node:fs/promises";
 
 // src/profile/header.ts
 var PROFILE_DO_NOT_EDIT_HEADER = "> DO NOT EDIT \u2014 regenerated by `gaia telemetry compute-profile`. Use `gaia mentorship purge` or `disable` to change state.";
@@ -16689,7 +17900,7 @@ var renderProfile = (args) => {
 };
 var atomicWriteProfile = async (profilePath, contents) => {
   const temporaryPath = `${profilePath}.tmp.${process.pid}.${Date.now()}.${process.hrtime.bigint().toString()}`;
-  await writeFile(temporaryPath, contents, { mode: 384 });
+  await writeFile2(temporaryPath, contents, { mode: 384 });
   await rename(temporaryPath, profilePath);
 };
 
@@ -16871,7 +18082,7 @@ var computeProfile = async (options = {}) => {
 
 // src/telemetry/emit.ts
 import { createHash as createHash3 } from "node:crypto";
-import path11 from "node:path";
+import path16 from "node:path";
 
 // src/telemetry/envelope.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -16949,13 +18160,13 @@ var buildEnvelope = (args) => {
 };
 
 // src/telemetry/ndjson-writer.ts
-import { existsSync as existsSync12, readFileSync as readFileSync8 } from "node:fs";
+import { existsSync as existsSync16, readFileSync as readFileSync12 } from "node:fs";
 import { appendFile, chmod as chmod2, stat as stat2 } from "node:fs/promises";
 var appendIdempotent = async (args) => {
   const { eventId, fileMode, filePath, line } = args;
   const dedupNeedle = `"event_id":"${eventId}"`;
-  if (existsSync12(filePath)) {
-    const existing = readFileSync8(filePath, "utf8");
+  if (existsSync16(filePath)) {
+    const existing = readFileSync12(filePath, "utf8");
     if (existing.includes(dedupNeedle)) {
       return { written: false };
     }
@@ -17242,7 +18453,7 @@ var parseValueByKind = {
   },
   string: (_token, valueToken) => valueToken
 };
-var parseArgs = (argv) => {
+var parseArgs2 = (argv) => {
   const eventType = argv[0];
   const rest = argv.slice(1);
   if (eventType === void 0 || eventType.startsWith("--")) {
@@ -17352,7 +18563,7 @@ var writeCloud = async (envelope, roots, now) => {
       ok: false
     };
   }
-  const cloudPath = path11.join(
+  const cloudPath = path16.join(
     roots.cloudDir,
     `events-${todayIsoDate(now)}.jsonl`
   );
@@ -17366,7 +18577,7 @@ var writeCloud = async (envelope, roots, now) => {
 };
 var writeMentorship = async (envelope, roots, now) => {
   const mentorshipLine = JSON.stringify(envelope);
-  const mentorshipPath = path11.join(
+  const mentorshipPath = path16.join(
     roots.mentorshipDir,
     `events-${todayIsoDate(now)}.jsonl`
   );
@@ -17380,7 +18591,7 @@ var writeMentorship = async (envelope, roots, now) => {
 var parseAndValidate = (argv) => {
   let parsed;
   try {
-    parsed = parseArgs(argv);
+    parsed = parseArgs2(argv);
   } catch (error51) {
     const issue2 = error51 instanceof ArgParseError ? error51.issue : error51 instanceof Error ? error51.message : String(error51);
     const arg = error51 instanceof ArgParseError ? error51.arg : void 0;
@@ -17520,17 +18731,17 @@ var handleEmit = async (argv, options = {}) => {
 };
 
 // src/telemetry/index.ts
-var HELP_TEXT3 = `Usage: gaia telemetry <subcommand> [args]
+var HELP_TEXT6 = `Usage: gaia telemetry <subcommand> [args]
 
   emit <event_type> [--field value ...]   Emit one telemetry event.
   compute-profile                          Regenerate profile.md from events.
 `;
-var HELP_TOKENS3 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var run13 = async (argv) => {
+var HELP_TOKENS4 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var run17 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS3.has(subcommand)) {
-    process.stdout.write(HELP_TEXT3);
+  if (subcommand === void 0 || HELP_TOKENS4.has(subcommand)) {
+    process.stdout.write(HELP_TEXT6);
     return EXIT_CODES.OK;
   }
   if (subcommand === "emit") {
@@ -17547,7 +18758,7 @@ var run13 = async (argv) => {
 };
 
 // src/index.ts
-var HELP_TEXT4 = `Usage: gaia <subcommand> [args]
+var HELP_TEXT7 = `Usage: gaia <subcommand> [args]
 
   telemetry emit <event_type> [--field value ...]
   telemetry compute-profile
@@ -17555,20 +18766,20 @@ var HELP_TEXT4 = `Usage: gaia <subcommand> [args]
   mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
 `;
-var printHelp = () => {
-  process.stdout.write(HELP_TEXT4);
+var printHelp2 = () => {
+  process.stdout.write(HELP_TEXT7);
 };
-var HELP_TOKENS4 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS5 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS = {
   mentorship: run11,
-  scaffold: run12,
-  telemetry: run13
+  scaffold: run16,
+  telemetry: run17
 };
 var main = async () => {
   const subcommand = process.argv[2];
   const rest = process.argv.slice(3);
-  if (subcommand === void 0 || HELP_TOKENS4.has(subcommand)) {
-    printHelp();
+  if (subcommand === void 0 || HELP_TOKENS5.has(subcommand)) {
+    printHelp2();
     return EXIT_CODES.OK;
   }
   if (subcommand === "_internal-fetch-coaching") {

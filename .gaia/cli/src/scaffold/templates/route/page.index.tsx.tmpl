@@ -1,0 +1,19 @@
+import type {FC} from 'react';
+{{#hasI18n}}import {useTranslation} from 'react-i18next';
+{{/hasI18n}}
+const {{pageName}}: FC = () => {
+{{#hasI18n}}  const {t} = useTranslation('pages', {keyPrefix: '{{i18nKey}}'});
+
+  return (
+    <section className="flex h-full items-center justify-center p-4">
+      <h1>{t('title')}</h1>
+    </section>
+  );
+{{/hasI18n}}{{#noI18n}}  return (
+    <section className="flex h-full items-center justify-center p-4">
+      <h1>{{pageName}}</h1>
+    </section>
+  );
+{{/noI18n}}};
+
+export default {{pageName}};

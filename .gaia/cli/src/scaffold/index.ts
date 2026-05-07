@@ -14,6 +14,10 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {run as runComponent} from './component.js';
+import {run as runHook} from './hook.js';
+import {run as runRoute} from './route.js';
+import {run as runService} from './service.js';
 
 export {insertIntoBarrel} from './barrel.js';
 export {ensureDir, writeFileIfAbsent} from './fs.js';
@@ -31,7 +35,7 @@ const HELP_TEXT = `Usage: gaia scaffold <subcommand> [args]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-const STUBBED_KINDS = new Set(['component', 'hook', 'route', 'service']);
+const STUBBED_KINDS = new Set<string>();
 
 const printNotImplemented = (kind: string): number => {
   structuredError({
@@ -60,6 +64,22 @@ export const run = (argv: readonly string[]): number => {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
+  }
+
+  if (subcommand === 'component') {
+    return runComponent(argv.slice(1));
+  }
+
+  if (subcommand === 'hook') {
+    return runHook(argv.slice(1));
+  }
+
+  if (subcommand === 'route') {
+    return runRoute(argv.slice(1));
+  }
+
+  if (subcommand === 'service') {
+    return runService(argv.slice(1));
   }
 
   if (STUBBED_KINDS.has(subcommand)) {

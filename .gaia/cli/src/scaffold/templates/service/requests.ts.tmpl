@@ -1,0 +1,49 @@
+import {api} from '../api';
+import {{{plural}}Schema, {{singular}}Schema} from './parsers';
+import type {{{Plural}}, {{Singular}}} from './types';
+import {{{NAME_UPPER}}_URLS} from './urls';
+
+{{#hasGet}}
+export const getAll{{Plural}} = async (): Promise<{{Plural}}> => {
+  const result = await api({{NAME_UPPER}}_URLS.{{plural}});
+
+  return {{plural}}Schema.parse(result.data);
+};
+
+export const get{{Singular}}ById = async (id: string): Promise<{{Singular}}> => {
+  const result = await api({{NAME_UPPER}}_URLS.{{plural}}Id, {pathParams: {id}});
+
+  return {{singular}}Schema.parse(result.data);
+};
+
+{{/hasGet}}
+{{#hasPost}}
+export const create{{Singular}} = async (
+  body: FormData
+): Promise<{{Singular}}> => {
+  const result = await api({{NAME_UPPER}}_URLS.{{plural}}, {body, method: 'post'});
+
+  return {{singular}}Schema.parse(result.data);
+};
+
+{{/hasPost}}
+{{#hasPut}}
+export const update{{Singular}} = async (
+  body: FormData
+): Promise<{{Singular}}> => {
+  const id = String(body.get('id') ?? '');
+  const result = await api({{NAME_UPPER}}_URLS.{{plural}}Id, {
+    body,
+    method: 'put',
+    pathParams: {id},
+  });
+
+  return {{singular}}Schema.parse(result.data);
+};
+
+{{/hasPut}}
+{{#hasDelete}}
+export const delete{{Singular}} = async (id: string) =>
+  api({{NAME_UPPER}}_URLS.{{plural}}Id, {method: 'delete', pathParams: {id}});
+
+{{/hasDelete}}

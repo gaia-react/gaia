@@ -1,0 +1,16 @@
+import type {Meta, StoryFn} from '@storybook/react-vite';
+import stubs from 'test/stubs';
+import {{pageName}} from '..';
+
+const meta: Meta = {
+  component: {{pageName}},
+  decorators: [stubs.reactRouter()],
+  parameters: {
+    controls: {hideNoControlsWarning: true},
+  },
+  title: 'Pages/{{groupSegment}}/{{pageName}}',
+};
+
+export default meta;
+
+export const Default: StoryFn = () => <{{pageName}} />;

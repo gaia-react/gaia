@@ -1,0 +1,19 @@
+import {Collection} from '@msw/data';
+import {z} from 'zod';
+
+export const server{{Singular}}Schema = z.object({
+{{#each serverFields}}{{this}}
+{{/each}}});
+
+export type Server{{Singular}} = z.infer<typeof server{{Singular}}Schema>;
+
+export const {{plural}} = new Collection({schema: server{{Singular}}Schema});
+
+const seed: Server{{Singular}}[] = [];
+
+export const reset{{Plural}} = async (): Promise<void> => {
+  await {{plural}}.deleteMany((q) => q);
+  for (const record of seed) {
+    await {{plural}}.create(record);
+  }
+};
