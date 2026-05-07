@@ -1,6 +1,6 @@
 # UAT-write smoke
 
-Structural smoke for the SPEC-003 `before_implement` Playwright UAT auto-write hook. Drives `.specify/extensions/gaia/lib/uat-write.sh` against a sandbox SPEC fixture (`SPEC-099`) and verifies the renderer's write/rewrite/delete branches, idempotency, fixme heuristic, cache mirror, and manifest declarations. Maps to UAT-001..UAT-008 of SPEC-003. Ported from the prior `.specify/extensions/gaia/test/smoke-uat-write.md` runbook per SPEC-005 §Resolutions Q4 (every step in that runbook is procedural-deterministic — release-gate-harness genre, not UAT-runbook genre).
+Structural smoke for the `before_implement` Playwright UAT auto-write hook. Drives `.specify/extensions/gaia/lib/uat-write.sh` against a sandbox SPEC fixture (`SPEC-099`) and verifies the renderer's write/rewrite/delete branches, idempotency, fixme heuristic, cache mirror, and manifest declarations. Ported from a prior maintainer runbook (every step is procedural-deterministic — release-gate-harness genre, not UAT-runbook genre).
 
 ## Scope
 
@@ -21,7 +21,7 @@ What this smoke does NOT cover:
 - Live `/speckit-implement` hook fire — that requires a real spec-kit invocation and is out of scope for the smoke layer (same caveat as `wiki-promote/run.sh`).
 - The `EXECUTE_COMMAND: speckit.gaia.uat-write` directive emission on `/speckit-implement` — UI-driven, hand-verified.
 - The full Playwright assertion-pass cycle once the implementer turns the harness green.
-- The `AskUserQuestion` and explicit `$ARGUMENTS` branches of UAT-006 — UI-driven; only the documented algorithm is grep-checked.
+- The `AskUserQuestion` and explicit `$ARGUMENTS` branches of the SPEC resolution algorithm — UI-driven; only the documented algorithm is grep-checked.
 
 ## Run
 

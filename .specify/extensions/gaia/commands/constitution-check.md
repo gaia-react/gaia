@@ -11,7 +11,7 @@ Fired automatically by spec-kit on the `before_specify` event (mandatory hook). 
 - `$ARGUMENTS` — the same arguments the user passed to `/speckit-specify` or `/speckit-gaia-spec`. Echoed through unchanged; this hook does not consume them.
 - Working directory — the project root (a spec-kit-initialized project containing `.specify/memory/constitution.md` and `.specify/extensions/gaia/extension.yml`).
 
-## Step 1 — version-pin drift detection (UAT-018)
+## Step 1 — version-pin drift detection
 
 Run the version-check helper and capture its result:
 
@@ -23,7 +23,7 @@ The helper reads `requires.speckit_version` from `.specify/extensions/gaia/exten
 
 > `before_specify` blocked: spec-kit version drift detected. Align versions before continuing — see message above.
 
-## Step 2 — constitution placeholder scan (UAT-007)
+## Step 2 — constitution placeholder scan
 
 Read `.specify/memory/constitution.md`. Match the bracketed-placeholder pattern `\[[A-Z_0-9]+\]` (e.g. `[PROJECT_NAME]`, `[PRINCIPLE_1_NAME]`, `[CONSTITUTION_VERSION]`). If any matches are present:
 

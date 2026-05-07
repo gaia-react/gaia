@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Smoke: structural check for the SPEC-004 wiki-promote artifacts.
+# Smoke: structural check for the wiki-promote artifacts.
 #
 # Verifies the manifest + command files + revised-contracts amendment are
-# present and parse cleanly. Maps to UAT-006.
+# present and parse cleanly.
 #
 # Does NOT exercise the live hook fire — that requires a real
 # spec-kit invocation against a synthetic SPEC, branch, and PR, which is out

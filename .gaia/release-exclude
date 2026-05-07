@@ -48,9 +48,11 @@ wiki/concepts/Release Workflow.md
 .gaia/cli/dist
 
 # --- 5. Release-time maintainer tooling ---
-# This file itself + legacy scripts kept for reference but not shipped.
+# This file itself — adopters don't run GAIA releases. Note: `.gaia/scripts/`
+# DOES ship: `check-updates.sh` is the background refresher invoked by the
+# adopter-facing statusline (writes the cache the statusline reads for
+# `Run /update-deps` and `Run /update-gaia` indicators).
 .gaia/release-exclude
-.gaia/scripts
 
 # --- 6. Maintainer dev-tool configs ---
 # Per-machine tool configs initialized by `setup-gaia` on the adopter's

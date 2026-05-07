@@ -27,10 +27,6 @@
 #
 # Idempotency: re-running on an unchanged SPEC produces a zero-diff repo.
 # Hash compare per file uses sha256.
-#
-# Interface contract: SPEC-003 — see .specify/specs/SPEC-003-*/README.md.
-#
-# UATs covered: UAT-001, UAT-002, UAT-003, UAT-004, UAT-007, UAT-008.
 set -euo pipefail
 
 # --- Argument / usage handling ---

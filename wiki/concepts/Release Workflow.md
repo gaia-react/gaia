@@ -95,7 +95,8 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 ### 5. Release-time maintainer tooling
 
 - `.gaia/release-exclude` — this exclusion file itself.
-- `.gaia/scripts/` — legacy scripts (`generate-manifest.mjs` was superseded by `gaia release manifest`; the directory is kept for reference).
+
+`.gaia/scripts/` ships to adopters: `check-updates.sh` is the background refresher the statusline invokes to populate `Run /update-deps` and `Run /update-gaia` indicators.
 
 ### 6. Maintainer dev-tool configs
 

@@ -53,7 +53,7 @@ tags: [meta, log]
 - 2026-05-06 2e5ef3b - SKIP: style (lint+prettier sweep)
 - 2026-05-06 84e1a6d - SKIP: wiki: prefix (wiki sync commit itself)
 - 2026-05-06 ef53be1 - WORTHY: gaia-init installs spec-kit + GAIA extension + preset → wiki/decisions/spec-kit Extension Strategy.md, wiki/dependencies/spec-kit.md
-- 2026-05-06 24f694b - SKIP: test-only (UAT-001..UAT-018 evidence map); architecture captured in wiki/decisions/spec-kit Extension Strategy.md
+- 2026-05-06 24f694b - SKIP: test-only (UAT evidence map); architecture captured in wiki/decisions/spec-kit Extension Strategy.md
 - 2026-05-06 d5f7b6d - SKIP: test-only (sandbox v2 validation transcript); architecture captured in wiki/decisions/spec-kit Extension Strategy.md
 - 2026-05-06 22fbcc0 - WORTHY: real spec-kit extension + preset for GAIA → wiki/concepts/GAIA Spec.md, wiki/decisions/spec-kit Extension Strategy.md
 - 2026-05-06 05204a2 - WORTHY: salvaged GAIA wrapper scaffold from PR #84 → folded into wiki/concepts/GAIA Spec.md

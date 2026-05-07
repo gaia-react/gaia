@@ -2,7 +2,7 @@
 
 Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN.md` and prompts to chain into `/gaia plan`. Do not implement anything — this skill produces an artifact and stops.
 
-## Profile-driven coaching preamble (UAT-033/034)
+## Profile-driven coaching preamble
 
 Before composing the system prompt for this skill's agent context, fetch any active coaching adaptation:
 
@@ -10,7 +10,7 @@ Before composing the system prompt for this skill's agent context, fetch any act
 COACHING=$(.gaia/cli/gaia _internal-fetch-coaching --agent-type human --area-tags spec)
 ```
 
-If `$COACHING` is non-empty, prepend its contents to the system prompt as the first section. If empty (the v1.0.0 default — pattern detection ships wired-but-inert), the prompt is byte-identical to the non-mentorship path (UAT-034). The fetcher always exits 0 on a valid `--agent-type`, never blocks the flow, and writes `.gaia/cache/coaching-active.txt` only when a coaching block is actually returned (lights up the 🧭 statusline indicator per UAT-037).
+If `$COACHING` is non-empty, prepend its contents to the system prompt as the first section. If empty (the v1.0.0 default — pattern detection ships wired-but-inert), the prompt is byte-identical to the non-mentorship path. The fetcher always exits 0 on a valid `--agent-type`, never blocks the flow, and writes `.gaia/cache/coaching-active.txt` only when a coaching block is actually returned (lights up the 🧭 statusline indicator).
 
 `--area-tags` is `spec` for the pre-Gate-2 phase; once the SPEC's UAT clusters are known, downstream callers can re-fetch with the richer tag set. v1 wires only this `/gaia spec` PO path; Lead → Senior/Junior dispatch wiring lands with Sequel features.
 
@@ -55,7 +55,7 @@ Append via `printf '%s\n' '<json>' >> .gaia/local/telemetry/spec-pacing.jsonl`. 
 
 ### Session-shape cache (`spec-session-<spec_id>.json`)
 
-Used for the `time_to_resolved_spec` mentorship emit at Gate-2 save (UAT-022, UAT-027) and at abandoned-exit branches. The file lives at `.gaia/local/cache/spec-session-<spec_id>.json` and is the only place where elapsed-time and Q&A-count state are tracked across the multi-step flow. Schema:
+Used for the `time_to_resolved_spec` mentorship emit at Gate-2 save and at abandoned-exit branches. The file lives at `.gaia/local/cache/spec-session-<spec_id>.json` and is the only place where elapsed-time and Q&A-count state are tracked across the multi-step flow. Schema:
 
     {
       "spec_id": "SPEC-NNN",
@@ -112,7 +112,7 @@ Selection triggers: write draft cache (above), append `session_paused` telemetry
 
 The session-shape cache is NOT deleted on the `Save partial and resume later` path — a future resume reads it and continues counting questions against the same `start_at`. (Cache deletion happens only on canonical save at step 8, or on the `Discard SPEC-NNN draft cache` branch in step 2 — see step 2 for the discard handler.)
 
-#### Abandoned-exit emit (UAT-022)
+#### Abandoned-exit emit
 
 For the `Save partial and resume later` escape and any other branch that exits the wrapper without reaching step 8, fire a `time_to_resolved_spec` event with `--abandoned true`:
 
@@ -247,8 +247,8 @@ Use a plain prompt — not `AskUserQuestion`. The user reads, confirms, or revis
 >
 > **UATs:**
 >
-> - UAT-001 — Given … when … then …
-> - UAT-002 — Given … when … then …
+> - UAT-NNN — Given … when … then …
+> - UAT-NNN — Given … when … then …
 >
 > Does this match what you want, or should I revise before we go deeper?
 
@@ -256,7 +256,7 @@ If the user revises, fold revisions into the draft and re-present until they con
 
 On confirmation:
 
-1. **Cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The `after_clarify` hook (self-review) reads this cache to detect scope drift between gate 1 and gate 2 (UAT-016). **Skip this write if the snapshot already exists for this `spec_id` (resumed session); its purpose is immutable drift detection.**
+1. **Cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The `after_clarify` hook (self-review) reads this cache to detect scope drift between gate 1 and gate 2. **Skip this write if the snapshot already exists for this `spec_id` (resumed session); its purpose is immutable drift detection.**
 2. **Write the working-draft cache** per the operational primitive (`.gaia/local/cache/draft-<spec_id>.md`).
 3. **Append telemetry**: `gate1_confirmed` event with `intent_words` + `uat_count`.
 
@@ -282,7 +282,7 @@ Ask exactly one question per turn. No multi-question forms. No silent stacking.
 
 After the user selects an option (or supplies `Other` text), persist the fold via a single `Write` per the working-draft checkpoint primitive (answer into `clarifications.answered[]`, topic removed from `clarifications.pending[]`, statusline updated — all in one call). `Discuss this` and `Save partial and resume later` follow their own paths (5b and the escape primitive respectively).
 
-#### 5b. Discuss-this escape (UAT-004)
+#### 5b. Discuss-this escape
 
 When the user picks `Discuss this`, drop the structured loop and engage in plain Q&A on that single topic. Mirror, name trade-offs, propose candidates. When the user signals settlement (an explicit "ok, that one" or equivalent):
 
@@ -295,7 +295,7 @@ Do not loop back to the same closed-set options after a Discuss-this settlement.
 
 For genuinely open-ended questions (no clean discrete option set), use a plain prompt — not `AskUserQuestion`. Coach tone, never interrogator. Ask one at a time. After each answer, persist the fold via a single `Write` per the working-draft checkpoint primitive (answer into `clarifications.answered[]`, topic removed from `clarifications.pending[]`, statusline updated — all in one call).
 
-#### 5d. Per-topic exhaustion checkpoint (UAT-005)
+#### 5d. Per-topic exhaustion checkpoint
 
 When the natural well of follow-ups on a topic runs dry, announce explicitly via `AskUserQuestion`:
 
@@ -309,7 +309,7 @@ When the natural well of follow-ups on a topic runs dry, announce explicitly via
 
 Silent topic advance is forbidden. On `Push deeper on <topic>`, increment `push_deeper[<topic>]`. When that counter reaches 3 for any topic, switch to the revisit-counter prompt (see operational primitives) instead of repeating this checkpoint.
 
-#### 5e. Research subagent dispatch (UAT-014)
+#### 5e. Research subagent dispatch
 
 For any question that requires prior-art lookup, repo-convention investigation, or competitive analysis, dispatch a research subagent — never punt the research to the user.
 
@@ -378,7 +378,7 @@ Append a `self_review_findings` telemetry event with the counts (`low`, `medium`
 
   Wait for user direction. Apply or skip per the answer; if `revise differently`, fold the user's revision and re-cache.
 
-#### 6c. Pending clarifications block-or-defer (UAT-017)
+#### 6c. Pending clarifications block-or-defer
 
 For each item in `pending_clarifications[]`, surface via `AskUserQuestion`:
 
@@ -424,7 +424,7 @@ Update the frontmatter `updated` field to today's date.
 After the canonical write succeeds:
 1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md`. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
 2. **Append telemetry:** `spec_saved` event.
-3. **Emit `time_to_resolved_spec` (UAT-027):** read the session-shape cache, derive `area_tags` from the SPEC's UAT clusters, fire one mentorship event, then delete the cache. Failure to emit must NEVER block the save:
+3. **Emit `time_to_resolved_spec`:** read the session-shape cache, derive `area_tags` from the SPEC's UAT clusters, fire one mentorship event, then delete the cache. Failure to emit must NEVER block the save:
 
 ```bash
 SPEC_PATH=".gaia/local/specs/${SPEC_ID}.md"
@@ -480,7 +480,7 @@ Track `lint_cycle = <count>` in working memory (initialize to 1 on the first att
 
 On lint pass: continue to step 10.
 
-On lint fail (cycles 1–2): surface the failures verbatim. The user can fix and re-run the lint, or defer with rationale (which loops back to step 6's pending handling). For mutations of an already-saved SPEC, the helper enforces the explicit reopen ceremony — `## Reopen rationale` and `## UAT diff` sections required (UAT-011). Increment `lint_cycle` and continue.
+On lint fail (cycles 1–2): surface the failures verbatim. The user can fix and re-run the lint, or defer with rationale (which loops back to step 6's pending handling). For mutations of an already-saved SPEC, the helper enforces the explicit reopen ceremony — `## Reopen rationale` and `## UAT diff` sections required. Increment `lint_cycle` and continue.
 
 **On lint fail at cycle 3 (3 failed cycles in a row):** surface via `AskUserQuestion`:
 
@@ -506,7 +506,7 @@ The script handles the conditional logic without intervention:
 - If `gh auth status` succeeds AND `gh api repos/{owner}/{repo}` reports Issues enabled AND the viewer has write or admin permission, it creates a GitHub Issue titled `"<spec-id>: <intent first line>"` with the SPEC body, then stamps the issue URL into the SPEC frontmatter as `gh_issue_url`.
 - Otherwise, it appends a skip record to `.gaia/local/telemetry/gh-mirror.jsonl`, exits 0, and does not modify the SPEC. Absence does not block save and never propagates as an error.
 
-If the project uses non-GitHub remote tracking (GitLab, Bitbucket, none), the mirror step is a no-op. Do not prompt to mirror to alternative trackers — that is `ask_first` territory and out of SPEC-001 scope.
+If the project uses non-GitHub remote tracking (GitLab, Bitbucket, none), the mirror step is a no-op. Do not prompt to mirror to alternative trackers — that is `ask_first` territory and out of scope for this skill.
 
 ### 11. Inline chain-trigger to /gaia plan
 

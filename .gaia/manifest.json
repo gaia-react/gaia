@@ -107,6 +107,7 @@
     ".gaia/cli/templates/service/requests.ts.tmpl": "owned",
     ".gaia/cli/templates/service/types.ts.tmpl": "owned",
     ".gaia/cli/templates/service/urls.ts.tmpl": "owned",
+    ".gaia/scripts/check-updates.sh": "owned",
     ".gaia/statusline/gaia-statusline.sh": "owned",
     ".gaia/statusline/preferred-base.sh": "owned",
     ".gaia/templates/README.md": "owned",
@@ -421,6 +422,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-07T14:20:10.293Z",
+  "generated": "2026-05-07T15:22:33.064Z",
   "version": "1.0.5"
 }

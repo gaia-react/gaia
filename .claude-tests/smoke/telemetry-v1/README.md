@@ -1,27 +1,27 @@
 # telemetry-v1 smoke
 
-Release-gate harness for SPEC-001 telemetry-v1. Six deterministic tests covering the integration surface of the three-stream architecture (cloud / mentorship / analytics). Maps to UAT-046 (smoke test) plus the structural subset of UATs across the SPEC.
+Release-gate harness for telemetry-v1. Six deterministic tests covering the integration surface of the three-stream architecture (cloud / mentorship / analytics).
 
-The walk-through narrative for the full 47-UAT surface (with maintainer-judgment-allowed steps such as the `Tell me more` Q&A loop in UAT-007) lives at `.specify/extensions/gaia/test/smoke-telemetry-v1.md`. Per `.claude/rules/_internal/smoke.md`, classification is by *shape*: this harness is fully procedural; the runbook accommodates judgment.
+The walk-through narrative for the full UAT surface (with maintainer-judgment-allowed steps such as the `Tell me more` Q&A loop) lives at `.specify/extensions/gaia/test/smoke-telemetry-v1.md`. Per `.claude/rules/_internal/smoke.md`, classification is by *shape*: this harness is fully procedural; the runbook accommodates judgment.
 
 ## Scope
 
 What this smoke covers (all deterministic, all machine-checkable):
 
-1. **Envelope correctness end-to-end.** Emit a `uat_pass` event with mentorship enabled. Assert exactly one mentorship line written with `_local` present, exactly one cloud line written with `_local` absent and no forbidden identity-bearing keys, and the universal envelope keys (`event_id`, `schema_version`, `timestamp`, `event_type`, `project_id`, `session_hash`, `agent_type`, `payload`) are all present. Re-emit the same content within the dedup window: still exactly one line in each stream (UAT-012 idempotency).
-2. **Cloud-projection drift.** Construct a malformed envelope with an unexpected payload field. Invoke `projectToCloud` directly via a `tsx`-loaded ESM eval (no new `_internal-test-projection` subcommand needed — the eval keeps the test surface small). Assert exit `EXIT_CODES.CLOUD_PROJECTION_DRIFT (12)` and `code: cloud_projection_drift` in the result; assert no cloud file is created (UAT-014 fail-loud, UAT-013 forbidden-field absence).
-3. **File modes.** After a mentorship + cloud emit, assert mentorship dir is `700`, mentorship JSONL is `600`, cloud dir is `755`, cloud JSONL is `644` (UAT-001, UAT-003 contract).
-4. **Idempotent compute-profile.** Drop `articulation-fire.jsonl` into the scratch mentorship dir. Run `gaia telemetry compute-profile` twice. Assert `profile.md` exists with the `DO NOT EDIT` header (UAT-036), mode `600`, and the second-run content is identical to the first run modulo the embedded `Generated:` ISO timestamp (UAT-035 atomic-write contract).
-5. **Analytics dry-run audit attestation.** Drop the same fixture, run `compute-profile` (which writes `report-YYYY-MM-DD.json` because `analytics.enabled === true`), then run `gaia mentorship analytics dry-run`. Assert each of the four audit booleans literally equals `true` and that `audit.fields_present` matches the actual top-level keys (UAT-043).
-6. **Mentorship-disabled short-circuit.** With `mentorship.enabled === false`, emit a `uat_pass`. Assert the cloud line lands (cloud is independent of mentorship opt-in — UAT-009) and the mentorship file is absent. Run `compute-profile`. Assert exit 0, no `profile.md` written, no stdout output (UAT-026 chain-trigger contract relies on the silent-success short-circuit; UAT-040 disable contract).
+1. **Envelope correctness end-to-end.** Emit a `uat_pass` event with mentorship enabled. Assert exactly one mentorship line written with `_local` present, exactly one cloud line written with `_local` absent and no forbidden identity-bearing keys, and the universal envelope keys (`event_id`, `schema_version`, `timestamp`, `event_type`, `project_id`, `session_hash`, `agent_type`, `payload`) are all present. Re-emit the same content within the dedup window: still exactly one line in each stream (idempotency).
+2. **Cloud-projection drift.** Construct a malformed envelope with an unexpected payload field. Invoke `projectToCloud` directly via a `tsx`-loaded ESM eval (no new `_internal-test-projection` subcommand needed — the eval keeps the test surface small). Assert exit `EXIT_CODES.CLOUD_PROJECTION_DRIFT (12)` and `code: cloud_projection_drift` in the result; assert no cloud file is created (fail-loud, forbidden-field absence).
+3. **File modes.** After a mentorship + cloud emit, assert mentorship dir is `700`, mentorship JSONL is `600`, cloud dir is `755`, cloud JSONL is `644`.
+4. **Idempotent compute-profile.** Drop `articulation-fire.jsonl` into the scratch mentorship dir. Run `gaia telemetry compute-profile` twice. Assert `profile.md` exists with the `DO NOT EDIT` header, mode `600`, and the second-run content is identical to the first run modulo the embedded `Generated:` ISO timestamp (atomic-write contract).
+5. **Analytics dry-run audit attestation.** Drop the same fixture, run `compute-profile` (which writes `report-YYYY-MM-DD.json` because `analytics.enabled === true`), then run `gaia mentorship analytics dry-run`. Assert each of the four audit booleans literally equals `true` and that `audit.fields_present` matches the actual top-level keys.
+6. **Mentorship-disabled short-circuit.** With `mentorship.enabled === false`, emit a `uat_pass`. Assert the cloud line lands (cloud is independent of mentorship opt-in) and the mentorship file is absent. Run `compute-profile`. Assert exit 0, no `profile.md` written, no stdout output (chain-trigger contract relies on the silent-success short-circuit; disable contract).
 
 What this smoke does NOT cover:
 
 - Live `/gaia spec` → `/gaia plan` → UAT cycle. That is the maintainer-judgment walk-through in `.specify/extensions/gaia/test/smoke-telemetry-v1.md`.
-- The `gaia-init` `AskUserQuestion` three-option opt-in flow (UAT-004 / 005 / 006 / 007). UAT-007 in particular ("does the Q&A loop feel natural?") is inherently maintainer-judgment.
+- The `gaia-init` `AskUserQuestion` three-option opt-in flow. The "does the Q&A loop feel natural?" judgment step in particular is inherently maintainer-judgment.
 - Statusline 🧭 rendering. The visual indicator is a maintainer-eyes assertion in the runbook.
 - Pattern detection firing on real-usage data. Pattern detection ships wired-but-inert at v1.0.0 per the SPEC intent paragraph; the harness exercises the code paths against synthetic fixtures, not live accumulation.
-- The `.claude/rules/mentorship-display.md` enforcement (UAT-047) — that is a Claude-behavior assertion, not a CLI assertion.
+- The `.claude/rules/mentorship-display.md` enforcement — that is a Claude-behavior assertion, not a CLI assertion.
 
 ## Run
 
@@ -61,7 +61,7 @@ This avoids adding a new `_internal-test-projection` subcommand to maintain. The
 
 ## See also
 
-- `.specify/extensions/gaia/test/smoke-telemetry-v1.md` — UAT runbook (47-UAT walk-through, maintainer-judgment-allowed).
+- `.specify/extensions/gaia/test/smoke-telemetry-v1.md` — UAT runbook (full walk-through, maintainer-judgment-allowed).
 - `.claude/rules/_internal/smoke.md` — convention this harness implements.
 - `.gaia/local/plans/spec-001-telemetry-v1/task-smoke.md` — task brief.
 - `.gaia/local/specs/SPEC-001.md` — source SPEC.

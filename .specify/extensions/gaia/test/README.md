@@ -6,8 +6,8 @@ Artifacts that should NOT be here are runnable harnesses with `pass()`/`fail()`/
 
 ## Inventory
 
-- `smoke.md` — `/gaia spec` lifecycle smoke runbook (SPEC-001 evidence).
-- `uat-evidence.md` — UAT-001..UAT-018 mapping for SPEC-001 v2 implementation.
+- `smoke.md` — `/gaia spec` lifecycle smoke runbook.
+- `uat-evidence.md` — UAT mapping for the v2 implementation.
 - `v2-validation.md` — sandbox validation transcript for the v2 extension/preset.
 
 ## See also

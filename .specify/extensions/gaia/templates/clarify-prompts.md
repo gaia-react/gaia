@@ -3,7 +3,7 @@
 Structured Q&A copy applied by the GAIA preset when `/speckit.clarify`
 runs under `/gaia spec`. These templates are visible and editable here
 by design — never hardcode a question bank outside this directory
-(per `scope_boundaries.never` in SPEC-001).
+(per the SPEC's `scope_boundaries.never`).
 
 The PO agent driving the Socratic loop reads these templates and adapts
 the placeholder slots (`<topic>`, `<question>`, `<option-N>`, `<next>`)
@@ -126,7 +126,7 @@ Example:
 
 ---
 
-## Rule 5 — Per-topic exhaustion checkpoint (UAT-005)
+## Rule 5 — Per-topic exhaustion checkpoint
 
 When the PO has run out of natural follow-up questions on the current
 topic, it announces explicitly via `AskUserQuestion`. **Silent topic
@@ -158,7 +158,7 @@ the user's choice is required.
 
 ---
 
-## Rule 6 — Research dispatch announce (UAT-014)
+## Rule 6 — Research dispatch announce
 
 When a discovery question requires prior-art lookup, repo-convention
 inspection, or competitive comparison, the PO dispatches a research

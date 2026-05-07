@@ -140,7 +140,7 @@ test -f "$PLAN_DIR/README.md" \
 
 If any required file is missing, surface the failure to the user with the planner's return payload. Do not retry silently — the user decides whether to re-spawn or investigate. Never proceed to step 5 with an incomplete plan folder.
 
-### 4.6. Telemetry: revision detection (UAT-028)
+### 4.6. Telemetry: revision detection
 
 If the slug-collision suffix from step 3 is greater than 1 (i.e. `PLAN_DIR` ends with `-2`, `-3`, …) AND `SPEC_PATH` was set in step 1a, this plan is a revision of a prior plan. Emit a `plan_revised` mentorship event so the over-time pattern detector sees it.
 
@@ -185,7 +185,7 @@ fi
 Notes:
 - `revision-class` is hardcoded to `scope_change` in v1.0.0 — the most common case. Future refinement may compute the class from the diff between prior and new task lists.
 - The emit fires only when `SPEC_PATH` is set, because `plan_revised` requires `--spec-id`. Plans authored without a SPEC reference do not currently emit revision events; that surface lands when consumer-driven cloud event payloads ship.
-- The emit is not gated on mentorship opt-in here; the CLI itself short-circuits for mentorship-disabled state and always emits the cloud projection (UAT-009).
+- The emit is not gated on mentorship opt-in here; the CLI itself short-circuits for mentorship-disabled state and always emits the cloud projection.
 
 ### 5. Report to user
 

@@ -21,14 +21,13 @@ If the SPEC file is missing, exit with: `wiki-promote: SPEC artifact not found; 
 
 Branch on `wiki_promote_default`:
 
-- `no` → exit silently with: `wiki-promote: SPEC-NNN skipped per frontmatter (wiki_promote_default: no).` (UAT-002)
+- `no` → exit silently with: `wiki-promote: SPEC-NNN skipped per frontmatter (wiki_promote_default: no).`
 - `ask` → surface `AskUserQuestion`:
   - Question: `Promote SPEC-NNN to wiki? (default yes)`
   - Options: `Yes, promote now` / `No, skip silently` / `Preview pages without writing`
   - On `Yes` → continue to Step 3.
   - On `No` → exit silently with the skip report.
   - On `Preview` → render the candidate pages (call Step 4 + Step 5 in dry-run mode), print to stdout, exit without writing. Mark this branch with `--preview` for downstream tasks.
-  (UAT-003)
 - `yes` → continue to Step 3.
 - Any other value → emit warning `wiki-promote: unrecognized wiki_promote_default '<value>'; treating as 'no'.` and exit silently.
 
@@ -57,7 +56,7 @@ If `$pr_json` is `[]` (no merged PR for this branch):
    ```
    (Cache directory creation: `mkdir -p .gaia/local/cache/wiki-promote/`. The `.gaia/local/` line in `.gitignore` covers this path.)
 
-2. Exit with: `wiki-promote: SPEC-NNN deferred — awaiting PR merge for branch <current_branch>. Drain via /gaia spec close SPEC-NNN after merge.` (UAT-005)
+2. Exit with: `wiki-promote: SPEC-NNN deferred — awaiting PR merge for branch <current_branch>. Drain via /gaia spec close SPEC-NNN after merge.`
 
 If `$pr_json` contains a merged PR:
 
@@ -137,7 +136,7 @@ For each tuple:
 | Status | Action |
 |---|---|
 | `new` | Render frontmatter + body (per Step 5b). Write file. Append to `pages_written`. |
-| `our-update` | Read existing frontmatter, preserve `created`. Render fresh frontmatter (advancing `updated` and `promoted_at` to today/now) + body. Write file. Append to `pages_updated`. (UAT-004) |
+| `our-update` | Read existing frontmatter, preserve `created`. Render fresh frontmatter (advancing `updated` and `promoted_at` to today/now) + body. Write file. Append to `pages_updated`. |
 | `hand-edited` | Do NOT write. Emit warning to stdout: `wiki-promote: skipped wiki/<subdomain>/<spec-slug>.md (hand-edited since last promotion).`. Append a log line `WARN: skipped wiki/<subdomain>/<spec-slug>.md (hand-edited since last promotion)`. Append the path to `pages_skipped`. |
 | `foreign-collision` | Do NOT write. Emit warning to stdout: `wiki-promote: target wiki/<subdomain>/<spec-slug>.md exists with no promoted_from match; skipped to avoid clobbering hand-authored content.`. Append a log line `WARN: skipped wiki/<subdomain>/<spec-slug>.md (foreign-collision; no promoted_from match)`. Append the path to `pages_skipped`. |
 
@@ -191,9 +190,9 @@ Render the body in the following sections, in order, immediately after the closi
 
 1. **Title** — H1 line copied verbatim from the SPEC's H1 (the first `# ` line in the SPEC body).
 2. **Lede** — first paragraph of the SPEC's `## One-line summary` section if present; else the first paragraph of the SPEC's `## Intent` section. If neither exists, fall back to a single-line lede `Promoted from SPEC-NNN.`.
-3. **Decisions / behaviors** — under an H2 `## Decisions` (for `type: decision`) or `## Behavior` (for all other types), include the SPEC's `## Intent` body and, if present, the SPEC's `## Composition with SPEC-001 architecture` body. Adapt voice from future-tense ("will promote") to present-tense ("promotes") where the change is mechanical; leave wording alone where rewriting risks meaning drift.
+3. **Decisions / behaviors** — under an H2 `## Decisions` (for `type: decision`) or `## Behavior` (for all other types), include the SPEC's `## Intent` body and, if present, any H2 in the SPEC body whose heading begins with `## Composition with ` (the section that explains how the SPEC composes with prior architecture). Adapt voice from future-tense ("will promote") to present-tense ("promotes") where the change is mechanical; leave wording alone where rewriting risks meaning drift.
 4. **UAT references** — under an H2 `## UAT references`, render a bullet list. For each entry in the SPEC's frontmatter `uats:` list, emit `- **<UAT-ID>** — <one-line summary>`. Source the one-line summary from the UAT entry's `summary` field if present; otherwise the first sentence of its `intent` field. If `uats:` is empty or absent, omit the entire `## UAT references` section.
-5. **Related** — sibling wikilinks (UAT-007). Determine the set of sibling pages produced by the **current run**: every entry in the union of `pages_written` and `pages_updated` whose `target_path` is not the page being rendered. (Skipped pages — `hand-edited`, `foreign-collision` — are excluded; their files were not written and a wikilink would dangle.)
+5. **Related** — sibling wikilinks. Determine the set of sibling pages produced by the **current run**: every entry in the union of `pages_written` and `pages_updated` whose `target_path` is not the page being rendered. (Skipped pages — `hand-edited`, `foreign-collision` — are excluded; their files were not written and a wikilink would dangle.)
 
    - **Solo-page promotion** (no siblings): omit the entire `## Related` section. Do not emit the H2 at all.
    - **Has siblings**: emit:
