@@ -18,6 +18,8 @@ The wiki is critical infrastructure — it decays when drift between code and do
 
 **`gaia wiki commit-classify`** — Evaluates commits since a baseline SHA. For each commit, outputs `suggestion` (`WORTHY` or `SKIP`) based on subject and file paths. WORTHY commits warrant deep-read and wiki update; SKIP commits can be logged without wiki edits. The classification is deterministic — same commit always produces the same suggestion.
 
+**`gaia wiki state-init <sha>`** — Creates `wiki/.state.json` seeded from `<sha>`; refuses if the file already exists. Bootstrap primitive used during repo onboarding before the first `/wiki-sync`.
+
 **`gaia wiki state-bump <field> <value>`** — Atomically updates `wiki/.state.json`, preserving sibling fields and key order. Used by `/wiki-sync` to advance `last_evaluated_sha` and `last_evaluated_at`; used by `/wiki-consolidate` to advance `last_consolidated_sha`.
 
 **`gaia wiki log-prepend`** — Appends a single line to `wiki/log.md` in the format `- <YYYY-MM-DD> <sha> <decision> — <reason>`. Atomic insertion after frontmatter, newest entries on top. One call per commit.
@@ -27,6 +29,10 @@ The wiki is critical infrastructure — it decays when drift between code and do
 **`gaia wiki orphans`** — Lists pages with zero inbound links (newline-separated). Candidates for archival or cross-linking.
 
 **`gaia wiki near-collisions`** — Groups pages per domain (decisions, concepts, modules, etc.) and finds near-duplicate titles using Levenshtein distance. Used by `/wiki-consolidate` to surface redundancy.
+
+**`gaia wiki dead-paths`** — Lists backticked repo paths in `wiki/` body prose that don't exist on disk. Used by `/wiki-lint` to catch zombie filename references after merges and renames.
+
+**`gaia wiki sync land`** — Branch-aware landing of staged wiki changes: commits in place on a feature branch; on `main`, stages a branch and opens a PR. Used by `/wiki-sync` as the deterministic write step.
 
 ## State file
 

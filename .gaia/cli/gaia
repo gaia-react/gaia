@@ -24226,7 +24226,7 @@ var HELP_TEXT38 = `Usage: gaia <subcommand> [args]
   mentorship enable|disable|purge|status
   mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
-  wiki state|commit-classify|state-bump|log-prepend|page-index|orphans|near-collisions
+  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   update merge --baseline <dir> --latest <dir> --manifest <path>
   release preflight|bump|changelog|scrub-wiki|manifest|commit-and-tag
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
