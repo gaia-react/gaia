@@ -50,12 +50,13 @@ jobs:
           fi
           echo "notes-path=release-notes.md" >> "$GITHUB_OUTPUT"
 
-      - name: Build scrubbed tarball
+      - name: Stage release tree
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          # Drive the tarball from `git ls-files` so it only contains tracked
-          # files (no .DS_Store, node_modules, build artifacts, etc.) and then
-          # additionally filter out paths matched by .gaia/release-exclude.
+          # Drive the staged file set from `git ls-files` so it only
+          # contains tracked files (no .DS_Store, node_modules, build
+          # artifacts, etc.), then filter out paths matched by
+          # .gaia/release-exclude.
           git ls-files > /tmp/all-tracked.txt
           awk '/^[[:space:]]*#/ {next} NF==0 {next} {print}' .gaia/release-exclude \
             | sed 's|[][\\.*^$()+?{}|]|\\&|g' \
@@ -66,9 +67,26 @@ jobs:
           else
             cp /tmp/all-tracked.txt /tmp/include.txt
           fi
-          tar -czf "gaia-${TAG}.tar.gz" \
-            --transform "s,^,gaia-${TAG}/," \
-            -T /tmp/include.txt
+          STAGING="/tmp/gaia-${TAG}"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          rsync -a --files-from=/tmp/include.txt . "$STAGING"/
+          echo "Staged $(find "$STAGING" -type f | wc -l) files into $STAGING"
+
+      - name: Bundle-time scrub (marker-strip + leak-check)
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          ./.gaia/cli/gaia release scrub "/tmp/gaia-${TAG}"
+
+      - name: Verify runtime dependencies
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          ./.gaia/cli/gaia release runtime-deps --staging "/tmp/gaia-${TAG}"
+
+      - name: Build tarball
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          tar -czf "gaia-${TAG}.tar.gz" -C /tmp "gaia-${TAG}"
           echo "Tarball contents (first 30):"
           tar -tzf "gaia-${TAG}.tar.gz" | head -30
           echo "Total entries: $(tar -tzf gaia-${TAG}.tar.gz | wc -l)"

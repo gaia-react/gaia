@@ -1,0 +1,155 @@
+# Bundle-time scrub config. Consumed by `gaia release scrub <staging-dir>`
+# from inside `release.yml` between staging and tarball creation.
+#
+# Two transforms run in order against the staging tree:
+#
+#   1. marker-strip — remove maintainer-only blocks delimited by HTML
+#      comment markers from in-scope markdown files.
+#
+#   2. leak-check — run codified audit patterns against the post-strip
+#      staging tree. Non-empty match = build failure with a leak report.
+#      Mirrors the patterns in `.claude/rules/wiki-style.md` Audit section
+#      and `.gaia/cli/health/taxonomy.md` Distribution boundary classes.
+#
+# Path globs use `*` (single segment) and `**` (any depth). Globs match
+# repo-relative paths under the staging directory.
+#
+# This file is itself maintainer-only (release-exclude category 5).
+# Adopters never run `gaia release scrub`.
+
+transforms:
+  - type: marker-strip
+    paths:
+      - "wiki/**/*.md"
+      - ".claude/**/*.md"
+      - ".specify/extensions/gaia/**/*.md"
+    start: "<!-- gaia:maintainer-only:start -->"
+    end: "<!-- gaia:maintainer-only:end -->"
+
+  - type: leak-check
+    checks:
+      # ---- UAT-NNN narrative refs (working-doc identifiers) ----
+      - id: uat-narrative
+        description: "UAT-NNN narrative references in shipped instruction surfaces"
+        pattern: "UAT-[0-9]{3}"
+        scope:
+          - ".claude/skills/**"
+          - ".claude/commands/**"
+          - ".claude/agents/**"
+          - ".claude/rules/**"
+          - ".claude/hooks/**"
+          - ".specify/extensions/gaia/README.md"
+          - ".specify/extensions/gaia/commands/**"
+          - ".specify/extensions/gaia/lib/**"
+          - ".specify/extensions/gaia/rules/**"
+          - ".specify/extensions/gaia/templates/**"
+        path-allowlist:
+          # The rule itself names concrete IDs to teach adopters what NOT
+          # to write.
+          - ".claude/rules/wiki-style.md"
+          # The wiki-lint command's documentation describes what its audit
+          # flags, with concrete-ID examples by design.
+          - ".claude/commands/wiki-lint.md"
+        # Lines matching ANY of these regexes are exempt. Structural matches
+        # only — see `.claude/rules/wiki-style.md` Exceptions for the contract.
+        line-allowlist:
+          # Identifier fragments inside variable names: uat_id, uats_block,
+          # seen_uat_files, --uat-id CLI flag form.
+          - "uat[-_]id|uats_block|seen_uat_files"
+          # Filename literals like uat-001.spec.ts.
+          - "uat-[0-9]+\\.spec\\.[a-z]+"
+          # Frontmatter-style fixture: `uat_id: 'UAT-099'` or `uat_id: UAT-099`.
+          - "uat_id\\s*[:=]\\s*['\"]?UAT-"
+
+      # ---- Concrete maintainer SPEC IDs ----
+      - id: spec-concrete-ids
+        description: "Concrete maintainer SPEC IDs in shipped instruction surfaces"
+        pattern: "\\bSPEC-00[1-9]\\b"
+        scope:
+          - ".claude/skills/**"
+          - ".claude/commands/**"
+          - ".claude/agents/**"
+          - ".claude/rules/**"
+          - ".claude/hooks/**"
+          - ".specify/extensions/gaia/README.md"
+          - ".specify/extensions/gaia/commands/**"
+          - ".specify/extensions/gaia/lib/**"
+          - ".specify/extensions/gaia/rules/**"
+          - ".specify/extensions/gaia/templates/**"
+        path-allowlist:
+          # The rule itself names concrete IDs to teach adopters what NOT to
+          # do. Self-referential prose is the rule's body.
+          - ".claude/rules/wiki-style.md"
+          # The wiki-lint command's documentation cites concrete-ID
+          # examples that mirror the audit findings it surfaces.
+          - ".claude/commands/wiki-lint.md"
+        line-allowlist:
+          # Illustrative usage in CLI/SPEC docs: `(e.g. SPEC-002)` or
+          # `(e.g. \`SPEC-002\`)` (with optional backticks around the ID).
+          - "e\\.g\\.\\s*`?SPEC-00[1-9]"
+
+      # ---- Release-excluded paths leaked into shipped surfaces ----
+      - id: maintainer-paths
+        description: "Release-excluded paths referenced in shipped surfaces"
+        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.claude-tests/|\\.claude/rules/_internal/"
+        scope:
+          - "CLAUDE.md"
+          - ".claude/**"
+          - "wiki/**"
+          - ".gaia/statusline/**"
+          - ".specify/extensions/gaia/README.md"
+          - ".specify/extensions/gaia/commands/**"
+          - ".specify/extensions/gaia/lib/**"
+          - ".specify/extensions/gaia/rules/**"
+          - ".specify/extensions/gaia/templates/**"
+        path-allowlist:
+          # Self-referential — the rule's body cites the audit greps it
+          # codifies, including the maintainer-only `.claude-tests/` scope.
+          - ".claude/rules/wiki-style.md"
+          # Self-referential — the lint command's documentation describes
+          # the same audit greps and target paths.
+          - ".claude/commands/wiki-lint.md"
+          # Documents the smoke-harness convention split between
+          # `.specify/extensions/gaia/test/` (UAT runbooks) and
+          # `.claude-tests/smoke/` (release-gate harnesses); literal paths
+          # are the rule's classification table, not stray references.
+          - ".specify/extensions/gaia/rules/smoke.md"
+          # Telemetry concept page describes maintainer architecture
+          # (`.gaia/cli/src/`) by design — the framing line caveats it.
+          # Allowlisted by the audit taxonomy.
+          - "wiki/concepts/Telemetry.md"
+          # Adopter-owned sentinels that ship in the tarball but contain
+          # release-baseline content after `gaia release scrub-wiki`
+          # (Step 8 of `/gaia-release`). Local simulations against
+          # mid-development hot/log content would otherwise false-positive.
+          - "wiki/hot.md"
+          - "wiki/log.md"
+
+      # ---- Sibling-monorepo path prefixes ----
+      - id: monorepo-prefix
+        description: "Maintainer monorepo siblings (studio/, website/) in shipped surfaces"
+        pattern: "(?:^|[\\s`(/])(studio|website)/"
+        scope:
+          - "CLAUDE.md"
+          - ".claude/**"
+          - "wiki/**"
+          - ".specify/extensions/gaia/README.md"
+          - ".specify/extensions/gaia/commands/**"
+          - ".specify/extensions/gaia/lib/**"
+          - ".specify/extensions/gaia/rules/**"
+          - ".specify/extensions/gaia/templates/**"
+        path-allowlist:
+          # Same hot/log carve-out as maintainer-paths — they get
+          # release-baseline content via `gaia release scrub-wiki`.
+          - "wiki/hot.md"
+          - "wiki/log.md"
+
+      # ---- Absolute filesystem literals ----
+      - id: absolute-paths
+        description: "Absolute /Users or /home filesystem paths in shipped Claude files"
+        pattern: "/Users/|/home/"
+        scope:
+          - ".claude/**"
+        path-allowlist:
+          # The rule's own counter-example prose documents this pattern.
+          - ".claude/rules/instruction-files.md"
