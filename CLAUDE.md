@@ -11,6 +11,8 @@ When reporting information to me, be extremely concise and sacrifice grammar for
 3. **Don't cross-load domains.** Technical work → `wiki/modules/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/components/`, `wiki/flows/`, `wiki/dependencies/`. Only pull from other domains when the task genuinely spans both.
 4. `wiki/hot.md` auto-loads at session start — it's a 200-word cache of "where we left off", not a fact store. Don't bloat it on updates.
 
+When writing or editing wiki body prose or code comments, follow @.claude/rules/wiki-style.md — present tense only, no UAT references, no inline PR/commit/date-of-change references. Git history and `wiki/log.md` carry the historical record.
+
 ## Memory Discipline
 
 The machine-local auto-memory (`~/.claude/projects/.../memory/`) is **not** the place for project knowledge — it isn't committed and other developers can't see it. Save durable knowledge to the wiki or `.claude/rules/` instead. Only keep genuinely machine-local personal prefs in memory.
