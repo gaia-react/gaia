@@ -2,7 +2,7 @@
 
 Walk-through narrative covering every one of the SPEC's 47 UATs. Maintainer-judgment-allowed throughout (the `Tell me more` Q&A loop in UAT-007 is the obvious example — assertions like "does the explainer copy read as intended?" cannot land in a deterministic harness). This is the document the maintainer reads during SPEC verification; the procedural-deterministic subset is the release-gate harness at `.claude-tests/smoke/telemetry-v1/run.sh`.
 
-The two artifacts are siblings, not duplicates. Per `.claude/rules/_internal/smoke.md`, classification is by *shape*: this runbook accommodates judgment; the harness is fully procedural. Both ship with the SPEC.
+The two artifacts are siblings, not duplicates. Per `.specify/extensions/gaia/rules/smoke.md`, classification is by *shape*: this runbook accommodates judgment; the harness is fully procedural. Both ship with the SPEC.
 
 ## How to use this runbook
 

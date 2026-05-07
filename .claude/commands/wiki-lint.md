@@ -5,12 +5,12 @@ description: Health check the GAIA wiki — runs the upstream claude-obsidian wi
 
 ## Execution model — READ FIRST
 
-**Do not execute the playbook yourself in the current conversation.** Dispatch a Sonnet subagent via the `Agent` tool. The work is mechanical (rule-based orphan/dead-link/frontmatter checks plus a deterministic drift severity table) — Sonnet is sufficient, and a fresh context avoids dragging the upstream skill's large wiki-page reads into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
+**Do not execute the playbook yourself in the current conversation.** Dispatch a Haiku subagent via the `Agent` tool. The work is mechanical (rule-based orphan/dead-link/frontmatter checks plus a deterministic drift severity table) — Haiku is sufficient, and a fresh context avoids dragging the upstream skill's large wiki-page reads into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
 
 Spawn:
 
 - `subagent_type`: `"general-purpose"`
-- `model`: `"sonnet"`
+- `model`: `"haiku"`
 - `description`: `"Wiki lint"`
 - `prompt`: the string below (literal, no paraphrasing):
 

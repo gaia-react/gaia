@@ -47,7 +47,7 @@ The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe thro
 
 - The hook is **idempotent**: re-firing on an unchanged SPEC produces zero file diffs. Per-UAT content hashes are stored in the cache file at `.gaia/local/cache/uat-write/<SPEC-ID>.json`; matching hashes short-circuit the write path.
 - The hook reads/writes **only** to `.playwright/e2e/<spec-dir>/` plus the cache file under `.gaia/local/cache/uat-write/`. It never edits the SPEC, source, or any other directory.
-- Generated specs carry an inline divergence-rule header pointing to `.claude/rules/uat-divergence.md`. The implementer may make cosmetic edits (selector text, button label, copy) but logical changes (flow, success criteria, error handling) are forbidden.
+- Generated specs carry an inline divergence-rule header pointing to `.specify/extensions/gaia/rules/uat-divergence.md`. The implementer may make cosmetic edits (selector text, button label, copy) but logical changes (flow, success criteria, error handling) are forbidden.
 - Orphaned spec files (a `uat-NNN.spec.ts` whose `UAT-NNN` no longer appears in the SPEC) are **hard-deleted**, not archived. Git preserves history; an `_archived/` directory would be picked up by CI globs.
 - The hook fires only on `before_implement`. It is not invoked by any other lifecycle event.
 - Pluggability: only Playwright is supported in this SPEC. Vitest e2e / Cypress is a future SPEC.

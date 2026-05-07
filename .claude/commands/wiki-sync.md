@@ -5,12 +5,12 @@ description: Evaluate commits since last sync and update the wiki where warrante
 
 ## Execution model — READ FIRST
 
-**Do not execute the playbook yourself in the current conversation.** Dispatch a Sonnet subagent via the `Agent` tool. The work is mechanical (rule-based WORTHY/SKIP classification, file edits, structured commits) — Sonnet is sufficient, and a fresh context avoids dragging git diffs and log content into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
+**Do not execute the playbook yourself in the current conversation.** Dispatch a Haiku subagent via the `Agent` tool. The work is mechanical (rule-based WORTHY/SKIP classification, file edits, structured commits) — Haiku is sufficient, and a fresh context avoids dragging git diffs and log content into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
 
 Spawn:
 
 - `subagent_type`: `"general-purpose"`
-- `model`: `"sonnet"`
+- `model`: `"haiku"`
 - `description`: `"Wiki sync"`
 - `prompt`: the string below (literal, no paraphrasing):
 

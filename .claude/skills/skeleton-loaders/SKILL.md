@@ -1,6 +1,7 @@
 ---
 name: skeleton-loaders
 description: For building skeleton loading states that are pixel-perfect matches of real content. Use this skill whenever adding loading states to components, building skeletons for async data, handling pending loader states in route transitions, or implementing the shimmer animation pattern. Also trigger when the user asks about preventing layout shift during data fetching.
+model: haiku
 ---
 
 # Skeleton Loaders

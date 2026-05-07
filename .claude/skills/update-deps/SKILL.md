@@ -124,9 +124,9 @@ After the Haiku agent returns, if there are no Wave B groups, skip to Phase 6.
 
 For each Wave B group, classify complexity and assign a model:
 
-**Opus** (`model: "opus"`): `react-router`, `react`, `typescript`, `storybook`, `eslint`
+**Opus** (`model: "opus"`): `react-router`, `react`, `typescript`, `storybook`
 
-**Sonnet** (`model: "sonnet"`): all other groups
+**Sonnet** (`model: "sonnet"`): `eslint`, all other groups
 
 Spawn one agent per group (or sequentially if resource-constrained), passing it these instructions:
 

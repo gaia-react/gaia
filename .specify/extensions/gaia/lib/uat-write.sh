@@ -263,7 +263,7 @@ fi
 
 # --- Render loop ---
 generated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-divergence_rule_path=".claude/rules/uat-divergence.md"
+divergence_rule_path=".specify/extensions/gaia/rules/uat-divergence.md"
 
 # Track which UAT files we wrote so we can find orphans afterwards.
 seen_uat_files=""
