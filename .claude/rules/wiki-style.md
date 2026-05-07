@@ -21,6 +21,7 @@ Wiki readers (maintainers, adopters) need to understand the system as it is now.
 ## Exceptions
 
 - **`wiki/log.md`** — append-only change ledger, exempt by design.
+- **`wiki/hot.md`** — auto-loaded recent-context cache. Body is by design a recap of recent commits / threads; historical phrasing is the point. The cache is overwritten by `/wiki-sync`, not edited by hand.
 - **`wiki/meta/`** — audit artifacts (lint reports, consolidate reports). Their purpose is referencing specific commits / SHAs / dates, so the no-inline-refs rule does not apply.
 - **Frontmatter (`created`, `updated`, `status`, etc.)** — metadata, not prose.
 - **`.claude/`, `.specify/` instruction files** — UAT references there are part of the SPEC machinery, not retrospective documentation. Do not scrub them.
@@ -31,14 +32,14 @@ Wiki readers (maintainers, adopters) need to understand the system as it is now.
 Before merging changes that touch `wiki/**` or `app/**` comments, and before running `/wiki-sync` / `/wiki-lint` / `/wiki-consolidate`:
 
 ```bash
-# UAT / SPEC refs in wiki body prose (excluding log.md and meta/ audit reports)
-grep -rEn "UAT-[0-9]+|SPEC-[0-9]+" wiki/ --include="*.md" --exclude="log.md" --exclude-dir="meta"
+# UAT / SPEC refs in wiki body prose (excluding log.md, hot.md, and meta/ audit reports)
+grep -rEn "UAT-[0-9]+|SPEC-[0-9]+" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"
 
 # UAT / SPEC refs in source comments
 grep -rEn "// .*(UAT|SPEC)-[0-9]+|/\*.*(UAT|SPEC)-[0-9]+|\*.*(UAT|SPEC)-[0-9]+" app/
 
 # Historical-style phrasing in wiki body prose
-grep -rEn "changed from|was changed|previously|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude-dir="meta"
+grep -rEn "changed from|was changed|previously|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"
 ```
 
 Any non-empty match outside this rule's prose is a candidate for rewrite.

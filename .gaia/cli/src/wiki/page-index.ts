@@ -61,6 +61,13 @@ const DOMAIN_DIRS = [
 
 const SKIPPED_FILES = new Set(['_index.md', 'README.md']);
 
+// Wiki-root pages whose outbound wikilinks count toward inbound counts of
+// domain pages but which are not themselves emitted as indexable entries.
+// `index.md` is the catalog; `overview.md` is the project landing page;
+// `hot.md` is the auto-loaded recent-context cache. Pages reachable only
+// from these would otherwise flag as orphans.
+const ROOT_LINK_SOURCES = ['index.md', 'overview.md', 'hot.md'];
+
 const slugFromPath = (filePath: string): string =>
   path.basename(filePath, '.md');
 
@@ -145,7 +152,25 @@ const collectPages = (wikiRoot: string): PageRecord[] => {
   return pages;
 };
 
-const buildIndex = (pages: readonly PageRecord[]): PageIndex => {
+const collectRootLinkSources = (wikiRoot: string): string[][] => {
+  const sources: string[][] = [];
+
+  for (const filename of ROOT_LINK_SOURCES) {
+    const absPath = path.join(wikiRoot, filename);
+
+    if (!existsSync(absPath)) continue;
+    const raw = readFileSync(absPath, 'utf8');
+    const {body} = parseFrontmatter(raw);
+    sources.push(extractWikilinks(body));
+  }
+
+  return sources;
+};
+
+const buildIndex = (
+  pages: readonly PageRecord[],
+  rootSources: readonly (readonly string[])[] = []
+): PageIndex => {
   // Map every "name reachable by wikilink" → the canonical record so we can
   // tally inbound counts. We index by lowercased slug AND lowercased title
   // (Obsidian resolves wikilinks against either).
@@ -158,15 +183,18 @@ const buildIndex = (pages: readonly PageRecord[]): PageIndex => {
 
   const inboundCounts = new Map<string, number>();
 
-  for (const page of pages) {
-    for (const target of page.outboundTargets) {
+  const tallyTargets = (targets: readonly string[]): void => {
+    for (const target of targets) {
       const matched = byKey.get(target.toLowerCase());
 
       if (matched === undefined) continue;
       const key = matched.relativePath;
       inboundCounts.set(key, (inboundCounts.get(key) ?? 0) + 1);
     }
-  }
+  };
+
+  for (const page of pages) tallyTargets(page.outboundTargets);
+  for (const source of rootSources) tallyTargets(source);
 
   return {
     pages: pages.map((page) => ({
@@ -208,8 +236,9 @@ export const computePageIndex = (cwd: string): PageIndex => {
   const repoRoot = resolveRepoRoot(cwd);
   const wikiRoot = path.join(repoRoot, 'wiki');
   const pages = collectPages(wikiRoot);
+  const rootSources = collectRootLinkSources(wikiRoot);
 
-  return buildIndex(pages);
+  return buildIndex(pages, rootSources);
 };
 
 export const run = (
@@ -255,7 +284,8 @@ export const run = (
 
   const wikiRoot = path.join(repoRoot, 'wiki');
   const pages = collectPages(wikiRoot);
-  const index = buildIndex(pages);
+  const rootSources = collectRootLinkSources(wikiRoot);
+  const index = buildIndex(pages, rootSources);
 
   if (json) {
     process.stdout.write(`${JSON.stringify(index)}\n`);

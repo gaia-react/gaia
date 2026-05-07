@@ -207,4 +207,60 @@ No outbound links.
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
   });
+
+  test('counts wikilinks from wiki/index.md, overview.md, hot.md as inbound', () => {
+    sandbox.writePage(
+      'wiki/concepts/Solo.md',
+      '---\ntype: concept\n---\n\n# Solo\n\nNo other domain page links here.\n'
+    );
+    sandbox.writePage(
+      'wiki/concepts/AlsoSolo.md',
+      '---\ntype: concept\n---\n\n# AlsoSolo\n\nReachable only from hot.\n'
+    );
+    sandbox.writePage(
+      'wiki/concepts/Overviewed.md',
+      '---\ntype: concept\n---\n\n# Overviewed\n\nReachable only from overview.\n'
+    );
+    sandbox.writePage(
+      'wiki/index.md',
+      '# Catalog\n\n- [[Solo]]\n- [[AlsoSolo]]\n'
+    );
+    sandbox.writePage('wiki/overview.md', '# Overview\n\nSee [[Overviewed]].\n');
+    sandbox.writePage(
+      'wiki/hot.md',
+      '# Hot\n\nRecent: [[AlsoSolo]] and [[Solo]].\n'
+    );
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const index = JSON.parse(stdio.outputs.join('').trim()) as PageIndex;
+    const titles = index.pages.map((page) => page.title);
+    // Root pages must NOT appear in the output.
+    expect(titles).not.toContain('Catalog');
+    expect(titles).not.toContain('Overview');
+    expect(titles).not.toContain('Hot');
+
+    const byTitle = new Map(index.pages.map((page) => [page.title, page]));
+    // Solo: 1 from index + 1 from hot = 2 inbound, no orphan.
+    expect(byTitle.get('Solo')?.inbound_links).toBe(2);
+    // AlsoSolo: 1 from index + 1 from hot = 2 inbound, no orphan.
+    expect(byTitle.get('AlsoSolo')?.inbound_links).toBe(2);
+    // Overviewed: 1 from overview only.
+    expect(byTitle.get('Overviewed')?.inbound_links).toBe(1);
+  });
+
+  test('skips missing root link sources without erroring', () => {
+    sandbox.writePage(
+      'wiki/concepts/Lonely.md',
+      '---\ntype: concept\n---\n\n# Lonely\n'
+    );
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const index = JSON.parse(stdio.outputs.join('').trim()) as PageIndex;
+    expect(index.pages).toHaveLength(1);
+    expect(index.pages[0]?.inbound_links).toBe(0);
+  });
 });

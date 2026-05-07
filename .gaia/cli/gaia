@@ -23504,6 +23504,7 @@ var DOMAIN_DIRS3 = [
   "meta"
 ];
 var SKIPPED_FILES2 = /* @__PURE__ */ new Set(["_index.md", "README.md"]);
+var ROOT_LINK_SOURCES = ["index.md", "overview.md", "hot.md"];
 var slugFromPath = (filePath) => path36.basename(filePath, ".md");
 var extractTitle = (body, fallback) => {
   const lines = body.split("\n");
@@ -23558,21 +23559,34 @@ var collectPages = (wikiRoot) => {
   }
   return pages;
 };
-var buildIndex = (pages) => {
+var collectRootLinkSources = (wikiRoot) => {
+  const sources = [];
+  for (const filename of ROOT_LINK_SOURCES) {
+    const absPath = path36.join(wikiRoot, filename);
+    if (!existsSync36(absPath)) continue;
+    const raw = readFileSync31(absPath, "utf8");
+    const { body } = parseFrontmatter(raw);
+    sources.push(extractWikilinks(body));
+  }
+  return sources;
+};
+var buildIndex = (pages, rootSources = []) => {
   const byKey = /* @__PURE__ */ new Map();
   for (const page of pages) {
     byKey.set(page.slug.toLowerCase(), page);
     byKey.set(page.title.toLowerCase(), page);
   }
   const inboundCounts = /* @__PURE__ */ new Map();
-  for (const page of pages) {
-    for (const target of page.outboundTargets) {
+  const tallyTargets = (targets) => {
+    for (const target of targets) {
       const matched = byKey.get(target.toLowerCase());
       if (matched === void 0) continue;
       const key = matched.relativePath;
       inboundCounts.set(key, (inboundCounts.get(key) ?? 0) + 1);
     }
-  }
+  };
+  for (const page of pages) tallyTargets(page.outboundTargets);
+  for (const source of rootSources) tallyTargets(source);
   return {
     pages: pages.map((page) => ({
       domain: page.domain,
@@ -23604,7 +23618,8 @@ var computePageIndex = (cwd) => {
   const repoRoot2 = resolveRepoRoot3(cwd);
   const wikiRoot = path36.join(repoRoot2, "wiki");
   const pages = collectPages(wikiRoot);
-  return buildIndex(pages);
+  const rootSources = collectRootLinkSources(wikiRoot);
+  return buildIndex(pages, rootSources);
 };
 var run44 = (argv, options = {}) => {
   let json2 = false;
@@ -23637,7 +23652,8 @@ var run44 = (argv, options = {}) => {
   }
   const wikiRoot = path36.join(repoRoot2, "wiki");
   const pages = collectPages(wikiRoot);
-  const index = buildIndex(pages);
+  const rootSources = collectRootLinkSources(wikiRoot);
+  const index = buildIndex(pages, rootSources);
   if (json2) {
     process.stdout.write(`${JSON.stringify(index)}
 `);
