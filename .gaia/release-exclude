@@ -25,6 +25,19 @@ wiki/concepts/Release Workflow.md
 .gaia/release-exclude
 .gaia/scripts
 
+# CLI source — adopters receive only the bundled binary at .gaia/cli/gaia.
+# Maintainer source, tests, fixtures, and build configs stay in the template repo.
+.gaia/cli/src
+.gaia/cli/test-fixtures
+.gaia/cli/__tests__
+.gaia/cli/package.json
+.gaia/cli/pnpm-lock.yaml
+.gaia/cli/tsconfig.json
+.gaia/cli/vitest.config.ts
+.gaia/cli/.gitignore
+.gaia/cli/node_modules
+.gaia/cli/dist
+
 # Test harness (maintainer-only — adopters don't run these)
 .claude-tests
 .claude/rules/_internal

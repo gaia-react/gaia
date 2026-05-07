@@ -91,7 +91,7 @@ case "$subagent_type" in
       area_tags=$(printf '%s' "$finding" | jq -r '(.area_tags // []) | join(",")' 2>/dev/null)
 
       if [ -n "$finding_class" ] && [ -n "$severity" ]; then
-        bin/gaia telemetry emit code_review_audit_finding \
+        .gaia/cli/gaia telemetry emit code_review_audit_finding \
           --pr-number "${pr_number:-0}" \
           --finding-class "$finding_class" \
           --severity "$severity" \
@@ -127,7 +127,7 @@ case "$subagent_type" in
         area_tags=$(printf '%s' "$entry" | jq -r '(.area_tags // []) | join(",")' 2>/dev/null)
 
         if [ -n "$uat_id" ] && [ -n "$spec_id" ] && [ -n "$task_id" ]; then
-          bin/gaia telemetry emit uat_pass \
+          .gaia/cli/gaia telemetry emit uat_pass \
             --uat-id "$uat_id" \
             --spec-id "$spec_id" \
             --task-id "$task_id" \
@@ -151,7 +151,7 @@ case "$subagent_type" in
       area_tags=$(printf '%s' "$needs_context_json" | jq -r '(.area_tags // []) | join(",")' 2>/dev/null)
 
       if [ -n "$class" ]; then
-        bin/gaia telemetry emit needs_context_returned \
+        .gaia/cli/gaia telemetry emit needs_context_returned \
           --context-request-class "$class" \
           --spec-id "${spec_id:-}" \
           --task-id "${task_id:-}" \
@@ -171,7 +171,7 @@ case "$subagent_type" in
       area_tags=$(printf '%s' "$blocked_json" | jq -r '(.area_tags // []) | join(",")' 2>/dev/null)
 
       if [ -n "$classification" ]; then
-        bin/gaia telemetry emit blocked_returned \
+        .gaia/cli/gaia telemetry emit blocked_returned \
           --classification "$classification" \
           --spec-id "${spec_id:-}" \
           --task-id "${task_id:-}" \

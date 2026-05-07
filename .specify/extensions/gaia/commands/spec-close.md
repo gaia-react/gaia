@@ -85,7 +85,7 @@ Append via `printf '%s\n' '<json>' >> .gaia/local/telemetry/spec-pacing.jsonl`. 
 
 Then chain `gaia telemetry compute-profile`:
 
-    bin/gaia telemetry compute-profile
+    .gaia/cli/gaia telemetry compute-profile
 
 The compute-profile command short-circuits when mentorship is disabled (no-op exit 0). When mentorship is enabled, it regenerates `profile.md` over the rolling 30-day window and writes today's analytics report. Failure of compute-profile never blocks the spec-close flow — log to stderr, continue.
 

@@ -20,10 +20,10 @@ set -euo pipefail
 # scratch dirs we create per-test (HOME override + sub-shell cd).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
-GAIA_BIN="${REPO_ROOT}/bin/gaia"
+GAIA_BIN="${REPO_ROOT}/.gaia/cli/gaia"
 TSX_BIN="${REPO_ROOT}/node_modules/.bin/tsx"
-FIXTURE="${REPO_ROOT}/gaia-cli/test-fixtures/profile/articulation-fire.jsonl"
-PROJECTION_TS="${REPO_ROOT}/gaia-cli/src/telemetry/projection.ts"
+FIXTURE="${REPO_ROOT}/.gaia/cli/test-fixtures/profile/articulation-fire.jsonl"
+PROJECTION_TS="${REPO_ROOT}/.gaia/cli/src/telemetry/projection.ts"
 
 # One scratch tree per harness run; per-test sub-trees live underneath.
 WORK="$(mktemp -d -t gaia-telemetry-smoke.XXXXXX)"
@@ -44,7 +44,7 @@ fail() {
 
 # Pre-flight: bin and fixture present.
 if [ ! -x "$GAIA_BIN" ]; then
-    printf 'FATAL: bin/gaia not executable at %s\n' "$GAIA_BIN" >&2
+    printf 'FATAL: .gaia/cli/gaia not executable at %s\n' "$GAIA_BIN" >&2
     exit 2
 fi
 if [ ! -f "$FIXTURE" ]; then

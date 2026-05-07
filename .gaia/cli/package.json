@@ -1,0 +1,27 @@
+{
+  "name": "@gaia-react/cli",
+  "private": true,
+  "type": "module",
+  "description": "GAIA CLI — telemetry emit primitive and mentorship subcommand surface. Maintainer source; ships to adopters as a single bundled binary at .gaia/cli/gaia.",
+  "scripts": {
+    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --banner:js=$'#!/usr/bin/env node\\nimport { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia && chmod +x gaia",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
+    "test": "vitest --run --passWithNoTests",
+    "fixtures:build": "tsx ./test-fixtures/profile/build.ts",
+    "gaia": "tsx ./src/index.ts"
+  },
+  "dependencies": {
+    "ulid": "2.4.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "esbuild": "0.23.1",
+    "tsx": "4.21.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

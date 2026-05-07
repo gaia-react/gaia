@@ -170,7 +170,7 @@ if [[ "$PLAN_BASENAME" =~ -([0-9]+)$ ]]; then
       ITEMS_REMOVED=$((-DIFF))
     fi
     SPEC_ID="$(basename "$SPEC_PATH" .md)"
-    bin/gaia telemetry emit plan_revised \
+    .gaia/cli/gaia telemetry emit plan_revised \
       --plan-id "$PLAN_BASENAME" \
       --spec-id "$SPEC_ID" \
       --revision-class scope_change \

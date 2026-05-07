@@ -31,5 +31,5 @@
     ".storybook/**/*",
     ".playwright/**/*"
   ],
-  "exclude": ["gaia-cli", "node_modules", "build", "coverage", "storybook-static"]
+  "exclude": ["node_modules", "build", "coverage", "storybook-static"]
 }

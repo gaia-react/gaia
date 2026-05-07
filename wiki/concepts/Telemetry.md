@@ -4,12 +4,12 @@ title: Telemetry
 status: active
 created: 2026-05-07
 updated: 2026-05-07
-tags: [concept, gaia-cli, telemetry, mentorship]
+tags: [concept, cli, telemetry, mentorship]
 ---
 
 # Telemetry
 
-GAIA's telemetry system (SPEC-001) captures structured events across the dev workflow to power mentorship feedback and aggregated analytics. It ships as the `gaia-cli/` workspace — a standalone Node.js CLI (`bin/gaia`) invoked by hooks and slash-command emits.
+GAIA's telemetry system (SPEC-001) captures structured events across the dev workflow to power mentorship feedback and aggregated analytics. It ships as a single self-contained bundled binary at `.gaia/cli/gaia` — invoked by hooks and slash-command emits.
 
 ## Three-stream architecture
 
@@ -23,9 +23,9 @@ Events flow into one of three independent streams:
 
 Mentorship data stays off-project. Cloud + analytics live in `.gaia/local/telemetry/` (gitignored). Claude must not display raw mentorship event files — see `.claude/rules/mentorship-display.md`. The displayable aggregate is `profile.md`.
 
-## gaia-cli workspace
+## CLI workspace
 
-`gaia-cli/` is a pnpm workspace at the repo root. Entry: `bin/gaia` (bash shim → `gaia-cli/src/index.ts`). Subcommand router uses an object map (no switch; project's `no-switch` rule).
+`.gaia/cli/` houses the CLI workspace. Maintainer source lives at `.gaia/cli/src/`; `pnpm bundle` (esbuild, ESM, ~630KB) emits a self-contained `.gaia/cli/gaia` binary with `#!/usr/bin/env node` shebang. Adopters receive only the bundled binary — source, tests, and fixtures are excluded from the release tarball. Subcommand router uses a static handler map (no switch; project's `no-switch` rule).
 
 Top-level subcommands:
 - `telemetry emit <event_type> [--field value …]` — universal emit; writes to mentorship + cloud streams based on config

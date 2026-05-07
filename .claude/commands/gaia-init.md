@@ -315,7 +315,7 @@ Use AskUserQuestion with these three options in this exact order:
 **On "Not now":**
 
 ```bash
-bin/gaia mentorship _internal-write-config --enabled false --analytics false --decided-via gaia-init
+.gaia/cli/gaia mentorship _internal-write-config --enabled false --analytics false --decided-via gaia-init
 ```
 
 (Internal subcommand — see notes.)
@@ -323,8 +323,8 @@ bin/gaia mentorship _internal-write-config --enabled false --analytics false --d
 **On "Yes, enable":**
 
 ```bash
-bin/gaia mentorship _internal-write-config --enabled true --analytics true --decided-via gaia-init
-bin/gaia mentorship _internal-provision-dirs
+.gaia/cli/gaia mentorship _internal-write-config --enabled true --analytics true --decided-via gaia-init
+.gaia/cli/gaia mentorship _internal-provision-dirs
 ```
 
 `_internal-provision-dirs` calls `ensureMentorshipDirs(roots)` from the storage-paths module and exits 0 silently. The chmod 700/600 is applied at create time.
