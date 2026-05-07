@@ -19,7 +19,7 @@ mkdir -p wiki/services .claude/hooks .claude/commands app/services
 GAIA_REPO="${GAIA_REPO:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/hooks/wiki-stop-safety-net.sh" .claude/hooks/
+cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/commands/wiki-sync.md" .claude/commands/
 
 # Minimal settings.json that wires the hooks
@@ -33,7 +33,7 @@ cat > .claude/settings.json <<'EOF'
       {"matcher": "Bash", "hooks": [{"type": "command", "command": ".claude/hooks/wiki-commit-nudge.sh"}]}
     ],
     "Stop": [
-      {"matcher": "", "hooks": [{"type": "command", "command": ".claude/hooks/wiki-stop-safety-net.sh"}]}
+      {"matcher": "", "hooks": [{"type": "command", "command": ".claude/hooks/wiki-session-stop.sh"}]}
     ]
   }
 }

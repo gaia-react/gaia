@@ -57,7 +57,7 @@ Three Claude Code hooks keep Claude informed about wiki state:
 
 - `wiki-drift-check.sh` — UserPromptSubmit, once per session. Compares `wiki/.state.json` to HEAD; nudges if drifted.
 - `wiki-commit-nudge.sh` — PostToolUse on Bash. Injects diff summary + drift count after each `git commit`.
-- `wiki-stop-safety-net.sh` — Stop hook. Reminds at session end if commits landed but state didn't advance.
+- `wiki-session-stop.sh` — Stop hook. Two reminders share one git/jq pass: nudge to refresh `wiki/hot.md` if wiki/ files were modified this session, and a safety-net nag at session end if commits landed but `wiki/.state.json` didn't advance.
 
 The workhorse is `/wiki-sync`. It's the only thing that writes `wiki/.state.json`. Hooks are read-only consumers.
 

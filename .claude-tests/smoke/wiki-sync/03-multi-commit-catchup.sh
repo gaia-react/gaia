@@ -17,7 +17,7 @@ git config commit.gpgsign false
 mkdir -p wiki/services wiki/components wiki/dependencies .claude/hooks .claude/commands app/services app/components
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/hooks/wiki-stop-safety-net.sh" .claude/hooks/
+cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/commands/wiki-sync.md" .claude/commands/
 
 cat > .claude/settings.json <<'EOF'

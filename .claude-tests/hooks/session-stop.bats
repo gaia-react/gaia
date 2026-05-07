@@ -2,7 +2,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../.claude/hooks" && pwd)/wiki-stop-safety-net.sh
+  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../.claude/hooks" && pwd)/wiki-session-stop.sh
 }
 
 teardown() {
