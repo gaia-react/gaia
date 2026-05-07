@@ -102,6 +102,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Distribution test gate (Layers 0+1+2)
+        timeout-minutes: 15
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: bash .gaia/tests/distribution/run-all.sh

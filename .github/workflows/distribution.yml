@@ -4,10 +4,12 @@ name: Distribution
 # need only Node + pnpm; Layer 2 additionally needs Docker (pre-installed on
 # ubuntu-latest) and a Claude OAuth token (from org secrets).
 #
-# Trigger is manual (`workflow_dispatch`) until the workflow has proven itself
-# clean on `main`. The intended steady-state trigger is `release.published`
-# only — the maintainer is the only role that can publish releases, so
-# contributors structurally cannot trigger Layer 2 spend.
+# Trigger is `workflow_dispatch` only — used to run the harness on a feature
+# branch for ad-hoc verification of harness changes themselves. The
+# production gate lives inside `release.yml` (pre-publish, before tarball
+# build). No automatic trigger here on purpose: `release.published` fires
+# AFTER publish (too late to gate a release), and `pull_request` is unsafe
+# for forks.
 #
 # IMPORTANT: never use `pull_request_target`. That trigger exposes secrets to
 # fork PRs, which would let any contributor exfiltrate
@@ -26,6 +28,7 @@ jobs:
   distribution:
     name: Distribution tests (Layers 0+1+2)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 

@@ -38,7 +38,13 @@ docker_token_available() {
 docker_build_image() {
   local dockerfile_dir
   dockerfile_dir="$(mktemp -d -t gaia-dist-dockerfile-XXXXXX)"
-  cat > "$dockerfile_dir/Dockerfile" <<'DOCKERFILE'
+  # Local EXIT trap so the temp dir is cleaned even if the function is
+  # killed mid-build (SIGTERM from a CI timeout, OOM, runner preemption).
+  # Subshell scope keeps it from clobbering the calling scenario's own
+  # EXIT trap.
+  (
+    trap 'rm -rf "$dockerfile_dir"' EXIT
+    cat > "$dockerfile_dir/Dockerfile" <<'DOCKERFILE'
 FROM node:22-bullseye-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends curl ca-certificates git \
@@ -47,10 +53,8 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
 WORKDIR /work
 DOCKERFILE
-  local rc=0
-  docker build -t "$GAIA_DIST_IMAGE" "$dockerfile_dir" >/dev/null 2>&1 || rc=$?
-  rm -rf "$dockerfile_dir"
-  return "$rc"
+    docker build -t "$GAIA_DIST_IMAGE" "$dockerfile_dir" >/dev/null 2>&1
+  )
 }
 
 # `-e CLAUDE_CODE_OAUTH_TOKEN` (no `=value`) reads from the host env, so the
