@@ -91,7 +91,7 @@ transforms:
       # ---- Release-excluded paths leaked into shipped surfaces ----
       - id: maintainer-paths
         description: "Release-excluded paths referenced in shipped surfaces"
-        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.claude-tests/|\\.claude/rules/_internal/"
+        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.gaia/tests/|\\.claude/rules/_internal/"
         scope:
           - "CLAUDE.md"
           - ".claude/**"
@@ -109,14 +109,14 @@ transforms:
           - ".specify/extensions/gaia/templates/**"
         path-allowlist:
           # Self-referential — the rule's body cites the audit greps it
-          # codifies, including the maintainer-only `.claude-tests/` scope.
+          # codifies, including the maintainer-only `.gaia/tests/` scope.
           - ".claude/rules/wiki-style.md"
           # Self-referential — the lint command's documentation describes
           # the same audit greps and target paths.
           - ".claude/commands/wiki-lint.md"
           # Documents the smoke-harness convention split between
           # `.specify/extensions/gaia/test/` (UAT runbooks) and
-          # `.claude-tests/smoke/` (release-gate harnesses); literal paths
+          # `.gaia/tests/smoke/` (release-gate harnesses); literal paths
           # are the rule's classification table, not stray references.
           - ".specify/extensions/gaia/rules/smoke.md"
           # Telemetry concept page describes maintainer architecture

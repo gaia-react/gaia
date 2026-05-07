@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Run all release-gate smoke scenarios, report pass/fail.
-# Walks .claude-tests/smoke/wiki-sync/*.sh in lexicographic order, then
+# Walks .gaia/tests/smoke/wiki-sync/*.sh in lexicographic order, then
 # invokes wiki-promote/run.sh and uat-write/run.sh — both are structural
 # release-gate harnesses with PASS/FAIL semantics, so they belong in this
 # driver.
 #
-# The observability/serena/ subtree (relocated from .claude-tests/smoke/serena/
+# The observability/serena/ subtree (relocated from .gaia/tests/smoke/serena/
 # per SPEC-005 §Resolutions Q8) is intentionally NOT run from here —
 # usage_scan.py is a measurement, not a test, and shouldn't gate a release.
 set -u

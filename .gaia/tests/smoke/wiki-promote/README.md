@@ -22,7 +22,7 @@ What this smoke does NOT cover:
 ## Run
 
 ```bash
-bash .claude-tests/smoke/wiki-promote/run.sh
+bash .gaia/tests/smoke/wiki-promote/run.sh
 ```
 
 Exits 0 when every artifact is present and the manifest parses; non-zero on the first missing file or parse failure. Prints a pass/fail summary.

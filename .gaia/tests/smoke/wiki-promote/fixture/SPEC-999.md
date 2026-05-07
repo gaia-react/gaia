@@ -27,7 +27,7 @@ tags:
 
 # Synthetic wiki-promote smoke fixture
 
-Used by `.claude-tests/smoke/wiki-promote/run.sh` and any downstream test that needs a SPEC with `wiki_promote_default: yes` and a multi-target `wiki_promote_targets` list.
+Used by `.gaia/tests/smoke/wiki-promote/run.sh` and any downstream test that needs a SPEC with `wiki_promote_default: yes` and a multi-target `wiki_promote_targets` list.
 
 ## Intent
 

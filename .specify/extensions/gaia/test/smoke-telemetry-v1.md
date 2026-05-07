@@ -1,12 +1,12 @@
 # SPEC-001 telemetry-v1 — UAT runbook
 
-Walk-through narrative covering every one of the SPEC's 47 UATs. Maintainer-judgment-allowed throughout (the `Tell me more` Q&A loop in UAT-007 is the obvious example — assertions like "does the explainer copy read as intended?" cannot land in a deterministic harness). This is the document the maintainer reads during SPEC verification; the procedural-deterministic subset is the release-gate harness at `.claude-tests/smoke/telemetry-v1/run.sh`.
+Walk-through narrative covering every one of the SPEC's 47 UATs. Maintainer-judgment-allowed throughout (the `Tell me more` Q&A loop in UAT-007 is the obvious example — assertions like "does the explainer copy read as intended?" cannot land in a deterministic harness). This is the document the maintainer reads during SPEC verification; the procedural-deterministic subset is the release-gate harness at `.gaia/tests/smoke/telemetry-v1/run.sh`.
 
 The two artifacts are siblings, not duplicates. Per `.specify/extensions/gaia/rules/smoke.md`, classification is by *shape*: this runbook accommodates judgment; the harness is fully procedural. Both ship with the SPEC.
 
 ## How to use this runbook
 
-Walk it once start-to-finish during SPEC verification. Each cluster has a setup, an action, and an assertion. Where a step is mechanically deterministic and could equally land in a harness, the brief calls that out and points at the specific harness test that covers it — run that subset first via `bash .claude-tests/smoke/telemetry-v1/run.sh` to fast-fail if the regression is structural rather than experiential.
+Walk it once start-to-finish during SPEC verification. Each cluster has a setup, an action, and an assertion. Where a step is mechanically deterministic and could equally land in a harness, the brief calls that out and points at the specific harness test that covers it — run that subset first via `bash .gaia/tests/smoke/telemetry-v1/run.sh` to fast-fail if the regression is structural rather than experiential.
 
 Pattern-detection clusters explicitly note "wired-but-inert; assertion is against synthetic fixture, not live data" — at v1.0.0 internal-testing scale, real-usage events have not accumulated past the 10-event sample threshold. UAT-029/030/031 verify the *code paths* against the Phase 5 fixtures at `.gaia/cli/test-fixtures/profile/*.jsonl`; production behavior is wired-but-inert by design.
 
@@ -15,7 +15,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - The implementation has landed (Phases 1–5 of `.gaia/local/plans/spec-001-telemetry-v1/`).
 - `pnpm install` has run so `node_modules/.bin/tsx` is on disk.
 - `.gaia/cli/gaia` is executable.
-- The harness has passed at least once locally: `bash .claude-tests/smoke/telemetry-v1/run.sh` exits 0.
+- The harness has passed at least once locally: `bash .gaia/tests/smoke/telemetry-v1/run.sh` exits 0.
 - A scratch dir for any per-step manual experiments: `WORK=$(mktemp -d)` — clean up at the end.
 
 ---
@@ -218,7 +218,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - `profile.md` regenerates after `spec_close`;
 - `.gaia/cli/gaia mentorship analytics dry-run` emits a payload whose `audit` block all-true assertions match the actual fields.
 
-**Harness fast-path.** The deterministic *structural* subset of UAT-046 is the entirety of `.claude-tests/smoke/telemetry-v1/run.sh`. The live workflow walk-through above is the maintainer-judgment companion — the harness gates the structural surface; the runbook gates the experiential one.
+**Harness fast-path.** The deterministic *structural* subset of UAT-046 is the entirety of `.gaia/tests/smoke/telemetry-v1/run.sh`. The live workflow walk-through above is the maintainer-judgment companion — the harness gates the structural surface; the runbook gates the experiential one.
 
 ---
 
@@ -240,7 +240,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 Once every cluster passes:
 
-1. Confirm `bash .claude-tests/smoke/telemetry-v1/run.sh` still exits 0.
+1. Confirm `bash .gaia/tests/smoke/telemetry-v1/run.sh` still exits 0.
 2. Confirm `pnpm typecheck && pnpm lint` still pass.
 3. Note any maintainer-judgment "marginal pass" calls in your verification notes — the SPEC's evidence file (per `task-uat-verification` precedent at `.specify/extensions/gaia/test/uat-evidence.md`) is the canonical home for those.
 

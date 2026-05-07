@@ -144,7 +144,7 @@ List every dead reference (one per line). Do not truncate — the count is small
 
 ## Step 4: GAIA check #13 — UAT/SPEC narrative-ref drift
 
-Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and shipped extension surfaces (`.specify/extensions/gaia/{README.md, commands, lib, rules, templates}`) plus the maintainer-only `.claude-tests/` smoke harnesses. The rule rationale + structural-vs-narrative triage table lives in `.claude/rules/wiki-style.md` (Exceptions section).
+Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and shipped extension surfaces (`.specify/extensions/gaia/{README.md, commands, lib, rules, templates}`) plus the maintainer-only `.gaia/tests/` smoke harnesses. The rule rationale + structural-vs-narrative triage table lives in `.claude/rules/wiki-style.md` (Exceptions section).
 
 ### 4a. Run the greps
 
@@ -157,7 +157,7 @@ grep -rEn "UAT-[0-9]{3}" \
   .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
   .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
   .specify/extensions/gaia/templates/ \
-  .claude-tests/
+  .gaia/tests/
 
 # Concrete maintainer SPEC IDs
 grep -rEn "\bSPEC-00[1-9]\b" \

@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 # NOTE: The on-main + gh-auto-merge-failure path is not unit-testable here
-# without a real remote. Smoke test scenario .claude-tests/smoke/04-non-claude-merge.sh
+# without a real remote. Smoke test scenario .gaia/tests/smoke/04-non-claude-merge.sh
 # exercises that path end-to-end. The non-main test below is the proxy for
 # "reset must be conditional, not unconditional."
 

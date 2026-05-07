@@ -26,7 +26,7 @@ What this smoke does NOT cover:
 ## Run
 
 ```bash
-bash .claude-tests/smoke/uat-write/run.sh
+bash .gaia/tests/smoke/uat-write/run.sh
 ```
 
 Exits `0` with `uat-write smoke: PASS (N/N checks)` on success, `1` with `uat-write smoke: FAIL (F/N checks failed)` on the first structural violation. Side effects (sandbox `SPEC-099.md`, rendered specs under `.playwright/e2e/spec-099/`, cache file under `.gaia/local/cache/uat-write/`) are cleaned up by an `EXIT` trap; pre-existing copies of those paths are restored.
