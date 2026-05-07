@@ -51,6 +51,14 @@ bash .claude-tests/distribution/01-files-present.sh
 
 Layer 0 — host pnpm available, scenarios run with the maintainer's PATH (default). Layer 1 — PATH-stripped subshell (`05-clean-env.sh`) verifies the bootstrapper extracts cleanly with only `/usr/bin:/bin`. Layer 2 — Docker (deferred; tracked under `diagnostic/`).
 
+### Layer 1: clean-env bootstrap (`05-clean-env.sh`)
+
+Covers tarball extraction and the corepack-driven pnpm bootstrap inside a PATH-stripped subshell with an isolated `$HOME`. Reuses `lib/build-staging.sh` to produce a release-shape tree, tars it, and extracts into a scratch scaffold — the same shape `create-gaia` runs on an adopter's machine. The subshell's PATH is reduced to `/usr/bin:/bin` plus symlinks to the outer `node`/`corepack`/`tar`/`git`, so any maintainer-local `pnpm`/`uv`/`claude` becomes invisible. The scenario asserts pnpm is *not* visible before bootstrap, then exercises `corepack enable pnpm` followed by `pnpm install --frozen-lockfile`.
+
+Does not cover `/gaia-init` or `/setup-gaia` execution (no Claude in the subshell — see `diagnostic/claude-auth-in-docker.md`), full filesystem isolation (a true Docker run is the answer), or non-host operating systems. The `npm install -g pnpm` fallback path inside `create-gaia`'s `ensurePnpm()` is intentionally untested here — exercising it would mutate the host's global npm state with no clean rollback.
+
+Skips automatically if `corepack` is not on the host PATH (Node 16.13+ ships corepack, so this is rare). Skip is reported as a soft PASS so `run-all.sh` summaries stay green on hosts where the layer cannot run. Layer 2 (Docker) is deferred — see `diagnostic/claude-auth-in-docker.md` for the next-step plan.
+
 ## Claude auth status
 
 **Status: not yet verified.** See `diagnostic/claude-auth-in-docker.md`.
