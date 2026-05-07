@@ -11,6 +11,24 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-07 868f05b - SKIP: docs(wiki): scrub UAT and SPEC-NNN references from body prose (wiki maintenance, no architectural change)
+- 2026-05-07 ce6bc10 - SKIP: docs(rules): wiki-style — present tense rules already committed; no wiki narrative update needed
+- 2026-05-07 d886b5c - WORTHY: docs(plan): add SUMMARY.md findings ledger to orchestrator contract → wiki/concepts/Task Orchestration.md
+- 2026-05-07 df25fee - SKIP: fix(statusline): shorten /setup-gaia indicator text (UI-only change)
+- 2026-05-07 8c9b0ec - WORTHY: feat: clone-setup gate, mentorship rule relocation, wiki primitive expansions → wiki/hot.md, wiki/index.md
+- 2026-05-07 d238697 - WORTHY: feat(cli): gaia init subcommands (strip-branding, configure-i18n, rename, wire-statusline, finalize, resume) → wiki/concepts/Init Workflow.md (new), wiki/index.md
+- 2026-05-07 fc69dde - WORTHY: feat(cli): gaia release namespace (preflight, bump, changelog, scrub-wiki, manifest, commit-and-tag) → wiki/concepts/Release Workflow.md, wiki/index.md
+- 2026-05-07 71674d7 - WORTHY: feat(cli): gaia update merge — three-way file compare with manifest classes → wiki/concepts/Update Merge.md (new), wiki/index.md
+- 2026-05-07 3704e6c - WORTHY: feat(cli): gaia wiki sync land — deterministic branch-aware push → wiki/concepts/Wiki Sync.md
+- 2026-05-07 4e85e08 - SKIP: refactor(commands): wire wiki-sync, wiki-lint, wiki-consolidate (implementation plumbing; concepts already documented)
+- 2026-05-07 a3f2a0c - WORTHY: feat(cli): wiki primitives (state, commit-classify, state-bump, log-prepend, page-index, orphans, near-collisions) → wiki/concepts/Wiki Sync.md, wiki/decisions/Wiki Management.md (new)
+- 2026-05-07 0a443c1 - WORTHY: feat(cli): scaffold component/hook/route/service subcommands → wiki/modules/CLI Scaffolding.md (new), wiki/index.md
+- 2026-05-07 86db352 - WORTHY: feat(cli): scaffold shared infrastructure (template loader, barrel insert) → wiki/modules/CLI Scaffolding.md
+- 2026-05-07 3da4cc3 - SKIP: chore(claude): quick wins (model swaps, hook simplifications, playwright split; no architectural change)
+- 2026-05-07 2b57eed - SKIP: chore(deps): bump vite 8.0.10 → 8.0.11; clamp /update-deps Wave B (dependency maintenance)
+- 2026-05-07 5847b5b - SKIP: chore(deps): bump ulid 2 → 3, +11 minor/patch (dependency maintenance)
+- 2026-05-07 ebaaec6 - WORTHY: chore(cli): relocate to .gaia/cli, ship as bundled binary, scrub internal refs → wiki/concepts/CLI Architecture.md (updated), wiki/index.md
+- 2026-05-07 54d8b4b - SKIP: wiki: consolidate + lint reports (meta audit output)
 - 2026-05-07 320335e - WORTHY: SPEC-001 telemetry v1 — gaia-cli/ workspace, three-stream architecture, mentorship opt-in, profile detection, adaptation injection → wiki/concepts/Telemetry.md (new), wiki/index.md
 - 2026-05-07 b27f060 - SKIP: README-only update (no architectural decision)
 - 2026-05-07 5ddfe48 - SKIP: wiki already updated in-commit (wiki/dependencies/Husky.md updated for lint-staged v17 + .lintstagedrc.json rename in the same commit); react-router + other bumps are version-only
