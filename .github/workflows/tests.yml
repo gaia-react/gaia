@@ -24,14 +24,14 @@ jobs:
       SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'ci-placeholder-session-secret-not-real' }}
       SITE_URL: ${{ secrets.SITE_URL || 'http://localhost:3000' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
       # Allowlist of paths that affect the test suite. Anything outside this
       # list reports the required check green without running. Skipped jobs do
       # not satisfy required checks under classic branch protection, so we
       # gate steps instead.
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
           filters: |
@@ -48,10 +48,10 @@ jobs:
               - '.node-version'
               - '.github/workflows/tests.yml'
       - if: steps.filter.outputs.code == 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
       - if: steps.filter.outputs.code == 'true'
         name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
@@ -61,7 +61,7 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         name: get-npm-version
         id: package-version
-        uses: martinbeentjes/npm-get-version-action@v1.3.1
+        uses: martinbeentjes/npm-get-version-action@3cf273023a0dda27efcd3164bdfb51908dd46a5b # v1.3.1
       - if: steps.filter.outputs.code == 'true'
         name: Typecheck
         run: pnpm typecheck
@@ -84,7 +84,7 @@ jobs:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           npm_package_version: ${{ steps.package-version.outputs.current-version}}
       - if: ${{ failure() && steps.filter.outputs.code == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         name: Upload Playwright failed test traces
         with:
           name: playwright-traces

@@ -101,6 +101,14 @@ bash .gaia/tests/distribution/run-all.sh
 
 The image tag defaults to `gaia-dist-claude:latest`; override via `GAIA_DIST_IMAGE` if needed. First build pulls `node:22-bullseye-slim` and runs `claude.ai/install.sh` (~30s); subsequent runs hit Docker's layer cache.
 
+The image is intentionally NOT removed at the end of each run — keeping it preserves the layer cache for repeat local invocations. To reclaim disk space (or force a clean rebuild against an updated `claude.ai/install.sh`), remove it manually:
+
+```bash
+docker rmi gaia-dist-claude:latest
+```
+
+CI runners are ephemeral, so no cleanup is required there.
+
 #### CI
 
 Two entry points, both consuming `CLAUDE_CODE_OAUTH_TOKEN` from GAIA's GitHub organization secrets:

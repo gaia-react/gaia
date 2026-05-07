@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout at tag
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
 
@@ -93,10 +93,10 @@ jobs:
       # uploaded and `gh release create` runs, so a broken release
       # cannot publish. ~3-4 min on ubuntu-latest, $0 on Claude Max via
       # the org OAuth token.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
