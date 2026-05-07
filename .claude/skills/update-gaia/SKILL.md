@@ -150,9 +150,7 @@ For each entry:
 - `delete[]`: **ASK the user before removing** each path. The CLI surfaces these but never auto-deletes.
 - `conflicts[]`: read the patch under `.gaia-merge/<path>.patch` and walk the user through the decision per file.
 
-Do **not** read bytes for any file the CLI did not surface as a conflict or deletion.
-
-The CLI's decision table is the canonical implementation of the rules originally documented here; if you need to inspect them, see `gaia/.gaia/cli/src/update/merge.ts`.
+Do **not** read bytes for any file the CLI did not surface as a conflict or deletion. The decision table baked into `gaia update merge` is canonical; the JSON it emits is the contract the skill walks.
 
 ### Step 8: Bump `.gaia/VERSION`
 

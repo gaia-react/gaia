@@ -1,13 +1,13 @@
 /**
  * `gaia update merge --baseline <dir> --latest <dir> --manifest <path>` handler.
  *
- * Phase 5 of the Claude Integration Optimization plan extracts the
- * deterministic file walk from the `update-gaia` skill's Step 7 prose
- * into a CLI primitive. The skill no longer reads bytes for every
- * manifest entry — it invokes this command, parses JSON, and only
- * surfaces conflicts and deletions to the user.
+ * Deterministic file walk for `/update-gaia`: emits JSON describing
+ * per-path actions (overwrite/skip/merge/add/delete/conflict). The
+ * `/update-gaia` skill invokes this command, parses JSON, and only
+ * surfaces conflicts and deletions to the user — no byte reading per
+ * manifest entry from the skill side.
  *
- * Decision table (verbatim from `update-gaia/SKILL.md` Step 7):
+ * Decision table:
  *
  *   For every path P in the latest manifest:
  *     - upstream class: overwrite when latest != current

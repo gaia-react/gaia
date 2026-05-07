@@ -1,10 +1,9 @@
 /**
  * `gaia wiki` subcommand router.
  *
- * Phase 3 of the Claude Integration Optimization plan extracts
- * wiki-state primitives out of the prose `wiki-sync.md`, `wiki-lint.md`,
- * and `wiki-consolidate.md` commands. Consumer commands are updated in a
- * follow-up task; this router only ships the seven primitives.
+ * Wiki-state primitives consumed by `wiki-sync.md`, `wiki-lint.md`, and
+ * `wiki-consolidate.md`. The slash commands are thin orchestrators over
+ * these primitives.
  *
  * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */

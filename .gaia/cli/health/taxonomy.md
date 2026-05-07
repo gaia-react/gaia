@@ -89,9 +89,9 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 - Detection: cross-reference each domain router's HELP_TEXT against the top-level HELP_TEXT line for that domain
 - Prior: `wiki` line listed 7 of 10 primitives (e665b40)
 
-**Stale comments referencing primitive count or phase context.** Comments say "this router only ships the seven primitives" or "Phase N task" after the count or phase is no longer accurate.
+**Stale comments referencing primitive count or phase context.** Comments say "this router only ships the seven primitives" or "Phase N of the Claude Integration Optimization plan extracts…" after the count or phase is no longer current. Wiki-style.md scopes to `app/**`, but the same hygiene applies inside `.gaia/cli/src/` — comments describe what the file is, not how it got there.
 - Detection: `grep -rEn "the (seven|eight|nine|ten|N) primitives|Phase [0-9]+ of" .gaia/cli/src/`
-- Status: latent at time of writing — header comment in `.gaia/cli/src/wiki/index.ts:7` says "the seven primitives" while ten ship. Not yet flagged as a finding because it's a stale comment, not user-facing surface; flag if found alongside other CLI work.
+- Prior: 5 sibling files (`init`, `update`, `update/merge`, `wiki`, `release` `index.ts`) carried `Phase N of the Claude Integration Optimization plan` headers; `wiki/index.ts:7` additionally said "the seven primitives" (ten ship). Surfaced and fixed in the 8th audit.
 
 **Test scripts with baked-in CLI flags.** `package.json scripts.test = "vitest --run"` overrides project-wide PreToolUse hooks that block bare `test`.
 - Detection: read `.gaia/cli/package.json scripts.test`; verify no `--run` baked in
@@ -111,10 +111,15 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 - Detection: cross-reference `release-exclude` paths against manifest entries; should be zero overlap
 - Prior: `release.yml` was `shared` in manifest until 98f7a62 moved it to category 9
 
-**Maintainer paths referenced in adopter-shipped files.** Distributed workflow comments, distributed wiki pages, or distributed instruction files mention `.gaia/cli/`, `.specify/extensions/gaia/test/`, `.claude-tests/`, `release-exclude`, etc.
-- Detection: build excluded-path set from `release-exclude`; grep distributed file set (manifest entries) for each path literal and unique filename literal
-- Allowlist: `wiki/concepts/Release Workflow.md` Distribution Boundary section legitimately describes the maintainer surface
-- Prior: `tests.yml` body comment cited `.gaia/`, `.specify/`, `.claude/`, `cli-tests.yml` (98f7a62)
+**Maintainer paths referenced in adopter-shipped files.** Distributed workflows, wiki pages, instruction files (skills, commands, agents, rules), or hook script comments mention `.gaia/cli/src/`, `.specify/extensions/gaia/test/`, `.claude-tests/`, `release-exclude`, etc. — paths that don't exist on adopter clones.
+- Detection: build excluded-path set from `release-exclude`; grep manifest entries for each path literal and unique filename literal. For `.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, and `.claude/hooks/`: every path mention should be a path that ships.
+- Allowlist: `wiki/concepts/Release Workflow.md` Distribution Boundary section legitimately describes the maintainer surface.
+- Prior: `tests.yml` body comment cited `.gaia/`, `.specify/`, `.claude/`, `cli-tests.yml` (98f7a62); `.claude/skills/update-gaia/SKILL.md` cited `.gaia/cli/src/update/merge.ts` (8th audit fix); `.claude/hooks/telemetry-task-postuse.sh` cited `.gaia/cli/src/telemetry/parse-stdin.ts` (8th audit fix).
+
+**Maintainer-monorepo path prefix in adopter-shipped files.** A path in a distributed `.claude/` file uses the maintainer's monorepo layout (`gaia/`, `studio/`, `website/` are siblings of the maintainer's clone). Adopter clones are single-repo; the prefix dangles.
+- Detection: `grep -rEn "\bgaia/\." .claude/` (catches `gaia/.gaia/...`, `gaia/.claude/...`); also `grep -rEn "(studio|website)/" .claude/`
+- Codified in: `.claude/rules/instruction-files.md` ("All paths in template-distributed Claude files must be repo-relative"). The rule's own audit grep targets `/Users/`/`/home/` literals; the `gaia/` flavor is a sibling pattern that grep misses. Promote: `instruction-files.md` Audit section should add the monorepo-prefix grep above.
+- Prior: `.claude/skills/update-gaia/SKILL.md:155` cited `gaia/.gaia/cli/src/update/merge.ts` (8th audit fix)
 
 **Denylist filters rotting silently.** `paths-filter` denylists (`!**/*.md`, `!wiki/**`, `!.claude/**`) miss new top-level paths added to the repo. Allowlists fail loud (skip when expected to run); denylists fail quiet (run when expected to skip).
 - Detection: read all `.github/workflows/*.yml` `paths-ignore` and inverted `paths` patterns; flag any using denylist syntax

@@ -1,11 +1,9 @@
 /**
  * `gaia init` subcommand router.
  *
- * Phase 7 of the Claude Integration Optimization plan extracts the
- * sequential steps of `/gaia-init` into idempotent CLI subcommands so
- * the orchestrating skill can resume on failure. This router dispatches
- * to per-step handlers; each handler reads/writes
- * `.gaia/init-state.json` to record progress.
+ * Dispatches to per-step handlers under `./<step>.ts`. Each handler
+ * reads and writes `.gaia/init-state.json` so the `/gaia-init` skill
+ * can resume on failure (network drop, user cancellation, IDE crash).
  *
  * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */

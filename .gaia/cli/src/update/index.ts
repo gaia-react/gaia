@@ -1,11 +1,9 @@
 /**
  * `gaia update` subcommand router.
  *
- * Phase 5 of the Claude Integration Optimization plan extracts the
- * `update-gaia` skill's prose Step 7 file walk into the CLI. The skill
- * itself still drives tarball fetching and user-facing prompts; this
- * router wires the deterministic byte-level merge under
- * `gaia update merge`.
+ * The `/update-gaia` skill drives tarball fetching and user-facing
+ * prompts; this router wires the deterministic byte-level merge under
+ * `gaia update merge` so the skill never reads bytes per manifest entry.
  *
  * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */

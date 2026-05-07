@@ -1,12 +1,10 @@
 /**
  * `gaia release` subcommand router.
  *
- * Phase 6 of the Claude Integration Optimization plan extracts the
- * procedural steps of the `/gaia-release` runbook into deterministic
- * CLI subcommands. The slash command becomes a thin orchestrator that
- * chains preflight → bump → quality gate → changelog → scrub-wiki →
- * manifest → commit-and-tag. Each subcommand owns its acceptance
- * criteria and tests.
+ * Chains preflight → bump → quality gate → changelog → scrub-wiki →
+ * manifest → commit-and-tag for `/gaia-release`. The slash command is a
+ * thin orchestrator; each subcommand owns its acceptance criteria and
+ * tests.
  *
  * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */
