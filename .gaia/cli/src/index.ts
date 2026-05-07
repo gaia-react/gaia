@@ -10,6 +10,7 @@
 import {run as runFetchCoaching} from './adaptation/inject.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runMentorship} from './mentorship/index.js';
+import {run as runRelease} from './release/index.js';
 import {run as runScaffold} from './scaffold/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
@@ -25,6 +26,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   scaffold component|hook|route|service
   wiki state|commit-classify|state-bump|log-prepend|page-index|orphans|near-collisions
   update merge --baseline <dir> --latest <dir> --manifest <path>
+  release preflight|bump|changelog|scrub-wiki|manifest|commit-and-tag
 `;
 
 const printHelp = (): void => {
@@ -39,6 +41,7 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
   mentorship: runMentorship,
+  release: runRelease,
   scaffold: runScaffold,
   telemetry: runTelemetry,
   update: runUpdate,
