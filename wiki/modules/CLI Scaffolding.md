@@ -24,7 +24,7 @@ The CLI provides subcommands for scaffolding new project artifacts: components, 
 
 All scaffolding subcommands use a common foundation:
 
-- **Template loader** — Reads and interpolates scaffold templates (variables like `ComponentName`, `slug`, etc.). Templates live in `.gaia/cli/src/scaffold/templates/`.
+- **Template loader** — Reads and interpolates scaffold templates (variables like `ComponentName`, `slug`, etc.). Templates live in `.gaia/cli/templates/`.
 - **Barrel insert (service `--mocks` only)** — Edits the test database barrel to register new mock collections. The component, hook, and route flows do not edit barrels — `app/components/`, `app/hooks/`, and `app/services/` have no top-level `index.ts` in this template.
 
 Templates follow GAIA naming conventions and include stubs for i18n keys, TypeScript types, and unit test structure.

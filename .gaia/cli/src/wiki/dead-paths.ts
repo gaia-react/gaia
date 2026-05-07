@@ -4,7 +4,9 @@
  * Scans `wiki/**` markdown files for backticked repo-relative paths that
  * reference files no longer present on disk. Detects rot like a wiki page
  * citing `.claude/hooks/wiki-stop-safety-net.sh` after that hook has been
- * deleted or renamed.
+ * deleted or renamed. Also flags any reference to sibling-monorepo paths
+ * (`studio/`, `website/`) — those reach outside the GAIA repo and never
+ * resolve on a single-repo clone.
  *
  * Output: newline-separated `wiki/path:line  dead-path` entries. Exit 0
  * always — finding rot is informational, not a failure.
@@ -17,13 +19,25 @@ import {structuredError} from '../stderr.js';
 const HELP_TEXT = `Usage: gaia wiki dead-paths [--json]
 
   Scan wiki/**/*.md for backticked repo-relative paths under .claude/, .gaia/,
-  app/, test/, wiki/ that no longer exist on disk. Excludes wiki/log.md and
-  wiki/meta/** (audit artifacts that legitimately reference historical paths).
+  app/, test/, wiki/ that no longer exist on disk, plus any reference to
+  sibling-monorepo paths (studio/, website/) which reach outside the GAIA
+  tarball and never resolve on a single-repo clone. Excludes wiki/log.md
+  and wiki/meta/** (audit artifacts that legitimately reference historical
+  paths).
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const TRACKED_PREFIXES = ['.claude/', '.gaia/', 'app/', 'test/', 'wiki/'] as const;
+
+/**
+ * Sibling-monorepo segments that the maintainer's working tree contains
+ * (`gaia/`, `studio/`, `website/` are siblings) but the GAIA tarball does
+ * not. Any wiki citation containing one of these segments is dead on every
+ * clone except the maintainer's. The pattern matches both bare prefixes
+ * (`studio/foo.md`) and relative escapes (`../../../studio/foo.md`).
+ */
+const SIBLING_REPO_PATTERN = /(?:^|\/)(studio|website)\//;
 
 const SKIP_PATH_FRAGMENTS = [
   'wiki/log.md',
@@ -73,6 +87,7 @@ const isTrackedPath = (token: string): boolean => {
   if (!token.includes('/')) return false;
   if (!/\.[a-z0-9]{1,8}$/i.test(token)) return false;
   if (RUNTIME_PREFIXES.some((prefix) => token.startsWith(prefix))) return false;
+  if (SIBLING_REPO_PATTERN.test(token)) return true;
 
   return TRACKED_PREFIXES.some((prefix) => token.startsWith(prefix));
 };
@@ -138,6 +153,10 @@ export const findDeadPaths = (cwd: string): readonly DeadRef[] => {
 
         if (token === undefined) continue;
         if (!isTrackedPath(token)) continue;
+        if (SIBLING_REPO_PATTERN.test(token)) {
+          dead.push({filePath, line: index + 1, path: token});
+          continue;
+        }
         if (pathExists(cwd, token)) continue;
 
         dead.push({filePath, line: index + 1, path: token});

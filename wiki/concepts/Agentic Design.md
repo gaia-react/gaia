@@ -118,7 +118,7 @@ A handful of patterns from the canonical taxonomy are deliberately absent in GAI
 - **Vector RAG**: wiki retrieval is symbolic (paths, grep, `wiki/index.md`, backlinks), not embedding-based. Closer to "structured-markdown retrieval-on-demand" than canonical RAG.
 - **Code-Then-Execute**: a Claude Code runtime capability, not a GAIA convention.
 
-The full pattern-by-pattern grading (12 Strong, 13 Partial, 1 Inferential, 3 Absent), with evidence per pattern and an honest discussion of overclaims to retire, lives in [`studio/strategy/research/AGENTIC_DESIGN.md`](../../../studio/strategy/research/AGENTIC_DESIGN.md). That report is the source of truth for these claims.
+The full pattern-by-pattern grading is 12 Strong, 13 Partial, 1 Inferential, 3 Absent.
 
 ## Why structural matters
 
@@ -139,4 +139,3 @@ The result is a system where Claude's autonomy is bounded, its quality is enforc
 - [[GAIA Audit]]
 - [[PR Merge Workflow]]
 - [Source taxonomy: 29 agentic design patterns](https://zeljkoavramovic.github.io/agentic-design-patterns/)
-- Internal audit: [`studio/strategy/research/AGENTIC_DESIGN.md`](../../../studio/strategy/research/AGENTIC_DESIGN.md)

@@ -21,7 +21,7 @@ Events flow into one of three independent streams:
 | **Cloud projection** | `.gaia/local/telemetry/cloud/` | `755/644` | Strict whitelist + denylist sweep. No user paths, text, or identity. |
 | **Analytics** | `.gaia/local/telemetry/analytics/` | `755/644` | Daily aggregate reports; auto-attested (audit-attest.ts throws on drift). |
 
-Mentorship data stays off-project. Cloud + analytics live in `.gaia/local/telemetry/` (gitignored). Claude must not display raw mentorship event files — the binding rule lives in per-machine user memory, projected from `.gaia/cli/src/mentorship/display-rule.ts` whenever mentorship is enabled. The displayable aggregate is `profile.md`.
+Mentorship data stays off-project. Cloud + analytics live in `.gaia/local/telemetry/` (gitignored). The displayable aggregate is `profile.md`.
 
 ## CLI workspace
 

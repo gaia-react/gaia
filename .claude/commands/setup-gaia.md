@@ -193,7 +193,7 @@ Use AskUserQuestion with these three options in this exact order:
 .gaia/cli/gaia mentorship _internal-provision-dirs
 ```
 
-The `_internal-write-config` invocation also installs / removes the mentorship-display rule in user memory based on the chosen `--enabled` value.
+`_internal-write-config` applies the chosen settings; per-machine state follows from the flags.
 
 After the chosen branch executes:
 

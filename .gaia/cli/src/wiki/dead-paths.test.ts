@@ -187,6 +187,20 @@ describe('wiki dead-paths', () => {
     ]);
   });
 
+  test('flags sibling-monorepo paths (studio/, website/) regardless of disk', () => {
+    sandbox.writeFile(
+      'wiki/concepts/Sibling.md',
+      '# Sibling\n\nSee `studio/decisions/foo.md`.\nAlso `../../../studio/strategy/bar.md`.\nAnd `website/src/sections/baz.md`.\n'
+    );
+
+    const dead = findDeadPaths(sandbox.root);
+    expect(dead.map((d) => d.path).sort()).toEqual([
+      '../../../studio/strategy/bar.md',
+      'studio/decisions/foo.md',
+      'website/src/sections/baz.md',
+    ]);
+  });
+
   test('CLI prints `path:line  dead-path` lines on stdout', () => {
     sandbox.writeFile(
       'wiki/concepts/Hooks.md',

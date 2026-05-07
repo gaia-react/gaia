@@ -22992,11 +22992,15 @@ import path33 from "node:path";
 var HELP_TEXT29 = `Usage: gaia wiki dead-paths [--json]
 
   Scan wiki/**/*.md for backticked repo-relative paths under .claude/, .gaia/,
-  app/, test/, wiki/ that no longer exist on disk. Excludes wiki/log.md and
-  wiki/meta/** (audit artifacts that legitimately reference historical paths).
+  app/, test/, wiki/ that no longer exist on disk, plus any reference to
+  sibling-monorepo paths (studio/, website/) which reach outside the GAIA
+  tarball and never resolve on a single-repo clone. Excludes wiki/log.md
+  and wiki/meta/** (audit artifacts that legitimately reference historical
+  paths).
 `;
 var HELP_TOKENS27 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TRACKED_PREFIXES = [".claude/", ".gaia/", "app/", "test/", "wiki/"];
+var SIBLING_REPO_PATTERN = /(?:^|\/)(studio|website)\//;
 var SKIP_PATH_FRAGMENTS = [
   "wiki/log.md",
   "wiki/meta/",
@@ -23011,6 +23015,7 @@ var isTrackedPath = (token) => {
   if (!token.includes("/")) return false;
   if (!/\.[a-z0-9]{1,8}$/i.test(token)) return false;
   if (RUNTIME_PREFIXES.some((prefix) => token.startsWith(prefix))) return false;
+  if (SIBLING_REPO_PATTERN.test(token)) return true;
   return TRACKED_PREFIXES.some((prefix) => token.startsWith(prefix));
 };
 var shouldSkipFile = (relPath) => SKIP_PATH_FRAGMENTS.some((fragment) => relPath.startsWith(fragment));
@@ -23057,6 +23062,10 @@ var findDeadPaths = (cwd) => {
         const token = match[1];
         if (token === void 0) continue;
         if (!isTrackedPath(token)) continue;
+        if (SIBLING_REPO_PATTERN.test(token)) {
+          dead.push({ filePath, line: index + 1, path: token });
+          continue;
+        }
         if (pathExists(cwd, token)) continue;
         dead.push({ filePath, line: index + 1, path: token });
       }
