@@ -6,7 +6,7 @@ When reporting information to me, be extremely concise and sacrifice grammar for
 
 `wiki/` is the knowledge base — architecture, dev practices **Committed to git, shared across developers.** When you need facts not already in context:
 
-1. Start with `wiki/index.md` (catalog) or the domain `_index.md`
+1. Start with `wiki/index.md` (catalog)
 2. **Do not preload wiki content.** Fetch only the specific page you need.
 3. **Don't cross-load domains.** Technical work → `wiki/modules/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/components/`, `wiki/flows/`, `wiki/dependencies/`. Only pull from other domains when the task genuinely spans both.
 4. `wiki/hot.md` auto-loads at session start — it's a 200-word cache of "where we left off", not a fact store. Don't bloat it on updates.

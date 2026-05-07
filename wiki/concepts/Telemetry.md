@@ -69,7 +69,7 @@ Detectors are wired-but-inert at v1.0.0: production behavior requires N ≥ 10 e
 
 | Hook / skill | Event emitted |
 |---|---|
-| `PostToolUse Task` hook (`telemetry-task-postuse.sh`) | `engineer_return`, `code_review_audit_finding` (trailer-parsed; stub in v1) |
+| `PostToolUse Task` hook (`telemetry-task-postuse.sh` → `gaia telemetry parse-stdin`) | `engineer_return`, `code_review_audit_finding` (TS trailer parser in `src/telemetry/parse-trailer.ts`) |
 | `/gaia spec` Gate 2 | `time_to_resolved_spec` |
 | `/gaia spec` abandoned-exit | `time_to_resolved_spec` (abandoned) |
 | `/gaia plan` revision detection | `plan_revised` |

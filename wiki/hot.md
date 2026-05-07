@@ -3,7 +3,7 @@ type: meta
 title: Hot Cache
 status: active
 created: 2026-05-04
-updated: 2026-05-04
+updated: 2026-05-07
 tags: [meta, cache]
 ---
 
