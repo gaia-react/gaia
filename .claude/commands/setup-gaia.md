@@ -31,6 +31,20 @@ Each step records itself in `.gaia/local/setup-state.json` via `gaia setup mark-
 
 Read this once at the start. Skip any step in `completed_steps`.
 
+## Step -1: Self-heal worktree symlinks
+
+If this clone is being set up from a linked worktree (e.g. one created via `git worktree add` outside the Claude Code harness), the shared-state symlinks (`setup-state.json`, `.gaia/cache/`, `.gaia/local/audit/`) may not exist yet. Run the self-heal:
+
+```bash
+.gaia/cli/gaia setup link-worktree
+```
+
+In a main checkout, this command is a no-op (exits 0 with `not a linked worktree`). In a linked worktree without symlinks, it creates them and prints a one-line summary. In a linked worktree where pre-existing plain files conflict with the symlink targets, the plain files are backed up to `<path>.bak.<timestamp>` before the symlinks are created.
+
+If the command exits non-zero (e.g. Windows symlink permission failure), HALT and surface the error to the user verbatim. They need to fix the underlying issue (typically: enable Windows Developer Mode) and re-run `/setup-gaia`.
+
+This step is NOT recorded in `setup-state.json` — it's a prerequisite that runs every invocation. The CLI's own idempotence guarantees the no-op behavior on subsequent runs.
+
 ## Step 0: Ensure pnpm + node_modules
 
 Tell the user: "Checking pnpm + node_modules…"

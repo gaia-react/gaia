@@ -12,7 +12,16 @@
 #      (so the adopter's existing global statusline appears unchanged).
 #   3. Fallback → `.gaia/statusline/preferred-base.sh` directly.
 #
+# Right side suppression in linked worktrees: the right-side indicators
+# (`Run /setup-gaia`, `Run /update-deps`, `Run /update-gaia`) all prod the
+# user toward maintenance flows that belong on the main checkout. Inside a
+# linked worktree the right side is empty — the worktree is detected via
+# `dirname(git rev-parse --git-common-dir) != PROJECT_ROOT`. The background
+# refresher still fires from worktrees so the canonical cache (which the
+# worktree's `.gaia/cache/` symlinks to) keeps updating.
+#
 # The hot path stays fast (target <50ms): no network calls, no `pnpm` calls.
+# The worktree-detection adds at most one `git rev-parse` fork.
 # A background refresher (.gaia/scripts/check-updates.sh) writes the cache.
 #
 # Partial failures are silent — a broken statusline disappears in Claude Code,
@@ -56,75 +65,71 @@ fi
 
 [ -z "$left" ] && left="Claude Code"
 
+# ---------- Worktree detection ----------
+# The right side prods toward maintenance flows that belong on the main
+# checkout. Linked worktrees skip the cache read entirely so no indicators
+# emit there. Detection uses git plumbing only; falls through (treats as
+# main checkout) silently when git is unavailable.
+is_worktree=0
+common_dir="$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)"
+if [ -n "$common_dir" ]; then
+  case "$common_dir" in
+    /*) absolute_common_dir="$common_dir" ;;
+    *)  absolute_common_dir="$PROJECT_ROOT/$common_dir" ;;
+  esac
+  main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
+  if [ -n "$main_root" ] && [ "$main_root" != "$PROJECT_ROOT" ]; then
+    is_worktree=1
+  fi
+fi
+
 # ---------- Right side from cache ----------
 # Per-machine setup gate: when .gaia/local/setup-state.json is missing or
 # its completed_at is null, the right side shows ONLY `Run /setup-gaia` —
 # the other indicators are suppressed until the developer has run through
 # the per-clone setup at least once. The setup file is gitignored, so each
 # clone gets its own state.
-#
-# Worktree-aware: linked worktrees have their own gitignored .gaia/local/
-# (empty), so resolve to the main checkout via `git rev-parse --git-common-dir`
-# and read setup-state.json from there. Falls back to PROJECT_ROOT silently
-# if git is unavailable or the call fails — the indicator then fires in the
-# worktree, which matches today's behavior in non-git environments.
-#
-# Assumption: --git-common-dir returns the shared .git dir (relative ".git"
-# from main, or an absolute path like /repo/.git from a linked worktree).
-# `dirname` of that is the main checkout root. This holds for standard git
-# worktrees but NOT submodules — the GAIA topology does not include
-# submodules; do not change this resolution without re-validating.
-MAIN_WORKTREE_ROOT="$PROJECT_ROOT"
-common_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)
-if [ -n "$common_dir" ]; then
-  case "$common_dir" in
-    /*) absolute_common_dir="$common_dir" ;;
-    *)  absolute_common_dir="$PROJECT_ROOT/$common_dir" ;;
-  esac
-  candidate="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
-  if [ -n "$candidate" ] && [ -d "$candidate" ]; then
-    MAIN_WORKTREE_ROOT="$candidate"
-  fi
-fi
-SETUP_STATE_FILE="$MAIN_WORKTREE_ROOT/.gaia/local/setup-state.json"
-setup_complete="false"
-if [ -f "$SETUP_STATE_FILE" ]; then
-  if command -v jq >/dev/null 2>&1; then
-    if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
-      setup_complete="true"
-    fi
-  else
-    # Fallback: a complete state has a non-null completed_at value.
-    if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
-      setup_complete="true"
-    fi
-  fi
-fi
-
 right=""
-if [ "$setup_complete" != "true" ]; then
-  right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
-elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
-  outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
-  gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
-  gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
+if [ "$is_worktree" -eq 0 ]; then
+  SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
+  setup_complete="false"
+  if [ -f "$SETUP_STATE_FILE" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
+        setup_complete="true"
+      fi
+    else
+      # Fallback: a complete state has a non-null completed_at value.
+      if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
+        setup_complete="true"
+      fi
+    fi
+  fi
 
-  segments=()
-  COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
-  if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
-    segments+=("🧭")
-  fi
-  if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-    segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
-  fi
-  if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
-    segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
-  fi
-  if [ "${#segments[@]}" -gt 0 ]; then
-    right="${segments[0]}"
-    for ((i=1; i<${#segments[@]}; i++)); do
-      right="${right}  ${segments[$i]}"
-    done
+  if [ "$setup_complete" != "true" ]; then
+    right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
+  elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
+    outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
+    gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
+    gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
+
+    segments=()
+    COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
+    if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
+      segments+=("🧭")
+    fi
+    if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
+      segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
+    fi
+    if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
+      segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
+    fi
+    if [ "${#segments[@]}" -gt 0 ]; then
+      right="${segments[0]}"
+      for ((i=1; i<${#segments[@]}; i++)); do
+        right="${right}  ${segments[$i]}"
+      done
+    fi
   fi
 fi
 
