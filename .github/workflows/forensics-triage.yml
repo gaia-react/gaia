@@ -499,8 +499,11 @@ jobs:
           prompt: ${{ steps.render-apply.outputs.body }}
           # File-edit tools only. NO Bash, NO git, NO push tools, NO web.
           # Post-step verification asserts diffs touch only `proposed_paths`.
+          # max-turns bumped to 60 after Phase 4a UAT-004 surfaced 30 was
+          # too tight on a moderate-complexity fixture; the fix-abort and
+          # quality-gate backstops contain runaway behavior.
           claude_args: |
-            --max-turns 30
+            --max-turns 60
             --allowedTools Edit,Write
             --disallowedTools Bash,WebFetch,WebSearch
 
