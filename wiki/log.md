@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-08 f649523 SKIP — Serena handles instruction-file inventory — /gaia spec auto + plan isolation in .claude/skills/
+- 2026-05-08 28cd839 SKIP — wiki utility commit (re-anchor state)
 - 2026-05-08 843ffec RE_ANCHOR — re-anchored after history rewrite
 - 2026-05-08 158c86b - SKIP: docs(claude-integration): codify UAT/SPEC narrative-ref discipline (wiki-style + wiki-lint)
 - 2026-05-08 b4b9ce5 - SKIP: docs(claude-integration): audit #13 — ship check-updates, scrub SPEC IDs in extension surfaces
