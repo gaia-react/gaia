@@ -27,6 +27,7 @@ wiki/meta
 wiki/.obsidian/workspace.json
 wiki/concepts/Release Workflow.md
 wiki/decisions/Bundle-time Scrub.md
+wiki/decisions/Forensics Triage Workflow.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked
@@ -90,11 +91,17 @@ wiki/decisions/Bundle-time Scrub.md
 # the test workflow has nothing to test on their side. `distribution.yml`
 # runs the maintainer-only `.gaia/tests/distribution/` harness against a
 # staged release tree using a Claude OAuth org secret; adopters never
-# distribute GAIA. All three would be silent passengers at best and
-# confusing CI failures at worst.
+# distribute GAIA. `forensics-triage.yml` runs autonomous Claude Code
+# triage against `gaia-forensics`-labeled issues on the upstream
+# `gaia-react/gaia` repo; the workflow's helpers under `.github/forensics/`
+# include scope checks, classifier prompts, fixtures, and bats tests that
+# only matter on the maintainer's clone. All would be silent passengers at
+# best and confusing CI failures at worst on adopter clones.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
 .github/workflows/distribution.yml
+.github/workflows/forensics-triage.yml
+.github/forensics
 
 # --- 10. Maintainer-only health-audit infrastructure ---
 # `.gaia/cli/health/` holds the audit taxonomy, run state, and (post-#97)

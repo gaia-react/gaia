@@ -66,6 +66,6 @@ After classification, the agent decides whether the failure is a user-config iss
 
 The two branches are mutually exclusive per invocation. If multiple signals fire (e.g. wrong Node version AND an unexpected crash), apply the user-config branch — the environment is the more likely root cause and the user can rerun after fixing it.
 
-## Disjointness from health-audit
+## Disjointness from other taxonomies
 
-The health-audit taxonomy at `.gaia/cli/health/taxonomy.md` is a maintainer-only baseline of code-regression patterns used by the automated audit loop. It is not a fallback or extension of the forensics taxonomy. A user-facing failure that does not fit one of the eight classes above is `other`; the correct action is to offer a GH issue, not to consult the health-audit taxonomy for a match.
+This forensics taxonomy is the only classifier the skill consults. A user-facing failure that does not fit one of the eight classes above is `other`; the correct action is to offer a GH issue, not to look elsewhere for a match.

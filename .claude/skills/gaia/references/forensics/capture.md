@@ -75,7 +75,7 @@ Universal envelope only. No class-specific reads.
 
 The following are never captured — not even filenames in some cases:
 
-- **Bodies of files under `app/`, `wiki/`, `studio/`.** Filenames from these directories are allowed in state summaries; full file contents are never read or included.
+- **Bodies of files under `app/` and `wiki/`.** Filenames from these directories are allowed in state summaries; full file contents are never read or included.
 - **Claude Code session JSONL contents.** Files matching `~/.claude/projects/*/session-*.jsonl` are entirely excluded in phase 1. Filenames from this path are also excluded.
 - **`.env*` files.** Always excluded — not even filenames appear in the snapshot.
 - **`node_modules/`.** Any path under `node_modules/` is excluded in full.
@@ -91,7 +91,7 @@ Every command in this fragment is read-only. The capture step:
 - Does not invoke `gh` in any form.
 - Does not shell out to any GAIA skill, hook, or script that writes to disk.
 
-The working-tree mtimes across `app/`, `wiki/`, `studio/`, `.gaia/cli/`, `.claude/`, and `.specify/` do not change across the capture step. This is verifiable by snapshotting mtimes before and after invocation.
+The working-tree mtimes across `app/`, `wiki/`, `.gaia/cli/`, `.claude/`, and `.specify/` do not change across the capture step. This is verifiable by snapshotting mtimes before and after invocation.
 
 ## Output format
 

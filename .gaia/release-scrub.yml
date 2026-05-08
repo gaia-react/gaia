@@ -158,6 +158,11 @@ transforms:
         path-allowlist:
           # The rule's own counter-example prose documents this pattern.
           - ".claude/rules/instruction-files.md"
+          # Forensics redaction documents Rule B's regex literally — the
+          # pattern `/Users/<name>/` and `/home/<name>/` is the load-bearing
+          # algorithm input the skill executes against. Removing the literal
+          # would break the documentation's correspondence to the regex.
+          - ".claude/skills/gaia/references/forensics/redaction.md"
 
       # ---- Obscurity-rule contract: rule-name leakage ----
       # The mentorship-display rule is projected into per-machine user
