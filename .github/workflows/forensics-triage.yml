@@ -233,6 +233,11 @@ jobs:
         if: |
           steps.idempotency.outputs.already_triaged != 'true' &&
           steps.parse.outputs.valid == 'true'
+        # Continue on failure: max-turns / SDK / API errors must not strand
+        # the issue in a "triaged but no verdict" half-state. The verdict
+        # extractor downstream treats an empty result as ambiguous and
+        # routes to needs-human via the standard fallback.
+        continue-on-error: true
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -482,6 +487,12 @@ jobs:
           steps.parse.outputs.valid == 'true' &&
           steps.verdict.outputs.verdict == 'auto-fixable' &&
           steps.scope.outputs.ok == 'true'
+        # Continue on failure: max-turns / SDK / API errors must not strand
+        # the issue. The Verify-diff step already routes empty-diff and
+        # GAIA-FIX-ABORT to handle-needs-human.sh; an action exit-non-zero
+        # demotes cleanly through the same path instead of short-circuiting
+        # the rest of the workflow.
+        continue-on-error: true
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
