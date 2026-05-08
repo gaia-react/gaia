@@ -347,7 +347,11 @@ Then surface, as the final line of your report — pick the line that matches `s
 
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended (un-pushed); gh pr merge is unblocked.
 
-> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer carried on empty commit (pushed); gh pr merge is unblocked.
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer carried on empty commit (pushed to upstream); gh pr merge is unblocked.
+
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer carried on empty commit (push to upstream FAILED — push manually before merging or CI's audit will rerun); gh pr merge is unblocked.
+
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer carried on empty commit (HEAD detached; runner pushes separately); gh pr merge is unblocked.
 
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended onto audit-self-heal HEAD; gh pr merge is unblocked.
 
