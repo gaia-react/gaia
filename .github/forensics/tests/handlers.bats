@@ -256,6 +256,17 @@ first_captured_body() {
   grep -qF 'ambiguous-verdict' "$body_path"
 }
 
+@test "needs-human: comment names the reason-code deviation (UAT-010)" {
+  reasoning="$BATS_TEST_TMPDIR/r.md"
+  printf 'deviation detail\n' > "$reasoning"
+  run "$HANDLERS/handle-needs-human.sh" 42 "$reasoning" deviation
+  [ "$status" -eq 0 ]
+  body_path="$(first_captured_body)"
+  grep -qF 'reason: `deviation`' "$body_path"
+  grep -qF 'in-allowlist paths' "$body_path"
+  grep -qF 'deviates from the classifier' "$body_path"
+}
+
 @test "needs-human: gaia-triaged is the LAST mutation" {
   reasoning="$BATS_TEST_TMPDIR/r.md"
   printf 'x\n' > "$reasoning"

@@ -24,11 +24,22 @@
 # POSIX bash + awk only. No jq, no python. Exit 0 always (consumers read
 # JSON); exit 2 reserved for genuine usage errors.
 
-set -u
+set -uo pipefail
 
 usage() {
   echo "usage: parse-verdict.sh <action-output-file>" >&2
   exit 2
+}
+
+# emit_internal_error <stage> <exit-code>
+# Emits the SPEC-003 internal-error JSON envelope on stdout. Used by the
+# per-awk exit-code checks: when an awk pipeline returns non-zero, the
+# consumer needs a deterministic signal distinguishing "infrastructure
+# failure" from "verdict:ambiguous". The script's overall exit code
+# remains 0 (consumers parse JSON; exit 2 is reserved for usage errors).
+emit_internal_error() {
+  printf '{"internal_error":true,"stage":"%s","exit_code":%d}\n' "$1" "$2"
+  exit 0
 }
 
 [ "$#" -eq 1 ] || usage
@@ -47,12 +58,19 @@ trap 'rm -rf "$work_dir"' EXIT
 # Count of GAIA-VERDICT lines (leading whitespace tolerated; the rest of the
 # line is the value, possibly with trailing whitespace).
 verdict_count=$(awk '/^[[:space:]]*GAIA-VERDICT:/ { c++ } END { print c+0 }' "$input_file")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "verdict-count" "$awk_status"
 
 # Line number of the last non-blank line.
 last_nonblank_lineno=$(awk 'NF { last = NR } END { print last+0 }' "$input_file")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "last-nonblank-locate" "$awk_status"
 
-# Line number of the (single) verdict line, if present.
+# Line number of the (single) verdict line, if present. `pipefail` is on,
+# so a non-zero awk exit propagates through the `tail` stage.
 verdict_lineno=$(awk '/^[[:space:]]*GAIA-VERDICT:/ { print NR }' "$input_file" | tail -n 1)
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "verdict-line-locate" "$awk_status"
 
 # ---------------------------------------------------------------------------
 # Step 2: classify the verdict.
@@ -178,6 +196,8 @@ awk '
     }
   }
 ' "$input_file" > "$work_dir/paths-raw.txt"
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "proposed-paths-extract" "$awk_status"
 
 # Build the JSON array of proposed paths and remember whether any were found.
 paths_json=""

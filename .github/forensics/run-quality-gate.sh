@@ -45,7 +45,7 @@
 #   …validates a candidate fix branch the same way the workflow does
 #   before manually opening a PR.
 
-set -u
+set -uo pipefail
 
 usage() {
   echo "usage: run-quality-gate.sh <output-summary-file>" >&2

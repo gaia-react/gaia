@@ -32,6 +32,7 @@ jobs:
       contents: write
       pull-requests: write
       actions: read
+      id-token: write
     concurrency:
       group: forensics-${{ github.event.issue.number }}
       cancel-in-progress: false
@@ -45,14 +46,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
-
-      - name: Setup Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
+      # Setup pnpm + Setup Node are gated to the apply-fix path (see
+      # before `Run Quality Gate` further down). Running them
+      # unconditionally at the top of the job triggers a `Post Setup
+      # Node` cache-cleanup post-step at end-of-job for every non-
+      # apply-fix path; even with `cache:` unset, setup-node@v5's
+      # post-step still validates the lockfile path and emits
+      # `Path Validation Error`, which flips the job conclusion to
+      # `failure` and notifies the maintainer for benign runs (non-
+      # issue, ambiguous, classifier-only, idempotency early-exit).
+      # The `claude-code-action` invocations provision their own Node
+      # runtimes, so the only consumer of this repo's Node + pnpm is
+      # `run-quality-gate.sh` on the apply-fix path.
 
       # ----------------------------------------------------------------
       # UAT-006: idempotency early-exit. If `gaia-triaged` is already on
@@ -98,6 +103,20 @@ jobs:
           set -eu
           parsed_file="${RUNNER_TEMP}/forensics/parsed.json"
           "$FORENSICS_DIR/parse-issue-body.sh" "${RUNNER_TEMP}/forensics/issue-body.md" > "$parsed_file"
+
+          # SPEC-003 UAT-006: parse-issue-body.sh emits an internal-error
+          # JSON envelope when one of its awk pipelines fails. Distinct
+          # from valid:false; route to needs-human with reason-code
+          # `internal-error` rather than letting the workflow fall
+          # through to malformed-body handling.
+          if [ "$(jq -r '.internal_error // false' "$parsed_file")" = "true" ]; then
+            reason_file="${RUNNER_TEMP}/forensics/internal-error-reason.md"
+            jq -r '"forensics primitive `parse-issue-body.sh` failed at stage `\(.stage)` (exit \(.exit_code))"' "$parsed_file" > "$reason_file"
+            "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+              "$ISSUE_NUMBER" "$reason_file" "internal-error"
+            exit 0
+          fi
+
           valid="$(jq -r '.valid' "$parsed_file")"
           echo "parsed_file=$parsed_file" >> "$GITHUB_OUTPUT"
           echo "valid=$valid" >> "$GITHUB_OUTPUT"
@@ -144,7 +163,7 @@ jobs:
           # the redaction tokens themselves and only masks any literal
           # secret-shaped bytes the parser might have surfaced.
           mask_secret_shapes() {
-            printf '%s\n' "$1" | grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' | while IFS= read -r tok; do
+            printf '%s\n' "$1" | grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}|gh[psuor]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' | while IFS= read -r tok; do
               [ -n "$tok" ] && echo "::add-mask::$tok"
             done || true
           }
@@ -175,30 +194,21 @@ jobs:
           - `.specify/extensions/gaia/templates/`
           - `.github/workflows/`'
 
-          template="$(cat "$FORENSICS_DIR/prompt.md")"
           rendered_file="${RUNNER_TEMP}/forensics/classifier-prompt.md"
 
-          # Use awk for the substitutions: avoids the sed/`/`/`&` escaping
-          # nightmare with multi-line section content.
-          awk -v iss="$ISSUE_NUMBER" \
-              -v sym="$symptom" \
-              -v cls="$classification" \
-              -v cap="$capture" \
-              -v rep="$repro" \
-              -v al="$allowlist" \
-              -v dl="$denylist" '
-          {
-            line = $0
-            gsub(/\{\{ISSUE_NUMBER\}\}/, iss, line)
-            gsub(/\{\{SYMPTOM\}\}/, sym, line)
-            gsub(/\{\{CLASSIFICATION\}\}/, cls, line)
-            gsub(/\{\{CAPTURE\}\}/, cap, line)
-            gsub(/\{\{REPRO_CONTEXT\}\}/, rep, line)
-            gsub(/\{\{ALLOWLIST\}\}/, al, line)
-            gsub(/\{\{DENYLIST\}\}/, dl, line)
-            print line
-          }
-          ' <<< "$template" > "$rendered_file"
+          # Render via the standalone helper (SPEC-003 UAT-004). Bash
+          # parameter-expansion-based substitution sidesteps both the
+          # multi-line `awk -v` rejection and the `gsub` `&`-replacement
+          # corruption that the previous inline awk shipped with.
+          "$FORENSICS_DIR/render-prompt.sh" "$FORENSICS_DIR/prompt.md" \
+            "ISSUE_NUMBER=$ISSUE_NUMBER" \
+            "SYMPTOM=$symptom" \
+            "CLASSIFICATION=$classification" \
+            "CAPTURE=$capture" \
+            "REPRO_CONTEXT=$repro" \
+            "ALLOWLIST=$allowlist" \
+            "DENYLIST=$denylist" \
+            > "$rendered_file"
 
           # Surface the rendered prompt as a step output via heredoc so
           # the action invocation can consume it. The delimiter is a
@@ -217,9 +227,14 @@ jobs:
         if: |
           steps.idempotency.outputs.already_triaged != 'true' &&
           steps.parse.outputs.valid == 'true'
+        # Continue on failure: max-turns / SDK / API errors must not strand
+        # the issue in a "triaged but no verdict" half-state. The verdict
+        # extractor downstream treats an empty result as ambiguous and
+        # routes to needs-human via the standard fallback.
+        continue-on-error: true
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.render-classifier.outputs.body }}
           # No tool access — judgment-only. The classifier MUST NOT
           # touch the working tree (UAT-009).
@@ -236,21 +251,37 @@ jobs:
           EXEC_FILE: ${{ steps.classify.outputs.execution_file }}
         run: |
           set -eu
-          # The action emits a JSONL execution log; the assistant's final
-          # response lives on the line where `type == "result"` (field
-          # `.result`). Extract that to a plain text file for parse-verdict.
+          # The action emits a top-level JSON array of execution events;
+          # the assistant's final response lives on the entry where
+          # `type == "result"` (field `.result`). Extract that to a plain
+          # text file for parse-verdict.
           verdict_text="${RUNNER_TEMP}/forensics/verdict-text.md"
           if [ -z "${EXEC_FILE:-}" ] || [ ! -f "$EXEC_FILE" ]; then
             echo "::error::classifier execution_file missing or unreadable: ${EXEC_FILE:-<empty>}"
             exit 1
           fi
-          jq -rs 'map(select(.type == "result")) | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
+          jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
           if [ ! -s "$verdict_text" ]; then
             echo "::warning::classifier produced no result text — treating as ambiguous"
           fi
 
           parsed="${RUNNER_TEMP}/forensics/verdict.json"
           "$FORENSICS_DIR/parse-verdict.sh" "$verdict_text" > "$parsed"
+
+          # SPEC-003 UAT-006: parse-verdict.sh emits an internal-error
+          # JSON envelope when one of its awk pipelines fails. Route to
+          # needs-human with reason-code `internal-error` before the
+          # ambiguous-verdict dispatch (the two are deliberately
+          # distinct: `ambiguous` is a parsed-but-non-conformant
+          # classifier response; `internal-error` is the parser itself
+          # failing).
+          if [ "$(jq -r '.internal_error // false' "$parsed")" = "true" ]; then
+            reason_file="${RUNNER_TEMP}/forensics/internal-error-reason.md"
+            jq -r '"forensics primitive `parse-verdict.sh` failed at stage `\(.stage)` (exit \(.exit_code))"' "$parsed" > "$reason_file"
+            "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+              "$ISSUE_NUMBER" "$reason_file" "internal-error"
+            exit 0
+          fi
 
           verdict="$(jq -r '.verdict' "$parsed")"
           echo "verdict=$verdict"
@@ -394,10 +425,12 @@ jobs:
           steps.parse.outputs.valid == 'true' &&
           steps.verdict.outputs.verdict == 'auto-fixable' &&
           steps.scope.outputs.ok == 'true'
+        env:
+          FIX_BRANCH: ${{ steps.branch.outputs.name }}
         run: |
           set -eu
           git fetch origin main
-          git checkout -B "${{ steps.branch.outputs.name }}" origin/main
+          git checkout -B "$FIX_BRANCH" origin/main
           git config user.name 'gaia-forensics-triage[bot]'
           git config user.email 'gaia-forensics-triage[bot]@users.noreply.github.com'
 
@@ -423,26 +456,16 @@ jobs:
           # block; content is read-back-into-position via a single gsub).
           paths_block="$(jq -r '.proposed_paths[]' "$VERDICT_FILE")"
 
-          template="$(cat "$FORENSICS_DIR/apply-fix-prompt.md")"
           rendered_file="${RUNNER_TEMP}/forensics/apply-fix-prompt.md"
 
-          awk -v iss="$ISSUE_NUMBER" \
-              -v paths="$paths_block" \
-              -v reasoning="$reasoning" \
-              -v sym="$symptom" \
-              -v cap="$capture" \
-              -v rep="$repro" '
-          {
-            line = $0
-            gsub(/\{\{ISSUE_NUMBER\}\}/, iss, line)
-            gsub(/\{\{PROPOSED_PATHS\}\}/, paths, line)
-            gsub(/\{\{CLASSIFIER_REASONING\}\}/, reasoning, line)
-            gsub(/\{\{SYMPTOM\}\}/, sym, line)
-            gsub(/\{\{CAPTURE\}\}/, cap, line)
-            gsub(/\{\{REPRO_CONTEXT\}\}/, rep, line)
-            print line
-          }
-          ' <<< "$template" > "$rendered_file"
+          "$FORENSICS_DIR/render-prompt.sh" "$FORENSICS_DIR/apply-fix-prompt.md" \
+            "ISSUE_NUMBER=$ISSUE_NUMBER" \
+            "PROPOSED_PATHS=$paths_block" \
+            "CLASSIFIER_REASONING=$reasoning" \
+            "SYMPTOM=$symptom" \
+            "CAPTURE=$capture" \
+            "REPRO_CONTEXT=$repro" \
+            > "$rendered_file"
 
           delim="EOF_$(openssl rand -hex 16)"
           {
@@ -458,15 +481,24 @@ jobs:
           steps.parse.outputs.valid == 'true' &&
           steps.verdict.outputs.verdict == 'auto-fixable' &&
           steps.scope.outputs.ok == 'true'
+        # Continue on failure: max-turns / SDK / API errors must not strand
+        # the issue. The Verify-diff step already routes empty-diff and
+        # GAIA-FIX-ABORT to handle-needs-human.sh; an action exit-non-zero
+        # demotes cleanly through the same path instead of short-circuiting
+        # the rest of the workflow.
+        continue-on-error: true
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.render-apply.outputs.body }}
           # File-edit tools only. NO Bash, NO git, NO push tools, NO web.
           # Post-step verification asserts diffs touch only `proposed_paths`.
+          # max-turns bumped to 60 after Phase 4a UAT-004 surfaced 30 was
+          # too tight on a moderate-complexity fixture; the fix-abort and
+          # quality-gate backstops contain runaway behavior.
           claude_args: |
-            --max-turns 30
-            --allowedTools Edit,Read,Write
+            --max-turns 60
+            --allowedTools Edit,Write
             --disallowedTools Bash,WebFetch,WebSearch
 
       - name: Verify diff against proposed paths
@@ -489,13 +521,14 @@ jobs:
             done >> "$GITHUB_OUTPUT"
           }
 
-          # Capture the apply-fix execution-file's last `result` line so we
+          # Capture the apply-fix execution-file's last `result` entry so we
           # can detect the GAIA-FIX-ABORT escape hatch and surface the
-          # rationale to the maintainer.
+          # rationale to the maintainer. The action emits a top-level
+          # JSON array of execution events.
           apply_text="${RUNNER_TEMP}/forensics/apply-fix-text.md"
           if [ -n "${{ steps.apply-fix.outputs.execution_file }}" ] \
              && [ -f "${{ steps.apply-fix.outputs.execution_file }}" ]; then
-            jq -rs 'map(select(.type == "result")) | .[-1].result // empty' \
+            jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' \
               "${{ steps.apply-fix.outputs.execution_file }}" > "$apply_text"
           else
             : > "$apply_text"
@@ -563,13 +596,14 @@ jobs:
           steps.verdict.outputs.verdict == 'auto-fixable' &&
           steps.scope.outputs.ok == 'true' &&
           steps.verify-diff.outputs.diff_ok == 'false'
+        env:
+          ABORT_REASON: ${{ steps.verify-diff.outputs.abort_reason }}
         run: |
           set -eu
           reason_file="${RUNNER_TEMP}/forensics/apply-abort-reason.md"
           # shellcheck disable=SC2016 # awk program references awk's $0
           {
-            printf 'auto-fix abort reason: `%s`\n\n' \
-              "${{ steps.verify-diff.outputs.abort_reason }}"
+            printf 'auto-fix abort reason: `%s`\n\n' "$ABORT_REASON"
             cat "${{ steps.verdict.outputs.reasoning_file }}"
             printf '\n\n---\n\nfix-applier final message:\n\n'
             cat "${{ steps.verify-diff.outputs.apply_text }}" || true
@@ -583,10 +617,18 @@ jobs:
           # pushed, but resetting keeps the runner's working tree clean
           # in case any always-run step inspects it.
           git reset --hard HEAD
+          # UAT-010: `diff-not-in-proposed` is a deviation (the model
+          # touched in-allowlist paths it did not declare upfront), not a
+          # scope violation. Other abort reasons remain `out-of-scope`.
+          if [ "$ABORT_REASON" = "diff-not-in-proposed" ]; then
+            reason_code="deviation"
+          else
+            reason_code="out-of-scope"
+          fi
           "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
             "$ISSUE_NUMBER" \
             "$reason_file" \
-            "out-of-scope"
+            "$reason_code"
 
       # ----------------------------------------------------------------
       # UAT-005: Quality Gate. Branch is local-only; we push only when
@@ -606,6 +648,30 @@ jobs:
           # Already `git add -A`'d in verify-diff; commit on the local
           # branch. No push yet — gate must pass first.
           git commit -m "forensics: auto-fix attempt for #${ISSUE_NUMBER}"
+
+      # Apply-fix-only Node + pnpm provisioning. Gated to the same
+      # condition set as `Run Quality Gate` so non-apply-fix paths
+      # never trigger setup-node@v5's `Post Setup Node` cleanup
+      # post-step at end-of-job.
+      - name: Setup pnpm
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true'
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+
+      - name: Setup Node
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true'
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: '.node-version'
 
       - name: Run Quality Gate
         id: quality-gate
@@ -672,9 +738,11 @@ jobs:
           steps.scope.outputs.ok == 'true' &&
           steps.verify-diff.outputs.diff_ok == 'true' &&
           steps.quality-gate.outcome == 'success'
+        env:
+          FIX_BRANCH: ${{ steps.branch.outputs.name }}
         run: |
           set -eu
-          git push origin "${{ steps.branch.outputs.name }}"
+          git push origin "$FIX_BRANCH"
 
       - name: Compose PR body
         id: pr-body
@@ -719,13 +787,17 @@ jobs:
           steps.scope.outputs.ok == 'true' &&
           steps.verify-diff.outputs.diff_ok == 'true' &&
           steps.quality-gate.outcome == 'success'
+        env:
+          FIX_BRANCH: ${{ steps.branch.outputs.name }}
+          FIX_CLASS_SLUG: ${{ steps.branch.outputs.class_slug }}
+          PR_BODY_FILE: ${{ steps.pr-body.outputs.file }}
         run: |
           set -eu
           "$FORENSICS_DIR/handlers/handle-auto-fixable.sh" \
             "$ISSUE_NUMBER" \
-            "${{ steps.branch.outputs.class_slug }}" \
-            "${{ steps.branch.outputs.name }}" \
-            "${{ steps.pr-body.outputs.file }}"
+            "$FIX_CLASS_SLUG" \
+            "$FIX_BRANCH" \
+            "$PR_BODY_FILE"
 
       # ----------------------------------------------------------------
       # UAT-012 fail-forward: if the workflow did meaningful work but
