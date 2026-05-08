@@ -62,7 +62,25 @@ fi
 # the other indicators are suppressed until the developer has run through
 # the per-clone setup at least once. The setup file is gitignored, so each
 # clone gets its own state.
-SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
+#
+# Worktree-aware: linked worktrees have their own gitignored .gaia/local/
+# (empty), so resolve to the main checkout via `git rev-parse --git-common-dir`
+# and read setup-state.json from there. Falls back to PROJECT_ROOT silently
+# if git is unavailable or the call fails — the indicator then fires in the
+# worktree, which matches today's behavior in non-git environments.
+MAIN_WORKTREE_ROOT="$PROJECT_ROOT"
+common_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)
+if [ -n "$common_dir" ]; then
+  case "$common_dir" in
+    /*) absolute_common_dir="$common_dir" ;;
+    *)  absolute_common_dir="$PROJECT_ROOT/$common_dir" ;;
+  esac
+  candidate="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
+  if [ -n "$candidate" ] && [ -d "$candidate" ]; then
+    MAIN_WORKTREE_ROOT="$candidate"
+  fi
+fi
+SETUP_STATE_FILE="$MAIN_WORKTREE_ROOT/.gaia/local/setup-state.json"
 setup_complete="false"
 if [ -f "$SETUP_STATE_FILE" ]; then
   if command -v jq >/dev/null 2>&1; then

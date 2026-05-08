@@ -11,10 +11,10 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../wiki/util/git.js';
 import {
   pendingSteps,
   readStateFile,
+  resolveMainWorktreeRoot,
   type SetupState,
   writeStateFile,
 } from './util/state-file.js';
@@ -63,7 +63,7 @@ export const run = (
   let repoRoot: string;
 
   try {
-    repoRoot = resolveRepoRoot(options.cwd ?? process.cwd());
+    repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: 'not_a_git_repo',
