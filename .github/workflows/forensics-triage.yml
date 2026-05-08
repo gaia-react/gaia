@@ -1,0 +1,741 @@
+name: Forensics Triage
+
+# SPEC-002 phase 2: autonomous Claude Code triage for `gaia-forensics`-labeled
+# issues. Spec lives at `.gaia/local/specs/SPEC-002.md`; the per-task plan is at
+# `.gaia/local/plans/spec-002-forensics-triage-action/`.
+#
+# This file is on the canonical denylist (`.github/workflows/`). Future
+# autonomous triage runs MUST NOT modify it. Self-modifying triage is a
+# security boundary violation; the workflow's `check-scope.sh` rejects any
+# attempt to edit any path under `.github/workflows/`.
+#
+# Pinned action SHAs:
+#   anthropics/claude-code-action @ 63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 (v1.0)
+#   actions/checkout              @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
+#   actions/setup-node            @ a0853c24544627f65ddf259abe73b1d18a591444 (v5.0.0)
+#   pnpm/action-setup             @ 8912a9102ac27614460f54aedde9e1e7f9aec20d (v6.0.5)
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions: {}
+
+jobs:
+  triage:
+    name: Triage gaia-forensics issue
+    if: contains(github.event.issue.labels.*.name, 'gaia-forensics')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+      actions: read
+    concurrency:
+      group: forensics-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      FORENSICS_DIR: .github/forensics
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      # ----------------------------------------------------------------
+      # UAT-006: idempotency early-exit. If `gaia-triaged` is already on
+      # the issue, run `handle-already-triaged.sh` and skip the rest. The
+      # always-run final step (gaia-triaged-fallback) detects this via
+      # `already_triaged == 'true'` and skips its own application too.
+      # ----------------------------------------------------------------
+      - name: Idempotency check
+        id: idempotency
+        run: |
+          set -eu
+          labels="$(gh issue view "$ISSUE_NUMBER" --json labels --jq '[.labels[].name] | join(",")')"
+          echo "labels=$labels"
+          if printf '%s' ",$labels," | grep -q ',gaia-triaged,'; then
+            echo "already_triaged=true" >> "$GITHUB_OUTPUT"
+            "$FORENSICS_DIR/handlers/handle-already-triaged.sh" "$ISSUE_NUMBER"
+          else
+            echo "already_triaged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ----------------------------------------------------------------
+      # UAT-013: deterministic body parser. If the body is malformed, run
+      # `handle-malformed-body.sh` (labels needs-human, names the missing
+      # / malformed sections, no LLM fallback) and end the meaningful
+      # work. The final fallback step still applies `gaia-triaged`.
+      # ----------------------------------------------------------------
+      - name: Write issue body to file
+        if: steps.idempotency.outputs.already_triaged != 'true'
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set -eu
+          mkdir -p "${RUNNER_TEMP}/forensics"
+          # `printf '%s'` (not echo) preserves embedded backslashes / formatting
+          # exactly. Body content reaches the script via env, never argv —
+          # avoids shell-metacharacter injection.
+          printf '%s' "$ISSUE_BODY" > "${RUNNER_TEMP}/forensics/issue-body.md"
+
+      - name: Parse issue body
+        id: parse
+        if: steps.idempotency.outputs.already_triaged != 'true'
+        run: |
+          set -eu
+          parsed_file="${RUNNER_TEMP}/forensics/parsed.json"
+          "$FORENSICS_DIR/parse-issue-body.sh" "${RUNNER_TEMP}/forensics/issue-body.md" > "$parsed_file"
+          valid="$(jq -r '.valid' "$parsed_file")"
+          echo "parsed_file=$parsed_file" >> "$GITHUB_OUTPUT"
+          echo "valid=$valid" >> "$GITHUB_OUTPUT"
+
+      - name: Handle malformed body
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'false'
+        run: |
+          set -eu
+          "$FORENSICS_DIR/handlers/handle-malformed-body.sh" \
+            "$ISSUE_NUMBER" \
+            "${{ steps.parse.outputs.parsed_file }}"
+
+      # ----------------------------------------------------------------
+      # UAT-009 + UAT-010: classifier prompt. The LLM is invoked at
+      # exactly this step (judgment) and one more (fix application). All
+      # other extraction is deterministic.
+      #
+      # We render the prompt template here (placeholder substitution
+      # happens in shell, never in the model) and pass the rendered text
+      # to the action via the `prompt` input.
+      # ----------------------------------------------------------------
+      - name: Render classifier prompt
+        id: render-classifier
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true'
+        env:
+          PARSED_FILE: ${{ steps.parse.outputs.parsed_file }}
+        run: |
+          set -eu
+
+          # shellcheck disable=SC2016 # awk programs are intentionally single-quoted
+          symptom="$(jq -r '.sections.symptom' "$PARSED_FILE")"
+          classification="$(jq -r '.sections.classification' "$PARSED_FILE")"
+          capture="$(jq -r '.sections.capture' "$PARSED_FILE")"
+          repro="$(jq -r '.sections.reproduction_context' "$PARSED_FILE")"
+
+          # Defense-in-depth: mask anything that looks like a leftover
+          # secret in the parsed body. Phase 1 should have redacted these
+          # already (UAT-015 requires verbatim passthrough), but the
+          # workflow never trusts upstream. `::add-mask::` is a no-op for
+          # the redaction tokens themselves and only masks any literal
+          # secret-shaped bytes the parser might have surfaced.
+          mask_secret_shapes() {
+            printf '%s\n' "$1" | grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' | while IFS= read -r tok; do
+              [ -n "$tok" ] && echo "::add-mask::$tok"
+            done || true
+          }
+          mask_secret_shapes "$symptom"
+          mask_secret_shapes "$classification"
+          mask_secret_shapes "$capture"
+          mask_secret_shapes "$repro"
+
+          # The allowlist / denylist are markdown literals (backticks
+          # inside strings); shellcheck flags single-quoted strings that
+          # LOOK like command substitution. They're not — these are the
+          # canonical SPEC-002 path lists rendered into the classifier
+          # prompt verbatim. Disable SC2016 for this block.
+          # shellcheck disable=SC2016
+          allowlist='- `.gaia/cli/`
+          - `.claude/hooks/`
+          - `.claude/skills/`
+          - `.claude/commands/`
+          - `.claude/agents/`
+          - `.gaia/statusline/`
+          - `.specify/extensions/gaia/` (excluding `templates/`)
+          - `.gaia/manifest.json`'
+
+          # shellcheck disable=SC2016
+          denylist='- `app/`, `wiki/`, `studio/`, `website/`
+          - `.specify/specs/`, `.specify/memory/`
+          - `.gaia/local/specs/`
+          - `.specify/extensions/gaia/templates/`
+          - `.github/workflows/`'
+
+          template="$(cat "$FORENSICS_DIR/prompt.md")"
+          rendered_file="${RUNNER_TEMP}/forensics/classifier-prompt.md"
+
+          # Use awk for the substitutions: avoids the sed/`/`/`&` escaping
+          # nightmare with multi-line section content.
+          awk -v iss="$ISSUE_NUMBER" \
+              -v sym="$symptom" \
+              -v cls="$classification" \
+              -v cap="$capture" \
+              -v rep="$repro" \
+              -v al="$allowlist" \
+              -v dl="$denylist" '
+          {
+            line = $0
+            gsub(/\{\{ISSUE_NUMBER\}\}/, iss, line)
+            gsub(/\{\{SYMPTOM\}\}/, sym, line)
+            gsub(/\{\{CLASSIFICATION\}\}/, cls, line)
+            gsub(/\{\{CAPTURE\}\}/, cap, line)
+            gsub(/\{\{REPRO_CONTEXT\}\}/, rep, line)
+            gsub(/\{\{ALLOWLIST\}\}/, al, line)
+            gsub(/\{\{DENYLIST\}\}/, dl, line)
+            print line
+          }
+          ' <<< "$template" > "$rendered_file"
+
+          # Surface the rendered prompt as a step output via heredoc so
+          # the action invocation can consume it. The delimiter is a
+          # random hex string (the GitHub-recommended pattern) so it can
+          # never collide with content.
+          delim="EOF_$(openssl rand -hex 16)"
+          {
+            echo "rendered_file=$rendered_file"
+            echo "body<<$delim"
+            cat "$rendered_file"
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Classify (Claude Code Action)
+        id: classify
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true'
+        uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ steps.render-classifier.outputs.body }}
+          # No tool access — judgment-only. The classifier MUST NOT
+          # touch the working tree (UAT-009).
+          claude_args: |
+            --max-turns 1
+            --disallowedTools Bash,Edit,Write,Read,WebFetch,WebSearch
+
+      - name: Extract verdict
+        id: verdict
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true'
+        env:
+          EXEC_FILE: ${{ steps.classify.outputs.execution_file }}
+        run: |
+          set -eu
+          # The action emits a JSONL execution log; the assistant's final
+          # response lives on the line where `type == "result"` (field
+          # `.result`). Extract that to a plain text file for parse-verdict.
+          verdict_text="${RUNNER_TEMP}/forensics/verdict-text.md"
+          if [ -z "${EXEC_FILE:-}" ] || [ ! -f "$EXEC_FILE" ]; then
+            echo "::error::classifier execution_file missing or unreadable: ${EXEC_FILE:-<empty>}"
+            exit 1
+          fi
+          jq -rs 'map(select(.type == "result")) | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
+          if [ ! -s "$verdict_text" ]; then
+            echo "::warning::classifier produced no result text — treating as ambiguous"
+          fi
+
+          parsed="${RUNNER_TEMP}/forensics/verdict.json"
+          "$FORENSICS_DIR/parse-verdict.sh" "$verdict_text" > "$parsed"
+
+          verdict="$(jq -r '.verdict' "$parsed")"
+          echo "verdict=$verdict"
+
+          # Reasoning becomes the comment body for non-issue / needs-human.
+          reasoning="${RUNNER_TEMP}/forensics/reasoning.md"
+          jq -r '.reasoning' "$parsed" > "$reasoning"
+
+          {
+            echo "verdict=$verdict"
+            echo "verdict_file=$parsed"
+            echo "verdict_text=$verdict_text"
+            echo "reasoning_file=$reasoning"
+          } >> "$GITHUB_OUTPUT"
+
+      # ----------------------------------------------------------------
+      # UAT-003 case (b): ambiguous verdict → needs-human, reason-code
+      # `ambiguous-verdict`.
+      # ----------------------------------------------------------------
+      - name: Handle ambiguous verdict
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'ambiguous'
+        run: |
+          set -eu
+          "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+            "$ISSUE_NUMBER" \
+            "${{ steps.verdict.outputs.reasoning_file }}" \
+            "ambiguous-verdict"
+
+      # ----------------------------------------------------------------
+      # UAT-002: non-issue → close + comment + label.
+      # ----------------------------------------------------------------
+      - name: Handle non-issue
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'non-issue'
+        run: |
+          set -eu
+          "$FORENSICS_DIR/handlers/handle-non-issue.sh" \
+            "$ISSUE_NUMBER" \
+            "${{ steps.verdict.outputs.reasoning_file }}"
+
+      # ----------------------------------------------------------------
+      # UAT-003 case (a): needs-human verdict from the classifier.
+      # ----------------------------------------------------------------
+      - name: Handle needs-human (classifier verdict)
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'needs-human'
+        run: |
+          set -eu
+          "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+            "$ISSUE_NUMBER" \
+            "${{ steps.verdict.outputs.reasoning_file }}" \
+            "out-of-scope"
+
+      # ----------------------------------------------------------------
+      # auto-fixable path. UAT-007 / UAT-014: scope check is the FIRST
+      # gate; cross-boundary attempts fall through to needs-human before
+      # any branch is created.
+      # ----------------------------------------------------------------
+      - name: Scope check
+        id: scope
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable'
+        run: |
+          set -eu
+          paths_file="${RUNNER_TEMP}/forensics/proposed-paths.txt"
+          jq -r '.proposed_paths[]' "${{ steps.verdict.outputs.verdict_file }}" > "$paths_file"
+
+          # mapfile keeps shell-metacharacter-bearing paths intact (vs
+          # word-splitting). Empty array would have been caught by
+          # parse-verdict's downgrade-to-ambiguous rule.
+          mapfile -t paths < "$paths_file"
+          scope_json="${RUNNER_TEMP}/forensics/scope.json"
+          "$FORENSICS_DIR/check-scope.sh" "${paths[@]}" > "$scope_json"
+
+          ok="$(jq -r '.ok' "$scope_json")"
+          {
+            echo "ok=$ok"
+            echo "scope_file=$scope_json"
+            echo "paths_file=$paths_file"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Handle out-of-scope auto-fix
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'false'
+        run: |
+          set -eu
+          # Compose a reasoning file that names the offending paths so
+          # the maintainer can triage without re-reading the workflow log.
+          reason_file="${RUNNER_TEMP}/forensics/scope-reason.md"
+          # shellcheck disable=SC2016 # jq filter uses literal interpolation `\(.field)`
+          {
+            cat "${{ steps.verdict.outputs.reasoning_file }}"
+            printf '\n\n---\n\nProposed paths rejected by `check-scope.sh`:\n\n'
+            jq -r '.denied[] | "- `\(.path)` — \(.reason)"' "${{ steps.scope.outputs.scope_file }}"
+          } > "$reason_file"
+          "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+            "$ISSUE_NUMBER" \
+            "$reason_file" \
+            "out-of-scope"
+
+      # ----------------------------------------------------------------
+      # Branch creation + fix application + Quality Gate. Only fires when
+      # the verdict is `auto-fixable` AND every proposed path is in scope.
+      # ----------------------------------------------------------------
+      - name: Compute branch name
+        id: branch
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true'
+        env:
+          PARSED_FILE: ${{ steps.parse.outputs.parsed_file }}
+        run: |
+          set -eu
+          # The branch slug derives from the frontmatter `class` field
+          # (one of: init|update|wiki-sync|quality-gate|hook|scaffold|
+          # dev-server|other). That keeps branch names predictable and
+          # bounded in length, unlike using the issue title.
+          class_slug="$(jq -r '.frontmatter.class' "$PARSED_FILE" | tr 'A-Z ' 'a-z-' | tr -cd 'a-z0-9-')"
+          [ -z "$class_slug" ] && class_slug="other"
+          branch="forensics/${ISSUE_NUMBER}-${class_slug}"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+          echo "class_slug=$class_slug" >> "$GITHUB_OUTPUT"
+
+      - name: Create fix branch from main
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true'
+        run: |
+          set -eu
+          git fetch origin main
+          git checkout -B "${{ steps.branch.outputs.name }}" origin/main
+          git config user.name 'gaia-forensics-triage[bot]'
+          git config user.email 'gaia-forensics-triage[bot]@users.noreply.github.com'
+
+      - name: Render apply-fix prompt
+        id: render-apply
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true'
+        env:
+          PARSED_FILE: ${{ steps.parse.outputs.parsed_file }}
+          VERDICT_FILE: ${{ steps.verdict.outputs.verdict_file }}
+        run: |
+          set -eu
+
+          symptom="$(jq -r '.sections.symptom' "$PARSED_FILE")"
+          capture="$(jq -r '.sections.capture' "$PARSED_FILE")"
+          repro="$(jq -r '.sections.reproduction_context' "$PARSED_FILE")"
+          reasoning="$(jq -r '.reasoning' "$VERDICT_FILE")"
+
+          # Each proposed path on its own line (the prompt fences the
+          # block; content is read-back-into-position via a single gsub).
+          paths_block="$(jq -r '.proposed_paths[]' "$VERDICT_FILE")"
+
+          template="$(cat "$FORENSICS_DIR/apply-fix-prompt.md")"
+          rendered_file="${RUNNER_TEMP}/forensics/apply-fix-prompt.md"
+
+          awk -v iss="$ISSUE_NUMBER" \
+              -v paths="$paths_block" \
+              -v reasoning="$reasoning" \
+              -v sym="$symptom" \
+              -v cap="$capture" \
+              -v rep="$repro" '
+          {
+            line = $0
+            gsub(/\{\{ISSUE_NUMBER\}\}/, iss, line)
+            gsub(/\{\{PROPOSED_PATHS\}\}/, paths, line)
+            gsub(/\{\{CLASSIFIER_REASONING\}\}/, reasoning, line)
+            gsub(/\{\{SYMPTOM\}\}/, sym, line)
+            gsub(/\{\{CAPTURE\}\}/, cap, line)
+            gsub(/\{\{REPRO_CONTEXT\}\}/, rep, line)
+            print line
+          }
+          ' <<< "$template" > "$rendered_file"
+
+          delim="EOF_$(openssl rand -hex 16)"
+          {
+            echo "body<<$delim"
+            cat "$rendered_file"
+            echo "$delim"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Apply fix (Claude Code Action)
+        id: apply-fix
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true'
+        uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ steps.render-apply.outputs.body }}
+          # File-edit tools only. NO Bash, NO git, NO push tools, NO web.
+          # Post-step verification asserts diffs touch only `proposed_paths`.
+          claude_args: |
+            --max-turns 30
+            --allowedTools Edit,Read,Write
+            --disallowedTools Bash,WebFetch,WebSearch
+
+      - name: Verify diff against proposed paths
+        id: verify-diff
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true'
+        run: |
+          set -eu
+
+          # set_outputs: emits one or more `key=value` pairs to
+          # $GITHUB_OUTPUT in a single block. Lets us collapse repeated
+          # write-and-exit branches without losing readability.
+          set_outputs() {
+            local kv
+            for kv in "$@"; do
+              printf '%s\n' "$kv"
+            done >> "$GITHUB_OUTPUT"
+          }
+
+          # Capture the apply-fix execution-file's last `result` line so we
+          # can detect the GAIA-FIX-ABORT escape hatch and surface the
+          # rationale to the maintainer.
+          apply_text="${RUNNER_TEMP}/forensics/apply-fix-text.md"
+          if [ -n "${{ steps.apply-fix.outputs.execution_file }}" ] \
+             && [ -f "${{ steps.apply-fix.outputs.execution_file }}" ]; then
+            jq -rs 'map(select(.type == "result")) | .[-1].result // empty' \
+              "${{ steps.apply-fix.outputs.execution_file }}" > "$apply_text"
+          else
+            : > "$apply_text"
+          fi
+          set_outputs "apply_text=$apply_text"
+
+          if grep -qE '^[[:space:]]*GAIA-FIX-ABORT:' "$apply_text"; then
+            set_outputs "diff_ok=false" "abort_reason=fix-abort"
+            exit 0
+          fi
+
+          # Stage edits so `git diff --staged` reflects everything the
+          # model touched (including new files and deletions).
+          git add -A
+          touched_file="${RUNNER_TEMP}/forensics/touched-paths.txt"
+          git diff --staged --name-only > "$touched_file"
+          set_outputs "touched_file=$touched_file"
+
+          if [ ! -s "$touched_file" ]; then
+            set_outputs "diff_ok=false" "abort_reason=empty-diff"
+            exit 0
+          fi
+
+          # Re-run check-scope on the actual touched paths. This is the
+          # post-step UAT-007 / UAT-014 backstop: even if the model lied
+          # about its proposed paths, the diff has to clear scope.
+          mapfile -t touched < "$touched_file"
+          touched_scope="${RUNNER_TEMP}/forensics/touched-scope.json"
+          "$FORENSICS_DIR/check-scope.sh" "${touched[@]}" > "$touched_scope"
+          if [ "$(jq -r '.ok' "$touched_scope")" != "true" ]; then
+            set_outputs \
+              "diff_ok=false" \
+              "abort_reason=diff-out-of-scope" \
+              "touched_scope=$touched_scope"
+            exit 0
+          fi
+
+          # Even within scope, the diff must be a SUBSET of the
+          # classifier's `proposed_paths`. Any deviation halts before the
+          # gate (per task spec step 10's deviation clause).
+          proposed_file="${{ steps.scope.outputs.paths_file }}"
+          unexpected="${RUNNER_TEMP}/forensics/unexpected-paths.txt"
+          : > "$unexpected"
+          while IFS= read -r p; do
+            [ -z "$p" ] && continue
+            if ! grep -Fxq -- "$p" "$proposed_file"; then
+              printf '%s\n' "$p" >> "$unexpected"
+            fi
+          done < "$touched_file"
+
+          if [ -s "$unexpected" ]; then
+            set_outputs \
+              "diff_ok=false" \
+              "abort_reason=diff-not-in-proposed" \
+              "unexpected_file=$unexpected"
+            exit 0
+          fi
+
+          set_outputs "diff_ok=true"
+
+      - name: Handle apply-fix abort
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'false'
+        run: |
+          set -eu
+          reason_file="${RUNNER_TEMP}/forensics/apply-abort-reason.md"
+          # shellcheck disable=SC2016 # awk program references awk's $0
+          {
+            printf 'auto-fix abort reason: `%s`\n\n' \
+              "${{ steps.verify-diff.outputs.abort_reason }}"
+            cat "${{ steps.verdict.outputs.reasoning_file }}"
+            printf '\n\n---\n\nfix-applier final message:\n\n'
+            cat "${{ steps.verify-diff.outputs.apply_text }}" || true
+            if [ -n "${{ steps.verify-diff.outputs.unexpected_file }}" ] \
+               && [ -f "${{ steps.verify-diff.outputs.unexpected_file }}" ]; then
+              printf '\n\nDiff touched paths NOT proposed by the classifier:\n\n'
+              awk '{print "- `"$0"`"}' "${{ steps.verify-diff.outputs.unexpected_file }}"
+            fi
+          } > "$reason_file"
+          # Discard local edits before exiting — the branch was never
+          # pushed, but resetting keeps the runner's working tree clean
+          # in case any always-run step inspects it.
+          git reset --hard HEAD
+          "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+            "$ISSUE_NUMBER" \
+            "$reason_file" \
+            "out-of-scope"
+
+      # ----------------------------------------------------------------
+      # UAT-005: Quality Gate. Branch is local-only; we push only when
+      # the gate passes. `run-quality-gate.sh` is owned by the parallel
+      # task-quality-gate-runner sub-agent. CLI: `<output-summary-file>`.
+      # ----------------------------------------------------------------
+      - name: Commit fix
+        id: commit-fix
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true'
+        run: |
+          set -eu
+          # Already `git add -A`'d in verify-diff; commit on the local
+          # branch. No push yet — gate must pass first.
+          git commit -m "forensics: auto-fix attempt for #${ISSUE_NUMBER}"
+
+      - name: Run Quality Gate
+        id: quality-gate
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true'
+        continue-on-error: true
+        run: |
+          set -eu
+          summary="${RUNNER_TEMP}/forensics/gate-summary.json"
+          echo "summary_file=$summary" >> "$GITHUB_OUTPUT"
+          "$FORENSICS_DIR/run-quality-gate.sh" "$summary"
+
+      - name: Handle Quality Gate failure
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true' &&
+          steps.quality-gate.outcome == 'failure'
+        env:
+          GATE_SUMMARY_FILE: ${{ steps.quality-gate.outputs.summary_file }}
+        run: |
+          set -eu
+          # UAT-005: branch is never pushed. We're on a local-only branch;
+          # nothing to clean up on origin. Compose the comment, demote.
+          reason_file="${RUNNER_TEMP}/forensics/gate-failure-reason.md"
+          # shellcheck disable=SC2016 # jq filters are intentionally single-quoted
+          {
+            cat "${{ steps.verdict.outputs.reasoning_file }}"
+            printf '\n\n---\n\nQuality Gate failure summary:\n\n'
+            if [ -f "$GATE_SUMMARY_FILE" ]; then
+              failed_step="$(jq -r '.failed_step // "unknown"' "$GATE_SUMMARY_FILE")"
+              exit_code="$(jq -r '.exit_code // "unknown"' "$GATE_SUMMARY_FILE")"
+              printf 'failed step: `%s` (exit %s)\n\n' "$failed_step" "$exit_code"
+              printf 'log excerpt:\n\n```\n'
+              jq -r '.log_excerpt // ""' "$GATE_SUMMARY_FILE"
+              printf '\n```\n\n'
+            else
+              printf '_(gate summary file missing — see workflow run logs)_\n\n'
+            fi
+            printf 'workflow run: %s/%s/actions/runs/%s\n' \
+              "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}"
+          } > "$reason_file"
+          "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+            "$ISSUE_NUMBER" \
+            "$reason_file" \
+            "gate-failure"
+
+      # ----------------------------------------------------------------
+      # UAT-004: gate passed → push branch and open draft PR. The push
+      # step is gated on quality-gate succeeding (step's `outcome` is
+      # `success`); UAT-005 is preserved by construction.
+      # ----------------------------------------------------------------
+      - name: Push fix branch
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true' &&
+          steps.quality-gate.outcome == 'success'
+        run: |
+          set -eu
+          git push origin "${{ steps.branch.outputs.name }}"
+
+      - name: Compose PR body
+        id: pr-body
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true' &&
+          steps.quality-gate.outcome == 'success'
+        env:
+          PARSED_FILE: ${{ steps.parse.outputs.parsed_file }}
+        run: |
+          set -eu
+          # UAT-015: `## Capture` is passed through verbatim. No
+          # re-redaction, no de-redaction, no normalization. The parsed
+          # JSON's `.sections.capture` field is the byte-for-byte content
+          # the body parser pulled from the issue (modulo the at-most-one
+          # leading/trailing blank line trim documented in
+          # parse-issue-body.sh).
+          body_file="${RUNNER_TEMP}/forensics/pr-body.md"
+          # shellcheck disable=SC2016 # markdown literals contain backticks; jq filter is single-quoted
+          {
+            printf 'Auto-fix attempt for issue #%s.\n\n' "$ISSUE_NUMBER"
+            printf 'Closes #%s\n\n' "$ISSUE_NUMBER"
+            printf -- '---\n\n'
+            printf '## Capture (verbatim from issue)\n\n'
+            jq -r '.sections.capture' "$PARSED_FILE"
+            printf '\n\n---\n\n'
+            printf '## Classifier reasoning\n\n'
+            cat "${{ steps.verdict.outputs.reasoning_file }}"
+            printf '\n\n---\n\n'
+            printf '_Draft PR. Branch protection on `main` requires human review before merge._\n'
+          } > "$body_file"
+          echo "file=$body_file" >> "$GITHUB_OUTPUT"
+
+      - name: Open draft PR + finalize labels
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true' &&
+          steps.quality-gate.outcome == 'success'
+        run: |
+          set -eu
+          "$FORENSICS_DIR/handlers/handle-auto-fixable.sh" \
+            "$ISSUE_NUMBER" \
+            "${{ steps.branch.outputs.class_slug }}" \
+            "${{ steps.branch.outputs.name }}" \
+            "${{ steps.pr-body.outputs.file }}"
+
+      # ----------------------------------------------------------------
+      # UAT-012 fail-forward: if the workflow did meaningful work but
+      # bombed before any handler attached `gaia-triaged`, this final
+      # always-run step ensures the idempotency key sticks. The early-
+      # exit path (step 3) already applied the label via its handler;
+      # we suppress the fallback in that case via `already_triaged`.
+      # ----------------------------------------------------------------
+      - name: Ensure gaia-triaged is applied (fail-forward)
+        if: always() && steps.idempotency.outputs.already_triaged != 'true'
+        run: |
+          set -eu
+          gh issue edit "$ISSUE_NUMBER" --add-label gaia-triaged || true
