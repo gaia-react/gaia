@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-08 804de97 WORTHY — CLI binary split (adopter vs maintainer) → wiki/decisions/CLI\ Binary\ Split.md
+- 2026-05-08 c08efa5 SKIP — wiki: self-referential
+- 2026-05-08 9ff3f34 SKIP — wiki: self-referential
 - 2026-05-08 9bf6ad4 SKIP — Serena handles hooks — audit-stamp-trailer.sh and code-review-audit.md updates
 - 2026-05-08 6c3c17d SKIP — chore(deps): version bump only
 - 2026-05-08 891f3ae WORTHY — updated forensics skill files and wiki/concepts/Forensics.md to remove studio/ references → wiki/concepts/Forensics.md
