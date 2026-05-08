@@ -7,7 +7,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../.claude/hooks" && pwd)/wiki-squash-autocommits.sh
+  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/wiki-squash-autocommits.sh
 }
 
 teardown() {

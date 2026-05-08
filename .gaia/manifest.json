@@ -25,7 +25,6 @@
     ".claude/hooks/intercept-init.sh": "owned",
     ".claude/hooks/pr-merge-audit-check.sh": "owned",
     ".claude/hooks/telemetry-task-postuse.sh": "owned",
-    ".claude/hooks/tests/audit-stamp-trailer.bats": "owned",
     ".claude/hooks/wiki-commit-nudge.sh": "owned",
     ".claude/hooks/wiki-drift-check.sh": "owned",
     ".claude/hooks/wiki-session-start.sh": "owned",

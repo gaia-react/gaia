@@ -2,7 +2,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOK="$BATS_TEST_DIRNAME/../../.claude/hooks/wiki-drift-check.sh"
+  HOOK="$BATS_TEST_DIRNAME/../../../.claude/hooks/wiki-drift-check.sh"
   # Hook is invoked relative to its own repo. Resolve to absolute.
   HOOK_ABS=$(cd "$(dirname "$HOOK")" && pwd)/$(basename "$HOOK")
 }
