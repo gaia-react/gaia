@@ -209,6 +209,29 @@ If the walk was aborted mid-way (user cancels, disk error), leave `.gaia/VERSION
 
 Also copy `.gaia/manifest.json` from `$LATEST_DIR/.gaia/manifest.json` into the project so the next `/update-gaia` has the right baseline.
 
+Then count open PRs whose `GAIA-Audit` trailer is stamped with the old version — these will be invalidated by the version bump and will re-run the full CI audit on their next push:
+
+```bash
+INVALIDATED_COUNT=0
+if command -v gh >/dev/null 2>&1; then
+  OLD_VERSION="$BASELINE"
+  pr_list=$(gh pr list --state open --json number,headRefOid 2>/dev/null || true)
+  if [ -n "$pr_list" ]; then
+    while IFS= read -r sha; do
+      [ -z "$sha" ] && continue
+      msg=$(git -C "$repo_root" log -1 --format='%B' "$sha" 2>/dev/null || true)
+      if echo "$msg" | grep -qE "^GAIA-Audit:[[:space:]]+${OLD_VERSION}[[:space:]]+[0-9a-f]{40}"; then
+        INVALIDATED_COUNT=$((INVALIDATED_COUNT + 1))
+      fi
+    done < <(echo "$pr_list" | jq -r '.[].headRefOid' 2>/dev/null || true)
+  fi
+else
+  INVALIDATED_COUNT="unknown"
+fi
+```
+
+Persist `INVALIDATED_COUNT` for Step 9.
+
 ### Step 9: Summary
 
 Print a table:
@@ -222,7 +245,18 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Conflicts:    <n>  (see .gaia-merge/)
   Deleted:      <n>
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
+  Trailer invalidations: <n>  (open PRs stamped v$BASELINE will re-audit on next push)
 ```
+
+If `INVALIDATED_COUNT` is `"unknown"`, emit instead:
+
+```
+  Trailer invalidations: unknown  (gh unavailable — open PRs with GAIA-Audit stamps may re-audit)
+```
+
+If `INVALIDATED_COUNT` is greater than 0, also print after the table:
+
+> **Note:** $INVALIDATED_COUNT open PR(s) carry a `GAIA-Audit` trailer stamped with v$BASELINE. On their next push, CI re-runs the full audit (one extra billing cycle per PR). This is intentional — a newer GAIA agent version may catch issues the prior version missed. To minimize re-audit churn, merge or close these PRs before updating GAIA.
 
 Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session:
 
