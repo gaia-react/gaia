@@ -158,7 +158,7 @@ jobs:
           # the redaction tokens themselves and only masks any literal
           # secret-shaped bytes the parser might have surfaced.
           mask_secret_shapes() {
-            printf '%s\n' "$1" | grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' | while IFS= read -r tok; do
+            printf '%s\n' "$1" | grep -oE 'sk-ant-[A-Za-z0-9_-]{20,}|gh[psuor]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' | while IFS= read -r tok; do
               [ -n "$tok" ] && echo "::add-mask::$tok"
             done || true
           }
@@ -575,13 +575,14 @@ jobs:
           steps.verdict.outputs.verdict == 'auto-fixable' &&
           steps.scope.outputs.ok == 'true' &&
           steps.verify-diff.outputs.diff_ok == 'false'
+        env:
+          ABORT_REASON: ${{ steps.verify-diff.outputs.abort_reason }}
         run: |
           set -eu
           reason_file="${RUNNER_TEMP}/forensics/apply-abort-reason.md"
           # shellcheck disable=SC2016 # awk program references awk's $0
           {
-            printf 'auto-fix abort reason: `%s`\n\n' \
-              "${{ steps.verify-diff.outputs.abort_reason }}"
+            printf 'auto-fix abort reason: `%s`\n\n' "$ABORT_REASON"
             cat "${{ steps.verdict.outputs.reasoning_file }}"
             printf '\n\n---\n\nfix-applier final message:\n\n'
             cat "${{ steps.verify-diff.outputs.apply_text }}" || true
@@ -595,10 +596,18 @@ jobs:
           # pushed, but resetting keeps the runner's working tree clean
           # in case any always-run step inspects it.
           git reset --hard HEAD
+          # UAT-010: `diff-not-in-proposed` is a deviation (the model
+          # touched in-allowlist paths it did not declare upfront), not a
+          # scope violation. Other abort reasons remain `out-of-scope`.
+          if [ "$ABORT_REASON" = "diff-not-in-proposed" ]; then
+            reason_code="deviation"
+          else
+            reason_code="out-of-scope"
+          fi
           "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
             "$ISSUE_NUMBER" \
             "$reason_file" \
-            "out-of-scope"
+            "$reason_code"
 
       # ----------------------------------------------------------------
       # UAT-005: Quality Gate. Branch is local-only; we push only when

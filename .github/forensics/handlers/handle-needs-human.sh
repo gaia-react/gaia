@@ -9,7 +9,7 @@
 # Usage:
 #   handle-needs-human.sh <issue-num> <reasoning-file> <reason-code>
 #
-# <reason-code> ∈ { out-of-scope, ambiguous-verdict, malformed-body, gate-failure, internal-error }
+# <reason-code> ∈ { out-of-scope, ambiguous-verdict, malformed-body, gate-failure, deviation, internal-error }
 #
 # Exit code: 0 on success. Non-zero on bad usage, missing file, or unknown
 # reason-code. gh-level failures propagate.
@@ -22,7 +22,7 @@ MAINTAINER="@stevensacks"
 
 usage() {
   echo "usage: handle-needs-human.sh <issue-num> <reasoning-file> <reason-code>" >&2
-  echo "  <reason-code> ∈ {out-of-scope, ambiguous-verdict, malformed-body, gate-failure, internal-error}" >&2
+  echo "  <reason-code> ∈ {out-of-scope, ambiguous-verdict, malformed-body, gate-failure, deviation, internal-error}" >&2
   exit 2
 }
 
@@ -47,6 +47,9 @@ case "$reason_code" in
     ;;
   gate-failure)
     summary="auto-fix branch failed the Quality Gate; branch was discarded (UAT-005)."
+    ;;
+  deviation)
+    summary="the auto-fix model touched in-allowlist paths that were not declared in its proposed scope; the diff deviates from the classifier's intent."
     ;;
   internal-error)
     summary="a forensics primitive emitted internal-error JSON; the workflow could not proceed deterministically."

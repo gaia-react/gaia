@@ -165,3 +165,88 @@ setup() {
   run "$SCRIPT"
   [ "$output" = '{"ok":true,"allowed":[],"denied":[]}' ]
 }
+
+# --- control-byte rejection (UAT-009) --------------------------------------
+#
+# JSON forbids unescaped U+0000..U+001F inside string literals. The script
+# rejects any path containing a control byte with a structured error
+# envelope rather than emitting malformed JSON. Filesystems forbid these
+# in path names in practice; the rejection path defends against synthetic
+# inputs (misbehaving callers, future test harnesses) and surfaces them
+# as an explicit upstream signal.
+
+@test "control-byte: tab (0x09) → reject with reason naming hex+position" {
+  path=$(printf 'app/foo\tbar.ts')
+  run "$SCRIPT" "$path"
+  [ "$status" -eq 0 ]
+  case $output in
+    *'"ok":false'*'"reason":"control-byte:0x09-at-position-7"'*) ;;
+    *) printf 'unexpected output: %s\n' "$output" >&2; return 1 ;;
+  esac
+}
+
+@test "control-byte: newline (0x0a) → reject with reason naming hex+position" {
+  path=$(printf 'wiki/index\nmd')
+  run "$SCRIPT" "$path"
+  [ "$status" -eq 0 ]
+  case $output in
+    *'"ok":false'*'"reason":"control-byte:0x0a-at-position-10"'*) ;;
+    *) printf 'unexpected output: %s\n' "$output" >&2; return 1 ;;
+  esac
+}
+
+@test "control-byte: carriage-return (0x0d) → reject" {
+  path=$(printf 'a\rb')
+  run "$SCRIPT" "$path"
+  [ "$status" -eq 0 ]
+  case $output in
+    *'"reason":"control-byte:0x0d-at-position-1"'*) ;;
+    *) printf 'unexpected output: %s\n' "$output" >&2; return 1 ;;
+  esac
+}
+
+@test "control-byte: U+0001 (SOH, 0x01) → reject" {
+  path=$(printf 'foo\001bar')
+  run "$SCRIPT" "$path"
+  [ "$status" -eq 0 ]
+  case $output in
+    *'"reason":"control-byte:0x01-at-position-3"'*) ;;
+    *) printf 'unexpected output: %s\n' "$output" >&2; return 1 ;;
+  esac
+}
+
+@test "control-byte: rejection envelope shape — ok:false, allowed:[], single denied entry" {
+  path=$(printf 'x\ty')
+  run "$SCRIPT" "$path"
+  [ "$status" -eq 0 ]
+  # Whole envelope: allowed must be empty and denied must hold exactly the one entry.
+  case $output in
+    '{"ok":false,"allowed":[],"denied":[{"path":"x?y","reason":"control-byte:0x09-at-position-1"}]}') ;;
+    *) printf 'unexpected output: %s\n' "$output" >&2; return 1 ;;
+  esac
+}
+
+@test "control-byte: short-circuits before classifying remaining paths" {
+  # First arg has a control byte; remaining args (allow + deny) must NOT
+  # appear in the output — the rejection envelope replaces the normal
+  # classification result.
+  bad=$(printf 'bad\tpath')
+  run "$SCRIPT" "$bad" .gaia/cli/foo.sh app/bar.ts
+  [ "$status" -eq 0 ]
+  case $output in
+    *'.gaia/cli/foo.sh'*) printf 'allowlisted path leaked: %s\n' "$output" >&2; return 1 ;;
+    *'app/bar.ts'*) printf 'denylisted path leaked: %s\n' "$output" >&2; return 1 ;;
+    *'"reason":"control-byte:0x09-at-position-3"'*) ;;
+    *) printf 'unexpected output: %s\n' "$output" >&2; return 1 ;;
+  esac
+}
+
+@test "control-byte: rejection JSON parses with jq" {
+  if ! command -v jq >/dev/null 2>&1; then
+    skip "jq not available"
+  fi
+  path=$(printf 'a\tb')
+  run "$SCRIPT" "$path"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq . >/dev/null
+}

@@ -104,6 +104,12 @@ classify_path() {
 
 # json_escape <string>
 # Escapes a string for embedding inside a JSON string literal.
+#
+# Handles backslash and double-quote. Control bytes (U+0000..U+001F) are
+# NOT escaped here — the caller is expected to detect them via
+# find_control_byte() and reject the input with a structured error.
+# This split keeps json_escape predictable: its output is always valid
+# JSON-string content provided the input contains no control bytes.
 json_escape() {
   s=$1
   # Backslash first, then double-quote.
@@ -112,10 +118,69 @@ json_escape() {
   printf '%s' "$s"
 }
 
+# find_control_byte <string>
+# Echoes "<hex>:<position>" of the FIRST U+0000..U+001F byte found,
+# where <hex> is two lowercase hex digits and <position> is the
+# zero-indexed offset. Echoes empty string when no control byte is
+# present.
+#
+# UAT-009 (SPEC-003): JSON requires control bytes be escaped or rejected.
+# check-scope.sh's contract is path-policy enforcement; receiving a path
+# with a control byte signals upstream corruption, so we reject rather
+# than silently escape.
+find_control_byte() {
+  s=$1
+  i=0
+  while [ "$i" -lt "${#s}" ]; do
+    c=${s:$i:1}
+    # POSIX trick: leading single-quote in printf %d argument yields the
+    # ordinal of the first byte. Control bytes are single-byte in UTF-8.
+    ord=$(printf '%d' "'$c")
+    if [ "$ord" -lt 32 ]; then
+      printf '%02x:%d' "$ord" "$i"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  printf ''
+}
+
+# repr_path <string>
+# Builds a printable representation of a path that contains a control
+# byte: every non-printable byte is replaced with `?`, the result is
+# truncated to 40 chars, and a trailing ellipsis is appended when
+# truncation occurred. Used only by the control-byte rejection path.
+repr_path() {
+  s=$1
+  scrubbed=$(printf '%s' "$s" | tr -c '[:print:]' '?')
+  if [ "${#scrubbed}" -gt 40 ]; then
+    head40=$(printf '%s' "$scrubbed" | cut -c1-40)
+    printf '%s%s' "$head40" '...'
+  else
+    printf '%s' "$scrubbed"
+  fi
+}
+
 if [ "$#" -eq 0 ]; then
   printf '{"ok":true,"allowed":[],"denied":[]}\n'
   exit 0
 fi
+
+# UAT-009: short-circuit on the first control-byte-bearing path. The
+# rejection envelope replaces the normal classification result; exit 0
+# is preserved per the consumer-reads-JSON contract.
+for path in "$@"; do
+  ctrl=$(find_control_byte "$path")
+  if [ -n "$ctrl" ]; then
+    hex=${ctrl%%:*}
+    pos=${ctrl#*:}
+    repr=$(repr_path "$path")
+    repr_esc=$(json_escape "$repr")
+    printf '{"ok":false,"allowed":[],"denied":[{"path":"%s","reason":"control-byte:0x%s-at-position-%d"}]}\n' \
+      "$repr_esc" "$hex" "$pos"
+    exit 0
+  fi
+done
 
 allowed_json=""
 denied_json=""
