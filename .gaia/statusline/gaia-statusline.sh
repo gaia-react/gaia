@@ -68,6 +68,12 @@ fi
 # and read setup-state.json from there. Falls back to PROJECT_ROOT silently
 # if git is unavailable or the call fails — the indicator then fires in the
 # worktree, which matches today's behavior in non-git environments.
+#
+# Assumption: --git-common-dir returns the shared .git dir (relative ".git"
+# from main, or an absolute path like /repo/.git from a linked worktree).
+# `dirname` of that is the main checkout root. This holds for standard git
+# worktrees but NOT submodules — the GAIA topology does not include
+# submodules; do not change this resolution without re-validating.
 MAIN_WORKTREE_ROOT="$PROJECT_ROOT"
 common_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)
 if [ -n "$common_dir" ]; then

@@ -36,6 +36,14 @@ export const STATE_DIRECTORY_RELATIVE = path.join('.gaia', 'local');
  * directory (the main repo's `.git` in every worktree); the directory
  * containing it is the main worktree root.
  *
+ * Assumption: `--git-common-dir` returns the shared `.git` (relative
+ * `.git` from main, or an absolute path like `/repo/.git` from a linked
+ * worktree). `path.dirname` of that yields the main checkout root. This
+ * holds for standard git worktrees but NOT submodules, where the common
+ * dir is an internal gitdir path inside the parent repo. GAIA does not
+ * support a submodule topology; do not change the resolution strategy
+ * without re-validating that constraint.
+ *
  * Throws if `git` is unavailable or `cwd` is not inside a git repo —
  * matching `resolveRepoRoot`'s contract so callers can translate to the
  * existing `not_a_git_repo` exit code.
