@@ -30,7 +30,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   update merge --baseline <dir> --latest <dir> --manifest <path>
   release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
-  setup status|mark-step|finalize
+  setup status|mark-step|finalize|link-worktree
 `;
 
 const printHelp = (): void => {
