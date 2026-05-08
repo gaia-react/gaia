@@ -20,7 +20,7 @@ const HELP_TEXT = `Usage: gaia setup <subcommand> [args]
   status [--json]            Print whether per-machine setup is complete.
   mark-step <step>           Record a setup step as complete.
   finalize [--force]         Mark setup as complete (refuses if steps pending).
-  link-worktree [--json]     Create the worktree shared-state symlinks (SPEC-005).
+  link-worktree [--json]     Create the worktree shared-state symlinks.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
