@@ -74,6 +74,29 @@ Files deleted upstream (in baseline, not in latest):
 - **Atomic version marker.** `.gaia/VERSION` flips to latest only after the full walk succeeds. Abort mid-walk → version stays at baseline, and a re-run resumes cleanly. Any already-overwritten files live in `.gaia-backup/`.
 - **No auto-commit.** `/update-gaia` leaves the working tree dirty; the adopter reviews + commits.
 
+## Rollback
+
+`/update-gaia` does not commit, so the rollback path depends on whether the adopter has already committed the merge.
+
+**Before commit** — discard the entire update:
+
+```bash
+git restore --staged --worktree .
+rm -rf .gaia-merge .gaia-backup
+```
+
+`git restore` reverts every overwritten file (including `.gaia/VERSION` and `.gaia/manifest.json`) to its committed baseline. The sidecar `.gaia-merge/` and `.gaia-backup/` directories are gitignored, so `git restore` does not touch them — the `rm -rf` is the cleanup pass.
+
+**After commit** — revert the commit:
+
+```bash
+git revert <update-commit-sha>
+```
+
+A single revert undoes the merge cleanly because `/update-gaia` lands its changes as ordinary edits, not a merge commit. The revert restores `.gaia/VERSION` and `.gaia/manifest.json` to baseline alongside everything else.
+
+In both cases the adopter is back at the prior baseline and can retry `/update-gaia` against the same release. Local customizations made AFTER the rollback point survive (`git restore` and `git revert` only undo the update walk's edits, not subsequent commits or unstaged changes touching files outside the manifest).
+
 ## When to run
 
 After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cadence is fully at the adopter's discretion — skipping versions is fine; the three-way diff works with any gap.

@@ -20,6 +20,8 @@ The React workflow that keeps Claude-shipped code production-grade as your team 
 
 ## Quick Start
 
+**Supported platforms:** macOS and Linux. Windows users should run GAIA inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) — the hooks and CLI rely on bash and POSIX file paths, and native Windows is not exercised in CI.
+
 Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, preferably via [nvm](https://github.com/nvm-sh/nvm), and [uv](https://astral.sh/uv) (required for the Serena MCP server — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ```bash
