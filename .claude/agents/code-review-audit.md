@@ -291,6 +291,42 @@ If no violations are found for a rule, don't mention it. If no violations are fo
 - Prioritize ruthlessly — 5 important issues beats 50 trivial ones
 - Work within the project's existing patterns when suggesting fixes; don't introduce new dependencies
 
+## Audit marker (gate handshake)
+
+`.claude/hooks/pr-merge-audit-check.sh` blocks `gh pr merge` until a marker file at `.gaia/local/audit/<HEAD-sha>.ok` exists. The marker proves the audit ran against the exact commit being merged. **You** are responsible for writing the marker — only when the audit is genuinely clean.
+
+After producing the report, decide whether to write the marker:
+
+- **Write the marker** when both:
+  1. The Critical Issues section is empty.
+  2. The Important Issues section is empty, OR every item is already fixed in the working tree (verify by re-reading the relevant file; do not trust prior chat claims).
+- **Do NOT write the marker** when any Critical Issue exists or any Important Issue remains unaddressed in the working tree. The operator must address findings, commit, and re-invoke this agent on the new HEAD; the next clean run writes the marker.
+
+Knip / react-doctor advisories and Suggestions never block the marker — they are advisory-by-design.
+
+When the marker is warranted, write it with the snippet below. The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
+
+```bash
+HEAD_SHA="$(git rev-parse HEAD)"
+mkdir -p .gaia/local/audit
+marker=".gaia/local/audit/${HEAD_SHA}.ok"
+if [ ! -f "$marker" ]; then
+  printf '{"sha":"%s","audited_at":"%s"}\n' \
+    "$HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$marker"
+fi
+```
+
+Then surface, as the final line of your report:
+
+> Audit marker written for HEAD `<short-sha>`; gh pr merge is unblocked.
+
+If you do not write the marker, surface this instead:
+
+> Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
+
+Never write a marker for a SHA other than current `HEAD`. The agent-side guard above prevents accidental overwrite; the hook-side `[ -f "$marker" ]` check is what unblocks `gh pr merge` once the marker exists.
+
 ## Durable knowledge
 
 Before starting a review, consult `wiki/concepts/Code Review Audit Agent.md` and any cross-linked pages for established patterns, past architectural decisions, and known anti-patterns. Pull only what is relevant for the current review — don't preload the entire wiki.
