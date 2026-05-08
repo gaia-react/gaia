@@ -3,7 +3,7 @@
 # no business on an adopter's machine. Format is tar --exclude-from: one
 # path or glob per line, comments with `#` are honored.
 #
-# Anything excluded here is ALSO skipped by `gaia release manifest`, so the
+# Anything excluded here is ALSO skipped by `gaia-maintainer release manifest`, so the
 # adopter-facing manifest never references files an adopter cannot have.
 # Authoritative narrative of what's maintainer-only and why lives in
 # `wiki/concepts/Release Workflow.md` (Distribution Boundary section).
@@ -62,7 +62,7 @@ wiki/decisions/Forensics Triage Workflow.md
 
 # --- 5. Release-time maintainer tooling ---
 # This file itself — adopters don't run GAIA releases. The release-scrub
-# config drives `gaia release scrub` (bundle-time marker-strip + leak-check)
+# config drives `gaia-maintainer release scrub` (bundle-time marker-strip + leak-check)
 # and is consumed only by the maintainer's release.yml. Note:
 # `.gaia/scripts/` DOES ship: `check-updates.sh` is the background refresher
 # invoked by the adopter-facing statusline (writes the cache the statusline
