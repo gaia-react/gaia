@@ -8,10 +8,7 @@ name: Code Review Audit
 # of scope), or (c) the PR modifies this workflow file itself
 # (claude-code-action's workflow-validation guardrail would refuse to
 # run, so the audit cannot complete regardless). Adopter-tunable knobs
-# live at .gaia/audit-ci.yml; the frozen contracts (trailer format,
-# skip logic, check name) live at
-# .gaia/local/plans/code-review-audit-ci/trailer-format.md and that plan's
-# README.
+# live at .gaia/audit-ci.yml.
 #
 # Required-check semantics under classic branch protection: the job MUST
 # reach a terminal "set check status" step on every code path. A skipped
