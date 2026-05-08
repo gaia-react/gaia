@@ -181,6 +181,20 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 - Detection: cross-reference shipped workflow files (`tests.yml`, `chromatic.yml`) against `release-exclude` path literals
 - Prior: `tests.yml` comment scrubbed (98f7a62)
 
+### Forensics triage
+
+Forward-looking signal patterns from the autonomous triage workflow at `.github/workflows/forensics-triage.yml`. These do not fail an audit on their own — they identify when the SPEC's immutable contract is worth reopening.
+
+**Recurring `needs-human` rejections cite the same unenumerated path.** The workflow rejects auto-fix attempts on paths outside the canonical allowlist with reason-code `out-of-scope` (rendered into the `reason: \`out-of-scope\`` line in the `needs-human` comment). When a single path appears in five or more distinct out-of-scope rejections, it is a candidate for allowlist expansion — which requires a SPEC reopen.
+- Detection (signal scan; refine after first run once comment formatting is settled): `gh issue list --repo gaia-react/gaia --label needs-human --state all --search 'in:comments "reason: \`out-of-scope\`"' --json number,comments --limit 200 | jq -r '.[].comments[] | select(.body | test("reason: .out-of-scope.")) | .body' | grep -oE '\`[A-Za-z0-9._/-]+\`' | sort | uniq -c | sort -rn | awk '$1 >= 5'`
+- Threshold: any path with count ≥ 5 across distinct issues warrants discussion of allowlist expansion.
+- Codified in: `wiki/decisions/Forensics Triage Workflow.md` § Signals to revisit.
+
+**Maintainer-corrected-outcome queue exceeds learning threshold.** The classifier runs on each issue independently; over time, manual corrections (re-labels, manual closures, rejected draft PRs) accumulate as a queue of human-corrected outcomes. When the queue exceeds fifty items across all classes, a follow-up SPEC for classifier priors / batched-triage queues / supervised retraining loops becomes worthwhile.
+- Detection (proxy): `gh issue list --repo gaia-react/gaia --label gaia-triaged --state closed --json number,labels --limit 500 | jq '[.[] | select((.labels | map(.name) | contains(["non-issue"])) | not)] | length'` (count of triaged-and-closed issues that did not close as `non-issue` — a proxy for human-corrected outcomes).
+- Threshold: queue length ≥ 50 warrants a follow-up SPEC discussion.
+- Codified in: `wiki/decisions/Forensics Triage Workflow.md` § Signals to revisit.
+
 ### Tests & harnesses
 
 **Bats / smoke fixtures referencing renamed or deleted hook filenames.** `cp` lines in fixtures, embedded `settings.json` Stop hook entries, fixture filenames themselves.

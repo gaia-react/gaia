@@ -131,6 +131,20 @@ Adding a new label to the vocabulary:
 
 Modifying the workflow YAML or any `.github/forensics/` script is a normal PR — except those paths are themselves on the workflow's denylist, so the changes ship through human-authored PRs only, never through autonomous triage.
 
+## Signals to revisit
+
+The default-deny path policy and the no-cross-issue-learning posture are deliberate. Two signal patterns indicate the contract is worth revisiting.
+
+### Allowlist expansion
+
+`needs-human` comments name the rejected paths in their `reason: out-of-scope` body. When a single unenumerated path recurs across five or more distinct issues, it is a candidate for the auto-fix allowlist. Adding the path requires a SPEC reopen — not a PR-only edit — because the allowlist is part of the workflow's immutable contract.
+
+### Cross-issue learning
+
+The classifier runs on each issue independently. Manual maintainer corrections accumulate as a queue of human-corrected outcomes: re-labelled issues, manual closures, rejected draft PRs. When that queue exceeds fifty items across all classes, the data set is worth feeding back into the classifier as priors, batched-triage queues, or supervised retraining loops — work that warrants its own SPEC.
+
+Both signals are tracked by the maintainer health audit, which aggregates the reason-codes and flags threshold crossings.
+
 ## Operator runbook
 
 ### Halt a runaway run
