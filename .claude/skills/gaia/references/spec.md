@@ -180,6 +180,16 @@ If `$ARGUMENTS` (the args after `spec`) is non-empty, use it as the feature desc
 
 Otherwise, ask: **"What do you want to spec?"** and wait for the response before continuing. This is open-ended — use a plain prompt, not `AskUserQuestion`.
 
+After capturing the description, prompt for the GitHub-issue preference via `AskUserQuestion`:
+
+- question: `"Mirror this SPEC to a GitHub issue on save?"`
+- header: `"GH issue"`
+- options:
+  - `{ label: "No, skip GitHub issue (Recommended)", description: "Default. SPEC stays local under .gaia/local/specs/. Choose this for solo work or when the implementing PR will track the work directly." }`
+  - `{ label: "Yes, create a GitHub issue", description: "After save, mirror the SPEC body to a new issue on the project's GitHub repo and stamp gh_issue_url into frontmatter. The implementing PR should then include 'Closes #<N>' in its body so the issue auto-closes on merge." }`
+
+Persist the answer as `gh_mirror_optin: <bool>` in working memory for this session. Used at step 10 (gate the mirror invocation) and step 12 (PR-body closure wiring). On resume, the default reverts to `false` — the user re-invokes /gaia spec from a fresh shell with intent.
+
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
 Run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an in-progress SPEC already exists.
@@ -495,7 +505,9 @@ Reset `lint_cycle = 0` on user choice. Step-back-to-gate-2 returns to step 7 wit
 
 ### 10. Optional GH Issue mirror
 
-After save, run:
+If `gh_mirror_optin` (captured at step 1) is `false`, **skip this step entirely**. No mirror invocation, no telemetry write — the user opted out at the top of the session.
+
+If `gh_mirror_optin` is `true`, run:
 
 ```bash
 bash .specify/extensions/gaia/lib/gh-mirror.sh "$PWD" "<spec-id>" ".gaia/local/specs/<spec-id>.md"
@@ -575,3 +587,31 @@ Print a single summary block after the loop exits:
 >   …
 >
 > Discover later with: `ls .gaia/local/plans/ | grep ^spec-nnn-`
+
+If the saved SPEC carries a `gh_issue_url` frontmatter field (i.e. step 10 mirrored successfully), append one line to the summary:
+
+> Implementing PR body should include `Closes #<N>` (extracted from `gh_issue_url`) so merge auto-closes the upstream issue.
+
+### 12. PR-body closure wiring (only when mirrored)
+
+This step is documentation, not action — but it is load-bearing for issue lifecycle.
+
+When the SPEC has a `gh_issue_url` set (step 10 mirrored), every PR opened in service of this SPEC's implementation must reference the issue with GitHub's [auto-close keywords](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue) in the PR body. Use `Closes #<N>` where `<N>` is the integer at the tail of `gh_issue_url`.
+
+Concrete shape for the PR body:
+
+```markdown
+## Summary
+<brief description of changes>
+
+## Test plan
+<bulleted checklist>
+
+Closes #<N>
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```
+
+Multi-PR SPECs (where `/gaia plan` produced multiple plan slices) should reference the same issue from each PR — GitHub closes the issue on the merge of the first PR that contains the keyword. The remaining PRs' references are inert but harmless and signal the lineage.
+
+If the SPEC has no `gh_issue_url` (step 10 was skipped), this step is a no-op.
