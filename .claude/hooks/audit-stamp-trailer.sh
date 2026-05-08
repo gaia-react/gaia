@@ -27,6 +27,8 @@
 #        final surface line. Stamp lines:
 #          stamp: amended onto HEAD (un-pushed)
 #          stamp: amended onto audit-self-heal HEAD
+#          stamp: empty commit (pushed to upstream)
+#          stamp: empty commit (push to upstream failed)
 #          stamp: empty commit (HEAD already pushed)
 #        Decline lines (prefix "stamp: declined: "):
 #          tree dirty
@@ -175,5 +177,17 @@ fi
 git -C "$repo_root" commit --allow-empty --no-verify \
   -m "chore: code review audit passed" \
   --trailer "$trailer" >/dev/null
-emit_stamp "empty commit (HEAD already pushed)"
+
+# When on an attached tracking branch, push the empty commit so CI can read
+# the trailer and skip its own audit run. On detached HEAD (CI runner) the
+# workflow's own commit-and-push step handles propagation, so skip the push.
+if [ -n "$head_branch" ] && [ -n "${upstream:-}" ]; then
+  if git -C "$repo_root" push --quiet 2>/dev/null; then
+    emit_stamp "empty commit (pushed to upstream)"
+  else
+    emit_stamp "empty commit (push to upstream failed)"
+  fi
+else
+  emit_stamp "empty commit (HEAD already pushed)"
+fi
 exit 0

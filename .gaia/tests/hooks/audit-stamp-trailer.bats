@@ -83,7 +83,7 @@ trailer_on_head() {
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
 }
 
-@test "clean tree + pushed HEAD: writes empty commit carrying the trailer" {
+@test "clean tree + pushed HEAD: writes empty commit and pushes it to upstream" {
   push_head_to_upstream
 
   before_sha=$(git -C "$REPO" rev-parse HEAD)
@@ -94,7 +94,7 @@ trailer_on_head() {
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
 
   [ "$status" -eq 0 ]
-  [ "$output" = "stamp: empty commit (HEAD already pushed)" ]
+  [ "$output" = "stamp: empty commit (pushed to upstream)" ]
 
   after_sha=$(git -C "$REPO" rev-parse HEAD)
   after_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
@@ -108,6 +108,32 @@ trailer_on_head() {
   subject=$(git -C "$REPO" log -1 --format='%s')
   [ "$subject" = "chore: code review audit passed" ]
 
+  trailer=$(trailer_on_head)
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+
+  # The trailer commit must reach the bare upstream so CI can read it.
+  remote_sha=$(git -C "$REMOTE" rev-parse main)
+  [ "$remote_sha" = "$after_sha" ]
+}
+
+@test "clean tree + pushed HEAD + push fails: writes empty commit and reports failure" {
+  push_head_to_upstream
+
+  # Break the bare upstream so `git push` fails. Removing its objects/
+  # directory turns it into a non-repo from git's perspective; push
+  # exits non-zero, the helper catches it and emits the failure stamp.
+  rm -rf "$REMOTE"
+
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: empty commit (push to upstream failed)" ]
+
+  # Empty commit still landed locally; only propagation failed.
   trailer=$(trailer_on_head)
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
 }
