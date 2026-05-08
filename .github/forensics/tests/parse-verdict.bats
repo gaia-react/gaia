@@ -320,6 +320,44 @@ EOF
 # Determinism — same input twice yields byte-identical output.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# SPEC-003 UAT-006 — pipefail + internal-error JSON envelope. When awk
+# fails, the script must NOT fall through to a default verdict:ambiguous;
+# it must emit `{"internal_error":true,...}` so the workflow can
+# distinguish infrastructure failure from a non-conformant classifier
+# response.
+# ---------------------------------------------------------------------------
+
+@test "pipefail preamble is declared" {
+  grep -qE '^set -uo pipefail' "$PARSER"
+}
+
+@test "awk failure emits internal-error JSON envelope (not verdict:ambiguous)" {
+  body_file="$BATS_TEST_TMPDIR/internal-error-input.txt"
+  cat > "$body_file" <<'EOF'
+Reasoning.
+
+GAIA-VERDICT: non-issue
+EOF
+
+  # Shadow `awk` with a stub that always exits non-zero. Exit-code check
+  # on the first awk call (verdict-count) fires immediately.
+  fake_bin="$BATS_TEST_TMPDIR/fake-bin"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/awk" <<'STUB'
+#!/usr/bin/env bash
+exit 9
+STUB
+  chmod +x "$fake_bin/awk"
+
+  run env PATH="$fake_bin:$PATH" "$PARSER" "$body_file"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"internal_error":true'* ]]
+  [[ "$output" == *'"exit_code":9'* ]]
+  # Critical: the failure path does NOT pretend to be an ambiguous verdict.
+  [[ "$output" != *'"verdict":"ambiguous"'* ]]
+}
+
 @test "parser output is byte-identical across two runs" {
   body_file="$BATS_TEST_TMPDIR/det.txt"
   cat > "$body_file" <<'EOF'

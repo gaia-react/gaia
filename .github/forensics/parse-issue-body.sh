@@ -11,11 +11,23 @@
 # task spec at
 # `.gaia/local/plans/spec-002-forensics-triage-action/task-body-parser.md`.
 
-set -u
+set -uo pipefail
 
 usage() {
   echo "usage: parse-issue-body.sh <input-file>" >&2
   exit 2
+}
+
+# emit_internal_error <stage> <exit-code>
+# Emits the SPEC-003 internal-error JSON envelope on stdout. Used by the
+# per-awk exit-code checks: when an awk pipeline returns non-zero, the
+# consumer needs a deterministic signal distinguishing "infrastructure
+# failure" from "valid:false / verdict:ambiguous". The script's overall
+# exit code remains 0 (consumers parse JSON; exit 2 is reserved for
+# usage errors).
+emit_internal_error() {
+  printf '{"internal_error":true,"stage":"%s","exit_code":%d}\n' "$1" "$2"
+  exit 0
 }
 
 [ "$#" -eq 1 ] || usage
@@ -37,6 +49,8 @@ trap 'rm -rf "$work_dir"' EXIT
 # First non-blank line (well, first line — SPEC-001 emits `---` as line 1)
 # must be the frontmatter sentinel.
 first_line=$(awk 'NR==1{print; exit}' "$input_file")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
 if [ "$first_line" != "---" ]; then
   printf '{"valid":false,"error":"malformed-frontmatter","missing":[],"malformed":["frontmatter"]}\n'
   exit 0
@@ -44,6 +58,8 @@ fi
 
 # Closing `---` line number (must be > 1, exact match).
 fm_end=$(awk 'NR>1 && $0=="---"{print NR; exit}' "$input_file")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
 if [ -z "${fm_end:-}" ]; then
   printf '{"valid":false,"error":"malformed-frontmatter","missing":[],"malformed":["frontmatter"]}\n'
   exit 0
@@ -51,6 +67,8 @@ fi
 
 # Frontmatter content lines (between line 2 and fm_end-1).
 awk -v end="$fm_end" 'NR>1 && NR<end' "$input_file" > "$work_dir/frontmatter.txt"
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
 
 fm_class=""
 fm_gaia_version=""
@@ -147,6 +165,8 @@ awk -v start="$body_start" -v out_dir="$work_dir" '
     flush()
   }
 ' "$input_file"
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "section-split" "$awk_status"
 
 # ---------------------------------------------------------------------------
 # Step 3: failure-mode resolution. Order:
@@ -213,9 +233,17 @@ trim_one_blank_each_end() {
 }
 
 sec_symptom=$(trim_one_blank_each_end "$work_dir/sec-symptom.txt")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "section-content-extract" "$awk_status"
 sec_classification=$(trim_one_blank_each_end "$work_dir/sec-classification.txt")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "section-content-extract" "$awk_status"
 sec_capture=$(trim_one_blank_each_end "$work_dir/sec-capture.txt")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "section-content-extract" "$awk_status"
 sec_reproduction=$(trim_one_blank_each_end "$work_dir/sec-reproduction.txt")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "section-content-extract" "$awk_status"
 
 empty_list=""
 [ -z "$sec_symptom" ]        && empty_list="${empty_list}\"symptom\","

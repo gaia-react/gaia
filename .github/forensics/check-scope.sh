@@ -18,7 +18,7 @@
 #
 # POSIX bash only. No jq, no yq, no python.
 
-set -u
+set -uo pipefail
 
 # Rules are encoded as pipe-separated triples: "kind|type|pattern" where:
 #   kind = dir | file

@@ -98,6 +98,20 @@ jobs:
           set -eu
           parsed_file="${RUNNER_TEMP}/forensics/parsed.json"
           "$FORENSICS_DIR/parse-issue-body.sh" "${RUNNER_TEMP}/forensics/issue-body.md" > "$parsed_file"
+
+          # SPEC-003 UAT-006: parse-issue-body.sh emits an internal-error
+          # JSON envelope when one of its awk pipelines fails. Distinct
+          # from valid:false; route to needs-human with reason-code
+          # `internal-error` rather than letting the workflow fall
+          # through to malformed-body handling.
+          if [ "$(jq -r '.internal_error // false' "$parsed_file")" = "true" ]; then
+            reason_file="${RUNNER_TEMP}/forensics/internal-error-reason.md"
+            jq -r '"forensics primitive `parse-issue-body.sh` failed at stage `\(.stage)` (exit \(.exit_code))"' "$parsed_file" > "$reason_file"
+            "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+              "$ISSUE_NUMBER" "$reason_file" "internal-error"
+            exit 0
+          fi
+
           valid="$(jq -r '.valid' "$parsed_file")"
           echo "parsed_file=$parsed_file" >> "$GITHUB_OUTPUT"
           echo "valid=$valid" >> "$GITHUB_OUTPUT"
@@ -243,6 +257,21 @@ jobs:
           parsed="${RUNNER_TEMP}/forensics/verdict.json"
           "$FORENSICS_DIR/parse-verdict.sh" "$verdict_text" > "$parsed"
 
+          # SPEC-003 UAT-006: parse-verdict.sh emits an internal-error
+          # JSON envelope when one of its awk pipelines fails. Route to
+          # needs-human with reason-code `internal-error` before the
+          # ambiguous-verdict dispatch (the two are deliberately
+          # distinct: `ambiguous` is a parsed-but-non-conformant
+          # classifier response; `internal-error` is the parser itself
+          # failing).
+          if [ "$(jq -r '.internal_error // false' "$parsed")" = "true" ]; then
+            reason_file="${RUNNER_TEMP}/forensics/internal-error-reason.md"
+            jq -r '"forensics primitive `parse-verdict.sh` failed at stage `\(.stage)` (exit \(.exit_code))"' "$parsed" > "$reason_file"
+            "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
+              "$ISSUE_NUMBER" "$reason_file" "internal-error"
+            exit 0
+          fi
+
           verdict="$(jq -r '.verdict' "$parsed")"
           echo "verdict=$verdict"
 
@@ -385,10 +414,12 @@ jobs:
           steps.parse.outputs.valid == 'true' &&
           steps.verdict.outputs.verdict == 'auto-fixable' &&
           steps.scope.outputs.ok == 'true'
+        env:
+          FIX_BRANCH: ${{ steps.branch.outputs.name }}
         run: |
           set -eu
           git fetch origin main
-          git checkout -B "${{ steps.branch.outputs.name }}" origin/main
+          git checkout -B "$FIX_BRANCH" origin/main
           git config user.name 'gaia-forensics-triage[bot]'
           git config user.email 'gaia-forensics-triage[bot]@users.noreply.github.com'
 
@@ -447,7 +478,7 @@ jobs:
           # Post-step verification asserts diffs touch only `proposed_paths`.
           claude_args: |
             --max-turns 30
-            --allowedTools Edit,Read,Write
+            --allowedTools Edit,Write
             --disallowedTools Bash,WebFetch,WebSearch
 
       - name: Verify diff against proposed paths
@@ -653,9 +684,11 @@ jobs:
           steps.scope.outputs.ok == 'true' &&
           steps.verify-diff.outputs.diff_ok == 'true' &&
           steps.quality-gate.outcome == 'success'
+        env:
+          FIX_BRANCH: ${{ steps.branch.outputs.name }}
         run: |
           set -eu
-          git push origin "${{ steps.branch.outputs.name }}"
+          git push origin "$FIX_BRANCH"
 
       - name: Compose PR body
         id: pr-body
@@ -700,13 +733,17 @@ jobs:
           steps.scope.outputs.ok == 'true' &&
           steps.verify-diff.outputs.diff_ok == 'true' &&
           steps.quality-gate.outcome == 'success'
+        env:
+          FIX_BRANCH: ${{ steps.branch.outputs.name }}
+          FIX_CLASS_SLUG: ${{ steps.branch.outputs.class_slug }}
+          PR_BODY_FILE: ${{ steps.pr-body.outputs.file }}
         run: |
           set -eu
           "$FORENSICS_DIR/handlers/handle-auto-fixable.sh" \
             "$ISSUE_NUMBER" \
-            "${{ steps.branch.outputs.class_slug }}" \
-            "${{ steps.branch.outputs.name }}" \
-            "${{ steps.pr-body.outputs.file }}"
+            "$FIX_CLASS_SLUG" \
+            "$FIX_BRANCH" \
+            "$PR_BODY_FILE"
 
       # ----------------------------------------------------------------
       # UAT-012 fail-forward: if the workflow did meaningful work but

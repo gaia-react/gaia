@@ -278,6 +278,39 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# SPEC-003 UAT-006 — pipefail + internal-error JSON envelope. When awk
+# fails, the script must NOT fall through to a default valid:false; it
+# must emit `{"internal_error":true,...}` so the workflow can distinguish
+# infrastructure failure from a malformed body.
+# ---------------------------------------------------------------------------
+
+@test "pipefail preamble is declared" {
+  grep -qE '^set -uo pipefail' "$PARSER"
+}
+
+@test "awk failure emits internal-error JSON envelope (not valid:false)" {
+  # Shadow `awk` with a stub that always exits non-zero. The script is
+  # invoked via `env PATH=...` so it picks up the stub before the system
+  # awk. Exit-code check on the FIRST awk call (frontmatter-extract)
+  # fires immediately.
+  fake_bin="$BATS_TEST_TMPDIR/fake-bin"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/awk" <<'STUB'
+#!/usr/bin/env bash
+exit 7
+STUB
+  chmod +x "$fake_bin/awk"
+
+  run env PATH="$fake_bin:$PATH" "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"internal_error":true'* ]]
+  [[ "$output" == *'"stage":"frontmatter-extract"'* ]]
+  [[ "$output" == *'"exit_code":7'* ]]
+  # Critical: the failure path does NOT pretend to be a malformed body.
+  [[ "$output" != *'"valid":false'* ]]
+}
+
+# ---------------------------------------------------------------------------
 # JSON shape sanity — make sure the success JSON contains all required
 # top-level keys.
 # ---------------------------------------------------------------------------
