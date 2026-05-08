@@ -251,3 +251,16 @@ Capture: x" ]
   last_byte="$(tail -c 1 "$out" | od -An -c | tr -d ' ')"
   [ "$last_byte" = "\\n" ]
 }
+
+# --- 17. Empty template ----------------------------------------------------
+# A 0-byte template trips the per-key "key not present in template" check on
+# the first supplied key, exiting 2. The behavior is correct (a template that
+# substitutes nothing is meaningless) but undocumented; pin it.
+
+@test "empty template rejects all keys with exit 2" {
+  template="$BATS_TEST_TMPDIR/empty.md"
+  : > "$template"
+  run "$SCRIPT" "$template" "FOO=bar"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not present in template"* ]]
+}

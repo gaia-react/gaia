@@ -325,3 +325,29 @@ STUB
   [[ "$output" == *'"capture":'* ]]
   [[ "$output" == *'"reproduction_context":'* ]]
 }
+
+# ---------------------------------------------------------------------------
+# Control-byte hygiene — `json_escape_file` strips raw 0x01–0x1f bytes so
+# the emitted JSON stays valid even on pathological input.
+# ---------------------------------------------------------------------------
+
+@test "embedded control bytes do not break the emitted JSON" {
+  fixture="$BATS_TEST_TMPDIR/control-bytes.md"
+  # Build a SPEC-001-shaped body whose Symptom contains a 0x01 byte.
+  # If the byte leaks through, jq rejects the output as invalid JSON.
+  ctrl="$(printf 'before\x01after')"
+  {
+    printf -- '---\n'
+    printf 'class: quality-gate\n'
+    printf 'gaia_version: 1.4.2\n'
+    printf 'created: 2026-05-08\n'
+    printf -- '---\n'
+    printf '## Symptom\n\n%s\n\n' "$ctrl"
+    printf '## Classification\n\nclass: quality-gate\n\n'
+    printf '## Capture\n\nnode_version: v20.11.0\n\n'
+    printf '## Reproduction context\n\nplaceholder\n'
+  } > "$fixture"
+  run "$PARSER" "$fixture"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e . > /dev/null
+}

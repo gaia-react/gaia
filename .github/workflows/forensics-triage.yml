@@ -508,6 +508,9 @@ jobs:
           steps.parse.outputs.valid == 'true' &&
           steps.verdict.outputs.verdict == 'auto-fixable' &&
           steps.scope.outputs.ok == 'true'
+        env:
+          APPLY_FIX_EXEC_FILE: ${{ steps.apply-fix.outputs.execution_file }}
+          PROPOSED_PATHS_FILE: ${{ steps.scope.outputs.paths_file }}
         run: |
           set -eu
 
@@ -526,10 +529,9 @@ jobs:
           # rationale to the maintainer. The action emits a top-level
           # JSON array of execution events.
           apply_text="${RUNNER_TEMP}/forensics/apply-fix-text.md"
-          if [ -n "${{ steps.apply-fix.outputs.execution_file }}" ] \
-             && [ -f "${{ steps.apply-fix.outputs.execution_file }}" ]; then
+          if [ -n "$APPLY_FIX_EXEC_FILE" ] && [ -f "$APPLY_FIX_EXEC_FILE" ]; then
             jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' \
-              "${{ steps.apply-fix.outputs.execution_file }}" > "$apply_text"
+              "$APPLY_FIX_EXEC_FILE" > "$apply_text"
           else
             : > "$apply_text"
           fi
@@ -569,12 +571,11 @@ jobs:
           # Even within scope, the diff must be a SUBSET of the
           # classifier's `proposed_paths`. Any deviation halts before the
           # gate (per task spec step 10's deviation clause).
-          proposed_file="${{ steps.scope.outputs.paths_file }}"
           unexpected="${RUNNER_TEMP}/forensics/unexpected-paths.txt"
           : > "$unexpected"
           while IFS= read -r p; do
             [ -z "$p" ] && continue
-            if ! grep -Fxq -- "$p" "$proposed_file"; then
+            if ! grep -Fxq -- "$p" "$PROPOSED_PATHS_FILE"; then
               printf '%s\n' "$p" >> "$unexpected"
             fi
           done < "$touched_file"
