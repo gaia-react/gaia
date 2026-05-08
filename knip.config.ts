@@ -11,6 +11,7 @@ export default {
     'app/utils/**/*.ts',
     'test/**/*.{ts,tsx}',
   ],
+  ignoreBinaries: ['bats'],
   ignoreDependencies: [
     '@epic-web/invariant',
     '@msw/data',

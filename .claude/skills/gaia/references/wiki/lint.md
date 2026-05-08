@@ -6,11 +6,11 @@ Dispatched by the `/gaia wiki` router (`references/wiki.md` → "Lint"). Runs in
 
 GAIA-local wrapper around the upstream `claude-obsidian:wiki-lint` skill. Runs the upstream lint flow first, then appends GAIA-specific checks **#11: Wiki drift check**, **#12: Dead repo-relative paths**, and **#13: UAT/SPEC narrative-ref drift** to the report.
 
-Do **not** modify the upstream skill (`~/.claude/plugins/marketplaces/claude-obsidian-marketplace/skills/wiki-lint/SKILL.md`) — it is read-only territory. Extensions live here.
+Do **not** modify the upstream `claude-obsidian:wiki-lint` skill — it ships from a marketplace plugin and is read-only territory. Extensions live here.
 
 ## Step 1: Run upstream wiki-lint
 
-Invoke the `claude-obsidian:wiki-lint` skill following its documented pattern (see `~/.claude/plugins/marketplaces/claude-obsidian-marketplace/skills/wiki-lint/SKILL.md`). The upstream skill writes the report to:
+Invoke the `claude-obsidian:wiki-lint` skill following its documented pattern. The runtime resolves the plugin and dispatches the upstream playbook; do not attempt to read the plugin's SKILL.md from a hardcoded path. The upstream skill writes the report to:
 
 ```
 wiki/meta/lint-report-YYYY-MM-DD.md
