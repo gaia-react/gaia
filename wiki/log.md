@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-08 91a0daf WORTHY — renamed /wiki-{sync,consolidate,lint} → /gaia wiki <sub>; updated 7 wiki pages in-commit
+- 2026-05-08 66b757c SKIP — wiki: self-referential
 - 2026-05-08 f649523 SKIP — Serena handles instruction-file inventory — /gaia spec auto + plan isolation in .claude/skills/
 - 2026-05-08 28cd839 SKIP — wiki utility commit (re-anchor state)
 - 2026-05-08 843ffec RE_ANCHOR — re-anchored after history rewrite
