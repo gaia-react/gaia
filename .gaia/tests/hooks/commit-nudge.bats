@@ -2,7 +2,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../.claude/hooks" && pwd)/wiki-commit-nudge.sh
+  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/wiki-commit-nudge.sh
 }
 
 teardown() {

@@ -22,7 +22,7 @@
 #   - HEAD sha movement (amend or empty commit moves it; decline does not)
 
 setup() {
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/.." && pwd)/audit-stamp-trailer.sh
+  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/audit-stamp-trailer.sh
   REPO=$(mktemp -d -t audit-stamp-test-XXXXXX)
   REMOTE=$(mktemp -d -t audit-stamp-remote-XXXXXX)
 
