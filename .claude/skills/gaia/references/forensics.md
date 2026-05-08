@@ -28,7 +28,7 @@ Read `.claude/skills/gaia/references/forensics/capture.md` and apply it now.
 
 Execute every command in the **Universal capture** table. Then, for the provisionally detected class (the class you expect based on the problem description — you will confirm in step 3), execute the corresponding **Class-specific state files** table. If the class is ambiguous at this point, capture the universal envelope and defer class-specific reads until after step 3.
 
-Apply the exclusion rules in `capture.md` before assembling the snapshot. Never capture bodies from `app/`, `wiki/`, or `studio/`; never capture Claude Code session JSONL paths; never capture `.env*` or `node_modules/`; truncate any entry exceeding ~80 lines or 4 KB.
+Apply the exclusion rules in `capture.md` before assembling the snapshot. Never capture bodies from `app/` or `wiki/`; never capture Claude Code session JSONL paths; never capture `.env*` or `node_modules/`; truncate any entry exceeding ~80 lines or 4 KB.
 
 ### 3. Classify and cite evidence
 

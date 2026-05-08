@@ -91,12 +91,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
-          # Audit-relevant scope: TS/TSX/CSS code under app/, the CLI
-          # source under .gaia/cli/src/, tests, .storybook configs,
-          # GitHub workflow files, and root-level build/lint/test/
-          # typecheck configs. PRs that only touch wiki/, .claude/,
-          # .specify/, prose docs, or .gaia/ metadata are skipped here —
-          # the agent has no rules that would meaningfully apply.
+          # Audit-relevant scope: TS/TSX/CSS code under app/, tests,
+          # .storybook configs, GitHub workflow files, and root-level
+          # build/lint/test/typecheck configs. PRs that only touch wiki/,
+          # .claude/, .specify/, prose docs, or .gaia/ metadata are
+          # skipped here — the agent has no rules that would meaningfully
+          # apply.
           changed=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}")
           dir_pattern='^(app|test|\.storybook|\.gaia/cli/src|\.github/workflows)/'
           file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'

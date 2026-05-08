@@ -19,15 +19,15 @@ The assembled report body, pre-frontmatter. This is the markdown string beginnin
 **Rule A — under project root.** Any absolute path that begins with `$ROOT/` is replaced by its suffix (the portion after `$ROOT/`). The suffix is already repo-relative.
 
 ```
-Before: /Users/jane/Development/my-project/app/i18n.ts
+Before: <home>/Development/my-project/app/i18n.ts
 After:  app/i18n.ts
-(project root is /Users/jane/Development/my-project)
+(project root is <home>/Development/my-project)
 ```
 
 **Rule B — outside project root (machine-leak fallback).** Any remaining absolute path that begins with `/Users/<name>/` or `/home/<name>/` (and did NOT match Rule A) is collapsed to its trailing component only — the filename, preserving no directory structure.
 
 ```
-Before: /Users/jane/.config/some-other-tool.json
+Before: <home>/.config/some-other-tool.json
 After:  some-other-tool.json
 ```
 
@@ -138,8 +138,8 @@ The following examples demonstrate the complete algorithm. All values are illust
 
 | Input (before redaction) | Output (after redaction) | Rule applied |
 |---|---|---|
-| `/Users/jane/Development/my-project/app/i18n.ts` | `app/i18n.ts` | Path Rule A (under project root `/Users/jane/Development/my-project`) |
-| `/Users/jane/.config/some-other-tool.json` | `some-other-tool.json` | Path Rule B (outside project root, filename only) |
+| `<home>/Development/my-project/app/i18n.ts` | `app/i18n.ts` | Path Rule A (under project root `<home>/Development/my-project`) |
+| `<home>/.config/some-other-tool.json` | `some-other-tool.json` | Path Rule B (outside project root, filename only) |
 | `<github-token-shaped-string>` | `<redacted>` | Token pattern 1 (GitHub token; prefix `gho_` + 20 alphanumerics) |
 | `ANTHROPIC_API_KEY=<value-shaped-string>` | `ANTHROPIC_API_KEY=<redacted>` | Env-var policy (value scrubbed; name kept) |
 | `<aws-access-key-id-shaped-string>` | `<redacted>` | Token pattern 6 (AWS access key; four uppercase + sixteen alphanumerics) |

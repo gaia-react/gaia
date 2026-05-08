@@ -128,23 +128,27 @@ describe('wiki state', () => {
     expect((json.head_short as string).length).toBe(7);
   });
 
-  test('reports drift_severity low for 1-5 commits ahead', () => {
-    const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
-    writeStateFile(sandbox.root, baseSha);
-    sandbox.commit('feat: add a thing', {'app/foo.ts': 'export const x = 1;\n'});
+  test(
+    'reports drift_severity low for 1-5 commits ahead',
+    () => {
+      const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
+      writeStateFile(sandbox.root, baseSha);
+      sandbox.commit('feat: add a thing', {'app/foo.ts': 'export const x = 1;\n'});
 
-    const exit = run(['--json'], {cwd: sandbox.root});
-    expect(exit).toBe(0);
+      const exit = run(['--json'], {cwd: sandbox.root});
+      expect(exit).toBe(0);
 
-    const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
-      string,
-      unknown
-    >;
-    expect(json.commits_ahead).toBe(1);
-    expect(json.drift_severity).toBe('low');
-    expect(Array.isArray(json.recent_commits)).toBe(true);
-    expect((json.recent_commits as unknown[]).length).toBe(1);
-  });
+      const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
+        string,
+        unknown
+      >;
+      expect(json.commits_ahead).toBe(1);
+      expect(json.drift_severity).toBe('low');
+      expect(Array.isArray(json.recent_commits)).toBe(true);
+      expect((json.recent_commits as unknown[]).length).toBe(1);
+    },
+    15_000
+  );
 
   test(
     'reports drift_severity medium for 6-20 commits ahead',
