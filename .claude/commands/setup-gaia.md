@@ -53,6 +53,25 @@ If `corepack` is available, run `corepack enable pnpm`. Otherwise `npm install -
 
 This step is NOT recorded in `setup-state.json` — pnpm + node_modules are baseline prerequisites; `pnpm install` is fast on a clean clone and fast-no-op when up to date.
 
+## Step 0.5: GitHub CLI prerequisites
+
+This step is NOT recorded in `setup-state.json` — it runs every invocation as a precondition. The check is advisory: warnings surface but do not halt setup, because a contributor may legitimately set up GAIA without gh wired up yet.
+
+```bash
+if ! command -v gh &>/dev/null; then
+  echo "Warning: GitHub CLI ('gh') is not installed. The PR merge gate, /gaia plan, and forensics workflows depend on it. Install: https://cli.github.com/" >&2
+elif ! gh auth status &>/dev/null; then
+  echo "Warning: GitHub CLI is not authenticated. Run: gh auth login" >&2
+elif [ -f .github/workflows/forensics-triage.yml ] && gh repo view &>/dev/null; then
+  if ! gh label list --limit 100 --json name 2>/dev/null \
+      | jq -e '.[] | select(.name == "gaia-forensics")' >/dev/null; then
+    echo "Warning: forensics-triage.yml is enabled but the 'gaia-forensics' label is missing on this repo. Ask a maintainer: gh label create gaia-forensics --color D93F0B --description 'Triggers autonomous forensics triage'" >&2
+  fi
+fi
+```
+
+Surface every warning to the user verbatim, then continue.
+
 ## Step 1: install-tools
 
 Skip if `install-tools` is in `completed_steps`.

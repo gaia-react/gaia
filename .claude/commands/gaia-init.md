@@ -184,6 +184,67 @@ After install, `.specify/extensions/.registry` lists the `gaia` extension with a
 
 If any step fails, surface the error verbatim and halt — do not silently continue. The user can re-run the failing command manually and resume `/gaia-init` once spec-kit is in place.
 
+### Configure CI integrations
+
+Two GitHub Actions workflows ship with GAIA:
+
+- `.github/workflows/code-review-audit.yml` — pre-merge gate that runs the `code-review-audit` agent against every PR.
+- `.github/workflows/forensics-triage.yml` — autonomous triage for issues labeled `gaia-forensics`.
+
+Both invoke Claude via `claude-code-action` and require the repo secret `CLAUDE_CODE_OAUTH_TOKEN`. If the project isn't pushed to GitHub yet, or the maintainer doesn't want CI Claude billing yet, opt out — the workflow files move to `.gaia/templates/workflows/`, and `/update-gaia` respects the deletion as adopter intent (per the file-class decision table on the Update Workflow concept page).
+
+Use AskUserQuestion (in the user's language; this configuration block stays in English):
+
+> Enable GAIA's GitHub Actions workflows now?
+>
+> - **Yes — enable now** (Recommended). I'll print the `gh` commands you run yourself with maintainer credentials, and ensure the `gaia-forensics` issue label exists.
+> - **Skip — disable for now.** I'll move both workflow files to `.gaia/templates/workflows/`. Copy them back to `.github/workflows/` whenever you decide to enable.
+
+**On "Yes":**
+
+1. Verify gh CLI is authenticated:
+
+   ```bash
+   gh auth status
+   ```
+
+   If `gh auth status` exits non-zero, halt `/gaia-init` with: `GitHub CLI is not authenticated. Run 'gh auth login' and re-run /gaia-init.`
+
+2. Print the copy-pasteable enable recipe verbatim — the user runs these themselves on the maintainer's machine once the project is on GitHub:
+
+   ```bash
+   # 1. Mint an OAuth token from a Claude Code-authenticated machine, then store it as a repo secret.
+   claude setup-token
+   gh secret set CLAUDE_CODE_OAUTH_TOKEN
+
+   # 2. Make code-review-audit a required check on main (run after the workflow's first successful PR run).
+   gh api -X PUT "repos/{owner}/{repo}/branches/main/protection/required_status_checks" \
+     -f strict=true -f 'contexts[]=code-review-audit'
+   ```
+
+3. Ensure the `gaia-forensics` label exists, but only if the project already has a GitHub remote that gh can read:
+
+   ```bash
+   if gh repo view &>/dev/null && ! gh label list --limit 100 --json name 2>/dev/null \
+       | jq -e '.[] | select(.name == "gaia-forensics")' >/dev/null; then
+     gh label create gaia-forensics --color D93F0B --description "Triggers autonomous forensics triage"
+   fi
+   ```
+
+   If `gh repo view` returns non-zero (no remote configured yet), skip the label creation and tell the user: `Create the gaia-forensics label after pushing the project to GitHub: gh label create gaia-forensics --color D93F0B --description "Triggers autonomous forensics triage"`.
+
+**On "Skip":**
+
+```bash
+mkdir -p .gaia/templates/workflows
+git mv .github/workflows/code-review-audit.yml .gaia/templates/workflows/code-review-audit.yml 2>/dev/null \
+  || mv .github/workflows/code-review-audit.yml .gaia/templates/workflows/code-review-audit.yml
+git mv .github/workflows/forensics-triage.yml .gaia/templates/workflows/forensics-triage.yml 2>/dev/null \
+  || mv .github/workflows/forensics-triage.yml .gaia/templates/workflows/forensics-triage.yml
+```
+
+To re-enable later: `cp .gaia/templates/workflows/*.yml .github/workflows/`, then run the "Yes" recipe above. `/update-gaia` reads `.gaia/manifest.json` and treats deleted-from-adopter files as intentional, so the opt-out persists across updates.
+
 ### Make the statusline executable
 
 The CLI in Step 3 wired the statusline command into Claude settings; the wrapper still needs the executable bit:
