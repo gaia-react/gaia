@@ -154,4 +154,4 @@ while :; do
   content="${content:best_pos + best_token_len}"
 done
 
-printf '%s' "$result"
+printf '%s\n' "$result"

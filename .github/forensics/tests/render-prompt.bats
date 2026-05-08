@@ -222,3 +222,32 @@ Capture: x" ]
     "DENYLIST=d" > "$out2"
   cmp "$out1" "$out2"
 }
+
+# --- 16. Newline termination ----------------------------------------------
+# Workflow YAML pipes the rendered output into a $GITHUB_OUTPUT heredoc; if
+# the last byte is not a newline, the closing delimiter ends up appended to
+# the last content line and the heredoc parser rejects it
+# ("Matching delimiter not found"). Lock the invariant.
+
+@test "rendered output ends with a newline byte" {
+  out="$BATS_TEST_TMPDIR/out"
+  "$SCRIPT" "$FIXTURES/render-template-basic.md" \
+    "ISSUE_NUMBER=42" \
+    "SYMPTOM=s" \
+    "CLASSIFICATION=c" \
+    "CAPTURE=cap" \
+    "REPRO_CONTEXT=r" \
+    "ALLOWLIST=a" \
+    "DENYLIST=d" > "$out"
+  last_byte="$(tail -c 1 "$out" | od -An -c | tr -d ' ')"
+  [ "$last_byte" = "\\n" ]
+}
+
+@test "rendered output ends with a newline even when template has no trailing newline" {
+  template="$BATS_TEST_TMPDIR/no-trailing.md"
+  printf '%s' "Issue {{ISSUE_NUMBER}}" > "$template"
+  out="$BATS_TEST_TMPDIR/out"
+  "$SCRIPT" "$template" "ISSUE_NUMBER=42" > "$out"
+  last_byte="$(tail -c 1 "$out" | od -An -c | tr -d ' ')"
+  [ "$last_byte" = "\\n" ]
+}
