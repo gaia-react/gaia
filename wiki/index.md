@@ -113,6 +113,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[API Service Pattern]]
 - [[Accessibility]]
 - [[ESLint Fixes]]
+- [[Forensics]] — read-only bug-report bridge with redaction and classification
 - [[Test Runner]]
 - [[Pre-commit Hooks]]
 - [[Git Workflow]]
