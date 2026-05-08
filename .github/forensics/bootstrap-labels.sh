@@ -9,8 +9,8 @@
 #
 # Prerequisites: `gh` authenticated against the target repo with `repo` scope.
 #
-# Frozen contract: SPEC-002 phase-2 labels (5). `gaia-forensics` is owned by
-# SPEC-001 and excluded here.
+# Frozen contract: SPEC-002 phase-2 labels (5) plus the SPEC-001 trigger
+# label `gaia-forensics`.
 
 set -euo pipefail
 
@@ -44,9 +44,10 @@ done
 
 # Frozen label contract — name|color|description (per SPEC-002 task spec).
 LABELS=(
+  "gaia-forensics|5319e7|End-user bug report routed via /gaia forensics. Triggers autonomous triage."
   "gaia-triaged|0e8a16|Forensics triage workflow has processed this issue. Idempotency key — re-firing is a no-op."
   "non-issue|cccccc|Triaged: not a bug. User-config issue, missing prerequisite, or duplicate. Issue closed."
-  "needs-human|d93f0b|Triaged: real bug, but out of autofix scope OR malformed body OR ambiguous classifier verdict. Maintainer review required."
+  "needs-human|d93f0b|Triaged: out of autofix scope, malformed body, or ambiguous verdict. Maintainer review required."
   "auto-fixable|1d76db|Triaged: classifier proposed a fix in allowlisted scope. See linked draft PR."
   "gaia-bug-confirmed|b60205|Quality Gate passed on the auto-fix branch. Draft PR open and ready for human review."
 )
