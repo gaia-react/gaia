@@ -1,5 +1,5 @@
 /**
- * Tests for `gaia release runtime-deps`.
+ * Tests for `gaia-maintainer release runtime-deps`.
  */
 import {
   mkdirSync,

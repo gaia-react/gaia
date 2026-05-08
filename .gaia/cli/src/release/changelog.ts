@@ -1,5 +1,5 @@
 /**
- * `gaia release changelog [--draft]` handler.
+ * `gaia-maintainer release changelog [--draft]` handler.
  *
  * Step 7 of the maintainer release runbook. Auto-drafts a Keep-a-Changelog
  * block from conventional-commit subjects since the last tag, mapping
@@ -21,7 +21,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
-const HELP_TEXT = `Usage: gaia release changelog [--draft] [--version <X.Y.Z>]
+const HELP_TEXT = `Usage: gaia-maintainer release changelog [--draft] [--version <X.Y.Z>]
 
   Render a Keep-a-Changelog block for the new version from
   conventional-commit subjects since the last tag.

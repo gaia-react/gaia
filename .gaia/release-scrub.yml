@@ -1,4 +1,4 @@
-# Bundle-time scrub config. Consumed by `gaia release scrub <staging-dir>`
+# Bundle-time scrub config. Consumed by `gaia-maintainer release scrub <staging-dir>`
 # from inside `release.yml` between staging and tarball creation.
 #
 # Two transforms run in order against the staging tree:
@@ -15,7 +15,7 @@
 # repo-relative paths under the staging directory.
 #
 # This file is itself maintainer-only (release-exclude category 5).
-# Adopters never run `gaia release scrub`.
+# Adopters never run `gaia-maintainer release scrub`.
 
 transforms:
   - type: marker-strip
@@ -124,7 +124,7 @@ transforms:
           # Allowlisted by the audit taxonomy.
           - "wiki/concepts/Telemetry.md"
           # Adopter-owned sentinels that ship in the tarball but contain
-          # release-baseline content after `gaia release scrub-wiki`
+          # release-baseline content after `gaia-maintainer release scrub-wiki`
           # (Step 8 of `/gaia-release`). Local simulations against
           # mid-development hot/log content would otherwise false-positive.
           - "wiki/hot.md"
@@ -145,7 +145,7 @@ transforms:
           - ".specify/extensions/gaia/templates/**"
         path-allowlist:
           # Same hot/log carve-out as maintainer-paths — they get
-          # release-baseline content via `gaia release scrub-wiki`.
+          # release-baseline content via `gaia-maintainer release scrub-wiki`.
           - "wiki/hot.md"
           - "wiki/log.md"
 
@@ -182,7 +182,7 @@ transforms:
           - ".gaia/statusline/**"
         path-allowlist:
           # Adopter-owned sentinels carry release-baseline content after
-          # `gaia release scrub-wiki`; same carve-out as maintainer-paths.
+          # `gaia-maintainer release scrub-wiki`; same carve-out as maintainer-paths.
           - "wiki/hot.md"
           - "wiki/log.md"
 

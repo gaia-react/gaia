@@ -1,5 +1,5 @@
 /**
- * `gaia release preflight` handler.
+ * `gaia-maintainer release preflight` handler.
  *
  * Step 1 + Step 2 of the maintainer release runbook codified as exit codes:
  *
@@ -16,7 +16,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {run as runWikiState} from '../wiki/state.js';
 
-const HELP_TEXT = `Usage: gaia release preflight [--branch <name>]
+const HELP_TEXT = `Usage: gaia-maintainer release preflight [--branch <name>]
 
   Verify branch state, working tree, and wiki sync before cutting a release.
 

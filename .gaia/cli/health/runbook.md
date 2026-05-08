@@ -148,8 +148,8 @@ awk '/^[[:space:]]*#/ {next} NF==0 {next} {print}' .gaia/release-exclude \
   > "$EXCLUDE_REGEX"
 grep -vE -f "$EXCLUDE_REGEX" "$ALL_TRACKED" > "$INCLUDE"
 rsync -a --files-from="$INCLUDE" . "$STAGING"/
-./.gaia/cli/gaia release scrub "$STAGING"
-./.gaia/cli/gaia release runtime-deps --staging "$STAGING"
+./.gaia/cli/gaia-maintainer release scrub "$STAGING"
+./.gaia/cli/gaia-maintainer release runtime-deps --staging "$STAGING"
 find "$STAGING" -name "*.md" -exec grep -l "gaia:maintainer-only" {} \;
 grep -rEn "\[\[(Release Workflow|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta)\]\]" "$STAGING/wiki/" || true
 ```

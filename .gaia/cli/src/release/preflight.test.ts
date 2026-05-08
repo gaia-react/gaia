@@ -1,5 +1,5 @@
 /**
- * Tests for `gaia release preflight`.
+ * Tests for `gaia-maintainer release preflight`.
  */
 import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync} from 'node:fs';

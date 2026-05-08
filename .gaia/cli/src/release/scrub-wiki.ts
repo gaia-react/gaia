@@ -1,5 +1,5 @@
 /**
- * `gaia release scrub-wiki` handler.
+ * `gaia-maintainer release scrub-wiki` handler.
  *
  * Steps 8 + 9 of the maintainer release runbook. Overwrites
  * `wiki/hot.md` and `wiki/log.md` with release-clean content. The exact
@@ -13,7 +13,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
-const HELP_TEXT = `Usage: gaia release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>]
+const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>]
 
   Overwrite wiki/hot.md and wiki/log.md with release-clean content
   (Step 8 + Step 9 of the runbook).

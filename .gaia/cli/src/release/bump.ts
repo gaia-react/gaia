@@ -1,5 +1,5 @@
 /**
- * `gaia release bump [--auto]` handler.
+ * `gaia-maintainer release bump [--auto]` handler.
  *
  * Step 3 of the maintainer release runbook. Scans conventional-commit
  * subjects (and bodies) since the last tag, classifies the highest
@@ -28,7 +28,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
-const HELP_TEXT = `Usage: gaia release bump [--auto]
+const HELP_TEXT = `Usage: gaia-maintainer release bump [--auto]
 
   Compute the next semver bump from conventional-commit subjects since
   the last tag. Without --auto, prints the proposal. With --auto, writes

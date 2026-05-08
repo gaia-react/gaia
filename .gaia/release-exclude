@@ -36,11 +36,18 @@ wiki/decisions/Forensics Triage Workflow.md
 .claude/rules/_internal
 .specify/extensions/gaia/test
 
-# --- 4. CLI maintainer source ---
-# Adopters receive only the bundled binary at .gaia/cli/gaia (and the
-# templates at .gaia/cli/templates/). Source, tests, fixtures, and build
-# configs stay in the template repo so adopters can't accidentally rebuild
-# the binary out from under themselves.
+# --- 4. CLI maintainer source + maintainer binary ---
+# Adopters receive only the bundled adopter binary at .gaia/cli/gaia (and
+# the templates at .gaia/cli/templates/). Source, tests, fixtures, and
+# build configs stay in the template repo so adopters can't accidentally
+# rebuild the binary out from under themselves.
+#
+# .gaia/cli/gaia-maintainer is the second bundle produced by `pnpm bundle`
+# (entry: src/index.maintainer.ts). It carries the maintainer-only
+# `release` namespace and exists only on the GAIA team's clone — adopters
+# never see it. The adopter `gaia` binary's source (src/index.ts) does not
+# import any release code, so esbuild keeps the release surface out of the
+# adopter bundle by construction.
 .gaia/cli/src
 .gaia/cli/test-fixtures
 .gaia/cli/__tests__
@@ -51,6 +58,7 @@ wiki/decisions/Forensics Triage Workflow.md
 .gaia/cli/.gitignore
 .gaia/cli/node_modules
 .gaia/cli/dist
+.gaia/cli/gaia-maintainer
 
 # --- 5. Release-time maintainer tooling ---
 # This file itself — adopters don't run GAIA releases. The release-scrub

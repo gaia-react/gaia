@@ -1,18 +1,23 @@
 /**
- * gaia CLI entrypoint (adopter binary).
+ * gaia-maintainer CLI entrypoint (maintainer-only binary).
  *
- * Top-level subcommand router. Maintainer-only namespaces (currently just
- * `release`) live in `index.maintainer.ts` and bundle to a separate
- * binary (`gaia-maintainer`) excluded from the adopter tarball by
- * `.gaia/release-exclude`. The adopter binary must not import any
- * maintainer-only handler, so esbuild tree-shakes their code out of this
- * bundle by construction.
+ * Adopter-binary surface plus the maintainer-only `release` namespace.
+ * Bundles to `.gaia/cli/gaia-maintainer`, which `.gaia/release-exclude`
+ * strips from the adopter tarball. Adopters never see this binary or
+ * any of its commands; only the GAIA template's own maintainer (and CI
+ * jobs running on the maintainer's clone) invokes it.
+ *
+ * Mirrors `index.ts` deliberately: the dispatch loop is short enough
+ * that a shared abstraction would obscure the contract more than it
+ * would save lines. Anything added to either binary's surface should be
+ * added here too unless it is intentionally adopter-only.
  */
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
 import {run as runFetchCoaching} from './adaptation/inject.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
+import {run as runRelease} from './release/index.js';
 import {run as runScaffold} from './scaffold/index.js';
 import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
@@ -20,7 +25,9 @@ import {run as runTelemetry} from './telemetry/index.js';
 import {run as runUpdate} from './update/index.js';
 import {run as runWiki} from './wiki/index.js';
 
-const HELP_TEXT = `Usage: gaia <subcommand> [args]
+const HELP_TEXT = `Usage: gaia-maintainer <subcommand> [args]
+
+Maintainer-only binary. Adopters use 'gaia' (no release namespace).
 
   telemetry emit <event_type> [--field value ...]
   telemetry compute-profile
@@ -29,6 +36,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   scaffold component|hook|route|service
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   update merge --baseline <dir> --latest <dir> --manifest <path>
+  release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
 `;
@@ -46,6 +54,7 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
   init: runInit,
   mentorship: runMentorship,
+  release: runRelease,
   scaffold: runScaffold,
   setup: runSetup,
   telemetry: runTelemetry,
@@ -54,9 +63,6 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
 };
 
 const main = async (): Promise<number> => {
-  // process.argv[2] is undefined when no subcommand is supplied. Node's
-  // typings model argv as `string[]` (no `noUncheckedIndexedAccess`),
-  // so we coerce through unknown to express the runtime reality.
   const subcommand = process.argv[2] as string | undefined;
   const rest = process.argv.slice(3);
 
@@ -66,12 +72,6 @@ const main = async (): Promise<number> => {
     return EXIT_CODES.OK;
   }
 
-  // Internal subcommand consumed by the `/gaia spec` skill (and future
-  // dispatch-time callers) to fetch profile-driven coaching text. Wired
-  // top-level rather than under `mentorship` because it's an
-  // implementation detail consumed by skill scaffolding, not a
-  // user-facing surface — kept out of the help text to match the
-  // `mentorship _internal-*` precedent.
   if (subcommand === '_internal-fetch-coaching') {
     return runFetchCoaching(rest);
   }

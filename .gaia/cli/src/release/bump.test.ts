@@ -1,5 +1,5 @@
 /**
- * Tests for `gaia release bump`.
+ * Tests for `gaia-maintainer release bump`.
  */
 import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
 import {

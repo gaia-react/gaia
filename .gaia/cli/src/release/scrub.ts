@@ -1,5 +1,5 @@
 /**
- * `gaia release scrub` handler.
+ * `gaia-maintainer release scrub` handler.
  *
  * Bundle-time discipline for the GAIA release tarball. Runs inside
  * `release.yml` between the staging step (rsync from `git ls-files` minus
@@ -31,7 +31,7 @@ import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
-const HELP_TEXT = `Usage: gaia release scrub <staging-dir> [--config <path>] [--json]
+const HELP_TEXT = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
 
   Apply bundle-time scrub transforms (marker-strip + leak-check) to a
   staging directory produced by release.yml. Writes in place inside

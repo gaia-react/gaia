@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # 02-leak-replay.sh
 #
-# Re-runs `gaia release scrub` on the staged tree as a defense-in-depth
-# check. The same scrub already ran during build-staging.sh; running it
-# twice on a clean tree must produce a clean result both times.
+# Re-runs `gaia-maintainer release scrub` on the staged tree as a
+# defense-in-depth check. The same scrub already ran during
+# build-staging.sh; running it twice on a clean tree must produce a clean
+# result both times.
 #
 # This catches:
 #   - non-idempotent scrub transforms (a regression class)
@@ -23,7 +24,7 @@ trap 'rm -rf "$STAGING"' EXIT
 # build-staging.sh; running again on a clean tree should be a no-op.
 SCRUB_OUTPUT="$(mktemp)"
 trap 'rm -rf "$STAGING" "$SCRUB_OUTPUT"' EXIT
-if ! "$PROJECT_ROOT/.gaia/cli/gaia" release scrub "$STAGING" --json > "$SCRUB_OUTPUT" 2>&1; then
+if ! "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$STAGING" --json > "$SCRUB_OUTPUT" 2>&1; then
   log "Second scrub pass failed:"
   cat "$SCRUB_OUTPUT" >&2
   fail "scrub regression detected on second pass"

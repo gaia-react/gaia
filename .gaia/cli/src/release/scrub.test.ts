@@ -1,5 +1,5 @@
 /**
- * Tests for `gaia release scrub`.
+ * Tests for `gaia-maintainer release scrub`.
  */
 import {
   mkdirSync,

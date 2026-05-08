@@ -51,7 +51,7 @@ jobs:
           echo "notes-path=release-notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Verify manifest is fresh
-        run: ./.gaia/cli/gaia release manifest --check
+        run: ./.gaia/cli/gaia-maintainer release manifest --check
 
       - name: Stage release tree
         run: |
@@ -79,12 +79,12 @@ jobs:
       - name: Bundle-time scrub (marker-strip + leak-check)
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          ./.gaia/cli/gaia release scrub "/tmp/gaia-${TAG}"
+          ./.gaia/cli/gaia-maintainer release scrub "/tmp/gaia-${TAG}"
 
       - name: Verify runtime dependencies
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          ./.gaia/cli/gaia release runtime-deps --staging "/tmp/gaia-${TAG}"
+          ./.gaia/cli/gaia-maintainer release runtime-deps --staging "/tmp/gaia-${TAG}"
 
       # Pre-publish distribution-test gate. Runs Layers 0+1+2 against an
       # independently-staged tree (build-staging.sh re-runs the same

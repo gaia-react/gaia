@@ -25,7 +25,7 @@ Build-time enforcement closes the loop. The patterns the audit rounds surfaced b
 
 Two primitives, sequenced inside `release.yml` between rsync-staging and tar:
 
-### `gaia release scrub <staging-dir>`
+### `gaia-maintainer release scrub <staging-dir>`
 
 Reads `.gaia/release-scrub.yml`. Two transform types:
 
@@ -35,7 +35,7 @@ Reads `.gaia/release-scrub.yml`. Two transform types:
 
 Non-empty match in any check fails the build with a structured leak report.
 
-### `gaia release runtime-deps --staging <dir>`
+### `gaia-maintainer release runtime-deps --staging <dir>`
 
 Walks `.gaia/statusline/**/*.sh` and `.claude/hooks/**/*.sh` inside the staging tree, extracts repo-relative path constants, and verifies each is a shipped path (in `.gaia/manifest.json`), an adopter-owned sentinel (`wiki/hot.md`, `wiki/log.md`, `.gaia/VERSION`, `.gaia/manifest.json`), or a runtime-allocated path on adopter machines (`.gaia/local/`, `.gaia/cache/`, `.claude/handoff/`, `.claude/worktrees/`, `.claude/agent-memory/`, `.claude/audit/`, plus the per-session marker files).
 

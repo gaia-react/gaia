@@ -1,5 +1,5 @@
 /**
- * `gaia release manifest` handler.
+ * `gaia-maintainer release manifest` handler.
  *
  * Walks `git ls-files`, subtracts paths matched by `.gaia/release-exclude`
  * and adopter-owned sentinels, classifies each remaining path, and
@@ -23,8 +23,8 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
-const HELP_TEXT = `Usage: gaia release manifest [--out <path>] [--stdout]
-       gaia release manifest --check [--json]
+const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
+       gaia-maintainer release manifest --check [--json]
 
   Regenerate .gaia/manifest.json. Walks git ls-files, subtracts
   release-exclude patterns and adopter-owned sentinels, classifies the
@@ -374,7 +374,7 @@ const runCheck = (
   if (!existsSync(manifestPath)) {
     structuredError({
       code: 'manifest_missing',
-      message: `committed manifest not found at ${manifestPath}; run \`gaia release manifest\` to generate it`,
+      message: `committed manifest not found at ${manifestPath}; run \`gaia-maintainer release manifest\` to generate it`,
       subcommand: 'release manifest',
     });
 

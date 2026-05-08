@@ -21,7 +21,7 @@ How GAIA cuts a public release. Two surfaces — the template repo (`gaia-react/
 | `.gaia/VERSION`                       | Plain `X.Y.Z`. Single source of truth for the installed version. Survives `/gaia-init`.                       |
 | `.gaia/manifest.json`                 | Maps every GAIA-shipped file to a class (`owned` / `shared` / `wiki-owned`). Consumed by [[Update Workflow]]. |
 | `.gaia/release-exclude`               | Tar-exclude format. Paths listed here are stripped from the release tarball.                                  |
-| `gaia release manifest` (CLI)         | Maintainer-only. Walks `git ls-files` + classifier globs; writes `.gaia/manifest.json`.                       |
+| `gaia-maintainer release manifest` (CLI)         | Maintainer-only. Walks `git ls-files` + classifier globs; writes `.gaia/manifest.json`.                       |
 | `CHANGELOG.md`                        | Keep-a-Changelog format. `## [Unreleased]` at top; `/gaia-release` graduates it to a versioned section.       |
 | `.github/workflows/release.yml`       | Tag-triggered (`v*.*.*`). Builds scrubbed tarball, creates GitHub Release with CHANGELOG excerpt.             |
 
@@ -44,7 +44,7 @@ Run `/gaia-release` on a clean `main`. The command is a 13-step orchestrator:
 7. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [vX.Y.Z] — YYYY-MM-DD` and seed a new empty `## [Unreleased]`.
 8. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
 9. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
-10. Regenerate `.gaia/manifest.json` via `gaia release manifest`.
+10. Regenerate `.gaia/manifest.json` via `gaia-maintainer release manifest`.
 11. Commit on the release branch: `chore(release): vX.Y.Z`. The pre-commit dance updates `wiki/.state.json`'s `last_evaluated_sha` to the new commit's own SHA via amend, so adopters' state files match their release commit on first scaffold.
 12. Push branch, open PR via `gh`, merge inline via `gh pr merge --merge`. Release branches have no required checks, so the merge is immediate.
 13. Pull `main`, tag the merge commit (`v<NEW_VERSION>`), push the tag.
@@ -56,16 +56,16 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
 `release.yml` builds the tarball in five phases:
 
 1. **Stage** — drive the file set from `git ls-files` (not a raw `tar .`) and subtract `.gaia/release-exclude` patterns. `git ls-files` already ignores anything in `.gitignore` (no `.DS_Store`, `node_modules`, build output, `.idea/`); `.gaia/release-exclude` strips the tracked-but-maintainer-only content. `rsync` materializes the include list into `/tmp/gaia-vX.Y.Z/`.
-2. **Bundle-time scrub** — `gaia release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak. See [[Bundle-time Scrub]] for rationale.
-3. **Runtime-deps verification** — `gaia release runtime-deps --staging /tmp/gaia-vX.Y.Z` walks shipped shell scripts and verifies every explicit path constant resolves to a shipped path, an adopter-owned sentinel, or a runtime-allocated location. Catches the leak class scrubbing cannot see — runtime references survive lexical strip.
+2. **Bundle-time scrub** — `gaia-maintainer release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak. See [[Bundle-time Scrub]] for rationale.
+3. **Runtime-deps verification** — `gaia-maintainer release runtime-deps --staging /tmp/gaia-vX.Y.Z` walks shipped shell scripts and verifies every explicit path constant resolves to a shipped path, an adopter-owned sentinel, or a runtime-allocated location. Catches the leak class scrubbing cannot see — runtime references survive lexical strip.
 4. **Distribution test gate** — `bash .gaia/tests/distribution/run-all.sh` runs Layers 0+1+2 against an independently-staged tree (`build-staging.sh` re-runs the same `git ls-files` + scrub + runtime-deps phases above). Layer 0 confirms an adopter scaffold typechecks, lints, tests, and builds; Layer 1 confirms the bootstrap path survives in a PATH-stripped subshell; Layer 2 builds a Claude-in-Docker image and probes OAuth auth. The gate's `CLAUDE_CODE_OAUTH_TOKEN` comes from GAIA's GitHub organization secrets; per-run cost is $0 on the maintainer's Claude Max subscription. If any scenario fails the release halts — the tarball is never built and `gh release create` never runs, so a broken release cannot publish.
-5. **Tar** — `tar -czf gaia-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`. The same release-exclude list drives `gaia release manifest`, so the manifest never references files an adopter cannot have. The categories are spelled out in the next section.
+5. **Tar** — `tar -czf gaia-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`. The same release-exclude list drives `gaia-maintainer release manifest`, so the manifest never references files an adopter cannot have. The categories are spelled out in the next section.
 
 The scrubbed `wiki/hot.md` + `wiki/log.md` contain only the release marker — none of GAIA's internal session cache.
 
 ### Bundle-time enforcement
 
-Marker-delimited maintainer-only blocks let the source repo carry content useful to maintainers (entity pages, internal cross-references, audit-decision rationale) without leaking into adopter scaffolds. Wrap a block in `<!-- gaia:maintainer-only:start -->` / `<!-- gaia:maintainer-only:end -->`; `gaia release scrub` strips the block before tar.
+Marker-delimited maintainer-only blocks let the source repo carry content useful to maintainers (entity pages, internal cross-references, audit-decision rationale) without leaking into adopter scaffolds. Wrap a block in `<!-- gaia:maintainer-only:start -->` / `<!-- gaia:maintainer-only:end -->`; `gaia-maintainer release scrub` strips the block before tar.
 
 The leak-check pass is the convergence mechanism the post-#97 audit trajectory predicted: free-form audits found roughly one novel issue class per round; codified detection patterns running against the staging tree close the loop. New leak patterns become explicit `.gaia/release-scrub.yml` entries — visible, reviewable, deterministic.
 
@@ -108,7 +108,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 ### 5. Release-time maintainer tooling
 
 - `.gaia/release-exclude` — this exclusion file itself.
-- `.gaia/release-scrub.yml` — bundle-time scrub config consumed by `gaia release scrub`. Adopters never run releases.
+- `.gaia/release-scrub.yml` — bundle-time scrub config consumed by `gaia-maintainer release scrub`. Adopters never run releases.
 
 `.gaia/scripts/` ships to adopters: `check-updates.sh` is the background refresher the statusline invokes to populate `Run /update-deps` and `Run /update-gaia` indicators.
 

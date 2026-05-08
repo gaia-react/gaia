@@ -1,5 +1,5 @@
 /**
- * `gaia release runtime-deps` handler.
+ * `gaia-maintainer release runtime-deps` handler.
  *
  * Catches the class of leak that the bundle-time scrub cannot see:
  * runtime references in shipped scripts that resolve to release-excluded
@@ -34,7 +34,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
-const HELP_TEXT = `Usage: gaia release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
+const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
 
   Scan shipped shell scripts for runtime path references that resolve to
   release-excluded files.
