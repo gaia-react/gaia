@@ -242,15 +242,16 @@ jobs:
           EXEC_FILE: ${{ steps.classify.outputs.execution_file }}
         run: |
           set -eu
-          # The action emits a JSONL execution log; the assistant's final
-          # response lives on the line where `type == "result"` (field
-          # `.result`). Extract that to a plain text file for parse-verdict.
+          # The action emits a top-level JSON array of execution events;
+          # the assistant's final response lives on the entry where
+          # `type == "result"` (field `.result`). Extract that to a plain
+          # text file for parse-verdict.
           verdict_text="${RUNNER_TEMP}/forensics/verdict-text.md"
           if [ -z "${EXEC_FILE:-}" ] || [ ! -f "$EXEC_FILE" ]; then
             echo "::error::classifier execution_file missing or unreadable: ${EXEC_FILE:-<empty>}"
             exit 1
           fi
-          jq -rs 'map(select(.type == "result")) | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
+          jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
           if [ ! -s "$verdict_text" ]; then
             echo "::warning::classifier produced no result text — treating as ambiguous"
           fi
@@ -502,13 +503,14 @@ jobs:
             done >> "$GITHUB_OUTPUT"
           }
 
-          # Capture the apply-fix execution-file's last `result` line so we
+          # Capture the apply-fix execution-file's last `result` entry so we
           # can detect the GAIA-FIX-ABORT escape hatch and surface the
-          # rationale to the maintainer.
+          # rationale to the maintainer. The action emits a top-level
+          # JSON array of execution events.
           apply_text="${RUNNER_TEMP}/forensics/apply-fix-text.md"
           if [ -n "${{ steps.apply-fix.outputs.execution_file }}" ] \
              && [ -f "${{ steps.apply-fix.outputs.execution_file }}" ]; then
-            jq -rs 'map(select(.type == "result")) | .[-1].result // empty' \
+            jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' \
               "${{ steps.apply-fix.outputs.execution_file }}" > "$apply_text"
           else
             : > "$apply_text"
