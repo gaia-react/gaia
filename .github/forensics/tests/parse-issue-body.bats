@@ -350,4 +350,9 @@ STUB
   run "$PARSER" "$fixture"
   [ "$status" -eq 0 ]
   printf '%s' "$output" | jq -e . > /dev/null
+  # Bytes on either side of the stripped 0x01 must survive — guards
+  # against a regression where the strip drops more than the control
+  # byte (whole line, whole section, etc.). The control byte itself is
+  # stripped, so the symptom collapses to "beforeafter".
+  printf '%s' "$output" | jq -e '.sections.symptom == "beforeafter"' > /dev/null
 }
