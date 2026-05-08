@@ -38,17 +38,20 @@ no_gh_surrogate() {
 
 setup() {
   WORKDIR="$(mktemp -d)"
-  # Build a PATH that has no gh binary
+  # Build a PATH that has no gh binary. CLEAN_BIN is the ONLY entry —
+  # /usr/bin and /bin are deliberately excluded because GitHub Actions
+  # ubuntu-latest ships gh at /usr/bin/gh, which would defeat the test.
   CLEAN_BIN="$(mktemp -d)"
-  # Populate with only the bare minimum for the test
-  for cmd in bash printf mkdir command; do
+  # Populate with the binaries the surrogate needs. printf/command are bash
+  # builtins; mkdir is the only external command exercised in the surrogate.
+  for cmd in bash mkdir; do
     local real
     real="$(command -v "$cmd" 2>/dev/null || true)"
     if [[ -n "$real" ]]; then
       ln -sf "$real" "$CLEAN_BIN/$cmd" 2>/dev/null || true
     fi
   done
-  NO_GH_PATH="$CLEAN_BIN:/usr/bin:/bin"
+  NO_GH_PATH="$CLEAN_BIN"
 }
 
 teardown() {
