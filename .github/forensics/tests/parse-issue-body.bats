@@ -1,0 +1,294 @@
+#!/usr/bin/env bats
+# Tests for `.github/forensics/parse-issue-body.sh`.
+#
+# Coverage targets the SPEC-002 UATs that touch body-parsing:
+#   UAT-009  deterministic regex extraction (no LLM)
+#   UAT-013  malformed body → needs-human signal (script returns
+#            valid=false with a precise error code)
+#   UAT-015  redaction tokens pass through verbatim
+
+setup() {
+  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  PARSER="$THIS_DIR/../parse-issue-body.sh"
+  FIX="$THIS_DIR/fixtures"
+}
+
+# ---------------------------------------------------------------------------
+# Happy path: a SPEC-001-conformant body parses to valid JSON with the four
+# required sections and the three required frontmatter keys.
+# ---------------------------------------------------------------------------
+
+@test "valid body returns valid:true" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":true'* ]]
+}
+
+@test "valid body extracts class from frontmatter" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"class":"quality-gate"'* ]]
+}
+
+@test "valid body extracts gaia_version from frontmatter" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"gaia_version":"1.4.2"'* ]]
+}
+
+@test "valid body extracts created from frontmatter" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"created":"2026-05-08"'* ]]
+}
+
+@test "valid body extracts optional gh_issue_url when present" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"gh_issue_url":"https://github.com/gaia-react/gaia/issues/123"'* ]]
+}
+
+@test "valid body extracts symptom section" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  # Body contains backtick-fenced inline code; ensure it survives.
+  [[ "$output" == *'pnpm typecheck'* ]]
+  [[ "$output" == *'TS2304'* ]]
+}
+
+@test "valid body extracts classification section" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'class: quality-gate'* ]]
+  [[ "$output" == *'evidence:'* ]]
+}
+
+@test "valid body extracts capture section preserving fenced block" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'node_version: v20.11.0'* ]]
+  [[ "$output" == *'pnpm_version: 9.0.0'* ]]
+}
+
+@test "valid body extracts reproduction_context section" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'.claude/hooks/wiki-session-stop.sh'* ]]
+  [[ "$output" == *'.claude/hooks/post-tool.sh'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Failure modes — UAT-013 (malformed body → needs-human without LLM).
+# Each failure emits valid:false plus a precise error code.
+# ---------------------------------------------------------------------------
+
+@test "missing symptom returns missing-section" {
+  run "$PARSER" "$FIX/missing-symptom.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":false'* ]]
+  [[ "$output" == *'"error":"missing-section"'* ]]
+  [[ "$output" == *'"symptom"'* ]]
+}
+
+@test "missing frontmatter returns malformed-frontmatter" {
+  run "$PARSER" "$FIX/missing-frontmatter.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":false'* ]]
+  [[ "$output" == *'"error":"malformed-frontmatter"'* ]]
+}
+
+@test "malformed section header returns malformed-section-header" {
+  run "$PARSER" "$FIX/malformed-section-header.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":false'* ]]
+  [[ "$output" == *'"error":"malformed-section-header"'* ]]
+  [[ "$output" == *'"Bogus Header"'* ]]
+}
+
+@test "frontmatter without closing delimiter returns malformed-frontmatter" {
+  body_file="$BATS_TEST_TMPDIR/no-close.md"
+  cat > "$body_file" <<'EOF'
+---
+class: hook
+gaia_version: 1.4.2
+created: 2026-05-08
+
+## Symptom
+
+Body without the closing frontmatter delimiter.
+
+## Classification
+
+class: hook
+evidence: none.
+
+## Capture
+
+```
+empty
+```
+
+## Reproduction context
+
+- `.claude/hooks/x.sh`
+EOF
+  run "$PARSER" "$body_file"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":false'* ]]
+  [[ "$output" == *'"error":"malformed-frontmatter"'* ]]
+}
+
+@test "frontmatter missing required key returns malformed-frontmatter" {
+  body_file="$BATS_TEST_TMPDIR/no-class.md"
+  cat > "$body_file" <<'EOF'
+---
+gaia_version: 1.4.2
+created: 2026-05-08
+---
+
+## Symptom
+
+x
+
+## Classification
+
+x
+
+## Capture
+
+x
+
+## Reproduction context
+
+x
+EOF
+  run "$PARSER" "$body_file"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":false'* ]]
+  [[ "$output" == *'"error":"malformed-frontmatter"'* ]]
+}
+
+@test "empty section body returns empty-section" {
+  body_file="$BATS_TEST_TMPDIR/empty-symptom.md"
+  cat > "$body_file" <<'EOF'
+---
+class: hook
+gaia_version: 1.4.2
+created: 2026-05-08
+---
+
+## Symptom
+
+## Classification
+
+x
+
+## Capture
+
+x
+
+## Reproduction context
+
+x
+EOF
+  run "$PARSER" "$body_file"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":false'* ]]
+  [[ "$output" == *'"error":"empty-section"'* ]]
+  [[ "$output" == *'"symptom"'* ]]
+}
+
+@test "all four sections missing reports them all" {
+  body_file="$BATS_TEST_TMPDIR/no-sections.md"
+  cat > "$body_file" <<'EOF'
+---
+class: other
+gaia_version: 1.4.2
+created: 2026-05-08
+---
+
+just freeform text, no headers at all.
+EOF
+  run "$PARSER" "$body_file"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":false'* ]]
+  [[ "$output" == *'"error":"missing-section"'* ]]
+  [[ "$output" == *'"symptom"'* ]]
+  [[ "$output" == *'"classification"'* ]]
+  [[ "$output" == *'"capture"'* ]]
+  [[ "$output" == *'"reproduction_context"'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# UAT-015 — redaction tokens pass through verbatim.
+# ---------------------------------------------------------------------------
+
+@test "redaction tokens pass through symptom verbatim" {
+  run "$PARSER" "$FIX/redaction-passthrough.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'<redacted>'* ]]
+}
+
+@test "redaction tokens pass through capture verbatim" {
+  run "$PARSER" "$FIX/redaction-passthrough.md"
+  [ "$status" -eq 0 ]
+  # capture section contains both tokens; both must appear byte-identically.
+  [[ "$output" == *'api_key: <redacted>'* ]]
+  [[ "$output" == *'config_path: <repo-relative-paths>'* ]]
+  [[ "$output" == *'git_branch: feature/<redacted>-fix'* ]]
+}
+
+@test "redaction tokens pass through reproduction_context verbatim" {
+  run "$PARSER" "$FIX/redaction-passthrough.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'- `<repo-relative-paths>`'* ]]
+  [[ "$output" == *'file at `<repo-relative-paths>` referencing `<redacted>`'* ]]
+}
+
+@test "optional gh_issue_url is null when absent from frontmatter" {
+  run "$PARSER" "$FIX/redaction-passthrough.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"gh_issue_url":null'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# CLI / script-error contract.
+# ---------------------------------------------------------------------------
+
+@test "no args prints usage and exits 2" {
+  run "$PARSER"
+  [ "$status" -eq 2 ]
+}
+
+@test "missing input file exits 2" {
+  run "$PARSER" "$BATS_TEST_TMPDIR/does-not-exist.md"
+  [ "$status" -eq 2 ]
+}
+
+# ---------------------------------------------------------------------------
+# Determinism — re-running on the same input is byte-identical (UAT-009
+# in spirit: deterministic, not LLM-touched).
+# ---------------------------------------------------------------------------
+
+@test "parser output is byte-identical across two runs (determinism)" {
+  run "$PARSER" "$FIX/valid.md"
+  first="$output"
+  run "$PARSER" "$FIX/valid.md"
+  [ "$output" = "$first" ]
+}
+
+# ---------------------------------------------------------------------------
+# JSON shape sanity — make sure the success JSON contains all required
+# top-level keys.
+# ---------------------------------------------------------------------------
+
+@test "success JSON contains frontmatter and sections objects" {
+  run "$PARSER" "$FIX/valid.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"frontmatter":{'* ]]
+  [[ "$output" == *'"sections":{'* ]]
+  [[ "$output" == *'"symptom":'* ]]
+  [[ "$output" == *'"classification":'* ]]
+  [[ "$output" == *'"capture":'* ]]
+  [[ "$output" == *'"reproduction_context":'* ]]
+}
