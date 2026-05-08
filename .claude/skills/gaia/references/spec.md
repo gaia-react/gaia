@@ -2,6 +2,38 @@
 
 Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN.md` and prompts to chain into `/gaia plan`. Do not implement anything — this skill produces an artifact and stops.
 
+## Argument parsing
+
+Tokenize the first whitespace-separated word of `$ARGUMENTS`:
+
+- If it is `auto`, set `auto_mode = true`, strip the token, and treat the remainder as the feature description (which may be empty — see Auto mode below).
+- Otherwise `auto_mode = false` and the entire `$ARGUMENTS` is the feature description.
+
+`auto_mode` is referenced throughout the steps below; every user-facing prompt has an auto-mode branch.
+
+## Auto mode
+
+When `auto_mode = true` the agent answers the Socratic questions itself rather than asking the user. The flow is non-interactive end-to-end: no `AskUserQuestion` calls fire, no plain-prompt blocks wait for human reply. The agent makes best-judgment calls using the description, the draft state, and any research it dispatches.
+
+Hard rules in auto mode:
+
+1. **Description is required.** If the remainder of `$ARGUMENTS` after stripping `auto` is empty, abort with: `"/gaia spec auto requires a description. Re-invoke as: /gaia spec auto <description>"`. Do not prompt for one — the user opted out of interactivity.
+2. **GitHub issue mirror is forced on.** Set `gh_mirror_optin = true` unconditionally. Do not ask the step-1 GH-mirror question. If `gh-mirror.sh` later skips for environment reasons (no `gh` auth, Issues disabled, no write permission), surface that in the final summary but do not abort — the SPEC is the artifact, the issue is a mirror.
+3. **Resume vs start-new is automatic.** If the allocator reports an in-progress SPEC, **start new** without prompting. The user's `auto` invocation is itself the signal that they want a fresh artifact.
+4. **Both gates auto-confirm.** Gate 1 and gate 2 do not present plain prompts to the user. The agent renders the draft to its own reasoning context, performs a self-check (is intent coherent? are UATs Given/When/Then? do UATs cover the intent?), and proceeds. If the self-check finds an issue, the agent revises in-place and re-checks once before proceeding — never blocks for human input.
+5. **Closed-set Socratic questions pick the Recommended option.** For every step-5 `AskUserQuestion` that would normally fire, the agent selects the option that step 5a's spec marks "Recommended FIRST" — the PO's best-judgment candidate. No `AskUserQuestion` tool call is made. The selected answer is folded into `clarifications.answered[]` exactly as if the user had picked it. Telemetry: append a `clarify_question` event with `kind: "auto"` (replacing the usual `closed`/`open`/`discuss`).
+6. **Open-ended Socratic questions are answered by the agent.** Apply the same coach-tone judgment the human would receive, then commit the answer. Fold into `clarifications.answered[]`.
+7. **Per-topic exhaustion + revisit checkpoints auto-advance.** Step 5d always picks "Move to <next topic>". The per-topic revisit counter still increments but the 3-revisit prompt auto-picks "Settle on the recommended option".
+8. **Research subagents still dispatch.** Auto mode does not skip research — it skips human prompting. When step 5e would dispatch a `general-purpose` Agent, dispatch it normally. On `inconclusive`/`error`/`contradictory` outcomes that would normally re-prompt the user, the agent picks the most plausible candidate and folds it with a note in `research_summary` flagging the uncertainty.
+9. **Self-review high findings auto-apply.** Step 6b's high-severity branch normally surfaces each finding to the user; in auto mode, apply the `suggested_fix` and append a note to `clarifications.deferred[]` summarizing the finding so a reviewer can audit later. Do NOT silently revert clarify-loop evolution — if the finding is `kind: "drift"` or `"scope_change"` and the change came from a clarify answer the agent itself just made, prefer keeping the clarify answer over reverting to gate-1 shape.
+10. **Pending clarifications auto-defer.** Step 6c's per-item prompt always picks "Defer with rationale". The rationale is: `"Auto-mode session — defer for human review."` This unblocks save without forcing the agent to fabricate answers it does not have evidence for.
+11. **Lint thrash escalates to defer, not step-back.** Step 9's cycle-3 prompt auto-picks "Defer remaining findings" so the SPEC saves with the deferred-clarifications block populated. Step-back-to-gate-2 in auto mode would loop indefinitely.
+12. **Chain-trigger to `/gaia plan` is automatic.** Step 11's `AskUserQuestion` is skipped — auto mode always picks "Yes, trigger /gaia plan". Multi-plan loop (11b) is also skipped — author exactly one plan covering the full SPEC. Multi-slice planning is a human-judgment call; auto mode produces one plan.
+13. **`Save partial and resume later` escapes are unreachable.** No prompt fires that would offer them. The session always proceeds to step 8 unless the agent itself decides to abort (e.g. missing description, hard tool failure).
+14. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, and `spec_saved` event in an auto session includes `"auto": true` in its JSON record. The `time_to_resolved_spec` mentorship emit at step 8 includes `--agent-type auto` instead of `--agent-type human`. Telemetry-derived metrics should be partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
+
+The rest of the skill — write-surface allowlist, no-machine-local-memory rule, working-draft cache primitives, hooks firing, immutable SPEC shape, `gh-mirror.sh` invocation — applies identically in auto mode.
+
 ## Profile-driven coaching preamble
 
 Before composing the system prompt for this skill's agent context, fetch any active coaching adaptation:
@@ -176,11 +208,11 @@ Read `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.
 
 ### 1. Get description
 
-If `$ARGUMENTS` (the args after `spec`) is non-empty, use it as the feature description.
+If `$ARGUMENTS` (the args after `spec`, with `auto` already stripped if present — see Argument parsing) is non-empty, use it as the feature description.
 
-Otherwise, ask: **"What do you want to spec?"** and wait for the response before continuing. This is open-ended — use a plain prompt, not `AskUserQuestion`.
+Otherwise, ask: **"What do you want to spec?"** and wait for the response before continuing. This is open-ended — use a plain prompt, not `AskUserQuestion`. **Auto-mode exception:** in auto mode an empty description is a hard abort per Auto-mode rule 1 — never prompt.
 
-After capturing the description — **on both the `$ARGUMENTS` fast-path and the interactive-prompt path** — ask the GitHub-issue preference via `AskUserQuestion`. The question fires regardless of how the description was sourced; users invoking `/gaia spec "..."` should expect this single prompt before discovery proper begins.
+After capturing the description — **on both the `$ARGUMENTS` fast-path and the interactive-prompt path** — ask the GitHub-issue preference via `AskUserQuestion`. The question fires regardless of how the description was sourced; users invoking `/gaia spec "..."` should expect this single prompt before discovery proper begins. **Auto-mode exception:** skip the `AskUserQuestion` entirely and set `gh_mirror_optin = true` per Auto-mode rule 2.
 
 - question: `"Mirror this SPEC to a GitHub issue on save?"`
 - header: `"GH issue"`
@@ -193,6 +225,8 @@ Persist the answer as `gh_mirror_optin: <bool>` in working memory for this sessi
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
 Run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an in-progress SPEC already exists.
+
+**Auto-mode exception:** skip the resume prompt entirely. Always start new — append `spec_started` telemetry with `resumed: false, auto: true` and proceed to step 3 with a fresh allocation. The in-progress SPEC (if any) remains untouched. Per Auto-mode rule 3 the user's `auto` invocation is the signal that they want a fresh artifact; resuming an existing draft into a non-interactive context risks silently overwriting work in progress.
 
 Before prompting, gather context for an informed choice. The newer of the canonical artifact and the working-draft cache is the actual resume point:
 
@@ -250,6 +284,8 @@ fi
 
 Before any Socratic clarify loop runs, present the draft's `intent` paragraph and the proposed UATs in plain English to the user. This is gate 1.
 
+**Auto-mode exception:** skip the user-facing prompt. Read the draft's intent + UATs into the agent's reasoning context and self-check: (a) intent paragraph is coherent and matches the description; (b) every UAT follows Given/When/Then shape; (c) UATs collectively cover the intent. If any check fails, revise the draft once and re-check. Then jump to the "On confirmation" actions below (snapshot cache, draft cache, telemetry — telemetry includes `"auto": true`). Per Auto-mode rule 4, never block for human input.
+
 Use a plain prompt — not `AskUserQuestion`. The user reads, confirms, or revises. Suggested phrasing:
 
 > Here's the shape I have so far:
@@ -276,6 +312,8 @@ Only after gate-1 confirmation may you proceed to step 5.
 ### 5. /speckit-clarify (Socratic loop)
 
 Invoke `/speckit-clarify`. Spec-kit's clarify primitive runs sequential, coverage-based questioning over the draft and is **hard-capped at 5 total questions** (see "Spec-kit's 5-question cap" in operational primitives). The GAIA tailoring (coach tone, AskUserQuestion mediation, exhaustion checkpoints, research dispatch) is enforced by the agent driving this skill — read the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load — see operational primitives).
+
+**Auto-mode exception:** the 5-question cap still applies, but the agent answers each question itself rather than mediating to the user. Per Auto-mode rules 5–8: closed-set questions auto-pick the Recommended option; open-ended questions get the agent's best-judgment answer; per-topic exhaustion auto-advances; research subagents still dispatch but uncertain outcomes pick the most plausible candidate with a flagged note in `research_summary`. No `AskUserQuestion` calls fire in this step. Each agent-chosen answer is folded into `clarifications.answered[]` exactly as a human selection would be, and a `clarify_question` telemetry event is appended with `kind: "auto"`. Skip sub-steps 5a–5d's `AskUserQuestion` mechanics and 5b's Discuss-this branch entirely; sub-step 5e (research dispatch) runs unmodified except for the uncertain-outcome fallback.
 
 For every question asked, append a `clarify_question` telemetry event with `topic` and `kind` (`closed`, `open`, or `discuss`), and increment `question_count` in the session-shape cache per the operational primitive (`spec-session-<spec_id>.json`). The same per-question budget covers steps 5a, 5b, 5c, 5d, and the per-topic revisit prompt — every distinct user-facing prompt counts as one question for the `time_to_resolved_spec` emit.
 
@@ -375,7 +413,7 @@ Append a `self_review_findings` telemetry event with the counts (`low`, `medium`
 #### 6b. Apply findings (severity-gated)
 
 - **low + medium findings:** apply ALL `suggested_fix`es to the draft in working memory, then persist via a single `Write` per the operational primitive — never one Write per finding.
-- **high findings:** surface to the user before applying. Never silently revert intentional clarify-loop evolution. Use a plain prompt per finding:
+- **high findings:** surface to the user before applying. Never silently revert intentional clarify-loop evolution. **Auto-mode exception per rule 9:** apply the `suggested_fix` and append a one-line note to `clarifications.deferred[]` recording the finding (kind, location, issue) so a reviewer can audit. If the finding is `kind: "drift"` or `"scope_change"` and the change came from a clarify answer the agent itself just made in step 5, prefer keeping the clarify answer over reverting — append the note but skip the fix. Use a plain prompt per finding:
 
   > Self-review flagged a scope-level concern in `<location>`:
   >
@@ -398,6 +436,8 @@ For each item in `pending_clarifications[]`, surface via `AskUserQuestion`:
   - `{ label: "Defer with rationale", description: "Mark unresolved; capture rationale in clarifications.deferred[]." }`
   - `{ label: "Discuss this", description: "Drop to plain Q&A, then settle." }`
 
+**Auto-mode exception per rule 10:** skip the `AskUserQuestion` and auto-defer every pending item with rationale `"Auto-mode session — defer for human review."` Save proceeds unblocked.
+
 Save remains blocked while any pending item is unresolved. Once folded into `clarifications.deferred[]`, do not re-quote the raw Q&A in downstream prompts (see operational primitives).
 
 After all findings are applied and pending items are resolved, write the draft cache and proceed to gate 2.
@@ -405,6 +445,8 @@ After all findings are applied and pending items are resolved, write the draft c
 ### 7. Gate 2 — artifact confirmation
 
 Render the full draft artifact in markdown form (frontmatter plus body) and present it to the user. This is gate 2. Track `gate2_revisions = 0` in working memory.
+
+**Auto-mode exception per rule 4:** skip the user prompt. Render the draft into the agent's reasoning context, run a self-check (frontmatter populated, every UAT has Given/When/Then, intent matches gate-1 snapshot modulo intentional clarify evolution, deferred clarifications block well-formed). Apply at most one revision pass if the self-check finds an issue, then jump to the "On confirmation" actions below. Telemetry records `gate2_confirmed` with `revisions: <gate2_revisions>, auto: true`.
 
 Use a plain prompt — not `AskUserQuestion`. Suggested phrasing:
 
@@ -493,7 +535,9 @@ On lint pass: continue to step 10.
 
 On lint fail (cycles 1–2): surface the failures verbatim. The user can fix and re-run the lint, or defer with rationale (which loops back to step 6's pending handling). For mutations of an already-saved SPEC, the helper enforces the explicit reopen ceremony — `## Reopen rationale` and `## UAT diff` sections required. Increment `lint_cycle` and continue.
 
-**On lint fail at cycle 3 (3 failed cycles in a row):** surface via `AskUserQuestion`:
+**On lint fail at cycle 3 (3 failed cycles in a row):** **Auto-mode exception per rule 11:** skip the prompt and auto-pick "Defer remaining findings" — capture each remaining finding as a deferred clarification with rationale `"Auto-mode session — lint thrash, defer for human review."` and continue to step 10. Step-back-to-gate-2 in auto mode would loop indefinitely.
+
+Otherwise, surface via `AskUserQuestion`:
 
 - question: `"Lint has failed 3 times. Step back to gate 2 to restructure the artifact, defer all remaining lint findings with rationale, or push another fix attempt?"`
 - header: `"Lint thrash"`
@@ -531,6 +575,8 @@ There is no `on_save` hook in spec-kit. The chain-trigger lives here, inline, af
   - `{ label: "Yes, trigger /gaia plan (Recommended)", description: "Run the autonomous downstream pipeline starting with /gaia plan." }`
   - `{ label: "No, defer", description: "Stop here; the human can invoke /gaia plan later." }`
 
+**Auto-mode exception per rule 12:** skip the `AskUserQuestion` and proceed directly to 11a (first plan dispatch). After the first plan returns, skip 11b's multi-plan loop and jump to 11c. Auto mode produces exactly one plan covering the full SPEC; multi-slice planning is a human-judgment call.
+
 On `No`, stop and report to the user that the SPEC is saved and `/gaia plan` can be invoked when ready. On `Yes`, enter the plan-dispatch loop. All plans dispatched through the loop share the slug prefix `spec-NNN-*`, so `ls .gaia/local/plans/ | grep ^spec-NNN-` discovers them as a group.
 
 **Each `/gaia plan` invocation runs in its own `general-purpose` Agent**, not in-session. The wrapper's context stays bounded regardless of plan count — each Agent reads the SPEC, runs the plan skill end-to-end, and returns only the resolved `PLAN_DIR` and the kickoff prompt. The wrapper never sees the planner's investigation, the per-task docs, or any intermediate output.
@@ -560,6 +606,8 @@ Spawn a `general-purpose` Agent with this prompt (interpolate the dispatch input
 When the Agent returns, parse the two fields. Append the `PLAN_DIR` to a running `PLAN_DIRS[]`. Print the kickoff prompt to the user as a fenced code block. Append `plan_dispatched` telemetry with `plan_idx: 1` and the `PLAN_DIR`.
 
 #### 11b. Subsequent plans (multi-plan loop)
+
+**Auto-mode exception:** skip this sub-step entirely. After 11a returns, jump straight to 11c.
 
 After each `/gaia plan` Agent completes, surface via `AskUserQuestion`:
 

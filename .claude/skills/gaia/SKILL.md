@@ -28,7 +28,8 @@ Help message format:
     Usage: /gaia <subcommand> [args]
 
       plan [description]   Plan a feature using task orchestration
-      spec [description]   Socratic discovery to author an immutable SPEC artifact
+      spec [description]        Socratic discovery to author an immutable SPEC artifact
+      spec auto [description]   Non-interactive: agent answers Socratic questions, mirrors to GitHub issue, chains to /gaia plan
       handoff [notes]      Generate a session handoff document
       pickup               Restore context from the most recent handoff
       audit [--apply]      Audit memory + wiki and apply changes (--apply: re-apply existing report only)

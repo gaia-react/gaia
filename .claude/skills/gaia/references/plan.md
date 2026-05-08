@@ -99,7 +99,17 @@ Then write the following files directly to `{PLAN_DIR}/`:
 2. **`{PLAN_DIR}/README.md`** — task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks. **If `{SPEC_PATH}` was provided** (i.e. this plan was derived from a SPEC), the README MUST open with a `## Source SPEC` section naming the SPEC id and the absolute path, so plan→SPEC discovery is one read away. Format: `Derived from {SPEC-id} ({SPEC_PATH}).`
 
 3. **`{PLAN_DIR}/ORCHESTRATOR.md`** — instructions for running the plan. Must cover:
-   - **Pre-flight branch policy.** Check the current branch. If HEAD is on `main`/`master`, the orchestrator ASKS the user whether to (a) create a feature branch in place or (b) create a git worktree, then acts on the answer. If HEAD is on any other branch, assume it is the work branch and proceed.
+   - **Pre-flight branch policy.** Check the current branch. If HEAD is on `main`/`master`, the orchestrator ASKS the user via `AskUserQuestion` how to isolate the work, then acts on the answer. If HEAD is on any other branch, assume it is the work branch and proceed.
+
+     The `AskUserQuestion` payload is fixed:
+
+     - question: `"On main. How should this plan's work be isolated?"`
+     - header: `"Branch mode"`
+     - options (in this exact order):
+       1. `{ label: "Create a feature branch in place (Recommended)", description: "Default. Branch is cut from HEAD and the orchestrator works in the current checkout. Simple, predictable, safe." }`
+       2. `{ label: "Create a git worktree (Experimental — use with care)", description: "Cuts a linked worktree under .claude/worktrees/. Lets you keep main's checkout untouched, but the worktree lifecycle has known rough edges (post-merge cleanup, isolation-context detection, shared-state symlink hand-off). Only choose if you understand the trade-offs." }`
+
+     Do not silently default; the prompt fires every time HEAD is `main`/`master`. If the user picks "Other" with custom text, treat it as a request for an alternative isolation mode and surface a clarifying question rather than guessing — feature-branch and worktree are the two supported modes.
    - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`).
    - **Pre-merge `code-review-audit` (non-skippable).** Before any `gh pr merge` call, the orchestrator spawns the `code-review-audit` agent on the current branch. The agent's clean pass writes `.gaia/local/audit/<HEAD-sha>.ok`, which the deny-hook (`.claude/hooks/pr-merge-audit-check.sh`) gates `gh pr merge` on. The orchestrator does NOT wait for the deny-hook to fire and learn from it — that round-trip is friction. Spawn the agent proactively. Contract: `wiki/concepts/PR Merge Workflow.md`. Verbatim agent-spawn template:
 
