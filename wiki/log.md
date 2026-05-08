@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-08 09f3f1d SKIP — CI workflow guard refactor — no wiki impact
+- 2026-05-08 9e53032 SKIP — wiki: self-referential
+- 2026-05-08 a1a72e2 SKIP — CI workflow self-mod handling — no wiki impact
 - 2026-05-08 74c4491 RE_ANCHOR — re-anchored after history rewrite
 - 2026-05-08 91a0daf WORTHY — renamed /wiki-{sync,consolidate,lint} → /gaia wiki <sub>; updated 7 wiki pages in-commit
 - 2026-05-08 66b757c SKIP — wiki: self-referential
