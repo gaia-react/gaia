@@ -571,6 +571,10 @@ jobs:
           # Even within scope, the diff must be a SUBSET of the
           # classifier's `proposed_paths`. Any deviation halts before the
           # gate (per task spec step 10's deviation clause).
+          # `PROPOSED_PATHS_FILE` is guaranteed populated by the upstream
+          # `scope` step; the step's `if:` gate (`scope.outputs.ok ==
+          # 'true'`) makes the missing-file branch unreachable, so no
+          # explicit `[ -f ... ]` guard is needed here.
           unexpected="${RUNNER_TEMP}/forensics/unexpected-paths.txt"
           : > "$unexpected"
           while IFS= read -r p; do
