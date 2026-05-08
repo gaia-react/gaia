@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke 02: typo-only commit should be SKIPPED by /wiki-sync.
+# Smoke 02: typo-only commit should be SKIPPED by /gaia wiki sync.
 set -euo pipefail
 
 TMP=$(mktemp -d -t gaia-smoke-02-XXXXXX)
@@ -14,11 +14,13 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/services .claude/hooks .claude/commands
+mkdir -p wiki/services .claude/hooks .claude/skills/gaia/references/wiki
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/commands/wiki-sync.md" .claude/commands/
+cp "$GAIA_REPO/.claude/skills/gaia/SKILL.md" .claude/skills/gaia/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
 
 cat > .claude/settings.json <<'EOF'
 {"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":".claude/hooks/wiki-drift-check.sh"}]}]}}
@@ -51,7 +53,7 @@ before_files=$(find wiki -type f | wc -l | tr -d ' ')
 pre_claude_head=$(git rev-parse HEAD)
 
 claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /wiki-sync. Report what was done." > /dev/null 2>&1
+  "Run /gaia wiki sync. Report what was done." > /dev/null 2>&1
 
 after_files=$(find wiki -type f | wc -l | tr -d ' ')
 

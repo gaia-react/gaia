@@ -1,6 +1,6 @@
 ---
 name: gaia
-description: GAIA workflow router. Dispatches to the five user-invoked GAIA workflows - plan (task orchestration), handoff (session handoff doc), pickup (resume from handoff), audit (knowledge audit), forensics (bug report bridge). Trigger on `/gaia <subcommand>` or natural-language asks like "kick off a plan", "write a handoff", "pick up where we left off", "audit the knowledge stores".
+description: GAIA workflow router. Dispatches to the user-invoked GAIA workflows - plan (task orchestration), spec (Socratic SPEC artifact), handoff (session handoff doc), pickup (resume from handoff), audit (knowledge audit), forensics (bug report bridge), wiki (sync/consolidate/lint chain). Trigger on `/gaia <subcommand>` or natural-language asks like "kick off a plan", "write a handoff", "pick up where we left off", "audit the knowledge stores", "sync the wiki".
 ---
 
 # GAIA Router
@@ -19,9 +19,10 @@ Parse the first whitespace-separated token of `$ARGUMENTS`:
 | `pickup`                         | Read `references/pickup.md` and follow it.  |
 | `audit`                          | Read `references/audit.md` and follow it.      |
 | `forensics`                      | Read `references/forensics.md` and follow it.  |
+| `wiki`                           | Read `references/wiki.md` and follow it.       |
 | (anything else, including empty) | print help                                     |
 
-Reference paths are relative to this skill (`.claude/skills/gaia/`). Strip the first arg before passing the remainder; inside the reference, `$ARGUMENTS` semantically refers to whatever followed the sub-command (e.g. `--apply` for audit).
+Reference paths are relative to this skill (`.claude/skills/gaia/`). Strip the first arg before passing the remainder; inside the reference, `$ARGUMENTS` semantically refers to whatever followed the sub-command (e.g. `--apply` for audit, `sync` for wiki).
 
 Help message format:
 
@@ -34,3 +35,4 @@ Help message format:
       pickup               Restore context from the most recent handoff
       audit [--apply]      Audit memory + wiki and apply changes (--apply: re-apply existing report only)
       forensics [description]   Capture a redacted, classified, file-able bug report
+      wiki [sync|consolidate|lint]   Wiki maintenance (full chain if no sub-arg)

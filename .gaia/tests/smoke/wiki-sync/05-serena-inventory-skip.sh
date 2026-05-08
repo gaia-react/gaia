@@ -2,14 +2,14 @@
 # Smoke 05: a vanilla service/component add with no decision body should
 # land as `SKIP: Serena handles inventory — ...`, NOT as a WORTHY wiki
 # page. This is the positive test for the post-Serena WORTHY narrowing
-# in .claude/commands/wiki-sync.md (Step 3).
+# in .claude/skills/gaia/references/wiki/sync.md (Step 3).
 #
 # Why this matters: Serena's LSP index reflects new symbols immediately,
 # so a Button variant or a new service with no carried decision adds
 # zero durable knowledge to the wiki. The narrowed rubric should classify
 # these as SKIP — but with a clear, greppable marker in wiki/log.md so
-# the audit trail still says "yes, /wiki-sync looked at this and decided
-# Serena owns it."
+# the audit trail still says "yes, /gaia wiki sync looked at this and
+# decided Serena owns it."
 set -euo pipefail
 
 TMP=$(mktemp -d -t gaia-smoke-05-XXXXXX)
@@ -23,11 +23,13 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/services .claude/hooks .claude/commands app/services
+mkdir -p wiki/services .claude/hooks .claude/skills/gaia/references/wiki app/services
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/commands/wiki-sync.md" .claude/commands/
+cp "$GAIA_REPO/.claude/skills/gaia/SKILL.md" .claude/skills/gaia/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
 
 cat > .claude/settings.json <<'EOF'
 {
@@ -71,7 +73,7 @@ before_files=$(find wiki -type f | wc -l | tr -d ' ')
 pre_claude_head=$(git rev-parse HEAD)
 
 claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /wiki-sync. Report what was done." > /dev/null 2>&1
+  "Run /gaia wiki sync. Report what was done." > /dev/null 2>&1
 
 after_files=$(find wiki -type f | wc -l | tr -d ' ')
 

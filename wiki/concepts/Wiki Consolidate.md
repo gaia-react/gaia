@@ -8,7 +8,7 @@ tags: [concept, claude, workflow, wiki]
 
 # Wiki Consolidate
 
-`/wiki-consolidate` audits the wiki for redundancy and contradiction across promoted pages. It detects supersession candidates, reversed decisions, near-collision slugs, and subject-orphans — then surfaces each finding as a proposal the maintainer can apply, defer, or acknowledge as intentional. The skill body lives at `.claude/commands/wiki-consolidate.md`.
+`/gaia wiki consolidate` audits the wiki for redundancy and contradiction across promoted pages. It detects supersession candidates, reversed decisions, near-collision slugs, and subject-orphans — then surfaces each finding as a proposal the maintainer can apply, defer, or acknowledge as intentional. The playbook lives at `.claude/skills/gaia/references/wiki/consolidate.md`.
 
 ## Role in the wiki system
 
@@ -16,9 +16,9 @@ Three wiki commands with non-overlapping scopes:
 
 | Command | Scope |
 | --- | --- |
-| [[Wiki Sync\|`/wiki-sync`]] | Commit-driven: per-commit updates from code to wiki |
+| [[Wiki Sync\|`/gaia wiki sync`]] | Commit-driven: per-commit updates from code to wiki |
 | [[GAIA Spec\|`/gaia spec`]] → `wiki-promote` | Per-SPEC: promotes SPEC artifact content into wiki domain pages |
-| `/wiki-consolidate` | Cross-SPEC: detects redundancy and contradiction after multiple SPECs land |
+| `/gaia wiki consolidate` | Cross-SPEC: detects redundancy and contradiction after multiple SPECs land |
 
 `wiki-promote` writes correctly per SPEC. Consolidate is the "are the combined writes still coherent?" pass.
 
@@ -43,15 +43,15 @@ The split is forced by `AskUserQuestion`: dispatched subagents cannot surface it
 - **Near-collision:** rename the non-canonical page (user picks canonical), update all wikilinks.
 - **Subject-orphan:** retire to `wiki/_archived/` or set `consolidation_ack: [self]` to suppress future flags.
 
-Consolidate does NOT commit — it stages edits and hands off to `/wiki-sync` (or `wiki-commit-nudge`) for the branch-aware commit.
+Consolidate does NOT commit — it stages edits and hands off to `/gaia wiki sync` (or `wiki-commit-nudge`) for the branch-aware commit.
 
 ## State tracking
 
-`/wiki-consolidate` owns `last_consolidated_sha` and `last_consolidated_at` in `wiki/.state.json`. It advances these fields on every completion (including zero-finding and all-skip runs) so the gate in `/wiki-sync` Step 9 accumulates accurately from the last consolidate run. Each writer preserves the other command's fields.
+`/gaia wiki consolidate` owns `last_consolidated_sha` and `last_consolidated_at` in `wiki/.state.json`. It advances these fields on every completion (including zero-finding and all-skip runs) so the gate in `/gaia wiki sync` Step 9 accumulates accurately from the last consolidate run. Each writer preserves the other command's fields.
 
 ## Auto-invocation
 
-`/wiki-sync` runs a consolidation gate after every sync. If any single wiki domain has ≥ 2 pages added since `last_consolidated_sha`, the sync wrapper invokes `/wiki-consolidate` automatically. Manual invocation remains available at any time.
+`/gaia wiki sync` runs a consolidation gate after every sync. If any single wiki domain has ≥ 2 pages added since `last_consolidated_sha`, the sync wrapper invokes `/gaia wiki consolidate` automatically. Manual invocation remains available at any time.
 
 ## Pairs with
 

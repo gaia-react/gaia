@@ -1,24 +1,6 @@
----
-name: wiki-lint
-description: Health check the GAIA wiki — runs the upstream claude-obsidian wiki-lint, then appends GAIA-specific checks (wiki drift, dead repo-relative paths, UAT/SPEC narrative-ref drift across instruction files and shipped extension surfaces).
----
+# wiki-lint playbook
 
-## Execution model — READ FIRST
-
-**Do not execute the playbook yourself in the current conversation.** Dispatch a Haiku subagent via the `Agent` tool. The work is mechanical (rule-based orphan/dead-link/frontmatter checks plus a deterministic drift severity table) — Haiku is sufficient, and a fresh context avoids dragging the upstream skill's large wiki-page reads into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
-
-Spawn:
-
-- `subagent_type`: `"general-purpose"`
-- `model`: `"haiku"`
-- `description`: `"Wiki lint"`
-- `prompt`: the string below (literal, no paraphrasing):
-
-  > `You are running the GAIA /wiki-lint workflow in a fresh context. Read .claude/commands/wiki-lint.md from the project root and execute the "Playbook" section (Steps 1–5) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 5 — no recap of the report contents.`
-
-When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 5. If the subagent returns a `WIKI DEAD-PATHS:` line, surface it too. If the subagent returns a `UAT-SPEC DRIFT:` line, surface it too.
-
----
+Dispatched by the `/gaia wiki` router (`references/wiki.md` → "Lint"). Runs in a Haiku subagent context.
 
 ## Playbook
 
@@ -53,7 +35,7 @@ The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` |
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` missing — system has never run `/wiki-sync`. Run `/wiki-sync` to initialize.
+⚠ `wiki/.state.json` missing — system has never run sync. Run `/gaia wiki sync` to initialize.
 ```
 
 Then stop the drift check.
@@ -63,7 +45,7 @@ If `reachable === false`, append:
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (history rewritten or shallow clone). Run `/wiki-sync` to re-anchor.
+⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (history rewritten or shallow clone). Run `/gaia wiki sync` to re-anchor.
 ```
 
 Then stop.
@@ -72,12 +54,12 @@ Then stop.
 
 Map the CLI's `drift_severity` and `commits_ahead` to the report section:
 
-| `drift_severity` | Section to append                                                                                                       |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `none`           | `✓ Wiki in sync with HEAD ({head_short}).`                                                                              |
-| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /wiki-sync at next opportunity.`                                            |
-| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /wiki-sync soon.` + recent commits list                                     |
-| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /wiki-sync now.` + recent commits list   |
+| `drift_severity` | Section to append                                                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `none`           | `✓ Wiki in sync with HEAD ({head_short}).`                                                                                   |
+| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /gaia wiki sync at next opportunity.`                                            |
+| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /gaia wiki sync soon.` + recent commits list                                     |
+| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /gaia wiki sync now.` + recent commits list   |
 
 For **medium** and **high**, list up to 5 of the `recent_commits` from the CLI output as `  - <sha> <subject>`.
 
@@ -86,7 +68,7 @@ Example WARN (`medium`) section:
 ```markdown
 ## #11: Wiki drift check
 
-⚠ 7 commits behind HEAD. Run `/wiki-sync` soon. Recent unsynced commits:
+⚠ 7 commits behind HEAD. Run `/gaia wiki sync` soon. Recent unsynced commits:
 
 - a1b2c3d feat: add new module
 - d4e5f6g fix: edge case in router
@@ -98,7 +80,7 @@ Example ERROR (`high`) section:
 ```markdown
 ## #11: Wiki drift check
 
-✗ 14 commits behind HEAD. Wiki is significantly out of date. Run `/wiki-sync` now. Recent unsynced commits:
+✗ 14 commits behind HEAD. Wiki is significantly out of date. Run `/gaia wiki sync` now. Recent unsynced commits:
 
 - a1b2c3d feat: ...
 - d4e5f6g fix: ...
@@ -208,6 +190,6 @@ If narrative-ref findings > 0, surface as a separate line prefixed with `UAT-SPE
 
 ## Notes
 
-- Hooks (drift-check, commit-nudge, session-stop) are read-only consumers of `wiki/.state.json`. Only `/wiki-sync` writes to it. This command also does not write `wiki/.state.json`.
+- Hooks (drift-check, commit-nudge, session-stop) are read-only consumers of `wiki/.state.json`. Only sync writes to it. This workflow also does not write `wiki/.state.json`.
 - Drift count semantics: missing state file or unreachable SHA are surfaced as advisories, not silent zeroes. See [[Wiki Sync]] for the full design.
-- Severity table thresholds are the canonical thresholds for this plan; if changing, update both this command and any sibling tooling that classifies drift.
+- Severity table thresholds are the canonical thresholds for this plan; if changing, update both this file and any sibling tooling that classifies drift.

@@ -59,7 +59,7 @@ Three Claude Code hooks keep Claude informed about wiki state:
 - `wiki-commit-nudge.sh` — PostToolUse on Bash. Injects diff summary + drift count after each `git commit`.
 - `wiki-session-stop.sh` — Stop hook. Two reminders share one git/jq pass: nudge to refresh `wiki/hot.md` if wiki/ files were modified this session, and a safety-net nag at session end if commits landed but `wiki/.state.json` didn't advance.
 
-The workhorse is `/wiki-sync`. It's the only thing that writes `wiki/.state.json`. Hooks are read-only consumers.
+The workhorse is `/gaia wiki sync`. It's the only thing that writes `wiki/.state.json`. Hooks are read-only consumers.
 
 `/gaia-release` will refuse to bump version if `wiki/.state.json` SHA != HEAD. There is no opt-out.
 
@@ -100,19 +100,18 @@ Before running `/gaia-release`, you should have:
 - [ ] `pnpm lint` clean
 - [ ] `pnpm test:ci` clean
 - [ ] `bats .gaia/tests/hooks/` clean
-- [ ] `/wiki-sync` run, with all returned WORTHY commits resulting in defensible wiki edits
+- [ ] `/gaia wiki sync` run, with all returned WORTHY commits resulting in defensible wiki edits
 - [ ] (Recommended) `bash .gaia/tests/smoke/run-all.sh` clean
 - [ ] Working tree clean
 
-If `/wiki-sync` reports drift but you decide a commit doesn't warrant a wiki update, the `/wiki-sync` command logs that as a SKIP entry in `wiki/log.md`. State still advances. That's the convergence: wiki is "in sync" once every commit has been classified as either WORTHY (and the page updated) or SKIP (and the reason logged).
+If `/gaia wiki sync` reports drift but you decide a commit doesn't warrant a wiki update, it logs that as a SKIP entry in `wiki/log.md`. State still advances. That's the convergence: wiki is "in sync" once every commit has been classified as either WORTHY (and the page updated) or SKIP (and the reason logged).
 
 ### What ships, what doesn't
 
 | Path                                  | Ships to adopters?                                       |
 | ------------------------------------- | -------------------------------------------------------- |
 | `.claude/hooks/wiki-*.sh`             | Yes                                                      |
-| `.claude/commands/wiki-sync.md`       | Yes                                                      |
-| `.claude/commands/wiki-lint.md`       | Yes                                                      |
+| `.claude/skills/gaia/references/wiki/*.md` | Yes                                                 |
 | `wiki/.state.json`                    | Yes (committed)                                          |
 | `wiki/concepts/Wiki Sync.md`          | Yes                                                      |
 | `.gaia/tests/`                      | **No** — `.gaia/release-exclude` excludes the whole tree |
@@ -121,7 +120,7 @@ If `/wiki-sync` reports drift but you decide a commit doesn't warrant a wiki upd
 ### Troubleshooting
 
 - **Drift check is too noisy.** It only fires on the first prompt of each session. If you're seeing it more often, check `.claude/wiki-drift-checked` — the marker file should match your current `session_id`. If a hook is failing to write the marker, that's the bug.
-- **`/wiki-sync` reports zero drift but you know there were commits.** Check `wiki/.state.json`'s `last_evaluated_sha` — it may already match HEAD if a prior `/wiki-sync` ran. Or the SHA may be unreachable (rebase) and the hook silently skipped.
+- **`/gaia wiki sync` reports zero drift but you know there were commits.** Check `wiki/.state.json`'s `last_evaluated_sha` — it may already match HEAD if a prior sync ran. Or the SHA may be unreachable (rebase) and the hook silently skipped.
 - **Smoke tests are failing in CI.** They shouldn't be — smoke tests are MANUAL only. CI should run only `bats .gaia/tests/hooks/`. If a CI workflow is invoking smoke, that's a misconfiguration; remove it.
 
 ## Code of conduct

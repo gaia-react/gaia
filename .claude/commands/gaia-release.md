@@ -20,7 +20,7 @@ The CLI surface is the source of truth. The classification rules for `.gaia/mani
 gaia release preflight
 ```
 
-Verifies: on `main`, clean working tree, `wiki/.state.json` matches HEAD (per the `gaia wiki state --json` `commits_ahead === 0` contract). Exits non-zero with an explanation on any failure. STOP and report; the maintainer fixes (commit, push, run `/wiki-sync`) and re-runs `/gaia-release`.
+Verifies: on `main`, clean working tree, `wiki/.state.json` matches HEAD (per the `gaia wiki state --json` `commits_ahead === 0` contract). Exits non-zero with an explanation on any failure. STOP and report; the maintainer fixes (commit, push, run `/gaia wiki sync`) and re-runs `/gaia-release`.
 
 ### 2. Determine the bump
 
@@ -72,7 +72,7 @@ The graduation is idempotent — re-running with the same version is a no-op.
 gaia release scrub-wiki
 ```
 
-Overwrites `wiki/hot.md` and `wiki/log.md` with release-clean content (full frontmatter required by `/wiki-lint`).
+Overwrites `wiki/hot.md` and `wiki/log.md` with release-clean content (full frontmatter required by `/gaia wiki lint`).
 
 ### 7. Regenerate the manifest
 

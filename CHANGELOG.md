@@ -10,10 +10,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING:** `/wiki-sync`, `/wiki-consolidate`, `/wiki-lint` slash commands are removed. Use `/gaia wiki sync`, `/gaia wiki consolidate`, `/gaia wiki lint` instead — or `/gaia wiki` for the full chain. Motivation: `/wiki-lint` collided with the `claude-obsidian` plugin's skill of the same name. Moving everything under the `/gaia` router namespace eliminates the collision and groups wiki maintenance with the other GAIA workflows. Hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) and statusline now point at the new names. Smoke tests under `.gaia/tests/smoke/wiki-sync/` updated. The playbooks moved from `.claude/commands/wiki-{sync,consolidate,lint}.md` to `.claude/skills/gaia/references/wiki/{sync,consolidate,lint}.md`.
+- `/gaia audit` no longer covers intra-wiki duplication or broken-wikilink checks — those overlapped with `/gaia wiki consolidate` and `/gaia wiki lint`. Run `/gaia wiki` separately for wiki-internal audits.
+
 ### Added
 
 - Dead-code detection via [knip](https://knip.dev). Run `pnpm knip` after refactors or before release-candidate PRs. Template-aware config marks GAIA's library surface as entries so intentional exports aren't flagged. `.claude/rules/knip.md` guides Claude on when to suggest it.
-- Serena MCP server registered by `/gaia-init` for LSP-backed code intelligence. Pinned at `v1.2.0`. Requires `uv`. New `.claude/rules/code-search.md` routes Claude to Serena for TS/TSX symbol queries; `/wiki-sync` no longer marks new component / hook / service files WORTHY (Serena handles inventory freshness). See `wiki/concepts/Serena Integration.md` for the division of labor.
+- Serena MCP server registered by `/gaia-init` for LSP-backed code intelligence. Pinned at `v1.2.0`. Requires `uv`. New `.claude/rules/code-search.md` routes Claude to Serena for TS/TSX symbol queries; `/gaia wiki sync` no longer marks new component / hook / service files WORTHY (Serena handles inventory freshness). See `wiki/concepts/Serena Integration.md` for the division of labor.
 
 ## [1.0.5] — 2026-05-04
 

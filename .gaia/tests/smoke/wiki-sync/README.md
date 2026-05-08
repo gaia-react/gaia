@@ -1,6 +1,6 @@
 # Wiki-sync smoke tests
 
-End-to-end tests that drive `claude -p` (headless) through real `/wiki-sync` scenarios. Costs ~$0.10 per full run on Sonnet under your subscription or API key.
+End-to-end tests that drive `claude -p` (headless) through real `/gaia wiki sync` scenarios. Costs ~$0.10 per full run on Sonnet under your subscription or API key.
 
 These are MANUAL / pre-release. Not run in CI. Run them before cutting a GAIA release to verify the wiki-sync system works under real Claude judgment.
 
@@ -46,14 +46,14 @@ If you're iterating on a hook and want a single fast check, run just `01-meaning
 - `01-meaningful-change.sh` — Service add with an `Invariant:` body → WORTHY → wiki page created → state advances. Body-decision rule.
 - `02-typo-only-skip.sh` — Typo commit → SKIP logged, no wiki edits, state advances.
 - `03-multi-commit-catchup.sh` — 5 mixed commits (4 inventory-class + 1 invariant-bearing fix) → log carries WORTHY for the fix, `Serena handles inventory` markers for the rest, state advances to HEAD.
-- `04-non-claude-merge.sh` — Shell commit (bypassing Claude) → next session detects drift on first prompt → /wiki-sync catches up.
+- `04-non-claude-merge.sh` — Shell commit (bypassing Claude) → next session detects drift on first prompt → /gaia wiki sync catches up.
 - `05-serena-inventory-skip.sh` — Vanilla service add with no decision body → `SKIP: Serena handles inventory` marker → no wiki page → state advances. Positive test for the post-Serena WORTHY narrowing.
 
 ## Post-Serena rubric notes
 
-`/wiki-sync` Step 3 narrowed in 2026-05 to treat `app/components/`, `app/hooks/`, `app/services/`, and `app/pages/` commits as SKIP unless the body carries durable knowledge (trade-off / invariant / gotcha / workaround). Serena's LSP index now owns inventory.
+`/gaia wiki sync` Step 3 narrowed in 2026-05 to treat `app/components/`, `app/hooks/`, `app/services/`, and `app/pages/` commits as SKIP unless the body carries durable knowledge (trade-off / invariant / gotcha / workaround). Serena's LSP index now owns inventory.
 
-The fixtures in `01` and `03` carry an explicit `Invariant:` line so they cross the WORTHY threshold; `05` deliberately omits it to land on the SKIP path. If you change the rubric in `.claude/commands/wiki-sync.md`, update the matching fixtures here and the `Serena handles inventory` greppable assertion in `03` and `05`.
+The fixtures in `01` and `03` carry an explicit `Invariant:` line so they cross the WORTHY threshold; `05` deliberately omits it to land on the SKIP path. If you change the rubric in `.claude/skills/gaia/references/wiki/sync.md`, update the matching fixtures here and the `Serena handles inventory` greppable assertion in `03` and `05`.
 
 ## Updating
 

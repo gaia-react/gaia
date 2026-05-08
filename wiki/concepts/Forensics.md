@@ -25,7 +25,7 @@ After classifying the failure, the skill supplements this envelope with class-sp
 |---|---|
 | `init` | `/gaia-init` scaffolding failures |
 | `update` | `/update-gaia` merge conflicts |
-| `wiki-sync` | `/wiki-sync` misfires |
+| `wiki-sync` | `/gaia wiki sync` misfires |
 | `quality-gate` | `pnpm typecheck` or lint failures inside a GAIA flow — see [[Quality Gate]] |
 | `hook` | `.claude/hooks/*.sh` misfires |
 | `scaffold` | `new-component`, `new-route`, `new-hook`, or `new-service` skill failures |

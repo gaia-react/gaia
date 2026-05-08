@@ -3,10 +3,10 @@
  *
  * Walks every commit in `<since>..HEAD` and emits a deterministic
  * WORTHY/SKIP suggestion plus the rule that fired. Replaces the
- * subject-only first pass in `wiki-sync.md` Step 3.
+ * subject-only first pass in `wiki/sync.md` Step 3.
  *
  * Rule precedence (first match wins). Mirrors the rules in
- * `wiki-sync.md` Step 3 and the README "Wiki primitives JSON schemas"
+ * `wiki/sync.md` Step 3 and the README "Wiki primitives JSON schemas"
  * contract:
  *
  *   1. `Merge pull request`, `wiki:` (sync's own commits), `chore(release):`,
