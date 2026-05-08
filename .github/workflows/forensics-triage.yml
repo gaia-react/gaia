@@ -224,7 +224,7 @@ jobs:
           steps.parse.outputs.valid == 'true'
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.render-classifier.outputs.body }}
           # No tool access — judgment-only. The classifier MUST NOT
           # touch the working tree (UAT-009).
@@ -472,7 +472,7 @@ jobs:
           steps.scope.outputs.ok == 'true'
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.render-apply.outputs.body }}
           # File-edit tools only. NO Bash, NO git, NO push tools, NO web.
           # Post-step verification asserts diffs touch only `proposed_paths`.
