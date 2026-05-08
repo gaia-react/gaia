@@ -5,6 +5,56 @@ description: Autonomous Dependabot - auto-discover outdated packages, audit over
 
 Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts — just execute.
 
+## Pre-flight: Worktree check
+
+This wrapper writes a new `pnpm-lock.yaml` and opens a PR — both belong on the main checkout, not a per-SPEC worktree branch. If invoked from a linked worktree, reject hard with a message that surfaces the cached state from main so the user knows whether action is even pending.
+
+Detection (run this first, before anything else):
+
+```bash
+common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
+if [ -n "$common_dir" ]; then
+  case "$common_dir" in
+    /*) absolute_common_dir="$common_dir" ;;
+    *)  absolute_common_dir="$(pwd)/$common_dir" ;;
+  esac
+  main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
+  current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+  if [ -n "$main_root" ] && [ -n "$current_root" ] && [ "$main_root" != "$current_root" ]; then
+    cached_line="Cached state unavailable on main; symlinks may be broken — run \`gaia setup link-worktree\` to repair."
+    cache_file="$main_root/.gaia/cache/update-check.json"
+    if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then
+      outdated_count="$(jq -r '.outdatedCount // 0' "$cache_file" 2>/dev/null)"
+      checked_at="$(jq -r '.checkedAt // 0' "$cache_file" 2>/dev/null)"
+      if [ -n "$outdated_count" ] && [ -n "$checked_at" ] && [ "$checked_at" != "0" ]; then
+        now=$(date +%s)
+        age=$((now - checked_at))
+        # Format age as <Nm ago> / <Nh ago> / <Nd ago>.
+        ago_unit="s"; ago_value="$age"
+        if [ "$age" -ge 86400 ]; then ago_unit="d"; ago_value=$((age / 86400));
+        elif [ "$age" -ge 3600 ]; then ago_unit="h"; ago_value=$((age / 3600));
+        elif [ "$age" -ge 60 ]; then ago_unit="m"; ago_value=$((age / 60));
+        fi
+        cached_line="Cached on main: $outdated_count packages outdated (last checked ${ago_value}${ago_unit} ago)."
+      fi
+    fi
+    cat <<EOF
+/update-deps must run from the main checkout, not a worktree.
+
+Worktree:       $current_root
+Main checkout:  $main_root
+
+$cached_line
+
+Run \`cd $main_root\` then re-invoke /update-deps.
+EOF
+    exit 1
+  fi
+fi
+```
+
+If the detection does not fire, fall through to the existing `## Pre-flight: Branch check` section.
+
 ## Pre-flight: Branch check
 
 ```bash

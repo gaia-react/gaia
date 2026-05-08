@@ -12,6 +12,51 @@ Pull the latest GAIA release into this project without clobbering customizations
 
 Backups land in `.gaia-backup/<timestamp>/`. Conflict patches land in `.gaia-merge/`.
 
+## Pre-flight: Worktree check
+
+This wrapper changes `.gaia/VERSION` and opens a PR — both belong on the main checkout, not a per-SPEC worktree branch. If invoked from a linked worktree, reject hard with a message that surfaces the cached version state from main so the user knows whether a GAIA update is even pending.
+
+Detection (run this first, before anything else):
+
+```bash
+common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
+if [ -n "$common_dir" ]; then
+  case "$common_dir" in
+    /*) absolute_common_dir="$common_dir" ;;
+    *)  absolute_common_dir="$(pwd)/$common_dir" ;;
+  esac
+  main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
+  current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+  if [ -n "$main_root" ] && [ -n "$current_root" ] && [ "$main_root" != "$current_root" ]; then
+    cached_line="Cached state unavailable on main; symlinks may be broken — run \`gaia setup link-worktree\` to repair."
+    cache_file="$main_root/.gaia/cache/update-check.json"
+    if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then
+      gaia_current="$(jq -r '.gaiaCurrent // ""' "$cache_file" 2>/dev/null)"
+      gaia_latest="$(jq -r '.gaiaLatest // ""' "$cache_file" 2>/dev/null)"
+      gaia_has_update="$(jq -r '.gaiaHasUpdate // false' "$cache_file" 2>/dev/null)"
+      if [ -n "$gaia_current" ] && [ -n "$gaia_latest" ]; then
+        update_phrase="not-available"
+        if [ "$gaia_has_update" = "true" ]; then update_phrase="available"; fi
+        cached_line="Cached on main: GAIA $gaia_current installed; latest $gaia_latest (update $update_phrase)."
+      fi
+    fi
+    cat <<EOF
+/update-gaia must run from the main checkout, not a worktree.
+
+Worktree:       $current_root
+Main checkout:  $main_root
+
+$cached_line
+
+Run \`cd $main_root\` then re-invoke /update-gaia.
+EOF
+    exit 1
+  fi
+fi
+```
+
+If the detection does not fire, fall through to the existing `## Pre-flight: Branch check` section.
+
 ## Pre-flight: Branch check
 
 ```bash
