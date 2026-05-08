@@ -304,14 +304,17 @@ After producing the report, decide whether to write the marker:
 
 Knip / react-doctor advisories and Suggestions never block the marker — they are advisory-by-design.
 
-When the marker is warranted, write it with:
+When the marker is warranted, write it with the snippet below. The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
 
 ```bash
 HEAD_SHA="$(git rev-parse HEAD)"
 mkdir -p .gaia/local/audit
-printf '{"sha":"%s","audited_at":"%s"}\n' \
-  "$HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  > ".gaia/local/audit/${HEAD_SHA}.ok"
+marker=".gaia/local/audit/${HEAD_SHA}.ok"
+if [ ! -f "$marker" ]; then
+  printf '{"sha":"%s","audited_at":"%s"}\n' \
+    "$HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$marker"
+fi
 ```
 
 Then surface, as the final line of your report:
@@ -322,7 +325,7 @@ If you do not write the marker, surface this instead:
 
 > Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
 
-Never write a marker for a SHA other than current `HEAD`. Never overwrite an existing marker — `[ -f "$marker" ]` already short-circuits the hook.
+Never write a marker for a SHA other than current `HEAD`. The agent-side guard above prevents accidental overwrite; the hook-side `[ -f "$marker" ]` check is what unblocks `gh pr merge` once the marker exists.
 
 ## Durable knowledge
 

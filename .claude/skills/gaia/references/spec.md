@@ -180,7 +180,7 @@ If `$ARGUMENTS` (the args after `spec`) is non-empty, use it as the feature desc
 
 Otherwise, ask: **"What do you want to spec?"** and wait for the response before continuing. This is open-ended — use a plain prompt, not `AskUserQuestion`.
 
-After capturing the description, prompt for the GitHub-issue preference via `AskUserQuestion`:
+After capturing the description — **on both the `$ARGUMENTS` fast-path and the interactive-prompt path** — ask the GitHub-issue preference via `AskUserQuestion`. The question fires regardless of how the description was sourced; users invoking `/gaia spec "..."` should expect this single prompt before discovery proper begins.
 
 - question: `"Mirror this SPEC to a GitHub issue on save?"`
 - header: `"GH issue"`
@@ -188,7 +188,7 @@ After capturing the description, prompt for the GitHub-issue preference via `Ask
   - `{ label: "No, skip GitHub issue (Recommended)", description: "Default. SPEC stays local under .gaia/local/specs/. Choose this for solo work or when the implementing PR will track the work directly." }`
   - `{ label: "Yes, create a GitHub issue", description: "After save, mirror the SPEC body to a new issue on the project's GitHub repo and stamp gh_issue_url into frontmatter. The implementing PR should then include 'Closes #<N>' in its body so the issue auto-closes on merge." }`
 
-Persist the answer as `gh_mirror_optin: <bool>` in working memory for this session. Used at step 10 (gate the mirror invocation) and step 12 (PR-body closure wiring). On resume, the default reverts to `false` — the user re-invokes /gaia spec from a fresh shell with intent.
+Persist the answer as `gh_mirror_optin: <bool>` in working memory for this session. Used at step 10 (gate the mirror invocation) and step 12 (PR-body closure wiring). On resume (step 2), if the loaded draft has no `gh_issue_url` in frontmatter, re-ask this question as part of the resume setup — the resumed session needs the same opt-in signal that the fresh session would have. If `gh_issue_url` is already present, a prior session already mirrored; treat opt-in as implicitly true and do not re-ask.
 
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
@@ -224,6 +224,7 @@ Honor the user's choice. Never silently overwrite, never silently start new.
   - If gate-1 cache exists AND no pending clarifications → resume at step 7 (gate 2).
   - Step 3 (initial draft) is always skipped on resume.
   - Never re-snapshot the gate-1 cache; its purpose is immutable drift detection.
+  - **GH-mirror opt-in on resume.** Inspect the loaded draft's frontmatter. If `gh_issue_url` is set, treat `gh_mirror_optin = true` (a prior session already mirrored). Otherwise, ask the GH-mirror `AskUserQuestion` from step 1 once now — `gh_mirror_optin` does not persist across resumes and silently defaulting it to `false` would lose the user's earlier intent.
 - **Start new:** continue with a fresh allocation (Step 3 onward). The in-progress SPEC remains untouched. Append `spec_started` telemetry with `resumed: false`, then initialize the session-shape cache per the operational primitive once the new `spec_id` is known (step 3).
 - **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json`, then continue with a fresh allocation. Note: the canonical SPEC artifact is untouched; the allocator will continue to flag SPEC-NNN as in-progress until the artifact itself is renamed or relabeled (out of scope for this step).
 
