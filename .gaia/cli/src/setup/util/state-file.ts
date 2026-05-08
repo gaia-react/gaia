@@ -11,6 +11,7 @@
  * a clone has their own state file. Maintainers in the upstream repo
  * also write here; the file is just a per-machine marker.
  */
+import {execFileSync} from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -22,6 +23,44 @@ import path from 'node:path';
 
 export const STATE_FILENAME = 'setup-state.json';
 export const STATE_DIRECTORY_RELATIVE = path.join('.gaia', 'local');
+
+/**
+ * Resolve the main worktree's root from any cwd inside any worktree of
+ * the same repository.
+ *
+ * `git rev-parse --show-toplevel` returns the calling worktree's root,
+ * which differs between the main checkout and a linked worktree. The
+ * setup-state file is canonical to the clone (not per-worktree), so
+ * every reader/writer must anchor to the SAME path regardless of which
+ * worktree they ran from. `--git-common-dir` returns the shared `.git`
+ * directory (the main repo's `.git` in every worktree); the directory
+ * containing it is the main worktree root.
+ *
+ * Assumption: `--git-common-dir` returns the shared `.git` (relative
+ * `.git` from main, or an absolute path like `/repo/.git` from a linked
+ * worktree). `path.dirname` of that yields the main checkout root. This
+ * holds for standard git worktrees but NOT submodules, where the common
+ * dir is an internal gitdir path inside the parent repo. GAIA does not
+ * support a submodule topology; do not change the resolution strategy
+ * without re-validating that constraint.
+ *
+ * Throws if `git` is unavailable or `cwd` is not inside a git repo —
+ * matching `resolveRepoRoot`'s contract so callers can translate to the
+ * existing `not_a_git_repo` exit code.
+ */
+export const resolveMainWorktreeRoot = (cwd: string): string => {
+  const commonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+
+  const absoluteCommonDir = path.isAbsolute(commonDir)
+    ? commonDir
+    : path.resolve(cwd, commonDir);
+
+  return path.dirname(absoluteCommonDir);
+};
 
 /**
  * Canonical step identifiers. The slash command decides which steps it
