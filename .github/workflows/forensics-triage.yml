@@ -46,24 +46,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
-
-      - name: Setup Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version-file: '.node-version'
-          # No cache: setup-node@v5's post-step tries to save the pnpm
-          # store at end-of-job regardless of whether the path actually
-          # ran `pnpm install`. On non-apply-fix paths (classifier-only,
-          # idempotency early-exit, non-issue, ambiguous) the store is
-          # never populated, the post-step's path-validation fails, and
-          # the job conclusion flips to `failure` — generating a notification
-          # to maintainer inboxes for every non-apply-fix run. Apply-fix
-          # is the only path that needs pnpm, and runs `pnpm install`
-          # explicitly inside `run-quality-gate.sh`; the trade-off is a
-          # 30-60s slower install per auto-fix run for clean notifications
-          # across the majority of runs.
+      # Setup pnpm + Setup Node are gated to the apply-fix path (see
+      # before `Run Quality Gate` further down). Running them
+      # unconditionally at the top of the job triggers a `Post Setup
+      # Node` cache-cleanup post-step at end-of-job for every non-
+      # apply-fix path; even with `cache:` unset, setup-node@v5's
+      # post-step still validates the lockfile path and emits
+      # `Path Validation Error`, which flips the job conclusion to
+      # `failure` and notifies the maintainer for benign runs (non-
+      # issue, ambiguous, classifier-only, idempotency early-exit).
+      # The `claude-code-action` invocations provision their own Node
+      # runtimes, so the only consumer of this repo's Node + pnpm is
+      # `run-quality-gate.sh` on the apply-fix path.
 
       # ----------------------------------------------------------------
       # UAT-006: idempotency early-exit. If `gaia-triaged` is already on
@@ -654,6 +648,30 @@ jobs:
           # Already `git add -A`'d in verify-diff; commit on the local
           # branch. No push yet — gate must pass first.
           git commit -m "forensics: auto-fix attempt for #${ISSUE_NUMBER}"
+
+      # Apply-fix-only Node + pnpm provisioning. Gated to the same
+      # condition set as `Run Quality Gate` so non-apply-fix paths
+      # never trigger setup-node@v5's `Post Setup Node` cleanup
+      # post-step at end-of-job.
+      - name: Setup pnpm
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true'
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+
+      - name: Setup Node
+        if: |
+          steps.idempotency.outputs.already_triaged != 'true' &&
+          steps.parse.outputs.valid == 'true' &&
+          steps.verdict.outputs.verdict == 'auto-fixable' &&
+          steps.scope.outputs.ok == 'true' &&
+          steps.verify-diff.outputs.diff_ok == 'true'
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: '.node-version'
 
       - name: Run Quality Gate
         id: quality-gate
