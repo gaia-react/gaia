@@ -2,11 +2,13 @@ name: Code Review Audit
 
 # Pre-merge gate that runs the `code-review-audit` agent
 # (.claude/agents/code-review-audit.md) against the PR diff. Skipped when
-# the PR HEAD already carries a matching `GAIA-Audit:` commit trailer
-# (locally-stamped audit). Adopter-tunable knobs live at
-# .gaia/audit-ci.yml; the frozen contracts (trailer format, skip logic,
-# check name) live at .gaia/local/plans/code-review-audit-ci/trailer-format.md
-# and that plan's README.
+# (a) the PR HEAD already carries a matching `GAIA-Audit:` commit trailer
+# (locally-stamped audit), or (b) the PR diff contains no audit-relevant
+# files (wiki, instruction files, and other prose-only surfaces are out
+# of scope). Adopter-tunable knobs live at .gaia/audit-ci.yml; the frozen
+# contracts (trailer format, skip logic, check name) live at
+# .gaia/local/plans/code-review-audit-ci/trailer-format.md and that plan's
+# README.
 #
 # Required-check semantics under classic branch protection: the job MUST
 # reach a terminal "set check status" step on every code path. A skipped
@@ -81,20 +83,47 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check for source-code changes
+        id: source-changes
+        if: steps.gate.outputs.gated == 'false'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          # Audit-relevant scope: TS/TSX/CSS code under app/, the CLI
+          # source under .gaia/cli/src/, tests, .storybook configs,
+          # GitHub workflow files, and root-level build/lint/test/
+          # typecheck configs. PRs that only touch wiki/, .claude/,
+          # .specify/, prose docs, or .gaia/ metadata are skipped here —
+          # the agent has no rules that would meaningfully apply.
+          changed=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}")
+          dir_pattern='^(app|test|\.storybook|\.gaia/cli/src|\.github/workflows)/'
+          file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
+          if printf '%s\n' "$changed" | grep -qE "${dir_pattern}|${file_pattern}"; then
+            echo "has_source=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_source=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check audit trailer
         id: trailer
-        if: steps.gate.outputs.gated == 'false'
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true'
         run: bash .github/audit/check-trailer.sh >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'false'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
 
       - name: Setup Node
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'false'
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -104,6 +133,7 @@ jobs:
       - name: Install dependencies
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'false'
         run: pnpm install --frozen-lockfile
 
@@ -111,6 +141,7 @@ jobs:
         id: timeout
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'false'
         env:
           BUDGET_SECONDS: ${{ steps.config.outputs.budget_seconds }}
@@ -132,6 +163,7 @@ jobs:
         id: audit
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'false'
         # Continue on failure: max-turns / SDK / API errors must not strand
         # the PR check in a half-state. The status-summary terminal steps
@@ -161,6 +193,7 @@ jobs:
         id: push-fixes
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success'
@@ -200,9 +233,19 @@ jobs:
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: gate_label '$GATE_LABEL' not present on PR"
 
+      - name: Status — skipped (no source changes)
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'false'
+        run: |
+          set -eu
+          gh pr comment "$PR_NUMBER" \
+            --body "code-review-audit skipped: no audit-relevant files changed in this PR"
+
       - name: Status — skipped (trailer matches)
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'true'
         env:
           MATCHED_VERSION: ${{ steps.trailer.outputs.matched_version }}
@@ -219,6 +262,7 @@ jobs:
         # signal that the audit did not run cleanly is `outcome != success`.
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome != 'success'
         run: |
@@ -229,6 +273,7 @@ jobs:
       - name: Status — audit complete
         if: |
           steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success'
         env:
