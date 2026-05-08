@@ -129,10 +129,20 @@ fi
 
 self_healed="${AUDIT_SELF_HEALED:-false}"
 
-# Pushed-vs-un-pushed detection. The presence of an upstream + an empty
-# `@{u}..HEAD` rev-list means HEAD is at or behind the upstream — i.e. pushed.
+# Pushed-vs-un-pushed detection.
+#   Detached HEAD (CI checkout of pull_request.head.sha; rebase/cherry-pick
+#   in flight; explicit `git checkout <sha>`) — treat as pushed. The
+#   stamp must never amend a commit the runner cannot guarantee is local.
+#   The empty-commit path is the safe choice for any "HEAD is published"
+#   semantics, which a detached HEAD always carries (CI), or for which
+#   amending is meaningless (a transient checkout the user is not on).
+#   Attached HEAD with an upstream + empty `@{u}..HEAD` — pushed.
+#   Anything else (no upstream; ahead of upstream) — un-pushed.
 push_status="un-pushed"
-if upstream=$(git -C "$repo_root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
+head_branch=$(git -C "$repo_root" symbolic-ref --short -q HEAD 2>/dev/null || true)
+if [ -z "$head_branch" ]; then
+  push_status="pushed"
+elif upstream=$(git -C "$repo_root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
   if [ -n "$upstream" ]; then
     if [ -z "$(git -C "$repo_root" rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
       push_status="pushed"

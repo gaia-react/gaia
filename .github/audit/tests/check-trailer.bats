@@ -22,6 +22,7 @@
 #   6. Two trailers, last one mismatches         → skip=false
 #   7. Malformed trailer (truncated tree-sha)    → skip=false reason=no-trailer
 #   8. .gaia/VERSION missing                     → skip=false reason=version-file-missing
+#   9. .gaia/VERSION empty                       → skip=false reason=version-file-missing
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

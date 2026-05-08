@@ -7,11 +7,12 @@
 #   1. clean tree, un-pushed HEAD          -> amend
 #   2. clean tree, pushed HEAD             -> empty commit
 #   3. AUDIT_SELF_HEALED=true               -> amend regardless of push status
-#   4. tree dirty                           -> decline "tree dirty"
-#   5. .gaia/VERSION missing                -> decline "version file missing"
-#   6. .gaia/VERSION empty                  -> decline "version file empty"
-#   7. AUDIT_TREE_SHA != current tree       -> decline "tree changed since audit started"
-#   8. not in a git repo                    -> decline "not in a git repo"
+#   4. detached HEAD (CI checkout)         -> empty commit (treats as pushed)
+#   5. tree dirty                           -> decline "tree dirty"
+#   6. .gaia/VERSION missing                -> decline "version file missing"
+#   7. .gaia/VERSION empty                  -> decline "version file empty"
+#   8. AUDIT_TREE_SHA != current tree       -> decline "tree changed since audit started"
+#   9. not in a git repo                    -> decline "not in a git repo"
 #
 # Each test asserts:
 #   - exit code (always 0 for stamp + decline cases)
@@ -123,6 +124,37 @@ trailer_on_head() {
 
   after_sha=$(git -C "$REPO" rev-parse HEAD)
   [ "$before_sha" != "$after_sha" ]
+
+  trailer=$(trailer_on_head)
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+}
+
+@test "detached HEAD: writes empty commit (treats as pushed regardless of upstream)" {
+  # Simulate the CI checkout: actions/checkout with `ref: <sha>` lands
+  # on a detached HEAD. Without an upstream probe, the script must NOT
+  # fall through to the un-pushed amend path — that would rewrite a
+  # commit the runner does not own.
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  before_count=$(git -C "$REPO" rev-list --count HEAD)
+
+  # Detach HEAD onto the same commit (no branch, no upstream).
+  git -C "$REPO" checkout --quiet --detach HEAD
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: empty commit (HEAD already pushed)" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  after_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  after_count=$(git -C "$REPO" rev-list --count HEAD)
+
+  # Empty commit -> sha advances, tree unchanged, history grows by one.
+  [ "$before_sha" != "$after_sha" ]
+  [ "$before_tree" = "$after_tree" ]
+  [ $((after_count - before_count)) -eq 1 ]
 
   trailer=$(trailer_on_head)
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
