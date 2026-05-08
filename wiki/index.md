@@ -95,6 +95,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Co-located Tests Folder]]
 - [[composeStory Pattern]]
 - [[Dark Mode Modernization]]
+- [[Forensics Triage Workflow]] — autonomous triage for `gaia-forensics`-labeled issues; default-deny path policy + draft-PR contract.
 - [[Quality Gate]]
 - [[pnpm]]
 - [[DragonScale Opt-Out]]
