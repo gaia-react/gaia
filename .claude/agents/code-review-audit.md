@@ -291,6 +291,23 @@ If no violations are found for a rule, don't mention it. If no violations are fo
 - Prioritize ruthlessly — 5 important issues beats 50 trivial ones
 - Work within the project's existing patterns when suggesting fixes; don't introduce new dependencies
 
+## Audit-run env (capture before any edits)
+
+At the very start of the review — before any rule-based subagents fire and before any self-heal edits — capture the tree the audit is about to review and initialize the self-heal flag. Both values are passed to the trailer-stamp helper at marker-write time.
+
+```bash
+AUDIT_TREE_SHA="$(git rev-parse HEAD^{tree})"
+AUDIT_SELF_HEALED="false"
+```
+
+If, during the review, you make any fix-commit (a self-heal pass), set:
+
+```bash
+AUDIT_SELF_HEALED="true"
+```
+
+Both variables travel forward to the marker-write step below.
+
 ## Audit marker (gate handshake)
 
 `.claude/hooks/pr-merge-audit-check.sh` blocks `gh pr merge` until a marker file at `.gaia/local/audit/<HEAD-sha>.ok` exists. The marker proves the audit ran against the exact commit being merged. **You** are responsible for writing the marker — only when the audit is genuinely clean.
@@ -304,9 +321,18 @@ After producing the report, decide whether to write the marker:
 
 Knip / react-doctor advisories and Suggestions never block the marker — they are advisory-by-design.
 
-When the marker is warranted, write it with the snippet below. The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
+When the marker is warranted, the write is a two-step "stamp then mark" sequence: first stamp HEAD with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the *new* HEAD. The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
 
 ```bash
+# 1. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per
+#    the placement rule). The helper handles the decision and reports.
+stamp_line=$(
+  AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
+    .claude/hooks/audit-stamp-trailer.sh
+)
+
+# 2. Re-read HEAD (it may have moved due to amend / empty-commit) and
+#    write the local marker file for the *new* HEAD.
 HEAD_SHA="$(git rev-parse HEAD)"
 mkdir -p .gaia/local/audit
 marker=".gaia/local/audit/${HEAD_SHA}.ok"
@@ -317,15 +343,38 @@ if [ ! -f "$marker" ]; then
 fi
 ```
 
-Then surface, as the final line of your report:
+Then surface, as the final line of your report — pick the line that matches `stamp_line`:
 
-> Audit marker written for HEAD `<short-sha>`; gh pr merge is unblocked.
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended (un-pushed); gh pr merge is unblocked.
+
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer carried on empty commit (pushed); gh pr merge is unblocked.
+
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended onto audit-self-heal HEAD; gh pr merge is unblocked.
+
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer skipped (`<reason>`); gh pr merge is unblocked.
+
+The skipped form applies when `stamp_line` begins with `stamp: declined:` — the marker is still written (the local gate is unblocked) but downstream CI will run a fresh audit because the trailer is absent.
 
 If you do not write the marker, surface this instead:
 
 > Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
 
 Never write a marker for a SHA other than current `HEAD`. The agent-side guard above prevents accidental overwrite; the hook-side `[ -f "$marker" ]` check is what unblocks `gh pr merge` once the marker exists.
+
+## GAIA-Audit trailer (CI handshake)
+
+The `GAIA-Audit:` commit trailer written by `.claude/hooks/audit-stamp-trailer.sh` is the cross-machine companion to the local marker file. The marker file gates `gh pr merge` locally; the trailer travels with the commit through the network so CI can recognize an already-audited tree and skip its own audit run.
+
+Trailer shape (frozen — see `.gaia/local/plans/code-review-audit-ci/trailer-format.md`):
+
+```
+GAIA-Audit: <agent-version> <tree-sha>
+```
+
+- `<agent-version>` is read from `.gaia/VERSION` at stamp time.
+- `<tree-sha>` is the full 40-char `git rev-parse HEAD^{tree}` of the audited tree.
+
+The helper writes the trailer only when the working tree is clean, `.gaia/VERSION` exists and is non-empty, and the tree the audit reviewed (`AUDIT_TREE_SHA`) matches HEAD's current tree. Placement is automatic: amend on un-pushed HEADs, an empty commit on already-pushed HEADs (never silently rewriting published history), and amend on the audit's own self-heal commits regardless of push state. CI's "Check audit trailer" step parses the PR-HEAD commit message via `git interpret-trailers --parse` and skips the agent invocation when both the version and tree-sha match the PR head.
 
 ## Durable knowledge
 

@@ -121,6 +121,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[PR Merge Workflow]]
 - [[Task Orchestration]]
 - [[Code Review Audit Agent]]
+- [[Code Review Audit CI]] — pre-merge GitHub Actions gate; `GAIA-Audit:` trailer skip logic; adopter-tunable knobs at `.gaia/audit-ci.yml`.
 - [[Claude Hooks]]
 - [[Claude Integration Conventions]] — Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
 - [[Claude Skills]]

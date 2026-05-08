@@ -1,0 +1,20 @@
+# .gaia/audit-ci.yml — adopter-tunable knobs for the code-review-audit CI workflow.
+# This file ships in the GAIA template; adopters edit values to tune behavior.
+# The workflow reads this file at job start; missing file falls back to the defaults below.
+
+# Run the audit only when the PR carries this label. Set to null to run on every PR.
+# Maintainer recommendation: leave null until the audit is stable in CI; flip to "ready-for-review" once it is.
+gate_label: null
+
+# Hard wall-clock budget (seconds) for the audit invocation. Workflow times out
+# the agent step at this value and reports a clean "audit aborted: budget" check
+# rather than failing red.
+budget_seconds: 1800
+
+# Maximum number of fix turns the agent is allowed inside CI. Maps to claude_args
+# `--max-turns`. Lower = cheaper. Higher = more chance to self-heal.
+max_turns: 30
+
+# Whether the agent may push self-heal commits to the PR branch. Set false to make
+# the audit advisory-only (it comments findings but does not push).
+push_fixes: true
