@@ -6,7 +6,7 @@
  *
  *   <domain>  <slugA>  <slugB>  <distance>
  *
- * Replaces the prose near-collision pass in `wiki-consolidate.md` Step 2c.
+ * Replaces the prose near-collision pass in `wiki/consolidate.md` Step 2c.
  */
 import {existsSync, readdirSync, statSync} from 'node:fs';
 import path from 'node:path';

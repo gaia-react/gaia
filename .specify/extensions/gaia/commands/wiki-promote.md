@@ -268,7 +268,7 @@ Match the existing wiki voice: declarative, no preamble, concrete examples where
 
 ## Step 6 — Hand off to wiki-sync
 
-The wiki-promote command does NOT commit or push. The existing `/wiki-sync` skill handles branch-aware commits.
+The wiki-promote command does NOT commit or push. The existing `/gaia wiki sync` skill handles branch-aware commits.
 
 Emit a structured payload to stdout (the next agent reads it as conversation context):
 
@@ -285,13 +285,13 @@ Emit a structured payload to stdout (the next agent reads it as conversation con
 }
 ```
 
-Then invoke `/wiki-sync` directly:
+Then invoke `/gaia wiki sync` directly:
 
-`Invoke /wiki-sync now to handle the branch-aware commit step for these pages.`
+`Invoke /gaia wiki sync now to handle the branch-aware commit step for these pages.`
 
-(`/wiki-sync` will read the staged-but-uncommitted wiki changes from `git status`, write to `wiki/log.md` and `wiki/.state.json`, then commit per its branch-aware rules.)
+(`/gaia wiki sync` will read the staged-but-uncommitted wiki changes from `git status`, write to `wiki/log.md` and `wiki/.state.json`, then commit per its branch-aware rules.)
 
-If `/wiki-sync` fails or refuses, exit with the warning `wiki-promote: pages staged but wiki-sync handoff failed. Run /wiki-sync manually.` Do NOT attempt to commit from this command body.
+If `/gaia wiki sync` fails or refuses, exit with the warning `wiki-promote: pages staged but wiki-sync handoff failed. Run /gaia wiki sync manually.` Do NOT attempt to commit from this command body.
 
 ## Step 7 — Report
 

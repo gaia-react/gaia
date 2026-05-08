@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke 01: meaningful change should produce a wiki update on /wiki-sync.
+# Smoke 01: meaningful change should produce a wiki update on /gaia wiki sync.
 set -euo pipefail
 
 TMP=$(mktemp -d -t gaia-smoke-01-XXXXXX)
@@ -13,14 +13,16 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/services .claude/hooks .claude/commands app/services
+mkdir -p wiki/services .claude/hooks .claude/skills/gaia/references/wiki app/services
 
-# Copy the hooks from the gaia repo into the smoke fixture
+# Copy the hooks + gaia wiki skill structure from the gaia repo into the smoke fixture
 GAIA_REPO="${GAIA_REPO:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/commands/wiki-sync.md" .claude/commands/
+cp "$GAIA_REPO/.claude/skills/gaia/SKILL.md" .claude/skills/gaia/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
 
 # Minimal settings.json that wires the hooks
 cat > .claude/settings.json <<'EOF'
@@ -82,17 +84,17 @@ at 100 calls/day, which silently breaks production. The service wrapper
 enforces the header at construction so requests fail fast on misconfig.
 EOF
 
-# Capture HEAD before claude runs. /wiki-sync advances state to the SHA it
+# Capture HEAD before claude runs. Sync advances state to the SHA it
 # evaluated (the pre-sync HEAD), then commits the wiki updates as a new commit
 # on top — so post-sync state == pre_claude_head, not current HEAD.
 pre_claude_head=$(git rev-parse HEAD)
 
-# Now run claude -p with /wiki-sync
+# Now run claude -p with /gaia wiki sync
 output=$(claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /wiki-sync. Report what was done." 2>&1)
+  "Run /gaia wiki sync. Report what was done." 2>&1)
 
 # Assertions
-echo "$output" | grep -q "Gemini" || { echo "FAIL: Gemini not mentioned in /wiki-sync output"; exit 1; }
+echo "$output" | grep -q "Gemini" || { echo "FAIL: Gemini not mentioned in /gaia wiki sync output"; exit 1; }
 [ -f wiki/services/Gemini.md ] || { echo "FAIL: wiki/services/Gemini.md not created"; exit 1; }
 
 # State should have advanced to the SHA we wanted evaluated

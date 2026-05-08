@@ -4,7 +4,7 @@
 # Two reminders share one git/jq pass:
 #   1. WIKI_CHANGED — wiki/ files committed this session → prompt to refresh hot.md.
 #   2. End-of-session safety net — session committed but wiki/.state.json did not
-#      fully advance → nag to /wiki-sync.
+#      fully advance → nag to /gaia wiki sync.
 #
 # Upstream contract: claude-obsidian/hooks/hooks.json::Stop. Why GAIA overrides:
 # upstream diffs working tree vs HEAD, but its PostToolUse already auto-commits
@@ -54,7 +54,7 @@ if command -v jq >/dev/null 2>&1 && [ -f wiki/.state.json ]; then
         && [ "$state_sha" != "$head_sha" ]; then
 
         commits_this_session=$(git rev-list --count "$start_sha..HEAD" 2>/dev/null || echo 0)
-        printf '[wiki end-of-session] You committed %s times this session but the wiki state SHA did not advance. Review wiki/log.md and run /wiki-sync if needed before ending.\n' \
+        printf '[wiki end-of-session] You committed %s times this session but the wiki state SHA did not advance. Review wiki/log.md and run /gaia wiki sync if needed before ending.\n' \
           "$commits_this_session"
 
         mkdir -p .claude

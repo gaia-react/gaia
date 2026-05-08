@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke 03: 5 accumulated commits should all be processed by a single /wiki-sync run.
+# Smoke 03: 5 accumulated commits should all be processed by a single /gaia wiki sync run.
 # Mixed worthiness: 2 features, 1 fix, 1 typo, 1 dep bump.
 set -euo pipefail
 
@@ -14,11 +14,13 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/services wiki/components wiki/dependencies .claude/hooks .claude/commands app/services app/components
+mkdir -p wiki/services wiki/components wiki/dependencies .claude/hooks .claude/skills/gaia/references/wiki app/services app/components
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/commands/wiki-sync.md" .claude/commands/
+cp "$GAIA_REPO/.claude/skills/gaia/SKILL.md" .claude/skills/gaia/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
 
 cat > .claude/settings.json <<'EOF'
 {
@@ -125,7 +127,7 @@ drift=$(git rev-list --count "$init_sha"..HEAD)
 pre_claude_head=$(git rev-parse HEAD)
 
 claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /wiki-sync. Report what was done." > /dev/null 2>&1
+  "Run /gaia wiki sync. Report what was done." > /dev/null 2>&1
 
 # Assertions
 [ -f wiki/log.md ] || { echo "FAIL: wiki/log.md not created"; exit 1; }
@@ -146,7 +148,7 @@ grep -q "SKIP" wiki/log.md || { echo "FAIL: wiki/log.md missing SKIP entry"; exi
 # component add) carry no decision body, so they should land as
 # `SKIP: Serena handles inventory — ...`. The literal substring
 # "Serena handles inventory" is the greppable marker the wiki-sync
-# command guarantees for this skip class.
+# playbook guarantees for this skip class.
 grep -q "Serena handles inventory" wiki/log.md || { echo "FAIL: wiki/log.md missing Serena-policy SKIP marker for inventory-class commits"; exit 1; }
 
 # State should advance to the evaluated SHA (pre-sync HEAD)

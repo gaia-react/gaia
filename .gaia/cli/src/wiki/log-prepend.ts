@@ -2,8 +2,8 @@
  * `gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."` handler.
  *
  * Prepends a single canonical line to `wiki/log.md` immediately after the
- * frontmatter block. Replaces the prose recipe in `wiki-sync.md` Step 5
- * and the manual re-anchor write in `wiki-sync.md` Step 1.
+ * frontmatter block. Replaces the prose recipe in `wiki/sync.md` Step 5
+ * and the manual re-anchor write in `wiki/sync.md` Step 1.
  *
  * Line shape:
  *

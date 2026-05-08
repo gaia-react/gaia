@@ -1,7 +1,7 @@
 /**
  * `gaia wiki sync land [--branch-aware]` handler.
  *
- * Replaces the highest-stakes prose action in GAIA: `wiki-sync.md` Step 7,
+ * Replaces the highest-stakes prose action in GAIA: `wiki/sync.md` Step 7,
  * the branch-aware landing flow that decides between (a) branch + push +
  * PR-merge dance on `main`, or (b) in-place commit on a feature branch.
  *

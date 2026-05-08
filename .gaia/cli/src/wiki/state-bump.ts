@@ -7,7 +7,7 @@
  * raw string.
  *
  * Replaces the prose `jq ... > tmp && mv tmp wiki/.state.json` recipe in
- * `wiki-sync.md` Step 6 and `wiki-consolidate.md` Step 5.
+ * `wiki/sync.md` Step 6 and `wiki/consolidate.md` Step 5.
  */
 import {existsSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';

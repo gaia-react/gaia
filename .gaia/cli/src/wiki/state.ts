@@ -3,7 +3,7 @@
  *
  * Reports drift between `wiki/.state.json` `last_evaluated_sha` and `git
  * HEAD`. Replaces the prose-form drift checks scattered across
- * `wiki-drift-check.sh`, `wiki-lint.md`, and `wiki-sync.md`.
+ * `wiki-drift-check.sh`, `wiki/lint.md`, and `wiki/sync.md`.
  *
  * Severity thresholds mirror `wiki-drift-check.sh`:
  *   - none:   commits_ahead === 0

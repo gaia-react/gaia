@@ -232,7 +232,7 @@ export const run = (
 
   if (wikiState.commits_ahead !== 0) {
     return refuse(
-      `preflight: wiki is ${wikiState.commits_ahead} commits behind HEAD; run /wiki-sync first`
+      `preflight: wiki is ${wikiState.commits_ahead} commits behind HEAD; run /gaia wiki sync first`
     );
   }
 

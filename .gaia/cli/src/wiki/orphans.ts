@@ -5,7 +5,7 @@
  * `inbound_links === 0` per the page-index walk. No `--json` flag — the
  * output is a list intended for piping to `wc -l` or similar.
  *
- * Replaces the prose subject-orphan pass in `wiki-consolidate.md` Step 2d.
+ * Replaces the prose subject-orphan pass in `wiki/consolidate.md` Step 2d.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

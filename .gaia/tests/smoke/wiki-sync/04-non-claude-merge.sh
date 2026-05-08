@@ -16,11 +16,13 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/modules .claude/hooks .claude/commands app/modules
+mkdir -p wiki/modules .claude/hooks .claude/skills/gaia/references/wiki app/modules
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/commands/wiki-sync.md" .claude/commands/
+cp "$GAIA_REPO/.claude/skills/gaia/SKILL.md" .claude/skills/gaia/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
+cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
 
 cat > .claude/settings.json <<'EOF'
 {
@@ -68,24 +70,24 @@ drift=$(git rev-list --count "$state_sha"..HEAD)
 [ "$drift" -ge "1" ] || { echo "FAIL: expected drift >= 1 after shell commit, got $drift"; exit 1; }
 
 # Run claude -p with a generic prompt — drift-check should fire on first prompt
-# and mention drift / wiki-sync.
+# and mention drift / wiki sync.
 first_output=$(claude -p --model sonnet --permission-mode bypassPermissions \
   "What's the status of this repo?" 2>&1 || true)
 
-if ! echo "$first_output" | grep -qiE "drift|wiki-sync|wiki state|commits ahead|behind"; then
-  echo "FAIL: first prompt output did not surface drift/wiki-sync. Output was:"
+if ! echo "$first_output" | grep -qiE "drift|wiki sync|wiki state|commits ahead|behind"; then
+  echo "FAIL: first prompt output did not surface drift/wiki sync. Output was:"
   echo "$first_output"
   exit 1
 fi
 
-# Now actually run /wiki-sync to catch up
+# Now actually run /gaia wiki sync to catch up
 pre_claude_head=$(git rev-parse HEAD)
 claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /wiki-sync. Report what was done." > /dev/null 2>&1
+  "Run /gaia wiki sync. Report what was done." > /dev/null 2>&1
 
 # Assertions: state advanced to the evaluated SHA + log entry written
 new_state=$(jq -r '.last_evaluated_sha' wiki/.state.json)
-[ "$new_state" = "$pre_claude_head" ] || { echo "FAIL: state did not advance to evaluated SHA after /wiki-sync ($new_state vs $pre_claude_head)"; exit 1; }
+[ "$new_state" = "$pre_claude_head" ] || { echo "FAIL: state did not advance to evaluated SHA after sync ($new_state vs $pre_claude_head)"; exit 1; }
 
 [ -f wiki/log.md ] || { echo "FAIL: wiki/log.md not created"; exit 1; }
 grep -qE "Auth|auth" wiki/log.md || { echo "FAIL: wiki/log.md does not reference the Auth shell-side commit"; exit 1; }

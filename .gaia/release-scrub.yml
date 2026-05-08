@@ -47,9 +47,9 @@ transforms:
           # The rule itself names concrete IDs to teach adopters what NOT
           # to write.
           - ".claude/rules/wiki-style.md"
-          # The wiki-lint command's documentation describes what its audit
+          # The wiki-lint playbook's documentation describes what its audit
           # flags, with concrete-ID examples by design.
-          - ".claude/commands/wiki-lint.md"
+          - ".claude/skills/gaia/references/wiki/lint.md"
         # Lines matching ANY of these regexes are exempt. Structural matches
         # only — see `.claude/rules/wiki-style.md` Exceptions for the contract.
         line-allowlist:
@@ -80,9 +80,9 @@ transforms:
           # The rule itself names concrete IDs to teach adopters what NOT to
           # do. Self-referential prose is the rule's body.
           - ".claude/rules/wiki-style.md"
-          # The wiki-lint command's documentation cites concrete-ID
+          # The wiki-lint playbook's documentation cites concrete-ID
           # examples that mirror the audit findings it surfaces.
-          - ".claude/commands/wiki-lint.md"
+          - ".claude/skills/gaia/references/wiki/lint.md"
         line-allowlist:
           # Illustrative usage in CLI/SPEC docs: `(e.g. SPEC-002)` or
           # `(e.g. \`SPEC-002\`)` (with optional backticks around the ID).
@@ -111,9 +111,9 @@ transforms:
           # Self-referential — the rule's body cites the audit greps it
           # codifies, including the maintainer-only `.gaia/tests/` scope.
           - ".claude/rules/wiki-style.md"
-          # Self-referential — the lint command's documentation describes
+          # Self-referential — the lint playbook's documentation describes
           # the same audit greps and target paths.
-          - ".claude/commands/wiki-lint.md"
+          - ".claude/skills/gaia/references/wiki/lint.md"
           # Documents the smoke-harness convention split between
           # `.specify/extensions/gaia/test/` (UAT runbooks) and
           # `.gaia/tests/smoke/` (release-gate harnesses); literal paths

@@ -5,7 +5,7 @@
  * last_evaluated_sha, last_evaluated_at}`. Refuses if the file already
  * exists — use `state-bump` to update an existing state file.
  *
- * Replaces the prose bootstrap write in `wiki-sync.md` Step 1: a fresh
+ * Replaces the prose bootstrap write in `wiki/sync.md` Step 1: a fresh
  * project has no `wiki/.state.json`, and `state-bump` will not create
  * one for safety reasons (it could mask a typo'd field name on an
  * existing file). `state-init` is the explicit creation primitive.

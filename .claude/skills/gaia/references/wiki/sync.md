@@ -1,38 +1,12 @@
----
-name: wiki-sync
-description: Evaluate commits since last sync and update the wiki where warranted. Two-pass: subjects first, deep-read only the worthy ones. Updates wiki/.state.json on completion.
----
+# wiki-sync playbook
 
-## Execution model — READ FIRST
-
-**Do not execute the playbook yourself in the current conversation.** Dispatch a Haiku subagent via the `Agent` tool. The work is mechanical (rule-based WORTHY/SKIP classification, file edits, structured commits) — Haiku is sufficient, and a fresh context avoids dragging git diffs and log content into the parent. This protects the user even if they're on Opus or forgot to `/clear` before invoking.
-
-Spawn:
-
-- `subagent_type`: `"general-purpose"`
-- `model`: `"haiku"`
-- `description`: `"Wiki sync"`
-- `prompt`: the string below (literal, no paraphrasing):
-
-  > `You are running the GAIA /wiki-sync workflow in a fresh context. Read .claude/commands/wiki-sync.md from the project root and execute the "Playbook" section (Steps 1–9) verbatim. Your working directory is the project root. Print only the final summary block from Step 8 followed by the CONSOLIDATE_TRIGGERED line from Step 9 — no preamble, no recap, no narration of intermediate steps.`
-
-When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
-
-**Post-sync chain.** Step 9 emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on partial-sync interruptions (Step 7 failure mode) — both leave the wiki in a known-incomplete state. Branch on its presence:
-
-- **Line absent** — skip both `/wiki-consolidate` and `/wiki-lint`. The maintainer needs to address the exceptional state first.
-- **`CONSOLIDATE_TRIGGERED: true`** — invoke `/wiki-consolidate`, then `/wiki-lint`.
-- **`CONSOLIDATE_TRIGGERED: false`** — skip consolidate, invoke `/wiki-lint` directly.
-
-Lint runs last because consolidate may move, rename, or archive pages, and lint's orphan/dead-link/drift checks need the true post-state. `/wiki-consolidate` and `/wiki-lint` each dispatch their own subagents — never run their playbooks yourself in this conversation.
-
----
+Dispatched by the `/gaia wiki` router (`references/wiki.md` → "Sync"). Runs in a Haiku subagent context.
 
 ## Playbook
 
 Evaluate every commit between `wiki/.state.json` `last_evaluated_sha` and HEAD. For each, decide whether the wiki needs an update. Edit pages, log decisions, advance state, commit.
 
-`wiki/.state.json` is written by two commands: this command writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/wiki-consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) are read-only consumers.
+`wiki/.state.json` is written by two workflows: this one writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/gaia wiki consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) are read-only consumers.
 
 ## Step 1: Read state and compute drift
 
@@ -124,7 +98,7 @@ gaia wiki state-bump last_evaluated_sha "$NEW_HEAD"
 gaia wiki state-bump last_evaluated_at "$NEW_HEAD_AT"
 ```
 
-`state-bump` writes atomically — preserving sibling fields (`last_consolidated_sha` owned by `/wiki-consolidate`) and key order.
+`state-bump` writes atomically — preserving sibling fields (`last_consolidated_sha` owned by `/gaia wiki consolidate`) and key order.
 
 If `last_consolidated_sha` is absent on the existing state (first sync ever): bootstrap it with `gaia wiki state-bump last_consolidated_sha "$NEW_HEAD"`. This gives the consolidate gate a baseline so subsequent runs accumulate from a known point.
 
@@ -157,11 +131,11 @@ Wiki sync complete.
 
 (On the no-op path from Step 1's drift=0 branch: print `Wiki already in sync at {short_sha}.` instead of the block above.)
 
-After the summary block, append the Step 9 result line `CONSOLIDATE_TRIGGERED: <true|false>` on its own line (no leading whitespace). The wrapper reads this to decide whether to invoke `/wiki-consolidate`.
+After the summary block, append the Step 9 result line `CONSOLIDATE_TRIGGERED: <true|false>` on its own line (no leading whitespace). The router (`references/wiki.md`) reads this to decide whether to invoke consolidate next.
 
 ## Step 9: Consolidate gate
 
-Cheap precheck. Decides whether `/wiki-consolidate` should fire next based on per-domain new-page accumulation since the last consolidate run.
+Cheap precheck. Decides whether `/gaia wiki consolidate` should fire next based on per-domain new-page accumulation since the last consolidate run.
 
 ### 9a. Read state
 
@@ -205,7 +179,7 @@ Wiki sync complete.
 CONSOLIDATE_TRIGGERED: true
 ```
 
-The wrapper reads the last line and decides whether to invoke `/wiki-consolidate`. The gate itself never invokes consolidate directly — it stays a read-only check.
+The router reads the last line and decides whether to invoke consolidate. The gate itself never invokes consolidate directly — it stays a read-only check.
 
 ### 9e. Edge cases
 
@@ -216,5 +190,5 @@ The wrapper reads the last line and decides whether to invoke `/wiki-consolidate
 ## Failure modes
 
 - **Mid-sync interruption.** If you've edited some pages but not all, do NOT advance state. Commit only the partial wiki edits with subject `wiki: partial sync (interrupted at {short_sha})` and stop. The next sync resumes from the original `last_evaluated_sha`, not the partial one.
-- **Merge conflict on `wiki/log.md`.** Two `/wiki-sync` runs on different branches will both prepend to the log. Resolve by keeping both lines, sorted newest-first.
+- **Merge conflict on `wiki/log.md`.** Two sync runs on different branches will both prepend to the log. Resolve by keeping both lines, sorted newest-first.
 - **`wiki/.state.json` is corrupted or invalid JSON.** Stop and surface to the user. Do not auto-rewrite — they may have made manual edits worth preserving.

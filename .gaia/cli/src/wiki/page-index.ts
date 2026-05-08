@@ -3,10 +3,10 @@
  *
  * Walks `wiki/<domain>/*.md`, parses frontmatter, and counts inbound /
  * outbound `[[wikilinks]]`. Replaces the prose Step 1 page-index walk in
- * `wiki-consolidate.md`.
+ * `wiki/consolidate.md`.
  *
  * Skipped paths follow the same exclusions documented in
- * `wiki-consolidate.md` Step 1: per-domain `_index.md`, `_archived/`,
+ * `wiki/consolidate.md` Step 1: per-domain `_index.md`, `_archived/`,
  * `meta/`, `entities/` are emitted as part of the index but the consumer
  * (consolidate, lint, orphans) is responsible for any further filtering.
  *

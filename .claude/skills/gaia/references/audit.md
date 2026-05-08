@@ -50,7 +50,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
   >
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
-  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–6). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here — the user runs /gaia wiki for those.`
 
 ### Stage 2 subagent (Apply)
 
@@ -71,7 +71,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
   >
   > `Compare these to the "project_root" / "memory_dir" fields recorded in the report's frontmatter. If they differ, STOP and print a clear error — do not improvise.`
   >
-  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Apply procedure" section (Step 7). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Apply procedure" section (Step 5). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
 
 ### After the subagent(s) return
 
@@ -156,15 +156,7 @@ For every memory entry and every rules file, check whether the same fact lives i
 
 Rules-vs-wiki: a `.claude/rules/*.md` file is allowed to duplicate wiki content **only** if it exists to enforce auto-loading for a specific `paths:` glob. Otherwise it should link to the wiki page.
 
-## Step 3 — Intra-wiki duplication
-
-Scan `$PROJECT_ROOT/wiki/` for pages covering the same topic. For each cluster:
-
-- Pick the most-complete page as canonical
-- Propose merging the others into it (or converting them to redirects: a one-line page with `→ see [[Canonical]]`)
-- Flag pages in `wiki/sources/` that duplicate content already synthesized in a domain page — `sources/` is archival, domain pages are active
-
-## Step 4 — Auto-load budget
+## Step 3 — Auto-load budget
 
 Targets (flag anything over):
 
@@ -178,16 +170,7 @@ Targets (flag anything over):
 
 For each over-budget file, propose one of: inline facts → wiki, consolidate duplicated sections, or split into narrower files.
 
-## Step 5 — Link-efficiency audit
-
-In every auto-loaded file (CLAUDE.md hierarchy, `wiki/hot.md`, rules):
-
-- **Describes instead of points** — flag passages that restate content already in a wiki page (e.g. inlining a facts table instead of linking to the canonical wiki page). Propose replacing with wikilink.
-- **Broken wikilinks** — `Grep` every `[[Name]]` against `wiki/index.md`. Flag misses.
-- **Dead paths** — verify every file path referenced in auto-loaded files still exists.
-- **Inlined source excerpts** — flag wiki pages that inline raw text from `wiki/sources/` instead of linking.
-
-## Step 6 — Report
+## Step 4 — Report
 
 Write `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md`. Create `$PROJECT_ROOT/.gaia/local/audit/` if missing. Also snapshot `git status --short` into the report's frontmatter so Stage 2 can detect drift.
 
@@ -217,11 +200,9 @@ Resolved paths (Stage 2 must match these):
 
 - Stores scanned: {N files, M words total}
 - Cross-store duplicates: {X}
-- Intra-wiki duplicates: {Y}
 - Auto-load total: {Z words} (budget: {total budget})
 - Over-budget files: {list}
 - Stale entries: {count}
-- Broken links: {count}
 
 ## Actions
 
@@ -282,44 +263,11 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
   reason: {…}
   ```
 
-### Merge (intra-wiki consolidation)
-
-- [ ] `merge-{nnn}`
-  ```yaml
-  type: merge
-  canonical: {absolute wiki path}
-  canonical_expect_sha256: {sha256}
-  sources:
-    - path: {absolute wiki path}
-      expect_sha256: {sha256}
-      append_as: |
-        {verbatim content to add to canonical}
-      redirect_body: |
-        ---
-        type: redirect
-        ---
-        → see [[Canonical Name]]
-  index_updates:
-    - {line to change in wiki/index.md}
-  log_entry: {one-line to prepend to wiki/log.md}
-  ```
-
-### Fix-link
-
-- [ ] `fixlink-{nnn}`
-  ```yaml
-  type: replace
-  path: {absolute path}
-  before: |
-    {verbatim line containing the broken link}
-  after: |
-    {verbatim corrected line, or empty string to delete the line}
-  reason: {broken target, correct target}
-  ```
-
 ## Ordering
 
-Stage 2 must apply actions in this order: `fix-link` → `shrink` → `delete-entry` → `merge` → `promote` → `delete`. Rationale: shrinks never reference content that later gets merged; deletes come last so earlier pointers don't go stale.
+Stage 2 must apply actions in this order: `shrink` → `delete-entry` → `promote` → `delete`. Rationale: shrinks never reference content that later gets touched; deletes come last so earlier pointers don't go stale.
+
+Wiki-internal redundancy and broken-link repair are handled by `/gaia wiki consolidate` and `/gaia wiki lint` respectively — `merge` and `fix-link` action types are not part of this workflow.
 
 ## To re-apply
 
@@ -329,7 +277,7 @@ Apply runs immediately after this report. To re-apply later (e.g., after fixing 
 
 End the research run by printing: report path and total actions per category. (Stage 2 runs next automatically.)
 
-## Step 7 — Apply procedure (Stage 2, Sonnet)
+## Step 5 — Apply procedure (Stage 2, Sonnet)
 
 You are executing, not reasoning. Follow this loop exactly.
 
@@ -352,7 +300,6 @@ For each unchecked action block:
    - `type: delete-entry` → read file, locate the `expect` block, remove it, write back
    - `type: promote` → perform the `target_action` (use Edit or Write as appropriate), then prepend `log_entry` to `wiki/log.md`, then append `index_entry` to the right section of `wiki/index.md`, then delete `source_path` if `delete_source_after: true`
    - `type: replace` → Edit with `old_string: before`, `new_string: after`. If `before` is not unique, prepend additional context from the file until unique.
-   - `type: merge` → for each source: append `append_as` into canonical at its tail (or an explicit position if the action specifies one), then overwrite the source with `redirect_body`. Then prepend `log_entry` to `wiki/log.md`. Apply `index_updates` to `wiki/index.md`.
 3. Flip the checkbox: `[ ]` → `[x]` on success, `[~]` on skip, `[!]` on error. Record the reason inline on the checkbox line.
 
 ### Post-flight
