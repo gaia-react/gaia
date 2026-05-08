@@ -277,6 +277,7 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'true'
         env:
           MATCHED_VERSION: ${{ steps.trailer.outputs.matched_version }}
