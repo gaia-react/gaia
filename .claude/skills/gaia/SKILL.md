@@ -1,6 +1,6 @@
 ---
 name: gaia
-description: GAIA workflow router. Dispatches to the four user-invoked GAIA workflows - plan (task orchestration), handoff (session handoff doc), pickup (resume from handoff), audit (knowledge audit), forensics (bug report bridge). Trigger on `/gaia <subcommand>` or natural-language asks like "kick off a plan", "write a handoff", "pick up where we left off", "audit the knowledge stores".
+description: GAIA workflow router. Dispatches to the five user-invoked GAIA workflows - plan (task orchestration), handoff (session handoff doc), pickup (resume from handoff), audit (knowledge audit), forensics (bug report bridge). Trigger on `/gaia <subcommand>` or natural-language asks like "kick off a plan", "write a handoff", "pick up where we left off", "audit the knowledge stores".
 ---
 
 # GAIA Router
