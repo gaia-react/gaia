@@ -1,5 +1,5 @@
 /**
- * Tests for `gaia release manifest`.
+ * Tests for `gaia-maintainer release manifest`.
  *
  * Includes a byte-identity snapshot against the legacy
  * `.gaia/scripts/generate-manifest.mjs` script for the current repo

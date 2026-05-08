@@ -1,5 +1,5 @@
 /**
- * Tests for `gaia release commit-and-tag`.
+ * Tests for `gaia-maintainer release commit-and-tag`.
  *
  * Mixes a real-git temp-repo fixture (for the commit dance) with mocked
  * runners (for the tag-push path, where pushing to a remote isn't

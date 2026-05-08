@@ -28,10 +28,13 @@ if [ -n "$(ls -A "$OUTPUT_DIR" 2>/dev/null)" ]; then
   exit 1
 fi
 
-# Sanity: bundled CLI binary must exist. Maintainer runs
-# `pnpm -C .gaia/cli bundle` if stale; we don't rebuild here.
-if [ ! -x "$PROJECT_ROOT/.gaia/cli/gaia" ]; then
-  printf 'Bundled CLI binary missing or not executable: %s/.gaia/cli/gaia\n' "$PROJECT_ROOT" >&2
+# Sanity: maintainer CLI binary must exist. The release subcommands the
+# staging pipeline calls (scrub, scrub-wiki, runtime-deps) live only in
+# the maintainer binary; the adopter `gaia` binary intentionally has no
+# `release` namespace. Maintainer runs `pnpm -C .gaia/cli bundle` if
+# stale; we don't rebuild here.
+if [ ! -x "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" ]; then
+  printf 'Maintainer CLI binary missing or not executable: %s/.gaia/cli/gaia-maintainer\n' "$PROJECT_ROOT" >&2
   printf 'Run `pnpm -C .gaia/cli bundle` first.\n' >&2
   exit 1
 fi
@@ -59,7 +62,7 @@ fi
 rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIR/"
 
 # Phase 2 — Scrub. Same invocation as release.yml line 82.
-"$PROJECT_ROOT/.gaia/cli/gaia" release scrub "$OUTPUT_DIR"
+"$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$OUTPUT_DIR"
 
 # Phase 2.5 — Scrub-wiki. Resets wiki/hot.md and wiki/log.md to release-
 # baseline state. release.yml does NOT do this — it runs in the local
@@ -67,7 +70,7 @@ rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIR/"
 # it against the staging tree so the harness mirrors what an adopter
 # receives in a published tarball, regardless of which source-commit
 # state we built from.
-( cd "$OUTPUT_DIR" && "$PROJECT_ROOT/.gaia/cli/gaia" release scrub-wiki )
+( cd "$OUTPUT_DIR" && "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub-wiki )
 
 # Phase 3 — Runtime-deps. Same invocation as release.yml line 87.
-"$PROJECT_ROOT/.gaia/cli/gaia" release runtime-deps --staging "$OUTPUT_DIR"
+"$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release runtime-deps --staging "$OUTPUT_DIR"

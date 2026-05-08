@@ -68,7 +68,8 @@ FILE_VER="$(tr -d '[:space:]' < "$STAGING/.gaia/VERSION")"
   || { fail ".gaia/VERSION ($FILE_VER) != package.json version ($PKG_VER)"; exit 1; }
 
 # wiki/hot.md and wiki/log.md should carry the release-marker strings
-# that `gaia release scrub-wiki` writes (Step 8 + 9 of `/gaia-release`).
+# that `gaia-maintainer release scrub-wiki` writes (Step 8 + 9 of
+# `/gaia-release`).
 # Asserting on the actual rendered content is stricter than a line-count
 # proxy — it catches "scrub-wiki didn't run" AND "scrub-wiki wrote the
 # wrong version". Marker shapes are pinned to scrub-wiki.ts:renderHotMd /

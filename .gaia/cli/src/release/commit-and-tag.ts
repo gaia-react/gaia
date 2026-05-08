@@ -1,5 +1,5 @@
 /**
- * `gaia release commit-and-tag` handler.
+ * `gaia-maintainer release commit-and-tag` handler.
  *
  * Codifies Step 11 and Step 13 of the maintainer release runbook:
  *
@@ -25,7 +25,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
-const HELP_TEXT = `Usage: gaia release commit-and-tag (--commit | --tag) [--no-push]
+const HELP_TEXT = `Usage: gaia-maintainer release commit-and-tag (--commit | --tag) [--no-push]
 
   --commit      Stage release-related files and commit, then amend
                 wiki/.state.json with the new commit SHA.

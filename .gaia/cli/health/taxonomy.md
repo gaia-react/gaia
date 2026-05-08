@@ -114,7 +114,7 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 ### Distribution boundary
 
 **Manifest stale relative to distributed file set.** Files added to the template don't auto-classify; manifest count diverges from `git ls-files | grep -v -f release-exclude`.
-- Detection: run `gaia release manifest` and `git diff .gaia/manifest.json` should be empty
+- Detection: run `gaia-maintainer release manifest` and `git diff .gaia/manifest.json` should be empty
 - Prior: 370 → 426 entry rebuild (ed94f49); 426 → 425 after `release.yml` excluded (98f7a62)
 
 **Maintainer-only files mis-classified as `shared` in manifest.** Files that don't ship should be in `release-exclude`, not in the manifest at all.
@@ -141,7 +141,7 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 
 **Release-excluded runtime dependencies of shipped surfaces.** A shipped script, hook, statusline, or CLI binary calls into a path that is itself in `.gaia/release-exclude`. Adopters get the caller but not the callee — the surface silently degrades. Distinct from the prose-mention class above: this one has *runtime-behavior* consequences, not just documentation consequences. The bundle-time-scrub plan (post-#97) catches lexical leaks but does NOT catch this class — runtime references survive scrubbing.
 - Detection: enumerate every shell-callee path in shipped scripts (`bash <path>`, `source <path>`, `exec <path>`, explicit script-path constants) and cross-reference each against `.gaia/release-exclude`. A simpler heuristic: `grep -rEn '\.gaia/scripts/|\.gaia/cli/src/|\.specify/extensions/gaia/test/|\.gaia/tests/' .gaia/statusline/ .claude/hooks/ .gaia/cli/templates/` for path constants in shipped runtime surfaces. Every match where the cited path is release-excluded is a runtime leak.
-- Codification opportunity: a `gaia release runtime-deps` primitive could read every shipped `.sh`/`.ts` for explicit path constants and verify each is either in the manifest or a runtime-allocated path (`.gaia/local/`, `.gaia/cache/`).
+- Codification opportunity: a `gaia-maintainer release runtime-deps` primitive could read every shipped `.sh`/`.ts` for explicit path constants and verify each is either in the manifest or a runtime-allocated path (`.gaia/local/`, `.gaia/cache/`).
 - Prior: `.gaia/statusline/gaia-statusline.sh:26,108-110` invoked `.gaia/scripts/check-updates.sh` while the entire `.gaia/scripts/` directory was release-excluded (category 5, "legacy"); on adopter clones the statusline never refreshed its cache, so `Run /update-deps` and `Run /update-gaia` indicators never lit. Audit #13 fix: removed `.gaia/scripts` from release-exclude, updated `wiki/concepts/Release Workflow.md` framing (the directory is not legacy — `check-updates.sh` is actively shipped), regenerated manifest (420 → 421 entries, 322 → 323 owned).
 
 **Maintainer-monorepo path prefix in adopter-shipped files.** A path in a distributed file uses the maintainer's monorepo layout (`gaia/`, `studio/`, `website/` are siblings of the maintainer's clone). Adopter clones are single-repo; the prefix dangles.

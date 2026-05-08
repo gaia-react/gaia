@@ -1,5 +1,5 @@
 /**
- * `gaia release` subcommand router.
+ * `gaia-maintainer release` subcommand router.
  *
  * Chains preflight → bump → quality gate → changelog → scrub-wiki →
  * manifest → commit-and-tag for `/gaia-release`. The slash command is a
@@ -19,7 +19,7 @@ import {run as runRuntimeDeps} from './runtime-deps.js';
 import {run as runScrub} from './scrub.js';
 import {run as runScrubWiki} from './scrub-wiki.js';
 
-const HELP_TEXT = `Usage: gaia release <subcommand> [args]
+const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
 
   preflight [--branch <name>]                 Branch + working-tree + wiki state checks.
   bump [--auto]                               Conventional-commit semver bump.
