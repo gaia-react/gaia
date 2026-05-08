@@ -1,0 +1,2 @@
+Symptom: {{SYMPTOM}}
+Capture: {{CAPTURE}}

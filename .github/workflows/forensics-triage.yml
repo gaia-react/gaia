@@ -175,30 +175,21 @@ jobs:
           - `.specify/extensions/gaia/templates/`
           - `.github/workflows/`'
 
-          template="$(cat "$FORENSICS_DIR/prompt.md")"
           rendered_file="${RUNNER_TEMP}/forensics/classifier-prompt.md"
 
-          # Use awk for the substitutions: avoids the sed/`/`/`&` escaping
-          # nightmare with multi-line section content.
-          awk -v iss="$ISSUE_NUMBER" \
-              -v sym="$symptom" \
-              -v cls="$classification" \
-              -v cap="$capture" \
-              -v rep="$repro" \
-              -v al="$allowlist" \
-              -v dl="$denylist" '
-          {
-            line = $0
-            gsub(/\{\{ISSUE_NUMBER\}\}/, iss, line)
-            gsub(/\{\{SYMPTOM\}\}/, sym, line)
-            gsub(/\{\{CLASSIFICATION\}\}/, cls, line)
-            gsub(/\{\{CAPTURE\}\}/, cap, line)
-            gsub(/\{\{REPRO_CONTEXT\}\}/, rep, line)
-            gsub(/\{\{ALLOWLIST\}\}/, al, line)
-            gsub(/\{\{DENYLIST\}\}/, dl, line)
-            print line
-          }
-          ' <<< "$template" > "$rendered_file"
+          # Render via the standalone helper (SPEC-003 UAT-004). Bash
+          # parameter-expansion-based substitution sidesteps both the
+          # multi-line `awk -v` rejection and the `gsub` `&`-replacement
+          # corruption that the previous inline awk shipped with.
+          "$FORENSICS_DIR/render-prompt.sh" "$FORENSICS_DIR/prompt.md" \
+            "ISSUE_NUMBER=$ISSUE_NUMBER" \
+            "SYMPTOM=$symptom" \
+            "CLASSIFICATION=$classification" \
+            "CAPTURE=$capture" \
+            "REPRO_CONTEXT=$repro" \
+            "ALLOWLIST=$allowlist" \
+            "DENYLIST=$denylist" \
+            > "$rendered_file"
 
           # Surface the rendered prompt as a step output via heredoc so
           # the action invocation can consume it. The delimiter is a
@@ -423,26 +414,16 @@ jobs:
           # block; content is read-back-into-position via a single gsub).
           paths_block="$(jq -r '.proposed_paths[]' "$VERDICT_FILE")"
 
-          template="$(cat "$FORENSICS_DIR/apply-fix-prompt.md")"
           rendered_file="${RUNNER_TEMP}/forensics/apply-fix-prompt.md"
 
-          awk -v iss="$ISSUE_NUMBER" \
-              -v paths="$paths_block" \
-              -v reasoning="$reasoning" \
-              -v sym="$symptom" \
-              -v cap="$capture" \
-              -v rep="$repro" '
-          {
-            line = $0
-            gsub(/\{\{ISSUE_NUMBER\}\}/, iss, line)
-            gsub(/\{\{PROPOSED_PATHS\}\}/, paths, line)
-            gsub(/\{\{CLASSIFIER_REASONING\}\}/, reasoning, line)
-            gsub(/\{\{SYMPTOM\}\}/, sym, line)
-            gsub(/\{\{CAPTURE\}\}/, cap, line)
-            gsub(/\{\{REPRO_CONTEXT\}\}/, rep, line)
-            print line
-          }
-          ' <<< "$template" > "$rendered_file"
+          "$FORENSICS_DIR/render-prompt.sh" "$FORENSICS_DIR/apply-fix-prompt.md" \
+            "ISSUE_NUMBER=$ISSUE_NUMBER" \
+            "PROPOSED_PATHS=$paths_block" \
+            "CLASSIFIER_REASONING=$reasoning" \
+            "SYMPTOM=$symptom" \
+            "CAPTURE=$capture" \
+            "REPRO_CONTEXT=$repro" \
+            > "$rendered_file"
 
           delim="EOF_$(openssl rand -hex 16)"
           {
