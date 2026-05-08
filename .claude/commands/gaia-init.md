@@ -255,6 +255,29 @@ chmod +x .gaia/statusline/*.sh
 
 (Idempotent — safe to run regardless.)
 
+### Verify installs
+
+After all installs and plugin registrations above, run a probe-after pass to confirm each component landed. For each component below, run the probe and emit one line:
+
+| Component | Probe |
+|---|---|
+| React Doctor | `[ -d ~/.claude/skills/react-doctor ]` |
+| Playwright CLI | `command -v playwright-cli && playwright-cli --version >/dev/null 2>&1` |
+| Serena | `claude mcp list 2>/dev/null \| grep -q '^serena '` |
+| typescript-lsp | `claude plugin list 2>/dev/null \| grep -q 'typescript-lsp'` |
+| claude-obsidian | `claude plugin list 2>/dev/null \| grep -q 'claude-obsidian'` |
+| spec-kit | `[ -f .specify/integration.json ] && grep -q 'gaia' .specify/extensions/.registry 2>/dev/null && grep -q 'gaia' .specify/presets/.registry 2>/dev/null` |
+
+Emit one line per component: `[ok] <component>` if the probe exits 0, `[FAIL] <component>` if it exits non-zero.
+
+After all probes run: if any component shows `[FAIL]`, print the full table, then halt `/gaia-init` with:
+
+> "One or more components failed verification. Retry the failed install commands above, then resume with `.gaia/cli/gaia init resume`."
+
+If all probes pass, print the full table and continue to Step 9.
+
+The same probe set applies when setting up from an existing clone — `/setup-gaia` runs it after registering external tools.
+
 ## Step 9: Mentorship opt-in
 
 Tell the user (in their language): "GAIA includes an optional mentorship layer that learns how you work and adapts in-session — fully on your machine, never sent off it. Let's set the default."
