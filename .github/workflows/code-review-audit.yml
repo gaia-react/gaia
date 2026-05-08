@@ -257,9 +257,15 @@ jobs:
             --body "code-review-audit skipped: GAIA-Audit trailer matches version $MATCHED_VERSION tree $short_tree"
 
       - name: Status — audit aborted (budget exhausted)
-        # `continue-on-error: true` forces conclusion=success even on
-        # failure or step-level timeout (cancelled), so the only reliable
-        # signal that the audit did not run cleanly is `outcome != success`.
+        # `continue-on-error: true` on the audit step keeps the workflow
+        # alive after the audit fails (max-turns hit, SDK error, transient
+        # API failure) so this terminal step can post the truthful comment.
+        # `outcome != 'success'` is the only reliable signal that the audit
+        # did not run cleanly (the audit step's `conclusion` is forced to
+        # success by `continue-on-error`). After commenting, `exit 1`
+        # surfaces the abort as a red check on the PR — without it, the
+        # green-check-plus-aborted-comment combo silently hides real audit
+        # failures from PR authors.
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
@@ -269,6 +275,7 @@ jobs:
           set -eu
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit aborted: budget exhausted or agent error (see workflow run logs)"
+          exit 1
 
       - name: Status — audit complete
         if: |
