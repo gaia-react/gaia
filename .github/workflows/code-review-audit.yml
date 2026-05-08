@@ -3,12 +3,12 @@ name: Code Review Audit
 # Pre-merge gate that runs the `code-review-audit` agent
 # (.claude/agents/code-review-audit.md) against the PR diff. Skipped when
 # (a) the PR HEAD already carries a matching `GAIA-Audit:` commit trailer
-# (locally-stamped audit), or (b) the PR diff contains no audit-relevant
+# (locally-stamped audit), (b) the PR diff contains no audit-relevant
 # files (wiki, instruction files, and other prose-only surfaces are out
-# of scope). Adopter-tunable knobs live at .gaia/audit-ci.yml; the frozen
-# contracts (trailer format, skip logic, check name) live at
-# .gaia/local/plans/code-review-audit-ci/trailer-format.md and that plan's
-# README.
+# of scope), or (c) the PR modifies this workflow file itself
+# (claude-code-action's workflow-validation guardrail would refuse to
+# run, so the audit cannot complete regardless). Adopter-tunable knobs
+# live at .gaia/audit-ci.yml.
 #
 # Required-check semantics under classic branch protection: the job MUST
 # reach a terminal "set check status" step on every code path. A skipped
@@ -106,17 +106,43 @@ jobs:
             echo "has_source=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check workflow self-modification
+        id: workflow-self-mod
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          # claude-code-action enforces a workflow-validation guardrail:
+          # it refuses to run when the workflow file on the PR branch
+          # differs from the version on main (security: prevents secret
+          # exfiltration via PR-modified workflows). When this PR
+          # touches the workflow itself, the audit cannot run, so skip
+          # cleanly and surface a truthful comment instead of letting
+          # the abort path post a misleading message.
+          changed=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}")
+          if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/code-review-audit\.yml$'; then
+            echo "self_modified=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "self_modified=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check audit trailer
         id: trailer
         if: |
           steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true'
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false'
         run: bash .github/audit/check-trailer.sh >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'false'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
 
@@ -124,6 +150,7 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'false'
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -134,6 +161,7 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'false'
         run: pnpm install --frozen-lockfile
 
@@ -142,6 +170,7 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'false'
         env:
           BUDGET_SECONDS: ${{ steps.config.outputs.budget_seconds }}
@@ -164,6 +193,7 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'false'
         # Continue on failure: max-turns / SDK / API errors must not strand
         # the PR check in a half-state. The status-summary terminal steps
@@ -194,6 +224,7 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success'
@@ -256,31 +287,45 @@ jobs:
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: GAIA-Audit trailer matches version $MATCHED_VERSION tree $short_tree"
 
-      - name: Status — audit aborted (budget exhausted)
-        # `continue-on-error: true` on the audit step keeps the workflow
-        # alive after the audit fails (max-turns hit, SDK error, transient
-        # API failure) so this terminal step can post the truthful comment.
-        # `outcome != 'success'` is the only reliable signal that the audit
-        # did not run cleanly (the audit step's `conclusion` is forced to
-        # success by `continue-on-error`). After commenting, `exit 1`
-        # surfaces the abort as a red check on the PR — without it, the
-        # green-check-plus-aborted-comment combo silently hides real audit
-        # failures from PR authors.
+      - name: Status — skipped (workflow self-modification)
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'true'
+        run: |
+          set -eu
+          gh pr comment "$PR_NUMBER" \
+            --body "code-review-audit skipped: PR modifies the audit workflow itself; claude-code-action's workflow-validation guardrail would refuse to run"
+
+      - name: Status — audit aborted
+        # `continue-on-error: true` on the audit step keeps the workflow
+        # alive after the audit fails so this terminal step can post the
+        # truthful comment. `outcome != 'success'` is the only reliable
+        # signal that the audit did not run cleanly (the audit step's
+        # `conclusion` is forced to success by `continue-on-error`).
+        # Common causes: max-turns hit, SDK error, transient API
+        # failure, or a workflow-validation refusal that slipped past
+        # the self-modification skip. After commenting, `exit 1`
+        # surfaces the abort as a red check on the PR — without it, the
+        # green-check-plus-aborted-comment combo silently hides real
+        # audit failures from PR authors.
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome != 'success'
         run: |
           set -eu
           gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit aborted: budget exhausted or agent error (see workflow run logs)"
+            --body "code-review-audit aborted: workflow validation refusal, max-turns, SDK error, or transient API failure (see workflow run logs)"
           exit 1
 
       - name: Status — audit complete
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success'
         env:
