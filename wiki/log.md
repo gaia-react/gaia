@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-08 9bf6ad4 SKIP — Serena handles hooks — audit-stamp-trailer.sh and code-review-audit.md updates
+- 2026-05-08 6c3c17d SKIP — chore(deps): version bump only
+- 2026-05-08 891f3ae WORTHY — updated forensics skill files and wiki/concepts/Forensics.md to remove studio/ references → wiki/concepts/Forensics.md
+- 2026-05-08 70a4708 SKIP — wiki: self-referential
 - 2026-05-08 09f3f1d SKIP — CI workflow guard refactor — no wiki impact
 - 2026-05-08 9e53032 SKIP — wiki: self-referential
 - 2026-05-08 a1a72e2 SKIP — CI workflow self-mod handling — no wiki impact
