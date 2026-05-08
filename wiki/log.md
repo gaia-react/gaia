@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-08 843ffec RE_ANCHOR — re-anchored after history rewrite
 - 2026-05-08 158c86b - SKIP: docs(claude-integration): codify UAT/SPEC narrative-ref discipline (wiki-style + wiki-lint)
 - 2026-05-08 b4b9ce5 - SKIP: docs(claude-integration): audit #13 — ship check-updates, scrub SPEC IDs in extension surfaces
 - 2026-05-08 5c005da - SKIP: docs(claude-integration): close wikilink-to-excluded class across full corpus
