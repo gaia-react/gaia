@@ -8,7 +8,7 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-**Claude is raw power. GAIA is order and focus.**
+**Claude is raw power. [GAIA](https://gaiareact.com/) is order and focus.**
 
 The React workflow that keeps Claude-shipped code production-grade as your team scales. Every convention enforced in code. Every shortcut blocked at the source. Every merge audited before it lands.
 
@@ -22,7 +22,9 @@ The React workflow that keeps Claude-shipped code production-grade as your team 
 
 **Supported platforms:** macOS and Linux. Windows users should run GAIA inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) — the hooks and CLI rely on bash and POSIX file paths, and native Windows is not exercised in CI.
 
-Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, preferably via [nvm](https://github.com/nvm-sh/nvm), and [uv](https://astral.sh/uv) (required for the Serena MCP server — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`).
+Make sure you have [Node.js](https://nodejs.org/en/) >= 22.19.0 installed, preferably via [nvm](https://github.com/nvm-sh/nvm).
+
+[uv](https://astral.sh/uv) is required for the Serena MCP server. GAIA will install it for you during setup if you don't already have it.
 
 ```bash
 npx create-gaia@latest my-app
@@ -30,7 +32,11 @@ npx create-gaia@latest my-app
 
 One simple command. GAIA takes care of the rest.
 
-[Documentation](https://gaiareact.com/)
+[Learn more about GAIA](https://gaiareact.com/)
+
+> ⚠️ **NOTE**: Do not clone or fork this repo to start a new project. Always use `npx create-gaia@latest my-app` to ensure a proper setup.
+
+
 
 ## The two problems GAIA solves
 
