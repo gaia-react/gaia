@@ -15,6 +15,7 @@ import {run as runReadConfig} from './read-config.js';
 import {run as runReadState} from './read-state.js';
 import {run as runRecordOverage} from './record-overage.js';
 import {run as runRecordRun} from './record-run.js';
+import {run as runRenderWorkflows} from './render-workflows.js';
 
 const HELP_TEXT = `Usage: gaia automation <subcommand> [args]
 
@@ -26,6 +27,7 @@ const HELP_TEXT = `Usage: gaia automation <subcommand> [args]
   record-run <tool> --sha <sha> --trigger <cron|force|workflow_dispatch> --cost <dollars> [--at <iso>]
   record-overage <tool> --cost <dollars>
   clear-overage <tool>
+  render-workflows --out-dir <path> [--tools <csv>] [--dry-run]
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -43,6 +45,7 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   'read-state': runReadState,
   'record-overage': runRecordOverage,
   'record-run': runRecordRun,
+  'render-workflows': runRenderWorkflows,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {
