@@ -23,6 +23,7 @@ import {run as runSetSecret} from './set-secret.js';
 import {run as runStatus} from './status.js';
 import {run as runVerifyRun} from './verify-run.js';
 import {run as runWarnExistingTools} from './warn-existing-tools.js';
+import {run as runWriteToolMode} from './write-tool-mode.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci <subcommand> [args]
 
@@ -39,6 +40,7 @@ const HELP_TEXT = `Usage: gaia setup-ci <subcommand> [args]
   verify-run <workflow-file> [--timeout-seconds N] [--json]
                                            Trigger workflow_dispatch and watch run.
   finalize                                 Flip setup_complete=true.
+  write-tool-mode <tool> <mode>            Set a tool's mode in .gaia/automation.json.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -58,6 +60,7 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   status: runStatus,
   'verify-run': runVerifyRun,
   'warn-existing-tools': runWarnExistingTools,
+  'write-tool-mode': runWriteToolMode,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {
