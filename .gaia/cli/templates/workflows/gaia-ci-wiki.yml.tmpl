@@ -1,0 +1,29 @@
+{{> partials/header }}
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+{{> partials/concurrency }}
+{{> partials/auth-env }}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+{{> partials/checkout-setup }}
+{{> partials/pre-run-skip }}
+{{> partials/quality-gate }}
+{{#enable_diff_size_check}}
+      - name: Run gaia wiki chain
+        if: steps.pre_run.outputs.decision == 'run'
+        env:
+          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
+        run: |
+          set -euo pipefail
+          node .gaia/cli/dist/index.js wiki sync
+          node .gaia/cli/dist/index.js wiki consolidate
+          node .gaia/cli/dist/index.js wiki lint
+{{/enable_diff_size_check}}
+{{> partials/auto-merge }}
+{{> partials/cost-accounting }}
