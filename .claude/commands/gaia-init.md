@@ -304,7 +304,7 @@ If the user picks "Customize per tool", show this table and use AskUserQuestion 
 
 Mode meanings:
 
-- `ci` — runs in GitHub Actions on the documented cadence; PRs auto-merge on green CI per the SPEC.
+- `ci` — runs in GitHub Actions on the documented cadence; PRs auto-merge on green CI.
 - `local` — does not run in CI; only the adopter's local invocation runs the tool.
 - `off` — never runs (neither in CI nor locally via the smart entrypoints).
 

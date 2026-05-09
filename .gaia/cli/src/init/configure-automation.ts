@@ -18,15 +18,10 @@
  *
  * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
  */
-import {mkdirSync, renameSync, writeFileSync} from 'node:fs';
-import path from 'node:path';
 import {z} from 'zod';
-import {automationConfigPath} from '../automation/paths.js';
 import {EXIT_CODES} from '../exit.js';
-import {
-  AutomationConfigSchema,
-  type AutomationConfig,
-} from '../schemas/automation-config.js';
+import {type AutomationConfig} from '../schemas/automation-config.js';
+import {writeAutomationConfig} from '../setup-ci/util/automation-write.js';
 import {structuredError} from '../stderr.js';
 import {markStepCompleted} from './util/state.js';
 
@@ -176,26 +171,16 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {flags: {pnpmAudit, sharpen, staleBranches, wiki}, ok: true};
 };
 
-const buildConfig = (flags: Flags): AutomationConfig =>
-  AutomationConfigSchema.parse({
-    pnpm_audit: {mode: flags.pnpmAudit, schedule: 'daily'},
-    setup_complete: false,
-    setup_opted_out: false,
-    sharpen: {mode: flags.sharpen, schedule: 'weekly'},
-    stale_branches: {mode: flags.staleBranches, schedule: 'monthly'},
-    update_gaia: {mode: 'local'},
-    version: 1,
-    wiki: {mode: flags.wiki},
-  });
-
-const writeConfig = (cwd: string, config: AutomationConfig): void => {
-  const target = automationConfigPath(cwd);
-  mkdirSync(path.dirname(target), {recursive: true});
-  const serialized = `${JSON.stringify(config, null, 2)}\n`;
-  const tmp = `${target}.tmp`;
-  writeFileSync(tmp, serialized, 'utf8');
-  renameSync(tmp, target);
-};
+const buildConfig = (flags: Flags): AutomationConfig => ({
+  pnpm_audit: {mode: flags.pnpmAudit, schedule: 'daily'},
+  setup_complete: false,
+  setup_opted_out: false,
+  sharpen: {mode: flags.sharpen, schedule: 'weekly'},
+  stale_branches: {mode: flags.staleBranches, schedule: 'monthly'},
+  update_gaia: {mode: 'local'},
+  version: 1,
+  wiki: {mode: flags.wiki},
+});
 
 type RunOptions = {
   cwd?: string;
@@ -224,11 +209,10 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-
-  let config: AutomationConfig;
+  const config = buildConfig(parsed.flags);
 
   try {
-    config = buildConfig(parsed.flags);
+    writeAutomationConfig(cwd, config);
   } catch (error) {
     if (error instanceof z.ZodError) {
       structuredError({
@@ -244,20 +228,8 @@ export const run = (
         subcommand: SUBCOMMAND,
       });
 
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return EXIT_CODES.PAYLOAD_VALIDATION_FAILED;
     }
-    structuredError({
-      code: 'configure_automation_failed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: SUBCOMMAND,
-    });
-
-    return UNEXPECTED_EXIT;
-  }
-
-  try {
-    writeConfig(cwd, config);
-  } catch (error) {
     structuredError({
       code: 'configure_automation_failed',
       message: error instanceof Error ? error.message : String(error),
