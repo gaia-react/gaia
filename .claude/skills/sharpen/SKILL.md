@@ -1,6 +1,6 @@
 ---
-name: update-deps
-description: Autonomous Dependabot - auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /update-deps` indicator or asks "update dependencies", "bump deps", "run dependabot".
+name: sharpen
+description: Autonomous Dependabot — auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /sharpen` indicator or asks "update dependencies", "bump deps", "run dependabot", "sharpen the deps".
 ---
 
 Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts — just execute.
@@ -39,14 +39,14 @@ if [ -n "$common_dir" ]; then
       fi
     fi
     cat <<EOF
-/update-deps must run from the main checkout, not a worktree.
+/sharpen must run from the main checkout, not a worktree.
 
 Worktree:       $current_root
 Main checkout:  $main_root
 
 $cached_line
 
-Run \`cd $main_root\` then re-invoke /update-deps.
+Run \`cd $main_root\` then re-invoke /sharpen.
 EOF
     exit 1
   fi
