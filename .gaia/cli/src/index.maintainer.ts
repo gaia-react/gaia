@@ -14,6 +14,7 @@
  */
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
 import {run as runFetchCoaching} from './adaptation/inject.js';
+import {run as runAutomation} from './automation/index.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
@@ -35,6 +36,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
+  automation read-config|read-state|init-state|bump-state|cron-decide|record-run|record-overage|clear-overage
   update merge --baseline <dir> --latest <dir> --manifest <path>
   release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
@@ -52,6 +54,7 @@ type SubcommandHandler = (
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+  automation: runAutomation,
   init: runInit,
   mentorship: runMentorship,
   release: runRelease,
