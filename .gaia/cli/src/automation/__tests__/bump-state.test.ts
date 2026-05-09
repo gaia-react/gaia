@@ -97,4 +97,14 @@ describe('automation bump-state', () => {
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('state_missing');
   });
+
+  it('exits non-zero when --field is unknown', () => {
+    sandbox.writeState('wiki', baseState(sandbox.headSha));
+    const exit = run(['wiki', '--field', 'unrecognized', '--value', '5'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).not.toBe(0);
+    expect(stdio.errors.join('')).toContain('invalid_arguments');
+    expect(stdio.errors.join('')).toContain('unknown field: unrecognized');
+  });
 });

@@ -15404,6 +15404,15 @@ var run2 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
+  const knownFields = Object.keys(AutomationStateFileSchema.shape);
+  if (!knownFields.includes(field)) {
+    structuredError({
+      code: "invalid_arguments",
+      message: `unknown field: ${field}`,
+      subcommand: "automation bump-state"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
   let repoRoot2;
   try {
     repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
@@ -15574,8 +15583,8 @@ var HELP_TEXT3 = `Usage: gaia automation cron-decide <tool> [--json]
   per-tool state file, then emits {decision, reason, skip_log_line}.
   Decision priority:
     1. tool_off       (config.<tool>.mode == "off")
-    2. cost_overage   (state.cost_overage == true)
-    3. first_run      (state file missing)
+    2. first_run      (state file missing)
+    3. cost_overage   (state.cost_overage == true)
     4. ceiling_14d    (last_run_at > 14 days ago)
     5. skip_safety_5  (skip_count > 5)
     6. floor_24h      (last_run_at < 24 hours ago)
@@ -16738,7 +16747,7 @@ var run12 = (command, args, options = {}) => {
     env: options.env ?? process.env,
     stdio: ["ignore", "pipe", "pipe"]
   });
-  const exitCode = result.status ?? (result.signal === null ? 1 : 1);
+  const exitCode = result.status ?? 1;
   return {
     exitCode,
     stderr: result.stderr ?? "",
@@ -21770,7 +21779,7 @@ var run47 = async (argv, options = {}) => {
   });
   if (!result.ok) {
     process.stdout.write(
-      `${JSON.stringify({ applied: false, error: result.stderr.trim() })}
+      `${JSON.stringify({ applied: false, error: "gh_api_error" })}
 `
     );
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -22112,6 +22121,7 @@ var HELP_TEXT39 = `Usage: gaia setup-ci verify-run <workflow-file> [--timeout-se
 var HELP_TOKENS37 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DEFAULT_TIMEOUT_SECONDS = 600;
 var DEFAULT_POLL_INTERVAL_MS = 1e4;
+var RACE_WINDOW_GUARD_MS = 5e3;
 var sleep = (ms) => new Promise((resolve) => {
   setTimeout(resolve, ms);
 });
@@ -22211,6 +22221,7 @@ var run52 = async (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const cwd = options.cwd ?? process.cwd();
+  const triggerTime = Date.now();
   const triggerResult = await runGh2({
     args: ["workflow", "run", workflowFile, "--ref", "main"],
     cwd
@@ -22259,6 +22270,15 @@ var run52 = async (argv, options = {}) => {
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
     runId = String(first.databaseId);
+    if (first.createdAt !== void 0) {
+      const createdAtMs = new Date(first.createdAt).getTime();
+      if (!Number.isNaN(createdAtMs) && createdAtMs < triggerTime - RACE_WINDOW_GUARD_MS) {
+        process.stderr.write(
+          `verify-run: warning \u2014 picked run ${runId} createdAt ${first.createdAt} predates trigger time by ${triggerTime - createdAtMs}ms; may be a concurrent dispatch
+`
+        );
+      }
+    }
   } catch (error51) {
     structuredError({
       code: "run_list_malformed",

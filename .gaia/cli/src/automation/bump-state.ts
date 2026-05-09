@@ -119,6 +119,21 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
+  // Zod's `.strip()` silently drops unknown keys at parse time, so an
+  // unrecognized --field would round-trip as a no-op. Reject early with
+  // a structured error so the caller knows the bump did not happen.
+  const knownFields = Object.keys(AutomationStateFileSchema.shape);
+
+  if (!knownFields.includes(field)) {
+    structuredError({
+      code: 'invalid_arguments',
+      message: `unknown field: ${field}`,
+      subcommand: 'automation bump-state',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
   let repoRoot: string;
 
   try {

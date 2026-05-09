@@ -48,8 +48,8 @@ const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
   per-tool state file, then emits {decision, reason, skip_log_line}.
   Decision priority:
     1. tool_off       (config.<tool>.mode == "off")
-    2. cost_overage   (state.cost_overage == true)
-    3. first_run      (state file missing)
+    2. first_run      (state file missing)
+    3. cost_overage   (state.cost_overage == true)
     4. ceiling_14d    (last_run_at > 14 days ago)
     5. skip_safety_5  (skip_count > 5)
     6. floor_24h      (last_run_at < 24 hours ago)

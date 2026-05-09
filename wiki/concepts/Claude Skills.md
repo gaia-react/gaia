@@ -53,7 +53,7 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 
 `sharpen` and `update-gaia` are surfaced by the **statusline**, not by a hook. `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns a yellow `Run /sharpen (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segment when applicable. The wrapper delegates left-side rendering to `~/.claude/settings.json`'s existing `statusLine.command` (or falls back to `.gaia/statusline/preferred-base.sh` via the `.use-vendored-base` sentinel) so the adopter's existing statusline appears unchanged. The hot path is cache-only — no network, no `pnpm` calls — and a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. Silent on missing cache or missing `jq`.
 
-A prior design used a `SessionStart` `<system-reminder>` hook. It was dropped because the reminder is invisible to the user (only the model sees it), so prompts fired and snoozed without the user ever being shown a choice. The statusline is always visible, has no snooze state, and clears itself the moment the underlying cache reports clean.
+The statusline surface is chosen over a `SessionStart` `<system-reminder>` hook because system-reminders are visible only to the model; the user never sees them, so prompts fire and snooze without the user being shown a choice. The statusline is always visible, has no snooze state, and clears itself the moment the underlying cache reports clean.
 
 ## Rules vs. Skills — decision criteria
 
