@@ -1,0 +1,266 @@
+name: 'GAIA CI — Merge and Watch'
+description: |
+  Enables auto-merge on a GAIA CI PR, watches post-merge CI, and runs the
+  one-shot auto-revert + escalation pipeline on failure. Slice 2 of SPEC-001.
+inputs:
+  pr-number:
+    description: 'PR number to merge.'
+    required: true
+  label:
+    description: 'PR label predicate. v1 uses gaia-ci.'
+    required: true
+  merge-method:
+    description: 'squash | merge | rebase'
+    required: false
+    default: 'squash'
+  gh-token:
+    description: 'Token with pull-requests:write + contents:write + issues:write.'
+    required: true
+outputs:
+  merge-conclusion:
+    description: 'merged | closed_without_merge | revert_opened | revert_failed'
+    value: ${{ steps.summarize.outputs.conclusion }}
+  revert-pr:
+    description: 'Revert PR number on revert paths; empty otherwise.'
+    value: ${{ steps.summarize.outputs.revert_pr }}
+  revert-branch:
+    description: 'Revert branch name on revert paths; empty otherwise.'
+    value: ${{ steps.summarize.outputs.revert_branch }}
+  priority-high-issue:
+    description: 'Issue number opened on revert dispatch; empty otherwise.'
+    value: ${{ steps.summarize.outputs.high_issue }}
+  priority-critical-issue:
+    description: 'Issue number opened on revert failure; empty otherwise.'
+    value: ${{ steps.summarize.outputs.critical_issue }}
+runs:
+  using: 'composite'
+  steps:
+    - id: enable-auto-merge
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        MERGE_METHOD: ${{ inputs.merge-method }}
+      run: |
+        set -euo pipefail
+        merge_output="$(gh pr merge "$PR_NUMBER" "--$MERGE_METHOD" --auto 2>&1)"
+        rc=$?
+        if [[ $rc -ne 0 ]]; then
+          if [[ "$merge_output" == *"is already used by worktree"* ]]; then
+            echo "::notice title=GAIA CI::PR #$PR_NUMBER auto-merge already enabled (worktree-conflict ignored per SPEC contract)"
+          else
+            echo "::error title=GAIA CI::failed to enable auto-merge for PR #$PR_NUMBER: $merge_output"
+            exit 1
+          fi
+        else
+          echo "::notice title=GAIA CI::auto-merge enabled for PR #$PR_NUMBER"
+        fi
+
+    - id: wait-for-merge
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+      run: |
+        set -euo pipefail
+        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-merge.sh "$PR_NUMBER")"
+        echo "result=$result_json" >> "$GITHUB_OUTPUT"
+        echo "merge_state=$(jq -r '.state' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        echo "merge_sha=$(jq -r '.sha // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        echo "merge_title=$(jq -r '.title // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+
+    - id: branch-on-merge-state
+      shell: bash
+      env:
+        MERGE_STATE: ${{ steps.wait-for-merge.outputs.merge_state }}
+      run: |
+        set -euo pipefail
+        if [[ "$MERGE_STATE" == "MERGED" ]]; then
+          echo "proceed_to_check=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "proceed_to_check=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - id: wait-for-ci
+      if: steps.branch-on-merge-state.outputs.proceed_to_check == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        MERGE_SHA: ${{ steps.wait-for-merge.outputs.merge_sha }}
+      run: |
+        set -euo pipefail
+        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$MERGE_SHA")"
+        echo "result=$result_json" >> "$GITHUB_OUTPUT"
+        echo "conclusion=$(jq -r '.conclusion' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        echo "run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+
+    - id: branch-on-ci
+      shell: bash
+      env:
+        CI_CONCLUSION: ${{ steps.wait-for-ci.outputs.conclusion }}
+      run: |
+        set -euo pipefail
+        if [[ "$CI_CONCLUSION" == "failure" ]]; then
+          echo "proceed_to_revert=true" >> "$GITHUB_OUTPUT"
+          echo "done_clean=false" >> "$GITHUB_OUTPUT"
+        elif [[ "$CI_CONCLUSION" == "success" ]]; then
+          echo "proceed_to_revert=false" >> "$GITHUB_OUTPUT"
+          echo "done_clean=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "proceed_to_revert=false" >> "$GITHUB_OUTPUT"
+          echo "done_clean=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - id: open-revert
+      if: steps.branch-on-ci.outputs.proceed_to_revert == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        LABEL: ${{ inputs.label }}
+        MERGE_SHA: ${{ steps.wait-for-merge.outputs.merge_sha }}
+      run: |
+        set -euo pipefail
+        revert_json="$(gaia ci-revert open --pr "$PR_NUMBER" --label "$LABEL" --reason "post-merge CI failure on $MERGE_SHA" --json)"
+        rc=$?
+        if [[ $rc -ne 0 ]]; then
+          err_code="$(jq -r '.error // ""' <<<"$revert_json")"
+          if [[ "$err_code" == "revert_already_opened" ]]; then
+            existing="$(jq -r '.existing_revert_pr // ""' <<<"$revert_json")"
+            echo "::warning title=GAIA CI::revert already opened for PR #$PR_NUMBER (revert PR #$existing); reusing existing"
+            echo "revert_pr=$existing" >> "$GITHUB_OUTPUT"
+            echo "revert_branch=" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error title=GAIA CI::ci-revert open failed: $revert_json"
+            exit 1
+          fi
+        else
+          echo "revert_pr=$(jq -r '.revert_pr' <<<"$revert_json")" >> "$GITHUB_OUTPUT"
+          echo "revert_branch=$(jq -r '.revert_branch' <<<"$revert_json")" >> "$GITHUB_OUTPUT"
+        fi
+
+    - id: open-priority-high-issue
+      if: steps.open-revert.outcome == 'success' && steps.open-revert.conclusion == 'success'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        ORIGINAL_PR: ${{ inputs.pr-number }}
+        ORIGINAL_TITLE: ${{ steps.wait-for-merge.outputs.merge_title }}
+        REVERT_PR: ${{ steps.open-revert.outputs.revert_pr }}
+        MERGE_SHA: ${{ steps.wait-for-merge.outputs.merge_sha }}
+        FAILED_RUN_URL: ${{ steps.wait-for-ci.outputs.run_url }}
+        WORKFLOW_NAME: ${{ github.workflow }}
+        REVERT_FAILED_RUN_URL: ''
+      run: |
+        set -euo pipefail
+        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/priority-high-revert-opened.md")"
+        issue_url="$(printf '%s\n' "$body" | gh issue create \
+          --title "GAIA CI: PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR}" \
+          --label "priority:high" \
+          --label "gaia-ci" \
+          --body-file -)"
+        issue_number="${issue_url##*/}"
+        echo "high_issue=$issue_number" >> "$GITHUB_OUTPUT"
+        echo "::notice title=GAIA CI::PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR} — see issue #${issue_number} (priority:high)"
+
+    - id: wait-for-revert-merge
+      if: steps.open-revert.outcome == 'success' && steps.open-revert.conclusion == 'success'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        REVERT_PR: ${{ steps.open-revert.outputs.revert_pr }}
+      run: |
+        set -euo pipefail
+        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-merge.sh "$REVERT_PR")"
+        echo "revert_merge_state=$(jq -r '.state' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        echo "revert_merge_sha=$(jq -r '.sha // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+
+    - id: wait-for-revert-ci
+      if: steps.wait-for-revert-merge.outputs.revert_merge_state == 'MERGED'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        REVERT_MERGE_SHA: ${{ steps.wait-for-revert-merge.outputs.revert_merge_sha }}
+      run: |
+        set -euo pipefail
+        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$REVERT_MERGE_SHA")"
+        echo "revert_conclusion=$(jq -r '.conclusion' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        echo "revert_run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+
+    - id: branch-on-revert-conclusion
+      if: steps.open-revert.outcome == 'success' && steps.open-revert.conclusion == 'success'
+      shell: bash
+      env:
+        REVERT_CONCLUSION: ${{ steps.wait-for-revert-ci.outputs.revert_conclusion }}
+        REVERT_MERGE_STATE: ${{ steps.wait-for-revert-merge.outputs.revert_merge_state }}
+      run: |
+        set -euo pipefail
+        if [[ "$REVERT_CONCLUSION" == "failure" ]] || [[ "$REVERT_MERGE_STATE" == "CLOSED" ]]; then
+          echo "revert_failed=true" >> "$GITHUB_OUTPUT"
+          echo "revert_clean=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "revert_failed=false" >> "$GITHUB_OUTPUT"
+          echo "revert_clean=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - id: mark-revert-failed-and-escalate
+      if: steps.branch-on-revert-conclusion.outputs.revert_failed == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        ORIGINAL_PR: ${{ inputs.pr-number }}
+        ORIGINAL_TITLE: ${{ steps.wait-for-merge.outputs.merge_title }}
+        REVERT_PR: ${{ steps.open-revert.outputs.revert_pr }}
+        MERGE_SHA: ${{ steps.wait-for-merge.outputs.merge_sha }}
+        FAILED_RUN_URL: ${{ steps.wait-for-ci.outputs.run_url }}
+        REVERT_FAILED_RUN_URL: ${{ steps.wait-for-revert-ci.outputs.revert_run_url }}
+        WORKFLOW_NAME: ${{ github.workflow }}
+      run: |
+        set -euo pipefail
+        gaia ci-revert mark-failed --pr "$PR_NUMBER" --json >/dev/null
+        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/priority-critical-revert-failed.md")"
+        issue_url="$(printf '%s\n' "$body" | gh issue create \
+          --title "GAIA CI: revert of PR #${ORIGINAL_PR} also failed — bot stopped" \
+          --label "priority:critical" \
+          --label "gaia-ci" \
+          --body-file -)"
+        issue_number="${issue_url##*/}"
+        echo "critical_issue=$issue_number" >> "$GITHUB_OUTPUT"
+        echo "::error title=GAIA CI::revert PR #${REVERT_PR} failed CI; bot stopped — see issue #${issue_number} (priority:critical)"
+
+    - id: summarize
+      shell: bash
+      env:
+        DONE_CLEAN: ${{ steps.branch-on-ci.outputs.done_clean }}
+        MERGE_STATE: ${{ steps.wait-for-merge.outputs.merge_state }}
+        REVERT_FAILED: ${{ steps.branch-on-revert-conclusion.outputs.revert_failed }}
+        REVERT_CLEAN: ${{ steps.branch-on-revert-conclusion.outputs.revert_clean }}
+        REVERT_PR: ${{ steps.open-revert.outputs.revert_pr }}
+        REVERT_BRANCH: ${{ steps.open-revert.outputs.revert_branch }}
+        HIGH_ISSUE: ${{ steps.open-priority-high-issue.outputs.high_issue }}
+        CRITICAL_ISSUE: ${{ steps.mark-revert-failed-and-escalate.outputs.critical_issue }}
+        ORIGINAL_PR: ${{ inputs.pr-number }}
+      run: |
+        set -euo pipefail
+        if [[ "$REVERT_FAILED" == "true" ]]; then
+          conclusion="revert_failed"
+        elif [[ -n "$REVERT_PR" ]]; then
+          conclusion="revert_opened"
+        elif [[ "$MERGE_STATE" == "CLOSED" ]]; then
+          conclusion="closed_without_merge"
+        elif [[ "$DONE_CLEAN" == "true" ]]; then
+          conclusion="merged"
+        else
+          conclusion="unknown"
+        fi
+        echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
+        echo "revert_pr=${REVERT_PR}" >> "$GITHUB_OUTPUT"
+        echo "revert_branch=${REVERT_BRANCH}" >> "$GITHUB_OUTPUT"
+        echo "high_issue=${HIGH_ISSUE}" >> "$GITHUB_OUTPUT"
+        echo "critical_issue=${CRITICAL_ISSUE}" >> "$GITHUB_OUTPUT"
+        if [[ "$conclusion" == "merged" ]]; then
+          echo "::notice title=GAIA CI::PR #${ORIGINAL_PR} merged green"
+        fi
