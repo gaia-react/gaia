@@ -278,7 +278,57 @@ If all probes pass, print the full table and continue to Step 9.
 
 The same probe set applies when setting up from an existing clone — `/setup-gaia` runs it after registering external tools.
 
-## Step 9: Mentorship opt-in
+## Step 9: Configure GAIA CI (Phase A)
+
+GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/sharpen`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A — this step — is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia-ci` to wire up tokens and activate CI (Phase B).
+
+Tell the user (in their language; the table headers stay English):
+
+> Configure GAIA's automated maintenance jobs. Recommended: enable all four in CI mode so they run unattended. You can pick a different mode per tool.
+
+Use AskUserQuestion to confirm the recommendation OR open per-tool overrides:
+
+> How should GAIA CI's tools run?
+>
+> - **Enable all four in CI mode (Recommended).** Sets `wiki`, `sharpen`, `pnpm_audit`, and `stale_branches` to `ci`. Phase B (`/setup-gaia-ci`) activates them.
+> - **Customize per tool.** Show the table below and ask for each tool's mode.
+
+If the user picks "Customize per tool", show this table and use AskUserQuestion once per row (or one combined free-text prompt; the prose is the contract, the prompt shape is at the assistant's discretion):
+
+| Tool | Default | What it does | Modes |
+|---|---|---|---|
+| `wiki` | `ci` | Smart-cron wiki sync against `app/**` changes. | `ci` / `local` / `off` |
+| `sharpen` | `ci` | Weekly dependency refresh, auto-merging patch/minor. | `ci` / `local` / `off` |
+| `pnpm_audit` | `ci` | Daily security audit; targeted PR for high/critical. | `ci` / `local` / `off` |
+| `stale_branches` | `ci` | Monthly cleanup of branches merged >30 days ago. | `ci` / `local` / `off` |
+
+Mode meanings:
+
+- `ci` — runs in GitHub Actions on the documented cadence; PRs auto-merge on green CI.
+- `local` — does not run in CI; only the adopter's local invocation runs the tool.
+- `off` — never runs (neither in CI nor locally via the smart entrypoints).
+
+The fifth config key, `update_gaia.mode`, is fixed to `local` and not surfaced as a question — `/update-gaia` is a per-machine command by design.
+
+### Apply the answer
+
+Once you have a value for each of the four tools, run:
+
+```bash
+.gaia/cli/gaia init configure-automation \
+  --wiki <wiki-mode> \
+  --sharpen <sharpen-mode> \
+  --pnpm-audit <pnpm-audit-mode> \
+  --stale-branches <stale-branches-mode>
+```
+
+Substitute each `<*-mode>` with the user's selection (`ci`, `local`, or `off`).
+
+If the CLI exits non-zero, surface the structured-error JSON verbatim and stop. The user can re-run the failing command manually after addressing the cause, then resume `/gaia-init` with `.gaia/cli/gaia init resume`.
+
+End of Step 9.
+
+## Step 10: Mentorship opt-in
 
 Tell the user (in their language): "GAIA includes an optional mentorship layer that learns how you work and adapts in-session — fully on your machine, never sent off it. Let's set the default."
 
@@ -325,13 +375,13 @@ Use AskUserQuestion with these three options in this exact order:
 
 Drop into Q&A using the explainer above as the design source of truth. The privacy contract is bundled in the gaia CLI binary and applied to per-machine state by `gaia mentorship _internal-write-config` — no extra step here. When the user signals they're done (e.g. "ok ready to decide"), re-present the same AskUserQuestion. Loop until the user picks Not now or Yes.
 
-End of Step 9.
+End of Step 10.
 
-## Step 10: Refresh the wiki
+## Step 11: Refresh the wiki
 
 The template ships with a wiki shaped for the upstream GAIA project. Refresh the two files that encode "where we are right now" so the new project starts with a clean context:
 
-### 10a. Overwrite `wiki/hot.md`
+### 11a. Overwrite `wiki/hot.md`
 
 Replace the entire file with:
 
@@ -356,7 +406,7 @@ tags: [meta, cache]
 - None.
 ```
 
-### 10b. Overwrite `wiki/log.md`
+### 11b. Overwrite `wiki/log.md`
 
 Replace the entire `wiki/log.md` file with the following content (the GAIA development log is irrelevant to the new project):
 
@@ -382,7 +432,7 @@ Append-only. New entries at the TOP.
 - Installed: React Doctor, TDD, Playwright CLI skills; typescript-lsp, claude-obsidian plugins
 ```
 
-## Step 11: Finalize
+## Step 12: Finalize
 
 Run the CLI's finalize step — it removes the `/init` interceptor hook, prunes the matching entry from `.claude/settings.json`, and deletes this command file:
 
@@ -390,7 +440,11 @@ Run the CLI's finalize step — it removes the `/init` interceptor hook, prunes 
 .gaia/cli/gaia init finalize
 ```
 
-Then output: "<Project Title> is ready for development. Restart Claude to pick up the new plugin and skill state."
+Then output:
+
+> <Project Title> is ready for development. Restart Claude to pick up the new plugin and skill state.
+>
+> After you create your GitHub repo and push, run `/setup-gaia-ci` to wire up tokens and enable CI.
 
 ## On failure: resume
 
@@ -400,4 +454,4 @@ If any `gaia init <step>` invocation exits non-zero, the structured-error JSON o
 .gaia/cli/gaia init resume
 ```
 
-Resume reads `.gaia/init-state.json`, skips already-complete steps, and replays remaining steps using the saved arguments. Use `--from-step <N>` to force restart from a specific step (1-indexed: 1=strip-branding, 2=configure-i18n, 3=rename, 4=wire-statusline, 5=finalize).
+Resume reads `.gaia/init-state.json`, skips already-complete steps, and replays remaining steps using the saved arguments. Use `--from-step <N>` to force restart from a specific step (1-indexed: 1=strip-branding, 2=configure-i18n, 3=rename, 4=wire-statusline, 5=configure-automation, 6=finalize).

@@ -21,6 +21,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {run as runConfigureAutomation} from './configure-automation.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
 import {run as runRename} from './rename.js';
@@ -41,7 +42,8 @@ const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
     2. configure-i18n
     3. rename
     4. wire-statusline
-    5. finalize
+    5. configure-automation
+    6. finalize
 
   Exit codes:
     0  resume completed
@@ -115,6 +117,7 @@ type StepRunner = (
 ) => number;
 
 const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
+  'configure-automation': runConfigureAutomation,
   'configure-i18n': runConfigureI18n,
   'finalize': runFinalize,
   'rename': runRename,
@@ -168,6 +171,35 @@ export const argvFromStepArgs = (
     if (typeof title !== 'string' || typeof kebab !== 'string') return null;
 
     return ['--title', title, '--kebab', kebab];
+  }
+
+  if (step === 'configure-automation') {
+    const wiki = saved.wiki;
+    const sharpen = saved.sharpen;
+    const pnpmAudit = saved.pnpm_audit;
+    const staleBranches = saved.stale_branches;
+    const valid = (value: unknown): boolean =>
+      value === 'ci' || value === 'local' || value === 'off';
+
+    if (
+      !valid(wiki) ||
+      !valid(sharpen) ||
+      !valid(pnpmAudit) ||
+      !valid(staleBranches)
+    ) {
+      return null;
+    }
+
+    return [
+      '--wiki',
+      wiki as string,
+      '--sharpen',
+      sharpen as string,
+      '--pnpm-audit',
+      pnpmAudit as string,
+      '--stale-branches',
+      staleBranches as string,
+    ];
   }
 
   // wire-statusline

@@ -101,6 +101,7 @@ export const STEP_ORDER = [
   'configure-i18n',
   'rename',
   'wire-statusline',
+  'configure-automation',
   'finalize',
 ] as const;
 
