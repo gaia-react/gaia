@@ -16,7 +16,7 @@
  * byte-identical content. The atomic temp + rename mirrors the
  * surrounding init handlers (`state.ts`, `finalize.ts`).
  *
- * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
+ * Stdout: nothing on success. Exit codes: 0 / 1 / 2 / 11.
  */
 import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
@@ -42,9 +42,10 @@ const HELP_TEXT = `Usage: gaia init configure-automation \\
     --stale-branches <ci|local|off>
 
   Exit codes:
-    0  success (no stdout)
-    1  user-correctable error (missing/invalid flag, schema violation)
-    2  unexpected (filesystem failure)
+    0   success (no stdout)
+    1   user-correctable error (missing/invalid flag)
+    11  schema violation (internal: built config failed schema parse)
+    2   unexpected (filesystem failure)
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);

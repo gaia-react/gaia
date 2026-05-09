@@ -17439,9 +17439,10 @@ var HELP_TEXT13 = `Usage: gaia init configure-automation \\
     --stale-branches <ci|local|off>
 
   Exit codes:
-    0  success (no stdout)
-    1  user-correctable error (missing/invalid flag, schema violation)
-    2  unexpected (filesystem failure)
+    0   success (no stdout)
+    1   user-correctable error (missing/invalid flag)
+    11  schema violation (internal: built config failed schema parse)
+    2   unexpected (filesystem failure)
 `;
 var HELP_TOKENS13 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT = 2;
