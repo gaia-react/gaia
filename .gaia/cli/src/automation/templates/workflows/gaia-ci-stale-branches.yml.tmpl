@@ -1,0 +1,44 @@
+{{> partials/header }}
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+{{> partials/concurrency }}
+{{> partials/auth-env }}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+{{> partials/checkout-setup }}
+{{> partials/pre-run-skip }}
+{{> partials/quality-gate }}
+{{#enable_stale_branch_delete}}
+      - name: Delete branches merged > 30 days ago
+        if: steps.pre_run.outputs.decision == 'run'
+        env:
+          RUN_COST_DOLLARS: "0"
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s)
+          # Walk all branches except the default branch (UAT-011).
+          default=$(gh api repos/${{ github.repository }} --jq '.default_branch')
+          gh api repos/${{ github.repository }}/branches --paginate --jq '.[].name' \
+            | grep -vF "$default" \
+            | while read -r br; do
+                # Skip if there's an open PR with this branch as head.
+                open=$(gh pr list --state open --head "$br" --json number --jq '.[0].number // empty')
+                if [ -n "$open" ]; then continue; fi
+                # Find the most recent merged PR with this branch as head.
+                merged_at=$(gh pr list --state closed --head "$br" --json mergedAt --jq '.[0].mergedAt // empty')
+                if [ -z "$merged_at" ]; then continue; fi
+                merged_ts=$(date -u -d "$merged_at" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$merged_at" +%s)
+                if [ "$merged_ts" -lt "$cutoff" ]; then
+                  echo "deleting stale branch: $br (merged $merged_at)"
+                  gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/$br
+                fi
+              done
+{{/enable_stale_branch_delete}}
+{{> partials/auto-merge }}
+{{> partials/cost-accounting }}

@@ -41,6 +41,7 @@ describe('buildWorkflowVars', () => {
       config_key: 'wiki',
       cost_ceiling_dollars: 5,
       cron: '0 4 * * *',
+      enable_auto_merge: true,
       enable_diff_size_check: true,
       enable_major_bump_split: false,
       enable_security_pr: false,
@@ -88,12 +89,20 @@ describe('buildWorkflowVars', () => {
     expect(vars).toMatchObject({
       config_key: 'stale_branches',
       cron: '0 4 1-7 * 0',
+      enable_auto_merge: false,
       enable_stale_branch_delete: true,
       schedule: 'monthly',
       state_file: '.gaia/automation.state-stale-branches.json',
       tool_id: 'stale-branches',
       workflow_name: 'GAIA CI — Stale Branches',
     });
+  });
+
+  it('sets enable_auto_merge=true for the three PR-opening tools', () => {
+    for (const tool of ['wiki', 'sharpen', 'pnpm-audit'] as const) {
+      const vars = buildWorkflowVars(baseConfig, tool);
+      expect(vars?.enable_auto_merge).toBe(true);
+    }
   });
 
   it('falls back to the default schedule when the config row omits it', () => {

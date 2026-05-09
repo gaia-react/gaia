@@ -1,0 +1,53 @@
+{{> partials/header }}
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+{{> partials/concurrency }}
+{{> partials/auth-env }}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+{{> partials/checkout-setup }}
+{{> partials/pre-run-skip }}
+{{> partials/quality-gate }}
+{{#enable_major_bump_split}}
+      - name: Run sharpen and split major bumps
+        if: steps.pre_run.outputs.decision == 'run'
+        env:
+          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
+        run: |
+          set -euo pipefail
+          # TODO(slice-4): replace with real `gaia sharpen run` invocation.
+          # Sharpen produces an updates.json describing per-package version deltas.
+          node .gaia/cli/dist/index.js sharpen run --emit-updates updates.json
+          # Patch+minor: leave on this branch (the auto-merge partial picks them up).
+          # Major: split into a separate review-required PR (UAT-007).
+          majors=$(jq -r '[.updates[] | select(.semver_class == "major")] | length' updates.json)
+          if [ "$majors" -gt 0 ]; then
+            branch="gaia-ci/sharpen/major-$(date -u +%Y%m%d-%H%M%S)"
+            git checkout -b "$branch"
+            jq -r '.updates[] | select(.semver_class == "major") | .name' updates.json \
+              | xargs -I{} pnpm update {} --latest
+            git add -A
+            git commit -m "chore(sharpen): semver-major bumps (review required)"
+            git push origin "$branch"
+            gh pr create \
+              --title "chore(sharpen): semver-major bumps (review required)" \
+              --body "Held for human review per SPEC. See updates.json for the package list." \
+              --label gaia-ci,needs-human-review \
+              --head "$branch" \
+              --base "${{ github.event.repository.default_branch }}"
+            git checkout -
+            # Remove the major bumps from the patch/minor branch so the auto-merge
+            # partial only takes the safe set.
+            jq -r '.updates[] | select(.semver_class == "major") | .name' updates.json \
+              | xargs -I{} git checkout HEAD -- node_modules/{} 2>/dev/null || true
+            pnpm install --frozen-lockfile
+          fi
+{{/enable_major_bump_split}}
+{{> partials/auto-merge }}
+{{> partials/cost-accounting }}

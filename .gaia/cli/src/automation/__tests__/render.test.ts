@@ -38,6 +38,7 @@ const baseVars: WorkflowTemplateVars = {
   config_key: 'wiki',
   cost_ceiling_dollars: 5,
   cron: '0 4 * * *',
+  enable_auto_merge: true,
   enable_diff_size_check: true,
   enable_major_bump_split: false,
   enable_security_pr: false,

@@ -1,0 +1,24 @@
+      - name: Post-run cost accounting
+        if: always() && steps.pre_run.outputs.decision == 'run'
+        env:
+          GAIA_CI_COST_CEILING: '{{cost_ceiling_dollars}}'
+        run: |
+          set -euo pipefail
+          # Cost is emitted by anthropics/claude-code-action when used; for
+          # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
+          cost="${RUN_COST_DOLLARS:-0}"
+          node .gaia/cli/dist/index.js automation record-run \
+            {{tool_id}} \
+            --sha "$(git rev-parse HEAD)" \
+            --trigger cron \
+            --cost "$cost"
+          # If the run exceeded the per-run cost ceiling, record-run sets
+          # cost_overage=true. Open one issue for visibility (UAT-018).
+          overage=$(node .gaia/cli/dist/index.js automation read-state {{tool_id}} --json \
+            | jq -r '.cost_overage // false')
+          if [ "$overage" = "true" ]; then
+            gh issue create \
+              --title "[GAIA CI] {{workflow_name}} cost overage: \$${cost}" \
+              --label gaia-ci,priority:high \
+              --body "{{workflow_name}} run reported \$${cost} (ceiling: \$${GAIA_CI_COST_CEILING}). Next run for {{tool_id}} is suppressed until cleared via 'gaia automation clear-overage {{tool_id}}'."
+          fi

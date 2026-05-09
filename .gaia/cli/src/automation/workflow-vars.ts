@@ -19,6 +19,7 @@ export type WorkflowTemplateVars = {
   config_key: string;
   cost_ceiling_dollars: number;
   cron: string;
+  enable_auto_merge: boolean;
   enable_diff_size_check: boolean;
   enable_major_bump_split: boolean;
   enable_security_pr: boolean;
@@ -89,6 +90,9 @@ export const buildWorkflowVars = (
     config_key: configKey,
     cost_ceiling_dollars: 5,
     cron: cronForSchedule(schedule),
+    // stale-branches doesn't open a PR, so auto-merge is suppressed.
+    // The auto-merge partial gates its body on this flag.
+    enable_auto_merge: tool !== 'stale-branches',
     enable_diff_size_check: tool === 'wiki',
     enable_major_bump_split: tool === 'sharpen',
     enable_security_pr: tool === 'pnpm-audit',

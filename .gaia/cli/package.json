@@ -5,7 +5,7 @@
   "description": "GAIA CLI — telemetry emit primitive, mentorship CLI, init/update/wiki/scaffold/setup subcommands. Maintainer source; ships to adopters as a single bundled binary at .gaia/cli/gaia. The maintainer binary at .gaia/cli/gaia-maintainer adds the release namespace and is excluded from the adopter tarball.",
   "scripts": {
     "bundle": "pnpm bundle:adopter && pnpm bundle:maintainer",
-    "bundle:adopter": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --banner:js=$'#!/usr/bin/env node\\nimport { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia && chmod +x gaia && rm -rf templates && cp -r src/scaffold/templates templates",
+    "bundle:adopter": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --banner:js=$'#!/usr/bin/env node\\nimport { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia && chmod +x gaia && rm -rf templates && cp -r src/scaffold/templates templates && mkdir -p templates/workflows && cp -r src/automation/templates/workflows/. templates/workflows/",
     "bundle:maintainer": "esbuild src/index.maintainer.ts --bundle --platform=node --target=node20 --format=esm --banner:js=$'#!/usr/bin/env node\\nimport { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia-maintainer && chmod +x gaia-maintainer",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "test": "vitest --passWithNoTests",

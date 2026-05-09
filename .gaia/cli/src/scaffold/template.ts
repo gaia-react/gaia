@@ -73,15 +73,38 @@ const renderScalars = (template: string, vars: TemplateVars): string =>
     return value;
   });
 
+// Section bodies may contain nested `{{#flag}}...{{/flag}}` blocks (the
+// workflow renderer relies on this for the auto-merge partial's diff-size
+// branch). A single regex pass only resolves the outer level; we run the
+// pass to a fixed point with a small depth cap so a malformed template
+// can't loop forever.
+const MAX_SECTION_DEPTH = 4;
+
+const renderBooleanSectionsToFixedPoint = (
+  template: string,
+  vars: TemplateVars
+): string => {
+  let current = template;
+
+  for (let depth = 0; depth < MAX_SECTION_DEPTH; depth += 1) {
+    const next = renderBooleanSections(current, vars);
+
+    if (next === current) return next;
+    current = next;
+  }
+
+  return current;
+};
+
 /**
  * Apply each / section / scalar substitution to a raw string. Pure;
  * does no IO. Exported so external renderers (the workflow renderer in
  * `automation/render.ts`) can reuse the same syntax without re-implementing
- * the regexes.
+ * the regexes. Section bodies may nest up to four levels deep.
  */
 export const substituteVars = (raw: string, vars: TemplateVars): string => {
   const eached = renderEachBlocks(raw, vars);
-  const sectioned = renderBooleanSections(eached, vars);
+  const sectioned = renderBooleanSectionsToFixedPoint(eached, vars);
 
   return renderScalars(sectioned, vars);
 };
