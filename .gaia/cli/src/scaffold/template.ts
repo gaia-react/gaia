@@ -21,12 +21,16 @@ import {fileURLToPath} from 'node:url';
 export type TemplateVars = Record<string, boolean | string | string[]>;
 
 const TEMPLATES_DIRECTORY_NAME = 'templates';
-const VAR_PATTERN = /\{\{\s*([\w.]+)\s*\}\}/gu;
+// The negative lookbehind on `$` keeps `${{ ... }}` GitHub Actions
+// expressions intact when these regexes are reused for workflow templates
+// (see `automation/render.ts`). Scalars and sections never need a leading
+// `$`, so the constraint is harmless for the scaffolder use case.
+const VAR_PATTERN = /(?<!\$)\{\{\s*([\w.]+)\s*\}\}/gu;
 const SECTION_PATTERN =
-  /\{\{#\s*(\w+)\s*\}\}([\s\S]*?)\{\{\/\s*\1\s*\}\}/gu;
+  /(?<!\$)\{\{#\s*(\w+)\s*\}\}([\s\S]*?)\{\{\/\s*\1\s*\}\}/gu;
 const EACH_PATTERN =
-  /\{\{#each\s+(\w+)\s*\}\}([\s\S]*?)\{\{\/each\s*\}\}/gu;
-const THIS_PATTERN = /\{\{\s*this\s*\}\}/gu;
+  /(?<!\$)\{\{#each\s+(\w+)\s*\}\}([\s\S]*?)\{\{\/each\s*\}\}/gu;
+const THIS_PATTERN = /(?<!\$)\{\{\s*this\s*\}\}/gu;
 
 const isTruthy = (value: boolean | string | string[] | undefined): boolean => {
   if (value === undefined || value === false) return false;
@@ -70,19 +74,26 @@ const renderScalars = (template: string, vars: TemplateVars): string =>
   });
 
 /**
+ * Apply each / section / scalar substitution to a raw string. Pure;
+ * does no IO. Exported so external renderers (the workflow renderer in
+ * `automation/render.ts`) can reuse the same syntax without re-implementing
+ * the regexes.
+ */
+export const substituteVars = (raw: string, vars: TemplateVars): string => {
+  const eached = renderEachBlocks(raw, vars);
+  const sectioned = renderBooleanSections(eached, vars);
+
+  return renderScalars(sectioned, vars);
+};
+
+/**
  * Render `template` against `vars`. Sections are resolved before scalars so
  * that omitted sections never leak unfilled `{{var}}` placeholders.
  */
 export const renderTemplate = (
   templatePath: string,
   vars: TemplateVars
-): string => {
-  const raw = readFileSync(templatePath, 'utf8');
-  const eached = renderEachBlocks(raw, vars);
-  const sectioned = renderBooleanSections(eached, vars);
-
-  return renderScalars(sectioned, vars);
-};
+): string => substituteVars(readFileSync(templatePath, 'utf8'), vars);
 
 const resolveTemplatesDirectory = (): string => {
   const here = fileURLToPath(import.meta.url);
