@@ -11,6 +11,7 @@
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
 import {run as runFetchCoaching} from './adaptation/inject.js';
 import {run as runAutomation} from './automation/index.js';
+import {runCiRevert, runCiStaleCheck} from './ci/index.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
@@ -30,6 +31,8 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   scaffold component|hook|route|service
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   automation read-config|read-state|init-state|bump-state|cron-decide|record-run|record-overage|clear-overage
+  ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
+  ci-revert open|mark-failed|is-cap-reached
   update merge --baseline <dir> --latest <dir> --manifest <path>
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
@@ -47,6 +50,8 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
   automation: runAutomation,
+  'ci-revert': runCiRevert,
+  'ci-stale-check': runCiStaleCheck,
   init: runInit,
   mentorship: runMentorship,
   scaffold: runScaffold,
