@@ -25,11 +25,13 @@ export type Sandbox = {
   cleanup: () => void;
   ghArgvPath: string;
   ghExitCodeQueuePath: string;
+  ghStderrQueuePath: string;
   ghStdinPath: string;
   ghStdoutQueuePath: string;
   installGhShim: (options?: {
     exitCode?: number;
     exitCodeQueue?: number[];
+    stderrQueue?: string[];
     stdoutQueue?: string[];
   }) => {pathOverride: string; restore: () => void};
   root: string;
@@ -54,6 +56,7 @@ import {appendFileSync, readFileSync, writeFileSync, existsSync} from 'node:fs';
 const argvFile = process.env.GH_SHIM_ARGV_FILE;
 const stdinFile = process.env.GH_SHIM_STDIN_FILE;
 const stdoutQueueFile = process.env.GH_SHIM_STDOUT_QUEUE_FILE;
+const stderrQueueFile = process.env.GH_SHIM_STDERR_QUEUE_FILE;
 const exitCodeQueueFile = process.env.GH_SHIM_EXIT_CODE_QUEUE_FILE;
 const fallbackExitCode = Number.parseInt(process.env.GH_SHIM_EXIT_CODE ?? '0', 10);
 const args = process.argv.slice(2);
@@ -81,6 +84,15 @@ process.stdin.on('end', () => {
     writeFileSync(stdoutQueueFile, JSON.stringify(queue), 'utf8');
     if (typeof next === 'string') {
       process.stdout.write(next);
+    }
+  }
+  if (stderrQueueFile && existsSync(stderrQueueFile)) {
+    let queue = [];
+    try { queue = JSON.parse(readFileSync(stderrQueueFile, 'utf8')); } catch { queue = []; }
+    const next = queue.shift();
+    writeFileSync(stderrQueueFile, JSON.stringify(queue), 'utf8');
+    if (typeof next === 'string') {
+      process.stderr.write(next);
     }
   }
   let exitCode = fallbackExitCode;
@@ -113,6 +125,7 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
   const ghArgvPath = path.join(root, 'gh-argv.json');
   const ghStdinPath = path.join(root, 'gh-stdin.bin');
   const ghStdoutQueuePath = path.join(root, 'gh-stdout-queue.json');
+  const ghStderrQueuePath = path.join(root, 'gh-stderr-queue.json');
   const ghExitCodeQueuePath = path.join(root, 'gh-exit-code-queue.json');
 
   const writeConfig = (config: AutomationConfig): void => {
@@ -122,6 +135,7 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
   const installGhShim = (options: {
     exitCode?: number;
     exitCodeQueue?: number[];
+    stderrQueue?: string[];
     stdoutQueue?: string[];
   } = {}): {pathOverride: string; restore: () => void} => {
     const shimPath = path.join(binDir, 'gh');
@@ -130,6 +144,11 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
     writeFileSync(
       ghStdoutQueuePath,
       JSON.stringify(options.stdoutQueue ?? []),
+      'utf8'
+    );
+    writeFileSync(
+      ghStderrQueuePath,
+      JSON.stringify(options.stderrQueue ?? []),
       'utf8'
     );
     writeFileSync(
@@ -142,6 +161,7 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
     const previousArgv = process.env.GH_SHIM_ARGV_FILE;
     const previousStdin = process.env.GH_SHIM_STDIN_FILE;
     const previousQueue = process.env.GH_SHIM_STDOUT_QUEUE_FILE;
+    const previousStderrQueue = process.env.GH_SHIM_STDERR_QUEUE_FILE;
     const previousExitQueue = process.env.GH_SHIM_EXIT_CODE_QUEUE_FILE;
     const previousExitCode = process.env.GH_SHIM_EXIT_CODE;
 
@@ -149,6 +169,7 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
     process.env.GH_SHIM_ARGV_FILE = ghArgvPath;
     process.env.GH_SHIM_STDIN_FILE = ghStdinPath;
     process.env.GH_SHIM_STDOUT_QUEUE_FILE = ghStdoutQueuePath;
+    process.env.GH_SHIM_STDERR_QUEUE_FILE = ghStderrQueuePath;
     process.env.GH_SHIM_EXIT_CODE_QUEUE_FILE = ghExitCodeQueuePath;
     process.env.GH_SHIM_EXIT_CODE = String(options.exitCode ?? 0);
 
@@ -175,6 +196,11 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
         } else {
           process.env.GH_SHIM_STDOUT_QUEUE_FILE = previousQueue;
         }
+        if (previousStderrQueue === undefined) {
+          delete process.env.GH_SHIM_STDERR_QUEUE_FILE;
+        } else {
+          process.env.GH_SHIM_STDERR_QUEUE_FILE = previousStderrQueue;
+        }
         if (previousExitQueue === undefined) {
           delete process.env.GH_SHIM_EXIT_CODE_QUEUE_FILE;
         } else {
@@ -196,6 +222,7 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
     },
     ghArgvPath,
     ghExitCodeQueuePath,
+    ghStderrQueuePath,
     ghStdinPath,
     ghStdoutQueuePath,
     installGhShim,

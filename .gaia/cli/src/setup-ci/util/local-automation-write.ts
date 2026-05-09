@@ -22,13 +22,16 @@ export const writeLocalAutomation = (
   repoRoot: string,
   payload: LocalAutomation
 ): void => {
-  // Validate before any I/O.
-  const validated = LocalAutomationSchema.parse(payload);
+  // Validate the shape (throws on malformed input). Serialize the raw
+  // payload — not the parsed output — so unknown fields land
+  // round-trip-safe instead of being silently stripped by Zod's default
+  // `.strip()` behaviour.
+  LocalAutomationSchema.parse(payload);
 
   const target = localAutomationPath(repoRoot);
   mkdirSync(path.dirname(target), {recursive: true});
 
-  const serialized = `${JSON.stringify(validated, null, 2)}\n`;
+  const serialized = `${JSON.stringify(payload, null, 2)}\n`;
   const tmpPath = `${target}.tmp`;
   writeFileSync(tmpPath, serialized, 'utf8');
   renameSync(tmpPath, target);

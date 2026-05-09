@@ -20,12 +20,17 @@ export const writeAutomationConfig = (
   repoRoot: string,
   payload: AutomationConfig
 ): void => {
-  const validated = AutomationConfigSchema.parse(payload);
+  // Validate the shape (throws on malformed input). Serialize the raw
+  // payload — not the parsed output — so unknown fields a future slice
+  // adds to `.gaia/automation.json` survive a round-trip through this
+  // helper instead of being silently stripped by Zod's default
+  // `.strip()` behaviour.
+  AutomationConfigSchema.parse(payload);
 
   const target = automationConfigPath(repoRoot);
   mkdirSync(path.dirname(target), {recursive: true});
 
-  const serialized = `${JSON.stringify(validated, null, 2)}\n`;
+  const serialized = `${JSON.stringify(payload, null, 2)}\n`;
   const tmpPath = `${target}.tmp`;
   writeFileSync(tmpPath, serialized, 'utf8');
   renameSync(tmpPath, target);

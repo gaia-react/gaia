@@ -135,6 +135,30 @@ describe('setup-ci set-secret', () => {
     expect(parsed.error).toBe('gh_failure');
   });
 
+  it('does NOT echo the secret when gh emits it in its own stderr', async () => {
+    // Defense-in-depth: even if a future `gh` build leaks the captured
+    // secret to its own stderr, the handler must suppress it and emit a
+    // generic `gh_failure` instead of forwarding the raw stderr.
+    const handle = sandbox.installGhShim({
+      exitCode: 1,
+      stderrQueue: [`gh: api error: token=${SECRET_VALUE} rejected`],
+    });
+    restore = handle.restore;
+
+    const exit = await run(
+      ['CLAUDE_CODE_OAUTH_TOKEN'],
+      {cwd: sandbox.root, stdin: stdinFromString(SECRET_VALUE)}
+    );
+    expect(exit).not.toBe(0);
+
+    const allOutput = stdio.out.join('') + stdio.err.join('');
+    expect(allOutput).not.toContain(SECRET_VALUE);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    expect(parsed.set).toBe(false);
+    expect(parsed.error).toBe('gh_failure');
+  });
+
   it('exits unknown_secret_name on unsupported names', async () => {
     const exit = await run(
       ['NOT_A_REAL_SECRET'],
