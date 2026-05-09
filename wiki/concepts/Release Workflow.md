@@ -110,7 +110,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 - `.gaia/release-exclude` — this exclusion file itself.
 - `.gaia/release-scrub.yml` — bundle-time scrub config consumed by `gaia-maintainer release scrub`. Adopters never run releases.
 
-`.gaia/scripts/` ships to adopters: `check-updates.sh` is the background refresher the statusline invokes to populate `Run /update-deps` and `Run /update-gaia` indicators.
+`.gaia/scripts/` ships to adopters: `check-updates.sh` is the background refresher the statusline invokes to populate `Run /sharpen` and `Run /update-gaia` indicators.
 
 ### 6. Maintainer dev-tool configs
 

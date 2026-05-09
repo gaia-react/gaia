@@ -57,9 +57,9 @@ outdated_count=0
 if [ -f "$PROJECT_ROOT/package.json" ] && command -v pnpm >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
   raw=$(cd "$PROJECT_ROOT" && pnpm outdated --json 2>/dev/null)
   if [ -n "$raw" ]; then
-    # Drop packages that /update-deps cannot update:
+    # Drop packages that /sharpen cannot update:
     # - `eslint` / `@eslint/js` capped at 9.x while latest is 10.x
-    #   (matches the ESLint-cap rule in .claude/commands/update-deps.md)
+    #   (matches the ESLint-cap rule in .claude/skills/sharpen/SKILL.md)
     parsed=$(printf '%s' "$raw" | jq '
       [to_entries[]
        | select(

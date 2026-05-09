@@ -34,7 +34,7 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 | `new-hook`      | "create a useFoo hook", "add a hook under app/hooks" — drops a `useThing.ts` + Vitest test                                               |
 | `new-route`     | "add a new page", "scaffold /dashboard" — wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                               |
 | `new-service`   | "add a service", "scaffold the projects API" — drops `app/services/gaia/{name}/` (parsers, types, requests) and matching MSW collections |
-| `update-deps`   | Autonomous Dependabot — fired by `/gaia-init`, accepted from the SessionStart update prompt, or "update dependencies"                    |
+| `sharpen`       | Autonomous Dependabot — fired by `/gaia-init`, accepted from the statusline `Run /sharpen` indicator, or "update dependencies"           |
 | `update-gaia`   | Pull a later GAIA release into the project — accepted from the SessionStart update prompt, or "pull the latest GAIA"                     |
 
 ### Context-triggered
@@ -51,7 +51,7 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 
 ### Statusline update indicators
 
-`update-deps` and `update-gaia` are surfaced by the **statusline**, not by a hook. `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns a yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segment when applicable. The wrapper delegates left-side rendering to `~/.claude/settings.json`'s existing `statusLine.command` (or falls back to `.gaia/statusline/preferred-base.sh` via the `.use-vendored-base` sentinel) so the adopter's existing statusline appears unchanged. The hot path is cache-only — no network, no `pnpm` calls — and a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. Silent on missing cache or missing `jq`.
+`sharpen` and `update-gaia` are surfaced by the **statusline**, not by a hook. `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns a yellow `Run /sharpen (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segment when applicable. The wrapper delegates left-side rendering to `~/.claude/settings.json`'s existing `statusLine.command` (or falls back to `.gaia/statusline/preferred-base.sh` via the `.use-vendored-base` sentinel) so the adopter's existing statusline appears unchanged. The hot path is cache-only — no network, no `pnpm` calls — and a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. Silent on missing cache or missing `jq`.
 
 A prior design used a `SessionStart` `<system-reminder>` hook. It was dropped because the reminder is invisible to the user (only the model sees it), so prompts fired and snoozed without the user ever being shown a choice. The statusline is always visible, has no snooze state, and clears itself the moment the underlying cache reports clean.
 

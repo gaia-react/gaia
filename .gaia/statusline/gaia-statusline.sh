@@ -13,7 +13,7 @@
 #   3. Fallback → `.gaia/statusline/preferred-base.sh` directly.
 #
 # Right side suppression in linked worktrees: the right-side indicators
-# (`Run /setup-gaia`, `Run /update-deps`, `Run /update-gaia`) all prod the
+# (`Run /setup-gaia`, `Run /sharpen`, `Run /update-gaia`) all prod the
 # user toward maintenance flows that belong on the main checkout. Inside a
 # linked worktree the right side is empty — the worktree is detected via
 # `dirname(git rev-parse --git-common-dir) != PROJECT_ROOT`. The background
@@ -119,7 +119,7 @@ if [ "$is_worktree" -eq 0 ]; then
       segments+=("🧭")
     fi
     if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-      segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
+      segments+=("$(printf '\033[01;33mRun /sharpen (%d outdated)\033[00m' "$outdated_count")")
     fi
     if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
       segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
