@@ -21,9 +21,11 @@ jobs:
           RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         run: |
           set -euo pipefail
-          node .gaia/cli/dist/index.js wiki sync
-          node .gaia/cli/dist/index.js wiki consolidate
-          node .gaia/cli/dist/index.js wiki lint
+          # TODO(slice-4): wire the real wiki chain once the consolidate/lint
+          # subcommands and a sync entry-point that maps to `wiki sync land`
+          # are surfaced on the adopter CLI. Until then this step is an
+          # explicit stub so the workflow exits 0 without a silent no-op.
+          echo "wiki chain stub: slice-4 will wire the full sync/consolidate/lint pipeline"
 {{/enable_diff_size_check}}
 {{> partials/auto-merge }}
 {{> partials/cost-accounting }}

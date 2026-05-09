@@ -23,8 +23,8 @@
             --base "${{ github.event.repository.default_branch }}")
           pr_number=$(printf '%s' "$pr_url" | grep -oE '[0-9]+$')
 {{#enable_diff_size_check}}
-          # Wiki diff-size sanity check: if >25% of wiki bytes changed,
-          # hold for human review (UAT-003).
+          # Wiki diff-size sanity check: if more than 25% of wiki bytes
+          # changed, label `needs-human-review` and skip auto-merge.
           if [ "$(node .gaia/cli/dist/index.js wiki diff-size --threshold-pct 25)" = "exceeded" ]; then
             gh pr edit "$pr_number" --add-label needs-human-review
             echo "diff-size > 25%; holding for human review"

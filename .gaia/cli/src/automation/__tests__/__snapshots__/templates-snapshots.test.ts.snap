@@ -91,7 +91,7 @@ jobs:
             echo "no high/critical findings"
             exit 0
           fi
-          # For each high/critical advisory, open one issue and one targeted PR (UAT-008).
+          # For each high/critical advisory, open one security issue and one targeted single-package bump PR.
           printf '%s' "$audit_json" \\
             | jq -c '.advisories | to_entries[] | .value | select(.severity == "high" or .severity == "critical")' \\
             | while read -r advisory; do
@@ -163,7 +163,8 @@ jobs:
             --trigger cron \\
             --cost "$cost"
           # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility (UAT-018).
+          # cost_overage=true. Open one issue for visibility; the next
+          # cron evaluation suppresses the run until the flag is cleared.
           overage=$(node .gaia/cli/dist/index.js automation read-state pnpm-audit --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
@@ -261,33 +262,11 @@ jobs:
           RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         run: |
           set -euo pipefail
-          # TODO(slice-4): replace with real \`gaia sharpen run\` invocation.
-          # Sharpen produces an updates.json describing per-package version deltas.
-          node .gaia/cli/dist/index.js sharpen run --emit-updates updates.json
-          # Patch+minor: leave on this branch (the auto-merge partial picks them up).
-          # Major: split into a separate review-required PR (UAT-007).
-          majors=$(jq -r '[.updates[] | select(.semver_class == "major")] | length' updates.json)
-          if [ "$majors" -gt 0 ]; then
-            branch="gaia-ci/sharpen/major-$(date -u +%Y%m%d-%H%M%S)"
-            git checkout -b "$branch"
-            jq -r '.updates[] | select(.semver_class == "major") | .name' updates.json \\
-              | xargs -I{} pnpm update {} --latest
-            git add -A
-            git commit -m "chore(sharpen): semver-major bumps (review required)"
-            git push origin "$branch"
-            gh pr create \\
-              --title "chore(sharpen): semver-major bumps (review required)" \\
-              --body "Held for human review per SPEC. See updates.json for the package list." \\
-              --label gaia-ci,needs-human-review \\
-              --head "$branch" \\
-              --base "\${{ github.event.repository.default_branch }}"
-            git checkout -
-            # Remove the major bumps from the patch/minor branch so the auto-merge
-            # partial only takes the safe set.
-            jq -r '.updates[] | select(.semver_class == "major") | .name' updates.json \\
-              | xargs -I{} git checkout HEAD -- node_modules/{} 2>/dev/null || true
-            pnpm install --frozen-lockfile
-          fi
+          # TODO(slice-4): wire the real \`gaia sharpen run --emit-updates\`
+          # invocation plus the major-bump split logic. Until the sharpen CLI
+          # primitive ships, this step is an explicit stub so the workflow
+          # exits 0 without invoking a missing subcommand.
+          echo "sharpen run stub: slice-4 will wire the patch/minor + major-bump split"
 
       # Auto-merge partial. Gated on \`enable_auto_merge\` so the
       # stale-branches workflow (which doesn't open a PR) emits no
@@ -332,7 +311,8 @@ jobs:
             --trigger cron \\
             --cost "$cost"
           # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility (UAT-018).
+          # cost_overage=true. Open one issue for visibility; the next
+          # cron evaluation suppresses the run until the flag is cleared.
           overage=$(node .gaia/cli/dist/index.js automation read-state sharpen --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
@@ -431,7 +411,7 @@ jobs:
         run: |
           set -euo pipefail
           cutoff=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s)
-          # Walk all branches except the default branch (UAT-011).
+          # Walk all branches except the default branch and delete any whose merged-PR head is older than the cutoff.
           default=$(gh api repos/\${{ github.repository }} --jq '.default_branch')
           gh api repos/\${{ github.repository }}/branches --paginate --jq '.[].name' \\
             | grep -vF "$default" \\
@@ -469,7 +449,8 @@ jobs:
             --trigger cron \\
             --cost "$cost"
           # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility (UAT-018).
+          # cost_overage=true. Open one issue for visibility; the next
+          # cron evaluation suppresses the run until the flag is cleared.
           overage=$(node .gaia/cli/dist/index.js automation read-state stale-branches --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
@@ -567,9 +548,11 @@ jobs:
           RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         run: |
           set -euo pipefail
-          node .gaia/cli/dist/index.js wiki sync
-          node .gaia/cli/dist/index.js wiki consolidate
-          node .gaia/cli/dist/index.js wiki lint
+          # TODO(slice-4): wire the real wiki chain once the consolidate/lint
+          # subcommands and a sync entry-point that maps to \`wiki sync land\`
+          # are surfaced on the adopter CLI. Until then this step is an
+          # explicit stub so the workflow exits 0 without a silent no-op.
+          echo "wiki chain stub: slice-4 will wire the full sync/consolidate/lint pipeline"
 
       # Auto-merge partial. Gated on \`enable_auto_merge\` so the
       # stale-branches workflow (which doesn't open a PR) emits no
@@ -596,8 +579,8 @@ jobs:
             --base "\${{ github.event.repository.default_branch }}")
           pr_number=$(printf '%s' "$pr_url" | grep -oE '[0-9]+$')
 
-          # Wiki diff-size sanity check: if >25% of wiki bytes changed,
-          # hold for human review (UAT-003).
+          # Wiki diff-size sanity check: if more than 25% of wiki bytes
+          # changed, label \`needs-human-review\` and skip auto-merge.
           if [ "$(node .gaia/cli/dist/index.js wiki diff-size --threshold-pct 25)" = "exceeded" ]; then
             gh pr edit "$pr_number" --add-label needs-human-review
             echo "diff-size > 25%; holding for human review"
@@ -622,7 +605,8 @@ jobs:
             --trigger cron \\
             --cost "$cost"
           # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility (UAT-018).
+          # cost_overage=true. Open one issue for visibility; the next
+          # cron evaluation suppresses the run until the flag is cleared.
           overage=$(node .gaia/cli/dist/index.js automation read-state wiki --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then

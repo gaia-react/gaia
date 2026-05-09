@@ -27,7 +27,7 @@ jobs:
             echo "no high/critical findings"
             exit 0
           fi
-          # For each high/critical advisory, open one issue and one targeted PR (UAT-008).
+          # For each high/critical advisory, open one security issue and one targeted single-package bump PR.
           printf '%s' "$audit_json" \
             | jq -c '.advisories | to_entries[] | .value | select(.severity == "high" or .severity == "critical")' \
             | while read -r advisory; do

@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           cutoff=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s)
-          # Walk all branches except the default branch (UAT-011).
+          # Walk all branches except the default branch and delete any whose merged-PR head is older than the cutoff.
           default=$(gh api repos/${{ github.repository }} --jq '.default_branch')
           gh api repos/${{ github.repository }}/branches --paginate --jq '.[].name' \
             | grep -vF "$default" \

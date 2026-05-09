@@ -13,7 +13,8 @@
             --trigger cron \
             --cost "$cost"
           # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility (UAT-018).
+          # cost_overage=true. Open one issue for visibility; the next
+          # cron evaluation suppresses the run until the flag is cleared.
           overage=$(node .gaia/cli/dist/index.js automation read-state {{tool_id}} --json \
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then

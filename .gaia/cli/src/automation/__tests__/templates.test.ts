@@ -131,9 +131,9 @@ describe('workflow templates — gaia-ci-sharpen', () => {
     expect((doc.concurrency as {group: string}).group).toBe('gaia-ci-sharpen');
   });
 
-  it('emits the major-version-split step', () => {
-    expect(rendered).toContain('semver-major bumps (review required)');
-    expect(rendered).toContain('--label gaia-ci,needs-human-review');
+  it('emits the slice-4 stub for the sharpen run step', () => {
+    expect(rendered).toContain('TODO(slice-4)');
+    expect(rendered).toContain('sharpen run stub');
   });
 
   it('emits the auto-merge step', () => {
