@@ -1,0 +1,94 @@
+/**
+ * `gaia setup-ci opt-out-team` handler.
+ *
+ * Writes `setup_opted_out: true` to `.gaia/automation.json` (the
+ * committed config). The CLI does NOT check admin permission — that's
+ * the slash command's responsibility. By the time this primitive is
+ * called, `check-admin` has already returned `admin: true`.
+ *
+ * Refuses (non-zero) when the config is missing or malformed —
+ * fail-closed, no destructive write on a broken state.
+ */
+import {EXIT_CODES} from '../exit.js';
+import {readAutomationConfig} from '../schemas/automation-config.js';
+import {structuredError} from '../stderr.js';
+import {resolveRepoRoot} from '../wiki/util/git.js';
+import {writeAutomationConfig} from './util/automation-write.js';
+
+const HELP_TEXT = `Usage: gaia setup-ci opt-out-team
+
+  Write setup_opted_out=true to .gaia/automation.json (committed).
+  Refuses if the config is missing or malformed.
+`;
+
+const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+
+type RunOptions = {
+  cwd?: string;
+};
+
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  for (const token of argv) {
+    if (HELP_TOKENS.has(token)) {
+      process.stdout.write(HELP_TEXT);
+
+      return EXIT_CODES.OK;
+    }
+
+    structuredError({
+      code: 'invalid_arguments',
+      message: `unexpected argument: ${token}`,
+      subcommand: 'setup-ci opt-out-team',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  let repoRoot: string;
+
+  try {
+    repoRoot = resolveRepoRoot(options.cwd ?? process.cwd());
+  } catch {
+    structuredError({
+      code: 'not_a_git_repo',
+      message: 'gaia setup-ci opt-out-team must run inside a git repository',
+      subcommand: 'setup-ci opt-out-team',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  const result = readAutomationConfig(repoRoot);
+
+  if (result.status === 'missing') {
+    structuredError({
+      code: 'config_missing',
+      message: '.gaia/automation.json does not exist',
+      subcommand: 'setup-ci opt-out-team',
+    });
+
+    return EXIT_CODES.CONFIG_INVALID;
+  }
+
+  if (result.status === 'malformed') {
+    structuredError({
+      code: 'config_malformed',
+      message: result.error,
+      subcommand: 'setup-ci opt-out-team',
+    });
+
+    return EXIT_CODES.CONFIG_INVALID;
+  }
+
+  writeAutomationConfig(repoRoot, {
+    ...result.config,
+    setup_opted_out: true,
+  });
+
+  process.stdout.write(`${JSON.stringify({opted_out: true})}\n`);
+
+  return EXIT_CODES.OK;
+};
