@@ -9,6 +9,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {run as runConfigureAutomation} from './configure-automation.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
 import {run as runRename} from './rename.js';
@@ -26,6 +27,8 @@ const HELP_TEXT = `Usage: gaia init <subcommand> [args]
                             Rename the project across package.json + locales.
   wire-statusline --mode <global|project|skip>
                             Wire the GAIA statusline into Claude settings.
+  configure-automation --wiki <m> --sharpen <m> --pnpm-audit <m> --stale-branches <m>
+                            Write .gaia/automation.json (Phase A of GAIA CI).
   finalize                  Final cleanup steps for the init runbook.
   resume [--from-step <N>]  Resume a partially-completed init via state file.
 `;
@@ -37,6 +40,7 @@ type SubcommandHandler = (
 ) => number | Promise<number>;
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+  'configure-automation': runConfigureAutomation,
   'configure-i18n': runConfigureI18n,
   'finalize': runFinalize,
   'rename': runRename,

@@ -1,0 +1,288 @@
+/**
+ * `gaia init configure-automation` handler.
+ *
+ * Codifies the Phase A scaffold step of `/gaia-init`. Writes
+ * `.gaia/automation.json` with the user's tool-mode selections and
+ * `setup_complete: false`. Phase B (`/setup-gaia-ci`) flips
+ * `setup_complete` to `true` after the user creates the GitHub repo
+ * and pushes.
+ *
+ * Headless: the skill prose collects values via AskUserQuestion and
+ * passes them through as flags. No defaults at the CLI layer — every
+ * flag is required so an adopter who skipped the prompt cannot be
+ * silently configured.
+ *
+ * Idempotent: re-running with the same flags overwrites the file with
+ * byte-identical content. The atomic temp + rename mirrors the
+ * surrounding init handlers (`state.ts`, `finalize.ts`).
+ *
+ * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
+ */
+import {mkdirSync, renameSync, writeFileSync} from 'node:fs';
+import path from 'node:path';
+import {z} from 'zod';
+import {automationConfigPath} from '../automation/paths.js';
+import {EXIT_CODES} from '../exit.js';
+import {
+  AutomationConfigSchema,
+  type AutomationConfig,
+} from '../schemas/automation-config.js';
+import {structuredError} from '../stderr.js';
+import {markStepCompleted} from './util/state.js';
+
+const HELP_TEXT = `Usage: gaia init configure-automation \\
+  --wiki <ci|local|off> \\
+  --sharpen <ci|local|off> \\
+  --pnpm-audit <ci|local|off> \\
+  --stale-branches <ci|local|off>
+
+  Write .gaia/automation.json with the user's tool-mode selections and
+  setup_complete: false. Phase A of GAIA CI — no GitHub repo or workflow
+  YAML required.
+
+  Required flags:
+    --wiki <ci|local|off>
+    --sharpen <ci|local|off>
+    --pnpm-audit <ci|local|off>
+    --stale-branches <ci|local|off>
+
+  Exit codes:
+    0  success (no stdout)
+    1  user-correctable error (missing/invalid flag, schema violation)
+    2  unexpected (filesystem failure)
+`;
+
+const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+const UNEXPECTED_EXIT = 2;
+const STEP_NAME = 'configure-automation';
+const SUBCOMMAND = 'init configure-automation';
+
+type ToolMode = 'ci' | 'local' | 'off';
+
+type Flags = {
+  pnpmAudit: ToolMode;
+  sharpen: ToolMode;
+  staleBranches: ToolMode;
+  wiki: ToolMode;
+};
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type FlagParseFailure = {
+  message: string;
+  ok: false;
+};
+
+type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+const isToolMode = (value: string): value is ToolMode =>
+  value === 'ci' || value === 'local' || value === 'off';
+
+const takeValue = (
+  argv: readonly string[],
+  index: number,
+  flag: string
+): {message: string; ok: false} | {ok: true; value: string} => {
+  const value = argv[index];
+
+  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+
+  return {ok: true, value};
+};
+
+const takeMode = (
+  argv: readonly string[],
+  index: number,
+  flag: string,
+  current: ToolMode | undefined
+): {message: string; ok: false} | {mode: ToolMode; ok: true} => {
+  if (current !== undefined) {
+    return {message: `${flag} specified twice`, ok: false};
+  }
+
+  const taken = takeValue(argv, index, flag);
+
+  if (!taken.ok) return taken;
+
+  if (!isToolMode(taken.value)) {
+    return {message: `${flag} must be one of: ci, local, off`, ok: false};
+  }
+
+  return {mode: taken.value, ok: true};
+};
+
+const parseFlags = (argv: readonly string[]): FlagParseResult => {
+  let wiki: ToolMode | undefined;
+  let sharpen: ToolMode | undefined;
+  let pnpmAudit: ToolMode | undefined;
+  let staleBranches: ToolMode | undefined;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] as string;
+
+    if (token === '--wiki') {
+      const taken = takeMode(argv, index + 1, '--wiki', wiki);
+
+      if (!taken.ok) return taken;
+      wiki = taken.mode;
+      index += 1;
+      continue;
+    }
+
+    if (token === '--sharpen') {
+      const taken = takeMode(argv, index + 1, '--sharpen', sharpen);
+
+      if (!taken.ok) return taken;
+      sharpen = taken.mode;
+      index += 1;
+      continue;
+    }
+
+    if (token === '--pnpm-audit') {
+      const taken = takeMode(argv, index + 1, '--pnpm-audit', pnpmAudit);
+
+      if (!taken.ok) return taken;
+      pnpmAudit = taken.mode;
+      index += 1;
+      continue;
+    }
+
+    if (token === '--stale-branches') {
+      const taken = takeMode(argv, index + 1, '--stale-branches', staleBranches);
+
+      if (!taken.ok) return taken;
+      staleBranches = taken.mode;
+      index += 1;
+      continue;
+    }
+
+    return {message: `unknown flag: ${token}`, ok: false};
+  }
+
+  if (wiki === undefined) return {message: '--wiki is required', ok: false};
+  if (sharpen === undefined) return {message: '--sharpen is required', ok: false};
+
+  if (pnpmAudit === undefined) {
+    return {message: '--pnpm-audit is required', ok: false};
+  }
+
+  if (staleBranches === undefined) {
+    return {message: '--stale-branches is required', ok: false};
+  }
+
+  return {flags: {pnpmAudit, sharpen, staleBranches, wiki}, ok: true};
+};
+
+const buildConfig = (flags: Flags): AutomationConfig =>
+  AutomationConfigSchema.parse({
+    pnpm_audit: {mode: flags.pnpmAudit, schedule: 'daily'},
+    setup_complete: false,
+    setup_opted_out: false,
+    sharpen: {mode: flags.sharpen, schedule: 'weekly'},
+    stale_branches: {mode: flags.staleBranches, schedule: 'monthly'},
+    update_gaia: {mode: 'local'},
+    version: 1,
+    wiki: {mode: flags.wiki},
+  });
+
+const writeConfig = (cwd: string, config: AutomationConfig): void => {
+  const target = automationConfigPath(cwd);
+  mkdirSync(path.dirname(target), {recursive: true});
+  const serialized = `${JSON.stringify(config, null, 2)}\n`;
+  const tmp = `${target}.tmp`;
+  writeFileSync(tmp, serialized, 'utf8');
+  renameSync(tmp, target);
+};
+
+type RunOptions = {
+  cwd?: string;
+};
+
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+    process.stdout.write(HELP_TEXT);
+
+    return EXIT_CODES.OK;
+  }
+
+  const parsed = parseFlags(argv);
+
+  if (!parsed.ok) {
+    structuredError({
+      code: 'invalid_arguments',
+      message: parsed.message,
+      subcommand: SUBCOMMAND,
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  const cwd = options.cwd ?? process.cwd();
+
+  let config: AutomationConfig;
+
+  try {
+    config = buildConfig(parsed.flags);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      structuredError({
+        code: 'schema_violation',
+        message: error.issues
+          .map((issue) => {
+            const pathStr =
+              issue.path.length === 0 ? '<root>' : issue.path.join('.');
+
+            return `${pathStr}: ${issue.message}`;
+          })
+          .join('; '),
+        subcommand: SUBCOMMAND,
+      });
+
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
+    structuredError({
+      code: 'configure_automation_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: SUBCOMMAND,
+    });
+
+    return UNEXPECTED_EXIT;
+  }
+
+  try {
+    writeConfig(cwd, config);
+  } catch (error) {
+    structuredError({
+      code: 'configure_automation_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: SUBCOMMAND,
+    });
+
+    return UNEXPECTED_EXIT;
+  }
+
+  try {
+    markStepCompleted(cwd, STEP_NAME, {
+      pnpm_audit: parsed.flags.pnpmAudit,
+      sharpen: parsed.flags.sharpen,
+      stale_branches: parsed.flags.staleBranches,
+      wiki: parsed.flags.wiki,
+    });
+  } catch (error) {
+    structuredError({
+      code: 'state_write_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: SUBCOMMAND,
+    });
+
+    return UNEXPECTED_EXIT;
+  }
+
+  return EXIT_CODES.OK;
+};

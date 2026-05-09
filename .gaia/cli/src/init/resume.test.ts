@@ -89,6 +89,41 @@ describe('argvFromStepArgs', () => {
     ]);
   });
 
+  test('reconstructs configure-automation argv', () => {
+    expect(
+      argvFromStepArgs('configure-automation', {
+        pnpm_audit: 'ci',
+        sharpen: 'local',
+        stale_branches: 'off',
+        wiki: 'ci',
+      })
+    ).toEqual([
+      '--wiki',
+      'ci',
+      '--sharpen',
+      'local',
+      '--pnpm-audit',
+      'ci',
+      '--stale-branches',
+      'off',
+    ]);
+    expect(
+      argvFromStepArgs('configure-automation', {
+        pnpm_audit: 'ci',
+        sharpen: 'ci',
+        stale_branches: 'ci',
+      })
+    ).toBeNull();
+    expect(
+      argvFromStepArgs('configure-automation', {
+        pnpm_audit: 'ci',
+        sharpen: 'ci',
+        stale_branches: 'ci',
+        wiki: 'bogus',
+      })
+    ).toBeNull();
+  });
+
   test('finalize requires no args', () => {
     expect(argvFromStepArgs('finalize', undefined)).toEqual([]);
   });
@@ -117,6 +152,12 @@ describe('init resume', () => {
     writeState(sandbox.root, {
       completed_steps: ['strip-branding', 'configure-i18n'],
       step_args: {
+        'configure-automation': {
+          pnpm_audit: 'ci',
+          sharpen: 'ci',
+          stale_branches: 'ci',
+          wiki: 'ci',
+        },
         'configure-i18n': {locales: ['en'], strip: false},
         'rename': {kebab: 'hello', title: 'Hello'},
         'strip-branding': {title: 'Hello'},
@@ -134,6 +175,7 @@ describe('init resume', () => {
     const exit = run(['--from-step', '3'], {
       cwd: sandbox.root,
       runners: {
+        'configure-automation': stub('configure-automation'),
         'configure-i18n': stub('configure-i18n'),
         'finalize': stub('finalize'),
         'rename': stub('rename'),
@@ -148,6 +190,7 @@ describe('init resume', () => {
     expect(calls.map((c) => c.step)).toEqual([
       'rename',
       'wire-statusline',
+      'configure-automation',
       'finalize',
     ]);
     expect(calls[0]?.argv).toEqual([
@@ -163,6 +206,12 @@ describe('init resume', () => {
     writeState(sandbox.root, {
       completed_steps: ['strip-branding'],
       step_args: {
+        'configure-automation': {
+          pnpm_audit: 'ci',
+          sharpen: 'ci',
+          stale_branches: 'ci',
+          wiki: 'ci',
+        },
         'configure-i18n': {locales: ['en'], strip: true},
         'rename': {kebab: 'x', title: 'X'},
         'strip-branding': {title: 'X'},
@@ -180,6 +229,7 @@ describe('init resume', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runners: {
+        'configure-automation': stub('configure-automation'),
         'configure-i18n': stub('configure-i18n'),
         'finalize': stub('finalize'),
         'rename': stub('rename'),
@@ -190,6 +240,7 @@ describe('init resume', () => {
     expect(exit).toBe(0);
     expect(ran).not.toContain('strip-branding');
     expect(ran).toContain('configure-i18n');
+    expect(ran).toContain('configure-automation');
     expect(ran).toContain('finalize');
   });
 
