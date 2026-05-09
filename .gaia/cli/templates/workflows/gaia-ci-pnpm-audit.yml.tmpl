@@ -1,0 +1,60 @@
+{{> partials/header }}
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+{{> partials/concurrency }}
+{{> partials/auth-env }}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+{{> partials/checkout-setup }}
+{{> partials/pre-run-skip }}
+{{> partials/quality-gate }}
+{{#enable_security_pr}}
+      - name: Run pnpm audit and open security PR for high/critical
+        if: steps.pre_run.outputs.decision == 'run'
+        env:
+          RUN_COST_DOLLARS: "0"
+        run: |
+          set -euo pipefail
+          audit_json=$(pnpm audit --json || true)
+          high_count=$(printf '%s' "$audit_json" | jq '[.advisories | to_entries[] | .value | select(.severity == "high" or .severity == "critical")] | length')
+          if [ "$high_count" = "0" ]; then
+            echo "no high/critical findings"
+            exit 0
+          fi
+          # For each high/critical advisory, open one security issue and one targeted single-package bump PR.
+          printf '%s' "$audit_json" \
+            | jq -c '.advisories | to_entries[] | .value | select(.severity == "high" or .severity == "critical")' \
+            | while read -r advisory; do
+                pkg=$(printf '%s' "$advisory" | jq -r '.module_name')
+                severity=$(printf '%s' "$advisory" | jq -r '.severity')
+                cve=$(printf '%s' "$advisory" | jq -r '.cves[0] // .id')
+                url=$(printf '%s' "$advisory" | jq -r '.url')
+                # Issue
+                gh issue create \
+                  --title "[GAIA CI] $severity: $pkg ($cve)" \
+                  --label gaia-ci,security \
+                  --body "Severity: $severity\nPackage: $pkg\nAdvisory: $url"
+                # Targeted single-package security PR
+                branch="gaia-ci/security/$pkg-$(date -u +%Y%m%d-%H%M%S)"
+                git checkout -b "$branch" main
+                pnpm update "$pkg"
+                git add -A
+                git commit -m "chore(security): bump $pkg ($cve)"
+                git push origin "$branch"
+                gh pr create \
+                  --title "chore(security): bump $pkg ($cve)" \
+                  --body "Targeted security patch. Auto-merges on green CI." \
+                  --label gaia-ci,security \
+                  --head "$branch" \
+                  --base "${{ github.event.repository.default_branch }}"
+                git checkout -
+              done
+{{/enable_security_pr}}
+{{> partials/auto-merge }}
+{{> partials/cost-accounting }}

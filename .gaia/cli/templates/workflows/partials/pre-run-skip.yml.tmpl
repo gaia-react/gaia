@@ -1,0 +1,24 @@
+      - name: Pre-run skip — open gaia-ci PR or cron-decide
+        id: pre_run
+        run: |
+          set -euo pipefail
+          # Skip if an open gaia-ci PR by github-actions[bot] already exists.
+          existing_pr=$(gh pr list --state open --label gaia-ci \
+            --search 'author:app/github-actions' \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing_pr" ]; then
+            echo "open gaia-ci PR #$existing_pr; skipping"
+            echo "decision=skip" >> "$GITHUB_OUTPUT"
+            echo "reason=open_pr" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Otherwise consult the smart-cron decision primitive.
+          decision_json=$(node .gaia/cli/dist/index.js automation cron-decide {{tool_id}} --json)
+          decision=$(printf '%s' "$decision_json" | jq -r '.decision')
+          reason=$(printf '%s' "$decision_json" | jq -r '.reason')
+          skip_log_line=$(printf '%s' "$decision_json" | jq -r '.skip_log_line // empty')
+          if [ "$decision" = "skip" ]; then
+            echo "$skip_log_line"
+          fi
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"

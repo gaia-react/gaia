@@ -3,7 +3,11 @@ import {describe, expect, it} from 'vitest';
 import {
   automationConfigPath,
   automationStatePath,
+  githubWorkflowsDirectory,
   localAutomationPath,
+  workflowFilePath,
+  workflowPartialsDirectory,
+  workflowTemplatePath,
 } from '../paths.js';
 
 describe('automation/paths', () => {
@@ -48,6 +52,77 @@ describe('automation/paths', () => {
       expect(localAutomationPath('/tmp/repo')).toBe(
         path.join('/tmp/repo', '.gaia', 'local', 'automation.json')
       );
+    });
+  });
+
+  describe('githubWorkflowsDirectory', () => {
+    it('returns <repoRoot>/.github/workflows', () => {
+      expect(githubWorkflowsDirectory('/tmp/repo')).toBe(
+        path.join('/tmp/repo', '.github', 'workflows')
+      );
+    });
+  });
+
+  describe('workflowFilePath', () => {
+    it('returns the kebab-case workflow filename per tool', () => {
+      expect(workflowFilePath('/tmp/repo', 'wiki')).toBe(
+        path.join('/tmp/repo', '.github', 'workflows', 'gaia-ci-wiki.yml')
+      );
+      expect(workflowFilePath('/tmp/repo', 'pnpm-audit')).toBe(
+        path.join(
+          '/tmp/repo',
+          '.github',
+          'workflows',
+          'gaia-ci-pnpm-audit.yml'
+        )
+      );
+      expect(workflowFilePath('/tmp/repo', 'stale-branches')).toBe(
+        path.join(
+          '/tmp/repo',
+          '.github',
+          'workflows',
+          'gaia-ci-stale-branches.yml'
+        )
+      );
+    });
+  });
+
+  describe('workflowTemplatePath', () => {
+    it('ends with templates/workflows/gaia-ci-<tool>.yml.tmpl', () => {
+      expect(
+        workflowTemplatePath('wiki').endsWith(
+          path.join('templates', 'workflows', 'gaia-ci-wiki.yml.tmpl')
+        )
+      ).toBe(true);
+      expect(
+        workflowTemplatePath('sharpen').endsWith(
+          path.join('templates', 'workflows', 'gaia-ci-sharpen.yml.tmpl')
+        )
+      ).toBe(true);
+      expect(
+        workflowTemplatePath('pnpm-audit').endsWith(
+          path.join('templates', 'workflows', 'gaia-ci-pnpm-audit.yml.tmpl')
+        )
+      ).toBe(true);
+      expect(
+        workflowTemplatePath('stale-branches').endsWith(
+          path.join(
+            'templates',
+            'workflows',
+            'gaia-ci-stale-branches.yml.tmpl'
+          )
+        )
+      ).toBe(true);
+    });
+  });
+
+  describe('workflowPartialsDirectory', () => {
+    it('ends with templates/workflows/partials', () => {
+      expect(
+        workflowPartialsDirectory().endsWith(
+          path.join('templates', 'workflows', 'partials')
+        )
+      ).toBe(true);
     });
   });
 });

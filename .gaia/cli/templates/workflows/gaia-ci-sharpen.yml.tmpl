@@ -1,0 +1,31 @@
+{{> partials/header }}
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+{{> partials/concurrency }}
+{{> partials/auth-env }}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+{{> partials/checkout-setup }}
+{{> partials/pre-run-skip }}
+{{> partials/quality-gate }}
+{{#enable_major_bump_split}}
+      - name: Run sharpen and split major bumps
+        if: steps.pre_run.outputs.decision == 'run'
+        env:
+          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
+        run: |
+          set -euo pipefail
+          # TODO(slice-4): wire the real `gaia sharpen run --emit-updates`
+          # invocation plus the major-bump split logic. Until the sharpen CLI
+          # primitive ships, this step is an explicit stub so the workflow
+          # exits 0 without invoking a missing subcommand.
+          echo "sharpen run stub: slice-4 will wire the patch/minor + major-bump split"
+{{/enable_major_bump_split}}
+{{> partials/auto-merge }}
+{{> partials/cost-accounting }}

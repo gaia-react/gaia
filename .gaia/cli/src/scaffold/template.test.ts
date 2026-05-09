@@ -2,7 +2,7 @@ import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {loadTemplate, renderTemplate} from './template.js';
+import {loadTemplate, renderTemplate, substituteVars} from './template.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -146,5 +146,31 @@ describe('renderTemplate', () => {
 describe('loadTemplate', () => {
   test('throws when the template file does not exist', () => {
     expect(() => loadTemplate('does-not-exist.tpl')).toThrow();
+  });
+});
+
+describe('substituteVars', () => {
+  let sandbox: Sandbox;
+
+  beforeEach(() => {
+    sandbox = setupSandbox();
+  });
+
+  afterEach(() => {
+    sandbox.cleanup();
+  });
+
+  test('produces the same output as renderTemplate for the same body', () => {
+    const body = '{{#flag}}hi {{name}}{{/flag}}';
+    const filePath = writeTemplateFile(sandbox.dir, 'parity.tpl', body);
+    const vars = {flag: true, name: 'world'};
+
+    expect(substituteVars(body, vars)).toBe(renderTemplate(filePath, vars));
+  });
+
+  test('leaves GitHub Actions ${{ secrets.X }} expressions unchanged', () => {
+    const out = substituteVars('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}', {});
+
+    expect(out).toBe('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}');
   });
 });
