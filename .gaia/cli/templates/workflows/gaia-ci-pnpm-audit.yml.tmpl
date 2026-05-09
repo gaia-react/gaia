@@ -21,7 +21,7 @@ jobs:
           RUN_COST_DOLLARS: "0"
         run: |
           set -euo pipefail
-          default=$(gh api repos/${{ github.repository }} --jq '.default_branch')
+          default=$(gh api repos/${{ github.repository }} --jq '.default_branch' 2>/dev/null || echo "main")
           audit_json=$(pnpm audit --json || true)
           high_count=$(printf '%s' "$audit_json" | jq '[.advisories | to_entries[] | .value | select(.severity == "high" or .severity == "critical")] | length')
           if [ "$high_count" = "0" ]; then

@@ -272,7 +272,7 @@ const decide = (args: DecideArgs): CronDecision | 'state_malformed' => {
     };
   }
 
-  // 2. cost_overage and 3. first_run / state_malformed
+  // 2. first_run / state_malformed and 3. cost_overage
   if (stateResult.status === 'malformed') {
     structuredError({
       code: 'state_malformed',
