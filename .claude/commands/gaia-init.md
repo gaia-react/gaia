@@ -33,7 +33,7 @@ pnpm install
 
 If install fails, stop and report the error. Do not continue.
 
-Then run `/update-deps` to bring all packages to their latest compatible versions before continuing. If `/update-deps` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/update-deps` runs its own quality gate at the end — if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
+Then run `/sharpen` to bring all packages to their latest compatible versions before continuing. If `/sharpen` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/sharpen` runs its own quality gate at the end — if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
 
 ## Step 2: Gather user input (in the user's language)
 

@@ -9,7 +9,7 @@ The slash command name intentionally does NOT start with `gaia-` so it does not 
 
 ## How to know if this needs to run
 
-The statusline shows `Run /setup-gaia` when `.gaia/local/setup-state.json` is missing or its `completed_at` is null. The indicator takes precedence over `/update-deps` and `/update-gaia` — those become visible only after setup is finalized.
+The statusline shows `Run /setup-gaia` when `.gaia/local/setup-state.json` is missing or its `completed_at` is null. The indicator takes precedence over `/sharpen` and `/update-gaia` — those become visible only after setup is finalized.
 
 You can also check on demand: `.gaia/cli/gaia setup status` prints a human-readable summary; `--json` is the machine-readable shape.
 
@@ -244,7 +244,7 @@ After every step records as complete, run:
 
 The CLI refuses to finalize while any step is pending. If the maintainer initialized this clone manually before `/setup-gaia` existed, they can pass `--force` to mark the state as complete without running through the steps.
 
-Then output (in the user's language): "Per-machine GAIA setup complete. Restart Claude Code so the new plugin and skill state are picked up. The statusline will now surface `/update-deps` and `/update-gaia` indicators when applicable."
+Then output (in the user's language): "Per-machine GAIA setup complete. Restart Claude Code so the new plugin and skill state are picked up. The statusline will now surface `/sharpen` and `/update-gaia` indicators when applicable."
 
 ## On failure: resume
 

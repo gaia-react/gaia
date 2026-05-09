@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ### Changed
 
+- **BREAKING:** `/update-deps` skill renamed to `/sharpen` (prose name "GAIA Sharpen"). The slash command name, the statusline indicator label (`Run /sharpen (N outdated)`), and the skill folder (`.claude/skills/sharpen/`) all change together. The cloud-only telemetry event type `update_deps_run` is unchanged; renaming it would invalidate emitted events on the cloud consumer side and is deferred to a coordinated cross-surface release.
 - **BREAKING:** `/wiki-sync`, `/wiki-consolidate`, `/wiki-lint` slash commands are removed. Use `/gaia wiki sync`, `/gaia wiki consolidate`, `/gaia wiki lint` instead — or `/gaia wiki` for the full chain. Motivation: `/wiki-lint` collided with the `claude-obsidian` plugin's skill of the same name. Moving everything under the `/gaia` router namespace eliminates the collision and groups wiki maintenance with the other GAIA workflows. Hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) and statusline now point at the new names. Smoke tests under `.gaia/tests/smoke/wiki-sync/` updated. The playbooks moved from `.claude/commands/wiki-{sync,consolidate,lint}.md` to `.claude/skills/gaia/references/wiki/{sync,consolidate,lint}.md`.
 - `/gaia audit` no longer covers intra-wiki duplication or broken-wikilink checks — those overlapped with `/gaia wiki consolidate` and `/gaia wiki lint`. Run `/gaia wiki` separately for wiki-internal audits.
 
@@ -19,6 +20,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 - Dead-code detection via [knip](https://knip.dev). Run `pnpm knip` after refactors or before release-candidate PRs. Template-aware config marks GAIA's library surface as entries so intentional exports aren't flagged. `.claude/rules/knip.md` guides Claude on when to suggest it.
 - Serena MCP server registered by `/gaia-init` for LSP-backed code intelligence. Pinned at `v1.2.0`. Requires `uv`. New `.claude/rules/code-search.md` routes Claude to Serena for TS/TSX symbol queries; `/gaia wiki sync` no longer marks new component / hook / service files WORTHY (Serena handles inventory freshness). See `wiki/concepts/Serena Integration.md` for the division of labor.
+
+### Deprecated
+
+- `/update-deps` slash command. The command persists as a thin alias that prints a deprecation notice and dispatches to `/sharpen`. The alias is kept for one minor release window for existing-adopter muscle memory, then removed on the next minor GAIA release.
 
 ## [1.0.5] — 2026-05-04
 
