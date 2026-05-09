@@ -39,9 +39,8 @@ const run = (
   });
 
   // spawnSync sets `status: null` on signal-terminated children; treat
-  // that as a non-zero exit so callers don't accidentally see it as
-  // success.
-  const exitCode = result.status ?? (result.signal === null ? 1 : 1);
+  // that as exit code 1 so callers don't accidentally see it as success.
+  const exitCode = result.status ?? 1;
 
   return {
     exitCode,

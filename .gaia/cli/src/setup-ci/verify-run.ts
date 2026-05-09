@@ -18,7 +18,10 @@
  * `conclusion: "polling_timeout"` and `verified: false`. Race-window
  * note: step 3 picks the most recent run for the workflow file. If
  * the user triggered a manual run between step 2 and step 3, the
- * latest one could be theirs. v1 accepts this risk.
+ * latest one could be theirs. As a soft guard, the handler captures
+ * `Date.now()` immediately before step 1 and compares it against the
+ * picked run's `createdAt`; a `createdAt` more than 5s before that
+ * timestamp emits a stderr warning but proceeds without failing.
  *
  * The handler exits 0 regardless of `verified` — the slash command
  * branches on the JSON. Exits non-zero only on hard `gh` errors (e.g.
@@ -39,6 +42,7 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const DEFAULT_POLL_INTERVAL_MS = 10_000;
+const RACE_WINDOW_GUARD_MS = 5_000;
 
 type RunOptions = {
   cwd?: string;
@@ -186,6 +190,13 @@ export const run = async (
 
   const cwd = options.cwd ?? process.cwd();
 
+  // Captured before step 1 so the race-window guard below can compare
+  // the picked run's `createdAt` against the moment we asked GH to
+  // start one. Any run created earlier than this minus a small fudge
+  // is suspicious (someone else dispatched between our list call and
+  // ours actually appearing).
+  const triggerTime = Date.now();
+
   // Step 1: trigger the run.
   const triggerResult = await runGh({
     args: ['workflow', 'run', workflowFile, '--ref', 'main'],
@@ -245,6 +256,21 @@ export const run = async (
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
     runId = String(first.databaseId);
+
+    if (first.createdAt !== undefined) {
+      const createdAtMs = new Date(first.createdAt).getTime();
+
+      if (
+        !Number.isNaN(createdAtMs)
+        && createdAtMs < triggerTime - RACE_WINDOW_GUARD_MS
+      ) {
+        process.stderr.write(
+          `verify-run: warning — picked run ${runId} createdAt `
+            + `${first.createdAt} predates trigger time by `
+            + `${triggerTime - createdAtMs}ms; may be a concurrent dispatch\n`
+        );
+      }
+    }
   } catch (error) {
     structuredError({
       code: 'run_list_malformed',

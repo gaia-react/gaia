@@ -83,6 +83,27 @@ describe('setup-ci enable-delete-branch', () => {
 
     const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
     expect(parsed.applied).toBe(false);
+    expect(parsed.error).toBe('gh_api_error');
+  });
+
+  it('JSON output never leaks gh stderr substrings on failure', async () => {
+    const sentinel = 'TOKEN_LEAK_CANARY_abc123:repo/secret';
+    const handle = sandbox.installGhShim({
+      exitCode: 1,
+      stderrQueue: [`gh: api error: ${sentinel}\n`],
+    });
+    restore = handle.restore;
+
+    const exit = await run(['--owner', 'foo', '--repo', 'bar'], {cwd: sandbox.root});
+    expect(exit).not.toBe(0);
+
+    const stdoutText = stdio.out.join('');
+    expect(stdoutText).not.toContain(sentinel);
+    expect(stdoutText).not.toContain('gh: api error');
+
+    const parsed = JSON.parse(stdoutText.trim()) as Record<string, unknown>;
+    expect(parsed.applied).toBe(false);
+    expect(parsed.error).toBe('gh_api_error');
   });
 
   it('exits non-zero when --owner missing', async () => {

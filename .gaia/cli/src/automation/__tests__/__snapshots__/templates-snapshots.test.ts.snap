@@ -85,6 +85,7 @@ jobs:
           RUN_COST_DOLLARS: "0"
         run: |
           set -euo pipefail
+          default=$(gh api repos/\${{ github.repository }} --jq '.default_branch')
           audit_json=$(pnpm audit --json || true)
           high_count=$(printf '%s' "$audit_json" | jq '[.advisories | to_entries[] | .value | select(.severity == "high" or .severity == "critical")] | length')
           if [ "$high_count" = "0" ]; then
@@ -106,7 +107,7 @@ jobs:
                   --body "Severity: $severity\\nPackage: $pkg\\nAdvisory: $url"
                 # Targeted single-package security PR
                 branch="gaia-ci/security/$pkg-$(date -u +%Y%m%d-%H%M%S)"
-                git checkout -b "$branch" main
+                git checkout -b "$branch" "$default"
                 pnpm update "$pkg"
                 git add -A
                 git commit -m "chore(security): bump $pkg ($cve)"

@@ -7,10 +7,14 @@
  *
  * Output JSON:
  *   `{ "applied": true }` on success.
- *   `{ "applied": false, "error": "<gh stderr>" }` on failure.
+ *   `{ "applied": false, "error": "gh_api_error" }` on failure.
+ *
+ * The error code is a stable identifier — never raw `gh` stderr —
+ * because the slash command echoes this JSON to operator surfaces
+ * that could leak tokens or repository internals.
  *
  * Exits 0 on success, non-zero on failure (so callers can branch on
- * exit code AND inspect the JSON for the error message).
+ * exit code AND inspect the JSON for the error code).
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -90,7 +94,7 @@ export const run = async (
 
   if (!result.ok) {
     process.stdout.write(
-      `${JSON.stringify({applied: false, error: result.stderr.trim()})}\n`
+      `${JSON.stringify({applied: false, error: 'gh_api_error'})}\n`
     );
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
