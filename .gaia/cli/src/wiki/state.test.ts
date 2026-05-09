@@ -16,12 +16,13 @@ import {run} from './state.js';
 type Sandbox = {
   cleanup: () => void;
   commit: (message: string, files: Record<string, string>) => string;
-  // Creates N empty commits in a single shell spawn. Each spawned
-  // `git commit` carries the Node-process startup tax for the full
-  // sandbox `commit()` helper (write, add, commit, rev-parse = 3-4
-  // spawns); under full-suite contention 21 invocations at ~150ms
-  // each blow past a 30s per-test timeout. Batching into one bash
-  // subshell amortizes the cost.
+  // Creates N empty commits in a single `git fast-import` spawn. The
+  // sandbox `commit()` helper (write, add, commit, rev-parse) costs
+  // 3-4 Node→git spawns per call; under full-suite contention each
+  // spawn slows from ~50ms to several hundred ms, so 21 sequential
+  // invocations easily blow past a 30s per-test timeout. fast-import
+  // creates the whole chain in one process — single startup, all
+  // commits assembled in-memory, no per-commit pack overhead.
   commitEmptyChain: (count: number) => void;
   root: string;
 };
