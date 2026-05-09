@@ -2,9 +2,15 @@
 
 export * from './analytics-report.js';
 
+export * from './automation-config.js';
+
+export * from './automation-state.js';
+
 export * from './cloud-projection.js';
 
 export * from './envelope.js';
+
+export * from './local-automation.js';
 
 export * from './local-namespace.js';
 

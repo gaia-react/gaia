@@ -4,7 +4,9 @@ Wiki-maintenance router. Sub-commands run individually or chain end-to-end.
 
 ## Argument parsing
 
-Tokenize the first whitespace-separated word of `$ARGUMENTS`:
+Tokenize `$ARGUMENTS`. Detect a trailing `--force` token; if present, strip
+it and set `FORCE=true`. Then tokenize the first remaining whitespace-
+separated word.
 
 | First arg                         | Action                                                                      |
 | --------------------------------- | --------------------------------------------------------------------------- |
@@ -14,16 +16,63 @@ Tokenize the first whitespace-separated word of `$ARGUMENTS`:
 | (empty)                           | Full chain: sync → (gated) consolidate → lint. See "Full chain".            |
 | (anything else)                   | Print help.                                                                 |
 
+`--force` is positional-flexible but the contract is "trailing" — it must be
+the LAST argument so it doesn't shadow `sync` / `consolidate` / `lint`:
+
+- `/gaia wiki --force` (full chain, force)
+- `/gaia wiki sync --force` (sync only, force)
+
 Help message:
 
 ```
-Usage: /gaia wiki [sync|consolidate|lint]
+Usage: /gaia wiki [--force] [sync|consolidate|lint]
 
+  --force        Override GAIA CI deferral (no-op when wiki.mode != "ci")
   (no arg)       Full chain: sync, then consolidate if gate trips, then lint
   sync           Evaluate commits since last sync; update wiki where warranted
   consolidate    Cross-SPEC redundancy + contradiction audit; surfaces findings
   lint           Health check: orphans, dead links, drift, narrative-ref scrub
 ```
+
+## GAIA CI deferral check
+
+Before any sub-command dispatches (sync / consolidate / lint / full chain),
+the parent reads `.gaia/automation.json` to determine whether wiki updates
+are CI-managed.
+
+```
+STATUS=$(.gaia/cli/gaia automation read-config --json 2>/dev/null \
+         | jq -r '.wiki.mode // "local"') || STATUS=local
+```
+
+If the binary or config is missing the read fails; treat that as `local`
+and proceed.
+
+If `STATUS == "ci"` and `FORCE != "true"`, print this conflict-risk
+warning to stderr and exit 1 without dispatching anything:
+
+```
+GAIA CI manages /gaia wiki for this repo. Running it locally now risks colliding
+with the next scheduled run. To override, re-invoke with --force.
+```
+
+If `STATUS == "ci"` and `FORCE == "true"`, the chain runs as normal. After
+the chain commits its wiki edits, the parent ALSO calls:
+
+```
+.gaia/cli/gaia automation record-run wiki \
+  --sha "$(git rev-parse HEAD)" \
+  --trigger force \
+  --cost 0
+git add .gaia/automation.state-wiki.json
+git commit --amend --no-edit
+```
+
+The state changes commit in the same commit as the wiki content change.
+The dispatched sub-agent commits but does not push, so the amend is local
+only and the bundled commit is the one that hits the remote.
+
+If `STATUS != "ci"`, behave as before (no defer, no force, no record-run).
 
 ## Sync
 
@@ -40,7 +89,7 @@ Spawn:
 
 When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
 
-If invoked as `/gaia wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint — that's only the no-arg form's job.
+If invoked as `/gaia wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint — that's only the no-arg form's job. The sub-arg form `/gaia wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
 
 ## Consolidate
 

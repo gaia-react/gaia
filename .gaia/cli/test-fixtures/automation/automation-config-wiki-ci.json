@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "setup_complete": true,
+  "setup_opted_out": false,
+  "wiki": {
+    "mode": "ci",
+    "schedule": "daily"
+  },
+  "sharpen": {
+    "mode": "off"
+  },
+  "pnpm_audit": {
+    "mode": "local",
+    "schedule": "weekly"
+  },
+  "stale_branches": {
+    "mode": "ci",
+    "schedule": "weekly"
+  },
+  "update_gaia": {
+    "mode": "local"
+  }
+}

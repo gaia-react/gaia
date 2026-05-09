@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "last_run_at": "2026-04-20T04:00:00Z",
+  "last_run_sha": "0123456789abcdef0123456789abcdef01234567",
+  "last_run_trigger": "cron",
+  "skip_count": 3,
+  "last_run_cost": 0.55,
+  "cost_overage": false
+}
