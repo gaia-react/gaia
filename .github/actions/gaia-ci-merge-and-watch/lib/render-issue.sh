@@ -19,4 +19,6 @@ if [[ ! -f "$TEMPLATE" ]]; then
   exit 1
 fi
 
-envsubst < "$TEMPLATE"
+# Expand only the known set of variables to prevent accidental token injection
+# from variables in user-controlled fields (PR title, workflow name, etc).
+envsubst '${ORIGINAL_PR},${ORIGINAL_TITLE},${REVERT_PR},${MERGE_SHA},${FAILED_RUN_URL},${WORKFLOW_NAME},${REVERT_FAILED_RUN_URL}' < "$TEMPLATE"

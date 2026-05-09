@@ -15,7 +15,7 @@ import path from 'node:path';
 import {z} from 'zod';
 import {revertLedgerPath} from '../ci/paths.js';
 
-export const RevertAttemptStatusSchema = z.enum(['open', 'merged', 'failed']);
+export const RevertAttemptStatusSchema = z.literal(['failed', 'merged', 'open'] as const);
 export type RevertAttemptStatus = z.infer<typeof RevertAttemptStatusSchema>;
 
 export const RevertAttemptSchema = z.object({
