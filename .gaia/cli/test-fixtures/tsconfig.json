@@ -2,9 +2,9 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": ".",
+    "rootDir": "..",
     "outDir": "./dist-fixtures"
   },
-  "include": ["./**/*.ts"],
-  "exclude": ["./dist-fixtures", "../node_modules"]
+  "include": ["./**/*.ts", "../src/**/*.ts"],
+  "exclude": ["./dist-fixtures", "../node_modules", "../src/**/__tests__/**"]
 }
