@@ -23,6 +23,10 @@ grep -qE '(^|[^[:alnum:]_-])git[[:space:]]+commit([[:space:]]|$)' <<<"$cmd" || e
 # Skip --amend
 grep -qE -- '--amend([[:space:]]|=|$)' <<<"$cmd" && exit 0
 
+# GAIA CI deferral. When wiki.mode == "ci", local automatic triggers stand
+# down so they don't collide with the cron-managed wiki run.
+. .claude/hooks/lib/gaia-ci-defer.sh 2>/dev/null && gaia_ci_defer_if_managed wiki || true
+
 head_sha=$(git rev-parse --short HEAD 2>/dev/null) || exit 0
 subject=$(git log -1 --format='%s' 2>/dev/null) || exit 0
 files_changed=$(git show --stat --format='' HEAD 2>/dev/null | tail -1 | grep -oE '[0-9]+ files? changed' | awk '{print $1}')

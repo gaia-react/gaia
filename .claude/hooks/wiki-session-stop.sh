@@ -22,6 +22,10 @@ GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
 session_marker="$GIT_DIR/claude-session-start"
 [ -f "$session_marker" ] || exit 0
 
+# GAIA CI deferral. When wiki.mode == "ci", local automatic triggers stand
+# down so they don't collide with the cron-managed wiki run.
+. .claude/hooks/lib/gaia-ci-defer.sh 2>/dev/null && gaia_ci_defer_if_managed wiki || true
+
 start_sha=$(cat "$session_marker" 2>/dev/null) || exit 0
 [ -n "$start_sha" ] || exit 0
 head_sha=$(git rev-parse HEAD 2>/dev/null) || exit 0

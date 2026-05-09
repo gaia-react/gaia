@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "setup_complete": true,
+  "setup_opted_out": false,
+  "wiki": {
+    "mode": "local"
+  },
+  "sharpen": {
+    "mode": "off"
+  },
+  "pnpm_audit": {
+    "mode": "local",
+    "schedule": "weekly"
+  },
+  "stale_branches": {
+    "mode": "off"
+  },
+  "update_gaia": {
+    "mode": "local"
+  }
+}
