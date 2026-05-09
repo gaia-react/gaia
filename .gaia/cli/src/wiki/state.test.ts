@@ -16,6 +16,13 @@ import {run} from './state.js';
 type Sandbox = {
   cleanup: () => void;
   commit: (message: string, files: Record<string, string>) => string;
+  // Creates N empty commits in a single shell spawn. Each spawned
+  // `git commit` carries the Node-process startup tax for the full
+  // sandbox `commit()` helper (write, add, commit, rev-parse = 3-4
+  // spawns); under full-suite contention 21 invocations at ~150ms
+  // each blow past a 30s per-test timeout. Batching into one bash
+  // subshell amortizes the cost.
+  commitEmptyChain: (count: number) => void;
   root: string;
 };
 
@@ -44,11 +51,35 @@ const setupSandbox = (): Sandbox => {
     }).trim();
   };
 
+  const commitEmptyChain = (count: number): void => {
+    if (count <= 0) return;
+    const lines: string[] = [];
+    for (let i = 0; i < count; i += 1) {
+      lines.push(
+        'commit refs/heads/main',
+        `mark :${i + 1}`,
+        `committer Test <test@example.com> ${1_700_000_000 + i} +0000`,
+        'data <<COMMITMSG',
+        `feat: change ${i}`,
+        'COMMITMSG',
+        i === 0 ? 'from refs/heads/main^0' : `from :${i}`,
+        ''
+      );
+    }
+    lines.push('done', '');
+    execFileSync('git', ['fast-import', '--quiet'], {
+      cwd: root,
+      input: lines.join('\n'),
+      stdio: ['pipe', 'ignore', 'pipe'],
+    });
+  };
+
   return {
     cleanup: () => {
       rmSync(root, {force: true, recursive: true});
     },
     commit,
+    commitEmptyChain,
     root,
   };
 };
@@ -177,9 +208,7 @@ describe('wiki state', () => {
     () => {
       const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
       writeStateFile(sandbox.root, baseSha);
-      for (let i = 0; i < 21; i += 1) {
-        sandbox.commit(`feat: change ${i}`, {[`app/foo${i}.ts`]: 'x\n'});
-      }
+      sandbox.commitEmptyChain(21);
 
       const exit = run(['--json'], {cwd: sandbox.root});
       expect(exit).toBe(0);
@@ -191,7 +220,7 @@ describe('wiki state', () => {
       expect(json.commits_ahead).toBe(21);
       expect(json.drift_severity).toBe('high');
     },
-    30_000
+    60_000
   );
 
   test('marks reachable=false when state SHA is not an ancestor of HEAD', () => {
