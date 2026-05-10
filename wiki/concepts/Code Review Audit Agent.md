@@ -34,7 +34,6 @@ To swap a library: remove its extension file, add one for the replacement. The m
 | `tailwind-merge.md`  | `tailwind-merge`             |
 | `react-i18next.md`   | `react-i18next`              |
 | `form-components.md` | GAIA Form Components         |
-| `a11y-axe.md`        | `axe-core + @axe-core/playwright` |
 
 ## Trigger
 

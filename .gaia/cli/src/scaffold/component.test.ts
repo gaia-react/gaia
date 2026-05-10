@@ -32,12 +32,6 @@ import {run} from './component.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_SOURCE = path.join(HERE, 'templates', 'component');
 
-// Built at runtime so the contiguous text never appears in source.
-// Vitest's directive scanner reads raw file content for `@vitest-environment`
-// and would otherwise try to load jsdom for this test file (which lives in
-// the .gaia/cli sub-package without jsdom installed).
-const JSDOM_DIRECTIVE_LINE = `// ${'@'}vitest-environment jsdom\n`;
-
 type Sandbox = {
   cleanup: () => void;
   parent: string;
@@ -130,17 +124,11 @@ describe('scaffold component', () => {
     expect(indexContents).not.toContain('FooProps');
 
     const testContents = read(testPath);
-    expect(testContents.startsWith(JSDOM_DIRECTIVE_LINE)).toBe(true);
     expect(testContents).toContain(
       "import {composeStory} from '@storybook/react-vite';"
     );
-    expect(testContents).toContain(
-      "import {expectNoA11yViolations} from 'test/a11y';"
-    );
     expect(testContents).toContain('const Foo = composeStory(Default, Meta);');
     expect(testContents).toContain("describe('Foo'");
-    expect(testContents).toContain("test('a11y', async () => {");
-    expect(testContents).toContain('await expectNoA11yViolations(container);');
 
     const storyContents = read(storyPath);
     expect(storyContents).toContain("import Foo from '..';");
@@ -167,16 +155,8 @@ describe('scaffold component', () => {
     const testContents = read(
       path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')
     );
-    expect(testContents.startsWith(JSDOM_DIRECTIVE_LINE)).toBe(true);
     expect(testContents).not.toContain('composeStory');
-    expect(testContents).toContain("import Bar from '..';");
-    expect(testContents).toContain(
-      "import {expectNoA11yViolations} from 'test/a11y';"
-    );
-    expect(testContents).toContain("test('a11y', async () => {");
-    expect(testContents).toContain(
-      'await expectNoA11yViolations(container);'
-    );
+    expect(testContents).toContain("import Bar from '..'");
   });
 
   test('--props renders a typed Props alias and destructured signature', () => {

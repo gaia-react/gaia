@@ -215,6 +215,16 @@ jobs:
             file edits go in their own commit (or commits) BEFORE you call the
             stamp helper. After the audit and stamp, post a single PR comment
             summarizing findings (and whether self-heal commits were pushed).
+
+            SELF-HEAL CONSTRAINTS — read before making any edits:
+            1. Run `git diff --name-only origin/main...HEAD` first. Self-heal edits
+               are ONLY permitted on files that appear in this list. Never edit a
+               file that was not changed by this PR.
+            2. Run `git diff origin/main...HEAD -- <file>` before editing any file.
+               If the PR's diff for that file shows lines being REMOVED (minus lines),
+               do NOT restore them. Intentional deletions are not defects.
+            3. Never add content that references a library, tool, or pattern that this
+               PR removed. The PR diff is the source of truth for intent.
           claude_args: |
             --max-turns ${{ steps.config.outputs.max_turns }}
             --allowedTools Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*)
