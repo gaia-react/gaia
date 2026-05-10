@@ -392,6 +392,8 @@ Mapping:
 - `stamp: empty commit (created locally)` + `push_status=detached` → "empty commit (HEAD detached; runner pushes separately)"
 - `stamp: declined: <reason>` → "skipped (`<reason>`)"
 
+For the amend and declined variants, `push_status` stays at its default `not_attempted` and is not consulted — the `stamp_line` alone determines the surface line. `push_status` is only meaningful for the empty-commit branch.
+
 The skipped form applies when `stamp_line` begins with `stamp: declined:` — the marker is still written (the local gate is unblocked) but downstream CI will run a fresh audit because the trailer is absent.
 
 If you do not write the marker, surface this instead:

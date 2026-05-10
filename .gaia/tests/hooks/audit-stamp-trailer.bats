@@ -2,7 +2,7 @@
 
 # Tests for .claude/hooks/audit-stamp-trailer.sh.
 #
-# Covers all stamp paths plus every refusal case from the frozen stamp
+# Covers all 4 stamp paths plus every refusal case from the frozen stamp
 # invariant (.gaia/local/plans/code-review-audit-ci/trailer-format.md):
 #   1. clean tree, un-pushed HEAD          -> amend
 #   2. clean tree, pushed HEAD             -> empty commit (no auto-push)
