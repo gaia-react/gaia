@@ -19,8 +19,6 @@ export const test = base.extend<AxeFixtures>({
         'wcag21aa',
       ]);
 
-    // `use` is the Playwright fixture-API callback parameter, not a React hook.
-    // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(make);
   },
 });

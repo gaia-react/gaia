@@ -163,7 +163,7 @@ describe('scaffold component', () => {
     );
     expect(testContents.startsWith('// @vitest-environment jsdom\n')).toBe(true);
     expect(testContents).not.toContain('composeStory');
-    expect(testContents).toContain("import Bar from '../index';");
+    expect(testContents).toContain("import Bar from '..';");
     expect(testContents).toContain(
       "import {expectNoA11yViolations} from 'test/a11y';"
     );

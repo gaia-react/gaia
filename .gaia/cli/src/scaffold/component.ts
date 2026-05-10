@@ -222,7 +222,7 @@ const buildTestImports = (componentName: string, withStory: boolean): string => 
   return [
     "import {describe, expect, test} from 'vitest';",
     "import {render} from 'test/rtl';",
-    `import ${componentName} from '../index';`,
+    `import ${componentName} from '..';`,
   ].join('\n');
 };
 
