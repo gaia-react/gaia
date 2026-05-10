@@ -1,5 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
-import FieldRequiredText from '../index';
+import FieldRequiredText from '..';
 
 const meta: Meta = {
   component: FieldRequiredText,

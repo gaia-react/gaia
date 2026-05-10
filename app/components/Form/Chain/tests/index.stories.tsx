@@ -3,7 +3,7 @@ import type {Meta, StoryFn} from '@storybook/react-vite';
 import Button from '~/components/Button';
 import InputText from '~/components/Form/InputText';
 import Select from '~/components/Form/Select';
-import Chain from '../index';
+import Chain from '..';
 
 const meta: Meta = {
   component: Chain,

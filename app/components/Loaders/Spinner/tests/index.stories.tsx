@@ -1,5 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
-import Spinner from '../index';
+import Spinner from '..';
 
 const meta: Meta = {
   argTypes: {

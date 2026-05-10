@@ -4,7 +4,7 @@ import type {Meta, StoryFn} from '@storybook/react-vite';
 import stubs from 'test/stubs';
 import type {Variant} from '~/components/Button';
 import type {Size} from '~/types';
-import LinkButton from '../index';
+import LinkButton from '..';
 
 const meta: Meta = {
   component: LinkButton,

@@ -6,7 +6,7 @@ import {z} from 'zod';
 import stubs from 'test/stubs';
 import Button from '~/components/Button';
 import FormActions from '~/components/Form/FormActions';
-import InputEmail from '../index';
+import InputEmail from '..';
 
 const meta: Meta = {
   component: InputEmail,

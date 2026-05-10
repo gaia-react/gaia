@@ -1,5 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
-import ErrorStack from '../index';
+import ErrorStack from '..';
 
 const meta: Meta = {
   component: ErrorStack,

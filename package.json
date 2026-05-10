@@ -67,7 +67,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.11.3",
     "@faker-js/faker": "10.4.0",
-    "@gaia-react/lint": "1.1.1",
+    "@gaia-react/lint": "1.1.3",
     "@msw/data": "1.1.5",
     "@playwright-testing-library/test": "4.5.0",
     "@playwright/test": "1.59.1",

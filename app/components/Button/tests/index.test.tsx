@@ -3,14 +3,14 @@ import userEvent from '@testing-library/user-event';
 import {describe, expect, test, vi} from 'vitest';
 import {expectNoA11yViolations} from 'test/a11y';
 import {render, screen} from 'test/rtl';
-import Button from '../index';
+import Button from '..';
 
 describe('Button', () => {
   test('Active', async () => {
     const handleClickButton = vi.fn();
     render(<Button onClick={handleClickButton}>Test</Button>);
     const button = screen.getByRole('button');
-    expect(button.textContent).toBe('Test');
+    expect(button).toHaveTextContent('Test');
     await userEvent.click(button);
     expect(handleClickButton).toHaveBeenCalled();
   });

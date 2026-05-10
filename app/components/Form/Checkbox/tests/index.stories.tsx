@@ -1,5 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
-import Checkbox from '../index';
+import Checkbox from '..';
 
 const meta: Meta = {
   argTypes: {

@@ -7,7 +7,7 @@ import {z} from 'zod';
 import stubs from 'test/stubs';
 import Button from '~/components/Button';
 import FormActions from '~/components/Form/FormActions';
-import InputPassword from '../index';
+import InputPassword from '..';
 
 const meta: Meta = {
   component: InputPassword,

@@ -2,7 +2,6 @@ import {expectNoSeriousA11yViolations} from '../a11y';
 import {test} from '../fixtures';
 import {hydration} from '../utils';
 
-// eslint-disable-next-line playwright/expect-expect -- expectNoSeriousA11yViolations is the assertion
 test('language switcher has no serious a11y violations', async ({
   page,
 }, testInfo) => {

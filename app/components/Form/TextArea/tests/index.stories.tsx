@@ -1,6 +1,6 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import stubs from 'test/stubs';
-import TextArea from '../index';
+import TextArea from '..';
 
 const meta: Meta = {
   component: TextArea,
