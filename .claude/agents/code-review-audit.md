@@ -290,6 +290,7 @@ If no violations are found for a rule, don't mention it. If no violations are fo
 - Read related files only as needed for context (e.g., verifying authorization); keep the review focused on the target code
 - Prioritize ruthlessly — 5 important issues beats 50 trivial ones
 - Work within the project's existing patterns when suggesting fixes; don't introduce new dependencies
+- **Self-heal scope is fix-only, not restore-only.** Do NOT recreate files the PR explicitly deleted, do NOT add files you think "should" exist (deprecation aliases, restored renames, templates the PR removed). The PR's intent is authoritative; if a removal looks wrong, raise it as a finding for human review rather than reverting it via a self-heal commit. The push gate refuses self-heal diffs that touch >10 files — a sprawling self-heal indicates the agent is undoing intentional work.
 
 ## Audit-run env (capture before any edits)
 
