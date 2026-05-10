@@ -357,7 +357,7 @@ Then show the privacy explainer (this block stays English regardless of UI langu
 >
 > **Where it lives:** on your machine only, in your Claude project folder. Never in your project's git. Never sent to a server unless you opt into anonymous fine-tuning analytics (which comes with mentorship).
 >
-> **Read more:** https://gaiareact.com/mentorship
+> **Read more:** https://gaiareact.com/mentorship/
 
 Use AskUserQuestion with these three options in this exact order:
 
