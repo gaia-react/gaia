@@ -6,11 +6,9 @@
 # GAIA release available) read from the TTL-cached refresher.
 #
 # Left-side resolution (first match wins):
-#   1. Project sentinel `.gaia/statusline/.use-vendored-base` exists →
-#      run `.gaia/statusline/preferred-base.sh` (project-only mode).
-#   2. User has `statusLine.command` in `~/.claude/settings.json` → run that
+#   1. User has `statusLine.command` in `~/.claude/settings.json` → run that
 #      (so the adopter's existing global statusline appears unchanged).
-#   3. Fallback → `.gaia/statusline/preferred-base.sh` directly.
+#   2. Fallback → bare "Claude Code" label.
 #
 # Right side suppression in linked worktrees: the right-side indicators
 # (`Run /setup-gaia`, `Run /update-deps`, `Run /update-gaia`) all prod the
@@ -33,19 +31,13 @@ GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
 CACHE_FILE="$GAIA_DIR/cache/update-check.json"
 CHECK_SCRIPT="$PROJECT_ROOT/.gaia/scripts/check-updates.sh"
-SENTINEL="$SCRIPT_DIR/.use-vendored-base"
-PREFERRED_BASE="$SCRIPT_DIR/preferred-base.sh"
 
 # Read JSON input once.
 input=$(cat)
 
 # ---------- Left side (delegated) ----------
 left=""
-if [ -f "$SENTINEL" ] && [ -r "$PREFERRED_BASE" ]; then
-  left=$(printf '%s' "$input" | bash "$PREFERRED_BASE" 2>/dev/null)
-fi
-
-if [ -z "$left" ] && [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
+if [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
   user_cmd=""
   if [ -f "$HOME/.claude/settings.json" ] && command -v jq >/dev/null 2>&1; then
     user_cmd=$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)
@@ -57,10 +49,6 @@ if [ -z "$left" ] && [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
   if [ -n "$user_cmd" ]; then
     left=$(printf '%s' "$input" | GAIA_STATUSLINE_NESTED=1 bash -c "$user_cmd" 2>/dev/null)
   fi
-fi
-
-if [ -z "$left" ] && [ -r "$PREFERRED_BASE" ]; then
-  left=$(printf '%s' "$input" | bash "$PREFERRED_BASE" 2>/dev/null)
 fi
 
 [ -z "$left" ] && left="Claude Code"
@@ -89,46 +77,55 @@ fi
 # the other indicators are suppressed until the developer has run through
 # the per-clone setup at least once. The setup file is gitignored, so each
 # clone gets its own state.
+#
+# Exception: when .claude/commands/gaia-init.md exists, this is a fresh
+# create-gaia project mid-init. /setup-gaia is not applicable until
+# /gaia-init finishes (which deletes that file). Suppress all right-side
+# indicators during that window.
 right=""
 if [ "$is_worktree" -eq 0 ]; then
-  SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
-  setup_complete="false"
-  if [ -f "$SETUP_STATE_FILE" ]; then
-    if command -v jq >/dev/null 2>&1; then
-      if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
-        setup_complete="true"
+  if [ -f "$PROJECT_ROOT/.claude/commands/gaia-init.md" ]; then
+    : # /gaia-init in progress — no right-side indicators
+  else
+    SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
+    setup_complete="false"
+    if [ -f "$SETUP_STATE_FILE" ]; then
+      if command -v jq >/dev/null 2>&1; then
+        if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
+          setup_complete="true"
+        fi
+      else
+        # Fallback: a complete state has a non-null completed_at value.
+        if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
+          setup_complete="true"
+        fi
       fi
-    else
-      # Fallback: a complete state has a non-null completed_at value.
-      if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
-        setup_complete="true"
+    fi
+
+    if [ "$setup_complete" != "true" ]; then
+      right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
+    elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
+      outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
+      gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
+      gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
+
+      segments=()
+      COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
+      if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
+        segments+=("🧭")
       fi
-    fi
-  fi
-
-  if [ "$setup_complete" != "true" ]; then
-    right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
-  elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
-    outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
-    gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
-    gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
-
-    segments=()
-    COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
-    if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
-      segments+=("🧭")
-    fi
-    if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-      segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
-    fi
-    if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
-      segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
-    fi
-    if [ "${#segments[@]}" -gt 0 ]; then
-      right="${segments[0]}"
-      for ((i=1; i<${#segments[@]}; i++)); do
-        right="${right}  ${segments[$i]}"
-      done
+      if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
+        segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
+      fi
+      if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
+        segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
+      fi
+      if [ "${#segments[@]}" -gt 0 ]; then
+        right="${segments[0]}"
+        for ((i=1; i<${#segments[@]}; i++)); do
+          right="${right}  ${segments[$i]}"
+        done
+      fi
     fi
   fi
 fi

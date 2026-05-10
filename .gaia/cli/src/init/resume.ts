@@ -21,6 +21,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {run as runBootstrapEnv} from './bootstrap-env.js';
 import {run as runConfigureAutomation} from './configure-automation.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
@@ -42,8 +43,9 @@ const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
     2. configure-i18n
     3. rename
     4. wire-statusline
-    5. configure-automation
-    6. finalize
+    5. bootstrap-env
+    6. configure-automation
+    7. finalize
 
   Exit codes:
     0  resume completed
@@ -117,6 +119,7 @@ type StepRunner = (
 ) => number;
 
 const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
+  'bootstrap-env': runBootstrapEnv,
   'configure-automation': runConfigureAutomation,
   'configure-i18n': runConfigureI18n,
   'finalize': runFinalize,
@@ -134,7 +137,7 @@ export const argvFromStepArgs = (
   step: StepName,
   saved: Record<string, unknown> | undefined
 ): string[] | null => {
-  if (step === 'finalize') return [];
+  if (step === 'finalize' || step === 'bootstrap-env') return [];
 
   if (saved === undefined) return null;
 
