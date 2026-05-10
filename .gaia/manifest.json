@@ -136,7 +136,6 @@
     ".gaia/scripts/tests/read-audit-ci-config.bats": "owned",
     ".gaia/specs.json": "owned",
     ".gaia/statusline/gaia-statusline.sh": "owned",
-    ".gaia/statusline/preferred-base.sh": "owned",
     ".gaia/templates/ci-issues/priority-critical-revert-failed.md": "owned",
     ".gaia/templates/ci-issues/priority-high-revert-opened.md": "owned",
     ".gaia/templates/README.md": "owned",

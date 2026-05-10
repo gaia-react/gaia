@@ -6,11 +6,9 @@
 # GAIA release available) read from the TTL-cached refresher.
 #
 # Left-side resolution (first match wins):
-#   1. Project sentinel `.gaia/statusline/.use-vendored-base` exists →
-#      run `.gaia/statusline/preferred-base.sh` (project-only mode).
-#   2. User has `statusLine.command` in `~/.claude/settings.json` → run that
+#   1. User has `statusLine.command` in `~/.claude/settings.json` → run that
 #      (so the adopter's existing global statusline appears unchanged).
-#   3. Fallback → `.gaia/statusline/preferred-base.sh` directly.
+#   2. Fallback → bare "Claude Code" label.
 #
 # Right side suppression in linked worktrees: the right-side indicators
 # (`Run /setup-gaia`, `Run /update-deps`, `Run /update-gaia`) all prod the
@@ -33,19 +31,13 @@ GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
 CACHE_FILE="$GAIA_DIR/cache/update-check.json"
 CHECK_SCRIPT="$PROJECT_ROOT/.gaia/scripts/check-updates.sh"
-SENTINEL="$SCRIPT_DIR/.use-vendored-base"
-PREFERRED_BASE="$SCRIPT_DIR/preferred-base.sh"
 
 # Read JSON input once.
 input=$(cat)
 
 # ---------- Left side (delegated) ----------
 left=""
-if [ -f "$SENTINEL" ] && [ -r "$PREFERRED_BASE" ]; then
-  left=$(printf '%s' "$input" | bash "$PREFERRED_BASE" 2>/dev/null)
-fi
-
-if [ -z "$left" ] && [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
+if [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
   user_cmd=""
   if [ -f "$HOME/.claude/settings.json" ] && command -v jq >/dev/null 2>&1; then
     user_cmd=$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)
@@ -57,10 +49,6 @@ if [ -z "$left" ] && [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
   if [ -n "$user_cmd" ]; then
     left=$(printf '%s' "$input" | GAIA_STATUSLINE_NESTED=1 bash -c "$user_cmd" 2>/dev/null)
   fi
-fi
-
-if [ -z "$left" ] && [ -r "$PREFERRED_BASE" ]; then
-  left=$(printf '%s' "$input" | bash "$PREFERRED_BASE" 2>/dev/null)
 fi
 
 [ -z "$left" ] && left="Claude Code"

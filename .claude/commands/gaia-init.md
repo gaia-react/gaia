@@ -39,6 +39,14 @@ Then run `/update-deps` to bring all packages to their latest compatible version
 
 This whole conversation has been in the user's language so far. Continue in that language for every prompt below. Do not translate source files, rules, skills, or wiki entries — those stay English regardless. Only translate the prompts you show the user.
 
+Before asking any questions, detect the project folder name:
+
+```bash
+basename "$(git rev-parse --show-toplevel)"
+```
+
+Use this as the slug default. Derive the title default by replacing hyphens and underscores with spaces and applying title case (e.g. `my-cool-app` → `My Cool App`).
+
 Use AskUserQuestion. Ask up to three questions, in this exact order:
 
 ### Q1 — Primary app language
@@ -75,12 +83,11 @@ Default: Yes.
 
 ### Other questions still asked here
 
-After the language questions, also ask (single AskUserQuestion is fine):
+After the language questions, ask these three together (single AskUserQuestion):
 
 - GitHub username for CODEOWNERS (suggest @username format)
-- The title of their project (default: "GAIA React App")
-- The kebab-case slug derived from the title (default: kebab-case of title)
-- Statusline mode: `global` (write to `~/.claude/settings.json`), `project` (write to `.claude/settings.json` only), or `skip` (no statusline change)
+- The title of their project (default: title-cased folder name from above)
+- The kebab-case slug derived from the title (default: folder name from above)
 
 ## Step 3: Run the init CLI
 
@@ -94,7 +101,7 @@ Run sequentially, stopping at the first non-zero exit:
 .gaia/cli/gaia init strip-branding --title "<Project Title>"
 .gaia/cli/gaia init configure-i18n --locales "<comma-separated locale list>" --strip <STRIP_I18N>
 .gaia/cli/gaia init rename --title "<Project Title>" --kebab "<kebab-slug>"
-.gaia/cli/gaia init wire-statusline --mode <global|project|skip>
+.gaia/cli/gaia init wire-statusline --mode project
 ```
 
 If any of these exit non-zero, surface the structured error verbatim (the CLI prints a JSON line to stderr) and stop. The user can re-run the failing command manually after addressing the cause, then resume with `.gaia/cli/gaia init resume` — completed steps are skipped automatically.
