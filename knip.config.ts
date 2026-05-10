@@ -13,7 +13,6 @@ export default {
   ],
   ignoreBinaries: ['bats'],
   ignoreDependencies: [
-    '@axe-core/playwright',
     '@epic-web/invariant',
     '@msw/data',
     '@playwright-testing-library/test',

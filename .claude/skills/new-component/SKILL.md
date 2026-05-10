@@ -20,7 +20,3 @@ Trigger: user asks to create a component, scaffold a card, etc.
 - `--no-story` — skip Storybook story
 - `--parent <dir>` — non-default parent dir (e.g. `app/components/Form`)
 - `--props "a:string,b:number"` — typed props rendered as a Props alias and destructured in the signature
-
-## Accessibility assertion
-
-Scaffolded test files include a `test('a11y')` block that calls `expectNoA11yViolations` from `test/a11y.ts` (axe-core, [WCAG 2.1 AA](https://www.w3.org/TR/WCAG21/) ruleset). Because `axe-core` is incompatible with the project's default `happy-dom` test environment (`Node.prototype.isConnected` is getter-only — capricorn86/happy-dom#978), the scaffolder writes `// @vitest-environment jsdom` as the first line of the test file. The directive is required: `expectNoA11yViolations` throws an actionable error if it detects a non-jsdom runtime. Don't strip the directive when editing the file.
