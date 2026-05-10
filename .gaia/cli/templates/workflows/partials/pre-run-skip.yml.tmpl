@@ -13,7 +13,7 @@
             exit 0
           fi
           # Otherwise consult the smart-cron decision primitive.
-          decision_json=$(node .gaia/cli/dist/index.js automation cron-decide {{tool_id}} --json)
+          decision_json=$(.gaia/cli/gaia automation cron-decide {{tool_id}} --json)
           decision=$(printf '%s' "$decision_json" | jq -r '.decision')
           reason=$(printf '%s' "$decision_json" | jq -r '.reason')
           skip_log_line=$(printf '%s' "$decision_json" | jq -r '.skip_log_line // empty')

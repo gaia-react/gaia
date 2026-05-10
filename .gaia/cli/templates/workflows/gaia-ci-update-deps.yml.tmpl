@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
           updates_file="${RUNNER_TEMP}/update-deps/updates.json"
           mkdir -p "$(dirname "$updates_file")"
-          node .gaia/cli/dist/index.js update-deps run --emit-updates "$updates_file"
+          .gaia/cli/gaia update-deps run --emit-updates "$updates_file"
           echo "updates_file=$updates_file" >> "$GITHUB_OUTPUT"
           # Build the wave-B matrix payload: `{"include": [{group: "..."}, ...]}`.
           # The fan-out job's `strategy.matrix` consumes this verbatim.
@@ -206,12 +206,12 @@ jobs:
         run: |
           set -euo pipefail
           cost="${RUN_COST_DOLLARS:-0}"
-          node .gaia/cli/dist/index.js automation record-run \
+          .gaia/cli/gaia automation record-run \
             {{tool_id}} \
             --sha "$(git rev-parse HEAD)" \
             --trigger cron \
             --cost "$cost"
-          overage=$(node .gaia/cli/dist/index.js automation read-state {{tool_id}} --json \
+          overage=$(.gaia/cli/gaia automation read-state {{tool_id}} --json \
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
             gh issue create \

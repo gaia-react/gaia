@@ -61,7 +61,7 @@ jobs:
             exit 0
           fi
           # Otherwise consult the smart-cron decision primitive.
-          decision_json=$(node .gaia/cli/dist/index.js automation cron-decide pnpm-audit --json)
+          decision_json=$(.gaia/cli/gaia automation cron-decide pnpm-audit --json)
           decision=$(printf '%s' "$decision_json" | jq -r '.decision')
           reason=$(printf '%s' "$decision_json" | jq -r '.reason')
           skip_log_line=$(printf '%s' "$decision_json" | jq -r '.skip_log_line // empty')
@@ -158,7 +158,7 @@ jobs:
           # Cost is emitted by anthropics/claude-code-action when used; for
           # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
           cost="\${RUN_COST_DOLLARS:-0}"
-          node .gaia/cli/dist/index.js automation record-run \\
+          .gaia/cli/gaia automation record-run \\
             pnpm-audit \\
             --sha "$(git rev-parse HEAD)" \\
             --trigger cron \\
@@ -166,7 +166,7 @@ jobs:
           # If the run exceeded the per-run cost ceiling, record-run sets
           # cost_overage=true. Open one issue for visibility; the next
           # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(node .gaia/cli/dist/index.js automation read-state pnpm-audit --json \\
+          overage=$(.gaia/cli/gaia automation read-state pnpm-audit --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
             gh issue create \\
@@ -239,7 +239,7 @@ jobs:
             exit 0
           fi
           # Otherwise consult the smart-cron decision primitive.
-          decision_json=$(node .gaia/cli/dist/index.js automation cron-decide stale-branches --json)
+          decision_json=$(.gaia/cli/gaia automation cron-decide stale-branches --json)
           decision=$(printf '%s' "$decision_json" | jq -r '.decision')
           reason=$(printf '%s' "$decision_json" | jq -r '.reason')
           skip_log_line=$(printf '%s' "$decision_json" | jq -r '.skip_log_line // empty')
@@ -296,7 +296,7 @@ jobs:
           # Cost is emitted by anthropics/claude-code-action when used; for
           # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
           cost="\${RUN_COST_DOLLARS:-0}"
-          node .gaia/cli/dist/index.js automation record-run \\
+          .gaia/cli/gaia automation record-run \\
             stale-branches \\
             --sha "$(git rev-parse HEAD)" \\
             --trigger cron \\
@@ -304,7 +304,7 @@ jobs:
           # If the run exceeded the per-run cost ceiling, record-run sets
           # cost_overage=true. Open one issue for visibility; the next
           # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(node .gaia/cli/dist/index.js automation read-state stale-branches --json \\
+          overage=$(.gaia/cli/gaia automation read-state stale-branches --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
             gh issue create \\
@@ -381,7 +381,7 @@ jobs:
             exit 0
           fi
           # Otherwise consult the smart-cron decision primitive.
-          decision_json=$(node .gaia/cli/dist/index.js automation cron-decide update-deps --json)
+          decision_json=$(.gaia/cli/gaia automation cron-decide update-deps --json)
           decision=$(printf '%s' "$decision_json" | jq -r '.decision')
           reason=$(printf '%s' "$decision_json" | jq -r '.reason')
           skip_log_line=$(printf '%s' "$decision_json" | jq -r '.skip_log_line // empty')
@@ -410,7 +410,7 @@ jobs:
           set -euo pipefail
           updates_file="\${RUNNER_TEMP}/update-deps/updates.json"
           mkdir -p "$(dirname "$updates_file")"
-          node .gaia/cli/dist/index.js update-deps run --emit-updates "$updates_file"
+          .gaia/cli/gaia update-deps run --emit-updates "$updates_file"
           echo "updates_file=$updates_file" >> "$GITHUB_OUTPUT"
           # Build the wave-B matrix payload: \`{"include": [{group: "..."}, ...]}\`.
           # The fan-out job's \`strategy.matrix\` consumes this verbatim.
@@ -510,7 +510,7 @@ jobs:
           # Cost is emitted by anthropics/claude-code-action when used; for
           # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
           cost="\${RUN_COST_DOLLARS:-0}"
-          node .gaia/cli/dist/index.js automation record-run \\
+          .gaia/cli/gaia automation record-run \\
             update-deps \\
             --sha "$(git rev-parse HEAD)" \\
             --trigger cron \\
@@ -518,7 +518,7 @@ jobs:
           # If the run exceeded the per-run cost ceiling, record-run sets
           # cost_overage=true. Open one issue for visibility; the next
           # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(node .gaia/cli/dist/index.js automation read-state update-deps --json \\
+          overage=$(.gaia/cli/gaia automation read-state update-deps --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
             gh issue create \\
@@ -651,12 +651,12 @@ jobs:
         run: |
           set -euo pipefail
           cost="\${RUN_COST_DOLLARS:-0}"
-          node .gaia/cli/dist/index.js automation record-run \\
+          .gaia/cli/gaia automation record-run \\
             update-deps \\
             --sha "$(git rev-parse HEAD)" \\
             --trigger cron \\
             --cost "$cost"
-          overage=$(node .gaia/cli/dist/index.js automation read-state update-deps --json \\
+          overage=$(.gaia/cli/gaia automation read-state update-deps --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
             gh issue create \\
@@ -729,7 +729,7 @@ jobs:
             exit 0
           fi
           # Otherwise consult the smart-cron decision primitive.
-          decision_json=$(node .gaia/cli/dist/index.js automation cron-decide wiki --json)
+          decision_json=$(.gaia/cli/gaia automation cron-decide wiki --json)
           decision=$(printf '%s' "$decision_json" | jq -r '.decision')
           reason=$(printf '%s' "$decision_json" | jq -r '.reason')
           skip_log_line=$(printf '%s' "$decision_json" | jq -r '.skip_log_line // empty')
@@ -816,7 +816,7 @@ jobs:
           # Wiki diff-size sanity check: if changed lines exceed 25% of
           # the wiki line count at the base ref, label \`needs-human-review\`
           # and skip auto-merge.
-          if [ "$(node .gaia/cli/dist/index.js wiki diff-size --threshold-pct 25)" = "exceeded" ]; then
+          if [ "$(.gaia/cli/gaia wiki diff-size --threshold-pct 25)" = "exceeded" ]; then
             gh pr edit "$pr_number" --add-label needs-human-review
             echo "diff-size > 25%; holding for human review"
             exit 0
@@ -834,7 +834,7 @@ jobs:
           # Cost is emitted by anthropics/claude-code-action when used; for
           # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
           cost="\${RUN_COST_DOLLARS:-0}"
-          node .gaia/cli/dist/index.js automation record-run \\
+          .gaia/cli/gaia automation record-run \\
             wiki \\
             --sha "$(git rev-parse HEAD)" \\
             --trigger cron \\
@@ -842,7 +842,7 @@ jobs:
           # If the run exceeded the per-run cost ceiling, record-run sets
           # cost_overage=true. Open one issue for visibility; the next
           # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(node .gaia/cli/dist/index.js automation read-state wiki --json \\
+          overage=$(.gaia/cli/gaia automation read-state wiki --json \\
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
             gh issue create \\
