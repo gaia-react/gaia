@@ -258,11 +258,7 @@ If `INVALIDATED_COUNT` is greater than 0, also print after the table:
 
 > **Note:** $INVALIDATED_COUNT open PR(s) carry a `GAIA-Audit` trailer stamped with v$BASELINE. On their next push, CI re-runs the full audit (one extra billing cycle per PR). This is intentional — a newer GAIA agent version may catch issues the prior version missed. To minimize re-audit churn, merge or close these PRs before updating GAIA.
 
-Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session:
-
-```bash
-rm -f .gaia/cache/update-check.json
-```
+Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session. Use the Write tool to overwrite `.gaia/cache/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, and `gaiaHasUpdate` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If the cache file does not exist, skip this step.
 
 The next SessionStart hook fires the background refresher; the session after that sees no GAIA update available.
 

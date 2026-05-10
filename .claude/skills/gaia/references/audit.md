@@ -109,8 +109,8 @@ Before writing the new report, self-maintain `$PROJECT_ROOT/.gaia/local/audit/`:
 - Of anything beyond the newest 5, **delete reports older than 30 days**.
 
 ```bash
-if [ -d "$PROJECT_ROOT/.gaia/local/audit" ]; then
-  ls -t "$PROJECT_ROOT"/.gaia/local/audit/KNOWLEDGE-*.md 2>/dev/null | tail -n +6 | while IFS= read -r f; do
+if [ -d ".gaia/local/audit" ]; then
+  ls -t .gaia/local/audit/KNOWLEDGE-*.md 2>/dev/null | tail -n +6 | while IFS= read -r f; do
     if [ -n "$(find "$f" -mtime +30 -print 2>/dev/null)" ]; then
       rm -- "$f"
     fi

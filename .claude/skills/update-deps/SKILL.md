@@ -187,11 +187,7 @@ Report back to the orchestrator with:
 After the Haiku agent returns:
 
 - If Phase 1 reported `All packages are up to date.`, skip the rest of this skill entirely. **Do not create a branch.**
-- Otherwise, updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes:
-
-```bash
-rm -f .gaia/cache/update-check.json
-```
+- Otherwise, updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes. Use the Write tool to overwrite `.gaia/cache/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, and `gaiaHasUpdate` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If the cache file does not exist, skip this step.
 
 - If `SHOULD_CREATE_BRANCH=true`, create the branch now and **remember that you created it** (this determines publish behavior in Phase 8):
 
