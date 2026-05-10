@@ -1,5 +1,7 @@
+// @vitest-environment jsdom
 import userEvent from '@testing-library/user-event';
 import {describe, expect, test, vi} from 'vitest';
+import {expectNoA11yViolations} from 'test/a11y';
 import {render, screen} from 'test/rtl';
 import Button from '../index';
 
@@ -34,5 +36,10 @@ describe('Button', () => {
     );
     const loader = screen.getByRole('progressbar');
     expect(loader).toBeInTheDocument();
+  });
+
+  test('a11y', async () => {
+    const {container} = render(<Button>Test</Button>);
+    await expectNoA11yViolations(container);
   });
 });
