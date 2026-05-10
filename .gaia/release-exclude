@@ -27,6 +27,7 @@ wiki/meta
 wiki/.obsidian/workspace.json
 wiki/concepts/Release Workflow.md
 wiki/decisions/Bundle-time Scrub.md
+wiki/decisions/CLI-Binary-Split.md
 wiki/decisions/Forensics Triage Workflow.md
 
 # --- 3. Test harnesses and audit reports ---
