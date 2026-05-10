@@ -17,6 +17,8 @@ export const test = base.extend<AxeFixtures>({
         'wcag2aa',
         'wcag21a',
         'wcag21aa',
+        'wcag22a',
+        'wcag22aa',
       ]);
 
     await use(make);
