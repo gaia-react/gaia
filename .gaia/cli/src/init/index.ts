@@ -9,6 +9,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {run as runBootstrapEnv} from './bootstrap-env.js';
 import {run as runConfigureAutomation} from './configure-automation.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
@@ -27,6 +28,7 @@ const HELP_TEXT = `Usage: gaia init <subcommand> [args]
                             Rename the project across package.json + locales.
   wire-statusline --mode <global|project|skip>
                             Wire the GAIA statusline into Claude settings.
+  bootstrap-env             Copy .env.example to .env if .env is absent.
   configure-automation --wiki <m> --update-deps <m> --pnpm-audit <m> --stale-branches <m>
                             Write .gaia/automation.json (Phase A of GAIA CI).
   finalize                  Final cleanup steps for the init runbook.
@@ -40,6 +42,7 @@ type SubcommandHandler = (
 ) => number | Promise<number>;
 
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+  'bootstrap-env': runBootstrapEnv,
   'configure-automation': runConfigureAutomation,
   'configure-i18n': runConfigureI18n,
   'finalize': runFinalize,

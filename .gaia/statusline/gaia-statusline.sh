@@ -89,46 +89,55 @@ fi
 # the other indicators are suppressed until the developer has run through
 # the per-clone setup at least once. The setup file is gitignored, so each
 # clone gets its own state.
+#
+# Exception: when .claude/commands/gaia-init.md exists, this is a fresh
+# create-gaia project mid-init. /setup-gaia is not applicable until
+# /gaia-init finishes (which deletes that file). Suppress all right-side
+# indicators during that window.
 right=""
 if [ "$is_worktree" -eq 0 ]; then
-  SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
-  setup_complete="false"
-  if [ -f "$SETUP_STATE_FILE" ]; then
-    if command -v jq >/dev/null 2>&1; then
-      if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
-        setup_complete="true"
+  if [ -f "$PROJECT_ROOT/.claude/commands/gaia-init.md" ]; then
+    : # /gaia-init in progress — no right-side indicators
+  else
+    SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
+    setup_complete="false"
+    if [ -f "$SETUP_STATE_FILE" ]; then
+      if command -v jq >/dev/null 2>&1; then
+        if [ "$(jq -r '.completed_at // "null"' "$SETUP_STATE_FILE" 2>/dev/null)" != "null" ]; then
+          setup_complete="true"
+        fi
+      else
+        # Fallback: a complete state has a non-null completed_at value.
+        if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
+          setup_complete="true"
+        fi
       fi
-    else
-      # Fallback: a complete state has a non-null completed_at value.
-      if grep -q '"completed_at"[[:space:]]*:[[:space:]]*"' "$SETUP_STATE_FILE" 2>/dev/null; then
-        setup_complete="true"
+    fi
+
+    if [ "$setup_complete" != "true" ]; then
+      right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
+    elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
+      outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
+      gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
+      gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
+
+      segments=()
+      COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
+      if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
+        segments+=("🧭")
       fi
-    fi
-  fi
-
-  if [ "$setup_complete" != "true" ]; then
-    right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
-  elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
-    outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
-    gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
-    gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
-
-    segments=()
-    COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
-    if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
-      segments+=("🧭")
-    fi
-    if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-      segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
-    fi
-    if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
-      segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
-    fi
-    if [ "${#segments[@]}" -gt 0 ]; then
-      right="${segments[0]}"
-      for ((i=1; i<${#segments[@]}; i++)); do
-        right="${right}  ${segments[$i]}"
-      done
+      if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
+        segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
+      fi
+      if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
+        segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
+      fi
+      if [ "${#segments[@]}" -gt 0 ]; then
+        right="${segments[0]}"
+        for ((i=1; i<${#segments[@]}; i++)); do
+          right="${right}  ${segments[$i]}"
+        done
+      fi
     fi
   fi
 fi
