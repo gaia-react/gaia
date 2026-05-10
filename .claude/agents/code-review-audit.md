@@ -322,11 +322,13 @@ After producing the report, decide whether to write the marker:
 
 Knip / react-doctor advisories and Suggestions never block the marker — they are advisory-by-design.
 
-When the marker is warranted, the write is a two-step "stamp then mark" sequence: first stamp HEAD with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the *new* HEAD. The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
+When the marker is warranted, the write is a three-step "stamp → mark → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the *new* HEAD; *then* push. Marker-before-push is load-bearing — it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
 
 ```bash
 # 1. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per
-#    the placement rule). The helper handles the decision and reports.
+#    the placement rule). The helper creates the commit locally only —
+#    push is deferred to step 3, AFTER the marker write proves the audit
+#    is clean.
 stamp_line=$(
   AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
     .claude/hooks/audit-stamp-trailer.sh
@@ -342,9 +344,32 @@ if [ ! -f "$marker" ]; then
     "$HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     > "$marker"
 fi
+
+# 3. Push the stamp commit only when the helper created an empty commit
+#    AND HEAD is on an attached tracking branch with an upstream. Amend
+#    paths add no new commit (the next operator push carries the
+#    trailer); detached HEAD has no upstream from the agent's vantage
+#    (CI's own commit-and-push step handles propagation).
+push_status="not_attempted"
+if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
+  head_branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
+  upstream=""
+  if [ -n "$head_branch" ]; then
+    upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
+  fi
+  if [ -n "$head_branch" ] && [ -n "$upstream" ]; then
+    if git push --quiet 2>/dev/null; then
+      push_status="pushed"
+    else
+      push_status="push_failed"
+    fi
+  else
+    push_status="detached"
+  fi
+fi
 ```
 
-Then surface, as the final line of your report — pick the line that matches `stamp_line`:
+Then surface, as the final line of your report — pick the line that matches the `stamp_line` + `push_status` combination:
 
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended (un-pushed); gh pr merge is unblocked.
 
@@ -357,6 +382,17 @@ Then surface, as the final line of your report — pick the line that matches `s
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended onto audit-self-heal HEAD; gh pr merge is unblocked.
 
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer skipped (`<reason>`); gh pr merge is unblocked.
+
+Mapping:
+
+- `stamp: amended onto HEAD (un-pushed)` → "amended (un-pushed)"
+- `stamp: amended onto audit-self-heal HEAD` → "amended onto audit-self-heal HEAD"
+- `stamp: empty commit (created locally)` + `push_status=pushed` → "empty commit (pushed to upstream)"
+- `stamp: empty commit (created locally)` + `push_status=push_failed` → "empty commit (push to upstream FAILED — …)"
+- `stamp: empty commit (created locally)` + `push_status=detached` → "empty commit (HEAD detached; runner pushes separately)"
+- `stamp: declined: <reason>` → "skipped (`<reason>`)"
+
+For the amend and declined variants, `push_status` stays at its default `not_attempted` and is not consulted — the `stamp_line` alone determines the surface line. `push_status` is only meaningful for the empty-commit branch.
 
 The skipped form applies when `stamp_line` begins with `stamp: declined:` — the marker is still written (the local gate is unblocked) but downstream CI will run a fresh audit because the trailer is absent.
 

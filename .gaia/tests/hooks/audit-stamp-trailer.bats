@@ -2,17 +2,22 @@
 
 # Tests for .claude/hooks/audit-stamp-trailer.sh.
 #
-# Covers all four stamp paths plus every refusal case from the frozen
-# stamp invariant (.gaia/local/plans/code-review-audit-ci/trailer-format.md):
+# Covers all 4 stamp paths plus every refusal case from the frozen stamp
+# invariant (.gaia/local/plans/code-review-audit-ci/trailer-format.md):
 #   1. clean tree, un-pushed HEAD          -> amend
-#   2. clean tree, pushed HEAD             -> empty commit
+#   2. clean tree, pushed HEAD             -> empty commit (no auto-push)
 #   3. AUDIT_SELF_HEALED=true               -> amend regardless of push status
-#   4. detached HEAD (CI checkout)         -> empty commit (treats as pushed)
+#   4. detached HEAD (CI checkout)         -> empty commit (no auto-push)
 #   5. tree dirty                           -> decline "tree dirty"
 #   6. .gaia/VERSION missing                -> decline "version file missing"
 #   7. .gaia/VERSION empty                  -> decline "version file empty"
 #   8. AUDIT_TREE_SHA != current tree       -> decline "tree changed since audit started"
 #   9. not in a git repo                    -> decline "not in a git repo"
+#
+# The helper never pushes — the agent caller pushes after writing the
+# audit marker (see .claude/agents/code-review-audit.md "Audit marker
+# (gate handshake)"). Marker-before-push ensures a stamp commit never
+# reaches remote history without a corresponding marker.
 #
 # Each test asserts:
 #   - exit code (always 0 for stamp + decline cases)
@@ -20,6 +25,7 @@
 #   - presence/absence of the GAIA-Audit trailer on resulting HEAD
 #     (parsed via `git interpret-trailers --parse`)
 #   - HEAD sha movement (amend or empty commit moves it; decline does not)
+#   - bare upstream is NOT advanced for empty-commit cases (helper never pushes)
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/audit-stamp-trailer.sh
@@ -83,18 +89,19 @@ trailer_on_head() {
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
 }
 
-@test "clean tree + pushed HEAD: writes empty commit and pushes it to upstream" {
+@test "clean tree + pushed HEAD: writes empty commit locally (no auto-push)" {
   push_head_to_upstream
 
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   before_count=$(git -C "$REPO" rev-list --count HEAD)
+  before_remote_sha=$(git -C "$REMOTE" rev-parse main)
 
   cd "$REPO"
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
 
   [ "$status" -eq 0 ]
-  [ "$output" = "stamp: empty commit (pushed to upstream)" ]
+  [ "$output" = "stamp: empty commit (created locally)" ]
 
   after_sha=$(git -C "$REPO" rev-parse HEAD)
   after_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
@@ -111,31 +118,10 @@ trailer_on_head() {
   trailer=$(trailer_on_head)
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
 
-  # The trailer commit must reach the bare upstream so CI can read it.
-  remote_sha=$(git -C "$REMOTE" rev-parse main)
-  [ "$remote_sha" = "$after_sha" ]
-}
-
-@test "clean tree + pushed HEAD + push fails: writes empty commit and reports failure" {
-  push_head_to_upstream
-
-  # Break the bare upstream so `git push` fails. Removing its objects/
-  # directory turns it into a non-repo from git's perspective; push
-  # exits non-zero, the helper catches it and emits the failure stamp.
-  rm -rf "$REMOTE"
-
-  before_sha=$(git -C "$REPO" rev-parse HEAD)
-  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
-
-  cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
-
-  [ "$status" -eq 0 ]
-  [ "$output" = "stamp: empty commit (push to upstream failed)" ]
-
-  # Empty commit still landed locally; only propagation failed.
-  trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+  # Helper never pushes — upstream must NOT have advanced. The caller
+  # pushes after writing the audit marker.
+  after_remote_sha=$(git -C "$REMOTE" rev-parse main)
+  [ "$before_remote_sha" = "$after_remote_sha" ]
 }
 
 @test "AUDIT_SELF_HEALED=true on un-pushed HEAD: amends" {
@@ -155,7 +141,7 @@ trailer_on_head() {
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
 }
 
-@test "detached HEAD: writes empty commit (treats as pushed regardless of upstream)" {
+@test "detached HEAD: writes empty commit (treats as pushed; helper never pushes)" {
   # Simulate the CI checkout: actions/checkout with `ref: <sha>` lands
   # on a detached HEAD. Without an upstream probe, the script must NOT
   # fall through to the un-pushed amend path — that would rewrite a
@@ -171,7 +157,7 @@ trailer_on_head() {
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
 
   [ "$status" -eq 0 ]
-  [ "$output" = "stamp: empty commit (HEAD already pushed)" ]
+  [ "$output" = "stamp: empty commit (created locally)" ]
 
   after_sha=$(git -C "$REPO" rev-parse HEAD)
   after_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")

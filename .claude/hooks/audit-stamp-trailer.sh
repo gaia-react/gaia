@@ -27,9 +27,7 @@
 #        final surface line. Stamp lines:
 #          stamp: amended onto HEAD (un-pushed)
 #          stamp: amended onto audit-self-heal HEAD
-#          stamp: empty commit (pushed to upstream)
-#          stamp: empty commit (push to upstream failed)
-#          stamp: empty commit (HEAD already pushed)
+#          stamp: empty commit (created locally)
 #        Decline lines (prefix "stamp: declined: "):
 #          tree dirty
 #          version file missing
@@ -173,21 +171,15 @@ if [ "$push_status" = "un-pushed" ]; then
   exit 0
 fi
 
-# Pushed: never amend a published commit. Carry the trailer on an empty commit.
+# Pushed: never amend a published commit. Carry the trailer on an empty
+# commit created locally only — the caller pushes after writing the audit
+# marker (see .claude/agents/code-review-audit.md "Audit marker (gate
+# handshake)"). Marker-before-push ensures a "chore: code review audit
+# passed" commit never reaches remote history without a corresponding
+# marker: if the marker write is interrupted, the un-pushed commit is
+# recoverable via `git reset --hard HEAD~1`.
 git -C "$repo_root" commit --allow-empty --no-verify \
   -m "chore: code review audit passed" \
   --trailer "$trailer" >/dev/null
-
-# When on an attached tracking branch, push the empty commit so CI can read
-# the trailer and skip its own audit run. On detached HEAD (CI runner) the
-# workflow's own commit-and-push step handles propagation, so skip the push.
-if [ -n "$head_branch" ] && [ -n "${upstream:-}" ]; then
-  if git -C "$repo_root" push --quiet 2>/dev/null; then
-    emit_stamp "empty commit (pushed to upstream)"
-  else
-    emit_stamp "empty commit (push to upstream failed)"
-  fi
-else
-  emit_stamp "empty commit (HEAD already pushed)"
-fi
+emit_stamp "empty commit (created locally)"
 exit 0
