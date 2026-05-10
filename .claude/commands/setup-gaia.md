@@ -78,8 +78,8 @@ Skip if `install-tools` is in `completed_steps`.
 
 Three external tools require per-machine setup. The Serena MCP entry needs `uv` (Astral's Python toolchain runner).
 
-- [React Doctor](https://github.com/millionco/react-doctor): `curl -fsSL https://react.doctor/install-skill.sh | bash`
-  Installs the `react-doctor` skill to `~/.claude/skills/`. Scans for React-specific issues; auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
+- [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
+  Installs the `react-doctor` skill for detected agents (Claude Code included). Scans for React-specific issues; auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
 
 - [Playwright CLI](https://github.com/microsoft/playwright-cli): `npm install -g @playwright/cli@latest`
   Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing.
