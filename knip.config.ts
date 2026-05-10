@@ -14,7 +14,6 @@ export default {
   ignoreBinaries: ['bats'],
   ignoreDependencies: [
     '@axe-core/playwright',
-    '@chialab/vitest-axe',
     '@epic-web/invariant',
     '@msw/data',
     '@playwright-testing-library/test',

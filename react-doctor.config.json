@@ -2,7 +2,7 @@
   "ignore": {
     "overrides": [
       {
-        "files": ["app/components/*/tests/index.test.tsx"],
+        "files": ["app/components/**/tests/index.test.tsx"],
         "rules": ["react-doctor/no-barrel-import"]
       }
     ]

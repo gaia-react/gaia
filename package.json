@@ -66,7 +66,6 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.11.3",
-    "@chialab/vitest-axe": "0.19.1",
     "@faker-js/faker": "10.4.0",
     "@gaia-react/lint": "1.1.1",
     "@msw/data": "1.1.5",
