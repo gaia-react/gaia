@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-08
+updated: 2026-05-10
 tags: [concept, ci, review]
 ---
 
@@ -39,6 +39,27 @@ If the agent declines to write the marker, the report names what remains unaddre
 ### 4. Merge
 
 Once the marker exists for HEAD, run `gh pr merge`. The hook short-circuits to allow the call.
+
+## Post-merge verification before cleanup
+
+`gh pr merge` can fail without aborting the rest of a script — branch protection ("base branch policy prohibits the merge"), pending CI checks, missing `--auto` for queued merges, or auth issues. Proceeding to local cleanup (`git checkout main`, `git branch -D <pr-branch>`, `git fetch --prune`) before confirming the merge actually succeeded leaves the local branch deleted while the PR is still OPEN. Recoverable via `git checkout -b <branch> origin/<branch>` while the remote ref still exists, but it's avoidable churn.
+
+The safe pattern after any `gh pr merge`:
+
+```bash
+gh pr merge <N> --squash --delete-branch [--auto]
+for i in 1 2 3 4 5; do
+  state=$(gh pr view <N> --json state -q .state)
+  [ "$state" = "MERGED" ] && break
+  sleep 30
+done
+[ "$state" = "MERGED" ] || { echo "merge did not complete"; exit 1; }
+git checkout main && git pull origin main
+git branch -D <pr-branch>  # force needed for squash (orphaned commits)
+git fetch --prune origin
+```
+
+**`--auto` vs `--admin`:** when `gh pr merge` rejects with "base branch policy prohibits the merge", the right escape is `--auto` — it queues the merge and GitHub completes it once checks pass. Never reach for `--admin` to bypass branch protection without explicit permission; it removes the safety the policy exists to provide.
 
 ## Local-sync failure mode
 
