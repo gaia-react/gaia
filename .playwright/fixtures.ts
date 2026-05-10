@@ -7,7 +7,7 @@ type AxeFixtures = {
 
 /**
  * Extended Playwright test with an axe-core builder fixture.
- * Default tag set: WCAG 2.0/2.1 A and AA.
+ * Default tag set: WCAG 2.0 / 2.1 / 2.2 A and AA.
  */
 export const test = base.extend<AxeFixtures>({
   makeAxeBuilder: async ({page}, use) => {
