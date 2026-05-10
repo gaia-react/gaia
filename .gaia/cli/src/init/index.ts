@@ -27,7 +27,7 @@ const HELP_TEXT = `Usage: gaia init <subcommand> [args]
                             Rename the project across package.json + locales.
   wire-statusline --mode <global|project|skip>
                             Wire the GAIA statusline into Claude settings.
-  configure-automation --wiki <m> --sharpen <m> --pnpm-audit <m> --stale-branches <m>
+  configure-automation --wiki <m> --update-deps <m> --pnpm-audit <m> --stale-branches <m>
                             Write .gaia/automation.json (Phase A of GAIA CI).
   finalize                  Final cleanup steps for the init runbook.
   resume [--from-step <N>]  Resume a partially-completed init via state file.

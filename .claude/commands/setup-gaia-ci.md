@@ -112,7 +112,7 @@ If `RECONFIGURE` is set, skip this question entirely and use the reconfigure flo
 
 Otherwise `AskUserQuestion` with these three options in this exact order:
 
-> Enable GAIA CI now? It runs four maintenance jobs on a smart cron (wiki sync, /sharpen, pnpm audit, stale branches), opens labeled PRs, and auto-merges them on green CI.
+> Enable GAIA CI now? It runs four maintenance jobs on a smart cron (wiki sync, /update-deps, pnpm audit, stale branches), opens labeled PRs, and auto-merges them on green CI.
 >
 > - **Enable GAIA CI now** (Recommended)
 > - **Not now** (you can re-run /setup-gaia-ci anytime)
@@ -331,7 +331,7 @@ When `RECONFIGURE` is set, the short-circuit at Step 2 is skipped and the flow r
   > - **Re-prompt and rewrite .gaia/automation.json**
   > - **Keep current selections** (only rotate the token)
 
-  On "Re-prompt", `AskUserQuestion` for each of `wiki`, `sharpen`, `pnpm-audit`, `stale-branches` with mode options `ci` / `local` / `off`. Apply each via `.gaia/cli/gaia setup-ci write-tool-mode <tool> <mode>`.
+  On "Re-prompt", `AskUserQuestion` for each of `wiki`, `update-deps`, `pnpm-audit`, `stale-branches` with mode options `ci` / `local` / `off`. Apply each via `.gaia/cli/gaia setup-ci write-tool-mode <tool> <mode>`.
 
 - **Step 7** always asks for a fresh token (never reads the existing secret — `gh secret set` overwrites silently).
 - **Step 10's** commit message changes to:

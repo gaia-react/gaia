@@ -12,6 +12,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {run as runCommitClassify} from './commit-classify.js';
 import {run as runDeadPaths} from './dead-paths.js';
+import {run as runDiffSize} from './diff-size.js';
 import {run as runLogPrepend} from './log-prepend.js';
 import {run as runNearCollisions} from './near-collisions.js';
 import {run as runOrphans} from './orphans.js';
@@ -33,6 +34,8 @@ const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
   orphans                                     Pages with zero inbound links.
   near-collisions [--max-distance N]          Per-domain Levenshtein over slugs.
   dead-paths [--json]                         Backticked repo paths in wiki/ that don't exist.
+  diff-size --threshold-pct N [--base <ref>] [--json]
+                                              Gate auto-merge on wiki byte-delta vs base.
   sync land [--branch-aware]                  Branch-aware landing of staged wiki changes.
 `;
 
@@ -76,6 +79,7 @@ const runSync: SubcommandHandler = async (
 const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
   'commit-classify': runCommitClassify,
   'dead-paths': runDeadPaths,
+  'diff-size': runDiffSize,
   'log-prepend': runLogPrepend,
   'near-collisions': runNearCollisions,
   'orphans': runOrphans,

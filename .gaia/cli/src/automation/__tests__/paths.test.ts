@@ -30,8 +30,8 @@ describe('automation/paths', () => {
       expect(automationStatePath('/r', 'wiki')).toBe(
         path.join('/r', '.gaia', 'automation.state-wiki.json')
       );
-      expect(automationStatePath('/r', 'sharpen')).toBe(
-        path.join('/r', '.gaia', 'automation.state-sharpen.json')
+      expect(automationStatePath('/r', 'update-deps')).toBe(
+        path.join('/r', '.gaia', 'automation.state-update-deps.json')
       );
       expect(automationStatePath('/r', 'pnpm-audit')).toBe(
         path.join('/r', '.gaia', 'automation.state-pnpm-audit.json')
@@ -95,8 +95,8 @@ describe('automation/paths', () => {
         )
       ).toBe(true);
       expect(
-        workflowTemplatePath('sharpen').endsWith(
-          path.join('templates', 'workflows', 'gaia-ci-sharpen.yml.tmpl')
+        workflowTemplatePath('update-deps').endsWith(
+          path.join('templates', 'workflows', 'gaia-ci-update-deps.yml.tmpl')
         )
       ).toBe(true);
       expect(

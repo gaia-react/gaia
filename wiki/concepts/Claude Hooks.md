@@ -61,7 +61,7 @@ The wiki sync system is convergent: the user's already-paid-for Claude session d
 
 - **`intercept-init.sh`** (UserPromptExpansion, matcher `init`) — emits `additionalContext` that overrides the built-in `/init` expansion and tells the model to invoke `/gaia-init` via the Skill tool. Does not block the turn — earlier `UserPromptSubmit + exit-2` design blocked the model from running at all.
 
-`sharpen` and `update-gaia` are surfaced via the **statusline** (not a hook) — see [[Claude Skills]] § Statusline update indicators. The statusline surface is chosen over a SessionStart `<system-reminder>` because system-reminders are visible only to the model; passive statusline indicators are visible to the user.
+`update-deps` and `update-gaia` are surfaced via the **statusline** (not a hook) — see [[Claude Skills]] § Statusline update indicators. The statusline surface is chosen over a SessionStart `<system-reminder>` because system-reminders are visible only to the model; passive statusline indicators are visible to the user.
 
 ## Adding hooks
 

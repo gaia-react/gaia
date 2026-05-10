@@ -80,7 +80,7 @@ describe('setup-ci status', () => {
     expect(parsed.setup_complete).toBe(false);
     expect(parsed.setup_opted_out).toBe(false);
     // `pnpm_audit` is local, so only the other three are CI-mode.
-    expect(parsed.tools_enabled).toEqual(['wiki', 'sharpen', 'stale-branches']);
+    expect(parsed.tools_enabled).toEqual(['wiki', 'update-deps', 'stale-branches']);
   });
 
   it('reports nudge_dismissed from .gaia/local/automation.json when present', () => {

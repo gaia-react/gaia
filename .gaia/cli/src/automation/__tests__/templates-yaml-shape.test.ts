@@ -10,8 +10,8 @@ const baseConfig: AutomationConfig = {
   pnpm_audit: {mode: 'ci', schedule: 'daily'},
   setup_complete: true,
   setup_opted_out: false,
-  sharpen: {mode: 'ci', schedule: 'weekly'},
   stale_branches: {mode: 'ci', schedule: 'monthly'},
+  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -61,7 +61,7 @@ const renderForTool = (tool: ToolId): string => {
 
 const tools: readonly ToolId[] = [
   'wiki',
-  'sharpen',
+  'update-deps',
   'pnpm-audit',
   'stale-branches',
 ];

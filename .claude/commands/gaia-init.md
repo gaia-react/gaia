@@ -33,7 +33,7 @@ pnpm install
 
 If install fails, stop and report the error. Do not continue.
 
-Then run `/sharpen` to bring all packages to their latest compatible versions before continuing. If `/sharpen` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/sharpen` runs its own quality gate at the end — if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
+Then run `/update-deps` to bring all packages to their latest compatible versions before continuing. If `/update-deps` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/update-deps` runs its own quality gate at the end — if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
 
 ## Step 2: Gather user input (in the user's language)
 
@@ -280,7 +280,7 @@ The same probe set applies when setting up from an existing clone — `/setup-ga
 
 ## Step 9: Configure GAIA CI (Phase A)
 
-GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/sharpen`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A — this step — is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia-ci` to wire up tokens and activate CI (Phase B).
+GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/update-deps`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A — this step — is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia-ci` to wire up tokens and activate CI (Phase B).
 
 Tell the user (in their language; the table headers stay English):
 
@@ -290,7 +290,7 @@ Use AskUserQuestion to confirm the recommendation OR open per-tool overrides:
 
 > How should GAIA CI's tools run?
 >
-> - **Enable all four in CI mode (Recommended).** Sets `wiki`, `sharpen`, `pnpm_audit`, and `stale_branches` to `ci`. Phase B (`/setup-gaia-ci`) activates them.
+> - **Enable all four in CI mode (Recommended).** Sets `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches` to `ci`. Phase B (`/setup-gaia-ci`) activates them.
 > - **Customize per tool.** Show the table below and ask for each tool's mode.
 
 If the user picks "Customize per tool", show this table and use AskUserQuestion once per row (or one combined free-text prompt; the prose is the contract, the prompt shape is at the assistant's discretion):
@@ -298,7 +298,7 @@ If the user picks "Customize per tool", show this table and use AskUserQuestion 
 | Tool | Default | What it does | Modes |
 |---|---|---|---|
 | `wiki` | `ci` | Smart-cron wiki sync against `app/**` changes. | `ci` / `local` / `off` |
-| `sharpen` | `ci` | Weekly dependency refresh, auto-merging patch/minor. | `ci` / `local` / `off` |
+| `update_deps` | `ci` | Weekly dependency refresh, auto-merging patch/minor. | `ci` / `local` / `off` |
 | `pnpm_audit` | `ci` | Daily security audit; targeted PR for high/critical. | `ci` / `local` / `off` |
 | `stale_branches` | `ci` | Monthly cleanup of branches merged >30 days ago. | `ci` / `local` / `off` |
 
@@ -317,7 +317,7 @@ Once you have a value for each of the four tools, run:
 ```bash
 .gaia/cli/gaia init configure-automation \
   --wiki <wiki-mode> \
-  --sharpen <sharpen-mode> \
+  --update-deps <update-deps-mode> \
   --pnpm-audit <pnpm-audit-mode> \
   --stale-branches <stale-branches-mode>
 ```

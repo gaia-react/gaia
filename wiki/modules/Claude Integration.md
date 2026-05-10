@@ -72,7 +72,7 @@ These are the load-bearing safety net. They block the action outright and return
 
 ### Statusline (no hook)
 
-`sharpen` and `update-gaia` are surfaced via the statusline, not a hook. The wrapper at `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns yellow `Run /sharpen (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segments. The hot path is cache-only; a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh.
+`update-deps` and `update-gaia` are surfaced via the statusline, not a hook. The wrapper at `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segments. The hot path is cache-only; a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh.
 
 ## Agents
 
@@ -85,7 +85,7 @@ Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wi
 `.claude/skills/` holds three groups:
 
 - **`/gaia` router** — routes `/gaia <subcommand>` to plan / handoff / pickup / audit references
-- **Scaffolders** — `new-component`, `new-hook`, `new-route`, `new-service`, `sharpen`, `update-gaia`
+- **Scaffolders** — `new-component`, `new-hook`, `new-route`, `new-service`, `update-deps`, `update-gaia`
 - **Context-triggered** — `eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`
 
 The router and scaffolder skills are user-invoked. Context-triggered skills activate automatically when their `description:` matches the user's intent. See [[Claude Skills]] for the full grouped table; for the current file inventory, query Serena.

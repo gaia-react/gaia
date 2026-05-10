@@ -66,7 +66,7 @@ wiki/decisions/Forensics Triage Workflow.md
 # and is consumed only by the maintainer's release.yml. Note:
 # `.gaia/scripts/` DOES ship: `check-updates.sh` is the background refresher
 # invoked by the adopter-facing statusline (writes the cache the statusline
-# reads for `Run /sharpen` and `Run /update-gaia` indicators).
+# reads for `Run /update-deps` and `Run /update-gaia` indicators).
 .gaia/release-exclude
 .gaia/release-scrub.yml
 

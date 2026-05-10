@@ -7,7 +7,7 @@
           # Cost is emitted by anthropics/claude-code-action when used; for
           # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
           cost="${RUN_COST_DOLLARS:-0}"
-          node .gaia/cli/dist/index.js automation record-run \
+          .gaia/cli/gaia automation record-run \
             {{tool_id}} \
             --sha "$(git rev-parse HEAD)" \
             --trigger cron \
@@ -15,7 +15,7 @@
           # If the run exceeded the per-run cost ceiling, record-run sets
           # cost_overage=true. Open one issue for visibility; the next
           # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(node .gaia/cli/dist/index.js automation read-state {{tool_id}} --json \
+          overage=$(.gaia/cli/gaia automation read-state {{tool_id}} --json \
             | jq -r '.cost_overage // false')
           if [ "$overage" = "true" ]; then
             gh issue create \

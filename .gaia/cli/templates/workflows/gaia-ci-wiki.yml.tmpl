@@ -16,16 +16,45 @@ jobs:
 {{> partials/quality-gate }}
 {{#enable_diff_size_check}}
       - name: Run gaia wiki chain
+        id: wiki_chain
         if: steps.pre_run.outputs.decision == 'run'
+        # Dispatches the wiki sync, consolidate, and lint workflows in a
+        # single Claude session. `/gaia wiki sync` itself commits via
+        # `gaia wiki sync land --branch-aware`; subsequent commits from
+        # consolidate's apply phase ride on top before the auto-merge
+        # partial wraps the diff into a PR.
         env:
           RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
-        run: |
-          set -euo pipefail
-          # TODO(slice-4): wire the real wiki chain once the consolidate/lint
-          # subcommands and a sync entry-point that maps to `wiki sync land`
-          # are surfaced on the adopter CLI. Until then this step is an
-          # explicit stub so the workflow exits 0 without a silent no-op.
-          echo "wiki chain stub: slice-4 will wire the full sync/consolidate/lint pipeline"
+        uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Run the GAIA wiki maintenance chain in this repository, in order:
+
+            1. `/gaia wiki sync` — evaluate every commit since the wiki's
+               recorded `last_evaluated_sha`, edit pages as the playbook
+               directs, advance state, and land via
+               `gaia wiki sync land --branch-aware`. The CLI is the
+               authority on landing semantics — do not hand-roll branch
+               or push logic.
+            2. `/gaia wiki consolidate` — run the detection passes,
+               apply (do not skip) every finding the playbook classifies
+               as `Apply (Recommended)`. Skip findings that require
+               editorial slug choice (near-collision) since this is a
+               non-interactive run; flag them in the report file only.
+            3. `/gaia wiki lint` — run the upstream lint flow plus the
+               GAIA-specific drift, dead-paths, and narrative-ref
+               checks. Do not auto-fix lint findings; the report is
+               sufficient.
+
+            Stay strictly inside `wiki/` for body edits. Follow
+            `.claude/rules/wiki-style.md` (present tense, no UAT/SPEC
+            references in prose). Do not push to remotes — commits stay
+            local; the workflow handles the PR.
+          claude_args: |
+            --max-turns 80
+            --allowedTools Bash,Edit,Write,Read
+            --disallowedTools WebFetch,WebSearch
 {{/enable_diff_size_check}}
 {{> partials/auto-merge }}
 {{> partials/cost-accounting }}

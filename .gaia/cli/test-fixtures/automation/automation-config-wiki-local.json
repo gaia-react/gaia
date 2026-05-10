@@ -5,7 +5,7 @@
   "wiki": {
     "mode": "local"
   },
-  "sharpen": {
+  "update_deps": {
     "mode": "off"
   },
   "pnpm_audit": {

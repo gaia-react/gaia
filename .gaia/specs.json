@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "specs": [
+    {
+      "id": "SPEC-001",
+      "allocated_at": "2026-05-05T23:25:51Z",
+      "source": "backfilled",
+      "status": "in-progress",
+      "intent": "GAIA CI auto-maintenance system shipped to every adopter (smart cron, auto-merge, auto-revert)."
+    }
+  ]
+}

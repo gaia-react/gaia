@@ -9,8 +9,8 @@ const baseConfig: AutomationConfig = {
   pnpm_audit: {mode: 'ci', schedule: 'daily'},
   setup_complete: true,
   setup_opted_out: false,
-  sharpen: {mode: 'ci', schedule: 'weekly'},
   stale_branches: {mode: 'ci', schedule: 'monthly'},
+  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -118,8 +118,8 @@ describe('workflow templates — gaia-ci-wiki', () => {
   });
 });
 
-describe('workflow templates — gaia-ci-sharpen', () => {
-  const rendered = renderForTool('sharpen');
+describe('workflow templates — gaia-ci-update-deps', () => {
+  const rendered = renderForTool('update-deps');
   const doc = parseRendered(rendered);
 
   it('declares cron 0 4 * * 0 (weekly Sunday)', () => {
@@ -127,13 +127,20 @@ describe('workflow templates — gaia-ci-sharpen', () => {
     expect(on.schedule[0]?.cron).toBe('0 4 * * 0');
   });
 
-  it('uses concurrency group gaia-ci-sharpen', () => {
-    expect((doc.concurrency as {group: string}).group).toBe('gaia-ci-sharpen');
+  it('uses concurrency group gaia-ci-update-deps', () => {
+    expect((doc.concurrency as {group: string}).group).toBe('gaia-ci-update-deps');
   });
 
-  it('emits the slice-4 stub for the sharpen run step', () => {
-    expect(rendered).toContain('TODO(slice-4)');
-    expect(rendered).toContain('sharpen run stub');
+  it('invokes the emit-updates plan + claude-code-action chain', () => {
+    expect(rendered).toContain(
+      'update-deps run --emit-updates'
+    );
+    expect(rendered).toContain(
+      'anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314'
+    );
+    expect(rendered).toContain('wave_b_matrix');
+    expect(rendered).toContain('strategy:');
+    expect(rendered).toContain('matrix: ${{ fromJson(needs.run.outputs.wave_b_matrix) }}');
   });
 
   it('emits the auto-merge step', () => {
@@ -178,7 +185,7 @@ describe('workflow templates — gaia-ci-pnpm-audit', () => {
     expect(rendered).toContain('gh pr merge "$pr_number" --auto --squash');
   });
 
-  it('does NOT emit wiki, sharpen, or stale-branch logic', () => {
+  it('does NOT emit wiki, update-deps, or stale-branch logic', () => {
     expect(rendered).not.toContain('wiki diff-size');
     expect(rendered).not.toContain('semver-major bumps');
     expect(rendered).not.toContain('gh api -X DELETE');
@@ -233,7 +240,7 @@ describe('workflow templates — gaia-ci-stale-branches', () => {
 describe('workflow templates — cross-tool invariants', () => {
   const tools: readonly ToolId[] = [
     'wiki',
-    'sharpen',
+    'update-deps',
     'pnpm-audit',
     'stale-branches',
   ];

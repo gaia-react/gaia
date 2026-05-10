@@ -476,8 +476,28 @@ Update the frontmatter `updated` field to today's date.
 
 After the canonical write succeeds:
 1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md`. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
-2. **Append telemetry:** `spec_saved` event.
-3. **Emit `time_to_resolved_spec`:** read the session-shape cache, derive `area_tags` from the SPEC's UAT clusters, fire one mentorship event, then delete the cache. Failure to emit must NEVER block the save:
+2. **Update the ledger row:** flip the row in `.gaia/specs.json` from `status: draft` to `status: in-progress` and stamp the intent (first prose line of the SPEC's `intent` field) for at-a-glance scanning. Failure is non-blocking — log to stderr and continue. The ledger is a fast index over git; the SPEC artifact and git history remain authoritative.
+
+```bash
+SPEC_PATH=".gaia/local/specs/${SPEC_ID}.md"
+INTENT=$(awk '
+  /^intent:[[:space:]]*\|/ { in_block=1; next }
+  /^intent:[[:space:]]*[^|[:space:]]/ {
+    sub(/^intent:[[:space:]]*/, ""); print; exit
+  }
+  in_block && /^[a-zA-Z_]+:/ { exit }
+  in_block && /^[[:space:]]+[^[:space:]]/ {
+    sub(/^[[:space:]]+/, ""); print; exit
+  }
+' "$SPEC_PATH" 2>/dev/null || echo "")
+PATCH=$(jq -nc --arg intent "$INTENT" \
+  '{status: "in-progress"} + (if $intent == "" then {} else {intent: $intent} end)')
+bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
+  || echo "ledger-update skipped (row missing or jq failure) — non-blocking" >&2
+```
+
+3. **Append telemetry:** `spec_saved` event.
+4. **Emit `time_to_resolved_spec`:** read the session-shape cache, derive `area_tags` from the SPEC's UAT clusters, fire one mentorship event, then delete the cache. Failure to emit must NEVER block the save:
 
 ```bash
 SPEC_PATH=".gaia/local/specs/${SPEC_ID}.md"

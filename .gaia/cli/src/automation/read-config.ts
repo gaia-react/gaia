@@ -97,7 +97,7 @@ export const run = (
         `setup_complete: ${String(c.setup_complete)}\n` +
         `setup_opted_out: ${String(c.setup_opted_out)}\n` +
         `wiki: mode=${c.wiki.mode}${c.wiki.schedule ? ` schedule=${c.wiki.schedule}` : ''}\n` +
-        `sharpen: mode=${c.sharpen.mode}${c.sharpen.schedule ? ` schedule=${c.sharpen.schedule}` : ''}\n` +
+        `update_deps: mode=${c.update_deps.mode}${c.update_deps.schedule ? ` schedule=${c.update_deps.schedule}` : ''}\n` +
         `pnpm_audit: mode=${c.pnpm_audit.mode}${c.pnpm_audit.schedule ? ` schedule=${c.pnpm_audit.schedule}` : ''}\n` +
         `stale_branches: mode=${c.stale_branches.mode}${c.stale_branches.schedule ? ` schedule=${c.stale_branches.schedule}` : ''}\n` +
         `update_gaia: mode=${c.update_gaia.mode}\n`

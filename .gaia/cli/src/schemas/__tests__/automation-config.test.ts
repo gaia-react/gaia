@@ -27,8 +27,8 @@ const VALID_CONFIG = {
   pnpm_audit: {mode: 'local', schedule: 'weekly'},
   setup_complete: true,
   setup_opted_out: false,
-  sharpen: {mode: 'off'},
   stale_branches: {mode: 'ci', schedule: 'weekly'},
+  update_deps: {mode: 'off'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -79,7 +79,7 @@ describe('schemas/automation-config', () => {
       expect(() =>
         AutomationConfigSchema.parse({
           ...VALID_CONFIG,
-          sharpen: {mode: 'off'},
+          update_deps: {mode: 'off'},
         })
       ).not.toThrow();
     });

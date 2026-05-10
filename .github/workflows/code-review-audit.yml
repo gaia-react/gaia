@@ -236,15 +236,54 @@ jobs:
           # the agent forgot to commit. Both must reach origin/PR_BRANCH.
           git config user.name 'gaia-code-review-audit[bot]'
           git config user.email 'gaia-code-review-audit[bot]@users.noreply.github.com'
-          if ! git diff --quiet || ! git diff --staged --quiet; then
-            git add -A
-            git commit -m "chore: code-review-audit self-heal"
+
+          # Surface untracked files for transparency. The agent or
+          # claude-code-action may leave runtime artifacts (e.g. .claude-pr/)
+          # behind; .gitignore should cover known cases. We never stage them.
+          untracked="$(git ls-files --others --exclude-standard | wc -l | tr -d ' ')"
+          if [ "$untracked" -gt 0 ]; then
+            echo "code-review-audit: $untracked untracked file(s) left behind by audit (NOT staged):" >&2
+            git ls-files --others --exclude-standard | head -20 >&2
           fi
+
+          if ! git diff --quiet; then
+            # Stage modifications and deletions to TRACKED files only -- never
+            # `git add -A`, which would sweep audit runtime artifacts.
+            git add -u
+
+            # Self-heal sanity gate. A code review audit's auto-fix surface
+            # should be small (a typo, a stale import). A sprawling diff is
+            # a red flag -- the agent is likely undoing intentional PR work
+            # rather than fixing a defect. Refuse and surface for human review.
+            files_changed="$(git diff --cached --name-only | wc -l | tr -d ' ')"
+            if [ "$files_changed" -gt 10 ]; then
+              echo "code-review-audit: self-heal would touch $files_changed files (>10) -- refusing." >&2
+              echo "Files staged:" >&2
+              git diff --cached --name-only >&2
+              git reset >/dev/null
+              echo "pushed=false" >> "$GITHUB_OUTPUT"
+              echo "refused=true" >> "$GITHUB_OUTPUT"
+              echo "refused_count=$files_changed" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: code-review-audit self-heal"
+            fi
+          fi
+
           ahead=$(git rev-list --count "origin/${PR_BRANCH}..HEAD" 2>/dev/null || echo 0)
           if [ "$ahead" -eq 0 ]; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          # Re-establish authenticated remote URL before push. The agent's
+          # Bash(git:*) toolset can mutate git config (remote URL, credential
+          # helper, extraheader) during execution; rather than diagnose every
+          # path, force a known-good token-bearing URL right before the push.
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "HEAD:$PR_BRANCH"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
@@ -331,11 +370,15 @@ jobs:
           steps.audit.outcome == 'success'
         env:
           PUSHED: ${{ steps.push-fixes.outputs.pushed }}
+          REFUSED: ${{ steps.push-fixes.outputs.refused }}
+          REFUSED_COUNT: ${{ steps.push-fixes.outputs.refused_count }}
           PUSH_FIXES: ${{ steps.config.outputs.push_fixes }}
         run: |
           set -eu
           if [ "$PUSH_FIXES" = "false" ]; then
             mode="advisory (push_fixes=false)"
+          elif [ "$REFUSED" = "true" ]; then
+            mode="self-heal REFUSED — diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
           elif [ "$PUSHED" = "true" ]; then
             mode="self-heal pushed"
           else

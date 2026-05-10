@@ -61,7 +61,7 @@ const captureStdio = (): {
 const allCiArgs = [
   '--wiki',
   'ci',
-  '--sharpen',
+  '--update-deps',
   'ci',
   '--pnpm-audit',
   'ci',
@@ -102,8 +102,8 @@ describe('init configure-automation', () => {
       pnpm_audit: {mode: 'ci', schedule: 'daily'},
       setup_complete: false,
       setup_opted_out: false,
-      sharpen: {mode: 'ci', schedule: 'weekly'},
       stale_branches: {mode: 'ci', schedule: 'monthly'},
+      update_deps: {mode: 'ci', schedule: 'weekly'},
       update_gaia: {mode: 'local'},
       version: 1,
       wiki: {mode: 'ci'},
@@ -113,8 +113,8 @@ describe('init configure-automation', () => {
     expect(state.completed_steps).toContain('configure-automation');
     expect(state.step_args['configure-automation']).toEqual({
       pnpm_audit: 'ci',
-      sharpen: 'ci',
       stale_branches: 'ci',
+      update_deps: 'ci',
       wiki: 'ci',
     });
   });
@@ -126,7 +126,7 @@ describe('init configure-automation', () => {
       [
         '--wiki',
         'local',
-        '--sharpen',
+        '--update-deps',
         'off',
         '--pnpm-audit',
         'ci',
@@ -140,7 +140,7 @@ describe('init configure-automation', () => {
     const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
     const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
     expect(parsed.wiki.mode).toBe('local');
-    expect(parsed.sharpen.mode).toBe('off');
+    expect(parsed.update_deps.mode).toBe('off');
     expect(parsed.pnpm_audit.mode).toBe('ci');
     expect(parsed.stale_branches.mode).toBe('ci');
     expect(parsed.update_gaia.mode).toBe('local');
@@ -171,7 +171,7 @@ describe('init configure-automation', () => {
   test('exit 1 when --wiki missing', () => {
     sandbox = setupSandbox();
     const exit = run(
-      ['--sharpen', 'ci', '--pnpm-audit', 'ci', '--stale-branches', 'ci'],
+      ['--update-deps', 'ci', '--pnpm-audit', 'ci', '--stale-branches', 'ci'],
       {cwd: sandbox.root}
     );
     expect(exit).toBe(1);
@@ -185,20 +185,20 @@ describe('init configure-automation', () => {
     expect(errLine).toContain('"code":"invalid_arguments"');
   });
 
-  test('exit 1 when --sharpen missing', () => {
+  test('exit 1 when --update-deps missing', () => {
     sandbox = setupSandbox();
     const exit = run(
       ['--wiki', 'ci', '--pnpm-audit', 'ci', '--stale-branches', 'ci'],
       {cwd: sandbox.root}
     );
     expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--sharpen is required');
+    expect(stdio.errors.join('')).toContain('--update-deps is required');
   });
 
   test('exit 1 when --pnpm-audit missing', () => {
     sandbox = setupSandbox();
     const exit = run(
-      ['--wiki', 'ci', '--sharpen', 'ci', '--stale-branches', 'ci'],
+      ['--wiki', 'ci', '--update-deps', 'ci', '--stale-branches', 'ci'],
       {cwd: sandbox.root}
     );
     expect(exit).toBe(1);
@@ -208,7 +208,7 @@ describe('init configure-automation', () => {
   test('exit 1 when --stale-branches missing', () => {
     sandbox = setupSandbox();
     const exit = run(
-      ['--wiki', 'ci', '--sharpen', 'ci', '--pnpm-audit', 'ci'],
+      ['--wiki', 'ci', '--update-deps', 'ci', '--pnpm-audit', 'ci'],
       {cwd: sandbox.root}
     );
     expect(exit).toBe(1);
@@ -221,7 +221,7 @@ describe('init configure-automation', () => {
       [
         '--wiki',
         'bogus',
-        '--sharpen',
+        '--update-deps',
         'ci',
         '--pnpm-audit',
         'ci',
@@ -245,7 +245,7 @@ describe('init configure-automation', () => {
         'ci',
         '--wiki',
         'local',
-        '--sharpen',
+        '--update-deps',
         'ci',
         '--pnpm-audit',
         'ci',

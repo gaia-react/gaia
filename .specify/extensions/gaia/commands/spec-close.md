@@ -75,7 +75,20 @@ Surface via `AskUserQuestion`:
 
 1. No-op.
 
-## Step 5 — Telemetry
+## Step 5 — Flip ledger status
+
+Update the `.gaia/specs.json` row for `<spec_id>` to record the merge: set `status: merged` and stamp `merged_at` with the current UTC timestamp. Disposition lives on the artifact (and in telemetry); the ledger tracks SPEC lifecycle independently of artifact location.
+
+```bash
+PATCH=$(jq -nc --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+  '{status: "merged", merged_at: $ts}')
+bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
+  || echo "ledger-update skipped (row missing) — non-blocking" >&2
+```
+
+Failure is non-blocking. Pre-ledger SPECs (allocated before `.gaia/specs.json` existed) will not have a row and exit 4 — log and continue.
+
+## Step 6 — Telemetry
 
 Append to `.gaia/local/telemetry/spec-pacing.jsonl`:
 
@@ -89,7 +102,7 @@ Then chain `gaia telemetry compute-profile`:
 
 The compute-profile command short-circuits when mentorship is disabled (no-op exit 0). When mentorship is enabled, it regenerates `profile.md` over the rolling 30-day window and writes today's analytics report. Failure of compute-profile never blocks the spec-close flow — log to stderr, continue.
 
-## Step 6 — Report
+## Step 7 — Report
 
 Print one of (prefix with `Drained <N> wiki pages. ` if Step 2 drained, where `<N>` is the count from wiki-promote's report):
 

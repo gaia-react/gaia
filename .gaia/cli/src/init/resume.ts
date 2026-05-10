@@ -175,7 +175,7 @@ export const argvFromStepArgs = (
 
   if (step === 'configure-automation') {
     const wiki = saved.wiki;
-    const sharpen = saved.sharpen;
+    const updateDeps = saved.update_deps;
     const pnpmAudit = saved.pnpm_audit;
     const staleBranches = saved.stale_branches;
     const valid = (value: unknown): boolean =>
@@ -183,7 +183,7 @@ export const argvFromStepArgs = (
 
     if (
       !valid(wiki) ||
-      !valid(sharpen) ||
+      !valid(updateDeps) ||
       !valid(pnpmAudit) ||
       !valid(staleBranches)
     ) {
@@ -193,8 +193,8 @@ export const argvFromStepArgs = (
     return [
       '--wiki',
       wiki as string,
-      '--sharpen',
-      sharpen as string,
+      '--update-deps',
+      updateDeps as string,
       '--pnpm-audit',
       pnpmAudit as string,
       '--stale-branches',

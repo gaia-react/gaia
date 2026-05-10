@@ -24,6 +24,7 @@ import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
 import {run as runUpdate} from './update/index.js';
+import {run as runUpdateDeps} from './update-deps/index.js';
 import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer <subcommand> [args]
@@ -38,6 +39,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   automation read-config|read-state|init-state|bump-state|cron-decide|record-run|record-overage|clear-overage
   update merge --baseline <dir> --latest <dir> --manifest <path>
+  update-deps run --emit-updates <path>
   release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
@@ -62,6 +64,7 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   setup: runSetup,
   telemetry: runTelemetry,
   update: runUpdate,
+  'update-deps': runUpdateDeps,
   wiki: runWiki,
 };
 

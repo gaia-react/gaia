@@ -9,7 +9,6 @@
     ".claude/commands/gaia-init.md": "owned",
     ".claude/commands/setup-gaia-ci.md": "owned",
     ".claude/commands/setup-gaia.md": "owned",
-    ".claude/commands/update-deps.md": "owned",
     ".claude/hooks/audit-stamp-trailer.sh": "owned",
     ".claude/hooks/block-bare-test.sh": "owned",
     ".claude/hooks/block-env-write.sh": "owned",
@@ -80,7 +79,6 @@
     ".claude/skills/react-code/references/hook-patterns.md": "owned",
     ".claude/skills/react-code/references/translation-patterns.md": "owned",
     ".claude/skills/react-code/SKILL.md": "owned",
-    ".claude/skills/sharpen/SKILL.md": "owned",
     ".claude/skills/skeleton-loaders/SKILL.md": "owned",
     ".claude/skills/tailwind/SKILL.md": "owned",
     ".claude/skills/tdd/deep-modules.md": "owned",
@@ -90,6 +88,7 @@
     ".claude/skills/tdd/SKILL.md": "owned",
     ".claude/skills/typescript/references/naming-conventions.md": "owned",
     ".claude/skills/typescript/SKILL.md": "owned",
+    ".claude/skills/update-deps/SKILL.md": "owned",
     ".claude/skills/update-gaia/SKILL.md": "owned",
     ".editorconfig": "owned",
     ".env.example": "owned",
@@ -118,8 +117,8 @@
     ".gaia/cli/templates/service/types.ts.tmpl": "owned",
     ".gaia/cli/templates/service/urls.ts.tmpl": "owned",
     ".gaia/cli/templates/workflows/gaia-ci-pnpm-audit.yml.tmpl": "owned",
-    ".gaia/cli/templates/workflows/gaia-ci-sharpen.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/gaia-ci-stale-branches.yml.tmpl": "owned",
+    ".gaia/cli/templates/workflows/gaia-ci-update-deps.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/gaia-ci-wiki.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/auth-env.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/auto-merge.yml.tmpl": "owned",
@@ -461,6 +460,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-09T07:44:27.266Z",
+  "generated": "2026-05-10T01:50:44.523Z",
   "version": "1.0.5"
 }

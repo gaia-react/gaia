@@ -42,6 +42,8 @@ coverage
 .claude/agent-memory/
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+# claude-code-action runtime working area (mirrors .claude/ for sandboxed execution)
+.claude-pr/
 
 # Wiki sync system markers (project-local, never commit)
 .claude/wiki-drift-checked

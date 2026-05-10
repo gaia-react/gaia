@@ -275,7 +275,7 @@ describe('automation cron-decide', () => {
 
   it('non-wiki tools return tool_off-shaped placeholder', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
-    const exit = runCronDecide(['sharpen', '--json'], {cwd: sandbox.root});
+    const exit = runCronDecide(['update-deps', '--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     const decision = decisionFromStdout(stdio.outputs.join(''));
     expect(decision.decision).toBe('skip');
