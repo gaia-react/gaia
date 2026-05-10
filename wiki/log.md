@@ -11,6 +11,31 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-10 38d6ace SKIP — chore: generic chore
+- 2026-05-10 0551e1b SKIP — chore: generic chore
+- 2026-05-10 9bfc381 SKIP — chore: generic chore
+- 2026-05-10 7b4df39 SKIP — chore: generic chore
+- 2026-05-10 6473c17 SKIP — chore: generic chore
+- 2026-05-10 f0897f7 SKIP — chore(deps): version bump only
+- 2026-05-10 5762cf2 SKIP — docs: prose-only
+- 2026-05-10 dc6fb50 WORTHY — feat(update-deps): expand companion groups + CI-aware --scope flag
+- 2026-05-10 bef4c61 WORTHY — fix(ci): replace node .gaia/cli/dist with .gaia/cli/gaia in partials
+- 2026-05-10 d04ab78 WORTHY — feat(ci): close slice-4 stubs — emit-updates + claude-code-action wire
+- 2026-05-10 d203f85 WORTHY — feat(wiki): add diff-size CLI primitive → auto-merge gate
+- 2026-05-10 664900b WORTHY — revert(sharpen): rename /sharpen back to /update-deps
+- 2026-05-10 c56cb91 WORTHY — chore: clear deferred audit suggestions from spec-001
+- 2026-05-10 21906c2 WORTHY — chore: spec-001 follow-up cleanup
+- 2026-05-10 931acfa WORTHY — feat(sharpen): rebrand /update-deps → /sharpen
+- 2026-05-10 245add20 WORTHY — feat(gaia-init): Phase A configure-automation step
+- 2026-05-10 350911ed WORTHY — feat: spec-001 slice 4 — /setup-gaia-ci slash command
+- 2026-05-10 b0a2b45 WORTHY — feat: spec-001 slice 3 — CI workflow YAML generation
+- 2026-05-10 0aee140 WORTHY — feat: spec-001 slice 2 — auto-merge + auto-revert CI shapes
+- 2026-05-10 c2a8751 WORTHY — feat: spec-001 slice 1 — automation framework + smart-cron → wiki/decisions/Automation & Smart Cron.md
+- 2026-05-10 a346571 WORTHY — revert: restore health-audit command
+- 2026-05-10 15f3c63 WORTHY — feat(gaia-init): probe-after verification pass
+- 2026-05-10 e93f0069 WORTHY — feat(update-gaia): GAIA-Audit trailer invalidation count
+- 2026-05-10 fcfbab33 WORTHY — docs: pre-launch gap fixes
+- 2026-05-10 79f61b04 WORTHY — touches wiki-heavy domain
 - 2026-05-08 804de97 WORTHY — CLI binary split (adopter vs maintainer) → wiki/decisions/CLI\ Binary\ Split.md
 - 2026-05-08 c08efa5 SKIP — wiki: self-referential
 - 2026-05-08 9ff3f34 SKIP — wiki: self-referential
