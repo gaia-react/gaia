@@ -38,8 +38,8 @@ const allFourCi: AutomationConfig = {
   pnpm_audit: {mode: 'ci', schedule: 'daily'},
   setup_complete: true,
   setup_opted_out: false,
-  sharpen: {mode: 'ci', schedule: 'weekly'},
   stale_branches: {mode: 'ci', schedule: 'monthly'},
+  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -67,7 +67,7 @@ describe('automation render-workflows', () => {
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
-    for (const tool of ['wiki', 'sharpen', 'pnpm-audit', 'stale-branches']) {
+    for (const tool of ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches']) {
       expect(existsSync(path.join(outDir, `gaia-ci-${tool}.yml`))).toBe(true);
     }
   });
@@ -77,13 +77,13 @@ describe('automation render-workflows', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(
-      ['--out-dir', outDir, '--tools', 'wiki,sharpen'],
+      ['--out-dir', outDir, '--tools', 'wiki,update-deps'],
       {cwd: sandbox.root}
     );
 
     expect(exit).toBe(0);
     expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(true);
-    expect(existsSync(path.join(outDir, 'gaia-ci-sharpen.yml'))).toBe(true);
+    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(true);
     expect(existsSync(path.join(outDir, 'gaia-ci-pnpm-audit.yml'))).toBe(false);
     expect(existsSync(path.join(outDir, 'gaia-ci-stale-branches.yml'))).toBe(
       false
@@ -103,7 +103,7 @@ describe('automation render-workflows', () => {
     expect(existsSync(outDir)).toBe(false);
     const stdout = io.outs.join('');
     expect(stdout).toMatch(/wiki: \d+ bytes -> .*gaia-ci-wiki\.yml/u);
-    expect(stdout).toMatch(/sharpen: \d+ bytes -> .*gaia-ci-sharpen\.yml/u);
+    expect(stdout).toMatch(/update-deps: \d+ bytes -> .*gaia-ci-update-deps\.yml/u);
     expect(stdout).toMatch(
       /pnpm-audit: \d+ bytes -> .*gaia-ci-pnpm-audit\.yml/u
     );
@@ -124,22 +124,22 @@ describe('automation render-workflows', () => {
 
     expect(exit).toBe(0);
     expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(false);
-    expect(existsSync(path.join(outDir, 'gaia-ci-sharpen.yml'))).toBe(true);
+    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(true);
     expect(io.errors.join('')).toContain('wiki: skipped (mode=local)');
   });
 
   it('skips tools whose mode is off', () => {
     const config: AutomationConfig = {
       ...allFourCi,
-      sharpen: {mode: 'off'},
+      update_deps: {mode: 'off'},
     };
     sandbox.writeConfig(config);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
 
-    expect(existsSync(path.join(outDir, 'gaia-ci-sharpen.yml'))).toBe(false);
-    expect(io.errors.join('')).toContain('sharpen: skipped (mode=off)');
+    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(false);
+    expect(io.errors.join('')).toContain('update-deps: skipped (mode=off)');
   });
 
   it('exits non-zero with config_missing when there is no config', () => {
@@ -266,7 +266,7 @@ describe('automation render-workflows', () => {
     // construction (same render path). This test asserts the byte
     // count is non-trivial so we catch a regression where the writer
     // emits an empty file.
-    for (const tool of ['wiki', 'sharpen', 'pnpm-audit', 'stale-branches']) {
+    for (const tool of ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches']) {
       const content = readFileSync(
         path.join(outDir, `gaia-ci-${tool}.yml`),
         'utf8'

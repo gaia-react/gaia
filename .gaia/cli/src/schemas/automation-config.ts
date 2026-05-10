@@ -11,7 +11,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import {z} from 'zod';
 import {automationConfigPath} from '../automation/paths.js';
 
-export const TOOL_IDS = ['wiki', 'sharpen', 'pnpm-audit', 'stale-branches'] as const;
+export const TOOL_IDS = ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches'] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
 
 export const ToolModeSchema = z.enum(['ci', 'local', 'off']);
@@ -36,7 +36,7 @@ export const AutomationConfigSchema = z.object({
   setup_complete: z.boolean(),
   setup_opted_out: z.boolean(),
   wiki: ToolConfigSchema,
-  sharpen: ToolConfigSchema,
+  update_deps: ToolConfigSchema,
   pnpm_audit: ToolConfigSchema,
   stale_branches: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema,
@@ -53,15 +53,15 @@ export type AutomationConfig = z.infer<typeof AutomationConfigSchema>;
  */
 export const TOOL_ID_TO_CONFIG_KEY: Readonly<Record<ToolId, keyof AutomationConfig>> = {
   'pnpm-audit': 'pnpm_audit',
-  'sharpen': 'sharpen',
   'stale-branches': 'stale_branches',
+  'update-deps': 'update_deps',
   'wiki': 'wiki',
 };
 
 export const CONFIG_KEY_TO_TOOL_ID: Readonly<Record<string, ToolId>> = {
   pnpm_audit: 'pnpm-audit',
-  sharpen: 'sharpen',
   stale_branches: 'stale-branches',
+  update_deps: 'update-deps',
   wiki: 'wiki',
 };
 

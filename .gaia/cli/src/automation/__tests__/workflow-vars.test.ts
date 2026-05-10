@@ -6,8 +6,8 @@ const baseConfig: AutomationConfig = {
   pnpm_audit: {mode: 'ci', schedule: 'daily'},
   setup_complete: true,
   setup_opted_out: false,
-  sharpen: {mode: 'ci', schedule: 'weekly'},
   stale_branches: {mode: 'ci', schedule: 'monthly'},
+  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci'},
@@ -55,17 +55,17 @@ describe('buildWorkflowVars', () => {
     });
   });
 
-  it('returns the sharpen vars with weekly schedule from config', () => {
-    const vars = buildWorkflowVars(baseConfig, 'sharpen');
+  it('returns the update-deps vars with weekly schedule from config', () => {
+    const vars = buildWorkflowVars(baseConfig, 'update-deps');
 
     expect(vars).toMatchObject({
-      config_key: 'sharpen',
+      config_key: 'update_deps',
       cron: '0 4 * * 0',
       enable_major_bump_split: true,
       schedule: 'weekly',
-      state_file: '.gaia/automation.state-sharpen.json',
-      tool_id: 'sharpen',
-      workflow_name: 'GAIA CI — Sharpen',
+      state_file: '.gaia/automation.state-update-deps.json',
+      tool_id: 'update-deps',
+      workflow_name: 'GAIA CI — Update Deps',
     });
   });
 
@@ -99,7 +99,7 @@ describe('buildWorkflowVars', () => {
   });
 
   it('sets enable_auto_merge=true for the three PR-opening tools', () => {
-    for (const tool of ['wiki', 'sharpen', 'pnpm-audit'] as const) {
+    for (const tool of ['wiki', 'update-deps', 'pnpm-audit'] as const) {
       const vars = buildWorkflowVars(baseConfig, tool);
       expect(vars?.enable_auto_merge).toBe(true);
     }
@@ -108,10 +108,10 @@ describe('buildWorkflowVars', () => {
   it('falls back to the default schedule when the config row omits it', () => {
     const config: AutomationConfig = {
       ...baseConfig,
-      sharpen: {mode: 'ci'},
+      update_deps: {mode: 'ci'},
     };
 
-    expect(buildWorkflowVars(config, 'sharpen')).toMatchObject({
+    expect(buildWorkflowVars(config, 'update-deps')).toMatchObject({
       cron: '0 4 * * 0',
       schedule: 'weekly',
     });
@@ -138,7 +138,7 @@ describe('buildWorkflowVars', () => {
   it('produces mutually exclusive enable_* flags per tool', () => {
     const tools: readonly ToolId[] = [
       'wiki',
-      'sharpen',
+      'update-deps',
       'pnpm-audit',
       'stale-branches',
     ];

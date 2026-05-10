@@ -27,7 +27,7 @@ import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = `Usage: gaia init configure-automation \\
   --wiki <ci|local|off> \\
-  --sharpen <ci|local|off> \\
+  --update-deps <ci|local|off> \\
   --pnpm-audit <ci|local|off> \\
   --stale-branches <ci|local|off>
 
@@ -37,7 +37,7 @@ const HELP_TEXT = `Usage: gaia init configure-automation \\
 
   Required flags:
     --wiki <ci|local|off>
-    --sharpen <ci|local|off>
+    --update-deps <ci|local|off>
     --pnpm-audit <ci|local|off>
     --stale-branches <ci|local|off>
 
@@ -57,8 +57,8 @@ type ToolMode = 'ci' | 'local' | 'off';
 
 type Flags = {
   pnpmAudit: ToolMode;
-  sharpen: ToolMode;
   staleBranches: ToolMode;
+  updateDeps: ToolMode;
   wiki: ToolMode;
 };
 
@@ -112,7 +112,7 @@ const takeMode = (
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let wiki: ToolMode | undefined;
-  let sharpen: ToolMode | undefined;
+  let updateDeps: ToolMode | undefined;
   let pnpmAudit: ToolMode | undefined;
   let staleBranches: ToolMode | undefined;
 
@@ -128,11 +128,11 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       continue;
     }
 
-    if (token === '--sharpen') {
-      const taken = takeMode(argv, index + 1, '--sharpen', sharpen);
+    if (token === '--update-deps') {
+      const taken = takeMode(argv, index + 1, '--update-deps', updateDeps);
 
       if (!taken.ok) return taken;
-      sharpen = taken.mode;
+      updateDeps = taken.mode;
       index += 1;
       continue;
     }
@@ -159,7 +159,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   }
 
   if (wiki === undefined) return {message: '--wiki is required', ok: false};
-  if (sharpen === undefined) return {message: '--sharpen is required', ok: false};
+  if (updateDeps === undefined) return {message: '--update-deps is required', ok: false};
 
   if (pnpmAudit === undefined) {
     return {message: '--pnpm-audit is required', ok: false};
@@ -169,15 +169,15 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     return {message: '--stale-branches is required', ok: false};
   }
 
-  return {flags: {pnpmAudit, sharpen, staleBranches, wiki}, ok: true};
+  return {flags: {pnpmAudit, staleBranches, updateDeps, wiki}, ok: true};
 };
 
 const buildConfig = (flags: Flags): AutomationConfig => ({
   pnpm_audit: {mode: flags.pnpmAudit, schedule: 'daily'},
   setup_complete: false,
   setup_opted_out: false,
-  sharpen: {mode: flags.sharpen, schedule: 'weekly'},
   stale_branches: {mode: flags.staleBranches, schedule: 'monthly'},
+  update_deps: {mode: flags.updateDeps, schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: flags.wiki},
@@ -243,8 +243,8 @@ export const run = (
   try {
     markStepCompleted(cwd, STEP_NAME, {
       pnpm_audit: parsed.flags.pnpmAudit,
-      sharpen: parsed.flags.sharpen,
       stale_branches: parsed.flags.staleBranches,
+      update_deps: parsed.flags.updateDeps,
       wiki: parsed.flags.wiki,
     });
   } catch (error) {

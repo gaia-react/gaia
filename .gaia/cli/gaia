@@ -15058,7 +15058,7 @@ var workflowTemplatePath = (tool) => path5.join(resolveTemplatesDirectory(), `ga
 var workflowPartialsDirectory = () => path5.join(resolveTemplatesDirectory(), "partials");
 
 // src/schemas/automation-config.ts
-var TOOL_IDS = ["wiki", "sharpen", "pnpm-audit", "stale-branches"];
+var TOOL_IDS = ["wiki", "update-deps", "pnpm-audit", "stale-branches"];
 var ToolModeSchema = external_exports.enum(["ci", "local", "off"]);
 var ScheduleSchema = external_exports.enum(["daily", "weekly", "monthly"]);
 var ToolConfigSchema = external_exports.object({
@@ -15073,15 +15073,15 @@ var AutomationConfigSchema = external_exports.object({
   setup_complete: external_exports.boolean(),
   setup_opted_out: external_exports.boolean(),
   wiki: ToolConfigSchema,
-  sharpen: ToolConfigSchema,
+  update_deps: ToolConfigSchema,
   pnpm_audit: ToolConfigSchema,
   stale_branches: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema
 });
 var TOOL_ID_TO_CONFIG_KEY = {
   "pnpm-audit": "pnpm_audit",
-  "sharpen": "sharpen",
   "stale-branches": "stale_branches",
+  "update-deps": "update_deps",
   "wiki": "wiki"
 };
 var summarizeZodError = (filePath, error51) => {
@@ -15978,7 +15978,7 @@ var run6 = (argv, options = {}) => {
 setup_complete: ${String(c.setup_complete)}
 setup_opted_out: ${String(c.setup_opted_out)}
 wiki: mode=${c.wiki.mode}${c.wiki.schedule ? ` schedule=${c.wiki.schedule}` : ""}
-sharpen: mode=${c.sharpen.mode}${c.sharpen.schedule ? ` schedule=${c.sharpen.schedule}` : ""}
+update_deps: mode=${c.update_deps.mode}${c.update_deps.schedule ? ` schedule=${c.update_deps.schedule}` : ""}
 pnpm_audit: mode=${c.pnpm_audit.mode}${c.pnpm_audit.schedule ? ` schedule=${c.pnpm_audit.schedule}` : ""}
 stale_branches: mode=${c.stale_branches.mode}${c.stale_branches.schedule ? ` schedule=${c.stale_branches.schedule}` : ""}
 update_gaia: mode=${c.update_gaia.mode}
@@ -16437,14 +16437,14 @@ var CRON_BY_SCHEDULE = {
 };
 var DEFAULT_SCHEDULE_BY_TOOL = {
   "pnpm-audit": "daily",
-  sharpen: "weekly",
   "stale-branches": "monthly",
+  "update-deps": "weekly",
   wiki: "daily"
 };
 var WORKFLOW_NAME_BY_TOOL = {
   "pnpm-audit": "GAIA CI \u2014 pnpm audit",
-  sharpen: "GAIA CI \u2014 Sharpen",
   "stale-branches": "GAIA CI \u2014 Stale Branches",
+  "update-deps": "GAIA CI \u2014 Update Deps",
   wiki: "GAIA CI \u2014 Wiki"
 };
 var cronForSchedule = (schedule) => CRON_BY_SCHEDULE[schedule];
@@ -16464,7 +16464,7 @@ var buildWorkflowVars = (config2, tool) => {
     // The auto-merge partial gates its body on this flag.
     enable_auto_merge: tool !== "stale-branches",
     enable_diff_size_check: tool === "wiki",
-    enable_major_bump_split: tool === "sharpen",
+    enable_major_bump_split: tool === "update-deps",
     enable_security_pr: tool === "pnpm-audit",
     enable_stale_branch_delete: tool === "stale-branches",
     needs_human_review_label: "needs-human-review",
@@ -17433,7 +17433,7 @@ var STEP_ORDER = [
 // src/init/configure-automation.ts
 var HELP_TEXT13 = `Usage: gaia init configure-automation \\
   --wiki <ci|local|off> \\
-  --sharpen <ci|local|off> \\
+  --update-deps <ci|local|off> \\
   --pnpm-audit <ci|local|off> \\
   --stale-branches <ci|local|off>
 
@@ -17443,7 +17443,7 @@ var HELP_TEXT13 = `Usage: gaia init configure-automation \\
 
   Required flags:
     --wiki <ci|local|off>
-    --sharpen <ci|local|off>
+    --update-deps <ci|local|off>
     --pnpm-audit <ci|local|off>
     --stale-branches <ci|local|off>
 
@@ -17476,7 +17476,7 @@ var takeMode = (argv, index, flag, current) => {
 };
 var parseFlags2 = (argv) => {
   let wiki;
-  let sharpen;
+  let updateDeps;
   let pnpmAudit;
   let staleBranches;
   for (let index = 0; index < argv.length; index += 1) {
@@ -17488,10 +17488,10 @@ var parseFlags2 = (argv) => {
       index += 1;
       continue;
     }
-    if (token === "--sharpen") {
-      const taken = takeMode(argv, index + 1, "--sharpen", sharpen);
+    if (token === "--update-deps") {
+      const taken = takeMode(argv, index + 1, "--update-deps", updateDeps);
       if (!taken.ok) return taken;
-      sharpen = taken.mode;
+      updateDeps = taken.mode;
       index += 1;
       continue;
     }
@@ -17512,21 +17512,21 @@ var parseFlags2 = (argv) => {
     return { message: `unknown flag: ${token}`, ok: false };
   }
   if (wiki === void 0) return { message: "--wiki is required", ok: false };
-  if (sharpen === void 0) return { message: "--sharpen is required", ok: false };
+  if (updateDeps === void 0) return { message: "--update-deps is required", ok: false };
   if (pnpmAudit === void 0) {
     return { message: "--pnpm-audit is required", ok: false };
   }
   if (staleBranches === void 0) {
     return { message: "--stale-branches is required", ok: false };
   }
-  return { flags: { pnpmAudit, sharpen, staleBranches, wiki }, ok: true };
+  return { flags: { pnpmAudit, staleBranches, updateDeps, wiki }, ok: true };
 };
 var buildConfig = (flags) => ({
   pnpm_audit: { mode: flags.pnpmAudit, schedule: "daily" },
   setup_complete: false,
   setup_opted_out: false,
-  sharpen: { mode: flags.sharpen, schedule: "weekly" },
   stale_branches: { mode: flags.staleBranches, schedule: "monthly" },
+  update_deps: { mode: flags.updateDeps, schedule: "weekly" },
   update_gaia: { mode: "local" },
   version: 1,
   wiki: { mode: flags.wiki }
@@ -17571,8 +17571,8 @@ var run15 = (argv, options = {}) => {
   try {
     markStepCompleted(cwd, STEP_NAME, {
       pnpm_audit: parsed.flags.pnpmAudit,
-      sharpen: parsed.flags.sharpen,
       stale_branches: parsed.flags.staleBranches,
+      update_deps: parsed.flags.updateDeps,
       wiki: parsed.flags.wiki
     });
   } catch (error51) {
@@ -18437,18 +18437,18 @@ var argvFromStepArgs = (step, saved) => {
   }
   if (step === "configure-automation") {
     const wiki = saved.wiki;
-    const sharpen = saved.sharpen;
+    const updateDeps = saved.update_deps;
     const pnpmAudit = saved.pnpm_audit;
     const staleBranches = saved.stale_branches;
     const valid = (value) => value === "ci" || value === "local" || value === "off";
-    if (!valid(wiki) || !valid(sharpen) || !valid(pnpmAudit) || !valid(staleBranches)) {
+    if (!valid(wiki) || !valid(updateDeps) || !valid(pnpmAudit) || !valid(staleBranches)) {
       return null;
     }
     return [
       "--wiki",
       wiki,
-      "--sharpen",
-      sharpen,
+      "--update-deps",
+      updateDeps,
       "--pnpm-audit",
       pnpmAudit,
       "--stale-branches",
@@ -18526,7 +18526,7 @@ var HELP_TEXT20 = `Usage: gaia init <subcommand> [args]
                             Rename the project across package.json + locales.
   wire-statusline --mode <global|project|skip>
                             Wire the GAIA statusline into Claude settings.
-  configure-automation --wiki <m> --sharpen <m> --pnpm-audit <m> --stale-branches <m>
+  configure-automation --wiki <m> --update-deps <m> --pnpm-audit <m> --stale-branches <m>
                             Write .gaia/automation.json (Phase A of GAIA CI).
   finalize                  Final cleanup steps for the init runbook.
   resume [--from-step <N>]  Resume a partially-completed init via state file.

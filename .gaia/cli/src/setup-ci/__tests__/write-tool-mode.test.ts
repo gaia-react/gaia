@@ -75,18 +75,18 @@ describe('setup-ci write-tool-mode', () => {
   it('writes mode without schedule when existing slot has none', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
-      sharpen: {mode: 'ci'},
+      update_deps: {mode: 'ci'},
     });
 
-    const exit = run(['sharpen', 'local'], {cwd: sandbox.root});
+    const exit = run(['update-deps', 'local'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
 
     if (result.status === 'ok') {
-      expect(result.config.sharpen.mode).toBe('local');
-      expect(result.config.sharpen.schedule).toBeUndefined();
+      expect(result.config.update_deps.mode).toBe('local');
+      expect(result.config.update_deps.schedule).toBeUndefined();
     }
   });
 

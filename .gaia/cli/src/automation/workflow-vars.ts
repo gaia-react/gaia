@@ -40,15 +40,15 @@ const CRON_BY_SCHEDULE: Readonly<Record<WorkflowSchedule, string>> = {
 
 const DEFAULT_SCHEDULE_BY_TOOL: Readonly<Record<ToolId, WorkflowSchedule>> = {
   'pnpm-audit': 'daily',
-  sharpen: 'weekly',
   'stale-branches': 'monthly',
+  'update-deps': 'weekly',
   wiki: 'daily',
 };
 
 const WORKFLOW_NAME_BY_TOOL: Readonly<Record<ToolId, string>> = {
   'pnpm-audit': 'GAIA CI — pnpm audit',
-  sharpen: 'GAIA CI — Sharpen',
   'stale-branches': 'GAIA CI — Stale Branches',
+  'update-deps': 'GAIA CI — Update Deps',
   wiki: 'GAIA CI — Wiki',
 };
 
@@ -94,7 +94,7 @@ export const buildWorkflowVars = (
     // The auto-merge partial gates its body on this flag.
     enable_auto_merge: tool !== 'stale-branches',
     enable_diff_size_check: tool === 'wiki',
-    enable_major_bump_split: tool === 'sharpen',
+    enable_major_bump_split: tool === 'update-deps',
     enable_security_pr: tool === 'pnpm-audit',
     enable_stale_branch_delete: tool === 'stale-branches',
     needs_human_review_label: 'needs-human-review',

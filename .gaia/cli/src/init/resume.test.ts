@@ -93,14 +93,14 @@ describe('argvFromStepArgs', () => {
     expect(
       argvFromStepArgs('configure-automation', {
         pnpm_audit: 'ci',
-        sharpen: 'local',
         stale_branches: 'off',
+        update_deps: 'local',
         wiki: 'ci',
       })
     ).toEqual([
       '--wiki',
       'ci',
-      '--sharpen',
+      '--update-deps',
       'local',
       '--pnpm-audit',
       'ci',
@@ -110,15 +110,15 @@ describe('argvFromStepArgs', () => {
     expect(
       argvFromStepArgs('configure-automation', {
         pnpm_audit: 'ci',
-        sharpen: 'ci',
         stale_branches: 'ci',
+        update_deps: 'ci',
       })
     ).toBeNull();
     expect(
       argvFromStepArgs('configure-automation', {
         pnpm_audit: 'ci',
-        sharpen: 'ci',
         stale_branches: 'ci',
+        update_deps: 'ci',
         wiki: 'bogus',
       })
     ).toBeNull();
@@ -154,8 +154,8 @@ describe('init resume', () => {
       step_args: {
         'configure-automation': {
           pnpm_audit: 'ci',
-          sharpen: 'ci',
           stale_branches: 'ci',
+          update_deps: 'ci',
           wiki: 'ci',
         },
         'configure-i18n': {locales: ['en'], strip: false},
@@ -208,8 +208,8 @@ describe('init resume', () => {
       step_args: {
         'configure-automation': {
           pnpm_audit: 'ci',
-          sharpen: 'ci',
           stale_branches: 'ci',
+          update_deps: 'ci',
           wiki: 'ci',
         },
         'configure-i18n': {locales: ['en'], strip: true},

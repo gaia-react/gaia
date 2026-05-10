@@ -6,7 +6,7 @@
 #
 # The argument is the snake_case CONFIG KEY from the automation schema —
 # the same identifier used as the top-level field in .gaia/automation.json
-# (e.g. `wiki`, `pnpm_audit`, `stale_branches`, `sharpen`, `update_gaia`).
+# (e.g. `wiki`, `pnpm_audit`, `stale_branches`, `update_deps`, `update_gaia`).
 # It is NOT necessarily the CLI tool id (kebab-case `pnpm-audit` vs
 # snake_case `pnpm_audit`). Callers must pass the config-key form.
 #

@@ -15,17 +15,17 @@ jobs:
 {{> partials/pre-run-skip }}
 {{> partials/quality-gate }}
 {{#enable_major_bump_split}}
-      - name: Run sharpen and split major bumps
+      - name: Run update-deps and split major bumps
         if: steps.pre_run.outputs.decision == 'run'
         env:
           RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         run: |
           set -euo pipefail
-          # TODO(slice-4): wire the real `gaia sharpen run --emit-updates`
-          # invocation plus the major-bump split logic. Until the sharpen CLI
+          # TODO(slice-4): wire the real `gaia update-deps run --emit-updates`
+          # invocation plus the major-bump split logic. Until the update-deps CLI
           # primitive ships, this step is an explicit stub so the workflow
           # exits 0 without invoking a missing subcommand.
-          echo "sharpen run stub: slice-4 will wire the patch/minor + major-bump split"
+          echo "update-deps run stub: slice-4 will wire the patch/minor + major-bump split"
 {{/enable_major_bump_split}}
 {{> partials/auto-merge }}
 {{> partials/cost-accounting }}
