@@ -20224,6 +20224,7 @@ var UNEXPECTED_EXIT13 = 2;
 var SCAN_GLOBS = [".gaia/statusline", ".claude/hooks"];
 var ADOPTER_OWNED_SENTINELS2 = /* @__PURE__ */ new Set([
   ".gaia/VERSION",
+  ".gaia/automation.json",
   ".gaia/manifest.json",
   "wiki/hot.md",
   "wiki/log.md"
@@ -23704,7 +23705,7 @@ var buildTestImports = (componentName, withStory) => {
   return [
     "import {describe, expect, test} from 'vitest';",
     "import {render} from 'test/rtl';",
-    `import ${componentName} from '../index';`
+    `import ${componentName} from '..';`
   ].join("\n");
 };
 var buildStoryTitle = (parent, componentName) => {

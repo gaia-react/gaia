@@ -34,6 +34,7 @@
 #          version file empty
 #          tree changed since audit started
 #          not in a git repo
+#          already stamped
 #   2  — Usage / unexpected error. Stderr.
 #
 # References
@@ -120,6 +121,20 @@ fi
 audit_tree="${AUDIT_TREE_SHA:-}"
 if [ -n "$audit_tree" ] && [ "$audit_tree" != "$current_tree" ]; then
   emit_decline "tree changed since audit started"
+  exit 0
+fi
+
+# -----------------------------------------------------------------------------
+# Already-stamped guard
+# -----------------------------------------------------------------------------
+
+# If HEAD already carries a GAIA-Audit trailer, do not re-stamp. Re-stamping
+# an un-pushed HEAD would amend again and orphan the existing marker file
+# (the marker is keyed to the pre-amend SHA). Re-stamping a pushed HEAD
+# creates a spurious empty commit on every audit re-run. Both produce the
+# same bad outcome: the PR accrues unnecessary commits.
+if git -C "$repo_root" log -1 --format='%B' | grep -q "^GAIA-Audit:"; then
+  emit_decline "already stamped"
   exit 0
 fi
 

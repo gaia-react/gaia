@@ -64,6 +64,7 @@ const SCAN_GLOBS = ['.gaia/statusline', '.claude/hooks'] as const;
  */
 const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   '.gaia/VERSION',
+  '.gaia/automation.json',
   '.gaia/manifest.json',
   'wiki/hot.md',
   'wiki/log.md',

@@ -94,11 +94,12 @@ jobs:
           # Audit-relevant scope: TS/TSX/CSS code under app/, tests,
           # .storybook configs, GitHub workflow files, and root-level
           # build/lint/test/typecheck configs. PRs that only touch wiki/,
-          # .claude/, .specify/, prose docs, or .gaia/ metadata are
-          # skipped here — the agent has no rules that would meaningfully
+          # .claude/, .specify/, prose docs, .gaia/ metadata, or
+          # .gaia/cli/src (maintainer-only CLI, tested by health-audit)
+          # are skipped — the agent has no rules that would meaningfully
           # apply.
           changed=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}")
-          dir_pattern='^(app|test|\.storybook|\.gaia/cli/src|\.github/workflows)/'
+          dir_pattern='^(app|test|\.storybook|\.github/workflows)/'
           file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
           if printf '%s\n' "$changed" | grep -qE "${dir_pattern}|${file_pattern}"; then
             echo "has_source=true" >> "$GITHUB_OUTPUT"
