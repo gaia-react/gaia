@@ -42,4 +42,3 @@ Valid `subagents` values map to the three specialist subagents:
 | `tailwind-merge.md`  | `tailwind-merge`                         | typescript                 |
 | `react-i18next.md`   | `react-i18next`                          | translation                |
 | `form-components.md` | GAIA Form Components                     | react-patterns             |
-| `a11y-axe.md`        | `axe-core + @axe-core/playwright`        | react-patterns             |
