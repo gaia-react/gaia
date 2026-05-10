@@ -110,3 +110,24 @@ await page.setExtraHTTPHeaders({'Accept-Language': 'ja'});
 
 - `trace: 'retain-on-failure'` — traces saved to `.playwright/output/` on failure.
 - No explicit screenshot calls in specs; rely on Playwright trace viewer for debugging.
+
+## Accessibility scans
+
+Use `expectNoSeriousA11yViolations` from `.playwright/a11y.ts` for axe-core
+scans of fully-rendered pages. The fixture in `.playwright/fixtures.ts`
+exposes `makeAxeBuilder` for tests that need to customize tags, includes, or
+disabled rules. Failure threshold is frozen: critical + serious violations
+fail the test; moderate + minor violations attach as `axe-advisory.json` and
+emit `console.warn`.
+
+```ts
+import {test} from '../fixtures';
+import {expectNoSeriousA11yViolations} from '../a11y';
+import {hydration} from '../utils';
+
+test('home page has no serious a11y violations', async ({page}, testInfo) => {
+  await page.goto('/');
+  await hydration(page);
+  await expectNoSeriousA11yViolations(page, testInfo);
+});
+```
