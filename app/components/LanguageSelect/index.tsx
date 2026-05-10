@@ -13,6 +13,7 @@ type LanguageSelectProps = {
 const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
   const {
     i18n: {language},
+    t,
   } = useTranslation();
 
   const fetcher = useFetcher();
@@ -38,6 +39,7 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
     >
       <input name="redirectUrl" type="hidden" value={redirectUrl} />
       <select
+        aria-label={t('language')}
         className="bg-transparent! ring-0! cursor-pointer border-none bg-none p-0 text-sm"
         defaultValue={language}
         name="language"
