@@ -179,9 +179,16 @@ Pin spec-kit at the version declared in `.specify/extensions/gaia/extension.yml`
 
 ```bash
 SPECKIT_PIN="v0.8.5"
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify init --here --ai claude --force
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev .specify/extensions/gaia
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev .specify/presets/gaia
+# specify extension/preset add --dev deletes the source dir when source == dest;
+# copy to /tmp first so the originals in the project tree survive.
+cp -r "${PROJECT_ROOT}/.specify/extensions/gaia" /tmp/gaia-ext-tmp
+yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev /tmp/gaia-ext-tmp
+rm -rf /tmp/gaia-ext-tmp
+cp -r "${PROJECT_ROOT}/.specify/presets/gaia" /tmp/gaia-preset-tmp
+yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev /tmp/gaia-preset-tmp
+rm -rf /tmp/gaia-preset-tmp
 ```
 
 `specify init --here --ai claude --force` writes `.specify/{extensions.yml, integration.json, integrations/, memory/constitution.md, scripts/, templates/, workflows/}` and `.claude/skills/speckit-*` plus `CLAUDE.md`. The `--force` flag is required because the GAIA template ships some `.specify/` paths already; `specify init` refuses without it.
