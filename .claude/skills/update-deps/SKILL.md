@@ -61,17 +61,18 @@ If the detection does not fire, fall through to the existing `## Pre-flight: Bra
 git branch --show-current
 ```
 
-If the current branch is `main` or `master` **and not running in CI**, create and switch to a new branch:
+If the current branch is `main` or `master` **and not running in CI**, create and switch to a new branch and **remember that you created it** (this determines publish behavior in Phase 8):
 
 ```bash
 if [ "${CI:-}" != "true" ] && { [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; }; then
   git checkout -b chore/update-deps-$(date +%Y-%m-%d-%H-%M)
+  # CREATED_NEW_BRANCH=true — used in Phase 8
 fi
 ```
 
 In CI (`CI=true`, set by GitHub Actions, GitLab CI, CircleCI, and most CI providers), skip branch creation — the workflow owns branch management and pre-creates the appropriate branch before this skill runs.
 
-Otherwise proceed on the current branch.
+Otherwise proceed on the current branch. **Remember that you did NOT create a new branch** (this determines publish behavior in Phase 8).
 
 ## Composition: --scope &lt;group-name&gt;
 
@@ -299,4 +300,24 @@ rm -f .gaia/cache/update-check.json
 
 The next SessionStart hook fires the background refresher; the session after that sees zero outdated packages.
 
-Stop and wait for user review.
+## Phase 8: Publish
+
+**If nothing was updated** (all packages were already up to date or all were skipped), skip this phase entirely.
+
+**If a new branch was created** (you were on `main`/`master` at pre-flight and branched off):
+
+1. Push the branch:
+   ```bash
+   git push -u origin <branch-name>
+   ```
+2. Open a PR against `main`. Title: the commit message from the update commit. Body: the migration report rendered as markdown. Use `--body-file` with a temp file to avoid shell-hook false positives on package manager keywords in the body.
+
+**If you were already on a non-main branch** at pre-flight (no new branch was created):
+
+1. Push the branch:
+   ```bash
+   git push
+   ```
+2. Do not open a PR — the user owns the branch context.
+
+In both cases, print the resulting PR URL (if created) or confirm the push completed.
