@@ -61,18 +61,11 @@ If the detection does not fire, fall through to the existing `## Pre-flight: Bra
 git branch --show-current
 ```
 
-If the current branch is `main` or `master` **and not running in CI**, create and switch to a new branch and **remember that you created it** (this determines publish behavior in Phase 8):
-
-```bash
-if [ "${CI:-}" != "true" ] && { [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; }; then
-  git checkout -b chore/update-deps-$(date +%Y-%m-%d-%H-%M)
-  # CREATED_NEW_BRANCH=true — used in Phase 8
-fi
-```
+If the current branch is `main` or `master` **and not running in CI**, set a flag (`SHOULD_CREATE_BRANCH=true`) but **do not create the branch yet** — branch creation is deferred until after Phase 1 confirms there are packages to update. Creating a branch when there is nothing to update pollutes the branch list.
 
 In CI (`CI=true`, set by GitHub Actions, GitLab CI, CircleCI, and most CI providers), skip branch creation — the workflow owns branch management and pre-creates the appropriate branch before this skill runs.
 
-Otherwise proceed on the current branch. **Remember that you did NOT create a new branch** (this determines publish behavior in Phase 8).
+Otherwise set `SHOULD_CREATE_BRANCH=false` and proceed on the current branch.
 
 ## Composition: --scope &lt;group-name&gt;
 
@@ -189,6 +182,26 @@ Report back to the orchestrator with:
 
 ---
 
+## Branch creation (after discovery)
+
+After the Haiku agent returns:
+
+- If Phase 1 reported `All packages are up to date.`, skip the rest of this skill entirely. **Do not create a branch.**
+- Otherwise, updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes:
+
+```bash
+rm -f .gaia/cache/update-check.json
+```
+
+- If `SHOULD_CREATE_BRANCH=true`, create the branch now and **remember that you created it** (this determines publish behavior in Phase 8):
+
+```bash
+git checkout -b chore/update-deps-$(date +%Y-%m-%d-%H-%M)
+# CREATED_NEW_BRANCH=true — used in Phase 8
+```
+
+Otherwise (`SHOULD_CREATE_BRANCH=false`), proceed on the current branch and **remember that you did NOT create a new branch**.
+
 ## Phase 5: Wave B (per-group major bumps)
 
 After the Haiku agent returns, if there are no Wave B groups, skip to Phase 6.
@@ -291,14 +304,6 @@ Print the report. Do not commit.
 | Step | Result |
 | --- | --- |
 ```
-
-After printing the report, bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session:
-
-```bash
-rm -f .gaia/cache/update-check.json
-```
-
-The next SessionStart hook fires the background refresher; the session after that sees zero outdated packages.
 
 ## Phase 8: Publish
 
