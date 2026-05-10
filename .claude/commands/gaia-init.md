@@ -396,7 +396,7 @@ The template ships with a wiki shaped for the upstream GAIA project. Refresh the
 
 ### 11a. Overwrite `wiki/hot.md`
 
-Replace the entire file with:
+Read `wiki/hot.md` first (required before Write can overwrite an existing file), then replace the entire file with:
 
 ```md
 ---
@@ -421,7 +421,7 @@ tags: [meta, cache]
 
 ### 11b. Overwrite `wiki/log.md`
 
-Replace the entire `wiki/log.md` file with the following content (the GAIA development log is irrelevant to the new project):
+Read `wiki/log.md` first, then replace the entire file with the following content (the GAIA development log is irrelevant to the new project):
 
 ```md
 ---
