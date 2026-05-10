@@ -10,6 +10,72 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-05-10
+
+### Added
+
+- robust a11y tooling stack (#156)
+- close slice-4 forward-refs (wiki + update-deps) (#153)
+- rebrand /update-deps to /sharpen + deprecation alias (#149)
+- add Phase A configure-automation step (#148)
+- spec-001 slice 4 — /setup-gaia-ci slash command (Phase B) (#147)
+- spec-001 slice 3 — GAIA CI workflow YAML generation (#146)
+- spec-001 slice 2 — auto-merge + auto-revert workflow shape (#145)
+- spec-001 slice 1 — smart-cron + per-tool state files (#144)
+- add probe-after verification pass to Step 8 (#139)
+- surface GAIA-Audit trailer invalidation count in summary (#140)
+- rename /wiki-{sync,consolidate,lint} → /gaia wiki <sub> to resolve plugin collision (#121)
+- /gaia spec auto + branch-default plan isolation
+- code-review-audit CI gate + GAIA-Audit trailer skip mechanism (#117)
+- autonomous triage workflow for gaia-forensics issues (#104)
+- /gaia forensics — end-user bug-report bridge (#105)
+- bundle-time scrub + runtime-deps primitives (#98)
+- telemetry v1 (SPEC-001) — three-stream architecture (#91)
+- tree READMEs + inventory audit appended to SPEC-005
+- rule file + port smoke-uat-write + relocate serena
+- wire before_implement hook + speckit.gaia.uat-write into manifest
+- wiki-sync handoff + revised-contracts §2 amendment
+- implement before_implement UAT renderer + templates + slash command
+- wiki-promote routing + page render + cross-links
+- wiki-promote PR-merge detection + spec-close drain
+- add UAT divergence policy rule stub
+- manifest entry + wiki-promote command skeleton
+- install spec-kit + GAIA extension + GAIA preset during scaffold
+- real spec-kit extension + preset for GAIA
+- salvage GAIA wrapper scaffold + utilities from PR #84
+- integrate Serena MCP (#82)
+- add knip for dead code detection (#80)
+
+### Changed
+
+- codify post-merge state verification + --auto vs --admin (#155)
+- tighten adopter README template (#138)
+- pre-launch gap fixes (CI opt-in, rollback, WSL stance) (#137)
+- add manual smoke procedure for before_implement hook
+- scrub fictional on_save references from smoke.md
+- integrate Serena MCP and document knip dead code detection
+
+### Fixed
+
+- exclude CLI-Binary-Split ADR; add automation.json sentinel (#163)
+- replace rm cache-bust with Write tool to avoid hook conflict (#162)
+- bust cache immediately on confirmed updates (#161)
+- defer stamp push until after marker write (#158)
+- split release CLI into maintainer-only binary (#133)
+- push GAIA-Audit empty commit to upstream so CI's audit skips (#130)
+- skip audit on workflow self-mod, reword abort message (#125)
+- surface code-review-audit aborts as red checks (#123)
+- CI source-changes gate, knip binaries, instruction-file paths (#122)
+- relocate audit-stamp bats + repair latent path bug in 4 existing bats (#119)
+- SPEC-005 shared-state symlinks + slash-command worktree guards (#118)
+- address remaining audit suggestions from PR #114 (#116)
+- audit advisory follow-ups (S-1/S-2/S-3) (#114)
+- bootstrap-labels.sh — shorten needs-human desc, add gaia-forensics (#113)
+- SPEC-003 triage workflow correctness + hardening (#110)
+- close SPEC-004 sharp edges (setup-state, pre-merge audit, post-merge cleanup) (#109)
+- address pre-merge audit findings (#106)
+- enforce exclusive ceiling in spec-kit version-check
+
 ### Changed
 
 - **BREAKING:** `/wiki-sync`, `/wiki-consolidate`, `/wiki-lint` slash commands are removed. Use `/gaia wiki sync`, `/gaia wiki consolidate`, `/gaia wiki lint` instead — or `/gaia wiki` for the full chain. Motivation: `/wiki-lint` collided with the `claude-obsidian` plugin's skill of the same name. Moving everything under the `/gaia` router namespace eliminates the collision and groups wiki maintenance with the other GAIA workflows. Hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) and statusline now point at the new names. Smoke tests under `.gaia/tests/smoke/wiki-sync/` updated. The playbooks moved from `.claude/commands/wiki-{sync,consolidate,lint}.md` to `.claude/skills/gaia/references/wiki/{sync,consolidate,lint}.md`.
