@@ -10,6 +10,7 @@ import {
   run,
   type PnpmRunner,
 } from './run.js';
+import {resolveGroupMembers} from './groups.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -76,9 +77,16 @@ type FakeOutdated = Record<
   {current: string; latest: string; wanted: string; dependencyType?: string}
 >;
 
+/**
+ * Map from package name to its latest version, used to fake `pnpm view <name> version`.
+ * Use `null` to simulate a registry failure (package not found / network error).
+ */
+type FakeViewVersions = Record<string, string | null>;
+
 const makePnpmRunner = (
   fakeOutdated: FakeOutdated,
-  eslintVersions?: readonly string[]
+  eslintVersions?: readonly string[],
+  fakeViewVersions?: FakeViewVersions
 ): PnpmRunner => {
   return (args) => {
     if (args[0] === 'outdated' && args.includes('--json')) {
@@ -90,12 +98,26 @@ const makePnpmRunner = (
       };
     }
 
-    if (args[0] === 'view' && args[1] === 'eslint') {
+    if (args[0] === 'view' && args[1] === 'eslint' && args[2] === 'versions') {
       return {
         status: 0,
         stderr: '',
         stdout: JSON.stringify(eslintVersions ?? []),
       };
+    }
+
+    // pnpm view <name> version — used to fetch latest for sibling expansion
+    if (args[0] === 'view' && args[2] === 'version' && args.length === 3) {
+      const pkgName = args[1] as string;
+      const resolved = fakeViewVersions?.[pkgName];
+
+      if (resolved === null) {
+        return {status: 1, stderr: `E404 Not found: ${pkgName}`, stdout: ''};
+      }
+
+      if (resolved !== undefined) {
+        return {status: 0, stderr: '', stdout: `${resolved}\n`};
+      }
     }
 
     return {status: 1, stderr: `unexpected args: ${args.join(' ')}`, stdout: ''};
@@ -355,6 +377,242 @@ describe('update-deps run — computeUpdates', () => {
     expect(result.wave_a).toEqual([]);
     expect(result.wave_b).toEqual([]);
     expect(result.skipped).toEqual([]);
+  });
+
+  test('sibling expansion: non-outdated group member included in wave_b when trigger is major', () => {
+    // react is outdated (major), react-dom is up-to-date in pnpm outdated
+    // but both are in package.json → react-dom must be pulled in via pnpm view
+    sandbox.writePackageJson({
+      dependencies: {
+        react: '^18.0.0',
+        'react-dom': '^18.2.0',
+      },
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {
+          react: {current: '18.0.0', latest: '19.0.0', wanted: '18.0.0'},
+        },
+        undefined,
+        {'react-dom': '19.0.0'}
+      ),
+    });
+
+    expect(result.wave_a).toEqual([]);
+    expect(result.wave_b).toHaveLength(1);
+    const group = result.wave_b[0];
+    expect(group?.group).toBe('react');
+    expect(group?.packages).toHaveLength(2);
+    const reactPkg = group?.packages.find((p) => p.name === 'react');
+    const reactDomPkg = group?.packages.find((p) => p.name === 'react-dom');
+    expect(reactPkg?.latest).toBe('19.0.0');
+    expect(reactPkg?.kind).toBe('major');
+    expect(reactDomPkg?.latest).toBe('19.0.0');
+    expect(reactDomPkg?.current).toBe('18.2.0');
+    // sibling with equal current/latest gets kind: "patch" as no-op default
+    // (react-dom 18.2.0 → 19.0.0 is actually a major, verify that too)
+    expect(reactDomPkg?.kind).toBe('major');
+    expect(reactDomPkg?.wanted).toBe('19.0.0');
+  });
+
+  test('sibling expansion: non-outdated group member included in wave_a when trigger is minor', () => {
+    // react-router is minor bump, react-router-dom is current but present in pkg.json
+    sandbox.writePackageJson({
+      dependencies: {
+        'react-router': '^7.0.0',
+        'react-router-dom': '^7.0.0',
+      },
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {
+          'react-router': {current: '7.0.0', latest: '7.1.0', wanted: '7.1.0'},
+        },
+        undefined,
+        {'react-router-dom': '7.1.0'}
+      ),
+    });
+
+    expect(result.wave_b).toEqual([]);
+    expect(result.wave_a).toHaveLength(2);
+    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    expect(rrd).toBeDefined();
+    expect(rrd?.latest).toBe('7.1.0');
+    expect(rrd?.current).toBe('7.0.0');
+    expect(rrd?.kind).toBe('minor');
+    expect(rrd?.group).toBe('react-router');
+  });
+
+  test('sibling expansion: up-to-date sibling (current === latest) still included', () => {
+    // react-router-dom is truly up-to-date after fetch; must still be included
+    sandbox.writePackageJson({
+      dependencies: {
+        'react-router': '^7.1.0',
+        'react-router-dom': '^7.1.0',
+      },
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {
+          'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'},
+        },
+        undefined,
+        {'react-router-dom': '7.2.0'}
+      ),
+    });
+
+    expect(result.wave_a).toHaveLength(2);
+    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    expect(rrd).toBeDefined();
+    // current 7.1.0 vs latest 7.2.0 → minor
+    expect(rrd?.kind).toBe('minor');
+  });
+
+  test('sibling expansion: up-to-date sibling where current === latest gets kind: "patch"', () => {
+    // react-router-dom is exactly on latest after fetch → no-op, kind: "patch"
+    sandbox.writePackageJson({
+      dependencies: {
+        'react-router': '^7.1.0',
+        'react-router-dom': '^7.2.0',
+      },
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {
+          'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'},
+        },
+        undefined,
+        {'react-router-dom': '7.2.0'}
+      ),
+    });
+
+    expect(result.wave_a).toHaveLength(2);
+    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    expect(rrd).toBeDefined();
+    // current 7.2.0 vs latest 7.2.0 → equal, kind: "patch" as no-op default
+    expect(rrd?.kind).toBe('patch');
+    expect(rrd?.current).toBe('7.2.0');
+    expect(rrd?.latest).toBe('7.2.0');
+    expect(rrd?.wanted).toBe('7.2.0');
+  });
+
+  test('sibling expansion: registry failure adds sibling to skipped with registry-unresolved', () => {
+    sandbox.writePackageJson({
+      dependencies: {
+        react: '^18.0.0',
+        'react-dom': '^18.2.0',
+      },
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {
+          react: {current: '18.0.0', latest: '19.0.0', wanted: '18.0.0'},
+        },
+        undefined,
+        {'react-dom': null} // simulate registry failure
+      ),
+    });
+
+    // react-dom skipped, react group still emitted with just react
+    expect(result.wave_b).toHaveLength(1);
+    expect(result.wave_b[0]?.packages).toHaveLength(1);
+    expect(result.wave_b[0]?.packages[0]?.name).toBe('react');
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]?.name).toBe('react-dom');
+    expect(result.skipped[0]?.reason).toBe('registry-unresolved');
+  });
+
+  test('sibling expansion: group with zero outdated members is omitted entirely', () => {
+    // Only foo (singleton) is outdated; react group has no outdated members
+    // → react group must not appear in any wave, even if react and react-dom
+    //   are present in package.json
+    sandbox.writePackageJson({
+      dependencies: {
+        foo: '^1.2.3',
+        react: '^19.0.0',
+        'react-dom': '^19.0.0',
+      },
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {
+          foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+        },
+        undefined,
+        // These would never be called — react group has no outdated trigger
+        {}
+      ),
+    });
+
+    expect(result.wave_a).toHaveLength(1);
+    expect(result.wave_a[0]?.name).toBe('foo');
+    expect(result.wave_b).toEqual([]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  test('sibling expansion: prefix-based group member in package.json is pulled in', () => {
+    // @storybook/react is in package.json but not flagged outdated.
+    // storybook (exact) IS flagged outdated → pull in @storybook/react via pnpm view.
+    sandbox.writePackageJson({
+      devDependencies: {
+        storybook: '^8.0.0',
+        '@storybook/react': '^8.0.0',
+      },
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {
+          storybook: {current: '8.0.0', latest: '9.0.0', wanted: '8.0.0'},
+        },
+        undefined,
+        {'@storybook/react': '9.0.0'}
+      ),
+    });
+
+    expect(result.wave_b).toHaveLength(1);
+    const group = result.wave_b[0];
+    expect(group?.group).toBe('storybook');
+    expect(group?.packages).toHaveLength(2);
+    const sbReact = group?.packages.find((p) => p.name === '@storybook/react');
+    expect(sbReact?.latest).toBe('9.0.0');
+    expect(sbReact?.kind).toBe('major');
+  });
+});
+
+describe('update-deps run — group membership', () => {
+  test('resolveGroupMembers returns all package.json members for an exact-name group', () => {
+    const allNames = ['react', 'react-dom', '@types/react', 'lodash'];
+    expect(resolveGroupMembers('react', allNames)).toEqual(
+      expect.arrayContaining(['react', 'react-dom', '@types/react'])
+    );
+    expect(resolveGroupMembers('react', allNames)).not.toContain('lodash');
+  });
+
+  test('resolveGroupMembers handles prefix-based groups', () => {
+    const allNames = ['storybook', '@storybook/react', '@storybook/addon-essentials', 'react'];
+    const members = resolveGroupMembers('storybook', allNames);
+    expect(members).toContain('storybook');
+    expect(members).toContain('@storybook/react');
+    expect(members).toContain('@storybook/addon-essentials');
+    expect(members).not.toContain('react');
+  });
+
+  test('resolveGroupMembers returns empty array for singleton groups', () => {
+    expect(resolveGroupMembers('singleton:lodash', ['lodash', 'react'])).toEqual([]);
   });
 });
 

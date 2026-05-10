@@ -586,33 +586,16 @@ jobs:
         with:
           claude_code_oauth_token: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Apply the \`/update-deps\` skill scoped to **only** the
-            \`\${{ matrix.group }}\` companion group — this is a wave-B
-            major-bump run, one group per matrix shard.
+            Run \`/update-deps --scope \${{ matrix.group }}\`.
 
-            Procedure:
+            This is a wave-B per-group major-bump run. Apply the
+            \`--scope\` flag as defined in the skill: skip Phase 0, 1,
+            and 3; execute Phase 4/5 for the named group's members in
+            root \`package.json\` only; run the quality gate.
 
-            1. Look up the \`\${{ matrix.group }}\` group in the
-               \`/update-deps\` skill's companion-group table. Operate
-               only on members of that group present in root
-               \`package.json\`. Do not touch any other group's
-               packages — those are handled by sibling matrix shards
-               or stay on their current versions.
-            2. Fetch the migration guide URL for this group from the
-               skill's table. If the group is \`storybook\`, run
-               \`pnpm dlx storybook@latest upgrade\` instead of
-               \`pnpm add\`. Otherwise install with
-               \`pnpm add <pkg1>@<latest> ...\` for every group member
-               in root \`package.json\`.
-            3. Apply code-affecting breaking changes from the migration
-               guide. Scope edits to \`app/\`, \`test/\`, and root config
-               files only — sibling pnpm projects (subdirectories with
-               their own \`package.json\` or \`pnpm-lock.yaml\`) are out
-               of scope.
-            4. Run the quality gate: \`pnpm typecheck\`, \`pnpm lint\`,
-               \`pnpm test --run\`, \`pnpm pw\`, \`pnpm build\`. If unfixable
-               after a reasonable attempt, revert the group and exit
-               non-zero so the workflow opens no PR for this group.
+            If unfixable after a reasonable attempt, revert the group
+            and exit non-zero so the workflow opens no PR for this
+            group.
 
             Do not push to remotes. The workflow commits and opens the
             per-group PR after this step.

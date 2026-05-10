@@ -61,13 +61,33 @@ If the detection does not fire, fall through to the existing `## Pre-flight: Bra
 git branch --show-current
 ```
 
-If the current branch is `main` or `master`, create and switch to a new branch:
+If the current branch is `main` or `master` **and not running in CI**, create and switch to a new branch:
 
 ```bash
-git checkout -b chore/update-deps-$(date +%Y-%m-%d-%H-%M)
+if [ "${CI:-}" != "true" ] && { [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; }; then
+  git checkout -b chore/update-deps-$(date +%Y-%m-%d-%H-%M)
+fi
 ```
 
+In CI (`CI=true`, set by GitHub Actions, GitLab CI, CircleCI, and most CI providers), skip branch creation — the workflow owns branch management and pre-creates the appropriate branch before this skill runs.
+
 Otherwise proceed on the current branch.
+
+## Composition: --scope &lt;group-name&gt;
+
+When invoked with `--scope <group-name>` (e.g. `/update-deps --scope react-router`):
+
+- Skip Phase 0 (override audit) — out of scope for a single-group run.
+- Skip Phase 1 (discovery) — the group's members are known from the
+  companion-group table.
+- Skip Phase 3 (wave classification) — the run is implicitly a single
+  group; treat it as Wave A if all members are minor/patch, else Wave B.
+- Phase 4 / Phase 5 still apply, scoped to the named group's members
+  in root `package.json`.
+- Quality gate, return value, and final report still run.
+
+Used by the GAIA CI update-deps workflow's wave-B matrix shards to fan
+out one PR per major-bump group.
 
 ## Phase 0–4: Haiku agent
 

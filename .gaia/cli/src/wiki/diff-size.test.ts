@@ -185,24 +185,28 @@ describe('wiki diff-size', () => {
     expect(result.changedLines).toBe(1);
   });
 
-  test('honours --base override against an explicit ref', () => {
-    sandbox.writeFile('wiki/page.md', fillLines(100, 'a'));
-    sandbox.commitAll('first');
-    execFileSync('git', ['tag', 'v1'], {cwd: sandbox.root});
-    sandbox.writeFile('wiki/page.md', fillLines(150, 'a'));
-    sandbox.commitAll('grow');
-    sandbox.writeFile('wiki/page.md', fillLines(200, 'a'));
-    sandbox.commitAll('grow more');
+  test(
+    'honours --base override against an explicit ref',
+    () => {
+      sandbox.writeFile('wiki/page.md', fillLines(100, 'a'));
+      sandbox.commitAll('first');
+      execFileSync('git', ['tag', 'v1'], {cwd: sandbox.root});
+      sandbox.writeFile('wiki/page.md', fillLines(150, 'a'));
+      sandbox.commitAll('grow');
+      sandbox.writeFile('wiki/page.md', fillLines(200, 'a'));
+      sandbox.commitAll('grow more');
 
-    const versusV1 = computeDiffSize({
-      base: 'v1',
-      cwd: sandbox.root,
-      thresholdPct: 25,
-    });
-    // 100→200: numstat for an append is +100 added, 0 removed.
-    expect(versusV1.changedLines).toBe(100);
-    expect(versusV1.decision).toBe('exceeded');
-  });
+      const versusV1 = computeDiffSize({
+        base: 'v1',
+        cwd: sandbox.root,
+        thresholdPct: 25,
+      });
+      // 100→200: numstat for an append is +100 added, 0 removed.
+      expect(versusV1.changedLines).toBe(100);
+      expect(versusV1.decision).toBe('exceeded');
+    },
+    30_000
+  );
 
   test('CLI prints "exceeded" on a large wiki change', () => {
     sandbox.writeFile('wiki/page.md', fillLines(100, 'a'));

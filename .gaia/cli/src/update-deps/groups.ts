@@ -206,3 +206,28 @@ export const resolveGroup = (name: string): string => {
 
   return `singleton:${name}`;
 };
+
+/**
+ * Given a companion group name and the full set of package names present in
+ * `package.json`, return all members of that group. This is used to expand
+ * groups beyond what `pnpm outdated` flagged — so all siblings move together.
+ *
+ * Singletons (group name starts with "singleton:") always return an empty
+ * array — they have no companion members to expand.
+ */
+export const resolveGroupMembers = (
+  groupName: string,
+  allPackageNames: readonly string[]
+): readonly string[] => {
+  if (groupName.startsWith('singleton:')) return [];
+
+  const out: string[] = [];
+
+  for (const pkgName of allPackageNames) {
+    if (resolveGroup(pkgName) === groupName) {
+      out.push(pkgName);
+    }
+  }
+
+  return out;
+};

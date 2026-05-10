@@ -23,7 +23,7 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveGroup} from './groups.js';
+import {resolveGroup, resolveGroupMembers} from './groups.js';
 
 export {resolveGroup} from './groups.js';
 
@@ -365,6 +365,26 @@ const applyEslintCap = (
   return {kind: 'rewrite', latest: highest9x};
 };
 
+// ---------- sibling version fetch ----------
+
+/**
+ * Fetch the latest published version of a package via `pnpm view <name> version`.
+ * Returns `undefined` on any failure (network error, package not found, etc.).
+ */
+const fetchLatestVersion = (
+  name: string,
+  cwd: string,
+  pnpmRunner: PnpmRunner
+): string | undefined => {
+  const result = pnpmRunner(['view', name, 'version'], {cwd});
+
+  if (result.status !== 0) return undefined;
+
+  const trimmed = result.stdout.trim();
+
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
 // ---------- compute ----------
 
 export type ComputeOptions = {
@@ -435,6 +455,65 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     else list.push(entry);
   }
 
+  // Companion-group sibling expansion (Phase 2 SKILL contract).
+  // For every non-singleton group with at least one outdated trigger member,
+  // scan package.json for ALL members of that group and pull in any that
+  // were not flagged by `pnpm outdated`. Fetch their `latest` via
+  // `pnpm view <name> version`. Failures → `skipped` with
+  // `reason: "registry-unresolved"`.
+  const skipped: SkippedEntry[] = [];
+  const allPackageNames = Object.keys({
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+    ...pkg.optionalDependencies,
+    ...pkg.peerDependencies,
+  });
+
+  for (const [group, members] of byGroup) {
+    if (group.startsWith('singleton:')) continue;
+
+    const alreadyInGroup = new Set(members.map((m) => m.name));
+    const allGroupMembers = resolveGroupMembers(group, allPackageNames);
+
+    for (const siblingName of allGroupMembers) {
+      if (alreadyInGroup.has(siblingName)) continue;
+
+      // Sibling is in package.json but not flagged by pnpm outdated.
+      const spec = lookupSpec(pkg, siblingName);
+
+      // strip spec prefix to get current installed version
+      const current = spec !== undefined ? stripRange(spec) : '';
+      const latest = fetchLatestVersion(siblingName, options.cwd, pnpmRunner);
+
+      if (latest === undefined) {
+        // Registry call failed — omit from emit, record in skipped.
+        skipped.push({
+          current,
+          latest: '',
+          name: siblingName,
+          reason: 'registry-unresolved',
+        });
+        continue;
+      }
+
+      // If current === latest, kind is "patch" (no-op default per spec).
+      const kind: Kind =
+        current !== '' && current !== latest
+          ? classifyKind(current, latest)
+          : 'patch';
+
+      members.push({
+        current,
+        group,
+        is_pinned: isPinnedSpec(spec),
+        kind,
+        latest,
+        name: siblingName,
+        wanted: latest,
+      });
+    }
+  }
+
   const waveA: WaveAEntry[] = [];
   const waveB: WaveBGroup[] = [];
 
@@ -482,7 +561,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   return {
     generated_at: new Date().toISOString(),
     schema_version: 1,
-    skipped: [],
+    skipped,
     wave_a: waveA,
     wave_b: waveB,
   };

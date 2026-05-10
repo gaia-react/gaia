@@ -25329,6 +25329,16 @@ var resolveGroup = (name) => {
   }
   return `singleton:${name}`;
 };
+var resolveGroupMembers = (groupName, allPackageNames) => {
+  if (groupName.startsWith("singleton:")) return [];
+  const out = [];
+  for (const pkgName of allPackageNames) {
+    if (resolveGroup(pkgName) === groupName) {
+      out.push(pkgName);
+    }
+  }
+  return out;
+};
 
 // src/update-deps/run.ts
 var HELP_TEXT46 = `Usage: gaia update-deps run --emit-updates <path>
@@ -25480,6 +25490,12 @@ var applyEslintCap = (entry, pnpmRunner, cwd, cache) => {
   }
   return { kind: "rewrite", latest: highest9x };
 };
+var fetchLatestVersion = (name, cwd, pnpmRunner) => {
+  const result = pnpmRunner(["view", name, "version"], { cwd });
+  if (result.status !== 0) return void 0;
+  const trimmed = result.stdout.trim();
+  return trimmed.length > 0 ? trimmed : void 0;
+};
 var computeUpdates = (options) => {
   const pnpmRunner = options.pnpmRunner ?? defaultPnpmRunner;
   const pkg = readPackageJson(options.cwd);
@@ -25510,6 +25526,43 @@ var computeUpdates = (options) => {
     const list = byGroup.get(entry.group);
     if (list === void 0) byGroup.set(entry.group, [entry]);
     else list.push(entry);
+  }
+  const skipped = [];
+  const allPackageNames = Object.keys({
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+    ...pkg.optionalDependencies,
+    ...pkg.peerDependencies
+  });
+  for (const [group, members] of byGroup) {
+    if (group.startsWith("singleton:")) continue;
+    const alreadyInGroup = new Set(members.map((m) => m.name));
+    const allGroupMembers = resolveGroupMembers(group, allPackageNames);
+    for (const siblingName of allGroupMembers) {
+      if (alreadyInGroup.has(siblingName)) continue;
+      const spec = lookupSpec(pkg, siblingName);
+      const current = spec !== void 0 ? stripRange(spec) : "";
+      const latest = fetchLatestVersion(siblingName, options.cwd, pnpmRunner);
+      if (latest === void 0) {
+        skipped.push({
+          current,
+          latest: "",
+          name: siblingName,
+          reason: "registry-unresolved"
+        });
+        continue;
+      }
+      const kind = current !== "" && current !== latest ? classifyKind(current, latest) : "patch";
+      members.push({
+        current,
+        group,
+        is_pinned: isPinnedSpec(spec),
+        kind,
+        latest,
+        name: siblingName,
+        wanted: latest
+      });
+    }
   }
   const waveA = [];
   const waveB = [];
@@ -25550,7 +25603,7 @@ var computeUpdates = (options) => {
   return {
     generated_at: (/* @__PURE__ */ new Date()).toISOString(),
     schema_version: 1,
-    skipped: [],
+    skipped,
     wave_a: waveA,
     wave_b: waveB
   };
