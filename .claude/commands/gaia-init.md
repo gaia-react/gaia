@@ -208,7 +208,7 @@ Both invoke Claude via `claude-code-action` and require the repo secret `CLAUDE_
 
 Use AskUserQuestion (in the user's language; this configuration block stays in English):
 
-> Enable GAIA's GitHub Actions workflows now?
+> Enable GAIA CI (GitHub Actions workflows) now?
 >
 > - **Yes — enable now** (Recommended). I'll print the `gh` commands you run yourself with maintainer credentials, and ensure the `gaia-forensics` issue label exists.
 > - **Skip — disable for now.** I'll move both workflow files to `.gaia/templates/workflows/`. Copy them back to `.github/workflows/` whenever you decide to enable.
