@@ -363,7 +363,7 @@ Use AskUserQuestion. The question text must include the link: "Would you like to
 
 - **Not now (you can enable later if you like)** — `mentorship.enabled = false`, `analytics.enabled = false`. Init proceeds.
 - **Yes, enable mentorship + anonymous analytics** — `mentorship.enabled = true`, `analytics.enabled = true`. Provision mentorship tree with `chmod 700/600`. Init proceeds.
-- **Tell me more before I decide** — drop into a free-form Q&A loop where Claude answers questions about mentorship; on user signal of completion, re-present the same three-option AskUserQuestion. Init does not proceed until either "Not now" or "Yes, enable" is selected.
+- **Tell me more before I decide** — the option *description* (shown to the user in the UI) must contain the full privacy explainer: what it observes, what it never observes, where it lives. Selecting this option drops into a free-form Q&A loop; on user signal of completion, re-present the same three-option AskUserQuestion. Init does not proceed until either "Not now" or "Yes, enable" is selected.
 
 ### Apply the answer
 
