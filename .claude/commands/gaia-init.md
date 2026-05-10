@@ -361,7 +361,7 @@ Then show the privacy explainer (this block stays English regardless of UI langu
 
 Use AskUserQuestion with these three options in this exact order:
 
-- **Not now (you can enable later if you like)** (Recommended) — `mentorship.enabled = false`, `analytics.enabled = false`. Init proceeds.
+- **Not now (you can enable later if you like)** — `mentorship.enabled = false`, `analytics.enabled = false`. Init proceeds.
 - **Yes, enable mentorship + anonymous analytics** — `mentorship.enabled = true`, `analytics.enabled = true`. Provision mentorship tree with `chmod 700/600`. Init proceeds.
 - **Tell me more before I decide** — drop into a free-form Q&A loop where Claude answers questions about mentorship; on user signal of completion, re-present the same three-option AskUserQuestion. Init does not proceed until either "Not now" or "Yes, enable" is selected.
 
