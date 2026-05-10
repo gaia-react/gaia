@@ -168,6 +168,9 @@ describe('scaffold component', () => {
       "import {expectNoA11yViolations} from 'test/a11y';"
     );
     expect(testContents).toContain("test('a11y', async () => {");
+    expect(testContents).toContain(
+      'await expectNoA11yViolations(container);'
+    );
   });
 
   test('--props renders a typed Props alias and destructured signature', () => {

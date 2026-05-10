@@ -28,12 +28,13 @@ Library-specific audit rules live in `.claude/agents/code-review-audit/*.md`. Ea
 
 To swap a library: remove its extension file, add one for the replacement. The main agent definition stays unchanged. See the `README.md` in that directory for the full format.
 
-| File                 | Library              |
-| -------------------- | -------------------- |
-| `conform.md`         | `@conform-to/zod`    |
-| `tailwind-merge.md`  | `tailwind-merge`     |
-| `react-i18next.md`   | `react-i18next`      |
-| `form-components.md` | GAIA Form Components |
+| File                 | Library                      |
+| -------------------- | ---------------------------- |
+| `conform.md`         | `@conform-to/zod`            |
+| `tailwind-merge.md`  | `tailwind-merge`             |
+| `react-i18next.md`   | `react-i18next`              |
+| `form-components.md` | GAIA Form Components         |
+| `a11y-axe.md`        | `axe-core + @axe-core/playwright` |
 
 ## Trigger
 

@@ -7,30 +7,30 @@ import Button from '../index';
 
 describe('Button', () => {
   test('Active', async () => {
-    const handleClick = vi.fn();
-    render(<Button onClick={handleClick}>Test</Button>);
+    const handleClickButton = vi.fn();
+    render(<Button onClick={handleClickButton}>Test</Button>);
     const button = screen.getByRole('button');
     expect(button.textContent).toBe('Test');
     await userEvent.click(button);
-    expect(handleClick).toHaveBeenCalled();
+    expect(handleClickButton).toHaveBeenCalled();
   });
 
   test('Disabled', async () => {
-    const handleClick = vi.fn();
+    const handleClickButton = vi.fn();
     render(
-      <Button disabled={true} onClick={handleClick}>
+      <Button disabled={true} onClick={handleClickButton}>
         Test
       </Button>
     );
     const button = screen.getByRole('button');
     await userEvent.click(button);
-    expect(handleClick).not.toHaveBeenCalled();
+    expect(handleClickButton).not.toHaveBeenCalled();
   });
 
   test('Loading', () => {
-    const handleClick = vi.fn();
+    const handleClickButton = vi.fn();
     render(
-      <Button isLoading={true} onClick={handleClick}>
+      <Button isLoading={true} onClick={handleClickButton}>
         Test
       </Button>
     );

@@ -1,6 +1,6 @@
 ---
 subagents: [react-patterns]
-library: '@chialab/vitest-axe + @axe-core/playwright'
+library: 'axe-core + @axe-core/playwright'
 ---
 
 # Accessibility (axe) Audit Rules
