@@ -131,9 +131,16 @@ describe('workflow templates — gaia-ci-update-deps', () => {
     expect((doc.concurrency as {group: string}).group).toBe('gaia-ci-update-deps');
   });
 
-  it('emits the slice-4 stub for the update-deps run step', () => {
-    expect(rendered).toContain('TODO(slice-4)');
-    expect(rendered).toContain('update-deps run stub');
+  it('invokes the emit-updates plan + claude-code-action chain', () => {
+    expect(rendered).toContain(
+      'update-deps run --emit-updates'
+    );
+    expect(rendered).toContain(
+      'anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314'
+    );
+    expect(rendered).toContain('wave_b_matrix');
+    expect(rendered).toContain('strategy:');
+    expect(rendered).toContain('matrix: ${{ fromJson(needs.run.outputs.wave_b_matrix) }}');
   });
 
   it('emits the auto-merge step', () => {

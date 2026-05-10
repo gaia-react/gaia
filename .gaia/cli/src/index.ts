@@ -21,6 +21,7 @@ import {run as runSetupCi} from './setup-ci/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
 import {run as runUpdate} from './update/index.js';
+import {run as runUpdateDeps} from './update-deps/index.js';
 import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia <subcommand> [args]
@@ -35,6 +36,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
   ci-revert open|mark-failed|is-cap-reached
   update merge --baseline <dir> --latest <dir> --manifest <path>
+  update-deps run --emit-updates <path>
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
   setup-ci status|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|set-secret|verify-run|finalize|write-tool-mode
@@ -61,6 +63,7 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> 
   'setup-ci': runSetupCi,
   telemetry: runTelemetry,
   update: runUpdate,
+  'update-deps': runUpdateDeps,
   wiki: runWiki,
 };
 

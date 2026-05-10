@@ -347,6 +347,10 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      wave_b_matrix: \${{ steps.emit_updates.outputs.wave_b_matrix }}
+      wave_b_count: \${{ steps.emit_updates.outputs.wave_b_count }}
+      decision: \${{ steps.pre_run.outputs.decision }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -395,17 +399,79 @@ jobs:
           pnpm lint
 
 
-      - name: Run update-deps and split major bumps
+      - name: Emit update-deps plan
+        id: emit_updates
         if: steps.pre_run.outputs.decision == 'run'
-        env:
-          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
+        # \`update-deps run --emit-updates\` enumerates outdated packages,
+        # applies the ESLint 9.x cap and override audit, and writes a
+        # JSON plan with two waves: wave_a (minor/patch, batched) and
+        # wave_b (one entry per major-bump group).
         run: |
           set -euo pipefail
-          # TODO(slice-4): wire the real \`gaia update-deps run --emit-updates\`
-          # invocation plus the major-bump split logic. Until the update-deps CLI
-          # primitive ships, this step is an explicit stub so the workflow
-          # exits 0 without invoking a missing subcommand.
-          echo "update-deps run stub: slice-4 will wire the patch/minor + major-bump split"
+          updates_file="\${RUNNER_TEMP}/update-deps/updates.json"
+          mkdir -p "$(dirname "$updates_file")"
+          node .gaia/cli/dist/index.js update-deps run --emit-updates "$updates_file"
+          echo "updates_file=$updates_file" >> "$GITHUB_OUTPUT"
+          # Build the wave-B matrix payload: \`{"include": [{group: "..."}, ...]}\`.
+          # The fan-out job's \`strategy.matrix\` consumes this verbatim.
+          wave_b_groups=$(jq -c '[.wave_b[] | {group: .group}]' "$updates_file")
+          wave_b_count=$(jq -r '.wave_b | length' "$updates_file")
+          echo "wave_b_count=$wave_b_count" >> "$GITHUB_OUTPUT"
+          echo "wave_b_matrix={\\"include\\":$wave_b_groups}" >> "$GITHUB_OUTPUT"
+          # Wave-A package count drives the wave-A apply gate below.
+          wave_a_count=$(jq -r '.wave_a | length' "$updates_file")
+          echo "wave_a_count=$wave_a_count" >> "$GITHUB_OUTPUT"
+
+      - name: Run /update-deps for wave A (minor/patch)
+        id: wave_a
+        if: |
+          steps.pre_run.outputs.decision == 'run' &&
+          steps.emit_updates.outputs.wave_a_count != '0'
+        # Wave-A is the batched minor/patch path. The plan file scopes
+        # the work; Claude executes the \`/update-deps\` skill against
+        # only those entries, runs the quality gate, and leaves the
+        # working tree dirty for the auto-merge partial to commit.
+        env:
+          UPDATES_FILE: \${{ steps.emit_updates.outputs.updates_file }}
+          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
+        uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
+        with:
+          claude_code_oauth_token: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Apply the \`/update-deps\` skill scoped to **wave A only** —
+            the minor and patch bumps batched into a single install. The
+            plan emitted by \`gaia update-deps run --emit-updates\` is at
+            \`\${{ steps.emit_updates.outputs.updates_file }}\`; read its
+            \`wave_a\` array to determine what to install.
+
+            Procedure:
+
+            1. Read \`\${{ steps.emit_updates.outputs.updates_file }}\`.
+               Iterate \`wave_a\` entries. For each, build a \`pnpm add\`
+               argument respecting \`is_pinned\`: pinned → exact version,
+               otherwise → \`^<latest>\`.
+            2. Run a single \`pnpm add ...\` with all entries combined.
+            3. Run \`pnpm ls 2>&1\`. On peer-dep error, attempt one
+               targeted \`pnpm.overrides\` fix (e.g. \`parent>child\`),
+               then \`pnpm install\` again. If still failing, revert the
+               offending package(s) and proceed with the rest.
+            4. Run the quality gate exactly: \`pnpm typecheck\`,
+               \`pnpm lint\`, \`pnpm test --run\`, \`pnpm pw\`, \`pnpm build\`.
+               If the gate fails, revert the entire wave-A batch and
+               exit non-zero — the auto-merge partial will see no
+               changes and skip the PR.
+
+            Wave-B (per-group major bumps) is handled in a separate
+            matrix job. Do NOT attempt to apply any wave-B group here;
+            the plan file's \`wave_b\` array is informational only for
+            this step.
+
+            Do not push to remotes. The workflow's auto-merge partial
+            commits the diff and opens the PR.
+          claude_args: |
+            --max-turns 60
+            --allowedTools Bash,Edit,Write,Read
+            --disallowedTools WebFetch,WebSearch
 
       # Auto-merge partial. Gated on \`enable_auto_merge\` so the
       # stale-branches workflow (which doesn't open a PR) emits no
@@ -459,6 +525,144 @@ jobs:
               --title "[GAIA CI] GAIA CI — Update Deps cost overage: \\$\${cost}" \\
               --label gaia-ci,priority:high \\
               --body "GAIA CI — Update Deps run reported \\$\${cost} (ceiling: \\$\${GAIA_CI_COST_CEILING}). Next run for update-deps is suppressed until cleared via 'gaia automation clear-overage update-deps'."
+          fi
+
+
+
+  wave_b:
+    needs: run
+    if: |
+      needs.run.outputs.decision == 'run' &&
+      needs.run.outputs.wave_b_count != '0' &&
+      needs.run.outputs.wave_b_matrix != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix: \${{ fromJson(needs.run.outputs.wave_b_matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create per-group branch
+        id: branch
+        env:
+          GROUP: \${{ matrix.group }}
+        run: |
+          set -euo pipefail
+          branch="gaia-ci/update-deps/wave-b/\${GROUP}-$(date -u +%Y%m%d-%H%M%S)"
+          git fetch origin "\${{ github.event.repository.default_branch }}"
+          git checkout -B "$branch" "origin/\${{ github.event.repository.default_branch }}"
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Run /update-deps for wave B group
+        id: wave_b_apply
+        # Per-group wave-B execution. Claude reads the migration guide,
+        # runs \`pnpm add\` (or \`pnpm dlx storybook@latest upgrade\` for
+        # the storybook group), applies code-affecting changes inside
+        # \`app/\`, \`test/\`, and root config files, and runs the quality
+        # gate. Web tools enabled so the migration guide is fetchable.
+        env:
+          GROUP: \${{ matrix.group }}
+          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
+        uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
+        with:
+          claude_code_oauth_token: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Apply the \`/update-deps\` skill scoped to **only** the
+            \`\${{ matrix.group }}\` companion group — this is a wave-B
+            major-bump run, one group per matrix shard.
+
+            Procedure:
+
+            1. Look up the \`\${{ matrix.group }}\` group in the
+               \`/update-deps\` skill's companion-group table. Operate
+               only on members of that group present in root
+               \`package.json\`. Do not touch any other group's
+               packages — those are handled by sibling matrix shards
+               or stay on their current versions.
+            2. Fetch the migration guide URL for this group from the
+               skill's table. If the group is \`storybook\`, run
+               \`pnpm dlx storybook@latest upgrade\` instead of
+               \`pnpm add\`. Otherwise install with
+               \`pnpm add <pkg1>@<latest> ...\` for every group member
+               in root \`package.json\`.
+            3. Apply code-affecting breaking changes from the migration
+               guide. Scope edits to \`app/\`, \`test/\`, and root config
+               files only — sibling pnpm projects (subdirectories with
+               their own \`package.json\` or \`pnpm-lock.yaml\`) are out
+               of scope.
+            4. Run the quality gate: \`pnpm typecheck\`, \`pnpm lint\`,
+               \`pnpm test --run\`, \`pnpm pw\`, \`pnpm build\`. If unfixable
+               after a reasonable attempt, revert the group and exit
+               non-zero so the workflow opens no PR for this group.
+
+            Do not push to remotes. The workflow commits and opens the
+            per-group PR after this step.
+          claude_args: |
+            --max-turns 100
+            --allowedTools Bash,Edit,Write,Read,WebFetch
+            --disallowedTools WebSearch
+
+      - name: Open wave-B group PR
+        if: success()
+        env:
+          GROUP: \${{ matrix.group }}
+          BRANCH: \${{ steps.branch.outputs.name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "no changes for \${GROUP}; nothing to PR"
+            exit 0
+          fi
+          git add -A
+          git commit -m "chore(update-deps): wave-B major bump — \${GROUP}"
+          git push origin "$BRANCH"
+          pr_url=$(gh pr create \\
+            --title "chore(update-deps): wave-B major bump — \${GROUP}" \\
+            --body "Per-group major-bump PR opened by GAIA CI (GAIA CI — Update Deps). Group: \\\`\${GROUP}\\\`. Review the migration carefully — wave-B PRs are not auto-merged." \\
+            --label gaia-ci,needs-human-review \\
+            --head "$BRANCH" \\
+            --base "\${{ github.event.repository.default_branch }}")
+          echo "wave-B PR opened: $pr_url"
+
+      - name: Wave-B cost accounting
+        if: always()
+        env:
+          GAIA_CI_COST_CEILING: '5'
+          GROUP: \${{ matrix.group }}
+        run: |
+          set -euo pipefail
+          cost="\${RUN_COST_DOLLARS:-0}"
+          node .gaia/cli/dist/index.js automation record-run \\
+            update-deps \\
+            --sha "$(git rev-parse HEAD)" \\
+            --trigger cron \\
+            --cost "$cost"
+          overage=$(node .gaia/cli/dist/index.js automation read-state update-deps --json \\
+            | jq -r '.cost_overage // false')
+          if [ "$overage" = "true" ]; then
+            gh issue create \\
+              --title "[GAIA CI] GAIA CI — Update Deps wave-B cost overage (\${GROUP}): \\$\${cost}" \\
+              --label gaia-ci,priority:high \\
+              --body "GAIA CI — Update Deps wave-B run for group \\\`\${GROUP}\\\` reported \\$\${cost} (ceiling: \\$\${GAIA_CI_COST_CEILING}). Next run for update-deps is suppressed until cleared via 'gaia automation clear-overage update-deps'."
           fi
 
 "
@@ -544,16 +748,45 @@ jobs:
 
 
       - name: Run gaia wiki chain
+        id: wiki_chain
         if: steps.pre_run.outputs.decision == 'run'
+        # Dispatches the wiki sync, consolidate, and lint workflows in a
+        # single Claude session. \`/gaia wiki sync\` itself commits via
+        # \`gaia wiki sync land --branch-aware\`; subsequent commits from
+        # consolidate's apply phase ride on top before the auto-merge
+        # partial wraps the diff into a PR.
         env:
           RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
-        run: |
-          set -euo pipefail
-          # TODO(slice-4): wire the real wiki chain once the consolidate/lint
-          # subcommands and a sync entry-point that maps to \`wiki sync land\`
-          # are surfaced on the adopter CLI. Until then this step is an
-          # explicit stub so the workflow exits 0 without a silent no-op.
-          echo "wiki chain stub: slice-4 will wire the full sync/consolidate/lint pipeline"
+        uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
+        with:
+          claude_code_oauth_token: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Run the GAIA wiki maintenance chain in this repository, in order:
+
+            1. \`/gaia wiki sync\` — evaluate every commit since the wiki's
+               recorded \`last_evaluated_sha\`, edit pages as the playbook
+               directs, advance state, and land via
+               \`gaia wiki sync land --branch-aware\`. The CLI is the
+               authority on landing semantics — do not hand-roll branch
+               or push logic.
+            2. \`/gaia wiki consolidate\` — run the detection passes,
+               apply (do not skip) every finding the playbook classifies
+               as \`Apply (Recommended)\`. Skip findings that require
+               editorial slug choice (near-collision) since this is a
+               non-interactive run; flag them in the report file only.
+            3. \`/gaia wiki lint\` — run the upstream lint flow plus the
+               GAIA-specific drift, dead-paths, and narrative-ref
+               checks. Do not auto-fix lint findings; the report is
+               sufficient.
+
+            Stay strictly inside \`wiki/\` for body edits. Follow
+            \`.claude/rules/wiki-style.md\` (present tense, no UAT/SPEC
+            references in prose). Do not push to remotes — commits stay
+            local; the workflow handles the PR.
+          claude_args: |
+            --max-turns 80
+            --allowedTools Bash,Edit,Write,Read
+            --disallowedTools WebFetch,WebSearch
 
       # Auto-merge partial. Gated on \`enable_auto_merge\` so the
       # stale-branches workflow (which doesn't open a PR) emits no
