@@ -386,7 +386,7 @@ Use AskUserQuestion. The question text must include the link: "Would you like to
 
 **On "Tell me more":**
 
-Drop into Q&A using the explainer above as the design source of truth. The privacy contract is bundled in the gaia CLI binary and applied to per-machine state by `gaia mentorship _internal-write-config` — no extra step here. When the user signals they're done (e.g. "ok ready to decide"), re-present the same AskUserQuestion. Loop until the user picks Not now or Yes.
+Output the full privacy explainer (what it observes, what it never observes, where it lives), ending with "Learn more: https://gaiareact.com/mentorship/". Then drop into Q&A. When the user signals they're done (e.g. "ok ready to decide"), re-present the same AskUserQuestion. Loop until the user picks Not now or Yes.
 
 End of Step 10.
 
