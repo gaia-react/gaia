@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-05-10 e37332a RE_ANCHOR — re-anchored after history rewrite
 - 2026-05-10 38d6ace SKIP — chore: generic chore
 - 2026-05-10 0551e1b SKIP — chore: generic chore
 - 2026-05-10 9bfc381 SKIP — chore: generic chore
