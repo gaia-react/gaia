@@ -55,7 +55,7 @@ Context bloat isn't just `CLAUDE.md` sprawl. Instructions get dropped into globa
 - **Coding principles.** GAIA's coding rules embed [Karpathy's four coding principles](https://github.com/forrestchang/andrej-karpathy-skills/blob/main/CLAUDE.md) (Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution), plus two of GAIA's own: Always Use TDD and Always Verify Your Work.
 - **Best practices baked in.** Rules encode the conventions directly instead of hoping Claude infers them from whatever's already in the repo.
 - **Guardrails against technical debt.** Rules block debt-accumulating patterns from being written in the first place: untyped exports, untested components, hardcoded strings, a11y gaps.
-- **Consistently clean code.** 20+ ESLint plugins, strict TypeScript, Prettier, and Knip enforce style, correctness, and dead-code detection on every file Claude touches. No negotiation, no drift.
+- **Consistently clean code.** 1,314 linting rules, strict TypeScript, Prettier, and Knip enforce style, correctness, and dead-code detection on every file Claude touches. No negotiation, no drift.
 - **Bundled skills wired in for write-time quality.** `react-code`, `typescript`, `tdd`, `tailwind`, `playwright-cli`, `skeleton-loaders`, and `eslint-fixes` load on demand when Claude edits matching files. They apply project conventions without re-deriving them every session.
 - **Test-driven development** via the bundled `tdd` skill. Red-green-refactor loop, tests before code, tailored for Vitest, React Testing Library, Storybook `composeStory`, and MSW.
 - **Specs that turn into tests, automatically.** `/gaia spec` authors an immutable SPEC artifact through a Socratic discovery process. Before any source code is written, GAIA renders the SPEC's UATs into red-state Playwright e2e specs. The implementer's first job is making real tests green from the start. PO authors acceptance criteria in plain English; the test harness is generated.
@@ -77,7 +77,7 @@ Context bloat isn't just `CLAUDE.md` sprawl. Instructions get dropped into globa
 
 Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configured and wired into the Claude layer.
 
-- **1,592 lint rules** across 20+ ESLint plugins, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/), including 85 Stylelint rules that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS. [Knip](https://knip.dev/) detects unused files, exports, and dependencies.
+- **1,314 lint rules** across 20+ ESLint plugins, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/), including 85 Stylelint rules that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS. [Knip](https://knip.dev/) detects unused files, exports, and dependencies.
 - **Pre-commit hooks** ([Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged)): typecheck, lint, and test before CI
 - **Four testing layers sharing one mock layer**: [Vitest](https://vitest.dev) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for unit/integration, [Playwright](https://playwright.dev/docs/intro) for E2E, [Chromatic](https://chromatic.com/) for visual regression
 - **Internationalization** via [remix-i18next](https://github.com/sergiodxa/remix-i18next) with working examples
