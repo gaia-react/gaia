@@ -461,7 +461,13 @@ Then run the CLI's init finalize step — it removes the `/init` interceptor hoo
 
 Then output:
 
-> <Project Title> is ready for development. Restart Claude to pick up the new plugin and skill state.
+> <Project Title> is ready for development. Before restarting, open Claude from inside the project folder:
+>
+> ```
+> cd <project-folder-name>
+> ```
+>
+> Then restart Claude to pick up the new plugin and skill state.
 >
 > After you create your GitHub repo and push, run `/setup-gaia-ci` to wire up tokens and enable CI.
 
