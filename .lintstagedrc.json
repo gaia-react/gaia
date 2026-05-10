@@ -1,6 +1,6 @@
 {
     "app/**/*.{ts,tsx}": [
-        "eslint --fix --max-warnings=0 --cache --cache-location ./node_modules/.cache/eslint .",
+        "eslint --fix --max-warnings=0 --cache --cache-location ./node_modules/.cache/eslint",
         "prettier --write"
     ],
     "{.storybook,.playwright}/**/*.{ts,tsx}": [

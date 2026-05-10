@@ -2,7 +2,7 @@ import gaiaLint from '@gaia-react/lint';
 import {defineConfig} from 'eslint/config';
 
 export default defineConfig([
-  ...gaiaLint.ignores({gitignore: '.gitignore'}),
+  ...gaiaLint.ignores({extra: ['.gaia/**'], gitignore: '.gitignore'}),
   ...gaiaLint.base,
   ...gaiaLint.react,
   ...gaiaLint.testing,

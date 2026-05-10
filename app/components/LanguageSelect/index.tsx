@@ -13,6 +13,7 @@ type LanguageSelectProps = {
 const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
   const {
     i18n: {language},
+    t,
   } = useTranslation();
 
   const fetcher = useFetcher();
@@ -20,7 +21,7 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
 
   const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
 
-  const handleChange = async (event: ChangeEvent<HTMLFormElement>) => {
+  const handleChangeLanguage = async (event: ChangeEvent<HTMLFormElement>) => {
     await fetcher.submit(event.currentTarget, {
       action: '/actions/set-language',
       method: 'POST',
@@ -34,10 +35,11 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
       action="/actions/set-language"
       className={twMerge('relative flex-none text-sm', className)}
       method="POST"
-      onChange={handleChange}
+      onChange={handleChangeLanguage}
     >
       <input name="redirectUrl" type="hidden" value={redirectUrl} />
       <select
+        aria-label={t('language')}
         className="bg-transparent! ring-0! cursor-pointer border-none bg-none p-0 text-sm"
         defaultValue={language}
         name="language"

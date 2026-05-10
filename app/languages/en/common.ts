@@ -29,6 +29,7 @@ export default {
     submitting: 'Please wait...',
     success: 'Success',
   },
+  language: 'Language',
   license: 'Released under MIT license',
   meta: {
     siteName: 'GAIA Template',

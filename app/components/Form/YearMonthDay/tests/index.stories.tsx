@@ -4,7 +4,7 @@ import {parseWithZod} from '@conform-to/zod/v4';
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import {z} from 'zod';
 import stubs from 'test/stubs';
-import YearMonthDay from '../index';
+import YearMonthDay from '..';
 
 const meta: Meta = {
   component: YearMonthDay,

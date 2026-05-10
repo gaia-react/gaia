@@ -1,6 +1,6 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import stubs from 'test/stubs';
-import Select from '../index';
+import Select from '..';
 
 const meta: Meta = {
   component: Select,

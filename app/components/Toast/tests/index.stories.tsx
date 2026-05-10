@@ -1,6 +1,6 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import Button from '~/components/Button';
-import {notify} from '../index';
+import {notify} from '..';
 import stack from './stack';
 
 const meta: Meta = {

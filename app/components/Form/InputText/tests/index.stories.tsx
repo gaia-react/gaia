@@ -1,5 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
-import InputText from '../index';
+import InputText from '..';
 
 const meta: Meta = {
   component: InputText,

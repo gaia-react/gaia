@@ -1,5 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
-import RadioButtons from '../index';
+import RadioButtons from '..';
 
 const meta: Meta = {
   argTypes: {
