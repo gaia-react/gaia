@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-05-11
+
+### Fixed
+
+- gaia release reference to maintainer
+- bug fixes from live init run (#165)
+
 ## [1.1.0] — 2026-05-10
 
 ### Added
