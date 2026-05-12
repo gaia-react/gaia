@@ -105,6 +105,8 @@ Adopters receive only the bundled binary at `.gaia/cli/gaia` plus the runtime te
 
 Excluding the source prevents adopters from accidentally rebuilding the binary out from under themselves with a different toolchain.
 
+`pnpm bundle` builds two binaries from two entry points: `.gaia/cli/gaia` (adopter — no `release` namespace) and `.gaia/cli/gaia-maintainer` (maintainer-only — includes `release`). The maintainer binary is excluded from tarballs alongside the source. See [[CLI Binary Split]] for why the CLI ships as two binaries and how esbuild tree-shakes the release surface out of the adopter build.
+
 ### 5. Release-time maintainer tooling
 
 - `.gaia/release-exclude` — this exclusion file itself.
