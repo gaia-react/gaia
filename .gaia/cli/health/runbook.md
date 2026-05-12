@@ -205,16 +205,16 @@ Crash-safety: read-only file reads; no scratch state. Phase 2 redirection to `bu
 
 Reads: `wiki/decisions/Claude Integration Fitness.md` (the protocol spec).
 
-**This bucket runs the triage/heal protocol defined in `wiki/decisions/Claude Integration Fitness.md` verbatim over the seven fitness categories.** Do not re-specify the check taxonomy, grading rubric, or Fixer lanes here — reference the page and run it. Any drift from the wiki page's spec is the failure mode this indirection prevents.
+**This bucket runs the triage phase of the protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories.** Do not re-specify the check taxonomy, grading rubric, or Fixer lanes here — reference the page and run it. Any drift from the wiki page's spec is the failure mode this indirection prevents.
 
 The wiki page defines:
 - The seven categories (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness).
 - Per-category Auditor model assignments (mechanical on Haiku; judgment on Sonnet) — see the wiki page's Triage phase table.
 - The Fixer lanes — fitness findings route to the **existing `claude-surface` lane** (`.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`) plus the `settings`, `gitignore`, and `manifest` lanes as defined in the wiki page's Heal phase.
-- The F-to-A+ per-category grading rubric.
-- The bounded loop (default 3 cycles) with oscillation detection.
+- The F-to-A+ per-category grading rubric (every band — including `A−` and `C−` — reachable; `shared_fitness_grade` may be any of them).
+- The bounded loop (default 3 cycles) with oscillation detection — which the wiki page's own "Composed inside a deeper loop" note hands off to the outer harness when this protocol runs as a bucket. See the loop-nesting rule below.
 
-When `/health-audit` runs Bucket E, the Orchestrator is already running its own outer cycle loop — Bucket E's inner loop runs inside that. Bucket E reports a `shared_fitness_grade` (F-to-A+, the floor of the seven category grades) and per-category grades to the Triager. The Triager routes fitness findings to the `claude-surface` Fixer lane (or `settings`/`gitignore`/`manifest` lanes as appropriate). No new Fixer lane is introduced.
+**Loop nesting.** Bucket E does not run the wiki page's bounded heal loop. The outer `/health-audit` cycle loop *is* that loop: each outer cycle, Bucket E runs the wiki page's triage phase once (audit the seven categories, adjudicate, grade) and returns a `shared_fitness_grade` (F-to-A+, the floor of the seven category grades) plus per-category grades to the Triager — it does not heal or verify on its own. The Triager folds Bucket E's findings into `c<N>/findings.json` alongside the other buckets' findings, so fitness fingerprints participate in the **outer** oscillation guard (no separate inner guard), and routes the fitness fixes to the `claude-surface` Fixer lane (or `settings`/`gitignore`/`manifest` as appropriate) in the outer heal phase. The verify step for a cycle's fitness fixes is the next outer cycle's fresh Bucket E run. No new Fixer lane is introduced, and there is no inner cycle count to tune — the outer `1..3` bound covers fitness too.
 
 **Outputs:** `.gaia/local/audit/c<N>/bucket-e/` — per-category findings JSON and the per-category + overall fitness grade report, following the same structure as the wiki page's Findings Schema.
 
@@ -329,7 +329,7 @@ Fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`. S
 
 ## Composition
 
-The seven shared Claude-integration fitness categories (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness), their grading rubric, and the triage/heal orchestration protocol are defined in `wiki/decisions/Claude Integration Fitness.md`. Bucket E runs that page's protocol verbatim over those seven categories — do not re-specify the check classes or the grading rubric here. Cross-references are one-directional: this runbook references the wiki page; the wiki page never references `.gaia/cli/health/` paths.
+The seven shared Claude-integration fitness categories (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness), their grading rubric, and the triage/heal orchestration protocol are defined in `wiki/decisions/Claude Integration Fitness.md`. Bucket E runs that page's triage phase over those seven categories — its bounded heal loop is subsumed by the outer cycle loop (see §Bucket E — Shared Claude-integration fitness for the loop-nesting rule). Do not re-specify the check classes or the grading rubric here. Cross-references are one-directional: this runbook references the wiki page; the wiki page never references `.gaia/cli/health/` paths.
 
 ## Pointers
 
