@@ -28,6 +28,8 @@ Checks `.claude/settings.json` and `.claude/settings.local.json` hook entries:
 - No relative path that resolves only when the shell's working directory is the project root — paths must be stated in a form that is unambiguous regardless of cwd.
 - Every hook event name is a valid Claude Code hook event.
 
+The valid Claude Code hook events — the canonical list the auditor checks against, so it does not re-derive an incomplete set from memory — are: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `UserPromptExpansion`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, `SessionStart`, `SessionEnd`, `WorktreeCreate` — plus any project-specific events the repo registers (a project that wires its own event names extends this list; an unfamiliar name is a finding only when it is neither in the list above nor registered by the project's own tooling).
+
 Findings here are typically `error` severity.
 
 ### 2. Skill / command / agent frontmatter
@@ -71,6 +73,8 @@ Checks `.claude/settings.json`:
 - Any secret-shaped value in the `env` block (`error`).
 - `.claude/settings.local.json` not listed in `.gitignore` (`warning`).
 
+Permission-glob semantics — the rule the auditor applies for the strict-subset check, so it does not over-flag distinct entries: `Bash(cmd)` matches the exact command with no arguments; `Bash(cmd:*)` matches `cmd` invoked *with* arguments. The two are distinct entries, not a redundant pair — a project that runs a command both ways keeps both deliberately. Flag a redundancy only on a genuine strict-subset shadow, e.g. `Bash(git status)` is fully covered by `Bash(git:*)` and is the redundant one.
+
 ### 6. GAIA-install fitness
 
 Checks the GAIA installation:
@@ -98,9 +102,9 @@ Things audits keep re-discovering that are not findings:
 
 **Dead backticked path in `wiki/log.md` or `wiki/hot.md`.** These files are exempt from `gaia wiki dead-paths` by design — `wiki/log.md` is the append-only historical record; `wiki/hot.md` is the auto-overwritten session cache. Do not raise dead-path findings against either.
 
-**A bare `Bash(cmd)` permission entry alongside `Bash(cmd:*)`.** These match different invocations — `Bash(pnpm typecheck)` matches the exact command with no arguments; `Bash(pnpm typecheck:*)` matches it with arguments. A project that runs a command both ways keeps both entries deliberately. This is not a shadowed-permission finding.
+**A bare `Bash(cmd)` permission entry alongside `Bash(cmd:*)`.** Not a shadowed-permission finding — they match different invocations (no-args vs. with-args). See the permission-glob semantics note under [Settings hygiene](#5-settings-hygiene) for the strict-subset rule that governs this check.
 
-**A `WorktreeCreate` hook entry.** Hook-event auditors working from a stale event list flag `WorktreeCreate` as an unknown event; it is intentional — projects wire it to a worktree-link script. Do not flag it. (If worktree symlink-handoff is demonstrably broken, that is a separate concern, not a fitness finding.)
+**A `WorktreeCreate` hook entry.** Not an unknown-event finding — `WorktreeCreate` is in the canonical event list under [Hook integrity](#1-hook-integrity); projects wire it to a worktree-link script. (If worktree symlink-handoff is demonstrably broken, that is a separate concern, not a fitness finding.)
 
 ---
 
@@ -113,19 +117,20 @@ Per-category grade is deterministic given the finding set for that category. The
 | Grade | Condition |
 |---|---|
 | **A+** | Zero findings in the category |
-| **A** | Only `info` findings |
+| **A** | One or two `info` findings, no `warning` or `error` |
+| **A−** | Three or more `info` findings, no `warning` or `error` |
 | **B+** | One `warning`, no `error` |
 | **B** | Two `warning`s, no `error` |
 | **B−** | Three or more `warning`s, no `error` |
 | **C+** | One `error` |
 | **C** | Two `error`s |
-| **C−** | (reserved — treat three errors as D band entry) |
-| **D+** | Three `error`s |
-| **D** | Four `error`s |
-| **D−** | Five or more `error`s |
+| **C−** | Three `error`s |
+| **D+** | Four `error`s |
+| **D** | Five `error`s |
+| **D−** | Six or more `error`s |
 | **F** | Category is structurally broken — e.g. `.claude/settings.json` is unparseable (settings F); no `CLAUDE.md` exists (`CLAUDE.md` F) |
 
-The exact +/− band thresholds are tunable — adjust the counts above for your project's tolerance.
+The grade keys off the worst severity present, then the count at that severity: any `error` → the C/D band for the error count; else any `warning` → the B band for the warning count; else any `info` → the A band for the info count; else `A+`. Every band in the table — including `A−` and `C−` — is reachable for a single category, and the overall (floor) grade can therefore land on any of them. The exact +/− band thresholds are tunable — adjust the counts above for your project's tolerance.
 
 ### Overall grade
 
@@ -209,6 +214,8 @@ Detection is mechanical: compare fingerprint sets across consecutive cycles. Any
 ### Bounded loop
 
 Default: **3 cycles** (tunable — adjust the cycle count in this page for your project's tolerance). Each cycle runs triage → heal → verify. The loop exits early when all findings resolve. On loop exhaustion, `/gaia fitness` reports the remaining unresolved findings with the affected category grades and the overall grade. No escalation handoff — it reports and stops.
+
+**Composed inside a deeper loop.** When a larger audit harness runs this protocol as one bucket of its own cycle loop, that outer loop subsumes this bounded loop: the harness runs the **triage phase** once per outer cycle, folds the fitness findings into its own findings set and oscillation guard, and dispatches fixes through the [heal-phase](#heal-phase) Fixer lanes above. It does not nest a second 3-cycle loop or a second oscillation guard inside each outer cycle. The bounded loop and the oscillation detection described here govern only the standalone `/gaia fitness` invocation; the per-category grading rubric and Fixer lanes apply unchanged in both modes.
 
 ### Verify phase
 
