@@ -8,13 +8,13 @@ tags: [decision, claude, fitness]
 
 # Claude Integration Fitness
 
-`/gaia fitness` is an adopter-facing health check + auto-heal that answers one question — "how well-configured and coherent is this project's Claude integration?" — and fixes what it can. A single invocation runs three phases: triage (walk the seven graded categories below), heal (lane-aware Fixer subagents auto-apply confident fixes inside a bounded loop with oscillation detection), and verify (re-run the affected checks).
+`/gaia fitness` is a health check + auto-heal that answers one question — "how well-configured and coherent is this project's Claude integration?" — and fixes what it can. A single invocation runs three phases: triage (walk the seven graded categories below), heal (lane-aware Fixer subagents auto-apply confident fixes inside a bounded loop with oscillation detection), and verify (re-run the affected checks).
 
-This page is the single source of truth for the check taxonomy, the F-to-A+ grading rubric, and the triage → heal → verify orchestration protocol. Both `/gaia fitness` (run standalone) and the maintainer health audit (which runs this same protocol over these seven categories as one of its buckets) consume this protocol. The two surfaces differ in scope and audience, not in whether they loop.
+This page is the single source of truth for the check taxonomy, the F-to-A+ grading rubric, and the triage → heal → verify orchestration protocol. The protocol is harness-agnostic: `/gaia fitness` runs it standalone, and it is written so a larger audit harness can run the same protocol over the same seven categories as one bucket of a deeper loop.
 
-The `/gaia fitness` skill's harness layer handles branch / repo-state — creating a `chore/gaia-fitness-<timestamp>` branch when HEAD is on the default branch and fixes are available, running triage-only when HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, and never committing. See the `/gaia fitness` skill reference for the full branching algorithm. That harness layer is not part of the shared triage/heal protocol described here.
+The `/gaia fitness` skill's harness layer handles branch / repo-state — creating a `chore/gaia-fitness-<timestamp>` branch when HEAD is on the default branch and fixes are available, running triage-only when HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, and never committing. See the `/gaia fitness` skill reference for the full branching algorithm. That harness layer is not part of the triage/heal protocol described here.
 
-This page ships to adopters normally, is three-way-merged by `/update-gaia`, and is linted by `/gaia wiki`. Adopters can add project-specific check classes directly to this page — `/gaia fitness` runs whatever classes the page defines alongside the shipped ones, and `/update-gaia` three-way-merges the page so adopter additions survive upgrades.
+`/update-gaia` three-way-merges this page, so project-specific check classes you add here survive GAIA upgrades, and `/gaia wiki` lints it. `/gaia fitness` runs whatever classes the page defines alongside the shipped ones.
 
 ## Check Taxonomy
 
@@ -121,7 +121,7 @@ Per-category grade is deterministic given the finding set for that category. The
 | **D−** | Five or more `error`s |
 | **F** | Category is structurally broken — e.g. `.claude/settings.json` is unparseable (settings F); no `CLAUDE.md` exists (`CLAUDE.md` F) |
 
-The exact +/− band thresholds are tunable in this runbook — adjust the counts above for your project's tolerance.
+The exact +/− band thresholds are tunable — adjust the counts above for your project's tolerance.
 
 ### Overall grade
 
@@ -147,11 +147,11 @@ The chat report groups findings by the seven category names above.
 
 ## Triage → Heal → Verify Protocol
 
-This protocol is what both `/gaia fitness` (standalone) and the maintainer health audit's shared-fitness bucket execute. `/gaia fitness` is deliberately flatter than the maintainer health audit: no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion `/gaia fitness` simply reports the unresolved findings with the grade. The maintainer health audit layers on its own multi-bucket, escalating loop around this shared protocol.
+When `/gaia fitness` runs this protocol, the harness is minimal: no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it simply reports the unresolved findings with the grade. (A larger harness composing this protocol can wrap it in its own deeper loop — the protocol below does not assume one.)
 
 ### Roles
 
-- **Orchestrator** — the `/gaia fitness` skill reference when run standalone; the maintainer health audit when it runs the shared-fitness bucket. Owns the cycle loop and the final report.
+- **Orchestrator** — owns the cycle loop and the final report. When `/gaia fitness` runs, this is the `/gaia fitness` skill reference.
 - **Auditors** — per-category check executors dispatched during the triage phase.
 - **Fixers** — edit agents dispatched during the heal phase, lane-aware so multiple run in parallel without merge conflicts.
 
@@ -202,7 +202,7 @@ Detection is mechanical: compare fingerprint sets across consecutive cycles. Any
 
 ### Bounded loop
 
-Default: **3 cycles** (runbook-tunable — adjust the cycle count in this page for your project's tolerance). Each cycle runs triage → heal → verify. The loop exits early when all findings resolve. On loop exhaustion, `/gaia fitness` reports the remaining unresolved findings with the affected category grades and the overall grade. No escalation handoff — that is the maintainer health audit's layer.
+Default: **3 cycles** (tunable — adjust the cycle count in this page for your project's tolerance). Each cycle runs triage → heal → verify. The loop exits early when all findings resolve. On loop exhaustion, `/gaia fitness` reports the remaining unresolved findings with the affected category grades and the overall grade. No escalation handoff — it reports and stops.
 
 ### Verify phase
 
@@ -267,7 +267,7 @@ Changes applied to the working tree. Review with `git diff`, commit when satisfi
 
 ## Extensibility
 
-Adopters add project-specific check classes by appending a new numbered section under [Check Taxonomy](#check-taxonomy) above. Format:
+Add a project-specific check class by appending a new numbered section under [Check Taxonomy](#check-taxonomy) above. Format:
 
 ```markdown
 ### 8. <Category name>
@@ -275,7 +275,7 @@ Adopters add project-specific check classes by appending a new numbered section 
 <What it checks and how. Describe the model (Haiku or Sonnet) and what the auditor does.>
 ```
 
-`/gaia fitness` runs whatever classes this page defines. `/update-gaia` three-way-merges the page so adopter additions survive GAIA upgrades. `/gaia wiki` lints the page. This is the extensibility mechanism — analogous to how the `code-review-audit` agent picks up extension files from `.claude/agents/code-review-audit/` — but for fitness the extension point is editing this page directly.
+`/gaia fitness` runs whatever classes this page defines. `/update-gaia` three-way-merges the page so your additions survive GAIA upgrades. `/gaia wiki` lints the page. The extension point is this page itself — edit it directly, the way the `code-review-audit` agent picks up extension files from `.claude/agents/code-review-audit/`.
 
 ---
 

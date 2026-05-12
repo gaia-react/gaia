@@ -1,16 +1,16 @@
 # /gaia fitness
 
-`/gaia fitness` is the adopter-facing Claude-integration health check + auto-heal. One invocation, no flag required — calling `/gaia fitness` is the statement of intent to be fit. It runs three phases in sequence: triage → heal → verify.
+`/gaia fitness` is the Claude-integration health check + auto-heal. One invocation, no flag required — calling `/gaia fitness` is the statement of intent to be fit. It runs three phases in sequence: triage → heal → verify.
 
-The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state harness layer that is specific to `/gaia fitness`. The maintainer health audit does not auto-branch — the branching logic here is not part of the shared protocol.
+The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state harness layer described below. That harness layer — auto-branching, the unsafe-state guard — is `/gaia fitness`-specific and is not part of the protocol in that page.
 
-**Scope note:** `/gaia fitness` is deliberately flatter than the maintainer health audit — no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. v1 introduces no `gaia` CLI subcommand — the agent executes the runbook's greps / `jq` / `gaia wiki …` calls inline.
+**Scope note:** the harness this file wraps around the protocol is minimal — no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. v1 introduces no `gaia` CLI subcommand — the agent runs the checks the wiki page defines (greps / `jq` / `gaia wiki …` calls) inline.
 
 ---
 
 ## Path resolution (portable — no hardcoding)
 
-This file ships in the GAIA template and runs on every adopter machine. No hardcoded paths.
+All paths in this file are repo-relative or derived from `$PROJECT_ROOT` — never hardcoded.
 
 ```bash
 PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
