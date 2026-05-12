@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-05-08
+updated: 2026-05-12
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -46,10 +46,13 @@ Run `/gaia-release` on a clean `main`. The command is a 13-step orchestrator:
 9. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
 10. Regenerate `.gaia/manifest.json` via `gaia-maintainer release manifest`.
 11. Commit on the release branch: `chore(release): vX.Y.Z`. The pre-commit dance updates `wiki/.state.json`'s `last_evaluated_sha` to the new commit's own SHA via amend, so adopters' state files match their release commit on first scaffold.
-12. Push branch, open PR via `gh`, merge inline via `gh pr merge --merge`. Release branches have no required checks, so the merge is immediate.
-13. Pull `main`, tag the merge commit (`v<NEW_VERSION>`), push the tag.
+12. Push branch, open PR via `gh`. The release PR is subject to the same CI gate (`Vitest and Playwright`, `Run Chromatic`) and `code-review-audit` merge handshake as any other PR — see [[PR Merge Workflow]]. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, and `--auto` lets GitHub complete the merge once checks pass.
+13. Once the PR shows `MERGED`, pull `main`, tag the merge commit (`v<NEW_VERSION>`), push the tag.
 
 The tag push triggers [`release.yml`](../../.github/workflows/release.yml), which produces the scrubbed tarball.
+
+> [!note] `state_sha` is abbreviated
+> `gaia wiki state --json` reports `state_sha` in short form. A caller that feeds it into a git range query (`<state_sha>..HEAD`) resolves it to a full SHA first via `git rev-parse --verify` — the `release preflight` subcommand does this before its wiki-sync drift scan (Step 2). Skipping the resolution makes the range query fail or silently return the wrong set on repos where the short SHA is ambiguous.
 
 ## Tarball scrubbing
 
@@ -181,6 +184,7 @@ The CLI is deliberately thin — heavy lifting (i18n, branding strip, plugin ins
 ## See also
 
 - [[Update Workflow]] — how adopters pull later releases into an initialized project without clobbering drift.
+- [[PR Merge Workflow]] — the audit + marker handshake and `--auto` merge pattern the release PR follows like any other.
 - [[Quality Gate]] — must pass before `/gaia-release` will let you tag.
 - [[Wiki Sync]] — drift gate at Step 2; release is blocked until `wiki/.state.json` matches HEAD.
 - [[Bundle-time Scrub]] — rationale for marker-strip + leak-check + runtime-deps; what the system catches, what it does not.
