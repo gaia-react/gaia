@@ -98,6 +98,10 @@ Things audits keep re-discovering that are not findings:
 
 **Dead backticked path in `wiki/log.md` or `wiki/hot.md`.** These files are exempt from `gaia wiki dead-paths` by design — `wiki/log.md` is the append-only historical record; `wiki/hot.md` is the auto-overwritten session cache. Do not raise dead-path findings against either.
 
+**A bare `Bash(cmd)` permission entry alongside `Bash(cmd:*)`.** These match different invocations — `Bash(pnpm typecheck)` matches the exact command with no arguments; `Bash(pnpm typecheck:*)` matches it with arguments. A project that runs a command both ways keeps both entries deliberately. This is not a shadowed-permission finding.
+
+**A `WorktreeCreate` hook entry.** Hook-event auditors working from a stale event list flag `WorktreeCreate` as an unknown event; it is intentional — projects wire it to a worktree-link script. Do not flag it. (If worktree symlink-handoff is demonstrably broken, that is a separate concern, not a fitness finding.)
+
 ---
 
 ## Grading Rubric
@@ -170,6 +174,8 @@ The Orchestrator dispatches the seven category checks as **parallel subagents** 
 | `CLAUDE.md` hygiene | **Sonnet** | Size evaluation vs. project guidance (requires judgment); dead-path + absolute-path grep; `@`-import resolution; folder-map cross-reference |
 
 **Structured findings only flow back to the Orchestrator.** Raw command output stays in subagent context to avoid return-budget truncation. Each auditor returns an array of `{severity, file, remediation, fingerprint}` objects.
+
+The auditors are recall-oriented — they surface anything suspicious from a fixed knowledge cutoff, so they over-flag (an unfamiliar-but-valid hook event, a permission pair that only looks redundant, a schema example mistaken for an unfilled placeholder). The Orchestrator adjudicates every finding against the repo before grading: drop the false positives (consult [Decided / not findings](#decided--not-findings)), keep the real ones. The grades and the heal phase operate on the adjudicated set, not the raw auditor output. Do not rubber-stamp.
 
 ### Heal phase
 
