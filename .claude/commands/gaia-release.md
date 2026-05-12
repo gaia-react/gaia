@@ -8,7 +8,7 @@ Cut a new GAIA release. Thin orchestrator over the `.gaia/cli/gaia-maintainer re
 This command is **maintainer-only** — both this slash command and the `gaia-maintainer` binary are stripped from distributed tarballs by `.gaia/release-exclude` so adopters never see them. The adopter `gaia` binary has no `release` namespace at all; only `gaia-maintainer` does. Unlike `/gaia-init`, this command does not self-delete; it runs every release.
 
 > [!important] `main` is protected
-> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit _after_ it lands on `main`. Release branches have no required checks, so the PR is merged immediately by this command — no manual merge step needed.
+> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit _after_ it lands on `main`. The release PR is subject to the same CI gate (`Vitest and Playwright`, `Run Chromatic` — a few minutes) and `code-review-audit` merge handshake as any other PR. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, so `--auto` is required to queue the merge until checks pass. See `wiki/concepts/PR Merge Workflow.md`.
 
 ## Workflow
 
@@ -100,20 +100,39 @@ Stages `package.json`, `.gaia/VERSION`, `.gaia/manifest.json`, `CHANGELOG.md`, `
 
 If the pre-commit hook fails, STOP and report — fix the issue and create a **new** commit; do not `--amend`.
 
-### 9. Push the release branch and merge the PR
+### 9. Push the release branch and open the PR
 
 ```bash
 git push -u origin "release/v<NEW_VERSION>"
 gh pr create --base main --head "release/v<NEW_VERSION>" \
   --title "chore: release v<NEW_VERSION>" \
   --body "<release summary — link CHANGELOG entry, list highlights>"
-gh pr merge --merge "release/v<NEW_VERSION>"
 ```
 
-### 10. Tag the merge commit
+### 10. Code-review-audit + marker handshake
+
+The release PR is **not** exempt from the merge gate — `.claude/hooks/pr-merge-audit-check.sh` denies `gh pr merge` until a `code-review-audit` marker exists for the release commit's HEAD SHA. Run the four-step protocol in `wiki/concepts/PR Merge Workflow.md`: spawn `code-review-audit` on the branch, fix every Critical and Important finding, push (HEAD moves), re-spawn until the agent writes `.gaia/local/audit/<HEAD-sha>.ok`. Knip / react-doctor advisories never block the marker.
+
+### 11. Merge the PR
 
 ```bash
-sleep 5
+gh pr merge <N> --merge --auto --delete-branch
+# --auto is mandatory: base-branch protection rejects a plain --merge, and the
+# Vitest/Playwright + Chromatic checks take a few minutes. --auto queues the
+# merge; GitHub completes it once checks pass.
+for i in $(seq 1 20); do
+  state=$(gh pr view <N> --json state -q .state)
+  [ "$state" = "MERGED" ] && break
+  sleep 30
+done
+[ "$state" = "MERGED" ] || { echo "release PR did not merge — investigate before tagging"; exit 1; }
+```
+
+Do not run any local cleanup or tagging until the poll confirms `MERGED`. If it times out, inspect `gh pr view <N>` for a failing check or a stuck merge queue. This mirrors the safe pattern in `wiki/concepts/PR Merge Workflow.md`, with `--merge` instead of `--squash`.
+
+### 12. Tag the merge commit
+
+```bash
 git checkout main
 git pull --ff-only origin main
 git log -1 --oneline    # verify this is the merge commit
