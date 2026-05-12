@@ -2,15 +2,13 @@
 type: meta
 title: Log
 status: active
-created: 2026-05-11
-updated: 2026-05-11
+created: 2026-05-12
+updated: 2026-05-12
 tags: [meta, log]
 ---
 
 # Log
 
-## [v1.1.1] 2026-05-11 | Released
+## [v1.2.0] 2026-05-12 | Released
 
-- 2026-05-12 310aa3f WORTHY — re-anchored state + added cross-link CLI Binary Split → wiki/concepts/Release Workflow.md
-- 2026-05-12 c6b876b RE_ANCHOR — re-anchored after history rewrite
 See CHANGELOG.md for details.

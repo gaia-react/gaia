@@ -95,6 +95,13 @@ const buildRunner = (
   return okResult('');
 };
 
+/** A realistic full 40-char SHA — the value `gaia wiki state` records. */
+const STATE_SHA = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+/** `git log` range query uses the resolved (full) SHA. */
+const DRIFT_RANGE = `${STATE_SHA}..HEAD`;
+/** `git rev-parse --verify` argument that resolves the state SHA. */
+const REVPARSE_ARGS = ['rev-parse', '--verify', `${STATE_SHA}^{commit}`];
+
 describe('release preflight', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -123,7 +130,7 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0}),
+      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
     });
     expect(exit).toBe(0);
     // Success: no stdout, no stderr.
@@ -144,7 +151,7 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0}),
+      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('must be on main');
@@ -163,18 +170,23 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0}),
+      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('working tree is dirty');
   });
 
-  test('exit 1 when wiki is behind HEAD', () => {
+  test('exit 1 when wiki is behind HEAD with substantive drift', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
         {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
+        {
+          argv: ['log', '--format=%s', DRIFT_RANGE],
+          result: okResult('feat: a new thing\nwiki: sync through abc1234\n'),
+        },
       ],
       recorded
     );
@@ -182,10 +194,119 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 3}),
+      wikiStateProbe: () => ({commits_ahead: 2, state_sha: STATE_SHA}),
     });
     expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('wiki is 3 commits behind HEAD');
+    expect(stdio.errors.join('')).toContain('wiki is 2 commits behind HEAD');
+  });
+
+  test('exit 0 when drift is entirely wiki-sync squash artifacts', () => {
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
+        {
+          argv: ['log', '--format=%s', DRIFT_RANGE],
+          result: okResult('wiki: sync through abc1234 (#173)\n'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({commits_ahead: 1, state_sha: STATE_SHA}),
+    });
+    expect(exit).toBe(0);
+    expect(stdio.errors.join('')).toContain('wiki-sync squash artifact');
+  });
+
+  test('exit 1 when drift mixes a wiki artifact with a real commit', () => {
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
+        {
+          argv: ['log', '--format=%s', DRIFT_RANGE],
+          result: okResult('wiki: sync through abc1234\nfix: real bug\n'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({commits_ahead: 2, state_sha: STATE_SHA}),
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('wiki is 2 commits behind HEAD');
+  });
+
+  test('exit 1 when the state SHA cannot be resolved', () => {
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {
+          argv: REVPARSE_ARGS,
+          result: {
+            output: ['', '', ''] as never,
+            pid: 0,
+            signal: null,
+            status: 128,
+            stderr: 'fatal: ambiguous argument',
+            stdout: '',
+          },
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({commits_ahead: 1, state_sha: STATE_SHA}),
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('wiki is 1 commits behind HEAD');
+  });
+
+  test('exit 1 when drift commit log cannot be read', () => {
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
+        {
+          argv: ['log', '--format=%s', DRIFT_RANGE],
+          result: {
+            output: ['', '', ''] as never,
+            pid: 0,
+            signal: null,
+            status: 128,
+            stderr: 'fatal: bad revision',
+            stdout: '',
+          },
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({commits_ahead: 1, state_sha: STATE_SHA}),
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('wiki is 1 commits behind HEAD');
   });
 
   test('exit 2 when git rev-parse fails', () => {
@@ -207,7 +328,7 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0}),
+      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
     });
     expect(exit).toBe(2);
     expect(stdio.errors.join('')).toContain('preflight:');
@@ -226,7 +347,7 @@ describe('release preflight', () => {
     const exit = run(['--branch', 'release/v1'], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0}),
+      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
     });
     expect(exit).toBe(0);
   });
@@ -234,7 +355,7 @@ describe('release preflight', () => {
   test('rejects unknown flags', () => {
     const exit = run(['--bogus'], {
       cwd: sandbox.root,
-      wikiStateProbe: () => ({commits_ahead: 0}),
+      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
@@ -243,7 +364,7 @@ describe('release preflight', () => {
   test('--help prints usage', () => {
     const exit = run(['--help'], {
       cwd: sandbox.root,
-      wikiStateProbe: () => ({commits_ahead: 0}),
+      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
     });
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Usage:');

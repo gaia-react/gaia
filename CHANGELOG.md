@@ -10,6 +10,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-05-12
+
+### Added
+
+- `/gaia fitness` — Claude-integration health check + auto-heal (#169, #171)
+- ai shimmer animation on `gaia-logo.svg` (#168)
+
+### Fixed
+
+- `release preflight` tolerates wiki-sync squash-artifact drift (this release)
+
 ## [1.1.1] — 2026-05-11
 
 ### Fixed

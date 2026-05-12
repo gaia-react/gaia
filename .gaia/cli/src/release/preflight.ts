@@ -120,7 +120,8 @@ const refuse = (message: string): number => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-type WikiStateProbe = (cwd: string) => {commits_ahead: number} | null;
+type WikiState = {commits_ahead: number; state_sha: string};
+type WikiStateProbe = (cwd: string) => WikiState | null;
 
 const runWikiStateJson: WikiStateProbe = (cwd) => {
   // Capture stdout from the wiki state subcommand by replacing
@@ -150,13 +151,48 @@ const runWikiStateJson: WikiStateProbe = (cwd) => {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const commitsAhead = parsed.commits_ahead;
+    const stateSha = parsed.state_sha;
 
     if (typeof commitsAhead !== 'number') return null;
 
-    return {commits_ahead: commitsAhead};
+    return {
+      commits_ahead: commitsAhead,
+      state_sha: typeof stateSha === 'string' ? stateSha : '',
+    };
   } catch {
     return null;
   }
+};
+
+/**
+ * Subjects of the commits in `<stateSha>..HEAD`, newest first. `null` if the
+ * range can't be read (e.g. `stateSha` is empty, ambiguous, or git fails) —
+ * callers treat `null` as "can't prove the drift is benign" and refuse.
+ *
+ * `gaia wiki state --json` reports `state_sha` abbreviated; resolve it to a
+ * full SHA via `git rev-parse` before the range query so `git log` never has
+ * to disambiguate a short prefix (which it can fail to do in large repos).
+ */
+const readDriftSubjects = (
+  runner: CommandRunner,
+  cwd: string,
+  stateSha: string
+): string[] | null => {
+  if (stateSha === '') return null;
+  const resolved = runner('git', ['rev-parse', '--verify', `${stateSha}^{commit}`], {cwd});
+
+  if (resolved.error !== undefined || (resolved.status ?? -1) !== 0) return null;
+  const fullSha = (resolved.stdout ?? '').trim();
+
+  if (fullSha === '') return null;
+  const result = runner('git', ['log', '--format=%s', `${fullSha}..HEAD`], {cwd});
+
+  if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
+
+  return (result.stdout ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 };
 
 type RunOptions = {
@@ -231,8 +267,31 @@ export const run = (
   }
 
   if (wikiState.commits_ahead !== 0) {
-    return refuse(
-      `preflight: wiki is ${wikiState.commits_ahead} commits behind HEAD; run /gaia wiki sync first`
+    // Documented bypass (wiki/concepts/Release Workflow.md): drift made up
+    // entirely of wiki-sync squash artifacts is benign. A PR squash-merge
+    // rewrites the commit SHA, so `/gaia wiki sync` → merge leaves the state
+    // pointer one commit behind even when the wiki content is current. The
+    // `wiki:`-subject prefix is the same marker `gaia wiki commit-classify`
+    // uses to flag self-referential sync commits. Without this the gate is
+    // unsatisfiable for the standard release flow. Substantive (non-`wiki:`)
+    // drift still STOPs — the wiki is genuinely stale.
+    const driftSubjects = readDriftSubjects(runner, cwd, wikiState.state_sha);
+    const benign =
+      driftSubjects !== null &&
+      // Guards the vacuous-truth case: zero subjects with `commits_ahead > 0`
+      // means the range count disagrees with `git log` — a broken state, not
+      // a benign one.
+      driftSubjects.length > 0 &&
+      driftSubjects.every((subject) => subject.startsWith('wiki:'));
+
+    if (!benign) {
+      return refuse(
+        `preflight: wiki is ${wikiState.commits_ahead} commits behind HEAD; run /gaia wiki sync first`
+      );
+    }
+
+    process.stderr.write(
+      `preflight: wiki drift is ${wikiState.commits_ahead} wiki-sync squash artifact(s); proceeding (content current)\n`
     );
   }
 
