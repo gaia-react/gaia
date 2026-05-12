@@ -18,7 +18,48 @@
       <stop offset="0%" stop-color="#D97757" stop-opacity="1" />
       <stop offset="100%" stop-color="#E89275" stop-opacity="1" />
     </linearGradient>
+    <linearGradient id="gaia-ai-shimmer-band" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#FFF4EC" stop-opacity="0" />
+      <stop offset="0.5" stop-color="#FFF4EC" stop-opacity="0.8" />
+      <stop offset="1" stop-color="#FFF4EC" stop-opacity="0" />
+    </linearGradient>
+    <clipPath id="gaia-ai-clip">
+      <path
+        d="M4646 3488 c-8 -18 -32 -73 -54 -123 -34 -78 -566 -1293 -672 -1535
+-450 -1029 -633 -1447 -637 -1457 -4 -10 69 -13 343 -13 l349 0 85 213 85 212
+524 0 523 0 89 -210 88 -210 360 -3 360 -2 -33 72 c-19 40 -102 226 -186 413
+-84 187 -203 453 -265 590 -62 138 -181 403 -265 590 -578 1287 -672 1495
+-676 1495 -2 0 -10 -15 -18 -32z m167 -1788 l155 -375 -306 -3 c-168 -1 -307
+0 -309 2 -2 2 64 173 148 380 83 207 153 375 155 373 2 -2 73 -172 157 -377z"
+      />
+      <path
+        d="M6369 3366 c-2 -3 1 -107 8 -233 22 -395 3 -2581 -23 -2735 l-7 -38
+362 0 c198 0 361 2 361 4 0 2 -8 72 -17 157 -15 134 -17 253 -15 924 3 808 15
+1458 33 1735 6 91 11 170 12 175 2 10 -704 21 -714 11z"
+      />
+    </clipPath>
   </defs>
+  <style>
+    @keyframes gaia-ai-shimmer {
+      0% {
+        transform: translateX(-2000px);
+      }
+      18% {
+        transform: translateX(5400px);
+      }
+      100% {
+        transform: translateX(5400px);
+      }
+    }
+    .gaia-ai-shimmer {
+      animation: gaia-ai-shimmer 8s linear infinite both;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .gaia-ai-shimmer {
+        display: none;
+      }
+    }
+  </style>
   <g
     fill="url(#gaia-logo-gradient)"
     stroke="#EFA58E"
@@ -59,5 +100,17 @@
 362 0 c198 0 361 2 361 4 0 2 -8 72 -17 157 -15 134 -17 253 -15 924 3 808 15
 1458 33 1735 6 91 11 170 12 175 2 10 -704 21 -714 11z"
     />
+    <g clip-path="url(#gaia-ai-clip)">
+      <g class="gaia-ai-shimmer">
+        <rect
+          fill="url(#gaia-ai-shimmer-band)"
+          height="3860"
+          stroke="none"
+          width="1700"
+          x="3200"
+          y="0"
+        />
+      </g>
+    </g>
   </g>
 </svg>
