@@ -135,7 +135,6 @@
     ".gaia/scripts/read-audit-ci-config.sh": "owned",
     ".gaia/scripts/tests/link-worktree.bats": "owned",
     ".gaia/scripts/tests/read-audit-ci-config.bats": "owned",
-    ".gaia/specs.json": "owned",
     ".gaia/statusline/gaia-statusline.sh": "owned",
     ".gaia/templates/ci-issues/priority-critical-revert-failed.md": "owned",
     ".gaia/templates/ci-issues/priority-high-revert-opened.md": "owned",
@@ -465,6 +464,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-11T06:43:28.695Z",
+  "generated": "2026-05-12T09:30:42.108Z",
   "version": "1.1.1"
 }
