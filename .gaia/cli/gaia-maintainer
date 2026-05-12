@@ -20211,7 +20211,11 @@ var runWikiStateJson = (cwd) => {
 };
 var readDriftSubjects = (runner, cwd, stateSha) => {
   if (stateSha === "") return null;
-  const result = runner("git", ["log", "--format=%s", `${stateSha}..HEAD`], { cwd });
+  const resolved = runner("git", ["rev-parse", "--verify", `${stateSha}^{commit}`], { cwd });
+  if (resolved.error !== void 0 || (resolved.status ?? -1) !== 0) return null;
+  const fullSha = (resolved.stdout ?? "").trim();
+  if (fullSha === "") return null;
+  const result = runner("git", ["log", "--format=%s", `${fullSha}..HEAD`], { cwd });
   if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
   return (result.stdout ?? "").split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
 };
@@ -20266,7 +20270,10 @@ var run37 = (argv, options = {}) => {
   }
   if (wikiState.commits_ahead !== 0) {
     const driftSubjects = readDriftSubjects(runner, cwd, wikiState.state_sha);
-    const benign = driftSubjects !== null && driftSubjects.length > 0 && driftSubjects.every((subject) => subject.startsWith("wiki:"));
+    const benign = driftSubjects !== null && // Guards the vacuous-truth case: zero subjects with `commits_ahead > 0`
+    // means the range count disagrees with `git log` — a broken state, not
+    // a benign one.
+    driftSubjects.length > 0 && driftSubjects.every((subject) => subject.startsWith("wiki:"));
     if (!benign) {
       return refuse(
         `preflight: wiki is ${wikiState.commits_ahead} commits behind HEAD; run /gaia wiki sync first`

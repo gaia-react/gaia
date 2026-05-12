@@ -166,8 +166,12 @@ const runWikiStateJson: WikiStateProbe = (cwd) => {
 
 /**
  * Subjects of the commits in `<stateSha>..HEAD`, newest first. `null` if the
- * range can't be read (e.g. `stateSha` is empty or git fails) — callers treat
- * `null` as "can't prove the drift is benign" and refuse.
+ * range can't be read (e.g. `stateSha` is empty, ambiguous, or git fails) —
+ * callers treat `null` as "can't prove the drift is benign" and refuse.
+ *
+ * `gaia wiki state --json` reports `state_sha` abbreviated; resolve it to a
+ * full SHA via `git rev-parse` before the range query so `git log` never has
+ * to disambiguate a short prefix (which it can fail to do in large repos).
  */
 const readDriftSubjects = (
   runner: CommandRunner,
@@ -175,7 +179,13 @@ const readDriftSubjects = (
   stateSha: string
 ): string[] | null => {
   if (stateSha === '') return null;
-  const result = runner('git', ['log', '--format=%s', `${stateSha}..HEAD`], {cwd});
+  const resolved = runner('git', ['rev-parse', '--verify', `${stateSha}^{commit}`], {cwd});
+
+  if (resolved.error !== undefined || (resolved.status ?? -1) !== 0) return null;
+  const fullSha = (resolved.stdout ?? '').trim();
+
+  if (fullSha === '') return null;
+  const result = runner('git', ['log', '--format=%s', `${fullSha}..HEAD`], {cwd});
 
   if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
 
@@ -268,6 +278,9 @@ export const run = (
     const driftSubjects = readDriftSubjects(runner, cwd, wikiState.state_sha);
     const benign =
       driftSubjects !== null &&
+      // Guards the vacuous-truth case: zero subjects with `commits_ahead > 0`
+      // means the range count disagrees with `git log` — a broken state, not
+      // a benign one.
       driftSubjects.length > 0 &&
       driftSubjects.every((subject) => subject.startsWith('wiki:'));
 
