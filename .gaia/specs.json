@@ -7,6 +7,13 @@
       "source": "backfilled",
       "status": "in-progress",
       "intent": "GAIA CI auto-maintenance system shipped to every adopter (smart cron, auto-merge, auto-revert)."
+    },
+    {
+      "id": "SPEC-002",
+      "allocated_at": "2026-05-12T07:49:29Z",
+      "source": "allocated",
+      "status": "in-progress",
+      "intent": "/gaia fitness — adopter-facing Claude-integration health check + auto-heal; /health-audit refactored to compose it."
     }
   ]
 }

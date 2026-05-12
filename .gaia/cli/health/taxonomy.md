@@ -10,6 +10,12 @@ Without a shared baseline, fresh audit agents re-discover settled questions and 
 
 **Cross-class process gate (load-bearing).** When fixing any class, rerun the class's detection across the entire scoped corpus before reporting closure — not just the file the original finding lived in. Spot-fixes leak across siblings. The wikilink-to-excluded class is the canonical example; the rule applies to every class with a corpus-walking detection (UAT/SPEC scrubs, maintainer-path scrubs, monorepo-prefix scrubs, etc.).
 
+## Composition
+
+The shared Claude-integration check classes (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness) and the triage/heal orchestration protocol live in `wiki/decisions/Claude Integration Fitness.md`. This taxonomy retains only the maintainer distribution-boundary / CLI-surface / forensics / tests classes.
+
+`/health-audit` runs the shared protocol over the seven fitness categories as its shared-fitness bucket (see runbook §Bucket E — Shared Claude-integration fitness). Cross-references are one-directional: this file and the runbook reference the wiki page; the wiki page never references `.gaia/cli/health/` paths.
+
 ## How to prime an audit
 
 Pass this file (or its path) to the audit agent's context with:
@@ -22,35 +28,6 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 
 ### Wiki & documentation
 
-**Dead path references in body prose.** Backticked repo paths in `wiki/` pointing at files that don't exist (renamed, deleted, merged).
-- Detection: `gaia wiki dead-paths`
-- Prior: dead refs in `wiki/concepts/Telemetry.md` (111c21b); zombie `wiki-stop-safety-net.sh` references after Phase 1 hook merge (6a39be4)
-
-**H1 / slug collisions in `page-index.ts` walker.** Two pages with identical H1s collide via `byKey` last-write-wins, masking inbound links and over-reporting orphans.
-- Detection: read `wiki/**/*.md` H1s, group, flag duplicates
-- Prior: `# Storybook` H1 in both `wiki/modules/Storybook Stories.md` and `wiki/dependencies/Storybook.md` (4bd9c26)
-
-**Orphan over-reporting from root pages.** `wiki/index.md`, `wiki/overview.md`, `wiki/hot.md` are catalogs/caches; their wikilinks should contribute to inbound counts but the pages themselves should stay out of `orphans` output.
-- Detection: `gaia wiki orphans` (now empty)
-- Codified in: `.gaia/cli/src/wiki/page-index.ts` `ROOT_LINK_SOURCES` constant
-- Prior: orphan count was 9 from over-reporting, dropped to 0 (ed94f49)
-
-**Historical-style phrasing in body prose.** "previously did X", "was changed from", "as of YYYY", "in PR #N", "in commit abc123".
-- Detection: `grep -rEn "\bchanged from|was changed|previously (did|was|stated|had|used|set)|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"`
-- Codified in: `.claude/rules/wiki-style.md` Audit section
-- Exempt scopes: `wiki/log.md`, `wiki/hot.md`, `wiki/meta/`, frontmatter, `## Historical context (from <older-title>)` consolidation labels
-- Prior: bare `previously` and bare `changed from` produced false positives; tightened in 4bd9c26
-
-**UAT / SPEC refs in body prose, source comments, or shipped scripts.** Working-document IDs that get superseded; meaningless to a reader querying current behavior.
-- Detection: `grep -rEn "UAT-[0-9]+|SPEC-[0-9]+" wiki/ app/ .claude/hooks/ .gaia/statusline/ --include="*.md" --include="*.sh" --include="*.ts" --include="*.tsx" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"`
-- Codified in: `.claude/rules/wiki-style.md` Audit section (currently scoped to `wiki/` + `app/`; needs broadening to include shipped `.sh` hooks and `.gaia/statusline/`).
-- Exempt scopes: `.claude/`, `.specify/` instruction files (SPEC machinery); `.gaia/tests/` and `.specify/extensions/gaia/test/` (release-excluded smoke harnesses).
-- Prior: `.gaia/statusline/gaia-statusline.sh:89` carried `# 🧭 mentorship-active indicator (UAT-037/038)` and `.claude/hooks/wiki-session-start.sh:11` carried `# Clear telemetry coaching-active cache at session start (SPEC-001 UAT-038).` — both fixed in 10th audit.
-
-**Stale wiki frontmatter `updated` dates.** Body advances; `updated` field doesn't bump.
-- Detection: spot-check `updated` against most recent body change (no automated grep)
-- Prior: `wiki/hot.md` frontmatter stale relative to body (8730d15)
-
 **Wiki documentation surface drift.** Decision/concept pages enumerating CLI primitives or features fall behind the actual surface as new primitives land.
 - Detection: cross-reference enumerated lists in `wiki/decisions/` and `wiki/concepts/` against `.gaia/cli/src/*/index.ts` HELP_TEXT for that domain
 - Prior: `wiki/decisions/Wiki Management.md` listed 7 of 10 wiki primitives (e665b40)
@@ -61,37 +38,6 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 - Suggested codification: extend `gaia wiki dead-paths` (or add a sibling primitive) to walk wikilinks via `gaia wiki page-index --json` and flag any link resolving to a release-excluded target. Until automated, the bundle-time-scrub plan (post-#97) will subsume this with build-time grep enforcement against the scrubbed staging directory.
 - Codified in: `.gaia/release-scrub.yml` `wikilink-to-excluded` check — enumerates the known release-excluded slugs (`Release Workflow`, `Bundle-time Scrub`, `GAIA`, `Steven Sacks`, `dashboard`, `Entities`, `Meta`) and flags any unwrapped `[[…]]` reference in shipped wiki pages. New excluded slugs require updating the pattern.
 - Prior: `wiki/index.md` carried `## Entities` and `## Meta` sections plus a `[[Release Workflow]]` bullet, all resolving to release-excluded pages (audit #11 fix). `[[Release Workflow]]` wikilinks in `Update Workflow.md`, `Wiki Sync.md`, `Telemetry.md`, `Update Merge.md` and a `[[GAIA]]` wikilink in `GAIA Philosophy.md` were missed by audit #11's spot-fix and caught by audit #12. Audit #13 verified the class clean across all shipped wiki domains end-to-end.
-
-### Claude integration surfaces
-
-**`@`-import anti-pattern in `.claude/rules/`.** Rules use `@path/to/file` to import other files. Always-loaded rules transitively preloading skills bloat every session.
-- Detection: `grep -rEn "^@" .claude/rules/`
-- Prior: `coding-guidelines.md` transitively preloaded the TDD skill (8730d15)
-
-**Absolute filesystem literals in distributed instruction files.** `/Users/...`, `/home/...` paths leak the maintainer's machine.
-- Detection: `grep -rEn "/Users/|/home/" .claude/` excluding the documented counter-example in `instruction-files.md`
-- Codified in: `.claude/rules/instruction-files.md` Audit section
-- Prior: skill reference contained `/Users/...` literal (111c21b)
-
-**Path-scoping mismatch — content vs. glob.** Rule scoped to a path glob but content is universal advice (or vice versa).
-- Detection: read each rule's frontmatter `globs` and check whether content actually depends on those paths
-- Prior: `coding-guidelines.md` was path-scoped to `app/test/**` despite being universal (8730d15)
-
-**Dead clauses citing non-existent files.** Instruction prose says "start with `wiki/<domain>/_index.md`" but no `_index.md` files exist.
-- Detection: `grep -rEn "_index\.md" .claude/ CLAUDE.md gaia/CLAUDE.md` then verify each cited path exists
-- Prior: `gaia/CLAUDE.md` referenced non-existent `_index.md` files (8730d15)
-
-**Per-session marker files missing from `.gitignore`.** Hooks write `.claude/foo-checked` markers that should not commit.
-- Detection: cross-reference hook write paths with `.gitignore`
-- Prior: `.claude/i18n-strings-checked` missing from `.gitignore` (8730d15)
-
-**Redundant per-tool permission entries shadowed by globs.** `settings.local.json` has entries whose pattern is a strict subset of another entry's glob.
-- Detection: read `.claude/settings.local.json` permissions; check for shadowed entries
-- Prior: 14 git-shaped entries shadowed by `Bash(git *)` collapsed (8730d15)
-
-**Hook references to deleted or merged files.** Hooks merged or renamed; settings.json or test fixtures still cite old name.
-- Detection: cross-reference `.claude/settings.json` hook command paths against `.claude/hooks/*.sh` files; grep `.gaia/tests/` for hook filenames
-- Prior: `wiki-stop-safety-net.sh` cited from `CONTRIBUTING.md`, `.gaia/tests/hooks/stop-safety-net.bats`, smoke fixtures (6a39be4)
 
 ### CLI surface
 
@@ -204,6 +150,8 @@ Forward-looking signal patterns from the autonomous triage workflow at `.github/
 ## Decided / not findings
 
 Things audits keep re-discovering. None of these are findings.
+
+**Circuit breaker.** Editing this section — or the equivalent "Decided / not findings" section in `wiki/decisions/Claude Integration Fitness.md` — trips the circuit breaker: the Fixer dispatch pauses for human-confirm before writing (see runbook §Circuit breakers). Both sections are protected together because claiming a real class isn't real in either file undermines the audit baseline.
 
 **Slash commands appear under "skills" in Claude Code's surface listing.** `/command` files in `.claude/commands/` register through Claude Code's plugin/skill discovery system. The skills list mixes them with actual skills under `.claude/skills/`. This is a Claude Code surface artifact, not a GAIA finding. Audits sometimes flag it then self-correct — skip the round-trip.
 
