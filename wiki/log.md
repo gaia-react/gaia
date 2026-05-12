@@ -11,5 +11,6 @@ tags: [meta, log]
 
 ## [v1.1.1] 2026-05-11 | Released
 
+- 2026-05-12 310aa3f WORTHY — re-anchored state + added cross-link CLI Binary Split → wiki/concepts/Release Workflow.md
 - 2026-05-12 c6b876b RE_ANCHOR — re-anchored after history rewrite
 See CHANGELOG.md for details.
