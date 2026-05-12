@@ -23,7 +23,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 - robust a11y tooling stack (#156)
 - close slice-4 forward-refs (wiki + update-deps) (#153)
-- rebrand /update-deps to /sharpen + deprecation alias (#149)
 - add Phase A configure-automation step (#148)
 - spec-001 slice 4 — /setup-gaia-ci slash command (Phase B) (#147)
 - spec-001 slice 3 — GAIA CI workflow YAML generation (#146)

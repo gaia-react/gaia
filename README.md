@@ -85,9 +85,9 @@ Most setups treat Claude as a tool you hold: bolt a `CLAUDE.md` onto the root an
 
 The quality gate keeps each commit clean and Knip keeps dead code out (see [Tech Stack](#tech-stack)). The rest runs over the life of the project:
 
-- **`/update-deps`.** Runs the upgrade, runs the suite, fixes what breaks, runs the suite again. The PR doesn't open until the upgrade is working. Codemods and breaking-change migrations land in the same PR, and when two upgrades touch the same code path it resolves the overlap before opening anything.
-- **GAIA self-updates.** At session start a background check surfaces available updates; Claude asks whether to apply them now or later. When GAIA itself releases, it pulls the latest version and performs three-way merges on affected files, so customizations and natural drift over a project's lifetime survive.
-- **GAIA CI**, opt-in, set up by `/gaia-init` or `/setup-gaia-ci`. A GitHub Actions bot that runs maintenance against your Claude Code Pro/Max subscription or Anthropic API key, capped at $5 per run. Patch and minor dependency bumps get an auto-PR that auto-merges on green CI; major bumps and high or critical `pnpm audit` findings route to review-required PRs; app-code changes open a labeled wiki-sync PR (a run that rewrites more than 25% of the wiki holds for review); stale branches get cleaned up. If post-merge CI fails, the bot opens one revert PR. A second failure escalates to a priority issue and the bot stops.
+- **`/update-deps`.** An autonomous Dependabot: discovers every outdated package, audits version overrides, applies codemods and breaking-change migrations for major bumps, resolves conflicts between simultaneous upgrades, then runs the quality gate before reporting done. No prompts.
+- **`/update-gaia`.** Pulls the latest GAIA release into the project without clobbering your work: a three-way merge per file (your version, the release baseline, the new release) governed by ownership classes in `.gaia/manifest.json`, prompting only where your changes and GAIA's collide. Both updates surface as passive statusline indicators at session start.
+- **GAIA CI**, opt-in, set up by `/setup-gaia-ci`. A GitHub Actions bot that runs maintenance against your Claude Code Pro/Max subscription or Anthropic API key, capped at $5 per run. Patch and minor dependency bumps get an auto-PR that auto-merges on green CI; major bumps and high or critical `pnpm audit` findings route to review-required PRs; app-code changes open a labeled wiki-sync PR (a run that rewrites more than 25% of the wiki holds for review); stale branches get cleaned up. If post-merge CI fails, the bot opens one revert PR. A second failure escalates to a priority issue and the bot stops.
 
 ## Tech Stack
 
@@ -122,6 +122,8 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <tr><td><code>/gaia audit</code></td><td>Audit memory, wiki, and autoloaded files for duplication, conflicting instructions, and bloat</td></tr>
 <tr><td><code>/gaia wiki</code></td><td>Run the full wiki maintenance chain: sync new commits into wiki pages, consolidate redundant or superseded content, then lint for orphans, dead links, and drift</td></tr>
 <tr><td><code>/gaia forensics</code></td><td>When a GAIA workflow misfires, capture a redacted, classified, filing-ready report in one run. Self-diagnoses user-config issues inline; probable bugs file to GAIA's GitHub with one prompt</td></tr>
+<tr><td><code>/update-deps</code></td><td>Autonomous Dependabot: discover every outdated package, audit version overrides, apply codemods and breaking-change migrations for major bumps, resolve conflicts between simultaneous upgrades, then run the quality gate. No prompts</td></tr>
+<tr><td><code>/update-gaia</code></td><td>Pull the latest GAIA release into the project without clobbering your work. Three-way merge per file (your version / release baseline / new release) governed by ownership classes in <code>.gaia/manifest.json</code>; prompts only where your changes and GAIA's collide</td></tr>
 </tbody>
 </table>
 
