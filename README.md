@@ -29,7 +29,7 @@ npx create-gaia@latest my-app
 One command. GAIA handles the rest, then `/gaia-init` finishes the last-mile setup (below).
 
 > [!NOTE]
-> Start projects with `npx create-gaia@latest my-app` rather than cloning or forking. The CLI renames sets up your project for you, strips the GAIA branding and release tooling, etc. A clone leaves all of that in place and pointed at the wrong repo.
+> Start projects with `npx create-gaia@latest my-app` rather than cloning or forking. The CLI sets up your project for you, strips the GAIA branding and release tooling, etc. A clone leaves all of that in place and pointed at the wrong repo.
 
 **Requirements:** [Node.js](https://nodejs.org/) >= 22.19.0 ([nvm](https://github.com/nvm-sh/nvm) recommended). macOS or Linux; on Windows, run inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) (the hooks and CLI need bash and POSIX file paths, and native Windows isn't exercised in CI). [uv](https://astral.sh/uv) is required for the Serena MCP server; GAIA installs it during setup if you don't already have it.
 
