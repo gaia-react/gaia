@@ -3,6 +3,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  id-token: write
 
 {{> partials/concurrency }}
 {{> partials/auth-env }}
@@ -109,6 +110,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.run.outputs.wave_b_matrix) }}
