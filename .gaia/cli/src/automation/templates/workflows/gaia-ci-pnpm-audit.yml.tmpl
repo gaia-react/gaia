@@ -3,7 +3,8 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  id-token: write
+  # Add `id-token: write` only if your registry authenticates `pnpm audit`
+  # via OIDC / workload-identity federation rather than a static _authToken.
 
 {{> partials/concurrency }}
 {{> partials/auth-env }}
