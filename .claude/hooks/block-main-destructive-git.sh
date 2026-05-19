@@ -30,11 +30,15 @@ deny() {
   exit 0
 }
 
-# Normalize: strip -C <path> for regex matching; capture path for git queries.
-# Handles `git -C /abs/path <subcommand>` (required by shell-cwd rule).
-# Uses sed — bash 3.2 (macOS default) doesn't populate BASH_REMATCH reliably.
-git_cwd=$(echo "$cmd" | sed -nE 's/.*git -C ([^ ]+).*/\1/p')
-norm=$(echo "$cmd" | sed -E 's/git -C [^ ]+ /git /')
+# Normalize: strip EVERY -C <path> for regex matching; capture the path git
+# would actually use for git queries. git applies multiple -C cumulatively
+# with the last absolute one winning, so capture the LAST occurrence (greedy
+# .* consumes through it) — a first-only capture lets `git -C <a> -C <b>
+# commit` slip past the commit/push regexes. Handles `git -C /abs/path`
+# (required by shell-cwd rule). Uses sed — bash 3.2 (macOS default) doesn't
+# populate BASH_REMATCH reliably.
+git_cwd=$(echo "$cmd" | sed -nE 's/.*[[:space:]]-C[[:space:]]+([^[:space:]]+).*/\1/p')
+norm=$(echo "$cmd" | sed -E 's/[[:space:]]-C[[:space:]]+[^[:space:]]+//g')
 
 current_branch() {
   if [[ -n "$git_cwd" ]]; then
