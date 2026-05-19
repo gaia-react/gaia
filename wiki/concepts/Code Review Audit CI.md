@@ -81,4 +81,4 @@ Editing HEAD between the local stamp and `gh pr merge` invalidates the trailer (
 - [[Code Review Audit Agent]] — the agent the workflow invokes.
 - [[PR Merge Workflow]] — the local-side gate handshake (`.gaia/local/audit/<sha>.ok` marker file).
 - [[Quality Gate]] — the lint/typecheck/test/knip gate that still runs alongside this audit.
-- [[Forensics Triage Workflow]] — sibling autonomous CI workflow built on the same `claude-code-action` setup.
+- Forensics Triage Workflow — sibling autonomous CI workflow built on the same `claude-code-action` setup.
