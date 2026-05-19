@@ -478,7 +478,7 @@ Create the SPEC folder, then write the confirmed draft to its canonical inner fi
 mkdir -p .gaia/local/specs/${SPEC_ID}
 ```
 
-Write to `.gaia/local/specs/SPEC-NNN/SPEC.md`. This is the canonical save location — never anywhere else, never duplicate copies. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder.
+Write to `.gaia/local/specs/SPEC-NNN/SPEC.md`. This is the canonical save location — never anywhere else, never duplicate copies. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder. A sibling's filename is the uppercased remainder of its flat form (`SPEC-NNN-<rest>.md` → `SPEC-NNN/<REST>.md`); any `SPEC-NNN-*` file is a sibling. `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
 
 Update the frontmatter `updated` field to today's date.
 
