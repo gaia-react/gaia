@@ -99,9 +99,19 @@ Then write the following files directly to `{PLAN_DIR}/`:
 2. **`{PLAN_DIR}/README.md`** — task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks. **If `{SPEC_PATH}` was provided** (i.e. this plan was derived from a SPEC), the README MUST open with a `## Source SPEC` section naming the SPEC id and the absolute path, so plan→SPEC discovery is one read away. Format: `Derived from {SPEC-id} ({SPEC_PATH}).`
 
 3. **`{PLAN_DIR}/ORCHESTRATOR.md`** — instructions for running the plan. Must cover:
-   - **Pre-flight branch policy.** Check the current branch. If HEAD is on `main`/`master`, the orchestrator ASKS the user via `AskUserQuestion` how to isolate the work, then acts on the answer. If HEAD is on any other branch, assume it is the work branch and proceed.
+   - **RUNNING sentinel.** As the very first step, write a sentinel file at `{PLAN_DIR}/RUNNING`. Content:
 
-     The `AskUserQuestion` payload is fixed:
+     ```
+     branch: <output of git branch --show-current>
+     slug: <basename of {PLAN_DIR}>
+     started: <current UTC time, ISO 8601, e.g. 2026-05-19T14:32:00Z>
+     ```
+
+     This file is deleted automatically when the plan directory is removed during final self-cleanup. Its purpose: a concurrently starting orchestrator for the same branch can detect this run is in-flight.
+
+   - **Pre-flight branch policy.** Check the current branch.
+
+     **If HEAD is on `main`/`master`:** Ask the user how to isolate the work via `AskUserQuestion`:
 
      - question: `"On main. How should this plan's work be isolated?"`
      - header: `"Branch mode"`
@@ -110,6 +120,57 @@ Then write the following files directly to `{PLAN_DIR}/`:
        2. `{ label: "Create a git worktree (Experimental — use with care)", description: "Cuts a linked worktree under .claude/worktrees/. Lets you keep main's checkout untouched, but the worktree lifecycle has known rough edges (post-merge cleanup, isolation-context detection, shared-state symlink hand-off). Only choose if you understand the trade-offs." }`
 
      Do not silently default; the prompt fires every time HEAD is `main`/`master`. If the user picks "Other" with custom text, treat it as a request for an alternative isolation mode and surface a clarifying question rather than guessing — feature-branch and worktree are the two supported modes.
+
+     **If HEAD is on any other branch:** Scan for a live concurrent orchestrator before proceeding. Run:
+
+     ```bash
+     BRANCH="$(git branch --show-current)"
+     PLAN_SLUG="$(basename "{PLAN_DIR}")"
+     CONCURRENT_LIVE=""
+     for running_file in .gaia/local/plans/*/RUNNING; do
+       [[ -f "$running_file" ]] || continue
+       [[ "$(basename "$(dirname "$running_file")")" == "$PLAN_SLUG" ]] && continue
+       file_branch="$(grep "^branch:" "$running_file" | cut -d' ' -f2)"
+       [[ "$file_branch" != "$BRANCH" ]] && continue
+
+       # Signal 1: branch must still exist
+       git show-ref --verify --quiet "refs/heads/$BRANCH" || continue
+
+       # Signal 2: PR state (graceful fallback if gh unavailable)
+       pr_state="$(gh pr list --head "$BRANCH" --json state --jq '.[0].state' 2>/dev/null || true)"
+       [[ "$pr_state" == "MERGED" || "$pr_state" == "CLOSED" ]] && continue
+
+       # Signal 3: age fallback when no PR exists yet (> 4 h with no PR = stale)
+       if [[ -z "$pr_state" ]]; then
+         started="$(grep "^started:" "$running_file" | cut -d' ' -f2)"
+         epoch_started="$(date -d "$started" +%s 2>/dev/null \
+           || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$started" +%s 2>/dev/null \
+           || echo 0)"
+         age_secs=$(( $(date +%s) - epoch_started ))
+         [[ "$age_secs" -ge 14400 ]] && continue
+       fi
+
+       CONCURRENT_LIVE="$running_file"
+       break
+     done
+     ```
+
+     If `CONCURRENT_LIVE` is non-empty, a live concurrent orchestrator is running on this branch. Ask the user via `AskUserQuestion`:
+
+     - question: `"A plan orchestrator is already running on branch '{branch}'. How should this plan proceed?"`
+     - header: `"Concurrent plan"`
+     - options (in this exact order):
+       1. `{ label: "Create a worktree (Recommended)", description: "Cut a linked worktree off main for this plan's work. Full isolation — the two orchestrators edit separate working trees and cannot conflict." }`
+       2. `{ label: "Continue on this branch", description: "Proceed on the same branch. Safe only if this plan's file edits do not overlap with the running orchestrator's. You accept the risk of concurrent edit conflicts." }`
+       3. `{ label: "Defer — cancel for now", description: "Do not proceed. Come back once the current orchestrator has finished and the branch is clean." }`
+
+     Act on the answer:
+     - **"Create a worktree"**: follow the worktree creation and operation procedure in this file's worktree sections (same path as if the user had chosen worktree from main).
+     - **"Continue on this branch"**: proceed. No further warning.
+     - **"Defer — cancel for now"**: stop immediately. Emit: `"Deferred. Re-run the kickoff once the current orchestrator has finished and you are back on main or on an uncontested branch."` Do not commit, push, or modify any files.
+     - **"Other"**: treat as a request for an alternative mode and ask a clarifying question rather than guessing.
+
+     If `CONCURRENT_LIVE` is empty (no live concurrent detected): proceed without prompting.
    - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`).
    - **Pre-merge `code-review-audit` (non-skippable).** Before any `gh pr merge` call, the orchestrator spawns the `code-review-audit` agent on the current branch. The agent's clean pass writes `.gaia/local/audit/<HEAD-sha>.ok`, which the deny-hook (`.claude/hooks/pr-merge-audit-check.sh`) gates `gh pr merge` on. The orchestrator does NOT wait for the deny-hook to fire and learn from it — that round-trip is friction. Spawn the agent proactively. Contract: `wiki/concepts/PR Merge Workflow.md`. Verbatim agent-spawn template:
 
