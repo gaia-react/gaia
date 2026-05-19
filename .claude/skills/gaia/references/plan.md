@@ -55,11 +55,10 @@ ROOT="$(git rev-parse --show-toplevel)"
 SLUG="<kebab-slug, prefixed with $SPEC_SLUG_SEED if set>"
 PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}"
 n=2
-while [[ -e "$PLAN_DIR" ]]; do
+while ! mkdir "$PLAN_DIR" 2>/dev/null; do
   PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}-${n}"
   n=$((n+1))
 done
-mkdir -p "$PLAN_DIR"
 ```
 
 Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia plan` invocations (including multiple slices dispatched from one `/gaia spec`) coexist without overwriting each other.
