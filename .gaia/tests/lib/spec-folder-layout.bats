@@ -257,6 +257,100 @@ _snapshot() {
   [[ "$output" != *"archived/SPEC-010/SPEC.md"* ]]
 }
 
+# --- 11: sibling migration ---------------------------------------------------
+
+@test "11: folderize migrates flat + siblings into correct sub-paths, byte-identical" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" \
+    --seed-flat SPEC-001 \
+    --seed-flat-sibling SPEC-001-REPORT \
+    --seed-flat-sibling SPEC-001-FOLLOWUP-REPORT)"
+  cd "$REPO"
+
+  c_spec="$(cat "$REPO/.gaia/local/specs/SPEC-001.md")"
+  c_report="$(cat "$REPO/.gaia/local/specs/SPEC-001-REPORT.md")"
+  c_followup="$(cat "$REPO/.gaia/local/specs/SPEC-001-FOLLOWUP-REPORT.md")"
+
+  run bash -c "bash '$REPO/$FOLDERIZE' '$REPO'"
+  [ "$status" -eq 0 ]
+
+  # Foldered shape exists.
+  [ -f "$REPO/.gaia/local/specs/SPEC-001/SPEC.md" ]
+  [ -f "$REPO/.gaia/local/specs/SPEC-001/REPORT.md" ]
+  [ -f "$REPO/.gaia/local/specs/SPEC-001/FOLLOWUP-REPORT.md" ]
+
+  # No flat files remain.
+  [ ! -e "$REPO/.gaia/local/specs/SPEC-001.md" ]
+  [ ! -e "$REPO/.gaia/local/specs/SPEC-001-REPORT.md" ]
+  [ ! -e "$REPO/.gaia/local/specs/SPEC-001-FOLLOWUP-REPORT.md" ]
+
+  # Contents moved byte-for-byte.
+  [ "$(cat "$REPO/.gaia/local/specs/SPEC-001/SPEC.md")" = "$c_spec" ]
+  [ "$(cat "$REPO/.gaia/local/specs/SPEC-001/REPORT.md")" = "$c_report" ]
+  [ "$(cat "$REPO/.gaia/local/specs/SPEC-001/FOLLOWUP-REPORT.md")" = "$c_followup" ]
+}
+
+# --- 12: sibling conflict ----------------------------------------------------
+
+@test "12: flat sibling + existing foldered sibling — exit 4, both paths in stderr, neither modified" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" \
+    --seed-flat-sibling SPEC-003-REPORT \
+    --seed-folder SPEC-003)"
+  cd "$REPO"
+  # Pre-existing foldered sibling triggers the conflict.
+  echo "existing report" > "$REPO/.gaia/local/specs/SPEC-003/REPORT.md"
+  git -C "$REPO" add .gaia/local/specs/SPEC-003/REPORT.md
+  git -C "$REPO" commit --quiet -m "add foldered report"
+
+  flat_before="$(cat "$REPO/.gaia/local/specs/SPEC-003-REPORT.md")"
+  fold_before="$(cat "$REPO/.gaia/local/specs/SPEC-003/REPORT.md")"
+
+  run bash -c "bash '$REPO/$FOLDERIZE' '$REPO' 2>&1 1>/dev/null"
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"SPEC-003-REPORT.md"* ]]
+  [[ "$output" == *"SPEC-003/REPORT.md"* ]]
+
+  # Neither file modified.
+  [ "$(cat "$REPO/.gaia/local/specs/SPEC-003-REPORT.md")" = "$flat_before" ]
+  [ "$(cat "$REPO/.gaia/local/specs/SPEC-003/REPORT.md")" = "$fold_before" ]
+}
+
+# --- 13: idempotent re-run after sibling migration ---------------------------
+
+@test "13: re-running folderize after sibling migration is a no-op" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" \
+    --seed-flat SPEC-002 \
+    --seed-flat-sibling SPEC-002-REPORT)"
+  cd "$REPO"
+
+  run bash -c "bash '$REPO/$FOLDERIZE' '$REPO'"
+  [ "$status" -eq 0 ]
+
+  before="$(_snapshot "$REPO")"
+  run bash -c "bash '$REPO/$FOLDERIZE' '$REPO'"
+  [ "$status" -eq 0 ]
+  after="$(_snapshot "$REPO")"
+  [ "$before" = "$after" ]
+}
+
+# --- 14: archived/ siblings --------------------------------------------------
+
+@test "14: folderize migrates flat siblings under archived/" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" \
+    --seed-archived-flat SPEC-000 \
+    --seed-archived-flat-sibling SPEC-000-REPORT)"
+  cd "$REPO"
+
+  c_report="$(cat "$REPO/.gaia/local/specs/archived/SPEC-000-REPORT.md")"
+
+  run bash -c "bash '$REPO/$FOLDERIZE' '$REPO'"
+  [ "$status" -eq 0 ]
+
+  [ -f "$REPO/.gaia/local/specs/archived/SPEC-000/SPEC.md" ]
+  [ -f "$REPO/.gaia/local/specs/archived/SPEC-000/REPORT.md" ]
+  [ ! -e "$REPO/.gaia/local/specs/archived/SPEC-000-REPORT.md" ]
+  [ "$(cat "$REPO/.gaia/local/specs/archived/SPEC-000/REPORT.md")" = "$c_report" ]
+}
+
 # --- 10: read-only modes take no lock and create no folder -------------------
 
 @test "10: highest / in_progress over foldered specs take no lock, create no folder" {

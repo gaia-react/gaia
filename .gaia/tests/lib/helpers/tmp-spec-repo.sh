@@ -27,6 +27,11 @@
 #                               .gaia/local/specs/SPEC-NNN/SPEC.md with
 #                               status: in-progress frontmatter and NO ledger
 #                               row (the foldered legacy fallback case)
+#   --seed-flat-sibling SPEC-NNN-SUFFIX  write a legacy flat sibling file
+#                               .gaia/local/specs/SPEC-NNN-SUFFIX.md — a
+#                               sibling migration candidate for spec-folderize.sh
+#   --seed-archived-flat-sibling SPEC-NNN-SUFFIX  same but under
+#                               .gaia/local/specs/archived/SPEC-NNN-SUFFIX.md
 set -euo pipefail
 
 # Real repo containing this helper: the helper lives at
@@ -108,6 +113,15 @@ status: archived
 
 # ${id}
 EOF
+      ;;
+    --seed-flat-sibling)
+      id="$2"; shift 2
+      printf 'sibling body for %s\n' "$id" > ".gaia/local/specs/${id}.md"
+      ;;
+    --seed-archived-flat-sibling)
+      id="$2"; shift 2
+      mkdir -p .gaia/local/specs/archived
+      printf 'sibling body for %s\n' "$id" > ".gaia/local/specs/archived/${id}.md"
       ;;
     --seed-folder)
       id="$2"; shift 2

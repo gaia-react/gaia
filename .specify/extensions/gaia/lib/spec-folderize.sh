@@ -14,21 +14,27 @@
 #   --dry-run     print the planned moves to stdout, change nothing
 #
 # Behavior:
-#   - Each flat regular file SPEC-NNN.md is moved to SPEC-NNN/SPEC.md.
-#     `.gaia/local/specs/` and `.gaia/local/specs/archived/` are both scanned.
+#   - Each flat canonical file SPEC-NNN.md is moved to SPEC-NNN/SPEC.md.
+#   - Each flat sibling file SPEC-NNN-<rest>.md is moved to SPEC-NNN/<REST>.md,
+#     where <REST> is the remainder uppercased, hyphens kept. Any SPEC-NNN-*
+#     file is a sibling — no suffix allowlist.
+#     Examples: SPEC-001-REPORT.md          → SPEC-001/REPORT.md
+#               SPEC-001-FOLLOWUP-REPORT.md → SPEC-001/FOLLOWUP-REPORT.md
+#               SPEC-001-revised-contracts.md → SPEC-001/REVISED-CONTRACTS.md
+#   - `.gaia/local/specs/` and `.gaia/local/specs/archived/` are both scanned.
 #   - Tracked files (git ls-files --error-unmatch) move with `git mv`;
 #     untracked files (the common adopter case — specs are gitignored) move
 #     with plain `mv`.
-#   - Idempotent: a SPEC already at <id>/SPEC.md is skipped. Running twice is
-#     a no-op. Contents are moved byte-for-byte; no frontmatter edits.
+#   - Idempotent: a file already at its target path is skipped. Running twice
+#     is a no-op. Contents are moved byte-for-byte; no frontmatter edits.
 #   - Stdout carries only the dry-run plan; all diagnostics go to stderr.
 #
 # Exit codes:
 #   0  ok, or no-op (already foldered / nothing to migrate / --dry-run)
 #   2  usage error
 #   3  repo root not resolvable
-#   4  migration conflict (both flat SPEC-<id>.md and folder <id>/SPEC.md
-#      exist for the same id — never guess, never overwrite)
+#   4  migration conflict (a flat file and its foldered counterpart both exist
+#      for the same path — never guess, never overwrite)
 #
 # macOS-first: no GNU coreutils assumptions.
 set -euo pipefail
@@ -84,22 +90,35 @@ fi
 moved=0
 planned=0
 
-# Migrate every flat SPEC-NNN.md regular file directly under $1 into
-# $1/SPEC-NNN/SPEC.md. $1 is either the specs dir or its archived/ subdir.
+# Migrate every flat SPEC-NNN.md (and SPEC-NNN-<rest>.md sibling) regular file
+# directly under $1 into the per-SPEC folder shape. $1 is either the specs
+# dir or its archived/ subdir.
 folderize_dir() {
   local dir="$1"
   [ -d "$dir" ] || return 0
 
-  local flat id folder target
+  local flat filename id rest target_name folder target
   for flat in "$dir"/SPEC-*.md; do
     # No glob match → bash leaves the pattern literal; skip it.
     [ -e "$flat" ] || continue
     # Only flat regular files are migration candidates.
     [ -f "$flat" ] || continue
 
-    id="$(basename "$flat" .md)"
+    filename="$(basename "$flat" .md)"
+    # Extract leading SPEC-<digits> as the canonical id. Field 2 after
+    # splitting on '-' is the numeric part; rejoining gives SPEC-NNN.
+    id="$(printf '%s' "$filename" | awk -F'-' '{print $1 "-" $2}')"
     folder="$dir/$id"
-    target="$folder/SPEC.md"
+
+    if [ "$filename" = "$id" ]; then
+      # Canonical: SPEC-NNN.md → SPEC-NNN/SPEC.md
+      target_name="SPEC.md"
+    else
+      # Sibling: SPEC-NNN-<rest>.md → SPEC-NNN/<REST>.md
+      rest="${filename#${id}-}"
+      target_name="$(printf '%s' "$rest" | tr '[:lower:]' '[:upper:]').md"
+    fi
+    target="$folder/$target_name"
 
     if [ -e "$target" ]; then
       echo "spec-folderize: conflict — both flat and foldered artifact exist for $id:" >&2
