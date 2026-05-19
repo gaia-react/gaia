@@ -141,6 +141,51 @@ git log -1 --oneline    # verify this is the merge commit
 
 Push the tag, which kicks the GitHub Release workflow (`release.yml`) to build the scrubbed tarball.
 
+### 13. Lockstep `create-gaia`
+
+`create-gaia` (the `npx create-gaia` scaffolder) must stay in **version lockstep** with the GAIA template: its `package.json` `version` and its offline `FALLBACK_VERSION` (`bin/index.js`) both track the release just cut. Its `publish.yml` triggers on a `v*.*.*` tag and refuses to publish unless the tag equals `package.json` version.
+
+It lives in a sibling checkout (`../create-gaia` relative to the GAIA repo root). If the sibling is absent on this machine, STOP and report — do not silently skip; lockstep is mandatory and a maintainer with the checkout must complete it.
+
+```bash
+CG="$(git rev-parse --show-toplevel)/../create-gaia"
+[ -d "$CG/.git" ] || { echo "create-gaia checkout not found at $CG — lockstep cannot complete here"; exit 1; }
+git -C "$CG" fetch origin --quiet && git -C "$CG" checkout main --quiet && git -C "$CG" pull --ff-only origin main --quiet
+```
+
+Set both version sites to `<NEW_VERSION>` (no `v` in `package.json`, `v`-prefixed in `FALLBACK_VERSION`):
+
+- `$CG/package.json` → `"version": "<NEW_VERSION>"`
+- `$CG/bin/index.js` → `const FALLBACK_VERSION = 'v<NEW_VERSION>';`
+
+Commit on a branch, open + merge a PR, then tag. The PR-merge and main-push guards are repo-scoped (`.claude/hooks/lib/repo-scope.sh`): a `gh pr merge` / `git push` carrying a `-C "$CG"` or `cd "$CG" &&` prefix targets the sibling repo, so this repo's audit gate and main-protection do **not** fire — no manual-UI detour needed. `create-gaia` has no audit infrastructure or branch protection of its own; a plain `--merge` (not `--auto`) is correct there.
+
+```bash
+git -C "$CG" checkout -b "release/v<NEW_VERSION>"
+# (edit package.json + bin/index.js as above)
+node --check "$CG/bin/index.js"   # smoke: no syntax error
+git -C "$CG" add package.json bin/index.js
+git -C "$CG" commit -m "chore: release v<NEW_VERSION>"
+git -C "$CG" push -u origin "release/v<NEW_VERSION>"
+gh pr create -R gaia-react/create-gaia --base main --head "release/v<NEW_VERSION>" \
+  --title "chore: release v<NEW_VERSION>" --body "Lockstep with GAIA v<NEW_VERSION>."
+gh pr merge -R gaia-react/create-gaia <N> --merge --delete-branch
+for i in $(seq 1 10); do
+  st=$(gh pr view -R gaia-react/create-gaia <N> --json state -q .state)
+  [ "$st" = "MERGED" ] && break; sleep 15
+done
+[ "$st" = "MERGED" ] || { echo "create-gaia PR did not merge — investigate before tagging"; exit 1; }
+git -C "$CG" fetch origin --quiet && git -C "$CG" checkout main --quiet && git -C "$CG" pull --ff-only origin main --quiet
+git -C "$CG" tag "v<NEW_VERSION>" && git -C "$CG" push origin "v<NEW_VERSION>"
+```
+
+The tag push triggers `create-gaia`'s `publish.yml` (npm publish with `--provenance`). Confirm it before considering the release complete:
+
+```bash
+gh run list -R gaia-react/create-gaia --workflow=publish.yml --limit 1
+npm view create-gaia@<NEW_VERSION> version    # registry CDN may lag a minute
+```
+
 ## Recovery: I tagged on the wrong commit
 
 ```bash

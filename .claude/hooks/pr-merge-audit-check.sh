@@ -57,6 +57,16 @@ else
   exit 0
 fi
 
+# Repo-scope: this gate enforces the home repo's audit contract only. A
+# `gh pr merge` aimed at a different repo (e.g. a sibling project merged via
+# `cd ../other && gh pr merge` or `gh pr merge -R owner/other`) has no bearing
+# on this repo's audit markers — allow it.
+[ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
+if type cmd_targets_foreign_repo >/dev/null 2>&1 \
+   && cmd_targets_foreign_repo "$cmd"; then
+  exit 0
+fi
+
 # Resolve HEAD SHA. If we cannot (no git, detached state we can't read),
 # fall back to permissive: this hook only enforces in repos where git answers.
 sha=$(git rev-parse HEAD 2>/dev/null || true)
