@@ -98,6 +98,8 @@ Things audits keep re-discovering that are not findings:
 
 **`wiki/.state.json` lagging HEAD.** Normal pre-release state. The session-start hook reports drift informationally; the wiki-fitness category surfaces it as `info` (not `error` or `warning`) and recommends `/gaia wiki sync`. Do not escalate to a blocking finding.
 
+**Release-excluded wiki pages flagged as orphans by `gaia wiki orphans`.** Expected state, not a defect. Shipped pages must not `[[wikilink]]` release-excluded pages (enforced by `wikilink-to-excluded`); plain-text references to them are correct. `gaia wiki orphans` cannot see release-exclusion, so it will always flag such a page. Surface as `info`; do not escalate to a blocking finding.
+
 **`@`-imports that use valid repo-relative paths.** An `@`-import is a finding only when it imports a skill file from inside a rule. Imports of always-loaded rule files from `CLAUDE.md` are the correct pattern; do not flag them.
 
 **Dead backticked path in `wiki/log.md` or `wiki/hot.md`.** These files are exempt from `gaia wiki dead-paths` by design — `wiki/log.md` is the append-only historical record; `wiki/hot.md` is the auto-overwritten session cache. Do not raise dead-path findings against either.

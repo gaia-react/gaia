@@ -179,6 +179,7 @@
     ".specify/extensions/gaia/lib/spec-renumber.sh": "owned",
     ".specify/extensions/gaia/lib/uat-write.sh": "owned",
     ".specify/extensions/gaia/lib/version-check.sh": "owned",
+    ".specify/extensions/gaia/lib/with-ledger-lock.sh": "owned",
     ".specify/extensions/gaia/README.md": "owned",
     ".specify/extensions/gaia/rules/smoke.md": "owned",
     ".specify/extensions/gaia/rules/uat-divergence.md": "owned",
@@ -465,6 +466,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-12T11:35:50.498Z",
+  "generated": "2026-05-19T09:53:53.577Z",
   "version": "1.2.0"
 }

@@ -18,9 +18,9 @@
 #   - Each flat sibling file SPEC-NNN-<rest>.md is moved to SPEC-NNN/<REST>.md,
 #     where <REST> is the remainder uppercased, hyphens kept. Any SPEC-NNN-*
 #     file is a sibling — no suffix allowlist.
-#     Examples: SPEC-001-REPORT.md          → SPEC-001/REPORT.md
-#               SPEC-001-FOLLOWUP-REPORT.md → SPEC-001/FOLLOWUP-REPORT.md
-#               SPEC-001-revised-contracts.md → SPEC-001/REVISED-CONTRACTS.md
+#     Examples: SPEC-NNN-REPORT.md          → SPEC-NNN/REPORT.md
+#               SPEC-NNN-FOLLOWUP-REPORT.md → SPEC-NNN/FOLLOWUP-REPORT.md
+#               SPEC-NNN-revised-contracts.md → SPEC-NNN/REVISED-CONTRACTS.md
 #   - `.gaia/local/specs/` and `.gaia/local/specs/archived/` are both scanned.
 #   - Tracked files (git ls-files --error-unmatch) move with `git mv`;
 #     untracked files (the common adopter case — specs are gitignored) move
