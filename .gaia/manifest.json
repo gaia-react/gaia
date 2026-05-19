@@ -175,6 +175,7 @@
     ".specify/extensions/gaia/lib/ledger-update.sh": "owned",
     ".specify/extensions/gaia/lib/lint.sh": "owned",
     ".specify/extensions/gaia/lib/spec-allocator.sh": "owned",
+    ".specify/extensions/gaia/lib/spec-folderize.sh": "owned",
     ".specify/extensions/gaia/lib/spec-renumber.sh": "owned",
     ".specify/extensions/gaia/lib/uat-write.sh": "owned",
     ".specify/extensions/gaia/lib/version-check.sh": "owned",
