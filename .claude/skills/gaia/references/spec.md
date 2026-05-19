@@ -226,6 +226,8 @@ Persist the answer as `gh_mirror_optin: <bool>` in working memory for this sessi
 
 Run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an in-progress SPEC already exists.
 
+The id may name a **draft-phase** session — a SPEC allocated in another terminal whose interactive loop has not yet reached the canonical save (step 8), so `.gaia/local/specs/SPEC-NNN.md` may not exist yet and the live draft is at `.gaia/local/cache/draft-SPEC-NNN.md`. The `WORKING`-selection below resolves this correctly, preferring the draft cache when the canonical file is absent or older.
+
 **Auto-mode exception:** skip the resume prompt entirely. Always start new — append `spec_started` telemetry with `resumed: false, auto: true` and proceed to step 3 with a fresh allocation. The in-progress SPEC (if any) remains untouched. Per Auto-mode rule 3 the user's `auto` invocation is the signal that they want a fresh artifact; resuming an existing draft into a non-interactive context risks silently overwriting work in progress.
 
 Before prompting, gather context for an informed choice. The newer of the canonical artifact and the working-draft cache is the actual resume point:
