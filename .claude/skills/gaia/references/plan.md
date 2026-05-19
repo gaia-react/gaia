@@ -137,7 +137,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
        git show-ref --verify --quiet "refs/heads/$BRANCH" || continue
 
        # Signal 2: PR state (graceful fallback if gh unavailable)
-       pr_state="$(gh pr list --head "$BRANCH" --json state --jq '.[0].state' 2>/dev/null || true)"
+       pr_state="$(gh pr list --head "$BRANCH" --json state --jq -r '.[0].state // empty' 2>/dev/null || true)"
        [[ "$pr_state" == "MERGED" || "$pr_state" == "CLOSED" ]] && continue
 
        # Signal 3: age fallback when no PR exists yet (> 4 h with no PR = stale)
