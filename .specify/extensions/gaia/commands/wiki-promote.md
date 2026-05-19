@@ -11,7 +11,7 @@ Fires automatically on `/speckit-implement` completion. Reads the SPEC artifact,
 
 The hook fires on `/speckit-implement` completion. The agent has the SPEC ID in conversation context (the implementer agent referenced it).
 
-Identify the SPEC ID from the running conversation. If ambiguous, fall back to the most-recently-modified file under `.gaia/local/specs/SPEC-*.md` (excluding `-revised-contracts` and `-refit-decision` suffixes).
+Identify the SPEC ID from the running conversation. If ambiguous, fall back to the most-recently-modified `.gaia/local/specs/SPEC-*/SPEC.md` (deriving the SPEC ID from the parent folder name; excluding `-revised-contracts` and `-refit-decision` suffixes).
 
 Read the SPEC frontmatter. Required fields: `spec_id`, `wiki_promote_default`, `wiki_promote_targets` (default `[]`).
 
@@ -163,7 +163,7 @@ Fields:
 - `updated` — today's ISO date.
 - `promoted_from` — the SPEC ID (e.g. `SPEC-NNN`).
 - `promoted_at` — current ISO 8601 UTC timestamp.
-- `spec_artifact_path` — `.gaia/local/specs/SPEC-NNN.md`.
+- `spec_artifact_path` — `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 - `pr_number` — from Step 3.
 - `pr_url` — from Step 3.
 - `tags` — copied from the SPEC's frontmatter `tags` if present and non-empty; otherwise `[promoted, <subdomain>]`.
@@ -213,7 +213,7 @@ Render the body in the following sections, in order, immediately after the closi
    ```markdown
    ## References
 
-   - Source SPEC: [SPEC-NNN](../../.gaia/local/specs/SPEC-NNN.md) (local SPEC artifact, gitignored — link does not resolve from GitHub web view)
+   - Source SPEC: [SPEC-NNN](../../.gaia/local/specs/SPEC-NNN/SPEC.md) (local SPEC artifact, gitignored — link does not resolve from GitHub web view)
    - Implementing PR: [PR #NNN](https://github.com/<owner>/<repo>/pull/NNN)
    - Promoted at: <ISO 8601 UTC>
    ```
@@ -321,6 +321,6 @@ Otherwise, invoke `/speckit-gaia-spec-close` directly:
 
 `Invoke /speckit-gaia-spec-close <spec_id> now. wiki-promote completed inline; the cache is already cleared. Spec-close will skip drain and go straight to the disposition prompt.`
 
-This presents the user with the archive / delete / keep prompt for the local SPEC artifact. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<spec_id>.md`.
+This presents the user with the archive / delete / keep prompt for the local SPEC artifact. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<spec_id>/`.
 
 If `/speckit-gaia-spec-close` fails or refuses, exit with the warning `wiki-promote: pages staged and committed; spec-close chain failed. Run /gaia spec close <spec_id> manually to dispose of the SPEC artifact.` Do NOT retry the chain — the wiki side is already settled.

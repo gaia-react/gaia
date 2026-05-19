@@ -54,7 +54,7 @@ require_git() {
 # Sources (all deterministic markers — no free-text scanning):
 #   1. .gaia/specs.json ledger
 #   2. Local + remote branches matching ^spec-NNN-
-#   3. Working-tree files .gaia/local/specs/SPEC-NNN.md
+#   3. Working-tree folders .gaia/local/specs/<spec_id>/SPEC.md
 known_spec_numbers() {
   if [ -f "$ledger_path" ]; then
     jq -r '.specs[].id // empty' "$ledger_path" 2>/dev/null \
@@ -66,8 +66,8 @@ known_spec_numbers() {
     | sed -nE 's|^.*/?spec-0*([0-9]+)(-.*)?$|\1|p' || true
 
   if [ -d "$specs_dir" ]; then
-    find "$specs_dir" -maxdepth 1 -type f -name 'SPEC-*.md' -print 2>/dev/null \
-      | sed -nE 's|.*/SPEC-0*([0-9]+)\.md$|\1|p' || true
+    find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
+      | sed -nE 's|.*/SPEC-0*([0-9]+)/SPEC\.md$|\1|p' || true
   fi
 }
 
@@ -118,9 +118,9 @@ append_ledger_row() {
 #      draft-<spec_id>.md cache write, so this covers the widest in-flight
 #      window — including the draft phase a parallel session would otherwise
 #      miss.
-#   2. Fallback: canonical .gaia/local/specs/SPEC-*.md frontmatter scan for
-#      status: in-progress (legacy case — SPEC file in-progress but no ledger
-#      row, e.g. a backfilled / hand-edited ledger).
+#   2. Fallback: canonical .gaia/local/specs/<spec_id>/SPEC.md frontmatter
+#      scan for status: in-progress (legacy case — SPEC file in-progress but
+#      no ledger row, e.g. a backfilled / hand-edited ledger).
 in_progress_spec() {
   if [ -f "$ledger_path" ]; then
     local id
@@ -140,6 +140,9 @@ in_progress_spec() {
   local f
   while IFS= read -r -d '' f; do
     local in_fm=0 status="" id=""
+    # Canonical id is the containing folder's basename, not the filename
+    # (the inner file is always named SPEC.md).
+    id="$(basename "$(dirname "$f")")"
     local line
     while IFS= read -r line; do
       if [ "$in_fm" -eq 0 ] && [ "$line" = "---" ]; then
@@ -156,11 +159,6 @@ in_progress_spec() {
             status="${status## }"
             status="${status%% *}"
             ;;
-          spec_id:*)
-            id="${line#spec_id:}"
-            id="${id## }"
-            id="${id%% *}"
-            ;;
         esac
       fi
     done < "$f"
@@ -168,7 +166,7 @@ in_progress_spec() {
       echo "$id"
       return
     fi
-  done < <(find "$specs_dir" -maxdepth 1 -type f -name 'SPEC-*.md' -print0 2>/dev/null | sort -z)
+  done < <(find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print0 2>/dev/null | sort -z)
   echo "none"
 }
 

@@ -49,7 +49,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 3 — Resume-vs-start-new prompt
 
-**Action.** With an in-progress SPEC already at `.gaia/local/specs/SPEC-NNN.md`, invoke `/gaia spec "another feature"` without a force-new flag.
+**Action.** With an in-progress SPEC already at `.gaia/local/specs/SPEC-NNN/SPEC.md`, invoke `/gaia spec "another feature"` without a force-new flag.
 
 **Expected outcome.**
 
@@ -192,7 +192,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 **Expected outcome.**
 
-- File exists at `.gaia/local/specs/SPEC-NNN.md`.
+- File exists at `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 - Frontmatter includes all schema fields, `status: in-progress`, `immutable: true`, stable `UAT-NNN` IDs, no placeholder text.
 - No duplicate copies anywhere else in the tree.
 
@@ -243,7 +243,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 16 — Immutable UAT enforcement (post-save mutation attempt)
 
-**Action.** Manually edit `.gaia/local/specs/SPEC-NNN.md` to change a UAT body. Re-invoke `/gaia spec` so the lint hook re-evaluates the saved artifact.
+**Action.** Manually edit `.gaia/local/specs/SPEC-NNN/SPEC.md` to change a UAT body. Re-invoke `/gaia spec` so the lint hook re-evaluates the saved artifact.
 
 **Expected outcome.**
 

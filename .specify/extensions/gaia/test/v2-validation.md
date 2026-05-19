@@ -106,7 +106,7 @@ grep -E '^## Step|^## Pre-Execution Checks|^## Outline' /tmp/specify-validate-00
 27:## Step 1 — core /speckit-specify
 38:## Pre-Execution Checks
 73:## Outline
-349:## Step 2 — relocate to .gaia/local/specs/SPEC-NNN.md
+349:## Step 2 — relocate to .gaia/local/specs/SPEC-NNN/SPEC.md
 382:## Step 3 — return
 ```
 
@@ -193,7 +193,7 @@ EXECUTE_COMMAND_INVOCATION: /speckit-gaia-self-review
 Both helpers run pure CLI args; no stdin payload:
 
 ```bash
-$ bash .specify/extensions/gaia/lib/lint.sh .gaia/local/specs/SPEC-001.md
+$ bash .specify/extensions/gaia/lib/lint.sh .gaia/local/specs/SPEC-001/SPEC.md
 {"ok":true,"findings":[]}
 
 $ bash .specify/extensions/gaia/lib/spec-allocator.sh next /Users/stevensacks/Development/gaia-react/gaia
