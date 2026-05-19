@@ -14,6 +14,16 @@
 # missing from the ledger. A skipped slot is strictly cheaper than a duplicate id.
 # Commit messages are NOT scanned; they pick up free-text references (test
 # fixtures, regression notes) that would inflate the highest id incorrectly.
+#
+# Concurrency: the `next` read-modify-write critical section runs under the
+# shared ledger mutex from with-ledger-lock.sh (flock when present, atomic-mkdir
+# fallback on stock macOS). Two parallel `/gaia spec` sessions cannot allocate a
+# duplicate SPEC id. A lock-acquisition timeout (helper exit 75) maps to exit 4
+# — callers (the speckit preset) already handle 4 as "allocation failed", so a
+# new exit code would break their error handling. Lock env knobs
+# (GAIA_LEDGER_LOCK_TIMEOUT_SECS / _STALE_SECS / _POLL_SECS /
+# _FORCE_FALLBACK): see with-ledger-lock.sh. `highest` and `in_progress` are
+# read-only and take NO lock.
 set -euo pipefail
 
 if [ "$#" -lt 2 ]; then
@@ -25,6 +35,13 @@ mode="$1"
 repo_root="$2"
 specs_dir="${repo_root%/}/.gaia/local/specs"
 ledger_path="${repo_root%/}/.gaia/specs.json"
+
+# Source the shared ledger mutex from this script's own directory so it
+# resolves identically from the speckit preset and from test copies of the
+# lib dir (no hardcoded repo path — template-distributed, repo-relative).
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "${_lib_dir}/with-ledger-lock.sh"
 
 require_git() {
   if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
@@ -87,13 +104,35 @@ append_ledger_row() {
     "$ledger_path" > "$tmp"; then
     rm -f "$tmp"
     echo "spec-allocator: failed to update ledger at $ledger_path" >&2
-    exit 4
+    # return (not exit) so the mkdir-lock trap still releases the lock dir;
+    # allocate_next propagates this rc and `next)` re-maps it to exit 4.
+    return 4
   fi
   mv "$tmp" "$ledger_path"
 }
 
-# Print the first SPEC whose frontmatter has status: in-progress; "none" if none.
+# Print the first in-flight SPEC id, or "none". Single-id, none-when-empty
+# contract preserved. Source order:
+#   1. Ledger rows with status draft OR in-progress (ledger array order). The
+#      row is created at `next` (skill step 3), strictly before the first
+#      draft-<spec_id>.md cache write, so this covers the widest in-flight
+#      window — including the draft phase a parallel session would otherwise
+#      miss.
+#   2. Fallback: canonical .gaia/local/specs/SPEC-*.md frontmatter scan for
+#      status: in-progress (legacy case — SPEC file in-progress but no ledger
+#      row, e.g. a backfilled / hand-edited ledger).
 in_progress_spec() {
+  if [ -f "$ledger_path" ]; then
+    local id
+    id="$(jq -r '
+      [.specs[] | select(.status == "draft" or .status == "in-progress")][0].id // empty
+    ' "$ledger_path" 2>/dev/null || true)"
+    if [ -n "$id" ]; then
+      printf '%s\n' "$id"
+      return
+    fi
+  fi
+
   if [ ! -d "$specs_dir" ]; then
     echo "none"
     return
@@ -133,13 +172,39 @@ in_progress_spec() {
   echo "none"
 }
 
+# The read-modify-write critical section, run inside the ledger mutex so two
+# parallel `next` calls cannot read the same highest_num and allocate a
+# duplicate id. append_ledger_row returns (not exits) 4 on jq failure; we
+# propagate that rc so the helper passes it through and the trap still runs.
+allocate_next() {
+  local h next new_id
+  h="$(highest_num)"
+  next=$((h + 1))
+  new_id="$(printf 'SPEC-%03d' "$next")"
+  append_ledger_row "$new_id" || return $?
+  printf '%s\n' "$new_id"
+}
+
 case "$mode" in
   next)
-    h="$(highest_num)"
-    next=$((h + 1))
-    new_id="$(printf 'SPEC-%03d' "$next")"
-    append_ledger_row "$new_id"
-    echo "$new_id"
+    require_git
+    ensure_ledger
+    # C1 lock-dir precondition: the dir must exist before with_ledger_lock.
+    # ensure_ledger already mkdir -p's it via the ledger parent, but make the
+    # precondition explicit and independent of ledger-init ordering.
+    mkdir -p "${repo_root%/}/.gaia"
+    # Capture rc directly — NOT `if ! with_ledger_lock …; then rc=$?`: after a
+    # `!`-negated command, $? is the negation's status (0), masking the real
+    # rc. `|| rc=$?` preserves the helper's actual exit code under set -e.
+    rc=0
+    with_ledger_lock "${repo_root%/}/.gaia" allocate_next || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      if [ "$rc" -eq 75 ]; then
+        echo "spec-allocator: could not acquire ledger lock; refuse to allocate (would risk duplicate SPEC ids)" >&2
+        exit 4
+      fi
+      exit "$rc"   # propagate append_ledger_row's own rc 4, etc.
+    fi
     ;;
   highest)
     h="$(highest_num)"
