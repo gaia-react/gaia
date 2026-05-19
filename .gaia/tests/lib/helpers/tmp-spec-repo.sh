@@ -18,6 +18,15 @@
 #   --seed-file SPEC-NNN        write .gaia/local/specs/SPEC-NNN.md with
 #                               status: in-progress frontmatter and NO ledger
 #                               row (the legacy fallback case)
+#   --seed-flat SPEC-NNN        write a legacy flat .gaia/local/specs/
+#                               SPEC-NNN.md (status: draft frontmatter) — a
+#                               migration candidate for spec-folderize.sh
+#   --seed-archived-flat SPEC-NNN  same but under
+#                               .gaia/local/specs/archived/SPEC-NNN.md
+#   --seed-folder SPEC-NNN      write the foldered shape
+#                               .gaia/local/specs/SPEC-NNN/SPEC.md with
+#                               status: in-progress frontmatter and NO ledger
+#                               row (the foldered legacy fallback case)
 set -euo pipefail
 
 # Real repo containing this helper: the helper lives at
@@ -40,7 +49,8 @@ printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/specs.json
 
 # Copy (not symlink) so the scripts' ${BASH_SOURCE[0]}-relative source of
 # with-ledger-lock.sh resolves to this tmp lib dir.
-for s in spec-allocator.sh ledger-update.sh with-ledger-lock.sh; do
+for s in spec-allocator.sh ledger-update.sh with-ledger-lock.sh \
+         spec-folderize.sh spec-renumber.sh; do
   cp "${real_lib}/${s}" ".specify/extensions/gaia/lib/${s}"
   chmod +x ".specify/extensions/gaia/lib/${s}"
 done
@@ -68,6 +78,41 @@ while [[ $# -gt 0 ]]; do
     --seed-file)
       id="$2"; shift 2
       cat > ".gaia/local/specs/${id}.md" <<EOF
+---
+spec_id: ${id}
+status: in-progress
+---
+
+# ${id}
+EOF
+      ;;
+    --seed-flat)
+      id="$2"; shift 2
+      cat > ".gaia/local/specs/${id}.md" <<EOF
+---
+spec_id: ${id}
+status: draft
+---
+
+# ${id}
+EOF
+      ;;
+    --seed-archived-flat)
+      id="$2"; shift 2
+      mkdir -p .gaia/local/specs/archived
+      cat > ".gaia/local/specs/archived/${id}.md" <<EOF
+---
+spec_id: ${id}
+status: archived
+---
+
+# ${id}
+EOF
+      ;;
+    --seed-folder)
+      id="$2"; shift 2
+      mkdir -p ".gaia/local/specs/${id}"
+      cat > ".gaia/local/specs/${id}/SPEC.md" <<EOF
 ---
 spec_id: ${id}
 status: in-progress

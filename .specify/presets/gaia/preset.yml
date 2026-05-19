@@ -4,7 +4,7 @@ preset:
   id: "gaia"
   name: "GAIA"
   version: "0.1.0"
-  description: "GAIA-shaped artifacts for spec-kit: every /speckit-specify produces a GAIA frontmatter spec, saved to .gaia/local/specs/SPEC-NNN.md."
+  description: "GAIA-shaped artifacts for spec-kit: every /speckit-specify produces a GAIA frontmatter spec, saved to .gaia/local/specs/SPEC-NNN/SPEC.md."
   author: "GAIA"
   repository: "https://github.com/gaia-react/gaia"
   license: "MIT"
@@ -17,7 +17,7 @@ provides:
     - type: "command"
       name: "speckit.specify"
       file: "commands/speckit.specify.md"
-      description: "Wraps core /speckit-specify; redirects output to .gaia/local/specs/SPEC-NNN.md."
+      description: "Wraps core /speckit-specify; redirects output to .gaia/local/specs/SPEC-NNN/SPEC.md."
       replaces: "speckit.specify"
       strategy: "wrap"
 

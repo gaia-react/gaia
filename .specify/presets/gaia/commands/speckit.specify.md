@@ -1,5 +1,5 @@
 ---
-description: 'GAIA-wrapped /speckit-specify: writes through core, then relocates the artifact to .gaia/local/specs/SPEC-NNN.md and stamps GAIA frontmatter.'
+description: 'GAIA-wrapped /speckit-specify: writes through core, then relocates the artifact to .gaia/local/specs/SPEC-NNN/SPEC.md and stamps GAIA frontmatter.'
 ---
 
 # /speckit-specify (GAIA preset)
@@ -19,7 +19,7 @@ If the hook blocks, the agent halts here and surfaces the block message. Do not 
 
 {CORE_TEMPLATE}
 
-## Step 2 — relocate to .gaia/local/specs/SPEC-NNN.md
+## Step 2 — relocate to .gaia/local/specs/SPEC-NNN/SPEC.md
 
 After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
 
@@ -32,7 +32,7 @@ After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
 
    Capture the printed `SPEC-NNN` token.
 
-3. Create `.gaia/local/specs/` if absent. Copy the core artifact to `.gaia/local/specs/<SPEC-NNN>.md`.
+3. Create the SPEC folder (`mkdir -p .gaia/local/specs/<SPEC-NNN>`). Copy the core artifact to `.gaia/local/specs/<SPEC-NNN>/SPEC.md`.
 4. Stamp GAIA frontmatter at the top of the relocated file. If the core artifact has no frontmatter (spec-kit's bundled `spec-template.md` does not), prepend a frontmatter block with these required fields:
 
    ```yaml
@@ -56,7 +56,7 @@ After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
 
 Surface a single confirmation line naming both paths:
 
-> SPEC-NNN written. Core: `<core-path>`; GAIA: `.gaia/local/specs/<SPEC-NNN>.md`.
+> SPEC-NNN written. Core: `<core-path>`; GAIA: `.gaia/local/specs/<SPEC-NNN>/SPEC.md`.
 
 The `after_specify` extension hook fires next and lints the GAIA copy.
 

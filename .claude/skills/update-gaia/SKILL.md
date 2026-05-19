@@ -232,6 +232,21 @@ fi
 
 Persist `INVALIDATED_COUNT` for Step 9.
 
+### Step 8b: Migrate SPEC artifacts to per-SPEC folders
+
+SPEC artifacts live in per-SPEC folders: `.gaia/local/specs/<spec_id>/SPEC.md` (archived: `.gaia/local/specs/archived/<spec_id>/`). `.gaia/local/specs/**` is adopter-owned data the three-way merge never touches, so the freshly-updated runbooks reference the folder layout while the adopter's existing specs may still be flat files. Run the migration script to fold any flat specs into the folder layout. It is idempotent — a no-op when specs are already foldered or none exist — so run it unconditionally:
+
+```bash
+spec_folderize_out=$(bash .specify/extensions/gaia/lib/spec-folderize.sh 2>&1)
+spec_folderize_rc=$?
+```
+
+Parse the result for the Step 9 summary:
+
+- The script writes `spec-folderize: migrated <n> SPEC artifact(s) ...` to stderr on a successful migration. Persist `<n>` as `SPECS_MIGRATED`. On a no-op (already foldered or no specs) the script exits `0` with a `nothing to migrate` line — set `SPECS_MIGRATED=0`.
+- Exit code `4` is a migration conflict: a flat `SPEC-<id>.md` **and** a folder `<id>/SPEC.md` both exist for the same id. The script names both conflicting paths on stderr and changes nothing. **Do not swallow this and do not auto-resolve it.** Capture the conflicting ids/paths from `$spec_folderize_out`, set `SPECS_MIGRATED="conflict"`, and surface it in Step 9 as a blocking action item the user must reconcile by hand.
+- Any other non-zero exit (`2` usage, `3` unresolvable repo root) is a script-invocation error: surface `$spec_folderize_out` to the user and treat it as a blocking action item.
+
 ### Step 9: Summary
 
 Print a table:
@@ -245,8 +260,13 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Conflicts:    <n>  (see .gaia-merge/)
   Deleted:      <n>
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
+  Specs migrated: <n>  (flat .gaia/local/specs files folded into per-SPEC folders)
   Trailer invalidations: <n>  (open PRs stamped v$BASELINE will re-audit on next push)
 ```
+
+Use `SPECS_MIGRATED` for the `Specs migrated` row. If it is `"conflict"`, emit the row as `Specs migrated: conflict — see action item below` and, after the table, print a blocking action item naming the conflicting ids/paths from `$spec_folderize_out`:
+
+> **Action required:** SPEC migration could not complete. A flat `SPEC-<id>.md` and a folder `<id>/SPEC.md` exist for the same id: <conflicting paths>. Resolve by hand (keep one, remove the other), then re-run `bash .specify/extensions/gaia/lib/spec-folderize.sh` to finish the migration. The freshly-updated runbooks reference the folder layout, so leaving this unresolved breaks SPEC tooling.
 
 If `INVALIDATED_COUNT` is `"unknown"`, emit instead:
 

@@ -8,12 +8,12 @@ Fired automatically by spec-kit on the `after_specify` event (mandatory hook). T
 
 ## Locate the artifact
 
-The lint target is the SPEC artifact written by the preceding `/speckit-specify` invocation. In a GAIA project the preset redirects writes into `.gaia/local/specs/SPEC-NNN.md`; in a bare spec-kit project the artifact lives at `specs/<NNN>-<slug>/spec.md`.
+The lint target is the SPEC artifact written by the preceding `/speckit-specify` invocation. In a GAIA project the preset redirects writes into `.gaia/local/specs/SPEC-NNN/SPEC.md`; in a bare spec-kit project the artifact lives at `specs/<NNN>-<slug>/spec.md`.
 
 Resolve the path in this order:
 
 1. If `$ARGUMENTS` carries an explicit path, use it.
-2. Otherwise inspect `.gaia/local/specs/` for a SPEC file modified within the last five minutes (the just-written artifact).
+2. Otherwise inspect `.gaia/local/specs/SPEC-*/SPEC.md` for a SPEC file modified within the last five minutes (the just-written artifact).
 3. Otherwise fall back to `.specify/feature.json` (spec-kit's pointer to the active feature directory) and resolve `<feature-dir>/spec.md`.
 
 If no candidate resolves, surface:

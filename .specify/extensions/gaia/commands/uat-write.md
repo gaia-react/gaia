@@ -8,13 +8,13 @@ Fired automatically by spec-kit on the `before_implement` event (mandatory hook)
 
 ## Locate the active SPEC
 
-The render target is the SPEC artifact whose UATs back the upcoming `/speckit-implement` run. In a GAIA project that artifact lives at `.gaia/local/specs/SPEC-NNN.md`.
+The render target is the SPEC artifact whose UATs back the upcoming `/speckit-implement` run. In a GAIA project that artifact lives at `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 
 Resolve the path in this order (4-step algorithm; locked post-probe — `.specify/feature.json` carries no SPEC backreference, so a feature-cross-walk step was dropped):
 
 1. If `$ARGUMENTS` carries an explicit `SPEC-NNN` id or absolute path, use it.
-2. Otherwise pick the most-recent `.gaia/local/specs/SPEC-NNN.md` with `status: in-progress`, modified within the last 30 minutes.
-3. Otherwise the single `.gaia/local/specs/SPEC-NNN.md` with `status: in-progress` (only if exactly one exists).
+2. Otherwise pick the most-recent `.gaia/local/specs/SPEC-NNN/SPEC.md` with `status: in-progress`, modified within the last 30 minutes.
+3. Otherwise the single `.gaia/local/specs/SPEC-NNN/SPEC.md` with `status: in-progress` (only if exactly one exists).
 4. Otherwise `AskUserQuestion`: list all in-progress SPECs and ask which one to render. Do NOT guess.
 
 The GAIA preset's `/speckit-specify` wrapper relocates and stamps the SPEC immediately after authoring, so the just-written SPEC is the most-recent in-progress entry — step 2 covers the `/speckit-specify` → `/gaia plan` → `/speckit-implement` chain. Step 3 handles the common single-feature case.

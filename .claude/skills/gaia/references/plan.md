@@ -14,10 +14,10 @@ Otherwise, ask: **"What do you want me to orchestrate?"** and wait for the respo
 
 Check the description for a SPEC reference. The canonical form (emitted by `/gaia spec`) is:
 
-    SPEC-NNN: <intent first line> — see .gaia/local/specs/SPEC-NNN.md
+    SPEC-NNN: <intent first line> — see .gaia/local/specs/SPEC-NNN/SPEC.md
 
 Match either pattern:
-- A path matching `.gaia/local/specs/SPEC-\d+\.md`
+- A path matching `.gaia/local/specs/SPEC-\d+/SPEC\.md`
 - A `SPEC-\d+:` prefix at the start of the description
 
 If matched:

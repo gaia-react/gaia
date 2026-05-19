@@ -126,7 +126,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-027.** Run `/gaia spec` end-to-end. When Gate-2 confirmation completes and the canonical save lands at `.gaia/local/specs/SPEC-NNN.md`, a `time_to_resolved_spec` mentorship event emits with the session's question count and elapsed time. Verify by grepping today's mentorship JSONL.
+- **UAT-027.** Run `/gaia spec` end-to-end. When Gate-2 confirmation completes and the canonical save lands at `.gaia/local/specs/SPEC-NNN/SPEC.md`, a `time_to_resolved_spec` mentorship event emits with the session's question count and elapsed time. Verify by grepping today's mentorship JSONL.
 - **UAT-028.** Run `/gaia plan` against an existing SPEC. Mid-flow, request a revision (e.g. ask the planner to add two more dispatch artifacts). When the planner re-emits dispatch artifacts, a `plan_revised` mentorship event emits with the appropriate `revision_class` (`scope_change` for the example above; `sequencing_change` / `dispatch_artifact_refinement` / `bug_fix_added` for other shapes).
 
 **Harness fast-path.** None — these require a live slash-command session.

@@ -126,7 +126,7 @@ Common stall patterns and how to handle them:
 You are not building the feature. You are not writing the code. You
 are building the SPEC artifact — the contract that drives the
 autonomous downstream pipeline. Your output is one file at
-`.gaia/local/specs/SPEC-NNN.md`, immutable from the moment it is
+`.gaia/local/specs/SPEC-NNN/SPEC.md`, immutable from the moment it is
 saved. Treat every UAT you author as something a stranger will read
 six months from now and use to verify a regression.
 

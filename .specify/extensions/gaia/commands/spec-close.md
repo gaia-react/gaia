@@ -19,7 +19,7 @@ If `$ARGUMENTS` matches `SPEC-NNN`, target that SPEC.
 Otherwise, build the candidate list:
 
 1. Caches (deferred-drain candidates): `ls .gaia/local/cache/wiki-promote/*.json 2>/dev/null` → SPEC IDs awaiting drain.
-2. Specs (in-flight or pending disposition): `ls .gaia/local/specs/SPEC-*.md 2>/dev/null` → SPEC IDs (excludes `archived/`).
+2. Specs (in-flight or pending disposition): `ls -d .gaia/local/specs/SPEC-*/ 2>/dev/null` → SPEC IDs from folder names (excludes `archived/`).
 
 If exactly one candidate exists, default to it. If multiple, surface via `AskUserQuestion`:
 
@@ -45,31 +45,31 @@ Track `drained = <bool>` for telemetry and the final report.
 
 ## Step 3 — Disposition prompt
 
-Resolve the SPEC artifact path: `.gaia/local/specs/<spec_id>.md`.
+Resolve the SPEC folder: `.gaia/local/specs/<spec_id>/` (canonical artifact at `.gaia/local/specs/<spec_id>/SPEC.md`).
 
-If the file is missing, set `disposition = "skipped"`, skip Step 4, and continue to Step 5. Report line surfaces "(artifact missing; nothing to dispose)".
+If the folder is missing, set `disposition = "skipped"`, skip Step 4, and continue to Step 5. Report line surfaces "(artifact missing; nothing to dispose)".
 
 Surface via `AskUserQuestion`:
 
 - Question: `<spec_id> implementation complete and PR merged. Disposition?`
 - Header: `SPEC dispose`
 - Options:
-  - `{ label: "Archive (Recommended)", description: "Move to .gaia/local/specs/archived/ with status=archived. Preserves the SPEC artifact for posterity. Wiki content was already promoted at implement time; no re-summarization." }`
-  - `{ label: "Delete", description: "Remove the SPEC artifact. Local-only (.gaia/local/ is gitignored), so the SPEC is not recoverable from git history." }`
-  - `{ label: "Keep in place", description: "Leave the artifact at .gaia/local/specs/<spec_id>.md unchanged. Choose if undecided — re-run /gaia spec close <spec_id> later to revisit." }`
+  - `{ label: "Archive (Recommended)", description: "Move the SPEC folder to .gaia/local/specs/archived/ with status=archived. Preserves the SPEC artifact and its siblings for posterity. Wiki content was already promoted at implement time; no re-summarization." }`
+  - `{ label: "Delete", description: "Remove the SPEC folder. Local-only (.gaia/local/ is gitignored), so the SPEC is not recoverable from git history." }`
+  - `{ label: "Keep in place", description: "Leave the folder at .gaia/local/specs/<spec_id>/ unchanged. Choose if undecided — re-run /gaia spec close <spec_id> later to revisit." }`
 
 ## Step 4 — Apply disposition
 
 **On `Archive`:**
 
 1. `mkdir -p .gaia/local/specs/archived/`.
-2. Read `.gaia/local/specs/<spec_id>.md`. Update frontmatter: set `status: archived`; set `archived_at: <ISO 8601 UTC>`. Preserve all other fields verbatim.
-3. Write the updated artifact to `.gaia/local/specs/archived/<spec_id>.md`.
-4. `rm .gaia/local/specs/<spec_id>.md`.
+2. If `.gaia/local/specs/archived/<spec_id>/` already exists, the SPEC is already archived — report `<spec_id> already archived at .gaia/local/specs/archived/<spec_id>/.`, set `disposition = "archive"`, and skip the remaining sub-steps.
+3. Edit `.gaia/local/specs/<spec_id>/SPEC.md` frontmatter in place: set `status: archived`; set `archived_at: <ISO 8601 UTC>`. Preserve all other fields verbatim.
+4. Move the whole folder: `mv .gaia/local/specs/<spec_id> .gaia/local/specs/archived/<spec_id>`. Sibling artifacts move with it.
 
 **On `Delete`:**
 
-1. `rm .gaia/local/specs/<spec_id>.md`.
+1. `rm -rf .gaia/local/specs/<spec_id>`.
 
 **On `Keep in place`:**
 
@@ -106,9 +106,9 @@ The compute-profile command short-circuits when mentorship is disabled (no-op ex
 
 Print one of (prefix with `Drained <N> wiki pages. ` if Step 2 drained, where `<N>` is the count from wiki-promote's report):
 
-- `<spec_id> closed. Archived to .gaia/local/specs/archived/<spec_id>.md.`
-- `<spec_id> closed. SPEC artifact deleted.`
-- `<spec_id> closed. SPEC artifact kept at .gaia/local/specs/<spec_id>.md.`
+- `<spec_id> closed. Archived to .gaia/local/specs/archived/<spec_id>/.`
+- `<spec_id> closed. SPEC folder deleted.`
+- `<spec_id> closed. SPEC folder kept at .gaia/local/specs/<spec_id>/.`
 - `<spec_id> closed. (Artifact missing; nothing to dispose.)`
 
 If wiki content was promoted, also surface: `Run /gaia wiki consolidate periodically to keep the wiki coherent across SPECs.`
@@ -117,5 +117,5 @@ If wiki content was promoted, also surface: `Run /gaia wiki consolidate periodic
 
 - **Disposition does NOT re-summarize into the wiki.** `wiki-promote` (the `after_implement` hook) already wrote `wiki/<domain>/<slug>.md` pages with `promoted_from: <spec_id>` provenance at implement time. Re-summarizing here would duplicate. To consolidate redundant or superseded wiki pages across SPECs, run `/gaia wiki consolidate`.
 - This command never touches `wiki/`. The wiki-promote → wiki-sync chain owns wiki writes.
-- Archive is reversible (rename back). Delete is local-only — `.gaia/local/` is gitignored, so the SPEC is not recoverable from git history. Default to Archive if uncertain.
+- Archive is reversible (move the folder back). Delete is local-only — `.gaia/local/` is gitignored, so the SPEC is not recoverable from git history. Default to Archive if uncertain.
 - The chain from wiki-promote Step 8 fires only on the immediate-merge path. The deferred-drain path runs spec-close once and does not re-enter via the chain (see Step 2's `drained: true` guard).

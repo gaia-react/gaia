@@ -1,6 +1,6 @@
 # /gaia spec
 
-Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN.md` and prompts to chain into `/gaia plan`. Do not implement anything — this skill produces an artifact and stops.
+Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and prompts to chain into `/gaia plan`. Do not implement anything — this skill produces an artifact and stops.
 
 ## Argument parsing
 
@@ -226,7 +226,7 @@ Persist the answer as `gh_mirror_optin: <bool>` in working memory for this sessi
 
 Run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an in-progress SPEC already exists.
 
-The id may name a **draft-phase** session — a SPEC allocated in another terminal whose interactive loop has not yet reached the canonical save (step 8), so `.gaia/local/specs/SPEC-NNN.md` may not exist yet and the live draft is at `.gaia/local/cache/draft-SPEC-NNN.md`. The `WORKING`-selection below resolves this correctly, preferring the draft cache when the canonical file is absent or older.
+The id may name a **draft-phase** session — a SPEC allocated in another terminal whose interactive loop has not yet reached the canonical save (step 8), so `.gaia/local/specs/SPEC-NNN/SPEC.md` may not exist yet and the live draft is at `.gaia/local/cache/draft-SPEC-NNN.md`. The `WORKING`-selection below resolves this correctly, preferring the draft cache when the canonical file is absent or older.
 
 **Auto-mode exception:** skip the resume prompt entirely. Always start new — append `spec_started` telemetry with `resumed: false, auto: true` and proceed to step 3 with a fresh allocation. The in-progress SPEC (if any) remains untouched. Per Auto-mode rule 3 the user's `auto` invocation is the signal that they want a fresh artifact; resuming an existing draft into a non-interactive context risks silently overwriting work in progress.
 
@@ -234,7 +234,7 @@ Before prompting, gather context for an informed choice. The newer of the canoni
 
 ```bash
 SPEC_ID="<from allocator>"
-SPEC_PATH=".gaia/local/specs/${SPEC_ID}.md"
+SPEC_PATH=".gaia/local/specs/${SPEC_ID}/SPEC.md"
 DRAFT_PATH=".gaia/local/cache/draft-${SPEC_ID}.md"
 if [[ -f "$DRAFT_PATH" && "$DRAFT_PATH" -nt "$SPEC_PATH" ]]; then
   WORKING="$DRAFT_PATH"
@@ -266,11 +266,11 @@ Honor the user's choice. Never silently overwrite, never silently start new.
 
 ### 3. /speckit-specify (initial draft)
 
-Invoke `/speckit-specify` with the description from step 1. The GAIA preset (registered via `specify preset add`) wraps core with `{CORE_TEMPLATE}` and replaces `spec-template`, so the artifact is GAIA-shaped (frontmatter, immutable flag, `SPEC-NNN` id) and lands at `.gaia/local/specs/SPEC-NNN.md`. The preset's body invokes `lib/spec-allocator.sh next "$PWD"` to allocate the SPEC id.
+Invoke `/speckit-specify` with the description from step 1. The GAIA preset (registered via `specify preset add`) wraps core with `{CORE_TEMPLATE}` and replaces `spec-template`, so the artifact is GAIA-shaped (frontmatter, immutable flag, `SPEC-NNN` id) and lands at `.gaia/local/specs/SPEC-NNN/SPEC.md`. The preset's body invokes `lib/spec-allocator.sh next "$PWD"` to allocate the SPEC id.
 
 Spec-kit fires the `before_specify` hook (constitution + version-pin check) automatically before this step runs. If the hook blocks, surface its message and halt.
 
-When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN.md`. Cache the working draft path; you will read and re-render it across the rest of these steps. (Step 2 already appended `spec_started` telemetry for both fresh and resumed flows.)
+When core completes, `/speckit-gaia-spec`'s preset relocates the artifact to `.gaia/local/specs/SPEC-NNN/SPEC.md`. Cache the working draft path; you will read and re-render it across the rest of these steps. (Step 2 already appended `spec_started` telemetry for both fresh and resumed flows.)
 
 Initialize the session-shape cache for the just-allocated SPEC id (no-op if it already exists from a resume):
 
@@ -470,9 +470,15 @@ On confirmation:
 
 Only after gate-2 confirmation may you proceed to step 8.
 
-### 8. Save to .gaia/local/specs/SPEC-NNN.md
+### 8. Save to .gaia/local/specs/SPEC-NNN/SPEC.md
 
-Write the confirmed draft to `.gaia/local/specs/SPEC-NNN.md` (using the `spec_id` allocated in step 3). This is the canonical save location — never anywhere else, never duplicate copies.
+Create the SPEC folder, then write the confirmed draft to its canonical inner file (using the `spec_id` allocated in step 3):
+
+```bash
+mkdir -p .gaia/local/specs/${SPEC_ID}
+```
+
+Write to `.gaia/local/specs/SPEC-NNN/SPEC.md`. This is the canonical save location — never anywhere else, never duplicate copies. The folder is the archival unit; sibling artifacts live beside `SPEC.md` in the same folder.
 
 Update the frontmatter `updated` field to today's date.
 
@@ -481,7 +487,7 @@ After the canonical write succeeds:
 2. **Update the ledger row:** flip the row in `.gaia/specs.json` from `status: draft` to `status: in-progress` and stamp the intent (first prose line of the SPEC's `intent` field) for at-a-glance scanning. Failure is non-blocking — log to stderr and continue. The ledger is a fast index over git; the SPEC artifact and git history remain authoritative.
 
 ```bash
-SPEC_PATH=".gaia/local/specs/${SPEC_ID}.md"
+SPEC_PATH=".gaia/local/specs/${SPEC_ID}/SPEC.md"
 INTENT=$(awk '
   /^intent:[[:space:]]*\|/ { in_block=1; next }
   /^intent:[[:space:]]*[^|[:space:]]/ {
@@ -502,7 +508,7 @@ bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
 4. **Emit `time_to_resolved_spec`:** read the session-shape cache, derive `area_tags` from the SPEC's UAT clusters, fire one mentorship event, then delete the cache. Failure to emit must NEVER block the save:
 
 ```bash
-SPEC_PATH=".gaia/local/specs/${SPEC_ID}.md"
+SPEC_PATH=".gaia/local/specs/${SPEC_ID}/SPEC.md"
 CACHE=".gaia/local/cache/spec-session-${SPEC_ID}.json"
 if [[ -f "$CACHE" ]]; then
   START_AT="$(jq -r '.start_at' "$CACHE" 2>/dev/null || echo "")"
@@ -577,7 +583,7 @@ If `gh_mirror_optin` (captured at step 1) is `false`, **skip this step entirely*
 If `gh_mirror_optin` is `true`, run:
 
 ```bash
-bash .specify/extensions/gaia/lib/gh-mirror.sh "$PWD" "<spec-id>" ".gaia/local/specs/<spec-id>.md"
+bash .specify/extensions/gaia/lib/gh-mirror.sh "$PWD" "<spec-id>" ".gaia/local/specs/<spec-id>/SPEC.md"
 ```
 
 The script handles the conditional logic without intervention:
@@ -607,7 +613,7 @@ On `No`, stop and report to the user that the SPEC is saved and `/gaia plan` can
 
 Construct the dispatch input string in this exact form (literal interpolation, no quotes around the result):
 
-    SPEC-NNN: <intent first line> — see <absolute path to .gaia/local/specs/SPEC-NNN.md>
+    SPEC-NNN: <intent first line> — see <absolute path to .gaia/local/specs/SPEC-NNN/SPEC.md>
 
 where:
 - `SPEC-NNN` is the allocated SPEC id
@@ -651,7 +657,7 @@ Spawn a fresh Agent with the same template as 11a. Parse its return, append the 
 
 Print a single summary block after the loop exits:
 
-> SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN.md`.
+> SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 > Plans authored: <count>
 >   - <PLAN_DIRS[0]>
 >   - <PLAN_DIRS[1]>

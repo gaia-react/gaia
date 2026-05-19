@@ -2,21 +2,21 @@
 
 Maps each of SPEC-001's UAT-001..UAT-018 to the v2 implementation. Every UAT is cross-referenced to the artifact (manifest, command body, helper script, or sandbox transcript) that satisfies it.
 
-Source SPEC: `.gaia/local/specs/SPEC-001.md` (frozen).
-Revised contracts: `.gaia/local/specs/SPEC-001-revised-contracts.md`.
+Source SPEC: `.gaia/local/specs/SPEC-001/SPEC.md` (frozen).
+Revised contracts: `.gaia/local/specs/SPEC-001/REVISED-CONTRACTS.md`.
 Sandbox transcript: `.specify/extensions/gaia/test/v2-validation.md`.
 
 ## UAT-001 — SPEC artifact shape
 
 **Given** spec-kit installed at the GAIA pin, GAIA extension loaded, constitution populated.
 **When** `/gaia spec` runs through both gates.
-**Then** SPEC artifact at `.gaia/local/specs/SPEC-NNN.md` has all schema fields populated, no placeholders, `status: in-progress`, `immutable: true`, stable `UAT-NNN` ids.
+**Then** SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` has all schema fields populated, no placeholders, `status: in-progress`, `immutable: true`, stable `UAT-NNN` ids.
 
 Evidence:
 
 - `.specify/extensions/gaia/templates/spec-template.md` — frontmatter with `spec_id`, `type`, `status: in-progress`, `immutable: true`, `wiki_promote_default`, `chain_trigger`, plus body fields.
 - `.specify/presets/gaia/templates/spec-template.md` — same skeleton, applied via the preset for any `/speckit-specify` entry path.
-- `.claude/skills/gaia/references/spec.md` Step 8 — explicit save target `.gaia/local/specs/SPEC-NNN.md`.
+- `.claude/skills/gaia/references/spec.md` Step 8 — explicit save target `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 - `lib/spec-allocator.sh` — monotonic zero-padded `SPEC-NNN` ids.
 
 ## UAT-002 — preset overrides applied at /specify time
@@ -99,7 +99,7 @@ Evidence (v2 reshape — slash-command, not shell script):
 
 - `.specify/extensions/gaia/extension.yml` — `hooks.after_specify.command: speckit.gaia.lint` (mandatory).
 - `.specify/extensions/gaia/commands/lint.md` — slash-command body that invokes `bash .specify/extensions/gaia/lib/lint.sh <path>` and surfaces findings.
-- `lib/lint.sh` — pure helper: stdin-free, takes a path arg, returns `{"ok": bool, "findings": [...]}`. Smoke test against `.gaia/local/specs/SPEC-001.md` returns `{"ok":true,"findings":[]}`.
+- `lib/lint.sh` — pure helper: stdin-free, takes a path arg, returns `{"ok": bool, "findings": [...]}`. Smoke test against `.gaia/local/specs/SPEC-001/SPEC.md` returns `{"ok":true,"findings":[]}`.
 - Sandbox transcript: `after_specify` event renders `EXECUTE_COMMAND: speckit.gaia.lint` directive automatically.
 - The block semantics live in `references/spec.md` Step 9 — the wrapper agent reads the lint failure message and chooses not to advance past save.
 
@@ -158,7 +158,7 @@ Evidence:
 Evidence:
 
 - `.claude/skills/gaia/references/spec.md` Step 2 — pre-flight `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"` returns the in-progress SPEC id (or `none`); on hit, prompt with the normative phrasing and two options.
-- `lib/spec-allocator.sh in_progress <root>` — scans `.gaia/local/specs/SPEC-*.md` for frontmatter `status: in-progress`. Smoke test against the live repo finds nothing in-progress (SPEC-001 is in-progress per its own frontmatter).
+- `lib/spec-allocator.sh in_progress <root>` — scans `.gaia/local/specs/SPEC-*/SPEC.md` for frontmatter `status: in-progress`. Smoke test against the live repo finds nothing in-progress (SPEC-001 is in-progress per its own frontmatter).
 
 ## UAT-014 — research subagent dispatch with announce
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# spec-renumber.sh — Renumber a SPEC. Renames the local SPEC file, updates its
-# frontmatter, and rewrites the .gaia/specs.json ledger row. Does NOT touch
-# external state (branch names, GH issue titles, commit-message history) — those
-# are reported as next steps for the caller to handle consciously.
+# spec-renumber.sh — Renumber a SPEC. Renames the local SPEC folder, updates the
+# inner SPEC.md frontmatter, and rewrites the .gaia/specs.json ledger row. The
+# inner SPEC.md keeps its name; any sibling artifacts in the folder move with it.
+# Does NOT touch external state (branch names, GH issue titles, commit-message
+# history) — those are reported as next steps for the caller to handle consciously.
 #
 # Usage:
 #   spec-renumber.sh <repo_root> <old_id> <new_id>
@@ -10,7 +11,7 @@
 # Refuses if:
 #   - repo_root is not a git working tree
 #   - old/new id is not in SPEC-NNN form
-#   - old SPEC file is missing
+#   - old SPEC folder is missing
 #   - new id is already taken (per spec-allocator.sh self-heal scan)
 set -euo pipefail
 
@@ -43,16 +44,18 @@ if [ "$old_id" = "$new_id" ]; then
   exit 2
 fi
 
-old_path="${specs_dir}/${old_id}.md"
-new_path="${specs_dir}/${new_id}.md"
+old_path="${specs_dir}/${old_id}"
+new_path="${specs_dir}/${new_id}"
+old_spec="${old_path}/SPEC.md"
+new_spec="${new_path}/SPEC.md"
 
-if [ ! -f "$old_path" ]; then
-  echo "spec-renumber: source SPEC file not found at $old_path" >&2
+if [ ! -f "$old_spec" ]; then
+  echo "spec-renumber: source SPEC file not found at $old_spec" >&2
   exit 4
 fi
 
 if [ -e "$new_path" ]; then
-  echo "spec-renumber: target file $new_path already exists" >&2
+  echo "spec-renumber: target folder $new_path already exists" >&2
   exit 4
 fi
 
@@ -74,14 +77,19 @@ if [ -x "$allocator" ] || [ -f "$allocator" ]; then
       git -C "$repo_root" for-each-ref --format='%(refname:short)' \
         'refs/heads/spec-*' 'refs/remotes/*/spec-*' 2>/dev/null \
         | sed -nE 's|^.*/?spec-0*([0-9]+)(-.*)?$|\1|p' || true
-      find "$specs_dir" -maxdepth 1 -type f -name 'SPEC-*.md' -print 2>/dev/null \
-        | sed -nE 's|.*/SPEC-0*([0-9]+)\.md$|\1|p' || true
+      find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
+        | sed -nE 's|.*/SPEC-0*([0-9]+)/SPEC\.md$|\1|p' || true
     )
   fi
 fi
 
-# 1. Move the file.
-mv "$old_path" "$new_path"
+# 1. Move the folder whole. Inner SPEC.md keeps its name; siblings ride along.
+#    git mv when the inner SPEC.md is tracked, plain mv otherwise.
+if git -C "$repo_root" ls-files --error-unmatch "$old_spec" >/dev/null 2>&1; then
+  git -C "$repo_root" mv "$old_path" "$new_path"
+else
+  mv "$old_path" "$new_path"
+fi
 
 # 2. Rewrite frontmatter spec_id (and stamp renamed_from for traceability).
 #    Operates on the YAML frontmatter block between the first two `---` lines.
@@ -98,8 +106,8 @@ awk -v new_id="$new_id" -v old_id="$old_id" '
   }
   in_fm && /^spec_id:[[:space:]]/ { print "spec_id: " new_id; next }
   { print }
-' "$new_path" > "$tmp_spec"
-mv "$tmp_spec" "$new_path"
+' "$new_spec" > "$tmp_spec"
+mv "$tmp_spec" "$new_spec"
 
 # 3. Update ledger row in place.
 if [ -f "$ledger_path" ]; then
@@ -114,8 +122,12 @@ if [ -f "$ledger_path" ]; then
     mv "$tmp_ledger" "$ledger_path"
   else
     rm -f "$tmp_ledger"
-    echo "spec-renumber: failed to update ledger; reverting file move" >&2
-    mv "$new_path" "$old_path"
+    echo "spec-renumber: failed to update ledger; reverting folder move" >&2
+    if git -C "$repo_root" ls-files --error-unmatch "$new_spec" >/dev/null 2>&1; then
+      git -C "$repo_root" mv "$new_path" "$old_path"
+    else
+      mv "$new_path" "$old_path"
+    fi
     exit 5
   fi
 fi
@@ -133,7 +145,7 @@ if [ -n "$current_branch" ] && [[ "$current_branch" =~ spec-0*${old_num}(-|$) ]]
 fi
 
 # GH issue title — flag if the SPEC frontmatter has a stamped issue url.
-issue_url="$(awk '/^---[[:space:]]*$/{c++; if(c==2)exit} /^gh_issue_url:/{sub(/^gh_issue_url:[[:space:]]*/,""); print}' "$new_path" || true)"
+issue_url="$(awk '/^---[[:space:]]*$/{c++; if(c==2)exit} /^gh_issue_url:/{sub(/^gh_issue_url:[[:space:]]*/,""); print}' "$new_spec" || true)"
 if [ -n "$issue_url" ]; then
   echo "  - GH issue $issue_url was titled with $old_id."
   echo "    Update:   gh issue edit <number> --title '$new_id: <intent>'"

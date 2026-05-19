@@ -105,8 +105,8 @@ _run_parallel_next() {
   [ "$output" = "SPEC-007" ]
 }
 
-@test "11: in_progress legacy fallback — canonical file, no ledger row" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-file SPEC-013)"
+@test "11: in_progress fallback — canonical folder file, no ledger row" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-013)"
   cd "$REPO"
   run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
   [ "$status" -eq 0 ]
