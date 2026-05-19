@@ -10,6 +10,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-05-19
+
+### Added
+
+- RUNNING sentinel + concurrent orchestrator detection (#180)
+
+### Changed
+
+- drop second inline PR ref in Release Workflow prose
+- drop inline PR ref in Release Workflow prose
+- correct the release PR merge step
+
+### Fixed
+
+- health-audit distribution-boundary remediation (#182)
+- Linux WSL compatibility for husky hook and CI workflow permissions (#181)
+- atomic mkdir prevents TOCTOU race on concurrent plan creation (#179)
+
 ## [1.2.0] — 2026-05-12
 
 ### Added
