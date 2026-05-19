@@ -15,8 +15,11 @@
 #
 # Fail-closed: returns 0 (true, "foreign") ONLY when it can POSITIVELY resolve
 # a target whose git toplevel differs from the home repo (or an explicit
-# `gh -R owner/repo` whose repo name differs). Any ambiguity or parse failure
-# returns 1 so the caller still enforces — protection never weakens silently.
+# `gh -R/--repo owner/repo` whose repo name differs). Any ambiguity, parse
+# failure, OR a deliberately under-specified form it cannot model exactly
+# (e.g. multiple `git -C` flags, where git's last-wins semantics defeat a
+# single capture) returns 1 so the caller still enforces — protection never
+# weakens silently, even for crafted command strings.
 
 cmd_targets_foreign_repo() {
   local cmd="$1"
@@ -25,15 +28,24 @@ cmd_targets_foreign_repo() {
   home_top=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
   [ -n "$home_top" ] || return 1
 
-  # 1. Explicit `gh ... -R owner/repo` / `--repo owner/repo`. gh ignores cwd
-  #    when this is given, so it is the authoritative target.
-  ghrepo=$(printf '%s' "$cmd" | sed -nE 's/.*(-R|--repo)[[:space:]]+([^[:space:]]+).*/\2/p' | head -1)
+  # 1. Explicit `gh ... -R owner/repo` / `--repo owner/repo` (space OR `=`
+  #    form). gh ignores cwd when this is given, so it is authoritative.
+  #    Comparison is repo-NAME only (basename): a same-named fork
+  #    (`-R myfork/<homename>`) classifies as home and over-enforces —
+  #    fail-closed and safe, but worth knowing for fork workflows.
+  ghrepo=$(printf '%s' "$cmd" | sed -nE 's/.*(-R|--repo)[[:space:]=]+([^[:space:]]+).*/\2/p' | head -1)
   if [ -n "$ghrepo" ]; then
     [ "${ghrepo##*/}" != "${home_top##*/}" ] && return 0
     return 1
   fi
 
-  # 2. Explicit `git -C <path>`.
+  # 2. Explicit `git -C <path>`. git applies multiple -C cumulatively with
+  #    the LAST winning, which a single-capture regex cannot model. More
+  #    than one -C is therefore genuinely ambiguous here: stay fail-closed
+  #    (return 1 = enforce) rather than risk a wrong "foreign" verdict.
+  if [ "$(printf '%s' "$cmd" | grep -oE 'git[[:space:]]+-C[[:space:]]|[[:space:]]-C[[:space:]]' | wc -l | tr -d ' ')" -gt 1 ]; then
+    return 1
+  fi
   target_dir=$(printf '%s' "$cmd" | sed -nE 's/.*git[[:space:]]+-C[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
 
   # 3. Leading `cd <path> &&|;` before the git/gh invocation.
