@@ -1,6 +1,6 @@
 {
   "name": "gaia",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "GAIA: The React workflow for Claude",
   "author": "Steven Sacks <stevensacks@gmail.com>",
   "sideEffects": false,
