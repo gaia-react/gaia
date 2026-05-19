@@ -9,6 +9,16 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # Only act on git commands — short-circuit everything else
 [[ "$cmd" =~ (^|[[:space:]&;|])git([[:space:]]|$) ]] || exit 0
 
+# Repo-scope: this repo's main-branch policy governs this repo only. A git
+# command aimed at a different repo (e.g. `git -C ../other push origin main`
+# or `cd ../other && git push`) is out of scope — allow it. Fail-closed: any
+# ambiguity falls through and the policy still enforces.
+[ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
+if type cmd_targets_foreign_repo >/dev/null 2>&1 \
+   && cmd_targets_foreign_repo "$cmd"; then
+  exit 0
+fi
+
 deny() {
   jq -n --arg r "$1" '{
     hookSpecificOutput: {
