@@ -13,6 +13,7 @@ down; no reliance on the real project `.gaia/specs.json`.
 |------|---------------|
 | `with-ledger-lock.bats` | The mutex helper in isolation (Contract C1): acquire/release, exit-code passthrough, no-stdout rule, forced mkdir fallback, acquisition timeout → 75, stale-lock recovery, flock path when present. |
 | `spec-allocator-concurrency.bats` | Allocator + ledger-update concurrency (Contracts C2/C3): N-parallel `next` with no lost rows and no duplicate ids (real flock and forced fallback), stale-lock recovery, `in_progress` draft surfacing + legacy fallback + none, read-only modes take no lock, exit-code preservation, and the cross-script `ledger-update` racing `next` interleaving. |
+| `spec-folder-layout.bats` | Per-SPEC folder layout + migration (Contract C7): `spec-folderize.sh` happy path (flat + `archived/` → `<id>/SPEC.md`, byte-identical contents), idempotent re-run, `--dry-run` no-op, empty-tree no-op, flat+foldered conflict → exit 4, tracked-vs-untracked move strategy (`git mv` vs `mv`); allocator `highest`/`next`/`in_progress` over foldered specs (`next` creates no folder, ledger-first wins, foldered fallback resolves); `spec-renumber.sh` folder rename keeping `SPEC.md` named `SPEC.md` with siblings carried + collision guard; a flat→folderize→`next`→renumber→archive round-trip; read-only modes take no lock and create no folder. |
 
 The N-parallel test uses a start-flag barrier so the `next` calls genuinely
 overlap. A passing run with no contention proves nothing — with the barrier,
