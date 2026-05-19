@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.2.2] — 2026-05-19
+
+### Fixed
+
+- drop default id-token: write from pnpm-audit workflow
+
 ## [1.2.1] — 2026-05-19
 
 ### Added
