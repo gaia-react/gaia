@@ -3,13 +3,17 @@
  *
  * Bundle-time discipline for the GAIA release tarball. Runs inside
  * `release.yml` between the staging step (rsync from `git ls-files` minus
- * `.gaia/release-exclude`) and the final `tar -czf`. Two transforms run
+ * `.gaia/release-exclude`) and the final `tar -czf`. Three transforms run
  * in order against the staging tree:
  *
  *   1. marker-strip — remove maintainer-only blocks delimited by HTML
  *      comment markers. Source becomes superset; bundle is subset.
  *
- *   2. leak-check — run codified audit patterns from
+ *   2. json-strip — delete maintainer-only keys from structured JSON files
+ *      using dot-notation paths (e.g. "scripts.test:forensics"). Dots are
+ *      path separators; key names must not contain literal dots.
+ *
+ *   3. leak-check — run codified audit patterns from
  *      `.claude/rules/wiki-style.md` Audit section + the distribution-
  *      boundary classes in `.gaia/cli/health/taxonomy.md` against the
  *      post-strip staging tree. Non-empty match = build failure with a
@@ -80,12 +84,21 @@ const LeakCheckSchema = z.object({
   type: z.literal('leak-check'),
 });
 
+const JsonStripSchema = z.object({
+  keys: z.array(z.string().min(1)).min(1),
+  paths: z.array(z.string().min(1)).min(1),
+  type: z.literal('json-strip'),
+});
+
 const ConfigSchema = z.object({
-  transforms: z.array(z.union([MarkerStripSchema, LeakCheckSchema])).min(1),
+  transforms: z
+    .array(z.union([MarkerStripSchema, JsonStripSchema, LeakCheckSchema]))
+    .min(1),
 });
 
 export type ScrubConfig = z.infer<typeof ConfigSchema>;
 type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
+type JsonStripTransform = z.infer<typeof JsonStripSchema>;
 type LeakCheckTransform = z.infer<typeof LeakCheckSchema>;
 type LeakCheckEntry = LeakCheckTransform['checks'][number];
 
@@ -256,6 +269,84 @@ const applyMarkerStrip = (
 };
 
 // ---------------------------------------------------------------------------
+// JSON strip
+// ---------------------------------------------------------------------------
+
+export type JsonStripResult = {
+  filesTouched: readonly string[];
+  keysRemoved: number;
+};
+
+const deleteKeyPath = (
+  obj: Record<string, unknown>,
+  segments: readonly string[]
+): boolean => {
+  if (segments.length === 0) return false;
+
+  const [head, ...rest] = segments as [string, ...string[]];
+
+  if (rest.length === 0) {
+    if (!Object.prototype.hasOwnProperty.call(obj, head)) return false;
+
+    delete obj[head];
+
+    return true;
+  }
+
+  const next = obj[head];
+
+  if (typeof next !== 'object' || next === null || Array.isArray(next)) {
+    return false;
+  }
+
+  return deleteKeyPath(next as Record<string, unknown>, rest);
+};
+
+const applyJsonStrip = (
+  stagingRoot: string,
+  files: readonly string[],
+  transform: JsonStripTransform
+): JsonStripResult => {
+  const filesTouched: string[] = [];
+  let keysRemoved = 0;
+  const keySegments = transform.keys.map((k) => k.split('.'));
+
+  for (const relativePath of files) {
+    if (!matchesAnyGlob(relativePath, transform.paths)) continue;
+
+    const absolutePath = path.join(stagingRoot, relativePath);
+    let parsed: unknown;
+
+    try {
+      parsed = JSON.parse(readFileSync(absolutePath, 'utf8'));
+    } catch (error) {
+      throw new Error(
+        `Failed to parse JSON at ${relativePath}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      continue;
+    }
+
+    const obj = parsed as Record<string, unknown>;
+    let removed = 0;
+
+    for (const segments of keySegments) {
+      if (deleteKeyPath(obj, segments)) removed++;
+    }
+
+    if (removed > 0) {
+      writeFileSync(absolutePath, `${JSON.stringify(obj, null, 2)}\n`, 'utf8');
+      filesTouched.push(relativePath);
+      keysRemoved += removed;
+    }
+  }
+
+  return {filesTouched, keysRemoved};
+};
+
+// ---------------------------------------------------------------------------
 // Leak check
 // ---------------------------------------------------------------------------
 
@@ -382,6 +473,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 // ---------------------------------------------------------------------------
 
 type Report = {
+  json_strip: {
+    files_touched: readonly string[];
+    keys_removed: number;
+  };
   leaks: readonly Leak[];
   marker_strip: {
     blocks_stripped: number;
@@ -405,6 +500,9 @@ const renderHumanReport = (report: Report, jsonMode: boolean): string => {
 
   out.push(
     `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`
+  );
+  out.push(
+    `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`
   );
 
   if (report.unbalanced_markers.length > 0) {
@@ -514,6 +612,8 @@ export const run = (
   let stripBlocks = 0;
   const stripFiles: string[] = [];
   const unbalanced: Array<{file: string; line: number; reason: string}> = [];
+  let jsonStripKeysRemoved = 0;
+  const jsonStripFiles: string[] = [];
   const leaks: Leak[] = [];
 
   try {
@@ -527,8 +627,15 @@ export const run = (
         continue;
       }
 
-      // After marker-strip lands, leak-check sees the post-strip tree
-      // because we re-read each file fresh inside runLeakCheck.
+      if (transform.type === 'json-strip') {
+        const result = applyJsonStrip(stagingDir, stagedFiles, transform);
+        jsonStripKeysRemoved += result.keysRemoved;
+        jsonStripFiles.push(...result.filesTouched);
+        continue;
+      }
+
+      // After marker-strip and json-strip land, leak-check sees the
+      // post-strip tree because we re-read each file fresh inside runLeakCheck.
       for (const check of transform.checks) {
         leaks.push(...runLeakCheck(stagingDir, stagedFiles, check));
       }
@@ -544,6 +651,10 @@ export const run = (
   }
 
   const report: Report = {
+    json_strip: {
+      files_touched: jsonStripFiles,
+      keys_removed: jsonStripKeysRemoved,
+    },
     leaks,
     marker_strip: {
       blocks_stripped: stripBlocks,

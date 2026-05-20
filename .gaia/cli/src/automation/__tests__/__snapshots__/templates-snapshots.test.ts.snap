@@ -17,6 +17,8 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  # Add \`id-token: write\` only if your registry authenticates \`pnpm audit\`
+  # via OIDC / workload-identity federation rather than a static _authToken.
 
 concurrency:
   group: gaia-ci-pnpm-audit
@@ -333,6 +335,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  id-token: write
 
 concurrency:
   group: gaia-ci-update-deps
@@ -541,6 +544,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      id-token: write
     strategy:
       fail-fast: false
       matrix: \${{ fromJson(needs.run.outputs.wave_b_matrix) }}
@@ -668,6 +672,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  id-token: write
 
 concurrency:
   group: gaia-ci-wiki
