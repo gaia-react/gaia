@@ -23177,8 +23177,13 @@ var LeakCheckSchema = external_exports.object({
   ).min(1),
   type: external_exports.literal("leak-check")
 });
+var JsonStripSchema = external_exports.object({
+  keys: external_exports.array(external_exports.string().min(1)).min(1),
+  paths: external_exports.array(external_exports.string().min(1)).min(1),
+  type: external_exports.literal("json-strip")
+});
 var ConfigSchema = external_exports.object({
-  transforms: external_exports.array(external_exports.union([MarkerStripSchema, LeakCheckSchema])).min(1)
+  transforms: external_exports.array(external_exports.union([MarkerStripSchema, JsonStripSchema, LeakCheckSchema])).min(1)
 });
 var REGEX_SPECIAL = /[.+^$()[\]{}|\\]/g;
 var SENTINEL_DIRSTAR = " DIRSTAR ";
@@ -23263,6 +23268,52 @@ var applyMarkerStrip = (stagingRoot, files, transform2) => {
   }
   return { blocksStripped, filesTouched, unbalanced };
 };
+var deleteKeyPath = (obj, segments) => {
+  if (segments.length === 0) return false;
+  const [head, ...rest] = segments;
+  if (rest.length === 0) {
+    if (!Object.prototype.hasOwnProperty.call(obj, head)) return false;
+    delete obj[head];
+    return true;
+  }
+  const next = obj[head];
+  if (typeof next !== "object" || next === null || Array.isArray(next)) {
+    return false;
+  }
+  return deleteKeyPath(next, rest);
+};
+var applyJsonStrip = (stagingRoot, files, transform2) => {
+  const filesTouched = [];
+  let keysRemoved = 0;
+  const keySegments = transform2.keys.map((k) => k.split("."));
+  for (const relativePath of files) {
+    if (!matchesAnyGlob(relativePath, transform2.paths)) continue;
+    const absolutePath = path27.join(stagingRoot, relativePath);
+    let parsed;
+    try {
+      parsed = JSON.parse(readFileSync24(absolutePath, "utf8"));
+    } catch (error51) {
+      throw new Error(
+        `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
+      );
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      continue;
+    }
+    const obj = parsed;
+    let removed = 0;
+    for (const segments of keySegments) {
+      if (deleteKeyPath(obj, segments)) removed++;
+    }
+    if (removed > 0) {
+      writeFileSync19(absolutePath, `${JSON.stringify(obj, null, 2)}
+`, "utf8");
+      filesTouched.push(relativePath);
+      keysRemoved += removed;
+    }
+  }
+  return { filesTouched, keysRemoved };
+};
 var runLeakCheck = (stagingRoot, files, check2) => {
   const pattern = new RegExp(check2.pattern);
   const lineAllowlist = (check2["line-allowlist"] ?? []).map(
@@ -23332,6 +23383,9 @@ var renderHumanReport = (report, jsonMode) => {
   const out = [];
   out.push(
     `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`
+  );
+  out.push(
+    `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`
   );
   if (report.unbalanced_markers.length > 0) {
     out.push("", `unbalanced markers (${report.unbalanced_markers.length}):`);
@@ -23411,6 +23465,8 @@ var run39 = (argv, options = {}) => {
   let stripBlocks = 0;
   const stripFiles = [];
   const unbalanced = [];
+  let jsonStripKeysRemoved = 0;
+  const jsonStripFiles = [];
   const leaks = [];
   try {
     for (const transform2 of config2.transforms) {
@@ -23419,6 +23475,12 @@ var run39 = (argv, options = {}) => {
         stripBlocks += result.blocksStripped;
         stripFiles.push(...result.filesTouched);
         for (const issue2 of result.unbalanced) unbalanced.push(issue2);
+        continue;
+      }
+      if (transform2.type === "json-strip") {
+        const result = applyJsonStrip(stagingDir, stagedFiles, transform2);
+        jsonStripKeysRemoved += result.keysRemoved;
+        jsonStripFiles.push(...result.filesTouched);
         continue;
       }
       for (const check2 of transform2.checks) {
@@ -23434,6 +23496,10 @@ var run39 = (argv, options = {}) => {
     return UNEXPECTED_EXIT15;
   }
   const report = {
+    json_strip: {
+      files_touched: jsonStripFiles,
+      keys_removed: jsonStripKeysRemoved
+    },
     leaks,
     marker_strip: {
       blocks_stripped: stripBlocks,

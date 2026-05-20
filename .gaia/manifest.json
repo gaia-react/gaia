@@ -22,6 +22,7 @@
     ".claude/hooks/check-story-exists.sh": "owned",
     ".claude/hooks/intercept-init.sh": "owned",
     ".claude/hooks/lib/gaia-ci-defer.sh": "owned",
+    ".claude/hooks/lib/repo-scope.sh": "owned",
     ".claude/hooks/pr-merge-audit-check.sh": "owned",
     ".claude/hooks/telemetry-task-postuse.sh": "owned",
     ".claude/hooks/wiki-commit-nudge.sh": "owned",
@@ -466,6 +467,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-19T11:32:51.924Z",
-  "version": "1.2.2"
+  "generated": "2026-05-20T07:40:35.223Z",
+  "version": "1.2.3"
 }

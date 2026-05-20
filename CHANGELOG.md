@@ -10,6 +10,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.2.3] — 2026-05-20
+
+### Added
+
+- repo-scope main/PR-merge guards + create-gaia release lockstep
+
+### Fixed
+
+- update workflow template snapshots for id-token permission addition
+- add json-strip transform to stop maintainer-only package.json keys reaching adopters
+- harden block-main against multiple git -C flags
+- close multi--C ambiguity in repo-scope; handle --repo= form
+
 ## [1.2.2] — 2026-05-19
 
 ### Fixed
