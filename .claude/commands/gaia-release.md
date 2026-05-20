@@ -186,6 +186,39 @@ gh run list -R gaia-react/create-gaia --workflow=publish.yml --limit 1
 npm view create-gaia@<NEW_VERSION> version    # registry CDN may lag a minute
 ```
 
+### 14. Lockstep website
+
+The marketing/docs site (`../website` relative to this repo) embeds two version references that must match the release just cut. Update both before considering the release complete.
+
+```bash
+WEB="$(git rev-parse --show-toplevel)/../website"
+[ -d "$WEB" ] || { echo "website checkout not found at $WEB — lockstep cannot complete here"; exit 1; }
+```
+
+**GetStarted page** — update the `GAIA_VERSION` constant:
+
+- `$WEB/src/pages/get-started/sections/GetStarted.tsx` → `const GAIA_VERSION = '<NEW_VERSION>';`
+
+**Fitness page** — one string contains two version slots: `"GAIA v<installed>, v<available> available · /update-gaia"`:
+
+- **available**: always set to `<NEW_VERSION>`.
+- **installed**: represents the `<major>.<minor>.0` baseline for the current minor series, but only advances to a new minor once that minor has at least one patch release:
+  - If `patch(<NEW_VERSION>) > 0`: set installed to `<major>.<minor>.0` of `<NEW_VERSION>`.
+  - If `patch(<NEW_VERSION>) === 0`: leave installed unchanged — the new minor has no patches yet; the previous minor's `.0` stays displayed.
+
+Example: current is `installed=1.2.0, available=1.2.2`. On `1.3.0` → `installed=1.2.0, available=1.3.0`. On `1.3.1` → `installed=1.3.0, available=1.3.1`.
+
+- `$WEB/src/pages/features/sections/Fitness.tsx` → `detail: 'GAIA v<installed>, v<NEW_VERSION> available · /update-gaia'`
+
+Commit and push directly to `main` in the website repo (no branch protection on `website`):
+
+```bash
+git -C "$WEB" add src/pages/get-started/sections/GetStarted.tsx \
+               src/pages/features/sections/Fitness.tsx
+git -C "$WEB" commit -m "chore: lockstep GAIA v<NEW_VERSION>"
+git -C "$WEB" push origin main
+```
+
 ## Recovery: I tagged on the wrong commit
 
 ```bash
