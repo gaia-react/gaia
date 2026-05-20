@@ -13,6 +13,16 @@ import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {globToRegex, run} from './scrub.js';
 
+const JSON_STRIP_CONFIG = `
+transforms:
+  - type: json-strip
+    paths:
+      - "package.json"
+    keys:
+      - "bin"
+      - "scripts.test:forensics"
+`;
+
 type Sandbox = {
   cleanup: () => void;
   configPath: string;
@@ -369,5 +379,142 @@ describe('release scrub CLI', () => {
     const exit = run([sandbox.stagingDir, '--bogus'], {cwd: sandbox.rootDir});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
+  });
+});
+
+describe('json-strip transform', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('removes a top-level key', () => {
+    sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
+    sandbox.writeStaged(
+      'package.json',
+      JSON.stringify({bin: {gaia: './.gaia/cli/gaia'}, name: 'my-app', scripts: {}}, null, 2)
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = JSON.parse(readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8'));
+    expect(after).not.toHaveProperty('bin');
+    expect(after.name).toBe('my-app');
+  });
+
+  test('removes a nested key via dot-notation', () => {
+    sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
+    sandbox.writeStaged(
+      'package.json',
+      JSON.stringify({
+        scripts: {
+          build: 'react-router build',
+          'test:forensics': 'bats .gaia/tests/forensics/unit.bats',
+        },
+      }, null, 2)
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = JSON.parse(readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8'));
+    expect(after.scripts).not.toHaveProperty('test:forensics');
+    expect(after.scripts.build).toBe('react-router build');
+  });
+
+  test('removes multiple keys in one pass', () => {
+    sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
+    sandbox.writeStaged(
+      'package.json',
+      JSON.stringify({
+        bin: {gaia: './.gaia/cli/gaia'},
+        name: 'my-app',
+        scripts: {
+          build: 'react-router build',
+          'test:forensics': 'bats .gaia/tests/forensics/unit.bats',
+        },
+      }, null, 2)
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = JSON.parse(readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8'));
+    expect(after).not.toHaveProperty('bin');
+    expect(after.scripts).not.toHaveProperty('test:forensics');
+    expect(after.name).toBe('my-app');
+    expect(after.scripts.build).toBe('react-router build');
+  });
+
+  test('no-ops when key does not exist', () => {
+    sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
+    const original = JSON.stringify({name: 'my-app', scripts: {build: 'react-router build'}}, null, 2);
+    sandbox.writeStaged('package.json', original);
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8');
+    expect(JSON.parse(after)).toEqual(JSON.parse(original));
+  });
+
+  test('only processes files matching the paths glob', () => {
+    sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
+    const untouched = JSON.stringify({bin: {gaia: './.gaia/cli/gaia'}}, null, 2);
+    sandbox.writeStaged('other.json', untouched);
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = readFileSync(path.join(sandbox.stagingDir, 'other.json'), 'utf8');
+    expect(after).toBe(untouched);
+  });
+
+  test('exits 2 on invalid JSON', () => {
+    sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
+    sandbox.writeStaged('package.json', 'not { valid json');
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('transform_failed');
+  });
+
+  test('--json report includes json_strip section', () => {
+    sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
+    sandbox.writeStaged(
+      'package.json',
+      JSON.stringify({bin: {gaia: './.gaia/cli/gaia'}, scripts: {}}, null, 2)
+    );
+
+    const exit = run([sandbox.stagingDir, '--json'], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const report = JSON.parse(stdio.outputs.join('')) as {
+      json_strip: {files_touched: string[]; keys_removed: number};
+    };
+    expect(report.json_strip.keys_removed).toBe(1);
+    expect(report.json_strip.files_touched).toContain('package.json');
+  });
+
+  test('no-op when no matching files produces zero counts', () => {
+    sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
+
+    const exit = run([sandbox.stagingDir, '--json'], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const report = JSON.parse(stdio.outputs.join('')) as {
+      json_strip: {files_touched: string[]; keys_removed: number};
+    };
+    expect(report.json_strip.keys_removed).toBe(0);
+    expect(report.json_strip.files_touched).toHaveLength(0);
   });
 });
