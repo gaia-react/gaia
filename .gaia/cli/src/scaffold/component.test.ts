@@ -88,6 +88,11 @@ const captureStdio = (): StdioCapture => {
 
 const read = (filePath: string): string => readFileSync(filePath, 'utf8');
 
+// Built from fragments so Vitest's environment scanner does not read the
+// directive text in the assertions below as a real environment pragma for
+// this file — this is a Node CLI test and must not be forced into jsdom.
+const JSDOM_ENV_DIRECTIVE = `// @vitest-${'environment'} jsdom`;
+
 describe('scaffold component', () => {
   let sandbox: Sandbox;
   let stdio: StdioCapture;
@@ -124,11 +129,17 @@ describe('scaffold component', () => {
     expect(indexContents).not.toContain('FooProps');
 
     const testContents = read(testPath);
+    expect(testContents.startsWith(`${JSDOM_ENV_DIRECTIVE}\n`)).toBe(true);
     expect(testContents).toContain(
       "import {composeStory} from '@storybook/react-vite';"
     );
+    expect(testContents).toContain(
+      "import {expectNoA11yViolations} from 'test/a11y';"
+    );
     expect(testContents).toContain('const Foo = composeStory(Default, Meta);');
     expect(testContents).toContain("describe('Foo'");
+    expect(testContents).toContain("test('a11y', async () => {");
+    expect(testContents).toContain('await expectNoA11yViolations(container);');
 
     const storyContents = read(storyPath);
     expect(storyContents).toContain("import Foo from '..';");
@@ -155,8 +166,13 @@ describe('scaffold component', () => {
     const testContents = read(
       path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')
     );
+    expect(testContents.startsWith(`${JSDOM_ENV_DIRECTIVE}\n`)).toBe(true);
     expect(testContents).not.toContain('composeStory');
     expect(testContents).toContain("import Bar from '..'");
+    expect(testContents).toContain(
+      "import {expectNoA11yViolations} from 'test/a11y';"
+    );
+    expect(testContents).toContain("test('a11y', async () => {");
   });
 
   test('--props renders a typed Props alias and destructured signature', () => {
