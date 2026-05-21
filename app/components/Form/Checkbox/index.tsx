@@ -54,7 +54,7 @@ const Checkbox: FC<CheckboxProps> = ({
       className={twMerge(SIZE[size], classNameInput)}
       id={id ?? name}
       name={name}
-      required={required && !!error}
+      required={required}
       type="checkbox"
       {...props}
       disabled={disabled ?? readOnly}
