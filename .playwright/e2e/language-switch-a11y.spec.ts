@@ -10,11 +10,11 @@ test('language switcher has no serious a11y violations', async ({
   await hydration(page);
 
   // Smoke-test the switcher in its initial state.
-  await expectNoSeriousA11yViolations(page, testInfo);
+  await expectNoSeriousA11yViolations(page, testInfo, {label: 'initial'});
 
   // Re-select the current language to exercise the switch flow.
   await page.locator('select[name="language"]').selectOption('en');
   await hydration(page);
 
-  await expectNoSeriousA11yViolations(page, testInfo);
+  await expectNoSeriousA11yViolations(page, testInfo, {label: 'after-switch'});
 });

@@ -18,6 +18,7 @@ import path from 'node:path';
 import type {AnalyticsReport} from '../schemas/analytics-report.js';
 import {readOrCreateInstallId} from '../storage/install-id.js';
 import type {StorageRoots} from '../storage/paths.js';
+import {repoRootFromProjectIdPath} from '../storage/project-id.js';
 import {computeAuditBlock} from './audit-attest.js';
 
 /**
@@ -49,28 +50,6 @@ const isoDateUtc = (date: Date): string => {
   const day = date.getUTCDate().toString().padStart(2, '0');
 
   return `${year}-${month}-${day}`;
-};
-
-/**
- * Recover the repo root from an in-project storage path.
- *
- * In-project paths all live under `<repoRoot>/.gaia/...`, so the repo root
- * is everything before the first `.gaia` segment. Splitting on that marker
- * is resilient to the path's depth below `.gaia` (unlike stripping a fixed
- * number of `path.dirname` levels). Falls back to a fixed strip if no
- * `.gaia` segment is present.
- */
-const repoRootFromProjectIdPath = (projectIdPath: string): string => {
-  const marker = `${path.sep}.gaia${path.sep}`;
-  const markerIndex = projectIdPath.indexOf(marker);
-
-  if (markerIndex !== -1) {
-    return projectIdPath.slice(0, markerIndex);
-  }
-
-  // `.gaia` segment absent — fall back to stripping the known
-  // `.gaia/local/.project-id` tail (three segments).
-  return path.dirname(path.dirname(path.dirname(projectIdPath)));
 };
 
 /**

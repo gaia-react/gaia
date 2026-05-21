@@ -7,20 +7,24 @@ const SEVERITY_FAIL = new Set(['critical', 'serious']);
  * Scans the current page with axe and asserts no critical/serious
  * violations. Moderate/minor violations are attached to the test info
  * and surfaced via console.warn.
+ *
+ * `options.label` is folded into the attachment names so a test that scans
+ * more than once produces distinct attachments instead of overwriting one.
  */
 export const expectNoSeriousA11yViolations = async (
   page: Page,
   testInfo: TestInfo,
-  builder?: AxeBuilder
+  options?: {builder?: AxeBuilder; label?: string}
 ): Promise<void> => {
   const axe =
-    builder ??
+    options?.builder ??
     new AxeBuilder({page}).withTags([
       'wcag2a',
       'wcag2aa',
       'wcag21a',
       'wcag21aa',
     ]);
+  const suffix = options?.label === undefined ? '' : `-${options.label}`;
 
   const {violations} = await axe.analyze();
   const blocking = violations.filter((v) =>
@@ -31,7 +35,7 @@ export const expectNoSeriousA11yViolations = async (
   );
 
   if (advisory.length > 0) {
-    await testInfo.attach('axe-advisory.json', {
+    await testInfo.attach(`axe-advisory${suffix}.json`, {
       body: JSON.stringify(advisory, null, 2),
       contentType: 'application/json',
     });
@@ -43,7 +47,7 @@ export const expectNoSeriousA11yViolations = async (
   }
 
   if (blocking.length > 0) {
-    await testInfo.attach('axe-violations.json', {
+    await testInfo.attach(`axe-violations${suffix}.json`, {
       body: JSON.stringify(blocking, null, 2),
       contentType: 'application/json',
     });

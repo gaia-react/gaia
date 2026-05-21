@@ -488,6 +488,29 @@ describe('json-strip transform', () => {
     expect(stdio.errors.join('')).toContain('transform_failed');
   });
 
+  test('surfaces a structured error on a malformed dotted key', () => {
+    const malformedKeyConfig = `
+transforms:
+  - type: json-strip
+    paths:
+      - "package.json"
+    keys:
+      - "scripts..build"
+`;
+    sandbox = setupSandbox({config: malformedKeyConfig});
+    sandbox.writeStaged(
+      'package.json',
+      JSON.stringify({scripts: {build: 'x'}}, null, 2)
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(2);
+
+    const errors = stdio.errors.join('');
+    expect(errors).toContain('transform_failed');
+    expect(errors).toContain('malformed key path');
+  });
+
   test('--json report includes json_strip section', () => {
     sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
     sandbox.writeStaged(
@@ -574,5 +597,21 @@ describe('parseKeyPath', () => {
 
   test('returns a single segment for a plain key', () => {
     expect(parseKeyPath('bin')).toEqual(['bin']);
+  });
+
+  test('throws on a doubled dot (empty inner segment)', () => {
+    expect(() => parseKeyPath('a..b')).toThrow('malformed key path');
+  });
+
+  test('throws on a leading dot (empty first segment)', () => {
+    expect(() => parseKeyPath('.a')).toThrow('malformed key path');
+  });
+
+  test('throws on a trailing dot (empty last segment)', () => {
+    expect(() => parseKeyPath('a.')).toThrow('malformed key path');
+  });
+
+  test('throws on an empty key string', () => {
+    expect(() => parseKeyPath('')).toThrow('malformed key path');
   });
 });

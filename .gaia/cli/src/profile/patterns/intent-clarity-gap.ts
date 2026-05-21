@@ -179,7 +179,12 @@ const mean = (values: readonly number[]): number => {
 const buildAreaResult = (area: string, stats: AreaStats): PatternResult => {
   const sample = stats.amendedCount + stats.ttrCount;
   const closedSpecs = stats.closedSpecIds.size;
-  const amendedRate = closedSpecs === 0 ? 0 : stats.amendedCount / closedSpecs;
+  // A spec amended more than once contributes >1 to `amendedCount` while its
+  // closed-spec ID contributes only 1 to the denominator, so the raw ratio
+  // can exceed 1. Clamp at the source — the `amended_rate` component value
+  // must be a bounded rate in [0, 1].
+  const amendedRate =
+    closedSpecs === 0 ? 0 : Math.min(1, stats.amendedCount / closedSpecs);
   const avgQ = mean(stats.questionCounts);
   const fires = sample >= MIN_SAMPLE_COUNT;
   const strength =
