@@ -313,7 +313,6 @@
     "app/types/i18n/i18next.d.ts": "owned",
     "app/types/index.ts": "owned",
     "app/utils/array.ts": "owned",
-    "app/utils/client-hints.tsx": "owned",
     "app/utils/date.ts": "owned",
     "app/utils/dom.ts": "owned",
     "app/utils/environment.ts": "owned",

@@ -10,7 +10,6 @@ import {getLanguage, i18nextMiddleware} from '~/middleware/i18next';
 import {setApiLanguage} from '~/services/api';
 import {languageCookie} from '~/sessions.server/language';
 import State from '~/state';
-import {getHints} from '~/utils/client-hints';
 import {isProductionHost} from '~/utils/http.server';
 import {useNonce} from '~/utils/nonce';
 import {getTheme} from '~/utils/theme.server';
@@ -43,7 +42,6 @@ export const loader = async ({context, request}: Route.LoaderArgs) => {
       language,
       noIndex: !isProduction,
       requestInfo: {
-        hints: getHints(request),
         origin: url.origin,
         path: url.pathname,
         userPrefs: {theme: getTheme(request)},
