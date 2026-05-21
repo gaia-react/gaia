@@ -166,6 +166,41 @@ const replaceStringPropertyAll = (
   return source.replace(pattern, `$1$2${escaped}$2`);
 };
 
+/**
+ * Replace a string-literal property's value, but only when the key is
+ * indented at the file's top object level (a single indentation unit).
+ * Nested keys with the same name (e.g. a `title` inside a deeper route
+ * object) are left untouched so a user-diverged file is preserved.
+ */
+const replaceTopLevelStringProperty = (
+  source: string,
+  key: string,
+  newValue: string
+): string => {
+  const escaped = newValue.replaceAll(/[$\\]/gu, '\\$&');
+  const pattern = new RegExp(
+    String.raw`^(\x20\x20${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
+    'gmu'
+  );
+
+  return source.replace(pattern, `$1$2${escaped}$2`);
+};
+
+/**
+ * Replace the `title` string-literal nested directly inside the
+ * top-level `meta: { … }` block. Scopes the rewrite to the seed's
+ * `meta.title` so other `title` keys elsewhere in the file are untouched.
+ */
+const replaceMetaTitle = (source: string, newValue: string): string => {
+  const escaped = newValue.replaceAll(/[$\\]/gu, '\\$&');
+  // Match `meta: {` opened at the top object level, then the first
+  // `title:` string within it before the block closes.
+  const pattern =
+    /^(\x20\x20meta\s*:\s*\{[^}]*?\btitle\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2/mu;
+
+  return source.replace(pattern, `$1$2${escaped}$2`);
+};
+
 const renameCommonTs = (cwd: string, title: string): void => {
   const target = path.join(cwd, COMMON_TS);
 
@@ -187,12 +222,14 @@ const renameIndexPage = (cwd: string, title: string): void => {
   if (!existsSync(target)) return;
   const original = readFileSync(target, 'utf8');
   let next = original;
-  // The seeded `_index.ts` has three identity-bearing keys whose value
-  // is the project title in every location: `heroTitle`, `title`, and
-  // `meta.title`. Both `title` keys (top-level and nested) carry the
-  // project title, so a global rewrite is correct.
-  next = replaceStringPropertyAll(next, 'heroTitle', title);
-  next = replaceStringPropertyAll(next, 'title', title);
+  // The seeded `_index.ts` has exactly three identity-bearing keys whose
+  // value is the project title: top-level `heroTitle`, top-level `title`,
+  // and `meta.title`. Scope the rewrite to those precise locations — a
+  // global `title` rewrite would clobber `title` keys in extra routes a
+  // user may have added (data loss on a diverged file).
+  next = replaceTopLevelStringProperty(next, 'heroTitle', title);
+  next = replaceTopLevelStringProperty(next, 'title', title);
+  next = replaceMetaTitle(next, title);
 
   if (next !== original) {
     writeFileSync(target, next, 'utf8');

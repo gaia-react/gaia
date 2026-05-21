@@ -5,7 +5,10 @@ import {existsSync, mkdtempSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {resolveStorageRoots} from '../paths.js';
-import {readOrCreateProjectId} from '../project-id.js';
+import {
+  readOrCreateProjectId,
+  repoRootFromProjectIdPath,
+} from '../project-id.js';
 
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -82,6 +85,30 @@ describe('readOrCreateProjectId', () => {
       rmSync(repoA, {force: true, recursive: true});
       rmSync(repoB, {force: true, recursive: true});
     }
+  });
+
+  test('repoRootFromProjectIdPath round-trips a native-separator path', () => {
+    // resolveStorageRoots builds projectIdPath with path.join (native
+    // separators); the helper must recover the exact root via path.dirname
+    // rather than a regex hard-coded to `/`, which breaks on Windows `\`.
+    const root = path.join(repoRoot, 'nested', 'project');
+    const projectIdPath = path.join(root, '.gaia', 'local', '.project-id');
+
+    expect(repoRootFromProjectIdPath(projectIdPath)).toBe(root);
+  });
+
+  test('repoRootFromProjectIdPath handles Windows backslash separators', () => {
+    // The old implementation used a regex anchored to `/`, so a
+    // backslash-separated path left the `.gaia\local\.project-id` suffix
+    // attached and derived the wrong project id. path.win32.dirname is the
+    // separator-aware operation that path.dirname delegates to on Windows.
+    const root = String.raw`C:\Users\me\project`;
+    const projectIdPath = [root, '.gaia', 'local', '.project-id'].join('\\');
+    const recovered = [projectIdPath]
+      .map((p) => path.win32.dirname(path.win32.dirname(path.win32.dirname(p))))
+      .at(0);
+
+    expect(recovered).toBe(root);
   });
 
   test('creates the parent .gaia/local/ directory if absent', () => {

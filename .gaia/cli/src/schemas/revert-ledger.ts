@@ -14,6 +14,7 @@ import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'no
 import path from 'node:path';
 import {z} from 'zod';
 import {revertLedgerPath} from '../ci/paths.js';
+import {summarizeZodError} from './zod-error.js';
 
 export const RevertAttemptStatusSchema = z.literal(['failed', 'merged', 'open'] as const);
 export type RevertAttemptStatus = z.infer<typeof RevertAttemptStatusSchema>;
@@ -41,16 +42,6 @@ export type ReadRevertLedgerResult =
   | {ledger: RevertLedger; status: 'ok'}
   | {status: 'missing'}
   | {error: string; status: 'malformed'};
-
-const summarizeZodError = (filePath: string, error: z.ZodError): string => {
-  const lines = error.issues.map((issue) => {
-    const pathStr = issue.path.length === 0 ? '<root>' : issue.path.join('.');
-
-    return `${pathStr}: ${issue.message}`;
-  });
-
-  return `${filePath}: ${lines.join('; ')}`;
-};
 
 export const readRevertLedger = (repoRoot: string): ReadRevertLedgerResult => {
   const filePath = revertLedgerPath(repoRoot);

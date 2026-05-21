@@ -144,8 +144,12 @@ const stripGaiaLogoFromHeader = (cwd: string): void => {
 
   // Replace the JSX element. The runbook ships a specific instance:
   //   <GaiaLogo className="h-6 sm:h-7" />
-  // but match any self-closing <GaiaLogo … /> to be tolerant of edits.
-  next = next.replaceAll(/<GaiaLogo\b[^>]*\/>/gu, WORDMARK_REPLACEMENT);
+  // Match the self-closing form AND a paired `<GaiaLogo …>…</GaiaLogo>`
+  // form, in case the wordmark was customized into a wrapping element.
+  next = next.replaceAll(
+    /<GaiaLogo\b[^>]*\/>|<GaiaLogo\b[^>]*>[\s\S]*?<\/GaiaLogo>/gu,
+    WORDMARK_REPLACEMENT
+  );
 
   if (next !== original) {
     writeFileSync(target, next, 'utf8');
