@@ -4,4 +4,5 @@ export const toInitialCap = (value?: string): string | undefined =>
 export const toTitleCase = (value: string, delimiter = '_'): string =>
   value.split(delimiter).map(toInitialCap).join(' ');
 
-export const isString = (value?: unknown): boolean => typeof value === 'string';
+export const isString = (value?: unknown): value is string =>
+  typeof value === 'string';

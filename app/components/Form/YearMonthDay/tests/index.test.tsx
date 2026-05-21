@@ -1,7 +1,7 @@
 import {composeStory} from '@storybook/react-vite';
 import userEvent from '@testing-library/user-event';
 import {within} from 'storybook/test';
-import {describe, expect, test} from 'vitest';
+import {describe, expect, test, vi} from 'vitest';
 import {render, screen} from 'test/rtl';
 import Meta, {Default} from './index.stories';
 
@@ -40,5 +40,21 @@ describe('YearMonthDay', () => {
       within(month).getByRole('option', {name: 'Apr'})
     );
     expect(date).toHaveValue('30');
+  });
+
+  test('removes the container input listener on unmount', () => {
+    const addSpy = vi.spyOn(HTMLDivElement.prototype, 'addEventListener');
+    const removeSpy = vi.spyOn(HTMLDivElement.prototype, 'removeEventListener');
+
+    const {unmount} = render(<YearMonthDay />);
+
+    expect(addSpy.mock.calls.some(([type]) => type === 'input')).toBe(true);
+
+    unmount();
+
+    expect(removeSpy.mock.calls.some(([type]) => type === 'input')).toBe(true);
+
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
   });
 });

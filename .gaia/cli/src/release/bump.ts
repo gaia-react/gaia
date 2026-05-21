@@ -23,7 +23,8 @@
  * maintainer-facing slash command to confirm before re-invoking.
  */
 import {type SpawnSyncReturns, spawnSync} from 'node:child_process';
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -282,7 +283,7 @@ const writePackageJsonVersion = (
   if (replaced === raw) {
     throw new Error('failed to rewrite "version" field in package.json');
   }
-  writeFileSync(packagePath, replaced, 'utf8');
+  atomicWriteFileSync(packagePath, replaced);
 };
 
 const writeVersionFile = (cwd: string, newVersion: string): void => {
@@ -292,7 +293,7 @@ const writeVersionFile = (cwd: string, newVersion: string): void => {
   // Preserve trailing newline if originally present.
   const original = readFileSync(target, 'utf8');
   const trailing = original.endsWith('\n') ? '\n' : '';
-  writeFileSync(target, `${newVersion}${trailing}`, 'utf8');
+  atomicWriteFileSync(target, `${newVersion}${trailing}`);
 };
 
 type RunOptions = {

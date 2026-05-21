@@ -28,7 +28,8 @@
  *       staging dir, malformed config flags)
  *   2 — unexpected (config parse error, filesystem IO failure)
  */
-import {readdirSync, readFileSync, statSync, writeFileSync} from 'node:fs';
+import {readdirSync, readFileSync, statSync} from 'node:fs';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {load as parseYaml} from 'js-yaml';
 import {z} from 'zod';
@@ -259,7 +260,7 @@ const applyMarkerStrip = (
     }
 
     if (result.blocks > 0) {
-      writeFileSync(absolutePath, result.output, 'utf8');
+      atomicWriteFileSync(absolutePath, result.output);
       filesTouched.push(relativePath);
       blocksStripped += result.blocks;
     }
@@ -337,7 +338,7 @@ const applyJsonStrip = (
     }
 
     if (removed > 0) {
-      writeFileSync(absolutePath, `${JSON.stringify(obj, null, 2)}\n`, 'utf8');
+      atomicWriteFileSync(absolutePath, `${JSON.stringify(obj, null, 2)}\n`);
       filesTouched.push(relativePath);
       keysRemoved += removed;
     }
