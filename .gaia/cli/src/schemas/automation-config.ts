@@ -44,14 +44,25 @@ export const AutomationConfigSchema = z.object({
 export type AutomationConfig = z.infer<typeof AutomationConfigSchema>;
 
 /**
+ * The `AutomationConfig` keys that hold a `ToolConfig` row — i.e. the
+ * per-tool slots a `ToolId` can resolve to. Excludes `update_gaia`
+ * (`UpdateGaiaConfig`) and the scalar config fields.
+ */
+export type ToolConfigKey = {
+  [K in keyof AutomationConfig]: AutomationConfig[K] extends ToolConfig ? K
+  : never;
+}[keyof AutomationConfig];
+
+/**
  * Map from kebab-case tool id (used in state file paths and CLI args)
  * to the snake_case key used inside `.gaia/automation.json`.
  *
  * The split is intentional: the SPEC names the JSON keys snake_case
  * (`pnpm_audit`, `stale_branches`) but workflow / state-file paths use
- * kebab-case. Locking the mapping in one place keeps callers typesafe.
+ * kebab-case. The value type is `ToolConfigKey` so `config[key]` resolves
+ * directly to `ToolConfig` — no cast needed at call sites.
  */
-export const TOOL_ID_TO_CONFIG_KEY: Readonly<Record<ToolId, keyof AutomationConfig>> = {
+export const TOOL_ID_TO_CONFIG_KEY: Readonly<Record<ToolId, ToolConfigKey>> = {
   'pnpm-audit': 'pnpm_audit',
   'stale-branches': 'stale_branches',
   'update-deps': 'update_deps',

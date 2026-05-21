@@ -18,7 +18,8 @@
  * manifest fails the build at tag-time before any bundle work runs.
  */
 import {execFileSync} from 'node:child_process';
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
@@ -593,7 +594,7 @@ export const run = (
   }
 
   try {
-    writeFileSync(target, serialized, 'utf8');
+    atomicWriteFileSync(target, serialized);
   } catch (error) {
     structuredError({
       code: 'manifest_write_failed',

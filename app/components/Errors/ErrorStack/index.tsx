@@ -1,6 +1,7 @@
 import type {FC} from 'react';
 import {IoCopyOutline} from 'react-icons/io5';
 import {twJoin, twMerge} from 'tailwind-merge';
+import {tryCatch} from '~/utils/function';
 
 type ErrorStackProps = {
   className?: string;
@@ -17,7 +18,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
 }) => {
   if (stack) {
     const handleClick = async () => {
-      await navigator.clipboard.writeText(stack);
+      await tryCatch(async () => navigator.clipboard.writeText(stack));
     };
 
     const statusDiv =

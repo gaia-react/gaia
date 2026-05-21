@@ -64,12 +64,10 @@ const FLOOR_HOURS = 24;
 const CEILING_DAYS = 14;
 const SKIP_SAFETY_THRESHOLD = 5;
 
-const toolConfigFor = (config: AutomationConfig, tool: ToolId): ToolConfig => {
-  const key = TOOL_ID_TO_CONFIG_KEY[tool];
-  // `update_gaia` is not a ToolId so this cast is safe — TOOL_ID_TO_CONFIG_KEY
-  // is restricted to ToolId keys.
-  return config[key] as unknown as ToolConfig;
-};
+const toolConfigFor = (config: AutomationConfig, tool: ToolId): ToolConfig =>
+  // `TOOL_ID_TO_CONFIG_KEY` is typed `Record<ToolId, ToolConfigKey>`, so the
+  // indexed access resolves directly to `ToolConfig` — no cast needed.
+  config[TOOL_ID_TO_CONFIG_KEY[tool]];
 
 type RunOptions = {
   cwd?: string;

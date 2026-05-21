@@ -22,31 +22,18 @@ import type {StorageRoots} from '../storage/index.js';
 import {buildEnvelope} from './envelope.js';
 import type {EventEnvelopeWithLocal} from './envelope.js';
 import {appendIdempotent} from './ndjson-writer.js';
-import {projectToCloud} from './projection.js';
+import {KNOWN_CLOUD_ONLY_EVENT_TYPES, projectToCloud} from './projection.js';
 
 /**
  * Cloud-only event types — accepted by the CLI for envelope-validation only.
  * Per-consumer payload shapes ship with the relevant Sequel feature; v1
  * accepts arbitrary payloads here and lets the cloud-projection module
  * surface drift via its `.strict()` defense.
+ *
+ * Single source of truth is `projection.ts`; re-exported here under the
+ * legacy name so emit's callers keep a stable import path.
  */
-export const CLOUD_ONLY_EVENT_TYPES = [
-  'pr_opened',
-  'pr_merged',
-  'dispatch_artifact_emitted',
-  'engineer_return',
-  'dry_violation_flagged',
-  'skill_loaded',
-  'skill_invoked',
-  'skill_failed',
-  'recurring_pattern_observed',
-  'update_deps_run',
-  'branch_opened',
-  'interlock_held',
-  'audit_finding',
-  'boundary_zone_touch',
-  'boundary_violation_flagged',
-] as const;
+export const CLOUD_ONLY_EVENT_TYPES = KNOWN_CLOUD_ONLY_EVENT_TYPES;
 
 type CloudOnlyEventType = (typeof CLOUD_ONLY_EVENT_TYPES)[number];
 

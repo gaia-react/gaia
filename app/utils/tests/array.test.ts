@@ -29,6 +29,18 @@ describe('array', () => {
     ]);
   });
 
+  test('sortBy only accepts keys with comparable values', () => {
+    const data = [
+      {id: 1, tags: ['x']},
+      {id: 2, tags: ['y']},
+    ];
+
+    expect(sortBy(data, 'id')).toHaveLength(2);
+
+    // @ts-expect-error - `tags` holds an array, which has no sort order
+    sortBy(data, 'tags');
+  });
+
   test('uniqBy should work', () => {
     const data = [
       {id: 1, name: 'Foo'},

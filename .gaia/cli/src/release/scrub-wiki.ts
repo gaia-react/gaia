@@ -8,7 +8,8 @@
  *
  * No stdout on success. Exit 0 / 1 / 2.
  */
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync} from 'node:fs';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -214,8 +215,8 @@ export const run = (
 
   try {
     mkdirSync(wikiDir, {recursive: true});
-    writeFileSync(hotPath, renderHotMd(version, date), 'utf8');
-    writeFileSync(logPath, renderLogMd(version, date), 'utf8');
+    atomicWriteFileSync(hotPath, renderHotMd(version, date));
+    atomicWriteFileSync(logPath, renderLogMd(version, date));
   } catch (error) {
     structuredError({
       code: 'scrub_write_failed',

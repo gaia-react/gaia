@@ -52,6 +52,28 @@ const isoDateUtc = (date: Date): string => {
 };
 
 /**
+ * Recover the repo root from an in-project storage path.
+ *
+ * In-project paths all live under `<repoRoot>/.gaia/...`, so the repo root
+ * is everything before the first `.gaia` segment. Splitting on that marker
+ * is resilient to the path's depth below `.gaia` (unlike stripping a fixed
+ * number of `path.dirname` levels). Falls back to a fixed strip if no
+ * `.gaia` segment is present.
+ */
+const repoRootFromProjectIdPath = (projectIdPath: string): string => {
+  const marker = `${path.sep}.gaia${path.sep}`;
+  const markerIndex = projectIdPath.indexOf(marker);
+
+  if (markerIndex !== -1) {
+    return projectIdPath.slice(0, markerIndex);
+  }
+
+  // `.gaia` segment absent — fall back to stripping the known
+  // `.gaia/local/.project-id` tail (three segments).
+  return path.dirname(path.dirname(path.dirname(projectIdPath)));
+};
+
+/**
  * Read the GAIA package.json `version` field.
  *
  * Resolves relative to `roots.projectIdPath`'s repo root segment so the
@@ -60,11 +82,7 @@ const isoDateUtc = (date: Date): string => {
  * produce a valid report (the version field is a string per schema).
  */
 const readGaiaVersion = (roots: StorageRoots): string => {
-  // roots.projectIdPath is `<repoRoot>/.gaia/local/.project-id`.
-  // Strip 3 segments to get back to repoRoot.
-  const repoRoot = path.dirname(
-    path.dirname(path.dirname(roots.projectIdPath))
-  );
+  const repoRoot = repoRootFromProjectIdPath(roots.projectIdPath);
   const packagePath = path.join(repoRoot, 'package.json');
 
   if (!existsSync(packagePath)) return 'unknown';

@@ -45,18 +45,21 @@ const Select: FC<SelectProps> = ({
   value,
   ...props
 }) => {
-  const [currentValue, setCurrentValue] = useState(
-    () => value ?? defaultValue ?? ''
+  const [uncontrolledValue, setUncontrolledValue] = useState(
+    () => defaultValue ?? ''
   );
 
+  // Controlled `value` wins so placeholder/icon styling tracks the prop;
+  // `uncontrolledValue` only backs the uncontrolled (defaultValue) case.
+  const currentValue = value ?? uncontrolledValue;
+
   const handleChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    setCurrentValue(event.currentTarget.value || '');
+    setUncontrolledValue(event.currentTarget.value || '');
     onChange?.(event);
   };
 
   return (
     <Field
-      aria-label={props['aria-label'] ?? label ?? name}
       className={className}
       classNameLabel={classNameLabel}
       description={description}

@@ -79,7 +79,7 @@ const removeIndexLine = (indexBody: string, line: string): string => {
     })
     .join('\n');
 
-  if (rebuilt === '') return hadTrailingNewline ? '' : '';
+  if (rebuilt === '') return '';
 
   return hadTrailingNewline ? `${rebuilt}\n` : rebuilt;
 };

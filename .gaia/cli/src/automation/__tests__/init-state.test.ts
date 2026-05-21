@@ -95,4 +95,13 @@ describe('automation init-state', () => {
     ) as Record<string, unknown>;
     expect(parsed.last_run_at).toBe('2026-04-01T00:00:00Z');
   });
+
+  it('rejects a malformed --at and does not write the state file', () => {
+    const exit = run(['wiki', '--sha', sandbox.headSha, '--at', 'not-a-date'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).not.toBe(0);
+    expect(stdio.errors.join('')).toContain('state_malformed');
+    expect(existsSync(automationStatePath(sandbox.root, 'wiki'))).toBe(false);
+  });
 });

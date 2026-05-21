@@ -274,6 +274,12 @@ describe('state file robustness', () => {
     vi.restoreAllMocks();
   });
 
+  const writeStateJson = (value: unknown): void => {
+    const stateDirectory = path.dirname(sandbox.statePath);
+    execFileSync('mkdir', ['-p', stateDirectory]);
+    writeFileSync(sandbox.statePath, JSON.stringify(value), 'utf8');
+  };
+
   test('rejects malformed state file', () => {
     const stateDirectory = path.dirname(sandbox.statePath);
     execFileSync('mkdir', ['-p', stateDirectory]);
@@ -282,5 +288,31 @@ describe('state file robustness', () => {
     const exit = runStatus(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('state_malformed');
+  });
+
+  test('surfaces an unrecognized completed step instead of dropping it', () => {
+    writeStateJson({
+      completed_at: null,
+      completed_steps: ['install-tools', 'not-a-real-step'],
+      started_at: '2026-05-07T11:00:00.000Z',
+      version: 1,
+    });
+
+    const exit = runStatus(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('state_malformed');
+    expect(stdio.errors.join('')).toContain('not-a-real-step');
+  });
+
+  test('rejects a state file with a missing started_at', () => {
+    writeStateJson({
+      completed_at: null,
+      completed_steps: ['install-tools'],
+      version: 1,
+    });
+
+    const exit = runStatus(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('started_at');
   });
 });

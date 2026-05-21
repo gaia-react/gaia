@@ -175,6 +175,38 @@ describe('projectToCloud', () => {
 
       expect(result.field).toBe('timestamp');
     });
+
+    test('returns a string event_type even when event_type is absent', () => {
+      // event_type missing -> envelope parse fails. The drift result's
+      // event_type field is typed `string`; it must not be `undefined`.
+      const {event_type: _omitted, ...withoutType} = baseEnvelope;
+      const result = projectToCloud(
+        withoutType as unknown as typeof baseEnvelope
+      );
+
+      expect(result.ok).toBe(false);
+
+      if (result.ok) return;
+
+      expect(typeof result.event_type).toBe('string');
+    });
+
+    test('returns a string event_type when event_type is a non-string', () => {
+      const envelopeWithNonStringType = {
+        ...baseEnvelope,
+        event_type: 42,
+      };
+
+      const result = projectToCloud(
+        envelopeWithNonStringType as unknown as typeof baseEnvelope
+      );
+
+      expect(result.ok).toBe(false);
+
+      if (result.ok) return;
+
+      expect(typeof result.event_type).toBe('string');
+    });
   });
 
   describe('denylist sweep (belt-and-suspenders)', () => {
