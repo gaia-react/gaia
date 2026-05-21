@@ -469,6 +469,41 @@ describe('run --check', () => {
     expect(out).toContain('1.0.0');
   });
 
+  test('malformed manifest (not an object): exits 2 with a parse error', () => {
+    seedAndGenerate();
+
+    const manifestPath = path.join(sandbox.root, '.gaia/manifest.json');
+    writeFileSync(manifestPath, '["not", "a", "manifest"]\n', 'utf8');
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('manifest_parse_failed');
+    expect(stdio.errors.join('')).toContain('malformed');
+  });
+
+  test('malformed manifest (bad class value): exits 2 with a parse error', () => {
+    seedAndGenerate();
+
+    const manifestPath = path.join(sandbox.root, '.gaia/manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Record<string, string>;
+    };
+    manifest.files['app/foo.ts'] = 'bogus-class';
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const exit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('manifest_parse_failed');
+  });
+
   test('missing manifest file: exits non-zero with manifest_missing error', () => {
     sandbox.commit('seed', {
       '.gaia/VERSION': '1.0.0\n',

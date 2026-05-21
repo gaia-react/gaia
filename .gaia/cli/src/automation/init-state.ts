@@ -11,6 +11,7 @@ import {existsSync} from 'node:fs';
 import {EXIT_CODES} from '../exit.js';
 import {TOOL_IDS, type ToolId} from '../schemas/automation-config.js';
 import type {AutomationStateFile} from '../schemas/automation-state.js';
+import {AutomationStateFileSchema} from '../schemas/automation-state.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 import {automationStatePath} from './paths.js';
@@ -170,7 +171,7 @@ export const run = (
   const nowDate = (options.now ?? (() => new Date()))();
   const isoNow = atIso ?? nowDate.toISOString();
 
-  const state: AutomationStateFile = {
+  const candidate: AutomationStateFile = {
     cost_overage: false,
     last_run_at: isoNow,
     last_run_cost: 0,
@@ -180,7 +181,23 @@ export const run = (
     version: 1,
   };
 
-  writeStateFile(repoRoot, tool, state);
+  // Validate the assembled shape before persisting — a malformed `--at`
+  // would otherwise silently corrupt the state file. Mirrors `record-run`.
+  const validation = AutomationStateFileSchema.safeParse(candidate);
+
+  if (!validation.success) {
+    structuredError({
+      code: 'state_malformed',
+      message: validation.error.issues
+        .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+        .join('; '),
+      subcommand: 'automation init-state',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  writeStateFile(repoRoot, tool, validation.data);
 
   return EXIT_CODES.OK;
 };

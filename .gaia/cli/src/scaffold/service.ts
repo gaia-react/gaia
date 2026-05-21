@@ -511,6 +511,30 @@ const applyDatabaseEdits = (
   }
   next = insertCollectionExportAlphabetically(next, derived);
 
+  // Diff-safety net: each of the three inserts is regex-driven and
+  // returns `source` unchanged when its target region is missing. A
+  // partial application (e.g. the import landed but the `Promise.all`
+  // region didn't match) would otherwise be written out as a silently
+  // broken barrel. Verify all three regions actually carry the new
+  // entries before the caller writes the file; fail loudly otherwise.
+  const collectionEntry = new RegExp(
+    String.raw`export default \{[^}]*\b${derived.plural}\b`,
+    'u'
+  ).test(next);
+
+  if (
+    !next.includes(importLine) ||
+    !next.includes(resetCall) ||
+    !collectionEntry
+  ) {
+    throw new Error(
+      `database barrel edit did not apply cleanly: expected import, `
+        + `${resetCall} in the resetTestData Promise.all, and `
+        + `"${derived.plural}" in the default export. `
+        + 'Register the collection by hand or fix test/mocks/database.ts.'
+    );
+  }
+
   return next;
 };
 

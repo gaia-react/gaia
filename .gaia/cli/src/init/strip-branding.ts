@@ -16,8 +16,9 @@
  *
  * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
  */
-import {existsSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync, rmSync} from 'node:fs';
 import path from 'node:path';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {markStepCompleted} from './util/state.js';
@@ -122,7 +123,7 @@ const writeReadme = (cwd: string, title: string): void => {
 
     if (current === rendered) return;
   }
-  writeFileSync(target, rendered, 'utf8');
+  atomicWriteFileSync(target, rendered);
 };
 
 const WORDMARK_REPLACEMENT =
@@ -152,7 +153,7 @@ const stripGaiaLogoFromHeader = (cwd: string): void => {
   );
 
   if (next !== original) {
-    writeFileSync(target, next, 'utf8');
+    atomicWriteFileSync(target, next);
   }
 };
 

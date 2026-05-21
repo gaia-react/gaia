@@ -11,7 +11,7 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {globToRegex, run} from './scrub.js';
+import {globToRegex, parseKeyPath, run} from './scrub.js';
 
 const JSON_STRIP_CONFIG = `
 transforms:
@@ -516,5 +516,63 @@ describe('json-strip transform', () => {
     };
     expect(report.json_strip.keys_removed).toBe(0);
     expect(report.json_strip.files_touched).toHaveLength(0);
+  });
+
+  test('removes a key whose name contains a literal dot via \\. escape', () => {
+    // YAML double-quote turns `\\.` into `\.`, which parseKeyPath reads as
+    // a literal dot inside the key name. Key path: ['exports', './secret'].
+    const dottedKeyConfig = `
+transforms:
+  - type: json-strip
+    paths:
+      - "package.json"
+    keys:
+      - "exports.\\\\./secret"
+`;
+    sandbox = setupSandbox({config: dottedKeyConfig});
+    sandbox.writeStaged(
+      'package.json',
+      JSON.stringify(
+        {exports: {'./public': './a.js', './secret': './b.js'}, name: 'app'},
+        null,
+        2
+      )
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = JSON.parse(
+      readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
+    );
+    expect(after.exports).not.toHaveProperty('./secret');
+    expect(after.exports).toHaveProperty('./public');
+  });
+});
+
+describe('parseKeyPath', () => {
+  test('splits on unescaped dots', () => {
+    expect(parseKeyPath('scripts.test:forensics')).toEqual([
+      'scripts',
+      'test:forensics',
+    ]);
+  });
+
+  test('treats an escaped dot as a literal in the key name', () => {
+    expect(parseKeyPath(String.raw`scripts.foo\.bar`)).toEqual([
+      'scripts',
+      'foo.bar',
+    ]);
+  });
+
+  test('handles a leading escaped-dot segment', () => {
+    expect(parseKeyPath(String.raw`exports.\./feature`)).toEqual([
+      'exports',
+      './feature',
+    ]);
+  });
+
+  test('returns a single segment for a plain key', () => {
+    expect(parseKeyPath('bin')).toEqual(['bin']);
   });
 });

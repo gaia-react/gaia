@@ -200,6 +200,29 @@ const readPackageJson = (cwd: string): PackageJsonShape => {
   return JSON.parse(raw) as PackageJsonShape;
 };
 
+/**
+ * The version actually installed in `node_modules`. The package.json range
+ * spec does not reveal it — a `^1.2.3` spec can resolve to any 1.x, and
+ * `workspace:*` / tag / url specs carry no version at all. Returns
+ * `undefined` when the package is not installed.
+ */
+const readInstalledVersion = (
+  cwd: string,
+  name: string
+): string | undefined => {
+  try {
+    const raw = readFileSync(
+      path.join(cwd, 'node_modules', name, 'package.json'),
+      'utf8'
+    );
+    const parsed = JSON.parse(raw) as {version?: unknown};
+
+    return typeof parsed.version === 'string' ? parsed.version : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const lookupSpec = (pkg: PackageJsonShape, name: string): string | undefined =>
   pkg.dependencies?.[name] ??
   pkg.devDependencies?.[name] ??
@@ -406,10 +429,18 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   const pnpmRunner = options.pnpmRunner ?? defaultPnpmRunner;
   const pkg = readPackageJson(options.cwd);
 
-  // pnpm outdated exits 1 when packages are outdated — that is normal.
-  // We ignore the exit code and parse stdout regardless. Empty / invalid
-  // stdout falls through to an empty entry list.
+  // `pnpm outdated` exits 0 (nothing outdated) or 1 (packages outdated) on
+  // a healthy run. Any other status — including the null status of a
+  // failed spawn — means pnpm itself failed; parsing its empty stdout
+  // would masquerade as "everything up to date".
   const result = pnpmRunner(['outdated', '--json'], {cwd: options.cwd});
+
+  if (result.status !== 0 && result.status !== 1) {
+    throw new Error(
+      `pnpm outdated failed (exit ${result.status ?? 'null'}): ${result.stderr.trim()}`
+    );
+  }
+
   const raw = parseOutdated(result.stdout);
 
   const eslintCache: {versions?: readonly string[]} = {};
@@ -481,8 +512,13 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
       // Sibling is in package.json but not flagged by pnpm outdated.
       const spec = lookupSpec(pkg, siblingName);
 
-      // strip spec prefix to get current installed version
-      const current = spec !== undefined ? stripRange(spec) : '';
+      // Prefer the version actually installed in node_modules; the
+      // package.json spec (`^x`, `workspace:*`, a tag, …) is not a usable
+      // version. Fall back to the spec floor only when node_modules has no
+      // entry (e.g. dependencies not installed).
+      const current =
+        readInstalledVersion(options.cwd, siblingName) ??
+        (spec !== undefined ? stripRange(spec) : '');
       const latest = fetchLatestVersion(siblingName, options.cwd, pnpmRunner);
 
       if (latest === undefined) {

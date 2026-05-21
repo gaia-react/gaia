@@ -53,7 +53,7 @@ const InputRadio: FC<InputRadioProps> = ({
   >
     <input
       aria-label={`${id ?? name}-${option.value}`}
-      className={twMerge(SIZE[size], className)}
+      className={SIZE[size]}
       defaultChecked={defaultValue === option.value}
       disabled={disabled ?? option.disabled ?? readOnly}
       id={`${id ?? name}-${option.value}`}

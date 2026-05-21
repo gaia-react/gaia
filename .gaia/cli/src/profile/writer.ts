@@ -5,7 +5,7 @@
  * - Atomic write contract: write-temp-and-rename, mode 0o600.
  * - DO-NOT-EDIT header is the first line, exact wording.
  */
-import {rename, writeFile} from 'node:fs/promises';
+import {atomicWriteFile} from '../util/atomic-write.js';
 import {ADAPTATION_TEXT, PATTERN_TO_ADAPTATION} from './adaptation-map.js';
 import type {AdaptationId, PatternId} from './adaptation-map.js';
 import {PROFILE_DO_NOT_EDIT_HEADER} from './header.js';
@@ -181,21 +181,13 @@ export const renderProfile = (args: ProfileRenderArgs): string => {
 };
 
 /**
- * Atomic write: write-temp-and-rename. POSIX `rename` is atomic on the same
- * filesystem; concurrent compute-profile invocations either land the prior
- * version or the latest version completely — never a half-written state.
- * Mode 0o600 because profile.md lives under the off-project
- * mentorship subtree (chmod 600 on every file there).
+ * Atomic write via the shared temp-fsync-rename helper. Mode 0o600 because
+ * profile.md lives under the off-project mentorship subtree (chmod 600 on
+ * every file there).
  */
 export const atomicWriteProfile = async (
   profilePath: string,
   contents: string
-): Promise<void> => {
-  // PID + monotonic high-res time keeps two same-process or two different-
-  // process invocations from colliding on the temp file name.
-  const temporaryPath = `${profilePath}.tmp.${process.pid}.${Date.now()}.${process.hrtime.bigint().toString()}`;
-  await writeFile(temporaryPath, contents, {mode: 0o600});
-  await rename(temporaryPath, profilePath);
-};
+): Promise<void> => atomicWriteFile(profilePath, contents, {mode: 0o600});
 
 export {PATTERN_TO_ADAPTATION};

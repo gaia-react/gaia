@@ -45,4 +45,9 @@ describe('date utilities', () => {
     expect(formatTime24(TEST_DATE)).toBe('12:00');
     expect(formatTime24(TEST_DATE)).toBe('12:00');
   });
+
+  test('falls back to en-US for a language with no registered locale', () => {
+    expect(formatAbbreviatedMonthDay(TEST_DATE, 'fr')).toBe('Mar 15th');
+    expect(formatFullDate(TEST_DATE, 'fr')).toBe('Tuesday, March 15th, 2022');
+  });
 });

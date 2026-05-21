@@ -11,7 +11,7 @@
  *
  *   2. json-strip — delete maintainer-only keys from structured JSON files
  *      using dot-notation paths (e.g. "scripts.test:forensics"). Dots are
- *      path separators; key names must not contain literal dots.
+ *      path separators; a literal dot inside a key name is escaped as `\.`.
  *
  *   3. leak-check — run codified audit patterns from
  *      `.claude/rules/wiki-style.md` Audit section + the distribution-
@@ -28,7 +28,8 @@
  *       staging dir, malformed config flags)
  *   2 — unexpected (config parse error, filesystem IO failure)
  */
-import {readdirSync, readFileSync, statSync, writeFileSync} from 'node:fs';
+import {readdirSync, readFileSync, statSync} from 'node:fs';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {load as parseYaml} from 'js-yaml';
 import {z} from 'zod';
@@ -259,7 +260,7 @@ const applyMarkerStrip = (
     }
 
     if (result.blocks > 0) {
-      writeFileSync(absolutePath, result.output, 'utf8');
+      atomicWriteFileSync(absolutePath, result.output);
       filesTouched.push(relativePath);
       blocksStripped += result.blocks;
     }
@@ -275,6 +276,43 @@ const applyMarkerStrip = (
 export type JsonStripResult = {
   filesTouched: readonly string[];
   keysRemoved: number;
+};
+
+/**
+ * Split a dot-notation key path into segments. A literal `.` inside a key
+ * name is expressed with a backslash escape (`\.`), so a package.json key
+ * that contains a dot — e.g. `exports.\.\/feature` — stays addressable.
+ *
+ * `scripts.test:forensics` → `['scripts', 'test:forensics']`
+ * String.raw`scripts.foo\.bar` → `['scripts', 'foo.bar']`
+ *
+ * A trailing lone backslash is treated literally.
+ */
+export const parseKeyPath = (key: string): string[] => {
+  const segments: string[] = [];
+  let current = '';
+
+  for (let index = 0; index < key.length; index += 1) {
+    const char = key[index];
+
+    if (char === '\\' && key[index + 1] === '.') {
+      current += '.';
+      index += 1;
+      continue;
+    }
+
+    if (char === '.') {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  segments.push(current);
+
+  return segments;
 };
 
 const deleteKeyPath = (
@@ -309,7 +347,7 @@ const applyJsonStrip = (
 ): JsonStripResult => {
   const filesTouched: string[] = [];
   let keysRemoved = 0;
-  const keySegments = transform.keys.map((k) => k.split('.'));
+  const keySegments = transform.keys.map((k) => parseKeyPath(k));
 
   for (const relativePath of files) {
     if (!matchesAnyGlob(relativePath, transform.paths)) continue;
@@ -337,7 +375,7 @@ const applyJsonStrip = (
     }
 
     if (removed > 0) {
-      writeFileSync(absolutePath, `${JSON.stringify(obj, null, 2)}\n`, 'utf8');
+      atomicWriteFileSync(absolutePath, `${JSON.stringify(obj, null, 2)}\n`);
       filesTouched.push(relativePath);
       keysRemoved += removed;
     }

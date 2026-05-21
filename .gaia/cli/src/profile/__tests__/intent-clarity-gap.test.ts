@@ -94,4 +94,80 @@ describe('detectIntentClarityGap (unit)', () => {
     // amended_rate = 0, avg_q = 3 → 0.6*0 + 0.4*(3/15) = 0.08
     expect(react?.strength).toBeCloseTo(0.08, 3);
   });
+
+  test('never emits a `_unknown` area result, even at threshold', () => {
+    const events: MentorshipEvent[] = [];
+
+    // 12 spec_amended events whose specs have no time_to_resolved_spec
+    // event in the window → all attributed to the `_unknown` sentinel.
+    for (let index = 0; index < 12; index += 1) {
+      events.push(buildSpecAmended(`SPEC-${index.toString().padStart(3, '0')}`, index));
+    }
+    const results = detectIntentClarityGap({events, windowDays: 30});
+
+    expect(results.some((entry) => entry.area_tag === '_unknown')).toBe(false);
+  });
+
+  test('amended_rate denominator is closed specs only, not closed + amended', () => {
+    const events: MentorshipEvent[] = [];
+
+    // 10 closed specs in `visual`.
+    for (let index = 0; index < 10; index += 1) {
+      events.push(
+        buildTimeToResolved(`SPEC-${index.toString().padStart(3, '0')}`, 'visual', 5, index)
+      );
+    }
+
+    // Amend 2 of those closed specs.
+    events.push(buildSpecAmended('SPEC-000', 100));
+    events.push(buildSpecAmended('SPEC-001', 101));
+    const results = detectIntentClarityGap({events, windowDays: 30});
+    const visual = results.find((entry) => entry.area_tag === 'visual');
+    const amendedRate = visual?.components.find(
+      (component) => component.metric === 'amended_rate'
+    );
+
+    // amended_rate = 2 amended / 10 closed = 0.2 — the denominator must not
+    // be inflated by the amended spec IDs (which would give 2/10 here too,
+    // but a wrong denominator surfaces when amended specs lack a ttr event).
+    expect(amendedRate?.value).toBeCloseTo(0.2, 5);
+  });
+
+  test('amended specs without a ttr event do not inflate a real area denominator', () => {
+    const events: MentorshipEvent[] = [];
+
+    // 10 closed specs in `visual`; amend all 10 of them.
+    for (let index = 0; index < 10; index += 1) {
+      const specId = `SPEC-${index.toString().padStart(3, '0')}`;
+      events.push(buildTimeToResolved(specId, 'visual', 5, index));
+      events.push(buildSpecAmended(specId, 100 + index));
+    }
+    const results = detectIntentClarityGap({events, windowDays: 30});
+    const visual = results.find((entry) => entry.area_tag === 'visual');
+    const amendedRate = visual?.components.find(
+      (component) => component.metric === 'amended_rate'
+    );
+
+    // 10 amended / 10 closed = 1.0 — saturated, but correctly so.
+    expect(amendedRate?.value).toBeCloseTo(1, 5);
+  });
+
+  test('rejects negative, NaN, and Infinity question_count values', () => {
+    const negative = buildTimeToResolved('SPEC-NEG', 'visual', -5, 1);
+    const events: MentorshipEvent[] = [negative];
+
+    for (let index = 0; index < 9; index += 1) {
+      events.push(buildTimeToResolved(`SPEC-${index.toString().padStart(3, '0')}`, 'visual', 0, index));
+    }
+    (negative.payload as Record<string, unknown>).question_count = Number.NaN;
+
+    const results = detectIntentClarityGap({events, windowDays: 30});
+    const visual = results.find((entry) => entry.area_tag === 'visual');
+    const avgQ = visual?.components.find(
+      (component) => component.metric === 'avg_question_count'
+    );
+
+    // A NaN question_count must coerce to 0, not poison the mean.
+    expect(avgQ?.value).toBe(0);
+  });
 });

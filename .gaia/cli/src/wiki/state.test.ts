@@ -280,4 +280,23 @@ describe('wiki state', () => {
     expect(out).toContain('Wiki state');
     expect(out).toContain('Drift:');
   });
+
+  test('routes output to an injected write sink, not process.stdout', () => {
+    const sha = sandbox.commit('initial', {'README.md': '# repo\n'});
+    writeStateFile(sandbox.root, sha);
+
+    const chunks: string[] = [];
+    const exit = run(['--json'], {
+      cwd: sandbox.root,
+      write: (chunk) => {
+        chunks.push(chunk);
+      },
+    });
+    expect(exit).toBe(0);
+
+    // The injected sink receives the payload; the global stdout spy does not.
+    const json = JSON.parse(chunks.join('').trim()) as Record<string, unknown>;
+    expect(json.commits_ahead).toBe(0);
+    expect(stdio.outputs.join('')).toBe('');
+  });
 });

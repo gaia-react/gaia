@@ -29,7 +29,9 @@ const InputText: FC<InputProps> = ({
   type = 'text',
   ...props
 }) => {
-  const [length, setLength] = useState(0);
+  const [length, setLength] = useState(
+    () => String(props.value ?? props.defaultValue ?? '').length
+  );
 
   const handleChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -43,7 +45,6 @@ const InputText: FC<InputProps> = ({
 
   return (
     <Field
-      aria-label={props['aria-label'] ?? name}
       className={className}
       classNameDescription={classNameDescription}
       classNameLabel={classNameLabel}
@@ -63,12 +64,7 @@ const InputText: FC<InputProps> = ({
       <div className={twJoin((icon ?? children) && 'relative')}>
         <input
           ref={ref}
-          aria-label={
-            (props['aria-label'] ?? label === null) ? undefined
-            : typeof label === 'string' ?
-              label
-            : name
-          }
+          aria-label={label ? undefined : name}
           className={twJoin(
             'w-full',
             icon && (iconPosition === 'left' ? 'pl-[2.3rem]' : 'pr-[2.3rem]'),
