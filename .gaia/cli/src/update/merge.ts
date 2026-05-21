@@ -39,6 +39,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {
@@ -245,7 +246,7 @@ const writeWorkingTree = (
 ): void => {
   const target = path.join(ctx.cwd, relativePath);
   ensureDir(path.dirname(target));
-  writeFileSync(target, bytes);
+  atomicWriteFileSync(target, bytes);
 };
 
 type Decision =
