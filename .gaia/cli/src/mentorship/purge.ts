@@ -5,6 +5,7 @@
  *   - <home>/.claude/projects/<slug>/gaia/telemetry/mentorship/  (entire subtree)
  *   - <home>/.claude/projects/<slug>/gaia/profile.md
  *   - <repo>/.gaia/local/telemetry/analytics/*.json
+ *   - the mentorship-display rule projected into per-machine user memory
  *
  * Does NOT touch the cloud stream files. Does NOT delete mentorship.json —
  * the user keeps their opt-in preference.

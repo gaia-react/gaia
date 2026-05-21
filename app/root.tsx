@@ -7,7 +7,6 @@ import Document from '~/components/Document';
 import RootErrorBoundary from '~/components/Errors/RootErrorBoundary';
 import Toast, {notify} from '~/components/Toast';
 import {getLanguage, i18nextMiddleware} from '~/middleware/i18next';
-import {setApiLanguage} from '~/services/api';
 import {languageCookie} from '~/sessions.server/language';
 import State from '~/state';
 import {isProductionHost} from '~/utils/http.server';
@@ -23,8 +22,6 @@ export const loader = async ({context, request}: Route.LoaderArgs) => {
   const isProduction = isProductionHost(request);
 
   const language = getLanguage(context);
-
-  setApiLanguage(language);
 
   setToastCookieOptions({secrets: [env.SESSION_SECRET]});
 

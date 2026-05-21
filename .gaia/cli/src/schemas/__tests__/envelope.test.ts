@@ -81,11 +81,19 @@ describe('schemas/envelope', () => {
   });
 
   describe('EnvelopeSchema', () => {
+    const validUatPassPayload = {
+      area_tags: ['react'],
+      attempts: 1,
+      spec_id: 'SPEC-014',
+      task_id: 'TASK-093',
+      uat_id: 'UAT-007',
+    };
+
     const validEnvelope = {
       agent_type: 'Senior',
       event_id: VALID_ULID,
       event_type: 'uat_pass',
-      payload: {anything: 'goes-here'},
+      payload: validUatPassPayload,
       project_id: VALID_HEX_32,
       schema_version: 1,
       session_hash: VALID_HEX_32,
@@ -94,6 +102,39 @@ describe('schemas/envelope', () => {
 
     it('accepts a hand-constructed example matching the SPEC snippet', () => {
       expect(() => EnvelopeSchema.parse(validEnvelope)).not.toThrow();
+    });
+
+    it('rejects a payload that does not match its mentorship event_type', () => {
+      expect(() =>
+        EnvelopeSchema.parse({
+          ...validEnvelope,
+          payload: {anything: 'goes-here'},
+        })
+      ).toThrow();
+    });
+
+    it('reports the drift under the payload path', () => {
+      const result = EnvelopeSchema.safeParse({
+        ...validEnvelope,
+        payload: {...validUatPassPayload, uat_id: 'not-a-uat-id'},
+      });
+      expect(result.success).toBe(false);
+
+      if (result.success) return;
+
+      expect(
+        result.error.issues.some((issue) => issue.path[0] === 'payload')
+      ).toBe(true);
+    });
+
+    it('leaves the payload unconstrained for non-mentorship event_types', () => {
+      expect(() =>
+        EnvelopeSchema.parse({
+          ...validEnvelope,
+          event_type: 'pr_opened',
+          payload: {anything: 'goes-here'},
+        })
+      ).not.toThrow();
     });
 
     it('rejects schema_version != 1', () => {

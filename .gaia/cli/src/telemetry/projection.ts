@@ -31,10 +31,8 @@ import type {CloudEventType} from '../schemas/index.js';
  * cloud event payloads (Holistic Reviewer, Skill Curator, Package Steward,
  * Custodian) land with their respective Sequel features in v1.x.
  *
- * MUST stay in sync with `CLOUD_ONLY_EVENT_TYPES` in
- * `.gaia/cli/src/telemetry/emit.ts`. Duplicated intentionally so projection
- * and emit can evolve in parallel without coupling. Drift between the two
- * lists is a bug; the smoke harness asserts they match.
+ * This is the single source of truth — `emit.ts` re-exports it as
+ * `CLOUD_ONLY_EVENT_TYPES` so projection and emit share one list.
  */
 const KNOWN_CLOUD_ONLY_TYPES = [
   'pr_opened',
@@ -97,6 +95,17 @@ const firstIssuePath = (issues: z.core.$ZodIssue[]): string => {
   return issue.path.length > 0 ? issue.path.join('.') : '<root>';
 };
 
+/**
+ * Coerce a raw `event_type` to a string for the drift-result field.
+ *
+ * `ProjectionResult.event_type` is typed as a non-optional string, but a
+ * failed envelope parse means the runtime value may be absent or non-string
+ * despite the static type. Guard so a failed parse can never feed
+ * `undefined`-as-string into the result.
+ */
+const safeEventType = (raw: unknown): string =>
+  typeof raw === 'string' ? raw : '<unknown>';
+
 const resolvePayloadSchema = (eventType: string): undefined | z.ZodType => {
   if (MENTORSHIP_TYPE_SET.has(eventType)) {
     return CloudPayloadByType[eventType as CloudEventType];
@@ -146,16 +155,19 @@ export const projectToCloud = (
   const envelopeResult = EnvelopeSchema.safeParse(cloudEvent);
 
   if (!envelopeResult.success) {
+    // Envelope parse failed — `cloudEvent.event_type` is statically typed
+    // `string` but may be absent/non-string at runtime here. Coerce.
     return {
       code: 'cloud_projection_drift',
-      event_type: cloudEvent.event_type,
+      event_type: safeEventType(cloudEvent.event_type),
       field: firstIssuePath(envelopeResult.error.issues),
       ok: false,
     };
   }
 
-  // 3. Resolve cloud payload schema by event_type.
-  const eventType = cloudEvent.event_type;
+  // 3. Resolve cloud payload schema by event_type. The envelope parse
+  //    succeeded, so `event_type` is a validated string.
+  const eventType = envelopeResult.data.event_type;
   const payloadSchema = resolvePayloadSchema(eventType);
 
   if (payloadSchema === undefined) {
@@ -216,10 +228,10 @@ export const projectToCloud = (
 };
 
 /**
- * Re-export so emit-core can reference the same canonical list when
- * deciding whether an unknown event_type is a cloud-only future-Sequel
- * type vs. an outright unknown event. Drift between this list and
- * emit-core's own copy is a bug; smoke harness asserts equality.
+ * Canonical cloud-only event-type list. `emit.ts` re-exports this as
+ * `CLOUD_ONLY_EVENT_TYPES` so emit-core can decide whether an unknown
+ * event_type is a cloud-only future-Sequel type vs. an outright unknown
+ * event — both modules share one list, no drift possible.
  */
 export const KNOWN_CLOUD_ONLY_EVENT_TYPES: readonly KnownCloudOnlyType[] =
   KNOWN_CLOUD_ONLY_TYPES;

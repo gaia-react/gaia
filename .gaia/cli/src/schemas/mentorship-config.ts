@@ -2,7 +2,7 @@ import {z} from 'zod';
 
 export const MentorshipConfigSchema = z.object({
   analytics: z.object({enabled: z.boolean()}),
-  decided_at: z.string().nullable(),
+  decided_at: z.iso.datetime().nullable(),
   decided_via: z
     .enum([
       'gaia-init',

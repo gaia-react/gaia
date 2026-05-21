@@ -30,7 +30,7 @@ const RootErrorBoundary = ({error}: Route.ErrorBoundaryProps) => {
             {process.env.NODE_ENV !== 'production' && error.status !== 404 && (
               <ErrorStack
                 className="max-h-128 overflow-y-auto"
-                stack={error.data as string}
+                stack={typeof error.data === 'string' ? error.data : undefined}
               />
             )}
           </div>

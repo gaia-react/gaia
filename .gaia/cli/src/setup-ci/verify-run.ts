@@ -1,9 +1,11 @@
 /**
  * `gaia setup-ci verify-run <workflow-file> [--timeout-seconds N] [--json]` handler.
  *
- * Triggers a `workflow_dispatch` run via `gh workflow run <file> --ref main`,
- * captures the run id, and polls `gh run view <id>` until the run
- * completes or the timeout fires.
+ * Triggers a `workflow_dispatch` run via `gh workflow run <file> --ref
+ * <default-branch>`, captures the run id, and polls `gh run view <id>`
+ * until the run completes or the timeout fires. The dispatch ref is
+ * resolved from `gh repo view` so the command works in repositories
+ * whose default branch is not `main`.
  *
  * Output JSON:
  *
@@ -59,6 +61,36 @@ type RunListEntry = {createdAt?: string; databaseId: number | string};
 
 type RunViewPayload = {conclusion?: null | string; status?: string; url?: string};
 
+/**
+ * Parse a strictly-decimal positive integer. Unlike `Number.parseInt`,
+ * this rejects trailing garbage (`"30abc"`), leading signs, and empty
+ * strings — returns `null` for anything that is not all digits.
+ */
+const parsePositiveInt = (value: string): number | null => {
+  if (!/^\d+$/u.test(value)) return null;
+  const parsed = Number.parseInt(value, 10);
+
+  return parsed > 0 ? parsed : null;
+};
+
+/**
+ * Extract `defaultBranchRef.name` from `gh repo view --json
+ * defaultBranchRef` stdout. Returns `null` if the payload is malformed
+ * or the field is absent.
+ */
+export const parseDefaultBranch = (stdout: string): null | string => {
+  try {
+    const parsed = JSON.parse(stdout) as {
+      defaultBranchRef?: {name?: unknown} | null;
+    };
+    const name = parsed.defaultBranchRef?.name;
+
+    return typeof name === 'string' && name.length > 0 ? name : null;
+  } catch {
+    return null;
+  }
+};
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -79,8 +111,8 @@ export const run = async (
 ): Promise<number> => {
   let json = false;
   let workflowFile: string | undefined;
-  let timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
-  let pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
+  let timeoutSeconds: number | null = DEFAULT_TIMEOUT_SECONDS;
+  let pollIntervalMs: number | null = DEFAULT_POLL_INTERVAL_MS;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] as string;
@@ -109,7 +141,7 @@ export const run = async (
 
         return EXIT_CODES.UNKNOWN_SUBCOMMAND;
       }
-      timeoutSeconds = Number.parseInt(value, 10);
+      timeoutSeconds = parsePositiveInt(value);
       index += 1;
 
       continue;
@@ -127,7 +159,7 @@ export const run = async (
 
         return EXIT_CODES.UNKNOWN_SUBCOMMAND;
       }
-      pollIntervalMs = Number.parseInt(value, 10);
+      pollIntervalMs = parsePositiveInt(value);
       index += 1;
 
       continue;
@@ -168,7 +200,7 @@ export const run = async (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  if (Number.isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
+  if (timeoutSeconds === null) {
     structuredError({
       code: 'invalid_arguments',
       message: '--timeout-seconds must be a positive integer',
@@ -178,7 +210,7 @@ export const run = async (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  if (Number.isNaN(pollIntervalMs) || pollIntervalMs <= 0) {
+  if (pollIntervalMs === null) {
     structuredError({
       code: 'invalid_arguments',
       message: '--poll-interval-ms must be a positive integer',
@@ -190,6 +222,35 @@ export const run = async (
 
   const cwd = options.cwd ?? process.cwd();
 
+  // Step 0: resolve the repository's default branch. Hardcoding `main`
+  // breaks repos whose default branch differs (e.g. `master`, `trunk`).
+  const repoViewResult = await runGh({
+    args: ['repo', 'view', '--json', 'defaultBranchRef'],
+    cwd,
+  });
+
+  if (!repoViewResult.ok) {
+    structuredError({
+      code: 'default_branch_lookup_failed',
+      message: repoViewResult.stderr.trim(),
+      subcommand: 'setup-ci verify-run',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  const defaultBranch = parseDefaultBranch(repoViewResult.stdout);
+
+  if (defaultBranch === null) {
+    structuredError({
+      code: 'default_branch_lookup_failed',
+      message: 'could not resolve defaultBranchRef from gh repo view output',
+      subcommand: 'setup-ci verify-run',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
   // Captured before step 1 so the race-window guard below can compare
   // the picked run's `createdAt` against the moment we asked GH to
   // start one. Any run created earlier than this minus a small fudge
@@ -199,7 +260,7 @@ export const run = async (
 
   // Step 1: trigger the run.
   const triggerResult = await runGh({
-    args: ['workflow', 'run', workflowFile, '--ref', 'main'],
+    args: ['workflow', 'run', workflowFile, '--ref', defaultBranch],
     cwd,
   });
 

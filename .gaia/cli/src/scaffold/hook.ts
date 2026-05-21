@@ -119,29 +119,6 @@ const sentinelForType = (type: string): string => {
 const formatCallArgs = (params: readonly Param[]): string =>
   params.map((param) => sentinelForType(param.type)).join(', ');
 
-const REACT_HOOK_KEYWORDS = [
-  'useCallback',
-  'useEffect',
-  'useMemo',
-  'useRef',
-  'useState',
-] as const;
-
-const detectReactImports = (
-  paramsString: string,
-  returnsAnnotation: string
-): string => {
-  // The default body (`// TODO: implement`) doesn't reference any React
-  // hooks, so we keep imports empty by default. We surface this as a
-  // separate function to leave a clear extension point if a future flag
-  // (e.g. --uses "useState") wants to seed imports.
-  void paramsString;
-  void returnsAnnotation;
-  void REACT_HOOK_KEYWORDS;
-
-  return '';
-};
-
 const resolveTemplateFile = (filename: string): string => {
   const here = fileURLToPath(import.meta.url);
 
@@ -173,10 +150,11 @@ const emitFiles = (options: EmitOptions): ScaffoldResult => {
   const {hookFilePath, name, params, returns, testFilePath} = options;
   const paramsString = formatParamsString(params);
   const returnsAnnotation = returns === undefined ? '' : `: ${returns}`;
-  const imports = detectReactImports(paramsString, returnsAnnotation);
 
   const hookContents = renderTemplate(resolveTemplateFile(HOOK_TEMPLATE_FILE), {
-    imports,
+    // The default body (`// TODO: implement`) references no React hooks,
+    // so the import block is empty.
+    imports: '',
     name,
     paramsString,
     returnsAnnotation,

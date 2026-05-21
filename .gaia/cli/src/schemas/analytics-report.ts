@@ -46,7 +46,7 @@ export const AnalyticsReportSchema = z
         strength_p90: z.number().min(0).max(1),
       })
     ),
-    report_generated_at: z.string(),
+    report_generated_at: z.iso.datetime(),
     report_id: z.string(),
     report_window_days: z.literal(30),
     schema_version: z.literal(1),

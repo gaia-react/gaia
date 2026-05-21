@@ -10,10 +10,18 @@
  * consults `attempts[<original_pr>]` before doing any git/`gh` work and
  * refuses to re-open if an entry already exists.
  */
-import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import {z} from 'zod';
 import {revertLedgerPath} from '../ci/paths.js';
+import {summarizeZodError} from './zod-error.js';
 
 export const RevertAttemptStatusSchema = z.literal(['failed', 'merged', 'open'] as const);
 export type RevertAttemptStatus = z.infer<typeof RevertAttemptStatusSchema>;
@@ -41,16 +49,6 @@ export type ReadRevertLedgerResult =
   | {ledger: RevertLedger; status: 'ok'}
   | {status: 'missing'}
   | {error: string; status: 'malformed'};
-
-const summarizeZodError = (filePath: string, error: z.ZodError): string => {
-  const lines = error.issues.map((issue) => {
-    const pathStr = issue.path.length === 0 ? '<root>' : issue.path.join('.');
-
-    return `${pathStr}: ${issue.message}`;
-  });
-
-  return `${filePath}: ${lines.join('; ')}`;
-};
 
 export const readRevertLedger = (repoRoot: string): ReadRevertLedgerResult => {
   const filePath = revertLedgerPath(repoRoot);
@@ -99,4 +97,41 @@ export const writeRevertLedger = (
   const tmpPath = `${target}.tmp`;
   writeFileSync(tmpPath, serialized, 'utf8');
   renameSync(tmpPath, target);
+};
+
+/**
+ * Acquire an advisory lock around a ledger read-modify-write.
+ *
+ * The "one revert per PR" hard cap is a check-then-act on a shared file:
+ * `ci-revert open` reads the ledger, confirms no entry exists, then does
+ * several slow `git`/`gh` calls before writing the entry back. Two
+ * concurrent invocations can both pass the check and both open a revert
+ * PR. `mkdir` is atomic on POSIX, so it serves as the lock primitive —
+ * exactly one caller wins the directory create.
+ *
+ * Returns `true` and runs `critical` under the lock, or returns `false`
+ * without running it when the lock is already held (a concurrent revert
+ * is in flight — refuse rather than race).
+ */
+export const withRevertLedgerLock = <T>(
+  repoRoot: string,
+  critical: () => T
+): {locked: false} | {locked: true; value: T} => {
+  const target = revertLedgerPath(repoRoot);
+  mkdirSync(path.dirname(target), {recursive: true});
+  const lockDir = `${target}.lock`;
+
+  try {
+    // `recursive: false` is the default — fails with EEXIST if the lock
+    // directory already exists, which is the contended path.
+    mkdirSync(lockDir);
+  } catch {
+    return {locked: false};
+  }
+
+  try {
+    return {locked: true, value: critical()};
+  } finally {
+    rmSync(lockDir, {force: true, recursive: true});
+  }
 };

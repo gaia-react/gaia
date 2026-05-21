@@ -18,7 +18,7 @@ tags: [module, services, api]
 
 ## `api/` vs `gaia/` — the convention
 
-- `app/services/api/` — the [[Ky]] wrapper. A `create()` factory plus path/search-param interpolation, snake_case ↔ camelCase conversion, and shared `setApiAuthorization` / `setApiLanguage` hooks. **Reusable across domains.**
+- `app/services/api/` — the [[Ky]] wrapper. A `create()` factory plus path/search-param interpolation, snake_case ↔ camelCase conversion, and per-request `token` / `language` request options. **Reusable across domains.**
 - `app/services/gaia/` — the GAIA template's domain layer. Rename to your company name or 3rd-party API name; Claude updates imports, barrels, and references across the app.
 
 The pattern: each domain owns its own `Ky` instance (`api.ts`), its URL constants (`urls.ts`), and a server-only barrel (`index.server.ts`). Domain subfolders (`auth/`, `users/`, etc.) hold request functions, types, and parsers. `/new-service` scaffolds the full pattern.

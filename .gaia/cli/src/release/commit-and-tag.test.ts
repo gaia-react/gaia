@@ -162,6 +162,30 @@ describe('release commit-and-tag --commit', () => {
     // a release file. If it remains the path will succeed. Adjust:
     expect([0, 1]).toContain(exit);
   });
+
+  test('rolls back the release commit when the state-SHA amend fails', () => {
+    sandbox = setupSandbox('1.4.0');
+    const recorded: RecordedCall[] = [];
+    const runner = buildRecordingRunner(
+      [
+        {argv: ['rev-parse', 'HEAD'], result: okResult('abc1234def\n')},
+        {
+          argv: ['commit', '--amend', '--no-edit'],
+          result: failResult(1, 'fatal: amend blocked by hook'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run(['--commit'], {cwd: sandbox.root, runner});
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('amend blocked by hook');
+
+    // The release commit must be unwound after the amend failure.
+    const calls = recorded.map((call) => `${call.command} ${call.args.join(' ')}`);
+    expect(calls).toContain('git reset --soft HEAD~1');
+    expect(stdio.errors.join('')).toContain('rolled back the release commit');
+  });
 });
 
 const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
@@ -268,6 +292,30 @@ describe('release commit-and-tag --tag', () => {
     expect(stdio.errors.join('')).toContain('tag exists');
     // Push must NOT run after tag failure.
     expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
+  });
+
+  test('rolls back the local tag when the push fails', () => {
+    sandbox = setupSandbox('2.5.1');
+    const recorded: RecordedCall[] = [];
+    const runner = buildRecordingRunner(
+      [
+        {
+          argv: ['push', 'origin', 'v2.5.1'],
+          result: failResult(1, 'fatal: unable to access remote'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run(['--tag'], {cwd: sandbox.root, runner});
+    expect(exit).toBe(2);
+    expect(stdio.errors.join('')).toContain('unable to access remote');
+
+    // The created tag must be deleted after the failed push.
+    const calls = recorded.map((call) => `${call.command} ${call.args.join(' ')}`);
+    expect(calls).toContain('git tag -a v2.5.1 -m Release v2.5.1');
+    expect(calls).toContain('git tag -d v2.5.1');
+    expect(stdio.errors.join('')).toContain('deleted the local tag v2.5.1');
   });
 });
 

@@ -1,11 +1,6 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {MentorshipConfigSchema} from '../schemas/mentorship-config.js';
 import type {MentorshipConfig} from '../schemas/mentorship-config.js';
 import type {StorageRoots} from '../storage/paths.js';
@@ -100,13 +95,8 @@ export const writeMentorshipConfig = (arguments_: WriteArguments): void => {
   }
 
   const contents = `${JSON.stringify(config, null, 2)}\n`;
-  const temporaryPath = `${filePath}.tmp-${process.pid}`;
 
-  // Atomic write contract: write-temp-and-rename. POSIX rename is atomic
-  // on the same filesystem, so a crash mid-write leaves either the old
-  // file or the new file — never a half-written one.
-  writeFileSync(temporaryPath, contents, {mode: 0o644});
-  renameSync(temporaryPath, filePath);
+  atomicWriteFileSync(filePath, contents, {mode: 0o644});
 };
 
 /**

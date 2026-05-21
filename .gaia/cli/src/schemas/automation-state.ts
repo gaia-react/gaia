@@ -10,6 +10,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import {z} from 'zod';
 import {automationStatePath} from '../automation/paths.js';
 import type {ToolId} from './automation-config.js';
+import {summarizeZodError} from './zod-error.js';
 
 export const TriggerSchema = z.enum(['cron', 'force', 'workflow_dispatch']);
 export type Trigger = z.infer<typeof TriggerSchema>;
@@ -34,16 +35,6 @@ export type ReadAutomationStateResult =
   | {state: AutomationStateFile; status: 'ok'}
   | {status: 'missing'}
   | {error: string; status: 'malformed'};
-
-const summarizeZodError = (filePath: string, error: z.ZodError): string => {
-  const lines = error.issues.map((issue) => {
-    const pathStr = issue.path.length === 0 ? '<root>' : issue.path.join('.');
-
-    return `${pathStr}: ${issue.message}`;
-  });
-
-  return `${filePath}: ${lines.join('; ')}`;
-};
 
 export const readAutomationState = (
   repoRoot: string,
