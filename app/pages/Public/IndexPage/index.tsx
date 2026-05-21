@@ -36,7 +36,7 @@ const IndexPage: FC = () => {
         className="relative z-10 flex flex-1 flex-col justify-center p-8 sm:px-16 sm:py-12"
       >
         <div className="max-w-3xl">
-          <p className="text-claude-500 dark:text-claude-400 mb-4 font-mono text-xs uppercase tracking-widest sm:text-sm">
+          <p className="text-claude-700 dark:text-claude-400 mb-4 font-mono text-xs uppercase tracking-widest sm:text-sm">
             {t('eyebrow')}
           </p>
 
@@ -55,7 +55,7 @@ const IndexPage: FC = () => {
 
           <div className="flex">
             <LinkButton
-              className="border-claude-500 text-claude-500 hover:bg-claude-500/10 dark:border-claude-400 dark:text-claude-300 dark:hover:bg-claude-500/15"
+              className="border-claude-500 text-claude-700 hover:bg-claude-500/10 dark:border-claude-400 dark:text-claude-300 dark:hover:bg-claude-500/15"
               icon={FaGithub}
               size="lg"
               to="https://github.com/gaia-react/gaia"

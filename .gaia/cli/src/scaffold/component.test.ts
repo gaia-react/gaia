@@ -88,6 +88,11 @@ const captureStdio = (): StdioCapture => {
 
 const read = (filePath: string): string => readFileSync(filePath, 'utf8');
 
+// Built from fragments so Vitest's environment scanner does not read the
+// directive text in the assertions below as a real environment pragma for
+// this file — this is a Node CLI test and must not be forced into jsdom.
+const JSDOM_ENV_DIRECTIVE = `// @vitest-${'environment'} jsdom`;
+
 describe('scaffold component', () => {
   let sandbox: Sandbox;
   let stdio: StdioCapture;
@@ -124,7 +129,7 @@ describe('scaffold component', () => {
     expect(indexContents).not.toContain('FooProps');
 
     const testContents = read(testPath);
-    expect(testContents.startsWith('// @vitest-environment jsdom\n')).toBe(true);
+    expect(testContents.startsWith(`${JSDOM_ENV_DIRECTIVE}\n`)).toBe(true);
     expect(testContents).toContain(
       "import {composeStory} from '@storybook/react-vite';"
     );
@@ -161,7 +166,7 @@ describe('scaffold component', () => {
     const testContents = read(
       path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')
     );
-    expect(testContents.startsWith('// @vitest-environment jsdom\n')).toBe(true);
+    expect(testContents.startsWith(`${JSDOM_ENV_DIRECTIVE}\n`)).toBe(true);
     expect(testContents).not.toContain('composeStory');
     expect(testContents).toContain("import Bar from '..'");
     expect(testContents).toContain(
