@@ -183,6 +183,13 @@ const rollbackLocalLanding = (
 ): void => {
   if (!onSyncBranch) return;
 
+  // Unstage `wiki` before switching branches so a failed commit does not
+  // carry a dirty index back to the original branch on checkout.
+  runStep(
+    ctx.runner,
+    {args: ['reset', 'HEAD', '--', 'wiki'], command: 'git'},
+    ctx.cwd
+  );
   runStep(
     ctx.runner,
     {args: ['checkout', ctx.originalBranch], command: 'git'},

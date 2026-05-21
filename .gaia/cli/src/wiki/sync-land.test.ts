@@ -347,6 +347,16 @@ describe('wiki sync land', () => {
       args: ['branch', '-D', 'wiki-sync/2026-05-07-ddddddd'],
       command: 'git',
     });
+    // The staged `wiki` index is reset before switching branches, so the
+    // failed commit does not carry a dirty index onto the original branch.
+    const resetIndex = gitCalls.findIndex(
+      (c) => c.args.join(' ') === 'reset HEAD -- wiki'
+    );
+    const checkoutIndex = gitCalls.findIndex(
+      (c) => c.args.join(' ') === 'checkout main'
+    );
+    expect(resetIndex).toBeGreaterThanOrEqual(0);
+    expect(resetIndex).toBeLessThan(checkoutIndex);
     // No push / gh once the local sequence failed.
     expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
     expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
