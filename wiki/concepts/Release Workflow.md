@@ -135,6 +135,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 
 - `.github/workflows/release.yml` — cuts releases of the GAIA template itself, triggered by `v*.*.*` tags against `.gaia/VERSION`. Adopters never release GAIA, so the workflow is at best a silent passenger and at worst a CI failure if they accidentally tag with `v*`.
 - `.github/workflows/cli-tests.yml` — runs `.gaia/cli/` typecheck and vitest. Adopters receive only the bundled binary at `.gaia/cli/gaia`, so there is nothing for the workflow to test on their side.
+- `.github/workflows/audit-ci-tests.yml` — runs the bats suite for `.github/audit/check-trailer.sh`. Adopters receive that script as GAIA-controlled (`owned`) code they never modify, so the suite only guards maintainer edits.
 - `.github/workflows/distribution.yml` — runs the `.gaia/tests/distribution/` harness on a GitHub runner. Manual trigger only (`workflow_dispatch`); the maintainer's `CLAUDE_CODE_OAUTH_TOKEN` org secret authenticates the in-container `claude` calls used by Layer 2 scenarios. Adopters never run distribution tests against their own scaffold, so the workflow is irrelevant on their side.
 
 `tests.yml` and `chromatic.yml` DO ship; both are adopter-relevant. Their `paths-filter` allowlists are written without reference to maintainer-only paths so the filter stays meaningful on an adopter clone.
