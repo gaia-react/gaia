@@ -29,11 +29,11 @@ export const tryCatch = <T, A extends readonly unknown[]>(
       ]) as TryCatchResult<T>;
   }
 
-  if (result) {
-    return [undefined, result] as TryCatchResult<T>;
+  if (error) {
+    return [error, undefined] as TryCatchResult<T>;
   }
 
-  return [error, undefined] as TryCatchResult<T>;
+  return [undefined, result] as TryCatchResult<T>;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
