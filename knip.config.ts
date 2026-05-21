@@ -2,6 +2,7 @@ import type {KnipConfig} from 'knip';
 
 export default {
   entry: [
+    '.playwright/**/*.ts',
     '.storybook/**/*.{ts,tsx}',
     'app/components/**/*.{ts,tsx}',
     'app/hooks/**/*.ts',
