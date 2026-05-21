@@ -1,9 +1,19 @@
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {RevertLedger} from '../../schemas/revert-ledger.js';
+import {withRevertLedgerLock} from '../../schemas/revert-ledger.js';
 import {run} from '../revert.js';
 import * as runProcess from '../util/run-process.js';
 import type {ProcessResult} from '../util/run-process.js';
@@ -325,8 +335,8 @@ describe('ci-revert', () => {
       expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow();
     });
 
-    it('refuses when the ledger lock is already held', () => {
-      mkdirSync(`${sandbox.ledgerPath}.lock`, {recursive: true});
+    it('refuses when the per-PR ledger lock is already held', () => {
+      mkdirSync(`${sandbox.ledgerPath}.lock.pr-99`, {recursive: true});
 
       const exit = run(
         ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
@@ -337,6 +347,55 @@ describe('ci-revert', () => {
       // Hard cap: zero gh / git invocations while a revert is in flight.
       expect(ghSpy.mock.calls.length).toBe(0);
       expect(gitSpy.mock.calls.length).toBe(0);
+
+      const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+      expect(printed.error).toBe('revert_lock_held');
+    });
+
+    it('proceeds when a lock for a different PR is held', () => {
+      // A lock scoped to PR 137 must not block a revert open for PR 99.
+      mkdirSync(`${sandbox.ledgerPath}.lock.pr-137`, {recursive: true});
+
+      const exit = run(
+        ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
+        {cwd: sandbox.root}
+      );
+      expect(exit).toBe(0);
+
+      const ledger = JSON.parse(readFileSync(sandbox.ledgerPath, 'utf8')) as RevertLedger;
+      expect(ledger.attempts['99']?.revert_pr).toBe(137);
+    });
+
+    it('reclaims a stale per-PR lock and proceeds', () => {
+      const lockDir = `${sandbox.ledgerPath}.lock.pr-99`;
+      mkdirSync(lockDir, {recursive: true});
+      // Backdate the lock dir's mtime well past the stale threshold
+      // (5 min). 1 h ago is comfortably stale.
+      const stale = new Date(Date.now() - 60 * 60_000);
+      utimesSync(lockDir, stale, stale);
+
+      const exit = run(
+        ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
+        {cwd: sandbox.root}
+      );
+      expect(exit).toBe(0);
+
+      const ledger = JSON.parse(readFileSync(sandbox.ledgerPath, 'utf8')) as RevertLedger;
+      expect(ledger.attempts['99']?.revert_pr).toBe(137);
+    });
+
+    it('refuses when a fresh per-PR lock is held', () => {
+      const lockDir = `${sandbox.ledgerPath}.lock.pr-99`;
+      mkdirSync(lockDir, {recursive: true});
+      // mtime within the threshold — a healthy concurrent revert.
+      const fresh = new Date(Date.now() - 30_000);
+      utimesSync(lockDir, fresh, fresh);
+
+      const exit = run(
+        ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
+        {cwd: sandbox.root}
+      );
+      expect(exit).not.toBe(0);
 
       const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
       expect(printed.error).toBe('revert_lock_held');
@@ -521,6 +580,95 @@ describe('ci-revert', () => {
       const exit = run(['unknown'], {cwd: sandbox.root});
       expect(exit).not.toBe(0);
       expect(stdio.err.join('')).toContain('unknown');
+    });
+  });
+
+  describe('withRevertLedgerLock', () => {
+    it('propagates a non-EEXIST lock-acquire error', () => {
+      // A read-only lock parent makes the lock-dir `mkdir` fail with
+      // EACCES — a genuine error, not contention. It must propagate
+      // rather than be swallowed into {locked: false}.
+      const ledgerDir = path.join(sandbox.root, '.gaia');
+      chmodSync(ledgerDir, 0o500);
+
+      try {
+        expect(() =>
+          withRevertLedgerLock(sandbox.root, 99, () => 'never-runs')
+        ).toThrow();
+      } finally {
+        // Restore writability so the sandbox cleanup can remove it.
+        chmodSync(ledgerDir, 0o700);
+      }
+    });
+
+    it('does not serialize locks for different PRs', () => {
+      const outer = withRevertLedgerLock(sandbox.root, 99, () =>
+        // While PR 99's lock is held, a revert for PR 100 still acquires.
+        withRevertLedgerLock(sandbox.root, 100, () => 'inner-ran')
+      );
+
+      expect(outer.locked).toBe(true);
+
+      if (outer.locked) {
+        expect(outer.value.locked).toBe(true);
+
+        if (outer.value.locked) {
+          expect(outer.value.value).toBe('inner-ran');
+        }
+      }
+    });
+
+    it('serializes locks for the same PR', () => {
+      const outer = withRevertLedgerLock(sandbox.root, 99, () =>
+        // A second open for the same PR while the first holds a fresh
+        // lock is refused.
+        withRevertLedgerLock(sandbox.root, 99, () => 'inner-ran')
+      );
+
+      expect(outer.locked).toBe(true);
+
+      if (outer.locked) {
+        expect(outer.value.locked).toBe(false);
+      }
+    });
+
+    it('reclaims a stale lock directory', () => {
+      const lockDir = path.join(
+        sandbox.root,
+        '.gaia',
+        'automation.state-revert-attempts.json.lock.pr-99'
+      );
+      mkdirSync(lockDir, {recursive: true});
+      const stale = new Date(Date.now() - 60 * 60_000);
+      utimesSync(lockDir, stale, stale);
+
+      const result = withRevertLedgerLock(sandbox.root, 99, () => 'critical-ran');
+
+      expect(result.locked).toBe(true);
+
+      if (result.locked) {
+        expect(result.value).toBe('critical-ran');
+      }
+
+      // The lock dir is released on the happy path.
+      expect(() => statSync(lockDir)).toThrow();
+    });
+
+    it('refuses when a fresh lock directory exists', () => {
+      const lockDir = path.join(
+        sandbox.root,
+        '.gaia',
+        'automation.state-revert-attempts.json.lock.pr-99'
+      );
+      mkdirSync(lockDir, {recursive: true});
+      const fresh = new Date(Date.now() - 30_000);
+      utimesSync(lockDir, fresh, fresh);
+
+      const result = withRevertLedgerLock(sandbox.root, 99, () => 'never-runs');
+
+      expect(result.locked).toBe(false);
+      // The pre-existing fresh lock is left in place — not reclaimed.
+      expect(() => statSync(lockDir)).not.toThrow();
     });
   });
 });
