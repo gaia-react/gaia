@@ -32,6 +32,7 @@
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
+import {ADOPTER_OWNED_SENTINELS as GIT_TRACKED_SENTINELS} from './manifest.js';
 import {structuredError} from '../stderr.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
@@ -60,14 +61,16 @@ const SCAN_GLOBS = ['.gaia/statusline', '.claude/hooks'] as const;
 /**
  * Sentinels that ship in the tarball but are intentionally absent from
  * `.gaia/manifest.json` because adopters take ownership at first install.
- * See `.gaia/cli/src/release/manifest.ts` ADOPTER_OWNED_SENTINELS.
+ *
+ * The git-tracked subset is the single canonical set exported by
+ * `manifest.ts` (`classifyPath` maps those to `null`). This scan adds
+ * `.gaia/automation.json` — a runtime file created on the adopter side,
+ * never git-tracked, so it cannot live in the manifest's set — to cover
+ * references found in the extracted staging tree.
  */
 const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
-  '.gaia/VERSION',
+  ...GIT_TRACKED_SENTINELS,
   '.gaia/automation.json',
-  '.gaia/manifest.json',
-  'wiki/hot.md',
-  'wiki/log.md',
 ]);
 
 /**

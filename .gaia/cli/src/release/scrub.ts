@@ -11,7 +11,7 @@
  *
  *   2. json-strip — delete maintainer-only keys from structured JSON files
  *      using dot-notation paths (e.g. "scripts.test:forensics"). Dots are
- *      path separators; key names must not contain literal dots.
+ *      path separators; a literal dot inside a key name is escaped as `\.`.
  *
  *   3. leak-check — run codified audit patterns from
  *      `.claude/rules/wiki-style.md` Audit section + the distribution-
@@ -277,6 +277,43 @@ export type JsonStripResult = {
   keysRemoved: number;
 };
 
+/**
+ * Split a dot-notation key path into segments. A literal `.` inside a key
+ * name is expressed with a backslash escape (`\.`), so a package.json key
+ * that contains a dot — e.g. `exports.\.\/feature` — stays addressable.
+ *
+ * `scripts.test:forensics` → `['scripts', 'test:forensics']`
+ * String.raw`scripts.foo\.bar` → `['scripts', 'foo.bar']`
+ *
+ * A trailing lone backslash is treated literally.
+ */
+export const parseKeyPath = (key: string): string[] => {
+  const segments: string[] = [];
+  let current = '';
+
+  for (let index = 0; index < key.length; index += 1) {
+    const char = key[index];
+
+    if (char === '\\' && key[index + 1] === '.') {
+      current += '.';
+      index += 1;
+      continue;
+    }
+
+    if (char === '.') {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  segments.push(current);
+
+  return segments;
+};
+
 const deleteKeyPath = (
   obj: Record<string, unknown>,
   segments: readonly string[]
@@ -309,7 +346,7 @@ const applyJsonStrip = (
 ): JsonStripResult => {
   const filesTouched: string[] = [];
   let keysRemoved = 0;
-  const keySegments = transform.keys.map((k) => k.split('.'));
+  const keySegments = transform.keys.map((k) => parseKeyPath(k));
 
   for (const relativePath of files) {
     if (!matchesAnyGlob(relativePath, transform.paths)) continue;
