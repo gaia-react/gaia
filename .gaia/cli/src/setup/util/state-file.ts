@@ -106,10 +106,29 @@ export const readStateFile = (repoRoot: string): SetupState | null => {
     );
   }
 
+  const rawSteps = parsed.completed_steps ?? [];
+  const unknownSteps = rawSteps.filter((step) => !isSetupStep(step));
+
+  if (unknownSteps.length > 0) {
+    // An unrecognized step is corruption (or a downgrade from a newer
+    // GAIA release). Silently dropping it would let `finalize` pass a
+    // gate it should not. Surface it instead.
+    throw new Error(
+      `setup-state.json has unrecognized completed_steps: `
+        + `${unknownSteps.join(', ')}`
+    );
+  }
+
+  if (typeof parsed.started_at !== 'string') {
+    // `started_at` is stamped on first write; a missing/non-string value
+    // means a corrupt file. A read helper must not fabricate it.
+    throw new Error('setup-state.json is missing a valid started_at');
+  }
+
   return {
     completed_at: parsed.completed_at ?? null,
-    completed_steps: (parsed.completed_steps ?? []).filter(isSetupStep),
-    started_at: parsed.started_at ?? new Date().toISOString(),
+    completed_steps: rawSteps.filter(isSetupStep),
+    started_at: parsed.started_at,
     version: 1,
   };
 };

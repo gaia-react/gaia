@@ -13,6 +13,7 @@ import {EXIT_CODES} from '../exit.js';
 import {
   emptyRevertLedger,
   readRevertLedger,
+  withRevertLedgerLock,
   writeRevertLedger,
   type RevertLedger,
 } from '../schemas/revert-ledger.js';
@@ -263,6 +264,43 @@ const handleOpen = (
 
   if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
+  // Serialize the ledger read-check-write so the "one revert per PR"
+  // hard cap is not defeated by two concurrent `ci-revert open` runs
+  // both passing the existence check before either writes.
+  const locked = withRevertLedgerLock(repoRoot, () =>
+    handleOpenLocked({json, label, options, pr, reason, repoRoot})
+  );
+
+  if (!locked.locked) {
+    const payload = {error: 'revert_lock_held'};
+    structuredError({
+      code: 'revert_lock_held',
+      message: 'another ci-revert open is in progress for this repository',
+      subcommand: 'ci-revert open',
+    });
+
+    if (json) {
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+    }
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  return locked.value;
+};
+
+type HandleOpenLockedArgs = {
+  json: boolean;
+  label: string;
+  options: RunOptions;
+  pr: number;
+  reason: string | undefined;
+  repoRoot: string;
+};
+
+const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
+  const {json, label, options, pr, reason, repoRoot} = args;
+
   const ledger = ensureLedger(repoRoot, 'open', json);
 
   if (ledger === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -372,6 +410,16 @@ const handleOpen = (
     return surfaceRevertFailure('git_fetch', fetchResult, json);
   }
 
+  // Capture the branch the repo was on before we create the revert
+  // branch, so a later failure can restore it. An empty result (detached
+  // HEAD) is fine — the rollback simply skips the checkout-back step.
+  const priorBranchResult = runGit(
+    ['symbolic-ref', '--quiet', '--short', 'HEAD'],
+    {cwd: repoRoot}
+  );
+  const priorBranch =
+    priorBranchResult.exitCode === 0 ? priorBranchResult.stdout.trim() : '';
+
   const checkoutResult = runGit(
     ['checkout', '-b', revertBranch, `origin/${baseRefName}`],
     {cwd: repoRoot}
@@ -381,13 +429,25 @@ const handleOpen = (
     return surfaceRevertFailure('git_checkout', checkoutResult, json);
   }
 
+  // Restore the repo to its pre-revert state: leave the revert branch
+  // and delete it. Best-effort — every step is non-fatal because the
+  // surfaced failure is the one that matters.
+  const rollbackRevertBranch = (): void => {
+    if (priorBranch !== '') {
+      runGit(['checkout', '--force', priorBranch], {cwd: repoRoot});
+    } else {
+      runGit(['checkout', '--force', `origin/${baseRefName}`], {cwd: repoRoot});
+    }
+    runGit(['branch', '-D', revertBranch], {cwd: repoRoot});
+  };
+
   const revertResult = runGit(['revert', '--no-edit', mergeSha], {cwd: repoRoot});
 
   if (revertResult.exitCode !== 0) {
-    // Best-effort cleanup so the working tree isn't left in a half-reverted
-    // state on the runner. Failure of --abort is non-fatal — the runner is
-    // ephemeral.
+    // Abort the in-progress revert, then unwind the branch we created so
+    // the repo is left exactly as we found it.
     runGit(['revert', '--abort'], {cwd: repoRoot});
+    rollbackRevertBranch();
 
     return surfaceRevertFailure('git_revert', revertResult, json);
   }
@@ -395,6 +455,11 @@ const handleOpen = (
   const pushResult = runGit(['push', '-u', 'origin', revertBranch], {cwd: repoRoot});
 
   if (pushResult.exitCode !== 0) {
+    // The local branch carries a committed revert; a failed push leaves
+    // a non-atomic mutation behind. Roll the local repo back to its
+    // prior state so a retry starts clean.
+    rollbackRevertBranch();
+
     return surfaceRevertFailure('git_push', pushResult, json);
   }
 
