@@ -116,7 +116,7 @@ export const classifyPath = (relativePath: string): ManifestClass | null => {
   return 'owned';
 };
 
-const ManifestClassSchema = z.enum(['owned', 'shared', 'wiki-owned']);
+const ManifestClassSchema = z.literal(['owned', 'shared', 'wiki-owned'] as const);
 
 /**
  * Runtime shape of `.gaia/manifest.json`. The committed manifest is
