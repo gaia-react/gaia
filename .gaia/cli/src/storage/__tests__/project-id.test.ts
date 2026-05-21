@@ -97,19 +97,19 @@ describe('readOrCreateProjectId', () => {
     expect(repoRootFromProjectIdPath(projectIdPath)).toBe(root);
   });
 
-  test('repoRootFromProjectIdPath handles Windows backslash separators', () => {
-    // The old implementation used a regex anchored to `/`, so a
-    // backslash-separated path left the `.gaia\local\.project-id` suffix
-    // attached and derived the wrong project id. path.win32.dirname is the
-    // separator-aware operation that path.dirname delegates to on Windows.
-    const root = String.raw`C:\Users\me\project`;
-    const projectIdPath = [root, '.gaia', 'local', '.project-id'].join('\\');
-    const recovered = [projectIdPath]
-      .map((p) => path.win32.dirname(path.win32.dirname(path.win32.dirname(p))))
-      .at(0);
+  // repoRootFromProjectIdPath delegates to path.dirname, which is
+  // separator-aware for the host platform. A backslash-separated path is
+  // only resolvable by the function on Windows — on POSIX, path.dirname does
+  // not treat `\` as a separator — so this case runs natively only.
+  test.runIf(process.platform === 'win32')(
+    'repoRootFromProjectIdPath recovers the root from a Windows backslash path',
+    () => {
+      const root = String.raw`C:\Users\me\project`;
+      const projectIdPath = [root, '.gaia', 'local', '.project-id'].join('\\');
 
-    expect(recovered).toBe(root);
-  });
+      expect(repoRootFromProjectIdPath(projectIdPath)).toBe(root);
+    }
+  );
 
   test('creates the parent .gaia/local/ directory if absent', () => {
     const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
