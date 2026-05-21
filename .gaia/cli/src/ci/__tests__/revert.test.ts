@@ -152,19 +152,22 @@ describe('ci-revert', () => {
         status: 'open',
       });
 
-      // Verify all five external commands were called in order.
+      // Verify the external commands were called in order. A
+      // `symbolic-ref` probe runs between fetch and checkout to capture
+      // the rollback target.
       const ghArgsList = ghSpy.mock.calls.map((call: [readonly string[], unknown?]) => call[0]);
       const gitArgsList = gitSpy.mock.calls.map((call: [readonly string[], unknown?]) => call[0]);
 
       expect(ghArgsList[0]?.slice(0, 3)).toEqual(['pr', 'view', '99']);
       expect(gitArgsList[0]).toEqual(['fetch', 'origin', 'main']);
-      expect(gitArgsList[1]?.[0]).toBe('checkout');
-      expect(gitArgsList[2]?.slice(0, 3)).toEqual([
+      expect(gitArgsList[1]?.[0]).toBe('symbolic-ref');
+      expect(gitArgsList[2]?.[0]).toBe('checkout');
+      expect(gitArgsList[3]?.slice(0, 3)).toEqual([
         'revert',
         '--no-edit',
         '0123456789abcdef0123456789abcdef01234567',
       ]);
-      expect(gitArgsList[3]).toEqual([
+      expect(gitArgsList[4]).toEqual([
         'push',
         '-u',
         'origin',
@@ -277,6 +280,66 @@ describe('ci-revert', () => {
       const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
       expect(printed.error).toBe('revert_failed');
       expect(printed.step).toBe('git_revert');
+    });
+
+    it('rolls back the local branch when git push fails', () => {
+      const impl: RunFn = (args) => {
+        if (args[0] === 'symbolic-ref') {
+          return {exitCode: 0, stderr: '', stdout: 'main\n'};
+        }
+
+        if (args[0] === 'push') {
+          return {exitCode: 1, stderr: 'remote rejected', stdout: ''};
+        }
+
+        return {exitCode: 0, stderr: '', stdout: ''};
+      };
+      gitSpy.mockImplementation(impl);
+
+      const exit = run(
+        ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
+        {cwd: sandbox.root}
+      );
+      expect(exit).not.toBe(0);
+
+      const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+      expect(printed.error).toBe('revert_failed');
+      expect(printed.step).toBe('git_push');
+
+      // Rollback: checkout back to the prior branch and delete the
+      // revert branch must both have run after the failed push.
+      const gitArgsList = gitSpy.mock.calls.map(
+        (call: [readonly string[], unknown?]) => call[0]
+      );
+      const checkoutBack = gitArgsList.find(
+        (a: readonly string[]) =>
+          a[0] === 'checkout' && a[1] === '--force' && a[2] === 'main'
+      );
+      const deleteBranch = gitArgsList.find(
+        (a: readonly string[]) => a[0] === 'branch' && a[1] === '-D'
+      );
+      expect(checkoutBack).toBeDefined();
+      expect(deleteBranch).toBeDefined();
+
+      // The ledger must not be written on a failed push.
+      expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow();
+    });
+
+    it('refuses when the ledger lock is already held', () => {
+      mkdirSync(`${sandbox.ledgerPath}.lock`, {recursive: true});
+
+      const exit = run(
+        ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
+        {cwd: sandbox.root}
+      );
+      expect(exit).not.toBe(0);
+
+      // Hard cap: zero gh / git invocations while a revert is in flight.
+      expect(ghSpy.mock.calls.length).toBe(0);
+      expect(gitSpy.mock.calls.length).toBe(0);
+
+      const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+      expect(printed.error).toBe('revert_lock_held');
     });
 
     it('parses the new PR number even with a banner line in stdout', () => {
