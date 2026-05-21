@@ -14,7 +14,7 @@ tags: [dependency, http]
 Tiny HTTP client built on `fetch`. GAIA's `app/services/api/index.ts` wraps it:
 
 - `create()` factory that returns a typed request function
-- `setApiAuthorization(token)` and `setApiLanguage(language)` mutate **all** instances at once
+- per-request `token` / `language` options that set `Authorization` and `Accept-Language` headers per call
 - snake_case ↔ camelCase conversion via hooks (`useSnakeCase: true` by default)
 - Path-param + search-param interpolation via `query-string`
 

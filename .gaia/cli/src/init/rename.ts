@@ -16,8 +16,9 @@
  *
  * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
  */
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {markStepCompleted} from './util/state.js';
@@ -130,7 +131,7 @@ const renamePackageJson = (cwd: string, kebab: string): void => {
   if (parsed.name === kebab) return;
   parsed.name = kebab;
   const trailing = raw.endsWith('\n') ? '\n' : '';
-  writeFileSync(target, `${JSON.stringify(parsed, null, 2)}${trailing}`, 'utf8');
+  atomicWriteFileSync(target, `${JSON.stringify(parsed, null, 2)}${trailing}`);
 };
 
 const renameClaudeMd = (cwd: string, title: string): void => {
@@ -142,7 +143,7 @@ const renameClaudeMd = (cwd: string, title: string): void => {
   const next = original.replace(/^#\s+.*$/mu, `# ${title}`);
 
   if (next !== original) {
-    writeFileSync(target, next, 'utf8');
+    atomicWriteFileSync(target, next);
   }
 };
 
@@ -177,7 +178,7 @@ const renameCommonTs = (cwd: string, title: string): void => {
   const next = replaceStringPropertyAll(original, 'siteName', title);
 
   if (next !== original) {
-    writeFileSync(target, next, 'utf8');
+    atomicWriteFileSync(target, next);
   }
 };
 
@@ -195,7 +196,7 @@ const renameIndexPage = (cwd: string, title: string): void => {
   next = replaceStringPropertyAll(next, 'title', title);
 
   if (next !== original) {
-    writeFileSync(target, next, 'utf8');
+    atomicWriteFileSync(target, next);
   }
 };
 

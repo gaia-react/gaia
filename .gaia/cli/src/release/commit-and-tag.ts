@@ -20,7 +20,8 @@
  * per mode; stderr explains every refusal.
  */
 import {type SpawnSyncReturns, spawnSync} from 'node:child_process';
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -204,7 +205,7 @@ const writeStateSha = (cwd: string, sha: string): void => {
 
   if (!saw) next.last_evaluated_sha = sha;
   const trailingNewline = raw.endsWith('\n') ? '\n' : '';
-  writeFileSync(target, `${JSON.stringify(next, null, 2)}${trailingNewline}`, 'utf8');
+  atomicWriteFileSync(target, `${JSON.stringify(next, null, 2)}${trailingNewline}`);
 };
 
 const runCommitMode = (ctx: CommitContext): number => {

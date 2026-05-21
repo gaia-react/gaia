@@ -591,6 +591,47 @@ describe('update-deps run — computeUpdates', () => {
     expect(sbReact?.latest).toBe('9.0.0');
     expect(sbReact?.kind).toBe('major');
   });
+
+  test('sibling expansion: current version comes from node_modules, not the spec', () => {
+    sandbox.writePackageJson({
+      devDependencies: {
+        storybook: '^8.0.0',
+        '@storybook/react': '^8.0.0',
+      },
+    });
+    // @storybook/react is already on 9.0.0 in node_modules even though the
+    // package.json spec still floors at ^8.0.0.
+    mkdirSync(path.join(sandbox.root, 'node_modules', '@storybook', 'react'), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(
+        sandbox.root,
+        'node_modules',
+        '@storybook',
+        'react',
+        'package.json'
+      ),
+      JSON.stringify({name: '@storybook/react', version: '9.0.0'}),
+      'utf8'
+    );
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {storybook: {current: '8.0.0', latest: '9.0.0', wanted: '8.0.0'}},
+        undefined,
+        {'@storybook/react': '9.0.0'}
+      ),
+    });
+
+    const sbReact = result.wave_b[0]?.packages.find(
+      (p) => p.name === '@storybook/react'
+    );
+    expect(sbReact?.current).toBe('9.0.0');
+    // current === latest → classified patch (no-op), not major.
+    expect(sbReact?.kind).toBe('patch');
+  });
 });
 
 describe('update-deps run — group membership', () => {

@@ -122,6 +122,7 @@ const stepSucceeded = (result: SpawnSyncReturns<string>): boolean =>
 
 type LandingContext = {
   cwd: string;
+  originalBranch: string;
   runner: CommandRunner;
   shortHead: string;
 };
@@ -133,10 +134,25 @@ const inPlaceLanding = (ctx: LandingContext): number => {
     {args: ['commit', '-m', message], command: 'git'},
   ];
 
+  let staged = false;
+
   for (const step of sequence) {
     const result = runStep(ctx.runner, step, ctx.cwd);
 
-    if (!stepSucceeded(result)) return passthroughFailure(result, step);
+    if (!stepSucceeded(result)) {
+      if (staged) {
+        // Unstage `wiki` so a failed commit leaves a clean index behind.
+        runStep(
+          ctx.runner,
+          {args: ['reset', 'HEAD', '--', 'wiki'], command: 'git'},
+          ctx.cwd
+        );
+      }
+
+      return passthroughFailure(result, step);
+    }
+
+    if (step.args[0] === 'add') staged = true;
   }
 
   process.stdout.write(
@@ -154,6 +170,38 @@ const todayUtc = (now: Date = new Date()): string => {
   return `${year}-${month}-${day}`;
 };
 
+/**
+ * Best-effort rollback of the local-only landing steps: return to the
+ * original branch and delete the half-created sync branch. Remote state is
+ * never auto-reverted. The rollback git calls are themselves best-effort —
+ * a failure here is not surfaced over the original step failure.
+ */
+const rollbackLocalLanding = (
+  ctx: LandingContext,
+  branchName: string,
+  onSyncBranch: boolean
+): void => {
+  if (!onSyncBranch) return;
+
+  // Unstage `wiki` before switching branches so a failed commit does not
+  // carry a dirty index back to the original branch on checkout.
+  runStep(
+    ctx.runner,
+    {args: ['reset', 'HEAD', '--', 'wiki'], command: 'git'},
+    ctx.cwd
+  );
+  runStep(
+    ctx.runner,
+    {args: ['checkout', ctx.originalBranch], command: 'git'},
+    ctx.cwd
+  );
+  runStep(
+    ctx.runner,
+    {args: ['branch', '-D', branchName], command: 'git'},
+    ctx.cwd
+  );
+};
+
 const protectedBranchLanding = (
   ctx: LandingContext,
   options: {today: string}
@@ -162,16 +210,36 @@ const protectedBranchLanding = (
   const message = `wiki: sync through ${ctx.shortHead}`;
   const prTitle = message;
   const prBody = `Automated wiki sync landed via \`gaia wiki sync land --branch-aware\`. State advanced to ${ctx.shortHead}.`;
-  const sequence: RunStep[] = [
+
+  // Steps through the local commit are reversible; once `push` succeeds the
+  // branch (and possibly a PR) exists on the remote and is left for the
+  // maintainer to resolve rather than force-reverted.
+  const localSequence: RunStep[] = [
     {args: ['checkout', '-b', branchName], command: 'git'},
     {args: ['add', 'wiki'], command: 'git'},
     {args: ['commit', '-m', message], command: 'git'},
+  ];
+  const remoteSequence: RunStep[] = [
     {args: ['push', '-u', 'origin', branchName], command: 'git'},
     {args: ['pr', 'create', '--title', prTitle, '--body', prBody], command: 'gh'},
     {args: ['pr', 'merge', '--squash', '--auto'], command: 'gh'},
   ];
 
-  for (const step of sequence) {
+  let onSyncBranch = false;
+
+  for (const step of localSequence) {
+    const result = runStep(ctx.runner, step, ctx.cwd);
+
+    if (!stepSucceeded(result)) {
+      rollbackLocalLanding(ctx, branchName, onSyncBranch);
+
+      return passthroughFailure(result, step);
+    }
+
+    if (step.args[0] === 'checkout') onSyncBranch = true;
+  }
+
+  for (const step of remoteSequence) {
     const result = runStep(ctx.runner, step, ctx.cwd);
 
     if (!stepSucceeded(result)) return passthroughFailure(result, step);
@@ -275,6 +343,7 @@ export const run = (
 
   const ctx: LandingContext = {
     cwd: repoRoot,
+    originalBranch: branch,
     runner,
     shortHead,
   };

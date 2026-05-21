@@ -87,9 +87,21 @@ export const runGh = (options: GhOptions): Promise<GhResult> => {
       settle({exitCode, ok: false, stderr: stderrBuf});
     });
 
+    // A child that exits before draining stdin leaves the pipe closed;
+    // a subsequent write/end then emits EPIPE on the stream. Without an
+    // `error` listener that EPIPE becomes an unhandled stream error and
+    // crashes the process. The child's exit is already captured by the
+    // `close` handler above, so a broken stdin pipe is benign here.
+    child.stdin.on('error', () => {
+      // Intentionally swallowed — `close` carries the real outcome.
+    });
+
     if (options.stdin !== undefined) {
-      child.stdin.write(options.stdin);
+      // `end(payload)` writes then closes in one call; respecting
+      // backpressure is unnecessary because we are done after this.
+      child.stdin.end(options.stdin);
+    } else {
+      child.stdin.end();
     }
-    child.stdin.end();
   });
 };

@@ -16,6 +16,9 @@ const runGit = (args: readonly string[], options: RunOptions = {}): string => {
   const result = execFileSync('git', args, {
     cwd,
     encoding: 'utf8',
+    // `git log` over a large history easily exceeds the 1 MiB default and
+    // throws ENOBUFS; 64 MiB covers any realistic sync window.
+    maxBuffer: 64 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
