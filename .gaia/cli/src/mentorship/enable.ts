@@ -10,8 +10,8 @@ import {structuredError} from '../stderr.js';
 import {
   ensureMentorshipDirs as ensureMentorshipDirectories,
   resolveStorageRoots,
-} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
 import {askConfirm} from './ask.js';
 import {readMentorshipConfig, writeMentorshipConfig} from './config.js';
 import {installDisplayRule} from './display-rule-memory.js';

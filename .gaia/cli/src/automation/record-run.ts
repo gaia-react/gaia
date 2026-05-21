@@ -30,6 +30,8 @@ const VALID_TRIGGERS: readonly Trigger[] = [
   'force',
   'workflow_dispatch',
 ];
+const VALID_TRIGGER_SET: ReadonlySet<string> = new Set(VALID_TRIGGERS);
+const TOOL_ID_SET: ReadonlySet<string> = new Set(TOOL_IDS);
 
 type RunOptions = {
   cwd?: string;
@@ -65,7 +67,7 @@ export const run = (
     if (token === '--trigger') {
       const value = argv[index + 1];
 
-      if (value === undefined || !(VALID_TRIGGERS as readonly string[]).includes(value)) {
+      if (value === undefined || !VALID_TRIGGER_SET.has(value)) {
         structuredError({
           code: 'invalid_arguments',
           message: `--trigger must be one of ${VALID_TRIGGERS.join(', ')}`,
@@ -106,7 +108,7 @@ export const run = (
     }
 
     if (tool === undefined) {
-      if (!(TOOL_IDS as readonly string[]).includes(token)) {
+      if (!TOOL_ID_SET.has(token)) {
         structuredError({
           code: 'invalid_arguments',
           message: `unknown tool: ${token}`,

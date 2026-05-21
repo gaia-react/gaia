@@ -20,8 +20,8 @@ import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveStorageRoots} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+import {resolveStorageRoots} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
 import {readMentorshipConfig} from './config.js';
 
 type RunOptions = {

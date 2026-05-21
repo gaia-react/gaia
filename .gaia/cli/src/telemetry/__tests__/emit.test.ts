@@ -17,8 +17,8 @@ import {writeMentorshipConfig} from '../../mentorship/config.js';
 import {
   ensureMentorshipDirs as ensureMentorshipDirectories,
   resolveStorageRoots,
-} from '../../storage/index.js';
-import type {StorageRoots} from '../../storage/index.js';
+} from '../../storage/paths.js';
+import type {StorageRoots} from '../../storage/paths.js';
 import {handleEmit} from '../emit.js';
 
 type Sandbox = {

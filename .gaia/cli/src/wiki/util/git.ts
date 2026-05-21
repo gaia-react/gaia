@@ -105,10 +105,11 @@ export const recentCommits = (
 
   if (result === null) return [];
 
-  const lines = result
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  const lines = result.split('\n').flatMap((line) => {
+    const trimmed = line.trim();
+
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
 
   return lines.slice(-limit).map((line) => {
     const tabIndex = line.indexOf('\t');
@@ -169,10 +170,11 @@ const fileListForCommit = (sha: string, cwd: string): string[] => {
 
   if (result === null) return [];
 
-  return result
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  return result.split('\n').flatMap((line) => {
+    const trimmed = line.trim();
+
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
 };
 
 type RawRecord = {

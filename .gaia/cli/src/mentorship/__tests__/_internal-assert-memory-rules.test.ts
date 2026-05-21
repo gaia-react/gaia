@@ -8,8 +8,8 @@ import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync}
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {resolveStorageRoots} from '../../storage/index.js';
-import type {StorageRoots} from '../../storage/index.js';
+import {resolveStorageRoots} from '../../storage/paths.js';
+import type {StorageRoots} from '../../storage/paths.js';
 import {writeMentorshipConfig} from '../config.js';
 import {run} from '../_internal-assert-memory-rules.js';
 import {

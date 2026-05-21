@@ -364,7 +364,7 @@ const computeReport = (ctx: Context): UpdateMergeReport => {
   const manifestPaths = new Set(ctx.manifest.files.keys());
 
   // 1. Manifest pass.
-  for (const relativePath of [...manifestPaths].sort()) {
+  for (const relativePath of [...manifestPaths].toSorted()) {
     const entry = ctx.manifest.files.get(relativePath);
 
     if (entry === undefined) continue;
@@ -398,7 +398,7 @@ const computeReport = (ctx: Context): UpdateMergeReport => {
   }
 
   // 2. New files in latest that the manifest doesn't list — add[].
-  for (const relativePath of [...latestPaths].sort()) {
+  for (const relativePath of [...latestPaths].toSorted()) {
     if (manifestPaths.has(relativePath)) continue;
 
     const currentSnap = snapshot(path.join(ctx.cwd, relativePath));
@@ -414,7 +414,7 @@ const computeReport = (ctx: Context): UpdateMergeReport => {
   // 3. Files removed upstream — delete[]. Handles both manifest and
   // non-manifest entries: if a file lived in baseline but not latest,
   // surface it for the user to confirm. We do NOT remove the file.
-  for (const relativePath of [...baselinePaths].sort()) {
+  for (const relativePath of [...baselinePaths].toSorted()) {
     if (latestPaths.has(relativePath)) continue;
 
     const currentSnap = snapshot(path.join(ctx.cwd, relativePath));

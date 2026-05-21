@@ -31,8 +31,8 @@ import {ADAPTATION_TEXT} from '../profile/adaptation-map.js';
 import {AgentTypeSchema} from '../schemas/envelope.js';
 import type {AgentType} from '../schemas/envelope.js';
 import {structuredError} from '../stderr.js';
-import {resolveStorageRoots} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+import {resolveStorageRoots} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
 import {readActiveAdaptations} from './profile-reader.js';
 import type {ActiveAdaptation} from './profile-reader.js';
 
@@ -170,10 +170,11 @@ const parseFlags = (argv: readonly string[]): ParsedFlags => {
 const splitAreaTags = (raw: string | undefined): string[] | undefined => {
   if (raw === undefined || raw.length === 0) return undefined;
 
-  return raw
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean);
+  return raw.split(',').flatMap((tag) => {
+    const trimmed = tag.trim();
+
+    return trimmed ? [trimmed] : [];
+  });
 };
 
 /**

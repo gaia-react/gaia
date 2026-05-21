@@ -56,10 +56,13 @@ export const run = (
   try {
     cwd = options.cwd ?? process.cwd();
     const index = computePageIndex(cwd);
-    const orphans = index.pages
-      .filter((page) => page.inbound_links === 0)
-      .filter((page) => !isMaintainerOnly(page.path))
-      .map((page) => page.path);
+    const orphans: string[] = [];
+
+    for (const page of index.pages) {
+      if (page.inbound_links === 0 && !isMaintainerOnly(page.path)) {
+        orphans.push(page.path);
+      }
+    }
 
     if (orphans.length > 0) {
       process.stdout.write(`${orphans.join('\n')}\n`);

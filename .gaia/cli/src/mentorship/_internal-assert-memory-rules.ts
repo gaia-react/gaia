@@ -11,8 +11,8 @@
  * default.
  */
 import {EXIT_CODES} from '../exit.js';
-import {resolveStorageRoots} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+import {resolveStorageRoots} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
 import {readMentorshipConfig} from './config.js';
 import {assertDisplayRule, removeDisplayRule} from './display-rule-memory.js';
 

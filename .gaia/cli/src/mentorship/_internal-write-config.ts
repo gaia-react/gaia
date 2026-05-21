@@ -12,8 +12,8 @@
 import {EXIT_CODES} from '../exit.js';
 import type {MentorshipConfig} from '../schemas/mentorship-config.js';
 import {structuredError} from '../stderr.js';
-import {resolveStorageRoots} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+import {resolveStorageRoots} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
 import {writeMentorshipConfig} from './config.js';
 import {installDisplayRule, removeDisplayRule} from './display-rule-memory.js';
 

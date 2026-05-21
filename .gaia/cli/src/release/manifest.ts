@@ -100,11 +100,13 @@ const escapeRegExp = (pattern: string): string =>
     .replaceAll('*', '[^/]*');
 
 export const parseExcludePatterns = (text: string): RegExp[] =>
-  text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('#'))
-    .map((pattern) => new RegExp(`^${escapeRegExp(pattern)}(/|$)`));
+  text.split('\n').flatMap((line) => {
+    const trimmed = line.trim();
+
+    if (trimmed.length === 0 || trimmed.startsWith('#')) return [];
+
+    return [new RegExp(`^${escapeRegExp(trimmed)}(/|$)`)];
+  });
 
 export const classifyPath = (relativePath: string): ManifestClass | null => {
   if (ADOPTER_OWNED_SENTINELS.has(relativePath)) return null;

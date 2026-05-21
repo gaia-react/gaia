@@ -15,8 +15,8 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
-import {resolveStorageRoots} from '../../storage/index.js';
-import type {StorageRoots} from '../../storage/index.js';
+import {resolveStorageRoots} from '../../storage/paths.js';
+import type {StorageRoots} from '../../storage/paths.js';
 import {
   DISPLAY_RULE_BODY,
   DISPLAY_RULE_FILE_NAME,

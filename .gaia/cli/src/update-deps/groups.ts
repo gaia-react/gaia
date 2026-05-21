@@ -185,7 +185,7 @@ const buildPrefixList = (rules: readonly GroupRule[]): readonly PrefixMatch[] =>
   }
 
   // Longest prefix wins so e.g. `@storybook/` beats `@s` if both existed.
-  return [...out].sort((a, b) => b.prefix.length - a.prefix.length);
+  return out.toSorted((a, b) => b.prefix.length - a.prefix.length);
 };
 
 const PREFIX_LIST: readonly PrefixMatch[] = buildPrefixList(GROUP_RULES);

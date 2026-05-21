@@ -10,8 +10,8 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveStorageRoots} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+import {resolveStorageRoots} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
 import {readMentorshipConfig, writeMentorshipConfig} from './config.js';
 import {removeDisplayRule} from './display-rule-memory.js';
 

@@ -83,10 +83,11 @@ const parseBool = (raw: string): boolean | null => {
 };
 
 const parseLocales = (raw: string): string[] | null => {
-  const parts = raw
-    .split(',')
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+  const parts = raw.split(',').flatMap((token) => {
+    const trimmed = token.trim();
+
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
 
   if (parts.length === 0) return null;
 

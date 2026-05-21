@@ -179,10 +179,11 @@ const readDriftSubjects = (
 
   if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
 
-  return (result.stdout ?? '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  return (result.stdout ?? '').split('\n').flatMap((line) => {
+    const trimmed = line.trim();
+
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
 };
 
 type RunOptions = {

@@ -40,21 +40,20 @@ type ParsedFlags = {
 const parseParams = (raw: string | undefined): Param[] => {
   if (raw === undefined || raw.trim().length === 0) return [];
 
-  return raw
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .map((entry): Param => {
-      const colonIndex = entry.indexOf(':');
+  return raw.split(',').flatMap((entry): Param[] => {
+    const trimmed = entry.trim();
 
-      if (colonIndex === -1) {
-        return {name: entry, type: 'unknown'};
-      }
-      const name = entry.slice(0, colonIndex).trim();
-      const type = entry.slice(colonIndex + 1).trim();
+    if (trimmed.length === 0) return [];
+    const colonIndex = trimmed.indexOf(':');
 
-      return {name, type: type.length > 0 ? type : 'unknown'};
-    });
+    if (colonIndex === -1) {
+      return [{name: trimmed, type: 'unknown'}];
+    }
+    const name = trimmed.slice(0, colonIndex).trim();
+    const type = trimmed.slice(colonIndex + 1).trim();
+
+    return [{name, type: type.length > 0 ? type : 'unknown'}];
+  });
 };
 
 type FlagReadResult = {

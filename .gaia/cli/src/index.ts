@@ -11,7 +11,8 @@
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
 import {run as runFetchCoaching} from './adaptation/inject.js';
 import {run as runAutomation} from './automation/index.js';
-import {runCiRevert, runCiStaleCheck} from './ci/index.js';
+import {run as runCiRevert} from './ci/revert.js';
+import {run as runCiStaleCheck} from './ci/stale-check.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';

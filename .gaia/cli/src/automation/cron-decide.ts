@@ -58,6 +58,7 @@ const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+const TOOL_ID_SET: ReadonlySet<string> = new Set(TOOL_IDS);
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 const FLOOR_HOURS = 24;
@@ -139,7 +140,7 @@ export const run = (
     }
 
     if (tool === undefined) {
-      if (!(TOOL_IDS as readonly string[]).includes(token)) {
+      if (!TOOL_ID_SET.has(token)) {
         structuredError({
           code: 'invalid_arguments',
           message: `unknown tool: ${token}`,

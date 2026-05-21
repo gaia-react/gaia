@@ -24,6 +24,7 @@ const HELP_TEXT = `Usage: gaia automation init-state <tool> --sha <sha> [--at <i
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+const TOOL_ID_SET: ReadonlySet<string> = new Set(TOOL_IDS);
 
 const resolveFullSha = (ref: string, cwd: string): string | null => {
   try {
@@ -86,7 +87,7 @@ export const run = (
     }
 
     if (tool === undefined) {
-      if (!(TOOL_IDS as readonly string[]).includes(token)) {
+      if (!TOOL_ID_SET.has(token)) {
         structuredError({
           code: 'invalid_arguments',
           message: `unknown tool: ${token}`,

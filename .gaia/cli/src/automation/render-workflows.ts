@@ -45,7 +45,11 @@ type ParsedArgs = {
 };
 
 const parseTools = (raw: string): readonly ToolId[] | string => {
-  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  const parts = raw.split(',').flatMap((part) => {
+    const trimmed = part.trim();
+
+    return trimmed ? [trimmed] : [];
+  });
 
   if (parts.length === 0) {
     return '--tools requires at least one tool';

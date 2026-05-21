@@ -16,8 +16,8 @@ import {writeMentorshipConfig} from '../../mentorship/config.js';
 import {
   ensureMentorshipDirs as ensureMentorshipDirectories,
   resolveStorageRoots,
-} from '../../storage/index.js';
-import type {StorageRoots} from '../../storage/index.js';
+} from '../../storage/paths.js';
+import type {StorageRoots} from '../../storage/paths.js';
 import {PROFILE_DO_NOT_EDIT_HEADER} from '../header.js';
 import {computeProfile} from '../index.js';
 

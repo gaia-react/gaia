@@ -19,11 +19,11 @@
 import {z} from 'zod';
 import {
   CloudPayloadByType,
-  EnvelopeSchema,
   FORBIDDEN_CLOUD_KEYS,
-  MENTORSHIP_EVENT_TYPES,
-} from '../schemas/index.js';
-import type {CloudEventType} from '../schemas/index.js';
+} from '../schemas/cloud-projection.js';
+import type {CloudEventType} from '../schemas/cloud-projection.js';
+import {EnvelopeSchema} from '../schemas/envelope.js';
+import {MENTORSHIP_EVENT_TYPES} from '../schemas/mentorship-payloads.js';
 
 /**
  * Cloud-only event types that v1 ships without per-event strict schemas.

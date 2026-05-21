@@ -15,10 +15,10 @@ import {structuredError} from '../stderr.js';
 import {
   ensureCloudDirs,
   ensureMentorshipDirs,
-  readOrCreateProjectId,
   resolveStorageRoots,
-} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
+import {readOrCreateProjectId} from '../storage/project-id.js';
 import {buildEnvelope} from './envelope.js';
 import type {EventEnvelopeWithLocal} from './envelope.js';
 import {appendIdempotent} from './ndjson-writer.js';
@@ -148,10 +148,11 @@ const parseValueByKind: Readonly<
     }
   },
   list: (_token, valueToken) =>
-    valueToken
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0),
+    valueToken.split(',').flatMap((entry) => {
+      const trimmed = entry.trim();
+
+      return trimmed.length > 0 ? [trimmed] : [];
+    }),
   number: (token, valueToken) => {
     const parsed = Number(valueToken);
 

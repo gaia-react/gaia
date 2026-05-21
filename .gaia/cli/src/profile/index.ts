@@ -15,15 +15,13 @@
  * below threshold and the file lists "(none)" under active patterns and
  * adaptations.
  */
-import {
-  generateAnalyticsReport,
-  writeAnalyticsReport,
-} from '../analytics/index.js';
+import {generateAnalyticsReport} from '../analytics/generator.js';
+import {writeAnalyticsReport} from '../analytics/writer.js';
 import {EXIT_CODES} from '../exit.js';
 import {readMentorshipConfig} from '../mentorship/config.js';
 import {structuredError} from '../stderr.js';
-import {resolveStorageRoots} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+import {resolveStorageRoots} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
 import {PATTERN_TO_ADAPTATION} from './adaptation-map.js';
 import type {AdaptationId, PatternId} from './adaptation-map.js';
 import {runAllPatternDetectors} from './patterns/index.js';
@@ -95,9 +93,11 @@ const oldestEventAgeDays = (
   now: Date
 ): number => {
   if (events.length === 0) return 0;
-  const stamps = events
-    .map((event) => parseTimestampMs(event.timestamp))
-    .filter((value) => value > 0);
+  const stamps = events.flatMap((event) => {
+    const stampMs = parseTimestampMs(event.timestamp);
+
+    return stampMs > 0 ? [stampMs] : [];
+  });
 
   if (stamps.length === 0) return 0;
   const oldestMs = Math.min(...stamps);
@@ -137,19 +137,19 @@ const buildAdaptationRecords = (args: {
       pattern.strength !== null && pattern.strength >= STRENGTH_THRESHOLD
   );
 
-  return fired
-    .map((pattern) =>
-      computeAdaptationRecord({
-        pattern,
-        recentMatchingPattern: findMatchingPattern(
-          recentPatterns,
-          pattern.pattern_id,
-          pattern.area_tag
-        ),
-        windowAgeDays,
-      })
-    )
-    .filter((record): record is AdaptationRecord => record !== null);
+  return fired.flatMap((pattern) => {
+    const record = computeAdaptationRecord({
+      pattern,
+      recentMatchingPattern: findMatchingPattern(
+        recentPatterns,
+        pattern.pattern_id,
+        pattern.area_tag
+      ),
+      windowAgeDays,
+    });
+
+    return record === null ? [] : [record];
+  });
 };
 
 type CoreResult = {

@@ -147,12 +147,18 @@ const parseLine = (
   };
 };
 
-const parseFileLines = (raw: string, filePath: string): MentorshipEvent[] =>
-  raw
-    .split('\n')
-    .filter((line) => line.length > 0)
-    .map((line) => parseLine(line, filePath))
-    .filter((event): event is MentorshipEvent => event !== null);
+const parseFileLines = (raw: string, filePath: string): MentorshipEvent[] => {
+  const events: MentorshipEvent[] = [];
+
+  for (const line of raw.split('\n')) {
+    if (line.length === 0) continue;
+    const event = parseLine(line, filePath);
+
+    if (event !== null) events.push(event);
+  }
+
+  return events;
+};
 
 type ReadEventsArgs = {
   now?: Date;
