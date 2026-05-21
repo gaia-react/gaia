@@ -1,5 +1,10 @@
 import {describe, expect, test} from 'vitest';
-import {appendSearchParams, getUri, setPathParams} from '../utils';
+import {
+  appendSearchParams,
+  buildRequestHeaders,
+  getUri,
+  setPathParams,
+} from '../utils';
 
 describe('api utils', () => {
   test('appendSearchParams should return comma array snake_case params', () => {
@@ -57,5 +62,20 @@ describe('api utils', () => {
     ).toBe(
       'api/test/3/edit?name=foo&animal=dog,cat,fish&hello_world=foobar&some_number=5'
     );
+  });
+
+  test('buildRequestHeaders applies per-request token and language', () => {
+    const headers = buildRequestHeaders(undefined, 'abc123', 'ja');
+
+    expect(headers.get('Authorization')).toBe('Bearer abc123');
+    expect(headers.get('Accept-Language')).toBe('ja');
+  });
+
+  test('buildRequestHeaders preserves caller headers and omits absent values', () => {
+    const headers = buildRequestHeaders({'X-Custom': 'keep'});
+
+    expect(headers.get('X-Custom')).toBe('keep');
+    expect(headers.get('Authorization')).toBeNull();
+    expect(headers.get('Accept-Language')).toBeNull();
   });
 });
