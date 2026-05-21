@@ -63,11 +63,8 @@ Remove these imports:
 ```ts
 import {useTranslation} from 'react-i18next';
 import {getLanguage, i18nextMiddleware} from '~/middleware/i18next';
-import {setApiLanguage} from '~/services/api';
 import {languageCookie} from '~/sessions.server/language';
 ```
-
-(`setApiLanguage` is only kept if it's still used elsewhere — grep before deciding. The other three are deleted unconditionally.)
 
 Delete the middleware export:
 
@@ -79,8 +76,6 @@ Inside the loader, delete:
 
 ```ts
 const language = getLanguage(context);
-
-setApiLanguage(language);
 ```
 
 ```ts
