@@ -88,15 +88,17 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
       status: 'open',
     });
 
-    // Verify the call sequence: gh pr view → git fetch/checkout/revert/push
-    // → gh pr create → gh pr merge --auto.
+    // Verify the call sequence: gh pr view → git fetch → symbolic-ref
+    // (rollback-target probe) → checkout/revert/push → gh pr create →
+    // gh pr merge --auto.
     expect(mock.ghCalls.length).toBe(3);
-    expect(mock.gitCalls.length).toBe(4);
+    expect(mock.gitCalls.length).toBe(5);
     expect(mock.ghCalls[0]?.argv.slice(0, 3)).toEqual(['pr', 'view', '99']);
     expect(mock.gitCalls[0]?.argv).toEqual(['fetch', 'origin', 'main']);
-    expect(mock.gitCalls[1]?.argv[0]).toBe('checkout');
-    expect(mock.gitCalls[2]?.argv).toEqual(['revert', '--no-edit', MERGE_SHA]);
-    expect(mock.gitCalls[3]?.argv).toEqual([
+    expect(mock.gitCalls[1]?.argv[0]).toBe('symbolic-ref');
+    expect(mock.gitCalls[2]?.argv[0]).toBe('checkout');
+    expect(mock.gitCalls[3]?.argv).toEqual(['revert', '--no-edit', MERGE_SHA]);
+    expect(mock.gitCalls[4]?.argv).toEqual([
       'push',
       '-u',
       'origin',

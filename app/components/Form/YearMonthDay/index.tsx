@@ -62,9 +62,17 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
   // on `document`, so both React and Conform handlers are on the same node
   // and stopPropagation has no effect between handlers on the same element.
   const containerRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) {
-      node.addEventListener('input', (event) => event.stopPropagation());
+    if (!node) {
+      return;
     }
+
+    const stopPropagation = (event: Event) => event.stopPropagation();
+
+    node.addEventListener('input', stopPropagation);
+
+    return () => {
+      node.removeEventListener('input', stopPropagation);
+    };
   }, []);
 
   const handleChange = (event: ChangeEvent<HTMLSelectElement>) => {

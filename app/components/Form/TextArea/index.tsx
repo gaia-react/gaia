@@ -51,7 +51,9 @@ const TextArea: FC<TextAreaProps> = ({
   const innerRef = useRef<HTMLTextAreaElement | null>(null);
   useImperativeHandle(ref, () => innerRef.current!, []);
 
-  const [length, setLength] = useState(0);
+  const [length, setLength] = useState(
+    () => String(value ?? props.defaultValue ?? '').length
+  );
 
   const handleChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -83,7 +85,6 @@ const TextArea: FC<TextAreaProps> = ({
 
   return (
     <Field
-      aria-label={props['aria-label'] ?? name}
       className={className}
       classNameDescription={classNameDescription}
       classNameLabel={classNameLabel}
@@ -102,12 +103,7 @@ const TextArea: FC<TextAreaProps> = ({
     >
       <textarea
         ref={innerRef}
-        aria-label={
-          (props['aria-label'] ?? label === null) ? undefined
-          : typeof label === 'string' ?
-            label
-          : name
-        }
+        aria-label={label ? undefined : name}
         className={twMerge(
           'w-full',
           RESIZE[resize],

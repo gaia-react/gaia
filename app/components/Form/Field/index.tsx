@@ -80,7 +80,7 @@ const Field: FC<FieldProps> = ({
         disabled={disabled}
         error={error}
         extra={extra}
-        htmlFor={name}
+        htmlFor={id ?? name}
         required={required}
       >
         {label}
