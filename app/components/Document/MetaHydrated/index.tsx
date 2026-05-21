@@ -13,6 +13,8 @@ const MetaHydrated: FC = () => {
   if (isHydrated) {
     return <meta content="true" name="hydrated" />;
   }
+
+  return null;
 };
 
 export default MetaHydrated;
