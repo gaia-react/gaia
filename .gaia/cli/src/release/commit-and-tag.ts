@@ -265,7 +265,29 @@ const runCommitMode = (ctx: CommitContext): number => {
     for (const step of amendSequence) {
       const result = ctx.runner(step.command, step.args, {cwd: ctx.cwd});
 
-      if (!stepSucceeded(result)) return passthroughFailure(result, step);
+      if (!stepSucceeded(result)) {
+        // The release commit already landed but the state-SHA amend failed,
+        // leaving a partial release commit. Undo it (`reset --soft` keeps
+        // the staged files) so the maintainer can retry from a clean state
+        // instead of carrying a half-finished commit forward.
+        const rollback = ctx.runner('git', ['reset', '--soft', 'HEAD~1'], {
+          cwd: ctx.cwd,
+        });
+
+        if (!stepSucceeded(rollback)) {
+          process.stderr.write(
+            'commit-and-tag: amend failed AND rollback (git reset --soft HEAD~1) failed; '
+              + 'the release commit is left in place — undo it manually before retrying\n'
+          );
+        } else {
+          process.stderr.write(
+            'commit-and-tag: amend failed; rolled back the release commit '
+              + '(git reset --soft HEAD~1) — fix the cause and retry\n'
+          );
+        }
+
+        return passthroughFailure(result, step);
+      }
     }
   }
 
@@ -286,18 +308,46 @@ type TagContext = {
 const runTagMode = (ctx: TagContext): number => {
   const tagName = `v${ctx.version}`;
   const message = `Release v${ctx.version}`;
-  const sequence: Step[] = [
-    {args: ['tag', '-a', tagName, '-m', message], command: 'git'},
-  ];
+
+  const tagStep: Step = {
+    args: ['tag', '-a', tagName, '-m', message],
+    command: 'git',
+  };
+  const tagResult = ctx.runner(tagStep.command, tagStep.args, {cwd: ctx.cwd});
+
+  if (!stepSucceeded(tagResult)) return passthroughFailure(tagResult, tagStep);
 
   if (!ctx.noPush) {
-    sequence.push({args: ['push', 'origin', tagName], command: 'git'});
-  }
+    const pushStep: Step = {
+      args: ['push', 'origin', tagName],
+      command: 'git',
+    };
+    const pushResult = ctx.runner(pushStep.command, pushStep.args, {
+      cwd: ctx.cwd,
+    });
 
-  for (const step of sequence) {
-    const result = ctx.runner(step.command, step.args, {cwd: ctx.cwd});
+    if (!stepSucceeded(pushResult)) {
+      // The tag was created locally but never reached origin. Delete the
+      // local tag so a retry re-tags cleanly instead of failing on an
+      // already-existing tag.
+      const rollback = ctx.runner('git', ['tag', '-d', tagName], {
+        cwd: ctx.cwd,
+      });
 
-    if (!stepSucceeded(result)) return passthroughFailure(result, step);
+      if (!stepSucceeded(rollback)) {
+        process.stderr.write(
+          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; `
+            + `the local tag ${tagName} is left in place — delete it manually before retrying\n`
+        );
+      } else {
+        process.stderr.write(
+          `commit-and-tag: push failed; deleted the local tag ${tagName} `
+            + '— fix the cause and retry\n'
+        );
+      }
+
+      return passthroughFailure(pushResult, pushStep);
+    }
   }
 
   process.stdout.write(

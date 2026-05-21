@@ -302,6 +302,39 @@ describe('gaia scaffold service', () => {
     expect(after).toContain('export default {apples, mangoes, zebras}');
   });
 
+  test('fails loudly when the database barrel is missing the Promise.all region', () => {
+    // A barrel whose `resetTestData` lost its `Promise.all([...])` region:
+    // the import insert applies but the reset-call insert can no longer
+    // match. The diff-safety net must reject this instead of writing a
+    // half-applied barrel.
+    const databasePath = path.join(sandbox.dir, 'test', 'mocks', 'database.ts');
+    writeFileSync(
+      databasePath,
+      [
+        "import {apples, resetApples} from './apples/data';",
+        '',
+        'export const resetTestData = async (): Promise<void> => {',
+        '  // resetting disabled',
+        '};',
+        '',
+        'export default {apples};',
+        '',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const code = run(
+      ['mangoes', '--endpoints', 'get', '--schema', 'id:string', '--mocks'],
+      {cwd: sandbox.dir}
+    );
+
+    expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+
+    // The barrel must be left untouched — no partial write.
+    const after = read(databasePath);
+    expect(after).not.toContain('mangoes');
+  });
+
   test('--json emits a single ScaffoldResult JSON line', () => {
     let captured = '';
     const originalWrite = process.stdout.write.bind(process.stdout);

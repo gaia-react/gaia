@@ -219,7 +219,28 @@ const insertIntoLocaleBarrel = (
     }
   }
 
-  writeFileSync(barrelPath, lines.join('\n'), 'utf8');
+  const next = lines.join('\n');
+
+  // Diff-safety net: the splice logic above is regex-driven and can
+  // mis-target a barrel whose shape drifted from the expected
+  // import-then-default-export form. Before writing, prove the result
+  // actually contains both the new import line and a matching entry in
+  // the default-export block. A non-matching edit fails loudly here
+  // instead of silently corrupting the barrel.
+  const entryAdded = new RegExp(
+    String.raw`^\s+${importName},?\s*$`,
+    'mu'
+  ).test(next);
+
+  if (!next.includes(importLine) || !entryAdded) {
+    throw new Error(
+      `locale barrel edit did not apply cleanly to ${barrelPath}: `
+        + `expected import "${importName}" and a matching default-export entry. `
+        + 'Add the entries by hand or fix the barrel shape.'
+    );
+  }
+
+  writeFileSync(barrelPath, next, 'utf8');
 
   return 'inserted';
 };

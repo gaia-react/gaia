@@ -124,26 +124,16 @@ type WikiState = {commits_ahead: number; state_sha: string};
 type WikiStateProbe = (cwd: string) => WikiState | null;
 
 const runWikiStateJson: WikiStateProbe = (cwd) => {
-  // Capture stdout from the wiki state subcommand by replacing
-  // process.stdout.write for the duration of the call, then parse JSON.
+  // Capture stdout from the wiki state subcommand via an injected sink —
+  // `wiki/state.ts` writes through `options.write` — so the global
+  // `process.stdout` is never mutated.
   const chunks: string[] = [];
-  const originalWrite = process.stdout.write.bind(process.stdout);
-  // The handler is synchronous; restoration is bounded.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- runtime patch
-  (process.stdout as any).write = (chunk: unknown): boolean => {
-    chunks.push(typeof chunk === 'string' ? chunk : String(chunk));
-
-    return true;
-  };
-
-  let exit: number;
-
-  try {
-    exit = runWikiState(['--json'], {cwd});
-  } finally {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- runtime patch
-    (process.stdout as any).write = originalWrite;
-  }
+  const exit = runWikiState(['--json'], {
+    cwd,
+    write: (chunk) => {
+      chunks.push(chunk);
+    },
+  });
 
   if (exit !== EXIT_CODES.OK) return null;
   const raw = chunks.join('').trim();

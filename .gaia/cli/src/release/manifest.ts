@@ -21,6 +21,7 @@ import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
+import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
@@ -53,7 +54,13 @@ const UNEXPECTED_EXIT = 2;
 // LICENSE, README.md, SUPPORTERS.md) are handled by `.gaia/release-exclude`
 // category 11 (maintainer-only project governance) and never reach this
 // classifier. Don't add them to the sets below.
-const ADOPTER_OWNED_SENTINELS = new Set([
+//
+// Canonical source of the git-tracked adopter-owned sentinels. `release
+// runtime-deps` imports this set and extends it with its own runtime-only
+// sentinels (paths created on the adopter side that are never git-tracked,
+// so they can't appear here). Keeping one shared base prevents the two
+// allowlists silently drifting apart.
+export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   '.gaia/manifest.json',
   '.gaia/VERSION',
   'wiki/hot.md',
@@ -109,11 +116,21 @@ export const classifyPath = (relativePath: string): ManifestClass | null => {
   return 'owned';
 };
 
-type ManifestShape = {
-  files: Record<string, ManifestClass>;
-  generated: string;
-  version: string;
-};
+const ManifestClassSchema = z.literal(['owned', 'shared', 'wiki-owned'] as const);
+
+/**
+ * Runtime shape of `.gaia/manifest.json`. The committed manifest is
+ * untrusted input (hand-edits, merge conflicts, a stale schema), so
+ * `--check` validates it against this schema before diffing rather than
+ * blindly casting `as ManifestShape`.
+ */
+const ManifestSchema = z.object({
+  files: z.record(z.string(), ManifestClassSchema),
+  generated: z.string(),
+  version: z.string(),
+});
+
+type ManifestShape = z.infer<typeof ManifestSchema>;
 
 type BuildOptions = {
   /** Override the timestamp for deterministic tests / snapshots. */
@@ -385,11 +402,18 @@ const runCheck = (
   let actual: ManifestShape;
 
   try {
-    actual = JSON.parse(readFileSync(manifestPath, 'utf8')) as ManifestShape;
+    const rawJson: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    actual = ManifestSchema.parse(rawJson);
   } catch (error) {
+    const message =
+      error instanceof z.ZodError
+        ? `committed manifest is malformed: ${z.prettifyError(error)}`
+        : error instanceof Error
+          ? error.message
+          : String(error);
     structuredError({
       code: 'manifest_parse_failed',
-      message: error instanceof Error ? error.message : String(error),
+      message,
       path: manifestPath,
       subcommand: 'release manifest',
     });

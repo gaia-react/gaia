@@ -107,7 +107,10 @@ const readStateFile = (statePath: string): StateFileShape | null => {
   }
 };
 
-const printHuman = (state: WikiState): void => {
+const printHuman = (
+  state: WikiState,
+  write: (chunk: string) => void
+): void => {
   const lines = [
     'Wiki state',
     `  HEAD:           ${state.head_short}`,
@@ -127,22 +130,32 @@ const printHuman = (state: WikiState): void => {
   for (const [domain, count] of Object.entries(state.per_domain_page_counts)) {
     lines.push(`    ${domain}: ${count}`);
   }
-  process.stdout.write(`${lines.join('\n')}\n`);
+  write(`${lines.join('\n')}\n`);
 };
 
 type RunOptions = {
   cwd?: string;
+  /**
+   * Sink for the handler's stdout. Defaults to `process.stdout.write`.
+   * Callers that need to capture the output (e.g. `release preflight`
+   * parsing the `--json` payload) pass a collector instead of patching
+   * the global stream.
+   */
+  write?: (chunk: string) => void;
 };
 
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
+  const write = options.write ?? ((chunk: string) => {
+    process.stdout.write(chunk);
+  });
   let json = false;
 
   for (const token of argv) {
     if (HELP_TOKENS.has(token)) {
-      process.stdout.write(HELP_TEXT);
+      write(HELP_TEXT);
 
       return EXIT_CODES.OK;
     }
@@ -201,9 +214,9 @@ export const run = (
   };
 
   if (json) {
-    process.stdout.write(`${JSON.stringify(state)}\n`);
+    write(`${JSON.stringify(state)}\n`);
   } else {
-    printHuman(state);
+    printHuman(state, write);
   }
 
   return EXIT_CODES.OK;
