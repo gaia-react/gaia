@@ -362,6 +362,63 @@ describe('wiki sync land', () => {
     expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
   });
 
+  test('protected-branch flow rolls back safely when the add step fails', () => {
+    // Regression: `rollbackLocalLanding` runs `git reset HEAD -- wiki`
+    // unconditionally once `onSyncBranch` is set. When the `add` step itself
+    // fails, the reset is a harmless no-op and the rollback still returns to
+    // the original branch and deletes the half-created sync branch.
+    sandbox = setupSandbox();
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {
+          argv: ['status', '--porcelain=v1', '-uall'],
+          result: okResult(' M wiki/log.md\n'),
+        },
+        {
+          argv: ['rev-parse', 'HEAD'],
+          result: okResult('cccccccccccccccccccccccccccccccccccccccc\n'),
+        },
+        {
+          argv: ['add', 'wiki'],
+          result: failResult(1, 'fatal: pathspec error'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run(['--branch-aware'], {
+      cwd: sandbox.root,
+      runner,
+      today: '2026-05-07',
+    });
+    expect(exit).toBe(2);
+
+    const gitCalls = recorded.filter((c) => c.command === 'git');
+    // The `add` failure triggers the local rollback: unstage, return to the
+    // original branch, delete the half-created sync branch.
+    expect(gitCalls).toContainEqual({
+      args: ['reset', 'HEAD', '--', 'wiki'],
+      command: 'git',
+    });
+    expect(gitCalls).toContainEqual({
+      args: ['checkout', 'main'],
+      command: 'git',
+    });
+    expect(gitCalls).toContainEqual({
+      args: ['branch', '-D', 'wiki-sync/2026-05-07-ccccccc'],
+      command: 'git',
+    });
+    // The commit never runs once `add` fails, and no remote work happens.
+    expect(recorded.find((c) => c.args[0] === 'commit')).toBeUndefined();
+    expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
+    expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
+  });
+
   test('in-place flow unstages wiki when commit fails after a successful add', () => {
     // Regression: the `staged` flag is derived from a structured `marks`
     // field on the step descriptor, not the first argv token. A failed
