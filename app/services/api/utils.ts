@@ -107,11 +107,7 @@ export const getBaseUrl = (): string => {
   return '';
 };
 
-/*
-  Merges per-request auth/language onto any caller-supplied headers.
-  Auth is threaded per request — never stored module-side — so a server
-  process cannot leak one user's token into another user's request.
-*/
+// Merges per-request auth/language onto caller-supplied headers; never stored module-side to prevent SSR token cross-contamination.
 export const buildRequestHeaders = (
   headers: Options['headers'],
   token?: string,
