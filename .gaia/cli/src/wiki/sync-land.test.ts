@@ -362,6 +362,50 @@ describe('wiki sync land', () => {
     expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
   });
 
+  test('in-place flow unstages wiki when commit fails after a successful add', () => {
+    // Regression: the `staged` flag is derived from a structured `marks`
+    // field on the step descriptor, not the first argv token. A failed
+    // commit after a successful `add` must still reset the index — proving
+    // the derivation does not depend on argv position.
+    sandbox = setupSandbox();
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('feature/x\n'),
+        },
+        {
+          argv: ['status', '--porcelain=v1', '-uall'],
+          result: okResult(' M wiki/log.md\n'),
+        },
+        {
+          argv: ['rev-parse', 'HEAD'],
+          result: okResult('eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n'),
+        },
+        {argv: ['add', 'wiki'], result: okResult('')},
+        {
+          argv: ['commit', '-m', 'wiki: sync through eeeeeee'],
+          result: failResult(1, 'nothing to commit'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {cwd: sandbox.root, runner});
+    expect(exit).toBe(2);
+
+    const gitCalls = recorded.filter((c) => c.command === 'git');
+    // The successful `add` set the `staged` flag, so the failed commit
+    // unstages `wiki` to leave a clean index behind.
+    expect(gitCalls).toContainEqual({
+      args: ['reset', 'HEAD', '--', 'wiki'],
+      command: 'git',
+    });
+    // No gh calls on the in-place path.
+    expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
+  });
+
   test('working tree with non-wiki changes — exit 1', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
