@@ -32,6 +32,8 @@ const ALL_ENDPOINTS = ['get', 'post', 'put', 'delete'] as const;
 
 type Endpoint = (typeof ALL_ENDPOINTS)[number];
 
+const ALL_ENDPOINTS_SET: ReadonlySet<string> = new Set(ALL_ENDPOINTS);
+
 type SchemaField = {
   /** field name in camelCase (client-side schema) */
   name: string;
@@ -104,17 +106,18 @@ const parseFlags = (argv: readonly string[]): FlagMap => {
 };
 
 const parseEndpoints = (raw: string): Endpoint[] | null => {
-  const tokens = raw
-    .split(',')
-    .map((token) => token.trim().toLowerCase())
-    .filter((token) => token.length > 0);
+  const tokens = raw.split(',').flatMap((token) => {
+    const normalized = token.trim().toLowerCase();
+
+    return normalized.length > 0 ? [normalized] : [];
+  });
 
   if (tokens.length === 0) return null;
 
   const endpoints: Endpoint[] = [];
 
   for (const token of tokens) {
-    if (!ALL_ENDPOINTS.includes(token as Endpoint)) return null;
+    if (!ALL_ENDPOINTS_SET.has(token)) return null;
     endpoints.push(token as Endpoint);
   }
 
@@ -136,10 +139,11 @@ const buildZodExpression = (typeToken: string): string | null => {
   let expression: string | null = null;
 
   if (enumMatch !== null) {
-    const variants = (enumMatch[1] ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
+    const variants = (enumMatch[1] ?? '').split(',').flatMap((value) => {
+      const trimmed = value.trim();
+
+      return trimmed.length > 0 ? [trimmed] : [];
+    });
 
     if (variants.length === 0) return null;
     const quoted = variants.map((value) => `'${value}'`).join(', ');
@@ -174,8 +178,11 @@ const parseSchema = (raw: string): SchemaField[] | null => {
 
       return accumulator;
     }, [])
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
+    .flatMap((part) => {
+      const trimmed = part.trim();
+
+      return trimmed.length > 0 ? [trimmed] : [];
+    });
 
   if (tokens.length === 0) return null;
 
@@ -255,8 +262,11 @@ type DerivedNames = {
 const toPascal = (kebab: string): string =>
   kebab
     .split('-')
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .flatMap((part) =>
+      part.length > 0
+        ? [part.charAt(0).toUpperCase() + part.slice(1)]
+        : []
+    )
     .join('');
 
 const toCamel = (kebab: string): string => {
@@ -340,12 +350,12 @@ const MOCK_ARRAY_TOKENS: Record<Endpoint, string> = {
 };
 
 const composeMockBarrel = (endpoints: ReadonlySet<Endpoint>): TemplateVars => {
-  const imports = ALL_ENDPOINTS.filter((endpoint) => endpoints.has(endpoint))
-    .map((endpoint) => MOCK_IMPORT_LINES[endpoint])
-    .join('\n');
-  const handlersArray = ALL_ENDPOINTS.filter((endpoint) => endpoints.has(endpoint))
-    .map((endpoint) => MOCK_ARRAY_TOKENS[endpoint])
-    .join(', ');
+  const imports = ALL_ENDPOINTS.flatMap((endpoint) =>
+    endpoints.has(endpoint) ? [MOCK_IMPORT_LINES[endpoint]] : []
+  ).join('\n');
+  const handlersArray = ALL_ENDPOINTS.flatMap((endpoint) =>
+    endpoints.has(endpoint) ? [MOCK_ARRAY_TOKENS[endpoint]] : []
+  ).join(', ');
 
   return {handlersArray, imports};
 };
@@ -449,10 +459,11 @@ const insertResetCallAlphabetically = (
     return source.replace(pattern, `Promise.all([${newCall}])`);
   }
 
-  const calls = inner
-    .split(',')
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+  const calls = inner.split(',').flatMap((token) => {
+    const trimmed = token.trim();
+
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
 
   if (calls.includes(newCall)) return source;
   calls.push(newCall);
@@ -481,10 +492,11 @@ const insertCollectionExportAlphabetically = (
 
   if (match === null) return source;
   const inner = (match[1] ?? '').trim();
-  const collections = inner
-    .split(',')
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+  const collections = inner.split(',').flatMap((token) => {
+    const trimmed = token.trim();
+
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
 
   if (collections.includes(derived.plural)) return source;
   collections.push(derived.plural);

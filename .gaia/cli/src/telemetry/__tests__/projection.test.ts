@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'vitest';
-import {FORBIDDEN_CLOUD_KEYS} from '../../schemas/index.js';
+import {FORBIDDEN_CLOUD_KEYS} from '../../schemas/cloud-projection.js';
 import {KNOWN_CLOUD_ONLY_EVENT_TYPES, projectToCloud} from '../projection.js';
 
 const VALID_ULID = '01HZX0K3Q9JSAWC0TR6WYJ5ZNT';

@@ -75,10 +75,11 @@ const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const parseProps = (raw: string): FlagParseResult => {
-  const entries = raw
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+  const entries = raw.split(',').flatMap((entry) => {
+    const trimmed = entry.trim();
+
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
 
   if (entries.length === 0) {
     return {message: '--props requires at least one name:type entry', ok: false};

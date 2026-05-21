@@ -17,8 +17,8 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {AnalyticsReportSchema} from '../schemas/analytics-report.js';
 import {structuredError} from '../stderr.js';
-import {resolveStorageRoots} from '../storage/index.js';
-import type {StorageRoots} from '../storage/index.js';
+import {resolveStorageRoots} from '../storage/paths.js';
+import type {StorageRoots} from '../storage/paths.js';
 
 type RunOptions = {
   roots?: StorageRoots;

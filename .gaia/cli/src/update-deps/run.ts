@@ -302,7 +302,7 @@ const parseOutdated = (
 
   // Stable order: alphabetical by name. Makes the emitted JSON
   // deterministic across runs regardless of pnpm's output ordering.
-  return [...out].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return out.toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 };
 
 // ---------- ESLint 9.x cap ----------
@@ -557,7 +557,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     const hasMajor = members.some((member) => member.kind === 'major');
 
     if (hasMajor) {
-      const sorted = [...members].sort((a, b) =>
+      const sorted = members.toSorted((a, b) =>
         a.name < b.name ? -1 : a.name > b.name ? 1 : 0
       );
 

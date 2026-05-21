@@ -103,9 +103,10 @@ const matches = (spec: MockSpec, command: string, argv: readonly string[]): bool
   const target = [command, ...spec.argv];
   const observed = [command, ...argv];
 
-  if (target.length !== observed.length) return false;
-
-  return target.every((token, index) => token === observed[index]);
+  return (
+    target.length === observed.length
+    && target.every((token, index) => token === observed[index])
+  );
 };
 
 const buildRunner = (

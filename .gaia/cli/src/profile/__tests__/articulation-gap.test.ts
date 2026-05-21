@@ -20,8 +20,7 @@ const loadFixture = (filename: string): MentorshipEvent[] => {
 
   return raw
     .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as MentorshipEvent);
+    .flatMap((line) => (line ? [JSON.parse(line) as MentorshipEvent] : []));
 };
 
 const buildArticulationEvent = (

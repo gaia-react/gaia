@@ -42,10 +42,11 @@ const parseScalar = (raw: string): FrontmatterValue => {
 
     if (inner === '') return [];
 
-    return inner
-      .split(',')
-      .map((entry) => stripQuotes(entry.trim()))
-      .filter((entry) => entry.length > 0);
+    return inner.split(',').flatMap((entry) => {
+      const stripped = stripQuotes(entry.trim());
+
+      return stripped.length > 0 ? [stripped] : [];
+    });
   }
 
   if (/^-?\d+(\.\d+)?$/u.test(trimmed)) {

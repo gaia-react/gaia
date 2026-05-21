@@ -185,7 +185,7 @@ describe('buildManifest', () => {
 
     const keys = Object.keys(manifest.files);
     // Sort matches buildManifest's localeCompare order.
-    expect(keys).toEqual([...keys].sort((a, b) => a.localeCompare(b)));
+    expect(keys).toEqual(keys.toSorted((a, b) => a.localeCompare(b)));
 
     expect(manifest.files['CLAUDE.md']).toBe('shared');
     expect(manifest.files['app/components/Foo/index.tsx']).toBe('owned');

@@ -4,8 +4,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EXIT_CODES} from '../../exit.js';
 import type {AnalyticsReport} from '../../schemas/analytics-report.js';
-import {resolveStorageRoots} from '../../storage/index.js';
-import type {StorageRoots} from '../../storage/index.js';
+import {resolveStorageRoots} from '../../storage/paths.js';
+import type {StorageRoots} from '../../storage/paths.js';
 import {run as runDryRun} from '../analytics-dry-run.js';
 
 type Sandbox = {

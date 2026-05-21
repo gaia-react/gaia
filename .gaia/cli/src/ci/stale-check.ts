@@ -198,9 +198,17 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const entries = parsed
-    .map((value) => GhPrEntry.parse(value))
-    .filter((value): value is {createdAt: string; headRefName: string; number: number} => value !== null);
+  const entries: Array<{
+    createdAt: string;
+    headRefName: string;
+    number: number;
+  }> = [];
+
+  for (const value of parsed) {
+    const entry = GhPrEntry.parse(value);
+
+    if (entry !== null) entries.push(entry);
+  }
 
   let decision: StaleCheckDecision;
 

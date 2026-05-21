@@ -20,6 +20,7 @@ const HELP_TEXT = `Usage: gaia automation clear-overage <tool>
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+const TOOL_ID_SET: ReadonlySet<string> = new Set(TOOL_IDS);
 
 type RunOptions = {
   cwd?: string;
@@ -49,7 +50,7 @@ export const run = (
     }
 
     if (tool === undefined) {
-      if (!(TOOL_IDS as readonly string[]).includes(token)) {
+      if (!TOOL_ID_SET.has(token)) {
         structuredError({
           code: 'invalid_arguments',
           message: `unknown tool: ${token}`,

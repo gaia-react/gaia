@@ -31,6 +31,7 @@ const HELP_TEXT = `Usage: gaia automation bump-state <tool> --field <name> --val
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+const TOOL_ID_SET: ReadonlySet<string> = new Set(TOOL_IDS);
 
 const tryParseJson = (raw: string): unknown => {
   try {
@@ -86,7 +87,7 @@ export const run = (
     }
 
     if (tool === undefined) {
-      if (!(TOOL_IDS as readonly string[]).includes(token)) {
+      if (!TOOL_ID_SET.has(token)) {
         structuredError({
           code: 'invalid_arguments',
           message: `unknown tool: ${token}`,
