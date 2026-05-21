@@ -120,4 +120,40 @@ describe('appendIdempotent', () => {
 
     expect(statSync(filePath).mode & 0o777).toBe(0o600);
   });
+
+  test('dedupes an event_id already present on disk from a prior process', async () => {
+    // The in-memory seen-set is empty at process start, so a duplicate
+    // that only exists on disk must still be caught by a content check.
+    const filePath = path.join(directory, 'prior-run.jsonl');
+    const eventId = '01HZX0K3Q9JSAWC0TR6WYJ5ZNT';
+    const line = JSON.stringify({event_id: eventId, payload: {x: 1}});
+    writeFileSync(filePath, `${line}\n`, {mode: 0o600});
+
+    const result = await appendIdempotent({
+      eventId,
+      fileMode: 0o600,
+      filePath,
+      line,
+    });
+
+    expect(result).toEqual({written: false});
+    expect(
+      readFileSync(filePath, 'utf8').split('\n').filter(Boolean)
+    ).toHaveLength(1);
+  });
+
+  test('dedupes a repeated event_id across many appends without growth', async () => {
+    const filePath = path.join(directory, 'repeated.jsonl');
+    const eventId = '01HZX0K3Q9JSAWC0TR6WYJ5ZNT';
+    const line = JSON.stringify({event_id: eventId});
+
+    for (let i = 0; i < 25; i += 1) {
+      // eslint-disable-next-line no-await-in-loop -- sequential dedup check
+      await appendIdempotent({eventId, fileMode: 0o600, filePath, line});
+    }
+
+    expect(
+      readFileSync(filePath, 'utf8').split('\n').filter(Boolean)
+    ).toHaveLength(1);
+  });
 });

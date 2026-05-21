@@ -143,8 +143,8 @@ const buildAuditFindings = (
 
   if (!Array.isArray(parsed)) return [];
 
-  const prNumber =
-    trailerScalar(trailer, 'pr_number')?.replace(/^"|"$/g, '') ?? '0';
+  // `trailerScalar` already strips surrounding quotes; no extra strip here.
+  const prNumber = trailerScalar(trailer, 'pr_number') ?? '0';
   const invocations: EmitInvocation[] = [];
 
   for (const finding of parsed) {
