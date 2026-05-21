@@ -12,6 +12,7 @@ import {languageCookie} from '~/sessions.server/language';
 import State from '~/state';
 import {getHints} from '~/utils/client-hints';
 import {isProductionHost} from '~/utils/http.server';
+import {useNonce} from '~/utils/nonce';
 import {getTheme} from '~/utils/theme.server';
 import type {Route} from './+types/root';
 import {env, envClient} from './env.server';
@@ -56,6 +57,7 @@ export const loader = async ({context, request}: Route.LoaderArgs) => {
 const App: FC = () => {
   const loaderData = useLoaderData<typeof loader>();
   const {i18n} = useTranslation();
+  const nonce = useNonce();
 
   const {ENV, language, noIndex, toast} = loaderData;
 
@@ -81,6 +83,7 @@ const App: FC = () => {
             env: ENV,
           })}`,
         }}
+        nonce={nonce}
       />
       <Outlet />
       <Toast />

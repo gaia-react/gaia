@@ -3,6 +3,7 @@ import {Links, Scripts, ScrollRestoration} from 'react-router';
 import {twJoin} from 'tailwind-merge';
 import {useOptionalTheme} from '~/routes/resources+/theme-switch';
 import {ClientHintCheck} from '~/utils/client-hints';
+import {useNonce} from '~/utils/nonce';
 import MetaHydrated from './MetaHydrated';
 
 type DocumentProps = {
@@ -12,7 +13,6 @@ type DocumentProps = {
   lang: string;
   // eslint-disable-next-line react/boolean-prop-naming
   noIndex?: boolean;
-  nonce?: string;
   title?: string;
 };
 
@@ -22,9 +22,9 @@ const Document: FC<DocumentProps> = ({
   dir,
   lang,
   noIndex,
-  nonce,
   title,
 }) => {
+  const nonce = useNonce();
   const theme = useOptionalTheme();
 
   return (
@@ -55,8 +55,8 @@ const Document: FC<DocumentProps> = ({
       </head>
       <body>
         {children}
-        <ScrollRestoration />
-        <Scripts />
+        <ScrollRestoration nonce={nonce} />
+        <Scripts nonce={nonce} />
       </body>
     </html>
   );

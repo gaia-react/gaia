@@ -13,9 +13,12 @@ import {ServerRouter} from 'react-router';
 import {createReadableStreamFromReadable} from '@react-router/node';
 import {createInstance} from 'i18next';
 import {isbot} from 'isbot';
+import {randomBytes} from 'node:crypto';
 import {PassThrough} from 'node:stream';
 import i18nConfig from '~/i18n';
 import {getInstance} from '~/middleware/i18next';
+import {getContentSecurityPolicy} from '~/utils/http.server';
+import {NonceProvider} from '~/utils/nonce';
 import {startApiMocks} from '../test/msw.server';
 import {env} from './env.server';
 import 'dotenv/config';
@@ -34,6 +37,8 @@ const handleRequest = async (
   routerContext: RouterContextProvider
 ) => {
   let shellRendered = false;
+
+  const nonce = randomBytes(16).toString('hex');
 
   const url = new URL(request.url);
 
@@ -80,10 +85,17 @@ const handleRequest = async (
 
   return new Promise((resolve, reject) => {
     const {abort, pipe} = renderToPipeableStream(
-      <I18nextProvider i18n={i18n}>
-        <ServerRouter context={entryContext} url={request.url} />
-      </I18nextProvider>,
+      <NonceProvider value={nonce}>
+        <I18nextProvider i18n={i18n}>
+          <ServerRouter
+            context={entryContext}
+            nonce={nonce}
+            url={request.url}
+          />
+        </I18nextProvider>
+      </NonceProvider>,
       {
+        nonce,
         onError: (error: unknown) => {
           // eslint-disable-next-line sonarjs/no-parameter-reassignment
           responseStatusCode = 500;
@@ -101,6 +113,17 @@ const handleRequest = async (
           const stream = createReadableStreamFromReadable(body);
 
           responseHeaders.set('Content-Type', 'text/html');
+
+          if (env.NODE_ENV === 'production') {
+            // Report-Only: React Router's production build does not apply the nonce
+            // to its single-fetch stream scripts, so enforcing would block
+            // hydration. Tracking: https://github.com/remix-run/react-router/issues/15083
+            // Switch the header name to 'Content-Security-Policy' to enforce once fixed.
+            responseHeaders.set(
+              'Content-Security-Policy-Report-Only',
+              getContentSecurityPolicy(nonce)
+            );
+          }
 
           /* Optional response headers for SEO
           responseHeaders.set(
