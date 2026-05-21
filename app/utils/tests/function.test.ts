@@ -33,4 +33,11 @@ describe('function utils', () => {
       })
     ).toEqual([new Error('failed'), undefined]);
   });
+
+  test('tryCatch preserves falsy sync results as success', () => {
+    expect(tryCatch(() => 0)).toEqual([undefined, 0]);
+    expect(tryCatch(() => false)).toEqual([undefined, false]);
+    expect(tryCatch(() => '')).toEqual([undefined, '']);
+    expect(tryCatch(() => null)).toEqual([undefined, null]);
+  });
 });

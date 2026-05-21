@@ -46,18 +46,25 @@ export const deepRemoveNil = (input: unknown): unknown => {
   }
 
   if (Array.isArray(input)) {
-    return input
-      .filter((value) => !isNil(value))
-      .map((value) => deepRemoveNil(value));
+    return input.reduce<unknown[]>((acc, value) => {
+      if (!isNil(value)) {
+        acc.push(deepRemoveNil(value));
+      }
+
+      return acc;
+    }, []);
   }
 
   if (isObject(input)) {
-    const keys = Object.keys(input);
+    return Object.entries(input).reduce<Record<string, unknown>>(
+      (acc, [key, value]) => {
+        if (!isNil(value)) {
+          acc[key] = deepRemoveNil(value);
+        }
 
-    return Object.fromEntries(
-      keys
-        .filter((key) => !isNil(input[key]))
-        .map((key) => [key, deepRemoveNil(input[key])])
+        return acc;
+      },
+      {}
     );
   }
 
