@@ -2,8 +2,16 @@ import type {Locale} from 'date-fns';
 import {format} from 'date-fns';
 import {ja} from 'date-fns/locale';
 
-const LOCALE_FORMATS: Record<string, Locale> = {
+// date-fns falls back to en-US when no `locale` option is supplied; `en` and
+// any language without a registered date-fns locale share that default.
+const LOCALE_FORMATS: Partial<Record<string, Locale>> = {
   ja,
+};
+
+const getLocaleOptions = (language: string): undefined | {locale: Locale} => {
+  const locale = LOCALE_FORMATS[language];
+
+  return locale ? {locale} : undefined;
 };
 
 // Jan 15, Nov 3, etc.
@@ -14,29 +22,20 @@ export const formatAbbreviatedMonthDay = (
   format(
     date,
     `MMM d${language === 'en' ? '' : 'o'}`,
-    language === 'en' ? undefined : {locale: LOCALE_FORMATS[language]}
+    getLocaleOptions(language)
   );
 
 // Jan 15th, Nov 3rd, etc.
 export const formatAbbreviatedMonthOrdinalDay = (
   date: Date,
   language: string
-): string =>
-  format(
-    date,
-    'MMM do',
-    language === 'en' ? undefined : {locale: LOCALE_FORMATS[language]}
-  );
+): string => format(date, 'MMM do', getLocaleOptions(language));
 
 export const formatISO8601Date = (date: Date): string =>
   format(date, 'yyyy-MM-dd');
 
 export const formatFullDate = (date: Date, language: string): string =>
-  language === 'en' ?
-    format(date, 'PPPP')
-  : format(date, 'PPPP', {
-      locale: LOCALE_FORMATS[language],
-    });
+  format(date, 'PPPP', getLocaleOptions(language));
 
 export const formatMY = (date = new Date()): string => format(date, 'MM/yy');
 
@@ -44,24 +43,12 @@ export const formatFullYear = (date: Date, language: string): string =>
   language === 'en' ? format(date, 'yyyy') : `${format(date, 'yyyy')}年`;
 
 export const formatAbbreviatedMonth = (date: Date, language: string): string =>
-  language === 'en' ?
-    format(date, 'MMM')
-  : format(date, 'MMM', {
-      locale: LOCALE_FORMATS[language],
-    });
+  format(date, 'MMM', getLocaleOptions(language));
 
 export const formatOrdinalDay = (date: Date, language: string): string =>
-  format(
-    date,
-    'do',
-    language === 'en' ? undefined : {locale: LOCALE_FORMATS[language]}
-  );
+  format(date, 'do', getLocaleOptions(language));
 
 export const formatTime = (date: Date, language: string): string =>
-  format(
-    date,
-    'p',
-    language === 'en' ? undefined : {locale: LOCALE_FORMATS[language]}
-  );
+  format(date, 'p', getLocaleOptions(language));
 
 export const formatTime24 = (date: Date): string => format(date, 'HH:mm');

@@ -1,15 +1,20 @@
 import {data, redirect, replace} from 'react-router';
 import {LANGUAGES} from '~/languages';
 import {languageCookie} from '~/sessions.server/language';
+import {isLocalRedirect} from '~/utils/http';
 import type {Route} from './+types/set-language';
 
 export const action = async ({request}: Route.ActionArgs) => {
   const requestText = await request.text();
   const form = new URLSearchParams(requestText);
-  const language = form.get('language') as string;
-  const redirectUrl = form.get('redirectUrl') as string;
+  const language = form.get('language');
+  const redirectUrl = form.get('redirectUrl');
 
-  if (!LANGUAGES.includes(language) || !redirectUrl) {
+  if (
+    language == null ||
+    !LANGUAGES.includes(language) ||
+    !isLocalRedirect(redirectUrl)
+  ) {
     return data(
       {
         message: `language value of ${language} is not a valid language`,
