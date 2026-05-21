@@ -1,8 +1,15 @@
+// @vitest-environment jsdom
 {{testImports}}
+import {expectNoA11yViolations} from 'test/a11y';
 
 describe('{{Name}}', () => {
   test('renders', () => {
     const {container} = render(<{{Name}} />);
     expect(container.firstChild).toBeInTheDocument();
+  });
+
+  test('a11y', async () => {
+    const {container} = render(<{{Name}} />);
+    await expectNoA11yViolations(container);
   });
 });

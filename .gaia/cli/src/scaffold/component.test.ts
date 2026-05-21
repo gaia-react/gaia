@@ -124,11 +124,17 @@ describe('scaffold component', () => {
     expect(indexContents).not.toContain('FooProps');
 
     const testContents = read(testPath);
+    expect(testContents.startsWith('// @vitest-environment jsdom\n')).toBe(true);
     expect(testContents).toContain(
       "import {composeStory} from '@storybook/react-vite';"
     );
+    expect(testContents).toContain(
+      "import {expectNoA11yViolations} from 'test/a11y';"
+    );
     expect(testContents).toContain('const Foo = composeStory(Default, Meta);');
     expect(testContents).toContain("describe('Foo'");
+    expect(testContents).toContain("test('a11y', async () => {");
+    expect(testContents).toContain('await expectNoA11yViolations(container);');
 
     const storyContents = read(storyPath);
     expect(storyContents).toContain("import Foo from '..';");
@@ -155,8 +161,13 @@ describe('scaffold component', () => {
     const testContents = read(
       path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')
     );
+    expect(testContents.startsWith('// @vitest-environment jsdom\n')).toBe(true);
     expect(testContents).not.toContain('composeStory');
     expect(testContents).toContain("import Bar from '..'");
+    expect(testContents).toContain(
+      "import {expectNoA11yViolations} from 'test/a11y';"
+    );
+    expect(testContents).toContain("test('a11y', async () => {");
   });
 
   test('--props renders a typed Props alias and destructured signature', () => {
