@@ -88,6 +88,13 @@ const refuse = (message: string): number => {
 type RunStep = {
   args: readonly string[];
   command: string;
+  /**
+   * Marks the post-step state transition the rollback logic depends on.
+   * Set explicitly on the step descriptor so reordering or inserting steps
+   * cannot silently break flag derivation (vs. inspecting the first argv
+   * token).
+   */
+  marks?: 'onSyncBranch' | 'staged';
 };
 
 const runStep = (
@@ -130,7 +137,7 @@ type LandingContext = {
 const inPlaceLanding = (ctx: LandingContext): number => {
   const message = `wiki: sync through ${ctx.shortHead}`;
   const sequence: RunStep[] = [
-    {args: ['add', 'wiki'], command: 'git'},
+    {args: ['add', 'wiki'], command: 'git', marks: 'staged'},
     {args: ['commit', '-m', message], command: 'git'},
   ];
 
@@ -152,7 +159,7 @@ const inPlaceLanding = (ctx: LandingContext): number => {
       return passthroughFailure(result, step);
     }
 
-    if (step.args[0] === 'add') staged = true;
+    if (step.marks === 'staged') staged = true;
   }
 
   process.stdout.write(
@@ -215,7 +222,7 @@ const protectedBranchLanding = (
   // branch (and possibly a PR) exists on the remote and is left for the
   // maintainer to resolve rather than force-reverted.
   const localSequence: RunStep[] = [
-    {args: ['checkout', '-b', branchName], command: 'git'},
+    {args: ['checkout', '-b', branchName], command: 'git', marks: 'onSyncBranch'},
     {args: ['add', 'wiki'], command: 'git'},
     {args: ['commit', '-m', message], command: 'git'},
   ];
@@ -236,7 +243,7 @@ const protectedBranchLanding = (
       return passthroughFailure(result, step);
     }
 
-    if (step.args[0] === 'checkout') onSyncBranch = true;
+    if (step.marks === 'onSyncBranch') onSyncBranch = true;
   }
 
   for (const step of remoteSequence) {
