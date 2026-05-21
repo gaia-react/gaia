@@ -304,6 +304,54 @@ describe('wiki sync land', () => {
     expect(ghCalls).toHaveLength(0);
   });
 
+  test('protected-branch flow rolls back local steps when commit fails', () => {
+    sandbox = setupSandbox();
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {
+          argv: ['status', '--porcelain=v1', '-uall'],
+          result: okResult(' M wiki/log.md\n'),
+        },
+        {
+          argv: ['rev-parse', 'HEAD'],
+          result: okResult('dddddddddddddddddddddddddddddddddddddddd\n'),
+        },
+        {
+          argv: ['commit', '-m', 'wiki: sync through ddddddd'],
+          result: failResult(1, 'nothing to commit'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run(['--branch-aware'], {
+      cwd: sandbox.root,
+      runner,
+      today: '2026-05-07',
+    });
+    expect(exit).toBe(2);
+
+    // After the commit failure the handler returns to the original branch
+    // and deletes the half-created sync branch.
+    const gitCalls = recorded.filter((c) => c.command === 'git');
+    expect(gitCalls).toContainEqual({
+      args: ['checkout', 'main'],
+      command: 'git',
+    });
+    expect(gitCalls).toContainEqual({
+      args: ['branch', '-D', 'wiki-sync/2026-05-07-ddddddd'],
+      command: 'git',
+    });
+    // No push / gh once the local sequence failed.
+    expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
+    expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
+  });
+
   test('working tree with non-wiki changes — exit 1', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];

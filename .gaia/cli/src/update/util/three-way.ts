@@ -23,13 +23,13 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 
-export type FileSnapshot = {
-  /** Absolute path in the working tree / baseline / latest. May not exist. */
-  absPath: string;
-  exists: boolean;
-  /** Raw bytes when present. `null` when missing. */
-  bytes: Buffer | null;
-};
+/**
+ * Discriminated on `exists` so a passed `exists` check narrows `bytes` to a
+ * non-null `Buffer` without a cast.
+ */
+export type FileSnapshot =
+  | {absPath: string; bytes: Buffer; exists: true}
+  | {absPath: string; bytes: null; exists: false};
 
 export const snapshot = (absPath: string): FileSnapshot => {
   if (!existsSync(absPath)) {

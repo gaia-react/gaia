@@ -271,7 +271,7 @@ const handleManifestPath = (
   if (!currentSnap.exists) {
     if (!baselineSnap.exists) {
       // New file; copy latest into the working tree.
-      writeWorkingTree(ctx, relativePath, latestSnap.bytes as Buffer);
+      writeWorkingTree(ctx, relativePath, latestSnap.bytes);
 
       return {kind: 'add'};
     }
@@ -285,7 +285,7 @@ const handleManifestPath = (
     if (bytesEqual(currentSnap.bytes, latestSnap.bytes)) {
       return {kind: 'skip'};
     }
-    writeWorkingTree(ctx, relativePath, latestSnap.bytes as Buffer);
+    writeWorkingTree(ctx, relativePath, latestSnap.bytes);
 
     return {kind: 'overwrite'};
   }
@@ -311,14 +311,9 @@ const handleManifestPath = (
   }
 
   if (klass === 'shared') {
-    if (
-      baselineSnap.bytes === null ||
-      currentSnap.bytes === null ||
-      latestSnap.bytes === null
-    ) {
-      // Defensive: bytesEqual already handled the null-cases above. If
-      // we reach here with a null buffer something is wrong with the
-      // input snapshots — fall back to a conflict patch.
+    if (baselineSnap.bytes === null) {
+      // No baseline to three-way merge against (the file is new since the
+      // adopter's baseline) — fall back to a conflict patch.
       const patch = unifiedDiff(currentSnap.bytes, latestSnap.bytes, {
         fromLabel: relativePath,
         toLabel: relativePath,
@@ -348,7 +343,7 @@ const handleManifestPath = (
   }
 
   // `upstream` class — collapse to overwrite-on-difference.
-  writeWorkingTree(ctx, relativePath, latestSnap.bytes as Buffer);
+  writeWorkingTree(ctx, relativePath, latestSnap.bytes);
 
   return {kind: 'overwrite'};
 };
@@ -409,7 +404,7 @@ const computeReport = (ctx: Context): UpdateMergeReport => {
     const latestSnap = snapshot(path.join(ctx.latestDir, relativePath));
 
     if (!latestSnap.exists) continue;
-    writeWorkingTree(ctx, relativePath, latestSnap.bytes as Buffer);
+    writeWorkingTree(ctx, relativePath, latestSnap.bytes);
     add.push(relativePath);
   }
 
