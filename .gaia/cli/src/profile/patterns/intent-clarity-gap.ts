@@ -17,8 +17,9 @@ import type {MentorshipEvent} from '../reader.js';
  * `spec_amended` events do not carry `area_tags` directly. They are
  * attributed to whichever areas the same spec_id was tagged with by its
  * `time_to_resolved_spec` event in the window. Specs with no
- * time_to_resolved_spec event in the window bucket under `_unknown` —
- * which never accumulates to threshold and stays below the sample minimum.
+ * time_to_resolved_spec event in the window bucket under `_unknown` — a
+ * sentinel that is dropped from the detector output entirely, so it can
+ * never reach the firing threshold or surface in coaching text.
  */
 import {
   AMENDED_RATE_TARGET,
@@ -33,8 +34,9 @@ const UNKNOWN_AREA = '_unknown';
 
 type AreaStats = {
   amendedCount: number;
+  /** Distinct spec IDs *closed* in the area — the amended_rate denominator. */
+  closedSpecIds: Set<string>;
   questionCounts: number[];
-  specIds: Set<string>;
   ttrCount: number;
 };
 
@@ -44,8 +46,8 @@ const ensureArea = (index: Map<string, AreaStats>, area: string): AreaStats => {
   if (existing !== undefined) return existing;
   const fresh: AreaStats = {
     amendedCount: 0,
+    closedSpecIds: new Set(),
     questionCounts: [],
-    specIds: new Set(),
     ttrCount: 0,
   };
   index.set(area, fresh);
@@ -67,7 +69,14 @@ const numberField = (payload: unknown, key: string): number => {
   if (payload === null || typeof payload !== 'object') return 0;
   const candidate = (payload as Record<string, unknown>)[key];
 
-  return typeof candidate === 'number' ? candidate : 0;
+  // `question_count` is a count: only finite, non-negative numbers are
+  // valid. Negative / NaN / Infinity values coerce to 0 so a single
+  // malformed event cannot poison the per-area mean.
+  return typeof candidate === 'number' &&
+    Number.isFinite(candidate) &&
+    candidate >= 0
+    ? candidate
+    : 0;
 };
 
 const arrayStringField = (payload: unknown, key: string): readonly string[] => {
@@ -115,7 +124,9 @@ const accumulateTimeToResolved = (
     entry.ttrCount += 1;
     entry.questionCounts.push(questionCount);
 
-    if (specId !== undefined) entry.specIds.add(specId);
+    // A time_to_resolved_spec event represents a closed spec — its ID is
+    // the only thing that belongs in the amended_rate denominator.
+    if (specId !== undefined) entry.closedSpecIds.add(specId);
   }
 };
 
@@ -132,8 +143,10 @@ const accumulateSpecAmended = (
   for (const area of targetAreas) {
     const entry = ensureArea(stats, area);
     entry.amendedCount += 1;
-
-    if (specId !== undefined) entry.specIds.add(specId);
+    // Amended spec IDs are deliberately NOT added to `closedSpecIds`: the
+    // amended_rate denominator must be closed specs only. Mixing amended
+    // IDs in inflates the denominator when an amended spec has no
+    // time_to_resolved_spec event in the window.
   }
 };
 
@@ -165,8 +178,8 @@ const mean = (values: readonly number[]): number => {
 
 const buildAreaResult = (area: string, stats: AreaStats): PatternResult => {
   const sample = stats.amendedCount + stats.ttrCount;
-  const totalSpecs = stats.specIds.size;
-  const amendedRate = totalSpecs === 0 ? 0 : stats.amendedCount / totalSpecs;
+  const closedSpecs = stats.closedSpecIds.size;
+  const amendedRate = closedSpecs === 0 ? 0 : stats.amendedCount / closedSpecs;
   const avgQ = mean(stats.questionCounts);
   const fires = sample >= MIN_SAMPLE_COUNT;
   const strength =
@@ -201,6 +214,10 @@ export const detectIntentClarityGap = (args: DetectArgs): PatternResult[] => {
   const results: PatternResult[] = [];
 
   for (const [area, entry] of stats) {
+    // `_unknown` is a sentinel for specs that could not be attributed to a
+    // real area, not an area itself. Excluded from threshold evaluation and
+    // coaching output so it can never surface as "...working in _unknown".
+    if (area === UNKNOWN_AREA) continue;
     results.push(buildAreaResult(area, entry));
   }
 
