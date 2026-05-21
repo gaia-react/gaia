@@ -39,6 +39,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      statuses: write
       id-token: write
       actions: read
     env:
@@ -273,6 +274,7 @@ jobs:
               git diff --cached --name-only >&2
               git reset >/dev/null
               echo "pushed=false" >> "$GITHUB_OUTPUT"
+              echo "marker_only=false" >> "$GITHUB_OUTPUT"
               echo "refused=true" >> "$GITHUB_OUTPUT"
               echo "refused_count=$files_changed" >> "$GITHUB_OUTPUT"
               exit 0
@@ -283,10 +285,47 @@ jobs:
             fi
           fi
 
+          # A commit is the empty marker iff: (a) its tree equals its parent's
+          # tree (empty commit), AND (b) its message carries a GAIA-Audit:
+          # trailer line.
+          is_marker_commit() {
+            sha="$1"
+            parent="$(git rev-parse "${sha}^" 2>/dev/null || true)"
+            [ -n "$parent" ] || return 1
+            head_tree="$(git rev-parse "${sha}^{tree}")"
+            parent_tree="$(git rev-parse "${parent}^{tree}")"
+            [ "$head_tree" = "$parent_tree" ] || return 1
+            git log -1 --format='%B' "$sha" | grep -q '^GAIA-Audit:' || return 1
+            return 0
+          }
+
           ahead=$(git rev-list --count "origin/${PR_BRANCH}..HEAD" 2>/dev/null || echo 0)
           if [ "$ahead" -eq 0 ]; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "marker_only=false" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+
+          # Case A: the ONLY commit ahead of origin is the empty marker.
+          # GitHub does not re-trigger CI for GITHUB_TOKEN pushes, so pushing
+          # the empty marker would strand the PR on a HEAD with zero checks.
+          # Skip the push; the GAIA-Audit status step stamps HEAD~1 instead.
+          if [ "$ahead" -eq 1 ] && is_marker_commit HEAD; then
+            audit_sha="$(git rev-parse HEAD~1)"
+            echo "code-review-audit: marker-only HEAD; not pushing the empty commit." >&2
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "marker_only=true" >> "$GITHUB_OUTPUT"
+            echo "audit_sha=${audit_sha}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Case B: real self-heal commits exist. If the marker is sitting on
+          # top of them, drop it before pushing so we never push the empty
+          # commit. Soft reset keeps the working tree clean (the marker is
+          # empty), matching the real self-heal HEAD.
+          if is_marker_commit HEAD; then
+            git reset --soft HEAD~1
+            echo "code-review-audit: dropped empty marker commit before pushing self-heal." >&2
           fi
 
           # Re-establish authenticated remote URL before push. The agent's
@@ -296,7 +335,46 @@ jobs:
           git remote set-url origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "HEAD:$PR_BRANCH"
+          audit_sha="$(git rev-parse HEAD)"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "marker_only=false" >> "$GITHUB_OUTPUT"
+          echo "audit_sha=${audit_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Write GAIA-Audit commit status
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.trailer.outputs.skip == 'false' &&
+          steps.audit.outcome == 'success' &&
+          (steps.push-fixes.outputs.marker_only == 'true' ||
+           steps.push-fixes.outputs.pushed == 'true')
+        env:
+          AUDIT_SHA: ${{ steps.push-fixes.outputs.audit_sha }}
+        run: |
+          set -eu
+          # Write a GAIA-Audit commit status on the SHA that already carries
+          # the audit's check runs. A status (unlike a pushed empty commit)
+          # does not advance the branch HEAD, so branch protection stays
+          # satisfied and the check-name skip logic still has a durable
+          # signal to read on a re-run.
+          if [ -z "${AUDIT_SHA:-}" ]; then
+            echo "code-review-audit: no audit_sha to stamp; skipping status." >&2
+            exit 0
+          fi
+          version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
+          version="${version#"${version%%[![:space:]]*}"}"
+          version="${version%"${version##*[![:space:]]}"}"
+          if [ -z "$version" ]; then
+            echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
+            exit 0
+          fi
+          tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${AUDIT_SHA}" \
+            --method POST \
+            --field state=success \
+            --field context=GAIA-Audit \
+            --field description="${version} ${tree_sha}"
 
       # ----------------------------------------------------------------
       # Terminal status steps. Exactly one fires per run; together they

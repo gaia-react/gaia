@@ -1,9 +1,7 @@
 import {useRouteLoaderData} from 'react-router';
-import type {getHints} from '~/utils/client-hints';
 import type {Theme} from '~/utils/theme.server';
 
 export type RequestInfo = {
-  hints: ReturnType<typeof getHints>;
   origin: string;
   path: string;
   userPrefs: {theme: null | Theme};

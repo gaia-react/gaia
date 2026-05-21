@@ -1,9 +1,9 @@
 import type {FC} from 'react';
+import {useSyncExternalStore} from 'react';
 import {useTranslation} from 'react-i18next';
 import {IoDesktopOutline, IoMoon, IoSunny} from 'react-icons/io5';
 import {data, redirect, useFetcher, useFetchers} from 'react-router';
 import {z} from 'zod';
-import {useOptionalHints} from '~/utils/client-hints';
 import {useOptionalRequestInfo} from '~/utils/request-info';
 import type {Theme} from '~/utils/theme.server';
 import {setTheme} from '~/utils/theme.server';
@@ -38,6 +38,29 @@ export const action = async ({request}: Route.ActionArgs) => {
   return data({result: 'success'} as const, {headers});
 };
 
+const COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)';
+
+const subscribeToColorScheme = (onChange: () => void): (() => void) => {
+  const query = window.matchMedia(COLOR_SCHEME_QUERY);
+  query.addEventListener('change', onChange);
+
+  return () => {
+    query.removeEventListener('change', onChange);
+  };
+};
+
+const getColorSchemeSnapshot = (): Theme =>
+  window.matchMedia(COLOR_SCHEME_QUERY).matches ? 'dark' : 'light';
+
+const getColorSchemeServerSnapshot = (): undefined => undefined;
+
+const useSystemTheme = (): Theme | undefined =>
+  useSyncExternalStore<Theme | undefined>(
+    subscribeToColorScheme,
+    getColorSchemeSnapshot,
+    getColorSchemeServerSnapshot
+  );
+
 export const useOptimisticThemeMode = ():
   | 'dark'
   | 'light'
@@ -47,28 +70,22 @@ export const useOptimisticThemeMode = ():
   const themeFetcher = fetchers.find(
     (f) => f.formAction === '/resources/theme-switch'
   );
-
-  if (themeFetcher?.formData) {
-    const submission = ThemeFormSchema.safeParse({
-      redirectTo: themeFetcher.formData.get('redirectTo') ?? undefined,
-      theme: themeFetcher.formData.get('theme'),
-    });
-    if (submission.success) return submission.data.theme;
-  }
+  const theme = themeFetcher?.formData?.get('theme');
+  if (theme === 'dark' || theme === 'light' || theme === 'system') return theme;
 
   return undefined;
 };
 
 export const useOptionalTheme = (): Theme | undefined => {
-  const hints = useOptionalHints();
   const requestInfo = useOptionalRequestInfo();
   const optimisticMode = useOptimisticThemeMode();
+  const systemTheme = useSystemTheme();
 
   if (optimisticMode) {
-    return optimisticMode === 'system' ? hints?.theme : optimisticMode;
+    return optimisticMode === 'system' ? systemTheme : optimisticMode;
   }
 
-  return requestInfo?.userPrefs.theme ?? hints?.theme;
+  return requestInfo?.userPrefs.theme ?? systemTheme;
 };
 
 type ThemeSwitchProps = {

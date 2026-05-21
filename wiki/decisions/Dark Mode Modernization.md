@@ -32,7 +32,6 @@ The old implementation had three real problems:
 
 ## Trade-offs
 
-- **First-ever visit may revalidate once.** The `ClientHintCheck` script reads `prefers-color-scheme` and triggers `useRevalidator().revalidate()` if the cookie does not yet reflect a hint. This is a one-time cost on the very first visit and only when the user has no `__theme` cookie. Subsequent visits SSR with the correct theme directly. Acceptable.
 - **3-state cycle (`light → dark → system → light`).** The Epic Stack pattern includes `'system'` (delete cookie). The previous GAIA toggle was 2-state. We kept the 3-state cycle in the action/schema; the visible UI still shows only sun/moon icons (resolved theme), but the cycle now passes through `system` to let users follow the OS again. This is a minor behavioral change.
 - **Cookie name preserved.** We kept `__theme` (vs Epic Stack's `theme`) to avoid invalidating existing user preferences after deploy.
 - **`@conform-to/*` not adopted.** GAIA already has Conform installed for forms, but the theme action uses plain Zod to keep the resource route minimal. Forms with user-facing validation continue to use Conform.
