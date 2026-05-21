@@ -265,9 +265,10 @@ const handleOpen = (
   if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
   // Serialize the ledger read-check-write so the "one revert per PR"
-  // hard cap is not defeated by two concurrent `ci-revert open` runs
-  // both passing the existence check before either writes.
-  const locked = withRevertLedgerLock(repoRoot, () =>
+  // hard cap is not defeated by two concurrent `ci-revert open` runs for
+  // the same PR both passing the existence check before either writes.
+  // The lock is scoped to `pr` — reverts of distinct PRs do not block.
+  const locked = withRevertLedgerLock(repoRoot, pr, () =>
     handleOpenLocked({json, label, options, pr, reason, repoRoot})
   );
 
