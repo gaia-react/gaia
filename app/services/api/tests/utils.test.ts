@@ -1,5 +1,16 @@
+import type {BeforeRequestState} from 'ky';
 import {describe, expect, test} from 'vitest';
-import {appendSearchParams, getUri, setPathParams} from '../utils';
+import {appendSearchParams, getHooks, getUri, setPathParams} from '../utils';
+
+const runRequestToSnakeCase = async (body: string) => {
+  const hook = getHooks(true)?.beforeRequest?.[0];
+  const state = {
+    options: {body},
+    request: new Request('https://example.test', {method: 'POST'}),
+  } as unknown as BeforeRequestState;
+
+  return hook?.(state);
+};
 
 describe('api utils', () => {
   test('appendSearchParams should return comma array snake_case params', () => {
@@ -57,5 +68,18 @@ describe('api utils', () => {
     ).toBe(
       'api/test/3/edit?name=foo&animal=dog,cat,fish&hello_world=foobar&some_number=5'
     );
+  });
+
+  test('requestToSnakeCase converts a JSON body to snake_case', async () => {
+    const result = await runRequestToSnakeCase(JSON.stringify({helloWorld: 1}));
+
+    expect(result).toBeInstanceOf(Request);
+    expect(await (result as Request).text()).toBe('{"hello_world":1}');
+  });
+
+  test('requestToSnakeCase forwards a non-JSON body unchanged', async () => {
+    const result = await runRequestToSnakeCase('plain text body');
+
+    expect(result).toBeUndefined();
   });
 });

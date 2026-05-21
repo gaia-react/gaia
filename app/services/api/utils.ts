@@ -6,9 +6,17 @@ import {toCamelCase, toSnakeCase} from '~/utils/object';
 
 const requestToSnakeCase = async ({options, request}: BeforeRequestState) => {
   if (options.body && !(options.body instanceof FormData)) {
-    const body = JSON.stringify(
-      toSnakeCase(JSON.parse(options.body as string))
+    const [error, parsed] = tryCatch(
+      () => JSON.parse(options.body as string) as unknown
     );
+
+    // A non-JSON body (plain string, URLSearchParams, etc.) is forwarded
+    // unchanged rather than failing the request.
+    if (error) {
+      return;
+    }
+
+    const body = JSON.stringify(toSnakeCase(parsed));
 
     // eslint-disable-next-line unicorn/no-invalid-fetch-options
     return new Request(request, {body});
