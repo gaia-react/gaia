@@ -15,15 +15,56 @@ type AppendResult = {
 };
 
 /**
+ * Process-lifetime cache of `event_id`s known to already be present in a
+ * given NDJSON file. Keyed by `filePath`. Seeded lazily by a single full
+ * read the first time a file is touched this process; every emit after
+ * that dedupes purely against the in-memory set.
+ *
+ * This bounds disk reads to one per file per process instead of one per
+ * emit — the prior implementation re-read the whole daily file on every
+ * call, which is O(n^2) over a day of emits from a long-lived process.
+ */
+const seenByFile = new Map<string, Set<string>>();
+
+const EVENT_ID_NEEDLE_REGEX = /"event_id":"([^"]+)"/gu;
+
+/**
+ * Lazily build (and cache) the seen-set for `filePath` by scanning the
+ * file once. A missing file yields an empty set.
+ */
+const seenSetFor = (filePath: string): Set<string> => {
+  const cached = seenByFile.get(filePath);
+
+  if (cached !== undefined) return cached;
+
+  const seen = new Set<string>();
+
+  if (existsSync(filePath)) {
+    const existing = readFileSync(filePath, 'utf8');
+
+    for (const match of existing.matchAll(EVENT_ID_NEEDLE_REGEX)) {
+      seen.add(match[1] as string);
+    }
+  }
+
+  seenByFile.set(filePath, seen);
+
+  return seen;
+};
+
+/**
  * Append a JSON line to the NDJSON file at `filePath`, but only if no line
- * with the same `event_id` already exists. The check is a substring grep:
- * `"event_id":"<eventId>"`. Cheap and bounded by daily rotation.
+ * with the same `event_id` already exists. Dedup runs against a
+ * process-lifetime in-memory seen-set, seeded by a single file read the
+ * first time the file is touched (catches duplicates from prior processes)
+ * and updated on every successful append.
  *
  * Concurrent emits of the same content yield the same `event_id`, so the
- * grep step may race (both processes grep before either writes). Acceptable
- * for v1 — the worst case is a duplicate line per content within the race
- * window, against the desired single line. Daily rotation keeps the dup
- * window finite. v1.1 may add `flock` if real-world rates demand it.
+ * dedup step may race across processes (both seed before either writes).
+ * Acceptable for v1 — the worst case is a duplicate line per content
+ * within the race window, against the desired single line. Daily rotation
+ * keeps the dup window finite. v1.1 may add `flock` if real-world rates
+ * demand it.
  *
  * Idempotency contract: same content twice -> exactly one event per stream.
  *
@@ -33,17 +74,14 @@ export const appendIdempotent = async (
   args: AppendArgs
 ): Promise<AppendResult> => {
   const {eventId, fileMode, filePath, line} = args;
-  const dedupNeedle = `"event_id":"${eventId}"`;
+  const seen = seenSetFor(filePath);
 
-  if (existsSync(filePath)) {
-    const existing = readFileSync(filePath, 'utf8');
-
-    if (existing.includes(dedupNeedle)) {
-      return {written: false};
-    }
+  if (seen.has(eventId)) {
+    return {written: false};
   }
 
   await appendFile(filePath, `${line}\n`, {mode: fileMode});
+  seen.add(eventId);
 
   // `appendFile`'s `mode` option only takes effect when creating the file.
   // Re-chmod to ensure the post-condition holds even when the file pre-existed
