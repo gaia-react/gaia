@@ -177,6 +177,37 @@ describe('init strip-branding', () => {
     expect(stripCount).toBe(1);
   });
 
+  test('replaces a paired <GaiaLogo>…</GaiaLogo> element', () => {
+    sandbox = setupSandbox();
+    const pairedHeader = `import GaiaLogo from '~/components/GaiaLogo';
+
+const Header = () => (
+  <header>
+    <GaiaLogo className="h-6 sm:h-7">brand</GaiaLogo>
+  </header>
+);
+
+export default Header;
+`;
+    writeFileSync(
+      path.join(sandbox.root, 'app', 'components', 'Header', 'index.tsx'),
+      pairedHeader,
+      'utf8'
+    );
+
+    const exit = run(['--title', 'Hello World'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const header = readFileSync(
+      path.join(sandbox.root, 'app', 'components', 'Header', 'index.tsx'),
+      'utf8'
+    );
+    expect(header).not.toContain('GaiaLogo');
+    expect(header).toContain(
+      "<span className=\"text-body text-xl font-bold\">{t('meta.siteName')}</span>"
+    );
+  });
+
   test('exit 1 when --title missing', () => {
     sandbox = setupSandbox();
     const exit = run([], {cwd: sandbox.root});

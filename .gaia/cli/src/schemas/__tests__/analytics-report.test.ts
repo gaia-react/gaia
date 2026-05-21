@@ -152,6 +152,24 @@ describe('schemas/analytics-report', () => {
     ).toThrow();
   });
 
+  it('accepts an ISO-8601 datetime for report_generated_at', () => {
+    expect(() =>
+      AnalyticsReportSchema.parse({
+        ...baseReport,
+        report_generated_at: '2026-05-06T12:34:56.789Z',
+      })
+    ).not.toThrow();
+  });
+
+  it('rejects a non-datetime string for report_generated_at', () => {
+    expect(() =>
+      AnalyticsReportSchema.parse({
+        ...baseReport,
+        report_generated_at: 'not-a-timestamp',
+      })
+    ).toThrow();
+  });
+
   it('accepts adaptation with null outcome', () => {
     expect(() =>
       AnalyticsReportSchema.parse({

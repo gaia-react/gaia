@@ -182,6 +182,54 @@ describe('init rename', () => {
     ).toBe(pageFirst);
   });
 
+  test('does not clobber unrelated `title` properties in diverged _index.ts', () => {
+    sandbox = setupSandbox();
+    // Simulate a user whose _index.ts has diverged from the seed: extra
+    // route data with its own nested `title` properties that are NOT the
+    // project title and must be preserved verbatim.
+    const diverged = `export default {
+  heroTitle: 'Start with something solid.',
+  meta: {
+    description: 'Description of the index page',
+    title: 'Index Page',
+  },
+  title: 'Old Title',
+  routes: {
+    about: {
+      title: 'About Us',
+    },
+    contact: {
+      title: 'Contact',
+    },
+  },
+};
+`;
+    writeFileSync(
+      path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
+      diverged,
+      'utf8'
+    );
+
+    const exit = run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(0);
+
+    const page = readFileSync(
+      path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
+      'utf8'
+    );
+    // Seed identity keys rewritten.
+    expect(page).toContain("heroTitle: 'Hello World'");
+    expect(page).toContain("title: 'Hello World'");
+    // meta.title rewritten.
+    const helloMatches = page.match(/title: 'Hello World'/gu)?.length ?? 0;
+    expect(helloMatches).toBe(2);
+    // Unrelated route titles preserved.
+    expect(page).toContain("title: 'About Us'");
+    expect(page).toContain("title: 'Contact'");
+  });
+
   test('exit 1 when package.json missing', () => {
     sandbox = setupSandbox();
     rmSync(path.join(sandbox.root, 'package.json'));

@@ -10,6 +10,7 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {z} from 'zod';
 import {automationConfigPath} from '../automation/paths.js';
+import {summarizeZodError} from './zod-error.js';
 
 export const TOOL_IDS = ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches'] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
@@ -83,16 +84,6 @@ export type ReadAutomationConfigResult =
   | {config: AutomationConfig; status: 'ok'}
   | {status: 'missing'}
   | {error: string; status: 'malformed'};
-
-const summarizeZodError = (filePath: string, error: z.ZodError): string => {
-  const lines = error.issues.map((issue) => {
-    const pathStr = issue.path.length === 0 ? '<root>' : issue.path.join('.');
-
-    return `${pathStr}: ${issue.message}`;
-  });
-
-  return `${filePath}: ${lines.join('; ')}`;
-};
 
 export const readAutomationConfig = (
   repoRoot: string
