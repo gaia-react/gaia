@@ -15,7 +15,8 @@
  * inserted into the longest contiguous run of export-from lines that bounds
  * the alphabetically-correct slot.
  */
-import {readFileSync, writeFileSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 const EXPORT_FROM_PATTERN = /^\s*export\s+(?:\*|\{[^}]*\})\s+from\s+/u;
 
@@ -129,5 +130,5 @@ export const insertIntoBarrel = (
       ? insertWhenNoExistingRun(lines, exportLine)
       : insertAt(lines, findInsertIndex(lines, bounds, exportLine), exportLine);
 
-  writeFileSync(barrelPath, buildOutput(next, trailingNewline), 'utf8');
+  atomicWriteFileSync(barrelPath, buildOutput(next, trailingNewline));
 };

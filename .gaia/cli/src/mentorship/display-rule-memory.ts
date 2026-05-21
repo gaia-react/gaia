@@ -17,15 +17,10 @@
  * `MEMORY.md` is treated as plain text. The index line is identified by
  * exact match against `DISPLAY_RULE_INDEX_LINE`.
  */
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, unlinkSync} from 'node:fs';
 import path from 'node:path';
 import type {StorageRoots} from '../storage/index.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {
   DISPLAY_RULE_BODY,
   DISPLAY_RULE_FILE_NAME,
@@ -95,7 +90,7 @@ export const installDisplayRule = (roots: StorageRoots): void => {
   ensureMemoryDirectory(roots.memoryDir);
 
   const bodyPath = path.join(roots.memoryDir, DISPLAY_RULE_FILE_NAME);
-  writeFileSync(bodyPath, DISPLAY_RULE_BODY, 'utf8');
+  atomicWriteFileSync(bodyPath, DISPLAY_RULE_BODY);
 
   const indexPath = path.join(roots.memoryDir, MEMORY_INDEX_FILE);
   const indexBody = readIndex(indexPath);
@@ -103,7 +98,7 @@ export const installDisplayRule = (roots: StorageRoots): void => {
   if (indexContainsLine(indexBody, DISPLAY_RULE_INDEX_LINE)) return;
 
   const next = appendIndexLine(indexBody, DISPLAY_RULE_INDEX_LINE);
-  writeFileSync(indexPath, next, 'utf8');
+  atomicWriteFileSync(indexPath, next);
 };
 
 /**
@@ -137,7 +132,7 @@ export const removeDisplayRule = (roots: StorageRoots): void => {
     return;
   }
 
-  writeFileSync(indexPath, next, 'utf8');
+  atomicWriteFileSync(indexPath, next);
 };
 
 /**
@@ -169,7 +164,7 @@ export const assertDisplayRule = (
   const bodyChanged = previousBody !== DISPLAY_RULE_BODY;
 
   if (bodyChanged) {
-    writeFileSync(bodyPath, DISPLAY_RULE_BODY, 'utf8');
+    atomicWriteFileSync(bodyPath, DISPLAY_RULE_BODY);
   }
 
   const indexPath = path.join(roots.memoryDir, MEMORY_INDEX_FILE);
@@ -178,7 +173,7 @@ export const assertDisplayRule = (
 
   if (lineMissing) {
     const next = appendIndexLine(indexBody, DISPLAY_RULE_INDEX_LINE);
-    writeFileSync(indexPath, next, 'utf8');
+    atomicWriteFileSync(indexPath, next);
   }
 
   return {

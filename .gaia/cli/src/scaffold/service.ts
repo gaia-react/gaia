@@ -16,11 +16,12 @@
  *   - Endpoint flag drives which request functions, mock files, and the
  *     handlers-array order. The set is closed: get/post/put/delete only.
  */
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {fileURLToPath} from 'node:url';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {ensureDir, writeFileIfAbsent} from './fs.js';
 import {renderTemplate, type TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
@@ -378,7 +379,7 @@ const updateDatabaseBarrel = (
   const next = applyDatabaseEdits(raw, derived, importLine, resetCall);
 
   if (next === raw) return {written: false};
-  writeFileSync(databasePath, next, 'utf8');
+  atomicWriteFileSync(databasePath, next);
 
   return {written: true};
 };

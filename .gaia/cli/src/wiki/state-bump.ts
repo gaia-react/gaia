@@ -9,10 +9,11 @@
  * Replaces the prose `jq ... > tmp && mv tmp wiki/.state.json` recipe in
  * `wiki/sync.md` Step 6 and `wiki/consolidate.md` Step 5.
  */
-import {existsSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {resolveRepoRoot} from './util/git.js';
 
 const HELP_TEXT = `Usage: gaia wiki state-bump <field> <value>
@@ -159,9 +160,7 @@ export const run = (
   const next = reorderObject(source, field, tryParseJson(valueRaw));
   const trailingNewline = raw.endsWith('\n') ? '\n' : '';
   const serialized = `${JSON.stringify(next, null, 2)}${trailingNewline}`;
-  const tmpPath = `${statePath}.tmp`;
-  writeFileSync(tmpPath, serialized, 'utf8');
-  renameSync(tmpPath, statePath);
+  atomicWriteFileSync(statePath, serialized);
 
   return EXIT_CODES.OK;
 };

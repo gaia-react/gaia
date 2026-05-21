@@ -20,10 +20,11 @@
  *
  * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
  */
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = `Usage: gaia init configure-i18n --locales <list> --strip <bool>
@@ -172,7 +173,7 @@ const updateLanguagesIndex = (cwd: string, locales: readonly string[]): void => 
   const current = readFileSync(target, 'utf8');
 
   if (current === next) return;
-  writeFileSync(target, next, 'utf8');
+  atomicWriteFileSync(target, next);
 };
 
 const updateI18nFallback = (cwd: string, fallback: string): void => {
@@ -187,7 +188,7 @@ const updateI18nFallback = (cwd: string, fallback: string): void => {
   );
 
   if (next !== original) {
-    writeFileSync(target, next, 'utf8');
+    atomicWriteFileSync(target, next);
   }
 };
 
