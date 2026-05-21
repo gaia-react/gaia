@@ -108,17 +108,13 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
 
             return <ToastIcon className={ICON_COLOR[type]} />;
           })()}
-          <div
-            className="-mt-0.5 text-pretty font-semibold leading-tight"
-            dangerouslySetInnerHTML={{__html: message}}
-          />
+          <div className="-mt-0.5 text-pretty font-semibold leading-tight">
+            {message}
+          </div>
         </div>
       )}
       {description && (
-        <div
-          className={twJoin(message && 'mt-1.5')}
-          dangerouslySetInnerHTML={{__html: description}}
-        />
+        <div className={twJoin(message && 'mt-1.5')}>{description}</div>
       )}
       {stack && (
         <details className={twJoin((message ?? description) && 'mt-1.5')}>

@@ -12,7 +12,15 @@ export const uniqBy = <T, K extends keyof T>(
       index === self.findIndex((other) => iteratee(other) === iteratee(value))
   );
 
-export const sortBy = <T>(array: T[], key: keyof T): T[] =>
+type Comparable = bigint | boolean | Date | number | string;
+
+// Keys of `T` whose values have a defined sort order. Sorting by any other
+// key would silently compare to 0, so it is rejected at compile time.
+type ComparableKey<T> = {
+  [K in keyof T]: T[K] extends Comparable ? K : never;
+}[keyof T];
+
+export const sortBy = <T>(array: T[], key: ComparableKey<T>): T[] =>
   array.toSorted((a, b) => {
     const valueA = a[key];
     const valueB = b[key];

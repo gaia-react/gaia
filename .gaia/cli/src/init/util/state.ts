@@ -7,8 +7,9 @@
  * temp + rename so a partial write can never leave a half-serialized
  * file behind.
  */
-import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {atomicWriteFileSync} from '../../util/atomic-write.js';
 
 export const STATE_FILE_RELATIVE = '.gaia/init-state.json';
 
@@ -63,9 +64,7 @@ export const writeState = (cwd: string, state: InitState): void => {
   const target = stateFilePath(cwd);
   mkdirSync(path.dirname(target), {recursive: true});
   const serialized = `${JSON.stringify(state, null, 2)}\n`;
-  const tmp = `${target}.tmp`;
-  writeFileSync(tmp, serialized, 'utf8');
-  renameSync(tmp, target);
+  atomicWriteFileSync(target, serialized);
 };
 
 export const isStepCompleted = (cwd: string, step: string): boolean => {

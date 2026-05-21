@@ -39,6 +39,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {
@@ -233,6 +234,8 @@ const writePatch = (
   const mergeRoot = path.join(ctx.cwd, MERGE_DIR);
   const patchAbs = path.join(mergeRoot, `${relativePath}.patch`);
   ensureDir(path.dirname(patchAbs));
+  // Patch files are regenerated scratch output under .gaia-merge/, not
+  // durable state — a plain write is sufficient; no atomic rename needed.
   writeFileSync(patchAbs, patch, 'utf8');
 
   return path.relative(ctx.cwd, patchAbs);
@@ -245,7 +248,7 @@ const writeWorkingTree = (
 ): void => {
   const target = path.join(ctx.cwd, relativePath);
   ensureDir(path.dirname(target));
-  writeFileSync(target, bytes);
+  atomicWriteFileSync(target, bytes);
 };
 
 type Decision =

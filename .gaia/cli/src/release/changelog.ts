@@ -16,7 +16,8 @@
  * version block already exists.
  */
 import {type SpawnSyncReturns, spawnSync} from 'node:child_process';
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -424,7 +425,7 @@ export const run = (
   }
 
   try {
-    writeFileSync(changelogPath, outcome.updated, 'utf8');
+    atomicWriteFileSync(changelogPath, outcome.updated);
   } catch (error) {
     structuredError({
       code: 'changelog_write_failed',
