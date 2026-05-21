@@ -11,10 +11,11 @@
  * existing file). `state-init` is the explicit creation primitive.
  */
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdirSync, renameSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {resolveRepoRoot} from './util/git.js';
 
 const HELP_TEXT = `Usage: gaia wiki state-init <sha>
@@ -143,9 +144,7 @@ export const run = (
   };
 
   const serialized = `${JSON.stringify(payload, null, 2)}\n`;
-  const tmpPath = `${statePath}.tmp`;
-  writeFileSync(tmpPath, serialized, 'utf8');
-  renameSync(tmpPath, statePath);
+  atomicWriteFileSync(statePath, serialized);
 
   return EXIT_CODES.OK;
 };

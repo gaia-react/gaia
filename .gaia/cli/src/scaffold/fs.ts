@@ -6,8 +6,9 @@
  * file whose contents differ. Identical content is silently treated as a
  * no-op so re-running a scaffolder is idempotent.
  */
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 /**
  * Create the directory at `absPath` (recursive). No-op when it already
@@ -40,7 +41,7 @@ export const writeFileIfAbsent = (
   }
 
   ensureDir(path.dirname(absPath));
-  writeFileSync(absPath, contents, 'utf8');
+  atomicWriteFileSync(absPath, contents);
 
   return {written: true};
 };

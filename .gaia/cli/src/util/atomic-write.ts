@@ -6,6 +6,7 @@
  * after the rename can leave the target pointing at unflushed (empty or
  * partial) data.
  */
+import {randomBytes} from 'node:crypto';
 import {
   closeSync,
   fsyncSync,
@@ -16,10 +17,11 @@ import {
 } from 'node:fs';
 import {open, rename, unlink} from 'node:fs/promises';
 
-// PID + monotonic high-res clock keeps concurrent writers — same process
-// or different processes — from colliding on the temp file name.
+// A crypto-random suffix keeps concurrent writers — same process or
+// different processes — from colliding on the temp file name, and is
+// portable across platforms.
 const temporaryPath = (filePath: string): string =>
-  `${filePath}.tmp.${process.pid}.${process.hrtime.bigint().toString()}`;
+  `${filePath}.tmp.${randomBytes(8).toString('hex')}`;
 
 export const atomicWriteFileSync = (
   filePath: string,

@@ -11,11 +11,12 @@
  * Templates and the shared scaffold primitives live alongside under
  * `templates/route/` and `template.ts` / `fs.ts` / `barrel.ts`.
  */
-import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {writeFileIfAbsent} from './fs.js';
 import {renderTemplate, type TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
@@ -240,7 +241,7 @@ const insertIntoLocaleBarrel = (
     );
   }
 
-  writeFileSync(barrelPath, next, 'utf8');
+  atomicWriteFileSync(barrelPath, next);
 
   return 'inserted';
 };
