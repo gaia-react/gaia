@@ -11,9 +11,10 @@ import {
   fsyncSync,
   openSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import {open, rename} from 'node:fs/promises';
+import {open, rename, unlink} from 'node:fs/promises';
 
 // PID + monotonic high-res clock keeps concurrent writers — same process
 // or different processes — from colliding on the temp file name.
@@ -35,7 +36,19 @@ export const atomicWriteFileSync = (
     closeSync(fd);
   }
 
-  renameSync(tmp, filePath);
+  try {
+    renameSync(tmp, filePath);
+  } catch (error) {
+    // Rename failed (cross-device, permissions, target dir removed): drop the
+    // temp file so failed writes don't accumulate beside the target.
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // best-effort cleanup
+    }
+
+    throw error;
+  }
 };
 
 export const atomicWriteFile = async (
@@ -53,5 +66,17 @@ export const atomicWriteFile = async (
     await handle.close();
   }
 
-  await rename(tmp, filePath);
+  try {
+    await rename(tmp, filePath);
+  } catch (error) {
+    // Rename failed (cross-device, permissions, target dir removed): drop the
+    // temp file so failed writes don't accumulate beside the target.
+    try {
+      await unlink(tmp);
+    } catch {
+      // best-effort cleanup
+    }
+
+    throw error;
+  }
 };

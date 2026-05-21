@@ -1,4 +1,5 @@
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -62,5 +63,23 @@ describe('atomic-write', () => {
 
     expect(readFileSync(target, 'utf8')).toBe('async hello');
     expect(readdirSync(dir)).toEqual(['async.txt']);
+  });
+
+  test('atomicWriteFileSync removes the temp file when rename fails', () => {
+    // An existing directory at the target path makes renameSync fail after
+    // the temp file has been created and written.
+    const target = path.join(dir, 'blocked');
+    mkdirSync(target);
+
+    expect(() => atomicWriteFileSync(target, 'data')).toThrow();
+    expect(readdirSync(dir)).toEqual(['blocked']);
+  });
+
+  test('atomicWriteFile (async) removes the temp file when rename fails', async () => {
+    const target = path.join(dir, 'blocked');
+    mkdirSync(target);
+
+    await expect(atomicWriteFile(target, 'data')).rejects.toThrow();
+    expect(readdirSync(dir)).toEqual(['blocked']);
   });
 });

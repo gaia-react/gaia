@@ -234,6 +234,8 @@ const writePatch = (
   const mergeRoot = path.join(ctx.cwd, MERGE_DIR);
   const patchAbs = path.join(mergeRoot, `${relativePath}.patch`);
   ensureDir(path.dirname(patchAbs));
+  // Patch files are regenerated scratch output under .gaia-merge/, not
+  // durable state — a plain write is sufficient; no atomic rename needed.
   writeFileSync(patchAbs, patch, 'utf8');
 
   return path.relative(ctx.cwd, patchAbs);
