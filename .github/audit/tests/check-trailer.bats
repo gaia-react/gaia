@@ -13,6 +13,10 @@
 # script's `git rev-parse --show-toplevel` resolves to that fixture
 # (and not the GAIA repo root, which already ships .gaia/VERSION).
 #
+# The status fallback path is exercised by mocking `gh` on a prepended
+# PATH (see `install_gh_mock`). It runs only when HEAD has no GAIA-Audit
+# trailer — the default sandbox commit gives that state.
+#
 # Coverage:
 #   1. No trailer present                        → skip=false reason=no-trailer
 #   2. Trailer matches version + tree            → skip=true  reason=trailer-matches
@@ -23,6 +27,12 @@
 #   7. Malformed trailer (truncated tree-sha)    → skip=false reason=no-trailer
 #   8. .gaia/VERSION missing                     → skip=false reason=version-file-missing
 #   9. .gaia/VERSION empty                       → skip=false reason=version-file-missing
+#  10. Status present + matching                 → skip=true  reason=status-matches
+#  11. Status present, version drift             → skip=false reason=status-version-mismatch
+#  12. Status present, tree drift                → skip=false reason=status-tree-mismatch
+#  13. Status API failure                        → skip=false reason=no-trailer
+#  14. No GAIA-Audit status on HEAD              → skip=false reason=no-trailer
+#  15. Malformed status description              → skip=false reason=no-trailer
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -69,6 +79,35 @@ amend_with_raw_message() {
 
 current_tree() {
   git -C "$SANDBOX" rev-parse "HEAD^{tree}"
+}
+
+# Install a fake `gh` on a prepended PATH to exercise the status fallback.
+# The mock ignores `gh`'s args — the script's `--jq` expression runs
+# server-side against the real API; the mock just emits the already-
+# extracted GAIA-Audit description string directly.
+#   $1 behavior:
+#     fail   → exit 1 (API error)
+#     empty  → print nothing (no GAIA-Audit status on HEAD)
+#     *      → print $2 as the status description
+#   $2 description string (for non-fail/non-empty behaviors).
+# Also sets GH_TOKEN + GITHUB_REPOSITORY so check_status_fallback runs.
+install_gh_mock() {
+  local behavior="$1"
+  local desc="${2:-}"
+  GH_BIN="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$GH_BIN"
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+case "$behavior" in
+  fail)  exit 1 ;;
+  empty) exit 0 ;;
+  *)     printf '%s\n' "$desc" ;;
+esac
+EOF
+  chmod +x "$GH_BIN/gh"
+  export PATH="$GH_BIN:$PATH"
+  export GH_TOKEN="fake-token"
+  export GITHUB_REPOSITORY="gaia-react/gaia"
 }
 
 # -----------------------------------------------------------------------------
@@ -245,5 +284,104 @@ reason=version-file-missing"
 matched_version=
 matched_tree=
 reason=version-file-missing"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 10. Status present + matching → skip=true reason=status-matches
+# -----------------------------------------------------------------------------
+
+@test "status present + matching → skip=true reason=status-matches" {
+  tree=$(current_tree)
+  install_gh_mock match "1.2.3 ${tree}"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=true
+matched_version=1.2.3
+matched_tree=${tree}
+reason=status-matches"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 11. Status present, version drift → skip=false reason=status-version-mismatch
+# -----------------------------------------------------------------------------
+
+@test "status present + version drift → skip=false reason=status-version-mismatch" {
+  tree=$(current_tree)
+  install_gh_mock verdrift "9.9.9 ${tree}"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=false
+matched_version=9.9.9
+matched_tree=${tree}
+reason=status-version-mismatch"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 12. Status present, tree drift → skip=false reason=status-tree-mismatch
+# -----------------------------------------------------------------------------
+
+@test "status present + tree drift → skip=false reason=status-tree-mismatch" {
+  fake_tree="0000000000000000000000000000000000000000"
+  install_gh_mock treedrift "1.2.3 ${fake_tree}"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=false
+matched_version=1.2.3
+matched_tree=${fake_tree}
+reason=status-tree-mismatch"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 13. Status API failure → skip=false reason=no-trailer (audit still runs)
+# -----------------------------------------------------------------------------
+
+@test "status API failure → skip=false reason=no-trailer (audit runs)" {
+  install_gh_mock fail
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=false
+matched_version=
+matched_tree=
+reason=no-trailer"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 14. No GAIA-Audit status on HEAD → skip=false reason=no-trailer
+# -----------------------------------------------------------------------------
+
+@test "no GAIA-Audit status on HEAD → skip=false reason=no-trailer" {
+  install_gh_mock empty
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=false
+matched_version=
+matched_tree=
+reason=no-trailer"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 15. Malformed status description (no tree token) → skip=false reason=no-trailer
+# -----------------------------------------------------------------------------
+
+@test "malformed status description (no tree token) → skip=false reason=no-trailer" {
+  install_gh_mock match "1.2.3"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=false
+matched_version=
+matched_tree=
+reason=no-trailer"
   [ "$output" = "$expected" ]
 }
