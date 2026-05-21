@@ -1,4 +1,4 @@
-import type {AfterResponseState, BeforeRequestState, Hooks} from 'ky';
+import type {AfterResponseState, BeforeRequestState, Hooks, Options} from 'ky';
 import type {StringifyOptions} from 'query-string';
 import queryString from 'query-string';
 import {tryCatch} from '~/utils/function';
@@ -105,4 +105,23 @@ export const getBaseUrl = (): string => {
 
   // fallback
   return '';
+};
+
+// Merges per-request auth/language onto caller-supplied headers; never stored module-side to prevent SSR token cross-contamination.
+export const buildRequestHeaders = (
+  headers: Options['headers'],
+  token?: string,
+  language?: string
+): Headers => {
+  const merged = new Headers(headers as HeadersInit | undefined);
+
+  if (token) {
+    merged.set('Authorization', `Bearer ${token}`);
+  }
+
+  if (language) {
+    merged.set('Accept-Language', language);
+  }
+
+  return merged;
 };
