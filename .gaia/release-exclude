@@ -107,7 +107,11 @@ wiki/decisions/Forensics Triage Workflow.md
 # `release.yml` cuts releases of the GAIA template itself (triggered by
 # `v*.*.*` tags); adopters never release GAIA. `cli-tests.yml` runs the
 # .gaia/cli/ vitest suite; adopters receive only the bundled binary, so
-# the test workflow has nothing to test on their side. `distribution.yml`
+# the test workflow has nothing to test on their side.
+# `audit-ci-tests.yml` runs the bats suite for
+# `.github/audit/check-trailer.sh`; adopters receive that script as
+# GAIA-controlled code they never edit, so the suite guards only
+# maintainer changes. `distribution.yml`
 # runs the maintainer-only `.gaia/tests/distribution/` harness against a
 # staged release tree using a Claude OAuth org secret; adopters never
 # distribute GAIA. `forensics-triage.yml` runs autonomous Claude Code
@@ -118,6 +122,7 @@ wiki/decisions/Forensics Triage Workflow.md
 # best and confusing CI failures at worst on adopter clones.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
+.github/workflows/audit-ci-tests.yml
 .github/workflows/distribution.yml
 .github/workflows/forensics-triage.yml
 .github/forensics

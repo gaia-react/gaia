@@ -1,0 +1,44 @@
+name: Audit CI Tests
+
+# Runs the bats suite for .github/audit/check-trailer.sh — the skip-logic
+# gate that code-review-audit.yml consumes. Maintainer-only: adopters
+# receive check-trailer.sh as GAIA-controlled (`owned`) code they never
+# modify, so the suite only catches regressions from maintainer edits.
+# Mirrors cli-tests.yml's narrow-surface, paths-filtered, step-gated shape.
+#
+# Pinned action SHAs match .github/workflows/cli-tests.yml:
+#   actions/checkout    @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
+#   dorny/paths-filter  @ fbd0ab8f3e69293af611ebaee6363fc25e6d187d (v4.0.1)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit-ci-tests:
+    name: bats (.github/audit)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      # PRs that don't touch the audit scripts report this check green
+      # without installing or running anything.
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            code:
+              - '.github/audit/**'
+              - '.github/workflows/audit-ci-tests.yml'
+      - if: steps.filter.outputs.code == 'true'
+        name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+      - if: steps.filter.outputs.code == 'true'
+        name: Run check-trailer.sh bats suite
+        run: bats .github/audit/tests/check-trailer.bats
