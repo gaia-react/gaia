@@ -152,6 +152,25 @@ describe('detectIntentClarityGap (unit)', () => {
     expect(amendedRate?.value).toBeCloseTo(1, 5);
   });
 
+  test('clamps amended_rate to 1 when a spec is amended twice', () => {
+    // One closed spec, amended twice: `amendedCount` is 2 but the
+    // closed-spec denominator is 1, so the raw ratio is 2/1 = 2. The
+    // `amended_rate` component value must be clamped to 1.
+    const events: MentorshipEvent[] = [
+      buildTimeToResolved('SPEC-000', 'visual', 5, 0),
+      buildSpecAmended('SPEC-000', 100),
+      buildSpecAmended('SPEC-000', 101),
+    ];
+    const results = detectIntentClarityGap({events, windowDays: 30});
+    const visual = results.find((entry) => entry.area_tag === 'visual');
+    const amendedRate = visual?.components.find(
+      (component) => component.metric === 'amended_rate'
+    );
+
+    expect(amendedRate?.value).toBeLessThanOrEqual(1);
+    expect(amendedRate?.value).toBe(1);
+  });
+
   test('rejects negative, NaN, and Infinity question_count values', () => {
     const negative = buildTimeToResolved('SPEC-NEG', 'visual', -5, 1);
     const events: MentorshipEvent[] = [negative];

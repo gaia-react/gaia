@@ -266,22 +266,27 @@ const runCommitMode = (ctx: CommitContext): number => {
       const result = ctx.runner(step.command, step.args, {cwd: ctx.cwd});
 
       if (!stepSucceeded(result)) {
-        // The release commit already landed but the state-SHA amend failed,
-        // leaving a partial release commit. Undo it (`reset --soft` keeps
-        // the staged files) so the maintainer can retry from a clean state
-        // instead of carrying a half-finished commit forward.
+        // The `--amend` token uniquely identifies the commit step in this
+        // two-step sequence; anything else is the state-file staging step.
+        const failedStage = step.args.includes('--amend')
+          ? 'amend'
+          : 'staging the state file';
+        // The release commit already landed but the state-SHA amend step
+        // failed, leaving a partial release commit. Undo it (`reset --soft`
+        // keeps the staged files) so the maintainer can retry from a clean
+        // state instead of carrying a half-finished commit forward.
         const rollback = ctx.runner('git', ['reset', '--soft', 'HEAD~1'], {
           cwd: ctx.cwd,
         });
 
         if (!stepSucceeded(rollback)) {
           process.stderr.write(
-            'commit-and-tag: amend failed AND rollback (git reset --soft HEAD~1) failed; '
+            `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; `
               + 'the release commit is left in place — undo it manually before retrying\n'
           );
         } else {
           process.stderr.write(
-            'commit-and-tag: amend failed; rolled back the release commit '
+            `commit-and-tag: ${failedStage} failed; rolled back the release commit `
               + '(git reset --soft HEAD~1) — fix the cause and retry\n'
           );
         }

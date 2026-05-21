@@ -287,6 +287,10 @@ export type JsonStripResult = {
  * String.raw`scripts.foo\.bar` → `['scripts', 'foo.bar']`
  *
  * A trailing lone backslash is treated literally.
+ *
+ * Rejects malformed input: an empty segment — produced by a leading,
+ * trailing, or doubled dot, or an empty key string — is never a valid
+ * object key path, so it throws rather than silently mis-targeting.
  */
 export const parseKeyPath = (key: string): string[] => {
   const segments: string[] = [];
@@ -311,6 +315,12 @@ export const parseKeyPath = (key: string): string[] => {
   }
 
   segments.push(current);
+
+  if (segments.some((segment) => segment.length === 0)) {
+    throw new Error(
+      `malformed key path "${key}": empty segment (leading/trailing/double dot)`
+    );
+  }
 
   return segments;
 };

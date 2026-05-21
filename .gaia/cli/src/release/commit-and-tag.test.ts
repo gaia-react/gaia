@@ -185,6 +185,32 @@ describe('release commit-and-tag --commit', () => {
     const calls = recorded.map((call) => `${call.command} ${call.args.join(' ')}`);
     expect(calls).toContain('git reset --soft HEAD~1');
     expect(stdio.errors.join('')).toContain('rolled back the release commit');
+    expect(stdio.errors.join('')).toContain('amend failed');
+  });
+
+  test('rollback message names staging when the state-file add fails', () => {
+    sandbox = setupSandbox('1.5.0');
+    const recorded: RecordedCall[] = [];
+    const runner = buildRecordingRunner(
+      [
+        {argv: ['rev-parse', 'HEAD'], result: okResult('abc1234def\n')},
+        {
+          argv: ['add', 'wiki/.state.json'],
+          result: failResult(1, 'fatal: cannot stage state file'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run(['--commit'], {cwd: sandbox.root, runner});
+    expect(exit).toBe(2);
+
+    // The failing step is the `add`, not the `commit --amend`, so the
+    // rollback message must name staging — not amend.
+    const errors = stdio.errors.join('');
+    expect(errors).toContain('staging the state file failed');
+    expect(errors).not.toContain('amend failed');
+    expect(errors).toContain('rolled back the release commit');
   });
 });
 
