@@ -57,7 +57,7 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
   const toastDuration =
     duration ?? (type === 'error' ? DEFAULT_ERROR_DURATION : DEFAULT_DURATION);
 
-  const handleClose = () => {
+  const handleCloseButton = () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
@@ -99,7 +99,7 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
       <button
         aria-label={t('close')}
         className="relative float-end ms-2 size-3 text-sm leading-none opacity-50 transition-transform hover:scale-125 hover:opacity-100"
-        onClick={handleClose}
+        onClick={handleCloseButton}
         type="button"
       >
         <IoClose className="size-4" />

@@ -26,7 +26,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
 
     const statusDiv =
       status || statusText ?
-        <div className="space-x-1 pt-px pr-1.5 pl-1 font-sans text-xs leading-none text-white">
+        <div className="space-x-1 pl-1 pr-1.5 pt-px font-sans text-xs leading-none text-white">
           {status && <span>{status}</span>}
           {statusText && <span>{statusText}</span>}
         </div>
@@ -49,7 +49,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
         >
           {statusDiv}
           <button
-            className="flex items-center gap-1 rounded-bl-sm bg-red-700 pt-px pr-1 pb-1 pl-1.5 font-sans text-xs leading-none text-white hover:bg-red-600"
+            className="flex items-center gap-1 rounded-bl-sm bg-red-700 pb-1 pl-1.5 pr-1 pt-px font-sans text-xs leading-none text-white hover:bg-red-600"
             onClick={handleCopyStack}
             type="button"
           >
@@ -57,7 +57,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
             <span>{t('copyToClipboard')}</span>
           </button>
         </div>
-        <pre className="px-4 pt-2 pb-4 whitespace-pre-wrap">{stack}</pre>
+        <pre className="whitespace-pre-wrap px-4 pb-4 pt-2">{stack}</pre>
       </div>
     );
   }
