@@ -188,9 +188,14 @@ const updateI18nFallback = (cwd: string, fallback: string): void => {
 
   if (!existsSync(target)) return;
   const original = readFileSync(target, 'utf8');
-  // Replace `fallbackLng: 'xx',` (or "xx") preserving surrounding whitespace.
-  const next = original.replace(
-    /fallbackLng:\s*['"][^'"]+['"]/u,
+  // Update DEFAULT_LOCALE constant if present (keeps the export in sync).
+  let next = original.replace(
+    /DEFAULT_LOCALE\s*=\s*['"][^'"]+['"]/u,
+    `DEFAULT_LOCALE = '${fallback}'`
+  );
+  // Replace `fallbackLng: 'xx'` (or "xx") or `fallbackLng: DEFAULT_LOCALE`.
+  next = next.replace(
+    /fallbackLng:\s*(?:['"][^'"]+['"]|DEFAULT_LOCALE)/u,
     `fallbackLng: '${fallback}'`
   );
 

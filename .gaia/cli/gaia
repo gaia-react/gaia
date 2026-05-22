@@ -17877,8 +17877,12 @@ var updateI18nFallback = (cwd, fallback) => {
   const target = path13.join(cwd, I18N_FILE);
   if (!existsSync11(target)) return;
   const original = readFileSync9(target, "utf8");
-  const next = original.replace(
-    /fallbackLng:\s*['"][^'"]+['"]/u,
+  let next = original.replace(
+    /DEFAULT_LOCALE\s*=\s*['"][^'"]+['"]/u,
+    `DEFAULT_LOCALE = '${fallback}'`
+  );
+  next = next.replace(
+    /fallbackLng:\s*(?:['"][^'"]+['"]|DEFAULT_LOCALE)/u,
     `fallbackLng: '${fallback}'`
   );
   if (next !== original) {
