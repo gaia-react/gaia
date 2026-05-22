@@ -119,11 +119,11 @@ Performance problems, significant code smells, and architectural concerns that w
 
 ### Suggestions (Must Fix or Escalate)
 
-Refactoring opportunities, maintainability improvements, and minor code quality enhancements. Same format as above.
+Refactoring opportunities, maintainability improvements, and minor code quality enhancements. Same format as above. **Only include actionable items here** — confirmations of correct patterns belong in What's Done Well, not in this section.
 
 Every suggestion must be resolved before the audit passes:
 - **Auto-fix** it in a self-heal commit (preferred), or
-- **Escalate**: document why it cannot be auto-fixed (architectural tradeoff, breaking change, conflicting convention). Escalated suggestions block the marker — the operator must review and address them before merging.
+- **Escalate**: document why it cannot be auto-fixed (architectural tradeoff, breaking change, conflicting convention). Escalated suggestions **always block the marker** — documenting the rationale does not satisfy this condition. The operator must resolve the escalation before the marker is written.
 
 ### What's Done Well (optional)
 
@@ -326,8 +326,8 @@ After producing the report, decide whether to write the marker:
 - **Write the marker** when all of the following are true:
   1. The Critical Issues section is empty.
   2. The Important Issues section is empty, OR every item is already fixed in the working tree (verify by re-reading the relevant file; do not trust prior chat claims).
-  3. The Suggestions section is empty, OR every suggestion is auto-fixed in the working tree (verify by re-reading the relevant file).
-- **Do NOT write the marker** when any Critical Issue exists, any Important Issue remains unaddressed, or any Suggestion remains unaddressed (including escalated suggestions that require human judgment). The operator must address findings, commit, and re-invoke this agent on the new HEAD; the next clean run writes the marker.
+  3. The Suggestions section is empty, OR every suggestion is auto-fixed in the working tree (verify by re-reading the relevant file). **Escalated suggestions do not satisfy this condition** — an escalation is not a resolution.
+- **Do NOT write the marker** when any Critical Issue exists, any Important Issue remains unaddressed, or any Suggestion is either unaddressed or escalated. Escalated suggestions block unconditionally — the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written.
 
 Knip and react-doctor advisories remain advisory and never block the marker.
 
