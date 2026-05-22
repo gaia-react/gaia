@@ -1,5 +1,5 @@
 import type {ChangeEvent, FC} from 'react';
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useState} from 'react';
 import {twJoin, twMerge} from 'tailwind-merge';
 import Field from '../Field';
 import type {InputProps} from '../types';
@@ -29,21 +29,16 @@ const InputText: FC<InputProps> = ({
   type = 'text',
   ...props
 }) => {
-  const [length, setLength] = useState(
-    () => String(props.value ?? props.defaultValue ?? '').length
+  const [localLength, setLocalLength] = useState(
+    () => String(props.defaultValue ?? '').length
   );
-
-  useEffect(() => {
-    if (props.value !== undefined) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLength(String(props.value).length);
-    }
-  }, [props.value]);
+  const length =
+    props.value === undefined ? localLength : String(props.value).length;
 
   const handleUpdateLength = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       if (maxLength) {
-        setLength(event.currentTarget.value.length);
+        setLocalLength(event.currentTarget.value.length);
       }
       onChange?.(event);
     },

@@ -52,24 +52,19 @@ const TextArea: FC<TextAreaProps> = ({
   useImperativeHandle(ref, () => innerRef.current!, []);
 
   const onAutoSizeRef = useRef(onAutoSize);
+  // latest-ref pattern: keeps the autosize listener stable without re-registering on every onAutoSize change
   // eslint-disable-next-line react-hooks/refs
   onAutoSizeRef.current = onAutoSize;
 
-  const [length, setLength] = useState(
-    () => String(value ?? props.defaultValue ?? '').length
+  const [localLength, setLocalLength] = useState(
+    () => String(props.defaultValue ?? '').length
   );
-
-  useEffect(() => {
-    if (value !== undefined) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLength(String(value).length);
-    }
-  }, [value]);
+  const length = value === undefined ? localLength : String(value).length;
 
   const handleUpdateLength = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
       if (maxLength) {
-        setLength(event.currentTarget.value.length);
+        setLocalLength(event.currentTarget.value.length);
       }
       onChange?.(event);
     },
