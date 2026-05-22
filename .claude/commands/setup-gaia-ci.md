@@ -37,9 +37,21 @@ GAIA CI is not configured for this repo. Run /gaia-init first.
 
 Exit cleanly. Otherwise cache `setup_complete`, `setup_opted_out`, and `tools_enabled` for later steps.
 
-## Step 2: Idempotent short-circuit
+## Step 2: Idempotent short-circuit (with template-drift escape)
 
-When `setup_complete: true` AND `RECONFIGURE` is NOT set, print exactly:
+When `setup_complete: false`, fall through to Step 3.
+
+When `setup_complete: true` AND `RECONFIGURE` IS set, fall through to Step 3 — the reconfigure path re-runs the rest of the flow. `--reconfigure` does NOT touch `setup_complete`; it stays true.
+
+When `setup_complete: true` AND `RECONFIGURE` is NOT set, probe for template drift:
+
+```bash
+.gaia/cli/gaia setup-ci check-drift --json
+```
+
+Read the JSON: `{drifted: ToolId[], missing: ToolId[], in_sync: ToolId[]}`.
+
+If `drifted.length === 0 && missing.length === 0`, print exactly:
 
 ```
 GAIA CI is already configured. Pass --reconfigure to rotate tokens or change tool selection.
@@ -47,9 +59,24 @@ GAIA CI is already configured. Pass --reconfigure to rotate tokens or change too
 
 Exit cleanly. Do not modify any file.
 
-When `setup_complete: false`, fall through to Step 3.
+Otherwise (drift or missing files), summarize the affected workflows and `AskUserQuestion`:
 
-When `setup_complete: true` AND `RECONFIGURE` IS set, fall through to Step 3 — the reconfigure path re-runs the rest of the flow. `--reconfigure` does NOT touch `setup_complete`; it stays true.
+> The rendered .github/workflows/gaia-ci-*.yml files have drifted from the bundled templates.
+>
+> Drifted: <drifted-list-or-(none)>
+> Missing: <missing-list-or-(none)>
+>
+> What would you like to do?
+>
+> - **Re-render workflows** (Recommended) — regenerate only the drifted/missing files from the current templates, then commit + push on a branch + open a PR. Keeps tool selection and token unchanged.
+> - **Skip** — leave the workflows as-is. The next `/update-gaia` will not re-offer this prompt unless templates drift again.
+> - **Run full reconfigure instead** — same as `/setup-gaia-ci --reconfigure`: re-prompt for tool modes and rotate the bot token.
+
+On "Re-render workflows" → fall through to Step 11.5 (drift-fix path).
+
+On "Skip" → exit cleanly with no changes.
+
+On "Run full reconfigure instead" → set `RECONFIGURE = true` and fall through to Step 3.
 
 ## Step 3: Detect remote
 
@@ -344,6 +371,42 @@ When `RECONFIGURE` is set, the short-circuit at Step 2 is skipped and the flow r
   ```
 
   `setup_complete` is NOT touched on `--reconfigure` — it's already true.
+
+## Step 11.5: Drift-fix path (re-render only)
+
+Reached when Step 2 detected template drift and the adopter picked "Re-render workflows". Lightweight branch + commit + PR flow that regenerates the workflow YAML without re-prompting for tool selection or rotating the bot token.
+
+Cut a working branch from the current HEAD:
+
+```bash
+git checkout -b chore/gaia-ci-rerender
+```
+
+Render the workflows (this overwrites only the four `gaia-ci-*.yml` files):
+
+```bash
+.gaia/cli/gaia automation render-workflows --out-dir .github/workflows
+```
+
+Stage and commit:
+
+```bash
+git add .github/workflows/gaia-ci-*.yml
+git commit -m "chore(gaia-ci): re-render workflows from updated templates"
+```
+
+Push and open a PR:
+
+```bash
+git push -u origin chore/gaia-ci-rerender
+gh pr create --base <default-branch> --head chore/gaia-ci-rerender \
+  --title "chore(gaia-ci): re-render workflows from updated templates" \
+  --body "GAIA CI templates drifted from the rendered workflows on disk. Regenerated via /setup-gaia-ci. No tool selection or token changes."
+```
+
+Print the PR URL and exit cleanly. Do NOT auto-merge — the adopter reviews and merges in their normal flow. `setup_complete` is NOT touched.
+
+If `render-workflows` fails for any reason, surface the structured error and exit; the branch is abandoned. The adopter can delete it (`git branch -D chore/gaia-ci-rerender`) and re-run `/setup-gaia-ci` after fixing the cause.
 
 ## On failure: re-run
 
