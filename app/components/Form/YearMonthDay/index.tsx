@@ -75,23 +75,20 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
     };
   }, []);
 
-  const handleUpdateDateSelect = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const newValue =
-        event.currentTarget.name.includes('Date') ?
-          `${year}-${month}-${event.currentTarget.value}`
-        : getSafeValue(value, event.currentTarget);
+  const handleUpdateDateSelect = (event: ChangeEvent<HTMLSelectElement>) => {
+    const newValue =
+      event.currentTarget.name.includes('Date') ?
+        `${year}-${month}-${event.currentTarget.value}`
+      : getSafeValue(value, event.currentTarget);
 
-      // Sync the hidden input's DOM value before onChange dispatches events,
-      // so Conform reads the correct value during revalidation.
-      if (hiddenRef.current) {
-        hiddenRef.current.value = newValue;
-      }
+    // Sync the hidden input's DOM value before onChange dispatches events,
+    // so Conform reads the correct value during revalidation.
+    if (hiddenRef.current) {
+      hiddenRef.current.value = newValue;
+    }
 
-      onChange(newValue);
-    },
-    [month, onChange, value, year]
-  );
+    onChange(newValue);
+  };
 
   const years = useMemo(
     () =>
