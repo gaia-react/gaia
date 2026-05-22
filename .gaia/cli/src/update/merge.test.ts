@@ -281,6 +281,28 @@ describe('update merge', () => {
     expect(sandbox.hasWorking('app/old.ts')).toBe(true);
   });
 
+  test('renamed file: old path in baseline, new path in latest → add[] + delete[]', () => {
+    // A command/skill rename drops the old path from the manifest and the
+    // latest tarball and enters the new path into both. The adopter still
+    // carries the old file. The merge decomposes this into an add for the
+    // new path and a delete surfaced for the old one — no auto-removal.
+    const body = 'command body\n';
+    sandbox.writeTree('cwd', '.claude/commands/old-name.md', body);
+    sandbox.writeTree('baseline', '.claude/commands/old-name.md', body);
+    sandbox.writeTree('latest', '.claude/commands/new-name.md', body);
+    sandbox.writeManifest({'.claude/commands/new-name.md': 'owned'});
+
+    const exit = run(baseArgv(sandbox), {cwd: sandbox.cwd});
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.add).toEqual(['.claude/commands/new-name.md']);
+    expect(report.delete).toEqual(['.claude/commands/old-name.md']);
+    expect(sandbox.readWorking('.claude/commands/new-name.md')).toBe(body);
+    // Old file surfaced for the skill to confirm, never auto-removed.
+    expect(sandbox.hasWorking('.claude/commands/old-name.md')).toBe(true);
+  });
+
   test('malformed manifest exits 1 with structured error', () => {
     writeFileSync(sandbox.manifestPath, '{ this is not valid json', 'utf8');
 

@@ -1,5 +1,5 @@
 ---
-name: setup-gaia
+name: setup-cloned-gaia-project
 description: One-shot per-machine setup for a cloned GAIA project. Installs tools, plugins, spec-kit; bootstraps .env; opts into mentorship. Idempotent — safe to re-run.
 ---
 
@@ -9,7 +9,7 @@ The slash command name intentionally does NOT start with `gaia-` so it does not 
 
 ## How to know if this needs to run
 
-The statusline shows `Run /setup-gaia` when `.gaia/local/setup-state.json` is missing or its `completed_at` is null. The indicator takes precedence over `/update-deps` and `/update-gaia` — those become visible only after setup is finalized.
+The statusline shows `Run /setup-cloned-gaia-project` when `.gaia/local/setup-state.json` is missing or its `completed_at` is null. The indicator takes precedence over `/update-deps` and `/update-gaia` — those become visible only after setup is finalized.
 
 You can also check on demand: `.gaia/cli/gaia setup status` prints a human-readable summary; `--json` is the machine-readable shape.
 
@@ -41,7 +41,7 @@ If this clone is being set up from a linked worktree (e.g. one created via `git 
 
 In a main checkout, this command is a no-op (exits 0 with `not a linked worktree`). In a linked worktree without symlinks, it creates them and prints a one-line summary. In a linked worktree where pre-existing plain files conflict with the symlink targets, the plain files are backed up to `<path>.bak.<timestamp>` before the symlinks are created.
 
-If the command exits non-zero (e.g. Windows symlink permission failure), HALT and surface the error to the user verbatim. They need to fix the underlying issue (typically: enable Windows Developer Mode) and re-run `/setup-gaia`.
+If the command exits non-zero (e.g. Windows symlink permission failure), HALT and surface the error to the user verbatim. They need to fix the underlying issue (typically: enable Windows Developer Mode) and re-run `/setup-cloned-gaia-project`.
 
 This step is NOT recorded in `setup-state.json` — it's a prerequisite that runs every invocation. The CLI's own idempotence guarantees the no-op behavior on subsequent runs.
 
@@ -92,7 +92,7 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
   fi
   ```
 
-  Verify with `uv --version`. If verification fails, halt with: `uv is required for GAIA. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh — then re-run /setup-gaia.`
+  Verify with `uv --version`. If verification fails, halt with: `uv is required for GAIA. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh — then re-run /setup-cloned-gaia-project.`
 
   Then register Serena globally:
 
@@ -108,7 +108,7 @@ After all three tools install successfully, run:
 .gaia/cli/gaia setup mark-step install-tools
 ```
 
-If any install fails, surface the error verbatim and halt. The user can re-run `/setup-gaia` after addressing the cause; this step will resume.
+If any install fails, surface the error verbatim and halt. The user can re-run `/setup-cloned-gaia-project` after addressing the cause; this step will resume.
 
 ## Step 2: install-plugins
 
@@ -242,10 +242,10 @@ After every step records as complete, run:
 .gaia/cli/gaia setup finalize
 ```
 
-The CLI refuses to finalize while any step is pending. If the maintainer initialized this clone manually before `/setup-gaia` existed, they can pass `--force` to mark the state as complete without running through the steps.
+The CLI refuses to finalize while any step is pending. If the maintainer initialized this clone manually before `/setup-cloned-gaia-project` existed, they can pass `--force` to mark the state as complete without running through the steps.
 
 Then output (in the user's language): "Per-machine GAIA setup complete. Restart Claude Code so the new plugin and skill state are picked up. The statusline will now surface `/update-deps` and `/update-gaia` indicators when applicable."
 
 ## On failure: resume
 
-Every step is idempotent and recorded individually. After fixing any failure, simply re-run `/setup-gaia` — completed steps are detected via `gaia setup status --json` and skipped automatically.
+Every step is idempotent and recorded individually. After fixing any failure, simply re-run `/setup-cloned-gaia-project` — completed steps are detected via `gaia setup status --json` and skipped automatically.

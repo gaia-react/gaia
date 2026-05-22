@@ -34,7 +34,7 @@ What the docs do NOT settle, and what this runbook still has to verify:
 
 Future Layer 2 distribution tests (Docker-based, see plan README §Q2) need
 to invoke `claude` to validate end-to-end adopter flows like `/gaia-init`,
-`/setup-gaia`, and `/gaia plan`. Per-run cost depends on which auth path
+`/setup-cloned-gaia-project`, and `/gaia plan`. Per-run cost depends on which auth path
 activates:
 
 1. **OAuth token attributes to subscription** — **$0 marginal per run.**
