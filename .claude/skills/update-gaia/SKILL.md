@@ -204,6 +204,7 @@ Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DI
 | `owned` | `A` ≠ `B` and `A` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
 | `shared` / `wiki-owned` | `B` ≅ `L` (no upstream change) | No-op | `skip[]` |
 | `shared` / `wiki-owned` | `A` ≅ `B` (no adopter drift) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `merge[]` |
+| `shared` / `wiki-owned` | `A` ≅ `L` (adopter already at latest) | No-op | `skip[]` |
 | `shared` / `wiki-owned` | `A` ≠ `B` and `B` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
 
 **After iterating the manifest,** collect deletions: files present under `$BASELINE_DIR` that have no corresponding key in `$LATEST_MANIFEST`'s `.files`. Add each to `delete[]`. Do **not** remove them from the working tree.
@@ -322,8 +323,9 @@ branch="$(git branch --show-current)"
 # The update must be committed first (Step 10). No commits ahead of main → finish Step 10.
 if [ "$(git rev-list --count main.."$branch" 2>/dev/null || echo 0)" -eq 0 ]; then
   echo "Nothing committed ahead of main — commit the update (Step 10) before opening a PR."
+elif ! git push -u origin "$branch"; then
+  echo "Push failed — resolve the push error, then open the PR manually: $branch → main."
 else
-  git push -u origin "$branch"
   existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null)"
   if [ -n "$existing" ]; then
     echo "PR #$existing already open for $branch — pushed the new commit to it."
@@ -335,4 +337,4 @@ else
 fi
 ```
 
-If `gh` is unavailable, tell the user to open the PR manually: `$branch` → `main`.
+If `gh` is unavailable or errors, tell the user to open the PR manually: `$branch` → `main`.

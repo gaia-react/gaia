@@ -18,6 +18,15 @@ if [ -z "$worktree_name" ]; then
   exit 1
 fi
 
+# Defense-in-depth: worktree_name lands in a filesystem path and a branch
+# name. Reject `..` and absolute paths so the worktree can't escape the
+# sibling worktrees/ directory even if the stdin payload is influenced by
+# untrusted content. Internal slashes (e.g. `fix/foo`) stay allowed.
+if [[ "$worktree_name" == *..* || "$worktree_name" == /* ]]; then
+  printf 'create-worktree: worktree_name must not contain ".." or start with "/"\n' >&2
+  exit 1
+fi
+
 project_root="$(git rev-parse --show-toplevel)"
 worktree_path="$(dirname "$project_root")/worktrees/$worktree_name"
 
@@ -27,7 +36,11 @@ mkdir -p "$(dirname "$worktree_path")"
 if ! git -C "$project_root" worktree add "$worktree_path" -b "$worktree_name" "${base_ref:-main}" 2>/dev/null; then
   if ! git -C "$project_root" worktree add "$worktree_path" "$worktree_name" 2>/dev/null; then
     printf 'create-worktree: git worktree add failed for %s\n' "$worktree_path" >&2
-    rmdir "$worktree_path" 2>/dev/null || true
+    # `git worktree remove --force` clears both the directory and the stale
+    # .git/worktrees/ registration; rm -rf is the fallback if git itself
+    # can't clean up. rmdir alone would leave a non-empty dir behind.
+    git -C "$project_root" worktree remove --force "$worktree_path" 2>/dev/null \
+      || rm -rf "$worktree_path" 2>/dev/null || true
     exit 1
   fi
 fi
