@@ -5,7 +5,7 @@ All notable changes to GAIA React are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Major** — breaking changes to skill/command API, Node/React/React Router major bumps.
-- **Minor** — new skills, commands, or wiki concept pages; opt-in features.
+- **Minor** — new skills, commands, or wiki concept pages; opt-in features, removed or renamed `.claude/` paths.
 - **Patch** — bugfixes, docs, and in-range dependency bumps.
 
 ## [Unreleased]
