@@ -4,10 +4,9 @@ status: active
 created: 2026-05-07
 updated: 2026-05-07
 tags: [concept, claude, cli, workflow]
-consolidation_ack: [Git Workflow]
 ---
 
-# Init Workflow
+# GAIA Init Workflow
 
 The `/gaia init` namespace provides subcommands for on-boarding a cloned GAIA template into a new project. Each subcommand handles a distinct phase of the setup process.
 
