@@ -2,12 +2,17 @@
         id: pre_run
         run: |
           set -euo pipefail
-          # Skip if an open gaia-ci PR by github-actions[bot] already exists.
+          # Skip only if an open gaia-ci PR for THIS tool already exists.
+          # Scope by branch prefix `gaia-ci/{{tool_id}}/` so a wiki PR does
+          # not block the audit, etc. Each workflow branches under its own
+          # tool_id prefix (see partials/auto-merge and the audit/update-deps
+          # templates).
           existing_pr=$(gh pr list --state open --label gaia-ci \
             --search 'author:app/github-actions' \
-            --json number --jq '.[0].number // empty')
+            --json number,headRefName \
+            --jq '[.[] | select(.headRefName | startswith("gaia-ci/{{tool_id}}/"))] | .[0].number // empty')
           if [ -n "$existing_pr" ]; then
-            echo "open gaia-ci PR #$existing_pr; skipping"
+            echo "open gaia-ci PR #$existing_pr for {{tool_id}}; skipping"
             echo "decision=skip" >> "$GITHUB_OUTPUT"
             echo "reason=open_pr" >> "$GITHUB_OUTPUT"
             exit 0

@@ -12,6 +12,8 @@
             echo "no changes; nothing to PR"
             exit 0
           fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m "chore({{tool_id}}): GAIA CI run"
           git push origin "$branch"
