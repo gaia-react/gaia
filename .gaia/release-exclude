@@ -76,7 +76,7 @@ wiki/decisions/Forensics Triage Workflow.md
 .gaia/release-scrub.yml
 
 # --- 6. Maintainer dev-tool configs ---
-# Per-machine tool configs initialized by `setup-gaia` on the adopter's
+# Per-machine tool configs initialized by `setup-cloned-gaia-project` on the adopter's
 # side; the template's copies aren't portable. Keep these out of the
 # manifest so /update-gaia never tries to merge them.
 .serena

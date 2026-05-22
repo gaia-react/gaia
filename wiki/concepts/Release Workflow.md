@@ -119,7 +119,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 
 ### 6. Maintainer dev-tool configs
 
-- `.serena/` — Serena MCP project config. Initialized per-machine by `setup-gaia` on the adopter's side; the template's copy isn't portable. Not in manifest so `/update-gaia` never tries to merge it.
+- `.serena/` — Serena MCP project config. Initialized per-machine by `setup-cloned-gaia-project` on the adopter's side; the template's copy isn't portable. Not in manifest so `/update-gaia` never tries to merge it.
 
 ### 7. Scratch and transient
 

@@ -43,6 +43,8 @@ const InputText: FC<InputProps> = ({
     [maxLength, onChange]
   );
 
+  const Icon = icon;
+
   return (
     <Field
       className={className}
@@ -64,6 +66,9 @@ const InputText: FC<InputProps> = ({
       <div className={twJoin((icon ?? children) && 'relative')}>
         <input
           ref={ref}
+          aria-describedby={
+            description ? `${id ?? name}-description` : undefined
+          }
           aria-label={label ? undefined : name}
           className={twJoin(
             'w-full',
@@ -82,20 +87,15 @@ const InputText: FC<InputProps> = ({
           type={type}
           {...props}
         />
-        {icon &&
-          (() => {
-            const Icon = icon;
-
-            return (
-              <Icon
-                className={twMerge(
-                  'absolute top-[0.825rem] text-gray-400 dark:text-gray-600',
-                  iconPosition === 'left' ? 'left-3' : 'right-3',
-                  classNameIcon
-                )}
-              />
-            );
-          })()}
+        {Icon && (
+          <Icon
+            className={twMerge(
+              'absolute top-[0.825rem] text-gray-400 dark:text-gray-600',
+              iconPosition === 'left' ? 'left-3' : 'right-3',
+              classNameIcon
+            )}
+          />
+        )}
       </div>
     </Field>
   );

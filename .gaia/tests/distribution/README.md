@@ -59,7 +59,7 @@ Layer 0 — host pnpm available, scenarios run with the maintainer's PATH (defau
 
 Covers tarball extraction and the corepack-driven pnpm bootstrap inside a PATH-stripped subshell with an isolated `$HOME`. Reuses `lib/build-staging.sh` to produce a release-shape tree, tars it, and extracts into a scratch scaffold — the same shape `create-gaia` runs on an adopter's machine. The subshell's PATH is reduced to `/usr/bin:/bin` plus symlinks to the outer `node`/`corepack`/`tar`/`git`, so any maintainer-local `pnpm`/`uv`/`claude` becomes invisible. The scenario asserts pnpm is *not* visible before bootstrap, then exercises `corepack enable pnpm` followed by `pnpm install --frozen-lockfile`.
 
-Does not cover `/gaia-init` or `/setup-gaia` execution (no Claude in the subshell — see `diagnostic/claude-auth-in-docker.md`), full filesystem isolation (a true Docker run is the answer), or non-host operating systems. The `npm install -g pnpm` fallback path inside `create-gaia`'s `ensurePnpm()` is intentionally untested here — exercising it would mutate the host's global npm state with no clean rollback.
+Does not cover `/gaia-init` or `/setup-cloned-gaia-project` execution (no Claude in the subshell — see `diagnostic/claude-auth-in-docker.md`), full filesystem isolation (a true Docker run is the answer), or non-host operating systems. The `npm install -g pnpm` fallback path inside `create-gaia`'s `ensurePnpm()` is intentionally untested here — exercising it would mutate the host's global npm state with no clean rollback.
 
 Skips automatically if `corepack` is not on the host PATH (Node 16.13+ ships corepack, so this is rare). Skip is reported as a soft PASS so `run-all.sh` summaries stay green on hosts where the layer cannot run.
 
@@ -67,7 +67,7 @@ Skips automatically if `corepack` is not on the host PATH (Node 16.13+ ships cor
 
 Builds a `gaia-dist-claude` image (`node:22-bullseye-slim` + `claude.ai/install.sh`, with `/root/.local/bin` on PATH per the verified pattern in `diagnostic/claude-auth-in-docker.md`), bind-mounts the staged tree at `/work` read-only, and runs `claude --print "Reply with the single word: ok"` with `CLAUDE_CODE_OAUTH_TOKEN` passed through from the host env. The OAuth token attributes to the maintainer's Claude Max subscription, so per-run cost is $0.
 
-What it covers: image build, claude binary on PATH inside the container, OAuth auth from container to Anthropic, staged tree reachable as the container's working directory. What it does NOT cover: adopter flows like `/gaia-init` or `/setup-gaia` — those exercise interactive skills and live in follow-up scenarios; this is the harness smoke that proves Layer 2 is wired.
+What it covers: image build, claude binary on PATH inside the container, OAuth auth from container to Anthropic, staged tree reachable as the container's working directory. What it does NOT cover: adopter flows like `/gaia-init` or `/setup-cloned-gaia-project` — those exercise interactive skills and live in follow-up scenarios; this is the harness smoke that proves Layer 2 is wired.
 
 Skips automatically if Docker is unavailable OR `CLAUDE_CODE_OAUTH_TOKEN` is unset, so contributors without auth can still run Layers 0 + 1 via `run-all.sh`. Both skips report as soft PASS.
 

@@ -103,6 +103,7 @@ const TextArea: FC<TextAreaProps> = ({
     >
       <textarea
         ref={innerRef}
+        aria-describedby={description ? `${id ?? name}-description` : undefined}
         aria-label={label ? undefined : name}
         className={twMerge(
           'w-full',

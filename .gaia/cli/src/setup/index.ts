@@ -1,7 +1,7 @@
 /**
  * `gaia setup` subcommand router.
  *
- * Per-machine clone setup. The `/setup-gaia` slash command orchestrates
+ * Per-machine clone setup. The `/setup-cloned-gaia-project` slash command orchestrates
  * the externally-shelled installs (React Doctor, Playwright CLI, Serena
  * MCP, plugins, spec-kit) and calls these CLI primitives to record
  * progress in `.gaia/local/setup-state.json`.

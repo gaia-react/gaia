@@ -296,7 +296,7 @@ After all probes run: if any component shows `[FAIL]`, print the full table, the
 
 If all probes pass, print the full table and continue to Step 9.
 
-The same probe set applies when setting up from an existing clone — `/setup-gaia` runs it after registering external tools.
+The same probe set applies when setting up from an existing clone — `/setup-cloned-gaia-project` runs it after registering external tools.
 
 ## Step 9: Configure GAIA CI (Phase A)
 
@@ -454,7 +454,7 @@ Append-only. New entries at the TOP.
 
 ## Step 12: Finalize
 
-Mark per-machine setup as complete so the statusline does not show "Run /setup-gaia (Required)". `/gaia-init` performs all the same per-machine work as `/setup-gaia` (tools, plugins, spec-kit, statusline chmod, .env, mentorship), but it does not call `gaia setup mark-step` as it goes — so stamp the state file with `--force` now that everything is done:
+Mark per-machine setup as complete so the statusline does not show "Run /setup-cloned-gaia-project (Required)". `/gaia-init` performs all the same per-machine work as `/setup-cloned-gaia-project` (tools, plugins, spec-kit, statusline chmod, .env, mentorship), but it does not call `gaia setup mark-step` as it goes — so stamp the state file with `--force` now that everything is done:
 
 ```bash
 .gaia/cli/gaia setup finalize --force

@@ -58,6 +58,8 @@ const Select: FC<SelectProps> = ({
     onChange?.(event);
   };
 
+  const Icon = icon;
+
   return (
     <Field
       className={className}
@@ -75,6 +77,9 @@ const Select: FC<SelectProps> = ({
       <div className={twJoin(icon && 'relative')}>
         <select
           ref={ref}
+          aria-describedby={
+            description ? `${id ?? name}-description` : undefined
+          }
           className={twMerge(
             'w-full',
             disabled ? 'text-disabled'
@@ -119,25 +124,18 @@ const Select: FC<SelectProps> = ({
               </option>
           )}
         </select>
-        {icon &&
-          (() => {
-            const Icon = icon;
-
-            return (
-              <div
-                className={twMerge(
-                  'pointer-events-none absolute left-[0.8rem]',
-                  disabled ? 'text-disabled' : (
-                    !currentValue && 'text-placeholder'
-                  ),
-                  !classNameIcon?.includes('top-') && 'top-[0.575rem]',
-                  classNameIcon
-                )}
-              >
-                <Icon />
-              </div>
-            );
-          })()}
+        {Icon && (
+          <div
+            className={twMerge(
+              'pointer-events-none absolute left-[0.8rem]',
+              disabled ? 'text-disabled' : !currentValue && 'text-placeholder',
+              !classNameIcon?.includes('top-') && 'top-[0.575rem]',
+              classNameIcon
+            )}
+          >
+            <Icon />
+          </div>
+        )}
       </div>
     </Field>
   );

@@ -11,7 +11,7 @@
 #   2. Fallback → bare "Claude Code" label.
 #
 # Right side suppression in linked worktrees: the right-side indicators
-# (`Run /setup-gaia`, `Run /update-deps`, `Run /update-gaia`) all prod the
+# (`Run /setup-cloned-gaia-project`, `Run /update-deps`, `Run /update-gaia`) all prod the
 # user toward maintenance flows that belong on the main checkout. Inside a
 # linked worktree the right side is empty — the worktree is detected via
 # `dirname(git rev-parse --git-common-dir) != PROJECT_ROOT`. The background
@@ -73,13 +73,13 @@ fi
 
 # ---------- Right side from cache ----------
 # Per-machine setup gate: when .gaia/local/setup-state.json is missing or
-# its completed_at is null, the right side shows ONLY `Run /setup-gaia` —
+# its completed_at is null, the right side shows ONLY `Run /setup-cloned-gaia-project` —
 # the other indicators are suppressed until the developer has run through
 # the per-clone setup at least once. The setup file is gitignored, so each
 # clone gets its own state.
 #
 # Exception: when .claude/commands/gaia-init.md exists, this is a fresh
-# create-gaia project mid-init. /setup-gaia is not applicable until
+# create-gaia project mid-init. /setup-cloned-gaia-project is not applicable until
 # /gaia-init finishes (which deletes that file). Suppress all right-side
 # indicators during that window.
 right=""
@@ -103,7 +103,7 @@ if [ "$is_worktree" -eq 0 ]; then
     fi
 
     if [ "$setup_complete" != "true" ]; then
-      right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
+      right="$(printf '\033[01;35mRun /setup-cloned-gaia-project (Required)\033[00m')"
     elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
       outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
       gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
