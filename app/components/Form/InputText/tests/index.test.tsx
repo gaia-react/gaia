@@ -74,4 +74,21 @@ describe('InputText', () => {
 
     expect(screen.getByText('5 / 20')).toBeInTheDocument();
   });
+
+  test('associates the description with the input via aria-describedby', () => {
+    render(
+      <InputText description="We never share it" label="Email" name="email" />
+    );
+
+    expect(
+      screen.getByRole('textbox', {name: 'Email'})
+    ).toHaveAccessibleDescription('We never share it');
+  });
+
+  test('does not wrap the error in a status live region', () => {
+    render(<InputText error="Required" label="Name" name="name" />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Required');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
 });

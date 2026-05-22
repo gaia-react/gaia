@@ -29,4 +29,14 @@ describe('TextArea', () => {
 
     expect(screen.getByText('5 / 20')).toBeInTheDocument();
   });
+
+  test('associates the description with the textarea via aria-describedby', () => {
+    render(
+      <TextArea description="Markdown supported" label="Bio" name="bio" />
+    );
+
+    expect(
+      screen.getByRole('textbox', {name: 'Bio'})
+    ).toHaveAccessibleDescription('Markdown supported');
+  });
 });

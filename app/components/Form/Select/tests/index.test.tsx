@@ -35,4 +35,19 @@ describe('Select', () => {
 
     expect(select).toHaveClass('text-body');
   });
+
+  test('associates the description with the select via aria-describedby', () => {
+    render(
+      <Select
+        description="Pick one"
+        label="Number"
+        name="num"
+        options={options}
+      />
+    );
+
+    expect(
+      screen.getByRole('combobox', {name: 'Number'})
+    ).toHaveAccessibleDescription('Pick one');
+  });
 });
