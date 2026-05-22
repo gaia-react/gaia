@@ -133,6 +133,7 @@
     ".gaia/cli/templates/workflows/partials/pre-run-skip.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/quality-gate.yml.tmpl": "owned",
     ".gaia/scripts/check-updates.sh": "owned",
+    ".gaia/scripts/create-worktree.sh": "owned",
     ".gaia/scripts/link-worktree.sh": "owned",
     ".gaia/scripts/read-audit-ci-config.sh": "owned",
     ".gaia/scripts/tests/link-worktree.bats": "owned",
@@ -492,6 +493,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-22T20:29:34.981Z",
-  "version": "1.3.0"
+  "generated": "2026-05-22T22:00:04.622Z",
+  "version": "1.3.1"
 }

@@ -10,6 +10,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-05-22
+
+### Fixed
+
+- `create-worktree.sh` — WorktreeCreate hook that creates the worktree and returns its path (#231)
+- `update-gaia` — remove phantom `gaia update merge` CLI call from Step 7 (#231)
+- `update-gaia` — Step 9 cache-bust writes the new version instead of preserving stale fields (#231)
+- `update-gaia` — open a PR at the end of the run instead of stranding the branch (#231)
+
 ## [1.3.0] — 2026-05-22
 
 ### Added
