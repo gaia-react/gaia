@@ -1,5 +1,5 @@
-import {describe, expect, test} from 'vitest';
-import {sleep, tryCatch} from '../function';
+import {describe, expect, test, vi} from 'vitest';
+import {compose, noop, sleep, tryCatch} from '../function';
 
 describe('function utils', () => {
   test('tryCatch async result', async () => {
@@ -39,5 +39,28 @@ describe('function utils', () => {
     expect(tryCatch(() => false)).toEqual([undefined, false]);
     expect(tryCatch(() => '')).toEqual([undefined, '']);
     expect(tryCatch(() => null)).toEqual([undefined, null]);
+  });
+});
+
+const double = (x: number) => x * 2;
+const addOne = (x: number) => x + 1;
+
+describe('noop', () => {
+  test('is callable without throwing', () => {
+    expect(() => noop()).not.toThrow();
+  });
+});
+
+describe('compose', () => {
+  test('applies functions right-to-left', () => {
+    const doubleThenAdd = compose(addOne, double);
+    expect(doubleThenAdd(3)).toBe(7);
+  });
+
+  test('handles a single function', () => {
+    const spy = vi.fn((x: number) => x * 3);
+    const composed = compose(spy);
+    expect(composed(4)).toBe(12);
+    expect(spy).toHaveBeenCalledWith(4);
   });
 });
