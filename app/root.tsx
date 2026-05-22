@@ -18,12 +18,12 @@ import './styles/tailwind.css';
 
 export const middleware = [i18nextMiddleware];
 
-setToastCookieOptions({secrets: [env.SESSION_SECRET]});
-
 export const loader = async ({context, request}: Route.LoaderArgs) => {
   const isProduction = isProductionHost(request);
 
   const language = getLanguage(context);
+
+  setToastCookieOptions({secrets: [env.SESSION_SECRET]});
 
   const {headers, toast} = await getToast(request);
 
