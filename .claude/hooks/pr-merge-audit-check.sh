@@ -142,7 +142,7 @@ check_github_status() {
 
   status_desc=$(gh api \
     "repos/${repo}/commits/${sha}/statuses" \
-    --jq 'map(select(.context == "GAIA-Audit")) | last | .description' \
+    --jq 'map(select(.context == "GAIA-Audit")) | first | .description' \
     2>/dev/null || true)
 
   [ -n "$status_desc" ] && [ "$status_desc" != "null" ] || return 1
