@@ -6,7 +6,7 @@ import type {Route} from './+types/theme-switch';
 
 export const ThemeFormSchema = z.object({
   redirectTo: z.string().refine(isLocalRedirect).optional(),
-  theme: z.enum(['light', 'dark', 'system']),
+  theme: z.literal(['dark', 'light', 'system']),
 });
 
 export const action = async ({request}: Route.ActionArgs) => {

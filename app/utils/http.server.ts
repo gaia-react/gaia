@@ -1,8 +1,10 @@
 import type {HeadersFunction} from 'react-router';
 import {env} from '~/env.server';
 
+const PRODUCTION_HOST = new URL(env.SITE_URL).host;
+
 export const isProductionHost = (request: Request): boolean =>
-  request.headers.get('host') === new URL(env.SITE_URL).host;
+  request.headers.get('host') === PRODUCTION_HOST;
 
 // No report-uri/report-to directive: a violation-reporting endpoint is
 // adopter-owned infrastructure, intentionally out of scope for the template.

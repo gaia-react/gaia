@@ -18,9 +18,8 @@ const PrivacyPage: FC<PrivacyPageProps> = ({description, title}) => {
       <meta content={description} name="description" />
       <div className="prose dark:prose-invert p-8 sm:px-16">
         <h1>{title}</h1>
-        {paragraphs.map((paragraph, index) => (
-          // eslint-disable-next-line react/no-array-index-key
-          <p key={`paragraph-${index}`}>{paragraph}</p>
+        {paragraphs.map((paragraph) => (
+          <p key={paragraph}>{paragraph}</p>
         ))}
       </div>
     </Layout>

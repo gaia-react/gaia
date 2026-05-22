@@ -48,7 +48,7 @@ const ThemeSwitch: FC<ThemeSwitchProps> = ({userPreference}) => {
         className="text-body size-4.5 relative flex items-center gap-2"
         type="submit"
       >
-        <ThemeIcon />
+        <ThemeIcon aria-hidden={true} />
       </button>
     </fetcher.Form>
   );

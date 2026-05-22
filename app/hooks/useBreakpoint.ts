@@ -1,5 +1,4 @@
 import {useEffect, useState} from 'react';
-import {canUseDOM} from '~/utils/dom';
 
 const BREAKPOINTS = {
   '2xl': 1536,
@@ -12,9 +11,7 @@ const BREAKPOINTS = {
 type BreakpointType = keyof typeof BREAKPOINTS;
 
 export const useBreakpoint = (breakpoint: BreakpointType): boolean => {
-  const [isBreakpoint, setIsBreakpoint] = useState(
-    () => canUseDOM && window.innerWidth >= BREAKPOINTS[breakpoint]
-  );
+  const [isBreakpoint, setIsBreakpoint] = useState(false);
 
   useEffect(() => {
     const onUpdate = () => {
