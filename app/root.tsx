@@ -2,7 +2,7 @@ import type {FC} from 'react';
 import {useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 import {data, Outlet, useLoaderData} from 'react-router';
-import {getToast, setToastCookieOptions} from 'remix-toast';
+import {getToast} from 'remix-toast';
 import Document from '~/components/Document';
 import RootErrorBoundary from '~/components/Errors/RootErrorBoundary';
 import Toast, {notify} from '~/components/Toast';
@@ -13,7 +13,7 @@ import {isProductionHost} from '~/utils/http.server';
 import {useNonce} from '~/utils/nonce';
 import {getTheme} from '~/utils/theme.server';
 import type {Route} from './+types/root';
-import {env, envClient} from './env.server';
+import {envClient} from './env.server';
 import './styles/tailwind.css';
 
 export const middleware = [i18nextMiddleware];
@@ -22,8 +22,6 @@ export const loader = async ({context, request}: Route.LoaderArgs) => {
   const isProduction = isProductionHost(request);
 
   const language = getLanguage(context);
-
-  setToastCookieOptions({secrets: [env.SESSION_SECRET]});
 
   const {headers, toast} = await getToast(request);
 

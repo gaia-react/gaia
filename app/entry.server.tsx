@@ -13,6 +13,7 @@ import {ServerRouter} from 'react-router';
 import {createReadableStreamFromReadable} from '@react-router/node';
 import {createInstance} from 'i18next';
 import {isbot} from 'isbot';
+import {setToastCookieOptions} from 'remix-toast';
 import {randomBytes} from 'node:crypto';
 import {PassThrough} from 'node:stream';
 import i18nConfig from '~/i18n';
@@ -21,6 +22,8 @@ import {getContentSecurityPolicy} from '~/utils/http.server';
 import {NonceProvider} from '~/utils/nonce';
 import {env} from './env.server';
 import 'dotenv/config';
+
+setToastCookieOptions({secrets: [env.SESSION_SECRET]});
 
 if (env.NODE_ENV !== 'production' && env.MSW_ENABLED) {
   const {startApiMocks} = await import('../test/msw.server');
