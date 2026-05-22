@@ -11,14 +11,16 @@ type RunOptions = {
   cwd?: string;
 };
 
+// `git log` over a large history easily exceeds the 1 MiB default and
+// throws ENOBUFS; 64 MiB covers any realistic sync window.
+const MAX_GIT_BUFFER_BYTES = 64 * 1024 * 1024;
+
 const runGit = (args: readonly string[], options: RunOptions = {}): string => {
   const cwd = options.cwd ?? process.cwd();
   const result = execFileSync('git', args, {
     cwd,
     encoding: 'utf8',
-    // `git log` over a large history easily exceeds the 1 MiB default and
-    // throws ENOBUFS; 64 MiB covers any realistic sync window.
-    maxBuffer: 64 * 1024 * 1024,
+    maxBuffer: MAX_GIT_BUFFER_BYTES,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

@@ -75,6 +75,18 @@ describe('InputText', () => {
     expect(screen.getByText('5 / 20')).toBeInTheDocument();
   });
 
+  test('updates the character counter when a controlled value changes externally', () => {
+    const {rerender} = render(
+      <InputText label="Greeting" maxLength={20} name="g" value="hello" />
+    );
+
+    expect(screen.getByText('5 / 20')).toBeInTheDocument();
+
+    rerender(<InputText label="Greeting" maxLength={20} name="g" value="hi" />);
+
+    expect(screen.getByText('2 / 20')).toBeInTheDocument();
+  });
+
   test('associates the description with the input via aria-describedby', () => {
     render(
       <InputText description="We never share it" label="Email" name="email" />

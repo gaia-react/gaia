@@ -2,20 +2,10 @@ import axeCore from 'axe-core';
 import type {AxeResults, RunOptions} from 'axe-core';
 import {expect} from 'vitest';
 
-/**
- * Runs axe-core against the given container and asserts no violations.
- * Uses the project-wide axe ruleset; pass `options` to scope or filter
- * (e.g. exclude rules, restrict tags).
- *
- * Test files calling this MUST opt into jsdom via:
- *   // @vitest-environment jsdom
- * placed as the first line of the file. happy-dom's Node.prototype.isConnected
- * (getter-only) breaks axe-core's polyfill (capricorn86/happy-dom#978).
- */
+// Callers must use `// @vitest-environment jsdom` — happy-dom breaks axe-core (capricorn86/happy-dom#978).
 
 const assertJsdomEnvironment = (): void => {
-  // jsdom sets navigator.userAgent to a Mozilla string containing "jsdom".
-  // happy-dom does not. The user agent is the canonical signal across both.
+  // jsdom includes "jsdom" in userAgent; happy-dom does not.
   if (!globalThis.navigator.userAgent.includes('jsdom')) {
     throw new Error(
       'expectNoA11yViolations requires the jsdom test environment. ' +
@@ -32,8 +22,7 @@ export const runAxe = async (
 ): Promise<AxeResults> => {
   assertJsdomEnvironment();
 
-  // axe.run treats a trailing undefined as callback mode; forward options
-  // only when the caller supplied them so we always get a Promise back.
+  // Omit options when undefined — axe.run treats trailing undefined as callback mode.
   return options === undefined ?
       axeCore.run(container)
     : axeCore.run(container, options);

@@ -20,6 +20,7 @@ export const getContentSecurityPolicy = (nonce: string): string =>
     `base-uri 'self'`,
     `form-action 'self'`,
     `frame-ancestors 'none'`,
+    'upgrade-insecure-requests',
   ].join('; ');
 
 // based on Jacob Paris' blog post:

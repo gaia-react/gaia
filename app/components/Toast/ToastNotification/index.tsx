@@ -1,6 +1,7 @@
 import type {FC} from 'react';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import type {IconType} from 'react-icons';
+import {useTranslation} from 'react-i18next';
 import {
   IoCheckmarkCircle,
   IoClose,
@@ -47,6 +48,7 @@ type ToastNotificationProps = {
 };
 
 const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
+  const {t} = useTranslation('common');
   const [isHovered, setIsHovered] = useState(false);
   const timeoutRef = useRef(0);
 
@@ -95,6 +97,7 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
       }}
     >
       <button
+        aria-label={t('close')}
         className="relative float-end ms-2 size-3 text-sm leading-none opacity-50 transition-transform hover:scale-125 hover:opacity-100"
         onClick={handleClose}
         type="button"

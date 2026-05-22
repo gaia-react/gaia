@@ -50,7 +50,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
             onClick={handleCopyStack}
             type="button"
           >
-            <IoCopyOutline />
+            <IoCopyOutline aria-hidden={true} />
             <span>Copy to clipboard</span>
           </button>
         </div>
