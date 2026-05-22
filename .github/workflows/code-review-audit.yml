@@ -227,6 +227,11 @@ jobs:
                do NOT restore them. Intentional deletions are not defects.
             3. Never add content that references a library, tool, or pattern that this
                PR removed. The PR diff is the source of truth for intent.
+            4. NEVER edit files under `.claude/`, `.specify/`, or `wiki/` as part of
+               a self-heal. These define the project's conventions, skills, and this
+               agent's own definition — not code defects. If one looks wrong, raise
+               it as a finding for human review. The workflow's self-heal scope gate
+               refuses any self-heal that touches them.
           claude_args: |
             --max-turns ${{ steps.config.outputs.max_turns }}
             --allowedTools Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*)
@@ -258,6 +263,34 @@ jobs:
             git ls-files --others --exclude-standard | head -20 >&2
           fi
 
+          # Self-heal scope gate. Instruction / convention surfaces
+          # (.claude/**, .specify/**, wiki/**) are the rules this audit
+          # enforces and the agent's own definition -- never code defects
+          # it should auto-fix. A self-heal that edits them is almost
+          # always reverting an intentional convention change. Inspect
+          # both committed self-heal commits and uncommitted edits; if any
+          # touch those surfaces, refuse the whole self-heal and surface
+          # it for human review (mirrors the >10-file gate below). The
+          # early `exit 0` runs before the commit/push logic, so nothing
+          # the audit changed reaches origin.
+          self_heal_paths="$(
+            {
+              git diff --name-only
+              git diff --name-only "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
+            } | sort -u
+          )"
+          if printf '%s\n' "$self_heal_paths" \
+              | grep -qE '^(\.claude|\.specify|wiki)/'; then
+            echo "code-review-audit: self-heal touched instruction/convention surfaces -- refusing." >&2
+            printf '%s\n' "$self_heal_paths" \
+              | grep -E '^(\.claude|\.specify|wiki)/' >&2 || true
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "marker_only=false" >> "$GITHUB_OUTPUT"
+            echo "refused=true" >> "$GITHUB_OUTPUT"
+            echo "refused_reason=instruction-surface" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if ! git diff --quiet; then
             # Stage modifications and deletions to TRACKED files only -- never
             # `git add -A`, which would sweep audit runtime artifacts.
@@ -276,6 +309,7 @@ jobs:
               echo "pushed=false" >> "$GITHUB_OUTPUT"
               echo "marker_only=false" >> "$GITHUB_OUTPUT"
               echo "refused=true" >> "$GITHUB_OUTPUT"
+              echo "refused_reason=file-count" >> "$GITHUB_OUTPUT"
               echo "refused_count=$files_changed" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -461,13 +495,18 @@ jobs:
           PUSHED: ${{ steps.push-fixes.outputs.pushed }}
           REFUSED: ${{ steps.push-fixes.outputs.refused }}
           REFUSED_COUNT: ${{ steps.push-fixes.outputs.refused_count }}
+          REFUSED_REASON: ${{ steps.push-fixes.outputs.refused_reason }}
           PUSH_FIXES: ${{ steps.config.outputs.push_fixes }}
         run: |
           set -eu
           if [ "$PUSH_FIXES" = "false" ]; then
             mode="advisory (push_fixes=false)"
           elif [ "$REFUSED" = "true" ]; then
-            mode="self-heal REFUSED — diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
+            if [ "$REFUSED_REASON" = "instruction-surface" ]; then
+              mode="self-heal REFUSED — edited instruction/convention surfaces (.claude/**, .specify/**, or wiki/**), which are off-limits to self-heal; see workflow logs and review manually"
+            else
+              mode="self-heal REFUSED — diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
+            fi
           elif [ "$PUSHED" = "true" ]; then
             mode="self-heal pushed"
           else

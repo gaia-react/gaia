@@ -180,10 +180,10 @@ The same principle applies to any subscription, timer, or third-party widget: if
 
 ```tsx
 // ✅ Passed to memo-wrapped child — prevents unnecessary child re-renders
-const handleSubmit = useCallback((data: FormData) => {
+const handleSubmitForm = useCallback((data: FormData) => {
   post('/api/submit', data);
 }, []);
-return <MemoizedForm onSubmit={handleSubmit} />;
+return <MemoizedForm onSubmit={handleSubmitForm} />;
 
 // ✅ Used in useEffect dependency array — keeps a stable reference
 const fetchData = useCallback(async () => {
@@ -196,7 +196,7 @@ useEffect(() => {
 }, [fetchData]);
 
 // ❌ Not passed to a memo child, not in any hook deps — skip useCallback
-const handleClick = () => {
+const handleClickIncrement = () => {
   setCount(count + 1);
 };
 ```
@@ -207,12 +207,12 @@ const handleClick = () => {
 // BAD — premature optimization; every render still allocates the deps array,
 // so if deps change often useCallback saves nothing. An empty deps array is
 // a stale closure waiting to happen if the handler ever needs to read state or props.
-const handleChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+const handleChangeName = useCallback((e: ChangeEvent<HTMLInputElement>) => {
   setName(e.target.value);
-}, []); // looks safe now — breaks the moment handleChange needs to read other state
+}, []); // looks safe now — breaks the moment handleChangeName needs to read other state
 
 // GOOD — plain function is the right default
-const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+const handleChangeName = (e: ChangeEvent<HTMLInputElement>) => {
   setName(e.target.value);
 };
 ```

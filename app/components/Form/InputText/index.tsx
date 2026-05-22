@@ -33,7 +33,7 @@ const InputText: FC<InputProps> = ({
     () => String(props.value ?? props.defaultValue ?? '').length
   );
 
-  const handleChange = useCallback(
+  const handleUpdateLength = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       if (maxLength) {
         setLength(event.currentTarget.value.length);
@@ -80,7 +80,7 @@ const InputText: FC<InputProps> = ({
           id={id ?? name}
           maxLength={maxLength}
           name={name}
-          onChange={handleChange}
+          onChange={handleUpdateLength}
           readOnly={readOnly}
           required={required}
           tabIndex={readOnly ? -1 : undefined}

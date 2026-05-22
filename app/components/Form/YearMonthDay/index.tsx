@@ -75,7 +75,7 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
     };
   }, []);
 
-  const handleChange = (event: ChangeEvent<HTMLSelectElement>) => {
+  const handleUpdateDate = (event: ChangeEvent<HTMLSelectElement>) => {
     const newValue =
       event.currentTarget.name.includes('Date') ?
         `${year}-${month}-${event.currentTarget.value}`
@@ -150,7 +150,7 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
           className="flex-1"
           classNameSelect={classNameSelect}
           name={`${name}Year`}
-          onChange={handleChange}
+          onChange={handleUpdateDate}
           options={years}
           value={year}
         />
@@ -159,7 +159,7 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
           className="flex-1"
           classNameSelect={classNameSelect}
           name={`${name}Month`}
-          onChange={handleChange}
+          onChange={handleUpdateDate}
           options={months}
           value={month}
         />
@@ -168,7 +168,7 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
           className="flex-1"
           classNameSelect={classNameSelect}
           name={`${name}Date`}
-          onChange={handleChange}
+          onChange={handleUpdateDate}
           options={dates}
           value={date}
         />

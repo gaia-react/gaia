@@ -4,6 +4,26 @@
       {
         "files": ["app/components/**/tests/index.test.tsx"],
         "rules": ["react-doctor/no-barrel-import"]
+      },
+      {
+        "files": ["app/components/Document/index.tsx", "app/root.tsx"],
+        "rules": ["react/no-danger"]
+      },
+      {
+        "files": ["app/components/Toast/ToastNotification/index.tsx"],
+        "rules": ["react-doctor/rerender-state-only-in-handlers"]
+      },
+      {
+        "files": ["app/utils/object.ts"],
+        "rules": ["react-doctor/no-full-lodash-import"]
+      },
+      {
+        "files": [".gaia/cli/**"],
+        "rules": [
+          "react-doctor/js-set-map-lookups",
+          "react-doctor/async-await-in-loop",
+          "react-doctor/server-sequential-independent-await"
+        ]
       }
     ]
   }

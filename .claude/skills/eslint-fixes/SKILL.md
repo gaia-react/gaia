@@ -14,12 +14,12 @@ Don't use the `void` operator in event listener functions. Instead, make the fun
 
 ```tsx
 // BAD
-const handleClick = () => {
+const handleClickNavigate = () => {
   void navigate('/path');
 };
 
 // GOOD
-const handleClick = async () => {
+const handleClickNavigate = async () => {
   await navigate('/path');
 };
 ```

@@ -29,7 +29,7 @@ export const useComponentRect = (
       };
 
       window.addEventListener('resize', onUpdate);
-      window.addEventListener('scroll', onUpdate);
+      window.addEventListener('scroll', onUpdate, {passive: true});
 
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);

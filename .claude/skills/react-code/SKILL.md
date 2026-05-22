@@ -89,7 +89,7 @@ See `references/translation-patterns.md` for edge cases (keyPrefix, Trans compon
 - **Named React imports:** `import {useState} from 'react'` — never `React.useState()` — avoids the React namespace and makes tree-shaking explicit
 - **Type imports:** `import type {ChangeEventHandler} from 'react'` — never `React.FC`
 - **Event handler types:** Prefer `ChangeEventHandler<HTMLInputElement>` over inline event typing
-- **Event handler naming:** `handle{Action}{Element}` — e.g. `handleClickSave`, `handleChangeInput`
+- **Event handler naming:** `handle{Action}{Element}` — the `{Element}` is required so the name says *what it does*, not just *when it fires*; e.g. `handleClickSave`, `handleChangeInput`, `handleCopyStack`. A bare event name (`handleClick`, `handleChange`, `handleSubmit`) trips `react-doctor/no-generic-handler-names`.
 
 ### Component Extraction
 
