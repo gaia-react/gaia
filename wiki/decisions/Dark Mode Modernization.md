@@ -22,7 +22,7 @@ The old implementation had three real problems:
 
 ## What changed
 
-- **Added** `app/utils/theme.server.ts`, `app/utils/client-hints.tsx`, `app/utils/request-info.ts`.
+- **Added** `app/utils/theme.server.ts`, `app/utils/request-info.ts`, `app/hooks/useTheme.ts`.
 - **Added** `app/routes/resources+/theme-switch.tsx` — co-located action, schema, hooks, and `ThemeSwitch` component.
 - **Removed** `app/state/theme.tsx`, `app/sessions.server/theme.ts`, `app/routes/actions+/set-theme.ts`, `app/components/ThemeSwitcher/index.tsx`.
 - **Updated** `app/root.tsx` loader to return `requestInfo`. `<State>` no longer carries `theme`.
