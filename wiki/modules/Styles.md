@@ -24,13 +24,13 @@ See the `tailwind` skill (`.claude/skills/tailwind/`) and the `tailwind` rule (`
 
 ## Dark mode pipeline (no React state)
 
-> [!key-insight] Cookie + client hints, not React state
-> Dark mode is wired through a cookie + `Sec-CH-Prefers-Color-Scheme` client hint, then rendered via Tailwind's `dark:` variant. No React state, no flash of incorrect theme on hydration. See [[Theme Flow]].
+> [!key-insight] Cookie + inline pre-paint script, not React state
+> Dark mode is wired through a cookie read server-side and a synchronous inline script that sets `<html class="dark">` before first paint. `app/hooks/useTheme.ts` tracks OS changes post-hydration via `useSyncExternalStore`. No React state, no flash of incorrect theme on hydration. See [[Theme Flow]].
 
 The pipeline (query Serena for current paths):
 
 - `app/utils/theme.server.ts` — reads/writes the `__theme` cookie
-- `app/utils/client-hints.tsx` — exposes `getHints` and `<ClientHintCheck/>`; subscribes to OS `prefers-color-scheme` changes and revalidates the loader
+- `app/hooks/useTheme.ts` — tracks OS `prefers-color-scheme` via `useSyncExternalStore` and resolves the optimistic theme from the loader
 - `app/routes/resources+/theme-switch.tsx` — action + `ThemeSwitch` UI + `useOptionalTheme` hook
 - Tailwind's `dark:` variant via `@custom-variant dark` in `tailwind.css`
 - Storybook's `@vueless/storybook-dark-mode` addon (unchanged)
