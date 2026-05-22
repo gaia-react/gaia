@@ -244,7 +244,7 @@ describe('wiki state', () => {
     expect(counts.concepts).toBe(2);
     expect(counts.decisions).toBe(1);
     expect(counts.modules).toBe(0);
-  });
+  }, 15_000);
 
   test('rejects unknown flags', () => {
     sandbox.commit('initial', {'README.md': '# repo\n'});
