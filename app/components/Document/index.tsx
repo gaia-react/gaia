@@ -1,7 +1,7 @@
 import type {FC, ReactNode} from 'react';
 import {Links, Scripts, ScrollRestoration} from 'react-router';
 import {twJoin} from 'tailwind-merge';
-import {useOptionalTheme} from '~/routes/resources+/theme-switch';
+import {useOptionalTheme} from '~/hooks/useTheme';
 import {useNonce} from '~/utils/nonce';
 import {useOptionalRequestInfo} from '~/utils/request-info';
 import MetaHydrated from './MetaHydrated';
