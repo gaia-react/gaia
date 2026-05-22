@@ -184,9 +184,10 @@ export const computeDiffSize = (options: ComputeOptions): DiffSizeResult => {
   const baseLines = sumWikiLinesAtRef(options.cwd, base);
   const changedLines = sumChangedLines(options.cwd, base);
 
-  const ratioPct = baseLines === 0
-    ? changedLines === 0
-      ? 0
+  const ratioPct =
+    baseLines === 0 ?
+      changedLines === 0 ?
+        0
       : Number.POSITIVE_INFINITY
     : (changedLines / baseLines) * 100;
 

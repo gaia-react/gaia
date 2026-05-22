@@ -45,11 +45,11 @@ const HELP_TEXT = `Usage: gaia setup-ci <subcommand> [args]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type SubcommandHandler = (
-  args: readonly string[]
-) => number | Promise<number>;
+type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 
-const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+const SUBCOMMAND_HANDLERS: Readonly<
+  Partial<Record<string, SubcommandHandler>>
+> = {
   'check-admin': runCheckAdmin,
   'detect-remote': runDetectRemote,
   'dismiss-personal': runDismissPersonal,

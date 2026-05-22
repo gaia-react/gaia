@@ -1,5 +1,8 @@
 import {describe, expect, it} from 'vitest';
-import type {AutomationConfig, ToolId} from '../../schemas/automation-config.js';
+import type {
+  AutomationConfig,
+  ToolId,
+} from '../../schemas/automation-config.js';
 import {buildWorkflowVars, cronForSchedule} from '../workflow-vars.js';
 
 const baseConfig: AutomationConfig = {

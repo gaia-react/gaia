@@ -37,11 +37,15 @@ type RunOptions = {
 
 const resolveFullSha = (ref: string, cwd: string): string | null => {
   try {
-    const out = execFileSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    const out = execFileSync(
+      'git',
+      ['rev-parse', '--verify', `${ref}^{commit}`],
+      {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }
+    );
 
     return out.trim();
   } catch {

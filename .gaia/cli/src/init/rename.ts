@@ -66,7 +66,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };

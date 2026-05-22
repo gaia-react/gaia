@@ -158,9 +158,8 @@ export const assertDisplayRule = (
   ensureMemoryDirectory(roots.memoryDir);
 
   const bodyPath = path.join(roots.memoryDir, DISPLAY_RULE_FILE_NAME);
-  const previousBody = existsSync(bodyPath)
-    ? readFileSync(bodyPath, 'utf8')
-    : null;
+  const previousBody =
+    existsSync(bodyPath) ? readFileSync(bodyPath, 'utf8') : null;
   const bodyChanged = previousBody !== DISPLAY_RULE_BODY;
 
   if (bodyChanged) {

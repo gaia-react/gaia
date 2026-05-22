@@ -5,8 +5,8 @@ status: active
 language: typescript
 purpose: API client (Ky wrapper) and domain-specific service layers
 depends_on:
-  - "[[Ky]]"
-  - "[[Zod]]"
+  - '[[Ky]]'
+  - '[[Zod]]'
 created: 2026-04-20
 updated: 2026-05-04
 tags: [module, services, api]

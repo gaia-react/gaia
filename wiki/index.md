@@ -57,6 +57,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Form Submit Flow]]
 
 <!-- gaia:maintainer-only:start -->
+
 ## Entities
 
 - [[GAIA]]
@@ -145,8 +146,8 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Chromatic Opt-Out]]
 
 <!-- gaia:maintainer-only:start -->
+
 ## Meta
 
 - [[dashboard]]
 <!-- gaia:maintainer-only:end -->
-

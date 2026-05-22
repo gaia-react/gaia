@@ -90,13 +90,16 @@ gh_issue_url?: <url>
 ---
 
 ## Symptom
+
 <one-paragraph user description, redacted>
 
 ## Classification
+
 class: <tag>
 evidence: <verbatim user phrase> + <named state file>
 
 ## Capture
+
 gaia_version: <semver>
 node: <version>
 pnpm: <version>
@@ -104,9 +107,11 @@ claude_code: <version>
 branch: <name>
 dirty: <true|false>
 class_state_files:
-  - <repo-relative path>: <one-line summary>
+
+- <repo-relative path>: <one-line summary>
 
 ## Reproduction context
+
 <plain prose: what the user was doing, what they expected, what happened>
 ```
 
@@ -161,7 +166,6 @@ command -v gh
     ```
 
     Use `--body-file` so multiline bodies survive shell escaping intact.
-
     - On success: capture the issue URL printed by `gh`. Record it in the frontmatter `gh_issue_url` field of the already-saved local file (update the file in place). Continue to step 9.
     - On non-zero `gh` exit: surface `gh`'s stderr verbatim. Leave the local report in place. Exit non-zero. Do not retry or partially file.
 
@@ -189,13 +193,16 @@ gh_issue_url?: <url>
 ---
 
 ## Symptom
+
 <one-paragraph user description, redacted>
 
 ## Classification
+
 class: <tag>
 evidence: <verbatim user phrase> + <named state file>
 
 ## Capture
+
 gaia_version: <semver>
 node: <version>
 pnpm: <version>
@@ -203,9 +210,11 @@ claude_code: <version>
 branch: <name>
 dirty: <true|false>
 class_state_files:
-  - <repo-relative path>: <one-line summary>
+
+- <repo-relative path>: <one-line summary>
 
 ## Reproduction context
+
 <plain prose: what the user was doing, what they expected, what happened>
 ```
 

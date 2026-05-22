@@ -6,14 +6,14 @@ Read this fragment at the capture step. Execute every command listed; apply excl
 
 Always-included envelope, regardless of class:
 
-| field | source | command |
-| --- | --- | --- |
+| field          | source                                | command                                                                                                 |
+| -------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `gaia_version` | `.gaia/manifest.json` `version` field | `jq -r '.version' .gaia/manifest.json 2>/dev/null \|\| cat .gaia/VERSION 2>/dev/null \|\| echo unknown` |
-| `node` | local Node | `node --version 2>/dev/null \|\| echo unknown` |
-| `pnpm` | local pnpm | `pnpm --version 2>/dev/null \|\| echo unknown` |
-| `claude_code` | Claude Code CLI | `command -v claude >/dev/null 2>&1 && claude --version 2>/dev/null \|\| echo unknown` |
-| `branch` | git | `git rev-parse --abbrev-ref HEAD 2>/dev/null \|\| echo unknown` |
-| `dirty` | git | `[[ -n "$(git status --porcelain 2>/dev/null)" ]] && echo true \|\| echo false` |
+| `node`         | local Node                            | `node --version 2>/dev/null \|\| echo unknown`                                                          |
+| `pnpm`         | local pnpm                            | `pnpm --version 2>/dev/null \|\| echo unknown`                                                          |
+| `claude_code`  | Claude Code CLI                       | `command -v claude >/dev/null 2>&1 && claude --version 2>/dev/null \|\| echo unknown`                   |
+| `branch`       | git                                   | `git rev-parse --abbrev-ref HEAD 2>/dev/null \|\| echo unknown`                                         |
+| `dirty`        | git                                   | `[[ -n "$(git status --porcelain 2>/dev/null)" ]] && echo true \|\| echo false`                         |
 
 Every command is wrapped so a missing tool or failing exit yields `unknown` rather than a hard failure. No command writes, installs, fetches, or shells out to any script that mutates state.
 
@@ -23,25 +23,25 @@ For the detected class, read only the files listed below. Record filename + one-
 
 ### init
 
-| path | one-line summary rule |
-| --- | --- |
-| `.gaia/manifest.json` | presence + `version` field value |
-| `.gaia/local/setup-state.json` | presence + value of the `lastStep` field if present |
-| `package.json` | presence + value of the `name` field (confirms rename completed) |
+| path                           | one-line summary rule                                            |
+| ------------------------------ | ---------------------------------------------------------------- |
+| `.gaia/manifest.json`          | presence + `version` field value                                 |
+| `.gaia/local/setup-state.json` | presence + value of the `lastStep` field if present              |
+| `package.json`                 | presence + value of the `name` field (confirms rename completed) |
 
 ### update
 
-| path | one-line summary rule |
-| --- | --- |
-| `.gaia/manifest.json` | presence + `version` field value |
-| _(conflicted paths)_ | output of `git diff --name-only --diff-filter=U` — list of repo-relative conflicted paths, one per line |
+| path                  | one-line summary rule                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
+| `.gaia/manifest.json` | presence + `version` field value                                                                        |
+| _(conflicted paths)_  | output of `git diff --name-only --diff-filter=U` — list of repo-relative conflicted paths, one per line |
 
 ### wiki-sync
 
-| path | one-line summary rule |
-| --- | --- |
+| path               | one-line summary rule                           |
+| ------------------ | ----------------------------------------------- |
 | `wiki/.state.json` | presence + value of `lastSync` field if present |
-| `wiki/log.md` | presence + first line of the last entry only |
+| `wiki/log.md`      | presence + first line of the last entry only    |
 
 ### quality-gate
 
@@ -49,23 +49,23 @@ The verbatim failing command output stays in `## Symptom` (user-supplied). The `
 
 ### hook
 
-| path | one-line summary rule |
-| --- | --- |
+| path                    | one-line summary rule                                                       |
+| ----------------------- | --------------------------------------------------------------------------- |
 | `.claude/settings.json` | presence + top-level keys of the `hooks` object (key names only, no values) |
-| _(failing hook)_ | filename only if the user named it — never the script body |
+| _(failing hook)_        | filename only if the user named it — never the script body                  |
 
 ### scaffold
 
-| path | one-line summary rule |
-| --- | --- |
+| path                         | one-line summary rule                      |
+| ---------------------------- | ------------------------------------------ |
 | _(failing skill's SKILL.md)_ | filename + first heading line (`# <name>`) |
 
 ### dev-server
 
-| path | one-line summary rule |
-| --- | --- |
-| `vite.config.ts` | presence (filename only) |
-| `package.json` | value of `scripts.dev` field |
+| path             | one-line summary rule        |
+| ---------------- | ---------------------------- |
+| `vite.config.ts` | presence (filename only)     |
+| `package.json`   | value of `scripts.dev` field |
 
 ### other
 

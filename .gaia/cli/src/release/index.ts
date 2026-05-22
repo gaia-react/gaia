@@ -37,18 +37,18 @@ const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type SubcommandHandler = (
-  args: readonly string[]
-) => number | Promise<number>;
+type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 
-const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
-  'bump': runBump,
-  'changelog': runChangelog,
+const SUBCOMMAND_HANDLERS: Readonly<
+  Partial<Record<string, SubcommandHandler>>
+> = {
+  bump: runBump,
+  changelog: runChangelog,
   'commit-and-tag': runCommitAndTag,
-  'manifest': runManifest,
-  'preflight': runPreflight,
+  manifest: runManifest,
+  preflight: runPreflight,
   'runtime-deps': runRuntimeDeps,
-  'scrub': runScrub,
+  scrub: runScrub,
   'scrub-wiki': runScrubWiki,
 };
 

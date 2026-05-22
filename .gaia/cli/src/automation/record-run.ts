@@ -6,11 +6,11 @@
  * ceiling is NOT overage), and overwrites any existing state.
  */
 import {EXIT_CODES} from '../exit.js';
-import {
-  TOOL_IDS,
-  type ToolId,
-} from '../schemas/automation-config.js';
-import type {AutomationStateFile, Trigger} from '../schemas/automation-state.js';
+import {TOOL_IDS, type ToolId} from '../schemas/automation-config.js';
+import type {
+  AutomationStateFile,
+  Trigger,
+} from '../schemas/automation-state.js';
 import {AutomationStateFileSchema} from '../schemas/automation-state.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';

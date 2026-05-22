@@ -7,12 +7,16 @@ import {setupSandbox, type Sandbox} from './sandbox.js';
 
 const silenceStdio = () => {
   const errors: string[] = [];
-  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
-    errors.push(typeof chunk === 'string' ? chunk : String(chunk));
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation(() => true);
+  const stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: unknown) => {
+      errors.push(typeof chunk === 'string' ? chunk : String(chunk));
 
-    return true;
-  });
+      return true;
+    });
 
   return {
     errors,
@@ -61,7 +65,10 @@ describe('automation clear-overage', () => {
   });
 
   it('is a silent OK when cost_overage already false', () => {
-    sandbox.writeState('wiki', {...overageState(sandbox.headSha), cost_overage: false});
+    sandbox.writeState('wiki', {
+      ...overageState(sandbox.headSha),
+      cost_overage: false,
+    });
     const exit = run(['wiki'], {cwd: sandbox.root});
     expect(exit).toBe(0);
   });

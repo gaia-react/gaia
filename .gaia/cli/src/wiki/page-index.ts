@@ -94,7 +94,8 @@ const stringValue = (value: Frontmatter[string]): string | null => {
 };
 
 const arrayOfStrings = (value: Frontmatter[string]): string[] => {
-  if (Array.isArray(value)) return value.filter((entry) => typeof entry === 'string');
+  if (Array.isArray(value))
+    return value.filter((entry) => typeof entry === 'string');
   if (typeof value === 'string' && value.length > 0) return [value];
 
   return [];

@@ -22,15 +22,23 @@ import {
 
 describe('classifyCommit', () => {
   test('feat: → minor', () => {
-    expect(classifyCommit({body: '', subject: 'feat: add thing'})).toBe('minor');
-    expect(classifyCommit({body: '', subject: 'feat(scope): add'})).toBe('minor');
+    expect(classifyCommit({body: '', subject: 'feat: add thing'})).toBe(
+      'minor'
+    );
+    expect(classifyCommit({body: '', subject: 'feat(scope): add'})).toBe(
+      'minor'
+    );
   });
 
   test('fix:/docs:/etc → patch', () => {
     expect(classifyCommit({body: '', subject: 'fix: a bug'})).toBe('patch');
     expect(classifyCommit({body: '', subject: 'docs: typo'})).toBe('patch');
-    expect(classifyCommit({body: '', subject: 'chore(deps): bump'})).toBe('patch');
-    expect(classifyCommit({body: '', subject: 'refactor: clean'})).toBe('patch');
+    expect(classifyCommit({body: '', subject: 'chore(deps): bump'})).toBe(
+      'patch'
+    );
+    expect(classifyCommit({body: '', subject: 'refactor: clean'})).toBe(
+      'patch'
+    );
     expect(classifyCommit({body: '', subject: 'perf: speed'})).toBe('patch');
     expect(classifyCommit({body: '', subject: 'ci: pipeline'})).toBe('patch');
     expect(classifyCommit({body: '', subject: 'test: cover'})).toBe('patch');
@@ -38,13 +46,20 @@ describe('classifyCommit', () => {
   });
 
   test('! suffix → major', () => {
-    expect(classifyCommit({body: '', subject: 'feat!: drop API'})).toBe('major');
-    expect(classifyCommit({body: '', subject: 'fix(scope)!: rename'})).toBe('major');
+    expect(classifyCommit({body: '', subject: 'feat!: drop API'})).toBe(
+      'major'
+    );
+    expect(classifyCommit({body: '', subject: 'fix(scope)!: rename'})).toBe(
+      'major'
+    );
   });
 
   test('BREAKING CHANGE in body → major', () => {
     expect(
-      classifyCommit({body: 'BREAKING CHANGE: removed thing', subject: 'feat: x'})
+      classifyCommit({
+        body: 'BREAKING CHANGE: removed thing',
+        subject: 'feat: x',
+      })
     ).toBe('major');
   });
 
@@ -86,7 +101,10 @@ describe('aggregateBump', () => {
 
   test('no recognizable commits → null', () => {
     expect(
-      aggregateBump([{body: '', subject: 'random'}, {body: '', subject: 'merge'}])
+      aggregateBump([
+        {body: '', subject: 'random'},
+        {body: '', subject: 'merge'},
+      ])
     ).toBeNull();
   });
 });
@@ -124,7 +142,11 @@ const setupSandbox = (currentVersion: string): Sandbox => {
     `${JSON.stringify({name: 'gaia', version: currentVersion}, null, 2)}\n`,
     'utf8'
   );
-  writeFileSync(path.join(root, '.gaia', 'VERSION'), `${currentVersion}\n`, 'utf8');
+  writeFileSync(
+    path.join(root, '.gaia', 'VERSION'),
+    `${currentVersion}\n`,
+    'utf8'
+  );
 
   return {
     cleanup: () => {
@@ -184,15 +206,21 @@ const failResult = (status: number): SpawnSyncReturns<string> => ({
   stdout: '',
 });
 
-const buildLogOutput = (commits: Array<{subject: string; body?: string}>): string => {
+const buildLogOutput = (
+  commits: Array<{subject: string; body?: string}>
+): string => {
   const RECORD_SEPARATOR = '---END-COMMIT---';
 
   return commits
-    .map((commit) => `${commit.subject}\n${commit.body ?? ''}\n${RECORD_SEPARATOR}\n`)
+    .map(
+      (commit) =>
+        `${commit.subject}\n${commit.body ?? ''}\n${RECORD_SEPARATOR}\n`
+    )
     .join('');
 };
 
-const buildRunner = (commits: Array<{subject: string; body?: string}>): CommandRunner =>
+const buildRunner =
+  (commits: Array<{subject: string; body?: string}>): CommandRunner =>
   (command, args) => {
     if (command === 'git' && args[0] === 'describe') {
       // Simulate "no tag yet"
@@ -222,7 +250,10 @@ describe('release bump CLI', () => {
 
   test('proposes minor bump when feat: present, without writing', () => {
     sandbox = setupSandbox('1.2.3');
-    const runner = buildRunner([{subject: 'feat: add thing'}, {subject: 'fix: bug'}]);
+    const runner = buildRunner([
+      {subject: 'feat: add thing'},
+      {subject: 'fix: bug'},
+    ]);
 
     const exit = run([], {cwd: sandbox.root, runner});
     expect(exit).toBe(0);

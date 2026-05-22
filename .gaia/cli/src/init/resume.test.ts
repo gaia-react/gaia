@@ -159,7 +159,7 @@ describe('init resume', () => {
           wiki: 'ci',
         },
         'configure-i18n': {locales: ['en'], strip: false},
-        'rename': {kebab: 'hello', title: 'Hello'},
+        rename: {kebab: 'hello', title: 'Hello'},
         'strip-branding': {title: 'Hello'},
         'wire-statusline': {mode: 'skip'},
       },
@@ -177,8 +177,8 @@ describe('init resume', () => {
       runners: {
         'configure-automation': stub('configure-automation'),
         'configure-i18n': stub('configure-i18n'),
-        'finalize': stub('finalize'),
-        'rename': stub('rename'),
+        finalize: stub('finalize'),
+        rename: stub('rename'),
         'strip-branding': stub('strip-branding'),
         'wire-statusline': stub('wire-statusline'),
       },
@@ -193,12 +193,7 @@ describe('init resume', () => {
       'configure-automation',
       'finalize',
     ]);
-    expect(calls[0]?.argv).toEqual([
-      '--title',
-      'Hello',
-      '--kebab',
-      'hello',
-    ]);
+    expect(calls[0]?.argv).toEqual(['--title', 'Hello', '--kebab', 'hello']);
   });
 
   test('default --from-step 1 still skips already-complete steps', () => {
@@ -213,7 +208,7 @@ describe('init resume', () => {
           wiki: 'ci',
         },
         'configure-i18n': {locales: ['en'], strip: true},
-        'rename': {kebab: 'x', title: 'X'},
+        rename: {kebab: 'x', title: 'X'},
         'strip-branding': {title: 'X'},
         'wire-statusline': {mode: 'skip'},
       },
@@ -231,8 +226,8 @@ describe('init resume', () => {
       runners: {
         'configure-automation': stub('configure-automation'),
         'configure-i18n': stub('configure-i18n'),
-        'finalize': stub('finalize'),
-        'rename': stub('rename'),
+        finalize: stub('finalize'),
+        rename: stub('rename'),
         'strip-branding': stub('strip-branding'),
         'wire-statusline': stub('wire-statusline'),
       },

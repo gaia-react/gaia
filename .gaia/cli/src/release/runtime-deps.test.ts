@@ -1,12 +1,7 @@
 /**
  * Tests for `gaia-maintainer release runtime-deps`.
  */
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
@@ -16,7 +11,9 @@ type Sandbox = {
   cleanup: () => void;
   rootDir: string;
   writeFile: (relativePath: string, contents: string) => void;
-  writeManifest: (files: Record<string, 'owned' | 'shared' | 'wiki-owned'>) => void;
+  writeManifest: (
+    files: Record<string, 'owned' | 'shared' | 'wiki-owned'>
+  ) => void;
 };
 
 const setupSandbox = (): Sandbox => {
@@ -106,7 +103,10 @@ describe('extractPathRefs', () => {
       '.claude/hooks/foo.sh',
       'if [ -x .gaia/cli/gaia ]; then\n  .gaia/cli/gaia run\nfi\n'
     );
-    expect(refs.map((r) => r.path)).toEqual(['.gaia/cli/gaia', '.gaia/cli/gaia']);
+    expect(refs.map((r) => r.path)).toEqual([
+      '.gaia/cli/gaia',
+      '.gaia/cli/gaia',
+    ]);
   });
 
   test('does not match substrings inside larger paths', () => {
@@ -293,7 +293,11 @@ describe('release runtime-deps CLI', () => {
     writeFileSync(
       path.join(stagingDir, '.gaia/manifest.json'),
       `${JSON.stringify(
-        {files: {'.gaia/cli/gaia': 'owned'}, generated: '2026-05-08T00:00:00Z', version: '1.0.0'},
+        {
+          files: {'.gaia/cli/gaia': 'owned'},
+          generated: '2026-05-08T00:00:00Z',
+          version: '1.0.0',
+        },
         null,
         2
       )}\n`,

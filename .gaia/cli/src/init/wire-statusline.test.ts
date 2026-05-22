@@ -35,7 +35,9 @@ const FIXTURE_SETTINGS = {
 
 const setupSandbox = (withProjectSettings = true): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-wire-statusline-'));
-  const home = mkdtempSync(path.join(tmpdir(), 'gaia-init-wire-statusline-home-'));
+  const home = mkdtempSync(
+    path.join(tmpdir(), 'gaia-init-wire-statusline-home-')
+  );
 
   if (withProjectSettings) {
     mkdirSync(path.join(root, '.claude'), {recursive: true});
@@ -141,7 +143,10 @@ describe('init wire-statusline CLI', () => {
   test('--mode project produces a deterministic merge against fixture', () => {
     sandbox = setupSandbox(true);
 
-    const exit = run(['--mode', 'project'], {cwd: sandbox.root, home: sandbox.home});
+    const exit = run(['--mode', 'project'], {
+      cwd: sandbox.root,
+      home: sandbox.home,
+    });
     expect(exit).toBe(0);
     expect(stdio.errors.join('')).toBe('');
 
@@ -170,7 +175,10 @@ describe('init wire-statusline CLI', () => {
   test('--mode global writes to a temp $HOME', () => {
     sandbox = setupSandbox(false);
 
-    const exit = run(['--mode', 'global'], {cwd: sandbox.root, home: sandbox.home});
+    const exit = run(['--mode', 'global'], {
+      cwd: sandbox.root,
+      home: sandbox.home,
+    });
     expect(exit).toBe(0);
 
     const target = path.join(sandbox.home, '.claude', 'settings.json');
@@ -190,7 +198,10 @@ describe('init wire-statusline CLI', () => {
       'utf8'
     );
 
-    const exit = run(['--mode', 'skip'], {cwd: sandbox.root, home: sandbox.home});
+    const exit = run(['--mode', 'skip'], {
+      cwd: sandbox.root,
+      home: sandbox.home,
+    });
     expect(exit).toBe(0);
 
     const after = readFileSync(
@@ -210,7 +221,10 @@ describe('init wire-statusline CLI', () => {
       path.join(sandbox.root, '.claude', 'settings.json'),
       'utf8'
     );
-    const second = run(['--mode', 'project'], {cwd: sandbox.root, home: sandbox.home});
+    const second = run(['--mode', 'project'], {
+      cwd: sandbox.root,
+      home: sandbox.home,
+    });
     expect(second).toBe(0);
     const after = readFileSync(
       path.join(sandbox.root, '.claude', 'settings.json'),
@@ -221,7 +235,10 @@ describe('init wire-statusline CLI', () => {
 
   test('exit 1 on invalid mode', () => {
     sandbox = setupSandbox(true);
-    const exit = run(['--mode', 'bogus'], {cwd: sandbox.root, home: sandbox.home});
+    const exit = run(['--mode', 'bogus'], {
+      cwd: sandbox.root,
+      home: sandbox.home,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--mode must be');
   });
@@ -242,7 +259,10 @@ describe('init wire-statusline CLI', () => {
       'utf8'
     );
 
-    const exit = run(['--mode', 'project'], {cwd: sandbox.root, home: sandbox.home});
+    const exit = run(['--mode', 'project'], {
+      cwd: sandbox.root,
+      home: sandbox.home,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('settings_malformed');
   });

@@ -9,6 +9,7 @@ model: haiku
 Trigger: user asks to create a custom React hook.
 
 ## Workflow
-1. Confirm: name (use*), params, return type.
+
+1. Confirm: name (use\*), params, return type.
 2. Run: `gaia scaffold hook <useFoo> [--params "a:string,b:number"] [--returns "ReturnType"]`.
 3. Verify: `pnpm typecheck` clean. Open and sanity-check.

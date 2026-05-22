@@ -14,11 +14,11 @@ tags: [concept, claude, workflow, wiki]
 
 Three wiki commands with non-overlapping scopes:
 
-| Command | Scope |
-| --- | --- |
-| [[Wiki Sync\|`/gaia wiki sync`]] | Commit-driven: per-commit updates from code to wiki |
-| [[GAIA Spec\|`/gaia spec`]] → `wiki-promote` | Per-SPEC: promotes SPEC artifact content into wiki domain pages |
-| `/gaia wiki consolidate` | Cross-SPEC: detects redundancy and contradiction after multiple SPECs land |
+| Command                                      | Scope                                                                      |
+| -------------------------------------------- | -------------------------------------------------------------------------- |
+| [[Wiki Sync\|`/gaia wiki sync`]]             | Commit-driven: per-commit updates from code to wiki                        |
+| [[GAIA Spec\|`/gaia spec`]] → `wiki-promote` | Per-SPEC: promotes SPEC artifact content into wiki domain pages            |
+| `/gaia wiki consolidate`                     | Cross-SPEC: detects redundancy and contradiction after multiple SPECs land |
 
 `wiki-promote` writes correctly per SPEC. Consolidate is the "are the combined writes still coherent?" pass.
 

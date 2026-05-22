@@ -1,5 +1,8 @@
 import {describe, expect, it} from 'vitest';
-import type {AutomationConfig, ToolId} from '../../schemas/automation-config.js';
+import type {
+  AutomationConfig,
+  ToolId,
+} from '../../schemas/automation-config.js';
 import {workflowPartialsDirectory, workflowTemplatePath} from '../paths.js';
 import {renderWorkflowTemplate} from '../render.js';
 import {buildWorkflowVars} from '../workflow-vars.js';

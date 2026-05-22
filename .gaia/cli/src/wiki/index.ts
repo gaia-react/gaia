@@ -47,9 +47,7 @@ const SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type SubcommandHandler = (
-  args: readonly string[]
-) => number | Promise<number>;
+type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 
 const runSync: SubcommandHandler = async (
   args: readonly string[]
@@ -76,18 +74,20 @@ const runSync: SubcommandHandler = async (
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+const SUBCOMMAND_HANDLERS: Readonly<
+  Partial<Record<string, SubcommandHandler>>
+> = {
   'commit-classify': runCommitClassify,
   'dead-paths': runDeadPaths,
   'diff-size': runDiffSize,
   'log-prepend': runLogPrepend,
   'near-collisions': runNearCollisions,
-  'orphans': runOrphans,
+  orphans: runOrphans,
   'page-index': runPageIndex,
-  'state': runState,
+  state: runState,
   'state-bump': runStateBump,
   'state-init': runStateInit,
-  'sync': runSync,
+  sync: runSync,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {

@@ -59,7 +59,11 @@ type VerifyOutput = {
 
 type RunListEntry = {createdAt?: string; databaseId: number | string};
 
-type RunViewPayload = {conclusion?: null | string; status?: string; url?: string};
+type RunViewPayload = {
+  conclusion?: null | string;
+  status?: string;
+  url?: string;
+};
 
 /**
  * Parse a strictly-decimal positive integer. Unlike `Number.parseInt`,
@@ -98,10 +102,10 @@ const sleep = (ms: number): Promise<void> =>
 
 const printHuman = (output: VerifyOutput): void => {
   process.stdout.write(
-    `verified: ${String(output.verified)}\n`
-      + `run_id: ${output.run_id ?? '(none)'}\n`
-      + `conclusion: ${output.conclusion ?? '(none)'}\n`
-      + `url: ${output.url ?? '(none)'}\n`
+    `verified: ${String(output.verified)}\n` +
+      `run_id: ${output.run_id ?? '(none)'}\n` +
+      `conclusion: ${output.conclusion ?? '(none)'}\n` +
+      `url: ${output.url ?? '(none)'}\n`
   );
 };
 
@@ -322,13 +326,13 @@ export const run = async (
       const createdAtMs = new Date(first.createdAt).getTime();
 
       if (
-        !Number.isNaN(createdAtMs)
-        && createdAtMs < triggerTime - RACE_WINDOW_GUARD_MS
+        !Number.isNaN(createdAtMs) &&
+        createdAtMs < triggerTime - RACE_WINDOW_GUARD_MS
       ) {
         process.stderr.write(
-          `verify-run: warning — picked run ${runId} createdAt `
-            + `${first.createdAt} predates trigger time by `
-            + `${triggerTime - createdAtMs}ms; may be a concurrent dispatch\n`
+          `verify-run: warning — picked run ${runId} createdAt ` +
+            `${first.createdAt} predates trigger time by ` +
+            `${triggerTime - createdAtMs}ms; may be a concurrent dispatch\n`
         );
       }
     }
@@ -352,13 +356,7 @@ export const run = async (
   // immediately in tests.
   while (true) {
     const view = await runGh({
-      args: [
-        'run',
-        'view',
-        runId,
-        '--json',
-        'status,conclusion,url',
-      ],
+      args: ['run', 'view', runId, '--json', 'status,conclusion,url'],
       cwd,
     });
 

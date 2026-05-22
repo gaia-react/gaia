@@ -25,7 +25,12 @@ Each step records itself in `.gaia/local/setup-state.json` via `gaia setup mark-
   "started_at": "2026-05-07T12:00:00.000Z",
   "completed_at": null,
   "completed_steps": ["install-tools", "install-plugins"],
-  "pending_steps": ["init-speckit", "chmod-statusline", "bootstrap-env", "mentorship-decision"]
+  "pending_steps": [
+    "init-speckit",
+    "chmod-statusline",
+    "bootstrap-env",
+    "mentorship-decision"
+  ]
 }
 ```
 

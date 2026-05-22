@@ -50,7 +50,7 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
       <input name="redirectUrl" type="hidden" value={redirectUrl} />
       <select
         aria-label={t('language')}
-        className="bg-transparent! ring-0! cursor-pointer border-none bg-none p-0 text-sm"
+        className="cursor-pointer border-none bg-transparent! bg-none p-0 text-sm ring-0!"
         defaultValue={language}
         name="language"
       >

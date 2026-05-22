@@ -72,10 +72,12 @@ const numberField = (payload: unknown, key: string): number => {
   // `question_count` is a count: only finite, non-negative numbers are
   // valid. Negative / NaN / Infinity values coerce to 0 so a single
   // malformed event cannot poison the per-area mean.
-  return typeof candidate === 'number' &&
-    Number.isFinite(candidate) &&
-    candidate >= 0
-    ? candidate
+  return (
+      typeof candidate === 'number' &&
+        Number.isFinite(candidate) &&
+        candidate >= 0
+    ) ?
+      candidate
     : 0;
 };
 

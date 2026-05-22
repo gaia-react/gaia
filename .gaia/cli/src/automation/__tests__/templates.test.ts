@@ -1,6 +1,9 @@
 import {load} from 'js-yaml';
 import {describe, expect, it} from 'vitest';
-import type {AutomationConfig, ToolId} from '../../schemas/automation-config.js';
+import type {
+  AutomationConfig,
+  ToolId,
+} from '../../schemas/automation-config.js';
 import {workflowPartialsDirectory, workflowTemplatePath} from '../paths.js';
 import {renderWorkflowTemplate} from '../render.js';
 import {buildWorkflowVars} from '../workflow-vars.js';
@@ -30,9 +33,7 @@ const renderForTool = (tool: ToolId): string => {
 const parseRendered = (raw: string): Record<string, unknown> =>
   load(raw) as Record<string, unknown>;
 
-const stepNames = (
-  doc: Record<string, unknown>
-): readonly string[] => {
+const stepNames = (doc: Record<string, unknown>): readonly string[] => {
   const jobs = doc.jobs as {run: {steps: ReadonlyArray<{name: string}>}};
 
   return jobs.run.steps.map((step) => step.name);
@@ -53,19 +54,15 @@ describe('workflow templates — gaia-ci-wiki', () => {
 
   it('parses cleanly as YAML with the expected top-level keys', () => {
     expect(Object.keys(doc).sort()).toEqual(
-      [
-        'concurrency',
-        'env',
-        'jobs',
-        'name',
-        'on',
-        'permissions',
-      ].sort()
+      ['concurrency', 'env', 'jobs', 'name', 'on', 'permissions'].sort()
     );
   });
 
   it('declares cron 0 4 * * * (daily) and workflow_dispatch', () => {
-    const on = doc.on as {schedule: Array<{cron: string}>; workflow_dispatch: unknown};
+    const on = doc.on as {
+      schedule: Array<{cron: string}>;
+      workflow_dispatch: unknown;
+    };
     expect(on.schedule[0]?.cron).toBe('0 4 * * *');
     expect(on.workflow_dispatch).toBeDefined();
   });
@@ -128,19 +125,21 @@ describe('workflow templates — gaia-ci-update-deps', () => {
   });
 
   it('uses concurrency group gaia-ci-update-deps', () => {
-    expect((doc.concurrency as {group: string}).group).toBe('gaia-ci-update-deps');
+    expect((doc.concurrency as {group: string}).group).toBe(
+      'gaia-ci-update-deps'
+    );
   });
 
   it('invokes the emit-updates plan + claude-code-action chain', () => {
-    expect(rendered).toContain(
-      'update-deps run --emit-updates'
-    );
+    expect(rendered).toContain('update-deps run --emit-updates');
     expect(rendered).toContain(
       'anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314'
     );
     expect(rendered).toContain('wave_b_matrix');
     expect(rendered).toContain('strategy:');
-    expect(rendered).toContain('matrix: ${{ fromJson(needs.run.outputs.wave_b_matrix) }}');
+    expect(rendered).toContain(
+      'matrix: ${{ fromJson(needs.run.outputs.wave_b_matrix) }}'
+    );
   });
 
   it('emits the auto-merge step', () => {
@@ -259,9 +258,11 @@ describe('workflow templates — cross-tool invariants', () => {
     'every rendered file declares cancel-in-progress: false (%s)',
     (tool) => {
       const doc = parseRendered(renderForTool(tool));
-      expect((doc.concurrency as {'cancel-in-progress': boolean})['cancel-in-progress']).toBe(
-        false
-      );
+      expect(
+        (doc.concurrency as {'cancel-in-progress': boolean})[
+          'cancel-in-progress'
+        ]
+      ).toBe(false);
     }
   );
 
@@ -269,7 +270,7 @@ describe('workflow templates — cross-tool invariants', () => {
     'every rendered file runs the open-PR + cron-decide pre-run skip (%s)',
     (tool) => {
       const rendered = renderForTool(tool);
-      expect(rendered).toContain("--label gaia-ci");
+      expect(rendered).toContain('--label gaia-ci');
       expect(rendered).toContain("'author:app/github-actions'");
       expect(rendered).toContain('automation cron-decide');
     }

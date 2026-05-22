@@ -122,10 +122,9 @@ describe('wiki state-bump', () => {
     const exit = run(['baz', 'qux'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(Object.keys(parsed)).toEqual(['version', 'foo', 'baz']);
     expect(parsed.baz).toBe('qux');
   });
@@ -139,10 +138,9 @@ describe('wiki state-bump', () => {
     expect(run(['list', '[1,2,3]'], {cwd: sandbox.root})).toBe(0);
     expect(run(['obj', '{"a":1}'], {cwd: sandbox.root})).toBe(0);
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.count).toBe(42);
     expect(parsed.flag).toBe(true);
     expect(parsed.list).toEqual([1, 2, 3]);
@@ -153,10 +151,9 @@ describe('wiki state-bump', () => {
     sandbox = setupSandbox(JSON.stringify({version: 1}));
     expect(run(['name', 'hello world'], {cwd: sandbox.root})).toBe(0);
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.name).toBe('hello world');
   });
 

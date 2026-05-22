@@ -82,9 +82,9 @@ export const buildWorkflowVars = (
   if (toolConfig.mode !== 'ci') return null;
 
   const schedule =
-    'schedule' in toolConfig && toolConfig.schedule !== undefined
-      ? toolConfig.schedule
-      : DEFAULT_SCHEDULE_BY_TOOL[tool];
+    'schedule' in toolConfig && toolConfig.schedule !== undefined ?
+      toolConfig.schedule
+    : DEFAULT_SCHEDULE_BY_TOOL[tool];
 
   return {
     config_key: configKey,

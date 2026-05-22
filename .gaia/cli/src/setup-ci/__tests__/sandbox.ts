@@ -14,7 +14,13 @@
  *    override) rather than spying on `runGh` directly.
  */
 import {execFileSync} from 'node:child_process';
-import {chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {automationConfigPath} from '../../automation/paths.js';
@@ -111,7 +117,9 @@ process.stdin.on('end', () => {
 export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), prefix));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   writeFileSync(path.join(root, 'README.md'), '# test\n', 'utf8');
   execFileSync('git', ['add', 'README.md'], {cwd: root});
@@ -132,12 +140,14 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
     writeFileSync(automationConfigPath(root), JSON.stringify(config), 'utf8');
   };
 
-  const installGhShim = (options: {
-    exitCode?: number;
-    exitCodeQueue?: number[];
-    stderrQueue?: string[];
-    stdoutQueue?: string[];
-  } = {}): {pathOverride: string; restore: () => void} => {
+  const installGhShim = (
+    options: {
+      exitCode?: number;
+      exitCodeQueue?: number[];
+      stderrQueue?: string[];
+      stdoutQueue?: string[];
+    } = {}
+  ): {pathOverride: string; restore: () => void} => {
     const shimPath = path.join(binDir, 'gh');
     writeFileSync(shimPath, SHIM_NODE_SOURCE, 'utf8');
     chmodSync(shimPath, 0o755);
@@ -230,4 +240,3 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
     writeConfig,
   };
 };
-

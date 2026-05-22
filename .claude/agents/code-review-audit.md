@@ -122,6 +122,7 @@ Performance problems, significant code smells, and architectural concerns that w
 Refactoring opportunities, maintainability improvements, and minor code quality enhancements. Same format as above. **Only include actionable items here** — confirmations of correct patterns belong in What's Done Well, not in this section.
 
 Every suggestion must be resolved before the audit passes:
+
 - **Auto-fix** it in a self-heal commit (preferred), or
 - **Escalate**: document why it cannot be auto-fixed (architectural tradeoff, breaking change, conflicting convention). Escalated suggestions **always block the marker** — documenting the rationale does not satisfy this condition. The operator must resolve the escalation before the marker is written.
 
@@ -332,7 +333,7 @@ After producing the report, decide whether to write the marker:
 
 Knip and react-doctor advisories remain advisory and never block the marker.
 
-When the marker is warranted, the write is a three-step "stamp → mark → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the *new* HEAD; *then* push. Marker-before-push is load-bearing — it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
+When the marker is warranted, the write is a three-step "stamp → mark → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the _new_ HEAD; _then_ push. Marker-before-push is load-bearing — it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
 
 ```bash
 # 1. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per

@@ -73,7 +73,7 @@ Checks `.claude/settings.json`:
 - Any secret-shaped value in the `env` block (`error`).
 - `.claude/settings.local.json` not listed in `.gitignore` (`warning`).
 
-Permission-glob semantics — the rule the auditor applies for the strict-subset check, so it does not over-flag distinct entries: `Bash(cmd)` matches the exact command with no arguments; `Bash(cmd:*)` matches `cmd` invoked *with* arguments. The two are distinct entries, not a redundant pair — a project that runs a command both ways keeps both deliberately. Flag a redundancy only on a genuine strict-subset shadow, e.g. `Bash(git status)` is fully covered by `Bash(git:*)` and is the redundant one.
+Permission-glob semantics — the rule the auditor applies for the strict-subset check, so it does not over-flag distinct entries: `Bash(cmd)` matches the exact command with no arguments; `Bash(cmd:*)` matches `cmd` invoked _with_ arguments. The two are distinct entries, not a redundant pair — a project that runs a command both ways keeps both deliberately. Flag a redundancy only on a genuine strict-subset shadow, e.g. `Bash(git status)` is fully covered by `Bash(git:*)` and is the redundant one.
 
 ### 6. GAIA-install fitness
 
@@ -116,21 +116,21 @@ Per-category grade is deterministic given the finding set for that category. The
 
 ### Per-category bands
 
-| Grade | Condition |
-|---|---|
-| **A+** | Zero findings in the category |
-| **A** | One or two `info` findings, no `warning` or `error` |
-| **A−** | Three or more `info` findings, no `warning` or `error` |
-| **B+** | One `warning`, no `error` |
-| **B** | Two `warning`s, no `error` |
-| **B−** | Three or more `warning`s, no `error` |
-| **C+** | One `error` |
-| **C** | Two `error`s |
-| **C−** | Three `error`s |
-| **D+** | Four `error`s |
-| **D** | Five `error`s |
-| **D−** | Six or more `error`s |
-| **F** | Category is structurally broken — e.g. `.claude/settings.json` is unparseable (settings F); no `CLAUDE.md` exists (`CLAUDE.md` F) |
+| Grade  | Condition                                                                                                                         |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| **A+** | Zero findings in the category                                                                                                     |
+| **A**  | One or two `info` findings, no `warning` or `error`                                                                               |
+| **A−** | Three or more `info` findings, no `warning` or `error`                                                                            |
+| **B+** | One `warning`, no `error`                                                                                                         |
+| **B**  | Two `warning`s, no `error`                                                                                                        |
+| **B−** | Three or more `warning`s, no `error`                                                                                              |
+| **C+** | One `error`                                                                                                                       |
+| **C**  | Two `error`s                                                                                                                      |
+| **C−** | Three `error`s                                                                                                                    |
+| **D+** | Four `error`s                                                                                                                     |
+| **D**  | Five `error`s                                                                                                                     |
+| **D−** | Six or more `error`s                                                                                                              |
+| **F**  | Category is structurally broken — e.g. `.claude/settings.json` is unparseable (settings F); no `CLAUDE.md` exists (`CLAUDE.md` F) |
 
 The grade keys off the worst severity present, then the count at that severity: any `error` → the C/D band for the error count; else any `warning` → the B band for the warning count; else any `info` → the A band for the info count; else `A+`. Every band in the table — including `A−` and `C−` — is reachable for a single category, and the overall (floor) grade can therefore land on any of them. The exact +/− band thresholds are tunable — adjust the counts above for your project's tolerance.
 
@@ -170,15 +170,15 @@ When `/gaia fitness` runs this protocol, the harness is minimal: no Orchestrator
 
 The Orchestrator dispatches the seven category checks as **parallel subagents** (or parallel tool calls — the verifiable property is the structured findings artifact, not the dispatch mechanism):
 
-| Category | Model | What it does |
-|---|---|---|
-| Hook integrity | **Haiku** | File-exists + executable checks on hook command paths; event-name validation against a known-valid list |
-| Settings hygiene | **Haiku** | `jq` parse of `settings.json`; glob-subset detection; secret-pattern grep on `env` values; `.gitignore` check for `settings.local.json` |
-| GAIA-install fitness | **Haiku** | Hash-diff of manifest-tracked files against installed-version checksums; version string comparison |
-| Wiki fitness | **Haiku** | `gaia wiki state` for staleness; `gaia wiki dead-paths`; `gaia wiki orphans` |
-| Skill / command / agent frontmatter | **Sonnet** | Frontmatter completeness + placeholder detection (requires judgment); name-collision check |
-| Rule hygiene | **Sonnet** | Content-vs-glob coherence (requires judgment about whether advice is universal or path-specific); `@`-import detection; `CLAUDE.md` cross-reference |
-| `CLAUDE.md` hygiene | **Sonnet** | Size evaluation vs. project guidance (requires judgment); dead-path + absolute-path grep; `@`-import resolution; folder-map cross-reference |
+| Category                            | Model      | What it does                                                                                                                                        |
+| ----------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hook integrity                      | **Haiku**  | File-exists + executable checks on hook command paths; event-name validation against a known-valid list                                             |
+| Settings hygiene                    | **Haiku**  | `jq` parse of `settings.json`; glob-subset detection; secret-pattern grep on `env` values; `.gitignore` check for `settings.local.json`             |
+| GAIA-install fitness                | **Haiku**  | Hash-diff of manifest-tracked files against installed-version checksums; version string comparison                                                  |
+| Wiki fitness                        | **Haiku**  | `gaia wiki state` for staleness; `gaia wiki dead-paths`; `gaia wiki orphans`                                                                        |
+| Skill / command / agent frontmatter | **Sonnet** | Frontmatter completeness + placeholder detection (requires judgment); name-collision check                                                          |
+| Rule hygiene                        | **Sonnet** | Content-vs-glob coherence (requires judgment about whether advice is universal or path-specific); `@`-import detection; `CLAUDE.md` cross-reference |
+| `CLAUDE.md` hygiene                 | **Sonnet** | Size evaluation vs. project guidance (requires judgment); dead-path + absolute-path grep; `@`-import resolution; folder-map cross-reference         |
 
 **Structured findings only flow back to the Orchestrator.** Raw command output stays in subagent context to avoid return-budget truncation. Each auditor returns an array of `{severity, file, remediation, fingerprint}` objects.
 
@@ -188,12 +188,12 @@ The auditors are recall-oriented — they surface anything suspicious from a fix
 
 The Orchestrator dispatches **lane-aware Fixer subagents (Sonnet)** in parallel. Fixer lanes:
 
-| Lane | Owns |
-|---|---|
+| Lane                 | Owns                                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | **`claude-surface`** | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**` |
-| **`settings`** | `.claude/settings.json` |
-| **`gitignore`** | `.gitignore` |
-| **`manifest`** | `.gaia/manifest.json` |
+| **`settings`**       | `.claude/settings.json`                                                                                              |
+| **`gitignore`**      | `.gitignore`                                                                                                         |
+| **`manifest`**       | `.gaia/manifest.json`                                                                                                |
 
 Manifest edits must serialize — dispatch only a single Fixer at a time when `.gaia/manifest.json` is touched.
 

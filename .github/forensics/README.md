@@ -7,10 +7,10 @@ unit-testable primitives the workflow shells out to.
 
 ## Scripts
 
-| Script | Purpose |
-|--------|---------|
-| `bootstrap-labels.sh` | Maintainer-run, idempotent. Asserts the SPEC-002 phase-2 label vocabulary on the upstream repo; creates any missing labels with frozen colors/descriptions. |
-| `check-scope.sh` | Default-deny path-policy primitive. Classifies candidate paths against the SPEC-002 allowlist/denylist. JSON to stdout. |
+| Script                                                                                                  | Purpose                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bootstrap-labels.sh`                                                                                   | Maintainer-run, idempotent. Asserts the SPEC-002 phase-2 label vocabulary on the upstream repo; creates any missing labels with frozen colors/descriptions. |
+| `check-scope.sh`                                                                                        | Default-deny path-policy primitive. Classifies candidate paths against the SPEC-002 allowlist/denylist. JSON to stdout.                                     |
 | _additional helpers ship with later SPEC-002 phases (body-parser, classifier prompt, action handlers)._ |
 
 ## Run-once: bootstrap labels

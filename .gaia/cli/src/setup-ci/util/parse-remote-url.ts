@@ -54,10 +54,10 @@ const parseTwoSegments = (
   const [owner, repo] = segments;
 
   if (
-    owner === undefined
-    || repo === undefined
-    || !isValidSegment(owner)
-    || !isValidSegment(repo)
+    owner === undefined ||
+    repo === undefined ||
+    !isValidSegment(owner) ||
+    !isValidSegment(repo)
   ) {
     return null;
   }
@@ -76,7 +76,11 @@ export const parseRemoteUrl = (url: string): ParsedRemote | null => {
 
     if (hostMatch === null || restMatch === null) return null;
 
-    return parseTwoSegments(trimmed, hostMatch[1] as string, restMatch[1] as string);
+    return parseTwoSegments(
+      trimmed,
+      hostMatch[1] as string,
+      restMatch[1] as string
+    );
   }
 
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {

@@ -6,16 +6,20 @@ import {setupSandbox, type Sandbox} from './sandbox.js';
 const captureStdio = () => {
   const outputs: string[] = [];
   const errors: string[] = [];
-  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
-    outputs.push(typeof chunk === 'string' ? chunk : String(chunk));
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation((chunk: unknown) => {
+      outputs.push(typeof chunk === 'string' ? chunk : String(chunk));
 
-    return true;
-  });
-  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
-    errors.push(typeof chunk === 'string' ? chunk : String(chunk));
+      return true;
+    });
+  const stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: unknown) => {
+      errors.push(typeof chunk === 'string' ? chunk : String(chunk));
 
-    return true;
-  });
+      return true;
+    });
 
   return {
     errors,
@@ -56,7 +60,10 @@ describe('automation read-state', () => {
     sandbox.writeState('wiki', validState(sandbox.headSha));
     const exit = run(['wiki', '--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
-    const parsed = JSON.parse(stdio.outputs.join('')) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.outputs.join('')) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.last_run_trigger).toBe('cron');
   });
 

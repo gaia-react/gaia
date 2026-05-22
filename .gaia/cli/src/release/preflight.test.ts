@@ -72,28 +72,33 @@ type RecordedCall = {
   command: string;
 };
 
-const buildRunner = (
-  scripted: Array<{argv: readonly string[]; result: SpawnSyncReturns<string>}>,
-  recorded: RecordedCall[]
-): CommandRunner => (command, args) => {
-  recorded.push({args: [...args], command});
+const buildRunner =
+  (
+    scripted: Array<{
+      argv: readonly string[];
+      result: SpawnSyncReturns<string>;
+    }>,
+    recorded: RecordedCall[]
+  ): CommandRunner =>
+  (command, args) => {
+    recorded.push({args: [...args], command});
 
-  for (const entry of scripted) {
-    if (entry.argv.length !== args.length) continue;
-    let match = true;
+    for (const entry of scripted) {
+      if (entry.argv.length !== args.length) continue;
+      let match = true;
 
-    for (let index = 0; index < entry.argv.length; index += 1) {
-      if (entry.argv[index] !== args[index]) {
-        match = false;
-        break;
+      for (let index = 0; index < entry.argv.length; index += 1) {
+        if (entry.argv[index] !== args[index]) {
+          match = false;
+          break;
+        }
       }
+
+      if (match) return entry.result;
     }
 
-    if (match) return entry.result;
-  }
-
-  return okResult('');
-};
+    return okResult('');
+  };
 
 /** A realistic full 40-char SHA — the value `gaia wiki state` records. */
 const STATE_SHA = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
@@ -121,7 +126,10 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
       ],
       recorded
@@ -142,7 +150,10 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('feature/x\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('feature/x\n'),
+        },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
       ],
       recorded
@@ -161,8 +172,14 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
-        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult(' M README.md\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {
+          argv: ['status', '--porcelain=v1', '-uall'],
+          result: okResult(' M README.md\n'),
+        },
       ],
       recorded
     );
@@ -180,7 +197,10 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
         {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
         {
@@ -204,7 +224,10 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
         {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
         {
@@ -228,7 +251,10 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
         {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
         {
@@ -252,7 +278,10 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
         {
           argv: REVPARSE_ARGS,
@@ -282,7 +311,10 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('main\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
         {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
         {
@@ -338,7 +370,10 @@ describe('release preflight', () => {
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
-        {argv: ['rev-parse', '--abbrev-ref', 'HEAD'], result: okResult('release/v1\n')},
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('release/v1\n'),
+        },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
       ],
       recorded

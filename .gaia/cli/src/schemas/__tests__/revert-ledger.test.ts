@@ -43,7 +43,11 @@ const setupSandbox = (): Sandbox => {
     cleanup: () => {
       rmSync(root, {force: true, recursive: true});
     },
-    ledgerPath: path.join(root, '.gaia', 'automation.state-revert-attempts.json'),
+    ledgerPath: path.join(
+      root,
+      '.gaia',
+      'automation.state-revert-attempts.json'
+    ),
     root,
   };
 };

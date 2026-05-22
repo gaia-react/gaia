@@ -67,11 +67,7 @@ describe('insertIntoBarrel', () => {
   test('is idempotent — second call with same line is a no-op', () => {
     const filePath = writeBarrel(
       sandbox.dir,
-      [
-        "export * from './alpha';",
-        "export * from './charlie';",
-        '',
-      ].join('\n')
+      ["export * from './alpha';", "export * from './charlie';", ''].join('\n')
     );
 
     insertIntoBarrel(filePath, "export * from './bravo';");

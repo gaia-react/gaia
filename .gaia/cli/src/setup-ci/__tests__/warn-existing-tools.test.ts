@@ -61,7 +61,10 @@ describe('setup-ci warn-existing-tools', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toEqual([]);
   });
 
@@ -71,7 +74,10 @@ describe('setup-ci warn-existing-tools', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toEqual(['dependabot']);
   });
 
@@ -81,7 +87,10 @@ describe('setup-ci warn-existing-tools', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toEqual(['dependabot']);
   });
 
@@ -91,7 +100,10 @@ describe('setup-ci warn-existing-tools', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toEqual(['renovate']);
   });
 
@@ -102,7 +114,10 @@ describe('setup-ci warn-existing-tools', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toEqual(['renovate']);
   });
 
@@ -113,7 +128,10 @@ describe('setup-ci warn-existing-tools', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toEqual(['dependabot', 'renovate']);
   });
 
@@ -124,7 +142,10 @@ describe('setup-ci warn-existing-tools', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toEqual(['dependabot']);
   });
 

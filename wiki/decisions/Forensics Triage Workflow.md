@@ -42,42 +42,42 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 
 ### Allowlist (eligible for autonomous fixes)
 
-| Path | Notes |
-| --- | --- |
-| `.gaia/cli/` | GAIA CLI source. |
-| `.claude/hooks/` | Shell hooks. |
-| `.claude/skills/` | Skill markdown. |
-| `.claude/commands/` | Slash command definitions. |
-| `.claude/agents/` | Sub-agent definitions. |
-| `.gaia/statusline/` | Statusline scripts. |
+| Path                        | Notes                                             |
+| --------------------------- | ------------------------------------------------- |
+| `.gaia/cli/`                | GAIA CLI source.                                  |
+| `.claude/hooks/`            | Shell hooks.                                      |
+| `.claude/skills/`           | Skill markdown.                                   |
+| `.claude/commands/`         | Slash command definitions.                        |
+| `.claude/agents/`           | Sub-agent definitions.                            |
+| `.gaia/statusline/`         | Statusline scripts.                               |
 | `.specify/extensions/gaia/` | GAIA spec-kit extension — excluding `templates/`. |
-| `.gaia/manifest.json` | Distribution manifest. |
+| `.gaia/manifest.json`       | Distribution manifest.                            |
 
 ### Denylist (never modify)
 
-| Path | Notes |
-| --- | --- |
-| `app/` | Application source. |
-| `wiki/` | Knowledge base; human-curated. |
-| `studio/` | Private maintainer vault. |
-| `website/` | Marketing + docs site. |
-| `.specify/specs/` | spec-kit specs. |
-| `.specify/memory/` | spec-kit memory. |
-| `.gaia/local/specs/` | GAIA spec artifacts. |
-| `.specify/extensions/gaia/templates/` | Template literals; mutating these affects every adopter. |
-| `.github/workflows/` | Workflow files; covers self-modification of the triage workflow itself. |
+| Path                                  | Notes                                                                   |
+| ------------------------------------- | ----------------------------------------------------------------------- |
+| `app/`                                | Application source.                                                     |
+| `wiki/`                               | Knowledge base; human-curated.                                          |
+| `studio/`                             | Private maintainer vault.                                               |
+| `website/`                            | Marketing + docs site.                                                  |
+| `.specify/specs/`                     | spec-kit specs.                                                         |
+| `.specify/memory/`                    | spec-kit memory.                                                        |
+| `.gaia/local/specs/`                  | GAIA spec artifacts.                                                    |
+| `.specify/extensions/gaia/templates/` | Template literals; mutating these affects every adopter.                |
+| `.github/workflows/`                  | Workflow files; covers self-modification of the triage workflow itself. |
 
 ## Label vocabulary
 
 All five labels must pre-exist on the upstream repo. `bootstrap-labels.sh` asserts the inventory and creates missing entries with the canonical color and description; existing labels with drifted color or description log a notice and stay untouched (operator wins).
 
-| Label | Color | Meaning |
-| --- | --- | --- |
-| `gaia-triaged` | green (`0e8a16`) | Idempotency key. Set on every triaged issue; presence is the early-exit condition. |
-| `non-issue` | grey (`cccccc`) | Not a bug. Issue closed with explanation. |
-| `needs-human` | orange (`d93f0b`) | Real bug, but out of autofix scope OR malformed body OR ambiguous classifier verdict OR Quality Gate failure. Maintainer review required. |
-| `auto-fixable` | blue (`1d76db`) | Classifier proposed a fix in allowlisted scope. See linked draft PR. |
-| `gaia-bug-confirmed` | red (`b60205`) | Quality Gate passed on the auto-fix branch. Draft PR open and ready for human review. |
+| Label                | Color             | Meaning                                                                                                                                   |
+| -------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `gaia-triaged`       | green (`0e8a16`)  | Idempotency key. Set on every triaged issue; presence is the early-exit condition.                                                        |
+| `non-issue`          | grey (`cccccc`)   | Not a bug. Issue closed with explanation.                                                                                                 |
+| `needs-human`        | orange (`d93f0b`) | Real bug, but out of autofix scope OR malformed body OR ambiguous classifier verdict OR Quality Gate failure. Maintainer review required. |
+| `auto-fixable`       | blue (`1d76db`)   | Classifier proposed a fix in allowlisted scope. See linked draft PR.                                                                      |
+| `gaia-bug-confirmed` | red (`b60205`)    | Quality Gate passed on the auto-fix branch. Draft PR open and ready for human review.                                                     |
 
 The `gaia-forensics` trigger label is owned by phase 1 of the forensics arc (the `/gaia forensics` end-user bridge) and is not part of `bootstrap-labels.sh`'s inventory.
 
@@ -100,15 +100,15 @@ Branch protection and the draft-PR contract are the autonomous-mode safety rails
 
 ## Failure modes
 
-| Failure | Behavior |
-| --- | --- |
-| **Issue body missing or malformed.** | Parser detects the missing/malformed section without LLM fallback. Issue is labeled `needs-human`; comment names the section; no classifier runs. |
-| **Classifier verdict ambiguous** (no `GAIA-VERDICT:` line, multiple lines, value outside the closed set, or `auto-fixable` without a parseable `Proposed paths` block). | Verdict normalizes to `ambiguous`; `needs-human` handler fires with reason-code `ambiguous-verdict`. |
-| **Proposed paths cross the scope boundary.** | `check-scope.sh` rejects before any branch is created. Comment names the rejected paths; issue demoted to `needs-human` with reason-code `out-of-scope`. |
-| **Apply-fix model goes off-script** (touches paths it didn't propose, or emits the `GAIA-FIX-ABORT:` escape line). | Pre-commit verification catches the deviation. Local edits are discarded; branch is never pushed; issue demoted to `needs-human`. |
-| **Quality Gate fails.** | Branch is never pushed (no `forensics/<issue-num>-*` ref ever exists on origin). `auto-fixable` label is NOT applied. Issue is demoted to `needs-human` with a comment naming the failed step, an excerpt of the failure log, and a link to the workflow run. |
-| **Two events for the same issue fire in rapid succession.** | A `concurrency` block keyed on the issue number with `cancel-in-progress: false` queues the second run. The first run applies `gaia-triaged`; the queued run hits the early-exit and does no work. No duplicate label, comment, branch, or PR. |
-| **Job exceeds 30 minutes.** | The job-level timeout aborts cleanly. The workflow is fail-forward: any labels applied before the timeout stay (no rollback). |
+| Failure                                                                                                                                                                 | Behavior                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Issue body missing or malformed.**                                                                                                                                    | Parser detects the missing/malformed section without LLM fallback. Issue is labeled `needs-human`; comment names the section; no classifier runs.                                                                                                             |
+| **Classifier verdict ambiguous** (no `GAIA-VERDICT:` line, multiple lines, value outside the closed set, or `auto-fixable` without a parseable `Proposed paths` block). | Verdict normalizes to `ambiguous`; `needs-human` handler fires with reason-code `ambiguous-verdict`.                                                                                                                                                          |
+| **Proposed paths cross the scope boundary.**                                                                                                                            | `check-scope.sh` rejects before any branch is created. Comment names the rejected paths; issue demoted to `needs-human` with reason-code `out-of-scope`.                                                                                                      |
+| **Apply-fix model goes off-script** (touches paths it didn't propose, or emits the `GAIA-FIX-ABORT:` escape line).                                                      | Pre-commit verification catches the deviation. Local edits are discarded; branch is never pushed; issue demoted to `needs-human`.                                                                                                                             |
+| **Quality Gate fails.**                                                                                                                                                 | Branch is never pushed (no `forensics/<issue-num>-*` ref ever exists on origin). `auto-fixable` label is NOT applied. Issue is demoted to `needs-human` with a comment naming the failed step, an excerpt of the failure log, and a link to the workflow run. |
+| **Two events for the same issue fire in rapid succession.**                                                                                                             | A `concurrency` block keyed on the issue number with `cancel-in-progress: false` queues the second run. The first run applies `gaia-triaged`; the queued run hits the early-exit and does no work. No duplicate label, comment, branch, or PR.                |
+| **Job exceeds 30 minutes.**                                                                                                                                             | The job-level timeout aborts cleanly. The workflow is fail-forward: any labels applied before the timeout stay (no rollback).                                                                                                                                 |
 
 There is no retry loop. One fix attempt per issue; failure is terminal in autonomous mode. A maintainer can manually unstick by removing `gaia-triaged` and re-firing — that is a manual operation, outside the workflow's contract.
 

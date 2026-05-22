@@ -49,7 +49,7 @@ const LinkButton: FC<LinkButtonProps> = ({
   );
 
   const css = twMerge(
-    'plain-link select-none whitespace-nowrap text-center',
+    'plain-link text-center whitespace-nowrap select-none',
     disabled ?
       VARIANTS[variant].split('disabled:').join('')
     : VARIANTS[variant],

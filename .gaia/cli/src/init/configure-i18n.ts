@@ -69,7 +69,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -151,7 +152,9 @@ const LANGUAGES_INDEX = 'app/languages/index.ts';
 const I18N_FILE = 'app/i18n.ts';
 
 const renderLanguagesIndex = (locales: readonly string[]): string => {
-  const imports = locales.map((code) => `import ${code} from './${code}';`).join('\n');
+  const imports = locales
+    .map((code) => `import ${code} from './${code}';`)
+    .join('\n');
   const list = locales.map((code) => `'${code}'`).join(', ');
   const union = locales.map((code) => `'${code}'`).join(' | ');
   const exports = locales.join(', ');
@@ -166,7 +169,10 @@ export default {${exports}} as const;
 `;
 };
 
-const updateLanguagesIndex = (cwd: string, locales: readonly string[]): void => {
+const updateLanguagesIndex = (
+  cwd: string,
+  locales: readonly string[]
+): void => {
   const target = path.join(cwd, LANGUAGES_INDEX);
 
   if (!existsSync(target)) return;

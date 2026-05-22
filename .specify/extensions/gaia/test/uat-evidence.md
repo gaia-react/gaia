@@ -216,7 +216,7 @@ Evidence:
 Evidence (v2 reshape — manifest `requires.speckit_version` + runtime drift detection):
 
 - `.specify/extensions/gaia/extension.yml` — `requires.speckit_version: ">=0.8.5,<0.10.0"` (specifier-set range, real spec-kit schema; PR #84's fictional `==X.Y.Z` literal removed).
-- `lib/version-check.sh` — parses the pinned specifier set, resolves both the floor and the optional exclusive ceiling, compares against runtime `specify --version`. Drift below the floor *or* at-or-above the ceiling → exit 1 with stderr message naming both versions and the upgrade command. Match → cache the verification at `.gaia/local/cache/version-check.lock` for the calendar day.
+- `lib/version-check.sh` — parses the pinned specifier set, resolves both the floor and the optional exclusive ceiling, compares against runtime `specify --version`. Drift below the floor _or_ at-or-above the ceiling → exit 1 with stderr message naming both versions and the upgrade command. Match → cache the verification at `.gaia/local/cache/version-check.lock` for the calendar day.
 - `commands/constitution-check.md` Step 1 — invokes `version-check.sh` and halts the lifecycle on drift.
 - The pin is enforced by the manifest's `requires.speckit_version` at install time (spec-kit refuses to install an extension whose pin doesn't match) AND by `version-check.sh` at runtime (catches drift between install and runtime, e.g. when the pin floor was bumped but the user hasn't re-installed).
 

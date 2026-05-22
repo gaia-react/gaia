@@ -1,6 +1,6 @@
 ---
 type: meta
-title: "Lint Report 2026-05-07"
+title: 'Lint Report 2026-05-07'
 created: 2026-05-07
 updated: 2026-05-07
 tags: [meta, lint]
@@ -22,6 +22,7 @@ DragonScale Mechanism 2 (Address Validation): skipped — `./scripts/allocate-ad
 DragonScale Mechanism 3 (Semantic Tiling): skipped — `./scripts/tiling-check.py` not present.
 
 **Resolved since 2026-05-06:**
+
 - ✓ [[README]] dead link `[[Note Name]]` — fixed.
 - ✓ [[README]] stale `sources/` directory reference — fixed.
 - ✓ Missing index entry for `lint-report-2026-05-04` — fixed.
@@ -107,4 +108,4 @@ Skipped. DragonScale Mechanism 3 not adopted (no `./scripts/tiling-check.py`). S
 
 ℹ 1 commit behind HEAD. Run `/wiki-sync` at next opportunity. Recent unsynced commits:
 
-  - 33a7d63 wiki: sync through 320335e (1 updated, 3 skipped) (#92)
+- 33a7d63 wiki: sync through 320335e (1 updated, 3 skipped) (#92)

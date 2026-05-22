@@ -189,9 +189,9 @@ export const extractPathRefs = (
         const leading = found === 0 ? '' : (stripped[found - 1] as string);
 
         if (
-          leading.length > 0
-          && PATH_BODY_CHAR.test(leading)
-          && !isVariableExpansionContext(stripped, found)
+          leading.length > 0 &&
+          PATH_BODY_CHAR.test(leading) &&
+          !isVariableExpansionContext(stripped, found)
         ) {
           cursor = found + 1;
           continue;
@@ -303,7 +303,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -409,10 +410,11 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const root = parsed.flags.stagingDir
-    ? (path.isAbsolute(parsed.flags.stagingDir)
-      ? parsed.flags.stagingDir
-      : path.join(cwd, parsed.flags.stagingDir))
+  const root =
+    parsed.flags.stagingDir ?
+      path.isAbsolute(parsed.flags.stagingDir) ?
+        parsed.flags.stagingDir
+      : path.join(cwd, parsed.flags.stagingDir)
     : cwd;
 
   try {
@@ -427,10 +429,11 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const manifestPath = parsed.flags.manifestPath
-    ? (path.isAbsolute(parsed.flags.manifestPath)
-      ? parsed.flags.manifestPath
-      : path.join(cwd, parsed.flags.manifestPath))
+  const manifestPath =
+    parsed.flags.manifestPath ?
+      path.isAbsolute(parsed.flags.manifestPath) ?
+        parsed.flags.manifestPath
+      : path.join(cwd, parsed.flags.manifestPath)
     : path.join(root, '.gaia', 'manifest.json');
 
   let manifest: ReadonlySet<string>;

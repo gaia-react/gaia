@@ -1,9 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
@@ -50,7 +45,10 @@ describe('schemas/automation-state', () => {
 
     it('rejects a non-40-char sha', () => {
       expect(() =>
-        AutomationStateFileSchema.parse({...VALID_STATE, last_run_sha: 'abc123'})
+        AutomationStateFileSchema.parse({
+          ...VALID_STATE,
+          last_run_sha: 'abc123',
+        })
       ).toThrow();
     });
 
@@ -86,7 +84,10 @@ describe('schemas/automation-state', () => {
 
     it('rejects unknown trigger', () => {
       expect(() =>
-        AutomationStateFileSchema.parse({...VALID_STATE, last_run_trigger: 'rerun'})
+        AutomationStateFileSchema.parse({
+          ...VALID_STATE,
+          last_run_trigger: 'rerun',
+        })
       ).toThrow();
     });
   });

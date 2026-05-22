@@ -4,15 +4,15 @@ GAIA's verification artifacts split across two trees: `.specify/extensions/gaia/
 
 ## Decision table
 
-| Property        | UAT runbook                                 | Release-gate harness                                       |
-| --------------- | ------------------------------------------- | ---------------------------------------------------------- |
-| Tree            | `.specify/extensions/gaia/test/`            | `.gaia/tests/smoke/`                                     |
-| Audience        | maintainer reading                          | machine running                                            |
-| Output          | walk-through narrative                      | exit code + PASS/FAIL log                                  |
-| Tied to         | a specific SPEC's UAT(s)                    | a feature shipping in the wild                             |
-| Lifetime        | retired when the SPEC closes                | lives until the feature is ripped out                      |
-| When run        | once, during SPEC verification              | repeatedly, before each release                            |
-| Determinism     | mixed: maintainer-judgment steps allowed    | fully deterministic; every step is machine-checkable       |
+| Property    | UAT runbook                              | Release-gate harness                                 |
+| ----------- | ---------------------------------------- | ---------------------------------------------------- |
+| Tree        | `.specify/extensions/gaia/test/`         | `.gaia/tests/smoke/`                                 |
+| Audience    | maintainer reading                       | machine running                                      |
+| Output      | walk-through narrative                   | exit code + PASS/FAIL log                            |
+| Tied to     | a specific SPEC's UAT(s)                 | a feature shipping in the wild                       |
+| Lifetime    | retired when the SPEC closes             | lives until the feature is ripped out                |
+| When run    | once, during SPEC verification           | repeatedly, before each release                      |
+| Determinism | mixed: maintainer-judgment steps allowed | fully deterministic; every step is machine-checkable |
 
 ## Naming convention
 

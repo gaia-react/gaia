@@ -81,7 +81,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   for (const token of argv) {
     if (token === '--commit') {
       if (mode !== undefined) {
-        return {message: '--commit and --tag are mutually exclusive', ok: false};
+        return {
+          message: '--commit and --tag are mutually exclusive',
+          ok: false,
+        };
       }
       mode = 'commit';
       continue;
@@ -89,7 +92,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
     if (token === '--tag') {
       if (mode !== undefined) {
-        return {message: '--commit and --tag are mutually exclusive', ok: false};
+        return {
+          message: '--commit and --tag are mutually exclusive',
+          ok: false,
+        };
       }
       mode = 'tag';
       continue;
@@ -144,7 +150,8 @@ const passthroughFailure = (
   step: Step
 ): number => {
   const stderr = (result.stderr ?? '').trim();
-  const errorPart = result.error !== undefined ? ` (${result.error.message})` : '';
+  const errorPart =
+    result.error !== undefined ? ` (${result.error.message})` : '';
   const status = result.status ?? -1;
   process.stderr.write(
     `commit-and-tag: ${step.command} ${step.args.join(' ')} exited ${status}${errorPart}\n`
@@ -205,7 +212,10 @@ const writeStateSha = (cwd: string, sha: string): void => {
 
   if (!saw) next.last_evaluated_sha = sha;
   const trailingNewline = raw.endsWith('\n') ? '\n' : '';
-  atomicWriteFileSync(target, `${JSON.stringify(next, null, 2)}${trailingNewline}`);
+  atomicWriteFileSync(
+    target,
+    `${JSON.stringify(next, null, 2)}${trailingNewline}`
+  );
 };
 
 const runCommitMode = (ctx: CommitContext): number => {
@@ -268,9 +278,8 @@ const runCommitMode = (ctx: CommitContext): number => {
       if (!stepSucceeded(result)) {
         // The `--amend` token uniquely identifies the commit step in this
         // two-step sequence; anything else is the state-file staging step.
-        const failedStage = step.args.includes('--amend')
-          ? 'amend'
-          : 'staging the state file';
+        const failedStage =
+          step.args.includes('--amend') ? 'amend' : 'staging the state file';
         // The release commit already landed but the state-SHA amend step
         // failed, leaving a partial release commit. Undo it (`reset --soft`
         // keeps the staged files) so the maintainer can retry from a clean
@@ -281,13 +290,13 @@ const runCommitMode = (ctx: CommitContext): number => {
 
         if (!stepSucceeded(rollback)) {
           process.stderr.write(
-            `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; `
-              + 'the release commit is left in place — undo it manually before retrying\n'
+            `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; ` +
+              'the release commit is left in place — undo it manually before retrying\n'
           );
         } else {
           process.stderr.write(
-            `commit-and-tag: ${failedStage} failed; rolled back the release commit `
-              + '(git reset --soft HEAD~1) — fix the cause and retry\n'
+            `commit-and-tag: ${failedStage} failed; rolled back the release commit ` +
+              '(git reset --soft HEAD~1) — fix the cause and retry\n'
           );
         }
 
@@ -341,13 +350,13 @@ const runTagMode = (ctx: TagContext): number => {
 
       if (!stepSucceeded(rollback)) {
         process.stderr.write(
-          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; `
-            + `the local tag ${tagName} is left in place — delete it manually before retrying\n`
+          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; ` +
+            `the local tag ${tagName} is left in place — delete it manually before retrying\n`
         );
       } else {
         process.stderr.write(
-          `commit-and-tag: push failed; deleted the local tag ${tagName} `
-            + '— fix the cause and retry\n'
+          `commit-and-tag: push failed; deleted the local tag ${tagName} ` +
+            '— fix the cause and retry\n'
         );
       }
 

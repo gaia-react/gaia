@@ -122,7 +122,8 @@ export const run = (
   } catch {
     structuredError({
       code: 'not_a_git_repo',
-      message: 'gaia automation record-overage must run inside a git repository',
+      message:
+        'gaia automation record-overage must run inside a git repository',
       subcommand: 'automation record-overage',
     });
 

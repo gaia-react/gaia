@@ -79,10 +79,9 @@ describe('ci-stale-check', () => {
       ]),
     });
 
-    const exit = run(
-      ['--label', 'gaia-ci', '--base', 'main', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--label', 'gaia-ci', '--base', 'main', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
     const lastCall = ghSpy.mock.calls.at(-1)?.[0] ?? [];
@@ -93,7 +92,10 @@ describe('ci-stale-check', () => {
     expect(lastCall).toContain('--base');
     expect(lastCall).toContain('main');
 
-    const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const printed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(printed.decision).toBe('skip');
     expect(printed.open_pr_number).toBe(42);
     expect(printed.open_pr_branch).toBe('gaia-ci/wiki/2026-05-09');
@@ -109,13 +111,15 @@ describe('ci-stale-check', () => {
       stdout: '[]',
     });
 
-    const exit = run(
-      ['--label', 'gaia-ci', '--base', 'main', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--label', 'gaia-ci', '--base', 'main', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
-    const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const printed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(printed.decision).toBe('proceed');
     expect(printed.open_pr_number).toBeNull();
     expect(printed.open_pr_branch).toBeNull();
@@ -129,10 +133,9 @@ describe('ci-stale-check', () => {
       stdout: '',
     });
 
-    const exit = run(
-      ['--label', 'gaia-ci', '--base', 'main', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--label', 'gaia-ci', '--base', 'main', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).not.toBe(0);
 
     const errors = stdio.err.join('');
@@ -149,10 +152,9 @@ describe('ci-stale-check', () => {
       stdout: '[]',
     });
 
-    run(
-      ['--label', 'gaia-ci', '--base', 'main', '--json'],
-      {cwd: sandbox.root}
-    );
+    run(['--label', 'gaia-ci', '--base', 'main', '--json'], {
+      cwd: sandbox.root,
+    });
 
     const args = ghSpy.mock.calls[0]?.[0] ?? [];
     // Verbatim assertion: both predicates appear, exactly once each.
@@ -207,5 +209,4 @@ describe('ci-stale-check', () => {
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage: gaia ci-stale-check');
   });
-
 });

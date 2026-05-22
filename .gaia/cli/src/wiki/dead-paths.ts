@@ -28,7 +28,13 @@ const HELP_TEXT = `Usage: gaia wiki dead-paths [--json]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-const TRACKED_PREFIXES = ['.claude/', '.gaia/', 'app/', 'test/', 'wiki/'] as const;
+const TRACKED_PREFIXES = [
+  '.claude/',
+  '.gaia/',
+  'app/',
+  'test/',
+  'wiki/',
+] as const;
 
 /**
  * Sibling-monorepo segments that the maintainer's working tree contains
@@ -205,9 +211,7 @@ export const run = (
 
     if (dead.length === 0) return EXIT_CODES.OK;
 
-    const lines = dead.map(
-      (ref) => `${ref.filePath}:${ref.line}  ${ref.path}`
-    );
+    const lines = dead.map((ref) => `${ref.filePath}:${ref.line}  ${ref.path}`);
     process.stdout.write(`${lines.join('\n')}\n`);
 
     return EXIT_CODES.OK;

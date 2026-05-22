@@ -211,13 +211,17 @@ describe('gaia setup link-worktree (linked worktree)', () => {
 
   test('worktree with pre-existing plain files: backed up; backup paths in JSON; exit 0', () => {
     // Create plain (non-symlink) entries on the worktree side.
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local'), {recursive: true});
+    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local'), {
+      recursive: true,
+    });
     writeFileSync(
       path.join(sandbox.linkedRoot, '.gaia', 'local', 'setup-state.json'),
       '{"stale":true}',
       'utf8'
     );
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'cache'), {recursive: true});
+    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'cache'), {
+      recursive: true,
+    });
     writeFileSync(
       path.join(sandbox.linkedRoot, '.gaia', 'cache', 'update-check.json'),
       '{"outdatedCount":99}',
@@ -257,7 +261,9 @@ describe('gaia setup link-worktree (linked worktree)', () => {
 
   test('worktree with broken symlinks: backed up and replaced; exit 0', () => {
     // Create symlinks pointing to nonexistent targets.
-    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local'), {recursive: true});
+    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local'), {
+      recursive: true,
+    });
     const bogusTarget = path.join(sandbox.linkedRoot, '.gaia', 'local', 'nope');
     execFileSync('ln', [
       '-s',
@@ -292,9 +298,9 @@ describe('gaia setup link-worktree (linked worktree)', () => {
 
   test('main checkout missing target dirs: creates them first, then symlinks; exit 0', () => {
     // Sanity: fresh sandbox already has no main-side dirs.
-    expect(
-      existsSync(path.join(sandbox.mainRoot, '.gaia', 'cache'))
-    ).toBe(false);
+    expect(existsSync(path.join(sandbox.mainRoot, '.gaia', 'cache'))).toBe(
+      false
+    );
     expect(
       existsSync(path.join(sandbox.mainRoot, '.gaia', 'local', 'audit'))
     ).toBe(false);
@@ -307,12 +313,16 @@ describe('gaia setup link-worktree (linked worktree)', () => {
 
     // The cache/ and audit/ dirs were created on main; setup-state.json was NOT
     // (it's a file; readers treat missing as "no state yet").
-    expect(existsSync(path.join(sandbox.mainRoot, '.gaia', 'cache'))).toBe(true);
+    expect(existsSync(path.join(sandbox.mainRoot, '.gaia', 'cache'))).toBe(
+      true
+    );
     expect(
       existsSync(path.join(sandbox.mainRoot, '.gaia', 'local', 'audit'))
     ).toBe(true);
     expect(
-      existsSync(path.join(sandbox.mainRoot, '.gaia', 'local', 'setup-state.json'))
+      existsSync(
+        path.join(sandbox.mainRoot, '.gaia', 'local', 'setup-state.json')
+      )
     ).toBe(false);
   });
 

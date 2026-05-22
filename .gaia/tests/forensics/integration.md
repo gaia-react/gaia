@@ -141,6 +141,7 @@ This UAT is the hardest to fixture cleanly because the gate has to FAIL on the m
 - **Fixture**: any successfully-run UAT (re-use UAT-001 / UAT-002 / UAT-004).
 - **Expected outcome**: `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, and any literal secret string the workflow observed are absent from every artifact. `::add-mask::` is emitted for any secret-shaped values surfaced through the parsed body.
 - **Verify**:
+
   ```bash
   # Workflow log scan — neither the literal env-var name's value nor the masking-substitution token should leak.
   gh run view -R "$REPO" <run-id> --log > /tmp/run.log
@@ -150,6 +151,7 @@ This UAT is the hardest to fixture cleanly because the gate has to FAIL on the m
   gh issue view -R "$REPO" "$ISS" --json comments --jq '.comments[].body' | grep -E 'sk-ant-|ghp_|github_pat_' && echo 'FAIL: secret in issue comments' || echo 'pass: no secrets in comments'
   gh pr view -R "$REPO" --head "forensics/${ISS}-*" --json body --jq '.body' | grep -E 'sk-ant-|ghp_|github_pat_' && echo 'FAIL: secret in PR body' || echo 'pass: no secrets in PR body'
   ```
+
 - **Pass criterion**: every grep returns no lines (each "FAIL" branch is unreached).
 
 ---
@@ -186,6 +188,7 @@ This is the hardest UAT to fixture without artificial latency. There are two pra
 
 1. **Synthetic**: temporarily lower `timeout-minutes` in `.github/workflows/forensics-triage.yml` from 30 to 1 on a throwaway branch and inject a `sleep 120` step before the handler steps. Run a fixture; the timeout fires.
 2. **Observational**: trust the timeout invariant by reading the workflow file. The workflow declares `timeout-minutes: 30` at the job level; GitHub Actions enforces it. UAT-012's invariant is that ALREADY-applied labels remain after the timeout — this is satisfied by construction because the workflow never `gh issue edit --remove-label` rolls back.
+
 - **Fixture**: `valid-init-failure.md` plus a synthetic 1-min-timeout branch.
 - **Expected outcome**: the run aborts at the timeout; any label that landed before the timeout REMAINS (no rollback); no PR opens; no branch is pushed; no half-applied state.
 - **Verify**:
@@ -201,22 +204,22 @@ This is the hardest UAT to fixture without artificial latency. There are two pra
 
 ## Coverage map (full SPEC-002 UAT roster)
 
-| UAT     | Layer | Where verified                                                |
-|---------|-------|---------------------------------------------------------------|
-| UAT-001 | C     | This file, "UAT-001" section above.                           |
-| UAT-002 | C     | This file, "UAT-002" section above.                           |
-| UAT-003 | A+B   | `.github/forensics/tests/handlers.bats` (handle-needs-human) + `.github/forensics/tests/parse-verdict.bats` (ambiguous verdict downgrade). |
-| UAT-004 | C     | This file, "UAT-004" section above.                           |
-| UAT-005 | C     | This file, "UAT-005" section above.                           |
-| UAT-006 | C     | This file, "UAT-006" section above.                           |
-| UAT-007 | A+B   | `.gaia/tests/forensics/unit.bats` ("UAT-007: mixed allow + deny ..."). |
-| UAT-008 | C     | This file, "UAT-008" section above.                           |
-| UAT-009 | A+B   | `.github/forensics/tests/parse-issue-body.bats` (24 tests, deterministic regex). |
-| UAT-010 | C     | This file, "UAT-010" section above.                           |
-| UAT-011 | C     | This file, "UAT-011" section above.                           |
-| UAT-012 | C     | This file, "UAT-012" section above.                           |
-| UAT-013 | A+B   | `.gaia/tests/forensics/unit.bats` (`malformed-*` fixtures) + `.github/forensics/tests/parse-issue-body.bats` (failure-mode tests). |
-| UAT-014 | A+B   | `.gaia/tests/forensics/unit.bats` ("UAT-014: unenumerated path ..."). |
+| UAT     | Layer | Where verified                                                                                                                                 |
+| ------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| UAT-001 | C     | This file, "UAT-001" section above.                                                                                                            |
+| UAT-002 | C     | This file, "UAT-002" section above.                                                                                                            |
+| UAT-003 | A+B   | `.github/forensics/tests/handlers.bats` (handle-needs-human) + `.github/forensics/tests/parse-verdict.bats` (ambiguous verdict downgrade).     |
+| UAT-004 | C     | This file, "UAT-004" section above.                                                                                                            |
+| UAT-005 | C     | This file, "UAT-005" section above.                                                                                                            |
+| UAT-006 | C     | This file, "UAT-006" section above.                                                                                                            |
+| UAT-007 | A+B   | `.gaia/tests/forensics/unit.bats` ("UAT-007: mixed allow + deny ...").                                                                         |
+| UAT-008 | C     | This file, "UAT-008" section above.                                                                                                            |
+| UAT-009 | A+B   | `.github/forensics/tests/parse-issue-body.bats` (24 tests, deterministic regex).                                                               |
+| UAT-010 | C     | This file, "UAT-010" section above.                                                                                                            |
+| UAT-011 | C     | This file, "UAT-011" section above.                                                                                                            |
+| UAT-012 | C     | This file, "UAT-012" section above.                                                                                                            |
+| UAT-013 | A+B   | `.gaia/tests/forensics/unit.bats` (`malformed-*` fixtures) + `.github/forensics/tests/parse-issue-body.bats` (failure-mode tests).             |
+| UAT-014 | A+B   | `.gaia/tests/forensics/unit.bats` ("UAT-014: unenumerated path ...").                                                                          |
 | UAT-015 | A+B   | `.gaia/tests/forensics/unit.bats` ("redaction-passthrough preserves ...") + `.github/forensics/tests/parse-issue-body.bats` (redaction tests). |
 
 ## Re-running this checklist

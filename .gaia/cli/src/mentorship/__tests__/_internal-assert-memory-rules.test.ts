@@ -4,7 +4,14 @@
  * Exercises the behavior the session-start hook relies on: install-on-enabled,
  * remove-on-disabled, never-fail-the-hook semantics.
  */
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
@@ -26,7 +33,9 @@ type Sandbox = {
 };
 
 const setupSandbox = (): Sandbox => {
-  const repoRoot = mkdtempSync(path.join(tmpdir(), 'gaia-assert-display-repo-'));
+  const repoRoot = mkdtempSync(
+    path.join(tmpdir(), 'gaia-assert-display-repo-')
+  );
   const homeDirectory = mkdtempSync(
     path.join(tmpdir(), 'gaia-assert-display-home-')
   );

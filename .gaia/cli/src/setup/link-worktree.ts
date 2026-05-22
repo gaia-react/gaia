@@ -215,8 +215,9 @@ const printHuman = (output: LinkOutput): void => {
 
     for (const action of output.actions) {
       const label = ACTION_HUMAN_LABELS[action.result];
-      const suffix = action.result === 'failed' && action.error !== undefined
-        ? `: ${action.error}`
+      const suffix =
+        action.result === 'failed' && action.error !== undefined ?
+          `: ${action.error}`
         : '';
       lines.push(`  ${label}: ${action.path}${suffix}`);
     }

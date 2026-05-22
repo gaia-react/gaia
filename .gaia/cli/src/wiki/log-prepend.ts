@@ -105,7 +105,8 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   }
 
   if (sha === undefined) return {message: '--sha is required', ok: false};
-  if (decision === undefined) return {message: '--decision is required', ok: false};
+  if (decision === undefined)
+    return {message: '--decision is required', ok: false};
   if (reason === undefined) return {message: '--reason is required', ok: false};
 
   if (!VALID_DECISIONS.has(decision)) {

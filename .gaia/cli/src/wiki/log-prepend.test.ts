@@ -182,10 +182,9 @@ describe('wiki log-prepend', () => {
   test('exits 1 when frontmatter fence is missing', () => {
     sandbox = setupSandbox('# Log\n\nno frontmatter\n');
 
-    const exit = run(
-      ['--sha', 'abc', '--decision', 'SKIP', '--reason', 'r'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--sha', 'abc', '--decision', 'SKIP', '--reason', 'r'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('frontmatter');
   });
@@ -193,10 +192,9 @@ describe('wiki log-prepend', () => {
   test('exits 1 when frontmatter is unterminated', () => {
     sandbox = setupSandbox('---\ntype: meta\n\n# Log\n');
 
-    const exit = run(
-      ['--sha', 'abc', '--decision', 'SKIP', '--reason', 'r'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--sha', 'abc', '--decision', 'SKIP', '--reason', 'r'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('frontmatter');
   });

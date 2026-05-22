@@ -29,8 +29,9 @@ export const extractWikilinks = (body: string): string[] => {
     const withoutAlias = aliasIndex === -1 ? raw : raw.slice(0, aliasIndex);
     const anchorIndex = withoutAlias.indexOf('#');
     const target = (
-      anchorIndex === -1 ? withoutAlias : withoutAlias.slice(0, anchorIndex)
-    ).trim();
+      anchorIndex === -1 ? withoutAlias : (
+        withoutAlias.slice(0, anchorIndex)
+      )).trim();
 
     if (target.length > 0) targets.push(target);
     match = WIKILINK_PATTERN.exec(body);

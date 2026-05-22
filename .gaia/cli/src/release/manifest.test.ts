@@ -34,7 +34,9 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-release-manifest-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   execFileSync('git', ['config', 'commit.gpgsign', 'false'], {cwd: root});
 
@@ -390,7 +392,11 @@ describe('run --check', () => {
       files: Record<string, unknown>;
     };
     delete manifest.files['app/foo.ts'];
-    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8'
+    );
 
     const exit = run(['--check'], {
       cwd: sandbox.root,
@@ -411,7 +417,11 @@ describe('run --check', () => {
       files: Record<string, string>;
     };
     manifest.files['app/ghost.ts'] = 'owned';
-    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8'
+    );
 
     const exit = run(['--check'], {
       cwd: sandbox.root,
@@ -432,7 +442,11 @@ describe('run --check', () => {
       files: Record<string, string>;
     };
     manifest.files['app/foo.ts'] = 'shared';
-    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8'
+    );
 
     const exit = run(['--check'], {
       cwd: sandbox.root,
@@ -455,7 +469,11 @@ describe('run --check', () => {
       version: string;
     };
     manifest.version = '0.9.0';
-    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8'
+    );
 
     const exit = run(['--check'], {
       cwd: sandbox.root,
@@ -493,7 +511,11 @@ describe('run --check', () => {
       files: Record<string, string>;
     };
     manifest.files['app/foo.ts'] = 'bogus-class';
-    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8'
+    );
 
     const exit = run(['--check'], {
       cwd: sandbox.root,
@@ -546,7 +568,11 @@ describe('run --check', () => {
       files: Record<string, string>;
     };
     manifest.files['app/extra.ts'] = 'owned';
-    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf8'
+    );
 
     const exit = run(['--check', '--json'], {
       cwd: sandbox.root,
@@ -661,7 +687,9 @@ describe('byte-identity vs generate-manifest.mjs', () => {
         // remain meaningful as a regression guard.
         expect(manifest.files['CLAUDE.md']).toBe('shared');
         expect(manifest.files['.claude/commands/gaia-init.md']).toBe('owned');
-        expect(manifest.files['.claude/commands/gaia-release.md']).toBeUndefined();
+        expect(
+          manifest.files['.claude/commands/gaia-release.md']
+        ).toBeUndefined();
         expect(manifest.files['.gaia/scripts/legacy.mjs']).toBeUndefined();
         expect(manifest.files['CHANGELOG.md']).toBeUndefined();
         expect(manifest.files['wiki/hot.md']).toBeUndefined();

@@ -116,7 +116,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -165,11 +166,13 @@ const parseFlags = (argv: readonly string[]): ParsedFlagsResult => {
     return {message: `unknown flag: ${token}`, ok: false};
   }
 
-  if (baseline === undefined) return {message: '--baseline is required', ok: false};
+  if (baseline === undefined)
+    return {message: '--baseline is required', ok: false};
 
   if (latest === undefined) return {message: '--latest is required', ok: false};
 
-  if (manifest === undefined) return {message: '--manifest is required', ok: false};
+  if (manifest === undefined)
+    return {message: '--manifest is required', ok: false};
 
   return {flags: {baseline, json, latest, manifest}, ok: true};
 };
@@ -375,7 +378,11 @@ const computeReport = (ctx: Context): UpdateMergeReport => {
       continue;
     }
 
-    const decision = handleManifestPath(ctx, relativePath, entry.normalizedClass);
+    const decision = handleManifestPath(
+      ctx,
+      relativePath,
+      entry.normalizedClass
+    );
 
     if (decision === null) continue;
 
@@ -463,7 +470,9 @@ const printHuman = (report: UpdateMergeReport): void => {
     lines.push('', 'Conflicts:');
 
     for (const conflict of report.conflicts) {
-      lines.push(`  [${conflict.class}] ${conflict.path} → ${conflict.patch_path}`);
+      lines.push(
+        `  [${conflict.class}] ${conflict.path} → ${conflict.patch_path}`
+      );
     }
   }
 
@@ -497,14 +506,17 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const baselineDir = path.isAbsolute(parsed.flags.baseline)
-    ? parsed.flags.baseline
+  const baselineDir =
+    path.isAbsolute(parsed.flags.baseline) ?
+      parsed.flags.baseline
     : path.join(cwd, parsed.flags.baseline);
-  const latestDir = path.isAbsolute(parsed.flags.latest)
-    ? parsed.flags.latest
+  const latestDir =
+    path.isAbsolute(parsed.flags.latest) ?
+      parsed.flags.latest
     : path.join(cwd, parsed.flags.latest);
-  const manifestPath = path.isAbsolute(parsed.flags.manifest)
-    ? parsed.flags.manifest
+  const manifestPath =
+    path.isAbsolute(parsed.flags.manifest) ?
+      parsed.flags.manifest
     : path.join(cwd, parsed.flags.manifest);
 
   if (!existsSync(baselineDir) || !statSync(baselineDir).isDirectory()) {

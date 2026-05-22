@@ -62,7 +62,7 @@ issue):
   `pnpm-lock.yaml`, or any lockfile (those paths are denylisted by
   default).
 - The Quality Gate (`pnpm typecheck && pnpm lint && pnpm test --run
-  && pnpm knip`) runs on the resulting branch. Treat passing it as a
+&& pnpm knip`) runs on the resulting branch. Treat passing it as a
   hard requirement; if you cannot fix the defect within scope without
   breaking the gate, stop and emit:
 
@@ -72,6 +72,7 @@ issue):
 
   on a line of its own. The workflow demotes the issue to
   `needs-human` rather than opening a partial PR.
+
 - The redaction tokens in the issue body (`<redacted>`,
   `<repo-relative-paths>`) are intentional. Do NOT attempt to
   reconstruct masked values, and do NOT remove or alter redaction

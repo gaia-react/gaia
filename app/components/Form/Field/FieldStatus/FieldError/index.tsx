@@ -5,7 +5,7 @@ type FieldErrorProps = {
 };
 
 const FieldError: FC<FieldErrorProps> = ({error}) => (
-  <div className="text-invalid whitespace-pre-wrap text-sm" role="alert">
+  <div className="text-invalid text-sm whitespace-pre-wrap" role="alert">
     {error}
   </div>
 );

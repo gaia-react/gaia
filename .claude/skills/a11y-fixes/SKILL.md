@@ -196,18 +196,20 @@ Modals must trap focus while open and return focus to the trigger on close. See 
 
 ```tsx
 // BAD — open modal leaves focus on body, close drops focus
-{open && (
-  <div role="dialog">
-    <button onClick={() => setOpen(false)}>{t('close')}</button>
-  </div>
-)}
+{
+  open && (
+    <div role="dialog">
+      <button onClick={() => setOpen(false)}>{t('close')}</button>
+    </div>
+  );
+}
 
 // GOOD — primitive handles focus trap + restore
 <Dialog open={open} onOpenChange={setOpen}>
   <Dialog.Content>
     <Dialog.Close>{t('close')}</Dialog.Close>
   </Dialog.Content>
-</Dialog>
+</Dialog>;
 ```
 
 ## tabindex

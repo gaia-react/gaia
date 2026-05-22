@@ -126,9 +126,9 @@ export const insertIntoBarrel = (
 
   const bounds = findExportRun(lines);
   const next =
-    bounds === null
-      ? insertWhenNoExistingRun(lines, exportLine)
-      : insertAt(lines, findInsertIndex(lines, bounds, exportLine), exportLine);
+    bounds === null ?
+      insertWhenNoExistingRun(lines, exportLine)
+    : insertAt(lines, findInsertIndex(lines, bounds, exportLine), exportLine);
 
   atomicWriteFileSync(barrelPath, buildOutput(next, trailingNewline));
 };

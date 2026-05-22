@@ -76,11 +76,11 @@ const printHuman = (output: StatusOutput): void => {
   }
 
   process.stdout.write(
-    `configured: true\n`
-      + `setup_complete: ${String(output.setup_complete)}\n`
-      + `setup_opted_out: ${String(output.setup_opted_out)}\n`
-      + `nudge_dismissed: ${String(output.nudge_dismissed)}\n`
-      + `tools_enabled: ${output.tools_enabled.join(', ') || '(none)'}\n`
+    `configured: true\n` +
+      `setup_complete: ${String(output.setup_complete)}\n` +
+      `setup_opted_out: ${String(output.setup_opted_out)}\n` +
+      `nudge_dismissed: ${String(output.nudge_dismissed)}\n` +
+      `tools_enabled: ${output.tools_enabled.join(', ') || '(none)'}\n`
   );
 };
 
@@ -150,23 +150,24 @@ export const run = (
     return EXIT_CODES.CONFIG_INVALID;
   }
 
-  const output: StatusOutput = configRead.status === 'ok'
-    ? {
-      configured: true,
-      nudge_dismissed:
-        localRead.status === 'ok' ? localRead.local.nudge_dismissed : false,
-      setup_complete: configRead.config.setup_complete,
-      setup_opted_out: configRead.config.setup_opted_out,
-      tools_enabled: enabledTools(configRead.config),
-    }
+  const output: StatusOutput =
+    configRead.status === 'ok' ?
+      {
+        configured: true,
+        nudge_dismissed:
+          localRead.status === 'ok' ? localRead.local.nudge_dismissed : false,
+        setup_complete: configRead.config.setup_complete,
+        setup_opted_out: configRead.config.setup_opted_out,
+        tools_enabled: enabledTools(configRead.config),
+      }
     : {
-      configured: false,
-      nudge_dismissed:
-        localRead.status === 'ok' ? localRead.local.nudge_dismissed : false,
-      setup_complete: false,
-      setup_opted_out: false,
-      tools_enabled: [],
-    };
+        configured: false,
+        nudge_dismissed:
+          localRead.status === 'ok' ? localRead.local.nudge_dismissed : false,
+        setup_complete: false,
+        setup_opted_out: false,
+        tools_enabled: [],
+      };
 
   if (json) {
     process.stdout.write(`${JSON.stringify(output)}\n`);

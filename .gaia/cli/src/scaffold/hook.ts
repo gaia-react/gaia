@@ -95,7 +95,8 @@ const readFlags = (argv: readonly string[]): FlagReadResult => {
     flags: {
       json,
       params: parseParams(paramsRaw),
-      returns: returns !== undefined && returns.length > 0 ? returns : undefined,
+      returns:
+        returns !== undefined && returns.length > 0 ? returns : undefined,
     },
     positional,
   };
@@ -121,7 +122,12 @@ const formatCallArgs = (params: readonly Param[]): string =>
 const resolveTemplateFile = (filename: string): string => {
   const here = fileURLToPath(import.meta.url);
 
-  return path.join(path.dirname(here), 'templates', TEMPLATE_DIR_NAME, filename);
+  return path.join(
+    path.dirname(here),
+    'templates',
+    TEMPLATE_DIR_NAME,
+    filename
+  );
 };
 
 const resolveRepoRoot = (): string => {

@@ -56,10 +56,10 @@ const printHuman = (output: DetectOutput): void => {
   }
 
   process.stdout.write(
-    `url: ${String(output.url)}\n`
-      + `host: ${String(output.host)}\n`
-      + `owner: ${String(output.owner)}\n`
-      + `repo: ${String(output.repo)}\n`
+    `url: ${String(output.url)}\n` +
+      `host: ${String(output.host)}\n` +
+      `owner: ${String(output.owner)}\n` +
+      `repo: ${String(output.repo)}\n`
   );
 };
 
@@ -127,15 +127,16 @@ export const run = (
 
   const parsed = parseRemoteUrl(url);
 
-  const output: DetectOutput = parsed === null
-    ? {found: false, host: null, owner: null, repo: null, url}
+  const output: DetectOutput =
+    parsed === null ?
+      {found: false, host: null, owner: null, repo: null, url}
     : {
-      found: true,
-      host: parsed.host,
-      owner: parsed.owner,
-      repo: parsed.repo,
-      url: parsed.url,
-    };
+        found: true,
+        host: parsed.host,
+        owner: parsed.owner,
+        repo: parsed.repo,
+        url: parsed.url,
+      };
 
   if (json) {
     process.stdout.write(`${JSON.stringify(output)}\n`);

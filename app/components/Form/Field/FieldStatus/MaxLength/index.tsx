@@ -16,7 +16,7 @@ const MaxLength: FC<MaxLengthProps> = ({className, length, maxLength}) => {
   return (
     <output
       className={twJoin(
-        'flex-initial select-none px-1 pt-0.5 text-right text-xs',
+        'flex-initial px-1 pt-0.5 text-right text-xs select-none',
         length < maxLength ? 'text-secondary' : 'text-invalid',
         className
       )}

@@ -37,10 +37,10 @@ Task(
 
 The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove the audit ran clean against the content being merged:
 
-| Signal | Source | How it gets there |
-|---|---|---|
-| `.gaia/local/audit/<HEAD-sha>.ok` | Local audit agent | Agent writes it on a clean pass |
-| `GAIA-Audit:` commit-message trailer on HEAD | Local audit agent | `audit-stamp-trailer.sh` writes an empty commit with the trailer |
+| Signal                                                                    | Source                       | How it gets there                                                                                                 |
+| ------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `.gaia/local/audit/<HEAD-sha>.ok`                                         | Local audit agent            | Agent writes it on a clean pass                                                                                   |
+| `GAIA-Audit:` commit-message trailer on HEAD                              | Local audit agent            | `audit-stamp-trailer.sh` writes an empty commit with the trailer                                                  |
 | `GAIA-Audit` GitHub commit status on HEAD, description `<version> <tree>` | CI (`code-review-audit.yml`) | CI stamps this instead of pushing an empty commit (pushing would re-trigger CI and leave HEAD without check runs) |
 
 Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.

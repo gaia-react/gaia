@@ -20,13 +20,13 @@ distribution that the builder emitted.
 
 ## Fixture catalog
 
-| File | UAT | Drives |
-|------|-----|--------|
-| `below-threshold.jsonl` | UAT-029 | sample-count gate |
+| File                      | UAT     | Drives                 |
+| ------------------------- | ------- | ---------------------- |
+| `below-threshold.jsonl`   | UAT-029 | sample-count gate      |
 | `articulation-fire.jsonl` | UAT-030 | articulation-gap fires |
 | `articulation-fade.jsonl` | UAT-031 | articulation-gap fades |
-| `flake-downweight.jsonl` | UAT-032 | flake_suspected weight |
-| `multi-area.jsonl` | smoke | end-to-end shape |
+| `flake-downweight.jsonl`  | UAT-032 | flake_suspected weight |
+| `multi-area.jsonl`        | smoke   | end-to-end shape       |
 
 ## Per-fixture intent and expected detector output
 

@@ -102,8 +102,7 @@ const PATCH_TYPES = new Set([
 ]);
 
 /** `feat`, `feat(scope)`, `fix!`, `feat(scope)!:`, `BREAKING CHANGE: …`. */
-const CONVENTIONAL_HEADER_REGEX =
-  /^(?<type>[a-z]+)(?:\([^)]*\))?(?<bang>!?):/u;
+const CONVENTIONAL_HEADER_REGEX = /^(?<type>[a-z]+)(?:\([^)]*\))?(?<bang>!?):/u;
 
 export type Commit = {
   body: string;
@@ -150,11 +149,10 @@ export const aggregateBump = (commits: readonly Commit[]): BumpKind | null => {
   return highest;
 };
 
-export const applyBump = (
-  current: string,
-  kind: BumpKind
-): string => {
-  const parts = current.split('.').map((segment) => Number.parseInt(segment, 10));
+export const applyBump = (current: string, kind: BumpKind): string => {
+  const parts = current
+    .split('.')
+    .map((segment) => Number.parseInt(segment, 10));
 
   if (parts.length !== 3 || parts.some((value) => Number.isNaN(value))) {
     throw new Error(`current version is not semver: "${current}"`);
@@ -174,7 +172,9 @@ const expectSuccess = (
   args: readonly string[]
 ): string => {
   if (result.error !== undefined) {
-    throw new Error(`${command} ${args.join(' ')} failed: ${result.error.message}`);
+    throw new Error(
+      `${command} ${args.join(' ')} failed: ${result.error.message}`
+    );
   }
 
   if ((result.status ?? -1) !== 0) {
@@ -210,12 +210,7 @@ export const collectCommits = (
   const out = expectSuccess(
     runner(
       'git',
-      [
-        'log',
-        '--no-merges',
-        `--format=%s%n%b%n${RECORD_SEPARATOR}`,
-        range,
-      ],
+      ['log', '--no-merges', `--format=%s%n%b%n${RECORD_SEPARATOR}`, range],
       {cwd}
     ),
     'git',
@@ -252,7 +247,9 @@ type PackageJsonShape = {
   version?: unknown;
 };
 
-const readPackageJson = (cwd: string): {raw: string; version: string; path: string} => {
+const readPackageJson = (
+  cwd: string
+): {raw: string; version: string; path: string} => {
   const target = path.join(cwd, 'package.json');
 
   if (!existsSync(target)) {

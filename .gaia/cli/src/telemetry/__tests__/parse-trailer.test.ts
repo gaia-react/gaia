@@ -1,10 +1,7 @@
 import {describe, expect, test} from 'vitest';
 import {parseTrailer} from '../parse-trailer.js';
 
-const buildHookInput = (
-  subagentType: string,
-  output: string
-): string =>
+const buildHookInput = (subagentType: string, output: string): string =>
   JSON.stringify({
     tool_input: {subagent_type: subagentType},
     tool_name: 'Task',
@@ -73,7 +70,11 @@ describe('parseTrailer — guard rails', () => {
 describe('parseTrailer — code-review-audit', () => {
   test('emits one invocation per finding', () => {
     const findings = JSON.stringify([
-      {area_tags: ['security', 'auth'], finding_class: 'sqli', severity: 'high'},
+      {
+        area_tags: ['security', 'auth'],
+        finding_class: 'sqli',
+        severity: 'high',
+      },
       {finding_class: 'race-condition', severity: 'medium'},
     ]);
     const input = buildHookInput(
@@ -107,9 +108,7 @@ describe('parseTrailer — code-review-audit', () => {
   });
 
   test('defaults pr_number to "0" when absent', () => {
-    const findings = JSON.stringify([
-      {finding_class: 'x', severity: 'low'},
-    ]);
+    const findings = JSON.stringify([{finding_class: 'x', severity: 'low'}]);
     const input = buildHookInput(
       'code-review-audit',
       trailer(`findings_json: ${findings}`)
@@ -206,9 +205,7 @@ describe('parseTrailer — engineer-return path', () => {
   });
 
   test('defaults agent_type to Senior when absent in trailer', () => {
-    const uats = JSON.stringify([
-      {spec_id: 'S', task_id: 'T', uat_id: 'U'},
-    ]);
+    const uats = JSON.stringify([{spec_id: 'S', task_id: 'T', uat_id: 'U'}]);
     const input = buildHookInput(
       'general-purpose',
       trailer(`uat_passes_json: ${uats}`)
@@ -219,9 +216,7 @@ describe('parseTrailer — engineer-return path', () => {
   });
 
   test('respects custom agent_type from trailer', () => {
-    const uats = JSON.stringify([
-      {spec_id: 'S', task_id: 'T', uat_id: 'U'},
-    ]);
+    const uats = JSON.stringify([{spec_id: 'S', task_id: 'T', uat_id: 'U'}]);
     const input = buildHookInput(
       'general-purpose',
       trailer('agent_type: Lead', `uat_passes_json: ${uats}`)
@@ -298,9 +293,7 @@ describe('parseTrailer — engineer-return path', () => {
   });
 
   test('emits all three event types from one trailer', () => {
-    const uats = JSON.stringify([
-      {spec_id: 'S', task_id: 'T', uat_id: 'U'},
-    ]);
+    const uats = JSON.stringify([{spec_id: 'S', task_id: 'T', uat_id: 'U'}]);
     const ctx = JSON.stringify({
       context_request_class: 'cls',
       spec_id: 'S',
@@ -329,9 +322,7 @@ describe('parseTrailer — engineer-return path', () => {
   });
 
   test('handles quoted scalar values', () => {
-    const uats = JSON.stringify([
-      {spec_id: 'S', task_id: 'T', uat_id: 'U'},
-    ]);
+    const uats = JSON.stringify([{spec_id: 'S', task_id: 'T', uat_id: 'U'}]);
     const input = buildHookInput(
       'general-purpose',
       trailer('agent_type: "Lead"', `uat_passes_json: ${uats}`)

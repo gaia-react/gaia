@@ -82,7 +82,10 @@ const parseProps = (raw: string): FlagParseResult => {
   });
 
   if (entries.length === 0) {
-    return {message: '--props requires at least one name:type entry', ok: false};
+    return {
+      message: '--props requires at least one name:type entry',
+      ok: false,
+    };
   }
 
   const props: PropEntry[] = [];
@@ -198,7 +201,9 @@ const buildPropsTypeBlock = (
   props: readonly PropEntry[]
 ): string => {
   if (props.length === 0) return '';
-  const entries = props.map((prop) => `  ${prop.name}: ${prop.type};`).join('\n');
+  const entries = props
+    .map((prop) => `  ${prop.name}: ${prop.type};`)
+    .join('\n');
 
   return `\ntype ${componentName}Props = {\n${entries}\n};\n`;
 };
@@ -208,7 +213,10 @@ const buildPropsGeneric = (
   props: readonly PropEntry[]
 ): string => (props.length === 0 ? '' : `<${componentName}Props>`);
 
-const buildTestImports = (componentName: string, withStory: boolean): string => {
+const buildTestImports = (
+  componentName: string,
+  withStory: boolean
+): string => {
   if (withStory) {
     return [
       "import {composeStory} from '@storybook/react-vite';",
@@ -253,7 +261,10 @@ const renderComponentFile = (
   componentName: string,
   props: readonly PropEntry[]
 ): string => {
-  const templatePath = path.join(templatesRoot, `${TEMPLATES_DIR}/index.tsx.tmpl`);
+  const templatePath = path.join(
+    templatesRoot,
+    `${TEMPLATES_DIR}/index.tsx.tmpl`
+  );
   const propsTypeBlock = buildPropsTypeBlock(componentName, props);
   const propsGeneric = buildPropsGeneric(componentName, props);
   const propsParam =
@@ -321,7 +332,10 @@ const writeOne = (
   }
 };
 
-const printHumanResult = (result: ScaffoldResult, componentName: string): void => {
+const printHumanResult = (
+  result: ScaffoldResult,
+  componentName: string
+): void => {
   const lines = [`Scaffolded component ${componentName}.`];
 
   if (result.written.length > 0) {

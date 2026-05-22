@@ -6,12 +6,16 @@ import {setupSandbox, type Sandbox} from './sandbox.js';
 
 const captureStderr = () => {
   const errors: string[] = [];
-  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
-    errors.push(typeof chunk === 'string' ? chunk : String(chunk));
+  const stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: unknown) => {
+      errors.push(typeof chunk === 'string' ? chunk : String(chunk));
 
-    return true;
-  });
-  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      return true;
+    });
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation(() => true);
 
   return {
     errors,
@@ -39,13 +43,19 @@ describe('automation init-state', () => {
 
   it('creates a fresh state file with default fields', () => {
     const fixedNow = new Date('2026-05-09T04:00:00.000Z');
-    const exit = run(['wiki', '--sha', 'HEAD'], {cwd: sandbox.root, now: () => fixedNow});
+    const exit = run(['wiki', '--sha', 'HEAD'], {
+      cwd: sandbox.root,
+      now: () => fixedNow,
+    });
     expect(exit).toBe(0);
 
     const target = automationStatePath(sandbox.root, 'wiki');
     expect(existsSync(target)).toBe(true);
 
-    const parsed = JSON.parse(readFileSync(target, 'utf8')) as Record<string, unknown>;
+    const parsed = JSON.parse(readFileSync(target, 'utf8')) as Record<
+      string,
+      unknown
+    >;
     expect(parsed).toEqual({
       cost_overage: false,
       last_run_at: '2026-05-09T04:00:00.000Z',
@@ -85,9 +95,12 @@ describe('automation init-state', () => {
   });
 
   it('honors --at as the timestamp', () => {
-    const exit = run(['wiki', '--sha', sandbox.headSha, '--at', '2026-04-01T00:00:00Z'], {
-      cwd: sandbox.root,
-    });
+    const exit = run(
+      ['wiki', '--sha', sandbox.headSha, '--at', '2026-04-01T00:00:00Z'],
+      {
+        cwd: sandbox.root,
+      }
+    );
     expect(exit).toBe(0);
 
     const parsed = JSON.parse(

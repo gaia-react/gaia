@@ -4,17 +4,17 @@ Maintainer-only fixture suite for the `/gaia forensics` skill. Excluded from the
 
 ## Coverage
 
-| File | UATs covered |
-|------|-------------|
-| `01-redaction-roundtrip.bats` | UAT-003, UAT-010 |
-| `02-classification-evidence.bats` | UAT-009, UAT-011 |
-| `03-strict-schema.bats` | UAT-007, UAT-010 |
-| `04-write-surface.bats` | UAT-008 |
-| `05-gh-invocation-shape.bats` | UAT-012, UAT-006 |
-| `06-gh-decline-saves-locally.bats` | UAT-005 |
-| `07-gh-not-installed.bats` | UAT-013 |
-| `08-user-config-no-gh.bats` | UAT-004 |
-| `09-other-class-offers-gh.bats` | UAT-011 |
+| File                               | UATs covered     |
+| ---------------------------------- | ---------------- |
+| `01-redaction-roundtrip.bats`      | UAT-003, UAT-010 |
+| `02-classification-evidence.bats`  | UAT-009, UAT-011 |
+| `03-strict-schema.bats`            | UAT-007, UAT-010 |
+| `04-write-surface.bats`            | UAT-008          |
+| `05-gh-invocation-shape.bats`      | UAT-012, UAT-006 |
+| `06-gh-decline-saves-locally.bats` | UAT-005          |
+| `07-gh-not-installed.bats`         | UAT-013          |
+| `08-user-config-no-gh.bats`        | UAT-004          |
+| `09-other-class-offers-gh.bats`    | UAT-011          |
 
 Every UAT from UAT-001 through UAT-013 has at least one binding assertion. UAT-001 and UAT-002 are covered through the fixture inputs and golden files (the init/update classification and schema tests exercise these end-to-end scenarios).
 
@@ -32,23 +32,23 @@ Every UAT from UAT-001 through UAT-013 has at least one binding assertion. UAT-0
 
 ## Library
 
-| File | Purpose |
-|------|---------|
-| `lib/redact.sh` | Shell implementation of the redaction algorithm from `forensics/redaction.md`. Source of truth for the regex set is the fragment; this file copies it with a pointer comment. |
-| `lib/classify.sh` | Shell implementation of the classifier table lookup from `forensics/taxonomy.md`. |
-| `lib/stub-gh.sh` | argv-capture stub for `gh`. Placed on `$PATH` ahead of the real `gh`; writes each argv token to `$STUB_GH_CAPTURE_FILE`, one per line. Emits a synthetic issue URL on `issue create`. |
+| File              | Purpose                                                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/redact.sh`   | Shell implementation of the redaction algorithm from `forensics/redaction.md`. Source of truth for the regex set is the fragment; this file copies it with a pointer comment.         |
+| `lib/classify.sh` | Shell implementation of the classifier table lookup from `forensics/taxonomy.md`.                                                                                                     |
+| `lib/stub-gh.sh`  | argv-capture stub for `gh`. Placed on `$PATH` ahead of the real `gh`; writes each argv token to `$STUB_GH_CAPTURE_FILE`, one per line. Emits a synthetic issue URL on `issue create`. |
 
 ## Fixtures
 
-| File | Scenario |
-|------|---------|
-| `fixtures/input-init-failure.txt` | UAT-001 input — clean init failure (no secrets) |
-| `fixtures/input-update-conflict.txt` | UAT-002 input — update conflict with arg |
-| `fixtures/input-with-secrets.txt` | UAT-003 input — absolute paths + placeholder env-var entries |
-| `fixtures/golden-init-redacted.md` | UAT-001 expected body (byte-identical post-redaction) |
-| `fixtures/golden-update-redacted.md` | UAT-002 expected body |
+| File                                  | Scenario                                                        |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `fixtures/input-init-failure.txt`     | UAT-001 input — clean init failure (no secrets)                 |
+| `fixtures/input-update-conflict.txt`  | UAT-002 input — update conflict with arg                        |
+| `fixtures/input-with-secrets.txt`     | UAT-003 input — absolute paths + placeholder env-var entries    |
+| `fixtures/golden-init-redacted.md`    | UAT-001 expected body (byte-identical post-redaction)           |
+| `fixtures/golden-update-redacted.md`  | UAT-002 expected body                                           |
 | `fixtures/golden-secrets-redacted.md` | UAT-003 expected body (paths stripped, env-var values scrubbed) |
-| `fixtures/golden-other-class.md` | UAT-011 expected body (`other` class, no taxonomy match) |
+| `fixtures/golden-other-class.md`      | UAT-011 expected body (`other` class, no taxonomy match)        |
 
 Golden files are written once and treated as the contract. When the harness fails with an "actual vs golden mismatch", re-author the golden only if the runbook intentionally changed. Goldens are never auto-updated.
 

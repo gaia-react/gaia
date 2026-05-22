@@ -45,7 +45,7 @@ const InputRadio: FC<InputRadioProps> = ({
   <label
     key={option.value}
     className={twMerge(
-      'flex w-fit select-none items-center gap-1.5',
+      'flex w-fit items-center gap-1.5 select-none',
       disabled || option.disabled ? 'cursor-not-allowed' : 'cursor-pointer',
       className
     )}

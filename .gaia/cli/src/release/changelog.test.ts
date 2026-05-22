@@ -2,12 +2,7 @@
  * Tests for `gaia-maintainer release changelog`.
  */
 import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
@@ -37,15 +32,21 @@ const failResult = (status: number): SpawnSyncReturns<string> => ({
   stdout: '',
 });
 
-const buildLogOutput = (commits: Array<{subject: string; body?: string}>): string => {
+const buildLogOutput = (
+  commits: Array<{subject: string; body?: string}>
+): string => {
   const RECORD_SEPARATOR = '---END-COMMIT---';
 
   return commits
-    .map((commit) => `${commit.subject}\n${commit.body ?? ''}\n${RECORD_SEPARATOR}\n`)
+    .map(
+      (commit) =>
+        `${commit.subject}\n${commit.body ?? ''}\n${RECORD_SEPARATOR}\n`
+    )
     .join('');
 };
 
-const buildRunner = (commits: Array<{subject: string; body?: string}>): CommandRunner =>
+const buildRunner =
+  (commits: Array<{subject: string; body?: string}>): CommandRunner =>
   (command, args) => {
     if (command === 'git' && args[0] === 'describe') {
       return failResult(128);
@@ -75,7 +76,9 @@ describe('groupCommits', () => {
   });
 
   test('strips scope from subject', () => {
-    const grouped = groupCommits([{body: '', subject: 'feat(auth): rotate tokens'}]);
+    const grouped = groupCommits([
+      {body: '', subject: 'feat(auth): rotate tokens'},
+    ]);
     expect(grouped.Added).toEqual(['rotate tokens']);
   });
 });
@@ -132,7 +135,12 @@ describe('graduateChangelog', () => {
 
   test('returns no-unreleased when heading missing', () => {
     const minimal = '# Changelog\n\n## [1.0.0] — 2026-01-01\n';
-    const outcome = graduateChangelog(minimal, '1.1.0', '### Added\n- x\n', '2026-05-07');
+    const outcome = graduateChangelog(
+      minimal,
+      '1.1.0',
+      '### Added\n- x\n',
+      '2026-05-07'
+    );
     expect(outcome.kind).toBe('no-unreleased');
   });
 });
@@ -229,7 +237,10 @@ describe('release changelog CLI', () => {
     expect(out).toContain('- c');
 
     // Did NOT modify CHANGELOG
-    const changelog = readFileSync(path.join(sandbox.root, 'CHANGELOG.md'), 'utf8');
+    const changelog = readFileSync(
+      path.join(sandbox.root, 'CHANGELOG.md'),
+      'utf8'
+    );
     expect(changelog).not.toContain('## [1.1.0]');
   });
 
@@ -240,7 +251,10 @@ describe('release changelog CLI', () => {
     const exit = run([], {cwd: sandbox.root, runner, today: '2026-05-07'});
     expect(exit).toBe(0);
 
-    const changelog = readFileSync(path.join(sandbox.root, 'CHANGELOG.md'), 'utf8');
+    const changelog = readFileSync(
+      path.join(sandbox.root, 'CHANGELOG.md'),
+      'utf8'
+    );
     expect(changelog).toContain('## [1.1.0] — 2026-05-07');
     expect(changelog).toContain('## [Unreleased]');
     expect(changelog).toContain('- shiny');
@@ -297,7 +311,10 @@ describe('release changelog CLI', () => {
       today: '2026-05-07',
     });
     expect(exit).toBe(0);
-    const changelog = readFileSync(path.join(sandbox.root, 'CHANGELOG.md'), 'utf8');
+    const changelog = readFileSync(
+      path.join(sandbox.root, 'CHANGELOG.md'),
+      'utf8'
+    );
     expect(changelog).toContain('## [2.0.0] — 2026-05-07');
   });
 });

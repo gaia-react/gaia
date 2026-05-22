@@ -88,15 +88,15 @@ Run the triage phase from `wiki/decisions/Claude Integration Fitness.md`.
 
 Dispatch the seven category checks as **parallel subagents** (or parallel tool calls — the verifiable property is the structured findings artifact, not the dispatch mechanism) per the wiki page's bucket-and-model spec:
 
-| Category | Model |
-|---|---|
-| Hook integrity | Haiku |
-| Settings hygiene | Haiku |
-| GAIA-install fitness | Haiku |
-| Wiki fitness | Haiku |
+| Category                            | Model  |
+| ----------------------------------- | ------ |
+| Hook integrity                      | Haiku  |
+| Settings hygiene                    | Haiku  |
+| GAIA-install fitness                | Haiku  |
+| Wiki fitness                        | Haiku  |
 | Skill / command / agent frontmatter | Sonnet |
-| Rule hygiene | Sonnet |
-| `CLAUDE.md` hygiene | Sonnet |
+| Rule hygiene                        | Sonnet |
+| `CLAUDE.md` hygiene                 | Sonnet |
 
 Each Auditor returns an array of `{severity, file, remediation, fingerprint}` objects. Raw command output stays in subagent context; only the structured findings array flows back.
 
@@ -130,12 +130,12 @@ Heal in place on `CURRENT_BRANCH`. Create no new branch.
 
 Dispatch lane-aware Fixer subagents (Sonnet) in parallel per the wiki page's lane definitions:
 
-| Lane | Owns |
-|---|---|
+| Lane             | Owns                                                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `claude-surface` | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**` |
-| `settings` | `.claude/settings.json` |
-| `gitignore` | `.gitignore` |
-| `manifest` | `.gaia/manifest.json` (serialize — one Fixer at a time) |
+| `settings`       | `.claude/settings.json`                                                                                              |
+| `gitignore`      | `.gitignore`                                                                                                         |
+| `manifest`       | `.gaia/manifest.json` (serialize — one Fixer at a time)                                                              |
 
 If a finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope.
 
@@ -194,6 +194,7 @@ Print a grade table:
 **If a `chore/gaia-fitness-<timestamp>` branch was created:**
 
 > Changes applied on branch `chore/gaia-fitness-<timestamp>`. Review with `git diff main`, commit when satisfied, or discard with:
+>
 > ```
 > git checkout main && git branch -D chore/gaia-fitness-<timestamp>
 > ```

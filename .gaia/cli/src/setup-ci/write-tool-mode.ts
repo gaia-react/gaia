@@ -105,8 +105,7 @@ export const run = (
   } catch {
     structuredError({
       code: 'not_a_git_repo',
-      message:
-        'gaia setup-ci write-tool-mode must run inside a git repository',
+      message: 'gaia setup-ci write-tool-mode must run inside a git repository',
       subcommand: 'setup-ci write-tool-mode',
     });
 
@@ -140,9 +139,9 @@ export const run = (
   // four tool keys. Preserve `schedule` when present.
   const existing = result.config[key] as ToolConfig;
   const nextSlot: ToolConfig =
-    existing.schedule === undefined
-      ? {mode}
-      : {mode, schedule: existing.schedule};
+    existing.schedule === undefined ?
+      {mode}
+    : {mode, schedule: existing.schedule};
 
   writeAutomationConfig(repoRoot, {
     ...result.config,

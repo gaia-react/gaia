@@ -16,7 +16,9 @@ type Sandbox = {
 };
 
 const setupSandbox = (): Sandbox => {
-  const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-configure-automation-'));
+  const root = mkdtempSync(
+    path.join(tmpdir(), 'gaia-init-configure-automation-')
+  );
 
   return {
     cleanup: () => {

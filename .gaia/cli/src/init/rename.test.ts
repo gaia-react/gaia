@@ -52,7 +52,9 @@ const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-rename-'));
   writeFileSync(path.join(root, 'package.json'), `${PACKAGE_JSON}\n`, 'utf8');
   writeFileSync(path.join(root, 'CLAUDE.md'), CLAUDE_MD, 'utf8');
-  mkdirSync(path.join(root, 'app', 'languages', 'en', 'pages'), {recursive: true});
+  mkdirSync(path.join(root, 'app', 'languages', 'en', 'pages'), {
+    recursive: true,
+  });
   writeFileSync(
     path.join(root, 'app', 'languages', 'en', 'common.ts'),
     COMMON_TS,
@@ -149,7 +151,9 @@ describe('init rename', () => {
     expect(page).toContain("heroTitle: 'Hello World'");
     expect(page).toContain("title: 'Hello World'");
     // The nested meta.title was rewritten too.
-    expect(page.match(/title: 'Hello World'/gu)?.length).toBeGreaterThanOrEqual(2);
+    expect(page.match(/title: 'Hello World'/gu)?.length).toBeGreaterThanOrEqual(
+      2
+    );
 
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('rename');
@@ -161,8 +165,13 @@ describe('init rename', () => {
 
   test('idempotent: re-running with same args is a no-op', () => {
     sandbox = setupSandbox();
-    run(['--title', 'Hello World', '--kebab', 'hello-world'], {cwd: sandbox.root});
-    const claudeFirst = readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8');
+    run(['--title', 'Hello World', '--kebab', 'hello-world'], {
+      cwd: sandbox.root,
+    });
+    const claudeFirst = readFileSync(
+      path.join(sandbox.root, 'CLAUDE.md'),
+      'utf8'
+    );
     const pageFirst = readFileSync(
       path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
       'utf8'
@@ -173,7 +182,9 @@ describe('init rename', () => {
     });
     expect(second).toBe(0);
 
-    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(claudeFirst);
+    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
+      claudeFirst
+    );
     expect(
       readFileSync(
         path.join(sandbox.root, 'app', 'languages', 'en', 'pages', '_index.ts'),
@@ -241,7 +252,9 @@ describe('init rename', () => {
 
   test('exit 1 on invalid kebab', () => {
     sandbox = setupSandbox();
-    const exit = run(['--title', 'X', '--kebab', 'NotKebab'], {cwd: sandbox.root});
+    const exit = run(['--title', 'X', '--kebab', 'NotKebab'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--kebab must be');
   });

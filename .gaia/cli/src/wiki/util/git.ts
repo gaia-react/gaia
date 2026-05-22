@@ -132,7 +132,9 @@ export type CommitDetail = {
   subject: string;
 };
 
-const parseShortStat = (stat: string): {
+const parseShortStat = (
+  stat: string
+): {
   deletions: number;
   files_changed: number;
   insertions: number;
@@ -147,15 +149,18 @@ const parseShortStat = (stat: string): {
 
   const filesMatch = /(\d+)\s+files?\s+changed/u.exec(stat);
 
-  if (filesMatch !== null) filesChanged = Number.parseInt(filesMatch[1] as string, 10);
+  if (filesMatch !== null)
+    filesChanged = Number.parseInt(filesMatch[1] as string, 10);
 
   const insertMatch = /(\d+)\s+insertions?\(\+\)/u.exec(stat);
 
-  if (insertMatch !== null) insertions = Number.parseInt(insertMatch[1] as string, 10);
+  if (insertMatch !== null)
+    insertions = Number.parseInt(insertMatch[1] as string, 10);
 
   const deleteMatch = /(\d+)\s+deletions?\(-\)/u.exec(stat);
 
-  if (deleteMatch !== null) deletions = Number.parseInt(deleteMatch[1] as string, 10);
+  if (deleteMatch !== null)
+    deletions = Number.parseInt(deleteMatch[1] as string, 10);
 
   return {deletions, files_changed: filesChanged, insertions};
 };
@@ -207,9 +212,8 @@ const parseChunk = (chunk: string): ChunkParse => {
   }
 
   const statLines = lines.slice(0, commitLineIndex);
-  const precedingStat = statLines.find(
-    (line) => /\d+\s+files?\s+changed/u.test(line)
-  ) ?? '';
+  const precedingStat =
+    statLines.find((line) => /\d+\s+files?\s+changed/u.test(line)) ?? '';
 
   const commitBlock = lines.slice(commitLineIndex);
   const sha = (commitBlock[0] ?? '').replace(/^COMMIT\s+/u, '').trim();

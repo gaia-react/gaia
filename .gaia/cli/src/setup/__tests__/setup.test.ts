@@ -135,10 +135,9 @@ describe('gaia setup mark-step', () => {
     expect(exit).toBe(0);
 
     expect(existsSync(sandbox.statePath)).toBe(true);
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.completed_steps).toEqual(['install-tools']);
     expect(parsed.completed_at).toBeNull();
     expect(parsed.started_at).toEqual(expect.any(String));
@@ -149,11 +148,13 @@ describe('gaia setup mark-step', () => {
     runMarkStep(['install-plugins'], {cwd: sandbox.root});
     runMarkStep(['install-tools'], {cwd: sandbox.root});
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    expect(parsed.completed_steps).toEqual(['install-tools', 'install-plugins']);
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
+    expect(parsed.completed_steps).toEqual([
+      'install-tools',
+      'install-plugins',
+    ]);
   });
 
   test('rejects an unknown step', () => {
@@ -200,10 +201,9 @@ describe('gaia setup finalize', () => {
     const exit = runFinalize([], {cwd: sandbox.root, now: () => fixedNow});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.completed_at).toBe('2026-05-07T12:00:00.000Z');
   });
 
@@ -217,10 +217,9 @@ describe('gaia setup finalize', () => {
     });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.completed_at).toBe('2026-05-07T12:00:00.000Z');
   });
 
@@ -234,10 +233,9 @@ describe('gaia setup finalize', () => {
     });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.completed_at).toBe('2026-05-07T12:00:00.000Z');
     expect(parsed.completed_steps).toEqual([]);
   });

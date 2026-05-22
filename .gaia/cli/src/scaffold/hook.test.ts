@@ -122,10 +122,9 @@ describe('gaia scaffold hook', () => {
     const stdout = captureStdout();
 
     try {
-      const code = run(
-        ['useFoo', '--params', 'id:string,count:number'],
-        {repoRoot: sandbox.repoRoot}
-      );
+      const code = run(['useFoo', '--params', 'id:string,count:number'], {
+        repoRoot: sandbox.repoRoot,
+      });
 
       expect(code).toBe(0);
     } finally {

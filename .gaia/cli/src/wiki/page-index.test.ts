@@ -2,12 +2,7 @@
  * Tests for `gaia wiki page-index`.
  */
 import {execFileSync} from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
@@ -225,7 +220,10 @@ No outbound links.
       'wiki/index.md',
       '# Catalog\n\n- [[Solo]]\n- [[AlsoSolo]]\n'
     );
-    sandbox.writePage('wiki/overview.md', '# Overview\n\nSee [[Overviewed]].\n');
+    sandbox.writePage(
+      'wiki/overview.md',
+      '# Overview\n\nSee [[Overviewed]].\n'
+    );
     sandbox.writePage(
       'wiki/hot.md',
       '# Hot\n\nRecent: [[AlsoSolo]] and [[Solo]].\n'

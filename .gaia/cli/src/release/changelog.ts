@@ -77,7 +77,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -189,12 +190,7 @@ export const collectCommits = (
 ): Commit[] => {
   const result = runner(
     'git',
-    [
-      'log',
-      '--no-merges',
-      `--format=%s%n%b%n${RECORD_SEPARATOR}`,
-      range,
-    ],
+    ['log', '--no-merges', `--format=%s%n%b%n${RECORD_SEPARATOR}`, range],
     {cwd}
   );
 
@@ -242,7 +238,9 @@ const readVersion = (cwd: string, override: string | undefined): string => {
   if (!existsSync(target)) {
     throw new Error('package.json not found at repo root');
   }
-  const parsed = JSON.parse(readFileSync(target, 'utf8')) as {version?: unknown};
+  const parsed = JSON.parse(readFileSync(target, 'utf8')) as {
+    version?: unknown;
+  };
 
   if (typeof parsed.version !== 'string') {
     throw new Error('package.json has no string "version"');
@@ -293,10 +291,7 @@ export const graduateChangelog = (
     blockLines.shift();
   }
 
-  while (
-    blockLines.length > 0 &&
-    (blockLines.at(-1) ?? '').trim() === ''
-  ) {
+  while (blockLines.length > 0 && (blockLines.at(-1) ?? '').trim() === '') {
     blockLines.pop();
   }
 

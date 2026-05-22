@@ -2,12 +2,7 @@
  * Tests for `gaia wiki state`.
  */
 import {execFileSync} from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
@@ -160,69 +155,59 @@ describe('wiki state', () => {
     expect((json.head_short as string).length).toBe(7);
   });
 
-  test(
-    'reports drift_severity low for 1-5 commits ahead',
-    () => {
-      const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
-      writeStateFile(sandbox.root, baseSha);
-      sandbox.commit('feat: add a thing', {'app/foo.ts': 'export const x = 1;\n'});
+  test('reports drift_severity low for 1-5 commits ahead', () => {
+    const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
+    writeStateFile(sandbox.root, baseSha);
+    sandbox.commit('feat: add a thing', {
+      'app/foo.ts': 'export const x = 1;\n',
+    });
 
-      const exit = run(['--json'], {cwd: sandbox.root});
-      expect(exit).toBe(0);
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
 
-      const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
-        string,
-        unknown
-      >;
-      expect(json.commits_ahead).toBe(1);
-      expect(json.drift_severity).toBe('low');
-      expect(Array.isArray(json.recent_commits)).toBe(true);
-      expect((json.recent_commits as unknown[]).length).toBe(1);
-    },
-    15_000
-  );
+    const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(json.commits_ahead).toBe(1);
+    expect(json.drift_severity).toBe('low');
+    expect(Array.isArray(json.recent_commits)).toBe(true);
+    expect((json.recent_commits as unknown[]).length).toBe(1);
+  }, 15_000);
 
-  test(
-    'reports drift_severity medium for 6-20 commits ahead',
-    () => {
-      const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
-      writeStateFile(sandbox.root, baseSha);
-      for (let i = 0; i < 6; i += 1) {
-        sandbox.commit(`feat: change ${i}`, {[`app/foo${i}.ts`]: 'x\n'});
-      }
+  test('reports drift_severity medium for 6-20 commits ahead', () => {
+    const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
+    writeStateFile(sandbox.root, baseSha);
+    for (let i = 0; i < 6; i += 1) {
+      sandbox.commit(`feat: change ${i}`, {[`app/foo${i}.ts`]: 'x\n'});
+    }
 
-      const exit = run(['--json'], {cwd: sandbox.root});
-      expect(exit).toBe(0);
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
 
-      const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
-        string,
-        unknown
-      >;
-      expect(json.commits_ahead).toBe(6);
-      expect(json.drift_severity).toBe('medium');
-    },
-    15_000
-  );
+    const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(json.commits_ahead).toBe(6);
+    expect(json.drift_severity).toBe('medium');
+  }, 15_000);
 
-  test(
-    'reports drift_severity high for 21+ commits',
-    () => {
-      const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
-      writeStateFile(sandbox.root, baseSha);
-      sandbox.commitEmptyChain(21);
+  test('reports drift_severity high for 21+ commits', () => {
+    const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
+    writeStateFile(sandbox.root, baseSha);
+    sandbox.commitEmptyChain(21);
 
-      const exit = run(['--json'], {cwd: sandbox.root});
-      expect(exit).toBe(0);
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
 
-      const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
-        string,
-        unknown
-      >;
-      expect(json.commits_ahead).toBe(21);
-      expect(json.drift_severity).toBe('high');
-    },
-    60_000
-  );
+    const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(json.commits_ahead).toBe(21);
+    expect(json.drift_severity).toBe('high');
+  }, 60_000);
 
   test('marks reachable=false when state SHA is not an ancestor of HEAD', () => {
     sandbox.commit('initial', {'README.md': '# repo\n'});

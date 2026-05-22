@@ -67,11 +67,16 @@ describe('setup-ci check-admin', () => {
     });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.admin).toBe(true);
     expect(parsed.auth_status).toBe('ok');
 
-    const recorded = JSON.parse(readFileSync(sandbox.ghArgvPath, 'utf8')) as string[][];
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
     expect(recorded[0]).toEqual(['auth', 'status']);
     expect(recorded[1]).toEqual([
       'api',
@@ -93,7 +98,10 @@ describe('setup-ci check-admin', () => {
     });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.admin).toBe(false);
     expect(parsed.auth_status).toBe('ok');
   });
@@ -108,7 +116,10 @@ describe('setup-ci check-admin', () => {
     });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     // Critical contract: never false-positive admin.
     expect(parsed.admin).toBe(false);
     expect(parsed.auth_status).toBe('unauthenticated');
@@ -127,7 +138,10 @@ describe('setup-ci check-admin', () => {
     });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.admin).toBe(false);
     expect(parsed.auth_status).toBe('api_error');
   });

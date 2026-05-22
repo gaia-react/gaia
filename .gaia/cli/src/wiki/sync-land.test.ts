@@ -90,7 +90,10 @@ const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
   stdout,
 });
 
-const failResult = (status: number, stderr: string): SpawnSyncReturns<string> => ({
+const failResult = (
+  status: number,
+  stderr: string
+): SpawnSyncReturns<string> => ({
   output: ['', '', stderr] as never,
   pid: 0,
   signal: null,
@@ -99,32 +102,41 @@ const failResult = (status: number, stderr: string): SpawnSyncReturns<string> =>
   stdout: '',
 });
 
-const matches = (spec: MockSpec, command: string, argv: readonly string[]): boolean => {
+const matches = (
+  spec: MockSpec,
+  command: string,
+  argv: readonly string[]
+): boolean => {
   const target = [command, ...spec.argv];
   const observed = [command, ...argv];
 
   return (
-    target.length === observed.length
-    && target.every((token, index) => token === observed[index])
+    target.length === observed.length &&
+    target.every((token, index) => token === observed[index])
   );
 };
 
-const buildRunner = (
-  scripted: Array<{argv: readonly string[]; result: SpawnSyncReturns<string>}>,
-  recorded: RecordedCall[]
-): CommandRunner => (command, args) => {
-  recorded.push({args: [...args], command});
-  const match = scripted.find((entry) =>
-    matches({argv: entry.argv}, command, args)
-  );
+const buildRunner =
+  (
+    scripted: Array<{
+      argv: readonly string[];
+      result: SpawnSyncReturns<string>;
+    }>,
+    recorded: RecordedCall[]
+  ): CommandRunner =>
+  (command, args) => {
+    recorded.push({args: [...args], command});
+    const match = scripted.find((entry) =>
+      matches({argv: entry.argv}, command, args)
+    );
 
-  if (match !== undefined) return match.result;
+    if (match !== undefined) return match.result;
 
-  // Default: success with empty stdout. Exception: `git status` should
-  // return a deterministic empty workspace by default; tests override
-  // that explicitly when they need non-empty status output.
-  return okResult('');
-};
+    // Default: success with empty stdout. Exception: `git status` should
+    // return a deterministic empty workspace by default; tests override
+    // that explicitly when they need non-empty status output.
+    return okResult('');
+  };
 
 describe('wiki sync land', () => {
   let sandbox: Sandbox;
@@ -245,8 +257,8 @@ describe('wiki sync land', () => {
 
     // Locate the call sequence and verify each verb in order.
     const verbsAfterRevParse = recorded.slice(
-      recorded.findIndex((c) =>
-        c.args[0] === 'rev-parse' && c.args[1] === 'HEAD'
+      recorded.findIndex(
+        (c) => c.args[0] === 'rev-parse' && c.args[1] === 'HEAD'
       ) + 1
     );
     const expected = [

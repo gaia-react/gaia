@@ -3,11 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../write-tool-mode.js';
-import {
-  setupSandbox,
-  VALID_BASE_CONFIG,
-  type Sandbox,
-} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG, type Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -96,7 +92,10 @@ describe('setup-ci write-tool-mode', () => {
     const exit = run(['wiki', 'local'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.tool).toBe('wiki');
     expect(parsed.mode).toBe('local');
   });

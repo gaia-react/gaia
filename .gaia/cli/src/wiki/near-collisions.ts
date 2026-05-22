@@ -133,9 +133,11 @@ export const findCollisions = (
   }
 
   results.sort((left, right) => {
-    if (left.domain !== right.domain) return left.domain.localeCompare(right.domain);
+    if (left.domain !== right.domain)
+      return left.domain.localeCompare(right.domain);
     if (left.distance !== right.distance) return left.distance - right.distance;
-    if (left.slugA !== right.slugA) return left.slugA.localeCompare(right.slugA);
+    if (left.slugA !== right.slugA)
+      return left.slugA.localeCompare(right.slugA);
 
     return left.slugB.localeCompare(right.slugB);
   });
@@ -164,7 +166,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };

@@ -6,6 +6,7 @@ revert's own CI failed. Per the SPEC's hard-cap rule (one revert attempt per
 original PR), no second revert will be attempted automatically.
 
 Recovery options:
+
 1. Investigate the original failure on `${MERGE_SHA}` and fix forward in a
    manual PR.
 2. Manually merge the revert PR after fixing whatever made the revert's CI red.
@@ -13,6 +14,7 @@ Recovery options:
    PR yourself.
 
 References:
+
 - Original PR: #${ORIGINAL_PR} (${ORIGINAL_TITLE})
 - Merge commit: ${MERGE_SHA}
 - Failed post-merge run: ${FAILED_RUN_URL}

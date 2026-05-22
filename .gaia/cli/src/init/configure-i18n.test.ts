@@ -120,11 +120,16 @@ describe('init configure-i18n', () => {
     expect(indexAfter).toContain("import en from './en';");
     expect(indexAfter).toContain("import es from './es';");
     expect(indexAfter).toContain("import ja from './ja';");
-    expect(indexAfter).toContain("export const LANGUAGES = ['en', 'es', 'ja'];");
+    expect(indexAfter).toContain(
+      "export const LANGUAGES = ['en', 'es', 'ja'];"
+    );
     expect(indexAfter).toContain("export type Language = 'en' | 'es' | 'ja';");
     expect(indexAfter).toContain('export default {en, es, ja}');
 
-    const i18nAfter = readFileSync(path.join(sandbox.root, 'app', 'i18n.ts'), 'utf8');
+    const i18nAfter = readFileSync(
+      path.join(sandbox.root, 'app', 'i18n.ts'),
+      'utf8'
+    );
     expect(i18nAfter).toContain("fallbackLng: 'en'");
 
     const state = readState(sandbox.root);
@@ -187,14 +192,18 @@ describe('init configure-i18n', () => {
 
   test('exit 1 on invalid --strip value', () => {
     sandbox = setupSandbox();
-    const exit = run(['--locales', 'en', '--strip', 'yes'], {cwd: sandbox.root});
+    const exit = run(['--locales', 'en', '--strip', 'yes'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--strip must be');
   });
 
   test('exit 1 on invalid --locales list', () => {
     sandbox = setupSandbox();
-    const exit = run(['--locales', '???', '--strip', 'false'], {cwd: sandbox.root});
+    const exit = run(['--locales', '???', '--strip', 'false'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('invalid --locales');
   });

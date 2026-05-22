@@ -55,13 +55,15 @@ describe('UAT-019 — stale-PR pre-run skip', () => {
       ],
     });
 
-    const exit = run(
-      ['--label', 'gaia-ci', '--base', 'main', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--label', 'gaia-ci', '--base', 'main', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
-    const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const printed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(printed.decision).toBe('skip');
     expect(printed.open_pr_number).toBe(42);
 
@@ -77,16 +79,20 @@ describe('UAT-019 — stale-PR pre-run skip', () => {
 
   it('decision: "proceed" when gh returns []', () => {
     mock = installGhMock({
-      gh: [{match: 'pr list', response: {exitCode: 0, stderr: '', stdout: '[]'}}],
+      gh: [
+        {match: 'pr list', response: {exitCode: 0, stderr: '', stdout: '[]'}},
+      ],
     });
 
-    const exit = run(
-      ['--label', 'gaia-ci', '--base', 'main', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--label', 'gaia-ci', '--base', 'main', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
-    const printed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const printed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(printed.decision).toBe('proceed');
     expect(printed.open_pr_number).toBeNull();
     expect(printed.open_pr_branch).toBeNull();
@@ -95,7 +101,9 @@ describe('UAT-019 — stale-PR pre-run skip', () => {
 
   it('explicit --author is passed through verbatim', () => {
     mock = installGhMock({
-      gh: [{match: 'pr list', response: {exitCode: 0, stderr: '', stdout: '[]'}}],
+      gh: [
+        {match: 'pr list', response: {exitCode: 0, stderr: '', stdout: '[]'}},
+      ],
     });
 
     run(
@@ -126,10 +134,9 @@ describe('UAT-019 — stale-PR pre-run skip', () => {
       ],
     });
 
-    const exit = run(
-      ['--label', 'gaia-ci', '--base', 'main', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--label', 'gaia-ci', '--base', 'main', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).not.toBe(0);
 
     const errors = stdio.err.join('');
@@ -146,13 +153,14 @@ describe('UAT-019 — stale-PR pre-run skip', () => {
     // appear in argv on every invocation. Already covered by the first
     // test; this one re-confirms with a different label/base.
     mock = installGhMock({
-      gh: [{match: 'pr list', response: {exitCode: 0, stderr: '', stdout: '[]'}}],
+      gh: [
+        {match: 'pr list', response: {exitCode: 0, stderr: '', stdout: '[]'}},
+      ],
     });
 
-    run(
-      ['--label', 'gaia-ci', '--base', 'master', '--json'],
-      {cwd: sandbox.root}
-    );
+    run(['--label', 'gaia-ci', '--base', 'master', '--json'], {
+      cwd: sandbox.root,
+    });
 
     const argv = mock.ghCalls[0]?.argv ?? [];
     expect(argv).toContain('--label');

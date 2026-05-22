@@ -120,7 +120,9 @@ export const run = (
   process.stdout.write(
     `${JSON.stringify({
       code: 'setup_step_recorded',
-      pending: SETUP_STEPS.filter((step) => !next.completed_steps.includes(step)),
+      pending: SETUP_STEPS.filter(
+        (step) => !next.completed_steps.includes(step)
+      ),
       step: first,
     })}\n`
   );
