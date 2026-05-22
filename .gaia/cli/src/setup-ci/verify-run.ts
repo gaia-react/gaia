@@ -66,7 +66,7 @@ type RunViewPayload = {conclusion?: null | string; status?: string; url?: string
  * this rejects trailing garbage (`"30abc"`), leading signs, and empty
  * strings — returns `null` for anything that is not all digits.
  */
-const parsePositiveInt = (value: string): number | null => {
+const parsePositiveInteger = (value: string): number | null => {
   if (!/^\d+$/u.test(value)) return null;
   const parsed = Number.parseInt(value, 10);
 
@@ -141,7 +141,7 @@ export const run = async (
 
         return EXIT_CODES.UNKNOWN_SUBCOMMAND;
       }
-      timeoutSeconds = parsePositiveInt(value);
+      timeoutSeconds = parsePositiveInteger(value);
       index += 1;
 
       continue;
@@ -159,7 +159,7 @@ export const run = async (
 
         return EXIT_CODES.UNKNOWN_SUBCOMMAND;
       }
-      pollIntervalMs = parsePositiveInt(value);
+      pollIntervalMs = parsePositiveInteger(value);
       index += 1;
 
       continue;

@@ -88,7 +88,7 @@ const Select: FC<SelectProps> = ({
             icon && (iconPosition === 'left' ? 'pl-[2.3rem]' : 'pr-[2.3rem]'),
             classNameSelect
           )}
-          defaultValue={defaultValue}
+          defaultValue={value === undefined ? defaultValue : undefined}
           disabled={disabled}
           id={id ?? name}
           name={name}

@@ -3,6 +3,12 @@ import {render, screen} from 'test/rtl';
 import ToastNotification from '..';
 
 describe('ToastNotification', () => {
+  test('close button has an accessible name', () => {
+    render(<ToastNotification id="0" payload="Test toast" type="info" />);
+
+    expect(screen.getByRole('button', {name: /close/i})).toBeInTheDocument();
+  });
+
   test('renders the message as text, never as HTML', () => {
     const messageXss = '<img src=x onerror="alert(1)">';
 

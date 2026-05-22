@@ -46,23 +46,23 @@ export const deepRemoveNil = (input: unknown): unknown => {
   }
 
   if (Array.isArray(input)) {
-    return input.reduce<unknown[]>((acc, value) => {
+    return input.reduce<unknown[]>((accumulated, value) => {
       if (!isNil(value)) {
-        acc.push(deepRemoveNil(value));
+        accumulated.push(deepRemoveNil(value));
       }
 
-      return acc;
+      return accumulated;
     }, []);
   }
 
   if (isObject(input)) {
     return Object.entries(input).reduce<Record<string, unknown>>(
-      (acc, [key, value]) => {
+      (accumulated, [key, value]) => {
         if (!isNil(value)) {
-          acc[key] = deepRemoveNil(value);
+          accumulated[key] = deepRemoveNil(value);
         }
 
-        return acc;
+        return accumulated;
       },
       {}
     );
@@ -78,11 +78,14 @@ export const mapKeys = (
   obj: Record<string, unknown>,
   fn: (key: string) => string
 ): Record<string, unknown> =>
-  Object.entries(obj).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    acc[fn(key)] = value;
+  Object.entries(obj).reduce<Record<string, unknown>>(
+    (accumulated, [key, value]) => {
+      accumulated[fn(key)] = value;
 
-    return acc;
-  }, {});
+      return accumulated;
+    },
+    {}
+  );
 
 /*
   Transforms the values of an object using a provided function
@@ -91,11 +94,14 @@ export const mapValues = (
   obj: Record<string, unknown>,
   fn: (p: unknown) => unknown
 ): Record<string, unknown> =>
-  Object.entries(obj).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    acc[key] = fn(value);
+  Object.entries(obj).reduce<Record<string, unknown>>(
+    (accumulated, [key, value]) => {
+      accumulated[key] = fn(value);
 
-    return acc;
-  }, {});
+      return accumulated;
+    },
+    {}
+  );
 
 /*
   Case Conversion Utilities
@@ -114,18 +120,18 @@ export const convertCase = (
 
   if (isObject(obj)) {
     return Object.entries(obj).reduce(
-      (acc: Record<string, unknown>, [key, value]) => {
+      (accumulated: Record<string, unknown>, [key, value]) => {
         if (Array.isArray(value)) {
-          acc[fn(key)] = value.map<unknown>((item) =>
+          accumulated[fn(key)] = value.map<unknown>((item) =>
             isObject(item) ? convertCase(fn, item) : item
           );
         } else if (isObject(value)) {
-          acc[fn(key)] = convertCase(fn, value);
+          accumulated[fn(key)] = convertCase(fn, value);
         } else {
-          acc[fn(key)] = value;
+          accumulated[fn(key)] = value;
         }
 
-        return acc;
+        return accumulated;
       },
       {}
     );
@@ -153,13 +159,16 @@ export const compact = (
   obj: Record<string, unknown>,
   options?: {keepEmptyArray?: boolean; keepFalsy?: boolean}
 ): Record<string, unknown> =>
-  Object.entries(obj).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    if (
-      ((options?.keepFalsy && !isNil(value)) || value) &&
-      (!Array.isArray(value) || options?.keepEmptyArray || value.length > 0)
-    ) {
-      acc[key] = value;
-    }
+  Object.entries(obj).reduce<Record<string, unknown>>(
+    (accumulated, [key, value]) => {
+      if (
+        ((options?.keepFalsy && !isNil(value)) || value) &&
+        (!Array.isArray(value) || options?.keepEmptyArray || value.length > 0)
+      ) {
+        accumulated[key] = value;
+      }
 
-    return acc;
-  }, {});
+      return accumulated;
+    },
+    {}
+  );

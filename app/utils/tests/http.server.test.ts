@@ -25,6 +25,11 @@ describe('getContentSecurityPolicy', () => {
     expect(csp).toContain(`font-src 'self' https://fonts.gstatic.com`);
   });
 
+  test('includes upgrade-insecure-requests directive', () => {
+    const csp = getContentSecurityPolicy(nonce);
+    expect(csp).toContain('upgrade-insecure-requests');
+  });
+
   test('each request produces a different policy when given a different nonce', () => {
     const csp1 = getContentSecurityPolicy('nonce1111111111111');
     const csp2 = getContentSecurityPolicy('nonce2222222222222');
