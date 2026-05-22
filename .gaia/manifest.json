@@ -417,12 +417,12 @@
     "wiki/concepts/Forensics.md": "wiki-owned",
     "wiki/concepts/GAIA Audit.md": "wiki-owned",
     "wiki/concepts/GAIA Handoff.md": "wiki-owned",
+    "wiki/concepts/GAIA Init Workflow.md": "wiki-owned",
     "wiki/concepts/GAIA Philosophy.md": "wiki-owned",
     "wiki/concepts/GAIA Pickup.md": "wiki-owned",
     "wiki/concepts/GAIA Plan.md": "wiki-owned",
     "wiki/concepts/GAIA Spec.md": "wiki-owned",
     "wiki/concepts/Git Workflow.md": "wiki-owned",
-    "wiki/concepts/Init Workflow.md": "wiki-owned",
     "wiki/concepts/PR Merge Workflow.md": "wiki-owned",
     "wiki/concepts/Pre-commit Hooks.md": "wiki-owned",
     "wiki/concepts/Serena Integration.md": "wiki-owned",
@@ -492,6 +492,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-05-22T19:09:42.017Z",
-  "version": "1.2.3"
+  "generated": "2026-05-22T20:29:34.981Z",
+  "version": "1.3.0"
 }
