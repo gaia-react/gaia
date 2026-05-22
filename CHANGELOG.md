@@ -10,6 +10,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-05-22
+
+### Added
+
+- add axe-core accessibility testing for Vitest and Playwright (#205)
+
+### Changed
+
+- derive controlled counter from value, document latest-ref pattern (#217)
+- thread auth and language per request (#194)
+- single-pass deepRemoveNil
+- note why the NonceContext default is an empty string
+- record the unsafe-inline and no-report-uri trade-offs
+
+### Fixed
+
+- add 15_000ms timeout to per_domain_page_counts test (#225)
+- macOS sed portability + +types ignore bucket (#221)
+- accept GitHub commit status as merge gate signal (#219)
+- skip setLocalLength in controlled mode, move latest-ref comment (#218)
+- deferred code-review-audit findings from PRs #190-214 (#216)
+- a11y/perf follow-ups for Checkboxes, FieldDescription, TextArea (#213)
+- a11y for field descriptions, drop nested live region (#212)
+- audit small fixes — amended_rate, rollback msg, parseKeyPath, generator dup, a11y (#210)
+- revert-ledger lock per-PR scope + stale recovery (#209)
+- robust flag derivation in sync-land (#208)
+- atomic-write deferred writers + crypto temp-path (#207)
+- cover .playwright/ entry points (#206)
+- correctness gaps in init/schemas/storage (#204)
+- correctness gaps in release/scaffold (#203)
+- correctness gaps in automation/telemetry (#202)
+- correctness gaps in intent-clarity-gap (#201)
+- correctness gaps in setup-ci/ci/setup (#200)
+- correctness gaps in wiki/update/update-deps (#199)
+- atomic file writes with fsync (#198)
+- close correctness gaps in utils and api helpers (#197)
+- close XSS vector and error-handling gaps (#196)
+- correct edge cases across form components (#195)
+- preserve falsy success values
+- reject non-local redirect targets
+- add GAIA-Audit commit-status fallback to the skip gate
+- write GAIA-Audit commit status instead of pushing an empty marker commit
+- replace client-hints reload with pre-paint inline script
+- implement per-request nonce Content-Security-Policy
+
 ### Changed
 
 - rename `/setup-gaia` command to `/setup-cloned-gaia-project`
