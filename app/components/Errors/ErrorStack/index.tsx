@@ -20,7 +20,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
   const {t} = useTranslation('common');
 
   if (stack) {
-    const handleCopyStack = async () => {
+    const handleCopyStackButton = async () => {
       await tryCatch(async () => navigator.clipboard.writeText(stack));
     };
 
@@ -50,7 +50,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
           {statusDiv}
           <button
             className="flex items-center gap-1 rounded-bl-sm bg-red-700 pb-1 pl-1.5 pr-1 pt-px font-sans text-xs leading-none text-white hover:bg-red-600"
-            onClick={handleCopyStack}
+            onClick={handleCopyStackButton}
             type="button"
           >
             <IoCopyOutline aria-hidden={true} />
@@ -61,6 +61,8 @@ const ErrorStack: FC<ErrorStackProps> = ({
       </div>
     );
   }
+
+  return null;
 };
 
 export default ErrorStack;

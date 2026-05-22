@@ -139,6 +139,7 @@ Include only when there are specific, concrete patterns worth reinforcing. Skip 
 6. **Be proportionate** — don't nitpick formatting when there are security holes; focus energy on what matters most
 7. **Respect existing patterns** — if the codebase has an established way of doing something, don't suggest alternatives unless there's a concrete benefit
 8. **Dispatch in parallel** — once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor` and `pnpm knip --reporter json` from a single tool-call message so they run concurrently with your own review
+9. **Resolve suggestions before writing the marker** — after the report is produced and before deciding on the marker, attempt to auto-fix every item in the Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale — escalated suggestions unconditionally block the marker. Never proceed to the marker with any suggestion that is neither fixed in the working tree nor explicitly escalated.
 
 ## Rules-Based Audit (Specialist Subagents + react-doctor + knip)
 

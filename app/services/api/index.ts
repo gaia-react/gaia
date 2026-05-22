@@ -10,7 +10,7 @@ type CreateOptions = Options & {
 
 type RequestOptions = Options & {
   language?: string;
-  pathParams?: Record<string, unknown>;
+  pathParams?: Record<string, number | string>;
   searchParams?: Record<string, unknown>;
   token?: string;
 };

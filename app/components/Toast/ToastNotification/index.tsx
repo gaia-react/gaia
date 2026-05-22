@@ -1,5 +1,4 @@
 import type {FC} from 'react';
-import {useEffect, useRef, useState} from 'react';
 import type {IconType} from 'react-icons';
 import {useTranslation} from 'react-i18next';
 import {
@@ -37,10 +36,6 @@ const ICON_COLOR: Record<ToastType, string> = {
   warning: 'text-yellow-300',
 };
 
-const DEFAULT_DURATION = 5000;
-// Error notifications last longer to allow users to read/copy the stack
-const DEFAULT_ERROR_DURATION = 30_000;
-
 type ToastNotificationProps = {
   id: number | string;
   payload: Partial<ToastMessage> | string;
@@ -49,39 +44,12 @@ type ToastNotificationProps = {
 
 const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
   const {t} = useTranslation('common');
-  const [isHovered, setIsHovered] = useState(false);
-  const timeoutRef = useRef(0);
 
-  const {description, duration, message, stack} = parsePayload(payload);
-
-  const toastDuration =
-    duration ?? (type === 'error' ? DEFAULT_ERROR_DURATION : DEFAULT_DURATION);
+  const {description, message, stack} = parsePayload(payload);
 
   const handleCloseButton = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
     toast.dismiss(id);
   };
-
-  useEffect(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    if (!isHovered) {
-      timeoutRef.current = window.setTimeout(
-        () => toast.dismiss(id),
-        toastDuration
-      );
-    }
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [id, isHovered, toastDuration]);
 
   return (
     <div
@@ -89,12 +57,6 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
         'w-88 relative rounded-sm p-3 text-sm text-white',
         COLOR[type]
       )}
-      onMouseEnter={() => {
-        setIsHovered(true);
-      }}
-      onMouseLeave={() => {
-        setIsHovered(false);
-      }}
     >
       <button
         aria-label={t('close')}

@@ -1,7 +1,6 @@
 import type {AfterResponseState, BeforeRequestState, Hooks, Options} from 'ky';
 import type {StringifyOptions} from 'query-string';
 import queryString from 'query-string';
-import {env} from '~/env.server';
 import {tryCatch} from '~/utils/function';
 import {toCamelCase, toSnakeCase} from '~/utils/object';
 
@@ -79,11 +78,11 @@ export const appendSearchParams = (
 
 export const setPathParams = (
   url: string,
-  pathParams?: Record<string, unknown>
+  pathParams?: Record<string, number | string>
 ): string =>
   pathParams ?
     Object.entries(pathParams).reduce(
-      (acc, [key, value]) => acc.replace(`:${key}`, value as string),
+      (acc, [key, value]) => acc.replace(`:${key}`, String(value)),
       url
     )
   : url;
@@ -95,15 +94,15 @@ export const getUri = (
     ...options
   }: {
     arrayFormat?: StringifyOptions['arrayFormat'];
-    pathParams?: Record<string, unknown>;
+    pathParams?: Record<string, number | string>;
     searchParams?: Record<string, unknown>;
     useSnakeCase?: boolean;
   } = {}
 ): string => appendSearchParams(setPathParams(uri, pathParams), options);
 
 export const getBaseUrl = (): string => {
-  // server api call — validated at startup by env.server
-  if (typeof window === 'undefined') return env.API_URL;
+  // server api call — API_URL is validated at startup in env.server
+  if (typeof window === 'undefined') return process.env.API_URL ?? '';
 
   // client api call
   if (window.process.env.API_URL) return window.process.env.API_URL;

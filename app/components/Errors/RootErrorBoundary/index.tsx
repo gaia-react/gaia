@@ -13,7 +13,7 @@ import type {Route} from '../../../../.react-router/types/app/+types/root';
 const RootErrorBoundary = ({error}: Route.ErrorBoundaryProps) => {
   if (!canUseDOM) {
     // Server-Side log of error
-    console.log(error);
+    console.error(error);
   }
 
   if (isRouteErrorResponse(error)) {

@@ -1,6 +1,5 @@
 import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
-import Layout from '~/components/Layout';
 import {md5} from '~/utils/object';
 
 type TermsPageProps = {
@@ -14,7 +13,7 @@ const TermsPage: FC<TermsPageProps> = ({description, title}) => {
   const paragraphs = Array.isArray(raw) ? (raw as readonly string[]) : [];
 
   return (
-    <Layout>
+    <>
       <title>{title}</title>
       <meta content={description} name="description" />
       <div className="prose dark:prose-invert p-8 sm:px-16">
@@ -23,7 +22,7 @@ const TermsPage: FC<TermsPageProps> = ({description, title}) => {
           <p key={md5({paragraph})}>{paragraph}</p>
         ))}
       </div>
-    </Layout>
+    </>
   );
 };
 

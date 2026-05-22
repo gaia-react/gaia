@@ -2,10 +2,16 @@ import type {ChangeEvent, FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
 import {twMerge} from 'tailwind-merge';
+import {LANGUAGES} from '~/languages';
 
 const SET_LANGUAGE_ACTION = '/actions/set-language';
 
-const OPTIONS = [{label: 'English', value: 'en'}];
+// Native <select> intentional: this is a non-Conform chrome control, not a form field.
+const LANGUAGE_LABELS: Record<string, string> = {en: 'English'};
+const OPTIONS = LANGUAGES.map((value) => ({
+  label: LANGUAGE_LABELS[value] ?? value,
+  value,
+}));
 
 type LanguageSelectProps = {
   className?: string;

@@ -3,55 +3,64 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {useBreakpoint} from '../useBreakpoint';
 
 describe('useBreakpoint', () => {
-  const originalInnerWidth = window.innerWidth;
+  let changeListeners: (() => void)[] = [];
+  let mockMatches = false;
+
+  const mockMql = {
+    addEventListener: vi.fn((_event: string, listener: () => void) => {
+      changeListeners.push(listener);
+    }),
+    get matches() {
+      return mockMatches;
+    },
+    removeEventListener: vi.fn((_event: string, listener: () => void) => {
+      changeListeners = changeListeners.filter((l) => l !== listener);
+    }),
+  };
 
   beforeEach(() => {
-    vi.spyOn(window, 'addEventListener');
-    vi.spyOn(window, 'removeEventListener');
+    changeListeners = [];
+    mockMatches = false;
+    vi.spyOn(window, 'matchMedia').mockReturnValue(
+      mockMql as unknown as MediaQueryList
+    );
   });
 
   afterEach(() => {
-    Object.defineProperty(window, 'innerWidth', {
-      value: originalInnerWidth,
-      writable: true,
-    });
     vi.restoreAllMocks();
   });
 
-  test('returns true when innerWidth meets the breakpoint threshold', () => {
-    Object.defineProperty(window, 'innerWidth', {value: 1024, writable: true});
-    const {result} = renderHook(() => useBreakpoint('lg'));
-    expect(result.current).toBe(true);
-  });
-
-  test('returns false when innerWidth is below the breakpoint threshold', () => {
-    Object.defineProperty(window, 'innerWidth', {value: 600, writable: true});
+  test('returns false when media query does not match', () => {
+    mockMatches = false;
     const {result} = renderHook(() => useBreakpoint('lg'));
     expect(result.current).toBe(false);
   });
 
-  test('updates on window resize events', () => {
-    Object.defineProperty(window, 'innerWidth', {value: 600, writable: true});
+  test('returns true when media query matches', () => {
+    mockMatches = true;
+    const {result} = renderHook(() => useBreakpoint('lg'));
+    expect(result.current).toBe(true);
+  });
+
+  test('updates when MediaQueryList fires a change event', () => {
+    mockMatches = false;
     const {result} = renderHook(() => useBreakpoint('lg'));
     expect(result.current).toBe(false);
 
     act(() => {
-      Object.defineProperty(window, 'innerWidth', {
-        value: 1200,
-        writable: true,
-      });
-      window.dispatchEvent(new Event('resize'));
+      mockMatches = true;
+      changeListeners.forEach((listener) => listener());
     });
 
     expect(result.current).toBe(true);
   });
 
-  test('removes the resize listener on unmount', () => {
+  test('removes the change listener on unmount', () => {
     const {unmount} = renderHook(() => useBreakpoint('md'));
     unmount();
 
-    expect(window.removeEventListener).toHaveBeenCalledWith(
-      'resize',
+    expect(mockMql.removeEventListener).toHaveBeenCalledWith(
+      'change',
       expect.any(Function)
     );
   });

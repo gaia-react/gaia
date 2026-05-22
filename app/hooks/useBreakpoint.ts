@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useCallback, useSyncExternalStore} from 'react';
 
 const BREAKPOINTS = {
   '2xl': 1536,
@@ -10,21 +10,25 @@ const BREAKPOINTS = {
 
 type BreakpointType = keyof typeof BREAKPOINTS;
 
+const getServerSnapshot = (): boolean => false;
+
 export const useBreakpoint = (breakpoint: BreakpointType): boolean => {
-  const [isBreakpoint, setIsBreakpoint] = useState(false);
+  const query = `(min-width: ${BREAKPOINTS[breakpoint]}px)`;
 
-  useEffect(() => {
-    const onUpdate = () => {
-      const {innerWidth} = window;
-      setIsBreakpoint(innerWidth >= BREAKPOINTS[breakpoint]);
-    };
-    onUpdate();
-    window.addEventListener('resize', onUpdate);
+  // stable ref required by useSyncExternalStore — re-subscribes only when breakpoint changes
+  const subscribe = useCallback(
+    (callback: () => void) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener('change', callback);
 
-    return () => {
-      window.removeEventListener('resize', onUpdate);
-    };
-  }, [breakpoint]);
+      return () => mql.removeEventListener('change', callback);
+    },
+    [query]
+  );
 
-  return isBreakpoint;
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    getServerSnapshot
+  );
 };

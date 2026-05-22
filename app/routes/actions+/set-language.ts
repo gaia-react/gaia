@@ -7,7 +7,7 @@ import type {Route} from './+types/set-language';
 
 const SetLanguageSchema = z.object({
   language: z.string().refine((lang) => LANGUAGES.includes(lang)),
-  redirectUrl: z.string().refine(isLocalRedirect),
+  redirectUrl: z.string().startsWith('/').refine(isLocalRedirect),
 });
 
 export const action = async ({request}: Route.ActionArgs) => {

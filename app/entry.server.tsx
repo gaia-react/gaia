@@ -127,10 +127,12 @@ const handleRequest = async (
           );
 
           // Security response headers
-          responseHeaders.set(
-            'Strict-Transport-Security',
-            'max-age=31536000; includeSubDomains'
-          );
+          if (env.NODE_ENV === 'production') {
+            responseHeaders.set(
+              'Strict-Transport-Security',
+              'max-age=31536000; includeSubDomains'
+            );
+          }
           responseHeaders.set('X-Content-Type-Options', 'nosniff');
           responseHeaders.set('X-Frame-Options', 'DENY');
 
