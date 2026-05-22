@@ -7,6 +7,7 @@ type MaxLengthProps = {
   maxLength: number;
 };
 
+// index = digit count of maxLength; pixel min-width prevents layout shift as current length changes
 const MIN_WIDTHS = [0, 34, 49, 65, 80, 95, 100, 111];
 
 const MaxLength: FC<MaxLengthProps> = ({className, length, maxLength}) => {

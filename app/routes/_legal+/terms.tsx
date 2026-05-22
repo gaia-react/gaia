@@ -1,3 +1,4 @@
+import type {FC} from 'react';
 import {useLoaderData} from 'react-router';
 import {getInstance} from '~/middleware/i18next';
 import TermsPage from '~/pages/Legal/TermsPage';
@@ -11,7 +12,7 @@ export const loader = async ({context}: Route.LoaderArgs) => {
   return {description, title};
 };
 
-const TermsRoute = () => {
+const TermsRoute: FC = () => {
   const {description, title} = useLoaderData<typeof loader>();
 
   return <TermsPage description={description} title={title} />;

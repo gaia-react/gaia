@@ -37,6 +37,7 @@ export const formatISO8601Date = (date: Date): string =>
 export const formatFullDate = (date: Date, language: string): string =>
   format(date, 'PPPP', getLocaleOptions(language));
 
+// locale-insensitive by design: MM/yy is a universal card-expiry format
 export const formatMY = (date = new Date()): string => format(date, 'MM/yy');
 
 export const formatFullYear = (date: Date, language: string): string =>

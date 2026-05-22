@@ -53,7 +53,7 @@ const Select: FC<SelectProps> = ({
   // `uncontrolledValue` only backs the uncontrolled (defaultValue) case.
   const currentValue = value ?? uncontrolledValue;
 
-  const handleUpdateValue = (event: ChangeEvent<HTMLSelectElement>) => {
+  const handleUpdateValueSelect = (event: ChangeEvent<HTMLSelectElement>) => {
     setUncontrolledValue(event.currentTarget.value || '');
     onChange?.(event);
   };
@@ -92,7 +92,7 @@ const Select: FC<SelectProps> = ({
           disabled={disabled}
           id={id ?? name}
           name={name}
-          onChange={handleUpdateValue}
+          onChange={handleUpdateValueSelect}
           required={required}
           value={value}
           {...props}

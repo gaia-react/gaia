@@ -73,6 +73,7 @@ type MaybeIcon = {
 };
 
 type OnlyIcon = {
+  'aria-label': string;
   children?: never;
   classNameIcon?: string;
   icon: IconType;
@@ -102,7 +103,8 @@ const Button: FC<ButtonProps> = ({
   const innerClassName = twJoin(
     icon && 'flex items-center justify-center',
     icon && !children && ICON_ONLY_SIZES[size],
-    icon && children && `gap-1.5 ${ICON_POSITION[iconPosition]}`
+    icon && children && 'gap-1.5',
+    icon && children && ICON_POSITION[iconPosition]
   );
 
   return (

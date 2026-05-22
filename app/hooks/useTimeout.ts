@@ -10,7 +10,7 @@ export const useTimeout = (delay: number, trigger?: unknown): boolean => {
   }
 
   useEffect(() => {
-    const id = window.setTimeout(() => {
+    const id = setTimeout(() => {
       setComplete(true);
     }, delay);
 

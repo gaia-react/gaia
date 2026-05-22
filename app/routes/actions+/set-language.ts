@@ -1,28 +1,27 @@
 import {data, redirect, replace} from 'react-router';
+import {z} from 'zod';
 import {LANGUAGES} from '~/languages';
 import {languageCookie} from '~/sessions.server/language';
 import {isLocalRedirect} from '~/utils/http';
 import type {Route} from './+types/set-language';
 
-export const action = async ({request}: Route.ActionArgs) => {
-  const requestText = await request.text();
-  const form = new URLSearchParams(requestText);
-  const language = form.get('language');
-  const redirectUrl = form.get('redirectUrl');
+const SetLanguageSchema = z.object({
+  language: z.string().refine((lang) => LANGUAGES.includes(lang)),
+  redirectUrl: z.string().refine(isLocalRedirect),
+});
 
-  if (
-    language == null ||
-    !LANGUAGES.includes(language) ||
-    !isLocalRedirect(redirectUrl)
-  ) {
-    return data(
-      {
-        message: `language value of ${language} is not a valid language`,
-        ok: false,
-      },
-      {status: 400}
-    );
+export const action = async ({request}: Route.ActionArgs) => {
+  const formData = await request.formData();
+  const submission = SetLanguageSchema.safeParse({
+    language: formData.get('language'),
+    redirectUrl: formData.get('redirectUrl'),
+  });
+
+  if (!submission.success) {
+    return data(null, {status: 400});
   }
+
+  const {language, redirectUrl} = submission.data;
 
   return replace(redirectUrl, {
     headers: {

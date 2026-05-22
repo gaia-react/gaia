@@ -75,20 +75,23 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
     };
   }, []);
 
-  const handleUpdateDate = (event: ChangeEvent<HTMLSelectElement>) => {
-    const newValue =
-      event.currentTarget.name.includes('Date') ?
-        `${year}-${month}-${event.currentTarget.value}`
-      : getSafeValue(value, event.currentTarget);
+  const handleUpdateDateSelect = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const newValue =
+        event.currentTarget.name.includes('Date') ?
+          `${year}-${month}-${event.currentTarget.value}`
+        : getSafeValue(value, event.currentTarget);
 
-    // Sync the hidden input's DOM value before onChange dispatches events,
-    // so Conform reads the correct value during revalidation.
-    if (hiddenRef.current) {
-      hiddenRef.current.value = newValue;
-    }
+      // Sync the hidden input's DOM value before onChange dispatches events,
+      // so Conform reads the correct value during revalidation.
+      if (hiddenRef.current) {
+        hiddenRef.current.value = newValue;
+      }
 
-    onChange(newValue);
-  };
+      onChange(newValue);
+    },
+    [month, onChange, value, year]
+  );
 
   const years = useMemo(
     () =>
@@ -150,7 +153,7 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
           className="flex-1"
           classNameSelect={classNameSelect}
           name={`${name}Year`}
-          onChange={handleUpdateDate}
+          onChange={handleUpdateDateSelect}
           options={years}
           value={year}
         />
@@ -159,7 +162,7 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
           className="flex-1"
           classNameSelect={classNameSelect}
           name={`${name}Month`}
-          onChange={handleUpdateDate}
+          onChange={handleUpdateDateSelect}
           options={months}
           value={month}
         />
@@ -168,7 +171,7 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
           className="flex-1"
           classNameSelect={classNameSelect}
           name={`${name}Date`}
-          onChange={handleUpdateDate}
+          onChange={handleUpdateDateSelect}
           options={dates}
           value={date}
         />

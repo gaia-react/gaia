@@ -19,11 +19,11 @@ import i18nConfig from '~/i18n';
 import {getInstance} from '~/middleware/i18next';
 import {getContentSecurityPolicy} from '~/utils/http.server';
 import {NonceProvider} from '~/utils/nonce';
-import {startApiMocks} from '../test/msw.server';
 import {env} from './env.server';
 import 'dotenv/config';
 
 if (env.NODE_ENV !== 'production' && env.MSW_ENABLED) {
+  const {startApiMocks} = await import('../test/msw.server');
   startApiMocks();
 }
 

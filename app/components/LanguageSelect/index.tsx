@@ -3,6 +3,8 @@ import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
 import {twMerge} from 'tailwind-merge';
 
+const SET_LANGUAGE_ACTION = '/actions/set-language';
+
 const OPTIONS = [{label: 'English', value: 'en'}];
 
 type LanguageSelectProps = {
@@ -21,9 +23,11 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
 
   const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
 
-  const handleChangeLanguage = async (event: ChangeEvent<HTMLFormElement>) => {
+  const handleChangeLanguageForm = async (
+    event: ChangeEvent<HTMLFormElement>
+  ) => {
     await fetcher.submit(event.currentTarget, {
-      action: '/actions/set-language',
+      action: SET_LANGUAGE_ACTION,
       method: 'POST',
     });
 
@@ -32,10 +36,10 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
 
   return (
     <fetcher.Form
-      action="/actions/set-language"
+      action={SET_LANGUAGE_ACTION}
       className={twMerge('relative flex-none text-sm', className)}
       method="POST"
-      onChange={handleChangeLanguage}
+      onChange={handleChangeLanguageForm}
     >
       <input name="redirectUrl" type="hidden" value={redirectUrl} />
       <select

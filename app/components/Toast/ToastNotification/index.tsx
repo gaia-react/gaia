@@ -1,5 +1,5 @@
 import type {FC} from 'react';
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import type {IconType} from 'react-icons';
 import {useTranslation} from 'react-i18next';
 import {
@@ -57,12 +57,12 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
   const toastDuration =
     duration ?? (type === 'error' ? DEFAULT_ERROR_DURATION : DEFAULT_DURATION);
 
-  const handleClose = useCallback(() => {
+  const handleClose = () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     toast.dismiss(id);
-  }, [id]);
+  };
 
   useEffect(() => {
     if (timeoutRef.current) {

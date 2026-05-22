@@ -17,8 +17,11 @@ export const getTheme = (request: Request): null | Theme => {
 export const setTheme = (theme: 'system' | Theme): string => {
   if (theme === 'system') {
     return cookie.serialize(COOKIE_NAME, '', {
+      httpOnly: true,
       maxAge: -1,
       path: '/',
+      sameSite: 'lax',
+      secure: env.NODE_ENV === 'production',
     });
   }
 
