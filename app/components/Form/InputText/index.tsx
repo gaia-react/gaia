@@ -37,12 +37,12 @@ const InputText: FC<InputProps> = ({
 
   const handleUpdateLength = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
-      if (maxLength) {
+      if (maxLength && props.value === undefined) {
         setLocalLength(event.currentTarget.value.length);
       }
       onChange?.(event);
     },
-    [maxLength, onChange]
+    [maxLength, onChange, props.value]
   );
 
   const Icon = icon;
