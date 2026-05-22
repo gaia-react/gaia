@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .gaia/scripts/link-worktree.sh"
+            "command": "bash .gaia/scripts/create-worktree.sh"
           }
         ]
       }

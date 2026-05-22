@@ -166,36 +166,54 @@ Iterate keys of `.files`. For each `<path>, <class>` entry, apply the decision t
 
 ### Step 7: Three-way merge
 
-Run:
+Apply the decision table directly — there is no CLI for this step.
+
+**Setup:**
 
 ```bash
-gaia update merge --baseline "$BASELINE_DIR" --latest "$LATEST_DIR" --manifest "$LATEST_MANIFEST" --json
+BACKUP_DIR=".gaia-backup/$(date +%Y%m%d-%H%M%S)"
+mkdir -p .gaia-merge "$BACKUP_DIR"
 ```
 
-Parse the JSON output. Shape (`UpdateMergeReport`):
+Track six lists internally (`UpdateMergeReport`):
 
 ```ts
 {
-  overwrite: string[];   // upstream-owned files written into the working tree
-  skip: string[];        // user-owned or no-drift; left alone
-  merge: string[];       // clean three-way merges written into the working tree
+  overwrite: string[];   // owned files overwritten with latest
+  skip: string[];        // no change needed; left alone
+  merge: string[];       // clean shared/wiki-owned merges written into the working tree
   add: string[];         // new files copied from latest
-  delete: string[];      // upstream-deleted files; the CLI does NOT remove them
+  delete: string[];      // files removed upstream; surfaced but NOT auto-deleted
   conflicts: Array<{
     path: string;
-    class: 'owned' | 'shared' | 'upstream';
+    class: 'owned' | 'shared' | 'wiki-owned';
     patch_path: string;  // .gaia-merge/<path>.patch
   }>;
 }
 ```
 
-For each entry:
+**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object:**
 
-- `overwrite[]`, `skip[]`, `merge[]`, `add[]`: **report counts only — no per-file narrative**. Do not read bytes; the CLI already wrote the correct file.
-- `delete[]`: **ASK the user before removing** each path. The CLI surfaces these but never auto-deletes.
-- `conflicts[]`: read the patch under `.gaia-merge/<path>.patch` and walk the user through the decision per file.
+Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DIR/<path>`. Use `cmp -s` for equality; `mkdir -p` before writing.
 
-Do **not** read bytes for any file the CLI did not surface as a conflict or deletion. The decision table baked into `gaia update merge` is canonical; the JSON it emits is the contract the skill walks.
+| Class | Condition | Action | List |
+|---|---|---|---|
+| `owned` | `B` missing (new file) | Copy `L` → `<path>` | `add[]` |
+| `owned` | `A` ≅ `B` (no adopter drift) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `overwrite[]` |
+| `owned` | `A` ≅ `L` (adopter already current) | No-op | `skip[]` |
+| `owned` | `A` ≠ `B` and `A` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
+| `shared` / `wiki-owned` | `B` ≅ `L` (no upstream change) | No-op | `skip[]` |
+| `shared` / `wiki-owned` | `A` ≅ `B` (no adopter drift) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `merge[]` |
+| `shared` / `wiki-owned` | `A` ≅ `L` (adopter already at latest) | No-op | `skip[]` |
+| `shared` / `wiki-owned` | `A` ≠ `B` and `B` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
+
+**After iterating the manifest,** collect deletions: files present under `$BASELINE_DIR` that have no corresponding key in `$LATEST_MANIFEST`'s `.files`. Add each to `delete[]`. Do **not** remove them from the working tree.
+
+**Handling results:**
+
+- `overwrite[]`, `skip[]`, `merge[]`, `add[]`: **report counts only — no per-file narrative.** Do not read file bytes.
+- `delete[]`: **ask the user before removing** each path.
+- `conflicts[]`: read the patch at `.gaia-merge/<path>.patch` and walk the user through the decision per file.
 
 ### Step 8: Bump `.gaia/VERSION`
 
@@ -278,7 +296,7 @@ If `INVALIDATED_COUNT` is greater than 0, also print after the table:
 
 > **Note:** $INVALIDATED_COUNT open PR(s) carry a `GAIA-Audit` trailer stamped with v$BASELINE. On their next push, CI re-runs the full audit (one extra billing cycle per PR). This is intentional — a newer GAIA agent version may catch issues the prior version missed. To minimize re-audit churn, merge or close these PRs before updating GAIA.
 
-Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session. Use the Write tool to overwrite `.gaia/cache/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, and `gaiaHasUpdate` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If the cache file does not exist, skip this step.
+Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session. Use the Write tool to overwrite `.gaia/cache/update-check.json` with `gaiaCurrent` set to `$LATEST`, `gaiaLatest` set to `$LATEST`, `gaiaHasUpdate` set to `false`, `outdatedCount` set to `0`, and `checkedAt` set to the current Unix timestamp. If the cache file does not exist, skip this step.
 
 The next SessionStart hook fires the background refresher; the session after that sees no GAIA update available.
 
@@ -292,3 +310,31 @@ Tell the user:
 4. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
 
 Do **not** auto-commit on behalf of the user — they need to review the changes first.
+
+### Step 11: Open a pull request
+
+After the Step 10 commit lands, `/update-gaia` must not leave the branch stranded — open a PR so the update can be reviewed and merged.
+
+Push the branch and open a PR, but only if it has no open PR already — a re-run of `/update-gaia` on the same branch updates the existing PR instead of duplicating it:
+
+```bash
+branch="$(git branch --show-current)"
+
+# The update must be committed first (Step 10). No commits ahead of main → finish Step 10.
+if [ "$(git rev-list --count main.."$branch" 2>/dev/null || echo 0)" -eq 0 ]; then
+  echo "Nothing committed ahead of main — commit the update (Step 10) before opening a PR."
+elif ! git push -u origin "$branch"; then
+  echo "Push failed — resolve the push error, then open the PR manually: $branch → main."
+else
+  existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null)"
+  if [ -n "$existing" ]; then
+    echo "PR #$existing already open for $branch — pushed the new commit to it."
+  else
+    gh pr create --base main --head "$branch" \
+      --title "chore: update GAIA to $LATEST_TAG" \
+      --body "Pulls GAIA $LATEST_TAG into the project. Per-file outcomes are in the update summary above."
+  fi
+fi
+```
+
+If `gh` is unavailable or errors, tell the user to open the PR manually: `$branch` → `main`.
