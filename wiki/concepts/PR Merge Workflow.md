@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-19
+updated: 2026-05-22
 tags: [concept, ci, review]
 ---
 
@@ -34,9 +34,19 @@ Task(
 
 ### 3. Marker handshake
 
-The audit agent writes `.gaia/local/audit/<HEAD-sha>.ok` only on a clean pass (no Critical Issues, every Important Issue addressed in the working tree). The hook gates `gh pr merge` on the presence of that marker for the exact commit being merged. Knip / react-doctor advisories and Suggestions never block marker emission.
+The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove the audit ran clean against the content being merged:
 
-If the agent declines to write the marker, the report names what remains unaddressed; resolve those, commit, push, re-spawn.
+| Signal | Source | How it gets there |
+|---|---|---|
+| `.gaia/local/audit/<HEAD-sha>.ok` | Local audit agent | Agent writes it on a clean pass |
+| `GAIA-Audit:` commit-message trailer on HEAD | Local audit agent | `audit-stamp-trailer.sh` writes an empty commit with the trailer |
+| `GAIA-Audit` GitHub commit status on HEAD, description `<version> <tree>` | CI (`code-review-audit.yml`) | CI stamps this instead of pushing an empty commit (pushing would re-trigger CI and leave HEAD without check runs) |
+
+Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.
+
+A clean pass requires no Critical Issues and every Important Issue addressed. Knip / react-doctor advisories and Suggestions never block signal emission.
+
+If the local agent declines to write the marker, its report names what remains unaddressed; resolve those, commit, push, re-spawn.
 
 ### 4. Merge
 
