@@ -58,7 +58,7 @@ describe('compose', () => {
   });
 
   test('handles a single function', () => {
-    const spy = vi.fn((x: number) => x * 3);
+    const spy = vi.fn((inputValue: number) => inputValue * 3);
     const composed = compose(spy);
     expect(composed(4)).toBe(12);
     expect(spy).toHaveBeenCalledWith(4);

@@ -164,6 +164,8 @@ Parse the JSON output from `pnpm knip --reporter json` (an `issues[]` array keye
 
 Knip findings are **advisory, not blocking** — like react-doctor's. Surface them in the audit summary with the recommended bucket and action so the user can decide. Do not auto-delete or auto-edit `knip.config.ts` during the review.
 
+When reporting knip in the Tooling table: if `issues` is an empty array, write **No issues** — do not paste the raw `{"issues":[]}` JSON.
+
 ### Subagent 1: React Patterns & Accessibility Audit
 
 Scope: `.tsx` files only.
