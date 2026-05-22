@@ -100,7 +100,10 @@ const toCamelCase = (kebab: string): string => {
   const parts = kebab.split('-');
   const [first, ...rest] = parts;
 
-  return [first, ...rest.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)].join('');
+  return [
+    first,
+    ...rest.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`),
+  ].join('');
 };
 
 const repoRoot = (): string => {
@@ -145,7 +148,8 @@ const insertIntoLocaleBarrel = (
   }
 
   // Insert the import alphabetically by importName.
-  let importInsertIdx = importLines.length === 0 ? 0 : (importLines.at(-1) ?? 0) + 1;
+  let importInsertIdx =
+    importLines.length === 0 ? 0 : (importLines.at(-1) ?? 0) + 1;
 
   for (const idx of importLines) {
     const existing = lines[idx];
@@ -153,7 +157,11 @@ const insertIntoLocaleBarrel = (
     if (existing === undefined) continue;
     const match = existing.match(/^import\s+(\w+)\s+from/u);
 
-    if (match && match[1] !== undefined && importName.localeCompare(match[1]) < 0) {
+    if (
+      match &&
+      match[1] !== undefined &&
+      importName.localeCompare(match[1]) < 0
+    ) {
       importInsertIdx = idx;
       break;
     }
@@ -163,7 +171,9 @@ const insertIntoLocaleBarrel = (
 
   // Now insert into the export default { ... } block.
   // Find the line with `export default {` and the closing `};`.
-  const openIdx = lines.findIndex((line) => /export\s+default\s+\{/u.test(line));
+  const openIdx = lines.findIndex((line) =>
+    /export\s+default\s+\{/u.test(line)
+  );
   const closeIdx = lines.findIndex(
     (line, idx) => idx > openIdx && /^\s*\}\s*;?\s*$/u.test(line)
   );
@@ -175,7 +185,8 @@ const insertIntoLocaleBarrel = (
 
   // Detect indentation from existing entries.
   const entryPattern = /^(\s+)(\w+),?\s*$/u;
-  const existingEntries: Array<{indent: string; key: string; lineIdx: number}> = [];
+  const existingEntries: Array<{indent: string; key: string; lineIdx: number}> =
+    [];
 
   for (let idx = openIdx + 1; idx < closeIdx; idx += 1) {
     const line = lines[idx];
@@ -228,16 +239,15 @@ const insertIntoLocaleBarrel = (
   // actually contains both the new import line and a matching entry in
   // the default-export block. A non-matching edit fails loudly here
   // instead of silently corrupting the barrel.
-  const entryAdded = new RegExp(
-    String.raw`^\s+${importName},?\s*$`,
-    'mu'
-  ).test(next);
+  const entryAdded = new RegExp(String.raw`^\s+${importName},?\s*$`, 'mu').test(
+    next
+  );
 
   if (!next.includes(importLine) || !entryAdded) {
     throw new Error(
-      `locale barrel edit did not apply cleanly to ${barrelPath}: `
-        + `expected import "${importName}" and a matching default-export entry. `
-        + 'Add the entries by hand or fix the barrel shape.'
+      `locale barrel edit did not apply cleanly to ${barrelPath}: ` +
+        `expected import "${importName}" and a matching default-export entry. ` +
+        'Add the entries by hand or fix the barrel shape.'
     );
   }
 
@@ -334,9 +344,7 @@ export const run = (rest: readonly string[]): number => {
   if (first === undefined || first === '--help' || first === '-h') {
     process.stdout.write(HELP_TEXT);
 
-    return first === undefined
-      ? EXIT_CODES.UNKNOWN_SUBCOMMAND
-      : EXIT_CODES.OK;
+    return first === undefined ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
 
   const name = first;
@@ -370,10 +378,22 @@ export const run = (rest: readonly string[]): number => {
   try {
     const routeVars = buildRouteVars(names, flags, name);
 
-    const routeAbs = path.join(root, 'app', 'routes', flags.group, `${name}.tsx`);
+    const routeAbs = path.join(
+      root,
+      'app',
+      'routes',
+      flags.group,
+      `${name}.tsx`
+    );
     writeFile(result, routeAbs, renderTemplate(tmpls.route, routeVars));
 
-    const pageDir = path.join(root, 'app', 'pages', names.groupSegment, names.pageName);
+    const pageDir = path.join(
+      root,
+      'app',
+      'pages',
+      names.groupSegment,
+      names.pageName
+    );
     const pageVars: TemplateVars = {
       groupSegment: names.groupSegment,
       hasI18n: flags.i18n,
@@ -424,7 +444,11 @@ export const run = (rest: readonly string[]): number => {
         'index.ts'
       );
       const importName = names.i18nKey;
-      const status = insertIntoLocaleBarrel(localeBarrel, importName, names.pageName);
+      const status = insertIntoLocaleBarrel(
+        localeBarrel,
+        importName,
+        names.pageName
+      );
 
       if (status === 'inserted') result.edited.push(localeBarrel);
       else if (status === 'present') result.skipped.push(localeBarrel);

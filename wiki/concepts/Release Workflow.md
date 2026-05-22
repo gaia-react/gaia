@@ -16,14 +16,14 @@ How GAIA cuts a public release. Two surfaces — the template repo (`gaia-react/
 
 ## Primitives
 
-| File                                  | Role                                                                                                          |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `.gaia/VERSION`                       | Plain `X.Y.Z`. Single source of truth for the installed version. Survives `/gaia-init`.                       |
-| `.gaia/manifest.json`                 | Maps every GAIA-shipped file to a class (`owned` / `shared` / `wiki-owned`). Consumed by [[Update Workflow]]. |
-| `.gaia/release-exclude`               | Tar-exclude format. Paths listed here are stripped from the release tarball.                                  |
-| `gaia-maintainer release manifest` (CLI)         | Maintainer-only. Walks `git ls-files` + classifier globs; writes `.gaia/manifest.json`.                       |
-| `CHANGELOG.md`                        | Keep-a-Changelog format. `## [Unreleased]` at top; `/gaia-release` graduates it to a versioned section.       |
-| `.github/workflows/release.yml`       | Tag-triggered (`v*.*.*`). Builds scrubbed tarball, creates GitHub Release with CHANGELOG excerpt.             |
+| File                                     | Role                                                                                                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `.gaia/VERSION`                          | Plain `X.Y.Z`. Single source of truth for the installed version. Survives `/gaia-init`.                       |
+| `.gaia/manifest.json`                    | Maps every GAIA-shipped file to a class (`owned` / `shared` / `wiki-owned`). Consumed by [[Update Workflow]]. |
+| `.gaia/release-exclude`                  | Tar-exclude format. Paths listed here are stripped from the release tarball.                                  |
+| `gaia-maintainer release manifest` (CLI) | Maintainer-only. Walks `git ls-files` + classifier globs; writes `.gaia/manifest.json`.                       |
+| `CHANGELOG.md`                           | Keep-a-Changelog format. `## [Unreleased]` at top; `/gaia-release` graduates it to a versioned section.       |
+| `.github/workflows/release.yml`          | Tag-triggered (`v*.*.*`). Builds scrubbed tarball, creates GitHub Release with CHANGELOG excerpt.             |
 
 ## Versioning (SemVer)
 

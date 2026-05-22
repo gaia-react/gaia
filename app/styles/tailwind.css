@@ -79,20 +79,20 @@
   [type='week'] {
     @apply border-normal bg-body;
     @apply focus:ring-0 focus-visible:border-blue-600 focus-visible:ring focus-visible:ring-blue-400 focus-visible:ring-offset-0;
-    @apply disabled:border-light disabled:text-disabled disabled:cursor-not-allowed disabled:opacity-100 disabled:active:border-gray-200 disabled:group-active:border-gray-200;
+    @apply disabled:border-light disabled:text-disabled disabled:cursor-not-allowed disabled:opacity-100 disabled:group-active:border-gray-200 disabled:active:border-gray-200;
     @apply disabled:checked:border-gray-200 disabled:checked:bg-blue-500/50;
-    @apply dark:disabled:border-gray-700 dark:disabled:checked:bg-gray-800 dark:disabled:active:border-gray-700 dark:disabled:group-active:border-gray-700;
+    @apply dark:disabled:border-gray-700 dark:disabled:group-active:border-gray-700 dark:disabled:checked:bg-gray-800 dark:disabled:active:border-gray-700;
     @apply dark:focus-visible:border-blue-400 dark:focus-visible:ring-blue-600;
   }
 
   [type='checkbox'],
   [type='radio'] {
     @apply cursor-pointer checked:bg-blue-500;
-    @apply checked:border-blue-500 active:border-blue-500 group-active:border-blue-500;
+    @apply group-active:border-blue-500 checked:border-blue-500 active:border-blue-500;
     @apply invalid:border-red-500 invalid:ring invalid:ring-red-600 invalid:ring-offset-0 invalid:focus-visible:border-blue-600 invalid:focus-visible:ring-blue-400;
     @apply dark:checked:border-blue-500 dark:checked:bg-blue-600;
     @apply dark:disabled:checked:border-gray-700 dark:disabled:checked:bg-blue-600/30;
-    @apply dark:active:border-blue-600 dark:group-active:border-blue-600;
+    @apply dark:group-active:border-blue-600 dark:active:border-blue-600;
     @apply dark:invalid:border-red-500 dark:invalid:ring-red-600 dark:invalid:focus-visible:border-blue-500 dark:invalid:focus-visible:ring-blue-600;
 
     &[aria-required='true'] {

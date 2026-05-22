@@ -23,11 +23,11 @@ const HELP_TEXT = `Usage: gaia update-deps <subcommand> [args]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type SubcommandHandler = (
-  args: readonly string[]
-) => number | Promise<number>;
+type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 
-const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+const SUBCOMMAND_HANDLERS: Readonly<
+  Partial<Record<string, SubcommandHandler>>
+> = {
   run: runEmit,
 };
 

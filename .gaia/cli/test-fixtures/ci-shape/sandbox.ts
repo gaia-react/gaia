@@ -19,14 +19,20 @@ export type Sandbox = {
 export const setupSandbox = (prefix = 'gaia-ci-shape-'): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), prefix));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   writeFileSync(path.join(root, 'README.md'), '# test\n', 'utf8');
   execFileSync('git', ['add', 'README.md'], {cwd: root});
   execFileSync('git', ['commit', '-q', '-m', 'initial'], {cwd: root});
   mkdirSync(path.join(root, '.gaia'), {recursive: true});
 
-  const ledgerPath = path.join(root, '.gaia', 'automation.state-revert-attempts.json');
+  const ledgerPath = path.join(
+    root,
+    '.gaia',
+    'automation.state-revert-attempts.json'
+  );
 
   return {
     cleanup: () => {

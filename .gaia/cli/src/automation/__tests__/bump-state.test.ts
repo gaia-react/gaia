@@ -7,12 +7,16 @@ import {setupSandbox, type Sandbox} from './sandbox.js';
 
 const silenceStdio = () => {
   const errors: string[] = [];
-  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
-    errors.push(typeof chunk === 'string' ? chunk : String(chunk));
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation(() => true);
+  const stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: unknown) => {
+      errors.push(typeof chunk === 'string' ? chunk : String(chunk));
 
-    return true;
-  });
+      return true;
+    });
 
   return {
     errors,
@@ -65,18 +69,24 @@ describe('automation bump-state', () => {
 
   it('updates a string field', () => {
     sandbox.writeState('wiki', baseState(sandbox.headSha));
-    const exit = run(['wiki', '--field', 'last_run_trigger', '--value', '"force"'], {
-      cwd: sandbox.root,
-    });
+    const exit = run(
+      ['wiki', '--field', 'last_run_trigger', '--value', '"force"'],
+      {
+        cwd: sandbox.root,
+      }
+    );
     expect(exit).toBe(0);
     expect(readWiki(sandbox.root).last_run_trigger).toBe('force');
   });
 
   it('treats unparseable JSON value as a raw string', () => {
     sandbox.writeState('wiki', baseState(sandbox.headSha));
-    const exit = run(['wiki', '--field', 'last_run_trigger', '--value', 'force'], {
-      cwd: sandbox.root,
-    });
+    const exit = run(
+      ['wiki', '--field', 'last_run_trigger', '--value', 'force'],
+      {
+        cwd: sandbox.root,
+      }
+    );
     expect(exit).toBe(0);
     expect(readWiki(sandbox.root).last_run_trigger).toBe('force');
   });

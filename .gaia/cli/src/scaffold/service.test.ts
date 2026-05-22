@@ -89,7 +89,13 @@ describe('gaia scaffold service', () => {
 
     expect(code).toBe(EXIT_CODES.OK);
 
-    const serviceDir = path.join(sandbox.dir, 'app', 'services', 'gaia', 'projects');
+    const serviceDir = path.join(
+      sandbox.dir,
+      'app',
+      'services',
+      'gaia',
+      'projects'
+    );
     expect(existsSync(path.join(serviceDir, 'parsers.ts'))).toBe(true);
     expect(existsSync(path.join(serviceDir, 'types.ts'))).toBe(true);
     expect(existsSync(path.join(serviceDir, 'requests.ts'))).toBe(true);
@@ -106,7 +112,9 @@ describe('gaia scaffold service', () => {
     expect(existsSync(path.join(mockDir, 'delete.ts'))).toBe(false);
 
     // database.ts must have been edited.
-    const database = read(path.join(sandbox.dir, 'test', 'mocks', 'database.ts'));
+    const database = read(
+      path.join(sandbox.dir, 'test', 'mocks', 'database.ts')
+    );
     expect(database).toContain(
       "import {projects, resetProjects} from './projects/data';"
     );
@@ -129,7 +137,13 @@ describe('gaia scaffold service', () => {
 
     expect(code).toBe(EXIT_CODES.OK);
 
-    const serviceDir = path.join(sandbox.dir, 'app', 'services', 'gaia', 'things');
+    const serviceDir = path.join(
+      sandbox.dir,
+      'app',
+      'services',
+      'gaia',
+      'things'
+    );
     const requests = read(path.join(serviceDir, 'requests.ts'));
     expect(requests).toContain('getAllThings');
     expect(requests).toContain('getThingById');
@@ -170,7 +184,14 @@ describe('gaia scaffold service', () => {
     expect(code).toBe(EXIT_CODES.OK);
 
     const parsers = read(
-      path.join(sandbox.dir, 'app', 'services', 'gaia', 'projects', 'parsers.ts')
+      path.join(
+        sandbox.dir,
+        'app',
+        'services',
+        'gaia',
+        'projects',
+        'parsers.ts'
+      )
     );
     expect(parsers).toContain("status: z.enum(['active', 'archived'])");
 
@@ -195,7 +216,14 @@ describe('gaia scaffold service', () => {
     );
 
     const parsers = read(
-      path.join(sandbox.dir, 'app', 'services', 'gaia', 'projects', 'parsers.ts')
+      path.join(
+        sandbox.dir,
+        'app',
+        'services',
+        'gaia',
+        'projects',
+        'parsers.ts'
+      )
     );
     expect(parsers).toContain('description: z.string().nullish()');
   });
@@ -214,7 +242,14 @@ describe('gaia scaffold service', () => {
       path.join(sandbox.dir, 'test', 'mocks', 'database.ts')
     );
     const parsersAfterFirst = read(
-      path.join(sandbox.dir, 'app', 'services', 'gaia', 'projects', 'parsers.ts')
+      path.join(
+        sandbox.dir,
+        'app',
+        'services',
+        'gaia',
+        'projects',
+        'parsers.ts'
+      )
     );
 
     expect(run(args, {cwd: sandbox.dir})).toBe(EXIT_CODES.OK);
@@ -222,7 +257,14 @@ describe('gaia scaffold service', () => {
       path.join(sandbox.dir, 'test', 'mocks', 'database.ts')
     );
     const parsersAfterSecond = read(
-      path.join(sandbox.dir, 'app', 'services', 'gaia', 'projects', 'parsers.ts')
+      path.join(
+        sandbox.dir,
+        'app',
+        'services',
+        'gaia',
+        'projects',
+        'parsers.ts'
+      )
     );
 
     expect(databaseAfterSecond).toBe(databaseAfterFirst);
@@ -243,7 +285,13 @@ describe('gaia scaffold service', () => {
     );
     expect(code).toBe(EXIT_CODES.OK);
 
-    const serviceDir = path.join(sandbox.dir, 'app', 'services', 'gaia', 'projects');
+    const serviceDir = path.join(
+      sandbox.dir,
+      'app',
+      'services',
+      'gaia',
+      'projects'
+    );
     expect(existsSync(path.join(serviceDir, 'parsers.ts'))).toBe(true);
     expect(existsSync(path.join(serviceDir, 'index.ts'))).toBe(true);
 
@@ -274,14 +322,7 @@ describe('gaia scaffold service', () => {
     );
 
     const code = run(
-      [
-        'mangoes',
-        '--endpoints',
-        'get',
-        '--schema',
-        'id:string',
-        '--mocks',
-      ],
+      ['mangoes', '--endpoints', 'get', '--schema', 'id:string', '--mocks'],
       {cwd: sandbox.dir}
     );
     expect(code).toBe(EXIT_CODES.OK);
@@ -348,14 +389,7 @@ describe('gaia scaffold service', () => {
 
     try {
       const code = run(
-        [
-          'projects',
-          '--endpoints',
-          'get',
-          '--schema',
-          'id:string',
-          '--json',
-        ],
+        ['projects', '--endpoints', 'get', '--schema', 'id:string', '--json'],
         {cwd: sandbox.dir}
       );
       expect(code).toBe(EXIT_CODES.OK);
@@ -377,13 +411,7 @@ describe('gaia scaffold service', () => {
 
   test('rejects non-kebab name', () => {
     const code = run(
-      [
-        'BadName',
-        '--endpoints',
-        'get',
-        '--schema',
-        'id:string',
-      ],
+      ['BadName', '--endpoints', 'get', '--schema', 'id:string'],
       {cwd: sandbox.dir}
     );
     expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
@@ -401,13 +429,7 @@ describe('gaia scaffold service', () => {
 
   test('rejects unknown endpoint token', () => {
     const code = run(
-      [
-        'projects',
-        '--endpoints',
-        'get,patch',
-        '--schema',
-        'id:string',
-      ],
+      ['projects', '--endpoints', 'get,patch', '--schema', 'id:string'],
       {cwd: sandbox.dir}
     );
     expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
@@ -415,13 +437,7 @@ describe('gaia scaffold service', () => {
 
   test('rejects unknown schema type', () => {
     const code = run(
-      [
-        'projects',
-        '--endpoints',
-        'get',
-        '--schema',
-        'id:bigint',
-      ],
+      ['projects', '--endpoints', 'get', '--schema', 'id:bigint'],
       {cwd: sandbox.dir}
     );
     expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
@@ -485,16 +501,9 @@ describe('gaia scaffold service', () => {
   });
 
   test('multi-word kebab name derives correct identifiers', () => {
-    run(
-      [
-        'user-settings',
-        '--endpoints',
-        'get',
-        '--schema',
-        'id:string',
-      ],
-      {cwd: sandbox.dir}
-    );
+    run(['user-settings', '--endpoints', 'get', '--schema', 'id:string'], {
+      cwd: sandbox.dir,
+    });
     const urls = read(
       path.join(
         sandbox.dir,

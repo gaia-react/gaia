@@ -53,7 +53,10 @@ const expectSuccess = (
 };
 
 /** Resolve the currently checked-out branch name. */
-export const currentBranch = (cwd: string, runner: CommandRunner = defaultRunner): string => {
+export const currentBranch = (
+  cwd: string,
+  runner: CommandRunner = defaultRunner
+): string => {
   const args = ['rev-parse', '--abbrev-ref', 'HEAD'];
   const out = expectSuccess(runner('git', args, {cwd}), 'git', args);
 

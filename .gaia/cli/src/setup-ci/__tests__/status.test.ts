@@ -3,11 +3,7 @@ import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {localAutomationPath} from '../../automation/paths.js';
 import {run} from '../status.js';
-import {
-  setupSandbox,
-  VALID_BASE_CONFIG,
-  type Sandbox,
-} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG, type Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -60,7 +56,10 @@ describe('setup-ci status', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.configured).toBe(false);
     expect(parsed.tools_enabled).toEqual([]);
   });
@@ -75,17 +74,26 @@ describe('setup-ci status', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.configured).toBe(true);
     expect(parsed.setup_complete).toBe(false);
     expect(parsed.setup_opted_out).toBe(false);
     // `pnpm_audit` is local, so only the other three are CI-mode.
-    expect(parsed.tools_enabled).toEqual(['wiki', 'update-deps', 'stale-branches']);
+    expect(parsed.tools_enabled).toEqual([
+      'wiki',
+      'update-deps',
+      'stale-branches',
+    ]);
   });
 
   it('reports nudge_dismissed from .gaia/local/automation.json when present', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
-    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {recursive: true});
+    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
+      recursive: true,
+    });
     writeFileSync(
       localAutomationPath(sandbox.root),
       JSON.stringify({nudge_dismissed: true, version: 1}),
@@ -95,13 +103,18 @@ describe('setup-ci status', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.nudge_dismissed).toBe(true);
   });
 
   it('exits non-zero when local file is malformed', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
-    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {recursive: true});
+    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
+      recursive: true,
+    });
     writeFileSync(
       localAutomationPath(sandbox.root),
       JSON.stringify({nudge_dismissed: 'yes', version: 1}),

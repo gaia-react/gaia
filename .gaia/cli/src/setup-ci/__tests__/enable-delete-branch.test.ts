@@ -57,10 +57,14 @@ describe('setup-ci enable-delete-branch', () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
-    const exit = await run(['--owner', 'foo', '--repo', 'bar'], {cwd: sandbox.root});
+    const exit = await run(['--owner', 'foo', '--repo', 'bar'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
-    const recorded = JSON.parse(readFileSync(sandbox.ghArgvPath, 'utf8')) as string[][];
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
     expect(recorded[0]).toEqual([
       'api',
       '-X',
@@ -70,7 +74,10 @@ describe('setup-ci enable-delete-branch', () => {
       'delete_branch_on_merge=true',
     ]);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.applied).toBe(true);
   });
 
@@ -78,10 +85,15 @@ describe('setup-ci enable-delete-branch', () => {
     const handle = sandbox.installGhShim({exitCode: 1});
     restore = handle.restore;
 
-    const exit = await run(['--owner', 'foo', '--repo', 'bar'], {cwd: sandbox.root});
+    const exit = await run(['--owner', 'foo', '--repo', 'bar'], {
+      cwd: sandbox.root,
+    });
     expect(exit).not.toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.applied).toBe(false);
     expect(parsed.error).toBe('gh_api_error');
   });
@@ -94,7 +106,9 @@ describe('setup-ci enable-delete-branch', () => {
     });
     restore = handle.restore;
 
-    const exit = await run(['--owner', 'foo', '--repo', 'bar'], {cwd: sandbox.root});
+    const exit = await run(['--owner', 'foo', '--repo', 'bar'], {
+      cwd: sandbox.root,
+    });
     expect(exit).not.toBe(0);
 
     const stdoutText = stdio.out.join('');

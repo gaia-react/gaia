@@ -1,10 +1,5 @@
 import {execFileSync} from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
@@ -20,7 +15,9 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-source-changed-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   writeFileSync(path.join(root, 'README.md'), '# x\n', 'utf8');
   execFileSync('git', ['add', 'README.md'], {cwd: root});

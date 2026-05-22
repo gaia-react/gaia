@@ -77,10 +77,7 @@ const stripQuotes = (raw: string): string => {
 };
 
 const trailerScalar = (trailer: string, key: string): string | undefined => {
-  const pattern = new RegExp(
-    `^${escapeRegex(key)}\\s*:\\s*(.*?)\\s*$`,
-    'm'
-  );
+  const pattern = new RegExp(`^${escapeRegex(key)}\\s*:\\s*(.*?)\\s*$`, 'm');
   const match = trailer.match(pattern);
 
   if (match === null) return undefined;
@@ -132,9 +129,7 @@ const areaTagsString = (source: Record<string, unknown>): string => {
   return '';
 };
 
-const buildAuditFindings = (
-  trailer: string
-): readonly EmitInvocation[] => {
+const buildAuditFindings = (trailer: string): readonly EmitInvocation[] => {
   const findingsRaw = trailerScalar(trailer, 'findings_json');
 
   if (findingsRaw === undefined) return [];
@@ -299,7 +294,9 @@ type HookInput = {
 
 const extractHookInput = (
   rawJson: string
-): {input: HookInput; ok: true} | {ok: false; reason: ParseResult['reason']} => {
+):
+  | {input: HookInput; ok: true}
+  | {ok: false; reason: ParseResult['reason']} => {
   let parsed: unknown;
 
   try {
@@ -318,9 +315,9 @@ const extractHookInput = (
 
   const toolInput = parsed.tool_input;
   const subagentType =
-    isPlainObject(toolInput) ? stringField(toolInput, 'subagent_type') : (
-      undefined
-    );
+    isPlainObject(toolInput) ?
+      stringField(toolInput, 'subagent_type')
+    : undefined;
 
   if (subagentType === undefined) {
     return {ok: false, reason: 'no_subagent_type'};
@@ -328,9 +325,9 @@ const extractHookInput = (
 
   const toolResponse = parsed.tool_response;
   const toolOutput =
-    isPlainObject(toolResponse) ? stringField(toolResponse, 'output') : (
-      undefined
-    );
+    isPlainObject(toolResponse) ?
+      stringField(toolResponse, 'output')
+    : undefined;
 
   if (toolOutput === undefined) {
     return {ok: false, reason: 'no_tool_response'};

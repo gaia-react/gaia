@@ -6,12 +6,7 @@
  * snapshot the suggestion + reason for each commit and assert against it.
  */
 import {execFileSync} from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
@@ -27,7 +22,9 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-classify-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   execFileSync('git', ['config', 'commit.gpgsign', 'false'], {cwd: root});
 
@@ -92,13 +89,13 @@ const captureStdio = (): {
 };
 
 const classify = (sandbox: Sandbox): CommitClassification => {
-  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(
-    (chunk: unknown) => {
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation((chunk: unknown) => {
       out += typeof chunk === 'string' ? chunk : String(chunk);
 
       return true;
-    }
-  );
+    });
   let out = '';
   const exit = run(['--since', sandbox.initialSha, '--json'], {
     cwd: sandbox.root,

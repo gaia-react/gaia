@@ -41,9 +41,9 @@ const parseState = (raw: string): InitState => {
   const args = source.step_args;
   const completedSteps = isStringArray(completed) ? completed : [];
   const stepArgs =
-    args !== null && typeof args === 'object' && !Array.isArray(args)
-      ? (args as Record<string, unknown>)
-      : {};
+    args !== null && typeof args === 'object' && !Array.isArray(args) ?
+      (args as Record<string, unknown>)
+    : {};
 
   return {completed_steps: completedSteps, step_args: stepArgs};
 };

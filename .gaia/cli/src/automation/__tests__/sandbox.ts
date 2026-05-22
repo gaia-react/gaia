@@ -4,12 +4,7 @@
  * config and state files.
  */
 import {execFileSync} from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {AutomationConfig} from '../../schemas/automation-config.js';
@@ -40,7 +35,9 @@ export const VALID_BASE_CONFIG: AutomationConfig = {
 export const setupSandbox = (prefix = 'gaia-automation-'): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), prefix));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   writeFileSync(path.join(root, 'README.md'), '# test\n', 'utf8');
   execFileSync('git', ['add', 'README.md'], {cwd: root});
@@ -74,7 +71,11 @@ export const setupSandbox = (prefix = 'gaia-automation-'): Sandbox => {
   };
 
   const writeState = (tool: ToolId, state: AutomationStateFile): void => {
-    writeFileSync(automationStatePath(root, tool), JSON.stringify(state), 'utf8');
+    writeFileSync(
+      automationStatePath(root, tool),
+      JSON.stringify(state),
+      'utf8'
+    );
   };
 
   return {

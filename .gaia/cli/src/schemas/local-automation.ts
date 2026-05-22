@@ -57,7 +57,10 @@ export const readLocalAutomation = (
   const result = LocalAutomationSchema.safeParse(parsed);
 
   if (!result.success) {
-    return {error: summarizeZodError(filePath, result.error), status: 'malformed'};
+    return {
+      error: summarizeZodError(filePath, result.error),
+      status: 'malformed',
+    };
   }
 
   return {local: result.data, status: 'ok'};

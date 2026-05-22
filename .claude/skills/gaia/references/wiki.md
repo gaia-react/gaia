@@ -8,13 +8,13 @@ Tokenize `$ARGUMENTS`. Detect a trailing `--force` token; if present, strip
 it and set `FORCE=true`. Then tokenize the first remaining whitespace-
 separated word.
 
-| First arg                         | Action                                                                      |
-| --------------------------------- | --------------------------------------------------------------------------- |
-| `sync`                            | Dispatch sync subagent (see "Sync" below). No chaining.                     |
-| `consolidate`                     | Dispatch consolidate detection subagent (see "Consolidate" below). No chain. |
-| `lint`                            | Dispatch lint subagent (see "Lint" below). No chaining.                     |
-| (empty)                           | Full chain: sync → (gated) consolidate → lint. See "Full chain".            |
-| (anything else)                   | Print help.                                                                 |
+| First arg       | Action                                                                       |
+| --------------- | ---------------------------------------------------------------------------- |
+| `sync`          | Dispatch sync subagent (see "Sync" below). No chaining.                      |
+| `consolidate`   | Dispatch consolidate detection subagent (see "Consolidate" below). No chain. |
+| `lint`          | Dispatch lint subagent (see "Lint" below). No chaining.                      |
+| (empty)         | Full chain: sync → (gated) consolidate → lint. See "Full chain".             |
+| (anything else) | Print help.                                                                  |
 
 `--force` is positional-flexible but the contract is "trailing" — it must be
 the LAST argument so it doesn't shadow `sync` / `consolidate` / `lint`:
@@ -155,7 +155,6 @@ Run sync first, then branch on its `CONSOLIDATE_TRIGGERED` line, then run lint.
 
 1. **Sync.** Run the "Sync" section above. Capture the final summary.
 2. **Inspect last line of summary.** Step 9 of sync emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on partial-sync interruptions (Step 7 failure mode) — both leave the wiki in a known-incomplete state. Branch on its presence:
-
    - **Line absent** — skip both consolidate and lint. The maintainer needs to address the exceptional state first.
    - **`CONSOLIDATE_TRIGGERED: true`** — run consolidate, then run lint.
    - **`CONSOLIDATE_TRIGGERED: false`** — skip consolidate, run lint.

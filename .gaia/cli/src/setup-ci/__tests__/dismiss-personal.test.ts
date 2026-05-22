@@ -66,7 +66,9 @@ describe('setup-ci dismiss-personal', () => {
   });
 
   it('flips nudge_dismissed when existing local has it false', () => {
-    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {recursive: true});
+    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
+      recursive: true,
+    });
     writeFileSync(
       localAutomationPath(sandbox.root),
       JSON.stringify({nudge_dismissed: false, version: 1}),
@@ -85,7 +87,9 @@ describe('setup-ci dismiss-personal', () => {
   });
 
   it('is idempotent (final state unchanged when already dismissed)', () => {
-    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {recursive: true});
+    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
+      recursive: true,
+    });
     writeFileSync(
       localAutomationPath(sandbox.root),
       JSON.stringify({nudge_dismissed: true, version: 1}),
@@ -104,7 +108,9 @@ describe('setup-ci dismiss-personal', () => {
   });
 
   it('refuses with local_malformed when existing local is malformed', () => {
-    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {recursive: true});
+    mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
+      recursive: true,
+    });
     writeFileSync(
       localAutomationPath(sandbox.root),
       JSON.stringify({nudge_dismissed: 'yes', version: 1}),
@@ -120,7 +126,10 @@ describe('setup-ci dismiss-personal', () => {
     const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.dismissed).toBe(true);
   });
 

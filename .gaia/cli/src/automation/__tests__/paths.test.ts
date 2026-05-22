@@ -69,12 +69,7 @@ describe('automation/paths', () => {
         path.join('/tmp/repo', '.github', 'workflows', 'gaia-ci-wiki.yml')
       );
       expect(workflowFilePath('/tmp/repo', 'pnpm-audit')).toBe(
-        path.join(
-          '/tmp/repo',
-          '.github',
-          'workflows',
-          'gaia-ci-pnpm-audit.yml'
-        )
+        path.join('/tmp/repo', '.github', 'workflows', 'gaia-ci-pnpm-audit.yml')
       );
       expect(workflowFilePath('/tmp/repo', 'stale-branches')).toBe(
         path.join(
@@ -106,11 +101,7 @@ describe('automation/paths', () => {
       ).toBe(true);
       expect(
         workflowTemplatePath('stale-branches').endsWith(
-          path.join(
-            'templates',
-            'workflows',
-            'gaia-ci-stale-branches.yml.tmpl'
-          )
+          path.join('templates', 'workflows', 'gaia-ci-stale-branches.yml.tmpl')
         )
       ).toBe(true);
     });

@@ -34,11 +34,13 @@ Branch on `wiki_promote_default`:
 ## Step 3 — Detect merged PR
 
 Determine the current branch:
+
 ```bash
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 ```
 
 Probe for a merged PR matching the branch:
+
 ```bash
 pr_json=$(gh pr list --head "$current_branch" --state merged --json number,mergedAt,url,body --limit 1 2>/dev/null || echo '[]')
 ```
@@ -46,6 +48,7 @@ pr_json=$(gh pr list --head "$current_branch" --state merged --json number,merge
 If `$pr_json` is `[]` (no merged PR for this branch):
 
 1. Write defer flag to `.gaia/local/cache/wiki-promote/SPEC-NNN.json`:
+
    ```json
    {
      "spec_id": "SPEC-NNN",
@@ -54,6 +57,7 @@ If `$pr_json` is `[]` (no merged PR for this branch):
      "status": "awaiting-merge"
    }
    ```
+
    (Cache directory creation: `mkdir -p .gaia/local/cache/wiki-promote/`. The `.gaia/local/` line in `.gitignore` covers this path.)
 
 2. Exit with: `wiki-promote: SPEC-NNN deferred — awaiting PR merge for branch <current_branch>. Drain via /gaia spec close SPEC-NNN after merge.`
@@ -133,11 +137,11 @@ For each tuple:
 
 ### Action per status
 
-| Status | Action |
-|---|---|
-| `new` | Render frontmatter + body (per Step 5b). Write file. Append to `pages_written`. |
-| `our-update` | Read existing frontmatter, preserve `created`. Render fresh frontmatter (advancing `updated` and `promoted_at` to today/now) + body. Write file. Append to `pages_updated`. |
-| `hand-edited` | Do NOT write. Emit warning to stdout: `wiki-promote: skipped wiki/<subdomain>/<spec-slug>.md (hand-edited since last promotion).`. Append a log line `WARN: skipped wiki/<subdomain>/<spec-slug>.md (hand-edited since last promotion)`. Append the path to `pages_skipped`. |
+| Status              | Action                                                                                                                                                                                                                                                                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `new`               | Render frontmatter + body (per Step 5b). Write file. Append to `pages_written`.                                                                                                                                                                                                                                                         |
+| `our-update`        | Read existing frontmatter, preserve `created`. Render fresh frontmatter (advancing `updated` and `promoted_at` to today/now) + body. Write file. Append to `pages_updated`.                                                                                                                                                             |
+| `hand-edited`       | Do NOT write. Emit warning to stdout: `wiki-promote: skipped wiki/<subdomain>/<spec-slug>.md (hand-edited since last promotion).`. Append a log line `WARN: skipped wiki/<subdomain>/<spec-slug>.md (hand-edited since last promotion)`. Append the path to `pages_skipped`.                                                            |
 | `foreign-collision` | Do NOT write. Emit warning to stdout: `wiki-promote: target wiki/<subdomain>/<spec-slug>.md exists with no promoted_from match; skipped to avoid clobbering hand-authored content.`. Append a log line `WARN: skipped wiki/<subdomain>/<spec-slug>.md (foreign-collision; no promoted_from match)`. Append the path to `pages_skipped`. |
 
 If `--preview` was set in Step 2, render but do NOT write. Print each rendered page (path + content) to stdout, classified by status. Skip the `wiki/log.md` append.
@@ -146,13 +150,13 @@ If `--preview` was set in Step 2, render but do NOT write. Print each rendered p
 
 Emit YAML frontmatter at the top of the file matching the contract. Map `subdomain` to `type`:
 
-| subdomain | type |
-|---|---|
-| `decisions` | `decision` |
-| `concepts` | `concept` |
-| `modules` | `module` |
-| `flows` | `flow` |
-| `components` | `component` |
+| subdomain      | type         |
+| -------------- | ------------ |
+| `decisions`    | `decision`   |
+| `concepts`     | `concept`    |
+| `modules`      | `module`     |
+| `flows`        | `flow`       |
+| `components`   | `component`  |
 | `dependencies` | `dependency` |
 
 Fields:
@@ -193,7 +197,6 @@ Render the body in the following sections, in order, immediately after the closi
 3. **Decisions / behaviors** — under an H2 `## Decisions` (for `type: decision`) or `## Behavior` (for all other types), include the SPEC's `## Intent` body and, if present, any H2 in the SPEC body whose heading begins with `## Composition with ` (the section that explains how the SPEC composes with prior architecture). Adapt voice from future-tense ("will promote") to present-tense ("promotes") where the change is mechanical; leave wording alone where rewriting risks meaning drift.
 4. **UAT references** — under an H2 `## UAT references`, render a bullet list. For each entry in the SPEC's frontmatter `uats:` list, emit `- **<UAT-ID>** — <one-line summary>`. Source the one-line summary from the UAT entry's `summary` field if present; otherwise the first sentence of its `intent` field. If `uats:` is empty or absent, omit the entire `## UAT references` section.
 5. **Related** — sibling wikilinks. Determine the set of sibling pages produced by the **current run**: every entry in the union of `pages_written` and `pages_updated` whose `target_path` is not the page being rendered. (Skipped pages — `hand-edited`, `foreign-collision` — are excluded; their files were not written and a wikilink would dangle.)
-
    - **Solo-page promotion** (no siblings): omit the entire `## Related` section. Do not emit the H2 at all.
    - **Has siblings**: emit:
 
@@ -232,6 +235,7 @@ Render the body in the following sections, in order, immediately after the closi
      - HTTPS: `https://github.com/<owner>/<repo>.git` → strip the `https://github.com/` prefix and the `.git` suffix.
 
      If both methods fail (no `gh`, no `origin` remote), substitute the literal `<owner>/<repo>` placeholder and emit a warning `wiki-promote: could not resolve repo slug; PR URL placeholder left in references.`. The wiki-sync handoff will surface this for manual fix.
+
    - `NNN` — `pr_number` from Step 3.
    - `<ISO 8601 UTC>` — same value as `promoted_at` in the page frontmatter.
 
@@ -245,19 +249,20 @@ After all pages have been written and the body is rendered, update `wiki/index.m
 2. For each entry in `pages_written` (only — `pages_updated` already appear in the index from a prior run; do not re-add):
    1. Determine the section header by the page's subdomain:
 
-      | subdomain | section header |
-      |---|---|
-      | `decisions` | `## Decisions (ADRs)` |
-      | `concepts` | `## Concepts` |
-      | `modules` | `## Modules (architecture)` |
-      | `flows` | `## Flows` |
-      | `components` | `## Components (Form deep dives)` |
-      | `dependencies` | `## Dependencies` |
+      | subdomain      | section header                    |
+      | -------------- | --------------------------------- |
+      | `decisions`    | `## Decisions (ADRs)`             |
+      | `concepts`     | `## Concepts`                     |
+      | `modules`      | `## Modules (architecture)`       |
+      | `flows`        | `## Flows`                        |
+      | `components`   | `## Components (Form deep dives)` |
+      | `dependencies` | `## Dependencies`                 |
 
    2. Compute the wikilink: `- [[<page-title>]]` where `<page-title>` is the H1 of the rendered page (same value used in `## Related`).
    3. Locate the section in the index. If the section header is absent, emit warning `wiki-promote: section '<header>' not found in wiki/index.md; skipped entry for <page-title>.` and continue with the next entry.
    4. Scan the section's existing bullets. If any bullet's wikilink target equals `<page-title>` (case-sensitive match on the text inside `[[…]]`, ignoring any `— description` suffix after the closing `]]`), skip — the entry already exists. (Idempotent: re-running the promotion does not duplicate.)
    5. Insert the new bullet in alphabetical order by `<page-title>` (case-insensitive comparison) within the section. The section ends at the next `## ` heading or end-of-file.
+
 3. Write `wiki/index.md` back to disk.
 
 If `--preview` mode (from Step 2) is active, render the proposed index diff to stdout and do NOT write.

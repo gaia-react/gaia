@@ -69,7 +69,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -101,7 +102,9 @@ const expectSuccess = (
   args: readonly string[]
 ): string => {
   if (result.error !== undefined) {
-    throw new Error(`${command} ${args.join(' ')} failed: ${result.error.message}`);
+    throw new Error(
+      `${command} ${args.join(' ')} failed: ${result.error.message}`
+    );
   }
 
   if ((result.status ?? -1) !== 0) {
@@ -169,13 +172,20 @@ const readDriftSubjects = (
   stateSha: string
 ): string[] | null => {
   if (stateSha === '') return null;
-  const resolved = runner('git', ['rev-parse', '--verify', `${stateSha}^{commit}`], {cwd});
+  const resolved = runner(
+    'git',
+    ['rev-parse', '--verify', `${stateSha}^{commit}`],
+    {cwd}
+  );
 
-  if (resolved.error !== undefined || (resolved.status ?? -1) !== 0) return null;
+  if (resolved.error !== undefined || (resolved.status ?? -1) !== 0)
+    return null;
   const fullSha = (resolved.stdout ?? '').trim();
 
   if (fullSha === '') return null;
-  const result = runner('git', ['log', '--format=%s', `${fullSha}..HEAD`], {cwd});
+  const result = runner('git', ['log', '--format=%s', `${fullSha}..HEAD`], {
+    cwd,
+  });
 
   if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
 
@@ -254,7 +264,9 @@ export const run = (
   const wikiState = wikiStateProbe(cwd);
 
   if (wikiState === null) {
-    return refuse('preflight: failed to read wiki state via `gaia wiki state --json`');
+    return refuse(
+      'preflight: failed to read wiki state via `gaia wiki state --json`'
+    );
   }
 
   if (wikiState.commits_ahead !== 0) {

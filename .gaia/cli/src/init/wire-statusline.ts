@@ -75,7 +75,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -175,7 +176,10 @@ const readSettings = (target: string): Record<string, unknown> => {
   return parsed as Record<string, unknown>;
 };
 
-const writeSettings = (target: string, value: Record<string, unknown>): void => {
+const writeSettings = (
+  target: string,
+  value: Record<string, unknown>
+): void => {
   mkdirSync(path.dirname(target), {recursive: true});
   const serialized = `${JSON.stringify(value, null, 2)}\n`;
   const tmp = `${target}.tmp`;
@@ -190,7 +194,11 @@ const STATUSLINE_KEY = 'statusLine';
  * one. Used for idempotency.
  */
 const matchesCanonical = (existing: unknown): boolean => {
-  if (existing === null || typeof existing !== 'object' || Array.isArray(existing)) {
+  if (
+    existing === null ||
+    typeof existing !== 'object' ||
+    Array.isArray(existing)
+  ) {
     return false;
   }
   const candidate = existing as Record<string, unknown>;
@@ -261,7 +269,10 @@ export const run = (
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 
-      if (message.includes('not valid JSON') || message.includes('JSON object')) {
+      if (
+        message.includes('not valid JSON') ||
+        message.includes('JSON object')
+      ) {
         structuredError({
           code: 'settings_malformed',
           message,

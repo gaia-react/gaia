@@ -108,14 +108,14 @@ If `/gaia wiki sync` reports drift but you decide a commit doesn't warrant a wik
 
 ### What ships, what doesn't
 
-| Path                                  | Ships to adopters?                                       |
-| ------------------------------------- | -------------------------------------------------------- |
-| `.claude/hooks/wiki-*.sh`             | Yes                                                      |
-| `.claude/skills/gaia/references/wiki/*.md` | Yes                                                 |
-| `wiki/.state.json`                    | Yes (committed)                                          |
-| `wiki/concepts/Wiki Sync.md`          | Yes                                                      |
-| `.gaia/tests/`                      | **No** — `.gaia/release-exclude` excludes the whole tree |
-| `.claude/wiki-{drift,safety}-checked` | **No** — gitignored, never committed                     |
+| Path                                       | Ships to adopters?                                       |
+| ------------------------------------------ | -------------------------------------------------------- |
+| `.claude/hooks/wiki-*.sh`                  | Yes                                                      |
+| `.claude/skills/gaia/references/wiki/*.md` | Yes                                                      |
+| `wiki/.state.json`                         | Yes (committed)                                          |
+| `wiki/concepts/Wiki Sync.md`               | Yes                                                      |
+| `.gaia/tests/`                             | **No** — `.gaia/release-exclude` excludes the whole tree |
+| `.claude/wiki-{drift,safety}-checked`      | **No** — gitignored, never committed                     |
 
 ### Troubleshooting
 

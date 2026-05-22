@@ -107,10 +107,7 @@ const readStateFile = (statePath: string): StateFileShape | null => {
   }
 };
 
-const printHuman = (
-  state: WikiState,
-  write: (chunk: string) => void
-): void => {
+const printHuman = (state: WikiState, write: (chunk: string) => void): void => {
   const lines = [
     'Wiki state',
     `  HEAD:           ${state.head_short}`,
@@ -148,9 +145,11 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  const write = options.write ?? ((chunk: string) => {
-    process.stdout.write(chunk);
-  });
+  const write =
+    options.write ??
+    ((chunk: string) => {
+      process.stdout.write(chunk);
+    });
   let json = false;
 
   for (const token of argv) {
@@ -196,10 +195,10 @@ export const run = (
   const headShort = shortSha(head, repoRoot);
   const stateShort = stateSha === '' ? '' : shortSha(stateSha, repoRoot);
   const reachable = stateSha !== '' && isReachable(stateSha, repoRoot);
-  const ahead = stateSha === '' || !reachable ? 0 : commitsAhead(stateSha, repoRoot);
-  const recent = stateSha === '' || !reachable
-    ? []
-    : recentCommits(stateSha, repoRoot, 5);
+  const ahead =
+    stateSha === '' || !reachable ? 0 : commitsAhead(stateSha, repoRoot);
+  const recent =
+    stateSha === '' || !reachable ? [] : recentCommits(stateSha, repoRoot, 5);
   const severity = classifySeverity(ahead);
   const counts = countDomainPages(wikiRoot);
 

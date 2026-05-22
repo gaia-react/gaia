@@ -5,8 +5,8 @@ status: active
 language: typescript
 purpose: Checkbox and radio primitives plus grouped variants
 depends_on:
-  - "[[Form Components]]"
-  - "[[Form Field]]"
+  - '[[Form Components]]'
+  - '[[Form Field]]'
 created: 2026-04-20
 updated: 2026-05-22
 tags: [component, forms, checkbox, radio]

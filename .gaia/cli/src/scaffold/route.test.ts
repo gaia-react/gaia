@@ -272,7 +272,9 @@ describe('scaffold route — base emission (_session+)', () => {
     expect(existsSync(pageStories)).toBe(true);
 
     const routeBody = readFileSync(routeFile, 'utf8');
-    expect(routeBody).toContain("import Dashboard from '~/pages/Session/Dashboard'");
+    expect(routeBody).toContain(
+      "import Dashboard from '~/pages/Session/Dashboard'"
+    );
     expect(routeBody).toContain('const DashboardRoute');
     expect(routeBody).not.toContain('export const loader');
     expect(routeBody).not.toContain('export const action');
@@ -435,7 +437,9 @@ describe('scaffold route — flag combos', () => {
     );
     expect(existsSync(localeFile)).toBe(true);
     const localeBody = readFileSync(localeFile, 'utf8');
-    expect(localeBody).toContain("description: 'Description of the dashboard page'");
+    expect(localeBody).toContain(
+      "description: 'Description of the dashboard page'"
+    );
     expect(localeBody).toContain("title: 'Dashboard'");
 
     const after = readFileSync(barrelPath, 'utf8');
@@ -464,7 +468,9 @@ describe('scaffold route — flag combos', () => {
       ),
       'utf8'
     );
-    expect(pageBody).toContain("useTranslation('pages', {keyPrefix: 'dashboard'})");
+    expect(pageBody).toContain(
+      "useTranslation('pages', {keyPrefix: 'dashboard'})"
+    );
   });
 
   test('--json emits a single ScaffoldResult JSON line', () => {

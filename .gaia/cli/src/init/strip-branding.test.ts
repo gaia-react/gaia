@@ -46,8 +46,14 @@ const TEMPLATE_README =
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-strip-branding-'));
   mkdirSync(path.join(root, '.github'), {recursive: true});
-  writeFileSync(path.join(root, '.github', 'FUNDING.yml'), 'github: gaia\n', 'utf8');
-  mkdirSync(path.join(root, 'app', 'components', 'GaiaLogo'), {recursive: true});
+  writeFileSync(
+    path.join(root, '.github', 'FUNDING.yml'),
+    'github: gaia\n',
+    'utf8'
+  );
+  mkdirSync(path.join(root, 'app', 'components', 'GaiaLogo'), {
+    recursive: true,
+  });
   writeFileSync(
     path.join(root, 'app', 'components', 'GaiaLogo', 'index.tsx'),
     'export default () => null;\n',
@@ -129,10 +135,12 @@ describe('init strip-branding', () => {
     expect(stdio.outputs.join('')).toBe('');
     expect(stdio.errors.join('')).toBe('');
 
-    expect(existsSync(path.join(sandbox.root, '.github', 'FUNDING.yml'))).toBe(false);
-    expect(existsSync(path.join(sandbox.root, 'app', 'components', 'GaiaLogo'))).toBe(
+    expect(existsSync(path.join(sandbox.root, '.github', 'FUNDING.yml'))).toBe(
       false
     );
+    expect(
+      existsSync(path.join(sandbox.root, 'app', 'components', 'GaiaLogo'))
+    ).toBe(false);
 
     const readme = readFileSync(path.join(sandbox.root, 'README.md'), 'utf8');
     expect(readme).toBe('# Hello World\n\nWelcome to Hello World!\n');
@@ -143,7 +151,7 @@ describe('init strip-branding', () => {
     );
     expect(header).not.toContain('GaiaLogo');
     expect(header).toContain(
-      "<span className=\"text-body text-xl font-bold\">{t('meta.siteName')}</span>"
+      '<span className="text-body text-xl font-bold">{t(\'meta.siteName\')}</span>'
     );
 
     const state = readState(sandbox.root);
@@ -172,8 +180,9 @@ describe('init strip-branding', () => {
     expect(headerSecond).toBe(headerAfter);
 
     const state = readState(sandbox.root);
-    const stripCount = state.completed_steps.filter((step) => step === 'strip-branding')
-      .length;
+    const stripCount = state.completed_steps.filter(
+      (step) => step === 'strip-branding'
+    ).length;
     expect(stripCount).toBe(1);
   });
 
@@ -204,7 +213,7 @@ export default Header;
     );
     expect(header).not.toContain('GaiaLogo');
     expect(header).toContain(
-      "<span className=\"text-body text-xl font-bold\">{t('meta.siteName')}</span>"
+      '<span className="text-body text-xl font-bold">{t(\'meta.siteName\')}</span>'
     );
   });
 

@@ -232,7 +232,12 @@ describe('release scrub CLI', () => {
     sandbox = setupSandbox({config: MARKER_ONLY_CONFIG});
     sandbox.writeStaged(
       'wiki/broken.md',
-      ['# Broken', '<!-- gaia:maintainer-only:start -->', 'never closed', ''].join('\n')
+      [
+        '# Broken',
+        '<!-- gaia:maintainer-only:start -->',
+        'never closed',
+        '',
+      ].join('\n')
     );
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
@@ -400,13 +405,19 @@ describe('json-strip transform', () => {
     sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
     sandbox.writeStaged(
       'package.json',
-      JSON.stringify({bin: {gaia: './.gaia/cli/gaia'}, name: 'my-app', scripts: {}}, null, 2)
+      JSON.stringify(
+        {bin: {gaia: './.gaia/cli/gaia'}, name: 'my-app', scripts: {}},
+        null,
+        2
+      )
     );
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
 
-    const after = JSON.parse(readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8'));
+    const after = JSON.parse(
+      readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
+    );
     expect(after).not.toHaveProperty('bin');
     expect(after.name).toBe('my-app');
   });
@@ -415,18 +426,24 @@ describe('json-strip transform', () => {
     sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
     sandbox.writeStaged(
       'package.json',
-      JSON.stringify({
-        scripts: {
-          build: 'react-router build',
-          'test:forensics': 'bats .gaia/tests/forensics/unit.bats',
+      JSON.stringify(
+        {
+          scripts: {
+            build: 'react-router build',
+            'test:forensics': 'bats .gaia/tests/forensics/unit.bats',
+          },
         },
-      }, null, 2)
+        null,
+        2
+      )
     );
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
 
-    const after = JSON.parse(readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8'));
+    const after = JSON.parse(
+      readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
+    );
     expect(after.scripts).not.toHaveProperty('test:forensics');
     expect(after.scripts.build).toBe('react-router build');
   });
@@ -435,20 +452,26 @@ describe('json-strip transform', () => {
     sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
     sandbox.writeStaged(
       'package.json',
-      JSON.stringify({
-        bin: {gaia: './.gaia/cli/gaia'},
-        name: 'my-app',
-        scripts: {
-          build: 'react-router build',
-          'test:forensics': 'bats .gaia/tests/forensics/unit.bats',
+      JSON.stringify(
+        {
+          bin: {gaia: './.gaia/cli/gaia'},
+          name: 'my-app',
+          scripts: {
+            build: 'react-router build',
+            'test:forensics': 'bats .gaia/tests/forensics/unit.bats',
+          },
         },
-      }, null, 2)
+        null,
+        2
+      )
     );
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
 
-    const after = JSON.parse(readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8'));
+    const after = JSON.parse(
+      readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
+    );
     expect(after).not.toHaveProperty('bin');
     expect(after.scripts).not.toHaveProperty('test:forensics');
     expect(after.name).toBe('my-app');
@@ -457,25 +480,39 @@ describe('json-strip transform', () => {
 
   test('no-ops when key does not exist', () => {
     sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
-    const original = JSON.stringify({name: 'my-app', scripts: {build: 'react-router build'}}, null, 2);
+    const original = JSON.stringify(
+      {name: 'my-app', scripts: {build: 'react-router build'}},
+      null,
+      2
+    );
     sandbox.writeStaged('package.json', original);
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
 
-    const after = readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8');
+    const after = readFileSync(
+      path.join(sandbox.stagingDir, 'package.json'),
+      'utf8'
+    );
     expect(JSON.parse(after)).toEqual(JSON.parse(original));
   });
 
   test('only processes files matching the paths glob', () => {
     sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
-    const untouched = JSON.stringify({bin: {gaia: './.gaia/cli/gaia'}}, null, 2);
+    const untouched = JSON.stringify(
+      {bin: {gaia: './.gaia/cli/gaia'}},
+      null,
+      2
+    );
     sandbox.writeStaged('other.json', untouched);
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
 
-    const after = readFileSync(path.join(sandbox.stagingDir, 'other.json'), 'utf8');
+    const after = readFileSync(
+      path.join(sandbox.stagingDir, 'other.json'),
+      'utf8'
+    );
     expect(after).toBe(untouched);
   });
 

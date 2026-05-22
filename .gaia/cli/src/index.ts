@@ -53,7 +53,9 @@ type SubcommandHandler = (
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+const SUBCOMMAND_HANDLERS: Readonly<
+  Partial<Record<string, SubcommandHandler>>
+> = {
   automation: runAutomation,
   'ci-revert': runCiRevert,
   'ci-stale-check': runCiStaleCheck,

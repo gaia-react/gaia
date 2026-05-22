@@ -42,7 +42,9 @@ describe('runGh wrapper', () => {
       stdin: 'super-secret-payload-12345',
     });
 
-    const recorded = JSON.parse(readFileSync(sandbox.ghArgvPath, 'utf8')) as string[][];
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
     expect(recorded).toHaveLength(1);
     expect(recorded[0]).toEqual(['secret', 'set', 'TOKEN_NAME']);
 
@@ -84,9 +86,9 @@ describe('runGh wrapper', () => {
     const shimPath = path.join(sandbox.binDir, 'gh');
     writeFileSync(
       shimPath,
-      '#!/usr/bin/env node\n'
-        + '// Exit at once; never read stdin.\n'
-        + 'process.exit(0);\n',
+      '#!/usr/bin/env node\n' +
+        '// Exit at once; never read stdin.\n' +
+        'process.exit(0);\n',
       'utf8'
     );
     chmodSync(shimPath, 0o755);

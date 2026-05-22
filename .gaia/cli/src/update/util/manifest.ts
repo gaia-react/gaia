@@ -56,7 +56,11 @@ export type ManifestParseSuccess = {
 
 export type ManifestParseResult = ManifestParseFailure | ManifestParseSuccess;
 
-const VALID_RAW_CLASSES = new Set<RawManifestClass>(['owned', 'shared', 'wiki-owned']);
+const VALID_RAW_CLASSES = new Set<RawManifestClass>([
+  'owned',
+  'shared',
+  'wiki-owned',
+]);
 
 const normalizeClass = (rawClass: RawManifestClass): NormalizedClass => {
   if (rawClass === 'owned') return 'owned';
@@ -145,8 +149,7 @@ export const loadManifest = (manifestPath: string): ManifestParseResult => {
     });
   }
 
-  const version =
-    typeof shape.version === 'string' ? shape.version : undefined;
+  const version = typeof shape.version === 'string' ? shape.version : undefined;
 
   return {
     ok: true,

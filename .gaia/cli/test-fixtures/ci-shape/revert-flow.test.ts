@@ -60,8 +60,14 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
   it('happy path: empty ledger → revert opens and ledger records the entry', () => {
     mock = installGhMock({
       gh: [
-        {match: 'pr view', response: {exitCode: 0, stderr: '', stdout: ghViewMerged}},
-        {match: 'pr create', response: {exitCode: 0, stderr: '', stdout: ghCreateUrlStandard}},
+        {
+          match: 'pr view',
+          response: {exitCode: 0, stderr: '', stdout: ghViewMerged},
+        },
+        {
+          match: 'pr create',
+          response: {exitCode: 0, stderr: '', stdout: ghCreateUrlStandard},
+        },
         {match: 'pr merge', response: {exitCode: 0, stderr: '', stdout: ''}},
       ],
       git: [
@@ -70,17 +76,19 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
     });
 
     const fixedNow = new Date('2026-05-09T05:00:00.000Z');
-    const exit = run(
-      ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
-      {cwd: sandbox.root, now: () => fixedNow}
-    );
+    const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
+      cwd: sandbox.root,
+      now: () => fixedNow,
+    });
 
     expect(exit).toBe(0);
 
     const stdout = stdio.out.join('').trim();
     expect(stdout).toMatch(/"revert_pr":\s*137/u);
 
-    const ledger = JSON.parse(readFileSync(sandbox.ledgerPath, 'utf8')) as RevertLedger;
+    const ledger = JSON.parse(
+      readFileSync(sandbox.ledgerPath, 'utf8')
+    ) as RevertLedger;
     expect(ledger.attempts['99']).toEqual({
       opened_at: '2026-05-09T05:00:00.000Z',
       original_pr: 99,
@@ -104,7 +112,13 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
       'origin',
       'gaia-ci/revert/gaia-ci/wiki/2026-05-09-0123456',
     ]);
-    expect(mock.ghCalls[2]?.argv).toEqual(['pr', 'merge', '137', '--auto', '--squash']);
+    expect(mock.ghCalls[2]?.argv).toEqual([
+      'pr',
+      'merge',
+      '137',
+      '--auto',
+      '--squash',
+    ]);
   });
 
   it('hard cap: ledger pre-populated → second open exits 1 with revert_already_opened and zero external calls', () => {
@@ -122,10 +136,9 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
 
     mock = installGhMock({});
 
-    const exit = run(
-      ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
+      cwd: sandbox.root,
+    });
 
     expect(exit).not.toBe(0);
     expect(mock.ghCalls.length).toBe(0);
@@ -137,7 +150,9 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
     expect(printed.existing_revert_pr).toBe(137);
 
     // Ledger byte-identical: attempt remains as written.
-    const ledger = JSON.parse(readFileSync(sandbox.ledgerPath, 'utf8')) as RevertLedger;
+    const ledger = JSON.parse(
+      readFileSync(sandbox.ledgerPath, 'utf8')
+    ) as RevertLedger;
     expect(ledger.attempts['99']?.revert_pr).toBe(137);
     expect(ledger.attempts['99']?.status).toBe('open');
   });
@@ -145,14 +160,16 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
   it('refuses to revert an unmerged PR', () => {
     mock = installGhMock({
       gh: [
-        {match: 'pr view', response: {exitCode: 0, stderr: '', stdout: ghViewUnmerged}},
+        {
+          match: 'pr view',
+          response: {exitCode: 0, stderr: '', stdout: ghViewUnmerged},
+        },
       ],
     });
 
-    const exit = run(
-      ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
+      cwd: sandbox.root,
+    });
 
     expect(exit).not.toBe(0);
     expect(mock.ghCalls.length).toBe(1); // only `gh pr view`
@@ -168,19 +185,27 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
   it('parses the new PR number even when stdout has a banner line', () => {
     mock = installGhMock({
       gh: [
-        {match: 'pr view', response: {exitCode: 0, stderr: '', stdout: ghViewMerged}},
-        {match: 'pr create', response: {exitCode: 0, stderr: '', stdout: ghCreateUrlWithBanner}},
+        {
+          match: 'pr view',
+          response: {exitCode: 0, stderr: '', stdout: ghViewMerged},
+        },
+        {
+          match: 'pr create',
+          response: {exitCode: 0, stderr: '', stdout: ghCreateUrlWithBanner},
+        },
         {match: 'pr merge', response: {exitCode: 0, stderr: '', stdout: ''}},
       ],
     });
 
-    const exit = run(
-      ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
-      {cwd: sandbox.root, now: () => new Date('2026-05-09T05:00:00Z')}
-    );
+    const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
+      cwd: sandbox.root,
+      now: () => new Date('2026-05-09T05:00:00Z'),
+    });
     expect(exit).toBe(0);
 
-    const ledger = JSON.parse(readFileSync(sandbox.ledgerPath, 'utf8')) as RevertLedger;
+    const ledger = JSON.parse(
+      readFileSync(sandbox.ledgerPath, 'utf8')
+    ) as RevertLedger;
     expect(ledger.attempts['99']?.revert_pr).toBe(137);
   });
 });
@@ -216,12 +241,16 @@ describe('UAT-010 — hard-cap escalation', () => {
       version: 1,
     });
 
-    const exit = run(['mark-failed', '--pr', '99', '--json'], {cwd: sandbox.root});
+    const exit = run(['mark-failed', '--pr', '99', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
     expect(mock.ghCalls.length).toBe(0);
     expect(mock.gitCalls.length).toBe(0);
 
-    const ledger = JSON.parse(readFileSync(sandbox.ledgerPath, 'utf8')) as RevertLedger;
+    const ledger = JSON.parse(
+      readFileSync(sandbox.ledgerPath, 'utf8')
+    ) as RevertLedger;
     expect(ledger.attempts['99']?.status).toBe('failed');
     expect(ledger.attempts['99']?.revert_pr).toBe(137);
   });
@@ -239,7 +268,9 @@ describe('UAT-010 — hard-cap escalation', () => {
       version: 1,
     });
 
-    const exit = run(['is-cap-reached', '--pr', '99', '--json'], {cwd: sandbox.root});
+    const exit = run(['is-cap-reached', '--pr', '99', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
     const stdout = stdio.out.join('').trim();
@@ -249,7 +280,9 @@ describe('UAT-010 — hard-cap escalation', () => {
   });
 
   it('is-cap-reached returns false on missing entry', () => {
-    const exit = run(['is-cap-reached', '--pr', '99', '--json'], {cwd: sandbox.root});
+    const exit = run(['is-cap-reached', '--pr', '99', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
     const stdout = stdio.out.join('').trim();
@@ -259,7 +292,9 @@ describe('UAT-010 — hard-cap escalation', () => {
   });
 
   it('mark-failed on missing attempt exits non-zero', () => {
-    const exit = run(['mark-failed', '--pr', '99', '--json'], {cwd: sandbox.root});
+    const exit = run(['mark-failed', '--pr', '99', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).not.toBe(0);
 
     const stdout = stdio.out.join('').trim();
@@ -280,10 +315,9 @@ describe('UAT-010 — hard-cap escalation', () => {
       version: 1,
     });
 
-    const exit = run(
-      ['open', '--pr', '99', '--label', 'gaia-ci', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
+      cwd: sandbox.root,
+    });
 
     expect(exit).not.toBe(0);
     expect(mock.ghCalls.length).toBe(0);

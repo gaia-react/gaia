@@ -26,7 +26,7 @@ Body prose and code comments describe **what is** in present tense. The historic
 
 ## Why
 
-Wiki readers (maintainers, adopters) need to understand the system as it is now. References to *how it got here* are noise unless explicitly load-bearing — and even then, `wiki/log.md` and `CHANGELOG.md` are the right home, not body prose. Comments and pages explaining *what changed when* rot the moment another change lands.
+Wiki readers (maintainers, adopters) need to understand the system as it is now. References to _how it got here_ are noise unless explicitly load-bearing — and even then, `wiki/log.md` and `CHANGELOG.md` are the right home, not body prose. Comments and pages explaining _what changed when_ rot the moment another change lands.
 
 ## Exceptions
 

@@ -279,14 +279,14 @@ chmod +x .gaia/statusline/*.sh
 
 After all installs and plugin registrations above, run a probe-after pass to confirm each component landed. For each component below, run the probe and emit one line:
 
-| Component | Probe |
-|---|---|
-| React Doctor | `[ -d ~/.claude/skills/react-doctor ]` |
-| Playwright CLI | `command -v playwright-cli && playwright-cli --version >/dev/null 2>&1` |
-| Serena | `claude mcp list 2>/dev/null \| grep -q '^serena '` |
-| typescript-lsp | `claude plugin list 2>/dev/null \| grep -q 'typescript-lsp'` |
-| claude-obsidian | `claude plugin list 2>/dev/null \| grep -q 'claude-obsidian'` |
-| spec-kit | `[ -f .specify/integration.json ] && grep -q 'gaia' .specify/extensions/.registry 2>/dev/null && grep -q 'gaia' .specify/presets/.registry 2>/dev/null` |
+| Component       | Probe                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| React Doctor    | `[ -d ~/.claude/skills/react-doctor ]`                                                                                                                  |
+| Playwright CLI  | `command -v playwright-cli && playwright-cli --version >/dev/null 2>&1`                                                                                 |
+| Serena          | `claude mcp list 2>/dev/null \| grep -q '^serena '`                                                                                                     |
+| typescript-lsp  | `claude plugin list 2>/dev/null \| grep -q 'typescript-lsp'`                                                                                            |
+| claude-obsidian | `claude plugin list 2>/dev/null \| grep -q 'claude-obsidian'`                                                                                           |
+| spec-kit        | `[ -f .specify/integration.json ] && grep -q 'gaia' .specify/extensions/.registry 2>/dev/null && grep -q 'gaia' .specify/presets/.registry 2>/dev/null` |
 
 Emit one line per component: `[ok] <component>` if the probe exits 0, `[FAIL] <component>` if it exits non-zero.
 
@@ -315,12 +315,12 @@ Use AskUserQuestion to confirm the recommendation OR open per-tool overrides:
 
 If the user picks "Customize per tool", show this table and use AskUserQuestion once per row (or one combined free-text prompt; the prose is the contract, the prompt shape is at the assistant's discretion):
 
-| Tool | Default | What it does | Modes |
-|---|---|---|---|
-| `wiki` | `ci` | Smart-cron wiki sync against `app/**` changes. | `ci` / `local` / `off` |
-| `update_deps` | `ci` | Weekly dependency refresh, auto-merging patch/minor. | `ci` / `local` / `off` |
-| `pnpm_audit` | `ci` | Daily security audit; targeted PR for high/critical. | `ci` / `local` / `off` |
-| `stale_branches` | `ci` | Monthly cleanup of branches merged >30 days ago. | `ci` / `local` / `off` |
+| Tool             | Default | What it does                                         | Modes                  |
+| ---------------- | ------- | ---------------------------------------------------- | ---------------------- |
+| `wiki`           | `ci`    | Smart-cron wiki sync against `app/**` changes.       | `ci` / `local` / `off` |
+| `update_deps`    | `ci`    | Weekly dependency refresh, auto-merging patch/minor. | `ci` / `local` / `off` |
+| `pnpm_audit`     | `ci`    | Daily security audit; targeted PR for high/critical. | `ci` / `local` / `off` |
+| `stale_branches` | `ci`    | Monthly cleanup of branches merged >30 days ago.     | `ci` / `local` / `off` |
 
 Mode meanings:
 

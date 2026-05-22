@@ -43,6 +43,7 @@ A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cyc
 ## Step 3 — Honor the circuit breakers
 
 A Fixer dispatch pauses for human-confirm if the proposed fix:
+
 - Touches more than 100 lines.
 - Modifies `.gaia/release-exclude`.
 - Modifies `.claude/rules/`.

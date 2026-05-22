@@ -101,8 +101,7 @@ const runStep = (
   runner: CommandRunner,
   step: RunStep,
   cwd: string
-): SpawnSyncReturns<string> =>
-  runner(step.command, step.args, {cwd});
+): SpawnSyncReturns<string> => runner(step.command, step.args, {cwd});
 
 const passthroughFailure = (
   result: SpawnSyncReturns<string>,
@@ -111,7 +110,8 @@ const passthroughFailure = (
   // Surface the failing command + its stderr so the caller has enough
   // context to diagnose without re-running. The CLI itself adds nothing.
   const stderr = (result.stderr ?? '').trim();
-  const errorPart = result.error !== undefined ? ` (${result.error.message})` : '';
+  const errorPart =
+    result.error !== undefined ? ` (${result.error.message})` : '';
   const status = result.status ?? -1;
   process.stderr.write(
     `sync-land: ${step.command} ${step.args.join(' ')} exited ${status}${errorPart}\n`
@@ -222,13 +222,20 @@ const protectedBranchLanding = (
   // branch (and possibly a PR) exists on the remote and is left for the
   // maintainer to resolve rather than force-reverted.
   const localSequence: RunStep[] = [
-    {args: ['checkout', '-b', branchName], command: 'git', marks: 'onSyncBranch'},
+    {
+      args: ['checkout', '-b', branchName],
+      command: 'git',
+      marks: 'onSyncBranch',
+    },
     {args: ['add', 'wiki'], command: 'git'},
     {args: ['commit', '-m', message], command: 'git'},
   ];
   const remoteSequence: RunStep[] = [
     {args: ['push', '-u', 'origin', branchName], command: 'git'},
-    {args: ['pr', 'create', '--title', prTitle, '--body', prBody], command: 'gh'},
+    {
+      args: ['pr', 'create', '--title', prTitle, '--body', prBody],
+      command: 'gh',
+    },
     {args: ['pr', 'merge', '--squash', '--auto'], command: 'gh'},
   ];
 
@@ -320,9 +327,7 @@ export const run = (
   }
 
   if (workingTree.hasNonWikiChanges) {
-    return refuse(
-      'sync-land: working tree has non-wiki changes; aborting'
-    );
+    return refuse('sync-land: working tree has non-wiki changes; aborting');
   }
 
   if (!workingTree.hasWikiChanges) {

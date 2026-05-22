@@ -12,7 +12,12 @@ import {z} from 'zod';
 import {automationConfigPath} from '../automation/paths.js';
 import {summarizeZodError} from './zod-error.js';
 
-export const TOOL_IDS = ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches'] as const;
+export const TOOL_IDS = [
+  'wiki',
+  'update-deps',
+  'pnpm-audit',
+  'stale-branches',
+] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
 
 export const ToolModeSchema = z.enum(['ci', 'local', 'off']);
@@ -67,7 +72,7 @@ export const TOOL_ID_TO_CONFIG_KEY: Readonly<Record<ToolId, ToolConfigKey>> = {
   'pnpm-audit': 'pnpm_audit',
   'stale-branches': 'stale_branches',
   'update-deps': 'update_deps',
-  'wiki': 'wiki',
+  wiki: 'wiki',
 };
 
 export const CONFIG_KEY_TO_TOOL_ID: Readonly<Record<string, ToolId>> = {
@@ -117,7 +122,10 @@ export const readAutomationConfig = (
   const result = AutomationConfigSchema.safeParse(parsed);
 
   if (!result.success) {
-    return {error: summarizeZodError(filePath, result.error), status: 'malformed'};
+    return {
+      error: summarizeZodError(filePath, result.error),
+      status: 'malformed',
+    };
   }
 
   return {config: result.data, status: 'ok'};

@@ -56,7 +56,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -107,7 +108,9 @@ const readVersion = (cwd: string, override: string | undefined): string => {
   if (!existsSync(target)) {
     throw new Error('package.json not found at repo root');
   }
-  const parsed = JSON.parse(readFileSync(target, 'utf8')) as {version?: unknown};
+  const parsed = JSON.parse(readFileSync(target, 'utf8')) as {
+    version?: unknown;
+  };
 
   if (typeof parsed.version !== 'string') {
     throw new Error('package.json has no string "version"');

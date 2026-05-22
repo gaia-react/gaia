@@ -37,17 +37,17 @@ const HELP_TEXT = `Usage: gaia init <subcommand> [args]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type SubcommandHandler = (
-  args: readonly string[]
-) => number | Promise<number>;
+type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 
-const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, SubcommandHandler>>> = {
+const SUBCOMMAND_HANDLERS: Readonly<
+  Partial<Record<string, SubcommandHandler>>
+> = {
   'bootstrap-env': runBootstrapEnv,
   'configure-automation': runConfigureAutomation,
   'configure-i18n': runConfigureI18n,
-  'finalize': runFinalize,
-  'rename': runRename,
-  'resume': runResume,
+  finalize: runFinalize,
+  rename: runRename,
+  resume: runResume,
   'strip-branding': runStripBranding,
   'wire-statusline': runWireStatusline,
 };

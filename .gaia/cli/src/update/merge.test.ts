@@ -30,8 +30,14 @@ type Sandbox = {
   manifestPath: string;
   cleanup: () => void;
   /** Write a file into one of the trees ('cwd' | 'baseline' | 'latest'). */
-  writeTree: (tree: 'baseline' | 'cwd' | 'latest', relative: string, contents: string) => void;
-  writeManifest: (files: Record<string, 'owned' | 'shared' | 'wiki-owned'>) => void;
+  writeTree: (
+    tree: 'baseline' | 'cwd' | 'latest',
+    relative: string,
+    contents: string
+  ) => void;
+  writeManifest: (
+    files: Record<string, 'owned' | 'shared' | 'wiki-owned'>
+  ) => void;
   readWorking: (relative: string) => string;
   readPatch: (relative: string) => string;
   hasWorking: (relative: string) => boolean;
@@ -68,7 +74,10 @@ const setupSandbox = (): Sandbox => {
       );
     },
     writeTree: (tree, relative, contents): void => {
-      const treeRoot = tree === 'cwd' ? cwd : tree === 'baseline' ? baselineDir : latestDir;
+      const treeRoot =
+        tree === 'cwd' ? cwd
+        : tree === 'baseline' ? baselineDir
+        : latestDir;
       const target = path.join(treeRoot, relative);
       mkdirSync(path.dirname(target), {recursive: true});
       writeFileSync(target, contents, 'utf8');
@@ -207,7 +216,9 @@ describe('update merge', () => {
     expect(report.conflicts).toHaveLength(1);
     expect(report.conflicts[0]?.path).toBe('shared.txt');
     expect(report.conflicts[0]?.class).toBe('shared');
-    expect(report.conflicts[0]?.patch_path).toBe('.gaia-merge/shared.txt.patch');
+    expect(report.conflicts[0]?.patch_path).toBe(
+      '.gaia-merge/shared.txt.patch'
+    );
     expect(report.merge).toEqual([]);
     // Working tree must be untouched on conflict.
     expect(sandbox.readWorking('shared.txt')).toBe(current);
@@ -264,7 +275,9 @@ describe('update merge', () => {
 
     const report = parseJson(stdio.outputs);
     expect(report.add).toEqual(['app/new-file.ts']);
-    expect(sandbox.readWorking('app/new-file.ts')).toBe('export const NEW = 1;\n');
+    expect(sandbox.readWorking('app/new-file.ts')).toBe(
+      'export const NEW = 1;\n'
+    );
   });
 
   test('manifest-missing path present in baseline only → delete[]', () => {

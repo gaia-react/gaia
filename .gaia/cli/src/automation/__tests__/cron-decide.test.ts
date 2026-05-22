@@ -11,16 +11,20 @@ import {VALID_BASE_CONFIG, setupSandbox, type Sandbox} from './sandbox.js';
 const captureStdio = () => {
   const outputs: string[] = [];
   const errors: string[] = [];
-  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
-    outputs.push(typeof chunk === 'string' ? chunk : String(chunk));
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation((chunk: unknown) => {
+      outputs.push(typeof chunk === 'string' ? chunk : String(chunk));
 
-    return true;
-  });
-  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
-    errors.push(typeof chunk === 'string' ? chunk : String(chunk));
+      return true;
+    });
+  const stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: unknown) => {
+      errors.push(typeof chunk === 'string' ? chunk : String(chunk));
 
-    return true;
-  });
+      return true;
+    });
 
   return {
     errors,
@@ -32,13 +36,23 @@ const captureStdio = () => {
   };
 };
 
-const decisionFromStdout = (out: string): {
+const decisionFromStdout = (
+  out: string
+): {
   decision: string;
   reason: string;
   skip_log_line: string | null;
-} => JSON.parse(out) as {decision: string; reason: string; skip_log_line: string | null};
+} =>
+  JSON.parse(out) as {
+    decision: string;
+    reason: string;
+    skip_log_line: string | null;
+  };
 
-const validState = (sha: string, overrides: Partial<AutomationStateFile> = {}): AutomationStateFile => ({
+const validState = (
+  sha: string,
+  overrides: Partial<AutomationStateFile> = {}
+): AutomationStateFile => ({
   cost_overage: false,
   last_run_at: '2026-05-01T00:00:00Z',
   last_run_cost: 0,
@@ -92,7 +106,10 @@ describe('automation cron-decide', () => {
 
   it('skips with reason cost_overage when state.cost_overage is true', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
-    sandbox.writeState('wiki', validState(sandbox.headSha, {cost_overage: true}));
+    sandbox.writeState(
+      'wiki',
+      validState(sandbox.headSha, {cost_overage: true})
+    );
 
     const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -287,7 +304,9 @@ describe('automation cron-decide', () => {
       ...VALID_BASE_CONFIG,
       stale_branches: {mode: 'ci', schedule: 'weekly'},
     });
-    const exit = runCronDecide(['stale-branches', '--json'], {cwd: sandbox.root});
+    const exit = runCronDecide(['stale-branches', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
     const decision = decisionFromStdout(stdio.outputs.join(''));
     expect(decision.decision).toBe('skip');

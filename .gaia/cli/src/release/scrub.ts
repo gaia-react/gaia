@@ -256,7 +256,11 @@ const applyMarkerStrip = (
     const result = stripMarkerBlocks(source, transform.start, transform.end);
 
     for (const issue of result.unbalanced) {
-      unbalanced.push({file: relativePath, line: issue.line, reason: issue.reason});
+      unbalanced.push({
+        file: relativePath,
+        line: issue.line,
+        reason: issue.reason,
+      });
     }
 
     if (result.blocks > 0) {
@@ -373,7 +377,11 @@ const applyJsonStrip = (
       );
     }
 
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       continue;
     }
 
@@ -475,7 +483,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -607,13 +616,15 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const stagingDir = path.isAbsolute(parsed.flags.stagingDir)
-    ? parsed.flags.stagingDir
+  const stagingDir =
+    path.isAbsolute(parsed.flags.stagingDir) ?
+      parsed.flags.stagingDir
     : path.join(cwd, parsed.flags.stagingDir);
-  const configPath = parsed.flags.configPath
-    ? (path.isAbsolute(parsed.flags.configPath)
-      ? parsed.flags.configPath
-      : path.join(cwd, parsed.flags.configPath))
+  const configPath =
+    parsed.flags.configPath ?
+      path.isAbsolute(parsed.flags.configPath) ?
+        parsed.flags.configPath
+      : path.join(cwd, parsed.flags.configPath)
     : path.join(cwd, DEFAULT_CONFIG_PATH);
 
   try {

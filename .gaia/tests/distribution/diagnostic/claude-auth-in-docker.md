@@ -6,7 +6,7 @@ subscription, cost $0/run on a Claude Max host. See `## Findings` below.
 ## What's settled vs. what isn't
 
 The official Claude Code dev-container docs at
-<https://code.claude.com/docs/en/devcontainer> settle the auth *mechanism*:
+<https://code.claude.com/docs/en/devcontainer> settle the auth _mechanism_:
 
 - **OAuth token via `claude setup-token`** — generates a long-lived
   `CLAUDE_CODE_OAUTH_TOKEN` you inject as a container env var. Designed

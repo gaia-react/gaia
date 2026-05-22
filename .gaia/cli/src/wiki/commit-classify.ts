@@ -73,7 +73,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -136,7 +137,10 @@ const APP_INVENTORY_PREFIXES = [
   'app/pages/',
 ];
 
-const touchesAny = (files: readonly string[], prefixes: readonly string[]): boolean =>
+const touchesAny = (
+  files: readonly string[],
+  prefixes: readonly string[]
+): boolean =>
   files.some((file) => prefixes.some((prefix) => file.startsWith(prefix)));
 
 const touchesAppNonTest = (files: readonly string[]): boolean =>
@@ -170,7 +174,10 @@ const classify = (
     return {reason: 'breaking change signal', suggestion: 'WORTHY'};
   }
 
-  if (subject.startsWith('docs(decision):') || subject.startsWith('chore(adr):')) {
+  if (
+    subject.startsWith('docs(decision):') ||
+    subject.startsWith('chore(adr):')
+  ) {
     return {reason: 'explicit ADR signal', suggestion: 'WORTHY'};
   }
 
@@ -231,7 +238,10 @@ const classify = (
     }
 
     const onlyInventory =
-      files.length > 0 && files.every((file) => APP_INVENTORY_PREFIXES.some((prefix) => file.startsWith(prefix)));
+      files.length > 0 &&
+      files.every((file) =>
+        APP_INVENTORY_PREFIXES.some((prefix) => file.startsWith(prefix))
+      );
 
     if (onlyInventory && !ARCH_BODY_PATTERN.test(body)) {
       return {
@@ -257,7 +267,10 @@ const classify = (
   // 8. Catch-all chore / docs / test prefixes.
   if (subject.startsWith('chore:')) {
     if (ARCH_BODY_PATTERN.test(body)) {
-      return {reason: 'chore: body mentions architecture', suggestion: 'WORTHY'};
+      return {
+        reason: 'chore: body mentions architecture',
+        suggestion: 'WORTHY',
+      };
     }
 
     return {reason: 'chore: generic chore', suggestion: 'SKIP'};

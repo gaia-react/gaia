@@ -23,12 +23,12 @@ type Sandbox = {
 const buildSettings = (extraExpansionEntries: unknown[] = []) => ({
   env: {EXAMPLE: '1'},
   hooks: {
-    SessionStart: [{matcher: 'startup', hooks: [{command: 'other.sh', type: 'command'}]}],
+    SessionStart: [
+      {matcher: 'startup', hooks: [{command: 'other.sh', type: 'command'}]},
+    ],
     UserPromptExpansion: [
       {
-        hooks: [
-          {command: '.claude/hooks/intercept-init.sh', type: 'command'},
-        ],
+        hooks: [{command: '.claude/hooks/intercept-init.sh', type: 'command'}],
         matcher: 'init',
       },
       ...extraExpansionEntries,
@@ -157,7 +157,9 @@ describe('init finalize CLI', () => {
     expect(stdio.errors.join('')).toBe('');
 
     expect(
-      existsSync(path.join(sandbox.root, '.claude', 'hooks', 'intercept-init.sh'))
+      existsSync(
+        path.join(sandbox.root, '.claude', 'hooks', 'intercept-init.sh')
+      )
     ).toBe(false);
     expect(
       existsSync(path.join(sandbox.root, '.claude', 'commands', 'gaia-init.md'))

@@ -77,10 +77,10 @@ export const run = (
   // Read-then-merge: preserve any future fields slice 1's schema may
   // grow without a slice-4 update. The only field this primitive sets
   // is `nudge_dismissed`.
-  const merged
-    = existing.status === 'ok'
-      ? {...existing.local, nudge_dismissed: true}
-      : {nudge_dismissed: true, version: 1 as const};
+  const merged =
+    existing.status === 'ok' ?
+      {...existing.local, nudge_dismissed: true}
+    : {nudge_dismissed: true, version: 1 as const};
 
   writeLocalAutomation(repoRoot, merged);
 

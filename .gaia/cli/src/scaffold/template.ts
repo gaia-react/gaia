@@ -51,10 +51,7 @@ const renderEachBlocks = (template: string, vars: TemplateVars): string =>
       .join('');
   });
 
-const renderBooleanSections = (
-  template: string,
-  vars: TemplateVars
-): string =>
+const renderBooleanSections = (template: string, vars: TemplateVars): string =>
   template.replaceAll(SECTION_PATTERN, (_match, name: string, body: string) => {
     if (name === 'each') return _match as string;
 

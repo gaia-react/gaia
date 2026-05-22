@@ -7,17 +7,17 @@ and UAT-019 without spawning real processes.
 
 ## What this fixture covers
 
-| UAT | Scenario | Test file |
-|---|---|---|
-| UAT-009 | revert opens, ledger records the entry | `revert-flow.test.ts` |
+| UAT     | Scenario                                           | Test file             |
+| ------- | -------------------------------------------------- | --------------------- |
+| UAT-009 | revert opens, ledger records the entry             | `revert-flow.test.ts` |
 | UAT-009 | hard cap: second `open` blocked, zero gh/git calls | `revert-flow.test.ts` |
-| UAT-009 | unmerged PR refused with `pr_not_merged` | `revert-flow.test.ts` |
-| UAT-010 | `mark-failed` flips ledger entry to `failed` | `revert-flow.test.ts` |
-| UAT-010 | `is-cap-reached` returns true after `failed` | `revert-flow.test.ts` |
-| UAT-010 | second `open` after `mark-failed` still blocked | `revert-flow.test.ts` |
-| UAT-019 | both predicates passed to `gh pr list` | `stale-check.test.ts` |
-| UAT-019 | `[]` response → `decision: "proceed"` | `stale-check.test.ts` |
-| UAT-019 | `gh` failure → exit non-zero | `stale-check.test.ts` |
+| UAT-009 | unmerged PR refused with `pr_not_merged`           | `revert-flow.test.ts` |
+| UAT-010 | `mark-failed` flips ledger entry to `failed`       | `revert-flow.test.ts` |
+| UAT-010 | `is-cap-reached` returns true after `failed`       | `revert-flow.test.ts` |
+| UAT-010 | second `open` after `mark-failed` still blocked    | `revert-flow.test.ts` |
+| UAT-019 | both predicates passed to `gh pr list`             | `stale-check.test.ts` |
+| UAT-019 | `[]` response → `decision: "proceed"`              | `stale-check.test.ts` |
+| UAT-019 | `gh` failure → exit non-zero                       | `stale-check.test.ts` |
 
 ## How to run
 

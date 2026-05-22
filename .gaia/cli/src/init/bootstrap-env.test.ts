@@ -84,7 +84,9 @@ describe('gaia init bootstrap-env', () => {
 
     expect(exit).toBe(0);
     expect(existsSync(path.join(sandbox.root, '.env'))).toBe(true);
-    expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe('FOO=bar\n');
+    expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe(
+      'FOO=bar\n'
+    );
     expect(existsSync(path.join(sandbox.root, '.env.example'))).toBe(true);
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('bootstrap-env');
@@ -98,7 +100,9 @@ describe('gaia init bootstrap-env', () => {
     const exit = run([], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
-    expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe('EXISTING=1\n');
+    expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe(
+      'EXISTING=1\n'
+    );
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('bootstrap-env');
   });
@@ -122,7 +126,9 @@ describe('gaia init bootstrap-env', () => {
     const second = run([], {cwd: sandbox.root});
 
     expect(second).toBe(0);
-    expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe('FOO=bar\n');
+    expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe(
+      'FOO=bar\n'
+    );
   });
 
   test('rejects unknown flags', () => {

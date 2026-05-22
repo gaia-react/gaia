@@ -136,7 +136,11 @@ const GROUP_RULES: readonly GroupRule[] = [
   // Prettier MUST come before eslint so its eslint-config-prettier and
   // eslint-plugin-prettier exact entries beat eslint's broader prefixes.
   {
-    exactNames: ['eslint-config-prettier', 'eslint-plugin-prettier', 'prettier'],
+    exactNames: [
+      'eslint-config-prettier',
+      'eslint-plugin-prettier',
+      'prettier',
+    ],
     group: 'prettier',
   },
   {
@@ -175,7 +179,9 @@ type PrefixMatch = {
   readonly prefix: string;
 };
 
-const buildPrefixList = (rules: readonly GroupRule[]): readonly PrefixMatch[] => {
+const buildPrefixList = (
+  rules: readonly GroupRule[]
+): readonly PrefixMatch[] => {
   const out: PrefixMatch[] = [];
 
   for (const rule of rules) {

@@ -60,7 +60,10 @@ describe('setup-ci detect-remote', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toBe(true);
     expect(parsed.host).toBe('github.com');
     expect(parsed.owner).toBe('foo');
@@ -71,7 +74,10 @@ describe('setup-ci detect-remote', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toBe(false);
     expect(parsed.url).toBeNull();
     expect(parsed.host).toBeNull();
@@ -87,7 +93,10 @@ describe('setup-ci detect-remote', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.found).toBe(false);
     // The URL itself is preserved for diagnostics.
     expect(parsed.url).toBe('https://gitlab.com/foo/bar/baz.git');

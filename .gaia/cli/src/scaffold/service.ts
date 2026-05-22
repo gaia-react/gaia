@@ -27,7 +27,8 @@ import {renderTemplate, type TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const KEBAB_PATTERN = /^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u;
-const NAME_TOKEN_PATTERN = /^[a-zA-Z][a-zA-Z\d]*(?::[a-zA-Z][a-zA-Z\d]*(?:\([^)]*\))?)?$/u;
+const NAME_TOKEN_PATTERN =
+  /^[a-zA-Z][a-zA-Z\d]*(?::[a-zA-Z][a-zA-Z\d]*(?:\([^)]*\))?)?$/u;
 const ALL_ENDPOINTS = ['get', 'post', 'put', 'delete'] as const;
 
 type Endpoint = (typeof ALL_ENDPOINTS)[number];
@@ -263,9 +264,7 @@ const toPascal = (kebab: string): string =>
   kebab
     .split('-')
     .flatMap((part) =>
-      part.length > 0
-        ? [part.charAt(0).toUpperCase() + part.slice(1)]
-        : []
+      part.length > 0 ? [part.charAt(0).toUpperCase() + part.slice(1)] : []
     )
     .join('');
 
@@ -290,7 +289,11 @@ const singularize = (kebab: string): string => {
   if (kebab.endsWith('sses')) {
     return kebab.slice(0, -2);
   }
-  if (kebab.endsWith('xes') || kebab.endsWith('ches') || kebab.endsWith('shes')) {
+  if (
+    kebab.endsWith('xes') ||
+    kebab.endsWith('ches') ||
+    kebab.endsWith('shes')
+  ) {
     return kebab.slice(0, -2);
   }
   if (kebab.endsWith('s') && !kebab.endsWith('ss')) {
@@ -541,10 +544,10 @@ const applyDatabaseEdits = (
     !collectionEntry
   ) {
     throw new Error(
-      `database barrel edit did not apply cleanly: expected import, `
-        + `${resetCall} in the resetTestData Promise.all, and `
-        + `"${derived.plural}" in the default export. `
-        + 'Register the collection by hand or fix test/mocks/database.ts.'
+      `database barrel edit did not apply cleanly: expected import, ` +
+        `${resetCall} in the resetTestData Promise.all, and ` +
+        `"${derived.plural}" in the default export. ` +
+        'Register the collection by hand or fix test/mocks/database.ts.'
     );
   }
 
@@ -587,9 +590,18 @@ const writeRendered = (
   }
 };
 
-const emitServiceFiles = (context: EmitContext, result: ScaffoldResult): void => {
+const emitServiceFiles = (
+  context: EmitContext,
+  result: ScaffoldResult
+): void => {
   const {derived, endpoints, fields, repoRoot} = context;
-  const serviceDir = path.join(repoRoot, 'app', 'services', 'gaia', derived.name);
+  const serviceDir = path.join(
+    repoRoot,
+    'app',
+    'services',
+    'gaia',
+    derived.name
+  );
   ensureDir(serviceDir);
 
   const baseVars: TemplateVars = {
@@ -742,9 +754,11 @@ export const run = (
   if (parsed.json) {
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } else {
-    for (const created of result.written) process.stdout.write(`+ ${created}\n`);
+    for (const created of result.written)
+      process.stdout.write(`+ ${created}\n`);
     for (const edited of result.edited) process.stdout.write(`~ ${edited}\n`);
-    for (const skipped of result.skipped) process.stdout.write(`= ${skipped}\n`);
+    for (const skipped of result.skipped)
+      process.stdout.write(`= ${skipped}\n`);
   }
 
   return EXIT_CODES.OK;

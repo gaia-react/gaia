@@ -16,14 +16,7 @@ export const appChangedSince = (repoRoot: string, sha: string): boolean => {
   try {
     const stdout = execFileSync(
       'git',
-      [
-        'log',
-        `${sha}..HEAD`,
-        '--name-only',
-        '--pretty=format:',
-        '--',
-        'app/',
-      ],
+      ['log', `${sha}..HEAD`, '--name-only', '--pretty=format:', '--', 'app/'],
       {
         cwd: repoRoot,
         encoding: 'utf8',
@@ -31,9 +24,7 @@ export const appChangedSince = (repoRoot: string, sha: string): boolean => {
       }
     );
 
-    return stdout
-      .split('\n')
-      .some((line) => line.trim().length > 0);
+    return stdout.split('\n').some((line) => line.trim().length > 0);
   } catch {
     return false;
   }

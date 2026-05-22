@@ -87,13 +87,15 @@ describe('setup-ci verify-run', () => {
     });
     restore = handle.restore;
 
-    const exit = await run(
-      ['.github/workflows/gaia-ci-wiki.yml', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = await run(['.github/workflows/gaia-ci-wiki.yml', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.verified).toBe(true);
     expect(parsed.conclusion).toBe('success');
     expect(parsed.run_id).toBe('12345');
@@ -105,13 +107,15 @@ describe('setup-ci verify-run', () => {
     });
     restore = handle.restore;
 
-    const exit = await run(
-      ['.github/workflows/gaia-ci-wiki.yml', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = await run(['.github/workflows/gaia-ci-wiki.yml', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.verified).toBe(false);
     expect(parsed.conclusion).toBe('failure');
   });
@@ -144,11 +148,16 @@ describe('setup-ci verify-run', () => {
     );
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.verified).toBe(true);
 
     // Three view calls were made.
-    const recorded = JSON.parse(readFileSync(sandbox.ghArgvPath, 'utf8')) as string[][];
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
     const viewCalls = recorded.filter(
       (args) => args[0] === 'run' && args[1] === 'view'
     );
@@ -178,7 +187,10 @@ describe('setup-ci verify-run', () => {
     );
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.verified).toBe(false);
     expect(parsed.conclusion).toBe('polling_timeout');
   });
@@ -191,10 +203,9 @@ describe('setup-ci verify-run', () => {
     });
     restore = handle.restore;
 
-    const exit = await run(
-      ['.github/workflows/gaia-ci-wiki.yml', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = await run(['.github/workflows/gaia-ci-wiki.yml', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('workflow_run_failed');
   });
@@ -203,10 +214,9 @@ describe('setup-ci verify-run', () => {
     const handle = sandbox.installGhShim({exitCode: 1});
     restore = handle.restore;
 
-    const exit = await run(
-      ['.github/workflows/gaia-ci-wiki.yml', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = await run(['.github/workflows/gaia-ci-wiki.yml', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('default_branch_lookup_failed');
   });
@@ -222,13 +232,14 @@ describe('setup-ci verify-run', () => {
     });
     restore = handle.restore;
 
-    const exit = await run(
-      ['.github/workflows/gaia-ci-wiki.yml', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = await run(['.github/workflows/gaia-ci-wiki.yml', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
-    const recorded = JSON.parse(readFileSync(sandbox.ghArgvPath, 'utf8')) as string[][];
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
     const dispatch = recorded.find(
       (args) => args[0] === 'workflow' && args[1] === 'run'
     );
@@ -242,10 +253,9 @@ describe('setup-ci verify-run', () => {
     });
     restore = handle.restore;
 
-    const exit = await run(
-      ['.github/workflows/gaia-ci-wiki.yml', '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = await run(['.github/workflows/gaia-ci-wiki.yml', '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('run_list_empty');
   });

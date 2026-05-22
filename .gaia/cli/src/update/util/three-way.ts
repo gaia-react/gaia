@@ -192,9 +192,8 @@ type DiffOp = {
 const diffTokens = (a: LineToken[], b: LineToken[]): DiffOp[] => {
   const n = a.length;
   const m = b.length;
-  const lcs: number[][] = Array.from(
-    {length: n + 1},
-    () => new Array<number>(m + 1).fill(0)
+  const lcs: number[][] = Array.from({length: n + 1}, () =>
+    new Array<number>(m + 1).fill(0)
   );
 
   for (let i = n - 1; i >= 0; i -= 1) {
@@ -351,8 +350,14 @@ const buildUnifiedDiff = (
 
     // When a hunk has zero old or new lines, the start line is
     // canonically reported as 0 in unified diffs. We use 0 explicitly.
-    const oldHeader = oldCount === 0 ? 0 : oldStart === 0 ? 1 : oldStart;
-    const newHeader = newCount === 0 ? 0 : newStart === 0 ? 1 : newStart;
+    const oldHeader =
+      oldCount === 0 ? 0
+      : oldStart === 0 ? 1
+      : oldStart;
+    const newHeader =
+      newCount === 0 ? 0
+      : newStart === 0 ? 1
+      : newStart;
     lines.push(`@@ -${oldHeader},${oldCount} +${newHeader},${newCount} @@`);
     lines.push(...body);
   }

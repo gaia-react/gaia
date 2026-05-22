@@ -49,6 +49,7 @@ The wiki is critical infrastructure — it decays when drift between code and do
 ```
 
 Two commands own disjoint subsets:
+
 - `/gaia wiki sync` owns `last_evaluated_sha` and `last_evaluated_at`
 - `/gaia wiki consolidate` owns `last_consolidated_sha` and `last_consolidated_at`
 

@@ -1,7 +1,10 @@
 import {load} from 'js-yaml';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import type {AutomationConfig, ToolId} from '../../schemas/automation-config.js';
+import type {
+  AutomationConfig,
+  ToolId,
+} from '../../schemas/automation-config.js';
 import {workflowPartialsDirectory, workflowTemplatePath} from '../paths.js';
 import {renderWorkflowTemplate} from '../render.js';
 import {buildWorkflowVars} from '../workflow-vars.js';
@@ -82,7 +85,9 @@ describe('workflow YAML shape', () => {
   });
 
   it.each(tools)('%s declares permissions.contents = write', (tool) => {
-    const parsed = load(renderForTool(tool)) as {permissions: Record<string, string>};
+    const parsed = load(renderForTool(tool)) as {
+      permissions: Record<string, string>;
+    };
     expect(parsed.permissions.contents).toBe('write');
     expect(parsed.permissions['pull-requests']).toBe('write');
     expect(parsed.permissions.issues).toBe('write');

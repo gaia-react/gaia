@@ -79,7 +79,9 @@ describe('parseRemoteUrl', () => {
     });
 
     it('returns null for SSH with subgroups', () => {
-      expect(parseRemoteUrl('git@gitlab.com:group/subgroup/repo.git')).toBeNull();
+      expect(
+        parseRemoteUrl('git@gitlab.com:group/subgroup/repo.git')
+      ).toBeNull();
     });
 
     it('returns null for missing repo', () => {

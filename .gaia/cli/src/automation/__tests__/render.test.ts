@@ -76,15 +76,13 @@ describe('resolvePartials', () => {
   it('tolerates whitespace variants of the partial token', () => {
     sandbox.writePartial('foo', 'X');
 
-    expect(
-      resolvePartials('{{>partials/foo}}', sandbox.partialsDir)
-    ).toBe('X');
-    expect(
-      resolvePartials('{{>  partials/foo  }}', sandbox.partialsDir)
-    ).toBe('X');
-    expect(
-      resolvePartials('{{> partials/foo }}', sandbox.partialsDir)
-    ).toBe('X');
+    expect(resolvePartials('{{>partials/foo}}', sandbox.partialsDir)).toBe('X');
+    expect(resolvePartials('{{>  partials/foo  }}', sandbox.partialsDir)).toBe(
+      'X'
+    );
+    expect(resolvePartials('{{> partials/foo }}', sandbox.partialsDir)).toBe(
+      'X'
+    );
   });
 
   it('replaces multiple partial tokens in one pass', () => {
@@ -127,9 +125,9 @@ describe('resolvePartials', () => {
   });
 
   it('returns the input unchanged when no partial tokens are present', () => {
-    expect(
-      resolvePartials('plain content here', sandbox.partialsDir)
-    ).toBe('plain content here');
+    expect(resolvePartials('plain content here', sandbox.partialsDir)).toBe(
+      'plain content here'
+    );
   });
 });
 
@@ -161,9 +159,9 @@ describe('renderWorkflowTemplate', () => {
       'a{{#enable_diff_size_check}}-on-{{/enable_diff_size_check}}b'
     );
 
-    expect(
-      renderWorkflowTemplate(tmpl, sandbox.partialsDir, baseVars)
-    ).toBe('a-on-b');
+    expect(renderWorkflowTemplate(tmpl, sandbox.partialsDir, baseVars)).toBe(
+      'a-on-b'
+    );
 
     expect(
       renderWorkflowTemplate(tmpl, sandbox.partialsDir, {
@@ -186,10 +184,7 @@ describe('renderWorkflowTemplate', () => {
   });
 
   it('produces output with no remaining {{ or }} tokens', () => {
-    sandbox.writePartial(
-      'hdr',
-      'name: {{workflow_name}}\ncron: {{cron}}'
-    );
+    sandbox.writePartial('hdr', 'name: {{workflow_name}}\ncron: {{cron}}');
     const tmpl = sandbox.writeTemplate(
       'full.yml.tmpl',
       '{{> partials/hdr }}\n{{#enable_diff_size_check}}flag-on{{/enable_diff_size_check}}'
@@ -216,10 +211,7 @@ describe('renderWorkflowTemplate', () => {
   it('throws when a partial recursively includes another partial', () => {
     sandbox.writePartial('outer', '{{> partials/inner }}');
     sandbox.writePartial('inner', 'X');
-    const tmpl = sandbox.writeTemplate(
-      't.yml.tmpl',
-      '{{> partials/outer }}'
-    );
+    const tmpl = sandbox.writeTemplate('t.yml.tmpl', '{{> partials/outer }}');
 
     expect(() =>
       renderWorkflowTemplate(tmpl, sandbox.partialsDir, baseVars)

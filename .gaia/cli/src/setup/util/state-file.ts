@@ -55,9 +55,8 @@ export const resolveMainWorktreeRoot = (cwd: string): string => {
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
 
-  const absoluteCommonDir = path.isAbsolute(commonDir)
-    ? commonDir
-    : path.resolve(cwd, commonDir);
+  const absoluteCommonDir =
+    path.isAbsolute(commonDir) ? commonDir : path.resolve(cwd, commonDir);
 
   return path.dirname(absoluteCommonDir);
 };
@@ -114,8 +113,8 @@ export const readStateFile = (repoRoot: string): SetupState | null => {
     // GAIA release). Silently dropping it would let `finalize` pass a
     // gate it should not. Surface it instead.
     throw new Error(
-      `setup-state.json has unrecognized completed_steps: `
-        + `${unknownSteps.join(', ')}`
+      `setup-state.json has unrecognized completed_steps: ` +
+        `${unknownSteps.join(', ')}`
     );
   }
 
@@ -133,10 +132,7 @@ export const readStateFile = (repoRoot: string): SetupState | null => {
   };
 };
 
-export const writeStateFile = (
-  repoRoot: string,
-  state: SetupState
-): void => {
+export const writeStateFile = (repoRoot: string, state: SetupState): void => {
   const filePath = resolveStateFilePath(repoRoot);
   const parent = path.dirname(filePath);
 

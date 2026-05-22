@@ -248,7 +248,13 @@ type DecideArgs = {
 };
 
 const decide = (args: DecideArgs): CronDecision | 'state_malformed' => {
-  const {appChangedSince: appChanged, now, stateResult, tool, toolConfig} = args;
+  const {
+    appChangedSince: appChanged,
+    now,
+    stateResult,
+    tool,
+    toolConfig,
+  } = args;
 
   // 1. tool_off
   if (toolConfig.mode === 'off') {

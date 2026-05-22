@@ -48,14 +48,14 @@ type RunOptions = {
   stdin?: NodeJS.ReadableStream;
 };
 
-const readStdinToBuffer = (
-  stream: NodeJS.ReadableStream
-): Promise<Buffer> => {
+const readStdinToBuffer = (stream: NodeJS.ReadableStream): Promise<Buffer> => {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
 
     stream.on('data', (chunk: Buffer | string) => {
-      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk);
+      chunks.push(
+        typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk
+      );
     });
 
     stream.on('end', () => {
@@ -165,9 +165,7 @@ export const run = async (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  process.stdout.write(
-    `${JSON.stringify({name: validatedName, set: true})}\n`
-  );
+  process.stdout.write(`${JSON.stringify({name: validatedName, set: true})}\n`);
 
   return EXIT_CODES.OK;
 };

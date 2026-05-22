@@ -9,7 +9,7 @@
         "files": ["app/components/Document/index.tsx", "app/root.tsx"],
         "rules": ["react-doctor/no-danger"]
       },
-{
+      {
         "files": ["app/utils/object.ts"],
         "rules": ["react-doctor/no-full-lodash-import"]
       },

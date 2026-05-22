@@ -63,13 +63,15 @@ describe('setup-ci set-secret', () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
-    const exit = await run(
-      ['CLAUDE_CODE_OAUTH_TOKEN'],
-      {cwd: sandbox.root, stdin: stdinFromString(SECRET_VALUE)}
-    );
+    const exit = await run(['CLAUDE_CODE_OAUTH_TOKEN'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString(SECRET_VALUE),
+    });
     expect(exit).toBe(0);
 
-    const recorded = JSON.parse(readFileSync(sandbox.ghArgvPath, 'utf8')) as string[][];
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
     expect(recorded[0]).toEqual(['secret', 'set', 'CLAUDE_CODE_OAUTH_TOKEN']);
 
     // Critical: the secret VALUE never appears anywhere in argv.
@@ -80,10 +82,10 @@ describe('setup-ci set-secret', () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
-    const exit = await run(
-      ['CLAUDE_CODE_OAUTH_TOKEN'],
-      {cwd: sandbox.root, stdin: stdinFromString(SECRET_VALUE)}
-    );
+    const exit = await run(['CLAUDE_CODE_OAUTH_TOKEN'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString(SECRET_VALUE),
+    });
     expect(exit).toBe(0);
 
     const stdinBytes = readFileSync(sandbox.ghStdinPath, 'utf8');
@@ -94,10 +96,10 @@ describe('setup-ci set-secret', () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
-    await run(
-      ['CLAUDE_CODE_OAUTH_TOKEN'],
-      {cwd: sandbox.root, stdin: stdinFromString(`${SECRET_VALUE}\n`)}
-    );
+    await run(['CLAUDE_CODE_OAUTH_TOKEN'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString(`${SECRET_VALUE}\n`),
+    });
 
     const stdinBytes = readFileSync(sandbox.ghStdinPath, 'utf8');
     expect(stdinBytes).toBe(SECRET_VALUE);
@@ -107,10 +109,10 @@ describe('setup-ci set-secret', () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
-    await run(
-      ['CLAUDE_CODE_OAUTH_TOKEN'],
-      {cwd: sandbox.root, stdin: stdinFromString(SECRET_VALUE)}
-    );
+    await run(['CLAUDE_CODE_OAUTH_TOKEN'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString(SECRET_VALUE),
+    });
 
     expect(stdio.out.join('')).not.toContain(SECRET_VALUE);
     expect(stdio.err.join('')).not.toContain(SECRET_VALUE);
@@ -120,17 +122,20 @@ describe('setup-ci set-secret', () => {
     const handle = sandbox.installGhShim({exitCode: 1});
     restore = handle.restore;
 
-    const exit = await run(
-      ['CLAUDE_CODE_OAUTH_TOKEN'],
-      {cwd: sandbox.root, stdin: stdinFromString(SECRET_VALUE)}
-    );
+    const exit = await run(['CLAUDE_CODE_OAUTH_TOKEN'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString(SECRET_VALUE),
+    });
     expect(exit).not.toBe(0);
 
     const allOutput = stdio.out.join('') + stdio.err.join('');
     expect(allOutput).not.toContain(SECRET_VALUE);
 
     // The structured error/payload must use a generic message.
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.set).toBe(false);
     expect(parsed.error).toBe('gh_failure');
   });
@@ -145,25 +150,28 @@ describe('setup-ci set-secret', () => {
     });
     restore = handle.restore;
 
-    const exit = await run(
-      ['CLAUDE_CODE_OAUTH_TOKEN'],
-      {cwd: sandbox.root, stdin: stdinFromString(SECRET_VALUE)}
-    );
+    const exit = await run(['CLAUDE_CODE_OAUTH_TOKEN'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString(SECRET_VALUE),
+    });
     expect(exit).not.toBe(0);
 
     const allOutput = stdio.out.join('') + stdio.err.join('');
     expect(allOutput).not.toContain(SECRET_VALUE);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.set).toBe(false);
     expect(parsed.error).toBe('gh_failure');
   });
 
   it('exits unknown_secret_name on unsupported names', async () => {
-    const exit = await run(
-      ['NOT_A_REAL_SECRET'],
-      {cwd: sandbox.root, stdin: stdinFromString(SECRET_VALUE)}
-    );
+    const exit = await run(['NOT_A_REAL_SECRET'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString(SECRET_VALUE),
+    });
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unknown_secret_name');
   });
@@ -172,10 +180,10 @@ describe('setup-ci set-secret', () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
-    const exit = await run(
-      ['CLAUDE_CODE_OAUTH_TOKEN'],
-      {cwd: sandbox.root, stdin: stdinFromString('')}
-    );
+    const exit = await run(['CLAUDE_CODE_OAUTH_TOKEN'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString(''),
+    });
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('empty_secret');
   });
@@ -184,10 +192,10 @@ describe('setup-ci set-secret', () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
-    const exit = await run(
-      ['CLAUDE_CODE_OAUTH_TOKEN'],
-      {cwd: sandbox.root, stdin: stdinFromString('\n\n')}
-    );
+    const exit = await run(['CLAUDE_CODE_OAUTH_TOKEN'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString('\n\n'),
+    });
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('empty_secret');
   });
@@ -196,13 +204,15 @@ describe('setup-ci set-secret', () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
-    const exit = await run(
-      ['ANTHROPIC_API_KEY'],
-      {cwd: sandbox.root, stdin: stdinFromString('sk-ant-12345')}
-    );
+    const exit = await run(['ANTHROPIC_API_KEY'], {
+      cwd: sandbox.root,
+      stdin: stdinFromString('sk-ant-12345'),
+    });
     expect(exit).toBe(0);
 
-    const recorded = JSON.parse(readFileSync(sandbox.ghArgvPath, 'utf8')) as string[][];
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
     expect(recorded[0]).toEqual(['secret', 'set', 'ANTHROPIC_API_KEY']);
   });
 

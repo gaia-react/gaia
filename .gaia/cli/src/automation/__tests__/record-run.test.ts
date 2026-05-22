@@ -5,8 +5,12 @@ import {run} from '../record-run.js';
 import {setupSandbox, type Sandbox} from './sandbox.js';
 
 const silenceStdio = () => {
-  const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation(() => true);
+  const stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation(() => true);
 
   return {
     restore: () => {
@@ -17,10 +21,9 @@ const silenceStdio = () => {
 };
 
 const readWikiState = (sandbox: Sandbox): Record<string, unknown> =>
-  JSON.parse(readFileSync(automationStatePath(sandbox.root, 'wiki'), 'utf8')) as Record<
-    string,
-    unknown
-  >;
+  JSON.parse(
+    readFileSync(automationStatePath(sandbox.root, 'wiki'), 'utf8')
+  ) as Record<string, unknown>;
 
 describe('automation record-run', () => {
   let sandbox: Sandbox;

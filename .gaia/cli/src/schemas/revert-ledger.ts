@@ -24,7 +24,11 @@ import {z} from 'zod';
 import {revertLedgerPath} from '../ci/paths.js';
 import {summarizeZodError} from './zod-error.js';
 
-export const RevertAttemptStatusSchema = z.literal(['failed', 'merged', 'open'] as const);
+export const RevertAttemptStatusSchema = z.literal([
+  'failed',
+  'merged',
+  'open',
+] as const);
 export type RevertAttemptStatus = z.infer<typeof RevertAttemptStatusSchema>;
 
 export const RevertAttemptSchema = z.object({
@@ -81,7 +85,10 @@ export const readRevertLedger = (repoRoot: string): ReadRevertLedgerResult => {
   const result = RevertLedgerSchema.safeParse(parsed);
 
   if (!result.success) {
-    return {error: summarizeZodError(filePath, result.error), status: 'malformed'};
+    return {
+      error: summarizeZodError(filePath, result.error),
+      status: 'malformed',
+    };
   }
 
   return {ledger: result.data, status: 'ok'};

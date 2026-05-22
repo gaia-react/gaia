@@ -67,7 +67,12 @@ describe('automation render-workflows', () => {
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
-    for (const tool of ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches']) {
+    for (const tool of [
+      'wiki',
+      'update-deps',
+      'pnpm-audit',
+      'stale-branches',
+    ]) {
       expect(existsSync(path.join(outDir, `gaia-ci-${tool}.yml`))).toBe(true);
     }
   });
@@ -76,10 +81,9 @@ describe('automation render-workflows', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
-    const exit = run(
-      ['--out-dir', outDir, '--tools', 'wiki,update-deps'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--out-dir', outDir, '--tools', 'wiki,update-deps'], {
+      cwd: sandbox.root,
+    });
 
     expect(exit).toBe(0);
     expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(true);
@@ -94,16 +98,15 @@ describe('automation render-workflows', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
-    const exit = run(
-      ['--out-dir', outDir, '--dry-run'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--out-dir', outDir, '--dry-run'], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
     expect(existsSync(outDir)).toBe(false);
     const stdout = io.outs.join('');
     expect(stdout).toMatch(/wiki: \d+ bytes -> .*gaia-ci-wiki\.yml/u);
-    expect(stdout).toMatch(/update-deps: \d+ bytes -> .*gaia-ci-update-deps\.yml/u);
+    expect(stdout).toMatch(
+      /update-deps: \d+ bytes -> .*gaia-ci-update-deps\.yml/u
+    );
     expect(stdout).toMatch(
       /pnpm-audit: \d+ bytes -> .*gaia-ci-pnpm-audit\.yml/u
     );
@@ -138,7 +141,9 @@ describe('automation render-workflows', () => {
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
 
-    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(false);
+    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(
+      false
+    );
     expect(io.errors.join('')).toContain('update-deps: skipped (mode=off)');
   });
 
@@ -152,7 +157,11 @@ describe('automation render-workflows', () => {
   });
 
   it('exits non-zero with config_malformed when the config is invalid JSON', () => {
-    writeFileSync(automationConfigPath(sandbox.root), '{this is not json', 'utf8');
+    writeFileSync(
+      automationConfigPath(sandbox.root),
+      '{this is not json',
+      'utf8'
+    );
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -190,16 +199,10 @@ describe('automation render-workflows', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
-    const first = readFileSync(
-      path.join(outDir, 'gaia-ci-wiki.yml'),
-      'utf8'
-    );
+    const first = readFileSync(path.join(outDir, 'gaia-ci-wiki.yml'), 'utf8');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
-    const second = readFileSync(
-      path.join(outDir, 'gaia-ci-wiki.yml'),
-      'utf8'
-    );
+    const second = readFileSync(path.join(outDir, 'gaia-ci-wiki.yml'), 'utf8');
 
     expect(second).toBe(first);
   });
@@ -208,10 +211,7 @@ describe('automation render-workflows', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
-    const exit = run(
-      ['--out-dir', outDir, '--bogus'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--out-dir', outDir, '--bogus'], {cwd: sandbox.root});
 
     expect(exit).not.toBe(0);
     expect(io.errors.join('')).toContain('"code":"invalid_arguments"');
@@ -220,30 +220,22 @@ describe('automation render-workflows', () => {
   it('rejects --out-dir without a value', () => {
     const exit = run(['--out-dir'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
-    expect(io.errors.join('')).toContain(
-      '--out-dir requires a path argument'
-    );
+    expect(io.errors.join('')).toContain('--out-dir requires a path argument');
   });
 
   it('rejects --out-dir followed by another flag', () => {
-    const exit = run(
-      ['--out-dir', '--dry-run'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--out-dir', '--dry-run'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
-    expect(io.errors.join('')).toContain(
-      '--out-dir requires a path argument'
-    );
+    expect(io.errors.join('')).toContain('--out-dir requires a path argument');
   });
 
   it('rejects --tools with an unknown tool', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
-    const exit = run(
-      ['--out-dir', outDir, '--tools', 'wiki,bogus'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--out-dir', outDir, '--tools', 'wiki,bogus'], {
+      cwd: sandbox.root,
+    });
 
     expect(exit).not.toBe(0);
     expect(io.errors.join('')).toContain('--tools entries must be a subset');
@@ -252,7 +244,9 @@ describe('automation render-workflows', () => {
   it('emits help text when --help is passed', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
-    expect(io.outs.join('')).toContain('Usage: gaia automation render-workflows');
+    expect(io.outs.join('')).toContain(
+      'Usage: gaia automation render-workflows'
+    );
   });
 
   it('writes byte-identical content to what renderWorkflowTemplate produces directly', () => {
@@ -266,7 +260,12 @@ describe('automation render-workflows', () => {
     // construction (same render path). This test asserts the byte
     // count is non-trivial so we catch a regression where the writer
     // emits an empty file.
-    for (const tool of ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches']) {
+    for (const tool of [
+      'wiki',
+      'update-deps',
+      'pnpm-audit',
+      'stale-branches',
+    ]) {
       const content = readFileSync(
         path.join(outDir, `gaia-ci-${tool}.yml`),
         'utf8'

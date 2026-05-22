@@ -43,10 +43,7 @@ const readPartialBody = (partialsDir: string, name: string): string => {
  * body contains a `{{>` token (even non-matching forms) so accidental
  * recursion is caught at render time, and if a partial cannot be read.
  */
-export const resolvePartials = (
-  raw: string,
-  partialsDir: string
-): string =>
+export const resolvePartials = (raw: string, partialsDir: string): string =>
   raw.replaceAll(PARTIAL_PATTERN, (_match, name: string) => {
     const body = readPartialBody(partialsDir, name);
 

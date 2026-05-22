@@ -101,7 +101,9 @@ describe('detectIntentClarityGap (unit)', () => {
     // 12 spec_amended events whose specs have no time_to_resolved_spec
     // event in the window → all attributed to the `_unknown` sentinel.
     for (let index = 0; index < 12; index += 1) {
-      events.push(buildSpecAmended(`SPEC-${index.toString().padStart(3, '0')}`, index));
+      events.push(
+        buildSpecAmended(`SPEC-${index.toString().padStart(3, '0')}`, index)
+      );
     }
     const results = detectIntentClarityGap({events, windowDays: 30});
 
@@ -114,7 +116,12 @@ describe('detectIntentClarityGap (unit)', () => {
     // 10 closed specs in `visual`.
     for (let index = 0; index < 10; index += 1) {
       events.push(
-        buildTimeToResolved(`SPEC-${index.toString().padStart(3, '0')}`, 'visual', 5, index)
+        buildTimeToResolved(
+          `SPEC-${index.toString().padStart(3, '0')}`,
+          'visual',
+          5,
+          index
+        )
       );
     }
 
@@ -176,7 +183,14 @@ describe('detectIntentClarityGap (unit)', () => {
     const events: MentorshipEvent[] = [negative];
 
     for (let index = 0; index < 9; index += 1) {
-      events.push(buildTimeToResolved(`SPEC-${index.toString().padStart(3, '0')}`, 'visual', 0, index));
+      events.push(
+        buildTimeToResolved(
+          `SPEC-${index.toString().padStart(3, '0')}`,
+          'visual',
+          0,
+          index
+        )
+      );
     }
     (negative.payload as Record<string, unknown>).question_count = Number.NaN;
 

@@ -26,7 +26,9 @@ type Sandbox = {
 const setupSandbox = (currentVersion: string): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-release-commit-tag-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   execFileSync('git', ['config', 'commit.gpgsign', 'false'], {cwd: root});
   mkdirSync(path.join(root, '.gaia'), {recursive: true});
@@ -36,7 +38,11 @@ const setupSandbox = (currentVersion: string): Sandbox => {
     `${JSON.stringify({name: 'gaia', version: currentVersion}, null, 2)}\n`,
     'utf8'
   );
-  writeFileSync(path.join(root, '.gaia', 'VERSION'), `${currentVersion}\n`, 'utf8');
+  writeFileSync(
+    path.join(root, '.gaia', 'VERSION'),
+    `${currentVersion}\n`,
+    'utf8'
+  );
   writeFileSync(
     path.join(root, '.gaia', 'manifest.json'),
     `{"version":"${currentVersion}","files":{}}\n`,
@@ -114,40 +120,44 @@ describe('release commit-and-tag --commit', () => {
     vi.restoreAllMocks();
   });
 
-  test('stages release files, commits, amends state SHA against real git', {timeout: 30_000}, () => {
-    sandbox = setupSandbox('1.2.0');
+  test(
+    'stages release files, commits, amends state SHA against real git',
+    {timeout: 30_000},
+    () => {
+      sandbox = setupSandbox('1.2.0');
 
-    const exit = run(['--commit'], {cwd: sandbox.root});
-    expect(exit).toBe(0);
-    const out = stdio.outputs.join('');
-    expect(out).toContain('commit-and-tag: committed v1.2.0');
+      const exit = run(['--commit'], {cwd: sandbox.root});
+      expect(exit).toBe(0);
+      const out = stdio.outputs.join('');
+      expect(out).toContain('commit-and-tag: committed v1.2.0');
 
-    // Verify the commit lives in the log with the expected message.
-    const logOut = execFileSync('git', ['log', '--oneline'], {
-      cwd: sandbox.root,
-      encoding: 'utf8',
-    });
-    expect(logOut).toContain('chore(release): v1.2.0');
+      // Verify the commit lives in the log with the expected message.
+      const logOut = execFileSync('git', ['log', '--oneline'], {
+        cwd: sandbox.root,
+        encoding: 'utf8',
+      });
+      expect(logOut).toContain('chore(release): v1.2.0');
 
-    // Verify wiki/.state.json was updated away from the seeded "0000000".
-    // (The pre-amend SHA is captured into the file and the amend rewrites
-    // HEAD to a new SHA; matching the post-amend HEAD is impossible by
-    // construction. The contract is that the file points at the
-    // pre-amend release commit, which is not in the log after amend but
-    // IS the parent SHA the runbook documents.)
-    const state = JSON.parse(
-      readFileSync(path.join(sandbox.root, 'wiki/.state.json'), 'utf8')
-    ) as {last_evaluated_sha: string};
-    expect(state.last_evaluated_sha).not.toBe('0000000');
-    expect(state.last_evaluated_sha).toMatch(/^[\da-f]{40}$/u);
+      // Verify wiki/.state.json was updated away from the seeded "0000000".
+      // (The pre-amend SHA is captured into the file and the amend rewrites
+      // HEAD to a new SHA; matching the post-amend HEAD is impossible by
+      // construction. The contract is that the file points at the
+      // pre-amend release commit, which is not in the log after amend but
+      // IS the parent SHA the runbook documents.)
+      const state = JSON.parse(
+        readFileSync(path.join(sandbox.root, 'wiki/.state.json'), 'utf8')
+      ) as {last_evaluated_sha: string};
+      expect(state.last_evaluated_sha).not.toBe('0000000');
+      expect(state.last_evaluated_sha).toMatch(/^[\da-f]{40}$/u);
 
-    // Tree should be clean (everything committed via amend).
-    const status = execFileSync('git', ['status', '--porcelain=v1'], {
-      cwd: sandbox.root,
-      encoding: 'utf8',
-    });
-    expect(status.trim()).toBe('');
-  });
+      // Tree should be clean (everything committed via amend).
+      const status = execFileSync('git', ['status', '--porcelain=v1'], {
+        cwd: sandbox.root,
+        encoding: 'utf8',
+      });
+      expect(status.trim()).toBe('');
+    }
+  );
 
   test('exit 1 when no release files exist to stage', () => {
     sandbox = setupSandbox('1.0.0');
@@ -182,7 +192,9 @@ describe('release commit-and-tag --commit', () => {
     expect(stdio.errors.join('')).toContain('amend blocked by hook');
 
     // The release commit must be unwound after the amend failure.
-    const calls = recorded.map((call) => `${call.command} ${call.args.join(' ')}`);
+    const calls = recorded.map(
+      (call) => `${call.command} ${call.args.join(' ')}`
+    );
     expect(calls).toContain('git reset --soft HEAD~1');
     expect(stdio.errors.join('')).toContain('rolled back the release commit');
     expect(stdio.errors.join('')).toContain('amend failed');
@@ -223,7 +235,10 @@ const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
   stdout,
 });
 
-const failResult = (status: number, stderr: string): SpawnSyncReturns<string> => ({
+const failResult = (
+  status: number,
+  stderr: string
+): SpawnSyncReturns<string> => ({
   output: ['', '', stderr] as never,
   pid: 0,
   signal: null,
@@ -237,28 +252,33 @@ type RecordedCall = {
   command: string;
 };
 
-const buildRecordingRunner = (
-  scripted: Array<{argv: readonly string[]; result: SpawnSyncReturns<string>}>,
-  recorded: RecordedCall[]
-): CommandRunner => (command, args) => {
-  recorded.push({args: [...args], command});
+const buildRecordingRunner =
+  (
+    scripted: Array<{
+      argv: readonly string[];
+      result: SpawnSyncReturns<string>;
+    }>,
+    recorded: RecordedCall[]
+  ): CommandRunner =>
+  (command, args) => {
+    recorded.push({args: [...args], command});
 
-  for (const entry of scripted) {
-    if (entry.argv.length !== args.length) continue;
-    let match = true;
+    for (const entry of scripted) {
+      if (entry.argv.length !== args.length) continue;
+      let match = true;
 
-    for (let index = 0; index < entry.argv.length; index += 1) {
-      if (entry.argv[index] !== args[index]) {
-        match = false;
-        break;
+      for (let index = 0; index < entry.argv.length; index += 1) {
+        if (entry.argv[index] !== args[index]) {
+          match = false;
+          break;
+        }
       }
+
+      if (match) return entry.result;
     }
 
-    if (match) return entry.result;
-  }
-
-  return okResult('');
-};
+    return okResult('');
+  };
 
 describe('release commit-and-tag --tag', () => {
   let sandbox: Sandbox;
@@ -284,7 +304,9 @@ describe('release commit-and-tag --tag', () => {
     expect(stdio.outputs.join('')).toContain('tagged v2.5.1');
     expect(stdio.outputs.join('')).toContain('pushed');
 
-    const calls = recorded.map((call) => `${call.command} ${call.args.join(' ')}`);
+    const calls = recorded.map(
+      (call) => `${call.command} ${call.args.join(' ')}`
+    );
     expect(calls).toContain('git tag -a v2.5.1 -m Release v2.5.1');
     expect(calls).toContain('git push origin v2.5.1');
   });
@@ -338,7 +360,9 @@ describe('release commit-and-tag --tag', () => {
     expect(stdio.errors.join('')).toContain('unable to access remote');
 
     // The created tag must be deleted after the failed push.
-    const calls = recorded.map((call) => `${call.command} ${call.args.join(' ')}`);
+    const calls = recorded.map(
+      (call) => `${call.command} ${call.args.join(' ')}`
+    );
     expect(calls).toContain('git tag -a v2.5.1 -m Release v2.5.1');
     expect(calls).toContain('git tag -d v2.5.1');
     expect(stdio.errors.join('')).toContain('deleted the local tag v2.5.1');
@@ -363,7 +387,9 @@ describe('argument validation', () => {
     sandbox = setupSandbox('1.0.0');
     const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('one of --commit or --tag is required');
+    expect(stdio.errors.join('')).toContain(
+      'one of --commit or --tag is required'
+    );
   });
 
   test('rejects both --commit and --tag', () => {

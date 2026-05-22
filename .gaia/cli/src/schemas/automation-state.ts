@@ -69,7 +69,10 @@ export const readAutomationState = (
   const result = AutomationStateFileSchema.safeParse(parsed);
 
   if (!result.success) {
-    return {error: summarizeZodError(filePath, result.error), status: 'malformed'};
+    return {
+      error: summarizeZodError(filePath, result.error),
+      status: 'malformed',
+    };
   }
 
   return {state: result.data, status: 'ok'};

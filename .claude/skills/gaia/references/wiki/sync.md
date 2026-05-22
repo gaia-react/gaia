@@ -107,6 +107,7 @@ If `last_consolidated_sha` is absent on the existing state (first sync ever): bo
 Run: `gaia wiki sync land --branch-aware`
 
 Exit codes:
+
 - 0 — landed (CLI summary line shows how)
 - 1 — refused (CLI stderr explains why; surface to user verbatim)
 - 2 — unexpected (surface to user; do NOT retry)

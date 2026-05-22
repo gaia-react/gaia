@@ -188,7 +188,8 @@ const parsePrUrlNumber = (urlOrText: string): number | null => {
 
     const trailingMatch = /\/(\d+)$/u.exec(token);
 
-    if (trailingMatch !== null) return Number.parseInt(trailingMatch[1] as string, 10);
+    if (trailingMatch !== null)
+      return Number.parseInt(trailingMatch[1] as string, 10);
   }
 
   return null;
@@ -205,7 +206,10 @@ const surfaceRevertFailure = (
   result: ProcessResult,
   json: boolean
 ): number => {
-  const details = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
+  const details =
+    result.stderr.trim() ||
+    result.stdout.trim() ||
+    `exit code ${result.exitCode}`;
   const payload = {error: 'revert_failed', step, details};
   structuredError({
     code: 'revert_failed',
@@ -222,10 +226,7 @@ const surfaceRevertFailure = (
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-const handleOpen = (
-  argv: readonly string[],
-  options: RunOptions
-): number => {
+const handleOpen = (argv: readonly string[], options: RunOptions): number => {
   const parsed = parseOpenArgs(argv);
 
   if (typeof parsed === 'string') {
@@ -367,11 +368,13 @@ const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
 
   const mergeCommit = view.mergeCommit;
   const mergeSha =
-    typeof mergeCommit === 'object' &&
-    mergeCommit !== null &&
-    typeof (mergeCommit as Record<string, unknown>).oid === 'string'
-      ? ((mergeCommit as Record<string, unknown>).oid as string)
-      : null;
+    (
+      typeof mergeCommit === 'object' &&
+      mergeCommit !== null &&
+      typeof (mergeCommit as Record<string, unknown>).oid === 'string'
+    ) ?
+      ((mergeCommit as Record<string, unknown>).oid as string)
+    : null;
 
   if (mergeSha === null) {
     const payload = {error: 'pr_not_merged', pr};
@@ -389,8 +392,10 @@ const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const headRefName = typeof view.headRefName === 'string' ? view.headRefName : null;
-  const baseRefName = typeof view.baseRefName === 'string' ? view.baseRefName : null;
+  const headRefName =
+    typeof view.headRefName === 'string' ? view.headRefName : null;
+  const baseRefName =
+    typeof view.baseRefName === 'string' ? view.baseRefName : null;
   const title = typeof view.title === 'string' ? view.title : `PR #${pr}`;
 
   if (headRefName === null || baseRefName === null) {
@@ -442,7 +447,9 @@ const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
     runGit(['branch', '-D', revertBranch], {cwd: repoRoot});
   };
 
-  const revertResult = runGit(['revert', '--no-edit', mergeSha], {cwd: repoRoot});
+  const revertResult = runGit(['revert', '--no-edit', mergeSha], {
+    cwd: repoRoot,
+  });
 
   if (revertResult.exitCode !== 0) {
     // Abort the in-progress revert, then unwind the branch we created so
@@ -453,7 +460,9 @@ const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
     return surfaceRevertFailure('git_revert', revertResult, json);
   }
 
-  const pushResult = runGit(['push', '-u', 'origin', revertBranch], {cwd: repoRoot});
+  const pushResult = runGit(['push', '-u', 'origin', revertBranch], {
+    cwd: repoRoot,
+  });
 
   if (pushResult.exitCode !== 0) {
     // The local branch carries a committed revert; a failed push leaves

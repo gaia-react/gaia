@@ -172,7 +172,10 @@ export const classifyKind = (current: string, latest: string): Kind => {
   return 'patch';
 };
 
-const compareSegments = (a: readonly number[], b: readonly number[]): number => {
+const compareSegments = (
+  a: readonly number[],
+  b: readonly number[]
+): number => {
   const len = Math.max(a.length, b.length);
 
   for (let i = 0; i < len; i += 1) {
@@ -261,9 +264,7 @@ type OutdatedEntry = {
   wanted: string;
 };
 
-const parseOutdated = (
-  stdout: string
-): readonly OutdatedEntry[] => {
+const parseOutdated = (stdout: string): readonly OutdatedEntry[] => {
   const trimmed = stdout.trim();
 
   if (trimmed.length === 0) return [];
@@ -285,10 +286,7 @@ const parseOutdated = (
 
     const obj = raw as Partial<OutdatedRaw>;
 
-    if (
-      typeof obj.current !== 'string' ||
-      typeof obj.latest !== 'string'
-    ) {
+    if (typeof obj.current !== 'string' || typeof obj.latest !== 'string') {
       continue;
     }
 
@@ -302,7 +300,11 @@ const parseOutdated = (
 
   // Stable order: alphabetical by name. Makes the emitted JSON
   // deterministic across runs regardless of pnpm's output ordering.
-  return out.toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return out.toSorted((a, b) =>
+    a.name < b.name ? -1
+    : a.name > b.name ? 1
+    : 0
+  );
 };
 
 // ---------- ESLint 9.x cap ----------
@@ -447,7 +449,12 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   const adjusted: Adjusted[] = [];
 
   for (const entry of raw) {
-    const decision = applyEslintCap(entry, pnpmRunner, options.cwd, eslintCache);
+    const decision = applyEslintCap(
+      entry,
+      pnpmRunner,
+      options.cwd,
+      eslintCache
+    );
 
     if (decision.kind === 'drop') continue;
 
@@ -534,9 +541,9 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
 
       // If current === latest, kind is "patch" (no-op default per spec).
       const kind: Kind =
-        current !== '' && current !== latest
-          ? classifyKind(current, latest)
-          : 'patch';
+        current !== '' && current !== latest ?
+          classifyKind(current, latest)
+        : 'patch';
 
       members.push({
         current,
@@ -558,7 +565,9 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
 
     if (hasMajor) {
       const sorted = members.toSorted((a, b) =>
-        a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+        a.name < b.name ? -1
+        : a.name > b.name ? 1
+        : 0
       );
 
       waveB.push({
@@ -591,8 +600,16 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   }
 
   // Stable, alphabetical ordering for both waves.
-  waveA.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  waveB.sort((a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0));
+  waveA.sort((a, b) =>
+    a.name < b.name ? -1
+    : a.name > b.name ? 1
+    : 0
+  );
+  waveB.sort((a, b) =>
+    a.group < b.group ? -1
+    : a.group > b.group ? 1
+    : 0
+  );
 
   return {
     generated_at: new Date().toISOString(),
@@ -679,8 +696,9 @@ export const run = (
       generated_at: generatedAt,
     };
 
-    const outPath = path.isAbsolute(parsed.emitUpdates)
-      ? parsed.emitUpdates
+    const outPath =
+      path.isAbsolute(parsed.emitUpdates) ?
+        parsed.emitUpdates
       : path.join(cwd, parsed.emitUpdates);
     mkdirSync(path.dirname(outPath), {recursive: true});
     writeFileSync(outPath, `${JSON.stringify(stamped, null, 2)}\n`, 'utf8');

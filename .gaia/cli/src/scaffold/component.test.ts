@@ -8,14 +8,7 @@
  * on stdout (captured), the produced filesystem contents, and the exit
  * codes.
  */
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  test,
-  vi,
-} from 'vitest';
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   copyFileSync,
   mkdirSync,
@@ -109,12 +102,19 @@ describe('scaffold component', () => {
   });
 
   test('default invocation produces three files matching component shape', () => {
-    const exit = run(['Foo', '--parent', 'app/components'], {cwd: sandbox.root});
+    const exit = run(['Foo', '--parent', 'app/components'], {
+      cwd: sandbox.root,
+    });
 
     expect(exit).toBe(0);
 
     const indexPath = path.join(sandbox.parent, 'Foo', 'index.tsx');
-    const testPath = path.join(sandbox.parent, 'Foo', 'tests', 'index.test.tsx');
+    const testPath = path.join(
+      sandbox.parent,
+      'Foo',
+      'tests',
+      'index.test.tsx'
+    );
     const storyPath = path.join(
       sandbox.parent,
       'Foo',
@@ -144,7 +144,9 @@ describe('scaffold component', () => {
     const storyContents = read(storyPath);
     expect(storyContents).toContain("import Foo from '..';");
     expect(storyContents).toContain("title: 'Components/Foo',");
-    expect(storyContents).toContain('export const Default: StoryFn = () => <Foo />;');
+    expect(storyContents).toContain(
+      'export const Default: StoryFn = () => <Foo />;'
+    );
   });
 
   test('--no-story drops the stories file and rewires the test imports', () => {
@@ -177,15 +179,19 @@ describe('scaffold component', () => {
 
   test('--props renders a typed Props alias and destructured signature', () => {
     const exit = run(
-      ['Card', '--parent', 'app/components', '--props', 'title:string,count:number'],
+      [
+        'Card',
+        '--parent',
+        'app/components',
+        '--props',
+        'title:string,count:number',
+      ],
       {cwd: sandbox.root}
     );
 
     expect(exit).toBe(0);
 
-    const indexContents = read(
-      path.join(sandbox.parent, 'Card', 'index.tsx')
-    );
+    const indexContents = read(path.join(sandbox.parent, 'Card', 'index.tsx'));
     expect(indexContents).toContain('type CardProps = {');
     expect(indexContents).toContain('  title: string;');
     expect(indexContents).toContain('  count: number;');
@@ -195,7 +201,9 @@ describe('scaffold component', () => {
   });
 
   test('lowercase name exits 1 with PascalCase message', () => {
-    const exit = run(['foo', '--parent', 'app/components'], {cwd: sandbox.root});
+    const exit = run(['foo', '--parent', 'app/components'], {
+      cwd: sandbox.root,
+    });
 
     expect(exit).toBe(1);
     const errorLine = stdio.errors.join('');
@@ -227,7 +235,9 @@ describe('scaffold component', () => {
   });
 
   test('re-running with the same args is a no-op (skipped)', () => {
-    const first = run(['Foo', '--parent', 'app/components'], {cwd: sandbox.root});
+    const first = run(['Foo', '--parent', 'app/components'], {
+      cwd: sandbox.root,
+    });
     expect(first).toBe(0);
 
     const second = run(['Foo', '--parent', 'app/components', '--json'], {
@@ -246,7 +256,9 @@ describe('scaffold component', () => {
   });
 
   test('re-running with conflicting contents exits 1', () => {
-    const first = run(['Foo', '--parent', 'app/components'], {cwd: sandbox.root});
+    const first = run(['Foo', '--parent', 'app/components'], {
+      cwd: sandbox.root,
+    });
     expect(first).toBe(0);
 
     // Mutate the index file so the second run sees a conflict.
@@ -254,7 +266,9 @@ describe('scaffold component', () => {
     const altered = `${read(indexPath)}\n// user customization\n`;
     writeFileSync(indexPath, altered, 'utf8');
 
-    const second = run(['Foo', '--parent', 'app/components'], {cwd: sandbox.root});
+    const second = run(['Foo', '--parent', 'app/components'], {
+      cwd: sandbox.root,
+    });
     expect(second).toBe(1);
     expect(stdio.errors.join('')).toContain('refusing to overwrite');
   });
@@ -283,9 +297,11 @@ describe('scaffold component', () => {
 
   // Sanity check: the test setup is still valid even if templates move.
   test('templates dir resolves to an existing path', () => {
-    expect(() => copyFileSync(
-      path.join(TEMPLATES_SOURCE, 'index.tsx.tmpl'),
-      path.join(sandbox.root, 'check.tmpl')
-    )).not.toThrow();
+    expect(() =>
+      copyFileSync(
+        path.join(TEMPLATES_SOURCE, 'index.tsx.tmpl'),
+        path.join(sandbox.root, 'check.tmpl')
+      )
+    ).not.toThrow();
   });
 });

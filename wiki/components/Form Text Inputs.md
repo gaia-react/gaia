@@ -5,8 +5,8 @@ status: active
 language: typescript
 purpose: Text-family form inputs — text, email, password, textarea
 depends_on:
-  - "[[Form Components]]"
-  - "[[Form Field]]"
+  - '[[Form Components]]'
+  - '[[Form Field]]'
 created: 2026-04-20
 updated: 2026-05-04
 tags: [component, forms, inputs]

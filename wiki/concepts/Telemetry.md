@@ -15,11 +15,11 @@ GAIA's telemetry system captures structured events across the dev workflow to po
 
 Events flow into one of three independent streams:
 
-| Stream | Location | Permissions | Purpose |
-|---|---|---|---|
-| **Mentorship** | machine-local, off-project | `700/600` | Full identity; in-session adaptation. |
-| **Cloud projection** | `.gaia/local/telemetry/cloud/` | `755/644` | Strict whitelist + denylist sweep. No user paths, text, or identity. |
-| **Analytics** | `.gaia/local/telemetry/analytics/` | `755/644` | Daily aggregate reports; auto-attested (audit-attest.ts throws on drift). |
+| Stream               | Location                           | Permissions | Purpose                                                                   |
+| -------------------- | ---------------------------------- | ----------- | ------------------------------------------------------------------------- |
+| **Mentorship**       | machine-local, off-project         | `700/600`   | Full identity; in-session adaptation.                                     |
+| **Cloud projection** | `.gaia/local/telemetry/cloud/`     | `755/644`   | Strict whitelist + denylist sweep. No user paths, text, or identity.      |
+| **Analytics**        | `.gaia/local/telemetry/analytics/` | `755/644`   | Daily aggregate reports; auto-attested (audit-attest.ts throws on drift). |
 
 Mentorship data stays off-project. Cloud + analytics live in `.gaia/local/telemetry/` (gitignored). The displayable aggregate is `profile.md`.
 
@@ -28,6 +28,7 @@ Mentorship data stays off-project. Cloud + analytics live in `.gaia/local/teleme
 `.gaia/cli/` houses the CLI workspace. Maintainer source lives at `.gaia/cli/src/`; `pnpm bundle` (esbuild, ESM, ~630KB) emits a self-contained `.gaia/cli/gaia` binary with `#!/usr/bin/env node` shebang. Adopters receive only the bundled binary — source, tests, and fixtures are excluded from the release tarball. Subcommand router uses a static handler map (no switch; project's `no-switch` rule).
 
 Top-level subcommands:
+
 - `telemetry emit <event_type> [--field value …]` — universal emit; writes to mentorship + cloud streams based on config
 - `telemetry compute-profile` — regenerates `profile.md` from mentorship events via three pattern detectors
 - `mentorship enable|disable|purge|status` — opt-in lifecycle; state machine in `src/mentorship/config.ts`
@@ -63,13 +64,13 @@ Detectors are wired-but-inert at v1.0.0: production behavior requires N ≥ 10 e
 
 ## Emit wiring
 
-| Hook / skill | Event emitted |
-|---|---|
+| Hook / skill                                                                         | Event emitted                                                                                          |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | `PostToolUse Task` hook (`telemetry-task-postuse.sh` → `gaia telemetry parse-stdin`) | `engineer_return`, `code_review_audit_finding` (TS trailer parser in `src/telemetry/parse-trailer.ts`) |
-| `/gaia spec` Gate 2 | `time_to_resolved_spec` |
-| `/gaia spec` abandoned-exit | `time_to_resolved_spec` (abandoned) |
-| `/gaia plan` revision detection | `plan_revised` |
-| `spec-close` Step 5 | chains `compute-profile` after pacing append |
+| `/gaia spec` Gate 2                                                                  | `time_to_resolved_spec`                                                                                |
+| `/gaia spec` abandoned-exit                                                          | `time_to_resolved_spec` (abandoned)                                                                    |
+| `/gaia plan` revision detection                                                      | `plan_revised`                                                                                         |
+| `spec-close` Step 5                                                                  | chains `compute-profile` after pacing append                                                           |
 
 Statusline shows a compass segment when mentorship is enabled (wired in `.gaia/statusline/gaia-statusline.sh`). Session-start clears `.gaia/cache/coaching-active.txt` so stale injections never persist.
 

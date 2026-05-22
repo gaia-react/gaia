@@ -65,9 +65,7 @@ const parseTools = (raw: string): readonly ToolId[] | string => {
   return parts as readonly ToolId[];
 };
 
-const parseArgs = (
-  argv: readonly string[]
-): ParsedArgs | {error: string} => {
+const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   let outDir: string | undefined;
   let dryRun = false;
   let tools: readonly ToolId[] = TOOL_IDS;

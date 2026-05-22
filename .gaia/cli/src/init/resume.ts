@@ -79,7 +79,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -96,7 +97,11 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       if (!taken.ok) return taken;
       const parsed = Number.parseInt(taken.value, 10);
 
-      if (!Number.isInteger(parsed) || parsed < 1 || parsed > STEP_ORDER.length) {
+      if (
+        !Number.isInteger(parsed) ||
+        parsed < 1 ||
+        parsed > STEP_ORDER.length
+      ) {
         return {
           message: `--from-step must be an integer between 1 and ${STEP_ORDER.length}`,
           ok: false,
@@ -113,17 +118,14 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {flags: {fromStep}, ok: true};
 };
 
-type StepRunner = (
-  argv: readonly string[],
-  options?: {cwd?: string}
-) => number;
+type StepRunner = (argv: readonly string[], options?: {cwd?: string}) => number;
 
 const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
   'bootstrap-env': runBootstrapEnv,
   'configure-automation': runConfigureAutomation,
   'configure-i18n': runConfigureI18n,
-  'finalize': runFinalize,
-  'rename': runRename,
+  finalize: runFinalize,
+  rename: runRename,
   'strip-branding': runStripBranding,
   'wire-statusline': runWireStatusline,
 };
@@ -153,7 +155,10 @@ export const argvFromStepArgs = (
     const locales = saved.locales;
     const strip = saved.strip;
 
-    if (!Array.isArray(locales) || locales.some((entry) => typeof entry !== 'string')) {
+    if (
+      !Array.isArray(locales) ||
+      locales.some((entry) => typeof entry !== 'string')
+    ) {
       return null;
     }
 
@@ -260,7 +265,11 @@ export const run = (
 
   const completed = new Set(state.completed_steps);
 
-  for (let index = parsed.flags.fromStep - 1; index < STEP_ORDER.length; index += 1) {
+  for (
+    let index = parsed.flags.fromStep - 1;
+    index < STEP_ORDER.length;
+    index += 1
+  ) {
     const step = STEP_ORDER[index] as StepName;
 
     if (completed.has(step)) {

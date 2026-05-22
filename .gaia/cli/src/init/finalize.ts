@@ -142,7 +142,10 @@ const readSettings = (target: string): Record<string, unknown> => {
   return parsed;
 };
 
-const writeSettings = (target: string, value: Record<string, unknown>): void => {
+const writeSettings = (
+  target: string,
+  value: Record<string, unknown>
+): void => {
   mkdirSync(path.dirname(target), {recursive: true});
   const serialized = `${JSON.stringify(value, null, 2)}\n`;
   const tmp = `${target}.tmp`;

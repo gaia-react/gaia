@@ -10,7 +10,14 @@
  * a main checkout and a linked worktree under one `mkdtemp`'d parent.
  */
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
@@ -161,10 +168,9 @@ describe('gaia setup (linked worktree)', () => {
     );
     expect(existsSync(linkedStatePath)).toBe(false);
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.completed_steps).toEqual(['install-tools']);
   });
 
@@ -180,10 +186,9 @@ describe('gaia setup (linked worktree)', () => {
     });
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.completed_at).toBe(fixedNow.toISOString());
 
     const linkedStatePath = path.join(

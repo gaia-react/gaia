@@ -136,13 +136,13 @@ Replace:  \1=<redacted>
 
 The following examples demonstrate the complete algorithm. All values are illustrative placeholders; no real credential appears in this file.
 
-| Input (before redaction) | Output (after redaction) | Rule applied |
-|---|---|---|
-| `<home>/Development/my-project/app/i18n.ts` | `app/i18n.ts` | Path Rule A (under project root `<home>/Development/my-project`) |
-| `<home>/.config/some-other-tool.json` | `some-other-tool.json` | Path Rule B (outside project root, filename only) |
-| `<github-token-shaped-string>` | `<redacted>` | Token pattern 1 (GitHub token; prefix `gho_` + 20 alphanumerics) |
-| `ANTHROPIC_API_KEY=<value-shaped-string>` | `ANTHROPIC_API_KEY=<redacted>` | Env-var policy (value scrubbed; name kept) |
-| `<aws-access-key-id-shaped-string>` | `<redacted>` | Token pattern 6 (AWS access key; four uppercase + sixteen alphanumerics) |
+| Input (before redaction)                    | Output (after redaction)       | Rule applied                                                             |
+| ------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------ |
+| `<home>/Development/my-project/app/i18n.ts` | `app/i18n.ts`                  | Path Rule A (under project root `<home>/Development/my-project`)         |
+| `<home>/.config/some-other-tool.json`       | `some-other-tool.json`         | Path Rule B (outside project root, filename only)                        |
+| `<github-token-shaped-string>`              | `<redacted>`                   | Token pattern 1 (GitHub token; prefix `gho_` + 20 alphanumerics)         |
+| `ANTHROPIC_API_KEY=<value-shaped-string>`   | `ANTHROPIC_API_KEY=<redacted>` | Env-var policy (value scrubbed; name kept)                               |
+| `<aws-access-key-id-shaped-string>`         | `<redacted>`                   | Token pattern 6 (AWS access key; four uppercase + sixteen alphanumerics) |
 
 ---
 

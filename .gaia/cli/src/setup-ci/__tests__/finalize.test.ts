@@ -3,11 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../finalize.js';
-import {
-  setupSandbox,
-  VALID_BASE_CONFIG,
-  type Sandbox,
-} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG, type Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -69,7 +65,10 @@ describe('setup-ci finalize', () => {
       expect(result.config.setup_complete).toBe(true);
     }
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.finalized).toBe(true);
     expect(parsed.already_finalized).toBe(false);
   });
@@ -80,7 +79,10 @@ describe('setup-ci finalize', () => {
     const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.finalized).toBe(true);
     expect(parsed.already_finalized).toBe(true);
   });

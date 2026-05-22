@@ -175,6 +175,7 @@ fi
 ```
 
 Notes:
+
 - On the `Save partial and resume later` path, the cache file remains so a future resume continues against the same `start_at`. Only canonical save (step 8) and the explicit cache-discard branch in step 2 delete it. The abandoned emit is a snapshot, not a teardown.
 - `area-tags` is `spec` (v1.0.0 default) for abandoned exits — clusters can't be reliably extracted from a partial draft. Step 8 derives richer tags from the saved SPEC's UAT clusters.
 - Failure of the emit must never block the user's exit — note the trailing `|| true`.
@@ -406,6 +407,7 @@ Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and
 >     }
 >
 > Severity guidance:
+>
 > - **low** — placeholder text ("TODO", vague adjectives), terminology inconsistency
 > - **medium** — internal inconsistency, ambiguous UAT phrasing
 > - **high** — drift from gate-1 snapshot, scope change, removed UAT, added UAT not present at gate 1
@@ -459,12 +461,14 @@ Use a plain prompt — not `AskUserQuestion`. Suggested phrasing:
 > ```
 
 If the user revises:
+
 1. Fold revisions into the draft.
 2. Increment `gate2_revisions`.
 3. Write the draft cache (operational primitive).
 4. Re-present until they confirm. Do not re-quote raw clarify Q&A in revision prompts — reference the draft's `clarifications.answered[]` and `clarifications.deferred[]` arrays as canonical.
 
 On confirmation:
+
 1. Write the final draft cache.
 2. Append `gate2_confirmed` telemetry with `revisions: <gate2_revisions>`.
 
@@ -483,6 +487,7 @@ Write to `.gaia/local/specs/SPEC-NNN/SPEC.md`. This is the canonical save locati
 Update the frontmatter `updated` field to today's date.
 
 After the canonical write succeeds:
+
 1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md`. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
 2. **Update the ledger row:** flip the row in `.gaia/specs.json` from `status: draft` to `status: in-progress` and stamp the intent (first prose line of the SPEC's `intent` field) for at-a-glance scanning. Failure is non-blocking — log to stderr and continue. The ledger is a fast index over git; the SPEC artifact and git history remain authoritative.
 
@@ -616,6 +621,7 @@ Construct the dispatch input string in this exact form (literal interpolation, n
     SPEC-NNN: <intent first line> — see <absolute path to .gaia/local/specs/SPEC-NNN/SPEC.md>
 
 where:
+
 - `SPEC-NNN` is the allocated SPEC id
 - `<intent first line>` is the first sentence of the SPEC's `intent` paragraph (truncated at the first period or newline)
 - `<absolute path…>` is the absolute path to the saved SPEC artifact
@@ -659,8 +665,9 @@ Print a single summary block after the loop exits:
 
 > SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 > Plans authored: <count>
->   - <PLAN_DIRS[0]>
->   - <PLAN_DIRS[1]>
+>
+> - <PLAN_DIRS[0]>
+> - <PLAN_DIRS[1]>
 >   …
 >
 > Discover later with: `ls .gaia/local/plans/ | grep ^spec-nnn-`
@@ -679,9 +686,11 @@ Concrete shape for the PR body:
 
 ```markdown
 ## Summary
+
 <brief description of changes>
 
 ## Test plan
+
 <bulleted checklist>
 
 Closes #<N>

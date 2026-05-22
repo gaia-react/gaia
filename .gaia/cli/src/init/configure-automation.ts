@@ -84,7 +84,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -147,7 +148,12 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     }
 
     if (token === '--stale-branches') {
-      const taken = takeMode(argv, index + 1, '--stale-branches', staleBranches);
+      const taken = takeMode(
+        argv,
+        index + 1,
+        '--stale-branches',
+        staleBranches
+      );
 
       if (!taken.ok) return taken;
       staleBranches = taken.mode;
@@ -159,7 +165,8 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   }
 
   if (wiki === undefined) return {message: '--wiki is required', ok: false};
-  if (updateDeps === undefined) return {message: '--update-deps is required', ok: false};
+  if (updateDeps === undefined)
+    return {message: '--update-deps is required', ok: false};
 
   if (pnpmAudit === undefined) {
     return {message: '--pnpm-audit is required', ok: false};

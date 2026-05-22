@@ -1,5 +1,11 @@
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
@@ -21,7 +27,9 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-update-deps-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   execFileSync('git', ['config', 'commit.gpgsign', 'false'], {cwd: root});
 
@@ -120,7 +128,11 @@ const makePnpmRunner = (
       }
     }
 
-    return {status: 1, stderr: `unexpected args: ${args.join(' ')}`, stdout: ''};
+    return {
+      status: 1,
+      stderr: `unexpected args: ${args.join(' ')}`,
+      stdout: '',
+    };
   };
 };
 
@@ -176,8 +188,12 @@ describe('update-deps run — group resolution', () => {
   });
 
   test('@fortawesome/* prefix maps to fontawesome group', () => {
-    expect(resolveGroup('@fortawesome/fontawesome-svg-core')).toBe('fontawesome');
-    expect(resolveGroup('@fortawesome/free-solid-svg-icons')).toBe('fontawesome');
+    expect(resolveGroup('@fortawesome/fontawesome-svg-core')).toBe(
+      'fontawesome'
+    );
+    expect(resolveGroup('@fortawesome/free-solid-svg-icons')).toBe(
+      'fontawesome'
+    );
   });
 
   test('unknown package falls back to singleton:<name>', () => {
@@ -267,7 +283,11 @@ describe('update-deps run — computeUpdates', () => {
       cwd: sandbox.root,
       pnpmRunner: makePnpmRunner({
         'react-router': {current: '6.30.0', latest: '7.0.0', wanted: '6.30.0'},
-        'react-router-dom': {current: '6.30.0', latest: '7.0.0', wanted: '6.30.0'},
+        'react-router-dom': {
+          current: '6.30.0',
+          latest: '7.0.0',
+          wanted: '6.30.0',
+        },
       }),
     });
 
@@ -644,7 +664,12 @@ describe('update-deps run — group membership', () => {
   });
 
   test('resolveGroupMembers handles prefix-based groups', () => {
-    const allNames = ['storybook', '@storybook/react', '@storybook/addon-essentials', 'react'];
+    const allNames = [
+      'storybook',
+      '@storybook/react',
+      '@storybook/addon-essentials',
+      'react',
+    ];
     const members = resolveGroupMembers('storybook', allNames);
     expect(members).toContain('storybook');
     expect(members).toContain('@storybook/react');
@@ -653,7 +678,9 @@ describe('update-deps run — group membership', () => {
   });
 
   test('resolveGroupMembers returns empty array for singleton groups', () => {
-    expect(resolveGroupMembers('singleton:lodash', ['lodash', 'react'])).toEqual([]);
+    expect(
+      resolveGroupMembers('singleton:lodash', ['lodash', 'react'])
+    ).toEqual([]);
   });
 });
 

@@ -33,7 +33,9 @@ type StaleCheckDecision = {
 };
 
 const GhPrEntry = {
-  parse(value: unknown): {createdAt: string; headRefName: string; number: number} | null {
+  parse(
+    value: unknown
+  ): {createdAt: string; headRefName: string; number: number} | null {
     if (typeof value !== 'object' || value === null) return null;
     const v = value as Record<string, unknown>;
 
@@ -221,7 +223,11 @@ export const run = (
       skip_log_line: null,
     };
   } else {
-    const first = entries[0] as {createdAt: string; headRefName: string; number: number};
+    const first = entries[0] as {
+      createdAt: string;
+      headRefName: string;
+      number: number;
+    };
     decision = {
       decision: 'skip',
       open_pr_branch: first.headRefName,

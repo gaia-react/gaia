@@ -111,14 +111,20 @@ export const parseExcludePatterns = (text: string): RegExp[] =>
 export const classifyPath = (relativePath: string): ManifestClass | null => {
   if (ADOPTER_OWNED_SENTINELS.has(relativePath)) return null;
   if (SHARED.has(relativePath)) return 'shared';
-  if (SHARED_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) return 'shared';
+  if (SHARED_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
+    return 'shared';
   if (WIKI_OWNED_EXACT.has(relativePath)) return 'wiki-owned';
-  if (WIKI_OWNED_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) return 'wiki-owned';
+  if (WIKI_OWNED_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
+    return 'wiki-owned';
 
   return 'owned';
 };
 
-const ManifestClassSchema = z.literal(['owned', 'shared', 'wiki-owned'] as const);
+const ManifestClassSchema = z.literal([
+  'owned',
+  'shared',
+  'wiki-owned',
+] as const);
 
 /**
  * Runtime shape of `.gaia/manifest.json`. The committed manifest is
@@ -165,7 +171,9 @@ export const buildManifest = (
   const versionPath = path.resolve(repoRoot, '.gaia/VERSION');
   const excludePath = path.resolve(repoRoot, '.gaia/release-exclude');
   const version = readFileSync(versionPath, 'utf8').trim();
-  const excludePatterns = parseExcludePatterns(readFileSync(excludePath, 'utf8'));
+  const excludePatterns = parseExcludePatterns(
+    readFileSync(excludePath, 'utf8')
+  );
   const isExcluded = (candidate: string): boolean =>
     excludePatterns.some((pattern) => pattern.test(candidate));
 
@@ -224,7 +232,8 @@ export const lintClassifierSets = (
     }
   };
 
-  for (const entry of ADOPTER_OWNED_SENTINELS) findOverlap(entry, 'ADOPTER_OWNED_SENTINELS');
+  for (const entry of ADOPTER_OWNED_SENTINELS)
+    findOverlap(entry, 'ADOPTER_OWNED_SENTINELS');
   for (const entry of SHARED) findOverlap(entry, 'SHARED');
   for (const entry of WIKI_OWNED_EXACT) findOverlap(entry, 'WIKI_OWNED_EXACT');
 
@@ -262,7 +271,11 @@ const computeDrift = (
 ): ManifestDrift => {
   const missing: Array<{expected: ManifestClass; file: string}> = [];
   const extra: Array<{actual: ManifestClass; file: string}> = [];
-  const drift: Array<{actual: ManifestClass; expected: ManifestClass; file: string}> = [];
+  const drift: Array<{
+    actual: ManifestClass;
+    expected: ManifestClass;
+    file: string;
+  }> = [];
 
   for (const [file, expectedClass] of Object.entries(expected.files)) {
     const actualClass = actual.files[file];
@@ -288,9 +301,9 @@ const computeDrift = (
   drift.sort((a, b) => a.file.localeCompare(b.file));
 
   const versionDrift =
-    expected.version === actual.version
-      ? undefined
-      : {actual: actual.version, expected: expected.version};
+    expected.version === actual.version ?
+      undefined
+    : {actual: actual.version, expected: expected.version};
 
   return {classifierOverlaps, drift, extra, missing, versionDrift};
 };
@@ -303,14 +316,16 @@ const renderCheckReport = (
 
   const out: string[] = [];
   const total =
-    result.missing.length
-    + result.extra.length
-    + result.drift.length
-    + result.classifierOverlaps.length
-    + (result.versionDrift === undefined ? 0 : 1);
+    result.missing.length +
+    result.extra.length +
+    result.drift.length +
+    result.classifierOverlaps.length +
+    (result.versionDrift === undefined ? 0 : 1);
 
   if (total === 0) {
-    out.push('release manifest --check: clean (manifest fresh, classifier sets coherent)');
+    out.push(
+      'release manifest --check: clean (manifest fresh, classifier sets coherent)'
+    );
 
     return `${out.join('\n')}\n`;
   }
@@ -357,7 +372,9 @@ const renderCheckReport = (
     );
 
     for (const overlap of result.classifierOverlaps) {
-      out.push(`  ${overlap.setName}: ${overlap.entry} (matched by /${overlap.excludePattern}/)`);
+      out.push(
+        `  ${overlap.setName}: ${overlap.entry} (matched by /${overlap.excludePattern}/)`
+      );
     }
   }
 
@@ -408,11 +425,10 @@ const runCheck = (
     actual = ManifestSchema.parse(rawJson);
   } catch (error) {
     const message =
-      error instanceof z.ZodError
-        ? `committed manifest is malformed: ${z.prettifyError(error)}`
-        : error instanceof Error
-          ? error.message
-          : String(error);
+      error instanceof z.ZodError ?
+        `committed manifest is malformed: ${z.prettifyError(error)}`
+      : error instanceof Error ? error.message
+      : String(error);
     structuredError({
       code: 'manifest_parse_failed',
       message,
@@ -428,11 +444,11 @@ const runCheck = (
   process.stdout.write(renderCheckReport(result, jsonMode));
 
   const hasIssue =
-    result.missing.length > 0
-    || result.extra.length > 0
-    || result.drift.length > 0
-    || result.classifierOverlaps.length > 0
-    || result.versionDrift !== undefined;
+    result.missing.length > 0 ||
+    result.extra.length > 0 ||
+    result.drift.length > 0 ||
+    result.classifierOverlaps.length > 0 ||
+    result.versionDrift !== undefined;
 
   return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
@@ -467,7 +483,8 @@ const takeValue = (
 ): {message: string; ok: false} | {ok: true; value: string} => {
   const value = argv[index];
 
-  if (value === undefined) return {message: `${flag} requires a value`, ok: false};
+  if (value === undefined)
+    return {message: `${flag} requires a value`, ok: false};
 
   return {ok: true, value};
 };
@@ -509,7 +526,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   }
 
   if (check && (outPath !== undefined || stdout)) {
-    return {message: '--check is incompatible with --out / --stdout', ok: false};
+    return {
+      message: '--check is incompatible with --out / --stdout',
+      ok: false,
+    };
   }
 
   if (!check && json) {
@@ -579,10 +599,11 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  const target = parsed.flags.outPath
-    ? (path.isAbsolute(parsed.flags.outPath)
-      ? parsed.flags.outPath
-      : path.join(cwd, parsed.flags.outPath))
+  const target =
+    parsed.flags.outPath ?
+      path.isAbsolute(parsed.flags.outPath) ?
+        parsed.flags.outPath
+      : path.join(cwd, parsed.flags.outPath)
     : path.join(repoRoot, '.gaia', 'manifest.json');
 
   if (!existsSync(path.dirname(target))) {
@@ -608,7 +629,11 @@ export const run = (
   }
 
   // Brief stdout summary: file count + per-class breakdown.
-  const counts: Record<ManifestClass, number> = {owned: 0, shared: 0, 'wiki-owned': 0};
+  const counts: Record<ManifestClass, number> = {
+    owned: 0,
+    shared: 0,
+    'wiki-owned': 0,
+  };
 
   for (const klass of Object.values(manifest.files)) counts[klass] += 1;
 

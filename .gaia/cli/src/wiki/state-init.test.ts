@@ -29,7 +29,9 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-state-init-'));
   execFileSync('git', ['init', '-q'], {cwd: root});
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], {cwd: root});
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: root,
+  });
   execFileSync('git', ['config', 'user.name', 'Test'], {cwd: root});
   // Need at least one commit so HEAD resolves.
   writeFileSync(path.join(root, 'README.md'), '# test\n', 'utf8');
@@ -101,7 +103,10 @@ describe('wiki state-init', () => {
 
   test('creates wiki/.state.json with the expected shape', () => {
     const fixedNow = new Date('2026-05-07T12:00:00.000Z');
-    const exit = run([sandbox.headSha], {cwd: sandbox.root, now: () => fixedNow});
+    const exit = run([sandbox.headSha], {
+      cwd: sandbox.root,
+      now: () => fixedNow,
+    });
     expect(exit).toBe(0);
 
     expect(existsSync(sandbox.statePath)).toBe(true);
@@ -120,10 +125,9 @@ describe('wiki state-init', () => {
   test('resolves short shas, branches, and HEAD', () => {
     const exit = run(['HEAD'], {cwd: sandbox.root});
     expect(exit).toBe(0);
-    const parsed = JSON.parse(readFileSync(sandbox.statePath, 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
     expect(parsed.last_evaluated_sha).toBe(sandbox.headSha);
   });
 

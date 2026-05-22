@@ -54,12 +54,12 @@ Then stop.
 
 Map the CLI's `drift_severity` and `commits_ahead` to the report section:
 
-| `drift_severity` | Section to append                                                                                                            |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `none`           | `✓ Wiki in sync with HEAD ({head_short}).`                                                                                   |
-| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /gaia wiki sync at next opportunity.`                                            |
-| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /gaia wiki sync soon.` + recent commits list                                     |
-| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /gaia wiki sync now.` + recent commits list   |
+| `drift_severity` | Section to append                                                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `none`           | `✓ Wiki in sync with HEAD ({head_short}).`                                                                                 |
+| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /gaia wiki sync at next opportunity.`                                          |
+| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /gaia wiki sync soon.` + recent commits list                                   |
+| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /gaia wiki sync now.` + recent commits list |
 
 For **medium** and **high**, list up to 5 of the `recent_commits` from the CLI output as `  - <sha> <subject>`.
 
