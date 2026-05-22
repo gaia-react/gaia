@@ -14,7 +14,6 @@ export default {
   ],
   ignoreBinaries: ['bats'],
   ignoreDependencies: [
-    '/\\+types/',
     '@epic-web/invariant',
     '@msw/data',
     '@playwright-testing-library/test',
@@ -33,5 +32,6 @@ export default {
     'stylelint-order',
     'tailwindcss',
   ],
+  ignoreUnresolved: [/\/\+types\//],
   project: ['app/**/*.{ts,tsx}', 'test/**/*.{ts,tsx}'],
 } satisfies KnipConfig;

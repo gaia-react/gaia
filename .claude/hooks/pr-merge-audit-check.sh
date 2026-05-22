@@ -112,16 +112,13 @@ fi
 check_github_status() {
   command -v gh >/dev/null 2>&1 || return 1
 
-  # Derive repo slug. GITHUB_REPOSITORY is set inside Actions; derive from the
-  # origin remote URL for local runs.
+  # Derive repo slug. GITHUB_REPOSITORY is set inside Actions; derive from
+  # the current directory's git remote for local runs via `gh repo view`
+  # (avoids BSD-vs-GNU sed portability issues with lazy quantifiers).
   repo="${GITHUB_REPOSITORY:-}"
   if [ -z "$repo" ]; then
-    origin_url=$(git remote get-url origin 2>/dev/null || true)
-    [ -n "$origin_url" ] || return 1
-    repo=$(printf '%s' "$origin_url" \
-      | sed -E 's|.*github\.com[:/]([^/]+/[^/]+?)(\.git)?$|\1|')
-    # sed produces the full URL when no pattern matches — reject it.
-    [ "$repo" != "$origin_url" ] || return 1
+    repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
+    [ -n "$repo" ] || return 1
     case "$repo" in
       */*) ;;  # must contain exactly one slash (owner/name)
       *) return 1 ;;

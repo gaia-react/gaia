@@ -42,8 +42,8 @@ describe('function utils', () => {
   });
 });
 
-const double = (x: number) => x * 2;
-const addOne = (x: number) => x + 1;
+const double = (value: number) => value * 2;
+const addOne = (value: number) => value + 1;
 
 describe('noop', () => {
   test('is callable without throwing', () => {
