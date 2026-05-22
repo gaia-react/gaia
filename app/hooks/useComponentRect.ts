@@ -28,8 +28,10 @@ export const useComponentRect = (
         }
       };
 
+      const scrollOptions: AddEventListenerOptions = {passive: true};
+
       window.addEventListener('resize', onUpdate);
-      window.addEventListener('scroll', onUpdate, {passive: true});
+      window.addEventListener('scroll', onUpdate, scrollOptions);
 
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -41,7 +43,7 @@ export const useComponentRect = (
           clearTimeout(timeoutRef.current);
         }
         window.removeEventListener('resize', onUpdate);
-        window.removeEventListener('scroll', onUpdate);
+        window.removeEventListener('scroll', onUpdate, scrollOptions);
       };
     }
 

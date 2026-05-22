@@ -4,13 +4,14 @@ import {useTranslation} from 'react-i18next';
 import {IoDesktopOutline, IoMoon, IoSunny} from 'react-icons/io5';
 import {data, redirect, useFetcher, useFetchers} from 'react-router';
 import {z} from 'zod';
+import {isLocalRedirect} from '~/utils/http';
 import {useOptionalRequestInfo} from '~/utils/request-info';
 import type {Theme} from '~/utils/theme.server';
 import {setTheme} from '~/utils/theme.server';
 import type {Route} from './+types/theme-switch';
 
 export const ThemeFormSchema = z.object({
-  redirectTo: z.string().optional(),
+  redirectTo: z.string().refine(isLocalRedirect).optional(),
   theme: z.enum(['light', 'dark', 'system']),
 });
 

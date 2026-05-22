@@ -1,6 +1,7 @@
 import type {AfterResponseState, BeforeRequestState, Hooks, Options} from 'ky';
 import type {StringifyOptions} from 'query-string';
 import queryString from 'query-string';
+import {env} from '~/env.server';
 import {tryCatch} from '~/utils/function';
 import {toCamelCase, toSnakeCase} from '~/utils/object';
 
@@ -39,9 +40,9 @@ export const getHooks = (
 ): Hooks | undefined =>
   useSnakeCase ?
     {
+      ...hooks,
       afterResponse: [responseToCamelCase, ...(hooks?.afterResponse ?? [])],
       beforeRequest: [requestToSnakeCase, ...(hooks?.beforeRequest ?? [])],
-      ...hooks,
     }
   : hooks;
 
@@ -101,15 +102,11 @@ export const getUri = (
 ): string => appendSearchParams(setPathParams(uri, pathParams), options);
 
 export const getBaseUrl = (): string => {
-  if (process.env.API_URL) {
-    // server api call
-    return process.env.API_URL;
-  }
+  // server api call — validated at startup by env.server
+  if (typeof window === 'undefined') return env.API_URL;
 
-  if (typeof window !== 'undefined' && window.process.env.API_URL) {
-    // client api call
-    return window.process.env.API_URL;
-  }
+  // client api call
+  if (window.process.env.API_URL) return window.process.env.API_URL;
 
   // fallback
   return '';

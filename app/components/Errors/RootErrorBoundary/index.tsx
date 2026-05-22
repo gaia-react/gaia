@@ -2,9 +2,14 @@
 import {isRouteErrorResponse} from 'react-router';
 import Document from '~/components/Document';
 import ErrorStack from '~/components/Errors/ErrorStack';
+import {DEFAULT_LOCALE} from '~/i18n';
 import {canUseDOM} from '~/utils/dom';
 import type {Route} from '../../../../.react-router/types/app/+types/root';
 
+// This boundary intentionally does NOT use useTranslation: it renders when
+// the app (potentially including i18n) has already failed, so its visible
+// strings stay as English literals to avoid a cascade failure. lang is
+// derived from DEFAULT_LOCALE rather than hardcoded.
 const RootErrorBoundary = ({error}: Route.ErrorBoundaryProps) => {
   if (!canUseDOM) {
     // Server-Side log of error
@@ -13,7 +18,7 @@ const RootErrorBoundary = ({error}: Route.ErrorBoundaryProps) => {
 
   if (isRouteErrorResponse(error)) {
     return (
-      <Document lang="en" noIndex={true} title={error.statusText}>
+      <Document lang={DEFAULT_LOCALE} noIndex={true} title={error.statusText}>
         <main className="absolute inset-0 flex items-center justify-center p-4">
           <div className="flex flex-col items-center gap-5 text-center">
             <h1 className="flex items-center gap-4 text-2xl tracking-wide">
@@ -41,7 +46,7 @@ const RootErrorBoundary = ({error}: Route.ErrorBoundaryProps) => {
 
   if (error instanceof Error) {
     return (
-      <Document lang="en" noIndex={true} title="Error">
+      <Document lang={DEFAULT_LOCALE} noIndex={true} title="Error">
         <main className="space-y-4 p-4">
           <h1 className="text-2xl">Error</h1>
           <p>{error.message}</p>
@@ -52,7 +57,7 @@ const RootErrorBoundary = ({error}: Route.ErrorBoundaryProps) => {
   }
 
   return (
-    <Document lang="en" noIndex={true} title="Unexpected error">
+    <Document lang={DEFAULT_LOCALE} noIndex={true} title="Unexpected error">
       <main className="p-4">
         <h1 className="text-2xl">An unexpected error occurred</h1>
       </main>

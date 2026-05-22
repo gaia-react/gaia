@@ -43,8 +43,8 @@ const handleRequest = async (
   const url = new URL(request.url);
 
   // disallow www subdomain
-  if (url.host.includes('www.')) {
-    url.host = url.host.replace('www.', '');
+  if (url.host.startsWith('www.')) {
+    url.host = url.host.slice(4);
 
     return Response.redirect(url.toString(), 301);
   }
@@ -123,14 +123,13 @@ const handleRequest = async (
             getContentSecurityPolicy(nonce)
           );
 
-          /* Optional response headers for SEO
+          // Security response headers
           responseHeaders.set(
             'Strict-Transport-Security',
             'max-age=31536000; includeSubDomains'
           );
           responseHeaders.set('X-Content-Type-Options', 'nosniff');
           responseHeaders.set('X-Frame-Options', 'DENY');
-          */
 
           resolve(
             new Response(stream, {

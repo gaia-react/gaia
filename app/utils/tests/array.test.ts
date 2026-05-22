@@ -8,6 +8,11 @@ describe('array', () => {
     expect(range(-3, 5)).toEqual([-3, -2, -1, 0, 1, 2, 3, 4, 5]);
   });
 
+  test('range returns empty array when start > end', () => {
+    expect(range(5, 0)).toEqual([]);
+    expect(range(1, 0)).toEqual([]);
+  });
+
   test('sortBy should work', () => {
     const data = [
       {id: 4, name: 'Biz'},

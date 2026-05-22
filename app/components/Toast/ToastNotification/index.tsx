@@ -121,7 +121,7 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
       )}
       {stack && (
         <details className={twJoin((message ?? description) && 'mt-1.5')}>
-          <summary className="cursor-pointer">Stack trace</summary>
+          <summary className="cursor-pointer">{t('stackTrace')}</summary>
           <ErrorStack
             className="max-h-60 overflow-y-auto text-xs"
             stack={stack}

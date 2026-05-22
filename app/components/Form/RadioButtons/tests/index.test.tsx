@@ -13,7 +13,7 @@ describe('Radio', () => {
     render(<Radio />);
 
     const RadioLocoMoco = screen.getByRole('radio', {
-      name: /hawaii-locomoco/i,
+      name: /loco moco/i,
     });
     expect(RadioLocoMoco).toBeInTheDocument();
     expect(RadioLocoMoco).not.toBeChecked();

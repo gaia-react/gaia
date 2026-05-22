@@ -1,7 +1,10 @@
-export const range = (start: number, end: number): number[] =>
-  (Array(end - start + 1) as number[])
+export const range = (start: number, end: number): number[] => {
+  if (start > end) return [];
+
+  return (Array(end - start + 1) as number[])
     .fill(start)
     .map((value, index) => value + index);
+};
 
 export const uniqBy = <T, K extends keyof T>(
   array: T[],
