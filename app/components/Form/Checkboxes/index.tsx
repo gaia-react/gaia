@@ -61,7 +61,6 @@ const Checkboxes: FC<CheckboxesProps> = ({
           <Checkbox
             key={option.name}
             disabled={isDisabled || option.disabled}
-            error={error}
             label={option.label}
             name={option.name}
             required={!!(option.required && error && option.error)}
