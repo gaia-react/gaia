@@ -1,10 +1,12 @@
 import type {FC} from 'react';
 import {useId} from 'react';
+import {useTranslation} from 'react-i18next';
 import {twMerge} from 'tailwind-merge';
 import type {Size} from '~/types';
 
 export type SpinnerProps = {
   className?: string;
+  label?: string;
   size?: Size;
 };
 
@@ -16,12 +18,14 @@ const SIZES: Record<Size, string> = {
   xs: 'h-3',
 };
 
-const Spinner: FC<SpinnerProps> = ({className = '', size = 'base'}) => {
+const Spinner: FC<SpinnerProps> = ({className = '', label, size = 'base'}) => {
+  const {t} = useTranslation('common');
   const id = useId();
 
   return (
     <svg
       aria-busy="true"
+      aria-label={label ?? t('loading')}
       aria-live="polite"
       className={twMerge(SIZES[size], className)}
       role="progressbar"

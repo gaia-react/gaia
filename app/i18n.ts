@@ -1,6 +1,8 @@
 import type {FormatFunction} from 'i18next';
 import resources, {LANGUAGES} from '~/languages';
 
+export const DEFAULT_LOCALE = 'en';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const formatFn: FormatFunction = (value: any, format?: string) =>
   // eslint-disable-next-line @typescript-eslint/no-unsafe-return
@@ -8,7 +10,7 @@ const formatFn: FormatFunction = (value: any, format?: string) =>
 
 const i18n = {
   defaultNS: 'common',
-  fallbackLng: 'en',
+  fallbackLng: DEFAULT_LOCALE,
   fallbackNS: ['common'],
   interpolation: {
     escapeValue: false,

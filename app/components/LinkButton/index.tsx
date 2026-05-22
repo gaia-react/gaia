@@ -39,9 +39,8 @@ const LinkButton: FC<LinkButtonProps> = ({
   const innerSpan = (
     <span
       className={twJoin(
-        icon &&
-          children &&
-          `flex items-center justify-center gap-1.5 ${ICON_POSITION[iconPosition]}`
+        icon && children && 'flex items-center justify-center gap-1.5',
+        icon && children && ICON_POSITION[iconPosition]
       )}
     >
       {iconComponent}

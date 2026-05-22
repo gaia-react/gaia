@@ -1,4 +1,5 @@
 import type {FC} from 'react';
+import {useTranslation} from 'react-i18next';
 import {IoCopyOutline} from 'react-icons/io5';
 import {twJoin, twMerge} from 'tailwind-merge';
 import {tryCatch} from '~/utils/function';
@@ -16,8 +17,10 @@ const ErrorStack: FC<ErrorStackProps> = ({
   status,
   statusText,
 }) => {
+  const {t} = useTranslation('common');
+
   if (stack) {
-    const handleCopyStack = async () => {
+    const handleCopyStackButton = async () => {
       await tryCatch(async () => navigator.clipboard.writeText(stack));
     };
 
@@ -30,9 +33,9 @@ const ErrorStack: FC<ErrorStackProps> = ({
       : undefined;
 
     return (
-      <pre
+      <div
         className={twMerge(
-          'relative whitespace-pre-wrap border-2 border-red-700 bg-gray-900 text-left text-sm text-white',
+          'relative border-2 border-red-700 bg-gray-900 text-left text-sm text-white',
           className
         )}
       >
@@ -47,17 +50,19 @@ const ErrorStack: FC<ErrorStackProps> = ({
           {statusDiv}
           <button
             className="flex items-center gap-1 rounded-bl-sm bg-red-700 pb-1 pl-1.5 pr-1 pt-px font-sans text-xs leading-none text-white hover:bg-red-600"
-            onClick={handleCopyStack}
+            onClick={handleCopyStackButton}
             type="button"
           >
             <IoCopyOutline aria-hidden={true} />
-            <span>Copy to clipboard</span>
+            <span>{t('copyToClipboard')}</span>
           </button>
         </div>
-        <div className="px-4 pb-4 pt-2">{stack}</div>
-      </pre>
+        <pre className="whitespace-pre-wrap px-4 pb-4 pt-2">{stack}</pre>
+      </div>
     );
   }
+
+  return null;
 };
 
 export default ErrorStack;

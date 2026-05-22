@@ -55,7 +55,7 @@ const Checkboxes: FC<CheckboxesProps> = ({
       id={groupId}
       label={label}
       required={isRequired}
-      type="radio"
+      type="checkbox"
     >
       <CheckboxRadioGroup
         className={classNameGroup}

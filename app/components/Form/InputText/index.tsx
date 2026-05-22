@@ -35,7 +35,7 @@ const InputText: FC<InputProps> = ({
   const length =
     props.value === undefined ? localLength : String(props.value).length;
 
-  const handleUpdateLength = useCallback(
+  const handleUpdateLengthInput = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       if (maxLength && props.value === undefined) {
         setLocalLength(event.currentTarget.value.length);
@@ -82,7 +82,7 @@ const InputText: FC<InputProps> = ({
           id={id ?? name}
           maxLength={maxLength}
           name={name}
-          onChange={handleUpdateLength}
+          onChange={handleUpdateLengthInput}
           readOnly={readOnly}
           required={required}
           tabIndex={readOnly ? -1 : undefined}
@@ -92,7 +92,7 @@ const InputText: FC<InputProps> = ({
         {Icon && (
           <Icon
             className={twMerge(
-              'absolute top-[0.825rem] text-gray-400 dark:text-gray-600',
+              'text-placeholder absolute top-[0.825rem]',
               iconPosition === 'left' ? 'left-3' : 'right-3',
               classNameIcon
             )}

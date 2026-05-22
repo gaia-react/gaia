@@ -7,13 +7,14 @@ type MaxLengthProps = {
   maxLength: number;
 };
 
+// index = digit count of maxLength; pixel min-width prevents layout shift as current length changes
 const MIN_WIDTHS = [0, 34, 49, 65, 80, 95, 100, 111];
 
 const MaxLength: FC<MaxLengthProps> = ({className, length, maxLength}) => {
   const minWidth = MIN_WIDTHS[String(maxLength).length];
 
   return (
-    <div
+    <output
       className={twJoin(
         'flex-initial select-none px-1 pt-0.5 text-right text-xs',
         length < maxLength ? 'text-secondary' : 'text-invalid',
@@ -22,7 +23,7 @@ const MaxLength: FC<MaxLengthProps> = ({className, length, maxLength}) => {
       style={{minWidth}}
     >
       {length} / {maxLength}
-    </div>
+    </output>
   );
 };
 

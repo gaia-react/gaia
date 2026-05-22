@@ -2,8 +2,16 @@ import type {ChangeEvent, FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
 import {twMerge} from 'tailwind-merge';
+import {LANGUAGES} from '~/languages';
 
-const OPTIONS = [{label: 'English', value: 'en'}];
+const SET_LANGUAGE_ACTION = '/actions/set-language';
+
+// Native <select> intentional: this is a non-Conform chrome control, not a form field.
+const LANGUAGE_LABELS: Record<string, string> = {en: 'English'};
+const OPTIONS = LANGUAGES.map((value) => ({
+  label: LANGUAGE_LABELS[value] ?? value,
+  value,
+}));
 
 type LanguageSelectProps = {
   className?: string;
@@ -21,9 +29,11 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
 
   const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
 
-  const handleChangeLanguage = async (event: ChangeEvent<HTMLFormElement>) => {
+  const handleChangeLanguageForm = async (
+    event: ChangeEvent<HTMLFormElement>
+  ) => {
     await fetcher.submit(event.currentTarget, {
-      action: '/actions/set-language',
+      action: SET_LANGUAGE_ACTION,
       method: 'POST',
     });
 
@@ -32,10 +42,10 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
 
   return (
     <fetcher.Form
-      action="/actions/set-language"
+      action={SET_LANGUAGE_ACTION}
       className={twMerge('relative flex-none text-sm', className)}
       method="POST"
-      onChange={handleChangeLanguage}
+      onChange={handleChangeLanguageForm}
     >
       <input name="redirectUrl" type="hidden" value={redirectUrl} />
       <select

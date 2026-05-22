@@ -117,9 +117,13 @@ Security vulnerabilities and bugs that could cause data loss, unauthorized acces
 
 Performance problems, significant code smells, and architectural concerns that will cause problems at scale. Same format as above.
 
-### Suggestions (Consider Fixing)
+### Suggestions (Must Fix or Escalate)
 
-Refactoring opportunities, maintainability improvements, and minor code quality enhancements. Same format.
+Refactoring opportunities, maintainability improvements, and minor code quality enhancements. Same format as above. **Only include actionable items here** — confirmations of correct patterns belong in What's Done Well, not in this section.
+
+Every suggestion must be resolved before the audit passes:
+- **Auto-fix** it in a self-heal commit (preferred), or
+- **Escalate**: document why it cannot be auto-fixed (architectural tradeoff, breaking change, conflicting convention). Escalated suggestions **always block the marker** — documenting the rationale does not satisfy this condition. The operator must resolve the escalation before the marker is written.
 
 ### What's Done Well (optional)
 
@@ -135,6 +139,7 @@ Include only when there are specific, concrete patterns worth reinforcing. Skip 
 6. **Be proportionate** — don't nitpick formatting when there are security holes; focus energy on what matters most
 7. **Respect existing patterns** — if the codebase has an established way of doing something, don't suggest alternatives unless there's a concrete benefit
 8. **Dispatch in parallel** — once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor` and `pnpm knip --reporter json` from a single tool-call message so they run concurrently with your own review
+9. **Resolve suggestions before writing the marker** — after the report is produced and before deciding on the marker, attempt to auto-fix every item in the Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale — escalated suggestions unconditionally block the marker. Never proceed to the marker with any suggestion that is neither fixed in the working tree nor explicitly escalated.
 
 ## Rules-Based Audit (Specialist Subagents + react-doctor + knip)
 
@@ -319,12 +324,13 @@ Both variables travel forward to the marker-write step below.
 
 After producing the report, decide whether to write the marker:
 
-- **Write the marker** when both:
+- **Write the marker** when all of the following are true:
   1. The Critical Issues section is empty.
   2. The Important Issues section is empty, OR every item is already fixed in the working tree (verify by re-reading the relevant file; do not trust prior chat claims).
-- **Do NOT write the marker** when any Critical Issue exists or any Important Issue remains unaddressed in the working tree. The operator must address findings, commit, and re-invoke this agent on the new HEAD; the next clean run writes the marker.
+  3. The Suggestions section is empty, OR every suggestion is auto-fixed in the working tree (verify by re-reading the relevant file). **Escalated suggestions do not satisfy this condition** — an escalation is not a resolution.
+- **Do NOT write the marker** when any Critical Issue exists, any Important Issue remains unaddressed, or any Suggestion is either unaddressed or escalated. Escalated suggestions block unconditionally — the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written.
 
-Knip / react-doctor advisories and Suggestions never block the marker — they are advisory-by-design.
+Knip and react-doctor advisories remain advisory and never block the marker.
 
 When the marker is warranted, the write is a three-step "stamp → mark → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the *new* HEAD; *then* push. Marker-before-push is load-bearing — it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
 

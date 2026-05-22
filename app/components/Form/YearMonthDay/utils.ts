@@ -27,7 +27,11 @@ export const DEFAULT_VALUE = formatISO8601Date(DEFAULT_DATE);
 const iso8601DateSchema = z.iso.date();
 
 export const getValues = (value: string) => {
-  const [year, month, date] = iso8601DateSchema.parse(value).split('-');
+  const result = iso8601DateSchema.safeParse(value);
+  const [year, month, date] = (
+    result.success ?
+      result.data
+    : DEFAULT_VALUE).split('-');
 
   return [year, month, date];
 };

@@ -7,13 +7,9 @@
       },
       {
         "files": ["app/components/Document/index.tsx", "app/root.tsx"],
-        "rules": ["react/no-danger"]
+        "rules": ["react-doctor/no-danger"]
       },
-      {
-        "files": ["app/components/Toast/ToastNotification/index.tsx"],
-        "rules": ["react-doctor/rerender-state-only-in-handlers"]
-      },
-      {
+{
         "files": ["app/utils/object.ts"],
         "rules": ["react-doctor/no-full-lodash-import"]
       },
@@ -24,6 +20,22 @@
           "react-doctor/async-await-in-loop",
           "react-doctor/server-sequential-independent-await"
         ]
+      },
+      {
+        "files": ["app/root.tsx", "app/routes/**/*.tsx"],
+        "rules": ["react-doctor/only-export-components"]
+      },
+      {
+        "files": [
+          "app/components/Form/Chain/index.tsx",
+          "app/components/Form/CheckboxRadioGroup/index.tsx",
+          "app/components/Form/Field/FieldLabel/FieldRequiredText/index.tsx"
+        ],
+        "rules": ["react-doctor/prefer-tag-over-role"]
+      },
+      {
+        "files": ["app/**/tests/index.stories.tsx"],
+        "rules": ["react-doctor/anchor-ambiguous-text"]
       }
     ]
   }

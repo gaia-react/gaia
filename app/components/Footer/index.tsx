@@ -17,7 +17,9 @@ const Footer: FC<FooterProps> = ({className}) => {
       )}
     >
       <div className="flex w-full flex-col items-center justify-between gap-1 sm:flex-row">
-        <span>&copy;2026 GAIA Framework</span>
+        <span suppressHydrationWarning={true}>
+          &copy;{new Date().getFullYear()} GAIA Framework
+        </span>
         <a
           className="hover:text-body transition-colors"
           href="https://github.com/gaia-react/gaia?tab=MIT-1-ov-file#readme"

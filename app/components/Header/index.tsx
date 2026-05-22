@@ -4,7 +4,7 @@ import {Link} from 'react-router';
 import {twMerge} from 'tailwind-merge';
 import GaiaLogo from '~/components/GaiaLogo';
 import LanguageSelect from '~/components/LanguageSelect';
-import {ThemeSwitch} from '~/routes/resources+/theme-switch';
+import ThemeSwitch from '~/components/ThemeSwitch';
 import {useRequestInfo} from '~/utils/request-info';
 
 type HeaderProps = {

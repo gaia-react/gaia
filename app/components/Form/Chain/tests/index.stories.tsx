@@ -43,7 +43,7 @@ export const Default: StoryFn = () => (
         placeholder="Labeled Input"
       />
       <InputText name="bar3" placeholder="Input" />
-      <Button icon={IoSearch} variant="primary" />
+      <Button aria-label="Search" icon={IoSearch} variant="primary" />
       <Select
         label="Choice"
         name="baz1"
@@ -77,7 +77,7 @@ export const FullWidth: StoryFn = () => (
         placeholder="Labeled Input"
       />
       <InputText name="full-baz1" placeholder="Input" />
-      <Button icon={IoSearch} variant="primary" />
+      <Button aria-label="Search" icon={IoSearch} variant="primary" />
       <Select
         label="Choice"
         name="full-bar3"

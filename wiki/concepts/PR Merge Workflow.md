@@ -27,7 +27,8 @@ Task(
 
 ### 2. Fix all issues
 
-- Fix every Critical Issue and every Important Issue the audit identifies.
+- Fix every Critical Issue, every Important Issue, and every Suggestion the audit identifies.
+- If a Suggestion involves an architectural tradeoff, breaking change, or conflicting convention, the agent escalates it with documented rationale rather than auto-fixing — the operator must resolve the escalation before the marker is written.
 - Re-run linting and type checking after fixes.
 - Stage, commit, and push the fixes — HEAD must move so the next audit runs against the fixed tree.
 - Re-spawn the audit agent on the new HEAD until it reports clean.
@@ -44,7 +45,7 @@ The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove
 
 Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.
 
-A clean pass requires no Critical Issues and every Important Issue addressed. Knip / react-doctor advisories and Suggestions never block signal emission.
+A clean pass requires no Critical Issues, every Important Issue addressed, and every Suggestion either auto-fixed or resolved by the operator. Knip and react-doctor advisories remain advisory and never block signal emission.
 
 If the local agent declines to write the marker, its report names what remains unaddressed; resolve those, commit, push, re-spawn.
 

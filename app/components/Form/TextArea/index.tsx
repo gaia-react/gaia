@@ -61,7 +61,7 @@ const TextArea: FC<TextAreaProps> = ({
   );
   const length = value === undefined ? localLength : String(value).length;
 
-  const handleUpdateLength = useCallback(
+  const handleUpdateLengthInput = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
       if (maxLength && value === undefined) {
         setLocalLength(event.currentTarget.value.length);
@@ -118,7 +118,7 @@ const TextArea: FC<TextAreaProps> = ({
         id={id ?? name}
         maxLength={maxLength}
         name={name}
-        onChange={handleUpdateLength}
+        onChange={handleUpdateLengthInput}
         readOnly={readOnly}
         rows={rows}
         tabIndex={readOnly ? -1 : undefined}

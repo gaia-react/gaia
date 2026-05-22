@@ -1,5 +1,6 @@
 export default {
   close: 'Close',
+  copyToClipboard: 'Copy to clipboard',
   counters: {
     clicks_one: '{{count}} click',
     clicks_other: '{{count}} clicks',
@@ -31,6 +32,7 @@ export default {
   },
   language: 'Language',
   license: 'Released under MIT license',
+  loading: 'Loading',
   meta: {
     siteName: 'GAIA Template',
   },
@@ -38,6 +40,7 @@ export default {
   next: 'Next',
   password: 'Password',
   previous: 'Previous',
+  stackTrace: 'Stack trace',
   theme: {
     dark: 'Dark mode',
     enableDarkMode: 'Enable dark mode',

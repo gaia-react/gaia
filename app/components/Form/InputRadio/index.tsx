@@ -52,7 +52,6 @@ const InputRadio: FC<InputRadioProps> = ({
     htmlFor={`${id ?? name}-${option.value}`}
   >
     <input
-      aria-label={`${id ?? name}-${option.value}`}
       className={SIZE[size]}
       defaultChecked={defaultValue === option.value}
       disabled={disabled ?? option.disabled ?? readOnly}

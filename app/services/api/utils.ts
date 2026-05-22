@@ -39,9 +39,9 @@ export const getHooks = (
 ): Hooks | undefined =>
   useSnakeCase ?
     {
+      ...hooks,
       afterResponse: [responseToCamelCase, ...(hooks?.afterResponse ?? [])],
       beforeRequest: [requestToSnakeCase, ...(hooks?.beforeRequest ?? [])],
-      ...hooks,
     }
   : hooks;
 
@@ -78,11 +78,11 @@ export const appendSearchParams = (
 
 export const setPathParams = (
   url: string,
-  pathParams?: Record<string, unknown>
+  pathParams?: Record<string, number | string>
 ): string =>
   pathParams ?
     Object.entries(pathParams).reduce(
-      (acc, [key, value]) => acc.replace(`:${key}`, value as string),
+      (acc, [key, value]) => acc.replace(`:${key}`, String(value)),
       url
     )
   : url;
@@ -94,22 +94,18 @@ export const getUri = (
     ...options
   }: {
     arrayFormat?: StringifyOptions['arrayFormat'];
-    pathParams?: Record<string, unknown>;
+    pathParams?: Record<string, number | string>;
     searchParams?: Record<string, unknown>;
     useSnakeCase?: boolean;
   } = {}
 ): string => appendSearchParams(setPathParams(uri, pathParams), options);
 
 export const getBaseUrl = (): string => {
-  if (process.env.API_URL) {
-    // server api call
-    return process.env.API_URL;
-  }
+  // server api call — API_URL is validated at startup in env.server
+  if (typeof window === 'undefined') return process.env.API_URL ?? '';
 
-  if (typeof window !== 'undefined' && window.process.env.API_URL) {
-    // client api call
-    return window.process.env.API_URL;
-  }
+  // client api call
+  if (window.process.env.API_URL) return window.process.env.API_URL;
 
   // fallback
   return '';

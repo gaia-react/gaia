@@ -13,17 +13,20 @@ import {ServerRouter} from 'react-router';
 import {createReadableStreamFromReadable} from '@react-router/node';
 import {createInstance} from 'i18next';
 import {isbot} from 'isbot';
+import {setToastCookieOptions} from 'remix-toast';
 import {randomBytes} from 'node:crypto';
 import {PassThrough} from 'node:stream';
 import i18nConfig from '~/i18n';
 import {getInstance} from '~/middleware/i18next';
 import {getContentSecurityPolicy} from '~/utils/http.server';
 import {NonceProvider} from '~/utils/nonce';
-import {startApiMocks} from '../test/msw.server';
 import {env} from './env.server';
 import 'dotenv/config';
 
+setToastCookieOptions({secrets: [env.SESSION_SECRET]});
+
 if (env.NODE_ENV !== 'production' && env.MSW_ENABLED) {
+  const {startApiMocks} = await import('../test/msw.server');
   startApiMocks();
 }
 
@@ -43,8 +46,8 @@ const handleRequest = async (
   const url = new URL(request.url);
 
   // disallow www subdomain
-  if (url.host.includes('www.')) {
-    url.host = url.host.replace('www.', '');
+  if (url.host.startsWith('www.')) {
+    url.host = url.host.slice(4);
 
     return Response.redirect(url.toString(), 301);
   }
@@ -123,14 +126,15 @@ const handleRequest = async (
             getContentSecurityPolicy(nonce)
           );
 
-          /* Optional response headers for SEO
-          responseHeaders.set(
-            'Strict-Transport-Security',
-            'max-age=31536000; includeSubDomains'
-          );
+          // Security response headers
+          if (env.NODE_ENV === 'production') {
+            responseHeaders.set(
+              'Strict-Transport-Security',
+              'max-age=31536000; includeSubDomains'
+            );
+          }
           responseHeaders.set('X-Content-Type-Options', 'nosniff');
           responseHeaders.set('X-Frame-Options', 'DENY');
-          */
 
           resolve(
             new Response(stream, {
