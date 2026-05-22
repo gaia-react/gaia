@@ -23,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 - single-pass deepRemoveNil
 - note why the NonceContext default is an empty string
 - record the unsafe-inline and no-report-uri trade-offs
+- rename `/setup-gaia` command to `/setup-cloned-gaia-project`
 
 ### Fixed
 
@@ -54,10 +55,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 - write GAIA-Audit commit status instead of pushing an empty marker commit
 - replace client-hints reload with pre-paint inline script
 - implement per-request nonce Content-Security-Policy
-
-### Changed
-
-- rename `/setup-gaia` command to `/setup-cloned-gaia-project`
 
 ## [1.2.3] — 2026-05-20
 
