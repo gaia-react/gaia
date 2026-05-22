@@ -9,6 +9,6 @@ tags: [meta, log]
 
 # Log
 
-## [v1.3.1] 2026-05-22 | Released
+## [v1.3.2] 2026-05-22 | Released
 
 See CHANGELOG.md for details.

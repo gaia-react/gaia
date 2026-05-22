@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-05-22
+
+### Fixed
+
+- dedupe audit issues, scope pre-run-skip per-tool, set git identity (#233)
+
 ## [1.3.1] — 2026-05-22
 
 ### Fixed
