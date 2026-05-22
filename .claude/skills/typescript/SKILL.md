@@ -35,8 +35,9 @@ Follow Apple's Swift API Design Guidelines: names should be clear at the point o
 - **No redundant words** — `availableExercises` not `exerciseArray`, but don't sacrifice clarity for brevity
 
 > **Exception — React event handlers** follow `handle{Action}{Element}` from the react-code skill
-> (e.g. `handleClickSave`, `handleChangeInput`). The descriptive naming guidelines above apply
-> to utilities, hooks, callbacks, and non-event-handler functions.
+> (e.g. `handleClickSave`, `handleChangeInput`) — the `{Element}` is required, since a bare
+> `handleClick` or `handleChange` trips `react-doctor/no-generic-handler-names`. The descriptive
+> naming guidelines above apply to utilities, hooks, callbacks, and non-event-handler functions.
 
 Read `references/naming-conventions.md` for extended BAD/GOOD examples of each naming pattern.
 

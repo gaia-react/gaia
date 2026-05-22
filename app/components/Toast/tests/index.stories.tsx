@@ -15,7 +15,7 @@ const meta: Meta = {
 
 export default meta;
 
-const handleClick = (type: string) => {
+const handleShowToast = (type: string) => {
   if (type === 'error') {
     notify.error({
       message: JSON.stringify({
@@ -53,7 +53,7 @@ export const Default: StoryFn = () => (
   >
     <Button
       onClick={() => {
-        handleClick('error');
+        handleShowToast('error');
       }}
       size="sm"
       variant="tertiary"
@@ -62,7 +62,7 @@ export const Default: StoryFn = () => (
     </Button>
     <Button
       onClick={() => {
-        handleClick('success');
+        handleShowToast('success');
       }}
       size="sm"
       variant="tertiary"
@@ -71,7 +71,7 @@ export const Default: StoryFn = () => (
     </Button>
     <Button
       onClick={() => {
-        handleClick('warning');
+        handleShowToast('warning');
       }}
       size="sm"
       variant="tertiary"
@@ -80,7 +80,7 @@ export const Default: StoryFn = () => (
     </Button>
     <Button
       onClick={() => {
-        handleClick('info');
+        handleShowToast('info');
       }}
       size="sm"
       variant="tertiary"

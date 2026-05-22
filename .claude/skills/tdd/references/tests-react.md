@@ -156,11 +156,11 @@ When using custom form components (like `YearMonthDay`, `TimePicker`, etc.) that
 ```tsx
 // BAD - Local state conflicts with Conform's validation
 const [value, setValue] = useState(savedData?.field ?? DEFAULT);
-const handleChange = useCallback((newValue) => {
+const handleChangeValue = useCallback((newValue) => {
   setValue(newValue);
 }, []);
 
-<CustomComponent onChange={handleChange} value={value} />;
+<CustomComponent onChange={handleChangeValue} value={value} />;
 
 // GOOD - useInputControl keeps component synced with Conform
 const fieldControl = useInputControl(fields.fieldName);
