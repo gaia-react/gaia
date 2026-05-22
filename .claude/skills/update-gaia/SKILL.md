@@ -309,3 +309,30 @@ Tell the user:
 4. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
 
 Do **not** auto-commit on behalf of the user — they need to review the changes first.
+
+### Step 11: Open a pull request
+
+After the Step 10 commit lands, `/update-gaia` must not leave the branch stranded — open a PR so the update can be reviewed and merged.
+
+Push the branch and open a PR, but only if it has no open PR already — a re-run of `/update-gaia` on the same branch updates the existing PR instead of duplicating it:
+
+```bash
+branch="$(git branch --show-current)"
+
+# The update must be committed first (Step 10). No commits ahead of main → finish Step 10.
+if [ "$(git rev-list --count main.."$branch" 2>/dev/null || echo 0)" -eq 0 ]; then
+  echo "Nothing committed ahead of main — commit the update (Step 10) before opening a PR."
+else
+  git push -u origin "$branch"
+  existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null)"
+  if [ -n "$existing" ]; then
+    echo "PR #$existing already open for $branch — pushed the new commit to it."
+  else
+    gh pr create --base main --head "$branch" \
+      --title "chore: update GAIA to $LATEST_TAG" \
+      --body "Pulls GAIA $LATEST_TAG into the project. Per-file outcomes are in the update summary above."
+  fi
+fi
+```
+
+If `gh` is unavailable, tell the user to open the PR manually: `$branch` → `main`.
