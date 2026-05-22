@@ -1,5 +1,5 @@
-import {describe, expect, test} from 'vitest';
-import {render, screen} from 'test/rtl';
+import {describe, expect, test, vi} from 'vitest';
+import {fireEvent, render, screen} from 'test/rtl';
 import TextArea from '..';
 
 describe('TextArea', () => {
@@ -38,5 +38,43 @@ describe('TextArea', () => {
     expect(
       screen.getByRole('textbox', {name: 'Bio'})
     ).toHaveAccessibleDescription('Markdown supported');
+  });
+
+  test('does not give the field description a redundant note role', () => {
+    render(
+      <TextArea description="Markdown supported" label="Bio" name="bio" />
+    );
+
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  test('invokes onAutoSize when the textarea reports a resize', () => {
+    const onAutoSize = vi.fn();
+    render(<TextArea label="Bio" name="bio" onAutoSize={onAutoSize} />);
+    const textArea = screen.getByRole('textbox', {name: 'Bio'});
+
+    onAutoSize.mockClear();
+    fireEvent(textArea, new Event('autosize:resized'));
+
+    expect(onAutoSize).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not resubscribe the resize listener when re-rendered', () => {
+    const removeListener = vi.spyOn(
+      HTMLTextAreaElement.prototype,
+      'removeEventListener'
+    );
+
+    const {rerender} = render(
+      <TextArea label="Bio" name="bio" onAutoSize={() => {}} />
+    );
+    rerender(<TextArea label="Bio" name="bio" onAutoSize={() => {}} />);
+
+    expect(removeListener).not.toHaveBeenCalledWith(
+      'autosize:resized',
+      expect.any(Function)
+    );
+
+    removeListener.mockRestore();
   });
 });

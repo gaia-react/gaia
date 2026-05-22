@@ -6,7 +6,7 @@ language: typescript
 purpose: Label + input + status wrapper used by every GAIA Form component
 depends_on: [[Form Components]]
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-05-22
 tags: [component, forms, wrapper]
 ---
 
@@ -36,9 +36,10 @@ This means a `type='button'` Field doesn't accept a `maxLength` — the type sys
 
 Other behaviours worth knowing:
 
-- `FieldLabel` switches between `<label htmlFor>`, `<div>`, and `<legend>` based on whether a target id exists and whether `isLegend` is set ([[Form YearMonthDay]] uses the `<legend>` mode for its fieldset)
+- `FieldLabel` renders `<label htmlFor>` only when the field wraps a single named input; group and display-only fields (`button` / `checkbox` / `radio` / `value`) have no input to point at and render a `<div>` instead, and `isLegend` switches it to `<legend>` ([[Form YearMonthDay]] uses the `<legend>` mode for its fieldset)
 - `FieldRequiredText` flips colour on error state — visual cue that a required field failed
 - `FieldStatus` is `role="status"` so screen readers announce description / error changes live
+- `FieldDescription` renders with id `${id}-description` and carries no ARIA role; inputs announce it by pointing `aria-describedby` at that id, which is the sole screen-reader association — a redundant role like `role="note"` adds nothing and risks a double announcement
 
 For full prop signatures, query Serena (`.claude/rules/code-search.md`).
 

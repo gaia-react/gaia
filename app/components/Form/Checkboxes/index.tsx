@@ -1,4 +1,5 @@
 import type {FC, ReactNode} from 'react';
+import {useId} from 'react';
 import type {Size} from '~/types';
 import Checkbox from '../Checkbox';
 import CheckboxRadioGroup from '../CheckboxRadioGroup';
@@ -37,6 +38,8 @@ const Checkboxes: FC<CheckboxesProps> = ({
   required,
   ...rest
 }) => {
+  const groupId = useId();
+
   const isDisabled =
     disabled ??
     (options.length > 0 && options.every((option) => option.disabled));
@@ -49,6 +52,7 @@ const Checkboxes: FC<CheckboxesProps> = ({
       description={description}
       disabled={isDisabled}
       error={error}
+      id={groupId}
       label={label}
       required={isRequired}
       type="radio"
@@ -60,6 +64,9 @@ const Checkboxes: FC<CheckboxesProps> = ({
         {options.map((option) => (
           <Checkbox
             key={option.name}
+            aria-describedby={
+              description ? `${groupId}-description` : undefined
+            }
             disabled={isDisabled || option.disabled}
             label={option.label}
             name={option.name}

@@ -51,6 +51,11 @@ const TextArea: FC<TextAreaProps> = ({
   const innerRef = useRef<HTMLTextAreaElement | null>(null);
   useImperativeHandle(ref, () => innerRef.current!, []);
 
+  const onAutoSizeRef = useRef(onAutoSize);
+  useEffect(() => {
+    onAutoSizeRef.current = onAutoSize;
+  });
+
   const [length, setLength] = useState(
     () => String(value ?? props.defaultValue ?? '').length
   );
@@ -71,17 +76,14 @@ const TextArea: FC<TextAreaProps> = ({
 
       autosize(textArea);
 
-      if (onAutoSize) {
-        textArea.addEventListener('autosize:resized', onAutoSize);
-      }
+      const listener = () => onAutoSizeRef.current?.();
+      textArea.addEventListener('autosize:resized', listener);
 
       return () => {
-        if (onAutoSize) {
-          textArea.removeEventListener('autosize:resized', onAutoSize);
-        }
+        textArea.removeEventListener('autosize:resized', listener);
       };
     }
-  }, [onAutoSize, resize]);
+  }, [resize]);
 
   return (
     <Field

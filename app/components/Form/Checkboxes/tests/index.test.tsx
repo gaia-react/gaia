@@ -23,4 +23,47 @@ describe('Checkboxes', () => {
     expect(screen.getByRole('status')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', {name: 'One'})).toBeInTheDocument();
   });
+
+  test('associates the group description with every checkbox via aria-describedby', () => {
+    render(
+      <Checkboxes
+        description="Choose at least one"
+        label="Pick some"
+        options={[
+          {label: 'One', name: 'one'},
+          {label: 'Two', name: 'two'},
+        ]}
+      />
+    );
+
+    expect(
+      screen.getByRole('checkbox', {name: 'One'})
+    ).toHaveAccessibleDescription('Choose at least one');
+    expect(
+      screen.getByRole('checkbox', {name: 'Two'})
+    ).toHaveAccessibleDescription('Choose at least one');
+  });
+
+  test('omits aria-describedby when there is no description', () => {
+    render(
+      <Checkboxes label="Pick some" options={[{label: 'One', name: 'one'}]} />
+    );
+
+    expect(screen.getByRole('checkbox', {name: 'One'})).not.toHaveAttribute(
+      'aria-describedby'
+    );
+  });
+
+  test('does not wrap the group label in a label element', () => {
+    render(
+      <Checkboxes
+        description="Choose at least one"
+        label="Pick some"
+        options={[{label: 'One', name: 'one'}]}
+      />
+    );
+
+    const groupLabel = screen.getByText('Pick some');
+    expect(groupLabel.closest('label')).toBeNull();
+  });
 });
