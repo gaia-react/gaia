@@ -92,7 +92,7 @@ export const mapKeys = (
  */
 export const mapValues = (
   obj: Record<string, unknown>,
-  fn: (p: unknown) => unknown
+  fn: (value: unknown) => unknown
 ): Record<string, unknown> =>
   Object.entries(obj).reduce<Record<string, unknown>>(
     (accumulated, [key, value]) => {
@@ -107,7 +107,7 @@ export const mapValues = (
   Case Conversion Utilities
  */
 export const convertCase = (
-  fn: (s: string) => string,
+  fn: (text: string) => string,
   obj: unknown
 ): unknown => {
   if (obj === undefined) {
