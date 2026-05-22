@@ -1,25 +1,29 @@
 #!/bin/bash
 # PreToolUse Bash hook: BLOCK `gh pr merge` until proof of a passing
-# code-review-audit exists for the current HEAD. Two signals are accepted:
+# code-review-audit exists for the current HEAD. Three signals are accepted:
 #
 #   1. Local marker file at .gaia/local/audit/<sha>.ok — written by the
 #      audit agent at the end of a clean local review.
 #
 #   2. GAIA-Audit trailer on HEAD's commit message, when the trailer's
-#      tree-sha matches HEAD's current tree. Stamped by CI's audit run via
-#      .claude/hooks/audit-stamp-trailer.sh and pushed back to the PR
-#      branch. Same tree means the audit reviewed the exact content being
-#      merged, regardless of which SHA carries the trailer commit.
+#      tree-sha matches HEAD's current tree. Written by a local audit run
+#      via .claude/hooks/audit-stamp-trailer.sh.
 #
-# Either signal proves the audit ran against this content and the agent saw
+#   3. GAIA-Audit GitHub commit status on HEAD, description "<version> <tree>",
+#      when both version and tree-sha match. CI stamps this status instead of
+#      pushing an empty marker commit (pushing it would re-trigger CI and leave
+#      the PR HEAD without check runs). Queried via `gh api` using GH_TOKEN or
+#      the ambient gh auth session.
+#
+# Any signal proves the audit ran against this content and the agent saw
 # no Critical Issues and no unresolved Important Issues. Without one, the
 # hook denies the gh pr merge call. To unblock:
-#   1. Spawn the code-review-audit agent on the current branch (or rely on
-#      CI to stamp the trailer — when CI's audit can run; it skips when
-#      the PR modifies the audit workflow file itself).
+#   1. Spawn the code-review-audit agent on the current branch, OR push to the
+#      PR branch and wait for CI's audit to stamp the GitHub commit status (CI
+#      skips when the PR modifies the audit workflow file itself — in that case
+#      only the local audit will satisfy the gate).
 #   2. Address any findings; commit and push.
-#   3. Re-spawn the agent on the new HEAD; let it write the marker
-#      or wait for CI's trailer stamp.
+#   3. Re-spawn the agent on the new HEAD; let it write the marker.
 #   4. Retry gh pr merge.
 #
 # See wiki/concepts/PR Merge Workflow.md for the full contract.
@@ -99,17 +103,76 @@ if [ -n "$trailer_line" ]; then
   trailer_status="present but tree-sha mismatch (audit was for a different tree)"
 fi
 
+# GitHub commit status fallback: CI stamps a GAIA-Audit commit status instead
+# of pushing an empty marker commit (pushing it would re-trigger CI and leave
+# the PR HEAD without check runs). Query the API for a matching status on HEAD.
+# Description shape: "<version> <40-hex-tree>". Both must match .gaia/VERSION
+# and HEAD's tree. Falls through silently on any error (no gh, no token, no
+# GITHUB_REPOSITORY, API failure) — the deny path below fires as normal.
+check_github_status() {
+  command -v gh >/dev/null 2>&1 || return 1
+
+  # Derive repo slug. GITHUB_REPOSITORY is set inside Actions; derive from the
+  # origin remote URL for local runs.
+  repo="${GITHUB_REPOSITORY:-}"
+  if [ -z "$repo" ]; then
+    origin_url=$(git remote get-url origin 2>/dev/null || true)
+    [ -n "$origin_url" ] || return 1
+    repo=$(printf '%s' "$origin_url" \
+      | sed -E 's|.*github\.com[:/]([^/]+/[^/]+?)(\.git)?$|\1|')
+    # sed produces the full URL when no pattern matches — reject it.
+    [ "$repo" != "$origin_url" ] || return 1
+    case "$repo" in
+      */*) ;;  # must contain exactly one slash (owner/name)
+      *) return 1 ;;
+    esac
+  fi
+
+  # Read .gaia/VERSION (same "no stamp without VERSION" invariant as CI).
+  cur_version=""
+  if [ -f ".gaia/VERSION" ]; then
+    cur_version=$(tr -d '\r' < ".gaia/VERSION" | awk 'NF{print; exit}')
+    cur_version="${cur_version#"${cur_version%%[![:space:]]*}"}"
+    cur_version="${cur_version%"${cur_version##*[![:space:]]}"}"
+  fi
+  [ -n "$cur_version" ] || return 1
+
+  cur_tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
+  [ -n "$cur_tree" ] || return 1
+
+  status_desc=$(gh api \
+    "repos/${repo}/commits/${sha}/statuses" \
+    --jq 'map(select(.context == "GAIA-Audit")) | last | .description' \
+    2>/dev/null || true)
+
+  [ -n "$status_desc" ] && [ "$status_desc" != "null" ] || return 1
+
+  status_version=$(printf '%s' "$status_desc" | awk '{print $1}')
+  status_tree=$(printf '%s' "$status_desc" | awk '{print $2}')
+
+  [ -n "$status_version" ] && [ -n "$status_tree" ] || return 1
+  [ "$status_version" = "$cur_version" ] || return 1
+  [ "$status_tree" = "$cur_tree" ] || return 1
+
+  return 0
+}
+
+if check_github_status; then
+  exit 0
+fi
+
 reason="PR merge gate: no code-review-audit signal for HEAD ${sha:0:12}.
 
-Neither accepted signal is present:
-  - Local marker:  ${marker} (missing)
-  - Commit trailer: ${trailer_status}
+None of the accepted signals is present:
+  - Local marker:    ${marker} (missing)
+  - Commit trailer:  ${trailer_status}
+  - GitHub CI status: absent or version/tree mismatch
 
 To unblock:
   1. Spawn the code-review-audit agent locally, OR push to the PR branch
-     and wait for CI's audit to stamp the trailer (CI skips when the PR
-     modifies the audit workflow file itself — in that case only the
-     local audit will satisfy the gate).
+     and wait for CI's audit to stamp the GitHub commit status (CI skips
+     when the PR modifies the audit workflow file itself — in that case
+     only the local audit will satisfy the gate).
   2. Address any Critical/Important findings; commit and push.
   3. Re-spawn the agent on the new HEAD; let it write the marker.
   4. Retry gh pr merge.
