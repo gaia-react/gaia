@@ -14,6 +14,7 @@ export default {
   ],
   ignoreBinaries: ['bats'],
   ignoreDependencies: [
+    '/\\+types/',
     '@epic-web/invariant',
     '@msw/data',
     '@playwright-testing-library/test',
