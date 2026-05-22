@@ -21,7 +21,6 @@ const FieldDescription: FC<FieldDescriptionProps> = ({
       disabled ? 'text-disabled' : 'text-secondary'
     )}
     id={id ? `${id}-description` : undefined}
-    role="note"
   >
     {description}
   </div>

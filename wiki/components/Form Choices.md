@@ -8,7 +8,7 @@ depends_on:
   - "[[Form Components]]"
   - "[[Form Field]]"
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-05-22
 tags: [component, forms, checkbox, radio]
 ---
 
@@ -29,6 +29,7 @@ Checkboxes and radios share a layout primitive (`CheckboxRadioGroup`) and a `Siz
 
 - `Checkboxes` derives `disabled` and `isRequired` by inspecting every option (`every(disabled)`, `every(required)`) — a single non-required option opts the group out of required
 - `Checkbox` only wraps in `FieldStatus` when `description` or `error` is present — keeps the bare-input case clean
+- `Checkboxes` gives the group a `useId` id and points every checkbox's `aria-describedby` at the shared `${id}-description` element, so a screen reader announces the group description on each option
 
 ## Decision tree
 
