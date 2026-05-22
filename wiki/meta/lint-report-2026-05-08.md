@@ -20,3 +20,15 @@ status: developing
 ## #13: UAT/SPEC narrative-ref drift
 
 ✓ No narrative `UAT-NNN` or concrete maintainer `SPEC-NNN` references detected outside the structural exemptions in `.claude/rules/wiki-style.md`.
+
+## #11: Wiki drift check
+
+ℹ 1 commits behind HEAD. Run /gaia wiki sync at next opportunity.
+
+## #12: Dead repo-relative paths
+
+✓ No dead repo-relative paths detected in wiki body prose.
+
+## #13: UAT/SPEC narrative-ref drift
+
+✓ No narrative `UAT-NNN` or concrete maintainer `SPEC-NNN` references detected outside the structural exemptions in `.claude/rules/wiki-style.md`.
