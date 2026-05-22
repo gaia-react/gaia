@@ -41,7 +41,7 @@ const stack = `Unable to do something
 
 export const Default: StoryFn = () => (
   <ErrorStack
-    className="max-w-360 max-h-96 overflow-y-auto"
+    className="max-h-96 max-w-360 overflow-y-auto"
     stack={stack}
     status={500}
     statusText="Server error"

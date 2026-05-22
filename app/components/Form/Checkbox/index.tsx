@@ -84,7 +84,7 @@ const Checkbox: FC<CheckboxProps> = ({
   const field = (
     <label
       className={twMerge(
-        'group inline-flex w-fit select-none items-center [&_a]:underline',
+        'group inline-flex w-fit items-center select-none [&_a]:underline',
         disabled ? 'cursor-not-allowed' : 'cursor-pointer',
         TEXT_SIZE[size],
         classNameLabel

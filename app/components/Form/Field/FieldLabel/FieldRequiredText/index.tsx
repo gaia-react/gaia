@@ -15,7 +15,7 @@ const FieldRequiredText: FC<FieldRequiredTextProps> = ({
 }) => (
   <div
     className={twJoin(
-      'ml-4 w-fit select-none rounded-full border px-1.5 py-px text-xs font-normal',
+      'ml-4 w-fit rounded-full border px-1.5 py-px text-xs font-normal select-none',
       disabled ? 'text-disabled'
       : error ? 'bg-invalid border-invalid text-white'
       : 'border-invalid text-invalid',

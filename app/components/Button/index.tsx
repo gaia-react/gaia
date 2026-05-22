@@ -111,7 +111,7 @@ const Button: FC<ButtonProps> = ({
     <button
       ref={ref}
       className={twMerge(
-        'select-none whitespace-nowrap text-center',
+        'text-center whitespace-nowrap select-none',
         VARIANTS[variant],
         SIZES[size],
         icon && children && ICON_SIZES[size],

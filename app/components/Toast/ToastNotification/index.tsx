@@ -47,6 +47,8 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
 
   const {description, message, stack} = parsePayload(payload);
 
+  const ToastIcon = ICON[type];
+
   const handleCloseButton = () => {
     toast.dismiss(id);
   };
@@ -54,7 +56,7 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
   return (
     <div
       className={twJoin(
-        'w-88 relative rounded-sm p-3 text-sm text-white',
+        'relative w-88 rounded-sm p-3 text-sm text-white',
         COLOR[type]
       )}
     >
@@ -68,12 +70,8 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
       </button>
       {message && (
         <div className="flex items-start gap-1">
-          {(() => {
-            const ToastIcon = ICON[type];
-
-            return <ToastIcon className={ICON_COLOR[type]} />;
-          })()}
-          <div className="-mt-0.5 text-pretty font-semibold leading-tight">
+          <ToastIcon className={ICON_COLOR[type]} />
+          <div className="-mt-0.5 leading-tight font-semibold text-pretty">
             {message}
           </div>
         </div>
