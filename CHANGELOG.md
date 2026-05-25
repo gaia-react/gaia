@@ -37,6 +37,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ### Added
 
+- allow `/gaia plan` and `/gaia spec` to run concurrently in separate sessions without clashing — collision-proof atomic writes prevent racing writers from corrupting committed state (#198, #207)
 - add axe-core accessibility testing for Vitest and Playwright (#205)
 
 ### Changed
