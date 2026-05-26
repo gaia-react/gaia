@@ -20,8 +20,9 @@ const Footer: FC<FooterProps> = ({className}) => {
         <span suppressHydrationWarning={true}>
           &copy;{new Date().getFullYear()} GAIA Framework
         </span>
+        <span className="text-secondary">{t('poweredBy')}</span>
         <span className="text-secondary">
-          {t('poweredBy')}
+          Crafted with care by the open-source community
         </span>
         <a
           className="hover:text-body transition-colors"
