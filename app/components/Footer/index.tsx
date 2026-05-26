@@ -20,9 +20,6 @@ const Footer: FC<FooterProps> = ({className}) => {
         <span suppressHydrationWarning={true}>
           &copy;{new Date().getFullYear()} GAIA Framework
         </span>
-        <span className="text-secondary">
-          Built with React Router and Tailwind
-        </span>
         <a
           className="hover:text-body transition-colors"
           href="https://github.com/gaia-react/gaia?tab=MIT-1-ov-file#readme"
