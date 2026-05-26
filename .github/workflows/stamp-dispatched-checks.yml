@@ -77,6 +77,13 @@ jobs:
           # Iterate jobs. A single job's POST failure is logged and skipped;
           # the listener does not fail the dispatched run over a transient
           # Checks API hiccup on one job out of many.
+          #
+          # Conclusion is read PER JOB (not from the workflow-level
+          # CONCLUSION env var) so that a `skipped` or `failure` job inside
+          # an overall-`success` workflow is stamped honestly. Falls back to
+          # the workflow-level value only when a job has no conclusion of
+          # its own (e.g. a job that never started before workflow
+          # cancellation).
           printf '%s' "$jobs_json" \
             | jq -c '.jobs[]' \
             | while IFS= read -r job; do
@@ -85,14 +92,16 @@ jobs:
                 completed_at="$(printf '%s' "$job" | jq -r '.completed_at')"
                 details_url="$(printf '%s' "$job" | jq -r '.html_url // empty')"
                 [ -n "$details_url" ] || details_url="$RUN_HTML_URL"
+                job_conclusion="$(printf '%s' "$job" | jq -r '.conclusion // empty')"
+                [ -n "$job_conclusion" ] || job_conclusion="$CONCLUSION"
 
-                echo "stamp-dispatched-checks: stamping '${job_name}' on ${HEAD_SHA} (conclusion=${CONCLUSION})" >&2
+                echo "stamp-dispatched-checks: stamping '${job_name}' on ${HEAD_SHA} (conclusion=${job_conclusion})" >&2
                 if ! gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
                     --method POST \
                     --field name="$job_name" \
                     --field head_sha="$HEAD_SHA" \
                     --field status=completed \
-                    --field conclusion="$CONCLUSION" \
+                    --field conclusion="$job_conclusion" \
                     --field started_at="$started_at" \
                     --field completed_at="$completed_at" \
                     --field details_url="$details_url" \
