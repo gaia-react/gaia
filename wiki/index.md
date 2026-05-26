@@ -97,6 +97,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[composeStory Pattern]]
 - [[Dark Mode Modernization]]
 - [[Content Security Policy]] — per-request nonce CSP; Report-Only pending an upstream React Router fix; documents the `unsafe-inline` and no-`report-uri` trade-offs.
+- [[Dispatched Check Rollup Listener Not Viable]] — `workflow_run` listener approach does not work under `GITHUB_TOKEN`; documents why and outlines viable alternatives.
 - Forensics Triage Workflow — autonomous triage for `gaia-forensics`-labeled issues; default-deny path policy + draft-PR contract.
 - [[Quality Gate]]
 - [[pnpm]]
