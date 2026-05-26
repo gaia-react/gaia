@@ -32,6 +32,7 @@ export default {
   },
   language: 'Language',
   license: 'Released under MIT license',
+  craftedBy: 'Crafted with care by the open-source community',
   poweredBy: 'Powered by React Router and Tailwind CSS',
   loading: 'Loading',
   meta: {
