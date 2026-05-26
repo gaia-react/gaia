@@ -39,7 +39,7 @@
     "@react-router/serve": "7.15.1",
     "autosize": "6.0.1",
     "cookie": "1.1.1",
-    "date-fns": "4.2.1",
+    "date-fns": "4.3.0",
     "dotenv": "17.4.2",
     "i18next": "26.2.0",
     "i18next-browser-languagedetector": "8.2.1",
