@@ -10,6 +10,14 @@ This command is **maintainer-only** — both this slash command and the `gaia-ma
 > [!important] `main` is protected
 > Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit _after_ it lands on `main`. The release PR is subject to the same CI gate (`Vitest and Playwright`, `Run Chromatic` — a few minutes) and `code-review-audit` merge handshake as any other PR. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, so `--auto` is required to queue the merge until checks pass. See `wiki/concepts/PR Merge Workflow.md`.
 
+## Required argument
+
+Invocation: `/gaia-release patch|minor|major`. The argument is the **sole authority** for the version bump.
+
+If the argument is missing — including when `/gaia-release` is reached as part of a larger batch of work ("ship this then release", a multi-step plan that ends in release, a chained workflow) — **STOP and ask the maintainer via `AskUserQuestion`** before any preflight / branch / commit step. Do not infer the bump from commit prefixes, diff size, or the `gaia-maintainer release bump` proposal.
+
+The conventional-commit scan over-proposes `minor` for CI/plumbing commits incorrectly tagged `feat:` that are patch-level in spirit; the maintainer is the only reliable source for semver intent. Never proceed without an explicit `patch|minor|major` from the maintainer.
+
 ## Workflow
 
 The CLI surface is the source of truth. The classification rules for `.gaia/manifest.json` live in code (`.gaia/cli/src/release/manifest.ts`); the on-disk manifest is the single source of truth for `/update-gaia` consumers.
@@ -22,23 +30,21 @@ The CLI surface is the source of truth. The classification rules for `.gaia/mani
 
 Verifies: on `main`, clean working tree, `wiki/.state.json` matches HEAD (per the `gaia wiki state --json` `commits_ahead === 0` contract). Exits non-zero with an explanation on any failure. STOP and report; the maintainer fixes (commit, push, run `/gaia wiki sync`) and re-runs `/gaia-release`.
 
-### 2. Determine the bump
+### 2. Apply the bump
+
+Use the maintainer's argument from "Required argument" as `<BUMP>`. The CLI's `release bump` proposal is **informational only** — print it for awareness, then proceed with `<BUMP>` regardless:
 
 ```bash
-.gaia/cli/gaia-maintainer release bump            # propose only
+.gaia/cli/gaia-maintainer release bump            # propose only — informational
 ```
 
-Prints `vCURRENT -> vNEXT (bump)` from a conventional-commit scan since the last tag. Highest severity wins; `BREAKING CHANGE` body lines or `!:` suffixes register as major.
+If the proposal disagrees with `<BUMP>`, surface the disagreement once (e.g. "CLI proposed minor from `feat(ci):` commits; you specified patch — proceeding with patch") but do not re-prompt.
 
-If the proposal is **major**, present the breaking commits and ask the maintainer to confirm. Only proceed on explicit confirmation.
+Apply by path:
 
-If **minor** or **patch** (or major-with-confirmation), apply:
-
-```bash
-.gaia/cli/gaia-maintainer release bump --auto     # writes package.json + .gaia/VERSION
-```
-
-`--auto` refuses major bumps without explicit confirmation; if the maintainer confirmed, proceed (the CLI surfaces the refusal as exit 1 — capture the proposed version and write package.json + `.gaia/VERSION` directly, or extend the runbook with a `--allow-major` flag if it becomes routine).
+- **`<BUMP>` ≥ proposal, not major:** `.gaia/cli/gaia-maintainer release bump --auto` — writes `package.json` + `.gaia/VERSION`.
+- **`<BUMP>` < proposal** (e.g. `patch` override of a `minor` proposal): `--auto` would write the larger version. Compute NEW_VERSION = current with the requested bump applied, then write `package.json` + `.gaia/VERSION` directly. Preserve `package.json` formatting (2-space indent, trailing newline) — use `node -e "const fs=require('fs');const p=require('./package.json');p.version='<NEW>';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');"` and `printf '<NEW>\n' > .gaia/VERSION`.
+- **`<BUMP>` = major:** `--auto` refuses (exit 1). Compute NEW_VERSION = `v<CURRENT_MAJOR+1>.0.0` and write `package.json` + `.gaia/VERSION` directly per the form above.
 
 ### 3. Quality gate
 
@@ -160,13 +166,24 @@ Set both version sites to `<NEW_VERSION>` (no `v` in `package.json`, `v`-prefixe
 
 Commit on a branch, open + merge a PR, then tag. The PR-merge and main-push guards are repo-scoped (`.claude/hooks/lib/repo-scope.sh`): a `gh pr merge` / `git push` carrying a `-C "$CG"` or `cd "$CG" &&` prefix targets the sibling repo, so this repo's audit gate and main-protection do **not** fire — no manual-UI detour needed. `create-gaia` has no audit infrastructure or branch protection of its own; a plain `--merge` (not `--auto`) is correct there.
 
+> [!important] Sibling-repo push protocol
+> `repo-scope.sh` uses a single-capture regex and **fails closed (enforces home-repo policy) when it sees more than one `-C` in a single command string** — git's last-wins semantics defeat a single capture. A chain like `git -C "$CG" add ...; git -C "$CG" commit ...; git -C "$CG" push origin main` therefore triggers the local main-push deny even though the push targets the sibling repo. Each `git -C "$CG" push ...` (branch push **and** tag push) must run in **its own Bash tool invocation** — one `-C` per call. Non-push `-C` chains (add, commit, fetch, checkout, pull, tag without push) are fine to combine.
+
 ```bash
 git -C "$CG" checkout -b "release/v<NEW_VERSION>"
 # (edit package.json + bin/index.js as above)
 node --check "$CG/bin/index.js"   # smoke: no syntax error
 git -C "$CG" add package.json bin/index.js
 git -C "$CG" commit -m "chore: release v<NEW_VERSION>"
+```
+
+Branch push — own Bash invocation:
+
+```bash
 git -C "$CG" push -u origin "release/v<NEW_VERSION>"
+```
+
+```bash
 gh pr create -R gaia-react/create-gaia --base main --head "release/v<NEW_VERSION>" \
   --title "chore: release v<NEW_VERSION>" --body "Lockstep with GAIA v<NEW_VERSION>."
 gh pr merge -R gaia-react/create-gaia <N> --merge --delete-branch
@@ -176,7 +193,13 @@ for i in $(seq 1 10); do
 done
 [ "$st" = "MERGED" ] || { echo "create-gaia PR did not merge — investigate before tagging"; exit 1; }
 git -C "$CG" fetch origin --quiet && git -C "$CG" checkout main --quiet && git -C "$CG" pull --ff-only origin main --quiet
-git -C "$CG" tag "v<NEW_VERSION>" && git -C "$CG" push origin "v<NEW_VERSION>"
+git -C "$CG" tag "v<NEW_VERSION>"
+```
+
+Tag push — own Bash invocation:
+
+```bash
+git -C "$CG" push origin "v<NEW_VERSION>"
 ```
 
 The tag push triggers `create-gaia`'s `publish.yml` (npm publish with `--provenance`). Confirm it before considering the release complete:
@@ -210,12 +233,17 @@ Example: current is `installed=1.2.0, available=1.2.2`. On `1.3.0` → `installe
 
 - `$WEB/src/pages/features/sections/Fitness.tsx` → `detail: 'GAIA v<installed>, v<NEW_VERSION> available · /update-gaia'`
 
-Commit and push directly to `main` in the website repo (no branch protection on `website`):
+Commit and push directly to `main` in the website repo (no branch protection on `website`). Apply the sibling-repo push protocol from Step 13 — the `git -C "$WEB" push` must run in its own Bash tool invocation, separate from the `add`/`commit` chain:
 
 ```bash
 git -C "$WEB" add src/pages/get-started/sections/GetStarted.tsx \
                src/pages/features/sections/Fitness.tsx
 git -C "$WEB" commit -m "chore: lockstep GAIA v<NEW_VERSION>"
+```
+
+Push — own Bash invocation:
+
+```bash
 git -C "$WEB" push origin main
 ```
 
