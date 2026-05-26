@@ -13,7 +13,7 @@ budget_seconds: 1800
 
 # Maximum number of fix turns the agent is allowed inside CI. Maps to claude_args
 # `--max-turns`. Lower = cheaper. Higher = more chance to self-heal.
-max_turns: 30
+max_turns: 60
 
 # Whether the agent may push self-heal commits to the PR branch. Set false to make
 # the audit advisory-only (it comments findings but does not push).
@@ -34,6 +34,25 @@ push_fixes: true
 #
 # Workflows listed here must declare `workflow_dispatch:` in their `on:`
 # triggers. The GAIA template's `chromatic.yml` and `tests.yml` already do.
+#
+# Two-part mechanism: this audit step dispatches each workflow via
+# `workflow_dispatch`, and the companion listener
+# `.github/workflows/stamp-dispatched-checks.yml` mirrors the dispatched
+# run's job results back into the PR's check rollup once each run
+# completes. Without the listener, the dispatched run executes and lands
+# on the PR's head SHA, but the PR's `statusCheckRollup` (the data
+# structure branch protection evaluates) excludes check suites whose
+# `event` is `workflow_dispatch`, so the runs never count toward the
+# required-checks tally and the merge stays blocked.
+#
+# Static-list sync requirement: the listener declares the same workflow
+# names under `on.workflow_run.workflows`. GitHub Actions does not allow
+# dynamic interpolation in that field, so the list there must be edited
+# by hand to match this one. Adding a workflow here without adding it to
+# `stamp-dispatched-checks.yml` (or removing it from one side only) causes
+# silent drift: the dispatched run still executes, but the listener never
+# fires for it, its check runs never enter the PR rollup, and branch
+# protection blocks the merge with no obvious cause.
 retrigger_workflows:
   - Chromatic
   - Tests
