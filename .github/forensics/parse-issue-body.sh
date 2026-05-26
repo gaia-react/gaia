@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
-# parse-issue-body.sh — deterministic parser for the SPEC-001 strict
-# forensics issue body schema. Emits JSON to stdout.
+# parse-issue-body.sh — deterministic parser for the forensics issue
+# body. Emits JSON to stdout.
 #
 # Exit code: 0 always (consumers inspect the JSON `valid` field). Exit 2
 # is reserved for genuine script errors (missing input file, bad usage).
 #
 # POSIX-tools only: awk, sed, grep, bash. No jq, no yq, no python.
 #
-# Contract: SPEC-002 (UAT-009, UAT-013, UAT-015) and the body-parser
-# task spec at
-# `.gaia/local/plans/spec-002-forensics-triage-action/task-body-parser.md`.
+# Body schema:
+#   - Four `##` section headers, in any order, exactly matching:
+#     `## Symptom`, `## Classification`, `## Capture`, `## Reproduction context`.
+#   - Each section non-empty.
+#   - The `## Classification` section content includes a `class: <tag>` line
+#     whose value is one of the eight forensics taxonomy classes
+#     (`init|update|wiki-sync|quality-gate|hook|scaffold|dev-server|other`).
+#
+# The body may optionally lead with a YAML frontmatter block (`---` …
+# `---`). When present it supplies `class`, `gaia_version`, `created`,
+# and `gh_issue_url`. When absent — the shape `gh issue create` posts —
+# `class` is derived from the `## Classification` section content, and
+# the parser still emits the same JSON shape with empty / null values
+# for any frontmatter-only field.
 
 set -uo pipefail
 
@@ -43,76 +54,74 @@ work_dir=$(mktemp -d 2>/dev/null) || { echo "parse-issue-body.sh: mktemp failed"
 trap 'rm -rf "$work_dir"' EXIT
 
 # ---------------------------------------------------------------------------
-# Step 1: validate frontmatter shape and extract the required keys.
+# Step 1: opportunistically extract a YAML frontmatter block. Frontmatter
+# is optional — the GitHub-issue body shape ships without one, and the
+# parser derives `class` from `## Classification` later. The local file
+# shape (saved at `.gaia/local/forensics/<timestamp>-<class>.md`) keeps
+# the frontmatter, so the parser still picks up its values when present.
 # ---------------------------------------------------------------------------
-
-# First non-blank line (well, first line — SPEC-001 emits `---` as line 1)
-# must be the frontmatter sentinel.
-first_line=$(awk 'NR==1{print; exit}' "$input_file")
-awk_status=$?
-[ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
-if [ "$first_line" != "---" ]; then
-  printf '{"valid":false,"error":"malformed-frontmatter","missing":[],"malformed":["frontmatter"]}\n'
-  exit 0
-fi
-
-# Closing `---` line number (must be > 1, exact match).
-fm_end=$(awk 'NR>1 && $0=="---"{print NR; exit}' "$input_file")
-awk_status=$?
-[ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
-if [ -z "${fm_end:-}" ]; then
-  printf '{"valid":false,"error":"malformed-frontmatter","missing":[],"malformed":["frontmatter"]}\n'
-  exit 0
-fi
-
-# Frontmatter content lines (between line 2 and fm_end-1).
-awk -v end="$fm_end" 'NR>1 && NR<end' "$input_file" > "$work_dir/frontmatter.txt"
-awk_status=$?
-[ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
 
 fm_class=""
 fm_gaia_version=""
 fm_created=""
 fm_gh_issue_url=""
+body_start=1
 
-# YAML-shaped key/value pairs. Accept `key: value` lines (first `: `
-# splits). Strip surrounding single or double quotes from value.
-while IFS= read -r line; do
-  case "$line" in
-    ''|'#'*) continue ;;
-  esac
-  key=$(printf '%s' "$line" | awk -F': ' '{print $1}')
-  value=$(printf '%s' "$line" | sed -n 's/^[^:]*:[[:space:]]*//p')
-  case "$value" in
-    \"*\") value=$(printf '%s' "$value" | sed -e 's/^"//' -e 's/"$//') ;;
-    \'*\') value=$(printf '%s' "$value" | sed -e "s/^'//" -e "s/'$//") ;;
-  esac
-  case "$key" in
-    class) fm_class="$value" ;;
-    gaia_version) fm_gaia_version="$value" ;;
-    created) fm_created="$value" ;;
-    gh_issue_url) fm_gh_issue_url="$value" ;;
-  esac
-done < "$work_dir/frontmatter.txt"
+first_line=$(awk 'NR==1{print; exit}' "$input_file")
+awk_status=$?
+[ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
 
-if [ -z "$fm_class" ] || [ -z "$fm_gaia_version" ] || [ -z "$fm_created" ]; then
-  printf '{"valid":false,"error":"malformed-frontmatter","missing":[],"malformed":["frontmatter"]}\n'
-  exit 0
+if [ "$first_line" = "---" ]; then
+  # Closing `---` line number (must be > 1, exact match). A frontmatter
+  # open without a matching close is still malformed — emit the same
+  # error as before so a hand-edited local file with a typo doesn't
+  # silently drop frontmatter values.
+  fm_end=$(awk 'NR>1 && $0=="---"{print NR; exit}' "$input_file")
+  awk_status=$?
+  [ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
+  if [ -z "${fm_end:-}" ]; then
+    printf '{"valid":false,"error":"malformed-frontmatter","missing":[],"malformed":["frontmatter"]}\n'
+    exit 0
+  fi
+
+  awk -v end="$fm_end" 'NR>1 && NR<end' "$input_file" > "$work_dir/frontmatter.txt"
+  awk_status=$?
+  [ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
+
+  # YAML-shaped key/value pairs. Accept `key: value` lines (first `: `
+  # splits). Strip surrounding single or double quotes from value.
+  while IFS= read -r line; do
+    case "$line" in
+      ''|'#'*) continue ;;
+    esac
+    key=$(printf '%s' "$line" | awk -F': ' '{print $1}')
+    value=$(printf '%s' "$line" | sed -n 's/^[^:]*:[[:space:]]*//p')
+    case "$value" in
+      \"*\") value=$(printf '%s' "$value" | sed -e 's/^"//' -e 's/"$//') ;;
+      \'*\') value=$(printf '%s' "$value" | sed -e "s/^'//" -e "s/'$//") ;;
+    esac
+    case "$key" in
+      class) fm_class="$value" ;;
+      gaia_version) fm_gaia_version="$value" ;;
+      created) fm_created="$value" ;;
+      gh_issue_url) fm_gh_issue_url="$value" ;;
+    esac
+  done < "$work_dir/frontmatter.txt"
+
+  body_start=$((fm_end + 1))
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2: split the post-frontmatter body into per-section files. Detect
-# malformed `## ` headers (anything not in the canonical four).
+# Step 2: split the body into per-section files. Detect malformed `## `
+# headers (anything not in the canonical four).
 # ---------------------------------------------------------------------------
-
-body_start=$((fm_end + 1))
 
 # Single awk pass: route lines into per-section files; record the first
 # malformed header (if any) into a sentinel file.
 #
 # A section starts at `^## (Symptom|Classification|Capture|Reproduction context)$`
 # and ends at the next `^## ` line or EOF. Lines BEFORE the first valid
-# `## ` header are dropped (the SPEC-001 schema places the four sections
+# `## ` header are dropped (the schema places the four sections
 # back-to-back; nothing precedes them). Lines under a malformed header
 # are also dropped — the malformed header itself is reported.
 awk -v start="$body_start" -v out_dir="$work_dir" '
@@ -207,12 +216,11 @@ if [ -n "$missing_list" ]; then
 fi
 
 # Trim a single leading and a single trailing blank line per section.
-# (UAT-015 wants verbatim section *content*; the blank line that
-# typically separates a `## ` header from the first content line, and
-# the blank line that typically precedes the next `## ` header, are
-# markdown structure, not content. Stripping at most one such blank
-# line on each end keeps redaction tokens byte-identical while not
-# emitting trailing-newline noise.)
+# The blank line that typically separates a `## ` header from the
+# first content line, and the blank line that typically precedes the
+# next `## ` header, are markdown structure, not content. Stripping at
+# most one such blank line on each end keeps redaction tokens
+# byte-identical while not emitting trailing-newline noise.
 trim_one_blank_each_end() {
   local file="$1"
   awk '
@@ -258,6 +266,34 @@ if [ -n "$empty_list" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Step 3b: derive missing frontmatter values from body sections. Only
+# `class` is load-bearing downstream (the workflow uses it as the fix
+# branch slug). `gaia_version` is informational; left empty when not in
+# frontmatter and not declared as `gaia_version: <ver>` in `## Capture`.
+# ---------------------------------------------------------------------------
+
+if [ -z "$fm_class" ]; then
+  fm_class=$(awk -F':[[:space:]]*' '
+    /^class:[[:space:]]/ { print $2; exit }
+  ' "$work_dir/sec-classification.txt")
+  awk_status=$?
+  [ "$awk_status" -ne 0 ] && emit_internal_error "class-derive" "$awk_status"
+fi
+
+if [ -z "$fm_class" ]; then
+  printf '{"valid":false,"error":"missing-class","missing":["class"],"malformed":[]}\n'
+  exit 0
+fi
+
+if [ -z "$fm_gaia_version" ]; then
+  fm_gaia_version=$(awk -F':[[:space:]]*' '
+    /^gaia_version:[[:space:]]/ { print $2; exit }
+  ' "$work_dir/sec-capture.txt")
+  awk_status=$?
+  [ "$awk_status" -ne 0 ] && emit_internal_error "gaia-version-derive" "$awk_status"
+fi
+
+# ---------------------------------------------------------------------------
 # Step 4: emit success JSON. Every string value must be JSON-escaped.
 # ---------------------------------------------------------------------------
 
@@ -290,7 +326,7 @@ json_escape_file() {
         } else if (ord[c] < 32) {
           # Strip remaining 0x01–0x1f control bytes; not valid in JSON
           # strings without \uXXXX escaping, never expected from the
-          # SPEC-001 issue-body schema.
+          # issue-body schema.
         } else {
           printf "%s", c
         }

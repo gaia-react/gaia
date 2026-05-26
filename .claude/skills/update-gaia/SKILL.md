@@ -196,8 +196,11 @@ Track six lists internally (`UpdateMergeReport`):
 
 Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DIR/<path>`. Use `cmp -s` for equality; `mkdir -p` before writing.
 
+**Match in declared order — first matching row wins.** The first row applies to every class and runs before any class-specific check; it closes the silent-skip gap where the manifest declares a file but the adopter's tree never had it (in particular, the `shared` / `wiki-owned` `B` ≅ `L` row below would otherwise short-circuit and leave the file missing on disk).
+
 | Class | Condition | Action | List |
 |---|---|---|---|
+| any | `A` missing and `L` exists | Copy `L` → `<path>` | `add[]` |
 | `owned` | `B` missing (new file) | Copy `L` → `<path>` | `add[]` |
 | `owned` | `A` ≅ `B` (no adopter drift) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `overwrite[]` |
 | `owned` | `A` ≅ `L` (adopter already current) | No-op | `skip[]` |

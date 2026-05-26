@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# handle-needs-human.sh — UAT-003 / UAT-005 / UAT-007 / UAT-014 action handler.
+# handle-needs-human.sh — needs-human triage handler.
 #
 # Labels a forensics-triaged issue as `needs-human` and posts a comment
 # that mentions the maintainer (@stevensacks), names the reason-code, and
@@ -13,8 +13,6 @@
 #
 # Exit code: 0 on success. Non-zero on bad usage, missing file, or unknown
 # reason-code. gh-level failures propagate.
-#
-# Contract: SPEC-002 UAT-003 / UAT-005 / UAT-007 / UAT-014.
 
 set -euo pipefail
 
@@ -33,20 +31,20 @@ reason_code="$3"
 
 [ -f "$reasoning_file" ] || { echo "handle-needs-human.sh: reasoning file not found: $reasoning_file" >&2; exit 2; }
 
-# Map reason-code → one-line UAT summary. The summary names which UAT
-# branch fired so the maintainer can locate the trigger condition fast.
+# Map reason-code → one-line summary describing why auto-triage handed
+# the issue back to the maintainer.
 case "$reason_code" in
   out-of-scope)
-    summary="proposed fix touches paths outside the auto-fix allowlist (UAT-007 / UAT-014)."
+    summary="proposed fix touches paths outside the auto-fix allowlist."
     ;;
   ambiguous-verdict)
-    summary="classifier verdict was missing or self-conflicting (UAT-003 case b)."
+    summary="classifier verdict was missing or self-conflicting."
     ;;
   malformed-body)
-    summary="issue body is missing or malformed against the SPEC-001 strict schema (UAT-013)."
+    summary="issue body does not match the expected forensics schema; the deterministic parser could not extract the required sections."
     ;;
   gate-failure)
-    summary="auto-fix branch failed the Quality Gate; branch was discarded (UAT-005)."
+    summary="auto-fix branch failed the Quality Gate; branch was discarded."
     ;;
   deviation)
     summary="the auto-fix model touched in-allowlist paths that were not declared in its proposed scope; the diff deviates from the classifier's intent."
@@ -78,8 +76,8 @@ comment_file="$work_dir/comment.md"
 #   1. Apply `needs-human` (the classification label).
 #   2. Post the comment.
 #   3. Apply `gaia-triaged` LAST (idempotency key).
-# The issue is NOT closed (UAT-003 / UAT-005 / UAT-007 / UAT-014 all
-# specify "issue stays open").
+# The issue is NOT closed — every needs-human path keeps the issue open
+# so the maintainer can triage by hand.
 gh issue edit "$issue_num" --add-label "needs-human"
 gh issue comment "$issue_num" --body-file "$comment_file"
 gh issue edit "$issue_num" --add-label "gaia-triaged"

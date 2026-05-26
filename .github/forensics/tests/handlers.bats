@@ -227,24 +227,24 @@ first_captured_body() {
   grep -qF '@stevensacks' "$body_path"
 }
 
-@test "needs-human: comment names the reason-code out-of-scope (UAT-007/UAT-014)" {
+@test "needs-human: comment names the reason-code out-of-scope" {
   reasoning="$BATS_TEST_TMPDIR/r.md"
   printf 'x\n' > "$reasoning"
   run "$HANDLERS/handle-needs-human.sh" 42 "$reasoning" out-of-scope
   [ "$status" -eq 0 ]
   body_path="$(first_captured_body)"
   grep -qF 'out-of-scope' "$body_path"
-  grep -qF 'UAT-007' "$body_path"
+  grep -qF 'outside the auto-fix allowlist' "$body_path"
 }
 
-@test "needs-human: comment names the reason-code gate-failure (UAT-005)" {
+@test "needs-human: comment names the reason-code gate-failure" {
   reasoning="$BATS_TEST_TMPDIR/r.md"
   printf 'gate failure detail\n' > "$reasoning"
   run "$HANDLERS/handle-needs-human.sh" 42 "$reasoning" gate-failure
   [ "$status" -eq 0 ]
   body_path="$(first_captured_body)"
   grep -qF 'gate-failure' "$body_path"
-  grep -qF 'UAT-005' "$body_path"
+  grep -qF 'failed the Quality Gate' "$body_path"
 }
 
 @test "needs-human: comment names the reason-code ambiguous-verdict (UAT-003b)" {
@@ -411,7 +411,9 @@ first_captured_body() {
   grep -qF 'symptom' "$body_path"
   grep -qF 'capture' "$body_path"
   grep -qF 'missing-section' "$body_path"
-  grep -qF 'UAT-013' "$body_path"
+  # User-facing comment must not surface internal UAT identifiers — they
+  # rot as UATs are renumbered and confuse adopters who file issues by hand.
+  ! grep -qE 'UAT-[0-9]+' "$body_path"
 }
 
 @test "malformed-body: comment names malformed sections from parser output" {
