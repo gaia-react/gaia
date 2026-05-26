@@ -45,7 +45,7 @@ The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove
 
 Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.
 
-When CI self-heals — the audit modifies a file and pushes the fix — the workflow stamps a `code-review-audit` check run on the new HEAD and dispatches the sibling required workflows (e.g. `Chromatic`, `Tests`) via `workflow_dispatch`. A separate listener (`.github/workflows/stamp-dispatched-checks.yml`) then mirrors each dispatched run's jobs back as check runs on the head SHA so they enter the rollup branch protection evaluates. See [[Code Review Audit CI#Self-heal re-trigger]] for the full mechanism and the `retrigger_workflows` knob.
+When CI self-heals — the audit modifies a file and pushes the fix — the workflow stamps a `code-review-audit` check run on the new HEAD and dispatches the sibling required workflows (e.g. `Chromatic`, `Tests`) via `workflow_dispatch` so their check runs attach to the new SHA. See [[Code Review Audit CI#Self-heal re-trigger]] for the full mechanism and the `retrigger_workflows` knob.
 
 A clean pass requires no Critical Issues, every Important Issue addressed, and every Suggestion either auto-fixed or resolved by the operator. Knip and react-doctor advisories remain advisory and never block signal emission.
 
