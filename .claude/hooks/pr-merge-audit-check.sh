@@ -1,6 +1,7 @@
 #!/bin/bash
 # PreToolUse Bash hook: BLOCK `gh pr merge` until proof of a passing
-# code-review-audit exists for the current HEAD. Three signals are accepted:
+# code-review-audit exists for the current HEAD. Three signals and one
+# bypass are accepted:
 #
 #   1. Local marker file at .gaia/local/audit/<sha>.ok — written by the
 #      audit agent at the end of a clean local review.
@@ -14,6 +15,12 @@
 #      pushing an empty marker commit (pushing it would re-trigger CI and leave
 #      the PR HEAD without check runs). Queried via `gh api` using GH_TOKEN or
 #      the ambient gh auth session.
+#
+#   4. chore(deps) PR bypass: PR title matches `^chore\(deps(-dev)?\):`. The
+#      /update-deps wrapper runs the full quality gate locally before
+#      pushing, so the audit signal is implicit for this PR class. Mirrors
+#      the same narrowing applied to code-review-audit.yml, tests.yml, and
+#      chromatic.yml — all four surfaces skip together on chore(deps) PRs.
 #
 # Any signal proves the audit ran against this content and the agent saw
 # no Critical Issues and no unresolved Important Issues. Without one, the
@@ -158,12 +165,36 @@ if check_github_status; then
   exit 0
 fi
 
+# chore(deps) bypass: PRs whose title matches `^chore\(deps(-dev)?\):` are
+# pre-verified by the /update-deps wrapper's local quality gate (typecheck +
+# lint + vitest + playwright + build), so the audit-marker requirement is
+# waived for this PR class. Same skip narrowing as the CI workflows
+# (code-review-audit.yml, tests.yml, chromatic.yml).
+#
+# Title is queried via `gh pr view`. On any failure (no gh, no auth, no PR
+# for the current branch, network error) the bypass does not fire and the
+# normal deny path runs — the bypass is opt-in proof, not a fallback.
+check_chore_deps_pr() {
+  command -v gh >/dev/null 2>&1 || return 1
+  pr_title=$(gh pr view --json title --jq .title 2>/dev/null || true)
+  [ -n "$pr_title" ] || return 1
+  case "$pr_title" in
+    'chore(deps):'*|'chore(deps-dev):'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if check_chore_deps_pr; then
+  exit 0
+fi
+
 reason="PR merge gate: no code-review-audit signal for HEAD ${sha:0:12}.
 
 None of the accepted signals is present:
   - Local marker:    ${marker} (missing)
   - Commit trailer:  ${trailer_status}
   - GitHub CI status: absent or version/tree mismatch
+  - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
 
 To unblock:
   1. Spawn the code-review-audit agent locally, OR push to the PR branch
