@@ -44,5 +44,5 @@ None of these is in scope yet. Branch protection remains a manual unblock step f
 
 ## Reference
 
-- Verification fixture: `test/verify-audit-retrigger` branch. The synthetic defect commit there fires the audit self-heal chain end-to-end. The dispatched `Chromatic` / `Tests` runs on the self-heal HEAD complete successfully but never propagate to a downstream `workflow_run` listener — empirically observed during the revert of the listener experiment.
+- Verification fixture: the `test/verify-audit-retrigger` test branch fires the audit self-heal chain end-to-end. Dispatched `Chromatic` / `Tests` runs complete on the self-heal HEAD but do not propagate to a downstream `workflow_run` listener.
 - Related: [[Code Review Audit CI]] for the dispatch half (still active — that half works).

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-05-26
 tags: [concept, ci, audit, claude]
 ---
 
