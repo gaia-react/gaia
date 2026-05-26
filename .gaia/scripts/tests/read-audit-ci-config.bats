@@ -335,6 +335,13 @@ __GAIA_END__"
   [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Tests"$'\n'"Lint"$'\n'"__GAIA_END__"* ]]
 }
 
+@test "retrigger_workflows flow-style: multi-word names preserved" {
+  write_config "retrigger_workflows: [Chromatic, Vitest and Playwright]"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Vitest and Playwright"$'\n'"__GAIA_END__"* ]]
+}
+
 # --- 18. retrigger_workflows: quoted entries unquoted -----------------------
 
 @test "retrigger_workflows: double-quoted and single-quoted entries unquoted" {
