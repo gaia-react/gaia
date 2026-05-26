@@ -45,24 +45,16 @@ The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the f
 | `budget_seconds`      | `1800`                 | Hard wall-clock budget for the audit invocation. The workflow times out the agent step at this value and reports `audit aborted: budget` rather than failing red.                                                                                                                                                |
 | `max_turns`           | `30`                   | Maximum fix turns the agent is allowed inside CI. Maps to `claude_args`'s `--max-turns`. Lower = cheaper. Higher = more chance to self-heal.                                                                                                                                                                     |
 | `push_fixes`          | `true`                 | Whether the agent may push self-heal commits to the PR branch. Set `false` to make the audit advisory-only (it comments findings but does not push).                                                                                                                                                             |
-| `retrigger_workflows` | `[Chromatic, Tests]`   | Workflows the audit re-dispatches against the PR branch after a self-heal push (see [[#Self-heal re-trigger]]). Each entry is the workflow's `name:` field — not the filename. Workflows listed must declare `workflow_dispatch:` in their triggers; the GAIA template's `chromatic.yml` and `tests.yml` do. The listener at `.github/workflows/stamp-dispatched-checks.yml` carries a matching static `workflows:` list that adopters must keep in sync when they edit this knob. |
+| `retrigger_workflows` | `[Chromatic, Tests]`   | Workflows the audit re-dispatches against the PR branch after a self-heal push (see [[#Self-heal re-trigger]]). Each entry is the workflow's `name:` field — not the filename. Workflows listed must declare `workflow_dispatch:` in their triggers; the GAIA template's `chromatic.yml` and `tests.yml` do.     |
 
 ## Self-heal re-trigger
 
-When the audit's self-heal step pushes a new commit, GitHub does not fire `push` or `pull_request` events for the GITHUB_TOKEN-authored push — its recursion guard. Without intervention, the new HEAD has zero check runs, and branch protection blocks the merge indefinitely. The workflow closes that loop with a two-part response inside `.github/workflows/code-review-audit.yml`:
+When the audit's self-heal step pushes a new commit, GitHub does not fire `push` or `pull_request` events for the GITHUB_TOKEN-authored push — its recursion guard. Without intervention, the new HEAD has zero check runs, and branch protection blocks the merge indefinitely. The workflow closes that loop in two parts:
 
 1. **Stamp `code-review-audit` on the new HEAD.** The `Re-trigger required checks on new HEAD` step uses the Checks API to create a `code-review-audit` check run on the self-heal SHA with `conclusion=success`. The audit produced the new tree, so it is vouching for its own output; the `GAIA-Audit` commit status stamped on the same SHA records the version + tree binding.
-2. **Dispatch each `retrigger_workflows` entry.** The step iterates the configured list and calls `gh workflow run <name> --ref <pr-branch>` for each. `workflow_dispatch` IS allowed under GITHUB_TOKEN, so the dispatched runs execute against the new HEAD.
+2. **Dispatch the rest via `workflow_dispatch`.** The step iterates `retrigger_workflows` and calls `gh workflow run <name> --ref <pr-branch>` for each. `workflow_dispatch` IS allowed under GITHUB_TOKEN, so check runs from those workflows attach to the new HEAD SHA and the ruleset accepts the PR for merge.
 
-There is a rollup subtlety here: `workflow_dispatch`-triggered check suites are excluded from the PR's `statusCheckRollup` — the projection branch protection evaluates. The dispatched runs land on the SHA and pass, but their results never reach the rollup on their own. Without a second step, the PR stays blocked even after every dispatched workflow goes green.
-
-The listener at `.github/workflows/stamp-dispatched-checks.yml` closes that gap. It triggers on `workflow_run: completed` for each workflow named in its static `workflows:` list, fetches the source run's jobs via the Actions API, and POSTs a matching check run per job to the head SHA via the Checks API. Those POSTed check runs enter the `statusCheckRollup` and unblock the merge.
-
-The listener's `workflows:` list is **static** — GitHub does not allow dynamic interpolation in `workflow_run.workflows`. Adopters who edit `retrigger_workflows` in `.gaia/audit-ci.yml` must mirror the change in `.github/workflows/stamp-dispatched-checks.yml`; a workflow named in `retrigger_workflows` but absent from the listener's list dispatches and runs, but its result never enters the rollup.
-
-The listener guards against stamping on the default branch (`head_branch != default_branch`) because no PR is gated on a `main` SHA — stamping there would create orphan check runs.
-
-A dispatch failure in step 2 (workflow not present, missing `workflow_dispatch:` trigger) is logged and tolerated — the audit does not fail the PR over an adopter-listed workflow that doesn't exist in their repo.
+A dispatch failure (workflow not present, missing `workflow_dispatch:` trigger) is logged and tolerated — the audit does not fail the PR over an adopter-listed workflow that doesn't exist in their repo.
 
 This mechanism is invisible when `push_fixes: false` — the audit posts comments and never advances HEAD.
 
@@ -91,7 +83,6 @@ Editing HEAD between the local stamp and `gh pr merge` invalidates the trailer (
 
 - Agent definition: `.claude/agents/code-review-audit.md`
 - Workflow: `.github/workflows/code-review-audit.yml`
-- Dispatched-check rollup listener: `.github/workflows/stamp-dispatched-checks.yml`
 - Stamp helper (local): `.claude/hooks/audit-stamp-trailer.sh`
 - Skip-logic helper (CI): `.github/audit/check-trailer.sh`
 - Config reader: `.gaia/scripts/read-audit-ci-config.sh`
