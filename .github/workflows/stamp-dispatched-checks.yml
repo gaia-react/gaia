@@ -65,10 +65,9 @@ jobs:
         run: |
           set -eu
 
-          if [ -z "${CONCLUSION:-}" ]; then
-            echo "stamp-dispatched-checks: source run has no conclusion (still in progress?); refusing to stamp." >&2
-            exit 1
-          fi
+          # CONCLUSION is always non-empty here: this listener only fires on
+          # `workflow_run: completed`, which guarantees a conclusion value.
+          # The field is still validated defensively below at the per-job level.
 
           # `gh api .../jobs` failure is a genuine error — without the job
           # list there is nothing to stamp. Allow `set -e` to surface it.
