@@ -77,9 +77,9 @@ Do not pass frontmatter through redaction. Frontmatter is written after the body
 
 ### 6. Render
 
-Emit the strict-schema body. The frontmatter wraps the local file only; the GH issue body is the post-frontmatter portion.
+Emit the strict-schema body. The frontmatter heads the body, and the same body is posted to the GH issue verbatim — at creation time (before `gh_issue_url` is back-filled into the local file in step 8) the local file and the GH issue are byte-identical, so downstream triage parses either with the same parser.
 
-Local file layout (frontmatter + body):
+Body layout (frontmatter + sections):
 
 ```markdown
 ---
@@ -115,7 +115,7 @@ class_state_files:
 <plain prose: what the user was doing, what they expected, what happened>
 ```
 
-The body posted to the GH issue is the post-frontmatter portion (`## Symptom` through the end), byte-identical to the local file body.
+The body posted to the GH issue is the full body — frontmatter and all sections — byte-identical to the local file body. The `gh_issue_url` frontmatter key is set after the issue is created (step 8) so the initial GH-issue render omits it; the local file is rewritten with the URL once known.
 
 ### 7. Save
 
@@ -155,7 +155,7 @@ command -v gh
 
   - **On `No`:** exit zero. Print the local path. Do not invoke `gh`.
 
-  - **On `Yes`:** write the post-frontmatter body to a temp file, then invoke:
+  - **On `Yes`:** write the full body — frontmatter and all four sections — to a temp file, then invoke:
 
     ```bash
     gh issue create \
@@ -165,7 +165,7 @@ command -v gh
       --body-file <tempfile>
     ```
 
-    Use `--body-file` so multiline bodies survive shell escaping intact.
+    Use `--body-file` so multiline bodies survive shell escaping intact. At this point — before `gh_issue_url` is added back to the local frontmatter — the GH-issue body must be byte-identical to the local file body (frontmatter included) so the deterministic parser at `.github/forensics/parse-issue-body.sh` extracts the same `class` from either input.
     - On success: capture the issue URL printed by `gh`. Record it in the frontmatter `gh_issue_url` field of the already-saved local file (update the file in place). Continue to step 9.
     - On non-zero `gh` exit: surface `gh`'s stderr verbatim. Leave the local report in place. Exit non-zero. Do not retry or partially file.
 
@@ -218,7 +218,7 @@ class_state_files:
 <plain prose: what the user was doing, what they expected, what happened>
 ```
 
-The local file carries the frontmatter block. The GH issue body is the post-frontmatter portion only — from `## Symptom` through the end — byte-identical to the local file body.
+The GH issue body is byte-identical to the local file body — frontmatter and all four sections — so the deterministic parser sees the same input from either source. `gh_issue_url` is added to the local file only, after the issue is created.
 
 ## Hardcoded constants
 

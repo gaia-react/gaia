@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# handle-malformed-body.sh — UAT-013 short-circuit handler.
+# handle-malformed-body.sh — short-circuit handler for issues whose
+# body cannot be parsed deterministically.
 #
 # The body parser flagged the issue as `valid:false`. Without invoking
-# the LLM (UAT-013 forbids LLM fallback for parse failures), label the
-# issue `needs-human` and post a comment naming the missing/malformed
-# sections. Issue stays open. No fix attempt.
+# the LLM (parser failures never fall through to an LLM fallback —
+# downstream tooling parses the structured sections deterministically),
+# label the issue `needs-human` and post a comment naming the
+# missing/malformed sections. Issue stays open. No fix attempt.
 #
 # Usage:
 #   handle-malformed-body.sh <issue-num> <parser-output-file>
@@ -21,8 +23,7 @@
 # Exit code: 0 on success. 2 on bad usage / missing input. gh-level
 # failures propagate.
 #
-# Contract: SPEC-002 UAT-013. Idempotency key (`gaia-triaged`) is the
-# final mutation.
+# `gaia-triaged` is the idempotency key and is the final mutation.
 
 set -euo pipefail
 
@@ -49,16 +50,16 @@ trap 'rm -rf "$work_dir"' EXIT
 
 comment_file="$work_dir/comment.md"
 {
-  printf 'verdict: needs-human (malformed body — UAT-013).\n\n'
-  printf 'The forensics issue body did not match the SPEC-001 strict schema, so triage stopped before classification (no LLM fallback per UAT-013).\n\n'
+  printf 'verdict: needs-human (malformed body).\n\n'
+  printf 'Auto-triage parses the body deterministically without an LLM fallback, and this body does not match the expected schema. Triage stopped before classification.\n\n'
   printf 'parser error: `%s`\n\n' "$error_code"
   if [ -n "$missing_csv" ]; then
-    printf 'missing sections: `%s`\n\n' "$missing_csv"
+    printf 'missing or unparseable sections: `%s`\n\n' "$missing_csv"
   fi
   if [ -n "$malformed_csv" ]; then
     printf 'malformed sections: `%s`\n\n' "$malformed_csv"
   fi
-  printf 'Required schema: `## Symptom`, `## Classification`, `## Capture`, `## Reproduction context` plus YAML frontmatter (`class`, `gaia_version`, `created`).\n'
+  printf 'Required schema: four `##` headers — `## Symptom`, `## Classification`, `## Capture`, `## Reproduction context` — each with non-empty content. `## Classification` must include a `class: <tag>` line whose tag is one of: `init`, `update`, `wiki-sync`, `quality-gate`, `hook`, `scaffold`, `dev-server`, `other`. The forensics skill (`/gaia forensics`) emits this shape automatically.\n'
 } > "$comment_file"
 
 # Order:

@@ -1,11 +1,13 @@
 #!/usr/bin/env bats
 # Tests for `.github/forensics/parse-issue-body.sh`.
 #
-# Coverage targets the SPEC-002 UATs that touch body-parsing:
-#   UAT-009  deterministic regex extraction (no LLM)
-#   UAT-013  malformed body → needs-human signal (script returns
-#            valid=false with a precise error code)
-#   UAT-015  redaction tokens pass through verbatim
+# Coverage:
+#   - deterministic regex extraction (no LLM)
+#   - malformed body → needs-human signal (script returns
+#     valid=false with a precise error code)
+#   - redaction tokens pass through verbatim
+#   - frontmatter is optional; when absent, `class` is derived from
+#     the `## Classification` section content
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -90,11 +92,14 @@ setup() {
   [[ "$output" == *'"symptom"'* ]]
 }
 
-@test "missing frontmatter returns malformed-frontmatter" {
+@test "missing frontmatter still parses; class is derived from Classification" {
+  # Frontmatter is optional. The GH-issue body shape ships without one
+  # in some workflows; `class` is derived from the `class: <tag>` line
+  # inside the `## Classification` section instead.
   run "$PARSER" "$FIX/missing-frontmatter.md"
   [ "$status" -eq 0 ]
-  [[ "$output" == *'"valid":false'* ]]
-  [[ "$output" == *'"error":"malformed-frontmatter"'* ]]
+  [[ "$output" == *'"valid":true'* ]]
+  [[ "$output" == *'"class":"other"'* ]]
 }
 
 @test "malformed section header returns malformed-section-header" {
@@ -138,7 +143,11 @@ EOF
   [[ "$output" == *'"error":"malformed-frontmatter"'* ]]
 }
 
-@test "frontmatter missing required key returns malformed-frontmatter" {
+@test "frontmatter missing class falls through to Classification derivation" {
+  # When the frontmatter doesn't carry `class:` and the `## Classification`
+  # section also lacks a `class: <tag>` line, the parser reports the
+  # missing class explicitly rather than treating it as a frontmatter
+  # problem — `class` is the one load-bearing field downstream.
   body_file="$BATS_TEST_TMPDIR/no-class.md"
   cat > "$body_file" <<'EOF'
 ---
@@ -165,7 +174,35 @@ EOF
   run "$PARSER" "$body_file"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":false'* ]]
-  [[ "$output" == *'"error":"malformed-frontmatter"'* ]]
+  [[ "$output" == *'"error":"missing-class"'* ]]
+}
+
+@test "frontmatterless body with class in Classification parses cleanly" {
+  body_file="$BATS_TEST_TMPDIR/no-fm.md"
+  cat > "$body_file" <<'EOF'
+## Symptom
+
+`/update-gaia` skipped a file even though the manifest declared it owned.
+
+## Classification
+
+class: update
+evidence: "three-way merge" + .gaia/manifest.json
+
+## Capture
+
+gaia_version: 1.4.2
+node: v22.0.0
+
+## Reproduction context
+
+Routine /update-deps run; downstream CI broke because a file was missing.
+EOF
+  run "$PARSER" "$body_file"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":true'* ]]
+  [[ "$output" == *'"class":"update"'* ]]
+  [[ "$output" == *'"gaia_version":"1.4.2"'* ]]
 }
 
 @test "empty section body returns empty-section" {
