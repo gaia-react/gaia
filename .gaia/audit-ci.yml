@@ -13,7 +13,7 @@ budget_seconds: 1800
 
 # Maximum number of fix turns the agent is allowed inside CI. Maps to claude_args
 # `--max-turns`. Lower = cheaper. Higher = more chance to self-heal.
-max_turns: 30
+max_turns: 60
 
 # Whether the agent may push self-heal commits to the PR branch. Set false to make
 # the audit advisory-only (it comments findings but does not push).
