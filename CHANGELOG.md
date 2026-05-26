@@ -10,6 +10,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.3.4] — 2026-05-26
+
+### Added
+
+- bypass audit-marker requirement on chore(deps) PRs (#246)
+- skip required workflows on chore(deps) PRs (#245)
+
+### Changed
+
+- reframe dispatched-check rollup ADR around polling architecture
+
+### Fixed
+
+- seed missing files; round-trip GH issues; drop UAT leaks (#247)
+- poll dispatched runs and stamp jobs into PR rollup (#243)
+- stamp dispatched check runs into PR rollup (#240)
+- re-trigger required checks on self-heal HEAD (#238)
+
 ## [1.3.3] — 2026-05-22
 
 ### Added
