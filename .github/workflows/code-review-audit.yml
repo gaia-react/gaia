@@ -90,9 +90,28 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check chore-deps title
+        id: chore-deps
+        if: steps.gate.outputs.gated == 'false'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -eu
+          # Pre-verified dep-bump PRs (the /update-deps wrapper runs the full
+          # quality gate locally before pushing) skip the audit. Pattern is
+          # restricted to `chore(deps):` and `chore(deps-dev):` so other chore
+          # PRs still run.
+          if printf '%s' "$PR_TITLE" | grep -qE '^chore\(deps(-dev)?\):'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check for source-code changes
         id: source-changes
-        if: steps.gate.outputs.gated == 'false'
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.chore-deps.outputs.skip == 'false'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -592,6 +611,15 @@ jobs:
           set -eu
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: gate_label '$GATE_LABEL' not present on PR"
+
+      - name: Status — skipped (chore-deps PR)
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.chore-deps.outputs.skip == 'true'
+        run: |
+          set -eu
+          gh pr comment "$PR_NUMBER" \
+            --body "code-review-audit skipped: chore(deps) / chore(deps-dev) PRs are pre-verified by the /update-deps wrapper's local quality gate"
 
       - name: Status — skipped (no source changes)
         if: |

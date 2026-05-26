@@ -35,6 +35,12 @@ Version mismatch (a newer GAIA release shipped) and tree mismatch (HEAD amended 
 
 The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a clean local run of the audit agent. Stamp placement is automatic: amend on un-pushed HEADs, an empty `chore: code review audit passed` commit on already-pushed HEADs (never silently rewriting published history), and amend on the audit's own self-heal commits regardless of push state. The full stamp invariant and placement rule live alongside the workflow's frozen contracts at `.gaia/local/plans/code-review-audit-ci/trailer-format.md`.
 
+## Skip rule (chore-deps PRs)
+
+PRs whose title starts with `chore(deps):` or `chore(deps-dev):` skip the audit entirely. These come from the `/update-deps` wrapper, which runs the full quality gate (`pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm pw`, `pnpm build`) locally before pushing — the local pass is equivalent to the audit's CI signal for dep-only changes. The workflow's `Check chore-deps title` step reads `github.event.pull_request.title`, sets `skip=true` when the prefix matches, and the gate cascades through the rest of the steps. The terminal `Status — skipped (chore-deps PR)` step posts the explanation and reports `code-review-audit` as a green skipped check.
+
+Other `chore:` prefixes (e.g. `chore: bump version`, `chore: tidy imports`) still run the audit — only the dep-specific narrowing skips. `tests.yml` and `chromatic.yml` carry the same skip pattern so all three required checks short-circuit on chore-deps PRs.
+
 ## Adopter knobs
 
 The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the file at job start via `.gaia/scripts/read-audit-ci-config.sh`; missing file or missing keys fall back to documented defaults.
