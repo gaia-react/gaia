@@ -49,14 +49,19 @@ The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the f
 
 ## Self-heal re-trigger
 
-When the audit's self-heal step pushes a new commit, GitHub does not fire `push` or `pull_request` events for the GITHUB_TOKEN-authored push — its recursion guard. Without intervention, the new HEAD has zero check runs, and branch protection blocks the merge indefinitely. The workflow closes that loop in two parts:
+When the audit's self-heal step pushes a new commit, GitHub does not fire `push` or `pull_request` events for the GITHUB_TOKEN-authored push — its recursion guard. Without intervention, the new HEAD has zero check runs, and branch protection blocks the merge indefinitely. The workflow closes that loop in three parts:
 
-1. **Stamp `code-review-audit` on the new HEAD.** The `Re-trigger required checks on new HEAD` step uses the Checks API to create a `code-review-audit` check run on the self-heal SHA with `conclusion=success`. The audit produced the new tree, so it is vouching for its own output; the `GAIA-Audit` commit status stamped on the same SHA records the version + tree binding.
-2. **Dispatch the rest via `workflow_dispatch`.** The step iterates `retrigger_workflows` and calls `gh workflow run <name> --ref <pr-branch>` for each. `workflow_dispatch` IS allowed under GITHUB_TOKEN, so check runs from those workflows attach to the new HEAD SHA and the ruleset accepts the PR for merge.
+1. **Stamp `code-review-audit` on the new HEAD.** The `Re-trigger and stamp required checks on new HEAD` step uses the Checks API to create a `code-review-audit` check run on the self-heal SHA with `conclusion=success`. The audit produced the new tree, so it is vouching for its own output; the `GAIA-Audit` commit status stamped on the same SHA records the version + tree binding.
+2. **Dispatch each `retrigger_workflows` entry via `workflow_dispatch`.** The step calls `gh workflow run <name> --ref <pr-branch>` for every workflow in the list. `workflow_dispatch` is one of the few event types allowed to start a new run under `GITHUB_TOKEN`, so the dispatched runs execute on the self-heal HEAD.
+3. **Poll each dispatched run to completion and stamp its jobs.** GitHub excludes `workflow_dispatch`-event check suites from `statusCheckRollup` when the suite's `pull_requests` link is empty — the case for every `GITHUB_TOKEN`-attributed dispatch. Branch protection reads the rollup, so the dispatched check runs alone never satisfy a required-check rule. The step polls each dispatched run via the Actions API, enumerates its jobs, and POSTs a matching check run per job to the self-heal HEAD via the Checks API. Direct-POST check runs land in the rollup regardless of suite linkage — the same mechanism the `code-review-audit` stamp in part 1 uses.
 
-A dispatch failure (workflow not present, missing `workflow_dispatch:` trigger) is logged and tolerated — the audit does not fail the PR over an adopter-listed workflow that doesn't exist in their repo.
+Polling is parallel: one background process per dispatched workflow, so total wait time tracks the slowest dispatched run rather than the sum. Each poller resolves a run id within 90 s, polls for completion for up to 25 min, and tolerates internal failures by logging a warning rather than failing the step. A dispatch failure (workflow not present, missing `workflow_dispatch:` trigger) is also logged and tolerated — the audit does not fail the PR over an adopter-listed workflow that doesn't exist in their repo.
+
+The audit step's `budget_seconds` plus the slowest dispatched run plus a small overhead must fit within the job-level `timeout-minutes: 60` cap. Adopters who raise `budget_seconds` above ~1800 should make sure their dispatched-workflow runtimes stay under the remaining headroom.
 
 This mechanism is invisible when `push_fixes: false` — the audit posts comments and never advances HEAD.
+
+[[Dispatched Check Rollup Listener Not Viable]] records why a `workflow_run`-event listener was tried first and why it never received events under `GITHUB_TOKEN`.
 
 ## How to enable as a required check
 

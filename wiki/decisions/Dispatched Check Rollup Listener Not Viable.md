@@ -34,15 +34,27 @@ GitHub Actions blocks chained-event triggers from `GITHUB_TOKEN` to prevent infi
 
 The original problem stands open: `workflow_dispatch`-event check suites are excluded from `statusCheckRollup`. Branch protection blocks merges even when the dispatched runs pass. There is no listener-based workaround under `GITHUB_TOKEN`.
 
-## Viable paths if the problem is re-attempted
+## Resolution: in-loop polling and direct Checks API stamping
 
-- **In-loop polling inside `code-review-audit.yml`.** After dispatching each `retrigger_workflow`, the audit step polls each run until completion (`gh run watch` or a manual loop), then POSTs matching check runs itself via the Checks API. Same end-state, no listener required. Cost: longer audit wall-clock; the audit step holds the runner until every dispatched run finishes.
-- **Switch the dispatch from `GITHUB_TOKEN` to a PAT or GitHub App token.** Runs become user-attributed; their completions fire `workflow_run` events normally. Cost: an additional secret to manage and rotate, plus the security surface of granting that token `workflow` scope.
-- **Use Checks API stamping from the source workflows directly.** Each `retrigger_workflow` could add a `post-job` step that POSTs a duplicate check run to its own head SHA — but that runs under `GITHUB_TOKEN` too, so the same suppression argument may bite (needs verification before committing).
+The audit workflow's `Re-trigger and stamp required checks on new HEAD` step forks one background poller per dispatched workflow. Each poller resolves the dispatched run id via the actions/runs API (filtered by `event=workflow_dispatch&branch=<pr-branch>` and `created_at >= dispatch_ts`), polls the run to completion, enumerates its jobs, and POSTs a matching check run per job to the self-heal HEAD via the Checks API.
 
-None of these is in scope yet. Branch protection remains a manual unblock step for self-healed PRs until one of them lands.
+Direct Checks API POSTs land in the PR's `statusCheckRollup` regardless of suite linkage — the same mechanism the audit's own `code-review-audit` stamp uses. Branch protection sees the stamped check runs and accepts the PR.
+
+The empirical signature that distinguishes rollup-included from rollup-excluded check runs:
+
+- API-direct check runs share a single per-(repo, head_sha, app) suite with `check_suite.head_branch=null` and land in the rollup.
+- Dispatched-workflow check runs each carry their own suite with `check_suite.head_branch=<pr-branch>` and `check_suite.pull_requests=[]`; the rollup excludes them.
+
+This avoids a separate listener workflow, a static list of source workflows to mirror, additional credentials, and per-source-workflow tail-job conventions. The cost is the audit step holds its runner for the slowest dispatched run. Polling is parallel across dispatched workflows so total wait tracks max-duration, not sum.
+
+See [[Code Review Audit CI#Self-heal re-trigger]] for the shipped implementation.
+
+## Other paths considered
+
+- **Switch the dispatch from `GITHUB_TOKEN` to a PAT or GitHub App token.** Runs become user-attributed; their completions fire `workflow_run` events normally. Trades the polling cost for credential lifecycle: rotation, expiration handling, security review of granting `workflow` scope.
+- **Use Checks API stamping from the source workflows directly.** Each `retrigger_workflow` adds a tail job that POSTs a duplicate check run under `GITHUB_TOKEN`. Works in theory (direct API POSTs are not subject to the recursion guard, only events are), but every entry adopters add to `retrigger_workflows` then needs the same tail-job convention added to the corresponding workflow file.
 
 ## Reference
 
-- Verification fixture: the `test/verify-audit-retrigger` test branch fires the audit self-heal chain end-to-end. Dispatched `Chromatic` / `Tests` runs complete on the self-heal HEAD but do not propagate to a downstream `workflow_run` listener.
-- Related: [[Code Review Audit CI]] for the dispatch half (still active — that half works).
+- Verification fixture: the `test/verify-audit-retrigger` test branch fires the audit self-heal chain end-to-end. Both the original listener failure mode and the in-loop polling resolution were verified against this fixture.
+- Related: [[Code Review Audit CI]] for the dispatch half.

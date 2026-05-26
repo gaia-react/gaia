@@ -416,7 +416,7 @@ jobs:
             --field context=GAIA-Audit \
             --field description="${version} ${tree_sha}"
 
-      - name: Re-trigger required checks on new HEAD
+      - name: Re-trigger and stamp required checks on new HEAD
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
@@ -433,7 +433,7 @@ jobs:
           # not fire push / pull_request events for the GITHUB_TOKEN-authored
           # push (recursion guard). The new HEAD would therefore have zero
           # check runs and branch protection would block the merge
-          # indefinitely. This step closes that loop in two parts:
+          # indefinitely. This step closes that loop in three parts:
           #
           # 1. Stamp a `code-review-audit` check run on the new HEAD with
           #    conclusion=success. The audit just produced the new tree,
@@ -441,9 +441,16 @@ jobs:
           #    status stamped above records the version+tree binding.
           # 2. Dispatch every workflow listed in `retrigger_workflows`
           #    against the PR branch. `workflow_dispatch` IS allowed
-          #    under GITHUB_TOKEN (unlike push), so check runs from these
-          #    workflows attach to the new HEAD SHA and the ruleset
-          #    accepts the PR for merge.
+          #    under GITHUB_TOKEN (unlike push), so the dispatched runs
+          #    execute on the self-heal HEAD.
+          # 3. Poll each dispatched run to completion, then POST a
+          #    matching check run per job to the new HEAD via the Checks
+          #    API. The dispatched runs' own check suites are excluded
+          #    from `statusCheckRollup` (GitHub filters out
+          #    `workflow_dispatch`-event suites whose `pull_requests` link
+          #    is empty), so branch protection never sees them. Direct
+          #    POST'd check runs land in the rollup regardless of suite
+          #    linkage — same mechanism as the `code-review-audit` stamp.
           #
           # Each `gh workflow run` failure (workflow not present, lacks
           # `workflow_dispatch:` trigger, etc.) is logged and tolerated —
@@ -471,12 +478,103 @@ jobs:
             exit 0
           fi
 
-          printf '%s\n' "$RETRIGGER_WORKFLOWS" | while IFS= read -r workflow_name; do
+          TMPDIR_RT=$(mktemp -d)
+          trap 'rm -rf "$TMPDIR_RT"' EXIT
+
+          # Poll a dispatched workflow run to completion, then POST a
+          # check run per job into the AUDIT_SHA's rollup. Returns 0
+          # always — internal failures are logged and tolerated.
+          poll_and_stamp() {
+            workflow_name="$1"
+            dispatch_ts="$2"
+
+            run_id=""
+            for _ in $(seq 1 18); do
+              run_id=$(gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/runs?event=workflow_dispatch&branch=${PR_BRANCH}&per_page=20" \
+                --jq ".workflow_runs[] | select(.name == \"${workflow_name}\" and .created_at >= \"${dispatch_ts}\") | .id" \
+                | head -1) || run_id=""
+              if [ -n "$run_id" ]; then
+                break
+              fi
+              sleep 5
+            done
+            if [ -z "$run_id" ]; then
+              echo "[${workflow_name}] WARN: dispatched run id not resolved within 90s; not stamping" >&2
+              return 0
+            fi
+            echo "[${workflow_name}] resolved run_id=${run_id}"
+
+            status=""
+            conclusion=""
+            for _ in $(seq 1 150); do
+              payload=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
+                --jq '{status, conclusion}') || payload='{"status":"unknown","conclusion":null}'
+              status=$(printf '%s' "$payload" | jq -r '.status // "unknown"')
+              conclusion=$(printf '%s' "$payload" | jq -r '.conclusion // ""')
+              if [ "$status" = "completed" ]; then
+                break
+              fi
+              sleep 10
+            done
+            if [ "$status" != "completed" ]; then
+              echo "[${workflow_name}] WARN: run ${run_id} did not complete within 25 min (status=${status}); not stamping" >&2
+              return 0
+            fi
+            echo "[${workflow_name}] run ${run_id} completed: conclusion=${conclusion}"
+
+            jobs_file=$(mktemp)
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs" \
+              --jq '.jobs[] | {name, conclusion}' > "$jobs_file" \
+              || { echo "[${workflow_name}] WARN: failed to enumerate jobs for run ${run_id}" >&2; rm -f "$jobs_file"; return 0; }
+            while IFS= read -r job_json; do
+              [ -n "$job_json" ] || continue
+              job_name=$(printf '%s' "$job_json" | jq -r .name)
+              job_conclusion=$(printf '%s' "$job_json" | jq -r '.conclusion // ""')
+              if [ -z "$job_conclusion" ] || [ "$job_conclusion" = "null" ]; then
+                job_conclusion="failure"
+              fi
+              echo "[${workflow_name}] stamping '${job_name}' = ${job_conclusion} on ${AUDIT_SHA}"
+              gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
+                --method POST \
+                --field name="${job_name}" \
+                --field head_sha="${AUDIT_SHA}" \
+                --field status=completed \
+                --field conclusion="${job_conclusion}" \
+                --field "output[title]=${job_name} (stamped from dispatched run ${run_id})" \
+                --field "output[summary]=GitHub excludes workflow_dispatch-event check suites from statusCheckRollup when their pull_requests link is empty (the case for GITHUB_TOKEN-attributed dispatches). This stamp mirrors the dispatched run's per-job conclusion into a directly-attributable check run so branch protection sees the result." \
+                >/dev/null \
+                || echo "[${workflow_name}] WARN: stamp POST for '${job_name}' failed" >&2
+            done < <(jq -c '.' "$jobs_file")
+            rm -f "$jobs_file"
+          }
+
+          # Phase 1: dispatch every retrigger workflow, fork a background
+          # poll_and_stamp per successful dispatch.
+          pids=""
+          while IFS= read -r workflow_name; do
             [ -n "$workflow_name" ] || continue
-            echo "code-review-audit: dispatching '${workflow_name}' on ${PR_BRANCH}" >&2
-            if ! gh workflow run "$workflow_name" --ref "$PR_BRANCH" 2>&1; then
+            dispatch_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            echo "code-review-audit: dispatching '${workflow_name}' on ${PR_BRANCH} at ${dispatch_ts}" >&2
+            if gh workflow run "$workflow_name" --ref "$PR_BRANCH" 2>&1; then
+              log_name=$(printf '%s' "$workflow_name" | tr -c 'A-Za-z0-9._-' '_')
+              log="${TMPDIR_RT}/${log_name}.log"
+              poll_and_stamp "$workflow_name" "$dispatch_ts" >"$log" 2>&1 &
+              pids="$pids $!"
+            else
               echo "code-review-audit: dispatch of '${workflow_name}' failed -- workflow may be absent or missing workflow_dispatch trigger." >&2
             fi
+          done < <(printf '%s\n' "$RETRIGGER_WORKFLOWS")
+
+          # Phase 2: wait for every background poller, then stream its log.
+          for pid in $pids; do
+            wait "$pid" || true
+          done
+
+          for log in "$TMPDIR_RT"/*.log; do
+            [ -f "$log" ] || continue
+            echo "----- $(basename "$log") -----"
+            cat "$log"
           done
 
       # ----------------------------------------------------------------
