@@ -77,7 +77,7 @@ Do not pass frontmatter through redaction. Frontmatter is written after the body
 
 ### 6. Render
 
-Emit the strict-schema body. The frontmatter heads the body, and the same body is posted to the GH issue verbatim — the local file and the GH issue are byte-identical so downstream triage can parse either with the same parser.
+Emit the strict-schema body. The frontmatter heads the body, and the same body is posted to the GH issue verbatim — at creation time (before `gh_issue_url` is back-filled into the local file in step 8) the local file and the GH issue are byte-identical, so downstream triage parses either with the same parser.
 
 Body layout (frontmatter + sections):
 
@@ -165,7 +165,7 @@ command -v gh
       --body-file <tempfile>
     ```
 
-    Use `--body-file` so multiline bodies survive shell escaping intact. The GH-issue body must be byte-identical to the local file body (frontmatter included) so the deterministic parser at `.github/forensics/parse-issue-body.sh` extracts the same `class` from either input.
+    Use `--body-file` so multiline bodies survive shell escaping intact. At this point — before `gh_issue_url` is added back to the local frontmatter — the GH-issue body must be byte-identical to the local file body (frontmatter included) so the deterministic parser at `.github/forensics/parse-issue-body.sh` extracts the same `class` from either input.
     - On success: capture the issue URL printed by `gh`. Record it in the frontmatter `gh_issue_url` field of the already-saved local file (update the file in place). Continue to step 9.
     - On non-zero `gh` exit: surface `gh`'s stderr verbatim. Leave the local report in place. Exit non-zero. Do not retry or partially file.
 
