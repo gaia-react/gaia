@@ -41,7 +41,13 @@ jobs:
       pull-requests: write
       statuses: write
       id-token: write
-      actions: read
+      # `actions: write` lets the self-heal re-trigger step dispatch
+      # required workflows on the PR branch after pushing self-heal
+      # commits. `checks: write` lets it stamp a `code-review-audit`
+      # check run on the new HEAD so branch protection accepts the
+      # already-audited tree without re-running this workflow.
+      actions: write
+      checks: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -409,6 +415,69 @@ jobs:
             --field state=success \
             --field context=GAIA-Audit \
             --field description="${version} ${tree_sha}"
+
+      - name: Re-trigger required checks on new HEAD
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.trailer.outputs.skip == 'false' &&
+          steps.audit.outcome == 'success' &&
+          steps.push-fixes.outputs.pushed == 'true'
+        env:
+          AUDIT_SHA: ${{ steps.push-fixes.outputs.audit_sha }}
+          RETRIGGER_WORKFLOWS: ${{ steps.config.outputs.retrigger_workflows }}
+        run: |
+          set -eu
+          # When the audit self-heals and pushes a new commit, GitHub does
+          # not fire push / pull_request events for the GITHUB_TOKEN-authored
+          # push (recursion guard). The new HEAD would therefore have zero
+          # check runs and branch protection would block the merge
+          # indefinitely. This step closes that loop in two parts:
+          #
+          # 1. Stamp a `code-review-audit` check run on the new HEAD with
+          #    conclusion=success. The audit just produced the new tree,
+          #    so it is vouching for its own output; the GAIA-Audit commit
+          #    status stamped above records the version+tree binding.
+          # 2. Dispatch every workflow listed in `retrigger_workflows`
+          #    against the PR branch. `workflow_dispatch` IS allowed
+          #    under GITHUB_TOKEN (unlike push), so check runs from these
+          #    workflows attach to the new HEAD SHA and the ruleset
+          #    accepts the PR for merge.
+          #
+          # Each `gh workflow run` failure (workflow not present, lacks
+          # `workflow_dispatch:` trigger, etc.) is logged and tolerated —
+          # an adopter may list a workflow that doesn't exist in their
+          # repo, and the audit should not fail the PR over that.
+
+          if [ -z "${AUDIT_SHA:-}" ]; then
+            echo "code-review-audit: no audit_sha to re-trigger against; skipping." >&2
+            exit 0
+          fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
+            --method POST \
+            --field name=code-review-audit \
+            --field head_sha="${AUDIT_SHA}" \
+            --field status=completed \
+            --field conclusion=success \
+            --field 'output[title]=code-review-audit (re-stamped on self-heal HEAD)' \
+            --field 'output[summary]=Audit completed on the parent commit and produced the self-heal changes that advanced HEAD to this SHA. The GAIA-Audit commit status on this SHA records the version + tree binding.' \
+            >/dev/null \
+            || echo "code-review-audit: failed to stamp check run on ${AUDIT_SHA}; continuing." >&2
+
+          if [ -z "${RETRIGGER_WORKFLOWS:-}" ]; then
+            echo "code-review-audit: retrigger_workflows is empty; nothing to dispatch." >&2
+            exit 0
+          fi
+
+          printf '%s\n' "$RETRIGGER_WORKFLOWS" | while IFS= read -r workflow_name; do
+            [ -n "$workflow_name" ] || continue
+            echo "code-review-audit: dispatching '${workflow_name}' on ${PR_BRANCH}" >&2
+            if ! gh workflow run "$workflow_name" --ref "$PR_BRANCH" 2>&1; then
+              echo "code-review-audit: dispatch of '${workflow_name}' failed -- workflow may be absent or missing workflow_dispatch trigger." >&2
+            fi
+          done
 
       # ----------------------------------------------------------------
       # Terminal status steps. Exactly one fires per run; together they

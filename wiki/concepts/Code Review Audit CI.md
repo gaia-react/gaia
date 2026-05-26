@@ -37,14 +37,26 @@ The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a
 
 ## Adopter knobs
 
-The four adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the file at job start via `.gaia/scripts/read-audit-ci-config.sh`; missing file or missing keys fall back to documented defaults.
+The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the file at job start via `.gaia/scripts/read-audit-ci-config.sh`; missing file or missing keys fall back to documented defaults.
 
-| Knob             | Default | Purpose                                                                                                                                                                                     |
-| ---------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gate_label`     | `null`  | Run the audit only when the PR carries this label. `null` runs on every PR. Maintainer recommendation: leave `null` until the audit is stable in CI; flip to `ready-for-review` once it is. |
-| `budget_seconds` | `1800`  | Hard wall-clock budget for the audit invocation. The workflow times out the agent step at this value and reports `audit aborted: budget` rather than failing red.                           |
-| `max_turns`      | `30`    | Maximum fix turns the agent is allowed inside CI. Maps to `claude_args`'s `--max-turns`. Lower = cheaper. Higher = more chance to self-heal.                                                |
-| `push_fixes`     | `true`  | Whether the agent may push self-heal commits to the PR branch. Set `false` to make the audit advisory-only (it comments findings but does not push).                                        |
+| Knob                  | Default                | Purpose                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gate_label`          | `null`                 | Run the audit only when the PR carries this label. `null` runs on every PR. Maintainer recommendation: leave `null` until the audit is stable in CI; flip to `ready-for-review` once it is.                                                                                                                      |
+| `budget_seconds`      | `1800`                 | Hard wall-clock budget for the audit invocation. The workflow times out the agent step at this value and reports `audit aborted: budget` rather than failing red.                                                                                                                                                |
+| `max_turns`           | `30`                   | Maximum fix turns the agent is allowed inside CI. Maps to `claude_args`'s `--max-turns`. Lower = cheaper. Higher = more chance to self-heal.                                                                                                                                                                     |
+| `push_fixes`          | `true`                 | Whether the agent may push self-heal commits to the PR branch. Set `false` to make the audit advisory-only (it comments findings but does not push).                                                                                                                                                             |
+| `retrigger_workflows` | `[Chromatic, Tests]`   | Workflows the audit re-dispatches against the PR branch after a self-heal push (see [[#Self-heal re-trigger]]). Each entry is the workflow's `name:` field — not the filename. Workflows listed must declare `workflow_dispatch:` in their triggers; the GAIA template's `chromatic.yml` and `tests.yml` do.     |
+
+## Self-heal re-trigger
+
+When the audit's self-heal step pushes a new commit, GitHub does not fire `push` or `pull_request` events for the GITHUB_TOKEN-authored push — its recursion guard. Without intervention, the new HEAD has zero check runs, and branch protection blocks the merge indefinitely. The workflow closes that loop in two parts:
+
+1. **Stamp `code-review-audit` on the new HEAD.** The `Re-trigger required checks on new HEAD` step uses the Checks API to create a `code-review-audit` check run on the self-heal SHA with `conclusion=success`. The audit produced the new tree, so it is vouching for its own output; the `GAIA-Audit` commit status stamped on the same SHA records the version + tree binding.
+2. **Dispatch the rest via `workflow_dispatch`.** The step iterates `retrigger_workflows` and calls `gh workflow run <name> --ref <pr-branch>` for each. `workflow_dispatch` IS allowed under GITHUB_TOKEN, so check runs from those workflows attach to the new HEAD SHA and the ruleset accepts the PR for merge.
+
+A dispatch failure (workflow not present, missing `workflow_dispatch:` trigger) is logged and tolerated — the audit does not fail the PR over an adopter-listed workflow that doesn't exist in their repo.
+
+This mechanism is invisible when `push_fixes: false` — the audit posts comments and never advances HEAD.
 
 ## How to enable as a required check
 
@@ -54,6 +66,7 @@ After the workflow lands on `main`, the maintainer (or an adopter applying the s
 2. Edit the rule for `main` (or add one if none exists).
 3. Enable **Require status checks to pass before merging**.
 4. Add `code-review-audit` to the required checks list. The check name is frozen — do not rename even if the workflow grows internal steps.
+5. If the rule also requires checks from sibling workflows (e.g. `Run Chromatic`, `Vitest and Playwright`), list those workflows in `retrigger_workflows` so the self-heal re-trigger restores them on the new HEAD. Without this, a self-heal push will strand the PR with the sibling checks missing.
 
 ## How to skip an audit run locally
 

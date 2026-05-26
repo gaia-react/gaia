@@ -1,6 +1,8 @@
 name: Chromatic
 
-on: push
+on:
+  push:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +23,7 @@ jobs:
   chromatic:
     name: Run Chromatic
     needs: has-chromatic-token
-    if: needs.has-chromatic-token.outputs.present == 'true' && github.event_name == 'push'
+    if: needs.has-chromatic-token.outputs.present == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

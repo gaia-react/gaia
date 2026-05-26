@@ -18,3 +18,22 @@ max_turns: 30
 # Whether the agent may push self-heal commits to the PR branch. Set false to make
 # the audit advisory-only (it comments findings but does not push).
 push_fixes: true
+
+# Workflows the audit re-dispatches against the PR branch after a self-heal
+# push. GitHub does not fire push / pull_request events for commits made with
+# GITHUB_TOKEN (its recursion guard), so required check runs on the new HEAD
+# would otherwise be absent and branch protection would block the merge. The
+# audit calls `gh workflow run --ref <branch>` for each name, producing fresh
+# check runs on the new HEAD.
+#
+# Each entry is the workflow's `name:` field (top of its YAML file), not the
+# filename. The two entries below match the GAIA template's required-check-
+# producing workflows. Adopters who require additional workflows (e.g. a
+# custom lint or security scan) add them here; adopters who do not require
+# Chromatic / Tests can remove them.
+#
+# Workflows listed here must declare `workflow_dispatch:` in their `on:`
+# triggers. The GAIA template's `chromatic.yml` and `tests.yml` already do.
+retrigger_workflows:
+  - Chromatic
+  - Tests

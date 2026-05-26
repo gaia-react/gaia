@@ -18,11 +18,19 @@
 # Bash 3.2 compatible (macOS default). No associative arrays, no
 # `mapfile`. No `cd` (per `.claude/rules/shell-cwd.md`).
 #
-# Output shape (always all four lines, always this order):
+# Output shape (always all keys, always this order):
 #   gate_label=<string-or-empty>
 #   budget_seconds=<integer>
 #   max_turns=<integer>
 #   push_fixes=<true|false>
+#   retrigger_workflows<<__GAIA_END__
+#   <name-1>
+#   <name-2>
+#   __GAIA_END__
+#
+# The `retrigger_workflows` value uses GitHub Actions' multiline-output
+# heredoc syntax so consumers receive a newline-separated string (workflow
+# display names may contain spaces — single-line separators are ambiguous).
 #
 # Resilience:
 #   - Missing file        → all defaults.
@@ -32,8 +40,10 @@
 #   - Invalid integer     → default + stderr warning.
 #   - Invalid boolean     → default + stderr warning.
 #   - `null` (any case) for `gate_label` → empty.
+#   - Empty / `null` `retrigger_workflows` → default list.
+#   - Scalar in place of `retrigger_workflows` list → single-item list.
 #
-# Exit code: 0 always. Consumers parse the four output lines.
+# Exit code: 0 always. Consumers parse the output lines.
 
 set -euo pipefail
 
@@ -47,6 +57,13 @@ set -euo pipefail
 DEFAULT_BUDGET_SECONDS="1800"
 DEFAULT_MAX_TURNS="30"
 DEFAULT_PUSH_FIXES="true"
+# `retrigger_workflows` ships defaulted to the GAIA template's required
+# check-producing workflows (matching the `name:` field at the top of each
+# YAML file). Adopters who rename or replace those workflows update the knob
+# to match. Items are newline-separated because workflow display names may
+# contain spaces (e.g. "Code Review Audit").
+DEFAULT_RETRIGGER_WORKFLOWS="Chromatic
+Tests"
 
 # --- Resolve the config file path --------------------------------------------
 
@@ -105,6 +122,76 @@ extract_raw_value() {
       }
       print line
       found = 1
+    }
+  ' "$config_file"
+}
+
+# extract_list_value <key>
+#   Emits one item per line on stdout for a YAML list at the given key.
+#   Supports block style (`- item` lines indented under `key:`) and flow
+#   style (`key: [a, b, c]`). Items are trimmed and unquoted. A scalar
+#   value in place of a list is treated as a single-item list (forward
+#   compatibility for adopters who write `retrigger_workflows: Chromatic`).
+#   Empty / `null` / `~` value with no block items emits nothing → caller
+#   substitutes the default.
+extract_list_value() {
+  local key="$1"
+  [ -f "$config_file" ] || return 0
+  awk -v key="$key" '
+    function strip_quotes(s) {
+      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
+      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
+      return s
+    }
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    BEGIN { in_list = 0 }
+    {
+      line = $0
+      if (in_list == 1) {
+        # Block-style list item: `<indent>- <value>`.
+        if (line ~ /^[[:space:]]+-[[:space:]]+/) {
+          item = line
+          sub(/^[[:space:]]+-[[:space:]]+/, "", item)
+          sub(/[[:space:]]+#.*$/, "", item)
+          item = trim(item)
+          item = strip_quotes(item)
+          if (item != "") print item
+          next
+        }
+        # Blank lines and comments are tolerated mid-list.
+        if (line ~ /^[[:space:]]*$/) next
+        if (line ~ /^[[:space:]]*#/) next
+        # Anything else (next key or unrelated content) ends the list.
+        exit
+      }
+      pattern = "^[[:space:]]*" key "[[:space:]]*:"
+      if (line !~ pattern) next
+      sub(pattern, "", line)
+      sub(/[[:space:]]+#.*$/, "", line)
+      line = trim(line)
+      # Flow style: `[a, b, c]`.
+      if (line ~ /^\[.*\]$/) {
+        inside = substr(line, 2, length(line) - 2)
+        n = split(inside, parts, ",")
+        for (i = 1; i <= n; i++) {
+          item = strip_quotes(trim(parts[i]))
+          if (item != "") print item
+        }
+        exit
+      }
+      # Empty / null / ~ → look for block-style items on subsequent lines.
+      lower = tolower(line)
+      if (line == "" || lower == "null" || line == "~") {
+        in_list = 1
+        next
+      }
+      # Scalar where a list was expected — accept as a single-item list.
+      print strip_quotes(line)
+      exit
     }
   ' "$config_file"
 }
@@ -182,11 +269,17 @@ raw_gate_label=$(extract_raw_value "gate_label")
 raw_budget_seconds=$(extract_raw_value "budget_seconds")
 raw_max_turns=$(extract_raw_value "max_turns")
 raw_push_fixes=$(extract_raw_value "push_fixes")
+raw_retrigger_workflows=$(extract_list_value "retrigger_workflows")
 
 gate_label=$(normalize_gate_label "$raw_gate_label")
 budget_seconds=$(normalize_integer "$raw_budget_seconds" "$DEFAULT_BUDGET_SECONDS" "budget_seconds")
 max_turns=$(normalize_integer "$raw_max_turns" "$DEFAULT_MAX_TURNS" "max_turns")
 push_fixes=$(normalize_boolean "$raw_push_fixes" "$DEFAULT_PUSH_FIXES" "push_fixes")
+if [ -z "$raw_retrigger_workflows" ]; then
+  retrigger_workflows="$DEFAULT_RETRIGGER_WORKFLOWS"
+else
+  retrigger_workflows="$raw_retrigger_workflows"
+fi
 
 # --- Emit (deterministic order) -----------------------------------------------
 
@@ -194,3 +287,10 @@ printf 'gate_label=%s\n' "$gate_label"
 printf 'budget_seconds=%s\n' "$budget_seconds"
 printf 'max_turns=%s\n' "$max_turns"
 printf 'push_fixes=%s\n' "$push_fixes"
+# Multiline output: GitHub Actions reads this via the `<<DELIMITER` heredoc
+# syntax and exposes it as a newline-separated string. Workflow display
+# names may contain spaces, so a single-line separator (space, comma) would
+# be ambiguous.
+printf 'retrigger_workflows<<__GAIA_END__\n'
+printf '%s\n' "$retrigger_workflows"
+printf '__GAIA_END__\n'
