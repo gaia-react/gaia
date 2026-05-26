@@ -67,7 +67,7 @@ The audit step's `budget_seconds` plus the slowest dispatched run plus a small o
 
 This mechanism is invisible when `push_fixes: false` — the audit posts comments and never advances HEAD.
 
-[[Dispatched Check Rollup Listener Not Viable]] records why a `workflow_run`-event listener was tried first and why it never received events under `GITHUB_TOKEN`.
+[[Dispatched-Check Rollup via Polling]] documents the polling architecture in full and explains why a `workflow_run`-event listener does not work under `GITHUB_TOKEN`.
 
 ## How to enable as a required check
 
