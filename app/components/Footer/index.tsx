@@ -21,7 +21,7 @@ const Footer: FC<FooterProps> = ({className}) => {
           &copy;{new Date().getFullYear()} GAIA Framework
         </span>
         <span className="text-secondary">
-          Powered by React Router and Tailwind CSS
+          {t('poweredBy')}
         </span>
         <a
           className="hover:text-body transition-colors"

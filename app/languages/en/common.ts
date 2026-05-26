@@ -32,6 +32,7 @@ export default {
   },
   language: 'Language',
   license: 'Released under MIT license',
+  poweredBy: 'Powered by React Router and Tailwind CSS',
   loading: 'Loading',
   meta: {
     siteName: 'GAIA Template',
