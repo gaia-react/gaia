@@ -41,9 +41,11 @@ The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove
 | ------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `.gaia/local/audit/<HEAD-sha>.ok`                                         | Local audit agent            | Agent writes it on a clean pass                                                                                   |
 | `GAIA-Audit:` commit-message trailer on HEAD                              | Local audit agent            | `audit-stamp-trailer.sh` writes an empty commit with the trailer                                                  |
-| `GAIA-Audit` GitHub commit status on HEAD, description `<version> <tree>` | CI (`code-review-audit.yml`) | CI stamps this instead of pushing an empty commit (pushing would re-trigger CI and leave HEAD without check runs) |
+| `GAIA-Audit` GitHub commit status on HEAD, description `<version> <tree>` | CI (`code-review-audit.yml`) | CI stamps this on the audit SHA (no empty marker commit is pushed — that would strand HEAD on a check-less commit). |
 
 Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.
+
+When CI self-heals — the audit modifies a file and pushes the fix — the workflow stamps a `code-review-audit` check run on the new HEAD and dispatches the sibling required workflows (e.g. `Chromatic`, `Tests`) via `workflow_dispatch` so their check runs attach to the new SHA. See [[Code Review Audit CI#Self-heal re-trigger]] for the full mechanism and the `retrigger_workflows` knob.
 
 A clean pass requires no Critical Issues, every Important Issue addressed, and every Suggestion either auto-fixed or resolved by the operator. Knip and react-doctor advisories remain advisory and never block signal emission.
 

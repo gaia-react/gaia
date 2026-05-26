@@ -36,12 +36,19 @@ write_config() {
 
 # Expected default block (one big string, deterministic order).
 default_block() {
-  printf 'gate_label=\nbudget_seconds=1800\nmax_turns=30\npush_fixes=true'
+  printf 'gate_label=\nbudget_seconds=1800\nmax_turns=30\npush_fixes=true\n%s' \
+    "$(default_retrigger_block)"
+}
+
+# The retrigger_workflows default uses GitHub Actions multiline-output
+# heredoc syntax. Helper keeps the delimiter and default list in one place.
+default_retrigger_block() {
+  printf 'retrigger_workflows<<__GAIA_END__\nChromatic\nTests\n__GAIA_END__'
 }
 
 # --- 1. File missing → all defaults -----------------------------------------
 
-@test "missing config file: all four defaults emitted in order" {
+@test "missing config file: all defaults emitted in order" {
   # No write_config — file does not exist.
   run run_in_sandbox
   [ "$status" -eq 0 ]
@@ -131,28 +138,28 @@ push_fixes: true"
   write_config "push_fixes: false"
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [[ "$output" == *"push_fixes=false" ]]
+  [[ "$output" == *"push_fixes=false"$'\n'* ]]
 }
 
 @test "push_fixes: yes → push_fixes=true (alias normalized)" {
   write_config "push_fixes: yes"
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [[ "$output" == *"push_fixes=true" ]]
+  [[ "$output" == *"push_fixes=true"$'\n'* ]]
 }
 
 @test "push_fixes: NO → push_fixes=false (alias + case-insensitive)" {
   write_config "push_fixes: NO"
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [[ "$output" == *"push_fixes=false" ]]
+  [[ "$output" == *"push_fixes=false"$'\n'* ]]
 }
 
 @test "push_fixes: 0 → push_fixes=false" {
   write_config "push_fixes: 0"
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [[ "$output" == *"push_fixes=false" ]]
+  [[ "$output" == *"push_fixes=false"$'\n'* ]]
 }
 
 @test "push_fixes: bogus → default true + stderr warning" {
@@ -218,7 +225,8 @@ budget_seconds: 60"
   expected="gate_label=
 budget_seconds=60
 max_turns=30
-push_fixes=true"
+push_fixes=true
+$(default_retrigger_block)"
   [ "$output" = "$expected" ]
 }
 
@@ -243,7 +251,8 @@ max_turns: 5
   expected="gate_label=ready-for-review
 budget_seconds=1800
 max_turns=5
-push_fixes=true"
+push_fixes=true
+$(default_retrigger_block)"
   [ "$output" = "$expected" ]
 }
 
@@ -265,7 +274,8 @@ push_fixes: false
   expected="gate_label=needs-review
 budget_seconds=600
 max_turns=10
-push_fixes=false"
+push_fixes=false
+$(default_retrigger_block)"
   [ "$output" = "$expected" ]
 }
 
@@ -290,6 +300,117 @@ gate_label: needs-review"
   expected="gate_label=needs-review
 budget_seconds=60
 max_turns=5
-push_fixes=false"
+push_fixes=false
+$(default_retrigger_block)"
   [ "$output" = "$expected" ]
+}
+
+# --- 16. retrigger_workflows: block-style list parsed in order --------------
+
+@test "retrigger_workflows block-style: items preserved in order, multi-word names allowed" {
+  write_config "retrigger_workflows:
+  - Chromatic
+  - Vitest and Playwright
+  - My Custom Lint"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="gate_label=
+budget_seconds=1800
+max_turns=30
+push_fixes=true
+retrigger_workflows<<__GAIA_END__
+Chromatic
+Vitest and Playwright
+My Custom Lint
+__GAIA_END__"
+  [ "$output" = "$expected" ]
+}
+
+# --- 17. retrigger_workflows: flow-style list -------------------------------
+
+@test "retrigger_workflows flow-style: [a, b, c] parsed and trimmed" {
+  write_config "retrigger_workflows: [Chromatic, Tests, Lint]"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Tests"$'\n'"Lint"$'\n'"__GAIA_END__"* ]]
+}
+
+@test "retrigger_workflows flow-style: multi-word names preserved" {
+  write_config "retrigger_workflows: [Chromatic, Vitest and Playwright]"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Vitest and Playwright"$'\n'"__GAIA_END__"* ]]
+}
+
+# --- 18. retrigger_workflows: quoted entries unquoted -----------------------
+
+@test "retrigger_workflows: double-quoted and single-quoted entries unquoted" {
+  write_config "retrigger_workflows:
+  - \"Run Chromatic\"
+  - 'Run Tests'"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Run Chromatic"$'\n'"Run Tests"$'\n'"__GAIA_END__"* ]]
+}
+
+# --- 19. retrigger_workflows: scalar accepted as single-item list -----------
+
+@test "retrigger_workflows: scalar (non-list) value accepted as single item" {
+  write_config "retrigger_workflows: Chromatic"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"__GAIA_END__"* ]]
+}
+
+# --- 20. retrigger_workflows: null + empty fall back to default -------------
+
+@test "retrigger_workflows: null with no items falls back to default" {
+  write_config "retrigger_workflows: null"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$(default_retrigger_block)"* ]]
+}
+
+@test "retrigger_workflows: empty value with no items falls back to default" {
+  write_config "retrigger_workflows:"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$(default_retrigger_block)"* ]]
+}
+
+# --- 21. retrigger_workflows: inline comments stripped from items -----------
+
+@test "retrigger_workflows: trailing # comments stripped from items" {
+  write_config "retrigger_workflows:
+  - Chromatic    # run on PRs only
+  - Tests        # vitest + playwright"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Tests"$'\n'"__GAIA_END__"* ]]
+}
+
+# --- 22. retrigger_workflows: blank lines + comments mid-list tolerated -----
+
+@test "retrigger_workflows: blank lines and comment lines between items tolerated" {
+  write_config "retrigger_workflows:
+  - Chromatic
+
+  # interlude
+  - Tests"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Tests"$'\n'"__GAIA_END__"* ]]
+}
+
+# --- 23. retrigger_workflows: list ends at next top-level key ---------------
+
+@test "retrigger_workflows: list terminates when next top-level key appears" {
+  write_config "retrigger_workflows:
+  - Chromatic
+  - Tests
+push_fixes: false"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"push_fixes=false"* ]]
+  [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Tests"$'\n'"__GAIA_END__"* ]]
 }
