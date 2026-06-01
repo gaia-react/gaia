@@ -11,8 +11,10 @@
  *
  *   For every path P in the latest manifest:
  *     - upstream class: overwrite when latest != current
- *     - owned class:    never auto-overwrite; emit patch to .gaia-merge/
- *                       when latest != baseline AND current != baseline.
+ *     - owned class:    overwrite when current == baseline (adopter undrifted);
+ *                       skip when upstream unchanged or already at latest;
+ *                       emit patch to .gaia-merge/ (no auto-merge) when
+ *                       latest != baseline AND current != baseline.
  *     - shared class:
  *         current == baseline           → take latest    (overwrite[])
  *         latest == baseline            → keep current   (skip[])
