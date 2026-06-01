@@ -116,7 +116,9 @@
     "vitest": "4.1.8"
   },
   "pnpm": {
-    "overrides": {},
+    "overrides": {
+      "qs": ">=6.15.2"
+    },
     "onlyBuiltDependencies": [
       "core-js-pure",
       "esbuild",
