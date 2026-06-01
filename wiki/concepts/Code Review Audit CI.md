@@ -45,6 +45,10 @@ Other `chore:` prefixes (e.g. `chore: bump version`, `chore: tidy imports`) stil
 
 The `Check for source-code changes` step diffs only the **un-audited delta** — `<audit-base>...HEAD`, where `<audit-base>` is the most recent ancestor that already passed a clean audit (resolved by `.github/audit/resolve-audit-base.sh`, the same base the agent reviews). When that delta touches no audit-relevant files (TS/TSX/CSS under `app/`, tests, `.storybook`, workflow files, or root-level build/lint/test configs), the gate short-circuits and reports `code-review-audit` green. Because the base is the last clean-audited commit, a PR that audits clean and then adds a prose-only commit (wiki, CHANGELOG, instruction files) reviews an empty auditable delta and skips — it does not re-run on a tree whose code was already cleared. With no audited ancestor the base is `origin/main`, so the delta is the full PR diff and first-audit behavior is unchanged.
 
+On this skip path the `Write GAIA-Audit commit status (out-of-scope skip)` step stamps a `GAIA-Audit` commit status (`<version> <tree>`) on HEAD, mirroring the full-audit path's status. An out-of-scope PR (CLI-only, docs-only, wiki-only, `.claude`-only) therefore satisfies the [[PR Merge Workflow]] merge hook with no local audit run — the agent would find nothing in scope to review. The description carries HEAD's own tree, since the hook checks tree equality against the content being merged.
+
+The stamp fires on the out-of-scope reason only. The already-audited reason (the `GAIA-Audit:` trailer already matches, so a status is redundant) and the workflow-self-modification reason (auto-approving a change to the audit gate itself would be a security hole) do not stamp. The `has_source == 'false'` condition structurally enforces this: both other reasons require `has_source == 'true'`. A self-modifying PR — including one editing `code-review-audit.yml` — gets no auto-stamp and still needs a local marker to merge.
+
 This is the audit's instance of the cross-workflow mechanism in [[Incremental CI Skipping]].
 
 ## Adopter knobs

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-22
+updated: 2026-06-02
 tags: [concept, ci, review]
 ---
 
@@ -41,7 +41,7 @@ The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove
 | ------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `.gaia/local/audit/<HEAD-sha>.ok`                                         | Local audit agent            | Agent writes it on a clean pass                                                                                   |
 | `GAIA-Audit:` commit-message trailer on HEAD                              | Local audit agent            | `audit-stamp-trailer.sh` writes an empty commit with the trailer                                                  |
-| `GAIA-Audit` GitHub commit status on HEAD, description `<version> <tree>` | CI (`code-review-audit.yml`) | CI stamps this on the audit SHA (no empty marker commit is pushed — that would strand HEAD on a check-less commit). |
+| `GAIA-Audit` GitHub commit status on HEAD, description `<version> <tree>` | CI (`code-review-audit.yml`) | CI stamps this after a full audit (on the audit SHA) and on HEAD when the un-audited delta is entirely out of audit scope. No empty marker commit is pushed — that would strand HEAD on a check-less commit. |
 | PR title matches `^chore\(deps(-dev)?\):` (bypass)                        | `/update-deps` wrapper       | Wrapper opens dep-bump PRs with the canonical prefix; the local quality gate stands in for the audit signal.      |
 
 Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.
