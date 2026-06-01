@@ -123,7 +123,12 @@ const refuse = (message: string): number => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-type WikiState = {commits_ahead: number; state_sha: string};
+type WikiState = {
+  commits_ahead: number;
+  reachable: boolean;
+  state_sha: string;
+  suggested_base: string;
+};
 type WikiStateProbe = (cwd: string) => WikiState | null;
 
 const runWikiStateJson: WikiStateProbe = (cwd) => {
@@ -145,12 +150,19 @@ const runWikiStateJson: WikiStateProbe = (cwd) => {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const commitsAhead = parsed.commits_ahead;
     const stateSha = parsed.state_sha;
+    const reachable = parsed.reachable;
+    const suggestedBase = parsed.suggested_base;
 
     if (typeof commitsAhead !== 'number') return null;
 
     return {
       commits_ahead: commitsAhead,
+      // Default reachable to true on a malformed payload so the orphaned-state
+      // recovery never fires off bad input — the gate falls back to today's
+      // `commits_ahead` reading.
+      reachable: typeof reachable === 'boolean' ? reachable : true,
       state_sha: typeof stateSha === 'string' ? stateSha : '',
+      suggested_base: typeof suggestedBase === 'string' ? suggestedBase : '',
     };
   } catch {
     return null;
@@ -158,29 +170,40 @@ const runWikiStateJson: WikiStateProbe = (cwd) => {
 };
 
 /**
- * Subjects of the commits in `<stateSha>..HEAD`, newest first. `null` if the
- * range can't be read (e.g. `stateSha` is empty, ambiguous, or git fails) —
- * callers treat `null` as "can't prove the drift is benign" and refuse.
+ * Resolve a (possibly abbreviated) SHA to a full commit SHA. `''` when `sha`
+ * is empty or git can't verify it.
  *
- * `gaia wiki state --json` reports `state_sha` abbreviated; resolve it to a
- * full SHA via `git rev-parse` before the range query so `git log` never has
- * to disambiguate a short prefix (which it can fail to do in large repos).
+ * `gaia wiki state --json` reports both `state_sha` and `suggested_base`
+ * abbreviated; resolving to a full SHA before any range query keeps `git log` /
+ * `git rev-list` from having to disambiguate a short prefix (which they can fail
+ * to do in large repos).
+ */
+const resolveCommit = (
+  runner: CommandRunner,
+  cwd: string,
+  sha: string
+): string => {
+  if (sha === '') return '';
+  const resolved = runner('git', ['rev-parse', '--verify', `${sha}^{commit}`], {
+    cwd,
+  });
+
+  if (resolved.error !== undefined || (resolved.status ?? -1) !== 0) return '';
+
+  return (resolved.stdout ?? '').trim();
+};
+
+/**
+ * Subjects of the commits in `<base>..HEAD`, newest first. `null` if the range
+ * can't be read (e.g. `base` is empty, ambiguous, or git fails) — callers treat
+ * `null` as "can't prove the drift is benign" and refuse.
  */
 const readDriftSubjects = (
   runner: CommandRunner,
   cwd: string,
-  stateSha: string
+  base: string
 ): string[] | null => {
-  if (stateSha === '') return null;
-  const resolved = runner(
-    'git',
-    ['rev-parse', '--verify', `${stateSha}^{commit}`],
-    {cwd}
-  );
-
-  if (resolved.error !== undefined || (resolved.status ?? -1) !== 0)
-    return null;
-  const fullSha = (resolved.stdout ?? '').trim();
+  const fullSha = resolveCommit(runner, cwd, base);
 
   if (fullSha === '') return null;
   const result = runner('git', ['log', '--format=%s', `${fullSha}..HEAD`], {
@@ -194,6 +217,29 @@ const readDriftSubjects = (
 
     return trimmed.length > 0 ? [trimmed] : [];
   });
+};
+
+/**
+ * Count the commits in `<base>..HEAD`. `null` if `base` can't be resolved or
+ * `git rev-list` fails. Used to recover the drift count on the orphaned-state
+ * path, where `gaia wiki state` reports a hardcoded `commits_ahead:0`.
+ */
+const countDriftCommits = (
+  runner: CommandRunner,
+  cwd: string,
+  base: string
+): number | null => {
+  const fullSha = resolveCommit(runner, cwd, base);
+
+  if (fullSha === '') return null;
+  const result = runner('git', ['rev-list', '--count', `${fullSha}..HEAD`], {
+    cwd,
+  });
+
+  if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
+  const parsed = Number.parseInt((result.stdout ?? '').trim(), 10);
+
+  return Number.isInteger(parsed) ? parsed : null;
 };
 
 type RunOptions = {
@@ -269,7 +315,34 @@ export const run = (
     );
   }
 
-  if (wikiState.commits_ahead !== 0) {
+  // Resolve the effective drift window. On the reachable path the wiki-state
+  // JSON's `commits_ahead`/`state_sha` are authoritative. On the orphaned path
+  // (`reachable:false` — the normal post-squash-merge condition) the JSON
+  // hardcodes `commits_ahead:0`, blind to any un-evaluated window; recover the
+  // window from `suggested_base..HEAD`, the reachable baseline `gaia wiki state`
+  // reports for exactly this case. `suggested_base` is `''` on the reachable
+  // path, so the recovery branch is inert there and behavior is unchanged.
+  let driftCount = wikiState.commits_ahead;
+  let driftBase = wikiState.state_sha;
+
+  if (!wikiState.reachable && wikiState.suggested_base !== '') {
+    const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
+
+    // A git failure counting the recovered window can't prove the wiki is
+    // current — refuse rather than green-light a release on an unknown window.
+    if (recovered === null) {
+      return refuse(
+        `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia wiki sync first`
+      );
+    }
+
+    driftCount = recovered;
+    // Inspect `suggested_base..HEAD` — NOT the orphaned `state_sha`, whose
+    // `..HEAD` range is topologically unreliable after a squash rewrites the SHA.
+    driftBase = wikiState.suggested_base;
+  }
+
+  if (driftCount !== 0) {
     // Documented bypass (wiki/concepts/Release Workflow.md): drift made up
     // entirely of wiki-sync squash artifacts is benign. A PR squash-merge
     // rewrites the commit SHA, so `/gaia wiki sync` → merge leaves the state
@@ -278,10 +351,10 @@ export const run = (
     // uses to flag self-referential sync commits. Without this the gate is
     // unsatisfiable for the standard release flow. Substantive (non-`wiki:`)
     // drift still STOPs — the wiki is genuinely stale.
-    const driftSubjects = readDriftSubjects(runner, cwd, wikiState.state_sha);
+    const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
     const benign =
       driftSubjects !== null &&
-      // Guards the vacuous-truth case: zero subjects with `commits_ahead > 0`
+      // Guards the vacuous-truth case: zero subjects with `driftCount > 0`
       // means the range count disagrees with `git log` — a broken state, not
       // a benign one.
       driftSubjects.length > 0 &&
@@ -289,12 +362,12 @@ export const run = (
 
     if (!benign) {
       return refuse(
-        `preflight: wiki is ${wikiState.commits_ahead} commits behind HEAD; run /gaia wiki sync first`
+        `preflight: wiki is ${driftCount} commits behind HEAD; run /gaia wiki sync first`
       );
     }
 
     process.stderr.write(
-      `preflight: wiki drift is ${wikiState.commits_ahead} wiki-sync squash artifact(s); proceeding (content current)\n`
+      `preflight: wiki drift is ${driftCount} wiki-sync squash artifact(s); proceeding (content current)\n`
     );
   }
 

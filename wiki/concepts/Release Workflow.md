@@ -36,7 +36,7 @@ How GAIA cuts a public release. Two surfaces — the template repo (`gaia-react/
 Run `/gaia-release` on a clean `main`. The command is a 13-step orchestrator:
 
 1. Verify clean working tree + on `main`.
-2. Verify `wiki/.state.json` is current — either `last_evaluated_sha == HEAD`, or the only drift commits are wiki-sync squash artifacts (subjects starting with `wiki:`). Substantive non-wiki drift STOPs the release; the wiki is stale and would ship out-of-date adopter docs. Maintainer runs `/gaia wiki sync` first. The `wiki:`-prefix bypass exists because PR squash-merging always rewrites the SHA, so the standard flow (`/gaia wiki sync` → merge → `/gaia-release`) leaves the state pointer one squash-commit behind even when content is current; without the bypass the gate is unsatisfiable. See [[Wiki Sync]].
+2. Verify `wiki/.state.json` is current — either `last_evaluated_sha == HEAD`, or the only drift commits are wiki-sync squash artifacts (subjects starting with `wiki:`). Substantive non-wiki drift STOPs the release; the wiki is stale and would ship out-of-date adopter docs. Maintainer runs `/gaia wiki sync` first. The `wiki:`-prefix bypass exists because PR squash-merging always rewrites the SHA, so the standard flow (`/gaia wiki sync` → merge → `/gaia-release`) leaves the state pointer one squash-commit behind even when content is current; without the bypass the gate is unsatisfiable. When a squash orphans `last_evaluated_sha` outright (`reachable:false`), `gaia wiki state` reports a hardcoded `commits_ahead:0` — a silent zero that would hide the un-evaluated window. Preflight catches this: it re-derives the drift over `suggested_base..HEAD` (the newest HEAD-reachable commit at or before `last_evaluated_at`) and applies the same wiki-artifact classification, so an orphaned state still blocks on substantive drift instead of green-lighting on the zero. See [[Wiki Sync]].
 3. Auto-determine bump by analyzing commits since last tag. `patch`/`minor` proceed automatically; `major` stops and asks.
 4. Run the [[Quality Gate]]. Stop on failure.
 5. Create `release/vX.Y.Z` branch.
@@ -51,8 +51,8 @@ Run `/gaia-release` on a clean `main`. The command is a 13-step orchestrator:
 
 The tag push triggers [`release.yml`](../../.github/workflows/release.yml), which produces the scrubbed tarball.
 
-> [!note] `state_sha` is abbreviated
-> `gaia wiki state --json` reports `state_sha` in short form. A caller that feeds it into a git range query (`<state_sha>..HEAD`) resolves it to a full SHA first via `git rev-parse --verify` — the `release preflight` subcommand does this before its wiki-sync drift scan (Step 2). Skipping the resolution makes the range query fail or silently return the wrong set on repos where the short SHA is ambiguous.
+> [!note] Abbreviated SHAs are resolved before range queries
+> `gaia wiki state --json` reports `state_sha` and `suggested_base` in short form. A caller that feeds either into a git range query (`<sha>..HEAD`) resolves it to a full SHA first via `git rev-parse --verify` — the `release preflight` subcommand does this before its wiki-sync drift scan (Step 2), for both the reachable `state_sha` range and the orphaned-recovery `suggested_base` range. Skipping the resolution makes the range query fail or silently return the wrong set on repos where the short SHA is ambiguous.
 
 ## Tarball scrubbing
 

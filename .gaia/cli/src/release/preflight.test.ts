@@ -107,6 +107,22 @@ const DRIFT_RANGE = `${STATE_SHA}..HEAD`;
 /** `git rev-parse --verify` argument that resolves the state SHA. */
 const REVPARSE_ARGS = ['rev-parse', '--verify', `${STATE_SHA}^{commit}`];
 
+/**
+ * The recovery baseline `gaia wiki state` reports as `suggested_base` when the
+ * recorded SHA is orphaned (`reachable:false`) — an abbreviated SHA, like
+ * `state_sha`.
+ */
+const SUGGESTED_BASE = 'f6e5d4c3';
+/** `rev-parse --verify` resolves the abbreviated recovery base to a full SHA. */
+const SUGGESTED_FULL = 'f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5';
+const SUGGESTED_REVPARSE = [
+  'rev-parse',
+  '--verify',
+  `${SUGGESTED_BASE}^{commit}`,
+];
+const SUGGESTED_COUNT = ['rev-list', '--count', `${SUGGESTED_FULL}..HEAD`];
+const SUGGESTED_RANGE = `${SUGGESTED_FULL}..HEAD`;
+
 describe('release preflight', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -138,7 +154,12 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(0);
     // Success: no stdout, no stderr.
@@ -162,7 +183,12 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('must be on main');
@@ -187,7 +213,12 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('working tree is dirty');
@@ -214,7 +245,12 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 2, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 2,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('wiki is 2 commits behind HEAD');
@@ -241,7 +277,12 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 1, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 1,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(0);
     expect(stdio.errors.join('')).toContain('wiki-sync squash artifact');
@@ -268,7 +309,12 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 2, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 2,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('wiki is 2 commits behind HEAD');
@@ -301,7 +347,12 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 1, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 1,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('wiki is 1 commits behind HEAD');
@@ -335,10 +386,204 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 1, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 1,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('wiki is 1 commits behind HEAD');
+  });
+
+  test('exit 1 when orphaned state recovers a window with substantive drift', () => {
+    // reachable:false is the normal post-squash-merge condition. `gaia wiki
+    // state` hardcodes commits_ahead:0 there, so the gate must recover the
+    // un-evaluated window from suggested_base..HEAD instead of reading the zero.
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: SUGGESTED_REVPARSE, result: okResult(`${SUGGESTED_FULL}\n`)},
+        {argv: SUGGESTED_COUNT, result: okResult('2\n')},
+        {
+          argv: ['log', '--format=%s', SUGGESTED_RANGE],
+          result: okResult('feat: a real change\nwiki: sync through abc1234\n'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: false,
+        state_sha: STATE_SHA,
+        suggested_base: SUGGESTED_BASE,
+      }),
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('wiki is 2 commits behind HEAD');
+    // The orphaned state_sha range is topologically unreliable after a squash —
+    // the gate inspects suggested_base..HEAD, never state_sha..HEAD.
+    expect(recorded.some((call) => call.args.includes(SUGGESTED_RANGE))).toBe(
+      true
+    );
+    expect(recorded.some((call) => call.args.includes(DRIFT_RANGE))).toBe(false);
+  });
+
+  test('exit 0 when orphaned recovered window is only wiki-sync artifacts', () => {
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: SUGGESTED_REVPARSE, result: okResult(`${SUGGESTED_FULL}\n`)},
+        {argv: SUGGESTED_COUNT, result: okResult('1\n')},
+        {
+          argv: ['log', '--format=%s', SUGGESTED_RANGE],
+          result: okResult('wiki: sync through abc1234 (#173)\n'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: false,
+        state_sha: STATE_SHA,
+        suggested_base: SUGGESTED_BASE,
+      }),
+    });
+    expect(exit).toBe(0);
+    expect(stdio.errors.join('')).toContain('wiki-sync squash artifact');
+  });
+
+  test('exit 0 when orphaned state has no recoverable baseline', () => {
+    // suggested_base empty means the timestamp predates all history — there is
+    // nothing un-evaluated to recover, so today's pass is preserved.
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: false,
+        state_sha: '',
+        suggested_base: '',
+      }),
+    });
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toBe('');
+    expect(stdio.errors.join('')).toBe('');
+    // No recovery probe: no rev-list count, no drift log.
+    expect(recorded.every((call) => call.args[0] !== 'rev-list')).toBe(true);
+    expect(recorded.every((call) => call.args[0] !== 'log')).toBe(true);
+  });
+
+  test('exit 1 when the orphaned recovery count cannot be read', () => {
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: SUGGESTED_REVPARSE, result: okResult(`${SUGGESTED_FULL}\n`)},
+        {
+          argv: SUGGESTED_COUNT,
+          result: {
+            output: ['', '', ''] as never,
+            pid: 0,
+            signal: null,
+            status: 128,
+            stderr: 'fatal: bad revision',
+            stdout: '',
+          },
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: false,
+        state_sha: STATE_SHA,
+        suggested_base: SUGGESTED_BASE,
+      }),
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('cannot determine wiki drift');
+  });
+
+  test('reachable path ignores suggested_base and uses state_sha', () => {
+    // Defensive regression: the recovery branch is gated on `!reachable`. Even
+    // if a payload carried suggested_base while reachable, the count must come
+    // from the JSON's commits_ahead and the range from state_sha — byte
+    // identical to the pre-recovery behavior.
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {argv: REVPARSE_ARGS, result: okResult(`${STATE_SHA}\n`)},
+        {
+          argv: ['log', '--format=%s', DRIFT_RANGE],
+          result: okResult('wiki: sync through abc1234\n'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({
+        commits_ahead: 1,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: SUGGESTED_BASE,
+      }),
+    });
+    expect(exit).toBe(0);
+    expect(stdio.errors.join('')).toContain('wiki-sync squash artifact');
+    expect(recorded.some((call) => call.args.includes(DRIFT_RANGE))).toBe(true);
+    expect(recorded.some((call) => call.args.includes(SUGGESTED_RANGE))).toBe(
+      false
+    );
+    // Count comes from the JSON, so the reachable path never runs rev-list.
+    expect(recorded.every((call) => call.args[0] !== 'rev-list')).toBe(true);
   });
 
   test('exit 2 when git rev-parse fails', () => {
@@ -360,7 +605,12 @@ describe('release preflight', () => {
     const exit = run([], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(2);
     expect(stdio.errors.join('')).toContain('preflight:');
@@ -382,7 +632,12 @@ describe('release preflight', () => {
     const exit = run(['--branch', 'release/v1'], {
       cwd: sandbox.root,
       runner,
-      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(0);
   });
@@ -390,7 +645,12 @@ describe('release preflight', () => {
   test('rejects unknown flags', () => {
     const exit = run(['--bogus'], {
       cwd: sandbox.root,
-      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
@@ -399,7 +659,12 @@ describe('release preflight', () => {
   test('--help prints usage', () => {
     const exit = run(['--help'], {
       cwd: sandbox.root,
-      wikiStateProbe: () => ({commits_ahead: 0, state_sha: STATE_SHA}),
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        reachable: true,
+        state_sha: STATE_SHA,
+        suggested_base: '',
+      }),
     });
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Usage:');

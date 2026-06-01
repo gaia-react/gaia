@@ -20476,25 +20476,32 @@ var runWikiStateJson = (cwd) => {
     const parsed = JSON.parse(raw);
     const commitsAhead2 = parsed.commits_ahead;
     const stateSha = parsed.state_sha;
+    const reachable = parsed.reachable;
+    const suggestedBase = parsed.suggested_base;
     if (typeof commitsAhead2 !== "number") return null;
     return {
       commits_ahead: commitsAhead2,
-      state_sha: typeof stateSha === "string" ? stateSha : ""
+      // Default reachable to true on a malformed payload so the orphaned-state
+      // recovery never fires off bad input — the gate falls back to today's
+      // `commits_ahead` reading.
+      reachable: typeof reachable === "boolean" ? reachable : true,
+      state_sha: typeof stateSha === "string" ? stateSha : "",
+      suggested_base: typeof suggestedBase === "string" ? suggestedBase : ""
     };
   } catch {
     return null;
   }
 };
-var readDriftSubjects = (runner, cwd, stateSha) => {
-  if (stateSha === "") return null;
-  const resolved = runner(
-    "git",
-    ["rev-parse", "--verify", `${stateSha}^{commit}`],
-    { cwd }
-  );
-  if (resolved.error !== void 0 || (resolved.status ?? -1) !== 0)
-    return null;
-  const fullSha = (resolved.stdout ?? "").trim();
+var resolveCommit = (runner, cwd, sha) => {
+  if (sha === "") return "";
+  const resolved = runner("git", ["rev-parse", "--verify", `${sha}^{commit}`], {
+    cwd
+  });
+  if (resolved.error !== void 0 || (resolved.status ?? -1) !== 0) return "";
+  return (resolved.stdout ?? "").trim();
+};
+var readDriftSubjects = (runner, cwd, base) => {
+  const fullSha = resolveCommit(runner, cwd, base);
   if (fullSha === "") return null;
   const result = runner("git", ["log", "--format=%s", `${fullSha}..HEAD`], {
     cwd
@@ -20504,6 +20511,16 @@ var readDriftSubjects = (runner, cwd, stateSha) => {
     const trimmed = line.trim();
     return trimmed.length > 0 ? [trimmed] : [];
   });
+};
+var countDriftCommits = (runner, cwd, base) => {
+  const fullSha = resolveCommit(runner, cwd, base);
+  if (fullSha === "") return null;
+  const result = runner("git", ["rev-list", "--count", `${fullSha}..HEAD`], {
+    cwd
+  });
+  if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
+  const parsed = Number.parseInt((result.stdout ?? "").trim(), 10);
+  return Number.isInteger(parsed) ? parsed : null;
 };
 var run37 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS26.has(argv[0])) {
@@ -20556,19 +20573,31 @@ var run37 = (argv, options = {}) => {
       "preflight: failed to read wiki state via `gaia wiki state --json`"
     );
   }
-  if (wikiState.commits_ahead !== 0) {
-    const driftSubjects = readDriftSubjects(runner, cwd, wikiState.state_sha);
-    const benign = driftSubjects !== null && // Guards the vacuous-truth case: zero subjects with `commits_ahead > 0`
+  let driftCount = wikiState.commits_ahead;
+  let driftBase = wikiState.state_sha;
+  if (!wikiState.reachable && wikiState.suggested_base !== "") {
+    const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
+    if (recovered === null) {
+      return refuse(
+        `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia wiki sync first`
+      );
+    }
+    driftCount = recovered;
+    driftBase = wikiState.suggested_base;
+  }
+  if (driftCount !== 0) {
+    const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
+    const benign = driftSubjects !== null && // Guards the vacuous-truth case: zero subjects with `driftCount > 0`
     // means the range count disagrees with `git log` — a broken state, not
     // a benign one.
     driftSubjects.length > 0 && driftSubjects.every((subject) => subject.startsWith("wiki:"));
     if (!benign) {
       return refuse(
-        `preflight: wiki is ${wikiState.commits_ahead} commits behind HEAD; run /gaia wiki sync first`
+        `preflight: wiki is ${driftCount} commits behind HEAD; run /gaia wiki sync first`
       );
     }
     process.stderr.write(
-      `preflight: wiki drift is ${wikiState.commits_ahead} wiki-sync squash artifact(s); proceeding (content current)
+      `preflight: wiki drift is ${driftCount} wiki-sync squash artifact(s); proceeding (content current)
 `
     );
   }
