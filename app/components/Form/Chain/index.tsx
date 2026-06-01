@@ -9,6 +9,9 @@ export type ChainProps = {
 };
 
 const Chain: FC<ChainProps> = ({children, className, isFullWidth}) => (
+  // role="group" not <fieldset>: a reusable grouping primitive that may sit
+  // inside a consumer's own <fieldset>; keeps the group role without <fieldset>
+  // legend/styling baggage or nested-group semantics it can't control.
   <div
     className={twJoin(styles.chain, isFullWidth && styles.fullWidth, className)}
     role="group"

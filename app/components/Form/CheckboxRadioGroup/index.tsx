@@ -15,6 +15,9 @@ const CheckboxRadioGroup: FC<CheckboxRadioGroupProps> = ({
   isButton,
   isHorizontal,
 }) => (
+  // role="group" not <fieldset>: a reusable grouping primitive that may sit
+  // inside a consumer's own <fieldset>; keeps the group role without <fieldset>
+  // legend/styling baggage or nested-group semantics it can't control.
   <div
     className={twMerge(
       styles.group,

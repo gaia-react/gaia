@@ -48,8 +48,8 @@
         // role="group" is the correct ARIA for these control groupings; the
         // rule's suggested <address> replacement is semantically wrong (no HTML
         // tag maps to role="group" without <fieldset> legend/style baggage).
-        // The genuine case in this family — FieldRequiredText's role="status" —
-        // was fixed to <output>, so the rule stays active elsewhere.
+        // These are reusable grouping primitives that may nest inside a
+        // consumer's own <fieldset>, so role="group" on a <div> stays correct.
         "files": [
           "app/components/Form/Chain/index.tsx",
           "app/components/Form/CheckboxRadioGroup/index.tsx"
