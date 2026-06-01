@@ -465,6 +465,39 @@ jobs:
             --field context=GAIA-Audit \
             --field description="${version} ${tree_sha}"
 
+      - name: Write GAIA-Audit commit status (out-of-scope skip)
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.chore-deps.outputs.skip == 'false' &&
+          steps.source-changes.outputs.has_source == 'false'
+        run: |
+          set -eu
+          # Out-of-scope skip path: the un-audited delta touches no
+          # audit-relevant files, so the agent never runs and a local audit
+          # would find nothing in scope. Stamp a GAIA-Audit commit status on
+          # HEAD anyway so the merge hook (.claude/hooks/pr-merge-audit-check.sh)
+          # is satisfied without a ceremonial local run. has_source=='false'
+          # structurally excludes the already-audited path (has_source=='true'
+          # && trailer.skip) and the self-modification path (has_source=='true'
+          # && self_modified) — both require has_source=='true' — so neither
+          # auto-stamps. The description carries HEAD's tree (the merge hook
+          # checks tree equality against the content being merged), not a
+          # base/audit-sha tree.
+          version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
+          version="${version#"${version%%[![:space:]]*}"}"
+          version="${version%"${version##*[![:space:]]}"}"
+          if [ -z "$version" ]; then
+            echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
+            exit 0
+          fi
+          head_sha="$(git rev-parse HEAD)"
+          tree_sha="$(git rev-parse "HEAD^{tree}")"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+            --method POST \
+            --field state=success \
+            --field context=GAIA-Audit \
+            --field description="${version} ${tree_sha}"
+
       - name: Re-trigger and stamp required checks on new HEAD
         if: |
           steps.gate.outputs.gated == 'false' &&
@@ -658,7 +691,7 @@ jobs:
         run: |
           set -eu
           gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit)"
+            --body "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit); GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied with no local audit run"
 
       - name: Status — skipped (trailer matches)
         if: |
