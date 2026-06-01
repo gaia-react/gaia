@@ -1,5 +1,5 @@
 import type {FC, ReactNode} from 'react';
-import {twJoin} from 'tailwind-merge';
+import {twMerge} from 'tailwind-merge';
 import styles from './styles.module.css';
 
 export type ChainProps = {
@@ -13,7 +13,11 @@ const Chain: FC<ChainProps> = ({children, className, isFullWidth}) => (
   // inside a consumer's own <fieldset>; keeps the group role without <fieldset>
   // legend/styling baggage or nested-group semantics it can't control.
   <div
-    className={twJoin(styles.chain, isFullWidth && styles.fullWidth, className)}
+    className={twMerge(
+      styles.chain,
+      isFullWidth && styles.fullWidth,
+      className
+    )}
     role="group"
   >
     {children}
