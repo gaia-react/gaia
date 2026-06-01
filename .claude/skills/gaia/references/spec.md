@@ -657,7 +657,7 @@ On `Plan another slice`, ask via plain prompt (open-ended, not `AskUserQuestion`
 
 Spawn a fresh Agent with the same template as 11a. Parse its return, append the resolved `PLAN_DIR` to `PLAN_DIRS[]`, print the kickoff prompt as a fenced block, append `plan_dispatched` telemetry with `plan_idx: <next>`. Loop until the user picks `Done`.
 
-**Clipboard caveat.** The plan skill attempts a `pbcopy`-style clipboard write inside each Agent's context. Across multiple plans, the LAST Agent's copy wins (or none, if the Agent's clipboard reach is unreliable). The wrapper-printed fenced blocks are the authoritative source the user copies from — clipboard is convenience only.
+**Output note.** The plan skill prints each kickoff prompt only into its own Agent's context, which the user never sees. The wrapper-printed fenced blocks are the authoritative source the user copies from.
 
 #### 11c. Final confirmation
 
