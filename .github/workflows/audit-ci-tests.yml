@@ -1,8 +1,9 @@
 name: Audit CI Tests
 
-# Runs the bats suite for .github/audit/check-trailer.sh — the skip-logic
-# gate that code-review-audit.yml consumes. Maintainer-only: adopters
-# receive check-trailer.sh as GAIA-controlled (`owned`) code they never
+# Runs the bats suites for the .github/audit/ helpers that
+# code-review-audit.yml consumes — check-trailer.sh (skip-logic gate) and
+# resolve-audit-base.sh (incremental review base). Maintainer-only:
+# adopters receive these as GAIA-controlled (`owned`) code they never
 # modify, so the suite only catches regressions from maintainer edits.
 # Mirrors cli-tests.yml's narrow-surface, paths-filtered, step-gated shape.
 #
@@ -40,5 +41,5 @@ jobs:
         name: Install bats
         run: sudo apt-get update && sudo apt-get install -y bats
       - if: steps.filter.outputs.code == 'true'
-        name: Run check-trailer.sh bats suite
-        run: bats .github/audit/tests/check-trailer.bats
+        name: Run .github/audit bats suites
+        run: bats .github/audit/tests/

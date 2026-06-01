@@ -215,6 +215,28 @@ jobs:
           fi
           echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve audit base
+        id: base
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.trailer.outputs.skip == 'false'
+        run: |
+          set -eu
+          # Incremental scope: resolve the most recent ancestor on this PR
+          # that already passed a CLEAN audit under the current agent
+          # version (proven by a GAIA-Audit commit trailer or commit
+          # status). The audit reviews only <base>...HEAD — everything
+          # before <base> was already cleared, so re-reviewing it on every
+          # push is wasted work. Falls back to origin/main (full PR scope)
+          # when no audited ancestor exists (first audit, prior runs
+          # cancelled/failed, or a .gaia/VERSION bump invalidated them). A
+          # helper failure must never fail the audit — default to full scope.
+          base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+          echo "code-review-audit: incremental review base = ${base}" >&2
+
       - name: Run code-review-audit (claude-code-action)
         id: audit
         if: |
@@ -231,8 +253,15 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Run the code-review-audit agent at .claude/agents/code-review-audit.md
-            against the PR diff (origin/main...HEAD). When the agent's report has
+            Run the code-review-audit agent at .claude/agents/code-review-audit.md.
+            Review the INCREMENTAL diff ${{ steps.base.outputs.base }}...HEAD — this
+            base is the most recent commit on this PR that already passed a clean
+            audit under the current agent version (or origin/main if none), so
+            everything before it is already cleared and only the delta needs
+            review. For any exported symbol whose signature or contract changed in
+            this delta, also check its importers across the repo even if those
+            files are unchanged — an incremental scope must still catch a delta
+            that breaks an already-cleared caller. When the agent's report has
             no Critical or Important issues, you MUST stamp the GAIA-Audit
             trailer per .claude/hooks/audit-stamp-trailer.sh. The checkout is at
             a detached HEAD (PR head sha), so the stamp helper writes an empty
