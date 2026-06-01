@@ -1,6 +1,6 @@
 # Zod 4 — Zod 3 → Zod 4 Migration Map
 
-This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so nothing flags them until runtime or a `react-doctor` scan. Default to the Zod 4 form in every schema — form validation, API parsers, and standalone validators alike, not just Conform forms.
+This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so nothing flags them until runtime or a `react-doctor` scan. Default to the Zod 4 form in every schema.
 
 | Zod 3 — avoid | Zod 4 — use |
 | --- | --- |
@@ -88,7 +88,3 @@ z.enum(['metric', 'imperial']);
 // GOOD
 z.literal(['imperial', 'metric']);
 ```
-
-## Conform forms
-
-When wiring Conform, import from the `/v4` subpath — `import {parseWithZod} from '@conform-to/zod/v4'`. The default `@conform-to/zod` export targets Zod 3 and throws at runtime; typecheck, lint, and build do not catch it. Full wiring lives in the react-code skill's `references/conform-forms.md`.

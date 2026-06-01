@@ -1,17 +1,6 @@
 # Conform + Zod Form Wiring
 
-## CRITICAL: Import from /v4
-
-This project uses Zod v4. Always import from the `/v4` subpath:
-
-```tsx
-// GOOD
-import {parseWithZod} from '@conform-to/zod/v4';
-import {getZodConstraint} from '@conform-to/zod/v4';
-
-// BAD — runtime error: 'zod' does not provide an export named 'ZodBranded'
-import {parseWithZod} from '@conform-to/zod';
-```
+Conform's Zod helpers import from the `@conform-to/zod/v4` subpath — the bare `@conform-to/zod` targets Zod 3 and throws at runtime (typecheck/lint/build don't catch it). The react-code SKILL.md carries this as the always-on rule; the examples below use `/v4` throughout.
 
 ## Basic Form Setup
 

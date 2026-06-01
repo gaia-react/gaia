@@ -73,7 +73,7 @@ export const formatDate = (date: Date): string => format(date, 'yyyy-MM-dd');
 
 ## Zod
 
-**This project uses Zod 4** — in every schema, not just Conform form validation. The deprecated Zod 3 chained forms (`.strict()`, `.email()`, single-arg `z.record()`, `.args().returns()`) still type-check and lint clean, so nothing flags them — reach for the Zod 4 form deliberately.
+**This project uses Zod 4** — in every schema. The deprecated Zod 3 chained forms (`.strict()`, `.email()`, single-arg `z.record()`, `.args().returns()`) still type-check and lint clean, so nothing flags them — reach for the Zod 4 form deliberately.
 
 - **`z.literal([...])` not `z.enum()`** for string unions — sort values alphanumerically
 
