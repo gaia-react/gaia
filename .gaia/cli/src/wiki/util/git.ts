@@ -69,6 +69,28 @@ export const isReachable = (sha: string, cwd: string): boolean => {
   }
 };
 
+/**
+ * Resolve the newest commit reachable from HEAD whose committer date is at or
+ * older than `isoTimestamp` (`git rev-list -1 --before=<ts> HEAD`).
+ *
+ * Used to recover a reachable evaluation baseline after a squash- or
+ * rebase-merge orphans the recorded `last_evaluated_sha`: the orphaned SHA is
+ * gone from HEAD's history, but the timestamp it was recorded with still maps
+ * to the commit the last sync stopped at. Returns '' when nothing matches (the
+ * timestamp predates all history) or on git failure — the caller falls back to
+ * the lossy jump-to-HEAD re-anchor in that case.
+ */
+export const ancestorBefore = (isoTimestamp: string, cwd: string): string => {
+  const result = tryRunGit(
+    ['rev-list', '-1', `--before=${isoTimestamp}`, 'HEAD'],
+    {cwd}
+  );
+
+  if (result === null) return '';
+
+  return result.trim();
+};
+
 /** Count commits in `<sha>..HEAD`. Returns 0 if `sha` is unreachable. */
 export const commitsAhead = (sha: string, cwd: string): number => {
   const result = tryRunGit(['rev-list', '--count', `${sha}..HEAD`], {cwd});

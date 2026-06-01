@@ -11,6 +11,14 @@ import {run} from './state.js';
 type Sandbox = {
   cleanup: () => void;
   commit: (message: string, files: Record<string, string>) => string;
+  // Like `commit`, but pins author + committer date to `isoDate` so tests
+  // can exercise the `--before=<timestamp>` baseline resolution that backs
+  // `suggested_base`. `git rev-list --before` filters on committer date.
+  commitAt: (
+    message: string,
+    files: Record<string, string>,
+    isoDate: string
+  ) => string;
   // Creates N empty commits in a single `git fast-import` spawn. The
   // sandbox `commit()` helper (write, add, commit, rev-parse) costs
   // 3-4 Node→git spawns per call; under full-suite contention each
@@ -47,6 +55,32 @@ const setupSandbox = (): Sandbox => {
     }).trim();
   };
 
+  const commitAt = (
+    message: string,
+    files: Record<string, string>,
+    isoDate: string
+  ): string => {
+    for (const [relativePath, contents] of Object.entries(files)) {
+      const absPath = path.join(root, relativePath);
+      mkdirSync(path.dirname(absPath), {recursive: true});
+      writeFileSync(absPath, contents, 'utf8');
+    }
+    execFileSync('git', ['add', '-A'], {cwd: root});
+    execFileSync('git', ['commit', '-q', '-m', message], {
+      cwd: root,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: isoDate,
+        GIT_COMMITTER_DATE: isoDate,
+      },
+    });
+
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim();
+  };
+
   const commitEmptyChain = (count: number): void => {
     if (count <= 0) return;
     const lines: string[] = [];
@@ -75,10 +109,17 @@ const setupSandbox = (): Sandbox => {
       rmSync(root, {force: true, recursive: true});
     },
     commit,
+    commitAt,
     commitEmptyChain,
     root,
   };
 };
+
+const shortShaOf = (root: string, sha: string): string =>
+  execFileSync('git', ['rev-parse', '--short=7', sha], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
 
 const captureStdio = (): {
   errors: string[];
@@ -120,6 +161,18 @@ const writeStateFile = (root: string, sha: string): void => {
   );
 };
 
+const writeStateFileAt = (root: string, sha: string, at: string): void => {
+  writeFileSync(
+    path.join(root, 'wiki', '.state.json'),
+    `${JSON.stringify(
+      {version: 1, last_evaluated_sha: sha, last_evaluated_at: at},
+      null,
+      2
+    )}\n`,
+    'utf8'
+  );
+};
+
 describe('wiki state', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -153,7 +206,75 @@ describe('wiki state', () => {
     expect(json.reachable).toBe(true);
     expect(typeof json.head_short).toBe('string');
     expect((json.head_short as string).length).toBe(7);
+    // suggested_base only fires on the unreachable recovery path.
+    expect(json.suggested_base).toBe('');
   });
+
+  test('suggested_base resolves to newest reachable ancestor at/older than last_evaluated_at when unreachable', () => {
+    // Mirrors the squash-merge orphan: a sync evaluated up to an orphaned
+    // feature-branch SHA, recorded its timestamp, then the squash landed and
+    // replaced that SHA on main. Recovery resolves the baseline by time.
+    sandbox.commitAt('A', {'app/a.ts': 'a\n'}, '2026-01-01T00:00:00Z');
+    const shaB = sandbox.commitAt('B', {'app/b.ts': 'b\n'}, '2026-01-02T00:00:00Z');
+    sandbox.commitAt('C', {'app/c.ts': 'c\n'}, '2026-01-03T00:00:00Z');
+
+    // Orphan an evaluated-up-to SHA off B that never lands on main's history.
+    execFileSync('git', ['checkout', '-q', '-b', 'feat', shaB], {
+      cwd: sandbox.root,
+    });
+    const orphan = sandbox.commitAt(
+      'O',
+      {'app/o.ts': 'o\n'},
+      '2026-01-02T12:00:00Z'
+    );
+    execFileSync('git', ['checkout', '-q', 'main'], {cwd: sandbox.root});
+
+    // Evaluated up to the orphan at 12:00 on Jan 2 — newest reachable ancestor
+    // of HEAD at/older than that is B (Jan 2 00:00); C (Jan 3) is the window.
+    writeStateFileAt(sandbox.root, orphan, '2026-01-02T12:00:00Z');
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(json.reachable).toBe(false);
+    expect(json.suggested_base).toBe(shortShaOf(sandbox.root, shaB));
+  }, 15_000);
+
+  test('suggested_base is empty when last_evaluated_at predates all history', () => {
+    const sha = sandbox.commitAt(
+      'A',
+      {'app/a.ts': 'a\n'},
+      '2026-01-01T00:00:00Z'
+    );
+    sandbox.commitAt('B', {'app/b.ts': 'b\n'}, '2026-01-02T00:00:00Z');
+
+    // Orphan SHA = the root commit, but record a timestamp older than any
+    // commit so `--before` resolves empty → fall back to jump-to-HEAD.
+    execFileSync('git', ['checkout', '-q', '-b', 'feat', sha], {
+      cwd: sandbox.root,
+    });
+    const orphan = sandbox.commitAt(
+      'O',
+      {'app/o.ts': 'o\n'},
+      '2026-01-01T06:00:00Z'
+    );
+    execFileSync('git', ['checkout', '-q', 'main'], {cwd: sandbox.root});
+    writeStateFileAt(sandbox.root, orphan, '2000-01-01T00:00:00Z');
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const json = JSON.parse(stdio.outputs.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(json.reachable).toBe(false);
+    expect(json.suggested_base).toBe('');
+  }, 15_000);
 
   test('reports drift_severity low for 1-5 commits ahead', () => {
     const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
@@ -223,6 +344,8 @@ describe('wiki state', () => {
     >;
     expect(json.reachable).toBe(false);
     expect(json.commits_ahead).toBe(0);
+    // No last_evaluated_at to anchor against → no recoverable baseline.
+    expect(json.suggested_base).toBe('');
   });
 
   test('returns per_domain_page_counts shaped object', () => {

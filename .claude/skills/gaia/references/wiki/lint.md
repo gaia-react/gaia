@@ -30,7 +30,7 @@ After the upstream lint finishes, run `gaia wiki state --json` and append a `## 
 gaia wiki state --json
 ```
 
-The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` | `high`), `head_short`, `state_sha`, `commits_ahead`, `reachable`, and `recent_commits`. If the command exits non-zero with `state_missing` (or equivalent reason), append:
+The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` | `high`), `head_short`, `state_sha`, `commits_ahead`, `reachable`, `recent_commits`, and `suggested_base`. If the command exits non-zero with `state_missing` (or equivalent reason), append:
 
 ```markdown
 ## #11: Wiki drift check
@@ -40,15 +40,15 @@ The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` |
 
 Then stop the drift check.
 
-If `reachable === false`, append:
+If `reachable === false`, the recorded SHA was orphaned (the squash-merge flow replaces the evaluated branch SHA on every merge). Append — and surface `suggested_base` when the CLI resolved a recovery baseline so the reader knows the window is recoverable, not lost:
 
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (history rewritten or shallow clone). Run `/gaia wiki sync` to re-anchor.
+⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (squashed/rewritten history). Run `/gaia wiki sync` — it resolves a recovery baseline (`<suggested_base>`) and evaluates the un-evaluated window.
 ```
 
-Then stop.
+When `suggested_base` is empty (no recoverable baseline), drop the parenthetical and say `it re-anchors to HEAD.` instead. Then stop.
 
 ### 2b. Classify and append
 
