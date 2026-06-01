@@ -58,6 +58,7 @@ wiki/decisions/Forensics Triage Workflow.md
 .gaia/cli/__tests__
 .gaia/cli/package.json
 .gaia/cli/pnpm-lock.yaml
+.gaia/cli/pnpm-workspace.yaml
 .gaia/cli/tsconfig.json
 .gaia/cli/vitest.config.ts
 .gaia/cli/.gitignore
