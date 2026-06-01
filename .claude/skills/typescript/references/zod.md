@@ -1,6 +1,6 @@
 # Zod 4 — Zod 3 → Zod 4 Migration Map
 
-This project uses Zod 4. Claude's training leans Zod 3; several Zod 3 forms still type-check and lint clean, so nothing flags them until runtime or a `react-doctor` scan. Default to the Zod 4 form in every schema — form validation, API parsers, and standalone validators alike, not just Conform forms.
+This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so nothing flags them until runtime or a `react-doctor` scan. Default to the Zod 4 form in every schema — form validation, API parsers, and standalone validators alike, not just Conform forms.
 
 | Zod 3 — avoid | Zod 4 — use |
 | --- | --- |
