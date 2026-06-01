@@ -64,7 +64,7 @@ import {parseWithZod} from '@conform-to/zod';
 import {parseWithZod} from '@conform-to/zod/v4';
 ```
 
-See `references/conform-forms.md` for full Conform + Zod wiring.
+See `references/conform-forms.md` for full Conform + Zod wiring. Beyond the import path, all Zod schemas use Zod 4 syntax — the typescript skill's `references/zod.md` is the canonical Zod 3 → Zod 4 migration map (`z.strictObject`, top-level string formats, etc.).
 
 ### Gate 3: Translation Check
 

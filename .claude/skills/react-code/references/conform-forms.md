@@ -112,4 +112,4 @@ Conform reads stale hidden input values from compound components (YearMonthDay, 
 
 ## Zod Patterns
 
-- Use `z.literal()` not `z.enum()` — sort values alphanumerically
+This project uses Zod 4 — the typescript skill's `references/zod.md` is the full Zod 3 → Zod 4 migration map. Project convention: `z.literal([...])` not `z.enum()` for string unions (sort values alphanumerically).
