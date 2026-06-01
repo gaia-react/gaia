@@ -6,8 +6,8 @@ import {z} from 'zod';
 // Forbidden fields (developer_id, email, username, GitHub username, machine
 // ID, hostname, IP) never appear.
 //
-// Drift fails loud — every schema is `.strict()`. An unexpected field on a
-// cloud event triggers a non-zero exit at projection time.
+// Drift fails loud — every schema is a `z.strictObject()`. An unexpected field
+// on a cloud event triggers a non-zero exit at projection time.
 //
 // `cloud-telemetry-scope` is the source of truth for what belongs on the
 // cloud stream; the per-event-type whitelists below mirror the mentorship
@@ -16,106 +16,90 @@ import {z} from 'zod';
 // fields (those live in the `_local` namespace), so the cloud schemas
 // match the mentorship payload shape one-for-one.
 
-export const UatPassCloudPayload = z
-  .object({
-    area_tags: z.array(z.string()),
-    attempts: z.number().int(),
-    spec_id: z.string(),
-    task_id: z.string(),
-    uat_id: z.string(),
-  })
-  .strict();
+export const UatPassCloudPayload = z.strictObject({
+  area_tags: z.array(z.string()),
+  attempts: z.number().int(),
+  spec_id: z.string(),
+  task_id: z.string(),
+  uat_id: z.string(),
+});
 
 export type UatPassCloudPayload = z.infer<typeof UatPassCloudPayload>;
 
-export const UatFailCloudPayload = z
-  .object({
-    area_tags: z.array(z.string()),
-    attempts: z.number().int(),
-    failure_class: z.string(),
-    spec_id: z.string(),
-    task_id: z.string(),
-    uat_id: z.string(),
-  })
-  .strict();
+export const UatFailCloudPayload = z.strictObject({
+  area_tags: z.array(z.string()),
+  attempts: z.number().int(),
+  failure_class: z.string(),
+  spec_id: z.string(),
+  task_id: z.string(),
+  uat_id: z.string(),
+});
 
 export type UatFailCloudPayload = z.infer<typeof UatFailCloudPayload>;
 
-export const NeedsContextReturnedCloudPayload = z
-  .object({
-    agent_type: z.string(),
-    area_tags: z.array(z.string()),
-    context_request_class: z.string(),
-    spec_id: z.string(),
-    task_id: z.string(),
-  })
-  .strict();
+export const NeedsContextReturnedCloudPayload = z.strictObject({
+  agent_type: z.string(),
+  area_tags: z.array(z.string()),
+  context_request_class: z.string(),
+  spec_id: z.string(),
+  task_id: z.string(),
+});
 
 export type NeedsContextReturnedCloudPayload = z.infer<
   typeof NeedsContextReturnedCloudPayload
 >;
 
-export const BlockedReturnedCloudPayload = z
-  .object({
-    agent_type: z.string(),
-    area_tags: z.array(z.string()),
-    classification: z.string(),
-    spec_id: z.string(),
-    task_id: z.string(),
-  })
-  .strict();
+export const BlockedReturnedCloudPayload = z.strictObject({
+  agent_type: z.string(),
+  area_tags: z.array(z.string()),
+  classification: z.string(),
+  spec_id: z.string(),
+  task_id: z.string(),
+});
 
 export type BlockedReturnedCloudPayload = z.infer<
   typeof BlockedReturnedCloudPayload
 >;
 
-export const SpecAmendedCloudPayload = z
-  .object({
-    amendment_reason: z.string(),
-    fields_changed: z.array(z.string()),
-    spec_id: z.string(),
-    time_since_close_seconds: z.number().int(),
-  })
-  .strict();
+export const SpecAmendedCloudPayload = z.strictObject({
+  amendment_reason: z.string(),
+  fields_changed: z.array(z.string()),
+  spec_id: z.string(),
+  time_since_close_seconds: z.number().int(),
+});
 
 export type SpecAmendedCloudPayload = z.infer<typeof SpecAmendedCloudPayload>;
 
-export const PlanRevisedCloudPayload = z
-  .object({
-    items_added: z.number().int(),
-    items_removed: z.number().int(),
-    plan_id: z.string(),
-    revision_class: z.string(),
-    spec_id: z.string(),
-  })
-  .strict();
+export const PlanRevisedCloudPayload = z.strictObject({
+  items_added: z.number().int(),
+  items_removed: z.number().int(),
+  plan_id: z.string(),
+  revision_class: z.string(),
+  spec_id: z.string(),
+});
 
 export type PlanRevisedCloudPayload = z.infer<typeof PlanRevisedCloudPayload>;
 
-export const TimeToResolvedSpecCloudPayload = z
-  .object({
-    abandoned: z.boolean(),
-    area_tags: z.array(z.string()),
-    duration_seconds: z.number().int(),
-    question_count: z.number().int(),
-    spec_id: z.string(),
-  })
-  .strict();
+export const TimeToResolvedSpecCloudPayload = z.strictObject({
+  abandoned: z.boolean(),
+  area_tags: z.array(z.string()),
+  duration_seconds: z.number().int(),
+  question_count: z.number().int(),
+  spec_id: z.string(),
+});
 
 export type TimeToResolvedSpecCloudPayload = z.infer<
   typeof TimeToResolvedSpecCloudPayload
 >;
 
-export const CodeReviewAuditFindingCloudPayload = z
-  .object({
-    area_tags: z.array(z.string()),
-    auditor_type: z.string(),
-    finding_class: z.string(),
-    pr_number: z.number().int(),
-    severity: z.string(),
-    spec_id: z.string().optional(),
-  })
-  .strict();
+export const CodeReviewAuditFindingCloudPayload = z.strictObject({
+  area_tags: z.array(z.string()),
+  auditor_type: z.string(),
+  finding_class: z.string(),
+  pr_number: z.number().int(),
+  severity: z.string(),
+  spec_id: z.string().optional(),
+});
 
 export type CodeReviewAuditFindingCloudPayload = z.infer<
   typeof CodeReviewAuditFindingCloudPayload
