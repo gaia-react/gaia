@@ -6,6 +6,7 @@ export default {
     '.storybook/**/*.{ts,tsx}',
     'app/components/**/*.{ts,tsx}',
     'app/hooks/**/*.ts',
+    'app/languages/index.ts',
     'app/middleware/**/*.ts',
     'app/services/**/*.{ts,tsx}',
     'app/types/**/*.ts',
@@ -14,6 +15,11 @@ export default {
   ],
   ignoreBinaries: ['bats'],
   ignoreDependencies: [
+    // remix-i18next's Accept-Language SSR fallback pulls accept-language-parser
+    // transitively; it's pre-bundled in vite optimizeDeps and has no direct
+    // import, so knip can't see the usage (and its @types pairs with it).
+    '@types/accept-language-parser',
+    'accept-language-parser',
     '@epic-web/invariant',
     '@msw/data',
     '@playwright-testing-library/test',
