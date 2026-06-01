@@ -15200,6 +15200,14 @@ var isReachable = (sha, cwd) => {
     return false;
   }
 };
+var ancestorBefore = (isoTimestamp, cwd) => {
+  const result = tryRunGit(
+    ["rev-list", "-1", `--before=${isoTimestamp}`, "HEAD"],
+    { cwd }
+  );
+  if (result === null) return "";
+  return result.trim();
+};
 var commitsAhead = (sha, cwd) => {
   const result = tryRunGit(["rev-list", "--count", `${sha}..HEAD`], { cwd });
   if (result === null) return 0;
@@ -18353,7 +18361,7 @@ import { existsSync as existsSync16, readdirSync, readFileSync as readFileSync14
 import path17 from "node:path";
 
 // src/schemas/analytics-report.ts
-var AnalyticsReportSchema = external_exports.object({
+var AnalyticsReportSchema = external_exports.strictObject({
   adaptations: external_exports.array(
     external_exports.object({
       adaptation_id: external_exports.string(),
@@ -18400,7 +18408,7 @@ var AnalyticsReportSchema = external_exports.object({
   report_id: external_exports.string(),
   report_window_days: external_exports.literal(30),
   schema_version: external_exports.literal(1)
-}).strict();
+});
 
 // src/mentorship/analytics-dry-run.ts
 var REPORT_GLOB = /^report-\d{4}-\d{2}-\d{2}\.json$/u;
@@ -20311,6 +20319,9 @@ var printHuman = (state, write) => {
     `  Reachable:      ${state.reachable ? "yes" : "no"}`,
     `  Drift:          ${state.commits_ahead} commits (${state.drift_severity})`
   ];
+  if (state.suggested_base !== "") {
+    lines.push(`  Recovery base:  ${state.suggested_base}`);
+  }
   if (state.recent_commits.length > 0) {
     lines.push("  Recent unsynced:");
     for (const commit of state.recent_commits) {
@@ -20360,6 +20371,7 @@ var run36 = (argv, options = {}) => {
   const statePath = path24.join(wikiRoot, ".state.json");
   const stateFile = readStateFile(statePath);
   const stateSha = stateFile?.last_evaluated_sha ?? "";
+  const stateAt = stateFile?.last_evaluated_at ?? "";
   const head = headSha(repoRoot2);
   const headShort = shortSha(head, repoRoot2);
   const stateShort = stateSha === "" ? "" : shortSha(stateSha, repoRoot2);
@@ -20368,6 +20380,8 @@ var run36 = (argv, options = {}) => {
   const recent = stateSha === "" || !reachable ? [] : recentCommits(stateSha, repoRoot2, 5);
   const severity = classifySeverity(ahead);
   const counts = countDomainPages(wikiRoot);
+  const suggestedFull = !reachable && stateAt !== "" ? ancestorBefore(stateAt, repoRoot2) : "";
+  const suggestedBase = suggestedFull === "" ? "" : shortSha(suggestedFull, repoRoot2);
   const state = {
     commits_ahead: ahead,
     drift_severity: severity,
@@ -20375,7 +20389,8 @@ var run36 = (argv, options = {}) => {
     per_domain_page_counts: counts,
     reachable,
     recent_commits: recent,
-    state_sha: stateShort
+    state_sha: stateShort,
+    suggested_base: suggestedBase
   };
   if (json3) {
     write(`${JSON.stringify(state)}
@@ -26963,63 +26978,63 @@ var appendIdempotent = async (args) => {
 };
 
 // src/schemas/cloud-projection.ts
-var UatPassCloudPayload = external_exports.object({
+var UatPassCloudPayload = external_exports.strictObject({
   area_tags: external_exports.array(external_exports.string()),
   attempts: external_exports.number().int(),
   spec_id: external_exports.string(),
   task_id: external_exports.string(),
   uat_id: external_exports.string()
-}).strict();
-var UatFailCloudPayload = external_exports.object({
+});
+var UatFailCloudPayload = external_exports.strictObject({
   area_tags: external_exports.array(external_exports.string()),
   attempts: external_exports.number().int(),
   failure_class: external_exports.string(),
   spec_id: external_exports.string(),
   task_id: external_exports.string(),
   uat_id: external_exports.string()
-}).strict();
-var NeedsContextReturnedCloudPayload = external_exports.object({
+});
+var NeedsContextReturnedCloudPayload = external_exports.strictObject({
   agent_type: external_exports.string(),
   area_tags: external_exports.array(external_exports.string()),
   context_request_class: external_exports.string(),
   spec_id: external_exports.string(),
   task_id: external_exports.string()
-}).strict();
-var BlockedReturnedCloudPayload = external_exports.object({
+});
+var BlockedReturnedCloudPayload = external_exports.strictObject({
   agent_type: external_exports.string(),
   area_tags: external_exports.array(external_exports.string()),
   classification: external_exports.string(),
   spec_id: external_exports.string(),
   task_id: external_exports.string()
-}).strict();
-var SpecAmendedCloudPayload = external_exports.object({
+});
+var SpecAmendedCloudPayload = external_exports.strictObject({
   amendment_reason: external_exports.string(),
   fields_changed: external_exports.array(external_exports.string()),
   spec_id: external_exports.string(),
   time_since_close_seconds: external_exports.number().int()
-}).strict();
-var PlanRevisedCloudPayload = external_exports.object({
+});
+var PlanRevisedCloudPayload = external_exports.strictObject({
   items_added: external_exports.number().int(),
   items_removed: external_exports.number().int(),
   plan_id: external_exports.string(),
   revision_class: external_exports.string(),
   spec_id: external_exports.string()
-}).strict();
-var TimeToResolvedSpecCloudPayload = external_exports.object({
+});
+var TimeToResolvedSpecCloudPayload = external_exports.strictObject({
   abandoned: external_exports.boolean(),
   area_tags: external_exports.array(external_exports.string()),
   duration_seconds: external_exports.number().int(),
   question_count: external_exports.number().int(),
   spec_id: external_exports.string()
-}).strict();
-var CodeReviewAuditFindingCloudPayload = external_exports.object({
+});
+var CodeReviewAuditFindingCloudPayload = external_exports.strictObject({
   area_tags: external_exports.array(external_exports.string()),
   auditor_type: external_exports.string(),
   finding_class: external_exports.string(),
   pr_number: external_exports.number().int(),
   severity: external_exports.string(),
   spec_id: external_exports.string().optional()
-}).strict();
+});
 var CloudPayloadByType = {
   blocked_returned: BlockedReturnedCloudPayload,
   code_review_audit_finding: CodeReviewAuditFindingCloudPayload,

@@ -20,6 +20,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {
+  ancestorBefore,
   commitsAhead,
   headSha,
   isReachable,
@@ -44,6 +45,15 @@ export type WikiState = {
   reachable: boolean;
   recent_commits: RecentCommit[];
   state_sha: string;
+  /**
+   * When `reachable` is false, the short SHA of a reachable baseline to resume
+   * evaluation from — the newest ancestor of HEAD at or older than
+   * `last_evaluated_at`. Empty string when reachable, when the state file has
+   * no `last_evaluated_at`, or when the timestamp predates all history. The
+   * sync playbook uses it to recover the un-evaluated window after a squash- or
+   * rebase-merge orphans `last_evaluated_sha`, rather than discarding it.
+   */
+  suggested_base: string;
 };
 
 const classifySeverity = (commitCount: number): DriftSeverity => {
@@ -93,6 +103,7 @@ const countDomainPages = (wikiRoot: string): Record<string, number> => {
 };
 
 type StateFileShape = {
+  last_evaluated_at?: string;
   last_evaluated_sha?: string;
 };
 
@@ -115,6 +126,10 @@ const printHuman = (state: WikiState, write: (chunk: string) => void): void => {
     `  Reachable:      ${state.reachable ? 'yes' : 'no'}`,
     `  Drift:          ${state.commits_ahead} commits (${state.drift_severity})`,
   ];
+
+  if (state.suggested_base !== '') {
+    lines.push(`  Recovery base:  ${state.suggested_base}`);
+  }
 
   if (state.recent_commits.length > 0) {
     lines.push('  Recent unsynced:');
@@ -191,6 +206,7 @@ export const run = (
   const statePath = path.join(wikiRoot, '.state.json');
   const stateFile = readStateFile(statePath);
   const stateSha = stateFile?.last_evaluated_sha ?? '';
+  const stateAt = stateFile?.last_evaluated_at ?? '';
   const head = headSha(repoRoot);
   const headShort = shortSha(head, repoRoot);
   const stateShort = stateSha === '' ? '' : shortSha(stateSha, repoRoot);
@@ -201,6 +217,13 @@ export const run = (
     stateSha === '' || !reachable ? [] : recentCommits(stateSha, repoRoot, 5);
   const severity = classifySeverity(ahead);
   const counts = countDomainPages(wikiRoot);
+  // Only the unreachable path needs a recovery baseline. When the recorded SHA
+  // is still in HEAD's history, the normal `last_evaluated_sha..HEAD` range is
+  // correct; suggested_base stays empty so consumers ignore it.
+  const suggestedFull =
+    !reachable && stateAt !== '' ? ancestorBefore(stateAt, repoRoot) : '';
+  const suggestedBase =
+    suggestedFull === '' ? '' : shortSha(suggestedFull, repoRoot);
 
   const state: WikiState = {
     commits_ahead: ahead,
@@ -210,6 +233,7 @@ export const run = (
     reachable,
     recent_commits: recent,
     state_sha: stateShort,
+    suggested_base: suggestedBase,
   };
 
   if (json) {

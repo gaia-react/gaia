@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-03
-updated: 2026-05-06
+updated: 2026-06-02
 tags: [concept, claude, workflow, wiki]
 ---
 
@@ -47,6 +47,8 @@ This handles the case that broke the previous design (`wiki-update-evaluator.sh`
 ```
 
 `last_evaluated_sha` is the commit through which `/gaia wiki sync` has fully evaluated. Drift = `git rev-list --count <last_evaluated_sha>..HEAD`.
+
+`last_evaluated_at` is the timestamp of that evaluation, and it anchors recovery. Because a SHA is fragile under squash- and rebase-merge — the recorded commit is replaced and becomes unreachable — the timestamp provides a stable second anchor: `gaia wiki state` resolves the newest commit reachable from HEAD at or older than `last_evaluated_at` and reports it as `suggested_base`, the baseline a recovering sync resumes from.
 
 `last_consolidated_sha` is owned by `/gaia wiki consolidate`. On the first sync that bootstraps this field, it is set to the new HEAD value, giving the consolidate gate a baseline to accumulate from.
 
@@ -106,7 +108,7 @@ You don't need to run it after every commit. The hooks let you defer with full v
 
 - **Mid-sync interruption.** `/gaia wiki sync` does not advance state on partial completion. The next sync resumes from the original `last_evaluated_sha`.
 - **`wiki/.state.json` corrupted.** `/gaia wiki sync` stops and asks — won't auto-rewrite over manual edits.
-- **Rebased history.** If `last_evaluated_sha` is no longer reachable, hooks silently skip; `/gaia wiki sync` re-anchors to HEAD on next run with a log entry.
+- **Orphaned baseline.** GAIA's squash-merge flow replaces the evaluated branch SHA with a new squash commit on every merge, so `last_evaluated_sha` is regularly unreachable from HEAD — not just after a manual rebase. The hooks silently skip while it is unreachable. `/gaia wiki sync` recovers the un-evaluated window: it resolves a reachable baseline (the newest commit at or older than `last_evaluated_at`) and runs the normal evaluation pass from there, cataloguing every commit in between. Only when no baseline resolves — no `last_evaluated_at`, or it predates all history — does it fall back to a lossy re-anchor straight to HEAD with a `RE_ANCHOR` log entry.
 - **Concurrent syncs on different branches.** `wiki/log.md` will conflict on merge. Resolve by keeping both lines, sorted newest-first.
 
 ## Adopters

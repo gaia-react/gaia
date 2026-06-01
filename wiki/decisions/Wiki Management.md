@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-07
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-02
 tags: [decision, wiki, cli]
 ---
 
@@ -14,7 +14,7 @@ The wiki is critical infrastructure — it decays when drift between code and do
 
 ## Primitives
 
-**`gaia wiki state`** — Outputs current sync state: `head_sha`, `state_sha`, `commits_ahead` (drift count), and `reachable` (whether recorded SHA is in HEAD's history). Used by hooks and commands to detect when a sync is needed.
+**`gaia wiki state`** — Outputs current sync state: `head_sha`, `state_sha`, `commits_ahead` (drift count), `reachable` (whether recorded SHA is in HEAD's history), and `suggested_base`. When `reachable` is false, `suggested_base` is the newest commit reachable from HEAD at or older than `last_evaluated_at` — a recovery baseline that lets a sync resume the un-evaluated window after a squash- or rebase-merge orphans the recorded SHA, instead of discarding it. It is empty when reachable or when no baseline resolves. Used by hooks and commands to detect when a sync is needed.
 
 **`gaia wiki commit-classify`** — Evaluates commits since a baseline SHA. For each commit, outputs `suggestion` (`WORTHY` or `SKIP`) based on subject and file paths. WORTHY commits warrant deep-read and wiki update; SKIP commits can be logged without wiki edits. The classification is deterministic — same commit always produces the same suggestion.
 
