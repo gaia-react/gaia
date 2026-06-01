@@ -211,7 +211,7 @@ npm view create-gaia@<NEW_VERSION> version    # registry CDN may lag a minute
 
 ### 14. Lockstep website
 
-The marketing/docs site (`../website` relative to this repo) embeds two version references that must match the release just cut. Update both before considering the release complete.
+The marketing/docs site (`../website` relative to this repo) embeds three version references that must match the release just cut. Update all three before considering the release complete.
 
 ```bash
 WEB="$(git rev-parse --show-toplevel)/../website"
@@ -233,11 +233,16 @@ Example: current is `installed=1.2.0, available=1.2.2`. On `1.3.0` → `installe
 
 - `$WEB/src/pages/features/sections/Fitness.tsx` → `detail: 'GAIA v<installed>, v<NEW_VERSION> available · /update-gaia'`
 
+**Structured data (JSON-LD)** — the `SoftwareApplication` schema in the site's root `index.html` carries a `softwareVersion` field. Always set it to `<NEW_VERSION>` (the latest released version; no `v` prefix, matching the existing string form):
+
+- `$WEB/index.html` → `"softwareVersion": "<NEW_VERSION>",`
+
 Commit and push directly to `main` in the website repo (no branch protection on `website`). Apply the sibling-repo push protocol from Step 13 — the `git -C "$WEB" push` must run in its own Bash tool invocation, separate from the `add`/`commit` chain:
 
 ```bash
 git -C "$WEB" add src/pages/get-started/sections/GetStarted.tsx \
-               src/pages/features/sections/Fitness.tsx
+               src/pages/features/sections/Fitness.tsx \
+               index.html
 git -C "$WEB" commit -m "chore: lockstep GAIA v<NEW_VERSION>"
 ```
 
