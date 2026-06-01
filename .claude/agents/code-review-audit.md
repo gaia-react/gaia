@@ -31,6 +31,8 @@ Work happens in two layers, dispatched in parallel:
 
 Don't duplicate work: if a subagent is going to check every `useEffect` against the react-code skill, you don't need to do that line by line too. Focus your own review on the issues only a full-context reviewer can catch.
 
+**Incremental scope.** The review base is not always `origin/main`. When this PR has already passed a clean audit on an earlier commit, the audit reviews only the diff from that last-cleared commit to HEAD — resolved by `.github/audit/resolve-audit-base.sh`. Everything before the base was already cleared, so re-reviewing it on every push is wasted work. The base is only ever a commit that passed a clean audit under the current `.gaia/VERSION`; an uncleared or differently-versioned commit carries no signal to anchor on, so the base safely falls back to `origin/main` (full scope) and never skips uncleared code. The one risk an incremental scope must actively guard against is a delta that breaks an already-cleared caller — see the cross-file check in the Rules-Based Audit "How to run".
+
 ## Main-agent review dimensions
 
 Analyze the changed code across these dimensions. Focus on cross-cutting concerns the subagents can't see.
@@ -148,8 +150,10 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 
 ### How to run
 
-1. **Identify changed files**: `git diff --name-only main -- '*.ts' '*.tsx'`
-   - Using `main` (not `main...HEAD`) includes uncommitted working-tree changes — the right scope for a pre-commit/pre-merge review.
+1. **Identify changed files** against the incremental base:
+   - Resolve the base: if the invoking context provides one (CI passes `<base>...HEAD` in the agent prompt), use it; otherwise run `.github/audit/resolve-audit-base.sh`. It returns the most recent ancestor that already passed a clean audit under the current `.gaia/VERSION` (via a GAIA-Audit trailer or commit status), or `origin/main` when none exists.
+   - List changed files: `git diff --name-only "$(.github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes — the right scope for a pre-commit/pre-merge review.
+   - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged** — a cleared caller can still break from a delta change.
 2. **Gate each subagent** on file scope — don't spawn a subagent that has nothing to review:
    - No `.tsx` files changed → skip Subagent 1 (React Patterns & Accessibility)
    - No `.ts` or `.tsx` files changed → skip Subagent 2 (TypeScript & Architecture)

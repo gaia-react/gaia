@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-05
+updated: 2026-06-02
 tags: [concept, claude, agent, review]
 ---
 
@@ -15,6 +15,14 @@ Full spec: `.claude/agents/code-review-audit.md`.
 Reviews security, performance, code smells, architecture, robustness, and maintainability. Output is tiered: Critical (must fix) → Important (should fix) → Suggestions → What's done well. After its own pass, spawns three specialist subagents in parallel (React Patterns & Accessibility, TypeScript & Architecture, Translation) plus `react-doctor` and `pnpm knip --reporter json` in a single tool call. Each subagent is gated on file scope so it doesn't spawn when there's nothing to review (e.g. no `.tsx` → skip Subagent 1).
 
 Knip runs pre-merge here (post-task by design) and its findings are bucketed advisory: real dead code, intentional library export (update `entry` globs), or implicit dependency (update `ignoreDependencies`). See [[knip]].
+
+## Incremental scope
+
+The audit does not always review the full `origin/main...HEAD` diff. `.github/audit/resolve-audit-base.sh` resolves a review base — the most recent ancestor of HEAD that already passed a clean audit under the current `.gaia/VERSION`, proven by a GAIA-Audit commit trailer (local stamps) or a GAIA-Audit commit status (CI stamps; see [[PR Merge Workflow]] for the trailer/status handshake). The audit then reviews only `<base>...HEAD`.
+
+The base is only ever a commit that passed a clean audit. An interrupted, failed, or differently-versioned run leaves no signal to anchor on, so the base falls back to `origin/main` and the full PR diff is reviewed. The scope therefore can never skip uncleared code — worst case it reviews too much. A `.gaia/VERSION` bump invalidates every prior base and forces a full re-audit under the new ruleset.
+
+The benefit lands when an audit completes between pushes: a follow-up push reviews only its own delta instead of re-reviewing the whole PR. The `cancel-in-progress` concurrency policy means rapid-fire pushes cancel before a base is stamped, so they fall back to full scope safely. The one risk an incremental scope must guard is a delta that breaks an already-cleared caller, so the agent rechecks importers of any exported symbol whose contract changed in the delta.
 
 ## Durable knowledge
 
