@@ -10,7 +10,7 @@
 
 **Claude is raw power. [GAIA](https://gaiareact.com/) is order and focus.**
 
-The React workflow that keeps Claude-shipped code production-grade as your team scales. Every convention enforced in code. Every shortcut blocked at the source. Every merge audited before it lands.
+The foundation that keeps Claude-shipped code production-grade as your team scales. The React frontend is handled. You build the rest of your app on top. Every convention enforced in code. Every shortcut blocked at the source. Every merge audited before it lands.
 
 **[Quick Start](#quick-start) · [What Breaks Claude](#what-breaks-claude-on-real-projects) · [Trust](#how-gaia-makes-claude-trustworthy) · [Token Economics](#how-gaia-keeps-claude-token-efficient) · [Tech Debt](#how-gaia-keeps-tech-debt-from-compounding) · [Tech Stack](#tech-stack) · [Claude Workflow](#claude-workflow) · [History](#history)**
 
