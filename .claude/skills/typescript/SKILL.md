@@ -73,12 +73,8 @@ export const formatDate = (date: Date): string => format(date, 'yyyy-MM-dd');
 
 ## Zod
 
-- **`z.literal()` not `z.enum()`** — sort values alphanumerically
+**This project uses Zod 4** — in every schema. The deprecated Zod 3 chained forms (`.strict()`, `.email()`, single-arg `z.record()`, `.args().returns()`) still type-check and lint clean, so nothing flags them — reach for the Zod 4 form deliberately.
 
-```tsx
-// BAD
-z.enum(['metric', 'imperial']);
+- **`z.literal([...])` not `z.enum()`** for string unions — sort values alphanumerically
 
-// GOOD
-z.literal(['imperial', 'metric']);
-```
+Read `references/zod.md` for the full Zod 3 → Zod 4 migration map (`z.strictObject`, top-level string formats, `z.record` arity, function and error shapes).

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+
+  // Dead-code analysis (deslop: unused files/exports/deps) is owned by knip,
+  // which runs in CI alongside react-doctor and carries a curated
+  // `ignoreDependencies` list plus app/services|hooks|utils + test as entry
+  // points (see knip.config.ts). react-doctor's deslop pass re-flags that same
+  // intentional template surface — scaffolding entry points the new-service
+  // skill extends, documented public helpers, and template-only deps. Disable
+  // the duplicate pass; knip remains the single dead-code authority.
+  "deadCode": false,
+
+  "ignore": {
+    // Per-path rule suppressions. Each rule stays active everywhere else —
+    // these are evidenced false positives at specific sites, not blanket-offs.
+    "overrides": [
+      {
+        // .gaia/cli is maintainer CLI tooling, and both perf rules misfire here:
+        //  - js-set-map-lookups flags String.prototype.includes/indexOf
+        //    (substring/char search like token.indexOf(':'), entry.includes('\t')),
+        //    not Array membership — a Set cannot replace them.
+        //  - async-await-in-loop flags intentional sequential loops (ordered
+        //    nested-dir creation, bounded-memory per-file reads, a poll loop),
+        //    several already carrying `eslint-disable no-await-in-loop -- intentional`.
+        "files": [".gaia/cli/**"],
+        "rules": [
+          "react-doctor/js-set-map-lookups",
+          "react-doctor/async-await-in-loop"
+        ]
+      },
+      {
+        // Route modules must co-locate loader/middleware/meta exports with the
+        // default component export — framework-mandated by React Router, not a
+        // Fast-Refresh hazard. Rule stays active for non-route component files.
+        "files": ["app/root.tsx", "app/routes/**"],
+        "rules": ["react-doctor/only-export-components"]
+      },
+      {
+        // Both dangerouslySetInnerHTML sites inject trusted, nonce'd content:
+        // Document injects a compile-time-constant theme script; root injects
+        // JSON.stringify(envClient) (server-controlled build config). No user
+        // input reaches either. Rule stays active everywhere else so any new
+        // dangerouslySetInnerHTML is still flagged.
+        "files": ["app/components/Document/index.tsx", "app/root.tsx"],
+        "rules": ["react-doctor/no-danger"]
+      },
+      {
+        // role="group" is the correct ARIA for these control groupings; the
+        // rule's suggested <address> replacement is semantically wrong (no HTML
+        // tag maps to role="group" without <fieldset> legend/style baggage).
+        // These are reusable grouping primitives that may nest inside a
+        // consumer's own <fieldset>, so role="group" on a <div> stays correct.
+        "files": [
+          "app/components/Form/Chain/index.tsx",
+          "app/components/Form/CheckboxRadioGroup/index.tsx"
+        ],
+        "rules": ["react-doctor/prefer-tag-over-role"]
+      },
+      {
+        // Storybook stories are dev-only demos, never shipped or a11y-audited
+        // in production; the literal "link" anchor text is intentional sample
+        // content demonstrating a link inside a label.
+        "files": ["**/*.stories.tsx"],
+        "rules": ["react-doctor/anchor-ambiguous-text"]
+      }
+    ]
+  }
+}

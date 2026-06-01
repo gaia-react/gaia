@@ -1,0 +1,10 @@
+# pnpm settings. In pnpm 10.x+ only auth/registry settings are read from
+# .npmrc; everything else (including supply-chain hardening) lives here.
+
+# Supply-chain hardening — see https://pnpm.io/settings
+# Delay installs until a published version has had time to be vetted.
+# Value is in minutes; 10080 = 7 days.
+minimumReleaseAge: 10080
+
+# Fail the install if a package's trust level has decreased vs prior releases.
+trustPolicy: no-downgrade

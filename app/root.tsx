@@ -18,7 +18,7 @@ import './styles/tailwind.css';
 
 export const middleware = [i18nextMiddleware];
 
-export const loader = async ({context, request}: Route.LoaderArgs) => {
+export const loader = async ({context, request, url}: Route.LoaderArgs) => {
   const isProduction = isProductionHost(request);
 
   const language = getLanguage(context);
@@ -29,13 +29,13 @@ export const loader = async ({context, request}: Route.LoaderArgs) => {
 
   headers.set('Vary', 'Cookie');
 
-  const url = new URL(request.url);
-
   return data(
     {
       ENV: envClient,
       language,
       noIndex: !isProduction,
+      // url is RR's normalized arg, not new URL(request.url): v8_passThroughRequests
+      // leaves .data and ?index/?_routes params on request.url for data requests.
       requestInfo: {
         origin: url.origin,
         path: url.pathname,

@@ -1,0 +1,6 @@
+# Marks .gaia/cli as its own pnpm workspace root. Without this, the repo-root
+# pnpm-workspace.yaml (added for supply-chain hardening) makes pnpm treat the
+# whole repo as one workspace and `pnpm -C .gaia/cli install` installs the root
+# project instead of this standalone maintainer CLI. pnpm resolves the nearest
+# pnpm-workspace.yaml, so this keeps .gaia/cli's own pnpm-lock.yaml and
+# node_modules isolated. Maintainer-only; release-excluded.

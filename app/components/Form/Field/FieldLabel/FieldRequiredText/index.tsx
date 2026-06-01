@@ -13,19 +13,18 @@ const FieldRequiredText: FC<FieldRequiredTextProps> = ({
   disabled,
   error,
 }) => (
-  <div
+  <output
     className={twJoin(
-      'ml-4 w-fit rounded-full border px-1.5 py-px text-xs font-normal select-none',
+      'ml-4 block w-fit rounded-full border px-1.5 py-px text-xs font-normal select-none',
       disabled ? 'text-disabled'
       : error ? 'bg-invalid border-invalid text-white'
       : 'border-invalid text-invalid',
       className
     )}
     data-field-required-text={true}
-    role="status"
   >
     <Trans ns="common">form.required</Trans>
-  </div>
+  </output>
 );
 
 export default FieldRequiredText;
