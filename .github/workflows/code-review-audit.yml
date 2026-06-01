@@ -3,9 +3,10 @@ name: Code Review Audit
 # Pre-merge gate that runs the `code-review-audit` agent
 # (.claude/agents/code-review-audit.md) against the PR diff. Skipped when
 # (a) the PR HEAD already carries a matching `GAIA-Audit:` commit trailer
-# (locally-stamped audit), (b) the PR diff contains no audit-relevant
-# files (wiki, instruction files, and other prose-only surfaces are out
-# of scope), or (c) the PR modifies this workflow file itself
+# (locally-stamped audit), (b) the un-audited delta (since the last clean
+# audit) contains no audit-relevant files (wiki, instruction files, and
+# other prose-only surfaces are out of scope), or (c) the PR modifies this
+# workflow file itself
 # (claude-code-action's workflow-validation guardrail would refuse to
 # run, so the audit cannot complete regardless). Adopter-tunable knobs
 # live at .gaia/audit-ci.yml.
@@ -107,24 +108,46 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve audit base
+        id: base
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.chore-deps.outputs.skip == 'false'
+        run: |
+          set -eu
+          # Incremental scope: resolve the most recent ancestor on this PR that
+          # already passed a CLEAN audit under the current agent version
+          # (proven by a GAIA-Audit commit trailer or commit status). Resolved
+          # here, before the source-change check, so that check and the audit
+          # share one base: everything before <base> was already cleared. Falls
+          # back to origin/main (full PR scope) when no audited ancestor exists
+          # (first audit, prior runs cancelled/failed, or a .gaia/VERSION bump
+          # invalidated them). A helper failure must never fail the audit —
+          # default to full scope.
+          base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+          echo "code-review-audit: incremental review base = ${base}" >&2
+
       - name: Check for source-code changes
         id: source-changes
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.chore-deps.outputs.skip == 'false'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUDIT_BASE: ${{ steps.base.outputs.base }}
         run: |
           set -eu
           # Audit-relevant scope: TS/TSX/CSS code under app/, tests,
           # .storybook configs, GitHub workflow files, and root-level
-          # build/lint/test/typecheck configs. PRs that only touch wiki/,
-          # .claude/, .specify/, prose docs, .gaia/ metadata, or
-          # .gaia/cli/src (maintainer-only CLI, tested by health-audit)
-          # are skipped — the agent has no rules that would meaningfully
-          # apply.
-          changed=$(git diff --name-only "${BASE_SHA}..${HEAD_SHA}")
+          # build/lint/test/typecheck configs. PRs whose UN-AUDITED DELTA
+          # (<audit-base>...HEAD) only touches wiki/, .claude/, .specify/,
+          # prose docs, .gaia/ metadata, or .gaia/cli/src (maintainer-only
+          # CLI, tested by health-audit) are skipped — the agent has no rules
+          # that would meaningfully apply. The base is the last clean-audited
+          # ancestor, so once a code commit is audited clean a later prose-only
+          # commit reviews an empty auditable delta and skips. origin/main (no
+          # audited ancestor) → full PR diff, preserving first-audit behavior.
+          changed=$(git diff --name-only "${AUDIT_BASE}...HEAD")
           dir_pattern='^(app|test|\.storybook|\.github/workflows)/'
           file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
           if printf '%s\n' "$changed" | grep -qE "${dir_pattern}|${file_pattern}"; then
@@ -214,28 +237,6 @@ jobs:
             [ "$minutes" -lt 1 ] && minutes=1
           fi
           echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve audit base
-        id: base
-        if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false' &&
-          steps.trailer.outputs.skip == 'false'
-        run: |
-          set -eu
-          # Incremental scope: resolve the most recent ancestor on this PR
-          # that already passed a CLEAN audit under the current agent
-          # version (proven by a GAIA-Audit commit trailer or commit
-          # status). The audit reviews only <base>...HEAD — everything
-          # before <base> was already cleared, so re-reviewing it on every
-          # push is wasted work. Falls back to origin/main (full PR scope)
-          # when no audited ancestor exists (first audit, prior runs
-          # cancelled/failed, or a .gaia/VERSION bump invalidated them). A
-          # helper failure must never fail the audit — default to full scope.
-          base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
-          echo "base=${base}" >> "$GITHUB_OUTPUT"
-          echo "code-review-audit: incremental review base = ${base}" >&2
 
       - name: Run code-review-audit (claude-code-action)
         id: audit
@@ -657,7 +658,7 @@ jobs:
         run: |
           set -eu
           gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit skipped: no audit-relevant files changed in this PR"
+            --body "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit)"
 
       - name: Status — skipped (trailer matches)
         if: |
