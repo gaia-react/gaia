@@ -18,7 +18,7 @@ import './styles/tailwind.css';
 
 export const middleware = [i18nextMiddleware];
 
-export const loader = async ({context, request}: Route.LoaderArgs) => {
+export const loader = async ({context, request, url}: Route.LoaderArgs) => {
   const isProduction = isProductionHost(request);
 
   const language = getLanguage(context);
@@ -28,8 +28,6 @@ export const loader = async ({context, request}: Route.LoaderArgs) => {
   headers.append('Set-Cookie', await languageCookie.serialize(language));
 
   headers.set('Vary', 'Cookie');
-
-  const url = new URL(request.url);
 
   return data(
     {
