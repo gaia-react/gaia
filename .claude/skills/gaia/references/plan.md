@@ -302,29 +302,6 @@ Read <absolute-path-to>/.gaia/local/plans/{slug}/KICKOFF.md and execute it.
 
 Use `$PLAN_DIR/KICKOFF.md` (the absolute path resolved in step 3). The path MUST be absolute so the cold Claude session has no working-directory ambiguity. Do not include any other instruction — the orchestrator's behavior lives in `KICKOFF.md`.
 
-**Try to copy the prompt to the system clipboard** with the first available tool. Probe in this order — the first match wins; if none exist, skip silently:
+**Print the prompt as a fenced code block** so the user can select and copy it manually.
 
-```bash
-PROMPT='Read {absolute path to KICKOFF.md} and execute it.'
-COPIED=0
-if command -v pbcopy >/dev/null 2>&1; then
-  printf '%s' "$PROMPT" | pbcopy && COPIED=1
-elif command -v wl-copy >/dev/null 2>&1; then
-  printf '%s' "$PROMPT" | wl-copy && COPIED=1
-elif command -v xclip >/dev/null 2>&1; then
-  printf '%s' "$PROMPT" | xclip -selection clipboard && COPIED=1
-elif command -v xsel >/dev/null 2>&1; then
-  printf '%s' "$PROMPT" | xsel --clipboard --input && COPIED=1
-elif command -v clip.exe >/dev/null 2>&1; then
-  printf '%s' "$PROMPT" | clip.exe && COPIED=1
-elif command -v clip >/dev/null 2>&1; then
-  printf '%s' "$PROMPT" | clip && COPIED=1
-fi
-```
-
-**Always print the prompt as a fenced code block**, regardless of whether the copy succeeded — the user may want to verify or copy manually.
-
-Then print one trailing line, conditional on `$COPIED`:
-
-- Copy succeeded (`COPIED=1`): `Prompt copied to clipboard. Type /clear then paste.`
-- No tool found (`COPIED=0`): `Type /clear and paste the prompt above.`
+Then print one trailing line: `Type /clear and paste the prompt above.`
