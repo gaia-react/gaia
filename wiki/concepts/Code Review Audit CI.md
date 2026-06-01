@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-05-26
+updated: 2026-06-02
 tags: [concept, ci, audit, claude]
 ---
 
@@ -40,6 +40,12 @@ The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a
 PRs whose title starts with `chore(deps):` or `chore(deps-dev):` skip the audit entirely. These come from the `/update-deps` wrapper, which runs the full quality gate (`pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm pw`, `pnpm build`) locally before pushing — the local pass is equivalent to the audit's CI signal for dep-only changes. The workflow's `Check chore-deps title` step reads `github.event.pull_request.title`, sets `skip=true` when the prefix matches, and the gate cascades through the rest of the steps. The terminal `Status — skipped (chore-deps PR)` step posts the explanation and reports `code-review-audit` as a green skipped check.
 
 Other `chore:` prefixes (e.g. `chore: bump version`, `chore: tidy imports`) still run the audit — only the dep-specific narrowing skips. `tests.yml` and `chromatic.yml` carry the same skip pattern so all three required checks short-circuit on chore-deps PRs.
+
+## Skip rule (no auditable delta)
+
+The `Check for source-code changes` step diffs only the **un-audited delta** — `<audit-base>...HEAD`, where `<audit-base>` is the most recent ancestor that already passed a clean audit (resolved by `.github/audit/resolve-audit-base.sh`, the same base the agent reviews). When that delta touches no audit-relevant files (TS/TSX/CSS under `app/`, tests, `.storybook`, workflow files, or root-level build/lint/test configs), the gate short-circuits and reports `code-review-audit` green. Because the base is the last clean-audited commit, a PR that audits clean and then adds a prose-only commit (wiki, CHANGELOG, instruction files) reviews an empty auditable delta and skips — it does not re-run on a tree whose code was already cleared. With no audited ancestor the base is `origin/main`, so the delta is the full PR diff and first-audit behavior is unchanged.
+
+This is the audit's instance of the cross-workflow mechanism in [[Incremental CI Skipping]].
 
 ## Adopter knobs
 
@@ -96,12 +102,14 @@ Editing HEAD between the local stamp and `gh pr merge` invalidates the trailer (
 - Workflow: `.github/workflows/code-review-audit.yml`
 - Stamp helper (local): `.claude/hooks/audit-stamp-trailer.sh`
 - Skip-logic helper (CI): `.github/audit/check-trailer.sh`
+- Incremental-base helper (CI): `.github/audit/resolve-audit-base.sh`
 - Config reader: `.gaia/scripts/read-audit-ci-config.sh`
 - Default config: `.gaia/audit-ci.yml`
 - Frozen contracts (trailer format, skip logic, check name, event triggers): `.gaia/local/plans/code-review-audit-ci/trailer-format.md`
 
 ## See also
 
+- [[Incremental CI Skipping]] — the cross-workflow "since-last-green" mechanism this audit's no-auditable-delta skip is an instance of.
 - [[Code Review Audit Agent]] — the agent the workflow invokes.
 - [[PR Merge Workflow]] — the local-side gate handshake (`.gaia/local/audit/<sha>.ok` marker file).
 - [[Quality Gate]] — the lint/typecheck/test/knip gate that still runs alongside this audit.

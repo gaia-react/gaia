@@ -17,6 +17,11 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `checks: read` lets resolve-check-base.sh query prior commits' check-runs
+      # to find the last commit this check passed on (incremental scope).
+      checks: read
     env:
       # Fallback placeholders let PRs from forks (which can't read repo secrets) still run the suite.
       # MSW intercepts outbound HTTP so the real API_URL is not needed; SESSION_SECRET just needs to be non-empty.
@@ -45,27 +50,41 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      # Allowlist of paths that affect the test suite. Anything outside this
-      # list reports the required check green without running. Skipped jobs do
-      # not satisfy required checks under classic branch protection, so we
-      # gate steps instead.
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      # Incremental scope: resolve the most recent ancestor of HEAD on which
+      # "Vitest and Playwright" already passed, then gate the suite on whether
+      # the delta SINCE that green run touches a test-relevant file. A code
+      # commit that passes followed by a prose-only commit reviews an empty
+      # relevant delta and skips. Falls back to origin/main (full scope) when
+      # no green ancestor exists — first run, prior runs failed/cancelled, or
+      # the API is unreachable (e.g. fork PRs without a token). Skipped jobs do
+      # not satisfy required checks under branch protection, so we gate steps.
+      - name: Resolve last-green base
+        id: base
         if: steps.chore-deps.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          base="$(bash .github/audit/resolve-check-base.sh 'Vitest and Playwright' || echo origin/main)"
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+          echo "tests: incremental base = ${base}" >&2
+      # Allowlist of paths that affect the test suite (ERE, matched against
+      # `git diff --name-only`; mirrors the prior dorny globs 1:1). Anything
+      # outside this list reports the required check green without running.
+      - name: Detect test-relevant changes in the incremental delta
         id: filter
-        with:
-          filters: |
-            code:
-              - 'app/**'
-              - 'test/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'tsconfig*.json'
-              - 'vite.config.*'
-              - 'vitest.config.*'
-              - 'playwright.config.*'
-              - 'eslint.config.*'
-              - '.node-version'
-              - '.github/workflows/tests.yml'
+        if: steps.chore-deps.outputs.skip == 'false'
+        env:
+          CHECK_BASE: ${{ steps.base.outputs.base }}
+        run: |
+          set -eu
+          changed=$(git diff --name-only "${CHECK_BASE}...HEAD")
+          pattern='^(app|test)/|^(package\.json|pnpm-lock\.yaml|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint)\.config\.|^\.github/workflows/tests\.yml$'
+          if printf '%s\n' "$changed" | grep -qE "$pattern"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
