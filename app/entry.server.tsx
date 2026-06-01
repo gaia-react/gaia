@@ -117,12 +117,8 @@ const handleRequest = async (
 
           responseHeaders.set('Content-Type', 'text/html');
 
-          // Report-Only: React Router's production build does not apply the nonce
-          // to its single-fetch stream scripts, so enforcing would block
-          // hydration. Tracking: https://github.com/remix-run/react-router/issues/15083
-          // Switch the header name to 'Content-Security-Policy' to enforce once fixed.
           responseHeaders.set(
-            'Content-Security-Policy-Report-Only',
+            'Content-Security-Policy',
             getContentSecurityPolicy(nonce)
           );
 

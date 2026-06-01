@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-05-21
 created: 2026-05-21
-updated: 2026-05-21
+updated: 2026-06-02
 tags: [decision, security, csp]
 ---
 
@@ -15,15 +15,15 @@ GAIA serves a per-request nonce-based Content Security Policy. `handleRequest`
 it through `NonceProvider` and `ServerRouter`; `getContentSecurityPolicy`
 (`app/utils/http.server.ts`) builds the policy string with that nonce.
 
-## Report-Only, not enforced
+## Enforced
 
-In production the policy ships under the `Content-Security-Policy-Report-Only`
-header rather than `Content-Security-Policy`. React Router's production build
-does not apply the nonce to its single-fetch stream scripts, so enforcing the
-policy blocks hydration. The constraint is upstream and tracked at
-https://github.com/remix-run/react-router/issues/15083. Enforcement is a
-one-line change — swap the header name in `app/entry.server.tsx` — once the
-upstream nonce gap closes.
+The policy ships under the enforcing `Content-Security-Policy` header. Every
+server-rendered and streamed script carries the per-request nonce — React
+Router's single-fetch stream scripts and post-shell chunks included — so
+enforcement does not block hydration. App-authored inline scripts read the
+nonce through `useNonce()`: the `window.process` ENV bootstrap in
+`app/root.tsx`, and the dark-mode probe plus `ScrollRestoration` / `Scripts` in
+`app/components/Document`.
 
 ## Trade-offs
 
@@ -35,8 +35,7 @@ upstream nonce gap closes.
   CSP protection becomes a requirement.
 - **No reporting endpoint.** The policy carries no `report-uri` / `report-to`
   directive. A violation-reporting pipeline is adopter-owned infrastructure,
-  out of scope for the template. Report-Only here is a parked state forced by
-  the upstream nonce gap, not a staging phase for collecting violation reports.
+  out of scope for the template.
 
 ## Code review
 
