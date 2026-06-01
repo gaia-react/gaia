@@ -34,6 +34,8 @@ export const loader = async ({context, request, url}: Route.LoaderArgs) => {
       ENV: envClient,
       language,
       noIndex: !isProduction,
+      // url is RR's normalized arg, not new URL(request.url): v8_passThroughRequests
+      // leaves .data and ?index/?_routes params on request.url for data requests.
       requestInfo: {
         origin: url.origin,
         path: url.pathname,
