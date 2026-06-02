@@ -119,6 +119,8 @@ Parse the JSON. For each entry record:
 
 Apply this silently. Capped packages MUST NOT appear anywhere in the final report — not in Updated, not in Skipped, not in Breaking changes. Adopters know about the cap; surfacing it on every run is noise.
 
+**Release-age cooldown:** `pnpm-workspace.yaml` may set `minimumReleaseAge` (the minutes a version must be published before pnpm installs it). pnpm 11 enforces this against the whole lockfile on every install, so a target newer than the window makes the install fail. For each candidate target, cap it to the newest version that has already cleared the window: read publish times from `pnpm view <name> time --json` and pick the newest stable version that is an upgrade, at or below `latest`, and old enough. If no upgrade has cleared the window yet, skip the package this run — it bumps automatically once the version ages out. When `minimumReleaseAge` is unset, the cooldown is a no-op. Apply this silently too, like the ESLint cap. (The `update-deps run --emit-updates` primitive already does this — it records cooldown skips under `skipped` with reason `release-age-cooldown`, or `release-age-unresolved` if the publish-time lookup fails.)
+
 If nothing is outdated after this filtering, print `All packages are up to date.` and exit.
 
 ### Phase 2: Resolve companion groups
@@ -271,7 +273,7 @@ Build the report **only** from the agent reports returned to you. Do not add row
 - **Updated packages** — every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
 - **Breaking changes applied** — only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
 - **Overrides audited** — only what the Phase 0 / Phase 6 audit reports. If `pnpm.overrides` was empty, write "None" and move on.
-- **Skipped packages** — _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the Phase 1 ESLint 9.x cap). Those are silent by design — surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
+- **Skipped packages** — _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the Phase 1 ESLint 9.x cap or the release-age cooldown). Those are silent by design — surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Quality gate** — the gate result reported by the agents, verbatim.
 
 If a section would be empty, write "None" rather than leaving it blank or fabricating filler.

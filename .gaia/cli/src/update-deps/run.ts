@@ -7,7 +7,10 @@
  *
  * Phase 1: Discover via `pnpm outdated --json`. ESLint 9.x cap rewrites
  *          a `latest >= 10.x` to the highest available `9.x`; if already
- *          on the highest 9.x, the entry is dropped silently.
+ *          on the highest 9.x, the entry is dropped silently. A release-age
+ *          cooldown then caps each target to the newest version that has
+ *          cleared `minimumReleaseAge` (from `pnpm-workspace.yaml`); a target
+ *          with no aged upgrade is recorded as `skipped`.
  * Phase 2: Map each outdated package to its companion group via
  *          `groups.ts`. Packages with no rule become `singleton:<name>`.
  * Phase 3: Classify each group: any major bump → Wave B (per-group PR),
@@ -410,10 +413,132 @@ const fetchLatestVersion = (
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+// ---------- release-age cooldown ----------
+
+/**
+ * Read `minimumReleaseAge` (in minutes) from the workspace's
+ * `pnpm-workspace.yaml`. Returns 0 when the file is absent, unparsable, or the
+ * key is missing / non-positive — in which case the cooldown is a no-op and
+ * the version selection matches the pre-cooldown behaviour exactly (no extra
+ * registry calls). pnpm 11 enforces this same setting on the lockfile; honour
+ * it here so the dependabot flow never targets a version pnpm 11 would reject.
+ */
+const readMinimumReleaseAge = (cwd: string): number => {
+  let raw: string;
+
+  try {
+    raw = readFileSync(path.join(cwd, 'pnpm-workspace.yaml'), 'utf8');
+  } catch {
+    return 0;
+  }
+
+  // The setting is a top-level integer minute count. Match it directly rather
+  // than pulling a YAML parser into the bundle for one scalar — commented and
+  // indented lines do not match the start-anchored key, and any inline comment
+  // sits past the captured digits.
+  for (const line of raw.split('\n')) {
+    const match = /^minimumReleaseAge:[ \t]*(\d+)\b/u.exec(line);
+
+    if (match) {
+      const value = Number.parseInt(match[1] ?? '', 10);
+
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    }
+  }
+
+  return 0;
+};
+
+/**
+ * Fetch a package's `version -> ISO publish time` table via
+ * `pnpm view <name> time --json`. Returns `undefined` on any failure so the
+ * caller can fail closed (record the package as unresolved rather than bump to
+ * a possibly-too-young version).
+ */
+const fetchVersionTimes = (
+  name: string,
+  cwd: string,
+  pnpmRunner: PnpmRunner
+): Readonly<Record<string, string>> | undefined => {
+  const result = pnpmRunner(['view', name, 'time', '--json'], {cwd});
+
+  if (result.status !== 0) return undefined;
+
+  const trimmed = result.stdout.trim();
+
+  if (trimmed.length === 0) return undefined;
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return undefined;
+  }
+
+  const out: Record<string, string> = {};
+
+  for (const [version, time] of Object.entries(
+    parsed as Record<string, unknown>
+  )) {
+    if (typeof time === 'string') out[version] = time;
+  }
+
+  return out;
+};
+
+/** A semver string is a prerelease when it carries a `-` qualifier. */
+const isPrerelease = (version: string): boolean => version.includes('-');
+
+/**
+ * The newest stable version that is an upgrade over `current`, at or below
+ * `latest`, and published on or before `cutoffMs`. Returns `undefined` when no
+ * such version exists — every available upgrade is still inside the cooldown
+ * window. `time` carries `created` / `modified` pseudo-keys alongside the real
+ * version keys; both are skipped.
+ */
+const capToAgedVersion = (params: {
+  current: string;
+  cutoffMs: number;
+  latest: string;
+  times: Readonly<Record<string, string>>;
+}): string | undefined => {
+  const currentSegments = parseSegments(params.current);
+  const latestSegments = parseSegments(params.latest);
+  let best: {raw: string; segments: readonly number[]} | undefined;
+
+  for (const [version, isoTime] of Object.entries(params.times)) {
+    if (version === 'created' || version === 'modified') continue;
+    if (isPrerelease(version)) continue;
+
+    const segments = parseSegments(version);
+
+    if (compareSegments(segments, currentSegments) <= 0) continue;
+    if (compareSegments(segments, latestSegments) > 0) continue;
+
+    const publishedMs = Date.parse(isoTime);
+
+    if (!Number.isFinite(publishedMs) || publishedMs > params.cutoffMs) {
+      continue;
+    }
+
+    if (best === undefined || compareSegments(segments, best.segments) > 0) {
+      best = {raw: version, segments};
+    }
+  }
+
+  return best?.raw;
+};
+
 // ---------- compute ----------
 
 export type ComputeOptions = {
   cwd: string;
+  now?: () => Date;
   pnpmRunner?: PnpmRunner;
 };
 
@@ -445,8 +570,56 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
 
   const raw = parseOutdated(result.stdout);
 
+  // Release-age cooldown. pnpm 11 re-verifies the whole lockfile against
+  // `minimumReleaseAge`, so a target newer than the cooldown window would make
+  // the resulting install fail. Cap each target to the newest version that has
+  // already cleared the window. Disabled (no registry calls) when the setting
+  // is unset, preserving the prior behaviour for adopters who do not use it.
+  const now = (options.now ?? (() => new Date()))();
+  const minimumReleaseAgeMinutes = readMinimumReleaseAge(options.cwd);
+  const cooldownCutoffMs = now.getTime() - minimumReleaseAgeMinutes * 60_000;
+
+  const applyCooldown = (
+    name: string,
+    current: string,
+    latest: string
+  ):
+    | {kind: 'cooldown'}
+    | {kind: 'ok'; latest: string}
+    | {kind: 'unresolved'} => {
+    if (minimumReleaseAgeMinutes <= 0) return {kind: 'ok', latest};
+
+    // Not an upgrade (sibling already current, or a downgrade) — nothing to
+    // gate; leave it so up-to-date members still flow through unchanged.
+    if (compareSegments(parseSegments(latest), parseSegments(current)) <= 0) {
+      return {kind: 'ok', latest};
+    }
+
+    const times = fetchVersionTimes(name, options.cwd, pnpmRunner);
+
+    if (times === undefined) return {kind: 'unresolved'};
+
+    const capped = capToAgedVersion({
+      current,
+      cutoffMs: cooldownCutoffMs,
+      latest,
+      times,
+    });
+
+    return capped === undefined ?
+        {kind: 'cooldown'}
+      : {kind: 'ok', latest: capped};
+  };
+
+  // `wanted` is the in-range floor pnpm reports; never let it exceed the
+  // cooldown-capped target, or the emitted payload would be self-inconsistent.
+  const clampWanted = (wanted: string, latest: string): string =>
+    compareSegments(parseSegments(wanted), parseSegments(latest)) > 0 ? latest
+    : wanted;
+
   const eslintCache: {versions?: readonly string[]} = {};
   const adjusted: Adjusted[] = [];
+  const skipped: SkippedEntry[] = [];
 
   for (const entry of raw) {
     const decision = applyEslintCap(
@@ -460,9 +633,26 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
 
     const effectiveLatest =
       decision.kind === 'rewrite' ? decision.latest : entry.latest;
-    const kind = classifyKind(entry.current, effectiveLatest);
 
-    if (kind === 'patch' && entry.current === effectiveLatest) {
+    const cooled = applyCooldown(entry.name, entry.current, effectiveLatest);
+
+    if (cooled.kind !== 'ok') {
+      skipped.push({
+        current: entry.current,
+        latest: effectiveLatest,
+        name: entry.name,
+        reason:
+          cooled.kind === 'cooldown' ?
+            'release-age-cooldown'
+          : 'release-age-unresolved',
+      });
+      continue;
+    }
+
+    const cooledLatest = cooled.latest;
+    const kind = classifyKind(entry.current, cooledLatest);
+
+    if (kind === 'patch' && entry.current === cooledLatest) {
       // Already up to date after cap rewrite. Defensive — applyEslintCap's
       // drop branch already handles "already on highest 9.x", but a
       // best-of belt-and-suspenders guard for non-eslint paths.
@@ -474,9 +664,9 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
       group: resolveGroup(entry.name),
       is_pinned: isPinnedSpec(lookupSpec(pkg, entry.name)),
       kind,
-      latest: effectiveLatest,
+      latest: cooledLatest,
       name: entry.name,
-      wanted: entry.wanted,
+      wanted: clampWanted(entry.wanted, cooledLatest),
     });
   }
 
@@ -499,7 +689,6 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   // were not flagged by `pnpm outdated`. Fetch their `latest` via
   // `pnpm view <name> version`. Failures → `skipped` with
   // `reason: "registry-unresolved"`.
-  const skipped: SkippedEntry[] = [];
   const allPackageNames = Object.keys({
     ...pkg.dependencies,
     ...pkg.devDependencies,
@@ -539,10 +728,27 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
         continue;
       }
 
+      const cooled = applyCooldown(siblingName, current, latest);
+
+      if (cooled.kind !== 'ok') {
+        skipped.push({
+          current,
+          latest,
+          name: siblingName,
+          reason:
+            cooled.kind === 'cooldown' ?
+              'release-age-cooldown'
+            : 'release-age-unresolved',
+        });
+        continue;
+      }
+
+      const cooledLatest = cooled.latest;
+
       // If current === latest, kind is "patch" (no-op default per spec).
       const kind: Kind =
-        current !== '' && current !== latest ?
-          classifyKind(current, latest)
+        current !== '' && current !== cooledLatest ?
+          classifyKind(current, cooledLatest)
         : 'patch';
 
       members.push({
@@ -550,9 +756,9 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
         group,
         is_pinned: isPinnedSpec(spec),
         kind,
-        latest,
+        latest: cooledLatest,
         name: siblingName,
-        wanted: latest,
+        wanted: cooledLatest,
       });
     }
   }
@@ -612,7 +818,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   );
 
   return {
-    generated_at: new Date().toISOString(),
+    generated_at: now.toISOString(),
     schema_version: 1,
     skipped,
     wave_a: waveA,
@@ -689,7 +895,11 @@ export const run = (
 
   try {
     const cwd = options.cwd ?? process.cwd();
-    const payload = computeUpdates({cwd, pnpmRunner: options.pnpmRunner});
+    const payload = computeUpdates({
+      cwd,
+      now: options.now,
+      pnpmRunner: options.pnpmRunner,
+    });
     const generatedAt = (options.now ?? (() => new Date()))().toISOString();
     const stamped: UpdatesPayload = {
       ...payload,

@@ -26069,6 +26069,65 @@ var fetchLatestVersion = (name, cwd, pnpmRunner) => {
   const trimmed = result.stdout.trim();
   return trimmed.length > 0 ? trimmed : void 0;
 };
+var readMinimumReleaseAge = (cwd) => {
+  let raw;
+  try {
+    raw = readFileSync29(path39.join(cwd, "pnpm-workspace.yaml"), "utf8");
+  } catch {
+    return 0;
+  }
+  for (const line of raw.split("\n")) {
+    const match = /^minimumReleaseAge:[ \t]*(\d+)\b/u.exec(line);
+    if (match) {
+      const value = Number.parseInt(match[1] ?? "", 10);
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    }
+  }
+  return 0;
+};
+var fetchVersionTimes = (name, cwd, pnpmRunner) => {
+  const result = pnpmRunner(["view", name, "time", "--json"], { cwd });
+  if (result.status !== 0) return void 0;
+  const trimmed = result.stdout.trim();
+  if (trimmed.length === 0) return void 0;
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return void 0;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return void 0;
+  }
+  const out = {};
+  for (const [version2, time3] of Object.entries(
+    parsed
+  )) {
+    if (typeof time3 === "string") out[version2] = time3;
+  }
+  return out;
+};
+var isPrerelease = (version2) => version2.includes("-");
+var capToAgedVersion = (params) => {
+  const currentSegments = parseSegments(params.current);
+  const latestSegments = parseSegments(params.latest);
+  let best;
+  for (const [version2, isoTime] of Object.entries(params.times)) {
+    if (version2 === "created" || version2 === "modified") continue;
+    if (isPrerelease(version2)) continue;
+    const segments = parseSegments(version2);
+    if (compareSegments(segments, currentSegments) <= 0) continue;
+    if (compareSegments(segments, latestSegments) > 0) continue;
+    const publishedMs = Date.parse(isoTime);
+    if (!Number.isFinite(publishedMs) || publishedMs > params.cutoffMs) {
+      continue;
+    }
+    if (best === void 0 || compareSegments(segments, best.segments) > 0) {
+      best = { raw: version2, segments };
+    }
+  }
+  return best?.raw;
+};
 var computeUpdates = (options) => {
   const pnpmRunner = options.pnpmRunner ?? defaultPnpmRunner;
   const pkg = readPackageJson(options.cwd);
@@ -26079,8 +26138,28 @@ var computeUpdates = (options) => {
     );
   }
   const raw = parseOutdated(result.stdout);
+  const now = (options.now ?? (() => /* @__PURE__ */ new Date()))();
+  const minimumReleaseAgeMinutes = readMinimumReleaseAge(options.cwd);
+  const cooldownCutoffMs = now.getTime() - minimumReleaseAgeMinutes * 6e4;
+  const applyCooldown = (name, current, latest) => {
+    if (minimumReleaseAgeMinutes <= 0) return { kind: "ok", latest };
+    if (compareSegments(parseSegments(latest), parseSegments(current)) <= 0) {
+      return { kind: "ok", latest };
+    }
+    const times = fetchVersionTimes(name, options.cwd, pnpmRunner);
+    if (times === void 0) return { kind: "unresolved" };
+    const capped = capToAgedVersion({
+      current,
+      cutoffMs: cooldownCutoffMs,
+      latest,
+      times
+    });
+    return capped === void 0 ? { kind: "cooldown" } : { kind: "ok", latest: capped };
+  };
+  const clampWanted = (wanted, latest) => compareSegments(parseSegments(wanted), parseSegments(latest)) > 0 ? latest : wanted;
   const eslintCache = {};
   const adjusted = [];
+  const skipped = [];
   for (const entry of raw) {
     const decision = applyEslintCap(
       entry,
@@ -26090,8 +26169,19 @@ var computeUpdates = (options) => {
     );
     if (decision.kind === "drop") continue;
     const effectiveLatest = decision.kind === "rewrite" ? decision.latest : entry.latest;
-    const kind = classifyKind(entry.current, effectiveLatest);
-    if (kind === "patch" && entry.current === effectiveLatest) {
+    const cooled = applyCooldown(entry.name, entry.current, effectiveLatest);
+    if (cooled.kind !== "ok") {
+      skipped.push({
+        current: entry.current,
+        latest: effectiveLatest,
+        name: entry.name,
+        reason: cooled.kind === "cooldown" ? "release-age-cooldown" : "release-age-unresolved"
+      });
+      continue;
+    }
+    const cooledLatest = cooled.latest;
+    const kind = classifyKind(entry.current, cooledLatest);
+    if (kind === "patch" && entry.current === cooledLatest) {
       continue;
     }
     adjusted.push({
@@ -26099,9 +26189,9 @@ var computeUpdates = (options) => {
       group: resolveGroup(entry.name),
       is_pinned: isPinnedSpec(lookupSpec(pkg, entry.name)),
       kind,
-      latest: effectiveLatest,
+      latest: cooledLatest,
       name: entry.name,
-      wanted: entry.wanted
+      wanted: clampWanted(entry.wanted, cooledLatest)
     });
   }
   const byGroup = /* @__PURE__ */ new Map();
@@ -26110,7 +26200,6 @@ var computeUpdates = (options) => {
     if (list === void 0) byGroup.set(entry.group, [entry]);
     else list.push(entry);
   }
-  const skipped = [];
   const allPackageNames = Object.keys({
     ...pkg.dependencies,
     ...pkg.devDependencies,
@@ -26135,15 +26224,26 @@ var computeUpdates = (options) => {
         });
         continue;
       }
-      const kind = current !== "" && current !== latest ? classifyKind(current, latest) : "patch";
+      const cooled = applyCooldown(siblingName, current, latest);
+      if (cooled.kind !== "ok") {
+        skipped.push({
+          current,
+          latest,
+          name: siblingName,
+          reason: cooled.kind === "cooldown" ? "release-age-cooldown" : "release-age-unresolved"
+        });
+        continue;
+      }
+      const cooledLatest = cooled.latest;
+      const kind = current !== "" && current !== cooledLatest ? classifyKind(current, cooledLatest) : "patch";
       members.push({
         current,
         group,
         is_pinned: isPinnedSpec(spec),
         kind,
-        latest,
+        latest: cooledLatest,
         name: siblingName,
-        wanted: latest
+        wanted: cooledLatest
       });
     }
   }
@@ -26188,7 +26288,7 @@ var computeUpdates = (options) => {
     (a, b) => a.group < b.group ? -1 : a.group > b.group ? 1 : 0
   );
   return {
-    generated_at: (/* @__PURE__ */ new Date()).toISOString(),
+    generated_at: now.toISOString(),
     schema_version: 1,
     skipped,
     wave_a: waveA,
@@ -26233,7 +26333,11 @@ var run61 = (argv, options = {}) => {
   }
   try {
     const cwd = options.cwd ?? process.cwd();
-    const payload = computeUpdates({ cwd, pnpmRunner: options.pnpmRunner });
+    const payload = computeUpdates({
+      cwd,
+      now: options.now,
+      pnpmRunner: options.pnpmRunner
+    });
     const generatedAt = (options.now ?? (() => /* @__PURE__ */ new Date()))().toISOString();
     const stamped = {
       ...payload,

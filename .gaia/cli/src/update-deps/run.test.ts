@@ -91,10 +91,18 @@ type FakeOutdated = Record<
  */
 type FakeViewVersions = Record<string, string | null>;
 
+/**
+ * Map from package name to its `version -> ISO publish time` table, used to
+ * fake `pnpm view <name> time --json`. Use `null` to simulate a registry
+ * failure (the release-age cooldown then records the package as unresolved).
+ */
+type FakeViewTimes = Record<string, Record<string, string> | null>;
+
 const makePnpmRunner = (
   fakeOutdated: FakeOutdated,
   eslintVersions?: readonly string[],
-  fakeViewVersions?: FakeViewVersions
+  fakeViewVersions?: FakeViewVersions,
+  fakeViewTimes?: FakeViewTimes
 ): PnpmRunner => {
   return (args) => {
     if (args[0] === 'outdated' && args.includes('--json')) {
@@ -112,6 +120,20 @@ const makePnpmRunner = (
         stderr: '',
         stdout: JSON.stringify(eslintVersions ?? []),
       };
+    }
+
+    // pnpm view <name> time --json — used by the release-age cooldown.
+    if (args[0] === 'view' && args[2] === 'time' && args[3] === '--json') {
+      const pkgName = args[1] as string;
+      const times = fakeViewTimes?.[pkgName];
+
+      if (times === null) {
+        return {status: 1, stderr: `E404 Not found: ${pkgName}`, stdout: ''};
+      }
+
+      if (times !== undefined) {
+        return {status: 0, stderr: '', stdout: JSON.stringify(times)};
+      }
     }
 
     // pnpm view <name> version — used to fetch latest for sibling expansion
@@ -769,5 +791,247 @@ describe('update-deps run — CLI', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Usage: gaia update-deps run');
+  });
+});
+
+describe('update-deps run — release-age cooldown', () => {
+  let sandbox: Sandbox;
+
+  beforeEach(() => {
+    sandbox = setupSandbox();
+  });
+
+  afterEach(() => {
+    sandbox.cleanup();
+  });
+
+  // minimumReleaseAge: 10080 (7 days). With NOW at 2026-06-02T00:00Z the
+  // cooldown cutoff is 2026-05-26T00:00Z: anything published on/before it is
+  // "aged", anything after is "too young".
+  const NOW = (): Date => new Date('2026-06-02T00:00:00.000Z');
+  const ANCIENT = '2025-01-01T00:00:00.000Z';
+  const AGED = '2026-05-20T00:00:00.000Z';
+  const TOO_YOUNG = '2026-05-30T00:00:00.000Z';
+
+  const writeWorkspace = (root: string, minutes: number): void => {
+    writeFileSync(
+      path.join(root, 'pnpm-workspace.yaml'),
+      `minimumReleaseAge: ${minutes}\n`,
+      'utf8'
+    );
+  };
+
+  test('caps latest to the newest aged version at or below latest', () => {
+    sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
+    writeWorkspace(sandbox.root, 10080);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner(
+        {foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'}},
+        undefined,
+        undefined,
+        {
+          foo: {
+            '1.0.0': ANCIENT,
+            '1.1.0': AGED,
+            '1.2.0': AGED,
+            '1.3.0': TOO_YOUNG,
+          },
+        }
+      ),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.wave_a).toHaveLength(1);
+    expect(result.wave_a[0]?.name).toBe('foo');
+    expect(result.wave_a[0]?.latest).toBe('1.2.0');
+    expect(result.wave_a[0]?.kind).toBe('minor');
+    // wanted is clamped so it never exceeds the capped latest.
+    expect(result.wave_a[0]?.wanted).toBe('1.2.0');
+  });
+
+  test('skips a package when every upgrade is younger than the cooldown', () => {
+    sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
+    writeWorkspace(sandbox.root, 10080);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner(
+        {foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'}},
+        undefined,
+        undefined,
+        {foo: {'1.0.0': ANCIENT, '1.3.0': TOO_YOUNG}}
+      ),
+    });
+
+    expect(result.wave_a).toEqual([]);
+    expect(result.wave_b).toEqual([]);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]?.name).toBe('foo');
+    expect(result.skipped[0]?.reason).toBe('release-age-cooldown');
+    expect(result.skipped[0]?.latest).toBe('1.3.0');
+  });
+
+  test('leaves latest untouched when it is already old enough', () => {
+    sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
+    writeWorkspace(sandbox.root, 10080);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner(
+        {foo: {current: '1.0.0', latest: '1.2.0', wanted: '1.2.0'}},
+        undefined,
+        undefined,
+        {foo: {'1.0.0': ANCIENT, '1.2.0': AGED}}
+      ),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.wave_a).toHaveLength(1);
+    expect(result.wave_a[0]?.latest).toBe('1.2.0');
+  });
+
+  test('ignores prerelease versions when capping', () => {
+    sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
+    writeWorkspace(sandbox.root, 10080);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner(
+        {foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'}},
+        undefined,
+        undefined,
+        {
+          foo: {
+            '1.0.0': ANCIENT,
+            '1.2.0': AGED,
+            '1.3.0-beta.1': AGED,
+            '1.3.0': TOO_YOUNG,
+          },
+        }
+      ),
+    });
+
+    // 1.3.0-beta.1 is aged and at/below latest, but prereleases are excluded.
+    expect(result.wave_a[0]?.latest).toBe('1.2.0');
+  });
+
+  test('disabled when pnpm-workspace.yaml has no minimumReleaseAge', () => {
+    sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
+    // No pnpm-workspace.yaml written. The runner provides no time table, so a
+    // stray cooldown lookup would fall through to "unexpected args" and skip
+    // foo — this asserts the cooldown never runs.
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner({
+        foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'},
+      }),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.wave_a).toHaveLength(1);
+    expect(result.wave_a[0]?.latest).toBe('1.3.0');
+  });
+
+  test('minimumReleaseAge of 0 disables the cooldown', () => {
+    sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
+    writeWorkspace(sandbox.root, 0);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner({
+        foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'},
+      }),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.wave_a[0]?.latest).toBe('1.3.0');
+  });
+
+  test('records release-age-unresolved when the time lookup fails', () => {
+    sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
+    writeWorkspace(sandbox.root, 10080);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner(
+        {foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'}},
+        undefined,
+        undefined,
+        {foo: null}
+      ),
+    });
+
+    expect(result.wave_a).toEqual([]);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]?.name).toBe('foo');
+    expect(result.skipped[0]?.reason).toBe('release-age-unresolved');
+  });
+
+  test('caps a sibling-expanded version too', () => {
+    sandbox.writePackageJson({
+      dependencies: {'react-router': '^7.0.0', 'react-router-dom': '^7.0.0'},
+    });
+    writeWorkspace(sandbox.root, 10080);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner(
+        {'react-router': {current: '7.0.0', latest: '7.2.0', wanted: '7.2.0'}},
+        undefined,
+        {'react-router-dom': '7.3.0'},
+        {
+          'react-router': {'7.0.0': ANCIENT, '7.2.0': AGED},
+          'react-router-dom': {
+            '7.0.0': ANCIENT,
+            '7.2.0': AGED,
+            '7.3.0': TOO_YOUNG,
+          },
+        }
+      ),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.wave_a).toHaveLength(2);
+    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    expect(rrd?.latest).toBe('7.2.0');
+    expect(rrd?.kind).toBe('minor');
+  });
+
+  test('an up-to-date sibling (current === latest) is still included', () => {
+    sandbox.writePackageJson({
+      dependencies: {'react-router': '^7.1.0', 'react-router-dom': '^7.2.0'},
+    });
+    writeWorkspace(sandbox.root, 10080);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner(
+        {'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'}},
+        undefined,
+        {'react-router-dom': '7.2.0'},
+        // No time table for react-router-dom: it is up to date, so the
+        // cooldown must not attempt a lookup for it.
+        {'react-router': {'7.1.0': ANCIENT, '7.2.0': AGED}}
+      ),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.wave_a).toHaveLength(2);
+    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    expect(rrd).toBeDefined();
+    expect(rrd?.kind).toBe('patch');
+    expect(rrd?.latest).toBe('7.2.0');
   });
 });

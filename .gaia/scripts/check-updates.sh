@@ -2,7 +2,9 @@
 # GAIA SessionStart update checker.
 #
 # Writes .gaia/cache/update-check.json with:
-#   - outdatedCount  (from `pnpm outdated --json | jq length`)
+#   - outdatedCount  (actionable updates from `gaia update-deps run`, which
+#                     applies the ESLint 9.x cap and the minimumReleaseAge
+#                     cooldown — so it never counts updates the skill skips)
 #   - gaiaCurrent    (from .gaia/VERSION)
 #   - gaiaLatest     (from `gh release list` or curl GitHub API)
 #   - gaiaHasUpdate  (semver comparison)
@@ -53,25 +55,30 @@ fi
 mkdir -p "$CACHE_DIR" 2>/dev/null
 
 # ---------- outdatedCount ----------
-outdated_count=0
-if [ -f "$PROJECT_ROOT/package.json" ] && command -v pnpm >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-  raw=$(cd "$PROJECT_ROOT" && pnpm outdated --json 2>/dev/null)
-  if [ -n "$raw" ]; then
-    # Drop packages that /update-deps cannot update:
-    # - `eslint` / `@eslint/js` capped at 9.x while latest is 10.x
-    #   (matches the ESLint-cap rule in .claude/skills/update-deps/SKILL.md)
-    parsed=$(printf '%s' "$raw" | jq '
-      [to_entries[]
-       | select(
-           ((.key == "eslint" or .key == "@eslint/js")
-            and ((.value.latest | split(".") | .[0] | tonumber) >= 10)) | not
-         )]
-      | length
-    ' 2>/dev/null)
-    case "$parsed" in
-      ''|*[!0-9]*) outdated_count="$prev_outdated_count" ;;
-      *) outdated_count="$parsed" ;;
-    esac
+# Count only the updates /update-deps will actually apply. The `update-deps
+# run` primitive runs the same Phase 1-3 filtering the skill does — the ESLint
+# 9.x cap and the minimumReleaseAge cooldown (pnpm 11 rejects lockfile entries
+# younger than the cooldown, so the flow skips them). Counting its emitted plan
+# (wave members that are genuine upgrades) keeps the nudge from prodding for
+# updates that would be skipped. Falls back to the previous cached count on any
+# failure — missing binary, network error, parse error.
+outdated_count="$prev_outdated_count"
+GAIA_BIN="$GAIA_DIR/cli/gaia"
+if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
+  updates_tmp="$(mktemp "$CACHE_DIR/.updates.XXXXXX" 2>/dev/null)"
+  if [ -n "$updates_tmp" ]; then
+    if (cd "$PROJECT_ROOT" && "$GAIA_BIN" update-deps run --emit-updates "$updates_tmp") >/dev/null 2>&1 && [ -s "$updates_tmp" ]; then
+      parsed=$(jq '
+        [.wave_a[]?, (.wave_b[]?.packages[]?)]
+        | map(select(.current != .latest))
+        | length
+      ' "$updates_tmp" 2>/dev/null)
+      case "$parsed" in
+        ''|*[!0-9]*) ;;
+        *) outdated_count="$parsed" ;;
+      esac
+    fi
+    rm -f "$updates_tmp" 2>/dev/null
   fi
 fi
 case "$outdated_count" in
