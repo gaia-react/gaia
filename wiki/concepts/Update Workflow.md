@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-05-01
+updated: 2026-06-02
 tags: [release, claude, adopter, drift]
 ---
 
@@ -43,7 +43,7 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 5. Download baseline + latest tarballs to `.gaia/cache/`.
 6. Walk the latest manifest. For each file, apply the decision table below.
 7. Only after the full walk succeeds, bump `.gaia/VERSION` and replace `.gaia/manifest.json` with the latest version's copy.
-8. Report summary: overwritten / added / skipped / conflicts / deleted / backed up.
+8. Report summary: overwritten / added / removed / skipped / conflicts / deleted / backed up.
 9. Remind the adopter to review `.gaia-merge/`, run the [[Quality Gate]], and commit manually.
 
 ## Decision table
