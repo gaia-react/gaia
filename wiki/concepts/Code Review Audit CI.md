@@ -106,7 +106,7 @@ Editing HEAD between the local stamp and `gh pr merge` invalidates the trailer (
 
 - Agent definition: `.claude/agents/code-review-audit.md`
 - Workflow: `.github/workflows/code-review-audit.yml`
-- Workflow template (install source): `.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl`
+- Workflow template (install source): bundled in the CLI binary; installed via `gaia automation install-audit-workflow`
 - Install primitive: `gaia automation install-audit-workflow`
 - Stamp helper (local): `.claude/hooks/audit-stamp-trailer.sh`
 - Skip-logic helper (CI): `.github/audit/check-trailer.sh`

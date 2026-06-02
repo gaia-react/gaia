@@ -260,9 +260,12 @@ transforms:
       # release-excluded — the link survives the strip but resolves to
       # nothing on the adopter side. The pattern enumerates the known
       # excluded slugs; a new excluded page requires updating this list.
+      # wiki/meta/ holds ephemeral dated audit artifacts (consolidate-report-*,
+      # lint-report-*) whose full slugs are not individually enumerated —
+      # the meta-prefix alternative below covers them as a class.
       - id: wikilink-to-excluded
         description: "Wikilinks pointing at release-excluded wiki slugs"
-        pattern: "\\[\\[(Release Workflow|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta|CLI-Binary-Split|Forensics Triage Workflow)\\]\\]"
+        pattern: "\\[\\[(Release Workflow|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta|CLI-Binary-Split|Forensics Triage Workflow|consolidate-report-[0-9-]+|lint-report-[0-9-]+)\\]\\]"
         scope:
           - "wiki/**/*.md"
         path-allowlist:

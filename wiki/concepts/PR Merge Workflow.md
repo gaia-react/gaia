@@ -14,7 +14,7 @@ The gate is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it enforces t
 
 ## Marker-first: check before you audit
 
-The hook requires a **marker to exist** for HEAD — not that you personally run the audit. The marker comes from one of two sources: CI (`code-review-audit.yml` stamps the `GAIA-Audit` status) or the local `code-review-audit` agent (writes `.gaia/local/audit/<sha>.ok` or a `GAIA-Audit:` trailer). Which one applies depends on whether CI is auditing this PR — and there is **no `ci`/`local` mode flag for the audit**: unlike `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches`, the audit is not a key in `.gaia/automation.json`, so don't look for one.
+The hook requires a **marker to exist** for HEAD — not that you personally run the audit. The marker comes from one of two sources: CI (`code-review-audit.yml` stamps the `GAIA-Audit` status) or the local `code-review-audit` agent (writes `.gaia/local/audit/<sha>.ok` or a `GAIA-Audit:` trailer). Which one applies depends on whether CI is auditing this PR — and there is **no `ci`/`local` mode flag for the audit**: unlike `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches`, the audit has no `automation.json` entry, so don't look for one.
 
 **Start with the cheapest deterministic signal — the workflow file:**
 
