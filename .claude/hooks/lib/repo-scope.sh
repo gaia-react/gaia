@@ -56,6 +56,15 @@ cmd_targets_foreign_repo() {
   # No redirection found: the command runs against the home repo.
   [ -n "$target_dir" ] || return 1
 
+  # Strip one layer of surrounding quotes the capture may have included
+  # (callers legitimately write `git -C "/abs/path"` or `cd '/abs/path' &&`).
+  # The space-delimited capture keeps the quotes, which would defeat the
+  # `git -C "$target_dir"` lookup below.
+  case "$target_dir" in
+    \"*\") target_dir="${target_dir#\"}"; target_dir="${target_dir%\"}" ;;
+    \'*\') target_dir="${target_dir#\'}"; target_dir="${target_dir%\'}" ;;
+  esac
+
   # Expand a leading ~ (our cross-repo flows use ~/path targets). The tilde
   # arrives as a literal character in the command text — bash never expanded
   # it because it was inside the tool_input string — so strip it by offset.

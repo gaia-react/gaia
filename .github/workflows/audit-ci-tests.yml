@@ -37,6 +37,7 @@ jobs:
             code:
               - '.github/audit/**'
               - '.github/workflows/audit-ci-tests.yml'
+              - '.claude/hooks/lib/repo-scope.sh'
       - if: steps.filter.outputs.code == 'true'
         name: Install bats
         run: sudo apt-get update && sudo apt-get install -y bats
