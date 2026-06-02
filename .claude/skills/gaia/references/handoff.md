@@ -24,6 +24,8 @@ Run in parallel:
 
 Path: `.gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
 
+Derive `{YYYY-MM-DD}` from `date +%F` and the **Date** line's timestamps from `date '+%Y-%m-%d %H:%M'` (shell) — never guess the current date/time.
+
 Use the template below. **Omit any section with no real content** — don't leave empty headings. Keep entries factual and concrete (file paths, commit hashes, command invocations). Cross-reference files with `@path/to/file:line` so the next session can jump straight in.
 
 ```markdown
