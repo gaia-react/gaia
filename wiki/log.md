@@ -16,4 +16,8 @@ tags: [meta, log]
 
 ## [v1.3.5] 2026-06-02 | Released
 
+- 2026-06-02 7e6cfd5 WORTHY — promote four durable conventions from memory to wiki
+- 2026-06-02 da69d69 WORTHY — sync playbooks to use shell clock, not model time — updates skill docs
+- 2026-06-02 9791414 WORTHY — updated wiki/concepts/Update Workflow.md decision table
+- 2026-06-02 f11d796 SKIP — CHANGELOG-only fix
 See CHANGELOG.md for details.
