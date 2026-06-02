@@ -175,7 +175,7 @@ BACKUP_DIR=".gaia-backup/$(date +%Y%m%d-%H%M%S)"
 mkdir -p .gaia-merge "$BACKUP_DIR"
 ```
 
-Track six lists internally (`UpdateMergeReport`):
+Track seven lists internally (`UpdateMergeReport`):
 
 ```ts
 {
@@ -183,6 +183,7 @@ Track six lists internally (`UpdateMergeReport`):
   skip: string[];        // no change needed; left alone
   merge: string[];       // clean shared/wiki-owned merges written into the working tree
   add: string[];         // new files copied from latest
+  removed: string[];     // adopter deleted a baseline file; deletion respected, left absent
   delete: string[];      // files removed upstream; surfaced but NOT auto-deleted
   conflicts: Array<{
     path: string;
@@ -196,25 +197,24 @@ Track six lists internally (`UpdateMergeReport`):
 
 Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DIR/<path>`. Use `cmp -s` for equality; `mkdir -p` before writing.
 
-**Match in declared order — first matching row wins.** The first row applies to every class and runs before any class-specific check; it closes the silent-skip gap where the manifest declares a file but the adopter's tree never had it (in particular, the `shared` / `wiki-owned` `B` ≅ `L` row below would otherwise short-circuit and leave the file missing on disk).
+**Match in declared order — first matching row wins.** Baseline presence (`B`) is the discriminator for a missing working-tree file: `A` missing with `B` also missing means the file is genuinely new in the latest release and gets added; `A` missing with `B` present means the adopter deliberately deleted a file that shipped in their baseline, so the deletion is respected and the file is left absent. The `B` ≅ `L` row (no upstream change) short-circuits every class before any conflict is declared — an adopter-drifted file the release never touched has nothing to merge, so it stays as-is and emits no patch.
 
 | Class | Condition | Action | List |
 |---|---|---|---|
-| any | `A` missing and `L` exists | Copy `L` → `<path>` | `add[]` |
-| `owned` | `B` missing (new file) | Copy `L` → `<path>` | `add[]` |
-| `owned` | `A` ≅ `B` (no adopter drift) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `overwrite[]` |
-| `owned` | `A` ≅ `L` (adopter already current) | No-op | `skip[]` |
+| any | `A` missing and `B` missing (genuinely new in latest) | Copy `L` → `<path>` | `add[]` |
+| any | `A` missing and `B` exists (adopter deleted it) | No-op — respect the deletion, leave absent | `removed[]` |
+| `owned` | `B` missing (`A` exists; release newly owns this path) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `overwrite[]` |
+| any | `B` ≅ `L` (no upstream change) | No-op | `skip[]` |
+| any | `A` ≅ `B` (no adopter drift) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `owned` → `overwrite[]`; `shared` / `wiki-owned` → `merge[]` |
+| any | `A` ≅ `L` (adopter already at latest) | No-op | `skip[]` |
 | `owned` | `A` ≠ `B` and `A` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
-| `shared` / `wiki-owned` | `B` ≅ `L` (no upstream change) | No-op | `skip[]` |
-| `shared` / `wiki-owned` | `A` ≅ `B` (no adopter drift) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `merge[]` |
-| `shared` / `wiki-owned` | `A` ≅ `L` (adopter already at latest) | No-op | `skip[]` |
-| `shared` / `wiki-owned` | `A` ≠ `B` and `B` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
+| `shared` / `wiki-owned` | `A` ≠ `B` and `A` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
 
 **After iterating the manifest,** collect deletions: files present under `$BASELINE_DIR` that have no corresponding key in `$LATEST_MANIFEST`'s `.files`. Add each to `delete[]`. Do **not** remove them from the working tree.
 
 **Handling results:**
 
-- `overwrite[]`, `skip[]`, `merge[]`, `add[]`: **report counts only — no per-file narrative.** Do not read file bytes.
+- `overwrite[]`, `skip[]`, `merge[]`, `add[]`, `removed[]`: **report counts only — no per-file narrative.** Do not read file bytes.
 - `delete[]`: **ask the user before removing** each path.
 - `conflicts[]`: read the patch at `.gaia-merge/<path>.patch` and walk the user through the decision per file.
 
@@ -277,9 +277,10 @@ GAIA update: v$BASELINE → $LATEST_TAG
 
   Overwritten:  <n>
   Added:        <n>
+  Removed:      <n>  (files you deleted; left absent, deletion respected)
   Skipped:      <n>
   Conflicts:    <n>  (see .gaia-merge/)
-  Deleted:      <n>
+  Deleted:      <n>  (removed upstream; surfaced, not auto-deleted)
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
   Specs migrated: <n>  (flat .gaia/local/specs files folded into per-SPEC folders)
   Trailer invalidations: <n>  (open PRs stamped v$BASELINE will re-audit on next push)

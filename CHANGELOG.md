@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+### Fixed
+
+- /update-gaia: scope the three-way merge to the real release delta — respect adopter-deleted files instead of re-injecting them, and skip owned files the release left unchanged instead of emitting spurious conflict patches (#267)
+
 ## [1.3.5] — 2026-06-02
 
 ### Added
