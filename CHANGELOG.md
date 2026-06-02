@@ -10,6 +10,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.3.5] — 2026-06-02
+
+### Added
+
+- install code-review-audit on demand; honor both Claude tokens; key merge decision on workflow presence (#262)
+- honor pnpm 11 minimumReleaseAge in version selection (#260)
+- stamp GAIA-Audit status on out-of-scope skips (#257)
+- gate expensive checks on the since-last-green delta (#254)
+- enforce Content-Security-Policy for scripts (#253)
+- incremental code-review-audit scope (#252)
+
+### Changed
+
+- mark CI code-review-audit as opt-in (#263)
+- clarify the gate owns formatting; make PR merge marker-first (#261)
+- print kickoff prompt instead of copying to clipboard (#259)
+- document useDebounce return semantics (#255)
+
+### Fixed
+
+- detect orphaned wiki drift in preflight via suggested_base (#258)
+- recover the un-evaluated window on sync re-anchor (#256)
+- gaia-release updates softwareVersion
+
 ### Added
 
 - pnpm supply-chain hardening — root `pnpm-workspace.yaml` with `minimumReleaseAge` (7-day quarantine) and `trustPolicy: no-downgrade` (#251)
