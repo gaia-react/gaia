@@ -12,11 +12,22 @@ Mandatory before any `gh pr merge`. Machine-enforced by `.claude/hooks/pr-merge-
 
 The gate is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it enforces this repo's audit contract only. A `gh pr merge` positively aimed at a different repo (`-R owner/other`, or `cd <other> &&`) is allowed — this repo's audit markers have no bearing on a sibling repo's merge. Scoping is fail-closed: any ambiguity still enforces.
 
+## Marker-first: check before you audit
+
+The hook requires a **marker to exist** for HEAD — not that you personally run the audit. CI runs `code-review-audit.yml` on every PR and stamps the `GAIA-Audit` status: a full audit on in-scope changes, and an automatic stamp when the un-audited delta is entirely out of audit scope (e.g. markdown-only). So the first action is always a marker check, never an agent spawn:
+
+```bash
+gh pr checks <N> | grep GAIA-Audit   # pass → marker present for HEAD
+git rev-parse HEAD                   # the SHA the marker must match
+```
+
+If the marker is already `pass`/`success` for HEAD, skip straight to **step 4**. The four-step protocol below is the path for when no marker exists yet — an in-scope delta whose CI audit is still pending and you want to merge without waiting, or CI is unavailable. Spawning the local agent when CI has already stamped the marker is redundant work.
+
 ## Four-step protocol
 
-### 1. Run code-review-audit
+### 1. Run code-review-audit (only when no marker exists)
 
-Spawn the agent on the PR's changes:
+When the marker check above comes back empty, spawn the agent on the PR's changes:
 
 ```
 Task(
@@ -91,8 +102,8 @@ If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post
 
 ## No exceptions
 
-- Never skip the audit, even for "small" PRs. The hook denies the merge.
-- Never hand-write a marker file to bypass the gate. The agent owns marker emission.
-- If a doc-only PR genuinely does not warrant an audit, run the agent anyway — it will report no findings and write the marker quickly.
+- Never merge without a marker for HEAD. The hook denies it. The audit must cover the merged content — but CI runs it for you, so "the audit must run" rarely means "spawn the agent locally."
+- Never hand-write a marker file to bypass the gate. The agent (local or CI) owns marker emission.
+- For a doc-only or out-of-scope PR, let CI stamp the marker — don't spawn the local agent redundantly. Run it locally only when no marker exists for HEAD and you don't want to wait for CI.
 
 See [[Code Review Audit Agent]], [[Quality Gate]], [[Git Workflow]].
