@@ -41,6 +41,19 @@ Tree-shaking via esbuild at build time requires two entry points:
 
 The `/gaia-release` command invokes `gaia-maintainer release <subcommand>` (never `gaia release`). When bundling at release time, both binaries are rebuilt in Step 7b to ensure the new version's `--version` output stays current.
 
+## GAIA-internal code placement rule
+
+GAIA-internal functionality that does not need to live in a specific folder for an external integration should live under `.gaia/`. The folders `.claude/`, `.specify/`, `app/`, and `bin/` exist at the root because Claude Code, spec-kit, the React Router app build, and the npm `bin` field require those exact locations. Everything else GAIA-owned (scripts, manifest, templates, statusline, cache, and the CLI source) belongs under `.gaia/`.
+
+**Why:** The adopter's repo root is precious surface — every top-level folder competes with the adopter's own code for attention. Keeping GAIA-internal tooling under `.gaia/` makes the boundary between "GAIA template scaffolding" and "your app" obvious, simplifies `/update-gaia` semantics (one tree to manage), and matches the principle already applied to `.gaia/scripts/`, `.gaia/statusline/`, and `.gaia/templates/`.
+
+**How to apply:**
+
+- New GAIA-internal code: default to `.gaia/<subfolder>/`.
+- Reviewing an existing root-level GAIA folder: ask "what external system requires this exact path?" If the answer is nothing, it is a candidate to move under `.gaia/`.
+- `bin/gaia` stays at root because the npm `bin` field points there — that is an external integration constraint.
+- `gaia-cli/` at root is a known exception pending migration.
+
 ## See also
 
 - [[Bundle-time Scrub]] — enforcement of the distribution boundary after binaries ship.

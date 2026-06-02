@@ -182,6 +182,14 @@ Separate repo, separate npm package (`create-gaia`). Zero runtime deps. When an 
 
 The CLI is deliberately thin — heavy lifting (i18n, branding strip, plugin install) happens inside Claude Code via `/gaia-init`. See the `create-gaia` repo for the implementation.
 
+## Distribution boundary vs. source tree presence
+
+A file's presence in the GAIA source tree (`gaia/.claude/commands/`, etc.) does **not** mean it ships to end users. The release pipeline filters via `.gaia/release-exclude` (and related classifiers). Maintainer-only tools live in the source tree intentionally and are excluded at release time.
+
+**How to apply:** Before recommending or executing the removal of any file from `gaia/`, check `.gaia/release-exclude` and the release pipeline first. If the file is already excluded from distribution, leave it alone — the boundary is working. Only act when the file is actually leaking through to end users.
+
+**Note:** `gaia/.claude/commands/health-audit.md` was previously deleted based on source tree presence when it was already correctly excluded at line 20 of `.gaia/release-exclude`. The deletion stripped a working maintainer tool — the file was restored. Check the exclusion list before removing any file.
+
 ## See also
 
 - [[Update Workflow]] — how adopters pull later releases into an initialized project without clobbering drift.
