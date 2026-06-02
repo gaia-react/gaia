@@ -98,3 +98,13 @@ GAIA's wiki workflow is powered by the `claude-obsidian` plugin, installed globa
 - `claude-obsidian:obsidian-markdown` — write correct Obsidian Flavored Markdown (wikilinks, embeds, callouts, properties, math, canvas syntax).
 
 The skill source lives in the upstream plugin cache (`~/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian/<version>/skills/`), informational reference only — adopters should not edit these files. See [[Claude Integration Conventions]] § Wiki vendor relationship and [[DragonScale Opt-Out]] for the v1.6.0 baseline policy and why DragonScale's `wiki-fold` skill is dormant in our environment.
+
+## Playwright CLI vs. MCP
+
+GAIA uses the `playwright-cli` skill (Bash-invoked CLI) rather than the Playwright MCP server. The MCP server was evaluated and rejected.
+
+**Why:** MCP servers load tools into the system prompt every conversation, paying a token tax even when unused. For Playwright specifically, the per-test workflow is independent enough that CLI invocation works fine — there is no warm-state benefit that justifies the tax.
+
+**How to apply:** Do not recommend the Playwright MCP server for GAIA. When browser automation is needed, point at the existing `playwright-cli` skill.
+
+**Scope:** This is a Playwright-specific decision, not a blanket "CLI over MCP" policy. Other MCPs (Serena, claude-obsidian, context7) are evaluated on their own merits. Each MCP candidate is assessed individually.
