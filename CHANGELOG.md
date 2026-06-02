@@ -10,9 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-06-02
+
+### Changed
+
+- promote machine-local feedback memories into shared wiki (#270)
+
 ### Fixed
 
-- /update-gaia: scope the three-way merge to the real release delta — respect adopter-deleted files instead of re-injecting them, and skip owned files the release left unchanged instead of emitting spurious conflict patches (#267)
+- derive wiki playbook dates from the shell clock, not the model (#269)
+- /update-gaia: scope the three-way merge to the real release delta — respect adopter-deleted files instead of re-injecting them, and skip owned files the release left unchanged instead of emitting spurious conflict patches (#268)
 
 ## [1.3.5] — 2026-06-02
 
