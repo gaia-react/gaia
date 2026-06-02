@@ -11,8 +11,8 @@ The flow:
 - Warn if Dependabot or Renovate is configured (GAIA Sharpen overlaps).
 - Ask: enable now / not now / opt out for the team.
 - If admin: offer to enable `delete_branch_on_merge` (makes stale-branch cleanup redundant).
-- Accept your bot token (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) via stdin and pipe it directly to `gh secret set`.
-- Generate `.github/workflows/gaia-ci-*.yml` from `.gaia/automation.json`.
+- Accept your bot token (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) via stdin and pipe it directly to `gh secret set`. The same token authenticates the cron workflows and the `code-review-audit.yml` PR gate — the audit honors either token type.
+- Generate `.github/workflows/gaia-ci-*.yml` from `.gaia/automation.json` and install `.github/workflows/code-review-audit.yml`.
 - Trigger one `workflow_dispatch` run to verify the workflow boots.
 - On success, commit the workflow files plus a flip of `setup_complete: true` in a single commit.
 
@@ -47,11 +47,12 @@ When `setup_complete: true` AND `RECONFIGURE` is NOT set, probe for template dri
 
 ```bash
 .gaia/cli/gaia setup-ci check-drift --json
+.gaia/cli/gaia setup-ci check-audit-drift --json
 ```
 
-Read the JSON: `{drifted: ToolId[], missing: ToolId[], in_sync: ToolId[]}`.
+Read both JSON responses. `check-drift` returns `{drifted: ToolId[], missing: ToolId[], in_sync: ToolId[]}`. `check-audit-drift` returns `{state: "in_sync" | "drifted" | "missing"}`.
 
-If `drifted.length === 0 && missing.length === 0`, print exactly:
+If `drifted.length === 0 && missing.length === 0` AND `check-audit-drift` state is `"in_sync"`, print exactly:
 
 ```
 GAIA CI is already configured. Pass --reconfigure to rotate tokens or change tool selection.
@@ -59,16 +60,16 @@ GAIA CI is already configured. Pass --reconfigure to rotate tokens or change too
 
 Exit cleanly. Do not modify any file.
 
-Otherwise (drift or missing files), summarize the affected workflows and `AskUserQuestion`:
+Otherwise (drift or missing cron files, or audit workflow drifted/missing), summarize the affected workflows and `AskUserQuestion`:
 
-> The rendered .github/workflows/gaia-ci-*.yml files have drifted from the bundled templates.
+> The .github/workflows files have drifted from the bundled templates.
 >
-> Drifted: <drifted-list-or-(none)>
-> Missing: <missing-list-or-(none)>
+> Cron workflows — Drifted: <drifted-list-or-(none)> | Missing: <missing-list-or-(none)>
+> Audit workflow — <in_sync|drifted|missing>
 >
 > What would you like to do?
 >
-> - **Re-render workflows** (Recommended) — regenerate only the drifted/missing files from the current templates, then commit + push on a branch + open a PR. Keeps tool selection and token unchanged.
+> - **Re-render workflows** (Recommended) — regenerate only the drifted/missing cron files and re-install the audit workflow from the current templates, then commit + push on a branch + open a PR. Keeps tool selection and token unchanged.
 > - **Skip** — leave the workflows as-is. The next `/update-gaia` will not re-offer this prompt unless templates drift again.
 > - **Run full reconfigure instead** — same as `/setup-gaia-ci --reconfigure`: re-prompt for tool modes and rotate the bot token.
 
@@ -230,6 +231,8 @@ Then shell the `bump-state` call directly:
 
 > Which bot token will GAIA CI use to authenticate workflow steps that hit the Anthropic API?
 >
+> The same repo-scoped secret authenticates all GAIA CI workflows — both the scheduled cron jobs (`gaia-ci-*.yml`) and the `code-review-audit.yml` PR gate. The audit honors either token type; whichever you set here is the one the audit uses.
+>
 > - **CLAUDE_CODE_OAUTH_TOKEN** (default for Claude Code subscribers)
 > - **ANTHROPIC_API_KEY** (default for direct Anthropic API customers)
 > - **I don't know** (link to docs and exit)
@@ -276,15 +279,21 @@ Shell the workflow generator:
 .gaia/cli/gaia automation render-workflows --out-dir .github/workflows
 ```
 
-Capture the JSON list of written paths.
+Capture the JSON list of written cron-workflow paths.
 
-If `render-workflows` reports no paths written (the config has `mode: "ci"` for zero tools), print:
+Then install the audit workflow unconditionally:
+
+```bash
+.gaia/cli/gaia automation install-audit-workflow --out-dir .github/workflows
+```
+
+The audit is the PR gate — it installs regardless of how many cron tools are in CI mode. Even if zero cron tools are configured for CI, the audit alone is a valid CI posture; proceed to Step 9 using the audit workflow path as the verification target.
+
+If `render-workflows` reports no paths written (the config has `mode: "ci"` for zero cron tools), do NOT exit — install the audit and continue. Print a note:
 
 ```
-No tools are configured for CI mode in .gaia/automation.json. Edit the file (set at least one tool's mode to "ci") and re-run /setup-gaia-ci.
+No cron tools are configured for CI mode in .gaia/automation.json. The code-review-audit.yml PR gate is installed. Edit .gaia/automation.json to add cron workflows later.
 ```
-
-Exit cleanly.
 
 ## Step 9: Trigger verification run
 
@@ -321,7 +330,7 @@ On Commit without verification: fall through to Step 10 with a flag that adds `(
 Stage the generated workflow files plus `.gaia/automation.json`:
 
 ```bash
-git add .github/workflows/gaia-ci-*.yml .gaia/automation.json
+git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml .gaia/automation.json
 ```
 
 Commit with this exact message (when verified):
@@ -329,7 +338,8 @@ Commit with this exact message (when verified):
 ```
 chore(gaia-ci): finalize Phase B setup — verified workflow_dispatch run
 
-Adds .github/workflows/gaia-ci-*.yml and flips
+Adds .github/workflows/gaia-ci-*.yml, installs
+.github/workflows/code-review-audit.yml PR gate, and flips
 .gaia/automation.json:setup_complete to true.
 ```
 
@@ -382,16 +392,17 @@ Cut a working branch from the current HEAD:
 git checkout -b chore/gaia-ci-rerender
 ```
 
-Render the workflows (this overwrites only the four `gaia-ci-*.yml` files):
+Render the cron workflows and re-install the audit workflow:
 
 ```bash
 .gaia/cli/gaia automation render-workflows --out-dir .github/workflows
+.gaia/cli/gaia automation install-audit-workflow --out-dir .github/workflows
 ```
 
 Stage and commit:
 
 ```bash
-git add .github/workflows/gaia-ci-*.yml
+git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml
 git commit -m "chore(gaia-ci): re-render workflows from updated templates"
 ```
 
@@ -401,12 +412,12 @@ Push and open a PR:
 git push -u origin chore/gaia-ci-rerender
 gh pr create --base <default-branch> --head chore/gaia-ci-rerender \
   --title "chore(gaia-ci): re-render workflows from updated templates" \
-  --body "GAIA CI templates drifted from the rendered workflows on disk. Regenerated via /setup-gaia-ci. No tool selection or token changes."
+  --body "GAIA CI templates drifted from the rendered workflows on disk. Regenerated cron workflows and re-installed the code-review-audit.yml PR gate via /setup-gaia-ci. No tool selection or token changes."
 ```
 
 Print the PR URL and exit cleanly. Do NOT auto-merge — the adopter reviews and merges in their normal flow. `setup_complete` is NOT touched.
 
-If `render-workflows` fails for any reason, surface the structured error and exit; the branch is abandoned. The adopter can delete it (`git branch -D chore/gaia-ci-rerender`) and re-run `/setup-gaia-ci` after fixing the cause.
+If `render-workflows` or `install-audit-workflow` fails for any reason, surface the structured error and exit; the branch is abandoned. The adopter can delete it (`git branch -D chore/gaia-ci-rerender`) and re-run `/setup-gaia-ci` after fixing the cause.
 
 ## On failure: re-run
 

@@ -14,6 +14,7 @@
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {run as runCheckAdmin} from './check-admin.js';
+import {run as runCheckAuditDrift} from './check-audit-drift.js';
 import {run as runCheckDrift} from './check-drift.js';
 import {run as runDetectRemote} from './detect-remote.js';
 import {run as runDismissPersonal} from './dismiss-personal.js';
@@ -31,6 +32,8 @@ const HELP_TEXT = `Usage: gaia setup-ci <subcommand> [args]
   status [--json]                          Print Phase B configuration status.
   check-drift [--workflows-dir <p>] [--json]
                                            Compare rendered workflows vs template render.
+  check-audit-drift [--workflows-dir <p>] [--json]
+                                           Compare installed audit workflow vs template.
   detect-remote [--json]                   Read git remote get-url origin.
   warn-existing-tools [--json]             Detect Dependabot / Renovate configs.
   check-admin --owner <o> --repo <r> [--json]
@@ -54,6 +57,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   'check-admin': runCheckAdmin,
+  'check-audit-drift': runCheckAuditDrift,
   'check-drift': runCheckDrift,
   'detect-remote': runDetectRemote,
   'dismiss-personal': runDismissPersonal,

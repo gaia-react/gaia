@@ -40,5 +40,8 @@ const resolveTemplatesDirectory = (): string => {
 export const workflowTemplatePath = (tool: ToolId): string =>
   path.join(resolveTemplatesDirectory(), `gaia-ci-${tool}.yml.tmpl`);
 
+export const workflowAuditTemplatePath = (): string =>
+  path.join(resolveTemplatesDirectory(), 'code-review-audit.yml.tmpl');
+
 export const workflowPartialsDirectory = (): string =>
   path.join(resolveTemplatesDirectory(), 'partials');

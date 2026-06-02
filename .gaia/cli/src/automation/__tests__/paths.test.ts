@@ -5,6 +5,7 @@ import {
   automationStatePath,
   githubWorkflowsDirectory,
   localAutomationPath,
+  workflowAuditTemplatePath,
   workflowFilePath,
   workflowPartialsDirectory,
   workflowTemplatePath,
@@ -102,6 +103,16 @@ describe('automation/paths', () => {
       expect(
         workflowTemplatePath('stale-branches').endsWith(
           path.join('templates', 'workflows', 'gaia-ci-stale-branches.yml.tmpl')
+        )
+      ).toBe(true);
+    });
+  });
+
+  describe('workflowAuditTemplatePath', () => {
+    it('ends with templates/workflows/code-review-audit.yml.tmpl', () => {
+      expect(
+        workflowAuditTemplatePath().endsWith(
+          path.join('templates', 'workflows', 'code-review-audit.yml.tmpl')
         )
       ).toBe(true);
     });

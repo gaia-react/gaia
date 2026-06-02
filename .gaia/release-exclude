@@ -119,13 +119,17 @@ wiki/decisions/Forensics Triage Workflow.md
 # triage against `gaia-forensics`-labeled issues on the upstream
 # `gaia-react/gaia` repo; the workflow's helpers under `.github/forensics/`
 # include scope checks, classifier prompts, fixtures, and bats tests that
-# only matter on the maintainer's clone. All would be silent passengers at
-# best and confusing CI failures at worst on adopter clones.
+# only matter on the maintainer's clone. `code-review-audit.yml` installs
+# on demand via `/setup-gaia-ci` (like the cron workflows) rather than
+# shipping by default, so adopters who have not enabled GAIA CI never carry
+# a credential-less audit that blocks every merge. All would be silent
+# passengers at best and confusing CI failures at worst on adopter clones.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
 .github/workflows/audit-ci-tests.yml
 .github/workflows/distribution.yml
 .github/workflows/forensics-triage.yml
+.github/workflows/code-review-audit.yml
 .github/forensics
 
 # --- 10. Maintainer-only health-audit infrastructure ---
