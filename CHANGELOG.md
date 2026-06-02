@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+### Fixed
+
+- repo-scope guard: strip surrounding quotes from literal `git -C "<path>"` and `cd '<path>'` captures so a quoted sibling-repo push is recognized as foreign and allowed, instead of being denied as a home-repo push to main
+
 ## [1.4.0] — 2026-06-02
 
 ### Changed
