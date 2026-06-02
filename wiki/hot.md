@@ -11,7 +11,7 @@ tags: [meta, cache]
 
 ## Last Updated
 
-2026-06-02. Released as GAIA v1.3.5. Fresh slate.
+2026-06-02. Released as GAIA v1.4.0. Fresh slate.
 
 ## Active Threads
 
