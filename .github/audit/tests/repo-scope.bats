@@ -24,6 +24,7 @@
 #   3. unquoted `git -C <sibling>` push           → foreign (guard)
 #   4. quoted `git -C "<home>"` push              → home (quote-strip safe)
 #   5. plain home `git push origin main`          → home (enforce)
+#   6. literal `$CG` token `git -C "$CG"` push    → home (unexpandable var, enforce)
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -99,5 +100,19 @@ in_home() {
 
 @test "plain git push from home: home (enforce)" {
   run in_home "git push origin main"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------------
+# 6. A literal `$CG` token is NOT a path. repo-scope.sh reads the raw command
+#    string and never expands shell variables, so `git -C "$CG"` resolves the
+#    target to the literal three characters `$CG`, the git lookup fails, and the
+#    helper fails closed (return 1 = enforce). This is why the gaia-release
+#    runbook inlines the literal absolute path into sibling pushes rather than
+#    passing $CG/$WEB — a $VAR form would trip the home-repo main-push deny.
+# -----------------------------------------------------------------------------
+
+@test "literal \$CG token (unexpandable variable): home (enforce)" {
+  run in_home 'git -C "$CG" push origin main'
   [ "$status" -ne 0 ]
 }
