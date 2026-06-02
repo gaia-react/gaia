@@ -900,11 +900,7 @@ export const run = (
       now: options.now,
       pnpmRunner: options.pnpmRunner,
     });
-    const generatedAt = (options.now ?? (() => new Date()))().toISOString();
-    const stamped: UpdatesPayload = {
-      ...payload,
-      generated_at: generatedAt,
-    };
+    const stamped: UpdatesPayload = payload;
 
     const outPath =
       path.isAbsolute(parsed.emitUpdates) ?

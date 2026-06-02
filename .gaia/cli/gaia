@@ -26338,11 +26338,7 @@ var run61 = (argv, options = {}) => {
       now: options.now,
       pnpmRunner: options.pnpmRunner
     });
-    const generatedAt = (options.now ?? (() => /* @__PURE__ */ new Date()))().toISOString();
-    const stamped = {
-      ...payload,
-      generated_at: generatedAt
-    };
+    const stamped = payload;
     const outPath = path39.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path39.join(cwd, parsed.emitUpdates);
     mkdirSync19(path39.dirname(outPath), { recursive: true });
     writeFileSync15(outPath, `${JSON.stringify(stamped, null, 2)}
