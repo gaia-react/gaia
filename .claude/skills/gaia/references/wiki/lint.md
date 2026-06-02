@@ -20,6 +20,22 @@ Capture the report path it produced — every appended GAIA check writes into th
 
 Do **not** restructure the upstream report format. Append GAIA sections at the bottom only.
 
+### Normalize the report date
+
+The upstream skill names the report from the model's notion of "today", which is unreliable (no LLM has a clock). Reconcile it against the shell clock before appending anything:
+
+```bash
+DATE=$(date +%F)
+```
+
+If the captured report path's date differs from `$DATE`, rename it and fix the in-file references:
+
+```bash
+git mv wiki/meta/lint-report-<upstream-date>.md wiki/meta/lint-report-$DATE.md
+```
+
+Then set the report's frontmatter (`title`, `created`, `updated`) and H1 heading to `$DATE`. Use the renamed path as the canonical report path for every subsequent step and the Step 5 summary.
+
 ## Step 2: GAIA check #11 — Wiki drift
 
 After the upstream lint finishes, run `gaia wiki state --json` and append a `## #11: Wiki drift check` section to the report file based on its output.

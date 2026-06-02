@@ -79,6 +79,8 @@ Do not pass frontmatter through redaction. Frontmatter is written after the body
 
 Emit the strict-schema body. The frontmatter heads the body, and the same body is posted to the GH issue verbatim — at creation time (before `gh_issue_url` is back-filled into the local file in step 8) the local file and the GH issue are byte-identical, so downstream triage parses either with the same parser.
 
+Set `created` from `date +%F` (shell) — never guess the current date.
+
 Body layout (frontmatter + sections):
 
 ```markdown

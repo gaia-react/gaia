@@ -77,6 +77,8 @@ Read the diff. Decide what wiki page(s) need updating:
   ---
   ```
 
+  Derive `<today>` from `date +%F` (shell) — never guess the current date. Take the `date`/`created` commit-date values from the commit itself: `git show -s --format=%cs <sha>`.
+
 Match the existing wiki voice: declarative, no preamble, concrete examples where useful. Don't paraphrase the commit message — extract the load-bearing facts and integrate them into the page's narrative.
 
 **Follow `.claude/rules/wiki-style.md` when writing or editing prose.** Present tense only. Never reference UAT-NNN, SPEC-NNN, PR numbers, commit SHAs, or "changed from X to Y on date" inside body prose. The historical record lives in `wiki/log.md` (which Step 5 maintains) and in git — not in pages.

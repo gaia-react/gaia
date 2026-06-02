@@ -174,6 +174,8 @@ For each over-budget file, propose one of: inline facts → wiki, consolidate du
 
 Write `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md`. Create `$PROJECT_ROOT/.gaia/local/audit/` if missing. Also snapshot `git status --short` into the report's frontmatter so Stage 2 can detect drift.
 
+Derive the timestamp from the shell — never guess the current date/time: `date '+%Y-%m-%d-%H%M'` for the `{YYYY-MM-DD-HHMM}` filename, `date '+%Y-%m-%d %H:%M'` for the `generated:` field.
+
 ### Report template (strict schema — Stage 2 parses this)
 
 ````markdown
