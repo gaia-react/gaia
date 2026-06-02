@@ -10,20 +10,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.3.5] — 2026-06-02
+
 ### Added
 
+- install code-review-audit on demand; honor both Claude tokens; key merge decision on workflow presence (#262)
+- honor pnpm 11 minimumReleaseAge in version selection (#260)
+- stamp GAIA-Audit status on out-of-scope skips (#257)
+- gate expensive checks on the since-last-green delta (#254)
+- enforce Content-Security-Policy for scripts (#253)
+- incremental code-review-audit scope (#252)
 - pnpm supply-chain hardening — root `pnpm-workspace.yaml` with `minimumReleaseAge` (7-day quarantine) and `trustPolicy: no-downgrade` (#251)
 
 ### Changed
 
-- skip redundant CI on prose-only commits: `code-review-audit` and `Vitest and Playwright` gate on the delta *since that check last passed green* instead of the full PR diff, so a code commit that passes followed by a wiki/CHANGELOG commit re-runs neither. A new `.github/audit/resolve-check-base.sh` resolves the last-green ancestor for a named check (the audit reuses the version-aware `resolve-audit-base.sh`); both fall back to full scope when no green ancestor exists. `Run Chromatic` stays always-on — TurboSnap already minimizes it and its app-posted statuses stay adopter-safe (#254)
-- enforce the Content Security Policy in production — ship it under `Content-Security-Policy` instead of `Content-Security-Policy-Report-Only`. The react-router#15083 nonce gap that forced Report-Only is resolved; every streamed script now carries the per-request nonce (#253)
+- mark CI code-review-audit as opt-in (#263)
+- clarify the gate owns formatting; make PR merge marker-first (#261)
+- print kickoff prompt instead of copying to clipboard (#259)
+- document useDebounce return semantics (#255)
 - enable React Router v8 future flags for early v8 readiness: `v8_passThroughRequests`, `v8_splitRouteModules`, `v8_trailingSlashAwareDataRequests`, `v8_viteEnvironmentApi` (#251)
   - **Migration (`v8_passThroughRequests`):** loaders/actions now receive the raw `request`, so `request.url` keeps the `.data` suffix and `?index`/`?_routes` params on data requests. If you customized `app/root.tsx` (or any loader) and call `new URL(request.url)` for normalized routing, switch to the new normalized `url` arg (a `URL` instance) — e.g. `({request, url}) => url.pathname`. `/update-gaia` delivers the updated `app/root.tsx` as a conflict patch for customized files, so apply this by hand when resolving it.
-- `code-review-audit` CI reviews only the diff since the last clean audit instead of the full `origin/main...HEAD` diff on every push, cutting wall-clock on multi-push PRs. A new `.github/audit/resolve-audit-base.sh` resolves the most recent ancestor that passed a clean audit under the current `.gaia/VERSION`; it falls back to full scope when none exists, so it never skips uncleared code (#252)
 
 ### Fixed
 
+- detect orphaned wiki drift in preflight via suggested_base (#258)
+- recover the un-evaluated window on sync re-anchor (#256)
+- gaia-release updates softwareVersion
 - `Form/Chain` composes `className` with `twMerge` instead of `twJoin`, so a consumer's utilities override the component's defaults (#251)
 
 ## [1.3.4] — 2026-05-26
