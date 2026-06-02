@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [v1.3.4] 2026-05-26 | Released
 
+- 2026-06-02 e7939cf SKIP — squash of already-synced prep PR #264 (health fixes + wiki sync through 7b2efd0); state advance only
 - 2026-06-02 7b2efd0f WORTHY — distribution-boundary leaks and wikilink scrub; edits Code Review Audit CI.md, PR Merge Workflow.md, pnpm.md
 - 2026-06-02 4e3d022f SKIP — README copy update; no wiki body
 - 2026-06-02 7d082f2c WORTHY — on-demand code-review-audit CI install + dual Claude token support → wiki/concepts/Code Review Audit CI.md, wiki/concepts/PR Merge Workflow.md
