@@ -22081,7 +22081,17 @@ var run47 = (argv, options = {}) => {
   if (onDisk === null) {
     state = "missing";
   } else {
-    const template = readFileSync23(workflowAuditTemplatePath(), "utf8");
+    let template;
+    try {
+      template = readFileSync23(workflowAuditTemplatePath(), "utf8");
+    } catch (error51) {
+      structuredError({
+        code: "template_unreadable",
+        error: error51 instanceof Error ? error51.message : String(error51),
+        subcommand: "setup-ci check-audit-drift"
+      });
+      return EXIT_CODES.STORAGE_INACCESSIBLE;
+    }
     state = onDisk === template ? "in_sync" : "drifted";
   }
   if (parsed.json) {
