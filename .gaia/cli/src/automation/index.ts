@@ -11,6 +11,7 @@ import {run as runBumpState} from './bump-state.js';
 import {run as runClearOverage} from './clear-overage.js';
 import {run as runCronDecide} from './cron-decide.js';
 import {run as runInitState} from './init-state.js';
+import {run as runInstallAuditWorkflow} from './install-audit-workflow.js';
 import {run as runReadConfig} from './read-config.js';
 import {run as runReadState} from './read-state.js';
 import {run as runRecordOverage} from './record-overage.js';
@@ -28,6 +29,7 @@ const HELP_TEXT = `Usage: gaia automation <subcommand> [args]
   record-overage <tool> --cost <dollars>
   clear-overage <tool>
   render-workflows --out-dir <path> [--tools <csv>] [--dry-run]
+  install-audit-workflow --out-dir <path> [--dry-run]
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -41,6 +43,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   'clear-overage': runClearOverage,
   'cron-decide': runCronDecide,
   'init-state': runInitState,
+  'install-audit-workflow': runInstallAuditWorkflow,
   'read-config': runReadConfig,
   'read-state': runReadState,
   'record-overage': runRecordOverage,
