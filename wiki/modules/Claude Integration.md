@@ -72,7 +72,7 @@ These are the load-bearing safety net. They block the action outright and return
 
 ### Statusline (no hook)
 
-`update-deps` and `update-gaia` are surfaced via the statusline, not a hook. The wrapper at `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segments. Left-side rendering is delegated to the user's existing global `statusLine.command` (falling back to `Claude Code`). The hot path is cache-only; a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh.
+`update-deps` and `update-gaia` are surfaced via the statusline, not a hook. The wrapper at `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segments. Left-side rendering is delegated to the user's existing global `statusLine.command` (falling back to `Claude Code`). The hot path is cache-only; a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. The `N outdated` count derives from `gaia update-deps run`, so it counts only the plan the skill will apply and inherits the `minimumReleaseAge` cooldown (see [[pnpm]]) rather than every raw `pnpm outdated` hit.
 
 ## Agents
 
