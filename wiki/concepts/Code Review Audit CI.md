@@ -8,7 +8,9 @@ tags: [concept, ci, audit, claude]
 
 # Code Review Audit CI
 
-A GitHub Actions pre-merge gate that runs the [[Code Review Audit Agent]] against every PR. The workflow lives at `.github/workflows/code-review-audit.yml` and exposes a stable check named `code-review-audit` that branch protection on `main` requires before merge.
+A GitHub Actions pre-merge gate that runs the [[Code Review Audit Agent]] against every PR in repos where it is installed. The workflow installs on demand via `/setup-gaia-ci` (alongside the cron workflows) — it is not shipped by default, so adopters who have not enabled GAIA CI do not carry `.github/workflows/code-review-audit.yml`. Its presence in a repo signals that CI is configured to audit. The maintainer repo keeps it in-tree as the live gate. Once installed, the workflow exposes a stable check named `code-review-audit` that branch protection on `main` requires before merge.
+
+The workflow authenticates via whichever single repo-scoped secret `/setup-gaia-ci` configured: it wires both `claude_code_oauth_token` and `anthropic_api_key`, so a repo using `ANTHROPIC_API_KEY` instead of `CLAUDE_CODE_OAUTH_TOKEN` (or vice versa) authenticates without any extra configuration.
 
 The gate has two complementary signals: the existing local marker file at `.gaia/local/audit/<sha>.ok` (gates `gh pr merge` on the contributor's machine — see [[PR Merge Workflow]]) and the `GAIA-Audit:` commit trailer (travels with the commit so CI can recognize an already-audited tree and skip its own run).
 
@@ -104,6 +106,8 @@ Editing HEAD between the local stamp and `gh pr merge` invalidates the trailer (
 
 - Agent definition: `.claude/agents/code-review-audit.md`
 - Workflow: `.github/workflows/code-review-audit.yml`
+- Workflow template (install source): `.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl`
+- Install primitive: `gaia automation install-audit-workflow`
 - Stamp helper (local): `.claude/hooks/audit-stamp-trailer.sh`
 - Skip-logic helper (CI): `.github/audit/check-trailer.sh`
 - Incremental-base helper (CI): `.github/audit/resolve-audit-base.sh`

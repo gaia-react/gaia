@@ -14,11 +14,21 @@ The gate is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it enforces t
 
 ## Marker-first: check before you audit
 
-The hook requires a **marker to exist** for HEAD — not that you personally run the audit. The marker comes from one of two sources: CI (`code-review-audit.yml` stamps the `GAIA-Audit` status) or the local `code-review-audit` agent (writes `.gaia/local/audit/<sha>.ok` or a `GAIA-Audit:` trailer). Which one applies depends on whether CI is auditing this PR — and there is **no `ci`/`local` mode flag for the audit**: unlike `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches`, the audit is not a key in `.gaia/automation.json`, so don't look for one. The signal is the PR's check itself:
+The hook requires a **marker to exist** for HEAD — not that you personally run the audit. The marker comes from one of two sources: CI (`code-review-audit.yml` stamps the `GAIA-Audit` status) or the local `code-review-audit` agent (writes `.gaia/local/audit/<sha>.ok` or a `GAIA-Audit:` trailer). Which one applies depends on whether CI is auditing this PR — and there is **no `ci`/`local` mode flag for the audit**: unlike `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches`, the audit is not a key in `.gaia/automation.json`, so don't look for one.
+
+**Start with the cheapest deterministic signal — the workflow file:**
+
+```bash
+test -f .github/workflows/code-review-audit.yml && echo present || echo absent
+git rev-parse HEAD   # the SHA the marker must match
+```
+
+`test -f .github/workflows/code-review-audit.yml` — **present** → the CI audit is configured (it installs only via `/setup-gaia-ci`); trust / wait for the `GAIA-Audit` marker. **Absent** → the CI audit is not set up; run the local `code-review-audit` agent. The `GAIA-Audit` check state stays authoritative for the final go/no-go (it handles secret-rotated and `gate_label` edge cases where the file is present but no marker lands).
+
+When the file is **present**, consult the PR's check state:
 
 ```bash
 gh pr checks <N> | grep GAIA-Audit   # what state the audit is in, if any
-git rev-parse HEAD                   # the SHA the marker must match
 ```
 
 | `gh pr checks` result               | Meaning                              | Action                                              |
@@ -27,7 +37,7 @@ git rev-parse HEAD                   # the SHA the marker must match
 | `GAIA-Audit … pending`              | CI is enabled and running the audit  | wait for it to finish, then merge                   |
 | no `GAIA-Audit` row, or it fails    | CI is not auditing this PR           | run the local agent (**step 1**) — mandatory, not optional |
 
-The third row covers every repo where GAIA CI is not stamping the audit: no GitHub remote, Actions disabled, the workflow inactive, or a `gate_label` in `.gaia/audit-ci.yml` this PR lacks. To tell "CI is off" apart from "CI just hasn't registered the check yet," confirm the workflow is live before deciding to wait:
+The third row covers cases where the workflow file is present but CI is not stamping: Actions disabled, the workflow inactive, or a `gate_label` in `.gaia/audit-ci.yml` this PR lacks. To tell "CI is off" apart from "CI just hasn't registered the check yet," confirm the workflow is live before deciding to wait:
 
 ```bash
 gh api repos/{owner}/{repo}/actions/workflows \
@@ -118,6 +128,6 @@ If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post
 
 - Never merge without a marker for HEAD. The hook denies it. The audit must cover the merged content — CI produces the marker when it audits the PR; otherwise the local agent does.
 - Never hand-write a marker file to bypass the gate. The agent (local or CI) owns marker emission.
-- When CI is not auditing this PR (no GitHub Actions, the workflow is inactive, or a `gate_label` excludes it), the local `code-review-audit` agent is the only way to produce the marker — run it.
+- When CI is not auditing this PR (`.github/workflows/code-review-audit.yml` is absent, Actions disabled, the workflow inactive, or a `gate_label` excludes it), the local `code-review-audit` agent is the only way to produce the marker — run it.
 
 See [[Code Review Audit Agent]], [[Quality Gate]], [[Git Workflow]].
