@@ -14,20 +14,34 @@ The gate is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it enforces t
 
 ## Marker-first: check before you audit
 
-The hook requires a **marker to exist** for HEAD — not that you personally run the audit. CI runs `code-review-audit.yml` on every PR and stamps the `GAIA-Audit` status: a full audit on in-scope changes, and an automatic stamp when the un-audited delta is entirely out of audit scope (e.g. markdown-only). So the first action is always a marker check, never an agent spawn:
+The hook requires a **marker to exist** for HEAD — not that you personally run the audit. The marker comes from one of two sources: CI (`code-review-audit.yml` stamps the `GAIA-Audit` status) or the local `code-review-audit` agent (writes `.gaia/local/audit/<sha>.ok` or a `GAIA-Audit:` trailer). Which one applies depends on whether CI is auditing this PR — and there is **no `ci`/`local` mode flag for the audit**: unlike `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches`, the audit is not a key in `.gaia/automation.json`, so don't look for one. The signal is the PR's check itself:
 
 ```bash
-gh pr checks <N> | grep GAIA-Audit   # pass → marker present for HEAD
+gh pr checks <N> | grep GAIA-Audit   # what state the audit is in, if any
 git rev-parse HEAD                   # the SHA the marker must match
 ```
 
-If the marker is already `pass`/`success` for HEAD, skip straight to **step 4**. The four-step protocol below is the path for when no marker exists yet — an in-scope delta whose CI audit is still pending and you want to merge without waiting, or CI is unavailable. Spawning the local agent when CI has already stamped the marker is redundant work.
+| `gh pr checks` result               | Meaning                              | Action                                              |
+| ----------------------------------- | ------------------------------------ | --------------------------------------------------- |
+| `GAIA-Audit … pass`                 | marker present for HEAD              | skip to **step 4 (merge)**                          |
+| `GAIA-Audit … pending`              | CI is enabled and running the audit  | wait for it to finish, then merge                   |
+| no `GAIA-Audit` row, or it fails    | CI is not auditing this PR           | run the local agent (**step 1**) — mandatory, not optional |
+
+The third row covers every repo where GAIA CI is not stamping the audit: no GitHub remote, Actions disabled, the workflow inactive, or a `gate_label` in `.gaia/audit-ci.yml` this PR lacks. To tell "CI is off" apart from "CI just hasn't registered the check yet," confirm the workflow is live before deciding to wait:
+
+```bash
+gh api repos/{owner}/{repo}/actions/workflows \
+  --jq '.workflows[] | select(.path | endswith("code-review-audit.yml")) | .state'   # active → CI will stamp; wait
+gh api repos/{owner}/{repo}/actions/permissions --jq .enabled                          # false → CI cannot run; go local
+```
+
+Spawning the local agent when CI has already stamped the marker is redundant; skipping it when CI will never stamp leaves the merge permanently blocked.
 
 ## Four-step protocol
 
-### 1. Run code-review-audit (only when no marker exists)
+### 1. Run code-review-audit (when CI is not auditing this PR)
 
-When the marker check above comes back empty, spawn the agent on the PR's changes:
+When the decision above sends you here — no `GAIA-Audit` marker and CI will not stamp one — spawn the agent on the PR's changes:
 
 ```
 Task(
@@ -102,8 +116,8 @@ If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post
 
 ## No exceptions
 
-- Never merge without a marker for HEAD. The hook denies it. The audit must cover the merged content — but CI runs it for you, so "the audit must run" rarely means "spawn the agent locally."
+- Never merge without a marker for HEAD. The hook denies it. The audit must cover the merged content — CI produces the marker when it audits the PR; otherwise the local agent does.
 - Never hand-write a marker file to bypass the gate. The agent (local or CI) owns marker emission.
-- For a doc-only or out-of-scope PR, let CI stamp the marker — don't spawn the local agent redundantly. Run it locally only when no marker exists for HEAD and you don't want to wait for CI.
+- When CI is not auditing this PR (no GitHub Actions, the workflow is inactive, or a `gate_label` excludes it), the local `code-review-audit` agent is the only way to produce the marker — run it.
 
 See [[Code Review Audit Agent]], [[Quality Gate]], [[Git Workflow]].
