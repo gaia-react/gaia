@@ -98,7 +98,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Dark Mode Modernization]]
 - [[Content Security Policy]] — per-request nonce CSP; Report-Only pending an upstream React Router fix; documents the `unsafe-inline` and no-`report-uri` trade-offs.
 - [[Dispatched-Check Rollup via Polling]] — in-loop pollers stamp dispatched-workflow jobs via the Checks API so they land in `statusCheckRollup`; documents why a `workflow_run` listener is not viable under `GITHUB_TOKEN`.
-- Forensics Triage Workflow — autonomous triage for `gaia-forensics`-labeled issues; default-deny path policy + draft-PR contract.
+<!-- gaia:maintainer-only:start -->
+- [[Forensics Triage Workflow]]
+<!-- gaia:maintainer-only:end -->
 - [[Quality Gate]]
 - [[pnpm]]
 - [[DragonScale Opt-Out]]
@@ -133,6 +135,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Update Workflow]] — `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.
 <!-- gaia:maintainer-only:start -->
 - [[Release Workflow]] — Maintainer flow: `/gaia-release`, `release.yml`, tarball scrubbing, `create-gaia` bootstrapper.
+- [[Release-Notes]]
 <!-- gaia:maintainer-only:end -->
 - [[GAIA Spec]] — `/gaia-spec`: Socratic discovery wrapper around spec-kit; produces an immutable SPEC artifact and chains into `/gaia-plan`.
 - [[GAIA Plan]] — `/gaia-plan`: feature plan + orchestrator scaffolding, clipboard handoff to a fresh session.

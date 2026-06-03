@@ -145,9 +145,9 @@ Spawn:
 - `description`: `"Wiki lint"`
 - `prompt`: the string below (literal):
 
-  > `You are running the GAIA wiki-lint workflow in a fresh context. Read .claude/skills/gaia/references/wiki/lint.md from the project root and execute the "Playbook" section (Steps 1–5) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 5 — no recap of the report contents.`
+  > `You are running the GAIA wiki-lint workflow in a fresh context. Read .claude/skills/gaia/references/wiki/lint.md from the project root and execute the "Playbook" section (Steps 1–8) verbatim. Your working directory is the project root. Return only the report path and the one-line summary required by Step 8: no recap of the report contents.`
 
-When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 5. If the subagent returns a `WIKI DEAD-PATHS:` line, surface it too. If the subagent returns a `UAT-SPEC DRIFT:` line, surface it too.
+When the subagent returns, relay its summary verbatim. If the drift severity is **`high`**, prefix the surfaced line with `WIKI DRIFT:` per Step 8. If the subagent returns a `WIKI DEAD-PATHS:`, `UAT-SPEC DRIFT:`, `WIKI ORPHANS:`, `WIKI FRONTMATTER:`, or `WIKI EMPTY-SECTIONS:` line, surface it too.
 
 ## Full chain (no sub-arg)
 
