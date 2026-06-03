@@ -160,6 +160,7 @@
     ".github/audit/resolve-audit-base.sh": "owned",
     ".github/audit/resolve-check-base.sh": "owned",
     ".github/audit/tests/check-trailer.bats": "owned",
+    ".github/audit/tests/repo-scope.bats": "owned",
     ".github/audit/tests/resolve-audit-base.bats": "owned",
     ".github/audit/tests/resolve-check-base.bats": "owned",
     ".github/CODEOWNERS": "shared",
@@ -509,6 +510,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-02T09:46:22.498Z",
+  "generated": "2026-06-03T20:21:17.078Z",
   "version": "1.4.0"
 }
