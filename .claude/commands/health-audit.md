@@ -23,16 +23,16 @@ For cycle in 1..3:
   spawn fresh Triager → Triager runs Audit Team in parallel (buckets A–E)
   Triager writes findings to .gaia/local/audit/c<N>/findings.json
     (includes shared_fitness_grade from Bucket E and overall_grade)
-  if clean (0 findings + Bucket D = A+ readiness + Bucket E shared_fitness_grade = A+):
-    overall grade A+, exit
-  Triager classifies findings; compare fingerprints between c<N>/findings.json
-    and c<N-1>/findings.json (jq + comm) — escalate on intersection
+  if clean (no open findings + Bucket D = A+ readiness + effective Bucket E shared_fitness_grade = A+; non-blocking residuals exempt, see runbook §Termination):
+    report honest overall grade (A+ when no findings at all, else the floor that residual info may cap at A), exit
+  Triager classifies findings; compare open-finding (action=real-fix) fingerprints between
+    c<N>/findings.json and c<N-1>/findings.json (jq + comm); escalate on intersection
   Triager dispatches parallel Fixers (lane-aware); fitness findings → claude-surface lane
   Fixers complete, Triager reports post-fix state to you
   shut down the team, start the next cycle
 After cycle 3 without clean: escalate (max loops hit)
 
-On clean A+: rm -rf .gaia/local/audit/c* (whitelisted)
+On clean exit: rm -rf .gaia/local/audit/c* (whitelisted)
 On escalation: preserve all c*/ dirs; surface paths in escalation report
 ```
 
@@ -55,14 +55,15 @@ If the human refuses → escalate.
 
 ## Step 4 — Report
 
-On clean exit:
+On clean exit (no open findings remain; the reported grade is the honest floor: A+ when there were no findings at all, otherwise capped by any non-blocking residual `info`, typically A):
 
 ```
-HEALTH AUDIT: A+
-Overall grade: A+
-Shared-fitness grade: A+ (floor of seven category grades)
+HEALTH AUDIT: <overall grade, A+ or A>
+Overall grade: <A+ | A>
+Shared-fitness grade: <honest floor of seven category grades>
 Cycles: <N>
 Findings closed: <count> (per cycle: <breakdown>)
+Non-blocking residuals: <count> (e.g. wiki/.state.json post-sync drift, recorded not blocking)
 Artifacts: cleaned (.gaia/local/audit/c* removed)
 ```
 
