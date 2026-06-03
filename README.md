@@ -122,6 +122,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <tr><td><code>/gaia-audit</code></td><td>Audit memory, wiki, and autoloaded files for duplication, conflicting instructions, and bloat</td></tr>
 <tr><td><code>/gaia-wiki</code></td><td>Run the full wiki maintenance chain: sync new commits into wiki pages, consolidate redundant or superseded content, then lint for orphans, dead links, and drift</td></tr>
 <tr><td><code>/gaia-forensics</code></td><td>When a GAIA workflow misfires, capture a redacted, classified, filing-ready report in one run. Self-diagnoses user-config issues inline; probable bugs file to GAIA's GitHub with one prompt</td></tr>
+<tr><td><code>/gaia-fitness</code></td><td>Health-check and auto-heal the project's Claude integration: triage, heal, verify, then report an F-to-A+ grade</td></tr>
 <tr><td><code>/update-deps</code></td><td>Autonomous Dependabot: discover every outdated package, audit version overrides, apply codemods and breaking-change migrations for major bumps, resolve conflicts between simultaneous upgrades, then run the quality gate. No prompts</td></tr>
 <tr><td><code>/update-gaia</code></td><td>Pull the latest GAIA release into the project without clobbering your work. Three-way merge per file (your version / release baseline / new release) governed by ownership classes in <code>.gaia/manifest.json</code>; prompts only where your changes and GAIA's collide</td></tr>
 </tbody>
