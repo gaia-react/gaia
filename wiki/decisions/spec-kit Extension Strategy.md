@@ -11,7 +11,7 @@ tags: [decision, claude, spec-kit, architecture]
 
 # spec-kit Extension Strategy
 
-GAIA's `/gaia spec` workflow runs on top of [GitHub spec-kit](https://github.com/github/spec-kit) v0.8.5. This page records the load-bearing contract decisions for that integration.
+GAIA's `/gaia-spec` workflow runs on top of [GitHub spec-kit](https://github.com/github/spec-kit) v0.8.5. This page records the load-bearing contract decisions for that integration.
 
 ## Decision
 
@@ -34,7 +34,7 @@ Block semantics live inside the hook command body — a "block" is a refusal mes
 
 ### 2. There is no `on_save` event
 
-Spec-kit's hook lifecycle covers `before_specify`, `after_clarify`, and `after_specify`. **There is no `on_save`.** The chain-trigger from `/gaia spec` to `/gaia plan` lives inline at the end of the wrapper (Step 11 in `references/spec.md`), not in a hook.
+Spec-kit's hook lifecycle covers `before_specify`, `after_clarify`, and `after_specify`. **There is no `on_save`.** The chain-trigger from `/gaia-spec` to `/gaia-plan` lives inline at the end of the wrapper (Step 11 in `references/spec.md`), not in a hook.
 
 ### 3. Preset must declare `strategy: wrap` for command replacement
 

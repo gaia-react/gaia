@@ -17,7 +17,7 @@ Resolve the path in this order (4-step algorithm; locked post-probe — `.specif
 3. Otherwise the single `.gaia/local/specs/SPEC-NNN/SPEC.md` with `status: in-progress` (only if exactly one exists).
 4. Otherwise `AskUserQuestion`: list all in-progress SPECs and ask which one to render. Do NOT guess.
 
-The GAIA preset's `/speckit-specify` wrapper relocates and stamps the SPEC immediately after authoring, so the just-written SPEC is the most-recent in-progress entry — step 2 covers the `/speckit-specify` → `/gaia plan` → `/speckit-implement` chain. Step 3 handles the common single-feature case.
+The GAIA preset's `/speckit-specify` wrapper relocates and stamps the SPEC immediately after authoring, so the just-written SPEC is the most-recent in-progress entry — step 2 covers the `/speckit-specify` → `/gaia-plan` → `/speckit-implement` chain. Step 3 handles the common single-feature case.
 
 ## Run the render helper
 

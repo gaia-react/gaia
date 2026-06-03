@@ -9,7 +9,7 @@ tags: [concept, claude, skill, orchestration]
 
 # GAIA Plan
 
-`/gaia plan [description]` plans a complex feature using GAIA's [[Task Orchestration]] pattern — without implementing anything. The skill lives at `.claude/skills/gaia/references/plan.md` (dispatched by the `/gaia` router skill).
+`/gaia-plan [description]` plans a complex feature using GAIA's [[Task Orchestration]] pattern — without implementing anything. The skill lives at `.claude/skills/gaia/references/plan.md` (dispatched by the `/gaia` router skill).
 
 ## Steps
 

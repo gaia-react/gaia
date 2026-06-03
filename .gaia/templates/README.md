@@ -16,10 +16,10 @@ The dev server runs on [http://localhost:3000](http://localhost:3000).
 
 This project ships with [GAIA](https://gaiareact.com/). Run these slash commands from inside Claude Code:
 
-- `/gaia plan`: plan a feature as a graph of tasks and execute via subagents
-- `/gaia spec`: run Socratic discovery and produce an immutable SPEC artifact
-- `/gaia handoff` and `/gaia pickup`: clear context without losing state across sessions
-- `/gaia forensics`: file a redacted, classified report when GAIA itself misfires
+- `/gaia-plan`: plan a feature as a graph of tasks and execute via subagents
+- `/gaia-spec`: run Socratic discovery and produce an immutable SPEC artifact
+- `/gaia-handoff` and `/gaia-pickup`: clear context without losing state across sessions
+- `/gaia-forensics`: file a redacted, classified report when GAIA itself misfires
 
 ## Knowledge base
 

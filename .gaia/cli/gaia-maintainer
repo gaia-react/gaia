@@ -20671,7 +20671,7 @@ var run38 = (argv, options = {}) => {
     const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
     if (recovered === null) {
       return refuse(
-        `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia wiki sync first`
+        `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
       );
     }
     driftCount = recovered;
@@ -20685,7 +20685,7 @@ var run38 = (argv, options = {}) => {
     driftSubjects.length > 0 && driftSubjects.every((subject) => subject.startsWith("wiki:"));
     if (!benign) {
       return refuse(
-        `preflight: wiki is ${driftCount} commits behind HEAD; run /gaia wiki sync first`
+        `preflight: wiki is ${driftCount} commits behind HEAD; run /gaia-wiki sync first`
       );
     }
     process.stderr.write(

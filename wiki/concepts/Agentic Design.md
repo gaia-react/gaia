@@ -36,17 +36,17 @@ Two distinct reflection layers, both blocking. The [[Quality Gate]] (typecheck +
 
 #### Planning
 
-[[Task Orchestration]] is GAIA's planning layer. [[GAIA Plan|`/gaia plan`]] writes durable file artifacts to `.gaia/local/plans/<slug>/`: per-task docs self-contained for fresh sub-agents, a `README.md` task graph with phases and frozen interface contracts, an `ORCHESTRATOR.md` execution playbook, and a `KICKOFF.md` entry-point. The user must approve the plan before any execution begins. Plans are concrete files, not chain-of-thought scribbles.
+[[Task Orchestration]] is GAIA's planning layer. [[GAIA Plan|`/gaia-plan`]] writes durable file artifacts to `.gaia/local/plans/<slug>/`: per-task docs self-contained for fresh sub-agents, a `README.md` task graph with phases and frozen interface contracts, an `ORCHESTRATOR.md` execution playbook, and a `KICKOFF.md` entry-point. The user must approve the plan before any execution begins. Plans are concrete files, not chain-of-thought scribbles.
 
 ### Orchestration
 
 #### Multi-Agent Collaboration
 
-The [[Code Review Audit Agent]] is a manager-and-specialists system. The lead reviewer dispatches React Patterns, TypeScript & Architecture, and Translation subagents in parallel. Subagents have file-scope gates (`.tsx` files trigger React Patterns; files containing `t(` calls trigger Translation). Extension files in `.claude/agents/code-review-audit/*.md` inject library-specific rules into the right specialist at runtime via `subagents:` frontmatter, a configurable dispatch system at the file level. The orchestrator pattern in `/gaia plan` follows the same shape.
+The [[Code Review Audit Agent]] is a manager-and-specialists system. The lead reviewer dispatches React Patterns, TypeScript & Architecture, and Translation subagents in parallel. Subagents have file-scope gates (`.tsx` files trigger React Patterns; files containing `t(` calls trigger Translation). Extension files in `.claude/agents/code-review-audit/*.md` inject library-specific rules into the right specialist at runtime via `subagents:` frontmatter, a configurable dispatch system at the file level. The orchestrator pattern in `/gaia-plan` follows the same shape.
 
 #### Resource-Aware Optimization
 
-Model tier follows task complexity. [[GAIA Audit]] runs both stages on Sonnet — drift checks (sha256 + verbatim before/after snippets) carry the safety, so the research stage doesn't need a heavier model. `/gaia plan` asks the user whether to use Opus for planning, defaulting to yes; per-task implementation sub-agents inherit the running model (typically Sonnet). The Code Review Audit declares `model: sonnet` in its frontmatter so the structured rule-based review runs cheaply, leaving Opus for harder reasoning. Cost and quality discipline is wired in, not left to the user.
+Model tier follows task complexity. [[GAIA Audit]] runs both stages on Sonnet — drift checks (sha256 + verbatim before/after snippets) carry the safety, so the research stage doesn't need a heavier model. `/gaia-plan` asks the user whether to use Opus for planning, defaulting to yes; per-task implementation sub-agents inherit the running model (typically Sonnet). The Code Review Audit declares `model: sonnet` in its frontmatter so the structured rule-based review runs cheaply, leaving Opus for harder reasoning. Cost and quality discipline is wired in, not left to the user.
 
 ### Infrastructure & State
 
@@ -64,7 +64,7 @@ Five tiers of memory with explicit scope and decay:
 
 #### Session Isolation
 
-Sub-agents in [[Task Orchestration]] run in fresh-context isolation dispatched via the Agent tool. Each task doc is self-contained for a fresh sub-agent. The `ORCHESTRATOR.md` offers a git-worktree branch for filesystem-level isolation when the user is starting from `main`. The Code Review Audit's specialist subagents run in isolated agent contexts. `/gaia audit` separates research and apply across two isolated stages so reasoning cannot contaminate the mechanical applier.
+Sub-agents in [[Task Orchestration]] run in fresh-context isolation dispatched via the Agent tool. Each task doc is self-contained for a fresh sub-agent. The `ORCHESTRATOR.md` offers a git-worktree branch for filesystem-level isolation when the user is starting from `main`. The Code Review Audit's specialist subagents run in isolated agent contexts. `/gaia-audit` separates research and apply across two isolated stages so reasoning cannot contaminate the mechanical applier.
 
 ### Reliability & Control
 

@@ -8,7 +8,7 @@ tags: [concept, gaia, workflow, support]
 
 # Forensics
 
-`/gaia forensics [description]` is a read-only GAIA skill that turns a workflow misfire into a redacted, classified, filing-ready bug report in one invocation. Any GAIA user can invoke it immediately after a failure — no prior knowledge of the internals is needed. The skill body lives at `.claude/skills/gaia/references/forensics.md` (dispatched by the `/gaia` router skill).
+`/gaia-forensics [description]` is a read-only GAIA skill that turns a workflow misfire into a redacted, classified, filing-ready bug report in one invocation. Any GAIA user can invoke it immediately after a failure — no prior knowledge of the internals is needed. The skill body lives at `.claude/skills/gaia/references/forensics.md` (dispatched by the `/gaia` router skill).
 
 ## What it captures
 
@@ -25,7 +25,7 @@ After classifying the failure, the skill supplements this envelope with class-sp
 | -------------- | --------------------------------------------------------------------------- |
 | `init`         | `/gaia-init` scaffolding failures                                           |
 | `update`       | `/update-gaia` merge conflicts                                              |
-| `wiki-sync`    | `/gaia wiki sync` misfires                                                  |
+| `wiki-sync`    | `/gaia-wiki sync` misfires                                                  |
 | `quality-gate` | `pnpm typecheck` or lint failures inside a GAIA flow — see [[Quality Gate]] |
 | `hook`         | `.claude/hooks/*.sh` misfires                                               |
 | `scaffold`     | `new-component`, `new-route`, `new-hook`, or `new-service` skill failures   |

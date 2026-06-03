@@ -64,7 +64,7 @@ This step is NOT recorded in `setup-state.json` — it runs every invocation as 
 
 ```bash
 if ! command -v gh &>/dev/null; then
-  echo "Warning: GitHub CLI ('gh') is not installed. The PR merge gate, /gaia plan, and forensics workflows depend on it. Install: https://cli.github.com/" >&2
+  echo "Warning: GitHub CLI ('gh') is not installed. The PR merge gate, /gaia-plan, and forensics workflows depend on it. Install: https://cli.github.com/" >&2
 elif ! gh auth status &>/dev/null; then
   echo "Warning: GitHub CLI is not authenticated. Run: gh auth login" >&2
 elif [ -f .github/workflows/forensics-triage.yml ] && gh repo view &>/dev/null; then
@@ -137,7 +137,7 @@ After all three commands succeed, run:
 
 Skip if `init-speckit` is in `completed_steps`.
 
-The GAIA `/gaia spec` Socratic discovery workflow runs on top of [spec-kit](https://github.com/github/spec-kit). The repo already ships the GAIA extension at `.specify/extensions/gaia/` and the GAIA preset at `.specify/presets/gaia/`; they need spec-kit's runtime registered.
+The GAIA `/gaia-spec` Socratic discovery workflow runs on top of [spec-kit](https://github.com/github/spec-kit). The repo already ships the GAIA extension at `.specify/extensions/gaia/` and the GAIA preset at `.specify/presets/gaia/`; they need spec-kit's runtime registered.
 
 Pin spec-kit at the version declared in `.specify/extensions/gaia/extension.yml` `requires.speckit_version` floor.
 

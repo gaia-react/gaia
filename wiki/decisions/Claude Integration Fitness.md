@@ -8,13 +8,13 @@ tags: [decision, claude, fitness]
 
 # Claude Integration Fitness
 
-`/gaia fitness` is a health check + auto-heal that answers one question — "how well-configured and coherent is this project's Claude integration?" — and fixes what it can. A single invocation runs three phases: triage (walk the seven graded categories below), heal (lane-aware Fixer subagents auto-apply confident fixes inside a bounded loop with oscillation detection), and verify (re-run the affected checks).
+`/gaia-fitness` is a health check + auto-heal that answers one question — "how well-configured and coherent is this project's Claude integration?" — and fixes what it can. A single invocation runs three phases: triage (walk the seven graded categories below), heal (lane-aware Fixer subagents auto-apply confident fixes inside a bounded loop with oscillation detection), and verify (re-run the affected checks).
 
-This page is the single source of truth for the check taxonomy, the F-to-A+ grading rubric, and the triage → heal → verify orchestration protocol. The protocol is harness-agnostic: `/gaia fitness` runs it standalone, and it is written so a larger audit harness can run the same protocol over the same seven categories as one bucket of a deeper loop.
+This page is the single source of truth for the check taxonomy, the F-to-A+ grading rubric, and the triage → heal → verify orchestration protocol. The protocol is harness-agnostic: `/gaia-fitness` runs it standalone, and it is written so a larger audit harness can run the same protocol over the same seven categories as one bucket of a deeper loop.
 
-The `/gaia fitness` skill's harness layer handles branch / repo-state — creating a `chore/gaia-fitness-<timestamp>` branch when HEAD is on the default branch and fixes are available, running triage-only when HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, and never committing. See the `/gaia fitness` skill reference for the full branching algorithm. That harness layer is not part of the triage/heal protocol described here.
+The `/gaia-fitness` skill's harness layer handles branch / repo-state — creating a `chore/gaia-fitness-<timestamp>` branch when HEAD is on the default branch and fixes are available, running triage-only when HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, and never committing. See the `/gaia-fitness` skill reference for the full branching algorithm. That harness layer is not part of the triage/heal protocol described here.
 
-`/update-gaia` three-way-merges this page, so project-specific check classes you add here survive GAIA upgrades, and `/gaia wiki` lints it. `/gaia fitness` runs whatever classes the page defines alongside the shipped ones.
+`/update-gaia` three-way-merges this page, so project-specific check classes you add here survive GAIA upgrades, and `/gaia-wiki` lints it. `/gaia-fitness` runs whatever classes the page defines alongside the shipped ones.
 
 ## Check Taxonomy
 
@@ -86,9 +86,9 @@ Checks the GAIA installation:
 
 Checks wiki health by invoking the existing `gaia wiki` primitives — this category does not reimplement them:
 
-- `wiki/.state.json` staleness vs. `app/**` HEAD — if `commits_ahead` is non-zero, one `info` finding recommending `/gaia wiki sync`.
+- `wiki/.state.json` staleness vs. `app/**` HEAD — if `commits_ahead` is non-zero, one `info` finding recommending `/gaia-wiki sync`.
 - `gaia wiki dead-paths` — any dead backticked path reference in wiki body prose is one `warning` finding per occurrence.
-- `gaia wiki orphans` — any orphan page (zero inbound links) is one `info` finding per page, recommending `/gaia wiki sync` to cross-link or archive.
+- `gaia wiki orphans` — any orphan page (zero inbound links) is one `info` finding per page, recommending `/gaia-wiki sync` to cross-link or archive.
 
 ### Decided / not findings
 
@@ -96,7 +96,7 @@ Things audits keep re-discovering that are not findings:
 
 **Slash commands appear under "skills" in Claude Code's surface listing.** `.claude/commands/` files register through Claude Code's plugin/skill discovery and appear in the same listing as actual skills. This is a Claude Code surface artifact. Skip the round-trip.
 
-**`wiki/.state.json` lagging HEAD.** Normal pre-release state. The session-start hook reports drift informationally; the wiki-fitness category surfaces it as `info` (not `error` or `warning`) and recommends `/gaia wiki sync`. Do not escalate to a blocking finding.
+**`wiki/.state.json` lagging HEAD.** Normal pre-release state. The session-start hook reports drift informationally; the wiki-fitness category surfaces it as `info` (not `error` or `warning`) and recommends `/gaia-wiki sync`. Do not escalate to a blocking finding.
 
 **Release-excluded wiki pages flagged as orphans by `gaia wiki orphans`.** Expected state, not a defect. Shipped pages must not `[[wikilink]]` release-excluded pages (enforced by `wikilink-to-excluded`); plain-text references to them are correct. `gaia wiki orphans` cannot see release-exclusion, so it will always flag such a page. Surface as `info`; do not escalate to a blocking finding.
 
@@ -158,11 +158,11 @@ The chat report groups findings by the seven category names above.
 
 ## Triage → Heal → Verify Protocol
 
-When `/gaia fitness` runs this protocol, the harness is minimal: no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it simply reports the unresolved findings with the grade. (A larger harness composing this protocol can wrap it in its own deeper loop — the protocol below does not assume one.)
+When `/gaia-fitness` runs this protocol, the harness is minimal: no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it simply reports the unresolved findings with the grade. (A larger harness composing this protocol can wrap it in its own deeper loop — the protocol below does not assume one.)
 
 ### Roles
 
-- **Orchestrator** — owns the cycle loop and the final report. When `/gaia fitness` runs, this is the `/gaia fitness` skill reference.
+- **Orchestrator** — owns the cycle loop and the final report. When `/gaia-fitness` runs, this is the `/gaia-fitness` skill reference.
 - **Auditors** — per-category check executors dispatched during the triage phase.
 - **Fixers** — edit agents dispatched during the heal phase, lane-aware so multiple run in parallel without merge conflicts.
 
@@ -215,9 +215,9 @@ Detection is mechanical: compare fingerprint sets across consecutive cycles. Any
 
 ### Bounded loop
 
-Default: **3 cycles** (tunable — adjust the cycle count in this page for your project's tolerance). Each cycle runs triage → heal → verify. The loop exits early when all findings resolve. On loop exhaustion, `/gaia fitness` reports the remaining unresolved findings with the affected category grades and the overall grade. No escalation handoff — it reports and stops.
+Default: **3 cycles** (tunable — adjust the cycle count in this page for your project's tolerance). Each cycle runs triage → heal → verify. The loop exits early when all findings resolve. On loop exhaustion, `/gaia-fitness` reports the remaining unresolved findings with the affected category grades and the overall grade. No escalation handoff — it reports and stops.
 
-**Composed inside a deeper loop.** When a larger audit harness runs this protocol as one bucket of its own cycle loop, that outer loop subsumes this bounded loop: the harness runs the **triage phase** once per outer cycle, folds the fitness findings into its own findings set and oscillation guard, and dispatches fixes through the [heal-phase](#heal-phase) Fixer lanes above. It does not nest a second 3-cycle loop or a second oscillation guard inside each outer cycle. The bounded loop and the oscillation detection described here govern only the standalone `/gaia fitness` invocation; the per-category grading rubric and Fixer lanes apply unchanged in both modes.
+**Composed inside a deeper loop.** When a larger audit harness runs this protocol as one bucket of its own cycle loop, that outer loop subsumes this bounded loop: the harness runs the **triage phase** once per outer cycle, folds the fitness findings into its own findings set and oscillation guard, and dispatches fixes through the [heal-phase](#heal-phase) Fixer lanes above. It does not nest a second 3-cycle loop or a second oscillation guard inside each outer cycle. The bounded loop and the oscillation detection described here govern only the standalone `/gaia-fitness` invocation; the per-category grading rubric and Fixer lanes apply unchanged in both modes.
 
 ### Verify phase
 
@@ -290,7 +290,7 @@ Add a project-specific check class by appending a new numbered section under [Ch
 <What it checks and how. Describe the model (Haiku or Sonnet) and what the auditor does.>
 ```
 
-`/gaia fitness` runs whatever classes this page defines. `/update-gaia` three-way-merges the page so your additions survive GAIA upgrades. `/gaia wiki` lints the page. The extension point is this page itself — edit it directly, the way the `code-review-audit` agent picks up extension files from `.claude/agents/code-review-audit/`.
+`/gaia-fitness` runs whatever classes this page defines. `/update-gaia` three-way-merges the page so your additions survive GAIA upgrades. `/gaia-wiki` lints the page. The extension point is this page itself — edit it directly, the way the `code-review-audit` agent picks up extension files from `.claude/agents/code-review-audit/`.
 
 ---
 

@@ -72,7 +72,7 @@ Every change passes through [[Quality Gate]]: typecheck → lint → unit test �
 
 ## Knowledge Hygiene
 
-`/gaia audit` runs a two-stage Sonnet audit (research → mechanical apply, gated by sha256 + verbatim drift checks) over memory, wiki, auto-loaded `CLAUDE.md` files, and `.claude/rules/`. Flags duplication, stale entries, broken wikilinks, and auto-load bloat — with wiki as the source of truth. See [[GAIA Audit]].
+`/gaia-audit` runs a two-stage Sonnet audit (research → mechanical apply, gated by sha256 + verbatim drift checks) over memory, wiki, auto-loaded `CLAUDE.md` files, and `.claude/rules/`. Flags duplication, stale entries, broken wikilinks, and auto-load bloat — with wiki as the source of truth. See [[GAIA Audit]].
 
 ## What's Different vs. Other Templates
 

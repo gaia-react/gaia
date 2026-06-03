@@ -79,7 +79,7 @@ All five labels must pre-exist on the upstream repo. `bootstrap-labels.sh` asser
 | `auto-fixable`       | blue (`1d76db`)   | Classifier proposed a fix in allowlisted scope. See linked draft PR.                                                                      |
 | `gaia-bug-confirmed` | red (`b60205`)    | Quality Gate passed on the auto-fix branch. Draft PR open and ready for human review.                                                     |
 
-The `gaia-forensics` trigger label is owned by phase 1 of the forensics arc (the `/gaia forensics` end-user bridge) and is not part of `bootstrap-labels.sh`'s inventory.
+The `gaia-forensics` trigger label is owned by phase 1 of the forensics arc (the `/gaia-forensics` end-user bridge) and is not part of `bootstrap-labels.sh`'s inventory.
 
 ## Secret hygiene
 

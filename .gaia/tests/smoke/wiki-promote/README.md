@@ -17,7 +17,7 @@ What this smoke does NOT cover:
 
 - Live `/speckit-implement` hook fire — that requires a real spec-kit invocation against a synthetic SPEC + branch + PR, which is out of scope for the smoke layer.
 - Full wiki-page render (frontmatter values, body sections, sibling cross-links). Hand-verify post-merge against a real promotion run.
-- The `/gaia wiki sync` handoff. Covered by the `wiki-sync` smokes under `../wiki-sync/`.
+- The `/gaia-wiki sync` handoff. Covered by the `wiki-sync` smokes under `../wiki-sync/`.
 
 ## Run
 

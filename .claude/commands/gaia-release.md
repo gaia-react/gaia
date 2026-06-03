@@ -28,7 +28,7 @@ The CLI surface is the source of truth. The classification rules for `.gaia/mani
 .gaia/cli/gaia-maintainer release preflight
 ```
 
-Verifies: on `main`, clean working tree, and `wiki/.state.json` is current. The wiki check reads `gaia wiki state --json`: a reachable state passes on `commits_ahead === 0`; an orphaned state (`reachable:false` — the normal post-squash-merge condition, where `commits_ahead` is hardcoded `0`) is re-evaluated over `suggested_base..HEAD` so an un-evaluated window isn't read as a silent zero. Either way, drift that is only wiki-sync squash artifacts passes; substantive drift exits non-zero with an explanation. STOP and report; the maintainer fixes (commit, push, run `/gaia wiki sync`) and re-runs `/gaia-release`.
+Verifies: on `main`, clean working tree, and `wiki/.state.json` is current. The wiki check reads `gaia wiki state --json`: a reachable state passes on `commits_ahead === 0`; an orphaned state (`reachable:false` — the normal post-squash-merge condition, where `commits_ahead` is hardcoded `0`) is re-evaluated over `suggested_base..HEAD` so an un-evaluated window isn't read as a silent zero. Either way, drift that is only wiki-sync squash artifacts passes; substantive drift exits non-zero with an explanation. STOP and report; the maintainer fixes (commit, push, run `/gaia-wiki sync`) and re-runs `/gaia-release`.
 
 ### 2. Apply the bump
 
@@ -78,7 +78,7 @@ The graduation is idempotent — re-running with the same version is a no-op.
 .gaia/cli/gaia-maintainer release scrub-wiki
 ```
 
-Overwrites `wiki/hot.md` and `wiki/log.md` with release-clean content (full frontmatter required by `/gaia wiki lint`).
+Overwrites `wiki/hot.md` and `wiki/log.md` with release-clean content (full frontmatter required by `/gaia-wiki lint`).
 
 ### 7. Regenerate the manifest
 

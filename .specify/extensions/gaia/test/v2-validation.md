@@ -215,6 +215,6 @@ spec-kit version check failed: could not determine installed version.
 
 ## Conclusion
 
-The extension and preset install cleanly against a stock spec-kit v0.8.5 sandbox. All four GAIA skills are rendered to `.claude/skills/`. All three GAIA hooks fire `EXECUTE_COMMAND` directives in the correct lifecycle events. The `speckit-specify` SKILL.md is the GAIA wrap with core spliced in (hooks intact, GAIA preamble + post-step in place). The fictional `on_save` event is absent. The chain-trigger to `/gaia plan` lives inline at the end of the `/gaia spec` wrapper (`.claude/skills/gaia/references/spec.md` Step 11), not in any hook.
+The extension and preset install cleanly against a stock spec-kit v0.8.5 sandbox. All four GAIA skills are rendered to `.claude/skills/`. All three GAIA hooks fire `EXECUTE_COMMAND` directives in the correct lifecycle events. The `speckit-specify` SKILL.md is the GAIA wrap with core spliced in (hooks intact, GAIA preamble + post-step in place). The fictional `on_save` event is absent. The chain-trigger to `/gaia-plan` lives inline at the end of the `/gaia-spec` wrapper (`.claude/skills/gaia/references/spec.md` Step 11), not in any hook.
 
 Branch is ready for the v2 PR.

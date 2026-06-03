@@ -17,7 +17,7 @@
 #
 # Concurrency: the `next` read-modify-write critical section runs under the
 # shared ledger mutex from with-ledger-lock.sh (flock when present, atomic-mkdir
-# fallback on stock macOS). Two parallel `/gaia spec` sessions cannot allocate a
+# fallback on stock macOS). Two parallel `/gaia-spec` sessions cannot allocate a
 # duplicate SPEC id. A lock-acquisition timeout (helper exit 75) maps to exit 4
 # — callers (the speckit preset) already handle 4 as "allocation failed", so a
 # new exit code would break their error handling. Lock env knobs

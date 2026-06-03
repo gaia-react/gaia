@@ -175,7 +175,7 @@ Things audits keep re-discovering. None of these are findings.
 
 **Slash commands appear under "skills" in Claude Code's surface listing.** `/command` files in `.claude/commands/` register through Claude Code's plugin/skill discovery system. The skills list mixes them with actual skills under `.claude/skills/`. This is a Claude Code surface artifact, not a GAIA finding. Audits sometimes flag it then self-correct — skip the round-trip.
 
-**`wiki/.state.json` lagging HEAD.** Normal pre-release state. The user runs `/gaia wiki sync` before cutting a release. The session-start hook reports drift; the report is informational, not a finding.
+**`wiki/.state.json` lagging HEAD.** Normal pre-release state. The user runs `/gaia-wiki sync` before cutting a release. The session-start hook reports drift; the report is informational, not a finding.
 
 **`dorny/paths-filter@v3` self-validation behavior.** For both `pull_request` and `push`, the action defaults to comparing HEAD against the repo's default branch. On a feature branch with workflow edits, both adopter-shipped workflows fire because the branch's diff vs main includes the workflows themselves (they appear in their own allowlists for self-validation). After merge to main, future PRs without workflow edits skip correctly. Intended.
 
@@ -185,7 +185,7 @@ Things audits keep re-discovering. None of these are findings.
 
 **`CHANGELOG.md` historical entries with old filenames.** `wiki-style.md` scopes to `wiki/**` body prose and `app/**` source comments. The changelog is by design a historical record of past releases; old filenames in old release notes are correct.
 
-**The `## Historical context (from <older-title>)` heading.** `/gaia wiki consolidate` writes this when merging a superseded page. Deliberate label that identifies lifted content. Not the prose pattern `wiki-style.md` bans; explicitly exempted.
+**The `## Historical context (from <older-title>)` heading.** `/gaia-wiki consolidate` writes this when merging a superseded page. Deliberate label that identifies lifted content. Not the prose pattern `wiki-style.md` bans; explicitly exempted.
 
 **`tests.yml` and `chromatic.yml` ship to adopters.** Their explicit allowlists are written to stay meaningful on an adopter clone. Excluding them from distribution would leave adopters without CI on type/lint/test/storybook. Don't propose moving them to `release-exclude`.
 

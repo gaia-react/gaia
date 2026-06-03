@@ -59,7 +59,7 @@ comment_file="$work_dir/comment.md"
   if [ -n "$malformed_csv" ]; then
     printf 'malformed sections: `%s`\n\n' "$malformed_csv"
   fi
-  printf 'Required schema: four `##` headers — `## Symptom`, `## Classification`, `## Capture`, `## Reproduction context` — each with non-empty content. `## Classification` must include a `class: <tag>` line whose tag is one of: `init`, `update`, `wiki-sync`, `quality-gate`, `hook`, `scaffold`, `dev-server`, `other`. The forensics skill (`/gaia forensics`) emits this shape automatically.\n'
+  printf 'Required schema: four `##` headers — `## Symptom`, `## Classification`, `## Capture`, `## Reproduction context` — each with non-empty content. `## Classification` must include a `class: <tag>` line whose tag is one of: `init`, `update`, `wiki-sync`, `quality-gate`, `hook`, `scaffold`, `dev-server`, `other`. The forensics skill (`/gaia-forensics`) emits this shape automatically.\n'
 } > "$comment_file"
 
 # Order:

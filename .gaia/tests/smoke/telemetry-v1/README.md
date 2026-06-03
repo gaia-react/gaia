@@ -17,7 +17,7 @@ What this smoke covers (all deterministic, all machine-checkable):
 
 What this smoke does NOT cover:
 
-- Live `/gaia spec` → `/gaia plan` → UAT cycle. That is the maintainer-judgment walk-through in `.specify/extensions/gaia/test/smoke-telemetry-v1.md`.
+- Live `/gaia-spec` → `/gaia-plan` → UAT cycle. That is the maintainer-judgment walk-through in `.specify/extensions/gaia/test/smoke-telemetry-v1.md`.
 - The `gaia-init` `AskUserQuestion` three-option opt-in flow. The "does the Q&A loop feel natural?" judgment step in particular is inherently maintainer-judgment.
 - Statusline 🧭 rendering. The visual indicator is a maintainer-eyes assertion in the runbook.
 - Pattern detection firing on real-usage data. Pattern detection ships wired-but-inert at v1.0.0 per the SPEC intent paragraph; the harness exercises the code paths against synthetic fixtures, not live accumulation.

@@ -9,7 +9,7 @@ Sandbox transcript: `.specify/extensions/gaia/test/v2-validation.md`.
 ## UAT-001 — SPEC artifact shape
 
 **Given** spec-kit installed at the GAIA pin, GAIA extension loaded, constitution populated.
-**When** `/gaia spec` runs through both gates.
+**When** `/gaia-spec` runs through both gates.
 **Then** SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` has all schema fields populated, no placeholders, `status: in-progress`, `immutable: true`, stable `UAT-NNN` ids.
 
 Evidence:
@@ -22,7 +22,7 @@ Evidence:
 ## UAT-002 — preset overrides applied at /specify time
 
 **Given** project with the GAIA preset installed.
-**When** `/gaia spec` invokes `/speckit-specify` then `/speckit-clarify`.
+**When** `/gaia-spec` invokes `/speckit-specify` then `/speckit-clarify`.
 **Then** the artifact reflects GAIA preset overrides — coach-tone system prompt, AskUserQuestion-formatted Q&A copy, GAIA frontmatter fields.
 
 Evidence:
@@ -34,7 +34,7 @@ Evidence:
 
 ## UAT-003 — closed-set Q&A via AskUserQuestion, recommended-first
 
-**Given** an active `/gaia spec` Socratic loop.
+**Given** an active `/gaia-spec` Socratic loop.
 **When** the PO issues a closed-set question.
 **Then** options are ordered recommended-first → alternatives → Other → Discuss this; one question per turn.
 
@@ -80,7 +80,7 @@ Evidence:
 ## UAT-007 — constitution placeholder gate
 
 **Given** `.specify/memory/constitution.md` has placeholder text.
-**When** user invokes `/gaia spec`.
+**When** user invokes `/gaia-spec`.
 **Then** the wrapper detects placeholders before any Socratic question is issued, prompts the user to run `/speckit-constitution`, or blocks. Never proceeds silently.
 
 Evidence:
@@ -105,21 +105,21 @@ Evidence (v2 reshape — slash-command, not shell script):
 
 ## UAT-009 — no machine-local memory writes
 
-**Given** a memory snapshot before `/gaia spec`.
+**Given** a memory snapshot before `/gaia-spec`.
 **When** a complete session runs to save.
 **Then** the post-session snapshot has no new memory files containing project-relevant decisions.
 
 Evidence:
 
-- `.claude/skills/gaia/references/spec.md` Hard constraint 1 — explicit "No machine-local memory for project decisions" instruction at the top of the wrapper (binding for the agent driving `/gaia spec`).
+- `.claude/skills/gaia/references/spec.md` Hard constraint 1 — explicit "No machine-local memory for project decisions" instruction at the top of the wrapper (binding for the agent driving `/gaia-spec`).
 - `.specify/extensions/gaia/templates/system-prompt.md` Behavioral contract item 8 — same rule from the system prompt side.
 - Personal preferences (tone, formatting) remain allowed; project decisions land in the SPEC artifact, the wiki, or `.claude/rules/`.
 
-## UAT-010 — inline chain-trigger to /gaia plan
+## UAT-010 — inline chain-trigger to /gaia-plan
 
 **Given** a SPEC has just been saved.
 **When** the save step completes.
-**Then** the wrapper prompts `"SPEC-NNN saved. Trigger /gaia plan now?"` via `AskUserQuestion`. The chain only fires on explicit confirmation; the human can defer.
+**Then** the wrapper prompts `"SPEC-NNN saved. Trigger /gaia-plan now?"` via `AskUserQuestion`. The chain only fires on explicit confirmation; the human can defer.
 
 Evidence (v2 reshape — inline `AskUserQuestion`, not `on_save`):
 
@@ -152,7 +152,7 @@ Evidence:
 ## UAT-013 — resume vs start-new for in-progress SPECs
 
 **Given** an in-progress SPEC at `.gaia/local/specs/`.
-**When** user invokes `/gaia spec` without a force-new flag.
+**When** user invokes `/gaia-spec` without a force-new flag.
 **Then** the wrapper asks `"Resume SPEC-NNN, or start new (leaves SPEC-NNN open)?"` via `AskUserQuestion`; user choice honored.
 
 Evidence:
@@ -173,7 +173,7 @@ Evidence:
 
 ## UAT-015 — write-surface allowlist
 
-**Given** an active `/gaia spec` session.
+**Given** an active `/gaia-spec` session.
 **When** any file is modified.
 **Then** writes only land in `.gaia/local/specs/`, `.specify/`, `.gaia/local/cache/`, or `.gaia/local/telemetry/`. No source files modified by the spec command.
 
@@ -210,7 +210,7 @@ Evidence:
 ## UAT-018 — spec-kit version pin enforcement
 
 **Given** GAIA's manifest declares a spec-kit version pin.
-**When** `/gaia spec` invokes spec-kit primitives.
+**When** `/gaia-spec` invokes spec-kit primitives.
 **Then** spec-kit is invoked at the pinned version and drift produces a clear error before discovery.
 
 Evidence (v2 reshape — manifest `requires.speckit_version` + runtime drift detection):

@@ -60,7 +60,7 @@ If `$pr_json` is `[]` (no merged PR for this branch):
 
    (Cache directory creation: `mkdir -p .gaia/local/cache/wiki-promote/`. The `.gaia/local/` line in `.gitignore` covers this path.)
 
-2. Exit with: `wiki-promote: SPEC-NNN deferred — awaiting PR merge for branch <current_branch>. Drain via /gaia spec close SPEC-NNN after merge.`
+2. Exit with: `wiki-promote: SPEC-NNN deferred — awaiting PR merge for branch <current_branch>. Drain via /gaia-spec close SPEC-NNN after merge.`
 
 If `$pr_json` contains a merged PR:
 
@@ -273,7 +273,7 @@ Match the existing wiki voice: declarative, no preamble, concrete examples where
 
 ## Step 6 — Hand off to wiki-sync
 
-The wiki-promote command does NOT commit or push. The existing `/gaia wiki sync` skill handles branch-aware commits.
+The wiki-promote command does NOT commit or push. The existing `/gaia-wiki sync` skill handles branch-aware commits.
 
 Emit a structured payload to stdout (the next agent reads it as conversation context):
 
@@ -290,13 +290,13 @@ Emit a structured payload to stdout (the next agent reads it as conversation con
 }
 ```
 
-Then invoke `/gaia wiki sync` directly:
+Then invoke `/gaia-wiki sync` directly:
 
-`Invoke /gaia wiki sync now to handle the branch-aware commit step for these pages.`
+`Invoke /gaia-wiki sync now to handle the branch-aware commit step for these pages.`
 
-(`/gaia wiki sync` will read the staged-but-uncommitted wiki changes from `git status`, write to `wiki/log.md` and `wiki/.state.json`, then commit per its branch-aware rules.)
+(`/gaia-wiki sync` will read the staged-but-uncommitted wiki changes from `git status`, write to `wiki/log.md` and `wiki/.state.json`, then commit per its branch-aware rules.)
 
-If `/gaia wiki sync` fails or refuses, exit with the warning `wiki-promote: pages staged but wiki-sync handoff failed. Run /gaia wiki sync manually.` Do NOT attempt to commit from this command body.
+If `/gaia-wiki sync` fails or refuses, exit with the warning `wiki-promote: pages staged but wiki-sync handoff failed. Run /gaia-wiki sync manually.` Do NOT attempt to commit from this command body.
 
 ## Step 7 — Report
 
@@ -314,7 +314,7 @@ Wiki promote complete for SPEC-NNN.
 
 If any pages were skipped due to hand-edit detection, include a one-line note:
 
-`Hand-edited skips can be resolved by re-running /gaia spec close SPEC-NNN --force (TBD; for now resolve manually).`
+`Hand-edited skips can be resolved by re-running /gaia-spec close SPEC-NNN --force (TBD; for now resolve manually).`
 
 ## Step 8 — Chain to spec-close (immediate-merge path only)
 
@@ -328,4 +328,4 @@ Otherwise, invoke `/speckit-gaia-spec-close` directly:
 
 This presents the user with the archive / delete / keep prompt for the local SPEC artifact. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<spec_id>/`.
 
-If `/speckit-gaia-spec-close` fails or refuses, exit with the warning `wiki-promote: pages staged and committed; spec-close chain failed. Run /gaia spec close <spec_id> manually to dispose of the SPEC artifact.` Do NOT retry the chain — the wiki side is already settled.
+If `/speckit-gaia-spec-close` fails or refuses, exit with the warning `wiki-promote: pages staged and committed; spec-close chain failed. Run /gaia-spec close <spec_id> manually to dispose of the SPEC artifact.` Do NOT retry the chain — the wiki side is already settled.

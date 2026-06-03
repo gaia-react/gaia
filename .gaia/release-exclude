@@ -87,7 +87,7 @@ wiki/decisions/Forensics Triage Workflow.md
 # per-machine state, update-merge stage area, init backup. `.gaia/specs.json`
 # is the SPEC-id ledger over `.gaia/local/specs/` — runtime-generated per
 # clone (`.specify/extensions/gaia/lib/spec-allocator.sh` recreates it empty
-# on the first `/gaia spec`), not template content; adopters must start their
+# on the first `/gaia-spec`), not template content; adopters must start their
 # own SPEC numbering from zero rather than inherit the GAIA template's
 # allocations.
 .raw
