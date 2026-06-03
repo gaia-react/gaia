@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## [v1.4.0] 2026-06-02 | Released
 
+- 2026-06-03 1ef7eec SKIP — tooling fix; maintainer-only skill documentation
+- 2026-06-03 0845873 SKIP — wiki state file maintenance only
+- 2026-06-03 e022c9d WORTHY — added /release-notes skill → wiki/concepts/Release-Notes.md
 - 2026-06-03 1182692 WORTHY — added /release-notes skill → wiki/concepts/Release-Notes.md
 - 2026-06-03 3ab9e1b SKIP — wiki: self-referential
 - 2026-06-03 71eee79 SKIP — Serena policy: sync/log maintenance
