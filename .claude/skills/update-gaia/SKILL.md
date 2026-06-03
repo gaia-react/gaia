@@ -416,3 +416,19 @@ fi
 ```
 
 If `gh` is unavailable or errors, tell the user to open the PR manually: `$branch` → `main`.
+
+### Step 12: Flag a stale CI audit workflow
+
+`.github/workflows/code-review-audit.yml` is **not** synced by `/update-gaia` — it installs and updates only via `/setup-gaia-ci`. A project that enabled GAIA CI on an older release therefore keeps whatever audit workflow shipped then, frozen, even after this update pulls a newer template. A stale workflow still audits in-scope PRs correctly, but an older copy may not stamp the `GAIA-Audit` status on out-of-scope (docs/metadata-only) PRs — which includes the update PR just opened. The merge gate's out-of-scope bypass keeps that PR mergeable regardless, but the workflow is worth refreshing.
+
+Probe for drift and advise only when the installed workflow is behind:
+
+```bash
+audit_drift="$(.gaia/cli/gaia setup-ci check-audit-drift --json 2>/dev/null \
+  | jq -r '.state // "unknown"' 2>/dev/null || echo unknown)"
+if [ "$audit_drift" = "drifted" ]; then
+  echo "Heads up: .github/workflows/code-review-audit.yml is out of date vs the $LATEST_TAG template. Run /setup-gaia-ci to refresh it so the CI audit stamps the GAIA-Audit status correctly (including on out-of-scope PRs). The merge gate's out-of-scope bypass keeps this docs-only update PR mergeable in the meantime."
+fi
+```
+
+`in_sync` means nothing to do; `missing` means GAIA CI is not installed (the merge gate falls back to the local `code-review-audit` agent, or the out-of-scope bypass for docs/metadata-only PRs), so stay silent. Only `drifted` warrants the nudge.
