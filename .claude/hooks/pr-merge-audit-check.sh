@@ -22,9 +22,24 @@
 #      the same narrowing applied to code-review-audit.yml, tests.yml, and
 #      chromatic.yml — all four surfaces skip together on chore(deps) PRs.
 #
-# Any signal proves the audit ran against this content and the agent saw
-# no Critical Issues and no unresolved Important Issues. Without one, the
-# hook denies the gh pr merge call. To unblock:
+#   5. Out-of-scope bypass: every file the PR changes (vs its merge base with
+#      the default branch) lives on a surface outside audit scope — wiki,
+#      instruction files (.claude / .specify), .gaia metadata, prose docs, and
+#      root-level markdown. These mirror the surfaces code-review-audit.yml
+#      treats as out of scope via its `has_source` check, so the agent has no
+#      rules that apply and there is nothing to audit. Evaluated fail-closed:
+#      any in-scope path (app/, test/, configs, .github/workflows/) makes the
+#      marker mandatory again, so a PR that changes auditable source can never
+#      reach this branch — it cannot mask an audit that withheld its marker
+#      over unresolved findings. Pure local git; works even when the repo's
+#      installed code-review-audit.yml predates the out-of-scope status stamp
+#      (or CI is absent), which is the case on clones that enabled CI before
+#      the stamp step existed.
+#
+# Signals 1-4 prove the audit ran against this content and the agent saw no
+# Critical Issues and no unresolved Important Issues; signal 5 proves there is
+# nothing in audit scope to review. Without one, the hook denies the gh pr
+# merge call. To unblock:
 #   1. Spawn the code-review-audit agent on the current branch, OR push to the
 #      PR branch and wait for CI's audit to stamp the GitHub commit status (CI
 #      skips when the PR modifies the audit workflow file itself — in that case
@@ -188,6 +203,58 @@ if check_chore_deps_pr; then
   exit 0
 fi
 
+# Out-of-scope bypass: accept the merge when every file this PR changes lives
+# on a surface outside audit scope. The agent has no rules that apply to wiki,
+# instruction files, .gaia metadata, or prose, so there is nothing to audit and
+# no marker is required — the same determination code-review-audit.yml's
+# `has_source` check makes when it skips. Keep the out-of-scope set below in
+# sync with that check's complement (.github/workflows/code-review-audit.yml).
+#
+# Strict allowlist, evaluated fail-closed: the diff base must resolve, the diff
+# must be non-empty, and EVERY path must be out of scope. Any unresolved base,
+# diff error, or in-scope path (app/, test/, configs, .github/workflows/) falls
+# through to the normal deny. A PR that touches auditable source therefore can
+# never reach this bypass — it cannot mask an audit that withheld its marker
+# over unresolved findings, since that PR's diff carries in-scope paths by
+# definition. Pure local git: no gh, no network, no dependence on a CI stamp.
+check_out_of_scope_pr() {
+  # Resolve the PR base — the default branch this work forks from. Prefer the
+  # remote's advertised default; fall back to main. The merge base scopes the
+  # diff to THIS PR's changes, not unrelated drift already on the base branch.
+  default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's@^refs/remotes/origin/@@')
+  [ -n "$default_branch" ] || default_branch="main"
+
+  base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
+    || git merge-base HEAD "${default_branch}" 2>/dev/null \
+    || true)
+  [ -n "$base" ] || return 1
+
+  changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null) || return 1
+  [ -n "$changed" ] || return 1
+
+  # First in-scope (or unrecognized) path makes the marker mandatory. `case`
+  # globs match across slashes, so `wiki/*` covers `wiki/concepts/foo.md`. The
+  # `*/*` arm catches every other nested path (app/, test/, configs in
+  # subdirs); the final `*)` catches root-level files that are not markdown
+  # (package.json, tsconfig.json, *.config.ts, …).
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) continue ;;
+      */*) return 1 ;;
+      *.md) continue ;;
+      *) return 1 ;;
+    esac
+  done <<< "$changed"
+
+  return 0
+}
+
+if check_out_of_scope_pr; then
+  exit 0
+fi
+
 reason="PR merge gate: no code-review-audit signal for HEAD ${sha:0:12}.
 
 None of the accepted signals is present:
@@ -195,6 +262,8 @@ None of the accepted signals is present:
   - Commit trailer:  ${trailer_status}
   - GitHub CI status: absent or version/tree mismatch
   - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
+  - Out-of-scope:    PR changes at least one in-scope path (app/, test/, configs,
+                     .github/workflows/) — not a wiki/docs/.gaia-only diff
 
 To unblock:
   1. Spawn the code-review-audit agent locally, OR push to the PR branch

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-06-02
+updated: 2026-06-03
 tags: [concept, ci, review]
 ---
 
@@ -45,7 +45,7 @@ gh api repos/{owner}/{repo}/actions/workflows \
 gh api repos/{owner}/{repo}/actions/permissions --jq .enabled                          # false → CI cannot run; go local
 ```
 
-Spawning the local agent when CI has already stamped the marker is redundant; skipping it when CI will never stamp leaves the merge permanently blocked.
+Spawning the local agent when CI has already stamped the marker is redundant; skipping it when CI will never stamp leaves the merge permanently blocked. The exception is a PR whose entire diff is out of audit scope: the hook's out-of-scope bypass (see step 3) clears those with no marker at all, so no local run is needed even when CI never stamps.
 
 ## Four-step protocol
 
@@ -70,7 +70,7 @@ Task(
 
 ### 3. Marker handshake
 
-The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove the audit ran clean against the content being merged, plus one bypass for pre-verified PR classes:
+The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove the audit ran clean against the content being merged, plus two bypasses for PRs that need no audit signal:
 
 | Signal                                                                    | Source                       | How it gets there                                                                                                 |
 | ------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -78,6 +78,7 @@ The hook (`pr-merge-audit-check.sh`) accepts any one of three signals that prove
 | `GAIA-Audit:` commit-message trailer on HEAD                              | Local audit agent            | `audit-stamp-trailer.sh` writes an empty commit with the trailer                                                  |
 | `GAIA-Audit` GitHub commit status on HEAD, description `<version> <tree>` | CI (`code-review-audit.yml`) | CI stamps this after a full audit (on the audit SHA) and on HEAD when the un-audited delta is entirely out of audit scope. No empty marker commit is pushed — that would strand HEAD on a check-less commit. |
 | PR title matches `^chore\(deps(-dev)?\):` (bypass)                        | `/update-deps` wrapper       | Wrapper opens dep-bump PRs with the canonical prefix; the local quality gate stands in for the audit signal.      |
+| Every changed file is out of audit scope (bypass)                         | `pr-merge-audit-check.sh`    | The PR's full diff against its merge base with the default branch touches only out-of-scope surfaces — `wiki/`, `.claude/`, `.specify/`, `.gaia/`, `docs/`, root-level markdown. The agent has no rules that apply, so no marker is required. This mirrors `code-review-audit.yml`'s `has_source` skip locally, so the gate clears even when the installed workflow predates the out-of-scope status stamp or CI is absent. Evaluated fail-closed: any in-scope path (`app/`, `test/`, configs, `.github/workflows/`) keeps the marker mandatory, so a PR carrying auditable source can never reach this bypass. |
 
 Tree-sha equality is the load-bearing check for both the trailer and the status: identical trees mean identical content, so an audit on a different commit SHA but the same tree is auditing the same code.
 
@@ -128,6 +129,6 @@ If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post
 
 - Never merge without a marker for HEAD. The hook denies it. The audit must cover the merged content — CI produces the marker when it audits the PR; otherwise the local agent does.
 - Never hand-write a marker file to bypass the gate. The agent (local or CI) owns marker emission.
-- When CI is not auditing this PR (`.github/workflows/code-review-audit.yml` is absent, Actions disabled, the workflow inactive, or a `gate_label` excludes it), the local `code-review-audit` agent is the only way to produce the marker — run it.
+- When CI is not auditing an **in-scope** PR (`.github/workflows/code-review-audit.yml` is absent, Actions disabled, the workflow inactive, or a `gate_label` excludes it), the local `code-review-audit` agent is the only way to produce the marker — run it. A PR whose entire diff is out of audit scope needs no marker; the hook's out-of-scope bypass clears it.
 
 See [[Code Review Audit Agent]], [[Quality Gate]], [[Git Workflow]].
