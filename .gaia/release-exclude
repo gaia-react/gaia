@@ -12,15 +12,19 @@
 
 # --- 1. Maintainer-only Claude surface ---
 # /gaia-release cuts releases of the GAIA template itself; adopters never
-# release GAIA. /health-audit is the maintainer-only autonomous audit +
-# auto-heal loop (runbook lives under .gaia/cli/health/, already excluded
-# wholesale via category 10). Other /gaia-* commands (plan, handoff,
-# pickup, audit) are adopter-useful and must NOT be added here.
-# preferred-base.sh is the maintainer's personal statusline left-side
-# renderer; adopters get the right-side-only gaia-statusline.sh wrapper
-# which delegates left-side rendering to the user's own global statusline.
+# release GAIA. The release-notes skill translates GAIA's CHANGELOG into
+# public release notes for the marketing site — a release-time maintainer
+# task, so it ships nowhere just like /gaia-release. /health-audit is the
+# maintainer-only autonomous audit + auto-heal loop (runbook lives under
+# .gaia/cli/health/, already excluded wholesale via category 10). Other
+# /gaia-* commands (plan, handoff, pickup, audit) are adopter-useful and
+# must NOT be added here. preferred-base.sh is the maintainer's personal
+# statusline left-side renderer; adopters get the right-side-only
+# gaia-statusline.sh wrapper which delegates left-side rendering to the
+# user's own global statusline.
 .claude/commands/gaia-release.md
 .claude/commands/health-audit.md
+.claude/skills/release-notes
 .gaia/statusline/preferred-base.sh
 
 # --- 2. Maintainer-only wiki content ---

@@ -1,0 +1,23 @@
+[
+  {"query": "we just merged the 1.5.0 release PR — generate the website changelog entry for it from the CHANGELOG", "should_trigger": true},
+  {"query": "translate the [Unreleased] block into adopter-facing release notes for gaiareact.com", "should_trigger": true},
+  {"query": "I need the public release notes for v1.4.0, the plain-language ones for the marketing site, not the raw changelog", "should_trigger": true},
+  {"query": "backfill the changelog page on the site for 1.2.0 through 1.3.4, we skipped a bunch of versions", "should_trigger": true},
+  {"query": "make the release-data .ts for 1.3.5 under website/src/pages/changelog/releases", "should_trigger": true},
+  {"query": "cutting 1.6.0 now, write up what's new for the website in plain english", "should_trigger": true},
+  {"query": "the CHANGELOG is way too technical for the public changelog page, turn the latest version into something adopters can actually read", "should_trigger": true},
+  {"query": "generate the release notes for the new version and tell me what you dropped and why", "should_trigger": true},
+  {"query": "do the gaiareact.com changelog entry for 1.5.0 and flag anything that's maintainer-only so I can review it", "should_trigger": true},
+  {"query": "write the public-facing summary of 1.4.0's changes for the site and leave out the internal plumbing", "should_trigger": true},
+
+  {"query": "add an entry to CHANGELOG.md for the package.json field-aware merge fix we just landed", "should_trigger": false},
+  {"query": "cut a new GAIA release: bump the version, graduate the changelog, regenerate the manifest, tag it", "should_trigger": false},
+  {"query": "write release notes for my own app's 2.0 launch, we shipped a new dashboard and SSO", "should_trigger": false},
+  {"query": "summarize the git commits since the last tag into a changelog", "should_trigger": false},
+  {"query": "update the copy on the features section of the marketing site, the CSP wording reads awkwardly", "should_trigger": false},
+  {"query": "what actually changed between 1.3.5 and 1.4.0?", "should_trigger": false},
+  {"query": "draft a tweet announcing the 1.5.0 release", "should_trigger": false},
+  {"query": "add a new step to gaia-release.md for locksteping the website version", "should_trigger": false},
+  {"query": "regenerate the manifest and bump the version for the release", "should_trigger": false},
+  {"query": "translate the README into Japanese for the docs site", "should_trigger": false}
+]
