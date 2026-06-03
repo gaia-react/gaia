@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [v1.4.0] 2026-06-02 | Released
 
+- 2026-06-03 1182692 WORTHY — added /release-notes skill → wiki/concepts/Release-Notes.md
+- 2026-06-03 3ab9e1b SKIP — wiki: self-referential
 - 2026-06-03 71eee79 SKIP — Serena policy: sync/log maintenance
 - 2026-06-03 e6d4dd8 WORTHY — field-aware package.json merge → wiki/concepts/Update Workflow.md
 - 2026-06-03 918ba86 WORTHY — fixed PR Merge Workflow bypass logic → wiki/concepts/PR Merge Workflow.md
