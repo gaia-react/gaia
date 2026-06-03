@@ -10,35 +10,43 @@ Do **not** modify the upstream `claude-obsidian:wiki-lint` skill — it ships fr
 
 ## Step 1: Run upstream wiki-lint
 
-Invoke the `claude-obsidian:wiki-lint` skill following its documented pattern. The runtime resolves the plugin and dispatches the upstream playbook; do not attempt to read the plugin's SKILL.md from a hardcoded path. The upstream skill writes the report to:
-
-```
-wiki/meta/lint-report-YYYY-MM-DD.md
-```
-
-Capture the report path it produced — every appended GAIA check writes into that same file.
-
-Do **not** restructure the upstream report format. Append GAIA sections at the bottom only.
-
-### Normalize the report date
-
-The upstream skill names the report from the model's notion of "today", which is unreliable (no LLM has a clock). Reconcile it against the shell clock before appending anything:
+Compute today's date from the shell clock first — no LLM has a clock, so the model's notion of "today" is unreliable:
 
 ```bash
 DATE=$(date +%F)
 ```
 
-If the captured report path's date differs from `$DATE`, rename it and fix the in-file references:
+**Regenerate the report from scratch every run.** A lint report is a point-in-time snapshot; a stale report from an earlier run must never be reused or renamed into today's slot. Remove any same-day report before invoking upstream so it cannot be picked up and patched in place:
+
+```bash
+rm -f wiki/meta/lint-report-$DATE.md
+```
+
+Then invoke the `claude-obsidian:wiki-lint` skill following its documented pattern. The runtime resolves the plugin and dispatches the upstream playbook; do not attempt to read the plugin's SKILL.md from a hardcoded path. The upstream skill writes the report to:
+
+```
+wiki/meta/lint-report-YYYY-MM-DD.md
+```
+
+Capture the report path it produced.
+
+Do **not** restructure the upstream report format. The GAIA checks below write into this same file: each **replaces** its own `## #NN` section if one already exists, otherwise appends it at the bottom. Never trust or carry over a pre-existing GAIA section — every check re-derives from its live CLI primitive on each run.
+
+### Normalize the report date
+
+Reconcile the captured report path against `$DATE`. If the upstream skill wrote a **fresh** report this run under a different (model-guessed) date, rename it and fix the in-file references:
 
 ```bash
 git mv wiki/meta/lint-report-<upstream-date>.md wiki/meta/lint-report-$DATE.md
 ```
 
-Then set the report's frontmatter (`title`, `created`, `updated`) and H1 heading to `$DATE`. Use the renamed path as the canonical report path for every subsequent step and the Step 5 summary.
+But if the captured path points at a report from an earlier date that the upstream skill **reused** rather than regenerated, do not rename it — that carries stale content forward. Start a fresh `wiki/meta/lint-report-$DATE.md` instead and write every section below from the live primitives.
+
+Then set the report's frontmatter (`title`, `created`, `updated`) and H1 heading to `$DATE`. Use this path as the canonical report path for every subsequent step and the Step 5 summary.
 
 ## Step 2: GAIA check #11 — Wiki drift
 
-After the upstream lint finishes, run `gaia wiki state --json` and append a `## #11: Wiki drift check` section to the report file based on its output.
+After the upstream lint finishes, always run `gaia wiki state --json` fresh and write the `## #11: Wiki drift check` section from its output — replacing any existing `## #11` section in the report. Never carry over a `#11` section from a reused report: drift state is the most time-sensitive check, and a stale `#11` is exactly how a wiki that was just synced or recovered gets mis-reported as drifting.
 
 ### 2a. Run the primitive
 
