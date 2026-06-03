@@ -29,7 +29,7 @@ See [[modules/Claude Integration|the modules page]] for the inventory of current
 
 ### Wiki vendor relationship
 
-GAIA does **not** vendor the `claude-obsidian` plugin into the repo. The plugin is installed **globally** via the Claude Code plugin marketplace (`~/.claude/plugins/marketplaces/claude-obsidian-marketplace/`) at the v1.6.0 baseline. Adopters get it the moment they have Claude Code installed; nothing under `wiki/` or `.claude/` in this repo carries plugin source code.
+GAIA does **not** vendor the `claude-obsidian` plugin into the repo. The plugin is installed **globally** via the Claude Code plugin marketplace (`~/.claude/plugins/marketplaces/claude-obsidian-marketplace/`) at the v1.9.2 baseline. Adopters get it the moment they have Claude Code installed; nothing under `wiki/` or `.claude/` in this repo carries plugin source code.
 
 What this means in practice:
 
