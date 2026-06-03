@@ -11,6 +11,11 @@ tags: [meta, log]
 
 ## [v1.4.0] 2026-06-02 | Released
 
+- 2026-06-03 4110bfe WORTHY — aliased bare gaia calls to repo-relative .gaia/cli/gaia across skill instructions
+- 2026-06-03 129a364 WORTHY — bumped claude-obsidian baseline v1.6.0→v1.9.2, reframed plugin skills as auxiliary
+- 2026-06-03 8015592 WORTHY — decoupled wiki-lint from upstream, added GAIA-native checks #11-#16
+- 2026-06-03 ced9876 WORTHY — scrubbed website paths from Release-Notes.md, marked maintainer-only
+- 2026-06-03 b8dfb81 SKIP — wiki: self-referential
 - 2026-06-03 1ef7eec SKIP — tooling fix; maintainer-only skill documentation
 - 2026-06-03 0845873 SKIP — wiki state file maintenance only
 - 2026-06-03 e022c9d WORTHY — added /release-notes skill → wiki/concepts/Release-Notes.md
