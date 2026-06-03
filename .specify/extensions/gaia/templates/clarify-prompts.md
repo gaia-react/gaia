@@ -1,7 +1,7 @@
 # GAIA `/speckit.clarify` prompt templates
 
 Structured Q&A copy applied by the GAIA preset when `/speckit.clarify`
-runs under `/gaia spec`. These templates are visible and editable here
+runs under `/gaia-spec`. These templates are visible and editable here
 by design — never hardcode a question bank outside this directory
 (per the SPEC's `scope_boundaries.never`).
 
@@ -209,4 +209,4 @@ pick?" (borrowed from SEED's prevent-dead-ends pattern).
 | Prior art  | What does the closest existing thing do, and where does it fall short? | Dispatch research subagent.                 |
 
 The topic bank is editable. Adding a topic here makes it available
-to every future `/gaia spec` session.
+to every future `/gaia-spec` session.

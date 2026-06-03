@@ -1,6 +1,6 @@
-# /gaia spec
+# /gaia-spec
 
-Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and prompts to chain into `/gaia plan`. Do not implement anything — this skill produces an artifact and stops.
+Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and prompts to chain into `/gaia-plan`. Do not implement anything — this skill produces an artifact and stops.
 
 ## Argument parsing
 
@@ -17,7 +17,7 @@ When `auto_mode = true` the agent answers the Socratic questions itself rather t
 
 Hard rules in auto mode:
 
-1. **Description is required.** If the remainder of `$ARGUMENTS` after stripping `auto` is empty, abort with: `"/gaia spec auto requires a description. Re-invoke as: /gaia spec auto <description>"`. Do not prompt for one — the user opted out of interactivity.
+1. **Description is required.** If the remainder of `$ARGUMENTS` after stripping `auto` is empty, abort with: `"/gaia-spec auto requires a description. Re-invoke as: /gaia-spec auto <description>"`. Do not prompt for one — the user opted out of interactivity.
 2. **GitHub issue mirror is forced on.** Set `gh_mirror_optin = true` unconditionally. Do not ask the step-1 GH-mirror question. If `gh-mirror.sh` later skips for environment reasons (no `gh` auth, Issues disabled, no write permission), surface that in the final summary but do not abort — the SPEC is the artifact, the issue is a mirror.
 3. **Resume vs start-new is automatic.** If the allocator reports an in-progress SPEC, **start new** without prompting. The user's `auto` invocation is itself the signal that they want a fresh artifact.
 4. **Both gates auto-confirm.** Gate 1 and gate 2 do not present plain prompts to the user. The agent renders the draft to its own reasoning context, performs a self-check (is intent coherent? are UATs Given/When/Then? do UATs cover the intent?), and proceeds. If the self-check finds an issue, the agent revises in-place and re-checks once before proceeding — never blocks for human input.
@@ -28,7 +28,7 @@ Hard rules in auto mode:
 9. **Self-review high findings auto-apply.** Step 6b's high-severity branch normally surfaces each finding to the user; in auto mode, apply the `suggested_fix` and append a note to `clarifications.deferred[]` summarizing the finding so a reviewer can audit later. Do NOT silently revert clarify-loop evolution — if the finding is `kind: "drift"` or `"scope_change"` and the change came from a clarify answer the agent itself just made, prefer keeping the clarify answer over reverting to gate-1 shape.
 10. **Pending clarifications auto-defer.** Step 6c's per-item prompt always picks "Defer with rationale". The rationale is: `"Auto-mode session — defer for human review."` This unblocks save without forcing the agent to fabricate answers it does not have evidence for.
 11. **Lint thrash escalates to defer, not step-back.** Step 9's cycle-3 prompt auto-picks "Defer remaining findings" so the SPEC saves with the deferred-clarifications block populated. Step-back-to-gate-2 in auto mode would loop indefinitely.
-12. **Chain-trigger to `/gaia plan` is automatic.** Step 11's `AskUserQuestion` is skipped — auto mode always picks "Yes, trigger /gaia plan". Multi-plan loop (11b) is also skipped — author exactly one plan covering the full SPEC. Multi-slice planning is a human-judgment call; auto mode produces one plan.
+12. **Chain-trigger to `/gaia-plan` is automatic.** Step 11's `AskUserQuestion` is skipped — auto mode always picks "Yes, trigger /gaia-plan". Multi-plan loop (11b) is also skipped — author exactly one plan covering the full SPEC. Multi-slice planning is a human-judgment call; auto mode produces one plan.
 13. **`Save partial and resume later` escapes are unreachable.** No prompt fires that would offer them. The session always proceeds to step 8 unless the agent itself decides to abort (e.g. missing description, hard tool failure).
 14. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, and `spec_saved` event in an auto session includes `"auto": true` in its JSON record. The `time_to_resolved_spec` mentorship emit at step 8 includes `--agent-type auto` instead of `--agent-type human`. Telemetry-derived metrics should be partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
 
@@ -44,12 +44,12 @@ COACHING=$(.gaia/cli/gaia _internal-fetch-coaching --agent-type human --area-tag
 
 If `$COACHING` is non-empty, prepend its contents to the system prompt as the first section. If empty (the v1.0.0 default — pattern detection ships wired-but-inert), the prompt is byte-identical to the non-mentorship path. The fetcher always exits 0 on a valid `--agent-type`, never blocks the flow, and writes `.gaia/cache/coaching-active.txt` only when a coaching block is actually returned (lights up the 🧭 statusline indicator).
 
-`--area-tags` is `spec` for the pre-Gate-2 phase; once the SPEC's UAT clusters are known, downstream callers can re-fetch with the richer tag set. v1 wires only this `/gaia spec` PO path; Lead → Senior/Junior dispatch wiring lands with Sequel features.
+`--area-tags` is `spec` for the pre-Gate-2 phase; once the SPEC's UAT clusters are known, downstream callers can re-fetch with the richer tag set. v1 wires only this `/gaia-spec` PO path; Lead → Senior/Junior dispatch wiring lands with Sequel features.
 
 ## Hard constraints
 
 1. **No machine-local memory for project decisions.** Never call any tool that writes to `~/.claude/projects/.../memory/`. Project-relevant decisions belong ONLY in the SPEC artifact, the wiki, or `.claude/rules/`. Personal preferences (tone, formatting) remain allowed in machine-local memory. This is the no-machine-local-memory rule and it is non-negotiable.
-2. **Write-surface allowlist.** Every file write during a `/gaia spec` session lands in exactly one of:
+2. **Write-surface allowlist.** Every file write during a `/gaia-spec` session lands in exactly one of:
    - `.gaia/local/specs/**`
    - `.specify/**`
    - `.gaia/local/cache/**`
@@ -73,7 +73,7 @@ The three GAIA hooks declared in `.specify/extensions/gaia/extension.yml`:
 
 Each hook fires automatically — the agent reads the directive and invokes the slash command without prompting. "Block" semantics live inside the hook command: a block is a refusal message that the wrapper agent reads and chooses not to proceed past. There is no machine-enforced halt.
 
-There is no `on_save` event. The chain-trigger to `/gaia plan` lives inline at the end of this orchestration (Step 11), not in a hook.
+There is no `on_save` event. The chain-trigger to `/gaia-plan` lives inline at the end of this orchestration (Step 11), not in a hook.
 
 ## Operational primitives
 
@@ -138,9 +138,9 @@ This makes interrupted sessions resumable: step 2 reads the cache if it is newer
 
 Closed-set `AskUserQuestion` calls during the clarify loop append a fifth option after `Discuss this`:
 
-    { label: "Save partial and resume later", description: "Write the draft to cache and stop; re-invoke /gaia spec to continue." }
+    { label: "Save partial and resume later", description: "Write the draft to cache and stop; re-invoke /gaia-spec to continue." }
 
-Selection triggers: write draft cache (above), append `session_paused` telemetry, emit a `time_to_resolved_spec` mentorship event with `--abandoned true` per the abandoned-exit primitive below, print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia spec to resume.`), and exit gracefully.
+Selection triggers: write draft cache (above), append `session_paused` telemetry, emit a `time_to_resolved_spec` mentorship event with `--abandoned true` per the abandoned-exit primitive below, print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia-spec to resume.`), and exit gracefully.
 
 The session-shape cache is NOT deleted on the `Save partial and resume later` path — a future resume reads it and continues counting questions against the same `start_at`. (Cache deletion happens only on canonical save at step 8, or on the `Discard SPEC-NNN draft cache` branch in step 2 — see step 2 for the discard handler.)
 
@@ -213,7 +213,7 @@ If `$ARGUMENTS` (the args after `spec`, with `auto` already stripped if present 
 
 Otherwise, ask: **"What do you want to spec?"** and wait for the response before continuing. This is open-ended — use a plain prompt, not `AskUserQuestion`. **Auto-mode exception:** in auto mode an empty description is a hard abort per Auto-mode rule 1 — never prompt.
 
-After capturing the description — **on both the `$ARGUMENTS` fast-path and the interactive-prompt path** — ask the GitHub-issue preference via `AskUserQuestion`. The question fires regardless of how the description was sourced; users invoking `/gaia spec "..."` should expect this single prompt before discovery proper begins. **Auto-mode exception:** skip the `AskUserQuestion` entirely and set `gh_mirror_optin = true` per Auto-mode rule 2.
+After capturing the description — **on both the `$ARGUMENTS` fast-path and the interactive-prompt path** — ask the GitHub-issue preference via `AskUserQuestion`. The question fires regardless of how the description was sourced; users invoking `/gaia-spec "..."` should expect this single prompt before discovery proper begins. **Auto-mode exception:** skip the `AskUserQuestion` entirely and set `gh_mirror_optin = true` per Auto-mode rule 2.
 
 - question: `"Mirror this SPEC to a GitHub issue on save?"`
 - header: `"GH issue"`
@@ -598,21 +598,21 @@ The script handles the conditional logic without intervention:
 
 If the project uses non-GitHub remote tracking (GitLab, Bitbucket, none), the mirror step is a no-op. Do not prompt to mirror to alternative trackers — that is `ask_first` territory and out of scope for this skill.
 
-### 11. Inline chain-trigger to /gaia plan
+### 11. Inline chain-trigger to /gaia-plan
 
 There is no `on_save` hook in spec-kit. The chain-trigger lives here, inline, after save and after the optional GH mirror. Surface via `AskUserQuestion`:
 
-- question: `"SPEC-NNN saved. Trigger /gaia plan now?"`
+- question: `"SPEC-NNN saved. Trigger /gaia-plan now?"`
 - header: `"Chain"`
 - options:
-  - `{ label: "Yes, trigger /gaia plan (Recommended)", description: "Run the autonomous downstream pipeline starting with /gaia plan." }`
-  - `{ label: "No, defer", description: "Stop here; the human can invoke /gaia plan later." }`
+  - `{ label: "Yes, trigger /gaia-plan (Recommended)", description: "Run the autonomous downstream pipeline starting with /gaia-plan." }`
+  - `{ label: "No, defer", description: "Stop here; the human can invoke /gaia-plan later." }`
 
 **Auto-mode exception per rule 12:** skip the `AskUserQuestion` and proceed directly to 11a (first plan dispatch). After the first plan returns, skip 11b's multi-plan loop and jump to 11c. Auto mode produces exactly one plan covering the full SPEC; multi-slice planning is a human-judgment call.
 
-On `No`, stop and report to the user that the SPEC is saved and `/gaia plan` can be invoked when ready. On `Yes`, enter the plan-dispatch loop. All plans dispatched through the loop share the slug prefix `spec-NNN-*`, so `ls .gaia/local/plans/ | grep ^spec-NNN-` discovers them as a group.
+On `No`, stop and report to the user that the SPEC is saved and `/gaia-plan` can be invoked when ready. On `Yes`, enter the plan-dispatch loop. All plans dispatched through the loop share the slug prefix `spec-NNN-*`, so `ls .gaia/local/plans/ | grep ^spec-NNN-` discovers them as a group.
 
-**Each `/gaia plan` invocation runs in its own `general-purpose` Agent**, not in-session. The wrapper's context stays bounded regardless of plan count — each Agent reads the SPEC, runs the plan skill end-to-end, and returns only the resolved `PLAN_DIR` and the kickoff prompt. The wrapper never sees the planner's investigation, the per-task docs, or any intermediate output.
+**Each `/gaia-plan` invocation runs in its own `general-purpose` Agent**, not in-session. The wrapper's context stays bounded regardless of plan count — each Agent reads the SPEC, runs the plan skill end-to-end, and returns only the resolved `PLAN_DIR` and the kickoff prompt. The wrapper never sees the planner's investigation, the per-task docs, or any intermediate output.
 
 #### 11a. First plan dispatch
 
@@ -643,7 +643,7 @@ When the Agent returns, parse the two fields. Append the `PLAN_DIR` to a running
 
 **Auto-mode exception:** skip this sub-step entirely. After 11a returns, jump straight to 11c.
 
-After each `/gaia plan` Agent completes, surface via `AskUserQuestion`:
+After each `/gaia-plan` Agent completes, surface via `AskUserQuestion`:
 
 - question: `"Plan another slice of SPEC-NNN, or done?"`
 - header: `"Plans"`
@@ -698,6 +698,6 @@ Closes #<N>
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-Multi-PR SPECs (where `/gaia plan` produced multiple plan slices) should reference the same issue from each PR — GitHub closes the issue on the merge of the first PR that contains the keyword. The remaining PRs' references are inert but harmless and signal the lineage.
+Multi-PR SPECs (where `/gaia-plan` produced multiple plan slices) should reference the same issue from each PR — GitHub closes the issue on the merge of the first PR that contains the keyword. The remaining PRs' references are inert but harmless and signal the lineage.
 
 If the SPEC has no `gh_issue_url` (step 10 was skipped), this step is a no-op.

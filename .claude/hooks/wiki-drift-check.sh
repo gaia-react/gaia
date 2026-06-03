@@ -3,7 +3,7 @@
 # inject a once-per-session reminder if drifted.
 #
 # Why: the wiki only stays accurate if drift is surfaced. Hooks are read-only
-# consumers of state; only /gaia wiki sync writes wiki/.state.json. See
+# consumers of state; only /gaia-wiki sync writes wiki/.state.json. See
 # wiki/concepts/Wiki Sync.md for the full contract.
 
 set -euo pipefail
@@ -42,7 +42,7 @@ drift_count=$(git rev-list --count "$state_sha..HEAD" 2>/dev/null || echo 0)
 short_sha=$(git rev-parse --short "$state_sha" 2>/dev/null || echo "$state_sha")
 
 if [ "$drift_count" -gt 0 ]; then
-  printf '[wiki state] HEAD is %s commits ahead of last evaluated SHA (%s). Run /gaia wiki sync to evaluate, or proceed if you will address this elsewhere.\n' \
+  printf '[wiki state] HEAD is %s commits ahead of last evaluated SHA (%s). Run /gaia-wiki sync to evaluate, or proceed if you will address this elsewhere.\n' \
     "$drift_count" "$short_sha"
 fi
 

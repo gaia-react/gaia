@@ -8,7 +8,7 @@ The forensics classifier uses a closed set of eight classes. Every report carrie
 | ------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | init         | `/gaia-init` scaffolding                                         | "init", "scaffold failed", "rename", "branding strip"                | `.gaia/manifest.json`, `.gaia/local/setup-state.json`, `package.json` |
 | update       | `/update-gaia` merge                                             | "update", "merge conflict", "three-way"                              | `.gaia/manifest.json`, conflicting file path                          |
-| wiki-sync    | `/gaia wiki sync`                                                | "wiki-sync", "sync", "wiki commit"                                   | `wiki/.state.json`, `wiki/log.md` last entry                          |
+| wiki-sync    | `/gaia-wiki sync`                                                | "wiki-sync", "sync", "wiki commit"                                   | `wiki/.state.json`, `wiki/log.md` last entry                          |
 | quality-gate | `pnpm typecheck && pnpm lint` failure during a GAIA flow         | "quality gate", "typecheck", "lint failed"                           | `wiki/decisions/Quality Gate.md`, the failing command output verbatim |
 | hook         | `.claude/hooks/*.sh` misfire                                     | "hook", "PreToolUse", "PostToolUse", "session-start", "session-stop" | `.claude/settings.json`, `.claude/hooks/<failing>.sh` filename only   |
 | scaffold     | `new-component` / `new-route` / `new-hook` / `new-service` skill | "scaffold", "new-component", "skeleton", "template"                  | `.claude/skills/<failing>/SKILL.md`                                   |
@@ -56,7 +56,7 @@ After classification, the agent decides whether the failure is a user-config iss
 | ------------------------------------------------------------------------------------ | ------------ | ---------------------------------- |
 | wrong Node version (captured `node` field outside `.nvmrc` / `engines.node` range)   | user-config  | local environment, fixable by user |
 | missing required env var (named in the surface's docs and absent from `process.env`) | user-config  | local environment                  |
-| dirty working tree blocks the workflow (e.g. `/gaia wiki sync` refused to push)      | user-config  | git state, fixable by user         |
+| dirty working tree blocks the workflow (e.g. `/gaia-wiki sync` refused to push)      | user-config  | git state, fixable by user         |
 | any other failure pattern                                                            | probable bug | offer GH issue                     |
 | classifier fell to `other`                                                           | probable bug | offer GH issue                     |
 

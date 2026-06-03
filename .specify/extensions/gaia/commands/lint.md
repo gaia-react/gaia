@@ -36,7 +36,7 @@ The helper emits a JSON result on stdout: `{"ok": true, "findings": []}` on pass
 
 - **Fail.** Emit each finding's `code`, `message`, and `where` field on its own line. Then announce:
 
-  > `after_specify` lint failed: <N> finding(s). Fix the SPEC and re-run, or invoke `/gaia spec` again to amend before save.
+  > `after_specify` lint failed: <N> finding(s). Fix the SPEC and re-run, or invoke `/gaia-spec` again to amend before save.
 
 - **Usage error (exit 2).** Treat as a tooling problem, not a SPEC problem; report the stderr message and skip the lint without blocking the lifecycle.
 
@@ -54,5 +54,5 @@ The helper emits a JSON result on stdout: `{"ok": true, "findings": []}` on pass
 ## Notes
 
 - This hook is read-only; it never edits the SPEC.
-- "Block save" semantics: a failing lint surfaces the findings to the agent driving `/gaia spec`; that agent is responsible for halting before the on-disk save and looping back to the user.
-- The helper is pure: same SPEC in, same JSON out. Any mutation logic belongs in `/gaia spec` (the wrapper command), never here.
+- "Block save" semantics: a failing lint surfaces the findings to the agent driving `/gaia-spec`; that agent is responsible for halting before the on-disk save and looping back to the user.
+- The helper is pure: same SPEC in, same JSON out. Any mutation logic belongs in `/gaia-spec` (the wrapper command), never here.

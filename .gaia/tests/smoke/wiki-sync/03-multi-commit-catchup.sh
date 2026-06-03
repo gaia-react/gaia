@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke 03: 5 accumulated commits should all be processed by a single /gaia wiki sync run.
+# Smoke 03: 5 accumulated commits should all be processed by a single /gaia-wiki sync run.
 # Mixed worthiness: 2 features, 1 fix, 1 typo, 1 dep bump.
 set -euo pipefail
 
@@ -14,11 +14,11 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/services wiki/components wiki/dependencies .claude/hooks .claude/skills/gaia/references/wiki app/services app/components
+mkdir -p wiki/services wiki/components wiki/dependencies .claude/hooks .claude/skills/gaia-wiki .claude/skills/gaia/references/wiki app/services app/components
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/skills/gaia/SKILL.md" .claude/skills/gaia/
+cp "$GAIA_REPO/.claude/skills/gaia-wiki/SKILL.md" .claude/skills/gaia-wiki/
 cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
 cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
 
@@ -127,7 +127,7 @@ drift=$(git rev-list --count "$init_sha"..HEAD)
 pre_claude_head=$(git rev-parse HEAD)
 
 claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /gaia wiki sync. Report what was done." > /dev/null 2>&1
+  "Run /gaia-wiki sync. Report what was done." > /dev/null 2>&1
 
 # Assertions
 [ -f wiki/log.md ] || { echo "FAIL: wiki/log.md not created"; exit 1; }

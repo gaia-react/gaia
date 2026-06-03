@@ -1,4 +1,4 @@
-# /gaia pickup
+# /gaia-pickup
 
 Rebuild "where did we leave off" at session start and suggest the next action.
 

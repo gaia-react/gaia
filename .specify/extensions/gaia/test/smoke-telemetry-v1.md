@@ -114,7 +114,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 - **UAT-024.** A Senior agent finishes a task but fails to inline-emit `uat_pass` despite verification succeeding. The PostToolUse `engineer-return` hook reads the agent's structured return payload, infers the missing event(s), and emits via `.gaia/cli/gaia telemetry emit`. The stream contains exactly one `uat_pass` event for the work item. Verify by inspecting the hook script (`.claude/hooks/`) and the resulting JSONL.
 - **UAT-025.** A Senior agent inline-emits `uat_pass` AND the engineer-return hook subsequently attempts the same emit. Both invocations complete; idempotency by content-derived `event_id` ULID ensures exactly one event lands; the hook's second invocation detects the duplicate and exits without writing.
-- **UAT-026.** A `/gaia spec` session canonically saves a SPEC. The save completes; a `spec_close` chain fires `.gaia/cli/gaia telemetry compute-profile`, regenerating `profile.md` with the 30-day rolling window applied. Verify the `compute-profile` invocation lands in the slash-command's `## Step 5 — Telemetry` block.
+- **UAT-026.** A `/gaia-spec` session canonically saves a SPEC. The save completes; a `spec_close` chain fires `.gaia/cli/gaia telemetry compute-profile`, regenerating `profile.md` with the 30-day rolling window applied. Verify the `compute-profile` invocation lands in the slash-command's `## Step 5 — Telemetry` block.
 
 **Harness fast-path.** Test 6 covers the silent-success short-circuit that UAT-026's chain trigger depends on (compute-profile must exit 0 quietly when mentorship is disabled, otherwise spec_close would fail loudly on every disabled repo). UAT-024 / UAT-025 require a live agent dispatch; assert by reading the hook script + grepping for the inline-emit call site.
 
@@ -122,12 +122,12 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 ## Cluster 7 — Slash-command emits (UATs 27, 28)
 
-**Setup.** Live `/gaia spec` and `/gaia plan` sessions.
+**Setup.** Live `/gaia-spec` and `/gaia-plan` sessions.
 
 **Expected.**
 
-- **UAT-027.** Run `/gaia spec` end-to-end. When Gate-2 confirmation completes and the canonical save lands at `.gaia/local/specs/SPEC-NNN/SPEC.md`, a `time_to_resolved_spec` mentorship event emits with the session's question count and elapsed time. Verify by grepping today's mentorship JSONL.
-- **UAT-028.** Run `/gaia plan` against an existing SPEC. Mid-flow, request a revision (e.g. ask the planner to add two more dispatch artifacts). When the planner re-emits dispatch artifacts, a `plan_revised` mentorship event emits with the appropriate `revision_class` (`scope_change` for the example above; `sequencing_change` / `dispatch_artifact_refinement` / `bug_fix_added` for other shapes).
+- **UAT-027.** Run `/gaia-spec` end-to-end. When Gate-2 confirmation completes and the canonical save lands at `.gaia/local/specs/SPEC-NNN/SPEC.md`, a `time_to_resolved_spec` mentorship event emits with the session's question count and elapsed time. Verify by grepping today's mentorship JSONL.
+- **UAT-028.** Run `/gaia-plan` against an existing SPEC. Mid-flow, request a revision (e.g. ask the planner to add two more dispatch artifacts). When the planner re-emits dispatch artifacts, a `plan_revised` mentorship event emits with the appropriate `revision_class` (`scope_change` for the example above; `sequencing_change` / `dispatch_artifact_refinement` / `bug_fix_added` for other shapes).
 
 **Harness fast-path.** None — these require a live slash-command session.
 
@@ -154,7 +154,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-033.** With `profile.md` listing `po_socratic_depth_increased` as active, begin a `/gaia spec` session. The system prompt for the spec wrapper agent includes a `## Profile-driven coaching` section containing the adaptation text. The user-facing UX changes are observable: deeper Socratic depth on success criteria for the relevant area. **Maintainer judgment.** Walk a spec session and judge: does the wrapper actually apply the deeper depth? Does it stop applying it when you switch to a different area tag?
+- **UAT-033.** With `profile.md` listing `po_socratic_depth_increased` as active, begin a `/gaia-spec` session. The system prompt for the spec wrapper agent includes a `## Profile-driven coaching` section containing the adaptation text. The user-facing UX changes are observable: deeper Socratic depth on success criteria for the relevant area. **Maintainer judgment.** Walk a spec session and judge: does the wrapper actually apply the deeper depth? Does it stop applying it when you switch to a different area tag?
 - **UAT-034.** Wipe `profile.md` (or use a scratch repo with no fixture). Begin any agent dispatch. No `## Profile-driven coaching` section is added to the system prompt; the prompt is byte-identical to the non-mentorship path. Verify by rendering the system prompt with a no-active-adaptation state vs. the non-mentorship state and diffing.
 
 **Harness fast-path.** None — these require live agent dispatch and prompt comparison.
@@ -167,7 +167,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-035.** In two terminals, close two `/gaia spec` SPECs within 100ms of each other. Both `spec_close` chains fire `compute-profile` concurrently. `profile.md` is written atomically (write-temp-and-rename); the final file is well-formed; no half-written state observable; both sessions' contributing events are reflected in the next read. Verify by repeating the race a few times and reading `profile.md`.
+- **UAT-035.** In two terminals, close two `/gaia-spec` SPECs within 100ms of each other. Both `spec_close` chains fire `compute-profile` concurrently. `profile.md` is written atomically (write-temp-and-rename); the final file is well-formed; no half-written state observable; both sessions' contributing events are reflected in the next read. Verify by repeating the race a few times and reading `profile.md`.
 - **UAT-036.** Manually edit `profile.md` (e.g., delete an adaptation block). Run `compute-profile`. The file is fully regenerated from event data; user edits are overwritten without warning. The regenerated file's top-of-file header reads exactly: ``> DO NOT EDIT — regenerated by `gaia telemetry compute-profile`. Use `gaia mentorship purge` or `disable` to change state.``
 
 **Harness fast-path.** Test 4 covers UAT-035 (atomic write contract — `profile.md` exists with mode 600 after `compute-profile`, idempotent across re-runs) and UAT-036 (DO NOT EDIT header is the first line).
@@ -209,7 +209,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Setup.** A throwaway feature description and a fresh repo with mentorship enabled.
 
-**Action.** Run `/gaia spec`, then `/gaia plan`, then a UAT cycle (engineer dispatched, returns DONE, audit fires).
+**Action.** Run `/gaia-spec`, then `/gaia-plan`, then a UAT cycle (engineer dispatched, returns DONE, audit fires).
 
 **Expected.** Events from each phase land in correct streams:
 

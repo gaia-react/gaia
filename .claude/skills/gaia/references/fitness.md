@@ -1,8 +1,8 @@
-# /gaia fitness
+# /gaia-fitness
 
-`/gaia fitness` is the Claude-integration health check + auto-heal. One invocation, no flag required — calling `/gaia fitness` is the statement of intent to be fit. It runs three phases in sequence: triage → heal → verify.
+`/gaia-fitness` is the Claude-integration health check + auto-heal. One invocation, no flag required — calling `/gaia-fitness` is the statement of intent to be fit. It runs three phases in sequence: triage → heal → verify.
 
-The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state harness layer described below. That harness layer — auto-branching, the unsafe-state guard — is `/gaia fitness`-specific and is not part of the protocol in that page.
+The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state harness layer described below. That harness layer — auto-branching, the unsafe-state guard — is `/gaia-fitness`-specific and is not part of the protocol in that page.
 
 **Scope note:** the harness this file wraps around the protocol is minimal — no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. v1 introduces no `gaia` CLI subcommand — the agent runs the checks the wiki page defines (greps / `jq` / `gaia wiki …` calls) inline.
 
@@ -62,7 +62,7 @@ test -f "$GIT_DIR/BISECT_LOG"
 1. Run Step 3 (triage) as normal.
 2. Compute and print the grades.
 3. State clearly that heal was skipped because the working state is not safe to mutate. Include the specific reason (e.g. "HEAD is detached" or "rebase in progress").
-4. Give the resolution steps: e.g. "complete or abort the rebase (`git rebase --abort`), or check out a branch (`git checkout <branch>`), then re-run `/gaia fitness`."
+4. Give the resolution steps: e.g. "complete or abort the rebase (`git rebase --abort`), or check out a branch (`git checkout <branch>`), then re-run `/gaia-fitness`."
 5. **STOP** — make no working-tree mutation, create no branch. Do not proceed to Steps 4–6.
 
 **Otherwise (safe state):**
@@ -205,7 +205,7 @@ Print a grade table:
 
 **If triage-only (unsafe repo state from Step 2):**
 
-> Heal skipped — `<reason>` (e.g. HEAD is detached / rebase in progress). Re-run `/gaia fitness` after `<resolution steps>`.
+> Heal skipped — `<reason>` (e.g. HEAD is detached / rebase in progress). Re-run `/gaia-fitness` after `<resolution steps>`.
 
 **If zero findings (overall A+):**
 

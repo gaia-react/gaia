@@ -83,7 +83,7 @@ const main = async (): Promise<number> => {
     return EXIT_CODES.OK;
   }
 
-  // Internal subcommand consumed by the `/gaia spec` skill (and future
+  // Internal subcommand consumed by the `/gaia-spec` skill (and future
   // dispatch-time callers) to fetch profile-driven coaching text. Wired
   // top-level rather than under `mentorship` because it's an
   // implementation detail consumed by skill scaffolding, not a

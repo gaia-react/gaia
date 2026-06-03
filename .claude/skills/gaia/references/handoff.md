@@ -1,4 +1,4 @@
-# /gaia handoff
+# /gaia-handoff
 
 Write a self-contained handoff doc so the next session can pick up cold without re-reading this conversation.
 

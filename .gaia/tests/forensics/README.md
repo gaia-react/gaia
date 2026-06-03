@@ -1,6 +1,6 @@
 # Forensics UAT harness
 
-Maintainer-only fixture suite for the `/gaia forensics` skill. Excluded from the release bundle via `.gaia/release-exclude` (category `.gaia/tests/`). Every test is hermetic — no network, no real Claude Code calls, no real `gh` invocations.
+Maintainer-only fixture suite for the `/gaia-forensics` skill. Excluded from the release bundle via `.gaia/release-exclude` (category `.gaia/tests/`). Every test is hermetic — no network, no real Claude Code calls, no real `gh` invocations.
 
 ## Coverage
 

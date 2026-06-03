@@ -27,4 +27,4 @@ GAIA's verification artifacts split across two trees: `.specify/extensions/gaia/
 
 ## Enforcement
 
-Maintainer rule + good-faith review. No CI lint, no `/gaia spec close` audit hook. When authoring a new verification artifact, classify it by shape against the decision table and place it in the matching tree; when reviewing, flag misclassification and migrate. If repeated violations surface post-launch, escalate to a `/gaia spec close` audit step — never CI lint.
+Maintainer rule + good-faith review. No CI lint, no `/gaia-spec close` audit hook. When authoring a new verification artifact, classify it by shape against the decision table and place it in the matching tree; when reviewing, flag misclassification and migrate. If repeated violations surface post-launch, escalate to a `/gaia-spec close` audit step — never CI lint.

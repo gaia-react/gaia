@@ -11,7 +11,7 @@ tags: [dependency, spec-kit, claude]
 
 # spec-kit
 
-[GitHub spec-kit](https://github.com/github/spec-kit) is the SPEC-authoring engine that backs GAIA's `/gaia spec` workflow. GAIA wraps it with a Socratic discovery loop, GAIA-shaped frontmatter, and an inline chain-trigger to `/gaia plan`.
+[GitHub spec-kit](https://github.com/github/spec-kit) is the SPEC-authoring engine that backs GAIA's `/gaia-spec` workflow. GAIA wraps it with a Socratic discovery loop, GAIA-shaped frontmatter, and an inline chain-trigger to `/gaia-plan`.
 
 ## Pin
 
@@ -34,7 +34,7 @@ specify preset add --dev .specify/presets/gaia
 
 ## When to use
 
-- `/gaia spec` — Socratic discovery wrapper (see [[GAIA Spec]]). The user-facing entry point.
+- `/gaia-spec` — Socratic discovery wrapper (see [[GAIA Spec]]). The user-facing entry point.
 - `/speckit.specify` / `/speckit.clarify` — invoked by the wrapper. Direct invocation also works in a GAIA project; the GAIA preset still produces GAIA-shaped artifacts.
 
 ## Architecture

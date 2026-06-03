@@ -104,7 +104,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[DragonScale Opt-Out]]
 - [[spec-kit Extension Strategy]]
 - [[Wiki Management]] — wiki primitives, state file, deterministic classification
-- [[Claude Integration Fitness]] — check taxonomy + F-to-A+ grading + triage/heal protocol run by `/gaia fitness`.
+- [[Claude Integration Fitness]] — check taxonomy + F-to-A+ grading + triage/heal protocol run by `/gaia-fitness`.
 <!-- gaia:maintainer-only:start -->
 - [[Bundle-time Scrub]] — marker-strip + leak-check + runtime-deps; closes the audit-round loop with build-time enforcement.
 <!-- gaia:maintainer-only:end -->
@@ -134,13 +134,13 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 <!-- gaia:maintainer-only:start -->
 - [[Release Workflow]] — Maintainer flow: `/gaia-release`, `release.yml`, tarball scrubbing, `create-gaia` bootstrapper.
 <!-- gaia:maintainer-only:end -->
-- [[GAIA Spec]] — `/gaia spec`: Socratic discovery wrapper around spec-kit; produces an immutable SPEC artifact and chains into `/gaia plan`.
-- [[GAIA Plan]] — `/gaia plan`: feature plan + orchestrator scaffolding, clipboard handoff to a fresh session.
-- [[GAIA Handoff]] — `/gaia handoff`: session handoff doc.
-- [[GAIA Pickup]] — `/gaia pickup`: resume from the latest handoff.
-- [[GAIA Audit]] — `/gaia audit`: two-stage knowledge-store hygiene sweep.
-- [[Wiki Sync]] — `/gaia wiki sync` + drift hooks: keep the wiki convergent with code without spawned sub-Claudes.
-- [[Wiki Consolidate]] — `/gaia wiki consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
+- [[GAIA Spec]] — `/gaia-spec`: Socratic discovery wrapper around spec-kit; produces an immutable SPEC artifact and chains into `/gaia-plan`.
+- [[GAIA Plan]] — `/gaia-plan`: feature plan + orchestrator scaffolding, clipboard handoff to a fresh session.
+- [[GAIA Handoff]] — `/gaia-handoff`: session handoff doc.
+- [[GAIA Pickup]] — `/gaia-pickup`: resume from the latest handoff.
+- [[GAIA Audit]] — `/gaia-audit`: two-stage knowledge-store hygiene sweep.
+- [[Wiki Sync]] — `/gaia-wiki sync` + drift hooks: keep the wiki convergent with code without spawned sub-Claudes.
+- [[Wiki Consolidate]] — `/gaia-wiki consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
 - [[GAIA Init Workflow]] — `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, finalize, resume.
 - [[Update Merge]] — `gaia update merge`: three-way file comparison with manifest-driven inventory.
 - [[Telemetry]] — three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.

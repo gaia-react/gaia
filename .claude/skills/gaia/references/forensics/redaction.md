@@ -2,7 +2,7 @@
 
 Lazy-loaded by the forensics runbook at the redact step. Apply this algorithm verbatim to the assembled report body before writing or filing. No external lookups — this fragment is self-contained.
 
-The redaction contract is authoritative; it is defined in the SPEC for the `/gaia forensics` skill. Any discrepancy between this fragment and the SPEC is a defect in this fragment.
+The redaction contract is authoritative; it is defined in the SPEC for the `/gaia-forensics` skill. Any discrepancy between this fragment and the SPEC is a defect in this fragment.
 
 ---
 

@@ -1,6 +1,6 @@
-# `/gaia spec` — manual smoke runbook
+# `/gaia-spec` — manual smoke runbook
 
-This runbook walks the full `/gaia spec` lifecycle and maps every step to the UAT it satisfies. It is a manual document, not an executable test. Use it as the basis for the evidence file in `task-uat-verification` (Phase 3).
+This runbook walks the full `/gaia-spec` lifecycle and maps every step to the UAT it satisfies. It is a manual document, not an executable test. Use it as the basis for the evidence file in `task-uat-verification` (Phase 3).
 
 ## Prerequisites
 
@@ -19,9 +19,9 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 1 — Invoke `/gaia spec` against a populated constitution
+## Step 1 — Invoke `/gaia-spec` against a populated constitution
 
-**Action.** Run `/gaia spec "trivial test feature: render a hello world panel"` from a clean session.
+**Action.** Run `/gaia-spec "trivial test feature: render a hello world panel"` from a clean session.
 
 **Expected outcome.**
 
@@ -35,13 +35,13 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 2 — Constitution placeholder block
 
-**Action.** Restore `.specify/memory/constitution.md` to spec-kit's default template state (or replace one populated value with `[PLACEHOLDER]`). Re-run `/gaia spec "trivial test feature"`.
+**Action.** Restore `.specify/memory/constitution.md` to spec-kit's default template state (or replace one populated value with `[PLACEHOLDER]`). Re-run `/gaia-spec "trivial test feature"`.
 
 **Expected outcome.**
 
 - `before_specify.sh` returns `{"action": "block", "reason": "spec-kit constitution at .specify/memory/constitution.md still contains placeholder values..."}`.
 - The wrapper surfaces the block message verbatim. No discovery question is issued.
-- After running `/speckit.constitution` and re-invoking `/gaia spec`, discovery proceeds normally.
+- After running `/speckit.constitution` and re-invoking `/gaia-spec`, discovery proceeds normally.
 
 **UATs covered.** UAT-007.
 
@@ -49,7 +49,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 3 — Resume-vs-start-new prompt
 
-**Action.** With an in-progress SPEC already at `.gaia/local/specs/SPEC-NNN/SPEC.md`, invoke `/gaia spec "another feature"` without a force-new flag.
+**Action.** With an in-progress SPEC already at `.gaia/local/specs/SPEC-NNN/SPEC.md`, invoke `/gaia-spec "another feature"` without a force-new flag.
 
 **Expected outcome.**
 
@@ -229,12 +229,12 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 15 — Inline chain-trigger prompt
 
-**Action.** After save (and any optional GH mirror), the `/gaia spec` wrapper executes Step 11 of `.claude/skills/gaia/references/spec.md` — an inline `AskUserQuestion`. There is no `on_save` hook in spec-kit v0.8.5; the chain trigger lives in the wrapper itself.
+**Action.** After save (and any optional GH mirror), the `/gaia-spec` wrapper executes Step 11 of `.claude/skills/gaia/references/spec.md` — an inline `AskUserQuestion`. There is no `on_save` hook in spec-kit v0.8.5; the chain trigger lives in the wrapper itself.
 
 **Expected outcome.**
 
-- The wrapper surfaces an `AskUserQuestion` (header `"Chain"`, two options: Yes (Recommended), No) prompting `"SPEC-NNN saved. Trigger /gaia plan now?"`.
-- On `Yes`: `/gaia plan` dispatches with the SPEC path as input.
+- The wrapper surfaces an `AskUserQuestion` (header `"Chain"`, two options: Yes (Recommended), No) prompting `"SPEC-NNN saved. Trigger /gaia-plan now?"`.
+- On `Yes`: `/gaia-plan` dispatches with the SPEC path as input.
 - On `No`: the wrapper stops and prints the final confirmation line; no chain fires.
 
 **UATs covered.** UAT-010.
@@ -243,7 +243,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 16 — Immutable UAT enforcement (post-save mutation attempt)
 
-**Action.** Manually edit `.gaia/local/specs/SPEC-NNN/SPEC.md` to change a UAT body. Re-invoke `/gaia spec` so the lint hook re-evaluates the saved artifact.
+**Action.** Manually edit `.gaia/local/specs/SPEC-NNN/SPEC.md` to change a UAT body. Re-invoke `/gaia-spec` so the lint hook re-evaluates the saved artifact.
 
 **Expected outcome.**
 
@@ -306,7 +306,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## UAT-018 drift simulation
 
-**Action.** Edit `.specify/extensions/gaia/extension.yml` to a non-existent version (e.g. `==v9.9.9`). Invoke `/gaia spec "trivial"`.
+**Action.** Edit `.specify/extensions/gaia/extension.yml` to a non-existent version (e.g. `==v9.9.9`). Invoke `/gaia-spec "trivial"`.
 
 **Expected outcome.**
 

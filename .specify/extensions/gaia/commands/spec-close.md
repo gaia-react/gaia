@@ -10,7 +10,7 @@ Closes a SPEC after its implementing PR has merged. Two responsibilities:
 1. **Drain a deferred wiki-promote**, if `/speckit-implement` saw the PR unmerged and cached a defer flag.
 2. **Prompt for SPEC artifact disposition** — archive, delete, or keep in place — once the wiki side is settled.
 
-Auto-triggered from `wiki-promote` Step 8 on the immediate-merge path. Also invokable manually as `/gaia spec close [SPEC-NNN]` for the deferred path or for retroactive disposition.
+Auto-triggered from `wiki-promote` Step 8 on the immediate-merge path. Also invokable manually as `/gaia-spec close [SPEC-NNN]` for the deferred path or for retroactive disposition.
 
 ## Step 1 — Resolve target SPEC
 
@@ -56,7 +56,7 @@ Surface via `AskUserQuestion`:
 - Options:
   - `{ label: "Archive (Recommended)", description: "Move the SPEC folder to .gaia/local/specs/archived/ with status=archived. Preserves the SPEC artifact and its siblings for posterity. Wiki content was already promoted at implement time; no re-summarization." }`
   - `{ label: "Delete", description: "Remove the SPEC folder. Local-only (.gaia/local/ is gitignored), so the SPEC is not recoverable from git history." }`
-  - `{ label: "Keep in place", description: "Leave the folder at .gaia/local/specs/<spec_id>/ unchanged. Choose if undecided — re-run /gaia spec close <spec_id> later to revisit." }`
+  - `{ label: "Keep in place", description: "Leave the folder at .gaia/local/specs/<spec_id>/ unchanged. Choose if undecided — re-run /gaia-spec close <spec_id> later to revisit." }`
 
 ## Step 4 — Apply disposition
 
@@ -111,11 +111,11 @@ Print one of (prefix with `Drained <N> wiki pages. ` if Step 2 drained, where `<
 - `<spec_id> closed. SPEC folder kept at .gaia/local/specs/<spec_id>/.`
 - `<spec_id> closed. (Artifact missing; nothing to dispose.)`
 
-If wiki content was promoted, also surface: `Run /gaia wiki consolidate periodically to keep the wiki coherent across SPECs.`
+If wiki content was promoted, also surface: `Run /gaia-wiki consolidate periodically to keep the wiki coherent across SPECs.`
 
 ## Notes
 
-- **Disposition does NOT re-summarize into the wiki.** `wiki-promote` (the `after_implement` hook) already wrote `wiki/<domain>/<slug>.md` pages with `promoted_from: <spec_id>` provenance at implement time. Re-summarizing here would duplicate. To consolidate redundant or superseded wiki pages across SPECs, run `/gaia wiki consolidate`.
+- **Disposition does NOT re-summarize into the wiki.** `wiki-promote` (the `after_implement` hook) already wrote `wiki/<domain>/<slug>.md` pages with `promoted_from: <spec_id>` provenance at implement time. Re-summarizing here would duplicate. To consolidate redundant or superseded wiki pages across SPECs, run `/gaia-wiki consolidate`.
 - This command never touches `wiki/`. The wiki-promote → wiki-sync chain owns wiki writes.
 - Archive is reversible (move the folder back). Delete is local-only — `.gaia/local/` is gitignored, so the SPEC is not recoverable from git history. Default to Archive if uncertain.
 - The chain from wiki-promote Step 8 fires only on the immediate-merge path. The deferred-drain path runs spec-close once and does not re-enter via the chain (see Step 2's `drained: true` guard).

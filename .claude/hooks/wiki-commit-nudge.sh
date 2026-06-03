@@ -52,7 +52,7 @@ fi
 # Quote-escape subject for the printf
 escaped_subject=$(printf '%s' "$subject" | sed 's/"/\\"/g')
 
-printf '[wiki nudge] Committed %s: "%s". %s files changed.%s /gaia wiki sync when convenient.\n' \
+printf '[wiki nudge] Committed %s: "%s". %s files changed.%s /gaia-wiki sync when convenient.\n' \
   "$head_sha" "$escaped_subject" "$files_changed" "$drift_msg"
 
 exit 0

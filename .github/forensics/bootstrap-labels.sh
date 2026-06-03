@@ -44,7 +44,7 @@ done
 
 # Frozen label contract — name|color|description (per SPEC-002 task spec).
 LABELS=(
-  "gaia-forensics|5319e7|End-user bug report routed via /gaia forensics. Triggers autonomous triage."
+  "gaia-forensics|5319e7|End-user bug report routed via /gaia-forensics. Triggers autonomous triage."
   "gaia-triaged|0e8a16|Forensics triage workflow has processed this issue. Idempotency key — re-firing is a no-op."
   "non-issue|cccccc|Triaged: not a bug. User-config issue, missing prerequisite, or duplicate. Issue closed."
   "needs-human|d93f0b|Triaged: out of autofix scope, malformed body, or ambiguous verdict. Maintainer review required."

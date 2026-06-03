@@ -1,10 +1,10 @@
-# /gaia audit
+# /gaia-audit
 
 ## Execution model — READ FIRST
 
 **Do not execute the playbook yourself in the current conversation.** Dispatch subagents via the `Agent` tool. Each subagent runs in isolated context.
 
-Calling `/gaia audit` is the intent to apply. The default chains research and apply: Stage 1 produces a report, Stage 2 executes it. The two-stage split exists for technical reasons (different reasoning loads, drift-check between stages), not as a user-confirmation gate.
+Calling `/gaia-audit` is the intent to apply. The default chains research and apply: Stage 1 produces a report, Stage 2 executes it. The two-stage split exists for technical reasons (different reasoning loads, drift-check between stages), not as a user-confirmation gate.
 
 ### Path resolution (portable — no hardcoding)
 
@@ -20,14 +20,14 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 
 ### Branch on `$ARGUMENTS`
 
-**Default (`/gaia audit`)** → Stage 1, then Stage 2.
+**Default (`/gaia-audit`)** → Stage 1, then Stage 2.
 
 1. Spawn the Stage 1 (Research) subagent below. Wait for it to return.
 2. If Stage 1 succeeded (a report path was printed), spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest report by mtime — no path argument needed.
 3. Relay both summaries verbatim, in order.
 4. If Stage 1 failed, do not spawn Stage 2. Surface the error.
 
-**`/gaia audit --apply`** → Stage 2 only.
+**`/gaia-audit --apply`** → Stage 2 only.
 
 Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-apply an existing report after fixing drift, or to retry without re-researching.
 
@@ -50,7 +50,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
   >
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
-  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here — the user runs /gaia wiki for those.`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here — the user runs /gaia-wiki for those.`
 
 ### Stage 2 subagent (Apply)
 
@@ -269,11 +269,11 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
 
 Stage 2 must apply actions in this order: `shrink` → `delete-entry` → `promote` → `delete`. Rationale: shrinks never reference content that later gets touched; deletes come last so earlier pointers don't go stale.
 
-Wiki-internal redundancy and broken-link repair are handled by `/gaia wiki consolidate` and `/gaia wiki lint` respectively — `merge` and `fix-link` action types are not part of this workflow.
+Wiki-internal redundancy and broken-link repair are handled by `/gaia-wiki consolidate` and `/gaia-wiki lint` respectively — `merge` and `fix-link` action types are not part of this workflow.
 
 ## To re-apply
 
-Apply runs immediately after this report. To re-apply later (e.g., after fixing drift): `/gaia audit --apply` within 24h.
+Apply runs immediately after this report. To re-apply later (e.g., after fixing drift): `/gaia-audit --apply` within 24h.
 
 ```
 
@@ -285,7 +285,7 @@ You are executing, not reasoning. Follow this loop exactly.
 
 ### Pre-flight
 
-1. Find the newest `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /gaia audit first`.
+1. Find the newest `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /gaia-audit first`.
 2. Parse the report's frontmatter. Verify `project_root`, `memory_dir`, and `agent_memory_dir` match the values you resolved at startup. If any differ, stop and print a clear error — the report was generated on a different machine or in a different clone.
 3. Run `git rev-parse HEAD` — if it differs from `git_head` in the report, print a warning but continue. Run `git status --short` — any file that is currently dirty AND appears as a target in the report is marked `SKIP (dirty)` before any action runs.
 4. Read the `## Ordering` section. Process actions in that order.

@@ -48,7 +48,7 @@ After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
    ---
    ```
 
-   The remaining required fields (`intent`, `success_criteria`, `uats`, `scope_boundaries`, `clarifications`, `research_summary`) are populated by the GAIA Socratic loop in `/gaia spec`. When this preset runs under bare `/speckit-specify` (no Socratic loop), those fields stay as the salvaged template instructed and the `after_specify` lint will surface them as missing — which is the intended signal for the user to run `/gaia spec` instead.
+   The remaining required fields (`intent`, `success_criteria`, `uats`, `scope_boundaries`, `clarifications`, `research_summary`) are populated by the GAIA Socratic loop in `/gaia-spec`. When this preset runs under bare `/speckit-specify` (no Socratic loop), those fields stay as the salvaged template instructed and the `after_specify` lint will surface them as missing — which is the intended signal for the user to run `/gaia-spec` instead.
 
 5. Leave the core artifact at its original path; do not delete it. Spec-kit's downstream commands (`/speckit-plan`, etc.) read from there. The relocated GAIA copy is the canonical SPEC-NNN artifact for the GAIA workflow.
 
@@ -63,4 +63,4 @@ The `after_specify` extension hook fires next and lints the GAIA copy.
 ## Notes
 
 - This wrap is intentionally surgical: it lets core do its work, then layers GAIA shape on top. If the core's output path resolution changes upstream, only Step 2's path resolution needs to follow.
-- The wrap is the single source of truth for "every spec-shaped artifact in a GAIA project gets GAIA shape". `/gaia spec` invokes `/speckit-specify` under the hood, so it inherits this same wrap automatically.
+- The wrap is the single source of truth for "every spec-shaped artifact in a GAIA project gets GAIA shape". `/gaia-spec` invokes `/speckit-specify` under the hood, so it inherits this same wrap automatically.

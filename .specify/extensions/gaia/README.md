@@ -1,6 +1,6 @@
 # GAIA spec-kit extension
 
-GAIA-tailored Socratic discovery layer over [spec-kit](https://github.com/github/spec-kit). Adds coach-tone prompting, `AskUserQuestion`-driven multiple choice with recommended-first ordering, per-topic exhaustion checkpoints, two-gate ceremony, immutability lint on saved SPECs, and a chain trigger into `/gaia plan`.
+GAIA-tailored Socratic discovery layer over [spec-kit](https://github.com/github/spec-kit). Adds coach-tone prompting, `AskUserQuestion`-driven multiple choice with recommended-first ordering, per-topic exhaustion checkpoints, two-gate ceremony, immutability lint on saved SPECs, and a chain trigger into `/gaia-plan`.
 
 This extension is registered with spec-kit via `specify extension add gaia` and pinned to spec-kit `v0.8.5`. The pin is duplicated in the GAIA-side manifest at `.gaia/extension.yml` so version drift between GAIA releases and spec-kit is detectable before discovery starts.
 

@@ -332,7 +332,7 @@ export const run = (
     // current — refuse rather than green-light a release on an unknown window.
     if (recovered === null) {
       return refuse(
-        `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia wiki sync first`
+        `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
       );
     }
 
@@ -345,7 +345,7 @@ export const run = (
   if (driftCount !== 0) {
     // Documented bypass (wiki/concepts/Release Workflow.md): drift made up
     // entirely of wiki-sync squash artifacts is benign. A PR squash-merge
-    // rewrites the commit SHA, so `/gaia wiki sync` → merge leaves the state
+    // rewrites the commit SHA, so `/gaia-wiki sync` → merge leaves the state
     // pointer one commit behind even when the wiki content is current. The
     // `wiki:`-subject prefix is the same marker `gaia wiki commit-classify`
     // uses to flag self-referential sync commits. Without this the gate is
@@ -362,7 +362,7 @@ export const run = (
 
     if (!benign) {
       return refuse(
-        `preflight: wiki is ${driftCount} commits behind HEAD; run /gaia wiki sync first`
+        `preflight: wiki is ${driftCount} commits behind HEAD; run /gaia-wiki sync first`
       );
     }
 

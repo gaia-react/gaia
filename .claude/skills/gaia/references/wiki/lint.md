@@ -1,6 +1,6 @@
 # wiki-lint playbook
 
-Dispatched by the `/gaia wiki` router (`references/wiki.md` → "Lint"). Runs in a Haiku subagent context.
+Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Lint"). Runs in a Haiku subagent context.
 
 ## Playbook
 
@@ -51,7 +51,7 @@ The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` |
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` missing — system has never run sync. Run `/gaia wiki sync` to initialize.
+⚠ `wiki/.state.json` missing — system has never run sync. Run `/gaia-wiki sync` to initialize.
 ```
 
 Then stop the drift check.
@@ -61,7 +61,7 @@ If `reachable === false`, the recorded SHA was orphaned (the squash-merge flow r
 ```markdown
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (squashed/rewritten history). Run `/gaia wiki sync` — it resolves a recovery baseline (`<suggested_base>`) and evaluates the un-evaluated window.
+⚠ `wiki/.state.json` `last_evaluated_sha` (`<state_sha>`) is not reachable from HEAD (squashed/rewritten history). Run `/gaia-wiki sync` — it resolves a recovery baseline (`<suggested_base>`) and evaluates the un-evaluated window.
 ```
 
 When `suggested_base` is empty (no recoverable baseline), drop the parenthetical and say `it re-anchors to HEAD.` instead. Then stop.
@@ -73,9 +73,9 @@ Map the CLI's `drift_severity` and `commits_ahead` to the report section:
 | `drift_severity` | Section to append                                                                                                          |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `none`           | `✓ Wiki in sync with HEAD ({head_short}).`                                                                                 |
-| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /gaia wiki sync at next opportunity.`                                          |
-| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /gaia wiki sync soon.` + recent commits list                                   |
-| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /gaia wiki sync now.` + recent commits list |
+| `low`            | `ℹ {commits_ahead} commits behind HEAD. Run /gaia-wiki sync at next opportunity.`                                          |
+| `medium`         | `⚠ {commits_ahead} commits behind HEAD. Run /gaia-wiki sync soon.` + recent commits list                                   |
+| `high`           | `✗ {commits_ahead} commits behind HEAD. Wiki is significantly out of date. Run /gaia-wiki sync now.` + recent commits list |
 
 For **medium** and **high**, list up to 5 of the `recent_commits` from the CLI output as `  - <sha> <subject>`.
 
@@ -84,7 +84,7 @@ Example WARN (`medium`) section:
 ```markdown
 ## #11: Wiki drift check
 
-⚠ 7 commits behind HEAD. Run `/gaia wiki sync` soon. Recent unsynced commits:
+⚠ 7 commits behind HEAD. Run `/gaia-wiki sync` soon. Recent unsynced commits:
 
 - a1b2c3d feat: add new module
 - d4e5f6g fix: edge case in router
@@ -96,7 +96,7 @@ Example ERROR (`high`) section:
 ```markdown
 ## #11: Wiki drift check
 
-✗ 14 commits behind HEAD. Wiki is significantly out of date. Run `/gaia wiki sync` now. Recent unsynced commits:
+✗ 14 commits behind HEAD. Wiki is significantly out of date. Run `/gaia-wiki sync` now. Recent unsynced commits:
 
 - a1b2c3d feat: ...
 - d4e5f6g fix: ...

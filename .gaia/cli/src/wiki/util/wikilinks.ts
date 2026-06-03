@@ -5,7 +5,7 @@
  * `#section` anchor:
  *
  *   [[Wiki Sync]]
- *   [[Wiki Sync|`/gaia wiki sync`]]
+ *   [[Wiki Sync|`/gaia-wiki sync`]]
  *   [[Wiki Sync#Step 3]]
  *   [[Wiki Sync#Step 3|step three]]
  *
