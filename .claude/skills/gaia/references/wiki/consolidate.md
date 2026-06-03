@@ -1,10 +1,10 @@
 # wiki-consolidate playbook
 
-Dispatched by the `/gaia wiki` router (`references/wiki.md` → "Consolidate"). Detection runs in a Sonnet subagent; apply/state/report run in the parent.
+Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Consolidate"). Detection runs in a Sonnet subagent; apply/state/report run in the parent.
 
 ## Playbook
 
-This workflow complements but does not replace `wiki-promote` (per-SPEC writes), `/gaia wiki sync` (commit-driven updates), or `/gaia wiki lint` (broken-thing detection). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
+This workflow complements but does not replace `wiki-promote` (per-SPEC writes), `/gaia-wiki sync` (commit-driven updates), or `/gaia-wiki lint` (broken-thing detection). It detects **redundancy and contradiction** across the wiki and proposes merges so the wiki stays an accurate "today's state of the app" snapshot.
 
 **Follow `.claude/rules/wiki-style.md` when writing prose during apply actions.** Present tense; no UAT-NNN, SPEC-NNN, PR-number, or commit-SHA references in body prose. The `## Historical context (from <older-title>)` archival heading defined in Step 4 is a deliberate exception — it labels content lifted from a superseded page so it remains discoverable.
 
@@ -145,7 +145,7 @@ Process findings in this order: **supersession → reversed → near-collision �
 2. If non-empty unique content: append to newer page under H2 `## Historical context (from <older-title>)`. The heading itself is the archival label; do NOT add a SPEC-NNN reference in the preamble (per `.claude/rules/wiki-style.md`).
 3. Update older page's frontmatter: `status: superseded`, `superseded_by: <newer-slug>`, `superseded_at: <ISO>`. Preserve `created`, `promoted_from`, `promoted_at`.
 4. Move older page: `mkdir -p wiki/_archived/ && git mv <older-path> wiki/_archived/<older-slug>.md`. (Use `mv` if `git mv` fails due to staging state.)
-5. Update `wiki/index.md`: remove the older page's entry from its domain section. The wikilink in any newer page's "Related" section becomes a broken link — `/gaia wiki lint` will surface and the maintainer can fix on the next lint pass; do not autofix here (consolidate is conservative about page-body edits beyond the targeted merge).
+5. Update `wiki/index.md`: remove the older page's entry from its domain section. The wikilink in any newer page's "Related" section becomes a broken link — `/gaia-wiki lint` will surface and the maintainer can fix on the next lint pass; do not autofix here (consolidate is conservative about page-body edits beyond the targeted merge).
 6. Update newer page's `promoted_from`: if currently a string, convert to a list `[<old_provenance>, <new_provenance>]` so future wiki-promote runs treat it as a known consolidated page. If already a list, append.
 
 **Near-collision:**
@@ -173,7 +173,7 @@ No-op. Finding remains active and will re-surface on the next consolidate run.
 
 Update `wiki/.state.json` via the CLI primitive (preserves sibling fields and key order automatically):
 
-1. Confirm the file exists. It should — `/gaia wiki sync` creates it on first run. If missing, skip this step entirely and emit a warning in the Step 6 summary.
+1. Confirm the file exists. It should — `/gaia-wiki sync` creates it on first run. If missing, skip this step entirely and emit a warning in the Step 6 summary.
 2. Run `gaia wiki state-bump last_consolidated_sha "$(git rev-parse HEAD)"` (full 40-char SHA at consolidate-completion time, before any of this run's edits get committed).
 3. Run `gaia wiki state-bump last_consolidated_at "$(date -u +%FT%TZ)"`.
 
@@ -181,18 +181,18 @@ Update `wiki/.state.json` via the CLI primitive (preserves sibling fields and ke
 
 Advance state on every completion regardless of how many findings were applied — including zero findings and all-skip runs. The consolidate gate in the sync playbook (Step 9) reads `last_consolidated_sha` to decide when to auto-fire; not advancing would cause the gate to re-fire immediately on the next sync with the same data.
 
-The `wiki/.state.json` file is committed by `/gaia wiki sync` (or by the maintainer manually if consolidate ran outside a sync). Consolidate itself does not commit — see Step 6.
+The `wiki/.state.json` file is committed by `/gaia-wiki sync` (or by the maintainer manually if consolidate ran outside a sync). Consolidate itself does not commit — see Step 6.
 
 ## Step 6 — Hand off and report
 
-Do NOT commit. Applied edits are staged; `/gaia wiki sync` (or the `wiki-commit-nudge` hook) handles the commit per its branch-aware rules.
+Do NOT commit. Applied edits are staged; `/gaia-wiki sync` (or the `wiki-commit-nudge` hook) handles the commit per its branch-aware rules.
 
 Print:
 
 1. The report path (e.g. `wiki/meta/consolidate-report-2026-05-06.md`).
 2. One-line summary: `<applied> applied, <kept> kept, <skipped> skipped across <total> findings.`
 
-If anything was applied, suggest: `Run /gaia wiki sync to commit.`
+If anything was applied, suggest: `Run /gaia-wiki sync to commit.`
 
 If any HIGH-severity supersession or reversed-decision was applied, prefix the summary with `WIKI CONSOLIDATE: ` so the parent agent surfaces it prominently.
 
@@ -202,5 +202,5 @@ If any HIGH-severity supersession or reversed-decision was applied, prefix the s
 - **Boundary with lint.** Lint finds broken things (dead links, missing frontmatter, stale claims). Consolidate finds redundant things (two pages with competing claims). Run lint before consolidate so structural issues don't get misinterpreted as content redundancy.
 - **`wiki/_archived/`** is excluded from the index and from future consolidation candidacy. Pages there remain readable but are out of the live spec.
 - **Idempotence.** Re-running consolidate on the same wiki state surfaces the same findings, minus those acknowledged via `consolidation_ack`. Apply actions are not idempotent (they mutate); the apply guard is "did the user already say apply" — implicit in "the older page is no longer in its original domain," which the page index would reflect on the next run.
-- **Auto-invocation via the sync gate.** Sync Step 9 runs a cheap precheck after every sync (including no-op syncs): if any single wiki domain has ≥2 added pages since `last_consolidated_sha`, the router invokes consolidate automatically. Manual invocation remains available — `/gaia wiki consolidate` shows ALL current findings regardless of trigger source. Findings the user `Skip`s on a gate-triggered run will not auto-resurface until new pages accumulate; revisit them by running `/gaia wiki consolidate` manually.
+- **Auto-invocation via the sync gate.** Sync Step 9 runs a cheap precheck after every sync (including no-op syncs): if any single wiki domain has ≥2 added pages since `last_consolidated_sha`, the router invokes consolidate automatically. Manual invocation remains available — `/gaia-wiki consolidate` shows ALL current findings regardless of trigger source. Findings the user `Skip`s on a gate-triggered run will not auto-resurface until new pages accumulate; revisit them by running `/gaia-wiki consolidate` manually.
 - **Shared state file ownership.** `wiki/.state.json` holds fields written by both sync (`last_evaluated_sha`, `last_evaluated_at`) and this workflow (`last_consolidated_sha`, `last_consolidated_at`). Each writer preserves the other's fields. Do not delete `wiki/.state.json` — both gates depend on it.

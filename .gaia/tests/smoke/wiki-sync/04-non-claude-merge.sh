@@ -16,11 +16,11 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/modules .claude/hooks .claude/skills/gaia/references/wiki app/modules
+mkdir -p wiki/modules .claude/hooks .claude/skills/gaia-wiki .claude/skills/gaia/references/wiki app/modules
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/skills/gaia/SKILL.md" .claude/skills/gaia/
+cp "$GAIA_REPO/.claude/skills/gaia-wiki/SKILL.md" .claude/skills/gaia-wiki/
 cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
 cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
 
@@ -80,10 +80,10 @@ if ! echo "$first_output" | grep -qiE "drift|wiki sync|wiki state|commits ahead|
   exit 1
 fi
 
-# Now actually run /gaia wiki sync to catch up
+# Now actually run /gaia-wiki sync to catch up
 pre_claude_head=$(git rev-parse HEAD)
 claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /gaia wiki sync. Report what was done." > /dev/null 2>&1
+  "Run /gaia-wiki sync. Report what was done." > /dev/null 2>&1
 
 # Assertions: state advanced to the evaluated SHA + log entry written
 new_state=$(jq -r '.last_evaluated_sha' wiki/.state.json)

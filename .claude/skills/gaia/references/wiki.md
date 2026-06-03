@@ -1,4 +1,4 @@
-# /gaia wiki
+# /gaia-wiki
 
 Wiki-maintenance router. Sub-commands run individually or chain end-to-end.
 
@@ -19,13 +19,13 @@ separated word.
 `--force` is positional-flexible but the contract is "trailing" — it must be
 the LAST argument so it doesn't shadow `sync` / `consolidate` / `lint`:
 
-- `/gaia wiki --force` (full chain, force)
-- `/gaia wiki sync --force` (sync only, force)
+- `/gaia-wiki --force` (full chain, force)
+- `/gaia-wiki sync --force` (sync only, force)
 
 Help message:
 
 ```
-Usage: /gaia wiki [--force] [sync|consolidate|lint]
+Usage: /gaia-wiki [--force] [sync|consolidate|lint]
 
   --force        Override GAIA CI deferral (no-op when wiki.mode != "ci")
   (no arg)       Full chain: sync, then consolidate if gate trips, then lint
@@ -52,7 +52,7 @@ If `STATUS == "ci"` and `FORCE != "true"`, print this conflict-risk
 warning to stderr and exit 1 without dispatching anything:
 
 ```
-GAIA CI manages /gaia wiki for this repo. Running it locally now risks colliding
+GAIA CI manages /gaia-wiki for this repo. Running it locally now risks colliding
 with the next scheduled run. To override, re-invoke with --force.
 ```
 
@@ -89,7 +89,7 @@ Spawn:
 
 When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
 
-If invoked as `/gaia wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint — that's only the no-arg form's job. The sub-arg form `/gaia wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
+If invoked as `/gaia-wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint — that's only the no-arg form's job. The sub-arg form `/gaia-wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
 
 ## Consolidate
 

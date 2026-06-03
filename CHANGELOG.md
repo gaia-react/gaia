@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+### Changed
+
+- replace the `/gaia <subcommand>` router with discrete `/gaia-*` entries so every workflow surfaces in slash-command autocomplete: `/gaia-plan`, `/gaia-spec`, `/gaia-audit`, `/gaia-fitness`, `/gaia-forensics` (commands) plus `/gaia-wiki`, `/gaia-handoff`, `/gaia-pickup` (skills — `gaia-wiki` stays a skill so the wiki-CI agent can still invoke it). The old space-form `/gaia <sub>` is removed; sub-arguments are unchanged (`/gaia-wiki sync`, `/gaia-spec auto`, `/gaia-audit --apply`). Workflow logic is untouched — the new entries dispatch into the same `references/*` instructions
+
 ### Fixed
 
 - repo-scope guard: strip surrounding quotes from literal `git -C "<path>"` and `cd '<path>'` captures so a quoted sibling-repo push is recognized as foreign and allowed, instead of being denied as a home-repo push to main

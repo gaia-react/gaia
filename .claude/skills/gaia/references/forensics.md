@@ -1,4 +1,4 @@
-# /gaia forensics
+# /gaia-forensics
 
 Turn a GAIA workflow misfire into a redacted, classified, filing-ready bug report in one invocation. Read-only end-to-end: no remediation, no autofix, no state mutation.
 

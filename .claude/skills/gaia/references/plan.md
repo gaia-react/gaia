@@ -1,4 +1,4 @@
-# /gaia plan
+# /gaia-plan
 
 Plan a complex feature using the task orchestration pattern. Do not implement anything.
 
@@ -12,7 +12,7 @@ Otherwise, ask: **"What do you want me to orchestrate?"** and wait for the respo
 
 #### 1a. Detect SPEC reference
 
-Check the description for a SPEC reference. The canonical form (emitted by `/gaia spec`) is:
+Check the description for a SPEC reference. The canonical form (emitted by `/gaia-spec`) is:
 
     SPEC-NNN: <intent first line> — see .gaia/local/specs/SPEC-NNN/SPEC.md
 
@@ -62,7 +62,7 @@ while ! mkdir "$PLAN_DIR" 2>/dev/null; do
 done
 ```
 
-Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia plan` invocations (including multiple slices dispatched from one `/gaia spec`) coexist without overwriting each other.
+Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia-plan` invocations (including multiple slices dispatched from one `/gaia-spec`) coexist without overwriting each other.
 
 ### 4. Spawn planning agent
 

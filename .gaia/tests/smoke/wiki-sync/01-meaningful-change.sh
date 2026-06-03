@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke 01: meaningful change should produce a wiki update on /gaia wiki sync.
+# Smoke 01: meaningful change should produce a wiki update on /gaia-wiki sync.
 set -euo pipefail
 
 TMP=$(mktemp -d -t gaia-smoke-01-XXXXXX)
@@ -13,14 +13,14 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/services .claude/hooks .claude/skills/gaia/references/wiki app/services
+mkdir -p wiki/services .claude/hooks .claude/skills/gaia-wiki .claude/skills/gaia/references/wiki app/services
 
 # Copy the hooks + gaia wiki skill structure from the gaia repo into the smoke fixture
 GAIA_REPO="${GAIA_REPO:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
-cp "$GAIA_REPO/.claude/skills/gaia/SKILL.md" .claude/skills/gaia/
+cp "$GAIA_REPO/.claude/skills/gaia-wiki/SKILL.md" .claude/skills/gaia-wiki/
 cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
 cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
 
@@ -89,12 +89,12 @@ EOF
 # on top — so post-sync state == pre_claude_head, not current HEAD.
 pre_claude_head=$(git rev-parse HEAD)
 
-# Now run claude -p with /gaia wiki sync
+# Now run claude -p with /gaia-wiki sync
 output=$(claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /gaia wiki sync. Report what was done." 2>&1)
+  "Run /gaia-wiki sync. Report what was done." 2>&1)
 
 # Assertions
-echo "$output" | grep -q "Gemini" || { echo "FAIL: Gemini not mentioned in /gaia wiki sync output"; exit 1; }
+echo "$output" | grep -q "Gemini" || { echo "FAIL: Gemini not mentioned in /gaia-wiki sync output"; exit 1; }
 [ -f wiki/services/Gemini.md ] || { echo "FAIL: wiki/services/Gemini.md not created"; exit 1; }
 
 # State should have advanced to the SHA we wanted evaluated

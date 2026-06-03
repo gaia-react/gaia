@@ -1,12 +1,12 @@
 # wiki-sync playbook
 
-Dispatched by the `/gaia wiki` router (`references/wiki.md` → "Sync"). Runs in a Haiku subagent context.
+Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Sync"). Runs in a Haiku subagent context.
 
 ## Playbook
 
 Evaluate every commit between `wiki/.state.json` `last_evaluated_sha` and HEAD. For each, decide whether the wiki needs an update. Edit pages, log decisions, advance state, commit.
 
-`wiki/.state.json` is written by two workflows: this one writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/gaia wiki consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) are read-only consumers.
+`wiki/.state.json` is written by two workflows: this one writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/gaia-wiki consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) are read-only consumers.
 
 ## Step 1: Read state and compute drift
 
@@ -115,7 +115,7 @@ gaia wiki state-bump last_evaluated_sha "$NEW_HEAD"
 gaia wiki state-bump last_evaluated_at "$NEW_HEAD_AT"
 ```
 
-`state-bump` writes atomically — preserving sibling fields (`last_consolidated_sha` owned by `/gaia wiki consolidate`) and key order.
+`state-bump` writes atomically — preserving sibling fields (`last_consolidated_sha` owned by `/gaia-wiki consolidate`) and key order.
 
 If `last_consolidated_sha` is absent on the existing state (first sync ever): bootstrap it with `gaia wiki state-bump last_consolidated_sha "$NEW_HEAD"`. This gives the consolidate gate a baseline so subsequent runs accumulate from a known point.
 
@@ -155,7 +155,7 @@ After the summary block, append the Step 9 result line `CONSOLIDATE_TRIGGERED: <
 
 ## Step 9: Consolidate gate
 
-Cheap precheck. Decides whether `/gaia wiki consolidate` should fire next based on per-domain new-page accumulation since the last consolidate run.
+Cheap precheck. Decides whether `/gaia-wiki consolidate` should fire next based on per-domain new-page accumulation since the last consolidate run.
 
 ### 9a. Read state
 
