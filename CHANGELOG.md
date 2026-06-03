@@ -16,6 +16,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ### Fixed
 
+- /update-gaia: merge `package.json` field-aware instead of as an opaque `shared` blob — never touch adopter identity (`name`/`version`/`description`/`author`/…), apply only the real upstream dependency/script delta, and never re-add a dependency the adopter intentionally removed. A version-only release now skips `package.json` cleanly instead of emitting a full-file conflict patch on every release (#275)
 - repo-scope guard: strip surrounding quotes from literal `git -C "<path>"` and `cd '<path>'` captures so a quoted sibling-repo push is recognized as foreign and allowed, instead of being denied as a home-repo push to main
 
 ## [1.4.0] — 2026-06-02
