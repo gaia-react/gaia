@@ -21,7 +21,7 @@ if [ -n "$common_dir" ]; then
   main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
   current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$main_root" ] && [ -n "$current_root" ] && [ "$main_root" != "$current_root" ]; then
-    cached_line="Cached state unavailable on main; symlinks may be broken — run \`gaia setup link-worktree\` to repair."
+    cached_line="Cached state unavailable on main; symlinks may be broken — run \`.gaia/cli/gaia setup link-worktree\` to repair."
     cache_file="$main_root/.gaia/cache/update-check.json"
     if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then
       outdated_count="$(jq -r '.outdatedCount // 0' "$cache_file" 2>/dev/null)"

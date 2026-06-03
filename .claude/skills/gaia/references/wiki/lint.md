@@ -4,7 +4,7 @@ Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Lint"). Runs in
 
 ## Playbook
 
-Standalone GAIA-native wiki lint. Builds its own report shell, then writes GAIA-specific checks: **#11: Wiki drift check**, **#12: Dead repo-relative paths**, **#13: UAT/SPEC narrative-ref drift**, **#14: Orphan pages**, **#15: Frontmatter gaps**, and **#16: Empty sections**. Every check re-derives from a live `gaia wiki` CLI primitive on each run; the report is plain markdown that GAIA owns end to end.
+Standalone GAIA-native wiki lint. Builds its own report shell, then writes GAIA-specific checks: **#11: Wiki drift check**, **#12: Dead repo-relative paths**, **#13: UAT/SPEC narrative-ref drift**, **#14: Orphan pages**, **#15: Frontmatter gaps**, and **#16: Empty sections**. Every check re-derives from a live `.gaia/cli/gaia wiki` CLI primitive on each run; the report is plain markdown that GAIA owns end to end.
 
 ## Step 1: Create the report shell
 
@@ -41,12 +41,12 @@ Use `wiki/meta/lint-report-$DATE.md` as the canonical report path for every subs
 
 ## Step 2: GAIA check #11: Wiki drift
 
-Always run `gaia wiki state --json` fresh and write the `## #11: Wiki drift check` section from its output, replacing any existing `## #11` section in the report. Never carry over a `#11` section from a reused report: drift state is the most time-sensitive check, and a stale `#11` is exactly how a wiki that was just synced or recovered gets mis-reported as drifting.
+Always run `.gaia/cli/gaia wiki state --json` fresh and write the `## #11: Wiki drift check` section from its output, replacing any existing `## #11` section in the report. Never carry over a `#11` section from a reused report: drift state is the most time-sensitive check, and a stale `#11` is exactly how a wiki that was just synced or recovered gets mis-reported as drifting.
 
 ### 2a. Run the primitive
 
 ```bash
-gaia wiki state --json
+.gaia/cli/gaia wiki state --json
 ```
 
 The CLI returns a JSON object with `drift_severity` (`none` | `low` | `medium` | `high`), `head_short`, `state_sha`, `commits_ahead`, `reachable`, `recent_commits`, and `suggested_base`. If the command exits non-zero with `state_missing` (or equivalent reason), append:
@@ -115,7 +115,7 @@ Run the dead-paths primitive and append a `## #12: Dead repo-relative paths` sec
 ### 3a. Run the primitive
 
 ```bash
-gaia wiki dead-paths --json
+.gaia/cli/gaia wiki dead-paths --json
 ```
 
 Returns `{ "dead": [{ "filePath": "...", "line": N, "path": "..." }, ...] }`. Empty array means clean.
@@ -203,7 +203,7 @@ Run the orphans primitive and append a `## #14: Orphan pages` section, replacing
 ### 5a. Run the primitive
 
 ```bash
-gaia wiki orphans --json
+.gaia/cli/gaia wiki orphans --json
 ```
 
 Returns `{ "orphans": [{ "path": "...", "title": "...", "domain": "..." }, ...] }`. Empty array means clean.
@@ -240,7 +240,7 @@ Run the frontmatter primitive and append a `## #15: Frontmatter gaps` section, r
 ### 6a. Run the primitive
 
 ```bash
-gaia wiki frontmatter --json
+.gaia/cli/gaia wiki frontmatter --json
 ```
 
 Returns `{ "gaps": [{ "path": "...", "missing": ["type", "status"] }, ...] }`. Empty array means clean.
@@ -275,7 +275,7 @@ Run the empty-sections primitive and append a `## #16: Empty sections` section, 
 ### 7a. Run the primitive
 
 ```bash
-gaia wiki empty-sections --json
+.gaia/cli/gaia wiki empty-sections --json
 ```
 
 Returns `{ "empty": [{ "path": "...", "line": N, "heading": "..." }, ...] }`. Empty array means clean.

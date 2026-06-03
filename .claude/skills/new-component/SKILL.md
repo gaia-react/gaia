@@ -11,7 +11,7 @@ Trigger: user asks to create a component, scaffold a card, etc.
 ## Workflow
 
 1. Confirm with user via AskUserQuestion: name (PascalCase), parent dir (default `app/components`), props (or "none"), story (default yes).
-2. Run: `gaia scaffold component <Name> [flags]`
+2. Run: `.gaia/cli/gaia scaffold component <Name> [flags]`
 3. Verify: `pnpm typecheck` clean. Open the new files, sanity-check the props.
 4. If user wants more (variants, conditional rendering, complex children): edit the generated files. The skill does not regenerate.
 

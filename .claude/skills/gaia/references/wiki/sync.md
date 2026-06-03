@@ -10,15 +10,15 @@ Evaluate every commit between `wiki/.state.json` `last_evaluated_sha` and HEAD. 
 
 ## Step 1: Read state and compute drift
 
-Run `gaia wiki state --json` and parse the result. Use `head_short`, `state_sha`, `commits_ahead`, `reachable`, and `suggested_base` directly.
+Run `.gaia/cli/gaia wiki state --json` and parse the result. Use `head_short`, `state_sha`, `commits_ahead`, `reachable`, and `suggested_base` directly.
 
 Throughout this playbook, **the evaluation baseline** is the ref Steps 2, 3, and 8 evaluate from. On the normal path it is `last_evaluated_sha`; on the recovery path (below) it is `suggested_base`. Each branch states which.
 
-- If the command exits non-zero with a `state_missing` (or equivalent) reason, this is a fresh project (no prior sync). Treat the first commit as the baseline. Run `gaia wiki state-init "$(git rev-list --max-parents=0 HEAD | tail -1)"` to create `wiki/.state.json` with `{version, last_evaluated_sha, last_evaluated_at}`, then commit as `wiki: initialize state at {short_sha}`. Stop — no commits to evaluate yet.
+- If the command exits non-zero with a `state_missing` (or equivalent) reason, this is a fresh project (no prior sync). Treat the first commit as the baseline. Run `.gaia/cli/gaia wiki state-init "$(git rev-list --max-parents=0 HEAD | tail -1)"` to create `wiki/.state.json` with `{version, last_evaluated_sha, last_evaluated_at}`, then commit as `wiki: initialize state at {short_sha}`. Stop — no commits to evaluate yet.
 - If `commits_ahead === 0`: skip the evaluation pass (no commits to evaluate) but DO NOT exit yet — fall through to Step 9 (consolidate gate). The gate may still trigger consolidate based on accumulated page-adds since last consolidate run, even when this sync is a no-op. The Step 8 report still prints; just substitute `Wiki already in sync at {short_sha}.` for the regular summary block, then run Step 9.
 - If `reachable === false`: the recorded `last_evaluated_sha` is not in HEAD's history. GAIA's squash-merge flow orphans it on **every** merge — the evaluated branch SHA is replaced by a new squash commit on `main` — so this is the common case, not just a manual rebase. Recover the un-evaluated window instead of discarding it:
   - **Recovery path — when `suggested_base` is non-empty.** The CLI resolved `suggested_base` to the newest commit reachable from HEAD at or older than `last_evaluated_at` — a reachable baseline equivalent to where the orphaned SHA left off. Adopt `suggested_base` as the evaluation baseline and run the normal pass (Steps 2–9) from it. Do NOT jump to HEAD and do NOT log a `RE_ANCHOR` line — the window is evaluated, not abandoned. Step 6 advances `last_evaluated_sha` to HEAD as usual.
-  - **Fallback path — when `suggested_base` is empty.** Only when the CLI cannot resolve a baseline (no `last_evaluated_at`, or it predates all history) revert to the lossy-but-safe re-anchor: run `gaia wiki state-bump last_evaluated_sha "$(git rev-parse HEAD)"`, then `gaia wiki log-prepend --sha "$(git rev-parse --short HEAD)" --decision RE_ANCHOR --reason "re-anchored after history rewrite (no recoverable baseline)"`, commit, exit. Skip Step 9 — there is no recovered range to consolidate against.
+  - **Fallback path — when `suggested_base` is empty.** Only when the CLI cannot resolve a baseline (no `last_evaluated_at`, or it predates all history) revert to the lossy-but-safe re-anchor: run `.gaia/cli/gaia wiki state-bump last_evaluated_sha "$(git rev-parse HEAD)"`, then `.gaia/cli/gaia wiki log-prepend --sha "$(git rev-parse --short HEAD)" --decision RE_ANCHOR --reason "re-anchored after history rewrite (no recoverable baseline)"`, commit, exit. Skip Step 9 — there is no recovered range to consolidate against.
 - Otherwise proceed with the evaluation pass on the normal baseline (`last_evaluated_sha`).
 
 ## Step 2: Drift cap check
@@ -41,8 +41,8 @@ Run, using the evaluation baseline from Step 1 (normal path: `last_evaluated_sha
 
 ```bash
 # Normal path: BASE=$(jq -r .last_evaluated_sha wiki/.state.json)
-# Recovery path: BASE=<suggested_base from `gaia wiki state --json`>
-gaia wiki commit-classify --since "$BASE" --json
+# Recovery path: BASE=<suggested_base from `.gaia/cli/gaia wiki state --json`>
+.gaia/cli/gaia wiki commit-classify --since "$BASE" --json
 ```
 
 On the recovery path, classify from `suggested_base` — NOT the orphaned `last_evaluated_sha`. The orphaned SHA's `..HEAD` range is topologically unreliable after a squash; `suggested_base` is reachable and time-anchored.
@@ -93,16 +93,16 @@ For each commit (worthy or skipped), first dedup against the existing ledger, th
 # Skip commits a prior sync already catalogued — avoids double-logging.
 # Grep the working-tree log so lines this sync already prepended count too.
 grep -qF "<short_sha>" wiki/log.md && continue
-gaia wiki log-prepend --sha <short_sha> --decision <WORTHY|SKIP> --reason "<one-line reason>"
+.gaia/cli/gaia wiki log-prepend --sha <short_sha> --decision <WORTHY|SKIP> --reason "<one-line reason>"
 ```
 
 The dedup guard matters most on the recovery path (Step 1): the resolved `suggested_base` is time-anchored, so it can sit one or two commits behind a boundary a prior sync already logged. Skip any commit whose short SHA is already in `wiki/log.md` rather than appending a duplicate line.
 
 The CLI inserts a single canonical line `- <YYYY-MM-DD> <sha> <decision> — <reason>` at the top of `wiki/log.md` (after frontmatter), atomically, newest entries on top. Examples:
 
-- WORTHY: `gaia wiki log-prepend --sha abc1234 --decision WORTHY --reason "added /services/Gemini integration → wiki/services/Gemini.md"`
-- SKIP: `gaia wiki log-prepend --sha def5678 --decision SKIP --reason "typo-only commit"`
-- Serena-policy SKIP: `gaia wiki log-prepend --sha 9a0b1c2 --decision SKIP --reason "Serena handles inventory — added Button variant in app/components/Button"`
+- WORTHY: `.gaia/cli/gaia wiki log-prepend --sha abc1234 --decision WORTHY --reason "added /services/Gemini integration → wiki/services/Gemini.md"`
+- SKIP: `.gaia/cli/gaia wiki log-prepend --sha def5678 --decision SKIP --reason "typo-only commit"`
+- Serena-policy SKIP: `.gaia/cli/gaia wiki log-prepend --sha 9a0b1c2 --decision SKIP --reason "Serena handles inventory — added Button variant in app/components/Button"`
 
 ## Step 6: Advance state file
 
@@ -111,17 +111,17 @@ Run:
 ```bash
 NEW_HEAD=$(git rev-parse HEAD)
 NEW_HEAD_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-gaia wiki state-bump last_evaluated_sha "$NEW_HEAD"
-gaia wiki state-bump last_evaluated_at "$NEW_HEAD_AT"
+.gaia/cli/gaia wiki state-bump last_evaluated_sha "$NEW_HEAD"
+.gaia/cli/gaia wiki state-bump last_evaluated_at "$NEW_HEAD_AT"
 ```
 
 `state-bump` writes atomically — preserving sibling fields (`last_consolidated_sha` owned by `/gaia-wiki consolidate`) and key order.
 
-If `last_consolidated_sha` is absent on the existing state (first sync ever): bootstrap it with `gaia wiki state-bump last_consolidated_sha "$NEW_HEAD"`. This gives the consolidate gate a baseline so subsequent runs accumulate from a known point.
+If `last_consolidated_sha` is absent on the existing state (first sync ever): bootstrap it with `.gaia/cli/gaia wiki state-bump last_consolidated_sha "$NEW_HEAD"`. This gives the consolidate gate a baseline so subsequent runs accumulate from a known point.
 
 ## Step 7 — Land
 
-Run: `gaia wiki sync land --branch-aware`
+Run: `.gaia/cli/gaia wiki sync land --branch-aware`
 
 Exit codes:
 

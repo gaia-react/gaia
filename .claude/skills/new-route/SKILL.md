@@ -11,7 +11,7 @@ Trigger: user asks to add a new page/route.
 ## Workflow
 
 1. Confirm with the user: name (kebab-case), group (`_public+` or `_session+`), and which of `--loader`, `--action`, `--i18n` they want.
-2. Run: `gaia scaffold route <name> --group <group> [flags]`
+2. Run: `.gaia/cli/gaia scaffold route <name> --group <group> [flags]`
 3. Verify: `pnpm typecheck` clean; `pnpm dev` reaches the new route.
 
 ## Flags
