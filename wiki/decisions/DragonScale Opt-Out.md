@@ -25,7 +25,7 @@ GAIA is a **template repo**. Every adopter forks it, runs `gaia-init`, and opera
 
 ## Decision
 
-GAIA does not adopt DragonScale. We do not vendor `bin/setup-dragonscale.sh`, do not document it as part of the standard workflow, do not allow `address: c-NNNNNN` frontmatter, and do not require `ollama` or `python3` for any wiki operation. The plugin remains installed at v1.6.0 — DragonScale's files exist in the upstream cache but are never invoked.
+GAIA does not adopt DragonScale. We do not vendor `bin/setup-dragonscale.sh`, do not document it as part of the standard workflow, do not allow `address: c-NNNNNN` frontmatter, and do not require `ollama` or `python3` for any wiki operation. The plugin remains installed at v1.9.2 — DragonScale's files exist in the upstream cache but are never invoked.
 
 ## Rationale (per mechanism)
 
@@ -46,7 +46,7 @@ DragonScale is engineered for **large, evolving, long-horizon knowledge vaults**
 
 Any GAIA adopter who scales their wiki past ~200 pages, starts running `/autoresearch` heavily, or otherwise wants the DragonScale features can opt in **per fork** without GAIA's involvement:
 
-1. Confirm `claude-obsidian` plugin is installed (it is, post-v1.6.0 baseline).
+1. Confirm `claude-obsidian` plugin is installed (it is, post-v1.9.2 baseline).
 2. Run `bash ~/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian/<version>/bin/setup-dragonscale.sh` from the project root.
 3. Install local prerequisites only for the mechanisms they want — `ollama` + `nomic-embed-text` for tiling, `python3` for boundary scoring.
 4. Update their fork's wiki schema doc (e.g. `wiki/index.md` or a top-level `CLAUDE.md`) to permit `address: c-NNNNNN`.

@@ -82,22 +82,18 @@ Stack-specific or deep-dive content lives in `references/{topic}.md` inside the 
 
 See [[Claude Integration Conventions]] for the broader convention covering extension points, monorepo retrofit, and service swaps.
 
-## Plugin skills (claude-obsidian v1.6.0)
+## Plugin skills (claude-obsidian v1.9.2)
 
-GAIA's wiki workflow is powered by the `claude-obsidian` plugin, installed globally via the Claude Code marketplace (not vendored into this repo). The plugin contributes ten `claude-obsidian:*` skills. They auto-load on context match alongside GAIA's project-local skills:
+Core wiki maintenance (sync, consolidate, lint) runs through GAIA's native CLI (`.gaia/cli/gaia wiki ...`), not the plugin. Wiki-lint in particular is a GAIA-native check with its own rules and report, independent of the plugin's `wiki-lint` skill. The `claude-obsidian` plugin is installed globally via the Claude Code marketplace (not vendored into this repo) and supplies **auxiliary** skills only. Its skills auto-load on context match alongside GAIA's project-local skills.
 
-- `claude-obsidian:wiki` — bootstrap or check the wiki vault; routes to specialized sub-skills.
-- `claude-obsidian:wiki-ingest` — read a source (file or URL), extract entities/concepts, file structured pages, update cross-references and the log.
-- `claude-obsidian:wiki-query` — answer questions using the vault (hot cache → index → drill in), with citations; quick / standard / deep modes.
-- `claude-obsidian:wiki-lint` — health check: orphans, dead wikilinks, stale claims, missing cross-refs, frontmatter gaps; updates Dataview dashboards.
-- `claude-obsidian:save` — file the current chat or a specific insight as a structured wiki note.
-- `claude-obsidian:autoresearch` — autonomous iterative research loop that searches, synthesizes, and files findings into the vault.
-- `claude-obsidian:canvas` — create and edit Obsidian canvas files (images, text, PDFs, wiki pages).
-- `claude-obsidian:defuddle` — strip ads/nav/boilerplate from web pages before ingesting (saves 40-60% tokens).
-- `claude-obsidian:obsidian-bases` — create and edit Obsidian Bases (the native database layer for dynamic tables, filters, formulas).
-- `claude-obsidian:obsidian-markdown` — write correct Obsidian Flavored Markdown (wikilinks, embeds, callouts, properties, math, canvas syntax).
+The auxiliary skills GAIA leans on:
 
-The skill source lives in the upstream plugin cache (`~/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian/<version>/skills/`), informational reference only — adopters should not edit these files. See [[Claude Integration Conventions]] § Wiki vendor relationship and [[DragonScale Opt-Out]] for the v1.6.0 baseline policy and why DragonScale's `wiki-fold` skill is dormant in our environment.
+- `claude-obsidian:wiki-ingest`: read a source (file or URL), extract entities/concepts, file structured pages, update cross-references and the log.
+- `claude-obsidian:wiki-query`: answer questions using the vault (hot cache → index → drill in), with citations; quick / standard / deep modes.
+- `claude-obsidian:save`: file the current chat or a specific insight as a structured wiki note.
+- `claude-obsidian:obsidian-markdown`: write correct Obsidian Flavored Markdown (wikilinks, embeds, callouts, properties, math, canvas syntax).
+
+The plugin ships more `claude-obsidian:*` skills than these (canvas, autoresearch, defuddle, obsidian-bases, plus the wiki-cli / wiki-mode / wiki-retrieve / think additions among them); GAIA pulls any of them in only when a task matches. The skill source lives in the upstream plugin cache (`~/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian/<version>/skills/`), informational reference only: adopters should not edit these files. See [[Claude Integration Conventions]] § Wiki vendor relationship and [[DragonScale Opt-Out]] for the v1.9.2 baseline policy and why DragonScale's `wiki-fold` skill is dormant in our environment.
 
 ## Playwright CLI vs. MCP
 

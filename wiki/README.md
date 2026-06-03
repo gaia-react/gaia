@@ -9,7 +9,7 @@ tags: [meta, schema]
 # GAIA React: LLM Wiki
 
 Mode: B (Codebase) + E (Research)
-Plugin baseline: claude-obsidian v1.6.0 (DragonScale features intentionally not adopted — see [[DragonScale Opt-Out]])
+Plugin baseline: claude-obsidian v1.9.2 (DragonScale features intentionally not adopted — see [[DragonScale Opt-Out]])
 Purpose: Persistent knowledge base for the GAIA React workflow — architecture, conventions, decisions, Claude integration.
 Owner: Steven Sacks
 Created: 2026-04-20
