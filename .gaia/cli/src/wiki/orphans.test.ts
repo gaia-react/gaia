@@ -149,4 +149,50 @@ describe('wiki orphans', () => {
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toBe('');
   });
+
+  test('--json enriches each orphan with title and domain', () => {
+    sandbox.writePage(
+      'wiki/concepts/Hub.md',
+      '---\ntype: concept\n---\n\n# Hub\n\nLinks to [[Spoke]].\n'
+    );
+    sandbox.writePage(
+      'wiki/concepts/Spoke.md',
+      '---\ntype: concept\n---\n\n# Spoke\n\nMentions [[Hub]].\n'
+    );
+    sandbox.writePage(
+      'wiki/concepts/Lonely.md',
+      '---\ntype: concept\n---\n\n# Release Notes\n\nNo references in or out.\n'
+    );
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.outputs.join('')) as {
+      orphans: ReadonlyArray<{domain: string; path: string; title: string}>;
+    };
+    expect(parsed.orphans).toEqual([
+      {
+        domain: 'concepts',
+        path: 'wiki/concepts/Lonely.md',
+        title: 'Release Notes',
+      },
+    ]);
+  });
+
+  test('--json emits an empty orphans array when there are none', () => {
+    sandbox.writePage(
+      'wiki/concepts/A.md',
+      '---\ntype: concept\n---\n\n# A\n\n[[B]]\n'
+    );
+    sandbox.writePage(
+      'wiki/concepts/B.md',
+      '---\ntype: concept\n---\n\n# B\n\n[[A]]\n'
+    );
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.outputs.join('')) as {orphans: unknown[]};
+    expect(parsed.orphans).toEqual([]);
+  });
 });
