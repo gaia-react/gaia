@@ -34,6 +34,7 @@ wiki/entities
 wiki/meta
 wiki/.obsidian/workspace.json
 wiki/concepts/Release Workflow.md
+wiki/concepts/Release-Notes.md
 wiki/decisions/Bundle-time Scrub.md
 wiki/decisions/CLI-Binary-Split.md
 wiki/decisions/Forensics Triage Workflow.md
