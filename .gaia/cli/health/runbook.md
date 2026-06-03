@@ -22,11 +22,11 @@ Orchestrator initializes .gaia/local/audit/ (archives any stale prior run)
 For cycle in 1..3:
   Triager creates c<N>/ and bucket sub-dirs under .gaia/local/audit/
   spawn Triager → Triager runs Audit Team in parallel (buckets A–E) → reports
-  if clean (0 findings, Bucket D verdict A+ readiness, Bucket E shared-fitness grade = A+):
+  if clean (no open findings, Bucket D verdict A+ readiness, effective shared-fitness grade = A+; see §Termination):
     Orchestrator removes .gaia/local/audit/c* (whitelisted; top-level dir kept as marker)
-    overall grade A+, exit
+    report the honest overall grade (A+ when no findings of any kind, else the floor that non-blocking residuals may cap at A), exit
   Triager classifies findings → writes c<N>/findings.json
-  Orchestrator checks fingerprints vs prior cycle (mechanical diff via jq) → if oscillation: escalate (Orchestrator preserves all c*/ dirs, surfaces paths in escalation report)
+  Orchestrator checks open-finding fingerprints vs prior cycle (mechanical diff via jq; non-blocking residuals excluded, see §Termination) → if oscillation: escalate (Orchestrator preserves all c*/ dirs, surfaces paths in escalation report)
   Triager dispatches parallel Fixers (lane-aware)
   Fixers complete, Triager reports post-fix state to Orchestrator
   Orchestrator shuts down the team, starts the next cycle
@@ -35,9 +35,13 @@ After cycle 3 without clean: escalate (max loops hit; Orchestrator preserves all
 
 ## Termination
 
-- **Clean** — Audit Team reports zero findings AND Bucket D returns "A+ readiness" AND Bucket E's `shared_fitness_grade` = A+. Orchestrator computes overall grade as F-to-A+ floor of: Bucket D verdict (A+/A/A−), findings-count clean-exit signal (zero findings → A+; else degrade per wiki page rubric applied to maintainer findings), and Bucket E `shared_fitness_grade`. A clean run is A+ overall. Exit with overall grade and Bucket E sub-grade in the report.
-- **Max loops** — three cycles without a clean report. Orchestrator escalates with the outstanding findings list and the overall grade.
-- **Oscillation** — same finding fingerprint appears in `c<N>/findings.json` AND `c<N-1>/findings.json`. Detection is mechanical: `comm -12 <(jq -r '.findings[].fingerprint' c<N-1>/findings.json | sort) <(jq -r '.findings[].fingerprint' c<N>/findings.json | sort)` — non-empty intersection means a finding survived a Fixer dispatch. Escalate immediately; don't burn the third cycle.
+**Non-blocking residuals.** A finding that matches an existing entry on a "Decided / not findings" list (`.gaia/cli/health/taxonomy.md` or the fitness spec's "Decided / not findings" section) is a **non-blocking residual** (`action: decided-not-finding`): recorded in `findings.json` for the artifact, but it does **not** count toward the clean-exit gate, it is exempt from the effective-shared-fitness test below, and it is excluded from the oscillation guard. The canonical case is the post-sync `wiki/.state.json` drift. `gaia wiki state` counts the wiki-sync commit itself, so drift is permanently ≥1 in steady state, surfaced as an `info` the fitness spec marks "do not escalate to a blocking finding." Without this carve-out the clean-A+ gate is unreachable in normal operation, and recall-oriented auditors re-surface the same decided non-findings every cycle, forcing a false oscillation escalation. An **open** finding, by contrast, is an unresolved `action: real-fix`. A `false-positive` that cannot be suppressed escalates via the *fixer-unable-to-fix* trigger (not oscillation), or is reclassified `decided-not-finding` if genuinely acceptable.
+
+**Effective shared-fitness grade.** For the clean-exit gate *only*, a Bucket E category that sits below A+ *solely* because of non-blocking residual `info` findings counts as A+. The reported `shared_fitness_grade` stays honest: it may be A. A category held below A+ by any `warning`/`error`, or by `info` not on a "Decided / not findings" list, is **not** exempt.
+
+- **Clean**: no open findings remain AND Bucket D returns "A+ readiness" AND the *effective* shared-fitness grade = A+. Orchestrator computes the reported overall grade as the F-to-A+ floor of: Bucket D verdict (A+/A/A−), the open-findings-count signal (zero open findings → A+; else degrade per wiki page rubric applied to open maintainer findings), and Bucket E's honest `shared_fitness_grade`. A clean run is **not necessarily A+**: it is the honest floor with no open work left, and non-blocking residual `info` findings legitimately cap it at A. Exit with the overall grade and the Bucket E sub-grade in the report.
+- **Max loops**: three cycles without a clean report. Orchestrator escalates with the outstanding open findings list and the overall grade.
+- **Oscillation**: same *open*-finding fingerprint appears in `c<N>/findings.json` AND `c<N-1>/findings.json`. Detection is mechanical: `comm -12 <(jq -r '.findings[] | select(.action=="real-fix") | .fingerprint' c<N-1>/findings.json | sort) <(jq -r '.findings[] | select(.action=="real-fix") | .fingerprint' c<N>/findings.json | sort)`. A non-empty intersection means an open finding survived a Fixer dispatch. Escalate immediately; don't burn the third cycle. Non-blocking residuals (`decided-not-finding`) recur by design and are excluded from the guard so they never trigger a false escalation.
 
 **Verdict widening note.** The overall verdict is F-to-A+, computed as the floor of all buckets. It is never higher than Bucket E's `shared_fitness_grade`. Both the overall grade and the shared-fitness sub-grade appear in all report templates (clean exit and escalation).
 
@@ -267,7 +271,7 @@ Each finding fits one bucket:
 - **real-fix** → dispatch Fixer in the appropriate lane.
 - **taxonomy-update** (new genuine class) → Triager edits `.gaia/cli/health/taxonomy.md` directly: add an Issue Class entry under the right section. Then dispatch Fixer for the fix.
 - **false-positive** → dispatch config-yaml-md Fixer to tighten pattern or extend allowlist with a written justification.
-- **decided-not-finding** → Triager edits the "Decided / not findings" list directly (this trips a circuit breaker; pause for human-confirm before writing).
+- **decided-not-finding** → the finding matches a "Decided / not findings" entry (in `.gaia/cli/health/taxonomy.md` or the fitness spec). **If the entry already exists**, record the match and move on (no edit, no circuit breaker); it becomes a non-blocking residual (see §Termination), retained in `findings.json` but excluded from the clean gate and the oscillation guard. **If it is a new not-a-finding class**, the Triager adds the entry to the appropriate list directly (this trips a circuit breaker; pause for human-confirm before writing), after which it is likewise a non-blocking residual.
 
 ## Escalation
 
@@ -319,7 +323,7 @@ Per-cycle artifacts are stored under `.gaia/local/audit/c<N>/` (`.gaia/local/` i
 }
 ```
 
-The `verdict` field stores Bucket D's verdict verbatim — it is _not_ a synthesized cycle grade. It reports enforcement-primitive completeness independent of `findings.length` (see §Bucket D). The `shared_fitness_grade` field stores Bucket E's grade (the floor of the seven category grades, F-to-A+). The `overall_grade` field is the F-to-A+ floor of: the `verdict` mapped to the same scale ("A+ readiness"→A+, "A"→A, "A−"→A−), the findings-count signal (zero maintainer findings → A+; else degrade per wiki page rubric), and `shared_fitness_grade`. The Orchestrator's clean-exit signal is `findings.length === 0 AND verdict === "A+ readiness" AND shared_fitness_grade === "A+"` per §Termination; the overall_grade on a clean exit is A+.
+The `verdict` field stores Bucket D's verdict verbatim. It is _not_ a synthesized cycle grade. It reports enforcement-primitive completeness independent of `findings.length` (see §Bucket D). The `shared_fitness_grade` field stores Bucket E's honest grade (the floor of the seven category grades, F-to-A+). The `overall_grade` field is the F-to-A+ floor of: the `verdict` mapped to the same scale ("A+ readiness"→A+, "A"→A, "A−"→A−), the open-findings-count signal (zero open maintainer findings → A+; else degrade per wiki page rubric), and `shared_fitness_grade`. The Orchestrator's clean-exit signal is `(no unresolved findings with action === "real-fix") AND verdict === "A+ readiness" AND effective shared_fitness_grade === "A+"` per §Termination: non-blocking residuals (`decided-not-finding`) do not count, and a category capped solely by residual `info` is treated as A+ for the effective grade. The `overall_grade` on a clean exit is the honest floor: A+ when there are no findings of any kind, otherwise the floor (residual `info` may cap it at A).
 
 Lifecycle:
 
@@ -328,12 +332,12 @@ Lifecycle:
 - **Auditors**: write raw outputs to their per-cycle paths; return summary + file path in their report (not the full content).
 - **Triager**: reads bucket files for triage; writes `c<N>/findings.json`.
 - **Orchestrator (oscillation detection)**: mechanical diff via `jq -r '.findings[].fingerprint' .gaia/local/audit/c<N>/findings.json | sort` against the prior cycle's same. Non-empty intersection → oscillation, escalate.
-- **Clean A+ exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, findings-count signal, Bucket E `shared_fitness_grade`). On A+ overall: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker.
+- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an *effective* shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker.
 - **Escalation**: Orchestrator preserves all `c*/` dirs and surfaces their paths in the escalation report for human review.
 
 ## State
 
-Cycle artifacts persist in `.gaia/local/audit/c<N>/` for the duration of the audit. On clean A+ exit, the Orchestrator removes all `c*/` dirs (`rm -rf .gaia/local/audit/c*` — whitelisted; top-level dir kept as run marker). On escalation, all `c*/` dirs are preserved and surfaced in the escalation report for human review.
+Cycle artifacts persist in `.gaia/local/audit/c<N>/` for the duration of the audit. On a clean exit, the Orchestrator removes all `c*/` dirs (`rm -rf .gaia/local/audit/c*`; whitelisted; top-level dir kept as run marker). On escalation, all `c*/` dirs are preserved and surfaced in the escalation report for human review.
 
 The audit does not write to `wiki/log.md` or `wiki/hot.md`.
 
