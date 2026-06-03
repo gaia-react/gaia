@@ -12,7 +12,7 @@ Wiki pages emitted by `wiki-promote` carry `promoted_from: SPEC-NNN` and `promot
 
 ## Step 1 — Build the page index
 
-Run `gaia wiki page-index --json` and use the returned shape. The CLI walks the canonical domains (`wiki/decisions/`, `wiki/concepts/`, `wiki/modules/`, `wiki/flows/`, `wiki/components/`, `wiki/dependencies/`), skipping `wiki/_archived/`, `wiki/meta/`, `wiki/entities/`, `wiki/log.md`, `wiki/index.md`, `wiki/hot.md`, `wiki/overview.md`, `wiki/README.md`, and per-domain `_index.md` files.
+Run `.gaia/cli/gaia wiki page-index --json` and use the returned shape. The CLI walks the canonical domains (`wiki/decisions/`, `wiki/concepts/`, `wiki/modules/`, `wiki/flows/`, `wiki/components/`, `wiki/dependencies/`), skipping `wiki/_archived/`, `wiki/meta/`, `wiki/entities/`, `wiki/log.md`, `wiki/index.md`, `wiki/hot.md`, `wiki/overview.md`, `wiki/README.md`, and per-domain `_index.md` files.
 
 Each entry in `pages[]` provides `path`, `domain`, `title`, `type`, `status`, `tags`, `inbound_links`, and `outbound_links`. Augment with the consolidation-only fields the CLI does not surface — read each page's frontmatter for:
 
@@ -48,13 +48,13 @@ If a match references the older page's title (substring, case-insensitive), flag
 
 ### 2c. Near-collision slugs
 
-Run `gaia wiki near-collisions --max-distance 2` and surface its output. The CLI emits per-domain pairs that are within Levenshtein distance 2 (or where one slug is a prefix of the other) as tabular text. Flag each as a **near-collision** candidate. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
+Run `.gaia/cli/gaia wiki near-collisions --max-distance 2` and surface its output. The CLI emits per-domain pairs that are within Levenshtein distance 2 (or where one slug is a prefix of the other) as tabular text. Flag each as a **near-collision** candidate. The newer page (by `promoted_at`, ties broken by file mtime) is the canonical.
 
 Distance 2 is the right floor: distance 3 produces excessive false positives in dense domains with short slugs (e.g. `Ky` matches every dependency, `State` collides with `Styles`).
 
 ### 2d. Subject-orphaned pages
 
-Run `gaia wiki orphans` to enumerate pages with zero inbound wikilinks. For each candidate, refine: keep only pages where the body title also has zero case-insensitive substring matches in `wiki/concepts/` and `wiki/modules/`, AND the page has not been touched in 90+ days (`git log -1 --format=%aI -- <path>`). Flag the survivors as **subject-orphaned**.
+Run `.gaia/cli/gaia wiki orphans` to enumerate pages with zero inbound wikilinks. For each candidate, refine: keep only pages where the body title also has zero case-insensitive substring matches in `wiki/concepts/` and `wiki/modules/`, AND the page has not been touched in 90+ days (`git log -1 --format=%aI -- <path>`). Flag the survivors as **subject-orphaned**.
 
 ### 2e. Suppress acknowledged findings
 
@@ -174,8 +174,8 @@ No-op. Finding remains active and will re-surface on the next consolidate run.
 Update `wiki/.state.json` via the CLI primitive (preserves sibling fields and key order automatically):
 
 1. Confirm the file exists. It should — `/gaia-wiki sync` creates it on first run. If missing, skip this step entirely and emit a warning in the Step 6 summary.
-2. Run `gaia wiki state-bump last_consolidated_sha "$(git rev-parse HEAD)"` (full 40-char SHA at consolidate-completion time, before any of this run's edits get committed).
-3. Run `gaia wiki state-bump last_consolidated_at "$(date -u +%FT%TZ)"`.
+2. Run `.gaia/cli/gaia wiki state-bump last_consolidated_sha "$(git rev-parse HEAD)"` (full 40-char SHA at consolidate-completion time, before any of this run's edits get committed).
+3. Run `.gaia/cli/gaia wiki state-bump last_consolidated_at "$(date -u +%FT%TZ)"`.
 
 `state-bump` performs an atomic write (`writeFileSync` to `.tmp` + `renameSync`) and preserves `last_evaluated_sha`, `last_evaluated_at`, and any future sibling fields verbatim.
 

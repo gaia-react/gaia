@@ -4,7 +4,7 @@
 
 The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state harness layer described below. That harness layer — auto-branching, the unsafe-state guard — is `/gaia-fitness`-specific and is not part of the protocol in that page.
 
-**Scope note:** the harness this file wraps around the protocol is minimal — no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. v1 introduces no `gaia` CLI subcommand — the agent runs the checks the wiki page defines (greps / `jq` / `gaia wiki …` calls) inline.
+**Scope note:** the harness this file wraps around the protocol is minimal — no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. v1 introduces no `gaia` CLI subcommand — the agent runs the checks the wiki page defines (greps / `jq` / `.gaia/cli/gaia wiki …` calls) inline.
 
 ---
 
