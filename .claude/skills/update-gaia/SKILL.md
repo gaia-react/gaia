@@ -175,7 +175,7 @@ BACKUP_DIR=".gaia-backup/$(date +%Y%m%d-%H%M%S)"
 mkdir -p .gaia-merge "$BACKUP_DIR"
 ```
 
-Track seven lists internally (`UpdateMergeReport`):
+Track seven lists plus a `package.json` sub-report internally (`UpdateMergeReport`):
 
 ```ts
 {
@@ -190,10 +190,16 @@ Track seven lists internally (`UpdateMergeReport`):
     class: 'owned' | 'shared' | 'wiki-owned';
     patch_path: string;  // .gaia-merge/<path>.patch
   }>;
+  packageJson: {         // field-aware result for package.json (Step 7a)
+    applied: string[];      // managed keys GAIA changed that the adopter still tracked at the baseline pin — written to the working tree
+    conflicts: string[];    // managed keys GAIA changed but the adopter independently re-pinned — left as the adopter's, noted
+    suggestions: string[];  // managed keys GAIA added, or changed but the adopter had removed — surfaced opt-in, never applied
+    notes_path?: string;    // .gaia-merge/package.json.notes when conflicts or suggestions exist
+  };
 }
 ```
 
-**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object:**
+**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json`** — that one path is handled field-aware in **Step 7a** below (whole-file `cmp`/`diff` can't separate adopter identity and intentional dep removals from the real upstream delta). Skip it during this walk.
 
 Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DIR/<path>`. Use `cmp -s` for equality; `mkdir -p` before writing.
 
@@ -217,6 +223,70 @@ Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DI
 - `overwrite[]`, `skip[]`, `merge[]`, `add[]`, `removed[]`: **report counts only — no per-file narrative.** Do not read file bytes.
 - `delete[]`: **ask the user before removing** each path.
 - `conflicts[]`: read the patch at `.gaia-merge/<path>.patch` and walk the user through the decision per file.
+- `packageJson`: populated by **Step 7a**. The `applied[]` keys are already written to the working tree (report counts only); walk the user through `conflicts[]` (re-pinned keys) and mention `suggestions[]` (added / removed-then-changed deps) as opt-in, both detailed in `.gaia-merge/package.json.notes`.
+
+### Step 7a: Field-aware `package.json` merge
+
+`package.json` is classed `shared`, but a whole-file three-way merge produces pure noise for it: **every** adopter diverges it at init (`gaia-init` rewrites `name` / `description` / `author` and resets `version`), and GAIA bumps its own `version` on **every** release — so `A ≠ B`, `A ≠ L`, and `B ≠ L` all hold on every release, and the generic table emits a full-file conflict patch dominated by identity fields no adopter wants from GAIA. Merge it at JSON-key granularity instead, acting only on the genuine upstream delta `B → L`.
+
+Let `A` = working-tree `package.json`, `B` = `$BASELINE_DIR/package.json`, `L` = `$LATEST_DIR/package.json`.
+
+**Adopter-owned keys — never compared, merged, or patched.** Every top-level key **except** the managed sections below is the adopter's, left exactly as-is: `name`, `version`, `description`, `author`, `private`, `type`, `bin`, `sideEffects`, and anything else. Identity drift is invisible to this step.
+
+**Managed sections — three-way merged per entry:**
+
+- **Object sections, merged per entry key:** `dependencies`, `devDependencies`, `scripts`, `engines`, `pnpm.overrides`, top-level `overrides`.
+- **Scalar / whole-value keys, merged as a single value:** `packageManager`, and any non-`overrides` key under `pnpm` (e.g. `onlyBuiltDependencies`).
+
+For each managed entry key `k` (within its section), with `Bk` / `Lk` / `Ak` its value in baseline / latest / adopter:
+
+| Condition on `k` | Meaning | Action | Bucket |
+|---|---|---|---|
+| in `B` and `L`, `Bk == Lk` | GAIA didn't change it | **No-op.** The adopter's value stands — kept, re-pinned, **or removed.** | — |
+| in `B` and `L`, `Bk != Lk`, adopter has `k` and `Ak == Bk` | GAIA changed the pin; adopter still at baseline | **Apply** `Lk` to the working tree | `applied[]` |
+| in `B` and `L`, `Bk != Lk`, adopter has `k` and `Ak != Bk` | GAIA changed it; adopter re-pinned independently | **Conflict.** Leave `Ak`; note both pins. Never silently override an adopter pin. | `conflicts[]` |
+| in `B` and `L`, `Bk != Lk`, adopter removed `k` | GAIA changed a dep the adopter dropped | **Suggestion.** Do **not** re-add. Note as opt-in. | `suggestions[]` |
+| in `L`, not in `B` | GAIA **added** it | **Suggestion.** Do **not** auto-insert. Note as opt-in. | `suggestions[]` |
+| in `B`, not in `L` | GAIA **removed** it | If the adopter still has `k`, leave it (adopter's choice). | — |
+
+**The load-bearing row is the first one:** a dependency the adopter removed (present in `B`, absent from `A`) is **never re-added** unless GAIA itself changed it this release *and* the adopter opts in. The default everywhere is to respect the adopter's value. This is the JSON-key analog of the file-level "respect adopter deletions" rule the generic table already enforces.
+
+**Compute the per-key verdicts** with `jq` (covers the object sections including nested `pnpm.overrides`):
+
+```bash
+jq -n \
+  --slurpfile a package.json \
+  --slurpfile b "$BASELINE_DIR/package.json" \
+  --slurpfile l "$LATEST_DIR/package.json" '
+  ($a[0]) as $A | ($b[0]) as $B | ($l[0]) as $L
+  | [["dependencies"],["devDependencies"],["scripts"],["engines"],["overrides"],["pnpm","overrides"]] as $sections
+  | [ $sections[] as $sp
+      | (($B | getpath($sp)) // {}) as $bs
+      | (($L | getpath($sp)) // {}) as $ls
+      | (($A | getpath($sp)) // {}) as $as
+      | (($bs + $ls) | keys_unsorted | unique)[] as $k
+      | { section: ($sp | join(".")), key: $k, baseline: $bs[$k], latest: $ls[$k], adopter: $as[$k],
+          verdict:
+            (if ($bs | has($k)) and ($ls | has($k)) then
+               (if $bs[$k] == $ls[$k] then "noop"
+                elif ($as | has($k) | not) then "suggest-removed"
+                elif $as[$k] == $bs[$k] then "apply"
+                else "conflict" end)
+             elif ($ls | has($k)) then "suggest-add"
+             else "noop" end) }
+      | select(.verdict != "noop") ]'
+```
+
+Apply the same rule to the scalar `packageManager` by hand: `B == L` → no-op; `B != L` and `A == B` → apply; `B != L` and `A != B` → conflict; in `L` only → suggest-add; in `B` only → no-op.
+
+**Apply clean changes (`applied[]`):** edit the single line for `k` in the working-tree `package.json` so its value becomes `Lk`, using the **Edit** tool — preserve the adopter's formatting and key order. Do **not** reserialize the file with `jq` write-back; that reorders keys and buries the real change in noise.
+
+**Record conflicts + suggestions:** if either bucket is non-empty, write a human-readable `.gaia-merge/package.json.notes` listing, per key: the section, the key, the adopter / baseline / latest values, and the recommended action. Set `notes_path`. This file is informational — the adopter reconciles re-pin conflicts by hand and accepts or ignores suggestions. It is **not** a `diff -u` patch and is **not** added to the file-level `conflicts[]` bucket.
+
+**Net effect:**
+
+- **Version-only release** (no managed-key delta) → identity ignored, zero applied/conflicts/suggestions → **clean skip, no notes file.** Fixes the every-release noise.
+- **Dep-bump release** → only the entries GAIA actually changed (and that the adopter still tracks) are applied; re-pin conflicts and added/removed-dep suggestions go to the notes file — never re-adding a dependency the adopter removed, never overwriting an adopter pin.
 
 ### Step 8: Bump `.gaia/VERSION`
 
@@ -281,10 +351,13 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Skipped:      <n>
   Conflicts:    <n>  (see .gaia-merge/)
   Deleted:      <n>  (removed upstream; surfaced, not auto-deleted)
+  package.json: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/package.json.notes)
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
   Specs migrated: <n>  (flat .gaia/local/specs files folded into per-SPEC folders)
   Trailer invalidations: <n>  (open PRs stamped v$BASELINE will re-audit on next push)
 ```
+
+When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference.
 
 Use `SPECS_MIGRATED` for the `Specs migrated` row. If it is `"conflict"`, emit the row as `Specs migrated: conflict — see action item below` and, after the table, print a blocking action item naming the conflicting ids/paths from `$spec_folderize_out`:
 
@@ -308,10 +381,11 @@ The next SessionStart hook fires the background refresher; the session after tha
 
 Tell the user:
 
-1. Review any conflict patches in `.gaia-merge/` and reconcile manually. Delete the patch file once resolved.
-2. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
-3. Inspect the diff (`git diff`) before committing.
-4. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
+1. Review any conflict patches in `.gaia-merge/` and reconcile manually. Delete the patch file once resolved. If `.gaia-merge/package.json.notes` exists, reconcile the re-pin conflicts and decide on the dep suggestions, then delete it.
+2. If the `package.json` merge applied any dependency or `packageManager` change, run `pnpm install` to sync `pnpm-lock.yaml` before the quality gate.
+3. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
+4. Inspect the diff (`git diff`) before committing.
+5. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
 
 Do **not** auto-commit on behalf of the user — they need to review the changes first.
 

@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-06-02
+updated: 2026-06-03
 tags: [release, claude, adopter, drift]
 ---
 
@@ -28,7 +28,7 @@ The manifest assigns each shipped file exactly one class. Anything **not** in th
 | Class        | Meaning                                                                                                                                     | Drift handling                                                                                        |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `owned`      | GAIA controls fully — skills, commands, rules, hooks, config files.                                                                         | Pristine → overwrite silently. Drifted → prompt: skip / overwrite / backup+overwrite.                 |
-| `shared`     | GAIA seeds; adopter customizes — `package.json`, `CLAUDE.md`, `README.md`, `.claude/settings.json`, `.github/workflows/*`, `wiki/index.md`. | Pristine → overwrite silently. Drifted → write `.gaia-merge/<path>.patch`, skip, let adopter resolve. |
+| `shared`     | GAIA seeds; adopter customizes — `package.json`, `CLAUDE.md`, `README.md`, `.claude/settings.json`, `.github/workflows/*`, `wiki/index.md`. | Pristine → overwrite silently. Drifted → write `.gaia-merge/<path>.patch`, skip, let adopter resolve. `package.json` is the exception — merged field-aware (see below), not whole-file. |
 | `wiki-owned` | GAIA-seeded wiki pages adopter may edit — concepts, decisions, modules, flows, dependencies.                                                | Same as `shared`.                                                                                     |
 | _(implicit)_ | Adopter-owned. `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, and any file the adopter created.                                              | Never touched by `/update-gaia`.                                                                      |
 
@@ -66,6 +66,26 @@ Files deleted upstream (in baseline, not in latest):
 | Not in adopter              | Already gone. Skip.                 |
 | `adopter[P] == baseline[P]` | Prompt `delete` (default) / `keep`. |
 | Adopter drifted             | Prompt `keep` (default) / `delete`. |
+
+## `package.json` (field-aware merge)
+
+A whole-file three-way merge of `package.json` is pure noise: every adopter rewrites `name` / `description` / `author` and resets `version` at init, and GAIA bumps its own `version` every release, so adopter, baseline, and latest all differ on every release. `package.json` is therefore merged at JSON-key granularity, acting only on the genuine upstream delta `B → L`.
+
+- **Adopter-owned keys** — every top-level key except the managed sections (`name`, `version`, `description`, `author`, `private`, `type`, `bin`, `sideEffects`, …) is left untouched. Identity drift is invisible.
+- **Managed sections** — `dependencies`, `devDependencies`, `scripts`, `engines`, `pnpm.overrides`, top-level `overrides` (merged per entry), plus `packageManager` and other `pnpm.*` keys (merged as a single value).
+
+Per managed entry key `k`:
+
+| Condition | Action |
+| --- | --- |
+| GAIA didn't change `k` (`baseline == latest`) | No-op — adopter's value stands (kept, re-pinned, or **removed**). |
+| GAIA changed `k`, adopter still at baseline pin | Apply latest to the working tree. |
+| GAIA changed `k`, adopter re-pinned independently | Conflict — leave adopter's value, note both pins. |
+| GAIA changed `k`, adopter had removed it | Suggestion — never re-add; note as opt-in. |
+| GAIA added `k` (latest only) | Suggestion — never auto-insert; note as opt-in. |
+| GAIA removed `k` (baseline only) | No-op — if adopter still has it, leave it. |
+
+The load-bearing guarantee: a dependency the adopter removed is **never re-added** unless GAIA changed it this release *and* the adopter opts in — the JSON-key analog of the file-level "respect adopter deletions" rule. Clean applies are written surgically (the changed line only, preserving the adopter's formatting). Re-pin conflicts and dep suggestions go to `.gaia-merge/package.json.notes`. A version-only release touches nothing and emits no notes.
 
 ## Safety invariants
 
