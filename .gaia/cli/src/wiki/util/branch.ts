@@ -94,7 +94,12 @@ export const inspectWorkingTree = (
 
     if (line.length === 0) continue;
     // Porcelain v1: 2-char status, space, path. Account for renames.
-    const payload = line.slice(3);
+    // Git quotes paths that contain spaces or special chars; strip the quotes.
+    const rawPayload = line.slice(3);
+    const payload =
+      rawPayload.startsWith('"') && rawPayload.endsWith('"')
+        ? rawPayload.slice(1, -1)
+        : rawPayload;
     const renameSplit = payload.indexOf(' -> ');
 
     if (renameSplit === -1) {
