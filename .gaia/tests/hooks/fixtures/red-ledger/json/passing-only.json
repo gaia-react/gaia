@@ -1,0 +1,28 @@
+{
+  "numTotalTestSuites": 1,
+  "numFailedTests": 0,
+  "numPassedTests": 2,
+  "numTotalTests": 2,
+  "success": true,
+  "testResults": [
+    {
+      "name": ".gaia/tests/hooks/fixtures/red-ledger/two-tests.test.ts",
+      "status": "passed",
+      "message": "",
+      "assertionResults": [
+        {
+          "title": "first test",
+          "fullName": "first test",
+          "status": "passed",
+          "failureMessages": []
+        },
+        {
+          "title": "second test",
+          "fullName": "second test",
+          "status": "passed",
+          "failureMessages": []
+        }
+      ]
+    }
+  ]
+}
