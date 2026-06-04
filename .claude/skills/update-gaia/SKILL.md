@@ -205,16 +205,16 @@ Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DI
 
 **Match in declared order, first matching row wins.** Baseline presence (`B`) is the discriminator for a missing working-tree file: `A` missing with `B` also missing means the file is genuinely new in the latest release and gets added; `A` missing with `B` present means the adopter deliberately deleted a file that shipped in their baseline, so the deletion is respected and the file is left absent. The `B` ≅ `L` row (no upstream change) short-circuits every class before any conflict is declared, an adopter-drifted file the release never touched has nothing to merge, so it stays as-is and emits no patch.
 
-| Class | Condition | Action | List |
-|---|---|---|---|
-| any | `A` missing and `B` missing (genuinely new in latest) | Copy `L` → `<path>` | `add[]` |
-| any | `A` missing and `B` exists (adopter deleted it) | No-op, respect the deletion, leave absent | `removed[]` |
-| `owned` | `B` missing (`A` exists; release newly owns this path) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `overwrite[]` |
-| any | `B` ≅ `L` (no upstream change) | No-op | `skip[]` |
-| any | `A` ≅ `B` (no adopter drift) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `owned` → `overwrite[]`; `shared` / `wiki-owned` → `merge[]` |
-| any | `A` ≅ `L` (adopter already at latest) | No-op | `skip[]` |
-| `owned` | `A` ≠ `B` and `A` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
-| `shared` / `wiki-owned` | `A` ≠ `B` and `A` ≠ `L` | `diff -u "$A" "$L" > .gaia-merge/<path>.patch` | `conflicts[]` |
+| Class                   | Condition                                              | Action                                                   | List                                                         |
+| ----------------------- | ------------------------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------ |
+| any                     | `A` missing and `B` missing (genuinely new in latest)  | Copy `L` → `<path>`                                      | `add[]`                                                      |
+| any                     | `A` missing and `B` exists (adopter deleted it)        | No-op, respect the deletion, leave absent                | `removed[]`                                                  |
+| `owned`                 | `B` missing (`A` exists; release newly owns this path) | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `overwrite[]`                                                |
+| any                     | `B` ≅ `L` (no upstream change)                         | No-op                                                    | `skip[]`                                                     |
+| any                     | `A` ≅ `B` (no adopter drift)                           | Back up `A` to `$BACKUP_DIR/<path>`; copy `L` → `<path>` | `owned` → `overwrite[]`; `shared` / `wiki-owned` → `merge[]` |
+| any                     | `A` ≅ `L` (adopter already at latest)                  | No-op                                                    | `skip[]`                                                     |
+| `owned`                 | `A` ≠ `B` and `A` ≠ `L`                                | `diff -u "$A" "$L" > .gaia-merge/<path>.patch`           | `conflicts[]`                                                |
+| `shared` / `wiki-owned` | `A` ≠ `B` and `A` ≠ `L`                                | `diff -u "$A" "$L" > .gaia-merge/<path>.patch`           | `conflicts[]`                                                |
 
 **After iterating the manifest,** collect deletions: files present under `$BASELINE_DIR` that have no corresponding key in `$LATEST_MANIFEST`'s `.files`. Add each to `delete[]`. Do **not** remove them from the working tree.
 
@@ -240,16 +240,16 @@ Let `A` = working-tree `package.json`, `B` = `$BASELINE_DIR/package.json`, `L` =
 
 For each managed entry key `k` (within its section), with `Bk` / `Lk` / `Ak` its value in baseline / latest / adopter:
 
-| Condition on `k` | Meaning | Action | Bucket |
-|---|---|---|---|
-| in `B` and `L`, `Bk == Lk` | GAIA didn't change it | **No-op.** The adopter's value stands, kept, re-pinned, **or removed.** |, |
-| in `B` and `L`, `Bk != Lk`, adopter has `k` and `Ak == Bk` | GAIA changed the pin; adopter still at baseline | **Apply** `Lk` to the working tree | `applied[]` |
-| in `B` and `L`, `Bk != Lk`, adopter has `k` and `Ak != Bk` | GAIA changed it; adopter re-pinned independently | **Conflict.** Leave `Ak`; note both pins. Never silently override an adopter pin. | `conflicts[]` |
-| in `B` and `L`, `Bk != Lk`, adopter removed `k` | GAIA changed a dep the adopter dropped | **Suggestion.** Do **not** re-add. Note as opt-in. | `suggestions[]` |
-| in `L`, not in `B` | GAIA **added** it | **Suggestion.** Do **not** auto-insert. Note as opt-in. | `suggestions[]` |
-| in `B`, not in `L` | GAIA **removed** it | If the adopter still has `k`, leave it (adopter's choice). |, |
+| Condition on `k`                                           | Meaning                                          | Action                                                                            | Bucket          |
+| ---------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------- | --------------- |
+| in `B` and `L`, `Bk == Lk`                                 | GAIA didn't change it                            | **No-op.** The adopter's value stands, kept, re-pinned, **or removed.**           | ,               |
+| in `B` and `L`, `Bk != Lk`, adopter has `k` and `Ak == Bk` | GAIA changed the pin; adopter still at baseline  | **Apply** `Lk` to the working tree                                                | `applied[]`     |
+| in `B` and `L`, `Bk != Lk`, adopter has `k` and `Ak != Bk` | GAIA changed it; adopter re-pinned independently | **Conflict.** Leave `Ak`; note both pins. Never silently override an adopter pin. | `conflicts[]`   |
+| in `B` and `L`, `Bk != Lk`, adopter removed `k`            | GAIA changed a dep the adopter dropped           | **Suggestion.** Do **not** re-add. Note as opt-in.                                | `suggestions[]` |
+| in `L`, not in `B`                                         | GAIA **added** it                                | **Suggestion.** Do **not** auto-insert. Note as opt-in.                           | `suggestions[]` |
+| in `B`, not in `L`                                         | GAIA **removed** it                              | If the adopter still has `k`, leave it (adopter's choice).                        | ,               |
 
-**The load-bearing row is the first one:** a dependency the adopter removed (present in `B`, absent from `A`) is **never re-added** unless GAIA itself changed it this release *and* the adopter opts in. The default everywhere is to respect the adopter's value. This is the JSON-key analog of the file-level "respect adopter deletions" rule the generic table already enforces.
+**The load-bearing row is the first one:** a dependency the adopter removed (present in `B`, absent from `A`) is **never re-added** unless GAIA itself changed it this release _and_ the adopter opts in. The default everywhere is to respect the adopter's value. This is the JSON-key analog of the file-level "respect adopter deletions" rule the generic table already enforces.
 
 **Compute the per-key verdicts** with `jq` (covers the object sections including nested `pnpm.overrides`):
 

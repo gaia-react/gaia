@@ -231,7 +231,7 @@ Otherwise:
 - `wiki/modules/Bar.md` (Bar Module)
 ```
 
-List every orphan (one per line) as `` - `wiki/path.md` (title) ``.
+List every orphan (one per line) as ``- `wiki/path.md` (title)``.
 
 ## Step 6: GAIA check #15: Frontmatter gaps
 
@@ -266,7 +266,7 @@ Otherwise:
 - `wiki/modules/Bar.md`: missing status, tags
 ```
 
-List every gap (one per line) as `` - `wiki/path.md`: missing {comma-joined fields} ``.
+List every gap (one per line) as ``- `wiki/path.md`: missing {comma-joined fields}``.
 
 ## Step 7: GAIA check #16: Empty sections
 

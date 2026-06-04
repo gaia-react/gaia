@@ -116,20 +116,20 @@ Per-category grade is deterministic given the finding set for that category. The
 
 ### Per-category bands
 
-| Grade  | Condition                                                                                                                         |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| **A+** | Zero findings in the category                                                                                                     |
-| **A**  | One or two `info` findings, no `warning` or `error`                                                                               |
-| **A−** | Three or more `info` findings, no `warning` or `error`                                                                            |
-| **B+** | One `warning`, no `error`                                                                                                         |
-| **B**  | Two `warning`s, no `error`                                                                                                        |
-| **B−** | Three or more `warning`s, no `error`                                                                                              |
-| **C+** | One `error`                                                                                                                       |
-| **C**  | Two `error`s                                                                                                                      |
-| **C−** | Three `error`s                                                                                                                    |
-| **D+** | Four `error`s                                                                                                                     |
-| **D**  | Five `error`s                                                                                                                     |
-| **D−** | Six or more `error`s                                                                                                              |
+| Grade  | Condition                                                                                                                        |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| **A+** | Zero findings in the category                                                                                                    |
+| **A**  | One or two `info` findings, no `warning` or `error`                                                                              |
+| **A−** | Three or more `info` findings, no `warning` or `error`                                                                           |
+| **B+** | One `warning`, no `error`                                                                                                        |
+| **B**  | Two `warning`s, no `error`                                                                                                       |
+| **B−** | Three or more `warning`s, no `error`                                                                                             |
+| **C+** | One `error`                                                                                                                      |
+| **C**  | Two `error`s                                                                                                                     |
+| **C−** | Three `error`s                                                                                                                   |
+| **D+** | Four `error`s                                                                                                                    |
+| **D**  | Five `error`s                                                                                                                    |
+| **D−** | Six or more `error`s                                                                                                             |
 | **F**  | Category is structurally broken, e.g. `.claude/settings.json` is unparseable (settings F); no `CLAUDE.md` exists (`CLAUDE.md` F) |
 
 The grade keys off the worst severity present, then the count at that severity: any `error` → the C/D band for the error count; else any `warning` → the B band for the warning count; else any `info` → the A band for the info count; else `A+`. Every band in the table, including `A−` and `C−`, is reachable for a single category, and the overall (floor) grade can therefore land on any of them. The exact +/− band thresholds are tunable; adjust the counts above for your project's tolerance.

@@ -436,7 +436,9 @@ describe('release preflight', () => {
     expect(recorded.some((call) => call.args.includes(SUGGESTED_RANGE))).toBe(
       true
     );
-    expect(recorded.some((call) => call.args.includes(DRIFT_RANGE))).toBe(false);
+    expect(recorded.some((call) => call.args.includes(DRIFT_RANGE))).toBe(
+      false
+    );
   });
 
   test('exit 0 when orphaned recovered window is only wiki-sync artifacts', () => {

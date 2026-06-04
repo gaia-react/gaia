@@ -182,9 +182,16 @@ describe('wiki empty-sections', () => {
   test('does not flag a heading that has body content', () => {
     sandbox.writeFile(
       'wiki/concepts/Foo.md',
-      ['# Foo', '', 'Body for foo.', '', '## Bar', '', 'Body for bar.', ''].join(
-        '\n'
-      )
+      [
+        '# Foo',
+        '',
+        'Body for foo.',
+        '',
+        '## Bar',
+        '',
+        'Body for bar.',
+        '',
+      ].join('\n')
     );
 
     expect(findEmptySections(sandbox.root)).toEqual([]);

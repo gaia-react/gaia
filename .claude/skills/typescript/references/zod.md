@@ -2,18 +2,18 @@
 
 This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so nothing flags them until runtime or a `react-doctor` scan. Default to the Zod 4 form in every schema.
 
-| Zod 3, avoid | Zod 4, use |
-| --- | --- |
-| `z.object({…}).strict()` | `z.strictObject({…})` |
-| `z.object({…}).passthrough()` | `z.looseObject({…})` |
-| `z.record(z.string())` | `z.record(z.string(), z.string())` |
-| `z.string().email()` | `z.email()` |
-| `z.string().url()` | `z.url()` |
-| `z.string().uuid()` | `z.uuid()` |
-| `z.string().datetime()` | `z.iso.datetime()` |
-| `z.enum(['metric', 'imperial'])` | `z.literal(['imperial', 'metric'])` |
-| `z.function().args(a).returns(b)` | `z.function({input: [a], output: b})` |
-| `z.string({required_error: 'Required'})` | `z.string({error: 'Required'})` |
+| Zod 3, avoid                             | Zod 4, use                            |
+| ---------------------------------------- | ------------------------------------- |
+| `z.object({…}).strict()`                 | `z.strictObject({…})`                 |
+| `z.object({…}).passthrough()`            | `z.looseObject({…})`                  |
+| `z.record(z.string())`                   | `z.record(z.string(), z.string())`    |
+| `z.string().email()`                     | `z.email()`                           |
+| `z.string().url()`                       | `z.url()`                             |
+| `z.string().uuid()`                      | `z.uuid()`                            |
+| `z.string().datetime()`                  | `z.iso.datetime()`                    |
+| `z.enum(['metric', 'imperial'])`         | `z.literal(['imperial', 'metric'])`   |
+| `z.function().args(a).returns(b)`        | `z.function({input: [a], output: b})` |
+| `z.string({required_error: 'Required'})` | `z.string({error: 'Required'})`       |
 
 ## Strict objects
 

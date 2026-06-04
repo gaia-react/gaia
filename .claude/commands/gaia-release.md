@@ -170,6 +170,7 @@ Commit on a branch, open + merge a PR, then tag. The PR-merge and main-push guar
 
 > [!important] Sibling-repo push protocol
 > `repo-scope.sh` classifies a raw-git command as foreign only when it can resolve a concrete target path from the **raw command string**. Two things defeat that, and both make the guard fail closed and deny a legitimate sibling push:
+>
 > 1. **Variables don't expand.** The hook reads `tool_input.command` verbatim. `git -C "$CG" push …` resolves the target to the literal string `$CG`, the path lookup fails, and the guard enforces home-repo policy. **Inline the literal absolute path** the discovery step printed (e.g. `git -C /abs/path/to/create-gaia push …`), never `$CG`.
 > 2. **One `-C` per push invocation.** The guard uses a single-capture regex and fails closed when it sees more than one `-C` in a single command string (git's last-wins semantics defeat a single capture). Each push (branch push **and** tag push) runs in **its own Bash tool invocation**, one `-C`, literal path.
 >

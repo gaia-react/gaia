@@ -21,16 +21,16 @@ Every report begins with a universal envelope regardless of which workflow faile
 
 After classifying the failure, the skill supplements this envelope with class-specific state files from the following closed taxonomy:
 
-| class          | triggered by                                                                |
-| -------------- | --------------------------------------------------------------------------- |
-| `init`         | `/gaia-init` scaffolding failures                                           |
-| `update`       | `/update-gaia` merge conflicts                                              |
-| `wiki-sync`    | `/gaia-wiki sync` misfires                                                  |
+| class          | triggered by                                                               |
+| -------------- | -------------------------------------------------------------------------- |
+| `init`         | `/gaia-init` scaffolding failures                                          |
+| `update`       | `/update-gaia` merge conflicts                                             |
+| `wiki-sync`    | `/gaia-wiki sync` misfires                                                 |
 | `quality-gate` | `pnpm typecheck` or lint failures inside a GAIA flow, see [[Quality Gate]] |
-| `hook`         | `.claude/hooks/*.sh` misfires                                               |
-| `scaffold`     | `new-component`, `new-route`, `new-hook`, or `new-service` skill failures   |
-| `dev-server`   | `pnpm dev` / Vite / SSR boot failures                                       |
-| `other`        | unknown or multi-class failures; always treated as a probable bug           |
+| `hook`         | `.claude/hooks/*.sh` misfires                                              |
+| `scaffold`     | `new-component`, `new-route`, `new-hook`, or `new-service` skill failures  |
+| `dev-server`   | `pnpm dev` / Vite / SSR boot failures                                      |
+| `other`        | unknown or multi-class failures; always treated as a probable bug          |
 
 State-file capture is conservative: the skill records filenames and one-line summaries, never full file bodies. File bodies from `app/` and `wiki/` are never captured regardless of class.
 

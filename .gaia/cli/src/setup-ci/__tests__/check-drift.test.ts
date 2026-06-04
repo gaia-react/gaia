@@ -43,7 +43,10 @@ const captureStdio = (): {
   };
 };
 
-const writeFreshWorkflows = (sandbox: Sandbox, tools: readonly ToolId[]): void => {
+const writeFreshWorkflows = (
+  sandbox: Sandbox,
+  tools: readonly ToolId[]
+): void => {
   const workflowsDir = path.join(sandbox.root, '.github', 'workflows');
   mkdirSync(workflowsDir, {recursive: true});
   const partialsDir = workflowPartialsDirectory();
@@ -135,7 +138,11 @@ describe('setup-ci check-drift', () => {
   it('flags tools as missing when the rendered workflow file does not exist', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
     // Only write three of the four workflows; wiki goes missing.
-    writeFreshWorkflows(sandbox, ['update-deps', 'pnpm-audit', 'stale-branches']);
+    writeFreshWorkflows(sandbox, [
+      'update-deps',
+      'pnpm-audit',
+      'stale-branches',
+    ]);
 
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);

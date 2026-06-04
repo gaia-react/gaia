@@ -8,3 +8,10 @@ minimumReleaseAge: 10080
 
 # Fail the install if a package's trust level has decreased vs prior releases.
 trustPolicy: no-downgrade
+
+# Exempt first-party packages from the release-age delay. The 7-day window
+# defends against malicious THIRD-party updates; @gaia-react/lint is authored,
+# reviewed, and published by this project's own maintainer, so the
+# community-vetting rationale does not apply.
+minimumReleaseAgeExclude:
+  - '@gaia-react/lint'

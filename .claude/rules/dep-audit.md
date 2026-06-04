@@ -12,7 +12,7 @@ Two filters keep the same unfixable transitive advisory from spamming every revi
 2. **Baseline allowlist**: `.gaia/local/dep-audit-baseline.json` (machine-local, gitignored). Acknowledge an unfixable advisory by its ID and it is suppressed (count-only) on later reviews:
 
    ```jsonc
-   { "acknowledged": [{ "id": 1098765, "module": "tough-cookie", "note": "why" }] }
+   {"acknowledged": [{"id": 1098765, "module": "tough-cookie", "note": "why"}]}
    ```
 
    The audit only READS this file, acknowledging is an explicit operator action, never something the audit writes (that would turn an advisory into a self-managed suppression gate). Missing file ⇒ empty baseline ⇒ every high/critical surfaces.

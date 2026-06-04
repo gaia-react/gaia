@@ -143,7 +143,9 @@ export const run = (
       return EXIT_CODES.OK;
     }
 
-    const lines = gaps.map((gap) => `${gap.path}: missing ${gap.missing.join(', ')}`);
+    const lines = gaps.map(
+      (gap) => `${gap.path}: missing ${gap.missing.join(', ')}`
+    );
     process.stdout.write(`${lines.join('\n')}\n`);
 
     return EXIT_CODES.OK;

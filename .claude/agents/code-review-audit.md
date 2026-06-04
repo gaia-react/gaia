@@ -101,7 +101,7 @@ Beyond general best practices, verify adherence to these project-specific patter
 
 ## Finding Proof Gate (holistic reviewer)
 
-Every finding you (the main agent) report must clear this gate before it reaches the report. The gate sits **on top of** the tool-specific false-positive patterns elsewhere in this agent (the react-doctor barrel-import / multiple-useState noise called out under "Merge findings", the knip bucket classification); it does not replace them. Those patterns reject *known* bad findings. This gate makes *every* finding prove itself. The deterministic advisories (react-doctor, knip, pnpm audit) are oracles, not probabilistic judgments, so they pass through under their own false-positive handling and are not subject to this gate.
+Every finding you (the main agent) report must clear this gate before it reaches the report. The gate sits **on top of** the tool-specific false-positive patterns elsewhere in this agent (the react-doctor barrel-import / multiple-useState noise called out under "Merge findings", the knip bucket classification); it does not replace them. Those patterns reject _known_ bad findings. This gate makes _every_ finding prove itself. The deterministic advisories (react-doctor, knip, pnpm audit) are oracles, not probabilistic judgments, so they pass through under their own false-positive handling and are not subject to this gate.
 
 Before reporting a finding, run all four checks:
 
@@ -243,7 +243,7 @@ A deterministic `pnpm audit --json` run is the oracle for "known vulnerable depe
 **Baseline suppression (cross-review noise scoping).** A machine-local, gitignored allowlist at `.gaia/local/dep-audit-baseline.json` lets the operator acknowledge an unfixable transitive advisory so it does not respam every review. Shape:
 
 ```jsonc
-{ "acknowledged": [ { "id": 1098765, "module": "tough-cookie", "note": "why" } ] }
+{"acknowledged": [{"id": 1098765, "module": "tough-cookie", "note": "why"}]}
 ```
 
 The audit only ever **reads** this file: acknowledging is an explicit operator action, never something the audit writes (writing it would make a suppression list the audit controls, which would erode the advisory-not-gate property). Missing file ⇒ empty baseline ⇒ every high/critical advisory surfaces.

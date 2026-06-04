@@ -28,8 +28,8 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 
 ### Scaffolders
 
-| Skill           | Triggers on                                                                                                                              |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Skill           | Triggers on                                                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `new-component` | "create a component", "scaffold a card": drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir          |
 | `new-hook`      | "create a useFoo hook", "add a hook under app/hooks": drops a `useThing.ts` + Vitest test                                               |
 | `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                               |
@@ -61,7 +61,7 @@ GAIA's `.claude/` surface places each kind of guidance in the layer that loads i
 
 | Layer                                 | Loads when…                                            | Use for                                                                            |
 | ------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Hook (`.claude/hooks/`)               | Tool call matches a registered event                   | Mechanical enforcement (block / advise) on a specific tool shape, no judgment     |
+| Hook (`.claude/hooks/`)               | Tool call matches a registered event                   | Mechanical enforcement (block / advise) on a specific tool shape, no judgment      |
 | Rule (`.claude/rules/`)               | Matching `paths:` glob in scope (or always when empty) | File-path-bound conventions: project-wide style, route layout, accessibility, i18n |
 | Skill (`.claude/skills/`)             | `description:` matches user intent / context           | Cross-file reasoning patterns: refactor playbooks, error-fix recipes, TDD loop     |
 | Instruction (`.claude/instructions/`) | Dispatched by a command/skill at runtime               | Parameterized one-shot runbooks (add a locale, strip i18n, etc.); self-deleting    |

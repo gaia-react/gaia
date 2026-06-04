@@ -135,7 +135,7 @@ Dispatch lane-aware Fixer subagents (Sonnet) in parallel per the wiki page's lan
 | `claude-surface` | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**` |
 | `settings`       | `.claude/settings.json`                                                                                              |
 | `gitignore`      | `.gitignore`                                                                                                         |
-| `manifest`       | `.gaia/manifest.json` (serialize, one Fixer at a time)                                                              |
+| `manifest`       | `.gaia/manifest.json` (serialize, one Fixer at a time)                                                               |
 
 If a finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope.
 

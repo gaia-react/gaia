@@ -15,7 +15,7 @@ How `/update-gaia` pulls a newer GAIA release into an initialized project withou
 
 | File                  | Role                                                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `.gaia/VERSION`       | Adopter's current baseline: which GAIA version `my-app/` was scaffolded from (or last `/update-gaia`d to).         |
+| `.gaia/VERSION`       | Adopter's current baseline: which GAIA version `my-app/` was scaffolded from (or last `/update-gaia`d to).          |
 | `.gaia/manifest.json` | Ships with every release. Maps each file in the release to a class.                                                 |
 | `.gaia/cache/`        | Gitignored. Holds downloaded baseline + latest tarballs for the 3-way comparison.                                   |
 | `.gaia-merge/`        | Gitignored. Sidecar `.patch` files emitted for files the update can't safely auto-merge. Adopter resolves manually. |
@@ -25,12 +25,12 @@ How `/update-gaia` pulls a newer GAIA release into an initialized project withou
 
 The manifest assigns each shipped file exactly one class. Anything **not** in the manifest is implicitly adopter-owned and invisible to `/update-gaia`.
 
-| Class        | Meaning                                                                                                                                     | Drift handling                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `owned`      | GAIA controls fully: skills, commands, rules, hooks, config files.                                                                         | Pristine → overwrite silently. Drifted → prompt: skip / overwrite / backup+overwrite.                 |
+| Class        | Meaning                                                                                                                                    | Drift handling                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `owned`      | GAIA controls fully: skills, commands, rules, hooks, config files.                                                                         | Pristine → overwrite silently. Drifted → prompt: skip / overwrite / backup+overwrite.                                                                                                  |
 | `shared`     | GAIA seeds; adopter customizes: `package.json`, `CLAUDE.md`, `README.md`, `.claude/settings.json`, `.github/workflows/*`, `wiki/index.md`. | Pristine → overwrite silently. Drifted → write `.gaia-merge/<path>.patch`, skip, let adopter resolve. `package.json` is the exception, merged field-aware (see below), not whole-file. |
-| `wiki-owned` | GAIA-seeded wiki pages adopter may edit: concepts, decisions, modules, flows, dependencies.                                                | Same as `shared`.                                                                                     |
-| _(implicit)_ | Adopter-owned. `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, and any file the adopter created.                                              | Never touched by `/update-gaia`.                                                                      |
+| `wiki-owned` | GAIA-seeded wiki pages adopter may edit: concepts, decisions, modules, flows, dependencies.                                                | Same as `shared`.                                                                                                                                                                      |
+| _(implicit)_ | Adopter-owned. `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, and any file the adopter created.                                             | Never touched by `/update-gaia`.                                                                                                                                                       |
 
 Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`.
 
@@ -52,8 +52,8 @@ For every file `P` in the latest manifest:
 
 | Condition                                                 | Action                                                                 |
 | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Not in adopter, not in baseline                           | **New file**: add (default yes).                                      |
-| Not in adopter, present in baseline                       | Adopter deleted: **skip** (respect intent).                           |
+| Not in adopter, not in baseline                           | **New file**: add (default yes).                                       |
+| Not in adopter, present in baseline                       | Adopter deleted: **skip** (respect intent).                            |
 | `adopter[P] == baseline[P]`                               | **Overwrite** with latest (any class).                                 |
 | Adopter drifted, latest unchanged from baseline           | **Skip** (no upstream change).                                         |
 | Adopter drifted, latest changed, `owned`                  | Show diff, prompt `skip` (default) / `overwrite` / `backup+overwrite`. |
@@ -76,16 +76,16 @@ A whole-file three-way merge of `package.json` is pure noise: every adopter rewr
 
 Per managed entry key `k`:
 
-| Condition | Action |
-| --- | --- |
-| GAIA didn't change `k` (`baseline == latest`) | No-op: adopter's value stands (kept, re-pinned, or **removed**). |
-| GAIA changed `k`, adopter still at baseline pin | Apply latest to the working tree. |
-| GAIA changed `k`, adopter re-pinned independently | Conflict: leave adopter's value, note both pins. |
-| GAIA changed `k`, adopter had removed it | Suggestion: never re-add; note as opt-in. |
-| GAIA added `k` (latest only) | Suggestion: never auto-insert; note as opt-in. |
-| GAIA removed `k` (baseline only) | No-op: if adopter still has it, leave it. |
+| Condition                                         | Action                                                           |
+| ------------------------------------------------- | ---------------------------------------------------------------- |
+| GAIA didn't change `k` (`baseline == latest`)     | No-op: adopter's value stands (kept, re-pinned, or **removed**). |
+| GAIA changed `k`, adopter still at baseline pin   | Apply latest to the working tree.                                |
+| GAIA changed `k`, adopter re-pinned independently | Conflict: leave adopter's value, note both pins.                 |
+| GAIA changed `k`, adopter had removed it          | Suggestion: never re-add; note as opt-in.                        |
+| GAIA added `k` (latest only)                      | Suggestion: never auto-insert; note as opt-in.                   |
+| GAIA removed `k` (baseline only)                  | No-op: if adopter still has it, leave it.                        |
 
-The load-bearing guarantee: a dependency the adopter removed is **never re-added** unless GAIA changed it this release *and* the adopter opts in, the JSON-key analog of the file-level "respect adopter deletions" rule. Clean applies are written surgically (the changed line only, preserving the adopter's formatting). Re-pin conflicts and dep suggestions go to `.gaia-merge/package.json.notes`. A version-only release touches nothing and emits no notes.
+The load-bearing guarantee: a dependency the adopter removed is **never re-added** unless GAIA changed it this release _and_ the adopter opts in, the JSON-key analog of the file-level "respect adopter deletions" rule. Clean applies are written surgically (the changed line only, preserving the adopter's formatting). Re-pin conflicts and dep suggestions go to `.gaia-merge/package.json.notes`. A version-only release touches nothing and emits no notes.
 
 ## Safety invariants
 

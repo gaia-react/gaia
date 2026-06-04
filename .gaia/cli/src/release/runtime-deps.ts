@@ -121,7 +121,9 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     the occurrence because it lives inside a multi-line quoted `reason="..."`
  *     string that renders to the operator, hence this central allowlist.
  */
-const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set(['.github/workflows']);
+const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
+  '.github/workflows',
+]);
 
 const PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
 

@@ -42,9 +42,9 @@ Every UAT from UAT-001 through UAT-013 has at least one binding assertion. UAT-0
 
 | File                                  | Scenario                                                        |
 | ------------------------------------- | --------------------------------------------------------------- |
-| `fixtures/input-init-failure.txt`     | UAT-001 input; clean init failure (no secrets)                 |
-| `fixtures/input-update-conflict.txt`  | UAT-002 input; update conflict with arg                        |
-| `fixtures/input-with-secrets.txt`     | UAT-003 input; absolute paths + placeholder env-var entries    |
+| `fixtures/input-init-failure.txt`     | UAT-001 input; clean init failure (no secrets)                  |
+| `fixtures/input-update-conflict.txt`  | UAT-002 input; update conflict with arg                         |
+| `fixtures/input-with-secrets.txt`     | UAT-003 input; absolute paths + placeholder env-var entries     |
 | `fixtures/golden-init-redacted.md`    | UAT-001 expected body (byte-identical post-redaction)           |
 | `fixtures/golden-update-redacted.md`  | UAT-002 expected body                                           |
 | `fixtures/golden-secrets-redacted.md` | UAT-003 expected body (paths stripped, env-var values scrubbed) |
