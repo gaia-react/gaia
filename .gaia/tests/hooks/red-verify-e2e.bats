@@ -180,9 +180,9 @@ test("adds two numbers", () => {
 }
 
 # ---------------------------------------------------------------------------
-# UAT-005 regression guard: the untouched block-bare-test.sh still blocks a bare
-# `pnpm test` (no --run) with exit 2. This feature added no regression; the
-# assertion targets the existing hook directly and needs neither new hook.
+# Regression guard: the untouched block-bare-test.sh still blocks a bare
+# `pnpm test` (no --run) with exit 2. The RED-verification feature introduced no
+# regression; the assertion targets the existing hook directly and needs neither new hook.
 # ---------------------------------------------------------------------------
 @test "bare pnpm test is still blocked by block-bare-test.sh (exit 2)" {
   payload=$(jq -nc '{tool_name:"Bash", tool_input:{command:"pnpm test"}}')

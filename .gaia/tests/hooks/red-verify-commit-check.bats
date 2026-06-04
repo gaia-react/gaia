@@ -116,7 +116,7 @@ test("adds two numbers", () => {
 });
 '
 
-# --- UAT-001 / UAT-002: new test, no matching RED -> deny ---
+# --- new test with no matching RED -> deny ---
 
 @test "denies a new test with no ledger entry (never run)" {
   stage_file "app/x/index.test.ts" "$PASSING_TEST"
@@ -135,7 +135,7 @@ test("adds two numbers", () => {
   denied
 }
 
-# --- UAT-003: observed-fail then pass -> allow ---
+# --- observed-fail then pass -> allow ---
 
 @test "allows a new test that has a matching valid RED" {
   stage_file "app/x/index.test.ts" "$PASSING_TEST"
@@ -145,7 +145,7 @@ test("adds two numbers", () => {
   ! denied
 }
 
-# --- UAT-004: prose-only claim does not satisfy the gate ---
+# --- prose-only claim does not satisfy the gate ---
 
 @test "denies even when the commit message prose claims a failing test first" {
   stage_file "app/x/index.test.ts" "$PASSING_TEST"
