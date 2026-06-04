@@ -28402,7 +28402,8 @@ var inspectWorkingTree = (cwd, runner = defaultRunner) => {
   for (const rawLine of out.split("\n")) {
     const line = rawLine.replace(/\r$/u, "");
     if (line.length === 0) continue;
-    const payload = line.slice(3);
+    const rawPayload = line.slice(3);
+    const payload = rawPayload.startsWith('"') && rawPayload.endsWith('"') ? rawPayload.slice(1, -1) : rawPayload;
     const renameSplit = payload.indexOf(" -> ");
     if (renameSplit === -1) {
       paths.push(payload);
