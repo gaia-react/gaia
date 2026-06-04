@@ -7,7 +7,7 @@ description: Promote merged SPEC content into the GAIA wiki.
 
 Fires automatically on `/speckit-implement` completion. Reads the SPEC artifact, detects whether the implementing PR has merged, and either promotes content into `gaia/wiki/` or persists a defer flag.
 
-## Step 1: Resolve the SPEC
+## Step 1 - Resolve the SPEC
 
 The hook fires on `/speckit-implement` completion. The agent has the SPEC ID in conversation context (the implementer agent referenced it).
 
@@ -17,7 +17,7 @@ Read the SPEC frontmatter. Required fields: `spec_id`, `wiki_promote_default`, `
 
 If the SPEC file is missing, exit with: `wiki-promote: SPEC artifact not found; nothing to promote.`
 
-## Step 2: Read promotion gate
+## Step 2 - Read promotion gate
 
 Branch on `wiki_promote_default`:
 
@@ -31,7 +31,7 @@ Branch on `wiki_promote_default`:
 - `yes` → continue to Step 3.
 - Any other value → emit warning `wiki-promote: unrecognized wiki_promote_default '<value>'; treating as 'no'.` and exit silently.
 
-## Step 3: Detect merged PR
+## Step 3 - Detect merged PR
 
 Determine the current branch:
 
@@ -70,7 +70,7 @@ If `$pr_json` contains a merged PR:
 
 If `gh` is not installed or not authenticated, treat as "no merged PR", write the defer flag with an additional field `gh_unavailable: true` and exit. This handles GAIA's framework-neutrality (offline, GitLab, Bitbucket users).
 
-## Step 4: Route to wiki destinations
+## Step 4 - Route to wiki destinations
 
 Read `wiki_promote_targets` from the SPEC frontmatter.
 
@@ -113,7 +113,7 @@ If no valid targets remain after validation (should not happen given the `[decis
 
 The routing plan is the input to Step 5 (page rendering). The `wiki/index.md` and per-domain `_index.md` files are updated in Step 5 (one batch update per subdomain).
 
-## Step 5: Render and write pages
+## Step 5 - Render and write pages
 
 For each tuple in the routing plan from Step 4, classify the page status, render markdown, and write to disk. Track three lists for the Step 7 report:
 
@@ -188,7 +188,7 @@ Line format:
 
 If `wiki/log.md` does not contain a `## [Unreleased]` section, prepend the section header above the existing first `## ` heading. (Defensive, the file should already have one per the existing wiki convention.)
 
-## Step 5b: Page body rendering
+## Step 5b - Page body rendering
 
 Render the body in the following sections, in order, immediately after the closing `---` of the frontmatter. No template engine, emit markdown directly.
 
@@ -271,7 +271,7 @@ The wiki-sync handoff (Step 6) will pick up the modified `wiki/index.md` along w
 
 Match the existing wiki voice: declarative, no preamble, concrete examples where useful. End the file with a single trailing newline.
 
-## Step 6: Hand off to wiki-sync
+## Step 6 - Hand off to wiki-sync
 
 The wiki-promote command does NOT commit or push. The existing `/gaia-wiki sync` skill handles branch-aware commits.
 
@@ -298,7 +298,7 @@ Then invoke `/gaia-wiki sync` directly:
 
 If `/gaia-wiki sync` fails or refuses, exit with the warning `wiki-promote: pages staged but wiki-sync handoff failed. Run /gaia-wiki sync manually.` Do NOT attempt to commit from this command body.
 
-## Step 7: Report
+## Step 7 - Report
 
 Print a brief summary:
 
@@ -316,7 +316,7 @@ If any pages were skipped due to hand-edit detection, include a one-line note:
 
 `Hand-edited skips can be resolved by re-running /gaia-spec close SPEC-NNN --force (TBD; for now resolve manually).`
 
-## Step 8: Chain to spec-close (immediate-merge path only)
+## Step 8 - Chain to spec-close (immediate-merge path only)
 
 This step fires only when Step 3 found a merged PR and Steps 4–7 ran full. On the deferred path, Step 3 exits before reaching here. On the silent-skip path (`wiki_promote_default: no`) and the preview path (`--preview`), Step 2 exits before reaching here. So an unconditional invoke at this step is safe, the only way to land here is the immediate-merge full-run.
 
