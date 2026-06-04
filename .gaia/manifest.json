@@ -20,6 +20,7 @@
     ".claude/hooks/block-eslint-config-edit.sh": "owned",
     ".claude/hooks/block-lockfile-edit.sh": "owned",
     ".claude/hooks/block-main-destructive-git.sh": "owned",
+    ".claude/hooks/block-no-verify.sh": "owned",
     ".claude/hooks/block-rm-rf.sh": "owned",
     ".claude/hooks/block-secrets-write.sh": "owned",
     ".claude/hooks/block-vitest-globals-tsconfig.sh": "owned",

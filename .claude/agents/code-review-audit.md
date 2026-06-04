@@ -99,6 +99,60 @@ Beyond general best practices, verify adherence to these project-specific patter
 - Route files (`app/routes/`) are thin shells — loader, action, meta, and a one-line page import. UI belongs in `app/pages/`.
 - Localization: every user-facing string comes from `t()`. Hardcoded JSX strings are bugs.
 
+## Finding Proof Gate (holistic reviewer)
+
+Every finding you (the main agent) report must clear this gate before it reaches the report. The gate sits **on top of** the tool-specific false-positive patterns elsewhere in this agent (the react-doctor barrel-import / multiple-useState noise called out under "Merge findings", the knip bucket classification); it does not replace them. Those patterns reject *known* bad findings. This gate makes *every* finding prove itself. The deterministic advisories (react-doctor, knip) are oracles, not probabilistic judgments, so they pass through under their own false-positive handling and are not subject to this gate.
+
+Before reporting a finding, run all four checks:
+
+1. **Cites an exact `file:line`.** Point at the specific line where the defect lives, not a file, a function, or a region. No line, no finding.
+2. **Names a concrete failure mode: input + state + bad outcome.** Give the input that triggers it, the state it fires in, and the wrong result that follows (for example, "when the loader returns `null` and the user submits the form twice, the second action reads a stale `id` and writes to the wrong record"). A category label on its own ("possible race condition", "potential XSS", "might leak") is not a failure mode; it names a worry, not a path.
+3. **Confirms you read the callers and tests, not just the flagged line.** Trace the line in context: who calls it, what the test suite already covers, what guards sit upstream. A "missing null check" that every caller already guards, or that a test already asserts against, is not a defect.
+4. **Assigns a severity you can defend.** Critical, Important, or Suggestion must follow from the failure mode's actual blast radius, not from how alarming the category sounds. If you cannot say why it belongs at that tier, it is at the wrong tier.
+
+**Fail any check, drop or demote the finding.** A finding that cannot cite a line or name a concrete failure mode is dropped. A finding that is real but whose severity you cannot defend at the assigned tier is demoted to the tier you can defend (and dropped if that lands below Suggestion). Demote rather than delete when the defect is genuine but smaller than first judged.
+
+**Adversarially verify every Critical and Important survivor.** The four checks above are self-applied, so they share your blind spots. Before a holistic finding is reported at Critical or Important, hand it to a fresh-context refuter that did not produce it. Spawn one `Agent` refuter per surviving Critical/Important holistic finding, in parallel from a single tool-call message (the same dispatch discipline as the rule-based subagents). This pass applies only to your own (probabilistic) findings at those two tiers; Suggestions stay self-policed, and the react-doctor / knip oracles and the rule-based subagent findings are out of scope.
+
+A refuter overturns a finding only with **concrete counter-evidence**, the mirror of the gate's concrete-failure-mode bar:
+
+- the specific guard (`file:line`) that prevents the claimed input or state from reaching the defect,
+- a test that already asserts the correct behavior, or
+- a demonstration that the failure path is unreachable.
+
+Act on the verdict:
+
+- Counter-evidence shows the defect cannot occur → **drop** the finding.
+- Counter-evidence shows it occurs but with a smaller blast radius than claimed → **demote** to the tier the evidence supports.
+- No concrete counter-evidence → the finding **stands** at its tier. "Seems unlikely" or "probably fine" is not a refutation; absence of a refutation defaults to keeping the finding.
+
+Spawn each refuter with this prompt:
+
+```
+You are an adversarial reviewer. Your job is to REFUTE the finding below, not to confirm it. Assume the original reviewer was too eager.
+
+Finding:
+- Location: `path/to/file.tsx:42`
+- Failure mode: [input + state + bad outcome, verbatim from the finding]
+- Claimed severity: Critical | Important
+
+Changed files in scope: [list from git diff]
+
+Read the flagged line, its callers, and the tests that exercise it. You may overturn this finding ONLY by citing concrete counter-evidence:
+- a specific guard (`file:line`) that prevents the claimed input/state from reaching the defect, or
+- a test that already asserts the correct behavior, or
+- a demonstration that the failure path is unreachable.
+
+Report exactly one verdict:
+- REFUTED (cannot occur): [cite the counter-evidence]
+- DOWNGRADE (occurs but smaller): [cite evidence, name the tier it actually warrants]
+- STANDS (no concrete counter-evidence found)
+
+Do not refute on intuition. If you cannot cite counter-evidence, the verdict is STANDS.
+```
+
+**Zero findings is valid.** The gate is allowed to empty the report. If nothing survives the gate (the four checks or the adversarial pass), report no findings: that is a clean result, not a failure to look hard enough. Do not manufacture findings to fill the sections. A fabricated or unprovable finding is worse than none, because noise erodes trust in every real finding beside it.
+
 ## Output Format
 
 Structure your review as follows:
@@ -142,7 +196,8 @@ Include only when there are specific, concrete patterns worth reinforcing. Skip 
 6. **Be proportionate** — don't nitpick formatting when there are security holes; focus energy on what matters most
 7. **Respect existing patterns** — if the codebase has an established way of doing something, don't suggest alternatives unless there's a concrete benefit
 8. **Dispatch in parallel** — once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor` and `pnpm knip --reporter json` from a single tool-call message so they run concurrently with your own review
-9. **Resolve suggestions before writing the marker** — after the report is produced and before deciding on the marker, attempt to auto-fix every item in the Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale — escalated suggestions unconditionally block the marker. Never proceed to the marker with any suggestion that is neither fixed in the working tree nor explicitly escalated.
+9. **Verify Critical/Important survivors adversarially**: after your own review produces candidate findings and before finalizing the report, run each surviving holistic Critical/Important finding through a fresh-context refuter per the Finding Proof Gate, then drop, demote, or keep it on the refuter's verdict. The report is not produced until this pass completes.
+10. **Resolve suggestions before writing the marker** — after the report is produced and before deciding on the marker, attempt to auto-fix every item in the Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale — escalated suggestions unconditionally block the marker. Never proceed to the marker with any suggestion that is neither fixed in the working tree nor explicitly escalated.
 
 ## Rules-Based Audit (Specialist Subagents + react-doctor + knip)
 
@@ -327,7 +382,7 @@ Both variables travel forward to the marker-write step below.
 
 `.claude/hooks/pr-merge-audit-check.sh` blocks `gh pr merge` until a marker file at `.gaia/local/audit/<HEAD-sha>.ok` exists. The marker proves the audit ran against the exact commit being merged. **You** are responsible for writing the marker — only when the audit is genuinely clean.
 
-After producing the report, decide whether to write the marker:
+After producing the report (which includes the adversarial verification of Critical/Important survivors), decide whether to write the marker:
 
 - **Write the marker** when all of the following are true:
   1. The Critical Issues section is empty.
