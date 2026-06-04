@@ -41,7 +41,13 @@ esac
 # Sha must be reachable from HEAD (silently bail on rebased/unreachable history)
 git merge-base --is-ancestor "$state_sha" HEAD 2>/dev/null || exit 0
 
-drift_count=$(git rev-list --count "$state_sha..HEAD" 2>/dev/null || echo 0)
+# Exclude the sync's own bookkeeping commit. `gaia wiki sync land` records
+# last_evaluated_sha = HEAD *before* writing its `wiki: sync through <sha>`
+# commit, so that commit always lands one ahead of the SHA the sync just
+# recorded. Counting it nags the maintainer to re-sync the instant a sync
+# finishes, where the next sync only SKIPs it as self-referential. Drop it so
+# the nudge reflects genuine un-evaluated work, not the sync's own footprint.
+drift_count=$(git rev-list --count --invert-grep --grep='^wiki: sync through ' "$state_sha..HEAD" 2>/dev/null || echo 0)
 short_sha=$(git rev-parse --short "$state_sha" 2>/dev/null || echo "$state_sha")
 
 if [ "$drift_count" -gt 0 ]; then
