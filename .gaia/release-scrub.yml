@@ -33,6 +33,16 @@ transforms:
     start: "<!-- gaia:maintainer-only:start -->"
     end: "<!-- gaia:maintainer-only:end -->"
 
+  # .prettierignore carries maintainer-only globs for byte-sensitive test
+  # fixtures under .gaia/tests/ (release-excluded; absent on adopter machines).
+  # Distinct #-comment markers because .prettierignore is not markdown and
+  # HTML-comment markers would read as literal ignore globs there.
+  - type: marker-strip
+    paths:
+      - ".prettierignore"
+    start: "# gaia:maintainer-only:start"
+    end: "# gaia:maintainer-only:end"
+
   # Maintainer-only package.json keys that must not reach adopter projects.
   # bin: registers the gaia CLI binary, only meaningful when a package is
   #   published and installed as a dependency; adopters build apps, not
@@ -118,6 +128,10 @@ transforms:
           - ".claude/**"
           - "wiki/**"
           - ".gaia/statusline/**"
+          # Backstop for the .prettierignore marker-strip above: if a future
+          # maintainer-only fixture glob lands outside the markers, its
+          # .gaia/tests/ reference survives the strip and trips this check.
+          - ".prettierignore"
           # Adopter-shipped CI workflows (release.yml + cli-tests.yml are
           # release-excluded; tests.yml + chromatic.yml ship). Prior
           # occurrence: tests.yml body comment cited maintainer paths

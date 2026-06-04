@@ -9,7 +9,14 @@ package-lock.json
 .env.example
 .env
 
-# Forensics test fixtures are byte-sensitive: golden files are redaction-only
-# output compared byte-for-byte, and the parser fixtures are deliberately
-# malformed. Prettier reformatting any of them breaks the bats suite.
+# gaia:maintainer-only:start
+# Byte-sensitive maintainer-only test fixtures under .gaia/tests/. These dirs
+# are release-excluded and absent from adopter projects, so `gaia-maintainer
+# release scrub` strips this block from the bundle. Prettier reformatting any
+# of them breaks the bats suites: forensics golden files are compared
+# byte-for-byte and its parser fixtures are deliberately malformed; red-ledger
+# fixtures carry deliberate non-standard indentation (stable-b) and deliberate
+# malformation (broken.test.ts, which prettier errors on).
 .gaia/tests/forensics/fixtures/
+.gaia/tests/hooks/fixtures/
+# gaia:maintainer-only:end
