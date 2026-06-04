@@ -14,21 +14,35 @@
 #   HUSKY=0 (or falsy HUSKY= prefix) disables Husky for the invocation
 #   -c core.hooksPath=<path>        redirects hooks to a path with no floor
 #
+# Command-position anchoring: a token is only a bypass when it belongs to a
+# real `git commit` / `git push` INVOCATION — i.e. `git` is the command word of
+# a pipeline segment (start of command, after a `| & ; ( )` separator, or after
+# an env-var prefix like `HUSKY=0`). Command TEXT that merely mentions the words
+# (a grep pattern, an echo string, a path, an argument to another program such
+# as `grep -n -e git commit file`) is not an invocation and never fires. Without
+# this anchor the matcher fired on free-floating substrings: any command whose
+# text contained `commit` plus a `-n` flag tripped, even when `git` was not the
+# program being run.
+#
 # No carve-out is needed for GAIA's own legitimate --no-verify automation
 # (audit-stamp trailer, wiki autocommit squash): those run as hook scripts
 # (Stop / PreToolUse), not as Bash-tool calls, so a PreToolUse Bash hook never
 # intercepts them. Do not "fix" the missing carve-out — there is no bug.
 #
-# Fail-closed: a commit message that literally contains a bypass token (e.g.
-# `git commit -m "use --no-verify"`) over-blocks. That is the safe direction;
-# rephrase the message. Policy: wiki/decisions/Quality Gate.md
+# Residual fail-closed edge: a bypass token written literally INSIDE a commit
+# message (e.g. `git commit -m "use --no-verify"`) still over-blocks. That is
+# the safe direction; rephrase the message. The unambiguous tokens
+# (--no-verify, falsy HUSKY=, core.hooksPath=) also get a whole-command
+# fail-closed safety net so segment-splitting on a shell metacharacter inside a
+# message can never let a real bypass slip. Policy: wiki/decisions/Quality Gate.md
 set -euo pipefail
 
 payload=$(cat)
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
-# Only act on git commands — short-circuit everything else.
-[[ "$cmd" =~ (^|[[:space:]&;|])git([[:space:]]|$) ]] || exit 0
+# Only act on git commands — short-circuit everything else. (Fast path only;
+# correctness comes from the command-position scan below.)
+[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's commit-floor policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)
@@ -39,16 +53,6 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then
   exit 0
 fi
-
-# Only commit and push carry the floor — ignore every other git subcommand.
-# Detect the subcommand by token presence so global options between `git` and
-# the subcommand (e.g. `git -c core.hooksPath=… commit`) don't hide it. The
-# `[[:space:]]` word boundaries keep `commit` from matching `commit-graph`.
-is_commit=0
-is_push=0
-[[ "$cmd" =~ (^|[[:space:]])commit([[:space:]]|$) ]] && is_commit=1
-[[ "$cmd" =~ (^|[[:space:]])push([[:space:]]|$) ]] && is_push=1
-[[ "$is_commit" -eq 1 || "$is_push" -eq 1 ]] || exit 0
 
 deny() {
   jq -n --arg r "$1" '{
@@ -61,35 +65,84 @@ deny() {
   exit 0
 }
 
-sub="commit"
-[[ "$is_commit" -eq 1 ]] || sub="push"
-
 floor_msg() {
   echo "Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the Husky pre-commit hook — fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
 }
 
-# --no-verify — both commit and push.
-if [[ "$cmd" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
-  deny "$(floor_msg '--no-verify')"
-fi
+# Walk each command-position segment. Separators (`| & ; ( )`, newlines) become
+# line breaks so every line begins at a command word; leading env-var
+# assignments are stripped to expose it. A segment acts only when its command
+# word is `git` and it carries a `commit` / `push` subcommand token — so a
+# `-n` that belongs to a different program on the same command line (the
+# `git commit && grep -n …` case) never trips the commit branch.
+saw_commit=0
+saw_push=0
+while IFS= read -r seg; do
+  # Command word = the first token after any leading whitespace + env-var
+  # assignments (`WORD=value `). bash 3.2 does not populate BASH_REMATCH
+  # reliably, so strip with sed rather than a capture loop.
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
 
-# Falsy HUSKY= env prefix (HUSKY=0, HUSKY=false, HUSKY=no, or empty) — both.
-if [[ "$cmd" =~ (^|[[:space:]])HUSKY=(0|false|no)?([[:space:]]|$) ]]; then
-  deny "$(floor_msg 'HUSKY disabled')"
-fi
+  is_commit=0
+  is_push=0
+  [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]] && is_commit=1
+  [[ "$seg" =~ (^|[[:space:]])push([[:space:]]|$) ]] && is_push=1
+  [[ "$is_commit" -eq 1 || "$is_push" -eq 1 ]] || continue
 
-# -c core.hooksPath=<path> override — both. Git config keys are
-# case-insensitive, so match the key case-insensitively.
-if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$cmd"; then
-  deny "$(floor_msg '-c core.hooksPath override')"
-fi
+  [[ "$is_commit" -eq 1 ]] && saw_commit=1
+  [[ "$is_push" -eq 1 ]] && saw_push=1
 
-# -n short flag = --no-verify, COMMIT ONLY. `git push -n` is --dry-run and must
-# pass. Matches a single-dash short-flag bundle containing n (-n, -nm, -anm),
-# never the long --no-verify (handled above) or --dry-run.
-if [[ "$is_commit" -eq 1 ]] \
-   && [[ "$cmd" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
-  deny "$(floor_msg '-n (= --no-verify)')"
+  sub="commit"
+  [[ "$is_commit" -eq 1 ]] || sub="push"
+
+  # All bypass checks are scoped to THIS git segment.
+
+  # --no-verify — both commit and push.
+  if [[ "$seg" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
+    deny "$(floor_msg '--no-verify')"
+  fi
+
+  # Falsy HUSKY= prefix (HUSKY=0, HUSKY=false, HUSKY=no, or empty) — both.
+  if [[ "$seg" =~ (^|[[:space:]])HUSKY=(0|false|no)?([[:space:]]|$) ]]; then
+    deny "$(floor_msg 'HUSKY disabled')"
+  fi
+
+  # -c core.hooksPath=<path> override — both. Git config keys are
+  # case-insensitive, so match the key case-insensitively.
+  if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$seg"; then
+    deny "$(floor_msg '-c core.hooksPath override')"
+  fi
+
+  # -n short flag = --no-verify, COMMIT ONLY. `git push -n` is --dry-run and
+  # must pass. Matches a single-dash short-flag bundle containing n (-n, -nm,
+  # -anm), never the long --no-verify (handled above) or --dry-run. Scoped to
+  # the git segment so a `-n` on another program (grep/head/sort/tail) is inert.
+  if [[ "$is_commit" -eq 1 ]] \
+     && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
+    deny "$(floor_msg '-n (= --no-verify)')"
+  fi
+done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+
+# Fail-closed safety net for the UNAMBIGUOUS tokens. Segment-splitting on a
+# `| & ; ( )` that is actually inside a quoted commit message could orphan a
+# trailing bypass flag from its `git` segment (e.g. `git commit -m "a|b"
+# --no-verify`). These three tokens are specific enough that a whole-command
+# match, given a confirmed command-position commit/push above, is a real bypass
+# — re-assert it. (`-n` is deliberately excluded: it is too common in other
+# programs to test whole-command without re-introducing false positives.)
+if [[ "$saw_commit" -eq 1 || "$saw_push" -eq 1 ]]; then
+  sub="commit"
+  [[ "$saw_commit" -eq 1 ]] || sub="push"
+  if [[ "$cmd" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
+    deny "$(floor_msg '--no-verify')"
+  fi
+  if [[ "$cmd" =~ (^|[[:space:]])HUSKY=(0|false|no)?([[:space:]]|$) ]]; then
+    deny "$(floor_msg 'HUSKY disabled')"
+  fi
+  if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$cmd"; then
+    deny "$(floor_msg '-c core.hooksPath override')"
+  fi
 fi
 
 exit 0
