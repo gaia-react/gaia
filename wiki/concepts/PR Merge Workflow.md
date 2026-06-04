@@ -86,7 +86,7 @@ The chore(deps) bypass mirrors the same skip narrowing that `code-review-audit.y
 
 When CI self-heals — the audit modifies a file and pushes the fix — the workflow stamps a `code-review-audit` check run on the new HEAD and dispatches the sibling required workflows (e.g. `Chromatic`, `Tests`) via `workflow_dispatch` so their check runs attach to the new SHA. See [[Code Review Audit CI#Self-heal re-trigger]] for the full mechanism and the `retrigger_workflows` knob.
 
-A clean pass requires no Critical Issues, every Important Issue addressed, and every Suggestion either auto-fixed or resolved by the operator. Knip and react-doctor advisories remain advisory and never block signal emission.
+A clean pass requires no Critical Issues, every Important Issue addressed, and every Suggestion either auto-fixed or resolved by the operator. Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block signal emission.
 
 If the local agent declines to write the marker, its report names what remains unaddressed; resolve those, commit, push, re-spawn.
 
