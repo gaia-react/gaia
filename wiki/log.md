@@ -11,19 +11,20 @@ tags: [meta, log]
 
 ## [v1.4.0] 2026-06-02 | Released
 
-- 2026-06-04 d739bf2 SKIP - maintainer-only prose allowlist
-- 2026-06-04 aae3722 SKIP - test harness fix, de-gate wiki-sync to advisory
-- 2026-06-04 b5277d4 SKIP - test fixture fixes
-- 2026-06-04 51848b9 SKIP - manifest regeneration, path leak fixes
-- 2026-06-04 6efa1f3 WORTHY - em-dash sweep, house style alignment
-- 2026-06-04 ddf057b WORTHY - dependency-CVE deterministic oracle → wiki/decisions/Quality Gate.md
-- 2026-06-04 8de1c81 SKIP - hook lib source guard, no wiki impact
-- 2026-06-04 cb4ddc4 WORTHY - mechanical TDD RED-verification (SPEC-003) → wiki/decisions/TDD RED-verification.md
-- 2026-06-04 c533575 WORTHY - anchored git guards to command position → wiki/concepts/Git Workflow.md
-- 2026-06-04 9caa1ed SKIP - spec metadata only
-- 2026-06-04 148fab7 WORTHY - hardened commit/review gates with proof gate and adversarial verification → wiki/decisions/Quality Gate.md
-- 2026-06-04 618ed55 WORTHY - added non-blocking residuals to health-audit gate → wiki/concepts/Health Audit.md
-- 2026-06-04 5366919 SKIP - wiki: self-referential
+- 2026-06-04 e68dbfd SKIP - wiki: self-referential (sync commit)
+- 2026-06-04 d739bf2 SKIP - prose path allowlist in runtime-deps; maintainer-only CLI, no adopter architecture change
+- 2026-06-04 aae3722 SKIP - wiki-sync smoke harness repair; test infrastructure only
+- 2026-06-04 b5277d4 SKIP - test fixture / golden file repair; no architecture change
+- 2026-06-04 51848b9 SKIP - distribution boundary leak fix; no architecture change
+- 2026-06-04 6efa1f3 SKIP - em-dash sweep: house style, no architectural change
+- 2026-06-04 ddf057b SKIP - wiki already updated in commit itself (pnpm-audit.md created, Code Review Audit Agent.md updated)
+- 2026-06-04 8de1c81 SKIP - defensive CI-defer source guard; implementation fix, no architecture change
+- 2026-06-04 cb4ddc4 WORTHY - mechanical TDD RED-verification: new hooks + ledger → wiki/decisions/TDD RED Verification.md, wiki/concepts/Claude Hooks.md
+- 2026-06-04 c533575 SKIP - command-position fix for existing hooks; no new architecture
+- 2026-06-04 9caa1ed SKIP - spec allocator metadata only; no code or behavior change
+- 2026-06-04 148fab7 WORTHY - new block-no-verify hook + adversarial proof gate → wiki/concepts/Claude Hooks.md, wiki/concepts/Code Review Audit Agent.md
+- 2026-06-04 618ed55 SKIP - bug fix implementing existing documented behavior; wiki already covers health-audit non-blocking residuals intent
+- 2026-06-04 5366919 SKIP - wiki: self-referential (sync commit)
 - 2026-06-03 4110bfe WORTHY: aliased bare gaia calls to repo-relative .gaia/cli/gaia across skill instructions
 - 2026-06-03 129a364 WORTHY: bumped claude-obsidian baseline v1.6.0→v1.9.2, reframed plugin skills as auxiliary
 - 2026-06-03 8015592 WORTHY: decoupled wiki-lint from upstream, added GAIA-native checks #11-#16

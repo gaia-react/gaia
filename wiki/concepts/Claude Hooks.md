@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-03
+updated: 2026-06-05
 tags: [concept, claude, hooks]
 ---
 
@@ -41,8 +41,11 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 Each script reads `tool_input.command` from stdin and filters by content; there is no `if:` annotation on the hook entry.
 
 - **`block-bare-test.sh`**: denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. See [[Test Runner]].
-- **`block-main-destructive-git.sh`**: denies (1) `git commit` while HEAD is `main`/`master`, (2) force-push to `main`/`master`, and (3) plain `git push` originating from `main`/`master` (PR-only flow, closes the "forgot to switch branches" footgun). Handles `git -C <path>` invocations correctly. Authoritative rule: [[Git Workflow]].
+- **`block-no-verify.sh`**: denies `git commit` or `git push` carrying a hook-bypass token: `--no-verify`, a falsy `HUSKY=` env prefix, or a `core.hooksPath` redirect. Also denies `git commit -n` (short form of `--no-verify`); `git push -n` (dry-run) stays allowed. Foreign-repo commands pass via the shared repo-scope helper. The hook walks command-position segments so a `-n` on another program (`grep`, `head`, `sort`, `tail`) is inert. Keeps an unambiguous whole-command fail-closed net for the tokens that cannot appear anywhere else (`--no-verify`, `HUSKY=`, `core.hooksPath=`).
+- **`block-main-destructive-git.sh`**: denies (1) `git commit` while HEAD is `main`/`master`, (2) force-push to `main`/`master`, and (3) plain `git push` originating from `main`/`master` (PR-only flow, closes the "forgot to switch branches" footgun). Walks command-position segments so `git commit` text in an argument or a different program's flag does not trigger a false deny. Authoritative rule: [[Git Workflow]].
 - **`block-rm-rf.sh`**: denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `node_modules`. Allows scoped scratch paths (`.gaia/local/plans/*`, `.gaia/local/audit/*`, `.gaia/local/handoff/*`, `.gaia/cache/*`, `dist/*`, `build/*`).
+- **`capture-red-observations.sh`** (PostToolUse, Bash): on a one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the agent's target, records each genuinely-failing per-test result to the RED-observation ledger (`.gaia/local/red-ledger/`). Records file, full test name, content signal, and failure kind. Collection/compile errors are excluded. Observe-only; always exits 0. See [[TDD RED Verification]].
+- **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before each `git commit`, checks every new-at-HEAD test file against the RED-observation ledger. Requires a ledger RED whose content signal still matches the current test body; no matching entry denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files. See [[TDD RED Verification]].
 
 ### Advisory (Bash)
 
@@ -67,4 +70,4 @@ The wiki sync system is convergent: the user's already-paid-for Claude session d
 
 Ask Claude to add a hook; Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` via the `update-config` skill. Naming convention: `block-{noun}.sh` for blockers, `check-{noun}.sh` for advisory, `pre-{event}-{noun}.sh` for pre-event reminders. Blocker scripts begin with `#!/usr/bin/env bash` + `set -euo pipefail`, read stdin via `jq`, and either `exit 0`/`exit 2` or emit the structured `hookSpecificOutput.permissionDecision` JSON.
 
-See [[Quality Gate]], [[Pre-commit Hooks]], [[Git Workflow]], [[Claude Integration Conventions]].
+See [[Quality Gate]], [[Pre-commit Hooks]], [[Git Workflow]], [[Claude Integration Conventions]], [[TDD RED Verification]].

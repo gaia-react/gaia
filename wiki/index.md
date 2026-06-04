@@ -108,6 +108,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[spec-kit Extension Strategy]]
 - [[Wiki Management]]: wiki primitives, state file, deterministic classification
 - [[Claude Integration Fitness]]: check taxonomy + F-to-A+ grading + triage/heal protocol run by `/gaia-fitness`.
+- [[TDD RED Verification]]: mechanical enforcement that a new test was observed failing before commit; RED-observation ledger + two hooks.
 <!-- gaia:maintainer-only:start -->
 - [[Bundle-time Scrub]]: marker-strip + leak-check + runtime-deps; closes the audit-round loop with build-time enforcement.
 <!-- gaia:maintainer-only:end -->
