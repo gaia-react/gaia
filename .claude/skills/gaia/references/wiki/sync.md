@@ -1,6 +1,6 @@
 # wiki-sync playbook
 
-Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Sync"). Runs in a Haiku subagent context.
+Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Sync"). Runs in a Sonnet subagent context.
 
 ## Playbook
 
@@ -103,6 +103,50 @@ The CLI inserts a single canonical line `- <YYYY-MM-DD> <sha> <decision>, <reaso
 - WORTHY: `.gaia/cli/gaia wiki log-prepend --sha abc1234 --decision WORTHY --reason "added /services/Gemini integration → wiki/services/Gemini.md"`
 - SKIP: `.gaia/cli/gaia wiki log-prepend --sha def5678 --decision SKIP --reason "typo-only commit"`
 - Serena-policy SKIP: `.gaia/cli/gaia wiki log-prepend --sha 9a0b1c2 --decision SKIP --reason "Serena handles inventory, added Button variant in app/components/Button"`
+
+## Step 5b: Fabrication guard, verify edits landed on disk
+
+Before advancing state or landing, prove the Step 4 decisions actually wrote to disk. This is the fabrication guard: a run that logged WORTHY decisions in Step 5 and is about to advance state (Step 6) and commit (Step 7) MUST have produced the corresponding page edits. Without this check a model can satisfy the workflow's success signal (summary + log + state) while writing no content, and Step 7 launders that empty sync into a green commit.
+
+`CLAIMED` is the set of page paths Step 4 decided to edit or create for WORTHY commits, the same paths the Step 8 "Pages edited" / "ADRs created" lists report.
+
+Check each claimed path individually (wiki filenames contain spaces, so do NOT field-split a combined listing):
+
+```bash
+# 1. No-empty-WORTHY check: WORTHY commits must produce at least one content change.
+CONTENT_CHANGES=$(git status --porcelain -- wiki/ \
+  ':(exclude)wiki/.state.json' ':(exclude)wiki/log.md' \
+  ':(exclude)wiki/hot.md' ':(exclude)wiki/meta/')
+
+# 2. Per-claim check: every CLAIMED path must show as changed/created.
+#    git status --porcelain -- "<path>" is empty when the path is unmodified.
+for p in "${CLAIMED[@]}"; do
+  [ -z "$(git status --porcelain -- "$p")" ] && echo "MISSING: $p"
+done
+```
+
+ABORT on either failure, do NOT run Step 6, do NOT run Step 7, leave the working tree untouched, and print the failure block below **instead of** the Step 8 summary, then stop:
+
+1. **No empty WORTHY sync.** `N_worthy >= 1` but `CONTENT_CHANGES` is empty ⇒ edits were decided but none written. Abort.
+2. **Every claimed page exists in the diff.** Any `MISSING:` line from the loop ⇒ that edit was narrated, not written. Abort, naming the missing pages.
+
+The all-SKIP case is legitimate: `N_worthy == 0` with empty `CONTENT_CHANGES` and an empty `CLAIMED` passes both checks, proceed to Step 6 normally.
+
+Failure block:
+
+```
+Wiki sync ABORTED, fabrication guard tripped.
+
+  Worthy commits:   {N_worthy}
+  Pages claimed:    {CLAIMED}
+  Pages on disk:    {changed wiki content paths}
+  Missing:          {CLAIMED minus on-disk}
+
+State not advanced. Nothing committed. Re-run sync; if this recurs, the dispatched
+model is narrating edits without performing them, escalate the model.
+```
+
+Because the run aborts before Step 8/9, no `CONSOLIDATE_TRIGGERED` line is emitted. The router (`references/wiki.md` → "Full chain") already treats an absent trigger line as a known-incomplete state and skips consolidate and lint, so an abort fails the whole chain safely without further wiring.
 
 ## Step 6: Advance state file
 
@@ -211,5 +255,6 @@ The router reads the last line and decides whether to invoke consolidate. The ga
 ## Failure modes
 
 - **Mid-sync interruption.** If you've edited some pages but not all, do NOT advance state. Commit only the partial wiki edits with subject `wiki: partial sync (interrupted at {short_sha})` and stop. The next sync resumes from the original `last_evaluated_sha`, not the partial one.
+- **Fabrication guard abort (Step 5b).** WORTHY commits were classified but the decided edits are absent from the working tree. State is not advanced and nothing is committed, so the next sync re-evaluates the same range from the unchanged `last_evaluated_sha`. Distinct from a mid-sync interruption: here the gap is between decided and written, not started and finished.
 - **Merge conflict on `wiki/log.md`.** Two sync runs on different branches will both prepend to the log. Resolve by keeping both lines, sorted newest-first.
 - **`wiki/.state.json` is corrupted or invalid JSON.** Stop and surface to the user. Do not auto-rewrite, they may have made manual edits worth preserving.
