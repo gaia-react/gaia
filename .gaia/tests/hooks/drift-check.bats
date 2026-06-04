@@ -114,3 +114,39 @@ EOF
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "only a wiki-sync commit ahead: silent (self-referential, not real drift)" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  cd "$REPO"
+  base=$(git rev-parse HEAD)
+  # A `gaia wiki sync land` bookkeeping commit sitting on top of the recorded SHA.
+  echo "synced" >> wiki/index.md
+  git add wiki/index.md
+  git commit --quiet -m "wiki: sync through ${base:0:7}"
+  cat > wiki/.state.json <<EOF
+{"version":1,"last_evaluated_sha":"$base","last_evaluated_at":"2026-01-01T00:00:00Z"}
+EOF
+  input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
+  run bash -c "echo '$input' | '$HOOK_ABS'"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  grep -q "drift_count=0" .claude/wiki-drift-checked
+}
+
+@test "wiki-sync commit excluded from count, real commits still counted" {
+  REPO=$("$HELPERS/tmp-git-repo.sh" --commits 2)
+  cd "$REPO"
+  base=$(git rev-list --max-parents=0 HEAD)
+  # Two real commits already exist; add a self-referential sync commit on top.
+  echo "synced" >> wiki/index.md
+  git add wiki/index.md
+  git commit --quiet -m "wiki: sync through deadbee"
+  cat > wiki/.state.json <<EOF
+{"version":1,"last_evaluated_sha":"$base","last_evaluated_at":"2026-01-01T00:00:00Z"}
+EOF
+  input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
+  run bash -c "echo '$input' | '$HOOK_ABS'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"2 commits ahead"* ]]
+  grep -q "drift_count=2" .claude/wiki-drift-checked
+}
