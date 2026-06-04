@@ -2,6 +2,7 @@
 # Emit synthetic Claude Code hook-input JSON for testing.
 # Usage:
 #   mock-hook-input.sh user-prompt-submit <session_id> [prompt]
+#   mock-hook-input.sh pre-tool-use <session_id> <tool_name> <command>
 #   mock-hook-input.sh post-tool-use <session_id> <tool_name> <command>
 #   mock-hook-input.sh stop <session_id>
 set -euo pipefail
@@ -14,6 +15,12 @@ case "$event" in
     prompt="${3:-test prompt}"
     jq -n --arg sid "$session_id" --arg p "$prompt" \
       '{session_id: $sid, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "UserPromptSubmit", prompt: $p}'
+    ;;
+  pre-tool-use)
+    tool="${3:?tool_name required}"
+    cmd="${4:?command required}"
+    jq -n --arg sid "$session_id" --arg t "$tool" --arg c "$cmd" \
+      '{session_id: $sid, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "PreToolUse", tool_name: $t, tool_input: {command: $c}}'
     ;;
   post-tool-use)
     tool="${3:?tool_name required}"
