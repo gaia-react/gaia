@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## [v1.4.0] 2026-06-02 | Released
 
+- 2026-06-04 1eb85b9 WORTHY - fix git-quoted path stripping in inspectWorkingTree (sync land) → wiki/concepts/Wiki Sync.md
+- 2026-06-04 0404aeb SKIP - wiki: self-referential (sync commit)
+- 2026-06-04 26740f1 SKIP - chore(release): manifest update only; no architecture change
 - 2026-06-04 f7f6d9f WORTHY - fabrication guard + Sonnet dispatch for wiki-sync → wiki/concepts/Wiki Sync.md
 - 2026-06-04 4f9b17e SKIP - wiki: self-referential (sync commit)
 - 2026-06-04 e68dbfd SKIP - wiki: self-referential (sync commit)
