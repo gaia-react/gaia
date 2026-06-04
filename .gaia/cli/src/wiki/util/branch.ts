@@ -97,9 +97,9 @@ export const inspectWorkingTree = (
     // Git quotes paths that contain spaces or special chars; strip the quotes.
     const rawPayload = line.slice(3);
     const payload =
-      rawPayload.startsWith('"') && rawPayload.endsWith('"')
-        ? rawPayload.slice(1, -1)
-        : rawPayload;
+      rawPayload.startsWith('"') && rawPayload.endsWith('"') ?
+        rawPayload.slice(1, -1)
+      : rawPayload;
     const renameSplit = payload.indexOf(' -> ');
 
     if (renameSplit === -1) {

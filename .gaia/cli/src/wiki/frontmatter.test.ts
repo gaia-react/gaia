@@ -117,7 +117,9 @@ describe('wiki frontmatter', () => {
     );
 
     const gaps = findFrontmatterGaps(sandbox.root);
-    expect(gaps).toEqual([{missing: ['status'], path: 'wiki/concepts/Null.md'}]);
+    expect(gaps).toEqual([
+      {missing: ['status'], path: 'wiki/concepts/Null.md'},
+    ]);
   });
 
   test('does not flag a page carrying both required fields', () => {

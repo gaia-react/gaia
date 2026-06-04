@@ -19,7 +19,14 @@ no matching RED on record.
 ## Record schema
 
 ```json
-{"schema":1,"file":"app/x/index.test.ts","fullName":"X does Y","signal":"sha256:…","failureKind":"assertion","observedAt":"2026-06-04T20:55:00Z"}
+{
+  "schema": 1,
+  "file": "app/x/index.test.ts",
+  "fullName": "X does Y",
+  "signal": "sha256:…",
+  "failureKind": "assertion",
+  "observedAt": "2026-06-04T20:55:00Z"
+}
 ```
 
 - `schema` (number); version, currently `1`. Readers ignore lines whose

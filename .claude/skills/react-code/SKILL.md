@@ -38,18 +38,18 @@ If none apply, skip `useCallback`, it adds indirection without benefit.
 
 **Before writing `<input>`, `<select>`, `<textarea>`, or `<input type="checkbox">`:**
 
-| Native element                         | Use instead                                                                      |
-| -------------------------------------- | -------------------------------------------------------------------------------- |
-| `<input type="text">`                  | `InputText` (`~/components/Form/InputText`)                                      |
-| `<input type="email">`                 | `InputEmail` (`~/components/Form/InputEmail`)                                    |
-| `<input type="password">`              | `InputPassword` (`~/components/Form/InputPassword`)                              |
-| `<input type="checkbox">` (single)     | `Checkbox` (`~/components/Form/Checkbox`)                                        |
+| Native element                         | Use instead                                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------------- |
+| `<input type="text">`                  | `InputText` (`~/components/Form/InputText`)                                     |
+| `<input type="email">`                 | `InputEmail` (`~/components/Form/InputEmail`)                                   |
+| `<input type="password">`              | `InputPassword` (`~/components/Form/InputPassword`)                             |
+| `<input type="checkbox">` (single)     | `Checkbox` (`~/components/Form/Checkbox`)                                       |
 | `<input type="checkbox">` (group)      | `Checkboxes` (`~/components/Form/Checkboxes`), needs `options: Option[]`        |
 | `<input type="radio">` / radio group   | `RadioButtons` (`~/components/Form/RadioButtons`), needs `options: Option[]`    |
 | `<select>`                             | `Select` (`~/components/Form/Select`), needs `name` + `options: SelectOption[]` |
 | `<textarea>`                           | `TextArea` (`~/components/Form/TextArea`), needs `name`; auto-resizes           |
-| Date (year/month/day)                  | `YearMonthDay` (`~/components/Form/YearMonthDay`)                                |
-| Field with label + error + description | `Field` (`~/components/Form/Field`)                                              |
+| Date (year/month/day)                  | `YearMonthDay` (`~/components/Form/YearMonthDay`)                               |
+| Field with label + error + description | `Field` (`~/components/Form/Field`)                                             |
 
 **Exceptions (native OK):** `<input type="hidden">`, `<input type="file">`, `<input type="range">`.
 

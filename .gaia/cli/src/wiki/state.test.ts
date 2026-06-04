@@ -215,7 +215,11 @@ describe('wiki state', () => {
     // feature-branch SHA, recorded its timestamp, then the squash landed and
     // replaced that SHA on main. Recovery resolves the baseline by time.
     sandbox.commitAt('A', {'app/a.ts': 'a\n'}, '2026-01-01T00:00:00Z');
-    const shaB = sandbox.commitAt('B', {'app/b.ts': 'b\n'}, '2026-01-02T00:00:00Z');
+    const shaB = sandbox.commitAt(
+      'B',
+      {'app/b.ts': 'b\n'},
+      '2026-01-02T00:00:00Z'
+    );
     sandbox.commitAt('C', {'app/c.ts': 'c\n'}, '2026-01-03T00:00:00Z');
 
     // Orphan an evaluated-up-to SHA off B that never lands on main's history.

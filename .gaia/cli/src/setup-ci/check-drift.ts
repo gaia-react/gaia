@@ -27,7 +27,10 @@
  */
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
-import {workflowPartialsDirectory, workflowTemplatePath} from '../automation/paths.js';
+import {
+  workflowPartialsDirectory,
+  workflowTemplatePath,
+} from '../automation/paths.js';
 import {renderWorkflowTemplate} from '../automation/render.js';
 import {buildWorkflowVars} from '../automation/workflow-vars.js';
 import {EXIT_CODES} from '../exit.js';

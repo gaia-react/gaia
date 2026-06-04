@@ -100,10 +100,9 @@ describe('setup-ci check-audit-drift', () => {
       'utf8'
     );
 
-    const exit = run(
-      ['--workflows-dir', customDir, '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--workflows-dir', customDir, '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
     const parsed = JSON.parse(stdio.out.join('').trim()) as {state: string};
@@ -114,10 +113,9 @@ describe('setup-ci check-audit-drift', () => {
     const customDir = path.join(sandbox.root, 'custom-workflows');
     mkdirSync(customDir, {recursive: true});
 
-    const exit = run(
-      ['--workflows-dir', customDir, '--json'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--workflows-dir', customDir, '--json'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
     const parsed = JSON.parse(stdio.out.join('').trim()) as {state: string};

@@ -164,7 +164,7 @@ Targets (flag anything over):
 | ---------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
 | `wiki/hot.md`                                                                      | ≤200 words | Cache discipline per `wiki/hot.md` comment |
 | `CLAUDE.md` (root)                                                                 | ≤400 words | Routing + principles only                  |
-| `wiki/README.md`                                                                   |,          | On demand, no auto-load budget needed     |
+| `wiki/README.md`                                                                   | ,          | On demand, no auto-load budget needed      |
 | Any nested `CLAUDE.md` discovered in Step 1 (monorepo package, subapp, docs, etc.) | ≤400 words | Scoped routing                             |
 | Any single `.claude/rules/*.md`                                                    | ≤200 lines | Focused rule                               |
 

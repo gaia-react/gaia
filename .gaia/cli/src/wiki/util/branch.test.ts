@@ -20,8 +20,10 @@ const okResult = (stdout: string): SpawnSyncReturns<string> => ({
   stdout,
 });
 
-const runnerReturning = (stdout: string): CommandRunner => () =>
-  okResult(stdout);
+const runnerReturning =
+  (stdout: string): CommandRunner =>
+  () =>
+    okResult(stdout);
 
 describe('inspectWorkingTree', () => {
   test('strips git quoting from a spaced wiki path and classifies it as a wiki change', () => {
@@ -83,7 +85,10 @@ describe('inspectWorkingTree', () => {
       runnerReturning(' M "wiki/concepts/Wiki Sync.md"\n M package.json\n')
     );
 
-    expect(status.paths).toEqual(['wiki/concepts/Wiki Sync.md', 'package.json']);
+    expect(status.paths).toEqual([
+      'wiki/concepts/Wiki Sync.md',
+      'package.json',
+    ]);
     expect(status.hasWikiChanges).toBe(true);
     expect(status.hasNonWikiChanges).toBe(true);
   });

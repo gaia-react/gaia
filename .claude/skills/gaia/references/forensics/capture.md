@@ -31,9 +31,9 @@ For the detected class, read only the files listed below. Record filename + one-
 
 ### update
 
-| path                  | one-line summary rule                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------- |
-| `.gaia/manifest.json` | presence + `version` field value                                                                        |
+| path                  | one-line summary rule                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `.gaia/manifest.json` | presence + `version` field value                                                                       |
 | _(conflicted paths)_  | output of `git diff --name-only --diff-filter=U`, list of repo-relative conflicted paths, one per line |
 
 ### wiki-sync
@@ -52,7 +52,7 @@ The verbatim failing command output stays in `## Symptom` (user-supplied). The `
 | path                    | one-line summary rule                                                       |
 | ----------------------- | --------------------------------------------------------------------------- |
 | `.claude/settings.json` | presence + top-level keys of the `hooks` object (key names only, no values) |
-| _(failing hook)_        | filename only if the user named it, never the script body                  |
+| _(failing hook)_        | filename only if the user named it, never the script body                   |
 
 ### scaffold
 

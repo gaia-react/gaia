@@ -112,7 +112,7 @@ Common stall patterns and how to handle them:
 
 | Pattern                          | Move                                                                                                         |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| "I don't know."                  | Offer the most likely answer with a one-sentence reason. "I'd guess X, does that feel right?"               |
+| "I don't know."                  | Offer the most likely answer with a one-sentence reason. "I'd guess X, does that feel right?"                |
 | "Whatever you think."            | Decline to decide alone. Name 2-3 options with trade-offs and ask them to pick.                              |
 | "Both, I guess."                 | Surface the cost of both. "Both means we ship later. If we had to pick one for v1, which?"                   |
 | Vague success criteria.          | Ask for the smallest concrete observation. "After five real uses, what would you point at to say it worked?" |

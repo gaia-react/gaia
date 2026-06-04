@@ -13,7 +13,7 @@ The official Claude Code dev-container docs at
   for headless / non-interactive use.
 - **API key via `ANTHROPIC_API_KEY`**; pay-as-you-go fallback.
 - **Browser sign-in inside the container, persisted in a named volume**
- ; supported but only useful for interactive editor flows.
+  ; supported but only useful for interactive editor flows.
 
 The docs also explicitly discourage bind-mounting the host's `~/.claude/`
 directory ("Avoid mounting host secrets … prefer repository-scoped or

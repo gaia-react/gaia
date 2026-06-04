@@ -42,16 +42,16 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 
 ### Allowlist (eligible for autonomous fixes)
 
-| Path                        | Notes                                             |
-| --------------------------- | ------------------------------------------------- |
-| `.gaia/cli/`                | GAIA CLI source.                                  |
-| `.claude/hooks/`            | Shell hooks.                                      |
-| `.claude/skills/`           | Skill markdown.                                   |
-| `.claude/commands/`         | Slash command definitions.                        |
-| `.claude/agents/`           | Sub-agent definitions.                            |
-| `.gaia/statusline/`         | Statusline scripts.                               |
+| Path                        | Notes                                            |
+| --------------------------- | ------------------------------------------------ |
+| `.gaia/cli/`                | GAIA CLI source.                                 |
+| `.claude/hooks/`            | Shell hooks.                                     |
+| `.claude/skills/`           | Skill markdown.                                  |
+| `.claude/commands/`         | Slash command definitions.                       |
+| `.claude/agents/`           | Sub-agent definitions.                           |
+| `.gaia/statusline/`         | Statusline scripts.                              |
 | `.specify/extensions/gaia/` | GAIA spec-kit extension, excluding `templates/`. |
-| `.gaia/manifest.json`       | Distribution manifest.                            |
+| `.gaia/manifest.json`       | Distribution manifest.                           |
 
 ### Denylist (never modify)
 

@@ -14,9 +14,9 @@ tags: [concept, lint]
 
 The rules below are the ones whose fix isn't obvious from the rule name. Trivial cases ("use the modern API name") aren't listed; query the `eslint-fixes` skill (`.claude/skills/eslint-fixes/`) for the full rule-by-rule playbook.
 
-| Rule                                 | Fix                                                                                                                                                                                             |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `no-void`                            | Make the handler `async` and `await` the call instead of using `void`. The `void` operator hides unhandled rejections; converting to `async/await` surfaces them in the promise chain.          |
+| Rule                                 | Fix                                                                                                                                                                                            |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no-void`                            | Make the handler `async` and `await` the call instead of using `void`. The `void` operator hides unhandled rejections; converting to `async/await` surfaces them in the promise chain.         |
 | `sonarjs/deprecation`                | **Fix the deprecation; never `eslint-disable`.** Deprecations land in this codebase as a signal to migrate, not a noise source. Common case: `z.email()` not `z.string().email()`.             |
 | `testing-library/await-async-events` | All `userEvent` methods are async: `await userEvent.click(el)`. Forgetting the `await` causes flaky tests because assertions run before the event has propagated through React's effect queue. |
 

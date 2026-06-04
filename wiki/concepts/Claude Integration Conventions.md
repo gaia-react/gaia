@@ -15,12 +15,12 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 
 ## 1. Directory overview
 
-| Directory / File        | Purpose                                                                                                                        | Loaded                       |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
-| `.claude/agents/`       | Named subagents (`.md` per agent); extension dirs for review-type agents                                                       | Manual (Task tool)           |
-| `.claude/commands/`     | Maintainer-only slash commands (`/gaia-init`, `/gaia-release`)                                                                 | Manual (slash invocation)    |
-| `.claude/hooks/`        | Bash scripts wired in `settings.json`                                                                                          | Auto on matched tool events  |
-| `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter                                                                  | Auto (global) or path-scoped |
+| Directory / File        | Purpose                                                                                                                       | Loaded                       |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `.claude/agents/`       | Named subagents (`.md` per agent); extension dirs for review-type agents                                                      | Manual (Task tool)           |
+| `.claude/commands/`     | Maintainer-only slash commands (`/gaia-init`, `/gaia-release`)                                                                | Manual (slash invocation)    |
+| `.claude/hooks/`        | Bash scripts wired in `settings.json`                                                                                         | Auto on matched tool events  |
+| `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter                                                                 | Auto (global) or path-scoped |
 | `.claude/skills/`       | Skills: both context-triggered (`react-code`, `typescript`) and user-invoked (`/gaia` router, `new-component`, `update-deps`) | Auto on context/intent match |
 | `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo, not source of truth)                                                    | Auto per named agent         |
 | `wiki/`                 | Knowledge base: architecture, decisions, patterns (source of truth)                                                           | Manual (on-demand fetch)     |
@@ -44,7 +44,7 @@ Three layers, three triggers. Pick the layer that loads guidance only when it's 
 
 | Layer | Loads when…                                        | Use for                                                                            |
 | ----- | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Hook  | Tool call matches a registered event               | Mechanical block / advice on a specific tool shape, no judgment required          |
+| Hook  | Tool call matches a registered event               | Mechanical block / advice on a specific tool shape, no judgment required           |
 | Rule  | `paths:` glob matches an in-scope file (or always) | File-path-bound conventions: project-wide style, route layout, accessibility, i18n |
 | Skill | `description:` matches user intent / context       | Cross-file reasoning patterns: refactor playbooks, error-fix recipes, TDD loop     |
 

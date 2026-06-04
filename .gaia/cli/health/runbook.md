@@ -35,13 +35,13 @@ After cycle 3 without clean: escalate (max loops hit; Orchestrator preserves all
 
 ## Termination
 
-**Non-blocking residuals.** A finding that matches an existing entry on a "Decided / not findings" list (`.gaia/cli/health/taxonomy.md` or the fitness spec's "Decided / not findings" section) is a **non-blocking residual** (`action: decided-not-finding`): recorded in `findings.json` for the artifact, but it does **not** count toward the clean-exit gate, it is exempt from the effective-shared-fitness test below, and it is excluded from the oscillation guard. The canonical case is the post-sync `wiki/.state.json` drift. `gaia wiki state` counts the wiki-sync commit itself, so drift is permanently ≥1 in steady state, surfaced as an `info` the fitness spec marks "do not escalate to a blocking finding." Without this carve-out the clean-A+ gate is unreachable in normal operation, and recall-oriented auditors re-surface the same decided non-findings every cycle, forcing a false oscillation escalation. An **open** finding, by contrast, is an unresolved `action: real-fix`. A `false-positive` that cannot be suppressed escalates via the *fixer-unable-to-fix* trigger (not oscillation), or is reclassified `decided-not-finding` if genuinely acceptable.
+**Non-blocking residuals.** A finding that matches an existing entry on a "Decided / not findings" list (`.gaia/cli/health/taxonomy.md` or the fitness spec's "Decided / not findings" section) is a **non-blocking residual** (`action: decided-not-finding`): recorded in `findings.json` for the artifact, but it does **not** count toward the clean-exit gate, it is exempt from the effective-shared-fitness test below, and it is excluded from the oscillation guard. The canonical case is the post-sync `wiki/.state.json` drift. `gaia wiki state` counts the wiki-sync commit itself, so drift is permanently ≥1 in steady state, surfaced as an `info` the fitness spec marks "do not escalate to a blocking finding." Without this carve-out the clean-A+ gate is unreachable in normal operation, and recall-oriented auditors re-surface the same decided non-findings every cycle, forcing a false oscillation escalation. An **open** finding, by contrast, is an unresolved `action: real-fix`. A `false-positive` that cannot be suppressed escalates via the _fixer-unable-to-fix_ trigger (not oscillation), or is reclassified `decided-not-finding` if genuinely acceptable.
 
-**Effective shared-fitness grade.** For the clean-exit gate *only*, a Bucket E category that sits below A+ *solely* because of non-blocking residual `info` findings counts as A+. The reported `shared_fitness_grade` stays honest: it may be A. A category held below A+ by any `warning`/`error`, or by `info` not on a "Decided / not findings" list, is **not** exempt.
+**Effective shared-fitness grade.** For the clean-exit gate _only_, a Bucket E category that sits below A+ _solely_ because of non-blocking residual `info` findings counts as A+. The reported `shared_fitness_grade` stays honest: it may be A. A category held below A+ by any `warning`/`error`, or by `info` not on a "Decided / not findings" list, is **not** exempt.
 
-- **Clean**: no open findings remain AND Bucket D returns "A+ readiness" AND the *effective* shared-fitness grade = A+. Orchestrator computes the reported overall grade as the F-to-A+ floor of: Bucket D verdict (A+/A/A−), the open-findings-count signal (zero open findings → A+; else degrade per wiki page rubric applied to open maintainer findings), and Bucket E's honest `shared_fitness_grade`. A clean run is **not necessarily A+**: it is the honest floor with no open work left, and non-blocking residual `info` findings legitimately cap it at A. Exit with the overall grade and the Bucket E sub-grade in the report.
+- **Clean**: no open findings remain AND Bucket D returns "A+ readiness" AND the _effective_ shared-fitness grade = A+. Orchestrator computes the reported overall grade as the F-to-A+ floor of: Bucket D verdict (A+/A/A−), the open-findings-count signal (zero open findings → A+; else degrade per wiki page rubric applied to open maintainer findings), and Bucket E's honest `shared_fitness_grade`. A clean run is **not necessarily A+**: it is the honest floor with no open work left, and non-blocking residual `info` findings legitimately cap it at A. Exit with the overall grade and the Bucket E sub-grade in the report.
 - **Max loops**: three cycles without a clean report. Orchestrator escalates with the outstanding open findings list and the overall grade.
-- **Oscillation**: same *open*-finding fingerprint appears in `c<N>/findings.json` AND `c<N-1>/findings.json`. Detection is mechanical: `comm -12 <(jq -r '.findings[] | select(.action=="real-fix") | .fingerprint' c<N-1>/findings.json | sort) <(jq -r '.findings[] | select(.action=="real-fix") | .fingerprint' c<N>/findings.json | sort)`. A non-empty intersection means an open finding survived a Fixer dispatch. Escalate immediately; don't burn the third cycle. Non-blocking residuals (`decided-not-finding`) recur by design and are excluded from the guard so they never trigger a false escalation.
+- **Oscillation**: same _open_-finding fingerprint appears in `c<N>/findings.json` AND `c<N-1>/findings.json`. Detection is mechanical: `comm -12 <(jq -r '.findings[] | select(.action=="real-fix") | .fingerprint' c<N-1>/findings.json | sort) <(jq -r '.findings[] | select(.action=="real-fix") | .fingerprint' c<N>/findings.json | sort)`. A non-empty intersection means an open finding survived a Fixer dispatch. Escalate immediately; don't burn the third cycle. Non-blocking residuals (`decided-not-finding`) recur by design and are excluded from the guard so they never trigger a false escalation.
 
 **Verdict widening note.** The overall verdict is F-to-A+, computed as the floor of all buckets. It is never higher than Bucket E's `shared_fitness_grade`. Both the overall grade and the shared-fitness sub-grade appear in all report templates (clean exit and escalation).
 
@@ -60,14 +60,14 @@ Human refuses → escalate.
 
 ## Model selection
 
-| Role                                                                                                               | Model  |
-| ------------------------------------------------------------------------------------------------------------------ | ------ |
-| Orchestrator                                                                                                       | Sonnet |
-| Triager                                                                                                            | Sonnet |
-| Bucket A (static checks)                                                                                           | Haiku  |
-| Bucket B (source greps)                                                                                            | Haiku  |
-| Bucket C (bundle simulation)                                                                                       | Haiku  |
-| Bucket D (cross-class walk)                                                                                        | Sonnet |
+| Role                                                                                                              | Model  |
+| ----------------------------------------------------------------------------------------------------------------- | ------ |
+| Orchestrator                                                                                                      | Sonnet |
+| Triager                                                                                                           | Sonnet |
+| Bucket A (static checks)                                                                                          | Haiku  |
+| Bucket B (source greps)                                                                                           | Haiku  |
+| Bucket C (bundle simulation)                                                                                      | Haiku  |
+| Bucket D (cross-class walk)                                                                                       | Sonnet |
 | Bucket E: Auditor (mechanical: hook integrity, settings hygiene, GAIA-install fitness, wiki fitness)              | Haiku  |
 | Bucket E: Auditor (judgment: skill/command/agent frontmatter, rule hygiene, `CLAUDE.md` hygiene, grade synthesis) | Sonnet |
 | Fixer: config-yaml-md                                                                                             | Sonnet |
@@ -253,7 +253,7 @@ Crash-safety: Bucket E writes incrementally per category; a crash mid-run leaves
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **config-yaml-md** | `.gaia/release-scrub.yml`, `.gaia/cli/health/taxonomy.md`, `.gaia/cli/health/runbook.md`, `wiki/decisions/Bundle-time Scrub.md` | New scrub check: allowlist tightening; taxonomy class addition; runbook tweak |
 | **source-ts**      | `.gaia/cli/src/**`, `.github/workflows/release.yml`, `.gaia/cli/gaia` (rebundle)                                                | New CLI primitive: release.yml step; bundle regeneration                      |
-| **wiki-content**   | `wiki/**/*.md` (shipped pages only; exclude `hot.md`, `log.md`, anything release-excluded)                                     | Wiki-style or structural finding                                              |
+| **wiki-content**   | `wiki/**/*.md` (shipped pages only; exclude `hot.md`, `log.md`, anything release-excluded)                                      | Wiki-style or structural finding                                              |
 | **claude-surface** | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`            | Instruction-file leak: fitness findings from Bucket E                         |
 
 Mutual-exclusion (must serialize, never run in parallel; single Fixer at a time across the whole team):
@@ -332,7 +332,7 @@ Lifecycle:
 - **Auditors**: write raw outputs to their per-cycle paths; return summary + file path in their report (not the full content).
 - **Triager**: reads bucket files for triage; writes `c<N>/findings.json`.
 - **Orchestrator (oscillation detection)**: mechanical diff via `jq -r '.findings[].fingerprint' .gaia/local/audit/c<N>/findings.json | sort` against the prior cycle's same. Non-empty intersection → oscillation, escalate.
-- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an *effective* shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker.
+- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an _effective_ shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker.
 - **Escalation**: Orchestrator preserves all `c*/` dirs and surfaces their paths in the escalation report for human review.
 
 ## State

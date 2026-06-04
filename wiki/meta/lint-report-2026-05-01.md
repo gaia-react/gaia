@@ -22,17 +22,17 @@ Run after commits: `17a2444` (chore: restructure commands, skills, and rules) an
 
 ## Prior Report Resolution
 
-| Issue                                                    | Status                                                             |
-| -------------------------------------------------------- | ------------------------------------------------------------------ |
-| C1: six stale `updated:` pages                          | ✓ Fixed                                                            |
-| C2: `overview.md` stale State/pages claims              | ✓ Fixed                                                            |
-| W1: `hot.md` stale branch claim                         | ✓ Fixed                                                            |
-| W2: `index.md` missing `lint-report-2026-04-27`         | ✓ Fixed                                                            |
-| W3: `README` not in `index.md`                          | ✓ Fixed                                                            |
-| W4: `log.md` missing `@msw/data` entry                  | ✗ Not fixed; log format changed to release-only (see C1 below)     |
-| S1: no `@msw/data` dependency page                      | Not addressed (optional)                                           |
+| Issue                                                   | Status                                                            |
+| ------------------------------------------------------- | ----------------------------------------------------------------- |
+| C1: six stale `updated:` pages                          | ✓ Fixed                                                           |
+| C2: `overview.md` stale State/pages claims              | ✓ Fixed                                                           |
+| W1: `hot.md` stale branch claim                         | ✓ Fixed                                                           |
+| W2: `index.md` missing `lint-report-2026-04-27`         | ✓ Fixed                                                           |
+| W3: `README` not in `index.md`                          | ✓ Fixed                                                           |
+| W4: `log.md` missing `@msw/data` entry                  | ✗ Not fixed; log format changed to release-only (see C1 below)    |
+| S1: no `@msw/data` dependency page                      | Not addressed (optional)                                          |
 | S2: `[[Agentic Design]]` near-orphan                    | Improved: now linked from `[[GAIA Philosophy]]` (3 inbound links) |
-| S3: `dashboard.md` non-existent `wiki/questions/` query | ✓ Fixed                                                            |
+| S3: `dashboard.md` non-existent `wiki/questions/` query | ✓ Fixed                                                           |
 
 ---
 

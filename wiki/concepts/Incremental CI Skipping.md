@@ -47,7 +47,7 @@ Each gated workflow does two things before its expensive steps:
      (commit trailer or commit status). Version-aware: a `.gaia/VERSION` bump
      invalidates older audits and forces a full re-audit under the new ruleset.
    - `tests.yml` uses `.github/audit/resolve-check-base.sh "Vitest and
-     Playwright"`; the base is the most recent ancestor whose `check-runs`
+Playwright"`; the base is the most recent ancestor whose `check-runs`
      include that context with `conclusion == "success"`.
 2. **Diff `<base>...HEAD` against a path allowlist.** The workflow lists the
    changed files in the un-passed delta and matches them (ERE) against the
@@ -67,7 +67,7 @@ Only a `success` conclusion anchors a base. A failed or cancelled run on a
 commit leaves no green signal, so the walk continues past it. A later
 prose-only commit then diffs back to the last truly-green tree and re-runs,
 catching any code introduced in the failed commit in between. Anchoring on the
-last *run* (rather than the last *green* run) would let a broken commit hide
+last _run_ (rather than the last _green_ run) would let a broken commit hide
 behind a subsequent prose commit.
 
 ## Permissions
