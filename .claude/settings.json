@@ -110,6 +110,11 @@
           },
           {
             "type": "command",
+            "command": ".claude/hooks/block-no-verify.sh",
+            "statusMessage": "Checking commit-floor bypass…"
+          },
+          {
+            "type": "command",
             "command": ".claude/hooks/block-rm-rf.sh",
             "statusMessage": "Checking rm -rf safety…"
           },
