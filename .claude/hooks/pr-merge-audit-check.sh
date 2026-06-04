@@ -263,7 +263,7 @@ None of the accepted signals is present:
   - GitHub CI status: absent or version/tree mismatch
   - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
   - Out-of-scope:    PR changes at least one in-scope path (app/, test/, configs,
-                     CI workflows), not a wiki/docs/.gaia-only diff
+                     .github/workflows/), not a wiki/docs/.gaia-only diff
 
 To unblock:
   1. Spawn the code-review-audit agent locally, OR push to the PR branch

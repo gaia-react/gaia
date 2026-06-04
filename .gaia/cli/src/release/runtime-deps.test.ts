@@ -135,6 +135,29 @@ describe('extractPathRefs', () => {
       '.claude/hooks/x.sh',
     ]);
   });
+
+  test('skips prose-allowlisted directory tokens in user-facing strings', () => {
+    // pr-merge-audit-check.sh names `.github/workflows/` as an example
+    // in-scope path inside a multi-line `reason="..."` error string. It is
+    // descriptive prose shown to the operator, not a runtime invocation, so
+    // the scan must not treat it as a runtime-dependency leak.
+    const refs = extractPathRefs(
+      '.claude/hooks/pr-merge-audit-check.sh',
+      '                     .github/workflows/), not a wiki/docs/.gaia-only diff\n'
+    );
+    expect(refs.map((r) => r.path)).not.toContain('.github/workflows');
+  });
+
+  test('still flags a genuine file leak under an allowlisted directory', () => {
+    // The allowlist is exact-token. A real invocation of a file under
+    // .github/workflows/ is a distinct, longer token and must still flag,
+    // guarding against the allowlist over-suppressing genuine leaks.
+    const refs = extractPathRefs(
+      '.gaia/statusline/foo.sh',
+      'bash .github/workflows/deploy.yml\n'
+    );
+    expect(refs.map((r) => r.path)).toContain('.github/workflows/deploy.yml');
+  });
 });
 
 describe('release runtime-deps CLI', () => {

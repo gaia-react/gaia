@@ -101,6 +101,28 @@ const RUNTIME_MARKERS: ReadonlySet<string> = new Set([
 
 const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
 
+/**
+ * Bare-directory tokens that surface only as prose inside shipped scripts,
+ * user-facing error text and help strings that name an in-scope directory as
+ * an example path. They are descriptive, never sourced or invoked, so they
+ * are not runtime dependencies and must not be reported as leaks.
+ *
+ * Entries are exact, fully-qualified tokens (the trimmed output of
+ * `extractPathRefs`). Exact-match is deliberate: allowlisting
+ * `.github/workflows` does NOT suppress a genuine leak to a file under it,
+ * `.github/workflows/foo.yml` is a distinct, longer token that still flags.
+ * This is the documented channel for prose false-positives, add the exact
+ * token plus a justification rather than reword the operator-facing prose.
+ *
+ *   - `.github/workflows`: named in `.claude/hooks/pr-merge-audit-check.sh`'s
+ *     merge-gate error message as an example in-scope path, alongside `app/`,
+ *     `test/`, `configs`. The directory is release-excluded; the reference is
+ *     descriptive, not an invocation. An inline-ignore comment cannot annotate
+ *     the occurrence because it lives inside a multi-line quoted `reason="..."`
+ *     string that renders to the operator, hence this central allowlist.
+ */
+const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set(['.github/workflows']);
+
 const PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
 
 /**
@@ -204,7 +226,10 @@ export const extractPathRefs = (
           // intended path token.
           const trimmed = candidate.replace(/[./]+$/, '');
 
-          if (trimmed.length > prefix.length) {
+          if (
+            trimmed.length > prefix.length &&
+            !PROSE_PATH_ALLOWLIST.has(trimmed)
+          ) {
             refs.push({filePath, line: index + 1, path: trimmed});
           }
         }
