@@ -14,17 +14,18 @@ Artifacts that should NOT be here are markdown walk-through runbooks tied to a s
 
 ## Running
 
-### Wiki-sync E2E (billable)
-
 ```bash
 bash .gaia/tests/smoke/run-all.sh
 ```
 
-Walks every `wiki-sync/*.sh` scenario, prints PASS/FAIL, exits non-zero on any failure.
+Two lanes:
+
+- **Blocking** (sets the exit code): the deterministic structural harnesses `wiki-promote/run.sh` and `uat-write/run.sh`.
+- **Advisory** (never gates): `wiki-sync/run.sh` (billable). It drives real `claude -p` sessions, so its assertions depend on free-form LLM output and cannot block a release on a coin-flip. It retries each scenario to absorb one-off variance and surfaces the captured session output on a final failure. Run it standalone with `bash .gaia/tests/smoke/wiki-sync/run.sh`. See `wiki-sync/README.md` for the rationale.
 
 ## When to run
 
-- **Before cutting a GAIA release**; wiki-sync E2E. Verifies the wiki-sync system works under real Claude judgment, including the post-Serena WORTHY narrowing.
+- **Before cutting a GAIA release**; wiki-sync E2E (advisory). Verifies the wiki-sync system works under real Claude judgment, including the post-Serena WORTHY narrowing. Read the advisory summary; an `ADVISORY` line is a signal to investigate, not a hard block.
 - **Before merging a PR that touches the SPEC-003 or SPEC-004 hook surface**; `uat-write/` and `wiki-promote/` structural smokes.
 
 ## See also
