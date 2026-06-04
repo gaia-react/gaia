@@ -12,7 +12,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Classification table — each class matches its signal phrases
+# Classification table; each class matches its signal phrases
 # ---------------------------------------------------------------------------
 
 @test "UAT-009: 'init' signal phrase classifies as init" {

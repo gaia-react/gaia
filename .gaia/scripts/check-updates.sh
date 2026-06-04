@@ -4,7 +4,7 @@
 # Writes .gaia/cache/update-check.json with:
 #   - outdatedCount  (actionable updates from `gaia update-deps run`, which
 #                     applies the ESLint 9.x cap and the minimumReleaseAge
-#                     cooldown — so it never counts updates the skill skips)
+#                     cooldown, so it never counts updates the skill skips)
 #   - gaiaCurrent    (from .gaia/VERSION)
 #   - gaiaLatest     (from `gh release list` or curl GitHub API)
 #   - gaiaHasUpdate  (semver comparison)
@@ -14,7 +14,7 @@
 # SessionStart hook can fire this in the background without paying the cost
 # on every session.
 #
-# Partial failures are tolerated — exit 0 even if some fields could not be
+# Partial failures are tolerated; exit 0 even if some fields could not be
 # refreshed. Do NOT add `set -e`.
 
 TTL=21600
@@ -56,12 +56,12 @@ mkdir -p "$CACHE_DIR" 2>/dev/null
 
 # ---------- outdatedCount ----------
 # Count only the updates /update-deps will actually apply. The `update-deps
-# run` primitive runs the same Phase 1-3 filtering the skill does — the ESLint
+# run` primitive runs the same Phase 1-3 filtering the skill does; the ESLint
 # 9.x cap and the minimumReleaseAge cooldown (pnpm 11 rejects lockfile entries
 # younger than the cooldown, so the flow skips them). Counting its emitted plan
 # (wave members that are genuine upgrades) keeps the nudge from prodding for
 # updates that would be skipped. Falls back to the previous cached count on any
-# failure — missing binary, network error, parse error.
+# failure: missing binary, network error, parse error.
 outdated_count="$prev_outdated_count"
 GAIA_BIN="$GAIA_DIR/cli/gaia"
 if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
@@ -139,7 +139,7 @@ if command -v jq >/dev/null 2>&1; then
     '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate}' \
     > "$tmp_file" 2>/dev/null
 else
-  # jq not available — emit valid JSON via printf.
+  # jq not available; emit valid JSON via printf.
   printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s}\n' \
     "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" \
     > "$tmp_file" 2>/dev/null

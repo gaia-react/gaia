@@ -173,7 +173,7 @@ describe('release runtime-deps CLI', () => {
   });
 
   test('flags references to release-excluded paths', () => {
-    // Manifest excludes .gaia/scripts/ — that directory is release-excluded.
+    // Manifest excludes .gaia/scripts/; that directory is release-excluded.
     sandbox.writeManifest({
       '.gaia/cli/gaia': 'owned',
     });

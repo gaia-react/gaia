@@ -7,7 +7,7 @@
  * orchestrates the steps; this state file records progress so a partial
  * run can resume idempotently.
  *
- * The file lives under `.gaia/local/` (gitignored) — every developer on
+ * The file lives under `.gaia/local/` (gitignored); every developer on
  * a clone has their own state file. Maintainers in the upstream repo
  * also write here; the file is just a per-machine marker.
  */
@@ -44,7 +44,7 @@ export const STATE_DIRECTORY_RELATIVE = path.join('.gaia', 'local');
  * support a submodule topology; do not change the resolution strategy
  * without re-validating that constraint.
  *
- * Throws if `git` is unavailable or `cwd` is not inside a git repo —
+ * Throws if `git` is unavailable or `cwd` is not inside a git repo;
  * matching `resolveRepoRoot`'s contract so callers can translate to the
  * existing `not_a_git_repo` exit code.
  */

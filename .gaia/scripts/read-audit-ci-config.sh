@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# read-audit-ci-config.sh — reader for .gaia/audit-ci.yml.
+# read-audit-ci-config.sh: reader for .gaia/audit-ci.yml.
 #
 # Argument-less. Resolves the config file at
 # `$(git rev-parse --show-toplevel)/.gaia/audit-ci.yml` (falls back to
@@ -30,7 +30,7 @@
 #
 # The `retrigger_workflows` value uses GitHub Actions' multiline-output
 # heredoc syntax so consumers receive a newline-separated string (workflow
-# display names may contain spaces — single-line separators are ambiguous).
+# display names may contain spaces; single-line separators are ambiguous).
 #
 # Resilience:
 #   - Missing file        → all defaults.
@@ -51,7 +51,7 @@ set -euo pipefail
 #
 # `gate_label`'s default is the empty string; it is hard-coded inline in
 # the normalize/emit step rather than declared here (a constant would be
-# unused — there's no fallback path that needs it because the
+# unused; there's no fallback path that needs it because the
 # normalizer's only "no value" branch already emits empty).
 
 DEFAULT_BUDGET_SECONDS="1800"
@@ -83,7 +83,7 @@ fi
 #   or empty if the key is absent / commented out / file missing.
 #
 #   Matches lines of the form:    `^[[:space:]]*<key>[[:space:]]*:[[:space:]]*VALUE`
-#   Strips trailing `# comment` (only when the `#` is preceded by whitespace —
+#   Strips trailing `# comment` (only when the `#` is preceded by whitespace,
 #   this avoids eating a `#` that appears inside a string label like
 #   `gate_label: needs-review#urgent`, since YAML comment syntax requires
 #   a leading space before the `#`).
@@ -107,7 +107,7 @@ extract_raw_value() {
       if (line !~ pattern) next
       # Strip the key + colon prefix.
       sub(pattern, "", line)
-      # Strip a trailing `# comment` (only when ` #` — leading space
+      # Strip a trailing `# comment` (only when ` #`, leading space
       # required, per YAML comment rules; this preserves `#` inside
       # unquoted string values like `foo#bar`).
       sub(/[[:space:]]+#.*$/, "", line)
@@ -189,7 +189,7 @@ extract_list_value() {
         in_list = 1
         next
       }
-      # Scalar where a list was expected — accept as a single-item list.
+      # Scalar where a list was expected; accept as a single-item list.
       print strip_quotes(line)
       exit
     }

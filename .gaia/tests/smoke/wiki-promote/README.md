@@ -15,7 +15,7 @@ What this smoke covers:
 
 What this smoke does NOT cover:
 
-- Live `/speckit-implement` hook fire — that requires a real spec-kit invocation against a synthetic SPEC + branch + PR, which is out of scope for the smoke layer.
+- Live `/speckit-implement` hook fire; that requires a real spec-kit invocation against a synthetic SPEC + branch + PR, which is out of scope for the smoke layer.
 - Full wiki-page render (frontmatter values, body sections, sibling cross-links). Hand-verify post-merge against a real promotion run.
 - The `/gaia-wiki sync` handoff. Covered by the `wiki-sync` smokes under `../wiki-sync/`.
 
@@ -29,8 +29,8 @@ Exits 0 when every artifact is present and the manifest parses; non-zero on the 
 
 ## Files
 
-- `run.sh` — the harness. Checks file existence + manifest content + revised-contracts amendment.
-- `fixture/SPEC-999.md` — a synthetic SPEC frontmatter sample (`wiki_promote_default: yes`, `wiki_promote_targets: [decisions, concepts]`). Reference shape; not consumed by the harness today.
-- `fixture/pr-body.txt` — synthetic PR body text. Reference shape; not consumed by the harness today.
+- `run.sh`; the harness. Checks file existence + manifest content + revised-contracts amendment.
+- `fixture/SPEC-999.md`; a synthetic SPEC frontmatter sample (`wiki_promote_default: yes`, `wiki_promote_targets: [decisions, concepts]`). Reference shape; not consumed by the harness today.
+- `fixture/pr-body.txt`; synthetic PR body text. Reference shape; not consumed by the harness today.
 
 The fixtures exist for downstream tasks that exercise the live render path; the structural smoke only inspects repo state.

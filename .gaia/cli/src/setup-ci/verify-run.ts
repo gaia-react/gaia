@@ -25,7 +25,7 @@
  * picked run's `createdAt`; a `createdAt` more than 5s before that
  * timestamp emits a stderr warning but proceeds without failing.
  *
- * The handler exits 0 regardless of `verified` — the slash command
+ * The handler exits 0 regardless of `verified`; the slash command
  * branches on the JSON. Exits non-zero only on hard `gh` errors (e.g.
  * `gh workflow run` failed entirely).
  */
@@ -68,7 +68,7 @@ type RunViewPayload = {
 /**
  * Parse a strictly-decimal positive integer. Unlike `Number.parseInt`,
  * this rejects trailing garbage (`"30abc"`), leading signs, and empty
- * strings — returns `null` for anything that is not all digits.
+ * strings; returns `null` for anything that is not all digits.
  */
 const parsePositiveInteger = (value: string): number | null => {
   if (!/^\d+$/u.test(value)) return null;
@@ -330,7 +330,7 @@ export const run = async (
         createdAtMs < triggerTime - RACE_WINDOW_GUARD_MS
       ) {
         process.stderr.write(
-          `verify-run: warning — picked run ${runId} createdAt ` +
+          `verify-run: warning: picked run ${runId} createdAt ` +
             `${first.createdAt} predates trigger time by ` +
             `${triggerTime - createdAtMs}ms; may be a concurrent dispatch\n`
         );
@@ -361,7 +361,7 @@ export const run = async (
     });
 
     if (!view.ok) {
-      // Surface the underlying gh error rather than retrying — gh
+      // Surface the underlying gh error rather than retrying; gh
       // would have surfaced a transient retry on its own.
       structuredError({
         code: 'run_view_failed',

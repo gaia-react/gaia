@@ -39,7 +39,7 @@ LEAK_COUNT=$(jq -r '.leaks | length' "$SCRUB_OUTPUT")
 UNBALANCED_COUNT=$(jq -r '.unbalanced_markers | length' "$SCRUB_OUTPUT")
 
 if [ "$BLOCKS" != "0" ]; then
-  log "Second scrub pass stripped $BLOCKS marker block(s) — first pass missed them or tree was mutated"
+  log "Second scrub pass stripped $BLOCKS marker block(s); first pass missed them or tree was mutated"
   fail "scrub is not idempotent ($BLOCKS additional blocks stripped on rerun)"
   exit 1
 fi

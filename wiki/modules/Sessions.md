@@ -11,13 +11,13 @@ tags: [module, sessions, cookies]
 
 # Sessions
 
-`app/sessions.server/` contains cookie session-storage code that needs `SESSION_SECRET` for signing. The `.server` suffix excludes these from the client bundle — secrets never reach the browser.
+`app/sessions.server/` contains cookie session-storage code that needs `SESSION_SECRET` for signing. The `.server` suffix excludes these from the client bundle; secrets never reach the browser.
 
 Uses React Router 7's `createCookieSessionStorage`. Secret comes from `env.SESSION_SECRET` (Zod-validated).
 
 ## Theme cookie is **not** a session
 
-The `__theme` cookie is read/written as a plain cookie via `app/utils/theme.server.ts` (using the `cookie` package directly), not session storage. It doesn't need signing — its value is non-sensitive (light/dark/system). See [[Theme Flow]] and [[Dark Mode Modernization]] for the full pipeline.
+The `__theme` cookie is read/written as a plain cookie via `app/utils/theme.server.ts` (using the `cookie` package directly), not session storage. It doesn't need signing; its value is non-sensitive (light/dark/system). See [[Theme Flow]] and [[Dark Mode Modernization]] for the full pipeline.
 
 ## Adding auth sessions
 
@@ -27,6 +27,6 @@ For the current bundled session files, query Serena (`.claude/rules/code-search.
 
 ## See also
 
-- [[Theme Flow]] — full SSR→client theme lifecycle
-- [[Language Flow]] — language detection + persistence
-- [[Routing]] — `_session+/` hook point
+- [[Theme Flow]]: full SSR→client theme lifecycle
+- [[Language Flow]]: language detection + persistence
+- [[Routing]]: `_session+/` hook point

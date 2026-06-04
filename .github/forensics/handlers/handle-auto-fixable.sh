@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# handle-auto-fixable.sh — UAT-004 action handler.
+# handle-auto-fixable.sh: UAT-004 action handler.
 #
 # Pre-conditions: the workflow has already created `<fix-branch>` from
 # `main`, applied the candidate fix, run the Quality Gate green, and
@@ -9,7 +9,7 @@
 #   handle-auto-fixable.sh <issue-num> <class-slug> <fix-branch> <pr-body-file>
 #
 # <pr-body-file> path to a file holding the PR body. Per UAT-015 the
-# body cites `## Capture` from the issue verbatim — the workflow that
+# body cites `## Capture` from the issue verbatim, the workflow that
 # composes this file is responsible for the passthrough; this handler
 # never re-redacts.
 #
@@ -36,7 +36,7 @@ pr_body_file="$4"
 [ -f "$pr_body_file" ] || { echo "handle-auto-fixable.sh: pr body file not found: $pr_body_file" >&2; exit 2; }
 
 # 1. Sanity check: branch must exist on origin. Without this, gh pr create
-#    would happily try to push the local branch — but the workflow's
+#    would happily try to push the local branch, but the workflow's
 #    contract says the gate-passing push has already happened. A missing
 #    remote ref means an upstream invariant is broken; fail loudly.
 if ! git ls-remote --exit-code --heads origin "$fix_branch" >/dev/null 2>&1; then

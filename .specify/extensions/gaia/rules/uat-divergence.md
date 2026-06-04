@@ -4,8 +4,8 @@ When the implementer turns a red Playwright UAT spec green, the test body inevit
 
 ## Contract
 
-- **Cosmetic divergence** — selector text, button label, accessible-name strings, copy, role names, URL slugs, layout-only assertions: **editable** by the implementer. The PO authored the UAT against an idealized UI; the implementer reconciles it with the shipped UI. Edits to cosmetic surface stay in the spec file and require no SPEC reopen.
-- **Logical divergence** — the user flow, the success criteria, the error-handling branch, the side-effect being asserted, the precondition, the post-state: **forbidden**. If the implementation cannot satisfy the UAT's logic as written, the spec is NOT edited. The implementer raises the divergence to the PO and the SPEC is reopened to refine the UAT. The hook re-fires on the next `/speckit-implement` and rewrites the spec from the corrected UAT.
+- **Cosmetic divergence**: selector text, button label, accessible-name strings, copy, role names, URL slugs, layout-only assertions: **editable** by the implementer. The PO authored the UAT against an idealized UI; the implementer reconciles it with the shipped UI. Edits to cosmetic surface stay in the spec file and require no SPEC reopen.
+- **Logical divergence**: the user flow, the success criteria, the error-handling branch, the side-effect being asserted, the precondition, the post-state: **forbidden**. If the implementation cannot satisfy the UAT's logic as written, the spec is NOT edited. The implementer raises the divergence to the PO and the SPEC is reopened to refine the UAT. The hook re-fires on the next `/speckit-implement` and rewrites the spec from the corrected UAT.
 
 ## Scope
 

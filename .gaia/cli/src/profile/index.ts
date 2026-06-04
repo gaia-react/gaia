@@ -54,7 +54,7 @@ const parseTimestampMs = (timestamp: string): number => {
  * fade curve. Fade is only considered when the pattern's events span ≥1
  * week of history.
  *
- * `improvement` is `historic_rate - recent_rate` — positive means the
+ * `improvement` is `historic_rate - recent_rate`; positive means the
  * user is getting better. We map strengths back to underlying rate scale
  * (strength = min(1, rate / RATE_TARGET) → rate ≈ strength * RATE_TARGET).
  */

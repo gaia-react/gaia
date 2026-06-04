@@ -1,4 +1,4 @@
-name: 'GAIA CI — Stale PR Skip'
+name: 'GAIA CI, Stale PR Skip'
 description: |
   Pre-run check that skips opening a new GAIA CI PR when an existing
   gaia-ci-labeled bot-authored PR is already open against the default

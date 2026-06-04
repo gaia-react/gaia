@@ -17,8 +17,8 @@ fixtures but does not consume them in tests.** They exist for two reasons:
 | `automation-config-wiki-ci.json`     | Wiki under CI control, daily schedule.                       |
 | `automation-config-wiki-local.json`  | Wiki under local control. Local hooks fire normally.         |
 | `automation-state-wiki-fresh.json`   | A run from the previous day; no overage, fresh `skip_count`. |
-| `automation-state-wiki-stale.json`   | A run from > 14 days ago — triggers `ceiling_14d` decision.  |
-| `automation-state-wiki-overage.json` | `cost_overage = true` — triggers `cost_overage` decision.    |
+| `automation-state-wiki-stale.json`   | A run from > 14 days ago; triggers `ceiling_14d` decision.  |
+| `automation-state-wiki-overage.json` | `cost_overage = true`; triggers `cost_overage` decision.    |
 
 ## Validation
 

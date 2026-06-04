@@ -198,7 +198,7 @@ describe('handleEmit', () => {
     expect(existsSync(todayJsonl(sandbox.roots.mentorshipDir))).toBe(false);
   });
 
-  test('UAT-012/025: idempotent — same content twice yields one line per stream', async () => {
+  test('UAT-012/025: idempotent, same content twice yields one line per stream', async () => {
     await enableMentorship(sandbox.roots);
 
     const first = await handleEmit(goodUatPassArgv, {roots: sandbox.roots});
@@ -313,7 +313,7 @@ describe('handleEmit', () => {
     // The corrupted-config read throws synchronously; we surface it as an
     // internal CLI error. The UNKNOWN_SUBCOMMAND code is the catch-all from
     // the top-level wrapper; here we check it is non-zero (the actual code
-    // will depend on the throw site — the contract is "fail loud").
+    // will depend on the throw site; the contract is "fail loud").
     expect(exit).not.toBe(EXIT_CODES.OK);
     expect(existsSync(todayJsonl(sandbox.roots.cloudDir))).toBe(false);
   });

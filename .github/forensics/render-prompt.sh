@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# render-prompt.sh — SPEC-003 prompt-template renderer.
+# render-prompt.sh: SPEC-003 prompt-template renderer.
 #
 # Usage:
 #   render-prompt.sh <template-file> <key=value>...
@@ -8,12 +8,12 @@
 # with the supplied value. Renders to stdout.
 #
 # Why this script exists: the previous inline `awk -v` rendering blocks in
-# `.github/workflows/forensics-triage.yml` had two critical bugs — POSIX
+# `.github/workflows/forensics-triage.yml` had two critical bugs, POSIX
 # awk and gawk both reject `-v var=value` assignments containing literal
 # newlines (UAT-001), and `gsub(re, repl, target)` expands `&` in `repl`
 # to the matched text, corrupting any user content containing `&`
 # (UAT-002). This helper sidesteps both failures by walking the template
-# once and replacing tokens with literal-string values — no regex, no
+# once and replacing tokens with literal-string values, no regex, no
 # `awk -v`, no replacement-string escape semantics.
 #
 # Single-pass guarantee (UAT-003): the template is walked exactly once.
@@ -28,8 +28,8 @@
 # bats locally; GitHub Actions ubuntu-latest has bash 5+.
 #
 # Exit codes:
-#   0 — success
-#   2 — bad usage (missing template, malformed key=value, key not present
+#   0: success
+#   2: bad usage (missing template, malformed key=value, key not present
 #       in template, duplicate key)
 
 set -euo pipefail
@@ -47,7 +47,7 @@ if [ ! -f "$template_file" ]; then
   exit 2
 fi
 
-# Parallel arrays — bash 3.2 has no associative arrays. `keys[i]`,
+# Parallel arrays, bash 3.2 has no associative arrays. `keys[i]`,
 # `tokens[i]`, and `vals[i]` index together.
 keys=()
 tokens=()

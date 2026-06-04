@@ -3,7 +3,7 @@
 # Why GAIA overrides: per-edit commits clutter history; we let the upstream
 # PostToolUse fire as-is and then squash the trailing run of `wiki: auto-commit`
 # commits into one at Stop. We do NOT mirror upstream's v1.6.0 addition of
-# `.vault-meta/` to the staged paths — that directory is DragonScale-only and
+# `.vault-meta/` to the staged paths, that directory is DragonScale-only and
 # GAIA does not ship it.
 #
 # If on main, the squashed commit is pushed to a wiki/* branch and merged via
@@ -22,7 +22,7 @@ done
 # Squash if 2+ consecutive auto-commits.
 if [ "$n" -ge 2 ]; then
   git reset --soft "HEAD~$n" >/dev/null 2>&1 || exit 0
-  # --no-verify: wiki-only squash, no source files changed — pre-commit gate is irrelevant here
+  # --no-verify: wiki-only squash, no source files changed, pre-commit gate is irrelevant here
   git commit -m "wiki: auto-commit $(date '+%Y-%m-%d %H:%M')" --no-verify >/dev/null 2>&1 || exit 0
 fi
 
@@ -40,7 +40,7 @@ if [ "$current_branch" = "main" ]; then
   # The previous version of this hook ALWAYS reset local main + discarded
   # wiki/ + .raw/ working tree state immediately after the push, then tried
   # to create the PR. If PR creation or auto-merge failed, the wiki update
-  # lived only on the remote wiki/<timestamp> branch — and the user's local
+  # lived only on the remote wiki/<timestamp> branch, and the user's local
   # working tree had already been wiped. Silent loss.
   #
   # Now we only reset/discard if we have positive confirmation that the
@@ -66,7 +66,7 @@ if [ "$current_branch" = "main" ]; then
         # Safe to reset local main; the commit is in flight.
         should_reset=1
       else
-        # Auto-merge failed. Don't reset — preserve local state.
+        # Auto-merge failed. Don't reset, preserve local state.
         if echo "$merge_err" | grep -qi 'auto merge\|autoMerge\|auto-merge'; then
           echo "WIKI_NEEDS_MANUAL_MERGE: Wiki changes are on branch '$wiki_branch' and a PR was created, but auto-merge is not enabled on this repository. Please either merge the PR manually or enable auto-merge in the repository settings (Settings → General → Allow auto-merge). Local working tree preserved." >&2
         else

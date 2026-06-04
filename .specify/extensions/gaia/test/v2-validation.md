@@ -68,7 +68,7 @@ speckit-gaia-spec/SKILL.md
 ✓ Preset 'GAIA' v0.1.0 installed (priority 10)
 ```
 
-Preset install path is `.specify/presets/<id>/` — confirmed by inspecting `/tmp/specify-validate-001/.specify/presets/gaia/` after install.
+Preset install path is `.specify/presets/<id>/`, confirmed by inspecting `/tmp/specify-validate-001/.specify/presets/gaia/` after install.
 
 `.specify/presets/.registry`:
 
@@ -90,7 +90,7 @@ Templates: 2
 
 ## `{CORE_TEMPLATE}` substitution (preset wrap)
 
-`strategy: wrap` on the `commands/speckit.specify.md` entry is required for `{CORE_TEMPLATE}` to substitute. Without it, the preset replaces but does not splice — the literal `{CORE_TEMPLATE}` token remains in the rendered SKILL.md and the agent never reaches core's Pre-Execution Checks, which is where hooks fire.
+`strategy: wrap` on the `commands/speckit.specify.md` entry is required for `{CORE_TEMPLATE}` to substitute. Without it, the preset replaces but does not splice, the literal `{CORE_TEMPLATE}` token remains in the rendered SKILL.md and the agent never reaches core's Pre-Execution Checks, which is where hooks fire.
 
 After fixing to `strategy: wrap`:
 
@@ -102,12 +102,12 @@ grep -E '^## Step|^## Pre-Execution Checks|^## Outline' /tmp/specify-validate-00
 ```
 
 ```
-18:## Step 0 — GAIA pre-checks
-27:## Step 1 — core /speckit-specify
+18:## Step 0, GAIA pre-checks
+27:## Step 1, core /speckit-specify
 38:## Pre-Execution Checks
 73:## Outline
-349:## Step 2 — relocate to .gaia/local/specs/SPEC-NNN/SPEC.md
-382:## Step 3 — return
+349:## Step 2, relocate to .gaia/local/specs/SPEC-NNN/SPEC.md
+382:## Step 3, return
 ```
 
 The rendered SKILL.md is 393 lines: GAIA preamble (Steps 0–1), then core specify body verbatim (Pre-Execution Checks → Outline → Final Checklist), then GAIA post-step (Steps 2–3).
@@ -149,9 +149,9 @@ hooks:
       ...
 ```
 
-`on_save` is absent from the file — confirms the chain-trigger logic must live inline in the GAIA wrapper command, not in the hook bus.
+`on_save` is absent from the file, confirms the chain-trigger logic must live inline in the GAIA wrapper command, not in the hook bus.
 
-## Hook message rendering — `HookExecutor.format_hook_message`
+## Hook message rendering, `HookExecutor.format_hook_message`
 
 Probed via direct call into spec-kit v0.8.5's source against the live sandbox (the agent receives this exact text in its reasoning context when a core skill fires the hook event):
 
@@ -205,7 +205,7 @@ spec-kit version check failed: could not determine installed version.
   Installed: <unresolved>
 ```
 
-`version-check.sh` exits 1 outside a uvx-with-spec-kit runtime — expected. Inside the sandbox where `specify` is on PATH (e.g. when fired from a `before_specify` hook during a uvx-driven `/speckit-specify` invocation), it will resolve and pass. Drift detection is verified via the manifest pin format (`>=X.Y.Z,<X.Y.Z+1.0`) which `lib/version-check.sh` parses correctly.
+`version-check.sh` exits 1 outside a uvx-with-spec-kit runtime, expected. Inside the sandbox where `specify` is on PATH (e.g. when fired from a `before_specify` hook during a uvx-driven `/speckit-specify` invocation), it will resolve and pass. Drift detection is verified via the manifest pin format (`>=X.Y.Z,<X.Y.Z+1.0`) which `lib/version-check.sh` parses correctly.
 
 ## Deviations from the refit-decision plan
 

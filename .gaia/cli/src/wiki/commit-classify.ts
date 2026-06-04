@@ -10,22 +10,22 @@
  * contract:
  *
  *   1. `Merge pull request`, `wiki:` (sync's own commits), `chore(release):`,
- *      `style:` — SKIP regardless.
+ *      `style:` : SKIP regardless.
  *   2. Body contains `BREAKING CHANGE` OR subject is `feat!:` OR
- *      `docs(decision):` OR `chore(adr):` — WORTHY.
+ *      `docs(decision):` OR `chore(adr):` : WORTHY.
  *   3. Touches `wiki/decisions/`, `wiki/concepts/`, `wiki/flows/`,
- *      `wiki/dependencies/`, or `wiki/entities/` — WORTHY.
+ *      `wiki/dependencies/`, or `wiki/entities/` : WORTHY.
  *   4. Touches `app/middleware/**`, `app/routes.ts`, `app/i18n.ts`, or
- *      `app/sessions.server/**` — WORTHY (flows-relevant).
- *   5. `chore(deps):`, `chore(cli):`, `wiki:` — SKIP unless body mentions
+ *      `app/sessions.server/**` : WORTHY (flows-relevant).
+ *   5. `chore(deps):`, `chore(cli):`, `wiki:` : SKIP unless body mentions
  *      `architecture` or trade-off / invariant / gotcha keywords.
- *   6. `feat:` / `fix:` / `refactor:` touching `app/**` non-test files —
+ *   6. `feat:` / `fix:` / `refactor:` touching `app/**` non-test files:
  *      WORTHY.
  *   7. `feat:` / `fix:` / `refactor:` touching only test files OR
- *      pages/components/hooks/services without body decision keywords —
+ *      pages/components/hooks/services without body decision keywords:
  *      SKIP (Serena handles inventory).
- *   8. `chore:`, `docs:`, `test:` (without earlier override) — SKIP.
- *   9. Anything else — WORTHY (false positive better than false negative).
+ *   8. `chore:`, `docs:`, `test:` (without earlier override): SKIP.
+ *   9. Anything else: WORTHY (false positive better than false negative).
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -222,7 +222,7 @@ const classify = (
     return {reason: 'wiki: self-referential', suggestion: 'SKIP'};
   }
 
-  // 6/7. feat/fix/refactor — app/** non-test → WORTHY; tests-only or
+  // 6/7. feat/fix/refactor: app/** non-test → WORTHY; tests-only or
   // app inventory paths without decision keywords → SKIP.
   const isFeatureCommit =
     subject.startsWith('feat:') ||
@@ -286,7 +286,7 @@ const classify = (
 
   // 9. Default: defer to human review.
   return {
-    reason: 'no matching prefix — defer to human review',
+    reason: 'no matching prefix, defer to human review',
     suggestion: 'WORTHY',
   };
 };

@@ -6,14 +6,14 @@ audience: maintainer
 
 # Health Audit Runbook
 
-Operational protocol for the autonomous audit + auto-heal loop, invoked by `/health-audit`. Maintainer-only — release-excluded by `.gaia/release-exclude` category 10 (`.gaia/cli/health` is wholesale excluded).
+Operational protocol for the autonomous audit + auto-heal loop, invoked by `/health-audit`. Maintainer-only; release-excluded by `.gaia/release-exclude` category 10 (`.gaia/cli/health` is wholesale excluded).
 
 ## Roles
 
-- **Orchestrator** — top-level coordinator. Owns the cycle loop, the circuit breakers, and the final verdict. Spawns a Triager per cycle. Never fixes anything itself.
-- **Triager** (per cycle) — runs the Audit Team (buckets A–E), waits for reports, classifies findings, updates the taxonomy directly for non-fix cases, and either reports clean to Orchestrator or dispatches Fixers.
-- **Auditors** — bucket executors. The Triager MAY execute the five buckets directly via parallel tool calls, OR dispatch fresh `general-purpose` subagents (one per bucket). Both modes are acceptable so long as: each bucket's spec below is followed verbatim, the five buckets run in parallel (not serially), and outputs are captured as independently-checkable artifacts (stdout, file reads). The verifiable property is the artifact, not the dispatch mechanism. Prefer fresh-subagent dispatch when a bucket is expected to produce high finding volume (preserves Triager context budget) or when the human explicitly requests strict isolation (e.g. compliance audit). Auditors write raw outputs to `.gaia/local/audit/c<N>/<bucket>/` (paths specified per bucket below) and return summary + file path in their report — not raw content. The Triager reads files on demand for triage. This avoids subagent return-budget truncation in dirty cycles.
-- **Fixers** — fix agents, lane-aware so multiple run in parallel without merge conflicts.
+- **Orchestrator**: top-level coordinator. Owns the cycle loop, the circuit breakers, and the final verdict. Spawns a Triager per cycle. Never fixes anything itself.
+- **Triager** (per cycle); runs the Audit Team (buckets A–E), waits for reports, classifies findings, updates the taxonomy directly for non-fix cases, and either reports clean to Orchestrator or dispatches Fixers.
+- **Auditors**: bucket executors. The Triager MAY execute the five buckets directly via parallel tool calls, OR dispatch fresh `general-purpose` subagents (one per bucket). Both modes are acceptable so long as: each bucket's spec below is followed verbatim, the five buckets run in parallel (not serially), and outputs are captured as independently-checkable artifacts (stdout, file reads). The verifiable property is the artifact, not the dispatch mechanism. Prefer fresh-subagent dispatch when a bucket is expected to produce high finding volume (preserves Triager context budget) or when the human explicitly requests strict isolation (e.g. compliance audit). Auditors write raw outputs to `.gaia/local/audit/c<N>/<bucket>/` (paths specified per bucket below) and return summary + file path in their report; not raw content. The Triager reads files on demand for triage. This avoids subagent return-budget truncation in dirty cycles.
+- **Fixers**: fix agents, lane-aware so multiple run in parallel without merge conflicts.
 
 ## Cycle loop
 
@@ -54,7 +54,7 @@ A Fixer dispatch pauses for human-confirm if the proposed fix:
 - Modifies `.claude/rules/` (changes session-load contract).
 - Removes a check from `.gaia/release-scrub.yml` (silently weakens enforcement).
 - Edits `.gaia/cli/health/taxonomy.md` "Decided / not findings" entries (claims a real class isn't real).
-- Edits `wiki/decisions/Claude Integration Fitness.md` "Decided / not findings" section (claims a real fitness class isn't real — same risk, shared page).
+- Edits `wiki/decisions/Claude Integration Fitness.md` "Decided / not findings" section (claims a real fitness class isn't real; same risk, shared page).
 
 Human refuses → escalate.
 
@@ -68,18 +68,18 @@ Human refuses → escalate.
 | Bucket B (source greps)                                                                                            | Haiku  |
 | Bucket C (bundle simulation)                                                                                       | Haiku  |
 | Bucket D (cross-class walk)                                                                                        | Sonnet |
-| Bucket E — Auditor (mechanical: hook integrity, settings hygiene, GAIA-install fitness, wiki fitness)              | Haiku  |
-| Bucket E — Auditor (judgment: skill/command/agent frontmatter, rule hygiene, `CLAUDE.md` hygiene, grade synthesis) | Sonnet |
-| Fixer — config-yaml-md                                                                                             | Sonnet |
-| Fixer — source-ts                                                                                                  | Sonnet |
-| Fixer — wiki-content                                                                                               | Sonnet |
-| Fixer — claude-surface                                                                                             | Sonnet |
+| Bucket E: Auditor (mechanical: hook integrity, settings hygiene, GAIA-install fitness, wiki fitness)              | Haiku  |
+| Bucket E: Auditor (judgment: skill/command/agent frontmatter, rule hygiene, `CLAUDE.md` hygiene, grade synthesis) | Sonnet |
+| Fixer: config-yaml-md                                                                                             | Sonnet |
+| Fixer: source-ts                                                                                                  | Sonnet |
+| Fixer: wiki-content                                                                                               | Sonnet |
+| Fixer: claude-surface                                                                                             | Sonnet |
 
 Promote a role to Opus only on Triager flag for high-complexity fixes (cross-module refactor, tricky type inference, > 300-line change).
 
 Bucket E model assignments follow the wiki page's spec: mechanical category checks (file-exists, JSON parse, hash-diff, `gaia wiki` invocations) on Haiku; judgment-bearing checks (frontmatter substantiveness, content-vs-glob coherence, size evaluation) and grade synthesis on Sonnet. See `wiki/decisions/Claude Integration Fitness.md` §Triage phase for the per-category model table.
 
-## Bucket A — Static checks
+## Bucket A: Static checks
 
 Reads: none.
 
@@ -94,9 +94,9 @@ Reports: typecheck pass/fail; test count (passed/total); test files (passed/tota
 
 **Outputs:** `.gaia/local/audit/c<N>/bucket-a.txt`
 
-Crash-safety: read-only commands; no scratch state. Phase 2 redirection to `bucket-a.txt` is recoverable — partial file on crash is overwritten on cycle re-spawn.
+Crash-safety: read-only commands; no scratch state. Phase 2 redirection to `bucket-a.txt` is recoverable; partial file on crash is overwritten on cycle re-spawn.
 
-## Bucket B — Source-tree audit greps
+## Bucket B: Source-tree audit greps
 
 Detects distribution-boundary leaks in adopter-shipped files. Greps 1–5 (UAT/SPEC refs, historical phrasing) and the `/Users|/home` literal check (formerly grep 8) have moved to Bucket E, which runs the shared fitness protocol including the `CLAUDE.md` hygiene and wiki-fitness categories that codify those checks. Only the distribution-boundary greps remain here.
 
@@ -112,33 +112,33 @@ Greps (run both from repo root, pipe each through `head -50`):
 
 **Formatting note for Grep 1**: directory targets carry a trailing `/` (e.g. `.specify/extensions/gaia/commands/`) so `--include` filters apply consistently across `grep` implementations. Do not strip the trailing slash when copy-pasting.
 
-Triage rules (per match — apply in order; first hit wins):
+Triage rules (per match; apply in order; first hit wins):
 
 - Allowlisted by `.gaia/release-scrub.yml` path-allowlist or line-allowlist → skip.
 - Allowlisted by `.gaia/cli/health/taxonomy.md` → skip.
-- **Path is absent from `.gaia/manifest.json` → skip.** The manifest is the authoritative list of files that ship to adopters (built from `.gaia/release-exclude`). "Absent from manifest" is the operative test for "release-excluded" — do not attempt to glob-match `.gaia/release-exclude` patterns by hand.
+- **Path is absent from `.gaia/manifest.json` → skip.** The manifest is the authoritative list of files that ship to adopters (built from `.gaia/release-exclude`). "Absent from manifest" is the operative test for "release-excluded"; do not attempt to glob-match `.gaia/release-exclude` patterns by hand.
 - Gitignored (e.g. `.claude/settings.local.json`) → skip.
 - Otherwise → genuine finding.
 
-Triage decisions are written to `.gaia/local/audit/c<N>/bucket-b/triage.md` — one section per grep, listing each match and its disposition (skip / finding) with the rule that decided it.
+Triage decisions are written to `.gaia/local/audit/c<N>/bucket-b/triage.md`; one section per grep, listing each match and its disposition (skip / finding) with the rule that decided it.
 
 Reports: per-grep line (pattern, match count, triage breakdown). One-line verdict: "all matches accounted for" or "N genuine finding(s)". Under 400 words.
 
 **Outputs:** `.gaia/local/audit/c<N>/bucket-b/grep-1.txt`, `grep-2.txt`, `.gaia/local/audit/c<N>/bucket-b/triage.md`
 
-Crash-safety: read-only commands; no scratch state. Phase 2 redirection to `bucket-b/grep-N.txt` files is recoverable — partial files on crash are overwritten on cycle re-spawn.
+Crash-safety: read-only commands; no scratch state. Phase 2 redirection to `bucket-b/grep-N.txt` files is recoverable; partial files on crash are overwritten on cycle re-spawn.
 
-## Bucket C — Bundle simulation
+## Bucket C: Bundle simulation
 
 Reads: none.
 
 Commands. Three notes before reading the block:
 
-1. `block-rm-rf.sh` PreToolUse hook denies any literal absolute-path token to `rm -rf`. All cleanup paths below live in variables — the hook tokenizes statically, sees the literal `"$STAGING"` / `"$ALL_TRACKED"` / etc., and lets the rm through. Do not inline `/tmp/...` paths inside the trap or anywhere else; keep them in variables.
-2. Cleanup is `trap`-protected so an early non-zero exit (e.g. the wikilink `grep` returning 1 on no-match under `set -e`) cannot orphan the staging dir. The wikilink `grep` is also explicitly suffixed with `|| true` for the same reason — empty output is the success signal, exit 1 is not a failure.
-3. **The `trap … EXIT` only fires when the shell that registered it exits.** This matters because the post-cleanup verification (below) must observe the _post-trap_ state — i.e. cleanup must have already happened. Two ways to ensure this, pick one:
-   - **Separate shell invocations** — run the trap-protected block as one shell command, then the verification as a second, independent command. The trap fires when the first shell exits, before the second starts.
-   - **Subshell wrapping in a single invocation** — if you combine both into one shell call (e.g. one Bash tool call), wrap the trap-protected block in a **subshell** `(...)`, NOT a **brace group** `{...}`. A subshell forks; its EXIT fires when the subshell exits, _before_ the parent reaches the verification. A brace group runs in the same shell, so the trap waits for the parent to exit — by which time the verification has already observed the pre-cleanup state and the report is wrong. Example:
+1. `block-rm-rf.sh` PreToolUse hook denies any literal absolute-path token to `rm -rf`. All cleanup paths below live in variables; the hook tokenizes statically, sees the literal `"$STAGING"` / `"$ALL_TRACKED"` / etc., and lets the rm through. Do not inline `/tmp/...` paths inside the trap or anywhere else; keep them in variables.
+2. Cleanup is `trap`-protected so an early non-zero exit (e.g. the wikilink `grep` returning 1 on no-match under `set -e`) cannot orphan the staging dir. The wikilink `grep` is also explicitly suffixed with `|| true` for the same reason; empty output is the success signal, exit 1 is not a failure.
+3. **The `trap … EXIT` only fires when the shell that registered it exits.** This matters because the post-cleanup verification (below) must observe the _post-trap_ state; i.e. cleanup must have already happened. Two ways to ensure this, pick one:
+   - **Separate shell invocations**: run the trap-protected block as one shell command, then the verification as a second, independent command. The trap fires when the first shell exits, before the second starts.
+   - **Subshell wrapping in a single invocation**: if you combine both into one shell call (e.g. one Bash tool call), wrap the trap-protected block in a **subshell** `(...)`, NOT a **brace group** `{...}`. A subshell forks; its EXIT fires when the subshell exits, _before_ the parent reaches the verification. A brace group runs in the same shell, so the trap waits for the parent to exit; by which time the verification has already observed the pre-cleanup state and the report is wrong. Example:
      ```bash
      ( STAGING="…"; trap '…' EXIT; mkdir …; … ) ; ls -d /tmp/gaia-vAUDIT* 2>/dev/null | wc -l
      ```
@@ -177,7 +177,7 @@ Reports: staged file count; `release scrub` stdout; `release runtime-deps` stdou
 
 Crash-safety: `trap`-protected (see commands above). Phase 2 redirection to `bucket-c.txt` is in addition to the trap; both protections are independent.
 
-## Bucket D — Cross-class enforcement walk
+## Bucket D: Cross-class enforcement walk
 
 Reads (in order):
 
@@ -190,46 +190,46 @@ Reads (in order):
 
 **Key symbols to locate while reading `manifest.ts`** (load-bearing for the verdict):
 
-- `--check` mode — staleness detection.
-- `lintClassifierSets()` — cross-checks classifier sets for release-excluded paths; the enforcing primitive for the _classifier-sets_ D-B class.
+- `--check` mode; staleness detection.
+- `lintClassifierSets()`; cross-checks classifier sets for release-excluded paths; the enforcing primitive for the _classifier-sets_ D-B class.
 
-Output: structured table — for each § Distribution boundary class, name the enforcing primitive (scrub check id, runtime-deps, manifest --check) or `none`. Confidence: high / medium / low.
+Output: structured table; for each § Distribution boundary class, name the enforcing primitive (scrub check id, runtime-deps, manifest --check) or `none`. Confidence: high / medium / low.
 
 Verdict:
 
-- **A+ readiness** — every D-B class fully enforced, high confidence. Acknowledged structural carve-outs (below) do not block A+ as long as their preconditions hold.
-- **A** — at least one partial-enforcement note or low confidence, but no fully unenforced classes.
-- **A−** — at least one D-B class is unenforced.
+- **A+ readiness**: every D-B class fully enforced, high confidence. Acknowledged structural carve-outs (below) do not block A+ as long as their preconditions hold.
+- **A**: at least one partial-enforcement note or low confidence, but no fully unenforced classes.
+- **A−**: at least one D-B class is unenforced.
 
-Bucket D grades enforcement-primitive completeness only. Findings volume in the current cycle does not enter the grade — a cycle with open findings can still warrant "A+ readiness" when every primitive is intact (the primitives detected the findings, after all). The Orchestrator combines this verdict with the findings count for the cycle's clean-exit determination per §Termination; do not pre-combine them inside Bucket D.
+Bucket D grades enforcement-primitive completeness only. Findings volume in the current cycle does not enter the grade; a cycle with open findings can still warrant "A+ readiness" when every primitive is intact (the primitives detected the findings, after all). The Orchestrator combines this verdict with the findings count for the cycle's clean-exit determination per §Termination; do not pre-combine them inside Bucket D.
 
 **Acknowledged structural carve-outs** (do not block A+ on their own):
 
 - `wikilink-to-excluded` enforces only an enumerated list of release-excluded slugs in `release-scrub.yml`. A _new_ release-excluded wiki page whose slug is not in the enumeration would slip through. Bucket D may grade A+ if (a) every release-excluded wiki page in the current manifest snapshot is covered by the enumeration, and (b) the ADR / scrub config explicitly notes this is enumeration-driven. If a release-excluded wiki page exists with no matching enumeration entry, downgrade to **A−** and dispatch a Fixer.
 
-Under 600 words. Read-only — no commands beyond file reads.
+Under 600 words. Read-only; no commands beyond file reads.
 
 **Outputs:** `.gaia/local/audit/c<N>/bucket-d.md`
 
-Crash-safety: read-only file reads; no scratch state. Phase 2 redirection to `bucket-d.md` is recoverable — partial file on crash is overwritten on cycle re-spawn.
+Crash-safety: read-only file reads; no scratch state. Phase 2 redirection to `bucket-d.md` is recoverable; partial file on crash is overwritten on cycle re-spawn.
 
-## Bucket E — Shared Claude-integration fitness
+## Bucket E: Shared Claude-integration fitness
 
 Reads: `wiki/decisions/Claude Integration Fitness.md` (the protocol spec).
 
-**This bucket runs the triage phase of the protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories.** Do not re-specify the check taxonomy, grading rubric, or Fixer lanes here — reference the page and run it. Any drift from the wiki page's spec is the failure mode this indirection prevents.
+**This bucket runs the triage phase of the protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories.** Do not re-specify the check taxonomy, grading rubric, or Fixer lanes here; reference the page and run it. Any drift from the wiki page's spec is the failure mode this indirection prevents.
 
 The wiki page defines:
 
 - The seven categories (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness).
-- Per-category Auditor model assignments (mechanical on Haiku; judgment on Sonnet) — see the wiki page's Triage phase table.
-- The Fixer lanes — fitness findings route to the **existing `claude-surface` lane** (`.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`) plus the `settings`, `gitignore`, and `manifest` lanes as defined in the wiki page's Heal phase.
-- The F-to-A+ per-category grading rubric (every band — including `A−` and `C−` — reachable; `shared_fitness_grade` may be any of them).
-- The bounded loop (default 3 cycles) with oscillation detection — which the wiki page's own "Composed inside a deeper loop" note hands off to the outer harness when this protocol runs as a bucket. See the loop-nesting rule below.
+- Per-category Auditor model assignments (mechanical on Haiku; judgment on Sonnet); see the wiki page's Triage phase table.
+- The Fixer lanes; fitness findings route to the **existing `claude-surface` lane** (`.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`) plus the `settings`, `gitignore`, and `manifest` lanes as defined in the wiki page's Heal phase.
+- The F-to-A+ per-category grading rubric (every band; including `A−` and `C−`; reachable; `shared_fitness_grade` may be any of them).
+- The bounded loop (default 3 cycles) with oscillation detection; which the wiki page's own "Composed inside a deeper loop" note hands off to the outer harness when this protocol runs as a bucket. See the loop-nesting rule below.
 
-**Loop nesting.** Bucket E does not run the wiki page's bounded heal loop. The outer `/health-audit` cycle loop _is_ that loop: each outer cycle, Bucket E runs the wiki page's triage phase once (audit the seven categories, adjudicate, grade) and returns a `shared_fitness_grade` (F-to-A+, the floor of the seven category grades) plus per-category grades to the Triager — it does not heal or verify on its own. The Triager folds Bucket E's findings into `c<N>/findings.json` alongside the other buckets' findings, so fitness fingerprints participate in the **outer** oscillation guard (no separate inner guard), and routes the fitness fixes to the `claude-surface` Fixer lane (or `settings`/`gitignore`/`manifest` as appropriate) in the outer heal phase. The verify step for a cycle's fitness fixes is the next outer cycle's fresh Bucket E run. No new Fixer lane is introduced, and there is no inner cycle count to tune — the outer `1..3` bound covers fitness too.
+**Loop nesting.** Bucket E does not run the wiki page's bounded heal loop. The outer `/health-audit` cycle loop _is_ that loop: each outer cycle, Bucket E runs the wiki page's triage phase once (audit the seven categories, adjudicate, grade) and returns a `shared_fitness_grade` (F-to-A+, the floor of the seven category grades) plus per-category grades to the Triager; it does not heal or verify on its own. The Triager folds Bucket E's findings into `c<N>/findings.json` alongside the other buckets' findings, so fitness fingerprints participate in the **outer** oscillation guard (no separate inner guard), and routes the fitness fixes to the `claude-surface` Fixer lane (or `settings`/`gitignore`/`manifest` as appropriate) in the outer heal phase. The verify step for a cycle's fitness fixes is the next outer cycle's fresh Bucket E run. No new Fixer lane is introduced, and there is no inner cycle count to tune; the outer `1..3` bound covers fitness too.
 
-**Outputs:** `.gaia/local/audit/c<N>/bucket-e/` — per-category findings JSON and the per-category + overall fitness grade report, following the same structure as the wiki page's Findings Schema.
+**Outputs:** `.gaia/local/audit/c<N>/bucket-e/`; per-category findings JSON and the per-category + overall fitness grade report, following the same structure as the wiki page's Findings Schema.
 
 ```
 .gaia/local/audit/c<N>/bucket-e/
@@ -245,18 +245,18 @@ The wiki page defines:
     wiki-fitness.json
 ```
 
-Crash-safety: Bucket E writes incrementally per category; a crash mid-run leaves partial output. The Triager treats a missing `shared_fitness_grade.txt` as Bucket E incomplete — re-spawn Bucket E on the next cycle (the outer loop handles this).
+Crash-safety: Bucket E writes incrementally per category; a crash mid-run leaves partial output. The Triager treats a missing `shared_fitness_grade.txt` as Bucket E incomplete; re-spawn Bucket E on the next cycle (the outer loop handles this).
 
 ## Fixer lanes
 
 | Lane               | Owns                                                                                                                            | Triggered by                                                                  |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **config-yaml-md** | `.gaia/release-scrub.yml`, `.gaia/cli/health/taxonomy.md`, `.gaia/cli/health/runbook.md`, `wiki/decisions/Bundle-time Scrub.md` | New scrub check; allowlist tightening; taxonomy class addition; runbook tweak |
-| **source-ts**      | `.gaia/cli/src/**`, `.github/workflows/release.yml`, `.gaia/cli/gaia` (rebundle)                                                | New CLI primitive; release.yml step; bundle regeneration                      |
-| **wiki-content**   | `wiki/**/*.md` (shipped pages only — exclude `hot.md`, `log.md`, anything release-excluded)                                     | Wiki-style or structural finding                                              |
-| **claude-surface** | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`            | Instruction-file leak; fitness findings from Bucket E                         |
+| **config-yaml-md** | `.gaia/release-scrub.yml`, `.gaia/cli/health/taxonomy.md`, `.gaia/cli/health/runbook.md`, `wiki/decisions/Bundle-time Scrub.md` | New scrub check: allowlist tightening; taxonomy class addition; runbook tweak |
+| **source-ts**      | `.gaia/cli/src/**`, `.github/workflows/release.yml`, `.gaia/cli/gaia` (rebundle)                                                | New CLI primitive: release.yml step; bundle regeneration                      |
+| **wiki-content**   | `wiki/**/*.md` (shipped pages only; exclude `hot.md`, `log.md`, anything release-excluded)                                     | Wiki-style or structural finding                                              |
+| **claude-surface** | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`            | Instruction-file leak: fitness findings from Bucket E                         |
 
-Mutual-exclusion (must serialize, never run in parallel — single Fixer at a time across the whole team):
+Mutual-exclusion (must serialize, never run in parallel; single Fixer at a time across the whole team):
 
 - Anything that runs `pnpm -C .gaia/cli bundle` (rewrites the binary).
 - Anything that touches `.gaia/release-exclude`.
@@ -345,13 +345,13 @@ Fingerprint format: `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`. S
 
 ## Composition
 
-The seven shared Claude-integration fitness categories (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness), their grading rubric, and the triage/heal orchestration protocol are defined in `wiki/decisions/Claude Integration Fitness.md`. Bucket E runs that page's triage phase over those seven categories — its bounded heal loop is subsumed by the outer cycle loop (see §Bucket E — Shared Claude-integration fitness for the loop-nesting rule). Do not re-specify the check classes or the grading rubric here. Cross-references are one-directional: this runbook references the wiki page; the wiki page never references `.gaia/cli/health/` paths.
+The seven shared Claude-integration fitness categories (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness), their grading rubric, and the triage/heal orchestration protocol are defined in `wiki/decisions/Claude Integration Fitness.md`. Bucket E runs that page's triage phase over those seven categories; its bounded heal loop is subsumed by the outer cycle loop (see §Bucket E: Shared Claude-integration fitness for the loop-nesting rule). Do not re-specify the check classes or the grading rubric here. Cross-references are one-directional: this runbook references the wiki page; the wiki page never references `.gaia/cli/health/` paths.
 
 ## Pointers
 
-- **Taxonomy**: `.gaia/cli/health/taxonomy.md` — Issue classes + Decided / not findings.
-- **Shared fitness**: `wiki/decisions/Claude Integration Fitness.md` — seven fitness categories, F-to-A+ grading rubric, triage/heal orchestration protocol.
-- **Scrub config**: `.gaia/release-scrub.yml` — codified leak-checks with allowlists.
-- **ADR**: `wiki/decisions/Bundle-time Scrub.md` — what scrub catches, what it doesn't.
-- **Wiki-style rule**: `.claude/rules/wiki-style.md` — UAT/SPEC narrative-vs-structural triage.
-- **Release flow**: `.github/workflows/release.yml` — step order; primitives wired in.
+- **Taxonomy**: `.gaia/cli/health/taxonomy.md`; Issue classes + Decided / not findings.
+- **Shared fitness**: `wiki/decisions/Claude Integration Fitness.md`; seven fitness categories, F-to-A+ grading rubric, triage/heal orchestration protocol.
+- **Scrub config**: `.gaia/release-scrub.yml`; codified leak-checks with allowlists.
+- **ADR**: `wiki/decisions/Bundle-time Scrub.md`; what scrub catches, what it doesn't.
+- **Wiki-style rule**: `.claude/rules/wiki-style.md`; UAT/SPEC narrative-vs-structural triage.
+- **Release flow**: `.github/workflows/release.yml`; step order; primitives wired in.

@@ -18,8 +18,8 @@ status: developing
 
 Domain breakdown: components (6), concepts (27), decisions (10), dependencies (21), entities (2), flows (3), meta (1), modules (17), root (5)
 
-DragonScale Mechanism 2 (Address Validation): skipped — `./scripts/allocate-address.sh` or `.vault-meta/address-counter.txt` not present.
-DragonScale Mechanism 3 (Semantic Tiling): skipped — `./scripts/tiling-check.py` not present.
+DragonScale Mechanism 2 (Address Validation): skipped: `./scripts/allocate-address.sh` or `.vault-meta/address-counter.txt` not present.
+DragonScale Mechanism 3 (Semantic Tiling): skipped: `./scripts/tiling-check.py` not present.
 
 ---
 
@@ -27,7 +27,7 @@ DragonScale Mechanism 3 (Semantic Tiling): skipped — `./scripts/tiling-check.p
 
 ### Dead Links
 
-1. **[[README]]**: contains `[[Note Name]]` — a placeholder link left over from the wiki schema template. No page named "Note Name" exists. Suggest: remove or replace with a real wikilink.
+1. **[[README]]**: contains `[[Note Name]]`: a placeholder link left over from the wiki schema template. No page named "Note Name" exists. Suggest: remove or replace with a real wikilink.
 
 ### Stale Index Entries
 
@@ -43,15 +43,15 @@ No stale index entries found. All index.md wikilinks resolve to real files.
 
 ### Frontmatter YAML Parse Errors
 
-The `depends_on:` field uses comma-separated wikilinks (`[[A]], [[B]]`). YAML parses the `[[A]]` anchor as a merge key, then chokes on the `,`. All required fields (type, status, created, updated, tags) are present in raw text, so the pages are functionally usable in Obsidian — but any tooling that reads frontmatter via a YAML parser will fail on these 10 pages.
+The `depends_on:` field uses comma-separated wikilinks (`[[A]], [[B]]`). YAML parses the `[[A]]` anchor as a merge key, then chokes on the `,`. All required fields (type, status, created, updated, tags) are present in raw text, so the pages are functionally usable in Obsidian: but any tooling that reads frontmatter via a YAML parser will fail on these 10 pages.
 
 Fix: quote the value or convert to a YAML list:
 
 ```yaml
-# Option A — quoted string (minimal change)
+# Option A: quoted string (minimal change)
 depends_on: "[[Form Components]], [[Form Field]]"
 
-# Option B — YAML list
+# Option B: YAML list
 depends_on:
   - "[[Form Components]]"
   - "[[Form Field]]"
@@ -74,7 +74,7 @@ Affected pages (10):
 
 Headings with no content underneath them:
 
-13. **[[Agentic Design]]** (`concepts/Agentic Design.md`): 6 empty sub-sections under `## The 12 patterns GAIA implements` — `#Core`, `#Reasoning & Strategy`, `#Orchestration`, `#Infrastructure & State`, `#Reliability & Control`. These are structural placeholders. Suggest: fill content or collapse into the parent section with inline notes.
+13. **[[Agentic Design]]** (`concepts/Agentic Design.md`): 6 empty sub-sections under `## The 12 patterns GAIA implements`: `#Core`, `#Reasoning & Strategy`, `#Orchestration`, `#Infrastructure & State`, `#Reliability & Control`. These are structural placeholders. Suggest: fill content or collapse into the parent section with inline notes.
 
 14. **[[PR Merge Workflow]]** (`concepts/PR Merge Workflow.md`): empty section `## Four-step protocol`. Suggest: add the protocol steps or remove the heading.
 
@@ -90,29 +90,29 @@ Excluded from "empty section" findings (by design): `hot.md` (`#Recent Context` 
 
 ### Cross-Reference Gaps
 
-Entities with dedicated wiki pages referenced by plain text (no `[[` brackets) in other pages. These are unlinked mentions — not broken, but cross-navigation is weaker without the link.
+Entities with dedicated wiki pages referenced by plain text (no `[[` brackets) in other pages. These are unlinked mentions: not broken, but cross-navigation is weaker without the link.
 
 High-frequency unlinked mentions (appearing in 4+ pages without wikilinks):
 
-17. **Serena** — mentioned without wikilink in: `Form Choices`, `Form Field`, `Form Layout`, `Form Select`, `Form Text Inputs`, `Form YearMonthDay`, `Component Testing`, `Serena Integration`. The `[[Serena]]` dependency page exists. Suggest: add `[[Serena]]` wikilinks in the component pages and `Component Testing`.
+17. **Serena**: mentioned without wikilink in: `Form Choices`, `Form Field`, `Form Layout`, `Form Select`, `Form Text Inputs`, `Form YearMonthDay`, `Component Testing`, `Serena Integration`. The `[[Serena]]` dependency page exists. Suggest: add `[[Serena]]` wikilinks in the component pages and `Component Testing`.
 
-18. **Conform** — mentioned without wikilink in: `Form Choices`, `Form Select`, `Form Text Inputs`, `Dark Mode Modernization`, `No Component Library`, `Component Testing`, `Thin Routes`, `composeStory Pattern`, `GAIA Philosophy`. The `[[Conform]]` dependency page exists. Suggest: linkify high-value mentions.
+18. **Conform**: mentioned without wikilink in: `Form Choices`, `Form Select`, `Form Text Inputs`, `Dark Mode Modernization`, `No Component Library`, `Component Testing`, `Thin Routes`, `composeStory Pattern`, `GAIA Philosophy`. The `[[Conform]]` dependency page exists. Suggest: linkify high-value mentions.
 
-19. **Storybook** — mentioned without wikilink in: `Co-located Tests Folder`, `Dark Mode Modernization`, `No Component Library`, `Thin Routes`, `composeStory Pattern`, `Component Testing`, `Chromatic`, `MSW`, `knip`. The `[[Storybook]]` dependency page exists.
+19. **Storybook**: mentioned without wikilink in: `Co-located Tests Folder`, `Dark Mode Modernization`, `No Component Library`, `Thin Routes`, `composeStory Pattern`, `Component Testing`, `Chromatic`, `MSW`, `knip`. The `[[Storybook]]` dependency page exists.
 
-20. **React Router 7** — mentioned without wikilink in: `Playwright`, `remix-flat-routes`, `remix-i18next`. The `[[React Router 7]]` dependency page exists.
+20. **React Router 7**: mentioned without wikilink in: `Playwright`, `remix-flat-routes`, `remix-i18next`. The `[[React Router 7]]` dependency page exists.
 
-21. **Playwright** — mentioned without wikilink in: `Coding Guidelines`, `GAIA Spec`, `Quality Gate`, `TypeScript Language Files`. The `[[Playwright]]` dependency page exists.
+21. **Playwright**: mentioned without wikilink in: `Coding Guidelines`, `GAIA Spec`, `Quality Gate`, `TypeScript Language Files`. The `[[Playwright]]` dependency page exists.
 
-22. **Vitest** — mentioned without wikilink in: `Coding Guidelines`, `Pre-commit Hooks`, `Claude Skills`. The `[[Vitest]]` dependency page exists.
+22. **Vitest**: mentioned without wikilink in: `Coding Guidelines`, `Pre-commit Hooks`, `Claude Skills`. The `[[Vitest]]` dependency page exists.
 
-23. **Chromatic** — mentioned without wikilink in: `Component Testing`, `composeStory Pattern`. The `[[Chromatic]]` dependency page exists.
+23. **Chromatic**: mentioned without wikilink in: `Component Testing`, `composeStory Pattern`. The `[[Chromatic]]` dependency page exists.
 
-24. **i18next** — mentioned without wikilink in: `remix-i18next`, `Storybook`. The `[[i18next]]` dependency page exists.
+24. **i18next**: mentioned without wikilink in: `remix-i18next`, `Storybook`. The `[[i18next]]` dependency page exists.
 
 ### Missing Concept Pages
 
-25. **"React Context"** — mentioned in 3 pages (`API Service Pattern`, `State`, `overview`) without a dedicated wiki page. It is a React primitive used in the state architecture. Low priority given it is framework-standard knowledge, but a stub under `wiki/concepts/` would anchor cross-references.
+25. **"React Context"**: mentioned in 3 pages (`API Service Pattern`, `State`, `overview`) without a dedicated wiki page. It is a React primitive used in the state architecture. Low priority given it is framework-standard knowledge, but a stub under `wiki/concepts/` would anchor cross-references.
 
 ### Stale Claims
 

@@ -99,8 +99,8 @@ describe('readOrCreateProjectId', () => {
 
   // repoRootFromProjectIdPath delegates to path.dirname, which is
   // separator-aware for the host platform. A backslash-separated path is
-  // only resolvable by the function on Windows — on POSIX, path.dirname does
-  // not treat `\` as a separator — so this case runs natively only.
+  // only resolvable by the function on Windows; on POSIX, path.dirname does
+  // not treat `\` as a separator, so this case runs natively only.
   test.runIf(process.platform === 'win32')(
     'repoRootFromProjectIdPath recovers the root from a Windows backslash path',
     () => {

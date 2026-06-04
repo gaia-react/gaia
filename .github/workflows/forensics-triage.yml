@@ -92,7 +92,7 @@ jobs:
           set -eu
           mkdir -p "${RUNNER_TEMP}/forensics"
           # `printf '%s'` (not echo) preserves embedded backslashes / formatting
-          # exactly. Body content reaches the script via env, never argv —
+          # exactly. Body content reaches the script via env, never argv -
           # avoids shell-metacharacter injection.
           printf '%s' "$ISSUE_BODY" > "${RUNNER_TEMP}/forensics/issue-body.md"
 
@@ -174,7 +174,7 @@ jobs:
 
           # The allowlist / denylist are markdown literals (backticks
           # inside strings); shellcheck flags single-quoted strings that
-          # LOOK like command substitution. They're not — these are the
+          # LOOK like command substitution. They're not, these are the
           # canonical SPEC-002 path lists rendered into the classifier
           # prompt verbatim. Disable SC2016 for this block.
           # shellcheck disable=SC2016
@@ -236,7 +236,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.render-classifier.outputs.body }}
-          # No tool access — judgment-only. The classifier MUST NOT
+          # No tool access, judgment-only. The classifier MUST NOT
           # touch the working tree (UAT-009).
           claude_args: |
             --max-turns 1
@@ -262,7 +262,7 @@ jobs:
           fi
           jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
           if [ ! -s "$verdict_text" ]; then
-            echo "::warning::classifier produced no result text — treating as ambiguous"
+            echo "::warning::classifier produced no result text, treating as ambiguous"
           fi
 
           parsed="${RUNNER_TEMP}/forensics/verdict.json"
@@ -387,7 +387,7 @@ jobs:
           {
             cat "${{ steps.verdict.outputs.reasoning_file }}"
             printf '\n\n---\n\nProposed paths rejected by `check-scope.sh`:\n\n'
-            jq -r '.denied[] | "- `\(.path)` — \(.reason)"' "${{ steps.scope.outputs.scope_file }}"
+            jq -r '.denied[] | "- `\(.path)`, \(.reason)"' "${{ steps.scope.outputs.scope_file }}"
           } > "$reason_file"
           "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
             "$ISSUE_NUMBER" \
@@ -618,7 +618,7 @@ jobs:
               awk '{print "- `"$0"`"}' "${{ steps.verify-diff.outputs.unexpected_file }}"
             fi
           } > "$reason_file"
-          # Discard local edits before exiting — the branch was never
+          # Discard local edits before exiting, the branch was never
           # pushed, but resetting keeps the runner's working tree clean
           # in case any always-run step inspects it.
           git reset --hard HEAD
@@ -651,7 +651,7 @@ jobs:
         run: |
           set -eu
           # Already `git add -A`'d in verify-diff; commit on the local
-          # branch. No push yet — gate must pass first.
+          # branch. No push yet, gate must pass first.
           git commit -m "forensics: auto-fix attempt for #${ISSUE_NUMBER}"
 
       # Apply-fix-only Node + pnpm provisioning. Gated to the same
@@ -720,7 +720,7 @@ jobs:
               jq -r '.log_excerpt // ""' "$GATE_SUMMARY_FILE"
               printf '\n```\n\n'
             else
-              printf '_(gate summary file missing — see workflow run logs)_\n\n'
+              printf '_(gate summary file missing, see workflow run logs)_\n\n'
             fi
             printf 'workflow run: %s/%s/actions/runs/%s\n' \
               "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}"

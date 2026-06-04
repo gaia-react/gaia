@@ -2,7 +2,7 @@
 description: 'GAIA Socratic discovery wrapper around /speckit-specify and /speckit-clarify.'
 ---
 
-# /speckit-gaia-spec — thin redirect to the GAIA router
+# /speckit-gaia-spec, thin redirect to the GAIA router
 
 This command exists because spec-kit's extension manifest schema requires `provides.commands[]` to be non-empty, and because the three GAIA hook targets (`speckit.gaia.constitution-check`, `speckit.gaia.lint`, `speckit.gaia.self-review`) need an extension to anchor them to. The canonical user-facing entry point for the GAIA Socratic discovery flow is `/gaia-spec`, which lives alongside `/gaia-plan`, `/gaia-handoff`, `/gaia-pickup`, and `/gaia-audit` as the GAIA workflows.
 

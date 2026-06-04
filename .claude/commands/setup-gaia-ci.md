@@ -1,9 +1,9 @@
 ---
 name: setup-gaia-ci
-description: Wire up GAIA CI workflows on GitHub. Run after first git push origin main. Idempotent — re-runs short-circuit; --reconfigure rotates tokens and re-selects tools.
+description: Wire up GAIA CI workflows on GitHub. Run after first git push origin main. Idempotent, re-runs short-circuit; --reconfigure rotates tokens and re-selects tools.
 ---
 
-Wire up GAIA CI on GitHub. Run this once after your first `git push origin main`. The command is idempotent — re-running on a configured repo prints `GAIA CI is already configured` and exits. Pass `--reconfigure` to rotate the bot token or re-select which tools run on cron.
+Wire up GAIA CI on GitHub. Run this once after your first `git push origin main`. The command is idempotent, re-running on a configured repo prints `GAIA CI is already configured` and exits. Pass `--reconfigure` to rotate the bot token or re-select which tools run on cron.
 
 The flow:
 
@@ -11,7 +11,7 @@ The flow:
 - Warn if Dependabot or Renovate is configured (GAIA Sharpen overlaps).
 - Ask: enable now / not now / opt out for the team.
 - If admin: offer to enable `delete_branch_on_merge` (makes stale-branch cleanup redundant).
-- Accept your bot token (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) via stdin and pipe it directly to `gh secret set`. The same token authenticates the cron workflows and the `code-review-audit.yml` PR gate — the audit honors either token type.
+- Accept your bot token (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) via stdin and pipe it directly to `gh secret set`. The same token authenticates the cron workflows and the `code-review-audit.yml` PR gate, the audit honors either token type.
 - Generate `.github/workflows/gaia-ci-*.yml` from `.gaia/automation.json` and install `.github/workflows/code-review-audit.yml`.
 - Trigger one `workflow_dispatch` run to verify the workflow boots.
 - On success, commit the workflow files plus a flip of `setup_complete: true` in a single commit.
@@ -41,7 +41,7 @@ Exit cleanly. Otherwise cache `setup_complete`, `setup_opted_out`, and `tools_en
 
 When `setup_complete: false`, fall through to Step 3.
 
-When `setup_complete: true` AND `RECONFIGURE` IS set, fall through to Step 3 — the reconfigure path re-runs the rest of the flow. `--reconfigure` does NOT touch `setup_complete`; it stays true.
+When `setup_complete: true` AND `RECONFIGURE` IS set, fall through to Step 3, the reconfigure path re-runs the rest of the flow. `--reconfigure` does NOT touch `setup_complete`; it stays true.
 
 When `setup_complete: true` AND `RECONFIGURE` is NOT set, probe for template drift:
 
@@ -64,14 +64,14 @@ Otherwise (drift or missing cron files, or audit workflow drifted/missing), summ
 
 > The .github/workflows files have drifted from the bundled templates.
 >
-> Cron workflows — Drifted: <drifted-list-or-(none)> | Missing: <missing-list-or-(none)>
-> Audit workflow — <in_sync|drifted|missing>
+> Cron workflows, Drifted: <drifted-list-or-(none)> | Missing: <missing-list-or-(none)>
+> Audit workflow, <in_sync|drifted|missing>
 >
 > What would you like to do?
 >
-> - **Re-render workflows** (Recommended) — regenerate only the drifted/missing cron files and re-install the audit workflow from the current templates, then commit + push on a branch + open a PR. Keeps tool selection and token unchanged.
-> - **Skip** — leave the workflows as-is. The next `/update-gaia` will not re-offer this prompt unless templates drift again.
-> - **Run full reconfigure instead** — same as `/setup-gaia-ci --reconfigure`: re-prompt for tool modes and rotate the bot token.
+> - **Re-render workflows** (Recommended), regenerate only the drifted/missing cron files and re-install the audit workflow from the current templates, then commit + push on a branch + open a PR. Keeps tool selection and token unchanged.
+> - **Skip**, leave the workflows as-is. The next `/update-gaia` will not re-offer this prompt unless templates drift again.
+> - **Run full reconfigure instead**, same as `/setup-gaia-ci --reconfigure`: re-prompt for tool modes and rotate the bot token.
 
 On "Re-render workflows" → fall through to Step 11.5 (drift-fix path).
 
@@ -134,7 +134,7 @@ First, run the admin probe:
 .gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
 ```
 
-Cache `admin` and `auth_status`. Treat `auth_status != "ok"` as personal-dismiss-only — never offer team opt-out unless `auth_status == "ok"`.
+Cache `admin` and `auth_status`. Treat `auth_status != "ok"` as personal-dismiss-only, never offer team opt-out unless `auth_status == "ok"`.
 
 If `RECONFIGURE` is set, skip this question entirely and use the reconfigure flow described in Step 11.
 
@@ -169,7 +169,7 @@ Branches:
     > Apply personal dismissal instead?
     >
     > - **Yes** (Recommended)
-    > - **No** (cancel — neither team opt-out nor personal dismissal is recorded)
+    > - **No** (cancel, neither team opt-out nor personal dismissal is recorded)
 
     On Yes: shell `gaia setup-ci dismiss-personal` and exit. On No: exit cleanly.
 
@@ -179,7 +179,7 @@ Branches:
     .gaia/cli/gaia setup-ci opt-out-team
     ```
 
-    Print `Team opt-out recorded in .gaia/automation.json (setup_opted_out=true). Commit and push to apply for the team.` and exit. The slash command does NOT auto-commit the team opt-out write — review the diff and commit yourself.
+    Print `Team opt-out recorded in .gaia/automation.json (setup_opted_out=true). Commit and push to apply for the team.` and exit. The slash command does NOT auto-commit the team opt-out write, review the diff and commit yourself.
 
 ## Step 6: Repo hygiene check
 
@@ -216,7 +216,7 @@ Note: delete_branch_on_merge is disabled on the repo. An admin running /setup-ga
 If already `true`, skip the question. Print:
 
 ```
-delete_branch_on_merge is already enabled — stale-branches cron is redundant. Marking stale_branches.mode = "off".
+delete_branch_on_merge is already enabled, stale-branches cron is redundant. Marking stale_branches.mode = "off".
 ```
 
 Then shell the `bump-state` call directly:
@@ -231,7 +231,7 @@ Then shell the `bump-state` call directly:
 
 > Which bot token will GAIA CI use to authenticate workflow steps that hit the Anthropic API?
 >
-> The same repo-scoped secret authenticates all GAIA CI workflows — both the scheduled cron jobs (`gaia-ci-*.yml`) and the `code-review-audit.yml` PR gate. The audit honors either token type; whichever you set here is the one the audit uses.
+> The same repo-scoped secret authenticates all GAIA CI workflows, both the scheduled cron jobs (`gaia-ci-*.yml`) and the `code-review-audit.yml` PR gate. The audit honors either token type; whichever you set here is the one the audit uses.
 >
 > - **CLAUDE_CODE_OAUTH_TOKEN** (default for Claude Code subscribers)
 > - **ANTHROPIC_API_KEY** (default for direct Anthropic API customers)
@@ -250,7 +250,7 @@ On a token choice, prompt for the value:
 ```
 Paste your <NAME> value below. The token is piped directly to `gh secret set <NAME>` and is never echoed, never logged, and never appears in the terminal scrollback.
 
-The agent reads your message and immediately invokes `gaia setup-ci set-secret <NAME>` with the token on stdin. Do not include any other text in your message — the agent will trim trailing whitespace defensively, but extra prose may corrupt the token.
+The agent reads your message and immediately invokes `gaia setup-ci set-secret <NAME>` with the token on stdin. Do not include any other text in your message, the agent will trim trailing whitespace defensively, but extra prose may corrupt the token.
 ```
 
 When the user replies with their token, IMMEDIATELY invoke:
@@ -287,9 +287,9 @@ Then install the audit workflow unconditionally:
 .gaia/cli/gaia automation install-audit-workflow --out-dir .github/workflows
 ```
 
-The audit is the PR gate — it installs regardless of how many cron tools are in CI mode. Even if zero cron tools are configured for CI, the audit alone is a valid CI posture; proceed to Step 9 using the audit workflow path as the verification target.
+The audit is the PR gate, it installs regardless of how many cron tools are in CI mode. Even if zero cron tools are configured for CI, the audit alone is a valid CI posture; proceed to Step 9 using the audit workflow path as the verification target.
 
-If `render-workflows` reports no paths written (the config has `mode: "ci"` for zero cron tools), do NOT exit — install the audit and continue. Print a note:
+If `render-workflows` reports no paths written (the config has `mode: "ci"` for zero cron tools), do NOT exit, install the audit and continue. Print a note:
 
 ```
 No cron tools are configured for CI mode in .gaia/automation.json. The code-review-audit.yml PR gate is installed. Edit .gaia/automation.json to add cron workflows later.
@@ -315,7 +315,7 @@ If `verified: false`, surface the URL and `AskUserQuestion`:
 > - **Abandon** (delete the generated workflow files; commit nothing)
 > - **Commit without verification** (use only if you've already inspected the failed run and confirmed it's a transient infrastructure issue)
 
-On Retry: re-shell `verify-run`. (One retry permitted — second failure prompts the same three options again with Retry removed.)
+On Retry: re-shell `verify-run`. (One retry permitted, second failure prompts the same three options again with Retry removed.)
 
 On Abandon: delete every file in the generated paths list, then exit. The `setup_complete` flag stays `false`.
 
@@ -336,7 +336,7 @@ git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml 
 Commit with this exact message (when verified):
 
 ```
-chore(gaia-ci): finalize Phase B setup — verified workflow_dispatch run
+chore(gaia-ci): finalize Phase B setup, verified workflow_dispatch run
 
 Adds .github/workflows/gaia-ci-*.yml, installs
 .github/workflows/code-review-audit.yml PR gate, and flips
@@ -370,17 +370,17 @@ When `RECONFIGURE` is set, the short-circuit at Step 2 is skipped and the flow r
 
   On "Re-prompt", `AskUserQuestion` for each of `wiki`, `update-deps`, `pnpm-audit`, `stale-branches` with mode options `ci` / `local` / `off`. Apply each via `.gaia/cli/gaia setup-ci write-tool-mode <tool> <mode>`.
 
-- **Step 7** always asks for a fresh token (never reads the existing secret — `gh secret set` overwrites silently).
+- **Step 7** always asks for a fresh token (never reads the existing secret, `gh secret set` overwrites silently).
 - **Step 10's** commit message changes to:
 
   ```
-  chore(gaia-ci): reconfigure — rotated tokens, regenerated workflows
+  chore(gaia-ci): reconfigure, rotated tokens, regenerated workflows
 
   Re-runs /setup-gaia-ci's verification flow. setup_complete remains
   true.
   ```
 
-  `setup_complete` is NOT touched on `--reconfigure` — it's already true.
+  `setup_complete` is NOT touched on `--reconfigure`, it's already true.
 
 ## Step 11.5: Drift-fix path (re-render only)
 
@@ -415,10 +415,10 @@ gh pr create --base <default-branch> --head chore/gaia-ci-rerender \
   --body "GAIA CI templates drifted from the rendered workflows on disk. Regenerated cron workflows and re-installed the code-review-audit.yml PR gate via /setup-gaia-ci. No tool selection or token changes."
 ```
 
-Print the PR URL and exit cleanly. Do NOT auto-merge — the adopter reviews and merges in their normal flow. `setup_complete` is NOT touched.
+Print the PR URL and exit cleanly. Do NOT auto-merge, the adopter reviews and merges in their normal flow. `setup_complete` is NOT touched.
 
 If `render-workflows` or `install-audit-workflow` fails for any reason, surface the structured error and exit; the branch is abandoned. The adopter can delete it (`git branch -D chore/gaia-ci-rerender`) and re-run `/setup-gaia-ci` after fixing the cause.
 
 ## On failure: re-run
 
-The CLI primitives are idempotent and safe to re-run on partial state. After fixing any failure cause (auth missing, network error, malformed config), simply re-run `/setup-gaia-ci` — the idempotent short-circuit in Step 2 catches the already-finalized case and the rest of the flow recovers naturally.
+The CLI primitives are idempotent and safe to re-run on partial state. After fixing any failure cause (auth missing, network error, malformed config), simply re-run `/setup-gaia-ci`, the idempotent short-circuit in Step 2 catches the already-finalized case and the rest of the flow recovers naturally.

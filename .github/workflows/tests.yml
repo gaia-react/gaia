@@ -55,7 +55,7 @@ jobs:
       # the delta SINCE that green run touches a test-relevant file. A code
       # commit that passes followed by a prose-only commit reviews an empty
       # relevant delta and skips. Falls back to origin/main (full scope) when
-      # no green ancestor exists — first run, prior runs failed/cancelled, or
+      # no green ancestor exists, first run, prior runs failed/cancelled, or
       # the API is unreachable (e.g. fork PRs without a token). Skipped jobs do
       # not satisfy required checks under branch protection, so we gate steps.
       - name: Resolve last-green base

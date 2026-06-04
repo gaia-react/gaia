@@ -3,11 +3,11 @@
  *
  * Two scopes overlap here:
  *
- * 1. Filesystem sandbox — `setupSandbox` creates a tmp dir with
+ * 1. Filesystem sandbox: `setupSandbox` creates a tmp dir with
  *    `git init` + an initial commit + `.gaia/` ready for config files.
  *    Mirror's slice 1's `automation/__tests__/sandbox.ts` shape.
  *
- * 2. `gh` shim — `installGhShim` writes a tiny Node script to
+ * 2. `gh` shim: `installGhShim` writes a tiny Node script to
  *    `<sandbox>/bin/gh` that records argv + stdin to sandbox files
  *    and emits scripted stdout / exit code. Tests that assert the
  *    secret never appears on argv use this shim end-to-end (PATH

@@ -103,13 +103,13 @@ describe('installDisplayRule', () => {
   test('preserves existing MEMORY.md lines when adding the new entry', () => {
     mkdirSync(sandbox.roots.memoryDir, {recursive: true});
     const indexPath = path.join(sandbox.roots.memoryDir, 'MEMORY.md');
-    const existing = '- [Some other rule](other.md) — keeps doing X\n';
+    const existing = '- [Some other rule](other.md) - keeps doing X\n';
     writeFileSync(indexPath, existing, 'utf8');
 
     installDisplayRule(sandbox.roots);
 
     const body = readFileSync(indexPath, 'utf8');
-    expect(body).toContain('- [Some other rule](other.md) — keeps doing X');
+    expect(body).toContain('- [Some other rule](other.md) - keeps doing X');
     expect(body).toContain(DISPLAY_RULE_INDEX_LINE);
   });
 });
@@ -142,7 +142,7 @@ describe('removeDisplayRule', () => {
     const indexPath = path.join(sandbox.roots.memoryDir, 'MEMORY.md');
     writeFileSync(
       indexPath,
-      `- [Other rule A](a.md) — A\n- [Other rule B](b.md) — B\n`,
+      `- [Other rule A](a.md) - A\n- [Other rule B](b.md) - B\n`,
       'utf8'
     );
 
@@ -150,8 +150,8 @@ describe('removeDisplayRule', () => {
     removeDisplayRule(sandbox.roots);
 
     const body = readFileSync(indexPath, 'utf8');
-    expect(body).toContain('- [Other rule A](a.md) — A');
-    expect(body).toContain('- [Other rule B](b.md) — B');
+    expect(body).toContain('- [Other rule A](a.md) - A');
+    expect(body).toContain('- [Other rule B](b.md) - B');
     expect(body).not.toContain(DISPLAY_RULE_INDEX_LINE);
   });
 
@@ -209,13 +209,13 @@ describe('assertDisplayRule', () => {
   test('re-adds the index line when only the index has been tampered', () => {
     installDisplayRule(sandbox.roots);
     const indexPath = path.join(sandbox.roots.memoryDir, 'MEMORY.md');
-    writeFileSync(indexPath, '- [Some other](x.md) — note\n', 'utf8');
+    writeFileSync(indexPath, '- [Some other](x.md) - note\n', 'utf8');
 
     const outcome = assertDisplayRule(sandbox.roots);
     expect(outcome.body_written).toBe(false);
     expect(outcome.index_line_added).toBe(true);
     const body = readFileSync(indexPath, 'utf8');
-    expect(body).toContain('- [Some other](x.md) — note');
+    expect(body).toContain('- [Some other](x.md) - note');
     expect(body).toContain(DISPLAY_RULE_INDEX_LINE);
   });
 });

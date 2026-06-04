@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# spec-renumber.sh — Renumber a SPEC. Renames the local SPEC folder, updates the
+# spec-renumber.sh: Renumber a SPEC. Renames the local SPEC folder, updates the
 # inner SPEC.md frontmatter, and rewrites the .gaia/specs.json ledger row. The
 # inner SPEC.md keeps its name; any sibling artifacts in the folder move with it.
 # Does NOT touch external state (branch names, GH issue titles, commit-message
-# history) — those are reported as next steps for the caller to handle consciously.
+# history), those are reported as next steps for the caller to handle consciously.
 #
 # Usage:
 #   spec-renumber.sh <repo_root> <old_id> <new_id>
@@ -134,9 +134,9 @@ fi
 
 echo "renumbered $old_id → $new_id"
 echo
-echo "Next steps (external state — not auto-updated):"
+echo "Next steps (external state, not auto-updated):"
 
-# Branch name — flag if the current branch references the old id.
+# Branch name, flag if the current branch references the old id.
 current_branch="$(git -C "$repo_root" symbolic-ref --short -q HEAD || true)"
 if [ -n "$current_branch" ] && [[ "$current_branch" =~ spec-0*${old_num}(-|$) ]]; then
   new_branch="${current_branch//spec-$(printf '%03d' "$old_num")/spec-$(printf '%03d' "$new_num")}"
@@ -144,11 +144,11 @@ if [ -n "$current_branch" ] && [[ "$current_branch" =~ spec-0*${old_num}(-|$) ]]
   echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
 fi
 
-# GH issue title — flag if the SPEC frontmatter has a stamped issue url.
+# GH issue title, flag if the SPEC frontmatter has a stamped issue url.
 issue_url="$(awk '/^---[[:space:]]*$/{c++; if(c==2)exit} /^gh_issue_url:/{sub(/^gh_issue_url:[[:space:]]*/,""); print}' "$new_spec" || true)"
 if [ -n "$issue_url" ]; then
   echo "  - GH issue $issue_url was titled with $old_id."
   echo "    Update:   gh issue edit <number> --title '$new_id: <intent>'"
 fi
 
-echo "  - Commit-message history is immutable — past commits keep $old_id refs."
+echo "  - Commit-message history is immutable; past commits keep $old_id refs."

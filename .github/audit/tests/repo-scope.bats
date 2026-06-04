@@ -9,7 +9,7 @@
 #
 # This suite lives under .github/audit/tests/ because that is the only
 # directory the CI bats runner (audit-ci-tests.yml, check name
-# "bats (.github/audit)") executes — co-locating it keeps the helper under
+# "bats (.github/audit)") executes, co-locating it keeps the helper under
 # regression coverage.
 #
 # Each test sources the helper, then calls it from inside a `git init`'d HOME
@@ -86,7 +86,7 @@ in_home() {
 }
 
 # -----------------------------------------------------------------------------
-# 4. Quoted `git -C "<home>"` resolves as HOME — quote-strip stays safe.
+# 4. Quoted `git -C "<home>"` resolves as HOME, quote-strip stays safe.
 # -----------------------------------------------------------------------------
 
 @test "quoted git -C home push: home (enforce)" {
@@ -109,7 +109,7 @@ in_home() {
 #    target to the literal three characters `$CG`, the git lookup fails, and the
 #    helper fails closed (return 1 = enforce). This is why the gaia-release
 #    runbook inlines the literal absolute path into sibling pushes rather than
-#    passing $CG/$WEB — a $VAR form would trip the home-repo main-push deny.
+#    passing $CG/$WEB, a $VAR form would trip the home-repo main-push deny.
 # -----------------------------------------------------------------------------
 
 @test "literal \$CG token (unexpandable variable): home (enforce)" {

@@ -67,7 +67,7 @@ export const runGh = (options: GhOptions): Promise<GhResult> => {
     child.on('error', (error: Error) => {
       // Wrapper-internal failure (gh not on PATH, ENOENT, etc). The
       // stdin payload is intentionally NOT included in the surfaced
-      // stderr — secret callers depend on this guarantee.
+      // stderr; secret callers depend on this guarantee.
       settle({
         exitCode: -1,
         ok: false,
@@ -93,7 +93,7 @@ export const runGh = (options: GhOptions): Promise<GhResult> => {
     // crashes the process. The child's exit is already captured by the
     // `close` handler above, so a broken stdin pipe is benign here.
     child.stdin.on('error', () => {
-      // Intentionally swallowed — `close` carries the real outcome.
+      // Intentionally swallowed; `close` carries the real outcome.
     });
 
     if (options.stdin !== undefined) {

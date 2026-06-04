@@ -21,9 +21,9 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 | `.claude/commands/`     | Maintainer-only slash commands (`/gaia-init`, `/gaia-release`)                                                                 | Manual (slash invocation)    |
 | `.claude/hooks/`        | Bash scripts wired in `settings.json`                                                                                          | Auto on matched tool events  |
 | `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter                                                                  | Auto (global) or path-scoped |
-| `.claude/skills/`       | Skills — both context-triggered (`react-code`, `typescript`) and user-invoked (`/gaia` router, `new-component`, `update-deps`) | Auto on context/intent match |
-| `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo — not source of truth)                                                    | Auto per named agent         |
-| `wiki/`                 | Knowledge base — architecture, decisions, patterns (source of truth)                                                           | Manual (on-demand fetch)     |
+| `.claude/skills/`       | Skills: both context-triggered (`react-code`, `typescript`) and user-invoked (`/gaia` router, `new-component`, `update-deps`) | Auto on context/intent match |
+| `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo, not source of truth)                                                    | Auto per named agent         |
+| `wiki/`                 | Knowledge base: architecture, decisions, patterns (source of truth)                                                           | Manual (on-demand fetch)     |
 
 See [[modules/Claude Integration|the modules page]] for the inventory of current commands, rules, hooks, and skills.
 
@@ -33,18 +33,18 @@ GAIA does **not** vendor the `claude-obsidian` plugin into the repo. The plugin 
 
 What this means in practice:
 
-- **Wiki mode** is declared as `Mode: B (Codebase) + E (Research)` in `wiki/README.md`. The string matches upstream's `skills/wiki/references/modes.md` catalog so any agent reading the upstream skill picks the right scaffolding rules. Mode is a documentation contract — there is no runtime toggle in the plugin.
+- **Wiki mode** is declared as `Mode: B (Codebase) + E (Research)` in `wiki/README.md`. The string matches upstream's `skills/wiki/references/modes.md` catalog so any agent reading the upstream skill picks the right scaffolding rules. Mode is a documentation contract; there is no runtime toggle in the plugin.
 - **Wiki hooks are GAIA-owned** (in `.claude/hooks/wiki-*.sh`), not delegated to the upstream plugin's `hooks.json`. Reasons: upstream auto-commits on every Write/Edit; GAIA squashes those via `wiki-squash-autocommits.sh` for cleaner git history. Upstream's Stop-hook prompt assumes a 500-word hot cache; GAIA enforces ~200 words.
 - **DragonScale is opt-out.** The v1.6.0 release adds an optional memory layer (fold operator, deterministic addresses, semantic tiling, boundary-first autoresearch). GAIA declines all four. See [[DragonScale Opt-Out]] for the per-mechanism reasoning and the reversal path for any adopter who wants it.
 - **Plugin upgrades require uninstall + install.** A plain `claude plugin marketplace update` does not re-pin the cache. Use `claude plugin uninstall claude-obsidian@claude-obsidian-marketplace` followed by `claude plugin install claude-obsidian@claude-obsidian-marketplace` to flip `installPath` to the new version. This is a Claude Code plugin CLI quirk worth remembering when bumping the baseline.
 
-## 2. Rules vs. skills vs. hooks — decision criteria
+## 2. Rules vs. skills vs. hooks: decision criteria
 
 Three layers, three triggers. Pick the layer that loads guidance only when it's actually needed.
 
 | Layer | Loads when…                                        | Use for                                                                            |
 | ----- | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Hook  | Tool call matches a registered event               | Mechanical block / advice on a specific tool shape — no judgment required          |
+| Hook  | Tool call matches a registered event               | Mechanical block / advice on a specific tool shape, no judgment required          |
 | Rule  | `paths:` glob matches an in-scope file (or always) | File-path-bound conventions: project-wide style, route layout, accessibility, i18n |
 | Skill | `description:` matches user intent / context       | Cross-file reasoning patterns: refactor playbooks, error-fix recipes, TDD loop     |
 
@@ -54,11 +54,11 @@ Layer-selection heuristics:
 - **Skill** when the guidance is intent-triggered, not file-path-triggered, and benefits from references that load on demand (e.g. `eslint-fixes` only matters when fixing lint, not on every edit).
 - **Rule** when the guidance must auto-apply whenever an in-scope file is touched, regardless of intent (`i18n.md`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
 
-Cross-link: [[Claude Skills]] § Rules vs. Skills — decision criteria.
+Cross-link: [[Claude Skills]] § Rules vs. Skills: decision criteria.
 
 ## 3. Agent extensions (review-type agents only)
 
-Review-type agents — agents that spawn multiple specialist subagents — support a directory-based extension mechanism. Single-subagent agents do not need it.
+Review-type agents, agents that spawn multiple specialist subagents, support a directory-based extension mechanism. Single-subagent agents do not need it.
 
 **Contract:** `.claude/agents/{agent-name}/*.md` files with `subagents:` and `library:` YAML frontmatter.
 
@@ -71,11 +71,11 @@ library: package-name
 
 At dispatch the agent Globs `*.md` in its extension directory (skipping `README.md`), reads each file, and injects its content into the matching specialist subagent's prompt. To swap a library: delete its extension file, add one for the replacement. The main agent definition stays unchanged.
 
-Convention applies to **review-type agents only** — currently just `code-review-audit`. Cross-link: [[Code Review Audit Agent]].
+Convention applies to **review-type agents only**, currently just `code-review-audit`. Cross-link: [[Code Review Audit Agent]].
 
 ## 4. Skill references convention
 
-`SKILL.md` is stack-agnostic lazy philosophy — it auto-loads into context, so it must stay concise.
+`SKILL.md` is stack-agnostic lazy philosophy; it auto-loads into context, so it must stay concise.
 
 Stack-specific or deep-dive content lives in `references/{topic}.md` inside the skill directory, loaded on demand. `SKILL.md` signals available references via markdown links. Adding support for a new stack = add a new reference file; `SKILL.md` stays unchanged.
 
@@ -101,19 +101,19 @@ Examples of path-scoped rules: `i18n.md` (pages + components + languages), `rout
 
 ## 6. Monorepo retrofit playbook
 
-**Container folder name is a project decision** — `apps/`, `projects/`, `packages/`, etc. Substitute `{CONTAINER}/{APP}` throughout.
+**Container folder name is a project decision**: `apps/`, `projects/`, `packages/`, etc. Substitute `{CONTAINER}/{APP}` throughout.
 
 Steps (all mechanical):
 
-1. **Update `paths:` globs in rules** — prefix every `app/…` glob with `{CONTAINER}/{APP}/`. Example: `app/state/**/*` → `apps/web/app/state/**/*`.
-2. **Update hook script regexes** — the advisory hooks match on file paths:
-   - `check-i18n-strings.sh` — regex on `app/(pages|components)/…`
-   - `check-story-exists.sh` — regex on `app/components/…`
-   - `block-eslint-config-edit.sh` — already path-agnostic post GAP §2A-1; no change needed.
-3. **Update scaffolding templates** — in `.claude/skills/new-*/SKILL.md` (and any `references/`), path outputs must become `{CONTAINER}/{APP}/app/…`.
-4. **Split CLAUDE.md** — add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §10).
-5. **Verify hook scripts** — confirm no script hardcodes a specific container folder name. If found, fix.
-6. **Leave wiki hooks alone** — `wiki-session-start.sh` / `wiki-session-stop.sh` are git-level and path-agnostic.
+1. **Update `paths:` globs in rules**: prefix every `app/…` glob with `{CONTAINER}/{APP}/`. Example: `app/state/**/*` → `apps/web/app/state/**/*`.
+2. **Update hook script regexes**: the advisory hooks match on file paths:
+   - `check-i18n-strings.sh`: regex on `app/(pages|components)/…`
+   - `check-story-exists.sh`: regex on `app/components/…`
+   - `block-eslint-config-edit.sh`: already path-agnostic post GAP §2A-1; no change needed.
+3. **Update scaffolding templates**: in `.claude/skills/new-*/SKILL.md` (and any `references/`), path outputs must become `{CONTAINER}/{APP}/app/…`.
+4. **Split CLAUDE.md**: add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §10).
+5. **Verify hook scripts**: confirm no script hardcodes a specific container folder name. If found, fix.
+6. **Leave wiki hooks alone**: `wiki-session-start.sh` / `wiki-session-stop.sh` are git-level and path-agnostic.
 
 ## 7. External-service rule pattern
 
@@ -127,8 +127,8 @@ When adding an external service (Supabase, Firebase, Stripe, Auth0, etc.):
 
 Multiple gates coexist via path scoping:
 
-- `.claude/rules/quality-gate.md` — shared/default gate (stack-neutral, always loaded)
-- `.claude/rules/quality-gate-{stack}.md` — stack-specific gate with `paths:` frontmatter
+- `.claude/rules/quality-gate.md`: shared/default gate (stack-neutral, always loaded)
+- `.claude/rules/quality-gate-{stack}.md`: stack-specific gate with `paths:` frontmatter
 
 Each gate defines its own runner commands. The default `quality-gate.md` stays stack-neutral and delegates to stack-specific gates. Cross-link: [[Quality Gate]].
 
@@ -141,14 +141,14 @@ When replacing the default API layer (Ky + Zod) with Supabase, Firebase, GraphQL
 3. Add `.claude/rules/{new-service}.md` with `paths:` scoped to affected directories.
 4. Add `.claude/agents/code-review-audit/{new-service}.md` with `subagents: [react-patterns, typescript]`.
 5. Update `{CONTAINER}/{APP}/CLAUDE.md` (or root) with dev-server commands for the new service.
-6. Update `test/mocks/` — remove MSW handlers that shimmed the old layer if the new layer has its own test fakes.
+6. Update `test/mocks/`: remove MSW handlers that shimmed the old layer if the new layer has its own test fakes.
 
 ## 10. Per-app CLAUDE.md hierarchy (monorepo)
 
 GAIA ships single-app; do not preemptively split `CLAUDE.md`. When monorepo-converting:
 
-- **Root `CLAUDE.md`** — monorepo overview, cross-cutting rules (wiki, memory discipline).
-- **`{CONTAINER}/{APP}/CLAUDE.md`** — per-app stack specifics, dev commands, local env notes.
+- **Root `CLAUDE.md`**: monorepo overview, cross-cutting rules (wiki, memory discipline).
+- **`{CONTAINER}/{APP}/CLAUDE.md`**: per-app stack specifics, dev commands, local env notes.
 
 Loading is cwd-based: the closest-up `CLAUDE.md` wins per Claude Code's convention.
 
@@ -186,7 +186,7 @@ When a recommendation already contains the concrete decisions (file paths, speci
 
 - After laying out a clear, specific plan, default to executing it. Do not issue `AskUserQuestion` to confirm "should we do X" when X was already in the plan.
 - Reserve `AskUserQuestion` for genuinely branching decisions where the user's preference cannot be inferred (e.g., scope bundling vs. splitting, two valid approaches with different trade-offs).
-- A brief verification pass (path audit, wiki-style check) before commit is not a question — it is verifying the work.
+- A brief verification pass (path audit, wiki-style check) before commit is not a question; it is verifying the work.
 
 ---
 

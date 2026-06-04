@@ -71,7 +71,7 @@ const renderActivePatternsSection = (
     return [
       '## Active patterns',
       '',
-      '(none — all patterns below sample threshold or strength below threshold)',
+      '(none - all patterns below sample threshold or strength below threshold)',
     ].join('\n');
   }
 
@@ -124,7 +124,7 @@ const renderFadedAdaptationsSection = (
 
 const renderPatternDetailLine = (pattern: PatternResult): string => {
   if (pattern.strength === null) {
-    return `- ${pattern.area_tag}: below sample threshold (N=${pattern.sample_count}, min 10) — no fire`;
+    return `- ${pattern.area_tag}: below sample threshold (N=${pattern.sample_count}, min 10) - no fire`;
   }
   const verb =
     pattern.strength >= STRENGTH_THRESHOLD ? 'fired' : 'below threshold';
@@ -132,7 +132,7 @@ const renderPatternDetailLine = (pattern: PatternResult): string => {
   return `- ${pattern.area_tag}: strength ${formatNumber(
     pattern.strength,
     2
-  )} (N=${pattern.sample_count}) — ${verb}`;
+  )} (N=${pattern.sample_count}) - ${verb}`;
 };
 
 const renderPatternDetailGroup = (

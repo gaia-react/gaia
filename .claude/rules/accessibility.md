@@ -11,7 +11,7 @@ paths:
 - **Keyboard navigation**: all interactive elements must be reachable and operable via keyboard (Tab, Enter, Escape, Arrow keys)
 - **Alt text**: all `<img>` elements need descriptive `alt` (or `alt=""` for decorative images)
 - **Form labels**: GAIA Form components (`app/components/Form/`) handle label association automatically. For custom inputs, ensure `<label htmlFor>` or `aria-label`
-- **Color**: never use color as the sole indicator of meaning — add text or icons
+- **Color**: never use color as the sole indicator of meaning, add text or icons
 - **Focus management**: when opening modals/dialogs, move focus into them; on close, return focus to trigger
 
 ## ARIA

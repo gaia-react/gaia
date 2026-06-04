@@ -83,7 +83,7 @@ const read = (filePath: string): string => readFileSync(filePath, 'utf8');
 
 // Built from fragments so Vitest's environment scanner does not read the
 // directive text in the assertions below as a real environment pragma for
-// this file — this is a Node CLI test and must not be forced into jsdom.
+// this file; this is a Node CLI test and must not be forced into jsdom.
 const JSDOM_ENV_DIRECTIVE = `// @vitest-${'environment'} jsdom`;
 
 describe('scaffold component', () => {

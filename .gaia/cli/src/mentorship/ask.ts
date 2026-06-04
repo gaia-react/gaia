@@ -3,17 +3,17 @@
  *
  * The `--yes` flag is the documented non-interactive bypass for scripted /
  * CI use. When `yesFlag === true`, this returns `true` immediately without
- * touching stdin or invoking any prompt — structured stdout/stderr must
+ * touching stdin or invoking any prompt; structured stdout/stderr must
  * stay parseable in scripted contexts.
  *
  * Outside Claude Code, when the user runs `gaia mentorship enable` directly
  * from a shell, this falls back to a stdin Y/N prompt. The slash-command /
  * skill layer (gaia-init) wraps the CLI invocation with `AskUserQuestion`
- * outside the CLI and passes `--yes` once the user confirms — so the CLI
+ * outside the CLI and passes `--yes` once the user confirms; so the CLI
  * never needs to invoke `AskUserQuestion` itself (that tool is LLM-only).
  *
  * If stdin is not a TTY and `--yes` was not passed, the prompt fails closed
- * (returns `false`) — never silently proceed in a scripted context.
+ * (returns `false`); never silently proceed in a scripted context.
  */
 import {createInterface} from 'node:readline';
 

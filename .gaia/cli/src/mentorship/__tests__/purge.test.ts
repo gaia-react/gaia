@@ -57,7 +57,7 @@ const seedMentorshipFixture = async (roots: StorageRoots): Promise<void> => {
   );
   // profile.md
   writeFileSync(roots.profilePath, '# profile\n', {mode: 0o600});
-  // install-id.txt — seeded with a known value; readOrCreateInstallId expects 26 chars.
+  // install-id.txt, seeded with a known value; readOrCreateInstallId expects 26 chars.
   writeFileSync(roots.installIdPath, `${'A'.repeat(26)}\n`, {mode: 0o600});
   // analytics report
   mkdirSync(roots.analyticsDir, {mode: 0o755, recursive: true});

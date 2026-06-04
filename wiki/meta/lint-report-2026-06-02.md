@@ -11,7 +11,7 @@ status: developing
 
 ## #11: Wiki drift check
 
-⚠ `wiki/.state.json` `last_evaluated_sha` (`3bca3f6`) is not reachable from HEAD (squashed/rewritten history). Run `/gaia wiki sync` — it resolves a recovery baseline (`6eae9e2`) and evaluates the un-evaluated window.
+⚠ `wiki/.state.json` `last_evaluated_sha` (`3bca3f6`) is not reachable from HEAD (squashed/rewritten history). Run `/gaia wiki sync`: it resolves a recovery baseline (`6eae9e2`) and evaluates the un-evaluated window.
 
 ## #12: Dead repo-relative paths
 

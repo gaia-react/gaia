@@ -47,7 +47,7 @@ export type WikiState = {
   state_sha: string;
   /**
    * When `reachable` is false, the short SHA of a reachable baseline to resume
-   * evaluation from — the newest ancestor of HEAD at or older than
+   * evaluation from: the newest ancestor of HEAD at or older than
    * `last_evaluated_at`. Empty string when reachable, when the state file has
    * no `last_evaluated_at`, or when the timestamp predates all history. The
    * sync playbook uses it to recover the un-evaluated window after a squash- or

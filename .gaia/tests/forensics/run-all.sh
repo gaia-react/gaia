@@ -4,7 +4,7 @@
 # Exits 0 if all tests pass, 1 if any fail.
 #
 # Prerequisites:
-#   bats-core on PATH — install via:
+#   bats-core on PATH; install via:
 #     brew install bats-core          (macOS)
 #     apt-get install -y bats         (Debian/Ubuntu CI)
 #     npx -y bats-core@latest         (fallback, any platform)
@@ -19,7 +19,7 @@ echo "==> .gaia/tests/forensics/run-all.sh"
 
 # Ensure bats is available; attempt npx fallback if not on PATH.
 if ! command -v bats >/dev/null 2>&1; then
-  echo "bats not found on PATH — attempting: npx -y bats-core@latest"
+  echo "bats not found on PATH; attempting: npx -y bats-core@latest"
   if command -v npx >/dev/null 2>&1; then
     # Run via npx; replace this process so $? propagates correctly.
     exec npx -y bats-core@latest "$HERE"/*.bats

@@ -3,7 +3,7 @@
 #
 # Adopter-flow regression: runs `gaia init strip-branding --title <T>`
 # against a writable copy of the staged release tree. The staged tree is
-# what an adopter receives via `npx create-gaia` — this scenario asserts
+# what an adopter receives via `npx create-gaia`; this scenario asserts
 # the bundled CLI binary actually executes its first user-facing step on
 # that tree.
 #
@@ -22,7 +22,7 @@
 #   - app/components/Header/index.tsx no longer imports GaiaLogo.
 #
 # Layer 0.5: runs on the host or runner, no Docker. Cheap (~1s after
-# build-staging) — no pnpm install, just file-level transforms.
+# build-staging); no pnpm install, just file-level transforms.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -40,7 +40,7 @@ trap 'rm -rf "$STAGING" "$SCAFFOLD"' EXIT
 rsync -a "$STAGING"/ "$SCAFFOLD"/
 
 # Pre-conditions on the staged tree. Each check is something
-# release-exclude guarantees — if any fails, release-exclude has drifted
+# release-exclude guarantees; if any fails, release-exclude has drifted
 # and strip-branding will fail downstream.
 [ -f "$SCAFFOLD/.gaia/templates/README.md" ] \
   || { fail "staged tree missing .gaia/templates/README.md (strip-branding template source)"; exit 1; }
@@ -49,19 +49,19 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 [ -f "$SCAFFOLD/app/components/Header/index.tsx" ] \
   || { fail "staged tree missing app/components/Header/index.tsx (strip-branding edit target)"; exit 1; }
 if [ -f "$SCAFFOLD/README.md" ]; then
-  log "warning: README.md already in scaffold — release-exclude category 11 may have drifted"
+  log "warning: README.md already in scaffold; release-exclude category 11 may have drifted"
 fi
 [ -x "$SCAFFOLD/.gaia/cli/gaia" ] \
   || { fail "staged tree missing or non-executable .gaia/cli/gaia (bundled CLI)"; exit 1; }
 
 # Run strip-branding from inside $SCAFFOLD via a subshell so the CLI's
 # default `process.cwd()` resolves there. The parent scenario keeps its
-# own pwd — never `cd "$SCAFFOLD"` at scenario scope, since other
+# own pwd; never `cd "$SCAFFOLD"` at scenario scope, since other
 # scenarios sourced or invoked from `run-all.sh` may rely on $PWD.
 TITLE="Test Project"
 STDOUT="$(cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" 2>/dev/null)" || {
   # Re-run with stderr unsuppressed for diagnosis. The `fail; exit 1`
-  # below runs unconditionally — the diagnostic re-run's exit code is
+  # below runs unconditionally; the diagnostic re-run's exit code is
   # intentionally ignored (`|| :`).
   log "gaia init strip-branding exited non-zero; rerunning with stderr:"
   ( cd "$SCAFFOLD" && "$SCAFFOLD/.gaia/cli/gaia" init strip-branding --title "$TITLE" ) || :

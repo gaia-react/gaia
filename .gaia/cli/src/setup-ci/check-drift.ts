@@ -19,9 +19,9 @@
  *     "missing": ToolId[]
  *   }
  *
- * - `drifted` — rendered file exists and bytes differ from a fresh render.
- * - `missing` — tool is enabled (mode=ci) but the workflow file is absent.
- * - `in_sync` — rendered bytes match a fresh render.
+ * - `drifted`: rendered file exists and bytes differ from a fresh render.
+ * - `missing`: tool is enabled (mode=ci) but the workflow file is absent.
+ * - `in_sync`: rendered bytes match a fresh render.
  *
  * Tools whose `mode !== 'ci'` are absent from all three arrays.
  */

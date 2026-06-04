@@ -7,7 +7,7 @@
  *
  * Line shape:
  *
- *   - <YYYY-MM-DD> <sha> <decision> — <reason>
+ *   - <YYYY-MM-DD> <sha> <decision> - <reason>
  *
  * Date is today (UTC). Newest entries land at the top under the same
  * `## [Unreleased]` heading the log already uses; we insert immediately
@@ -15,9 +15,9 @@
  * frontmatter fence.
  *
  * Decisions:
- *   - WORTHY    — sync evaluated this commit and wiki was updated.
- *   - SKIP      — sync evaluated this commit and decided no wiki change.
- *   - RE_ANCHOR — sync re-anchored state after a history rewrite (rebase/squash).
+ *   - WORTHY    : sync evaluated this commit and wiki was updated.
+ *   - SKIP      : sync evaluated this commit and decided no wiki change.
+ *   - RE_ANCHOR : sync re-anchored state after a history rewrite (rebase/squash).
  */
 import {existsSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
@@ -250,7 +250,7 @@ export const run = (
   }
 
   const date = options.today ?? todayUtc();
-  const newLine = `- ${date} ${parsed.flags.sha} ${parsed.flags.decision} — ${parsed.flags.reason}`;
+  const newLine = `- ${date} ${parsed.flags.sha} ${parsed.flags.decision} - ${parsed.flags.reason}`;
   const insertionIndex = findInsertionIndex(lines, scan.endLineIndex);
   const next = [
     ...lines.slice(0, insertionIndex),

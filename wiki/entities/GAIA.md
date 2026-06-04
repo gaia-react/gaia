@@ -15,7 +15,7 @@ GAIA React is a thoroughly-configured React workflow for Claude. The current ite
 
 ## Authors / maintainers
 
-- **[[Steven Sacks]]** — author, maintainer (`stevensacks@gmail.com`)
+- **[[Steven Sacks]]**: author, maintainer (`stevensacks@gmail.com`)
 
 ## Repos & resources
 
@@ -24,7 +24,7 @@ GAIA React is a thoroughly-configured React workflow for Claude. The current ite
 
 ## History
 
-The original GAIA was a Flash framework — the most popular Flash framework worldwide (second only to Adobe Flex, which targeted enterprise). It was used to build 100K+ Flash sites and adopted by every major digital agency. GAIA React has been refined over 4+ years across multiple production projects.
+The original GAIA was a Flash framework: the most popular Flash framework worldwide (second only to Adobe Flex, which targeted enterprise). It was used to build 100K+ Flash sites and adopted by every major digital agency. GAIA React has been refined over 4+ years across multiple production projects.
 
 ## Naming convention
 

@@ -12,7 +12,7 @@ Surface assumptions explicitly, present interpretations when ambiguous, push bac
 
 ## 2. Simplicity First
 
-Write the minimum code that solves the problem — no speculative features, abstractions, or impossible-scenario error handling. If it could be 50 lines, don't write 200.
+Write the minimum code that solves the problem, no speculative features, abstractions, or impossible-scenario error handling. If it could be 50 lines, don't write 200.
 
 ## 3. Surgical Changes
 
@@ -24,7 +24,7 @@ Define verifiable success criteria before starting; loop until verified. For mul
 
 ## 5. Always Use Test Driven Development
 
-When building new features or fixing bugs, follow the TDD workflow described in `.claude/skills/tdd/SKILL.md` (read it on demand — do not preload).
+When building new features or fixing bugs, follow the TDD workflow described in `.claude/skills/tdd/SKILL.md` (read it on demand, do not preload).
 
 - Use Vitest to test individual functions and components work in isolation
 - Use Playwright to test user flows required by the feature specifications
@@ -33,4 +33,4 @@ When building new features or fixing bugs, follow the TDD workflow described in 
 
 Run the Quality Gate Process defined in `.claude/rules/quality-gate.md` (always-loaded as a rule; no `@`-import needed).
 
-Don't hand-polish formatting or auto-fixable lint while authoring — the gate's `pnpm lint` (`eslint --fix`, with Prettier wired in as an `eslint` rule) normalizes it in one terminal pass. Spend tokens only on non-auto-fixable lint.
+Don't hand-polish formatting or auto-fixable lint while authoring, the gate's `pnpm lint` (`eslint --fix`, with Prettier wired in as an `eslint` rule) normalizes it in one terminal pass. Spend tokens only on non-auto-fixable lint.

@@ -17,8 +17,8 @@ Reports unused files, exports, types, and dependencies across the codebase. Devt
 
 - Config: `knip.config.ts` (repo root)
 - Run: `pnpm knip` (manual) or `pnpm knip --reporter json` (machine-readable, used by the audit agent)
-- Runs automatically pre-merge inside the [[Code Review Audit Agent]] (alongside `react-doctor`) — pre-merge is post-task by design, so the in-progress noise concern doesn't apply.
-- Not part of the [[Quality Gate]] (pre-commit) — in-progress work routinely flags exports that haven't been wired up yet, which drowns the signal.
+- Runs automatically pre-merge inside the [[Code Review Audit Agent]] (alongside `react-doctor`): pre-merge is post-task by design, so the in-progress noise concern doesn't apply.
+- Not part of the [[Quality Gate]] (pre-commit): in-progress work routinely flags exports that haven't been wired up yet, which drowns the signal.
 
 ## Template-aware config
 
@@ -35,8 +35,8 @@ GAIA's `gaia/` directory is a library template. Files in `app/components/`, `app
 
 Output falls into three buckets:
 
-1. **Real dead code** — unused file/export/type with no callers. Delete.
-2. **Library API exposed for downstream use** — intentionally exported even though this repo doesn't consume it. Add to `entry` globs in `knip.config.ts`.
-3. **Implicit dependency** — package used via config plugin, CSS, or runtime resolution that knip can't trace. Add to `ignoreDependencies` in `knip.config.ts`.
+1. **Real dead code**: unused file/export/type with no callers. Delete.
+2. **Library API exposed for downstream use**: intentionally exported even though this repo doesn't consume it. Add to `entry` globs in `knip.config.ts`.
+3. **Implicit dependency**: package used via config plugin, CSS, or runtime resolution that knip can't trace. Add to `ignoreDependencies` in `knip.config.ts`.
 
 See [[Quality Gate]].

@@ -40,7 +40,7 @@ const ghCreateUrlStandard = 'https://github.com/owner/repo/pull/137\n';
 const ghCreateUrlWithBanner =
   'Creating pull request for revert -> main\nhttps://github.com/owner/repo/pull/137\n';
 
-describe('UAT-009 — auto-revert on post-merge failure', () => {
+describe('UAT-009; auto-revert on post-merge failure', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
   let mock: GhMock;
@@ -210,7 +210,7 @@ describe('UAT-009 — auto-revert on post-merge failure', () => {
   });
 });
 
-describe('UAT-010 — hard-cap escalation', () => {
+describe('UAT-010; hard-cap escalation', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
   let mock: GhMock;

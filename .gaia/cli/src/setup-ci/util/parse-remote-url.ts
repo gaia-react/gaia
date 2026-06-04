@@ -2,7 +2,7 @@
  * Pure helper for parsing GitHub remote URLs.
  *
  * Supports the five forms `git remote get-url origin` produces in the
- * wild. Returns `null` for any other shape — callers surface the
+ * wild. Returns `null` for any other shape; callers surface the
  * "no GitHub origin" message themselves.
  *
  * Accepted forms:

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Renders an issue body template by passing it through envsubst.
 # Required env vars (caller sets via composite-action `env:`):
-#   ORIGINAL_PR, ORIGINAL_TITLE, REVERT_PR, MERGE_SHA, FAILED_RUN_URL,
-#   WORKFLOW_NAME, REVERT_FAILED_RUN_URL (latter empty for priority:high).
+#   ORIGINAL_PR: ORIGINAL_TITLE, REVERT_PR, MERGE_SHA, FAILED_RUN_URL,
+#   WORKFLOW_NAME: REVERT_FAILED_RUN_URL (latter empty for priority:high).
 #
 # Args:
-#   $1 — path to the template (.md file using ${VAR} placeholders).
+#   $1: path to the template (.md file using ${VAR} placeholders).
 #
 # stdout: rendered body. The composite action pipes it to
 #   `gh issue create --body-file -`.

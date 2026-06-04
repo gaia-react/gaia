@@ -6,7 +6,7 @@ description: 'GAIA-wrapped /speckit-specify: writes through core, then relocates
 
 This is the body that replaces the core speckit.specify command body when the GAIA preset is installed. The core specify body is inlined below at preset install time via the `wrap` strategy.
 
-## Step 0 — GAIA pre-checks
+## Step 0: GAIA pre-checks
 
 The `before_specify` extension hook (registered by the GAIA extension) fires before this body runs. It enforces:
 
@@ -15,11 +15,11 @@ The `before_specify` extension hook (registered by the GAIA extension) fires bef
 
 If the hook blocks, the agent halts here and surfaces the block message. Do not proceed past Step 1 in that case.
 
-## Step 1 — core /speckit-specify
+## Step 1: core /speckit-specify
 
 {CORE_TEMPLATE}
 
-## Step 2 — relocate to .gaia/local/specs/SPEC-NNN/SPEC.md
+## Step 2: relocate to .gaia/local/specs/SPEC-NNN/SPEC.md
 
 After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
 
@@ -48,11 +48,11 @@ After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
    ---
    ```
 
-   The remaining required fields (`intent`, `success_criteria`, `uats`, `scope_boundaries`, `clarifications`, `research_summary`) are populated by the GAIA Socratic loop in `/gaia-spec`. When this preset runs under bare `/speckit-specify` (no Socratic loop), those fields stay as the salvaged template instructed and the `after_specify` lint will surface them as missing — which is the intended signal for the user to run `/gaia-spec` instead.
+   The remaining required fields (`intent`, `success_criteria`, `uats`, `scope_boundaries`, `clarifications`, `research_summary`) are populated by the GAIA Socratic loop in `/gaia-spec`. When this preset runs under bare `/speckit-specify` (no Socratic loop), those fields stay as the salvaged template instructed and the `after_specify` lint will surface them as missing, which is the intended signal for the user to run `/gaia-spec` instead.
 
 5. Leave the core artifact at its original path; do not delete it. Spec-kit's downstream commands (`/speckit-plan`, etc.) read from there. The relocated GAIA copy is the canonical SPEC-NNN artifact for the GAIA workflow.
 
-## Step 3 — return
+## Step 3: return
 
 Surface a single confirmation line naming both paths:
 

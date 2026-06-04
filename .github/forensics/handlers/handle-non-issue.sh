@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# handle-non-issue.sh — UAT-002 action handler.
+# handle-non-issue.sh: UAT-002 action handler.
 #
 # Closes a forensics-triaged issue, applies the `non-issue` and (last)
 # `gaia-triaged` labels, and posts the classifier reasoning as a comment
@@ -47,7 +47,7 @@ comment_file="$work_dir/comment.md"
 
 # Order:
 #   1. Apply the classification label (`non-issue`).
-#   2. Post the verdict comment via --body-file (never --body "$(...)" —
+#   2. Post the verdict comment via --body-file (never --body "$(...)" -
 #      reasoning may contain shell metacharacters even after redaction).
 #   3. Close the issue.
 #   4. Apply `gaia-triaged` LAST so the idempotency key is the final

@@ -14,4 +14,4 @@ tags: [concept, a11y]
 
 ## Cross-references
 
-- [[ESLint Fixes]] — playbook for lint-level violations.
+- [[ESLint Fixes]]: playbook for lint-level violations.

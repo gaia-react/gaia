@@ -2,13 +2,13 @@
  * Rolling-window strength helpers shared by the three pattern detectors.
  *
  * Constants:
- *   MIN_SAMPLE_COUNT     — events required before a pattern can fire
- *   STRENGTH_THRESHOLD   — minimum strength for a pattern to fire (and stay active)
- *   RATE_TARGET          — saturation rate for rate-based detectors (30%)
- *   AMENDED_RATE_TARGET  — saturation rate for spec_amended in intent-clarity gap
- *   QUESTION_COUNT_TARGET — saturation Q-count for time_to_resolved_spec
- *   FADE_IMPROVEMENT_FULL — improvement (delta in metric) at which fade reaches 1.0
- *   FLAKE_DOWNWEIGHT     — multiplier applied to flake_suspected uat_fail events
+ *   MIN_SAMPLE_COUNT      : events required before a pattern can fire
+ *   STRENGTH_THRESHOLD   : minimum strength for a pattern to fire (and stay active)
+ *   RATE_TARGET          : saturation rate for rate-based detectors (30%)
+ *   AMENDED_RATE_TARGET  : saturation rate for spec_amended in intent-clarity gap
+ *   QUESTION_COUNT_TARGET: saturation Q-count for time_to_resolved_spec
+ *   FADE_IMPROVEMENT_FULL: improvement (delta in metric) at which fade reaches 1.0
+ *   FLAKE_DOWNWEIGHT     : multiplier applied to flake_suspected uat_fail events
  *
  * Constants are implementation latitude, tunable from real-data feedback.
  */

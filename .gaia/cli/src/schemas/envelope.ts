@@ -39,7 +39,7 @@ const isMentorshipEventType = (
  * schema in v1. The `superRefine` below cross-validates the payload
  * against `event_type`: for any known mentorship event type the payload
  * MUST satisfy that type's schema in `MentorshipPayloadByType`. Unknown
- * event types keep an unconstrained payload — projection's strict cloud
+ * event types keep an unconstrained payload; projection's strict cloud
  * schemas (`telemetry/projection.ts`) own that boundary.
  */
 export const EnvelopeSchema = z

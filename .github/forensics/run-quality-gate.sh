@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-quality-gate.sh — Quality Gate runner for the SPEC-002 forensics
+# run-quality-gate.sh: Quality Gate runner for the SPEC-002 forensics
 # triage workflow. Executes each gate step in order, halts on the first
 # failure, and writes a JSON summary the workflow YAML feeds into the
 # `handle-needs-human.sh` reason-code `gate-failure` path (UAT-005).
@@ -12,7 +12,7 @@
 #   2. pnpm typecheck
 #   3. pnpm lint
 #   4. pnpm test --run                  (vitest only; playwright is out of
-#                                        scope for the triage gate — see
+#                                        scope for the triage gate, see
 #                                        task-quality-gate-runner.md)
 #   5. pnpm knip
 #
@@ -29,7 +29,7 @@
 #
 # Knip caveat:
 #   .claude/rules/knip.md says "do not run mid-task / as part of the
-#   Quality Gate — in-progress exports flag as false positives". That
+#   Quality Gate, in-progress exports flag as false positives". That
 #   advice targets human/IDE Quality Gate use during active development.
 #   In the triage workflow the candidate fix is fully committed before
 #   this script runs, so knip's incomplete-export-graph failure mode
@@ -37,7 +37,7 @@
 #   lint/test failures.
 #
 # Dependencies:
-#   pnpm — bootstrapped by an earlier workflow step (this script does not
+#   pnpm, bootstrapped by an earlier workflow step (this script does not
 #   set up pnpm itself).
 #
 # Local maintainer use:
@@ -97,14 +97,14 @@ json_escape() {
 # Run one gate step. Captures merged stderr+stdout to a per-step log.
 # On non-zero exit:
 #   - Trims the log to the last 50 lines AND ≤2000 chars (whichever is
-#     tighter — comment-fitting is the hard constraint).
+#     tighter, comment-fitting is the hard constraint).
 #   - Writes the failure summary JSON.
 #   - Returns 1 (caller propagates).
 # On zero exit: returns 0 silently.
 #
 # Args:
-#   $1 — step name (matches the spec's vocabulary: install/typecheck/lint/test/knip)
-#   $2..$N — command + args
+#   $1: step name (matches the spec's vocabulary: install/typecheck/lint/test/knip)
+#   $2..$N: command + args
 # ---------------------------------------------------------------------------
 run_step() {
   local step="$1"

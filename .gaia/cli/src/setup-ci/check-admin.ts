@@ -5,12 +5,12 @@
  * target repo. Returns a strict three-way `auth_status` enum so the
  * slash command can branch:
  *
- *   - `ok`               — gh auth + API both succeeded.
- *   - `unauthenticated`  — gh auth status failed.
- *   - `api_error`        — auth ok but the repos API call failed.
+ *   - `ok`              : gh auth + API both succeeded.
+ *   - `unauthenticated` : gh auth status failed.
+ *   - `api_error`       : auth ok but the repos API call failed.
  *
  * Contract: `admin: false` whenever `auth_status != "ok"`. Never
- * false-positive admin. Exits 0 in every branch — `check-admin` is a
+ * false-positive admin. Exits 0 in every branch; `check-admin` is a
  * query, not a gate.
  */
 import {EXIT_CODES} from '../exit.js';

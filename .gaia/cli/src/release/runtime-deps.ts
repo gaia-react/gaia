@@ -25,9 +25,9 @@
  * Read-only. No writes anywhere.
  *
  * Exit codes:
- *   0 — no leaks
- *   1 — leaks detected, missing inputs, bad flags
- *   2 — unexpected (manifest parse failure, IO error)
+ *   0: no leaks
+ *   1: leaks detected, missing inputs, bad flags
+ *   2: unexpected (manifest parse failure, IO error)
  */
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
@@ -64,8 +64,8 @@ const SCAN_GLOBS = ['.gaia/statusline', '.claude/hooks'] as const;
  *
  * The git-tracked subset is the single canonical set exported by
  * `manifest.ts` (`classifyPath` maps those to `null`). This scan adds
- * `.gaia/automation.json` — a runtime file created on the adopter side,
- * never git-tracked, so it cannot live in the manifest's set — to cover
+ * `.gaia/automation.json`, a runtime file created on the adopter side,
+ * never git-tracked, so it cannot live in the manifest's set; to cover
  * references found in the extracted staging tree.
  */
 const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
@@ -138,7 +138,7 @@ const expandPath = (line: string, start: number): string => {
  * occurrence is preceded by a path-body character (typically `/`), we
  * usually want to skip it as a substring inside an unrelated absolute
  * path. The exception is variable-expansion idioms like
- * `"$PROJECT_ROOT/.gaia/scripts/check-updates.sh"` — those resolve to a
+ * `"$PROJECT_ROOT/.gaia/scripts/check-updates.sh"`, those resolve to a
  * project-relative path at runtime, so the static portion IS the
  * project path. Detect those by scanning back through path-like chars
  * for a `$`.
@@ -183,7 +183,7 @@ export const extractPathRefs = (
         if (found === -1) break;
         // Substring-vs-rooted-path discrimination. A `.gaia/` preceded by
         // a path-body char usually means we're inside a larger absolute
-        // path (`/var/log/.gaia/...`) — skip. The exception is shell
+        // path (`/var/log/.gaia/...`); skip. The exception is shell
         // variable expansion (`$PROJECT_ROOT/.gaia/...`), where the
         // static portion is the project-relative path we care about.
         const leading = found === 0 ? '' : (stripped[found - 1] as string);

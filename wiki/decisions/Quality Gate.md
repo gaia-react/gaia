@@ -10,20 +10,20 @@ tags: [decision, ci, quality]
 
 # Decision: Mandatory Quality Gate
 
-Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Claude runs the full pipeline below before any `git commit` that touches source — **unless the gate has nothing to check**.
+Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Claude runs the full pipeline below before any `git commit` that touches source; **unless the gate has nothing to check**.
 
 ## Steps
 
-1. **Simplify** — run `simplify` skill; apply all endorsed changes.
-2. **Localization check** — no hardcoded user-facing strings or unfilled keys.
-3. `pnpm typecheck` — zero errors.
-4. `pnpm lint` — zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort — this step normalizes it.
-5. `pnpm test --run` — all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
-6. `pnpm pw` — all Playwright E2E tests pass.
-7. **Dev smoke test** — start `pnpm dev`, curl a route, verify HTTP 200.
-8. `pnpm build` — confirms production build.
-9. **Fix all warnings before reporting** — never hand off with known warnings.
-10. **Stop and report** — wait for user approval.
+1. **Simplify**: run `simplify` skill; apply all endorsed changes.
+2. **Localization check**: no hardcoded user-facing strings or unfilled keys.
+3. `pnpm typecheck`: zero errors.
+4. `pnpm lint`: zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it.
+5. `pnpm test --run`: all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
+6. `pnpm pw`: all Playwright E2E tests pass.
+7. **Dev smoke test**: start `pnpm dev`, curl a route, verify HTTP 200.
+8. `pnpm build`: confirms production build.
+9. **Fix all warnings before reporting**: never hand off with known warnings.
+10. **Stop and report**: wait for user approval.
 
 | Step          | Result |
 | ------------- | ------ |
@@ -56,10 +56,10 @@ If the grep returns nothing, skip the gate.
 ## Behavior when the gate runs
 
 - **Fix issues as you encounter them** rather than just reporting them.
-- All warnings/issues (typecheck errors, lint errors/warnings, test console warnings like missing i18n keys or HydrateFallback, runtime errors) must be resolved before the commit — never commit with known warnings.
-- After fixing, **STOP and report results to the user** — do not commit until the user reviews and approves.
+- All warnings/issues (typecheck errors, lint errors/warnings, test console warnings like missing i18n keys or HydrateFallback, runtime errors) must be resolved before the commit; never commit with known warnings.
+- After fixing, **STOP and report results to the user**; do not commit until the user reviews and approves.
 
-Localization: all user-facing strings must be localized — no hardcoded strings in JSX, no keys without values.
+Localization: all user-facing strings must be localized; no hardcoded strings in JSX, no keys without values.
 
 ## Source of truth
 

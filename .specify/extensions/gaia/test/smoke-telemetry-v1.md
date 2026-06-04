@@ -1,14 +1,14 @@
-# SPEC-001 telemetry-v1 — UAT runbook
+# SPEC-001 telemetry-v1, UAT runbook
 
-Walk-through narrative covering every one of the SPEC's 47 UATs. Maintainer-judgment-allowed throughout (the `Tell me more` Q&A loop in UAT-007 is the obvious example — assertions like "does the explainer copy read as intended?" cannot land in a deterministic harness). This is the document the maintainer reads during SPEC verification; the procedural-deterministic subset is the release-gate harness at `.gaia/tests/smoke/telemetry-v1/run.sh`.
+Walk-through narrative covering every one of the SPEC's 47 UATs. Maintainer-judgment-allowed throughout (the `Tell me more` Q&A loop in UAT-007 is the obvious example, assertions like "does the explainer copy read as intended?" cannot land in a deterministic harness). This is the document the maintainer reads during SPEC verification; the procedural-deterministic subset is the release-gate harness at `.gaia/tests/smoke/telemetry-v1/run.sh`.
 
 The two artifacts are siblings, not duplicates. Per `.specify/extensions/gaia/rules/smoke.md`, classification is by _shape_: this runbook accommodates judgment; the harness is fully procedural. Both ship with the SPEC.
 
 ## How to use this runbook
 
-Walk it once start-to-finish during SPEC verification. Each cluster has a setup, an action, and an assertion. Where a step is mechanically deterministic and could equally land in a harness, the brief calls that out and points at the specific harness test that covers it — run that subset first via `bash .gaia/tests/smoke/telemetry-v1/run.sh` to fast-fail if the regression is structural rather than experiential.
+Walk it once start-to-finish during SPEC verification. Each cluster has a setup, an action, and an assertion. Where a step is mechanically deterministic and could equally land in a harness, the brief calls that out and points at the specific harness test that covers it, run that subset first via `bash .gaia/tests/smoke/telemetry-v1/run.sh` to fast-fail if the regression is structural rather than experiential.
 
-Pattern-detection clusters explicitly note "wired-but-inert; assertion is against synthetic fixture, not live data" — at v1.0.0 internal-testing scale, real-usage events have not accumulated past the 10-event sample threshold. UAT-029/030/031 verify the _code paths_ against the Phase 5 fixtures at `.gaia/cli/test-fixtures/profile/*.jsonl`; production behavior is wired-but-inert by design.
+Pattern-detection clusters explicitly note "wired-but-inert; assertion is against synthetic fixture, not live data", at v1.0.0 internal-testing scale, real-usage events have not accumulated past the 10-event sample threshold. UAT-029/030/031 verify the _code paths_ against the Phase 5 fixtures at `.gaia/cli/test-fixtures/profile/*.jsonl`; production behavior is wired-but-inert by design.
 
 ## Prerequisites
 
@@ -16,11 +16,11 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - `pnpm install` has run so `node_modules/.bin/tsx` is on disk.
 - `.gaia/cli/gaia` is executable.
 - The harness has passed at least once locally: `bash .gaia/tests/smoke/telemetry-v1/run.sh` exits 0.
-- A scratch dir for any per-step manual experiments: `WORK=$(mktemp -d)` — clean up at the end.
+- A scratch dir for any per-step manual experiments: `WORK=$(mktemp -d)`, clean up at the end.
 
 ---
 
-## Cluster 1 — Storage scaffolding (UATs 1, 2, 3)
+## Cluster 1: Storage scaffolding (UATs 1, 2, 3)
 
 **Setup.** Fresh repo with `gaia-init` not yet run, mentorship choice unset.
 
@@ -36,7 +36,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 ---
 
-## Cluster 2 — Opt-in flow at gaia-init (UATs 4, 5, 6, 7)
+## Cluster 2: Opt-in flow at gaia-init (UATs 4, 5, 6, 7)
 
 **Setup.** Fresh repo, `gaia-init` not yet run.
 
@@ -44,16 +44,16 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-004.** An `AskUserQuestion` is presented with exactly three options in this order — "Not now (you can enable later if you like)" (Recommended), "Yes, enable mentorship + anonymous analytics", "Tell me more before I decide" — preceded by the privacy explainer copy from the design note.
+- **UAT-004.** An `AskUserQuestion` is presented with exactly three options in this order, "Not now (you can enable later if you like)" (Recommended), "Yes, enable mentorship + anonymous analytics", "Tell me more before I decide", preceded by the privacy explainer copy from the design note.
 - **UAT-005.** Selecting "Not now" writes `mentorship.enabled = false` and `mentorship.analytics.enabled = false` to `.gaia/local/mentorship.json`; init proceeds; no telemetry directories under `~/.claude/projects/<slug>/gaia/` are created. Verify with `cat .gaia/local/mentorship.json` and `ls ~/.claude/projects/<slug>/gaia 2>&1` (expect "No such file or directory").
 - **UAT-006.** Selecting "Yes, enable mentorship + anonymous analytics" writes both `mentorship.enabled = true` AND `mentorship.analytics.enabled = true` in a single decision; init proceeds; the mentorship directory tree is provisioned with chmod 700/600. Verify with `stat -f '%Lp' ~/.claude/projects/<slug>/gaia/telemetry/mentorship` (expect 700).
 - **UAT-007.** Selecting "Tell me more before I decide" drops to a free-form Q&A loop where Claude answers questions about mentorship; on user signal of completion, the same structured three-option `AskUserQuestion` is re-presented; init does not proceed until either "Not now" or "Yes, enable" is selected. **Maintainer judgment.** Read three or four exchanges and judge: does the answer feel grounded? Does Claude refuse to claim things the SPEC does not promise (e.g., upload to PostHog, encryption, or the `--migrate` command)? Does the loop close gracefully on a vague "ok, continue" or does it require an explicit verbal cue?
 
-**Harness fast-path.** None — UAT-007 is inherently maintainer-judgment; UATs 4–6 require live `AskUserQuestion` rendering, which the harness does not invoke.
+**Harness fast-path.** None, UAT-007 is inherently maintainer-judgment; UATs 4–6 require live `AskUserQuestion` rendering, which the harness does not invoke.
 
 ---
 
-## Cluster 3 — CLI emit (UATs 8, 9, 10, 11, 12)
+## Cluster 3: CLI emit (UATs 8, 9, 10, 11, 12)
 
 **Setup.** A repo with mentorship enabled, an open SPEC `SPEC-014` with `UAT-007`.
 
@@ -71,7 +71,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 ---
 
-## Cluster 4 — Structural projection (UATs 13, 14, 15)
+## Cluster 4: Structural projection (UATs 13, 14, 15)
 
 **Setup.** Cloud-stream files have been written across multiple events.
 
@@ -87,9 +87,9 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 ---
 
-## Cluster 5 — Mentorship event catalog (UATs 16, 17, 18, 19, 20, 21, 22, 23)
+## Cluster 5: Mentorship event catalog (UATs 16, 17, 18, 19, 20, 21, 22, 23)
 
-**Setup.** Mentorship enabled. Walk through eight contrived scenarios — each emits one of the eight mentorship event types via the CLI and inspects the resulting NDJSON line.
+**Setup.** Mentorship enabled. Walk through eight contrived scenarios, each emits one of the eight mentorship event types via the CLI and inspects the resulting NDJSON line.
 
 **Expected.**
 
@@ -102,11 +102,11 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - **UAT-022.** A `time_to_resolved_spec` event with `question_count: 12`, `duration_seconds: 1850`, `abandoned: false`, `area_tags`. `.gaia/cli/gaia telemetry emit time_to_resolved_spec --spec-id SPEC-300 --area-tags visual --question-count 12 --duration-seconds 1850`.
 - **UAT-023.** A `code_review_audit_finding` event with `finding_class: type_hole`, `severity: warning`, `pr_number`, `area_tags`. `.gaia/cli/gaia telemetry emit code_review_audit_finding --spec-id SPEC-300 --area-tags react --pr-number 88 --finding-class type_hole --severity warning --auditor-type code-review-audit`.
 
-**Harness fast-path.** None — the harness exercises only `uat_pass`. The other seven event types are validated by the schemas' unit tests (`.gaia/cli/src/schemas/__tests__/`); this cluster is the integration sanity check.
+**Harness fast-path.** None, the harness exercises only `uat_pass`. The other seven event types are validated by the schemas' unit tests (`.gaia/cli/src/schemas/__tests__/`); this cluster is the integration sanity check.
 
 ---
 
-## Cluster 6 — Soft + hard hook backstop (UATs 24, 25, 26)
+## Cluster 6: Soft + hard hook backstop (UATs 24, 25, 26)
 
 **Setup.** Mentorship enabled. Two scratch SPECs to stress the engineer-return hook and the spec_close → compute-profile chain.
 
@@ -114,13 +114,13 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 - **UAT-024.** A Senior agent finishes a task but fails to inline-emit `uat_pass` despite verification succeeding. The PostToolUse `engineer-return` hook reads the agent's structured return payload, infers the missing event(s), and emits via `.gaia/cli/gaia telemetry emit`. The stream contains exactly one `uat_pass` event for the work item. Verify by inspecting the hook script (`.claude/hooks/`) and the resulting JSONL.
 - **UAT-025.** A Senior agent inline-emits `uat_pass` AND the engineer-return hook subsequently attempts the same emit. Both invocations complete; idempotency by content-derived `event_id` ULID ensures exactly one event lands; the hook's second invocation detects the duplicate and exits without writing.
-- **UAT-026.** A `/gaia-spec` session canonically saves a SPEC. The save completes; a `spec_close` chain fires `.gaia/cli/gaia telemetry compute-profile`, regenerating `profile.md` with the 30-day rolling window applied. Verify the `compute-profile` invocation lands in the slash-command's `## Step 5 — Telemetry` block.
+- **UAT-026.** A `/gaia-spec` session canonically saves a SPEC. The save completes; a `spec_close` chain fires `.gaia/cli/gaia telemetry compute-profile`, regenerating `profile.md` with the 30-day rolling window applied. Verify the `compute-profile` invocation lands in the slash-command's `## Step 5, Telemetry` block.
 
 **Harness fast-path.** Test 6 covers the silent-success short-circuit that UAT-026's chain trigger depends on (compute-profile must exit 0 quietly when mentorship is disabled, otherwise spec_close would fail loudly on every disabled repo). UAT-024 / UAT-025 require a live agent dispatch; assert by reading the hook script + grepping for the inline-emit call site.
 
 ---
 
-## Cluster 7 — Slash-command emits (UATs 27, 28)
+## Cluster 7: Slash-command emits (UATs 27, 28)
 
 **Setup.** Live `/gaia-spec` and `/gaia-plan` sessions.
 
@@ -129,11 +129,11 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - **UAT-027.** Run `/gaia-spec` end-to-end. When Gate-2 confirmation completes and the canonical save lands at `.gaia/local/specs/SPEC-NNN/SPEC.md`, a `time_to_resolved_spec` mentorship event emits with the session's question count and elapsed time. Verify by grepping today's mentorship JSONL.
 - **UAT-028.** Run `/gaia-plan` against an existing SPEC. Mid-flow, request a revision (e.g. ask the planner to add two more dispatch artifacts). When the planner re-emits dispatch artifacts, a `plan_revised` mentorship event emits with the appropriate `revision_class` (`scope_change` for the example above; `sequencing_change` / `dispatch_artifact_refinement` / `bug_fix_added` for other shapes).
 
-**Harness fast-path.** None — these require a live slash-command session.
+**Harness fast-path.** None, these require a live slash-command session.
 
 ---
 
-## Cluster 8 — Pattern detection (UATs 29, 30, 31, 32) — fixture-driven
+## Cluster 8: Pattern detection (UATs 29, 30, 31, 32), fixture-driven
 
 **Setup.** Wired-but-inert at v1.0.0; assertion is against synthetic fixture, not live data. Use the fixtures at `.gaia/cli/test-fixtures/profile/`.
 
@@ -148,7 +148,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 ---
 
-## Cluster 9 — Adaptation injection (UATs 33, 34) — fixture-driven
+## Cluster 9: Adaptation injection (UATs 33, 34), fixture-driven
 
 **Setup.** Use the same `articulation-fire.jsonl` from Cluster 8 to populate `profile.md` with an active adaptation.
 
@@ -157,24 +157,24 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - **UAT-033.** With `profile.md` listing `po_socratic_depth_increased` as active, begin a `/gaia-spec` session. The system prompt for the spec wrapper agent includes a `## Profile-driven coaching` section containing the adaptation text. The user-facing UX changes are observable: deeper Socratic depth on success criteria for the relevant area. **Maintainer judgment.** Walk a spec session and judge: does the wrapper actually apply the deeper depth? Does it stop applying it when you switch to a different area tag?
 - **UAT-034.** Wipe `profile.md` (or use a scratch repo with no fixture). Begin any agent dispatch. No `## Profile-driven coaching` section is added to the system prompt; the prompt is byte-identical to the non-mentorship path. Verify by rendering the system prompt with a no-active-adaptation state vs. the non-mentorship state and diffing.
 
-**Harness fast-path.** None — these require live agent dispatch and prompt comparison.
+**Harness fast-path.** None, these require live agent dispatch and prompt comparison.
 
 ---
 
-## Cluster 10 — profile.md (UATs 35, 36)
+## Cluster 10: profile.md (UATs 35, 36)
 
 **Setup.** Mentorship enabled, fixture in place.
 
 **Expected.**
 
 - **UAT-035.** In two terminals, close two `/gaia-spec` SPECs within 100ms of each other. Both `spec_close` chains fire `compute-profile` concurrently. `profile.md` is written atomically (write-temp-and-rename); the final file is well-formed; no half-written state observable; both sessions' contributing events are reflected in the next read. Verify by repeating the race a few times and reading `profile.md`.
-- **UAT-036.** Manually edit `profile.md` (e.g., delete an adaptation block). Run `compute-profile`. The file is fully regenerated from event data; user edits are overwritten without warning. The regenerated file's top-of-file header reads exactly: ``> DO NOT EDIT — regenerated by `gaia telemetry compute-profile`. Use `gaia mentorship purge` or `disable` to change state.``
+- **UAT-036.** Manually edit `profile.md` (e.g., delete an adaptation block). Run `compute-profile`. The file is fully regenerated from event data; user edits are overwritten without warning. The regenerated file's top-of-file header reads exactly: ``> DO NOT EDIT, regenerated by `gaia telemetry compute-profile`. Use `gaia mentorship purge` or `disable` to change state.``
 
-**Harness fast-path.** Test 4 covers UAT-035 (atomic write contract — `profile.md` exists with mode 600 after `compute-profile`, idempotent across re-runs) and UAT-036 (DO NOT EDIT header is the first line).
+**Harness fast-path.** Test 4 covers UAT-035 (atomic write contract, `profile.md` exists with mode 600 after `compute-profile`, idempotent across re-runs) and UAT-036 (DO NOT EDIT header is the first line).
 
 ---
 
-## Cluster 11 — Statusline (UATs 37, 38)
+## Cluster 11: Statusline (UATs 37, 38)
 
 **Setup.** A GAIA-project session.
 
@@ -183,11 +183,11 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - **UAT-037.** With at least one active adaptation in `profile.md`, render the statusline. `🧭` appears on the right side of the statusline (before any `Run /update-deps` or `Run /update-gaia` segments). Verify by populating `.gaia/cache/coaching-active.txt` with a single byte `1` and triggering a session refresh.
 - **UAT-038.** With zero active adaptations, render the statusline. No `🧭` appears; the right side is unchanged from the pre-telemetry baseline. Verify with `.gaia/cache/coaching-active.txt` absent or containing `0`. **Maintainer judgment.** The "unchanged from baseline" assertion is by-eye comparison.
 
-**Harness fast-path.** None — visual rendering is maintainer-judgment.
+**Harness fast-path.** None, visual rendering is maintainer-judgment.
 
 ---
 
-## Cluster 12 — CLI surface (UATs 39, 40, 41, 42, 43, 44, 45)
+## Cluster 12: CLI surface (UATs 39, 40, 41, 42, 43, 44, 45)
 
 **Setup.** Mentorship state varied per test.
 
@@ -205,7 +205,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 ---
 
-## Cluster 13 — Smoke test (UAT-046)
+## Cluster 13: Smoke test (UAT-046)
 
 **Setup.** A throwaway feature description and a fresh repo with mentorship enabled.
 
@@ -218,11 +218,11 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 - `profile.md` regenerates after `spec_close`;
 - `.gaia/cli/gaia mentorship analytics dry-run` emits a payload whose `audit` block all-true assertions match the actual fields.
 
-**Harness fast-path.** The deterministic _structural_ subset of UAT-046 is the entirety of `.gaia/tests/smoke/telemetry-v1/run.sh`. The live workflow walk-through above is the maintainer-judgment companion — the harness gates the structural surface; the runbook gates the experiential one.
+**Harness fast-path.** The deterministic _structural_ subset of UAT-046 is the entirety of `.gaia/tests/smoke/telemetry-v1/run.sh`. The live workflow walk-through above is the maintainer-judgment companion, the harness gates the structural surface; the runbook gates the experiential one.
 
 ---
 
-## Cluster 14 — Claude display rule (UAT-047)
+## Cluster 14: Claude display rule (UAT-047)
 
 **Setup.** Mentorship enabled with at least one mentorship JSONL on disk.
 
@@ -232,7 +232,7 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 - **UAT-047.** Claude refuses and points the user at `profile.md` (Claude-displayable aggregate) or `.gaia/cli/gaia mentorship --tail` (CLI surface). Enforcement: a project-wide rule lives at `.claude/rules/mentorship-display.md` stating the contract; the rule is loaded via `CLAUDE.md` like other GAIA rules; every GAIA skill that handles mentorship state references the rule.
 
-**Harness fast-path.** None — this is a Claude-behavior assertion, not a CLI assertion. **Maintainer judgment.** Try three or four phrasings and judge: does Claude refuse cleanly? Does it suggest the right alternative?
+**Harness fast-path.** None, this is a Claude-behavior assertion, not a CLI assertion. **Maintainer judgment.** Try three or four phrasings and judge: does Claude refuse cleanly? Does it suggest the right alternative?
 
 ---
 
@@ -242,6 +242,6 @@ Once every cluster passes:
 
 1. Confirm `bash .gaia/tests/smoke/telemetry-v1/run.sh` still exits 0.
 2. Confirm `pnpm typecheck && pnpm lint` still pass.
-3. Note any maintainer-judgment "marginal pass" calls in your verification notes — the SPEC's evidence file (per `task-uat-verification` precedent at `.specify/extensions/gaia/test/uat-evidence.md`) is the canonical home for those.
+3. Note any maintainer-judgment "marginal pass" calls in your verification notes, the SPEC's evidence file (per `task-uat-verification` precedent at `.specify/extensions/gaia/test/uat-evidence.md`) is the canonical home for those.
 
 The release-gate harness gates the mechanical regression; this runbook gates the experiential one. Both have to pass before SPEC-001 closes.

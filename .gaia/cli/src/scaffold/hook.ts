@@ -9,7 +9,7 @@
  *   app/hooks/{name}.ts
  *   app/hooks/tests/{name}.test.ts
  *
- * No barrel — `app/hooks/` does not have an index.ts in this repo.
+ * No barrel; `app/hooks/` does not have an index.ts in this repo.
  *
  * Re-running is idempotent: identical files are reported in `skipped`,
  * differing files cause `writeFileIfAbsent` to throw to protect customizations.

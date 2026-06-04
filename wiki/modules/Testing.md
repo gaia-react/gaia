@@ -3,7 +3,7 @@ type: module
 path: test/, .playwright/
 status: active
 language: typescript
-purpose: Four-layer testing setup — unit, integration, E2E, visual regression
+purpose: Four-layer testing setup: unit, integration, E2E, visual regression
 depends_on:
   - '[[Vitest]]'
   - '[[React Testing Library]]'
@@ -19,10 +19,10 @@ tags: [module, testing]
 
 GAIA ships **four layers** of testing, all sharing a common [[MSW Handlers|MSW]] mocking layer:
 
-- Unit — [[Vitest]] in `app/utils/tests/`, `app/hooks/tests/`
-- Integration — Vitest + [[React Testing Library]] in `app/components/*/tests/`, `app/pages/*/tests/`
-- E2E — [[Playwright]] in `.playwright/e2e/*.spec.ts`
-- Visual regression — [[Chromatic]] (CI only), driven by Storybook stories
+- Unit: [[Vitest]] in `app/utils/tests/`, `app/hooks/tests/`
+- Integration: Vitest + [[React Testing Library]] in `app/components/*/tests/`, `app/pages/*/tests/`
+- E2E: [[Playwright]] in `.playwright/e2e/*.spec.ts`
+- Visual regression: [[Chromatic]] (CI only), driven by Storybook stories
 
 The `composeStory` pattern means integration tests and visual regression share one source of truth. See [[Component Testing]].
 
@@ -52,8 +52,8 @@ Always use Storybook stories with `composeStory`. Never manually mock framework 
 
 Test files (`**/*.test.ts?(x)`) enforce two additional plugin configs that change how tests are written:
 
-- `eslint-plugin-testing-library` — prefer `screen` queries, `await` all `userEvent` calls, no `act()` wrappers, no manual cleanup
-- `eslint-plugin-jest-dom` — prefer jest-dom matchers (`toHaveValue`, `toBeChecked`, `toHaveTextContent`) over raw DOM property checks
+- `eslint-plugin-testing-library`: prefer `screen` queries, `await` all `userEvent` calls, no `act()` wrappers, no manual cleanup
+- `eslint-plugin-jest-dom`: prefer jest-dom matchers (`toHaveValue`, `toBeChecked`, `toHaveTextContent`) over raw DOM property checks
 
 See [[ESLint Fixes]] for fix patterns.
 

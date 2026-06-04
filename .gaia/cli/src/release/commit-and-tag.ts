@@ -291,12 +291,12 @@ const runCommitMode = (ctx: CommitContext): number => {
         if (!stepSucceeded(rollback)) {
           process.stderr.write(
             `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; ` +
-              'the release commit is left in place — undo it manually before retrying\n'
+              'the release commit is left in place; undo it manually before retrying\n'
           );
         } else {
           process.stderr.write(
             `commit-and-tag: ${failedStage} failed; rolled back the release commit ` +
-              '(git reset --soft HEAD~1) — fix the cause and retry\n'
+              '(git reset --soft HEAD~1); fix the cause and retry\n'
           );
         }
 
@@ -351,12 +351,12 @@ const runTagMode = (ctx: TagContext): number => {
       if (!stepSucceeded(rollback)) {
         process.stderr.write(
           `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; ` +
-            `the local tag ${tagName} is left in place — delete it manually before retrying\n`
+            `the local tag ${tagName} is left in place; delete it manually before retrying\n`
         );
       } else {
         process.stderr.write(
           `commit-and-tag: push failed; deleted the local tag ${tagName} ` +
-            '— fix the cause and retry\n'
+            '; fix the cause and retry\n'
         );
       }
 

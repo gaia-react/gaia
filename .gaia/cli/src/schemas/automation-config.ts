@@ -3,7 +3,7 @@
  * GAIA CI configuration file.
  *
  * Per the SPEC-001 slice 1 contract: a missing config file means
- * "GAIA CI not configured" — every defer / cron read returns a no-op
+ * "GAIA CI not configured"; every defer / cron read returns a no-op
  * result. The `read*` helpers therefore never throw; callers branch on
  * the discriminated `status` field.
  */
@@ -50,7 +50,7 @@ export const AutomationConfigSchema = z.object({
 export type AutomationConfig = z.infer<typeof AutomationConfigSchema>;
 
 /**
- * The `AutomationConfig` keys that hold a `ToolConfig` row — i.e. the
+ * The `AutomationConfig` keys that hold a `ToolConfig` row, i.e. the
  * per-tool slots a `ToolId` can resolve to. Excludes `update_gaia`
  * (`UpdateGaiaConfig`) and the scalar config fields.
  */
@@ -66,7 +66,7 @@ export type ToolConfigKey = {
  * The split is intentional: the SPEC names the JSON keys snake_case
  * (`pnpm_audit`, `stale_branches`) but workflow / state-file paths use
  * kebab-case. The value type is `ToolConfigKey` so `config[key]` resolves
- * directly to `ToolConfig` — no cast needed at call sites.
+ * directly to `ToolConfig`; no cast needed at call sites.
  */
 export const TOOL_ID_TO_CONFIG_KEY: Readonly<Record<ToolId, ToolConfigKey>> = {
   'pnpm-audit': 'pnpm_audit',
@@ -114,7 +114,7 @@ export const readAutomationConfig = (
     parsed = JSON.parse(raw);
   } catch (error) {
     return {
-      error: `${filePath}: invalid JSON — ${error instanceof Error ? error.message : String(error)}`,
+      error: `${filePath}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
       status: 'malformed',
     };
   }

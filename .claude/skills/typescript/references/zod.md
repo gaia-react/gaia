@@ -1,8 +1,8 @@
-# Zod 4 — Zod 3 → Zod 4 Migration Map
+# Zod 4, Zod 3 → Zod 4 Migration Map
 
 This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so nothing flags them until runtime or a `react-doctor` scan. Default to the Zod 4 form in every schema.
 
-| Zod 3 — avoid | Zod 4 — use |
+| Zod 3, avoid | Zod 4, use |
 | --- | --- |
 | `z.object({…}).strict()` | `z.strictObject({…})` |
 | `z.object({…}).passthrough()` | `z.looseObject({…})` |
@@ -20,10 +20,10 @@ This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so
 `.strict()` / `.passthrough()` / `.strip()` are deprecated methods. Use the top-level factories.
 
 ```ts
-// BAD — Zod 3 chained method
+// BAD, Zod 3 chained method
 const Payload = z.object({id: z.string(), tags: z.array(z.string())}).strict();
 
-// GOOD — Zod 4 factory
+// GOOD, Zod 4 factory
 const Payload = z.strictObject({id: z.string(), tags: z.array(z.string())});
 ```
 
@@ -41,7 +41,7 @@ z.object({email: z.email(), createdAt: z.iso.datetime()});
 
 ## Records
 
-Both key and value schemas are required — single-arg `z.record()` is Zod 3.
+Both key and value schemas are required, single-arg `z.record()` is Zod 3.
 
 ```ts
 // BAD
@@ -77,7 +77,7 @@ z.string({error: 'Required'});
 z.string().min(5, {error: 'Too short'});
 ```
 
-## String unions — project convention
+## String unions, project convention
 
 Prefer `z.literal([...])` over `z.enum()` for string unions, and sort the values alphanumerically. (`z.enum()` is valid Zod 4, but the project standardizes on the literal-array form.)
 

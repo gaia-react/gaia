@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# parse-issue-body.sh — deterministic parser for the forensics issue
+# parse-issue-body.sh: deterministic parser for the forensics issue
 # body. Emits JSON to stdout.
 #
 # Exit code: 0 always (consumers inspect the JSON `valid` field). Exit 2
@@ -17,7 +17,7 @@
 #
 # The body may optionally lead with a YAML frontmatter block (`---` …
 # `---`). When present it supplies `class`, `gaia_version`, `created`,
-# and `gh_issue_url`. When absent — the shape `gh issue create` posts —
+# and `gh_issue_url`. When absent, the shape `gh issue create` posts -
 # `class` is derived from the `## Classification` section content, and
 # the parser still emits the same JSON shape with empty / null values
 # for any frontmatter-only field.
@@ -55,7 +55,7 @@ trap 'rm -rf "$work_dir"' EXIT
 
 # ---------------------------------------------------------------------------
 # Step 1: opportunistically extract a YAML frontmatter block. Frontmatter
-# is optional — the GitHub-issue body shape ships without one, and the
+# is optional, the GitHub-issue body shape ships without one, and the
 # parser derives `class` from `## Classification` later. The local file
 # shape (saved at `.gaia/local/forensics/<timestamp>-<class>.md`) keeps
 # the frontmatter, so the parser still picks up its values when present.
@@ -73,7 +73,7 @@ awk_status=$?
 
 if [ "$first_line" = "---" ]; then
   # Closing `---` line number (must be > 1, exact match). A frontmatter
-  # open without a matching close is still malformed — emit the same
+  # open without a matching close is still malformed, emit the same
   # error as before so a hand-edited local file with a typo doesn't
   # silently drop frontmatter values.
   fm_end=$(awk 'NR>1 && $0=="---"{print NR; exit}' "$input_file")
@@ -123,7 +123,7 @@ fi
 # and ends at the next `^## ` line or EOF. Lines BEFORE the first valid
 # `## ` header are dropped (the schema places the four sections
 # back-to-back; nothing precedes them). Lines under a malformed header
-# are also dropped — the malformed header itself is reported.
+# are also dropped, the malformed header itself is reported.
 awk -v start="$body_start" -v out_dir="$work_dir" '
   function flush() {
     if (cur != "" && out_path != "") {

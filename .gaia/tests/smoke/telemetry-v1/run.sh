@@ -62,7 +62,7 @@ fi
 # Returns via globals: TEST_HOME, TEST_REPO. Each test should call this fresh.
 #
 # Both paths are realpath-resolved (`pwd -P`) because macOS exposes /tmp and
-# /var/folders/... as symlinks to /private/... — `process.cwd()` and
+# /var/folders/... as symlinks to /private/...; `process.cwd()` and
 # `os.homedir()` return the resolved variant. The mentorship slug derives
 # from `process.cwd()`, so the harness has to mirror the resolved form to
 # look up the file the CLI writes.
@@ -256,7 +256,7 @@ test_envelope_end_to_end() {
 
 test_projection_drift() {
     setup_isolation "t2"
-    # Project root for projection.ts — read from the actual repo, not scratch.
+    # Project root for projection.ts; read from the actual repo, not scratch.
     local script="${WORK}/t2/drift.mjs"
 
     cat >"$script" <<EOF
@@ -397,7 +397,7 @@ test_compute_profile_idempotent() {
 
     # The render embeds `Generated: <now ISO>` so a strict full-file digest
     # would differ between runs by that single line. Strip the Generated
-    # line before comparing — the rest of the file is deterministic against
+    # line before comparing; the rest of the file is deterministic against
     # the fixture (idempotency on the same input).
     local stable_a stable_b
     stable_a="$(grep -v '^Generated:' "$profile_path" | shasum -a 256 | awk '{print $1}')"
@@ -537,7 +537,7 @@ test_mentorship_disabled_short_circuit() {
 }
 
 # Run every test. Each one isolates state under WORK; failures within a
-# test don't abort the harness — every test runs so the maintainer sees
+# test don't abort the harness; every test runs so the maintainer sees
 # the full surface in one report.
 test_envelope_end_to_end || true
 test_projection_drift || true

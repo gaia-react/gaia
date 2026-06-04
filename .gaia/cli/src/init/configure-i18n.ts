@@ -16,7 +16,7 @@
  *                   the prose `remove-i18n.md` instruction is invoked by
  *                   the orchestrator skill when full removal is needed.
  *
- * Both paths are idempotent — re-running with the same args is a no-op.
+ * Both paths are idempotent; re-running with the same args is a no-op.
  *
  * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
  */

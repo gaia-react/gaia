@@ -1,6 +1,6 @@
 # Conform + Zod Form Wiring
 
-Conform's Zod helpers import from the `@conform-to/zod/v4` subpath — the bare `@conform-to/zod` targets Zod 3 and throws at runtime (typecheck/lint/build don't catch it). The react-code SKILL.md carries this as the always-on rule; the examples below use `/v4` throughout.
+Conform's Zod helpers import from the `@conform-to/zod/v4` subpath, the bare `@conform-to/zod` targets Zod 3 and throws at runtime (typecheck/lint/build don't catch it). The react-code SKILL.md carries this as the always-on rule; the examples below use `/v4` throughout.
 
 ## Basic Form Setup
 
@@ -101,4 +101,4 @@ Conform reads stale hidden input values from compound components (YearMonthDay, 
 
 ## Zod Patterns
 
-This project uses Zod 4 — the typescript skill's `references/zod.md` is the full Zod 3 → Zod 4 migration map. Project convention: `z.literal([...])` not `z.enum()` for string unions (sort values alphanumerically).
+This project uses Zod 4, the typescript skill's `references/zod.md` is the full Zod 3 → Zod 4 migration map. Project convention: `z.literal([...])` not `z.enum()` for string unions (sort values alphanumerically).

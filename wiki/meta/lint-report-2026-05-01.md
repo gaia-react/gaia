@@ -7,7 +7,7 @@ tags: [meta, lint]
 status: active
 ---
 
-# Wiki Lint Report — 2026-05-01
+# Wiki Lint Report: 2026-05-01
 
 Run after commits: `17a2444` (chore: restructure commands, skills, and rules) and `7cae765` (feat: replace FontAwesome with react-icons), both 2026-05-01. Previous report: [[lint-report-2026-04-27]].
 
@@ -16,7 +16,7 @@ Run after commits: `17a2444` (chore: restructure commands, skills, and rules) an
 - Pages scanned: 87
 - Issues found: 8 (1 critical, 4 warnings, 3 suggestions)
 - Auto-fixed: 21 (stale frontmatter)
-- DragonScale: not adopted — checks 9 and 10 skipped
+- DragonScale: not adopted: checks 9 and 10 skipped
 
 ---
 
@@ -24,15 +24,15 @@ Run after commits: `17a2444` (chore: restructure commands, skills, and rules) an
 
 | Issue                                                    | Status                                                             |
 | -------------------------------------------------------- | ------------------------------------------------------------------ |
-| C1 — six stale `updated:` pages                          | ✓ Fixed                                                            |
-| C2 — `overview.md` stale State/pages claims              | ✓ Fixed                                                            |
-| W1 — `hot.md` stale branch claim                         | ✓ Fixed                                                            |
-| W2 — `index.md` missing `lint-report-2026-04-27`         | ✓ Fixed                                                            |
-| W3 — `README` not in `index.md`                          | ✓ Fixed                                                            |
-| W4 — `log.md` missing `@msw/data` entry                  | ✗ Not fixed; log format changed to release-only (see C1 below)     |
-| S1 — no `@msw/data` dependency page                      | Not addressed (optional)                                           |
-| S2 — `[[Agentic Design]]` near-orphan                    | Improved — now linked from `[[GAIA Philosophy]]` (3 inbound links) |
-| S3 — `dashboard.md` non-existent `wiki/questions/` query | ✓ Fixed                                                            |
+| C1: six stale `updated:` pages                          | ✓ Fixed                                                            |
+| C2: `overview.md` stale State/pages claims              | ✓ Fixed                                                            |
+| W1: `hot.md` stale branch claim                         | ✓ Fixed                                                            |
+| W2: `index.md` missing `lint-report-2026-04-27`         | ✓ Fixed                                                            |
+| W3: `README` not in `index.md`                          | ✓ Fixed                                                            |
+| W4: `log.md` missing `@msw/data` entry                  | ✗ Not fixed; log format changed to release-only (see C1 below)     |
+| S1: no `@msw/data` dependency page                      | Not addressed (optional)                                           |
+| S2: `[[Agentic Design]]` near-orphan                    | Improved: now linked from `[[GAIA Philosophy]]` (3 inbound links) |
+| S3: `dashboard.md` non-existent `wiki/questions/` query | ✓ Fixed                                                            |
 
 ---
 
@@ -44,31 +44,31 @@ Both `17a2444` (restructure) and `7cae765` (react-icons) ran on 2026-05-01 but t
 
 **Affected pages:**
 
-- `wiki/concepts/Agentic Design.md` — `2026-04-29`
-- `wiki/concepts/Claude Hooks.md` — `2026-04-30`
-- `wiki/concepts/Claude Integration Conventions.md` — `2026-04-30`
-- `wiki/concepts/Claude Skills.md` — `2026-04-30`
-- `wiki/concepts/GAIA Audit.md` — `2026-04-30`
-- `wiki/concepts/GAIA Handoff.md` — `2026-04-30`
-- `wiki/concepts/GAIA Pickup.md` — `2026-04-30`
-- `wiki/concepts/GAIA Plan.md` — `2026-04-30`
-- `wiki/concepts/Release Workflow.md` — `2026-04-22`
-- `wiki/concepts/Task Orchestration.md` — `2026-04-30`
-- `wiki/concepts/Update Workflow.md` — `2026-04-22`
-- `wiki/decisions/Quality Gate.md` — `2026-04-30`
-- `wiki/decisions/Thin Routes.md` — `2026-04-20`
-- `wiki/decisions/pnpm.md` — `2026-04-26`
-- `wiki/index.md` — `2026-04-30`
-- `wiki/modules/Claude Integration.md` — `2026-04-30`
-- `wiki/modules/Pages.md` — `2026-04-20`
-- `wiki/overview.md` — `2026-04-27`
-- `wiki/sources/Initial Ingest.md` — `2026-04-20`
+- `wiki/concepts/Agentic Design.md`: `2026-04-29`
+- `wiki/concepts/Claude Hooks.md`: `2026-04-30`
+- `wiki/concepts/Claude Integration Conventions.md`: `2026-04-30`
+- `wiki/concepts/Claude Skills.md`: `2026-04-30`
+- `wiki/concepts/GAIA Audit.md`: `2026-04-30`
+- `wiki/concepts/GAIA Handoff.md`: `2026-04-30`
+- `wiki/concepts/GAIA Pickup.md`: `2026-04-30`
+- `wiki/concepts/GAIA Plan.md`: `2026-04-30`
+- `wiki/concepts/Release Workflow.md`: `2026-04-22`
+- `wiki/concepts/Task Orchestration.md`: `2026-04-30`
+- `wiki/concepts/Update Workflow.md`: `2026-04-22`
+- `wiki/decisions/Quality Gate.md`: `2026-04-30`
+- `wiki/decisions/Thin Routes.md`: `2026-04-20`
+- `wiki/decisions/pnpm.md`: `2026-04-26`
+- `wiki/index.md`: `2026-04-30`
+- `wiki/modules/Claude Integration.md`: `2026-04-30`
+- `wiki/modules/Pages.md`: `2026-04-20`
+- `wiki/overview.md`: `2026-04-27`
+- `wiki/sources/Initial Ingest.md`: `2026-04-20`
 
 **Suggested fix:** Set `updated: 2026-05-01` on all 19 files. **Auto-fixed in this run.**
 
 Also related:
 
-- `wiki/log.md` has **no frontmatter at all** — was reset as part of `17a2444`. Add frontmatter with `type: meta`, `status: active`, `created: 2026-04-20`, `updated: 2026-05-01`, `tags: [meta]`. **Auto-fixed.**
+- `wiki/log.md` has **no frontmatter at all**: was reset as part of `17a2444`. Add frontmatter with `type: meta`, `status: active`, `created: 2026-04-20`, `updated: 2026-05-01`, `tags: [meta]`. **Auto-fixed.**
 - `wiki/hot.md` missing `created`, `status`, `tags` fields. **Auto-fixed.**
 - `wiki/meta/dashboard.md` `updated:` is stale at `2026-04-27` (S3 was fixed in an earlier session). **Auto-fixed.**
 
@@ -86,7 +86,7 @@ The log was reset in `17a2444` to just version release entries, losing the detai
 
 **Suggested fix:** Add brief log entries for the major milestones that occurred between the last log entry and the reset, or accept the reset as intentional and note in README that the log now tracks releases only.
 
-### W3. `[[Handoff Command]]`, `[[Pickup Command]]`, `[[Audit-Knowledge Command]]` renamed — verify no stale prose references
+### W3. `[[Handoff Command]]`, `[[Pickup Command]]`, `[[Audit-Knowledge Command]]` renamed: verify no stale prose references
 
 These pages were deleted in `17a2444` and replaced by `[[GAIA Handoff]]`, `[[GAIA Pickup]]`, `[[GAIA Audit]]`. All wikilinks are clean (grep confirmed no dangling references). However, **prose** in other docs (not wiki) may still say "Handoff Command" or similar. Out of lint scope, but worth a search.
 

@@ -8,7 +8,7 @@ access, do NOT have `git` access, and do NOT push or commit. The
 workflow handles git operations after you finish; your output is the
 modified files in the working tree.
 
-## Path scope (HARD STOP — default-deny)
+## Path scope (HARD STOP, default-deny)
 
 You MUST modify ONLY files at these exact repo-relative paths:
 

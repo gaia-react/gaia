@@ -30,7 +30,7 @@ no_gh_surrogate() {
     return 0
   fi
 
-  # gh is installed — in production this would offer issue creation.
+  # gh is installed; in production this would offer issue creation.
   # For this test we only care about the no-gh path.
   printf 'gh is installed (not the test scenario)\n'
   return 0
@@ -38,7 +38,7 @@ no_gh_surrogate() {
 
 setup() {
   WORKDIR="$(mktemp -d)"
-  # Build a PATH that has no gh binary. CLEAN_BIN is the ONLY entry —
+  # Build a PATH that has no gh binary. CLEAN_BIN is the ONLY entry;
   # /usr/bin and /bin are deliberately excluded because GitHub Actions
   # ubuntu-latest ships gh at /usr/bin/gh, which would defeat the test.
   CLEAN_BIN="$(mktemp -d)"
@@ -98,7 +98,7 @@ teardown() {
 
 @test "UAT-013: surrogate never invokes gh even when gh is removed from PATH" {
   # Run the surrogate; if it tries to invoke gh it will fail (not on PATH)
-  # and the result variable will be non-zero — but we assert it IS zero.
+  # and the result variable will be non-zero; but we assert it IS zero.
   local result=0
   PATH="$NO_GH_PATH" no_gh_surrogate "$WORKDIR" "quality-gate" >/dev/null 2>&1 || result=$?
   [[ "$result" -eq 0 ]]

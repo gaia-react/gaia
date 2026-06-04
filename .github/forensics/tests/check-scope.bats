@@ -215,7 +215,7 @@ setup() {
   esac
 }
 
-@test "control-byte: rejection envelope shape — ok:false, allowed:[], single denied entry" {
+@test "control-byte: rejection envelope shape, ok:false, allowed:[], single denied entry" {
   path=$(printf 'x\ty')
   run "$SCRIPT" "$path"
   [ "$status" -eq 0 ]
@@ -228,7 +228,7 @@ setup() {
 
 @test "control-byte: short-circuits before classifying remaining paths" {
   # First arg has a control byte; remaining args (allow + deny) must NOT
-  # appear in the output — the rejection envelope replaces the normal
+  # appear in the output, the rejection envelope replaces the normal
   # classification result.
   bad=$(printf 'bad\tpath')
   run "$SCRIPT" "$bad" .gaia/cli/foo.sh app/bar.ts

@@ -11,10 +11,10 @@
  *   3. Delete `.claude/commands/gaia-init.md` so the command cannot be
  *      run a second time.
  *
- * `pnpm install` is intentionally NOT performed here — it is a side
+ * `pnpm install` is intentionally NOT performed here; it is a side
  * effect handled by the orchestrating skill before the CLI runs.
  *
- * Idempotent: re-running is safe — already-deleted files stay gone, the
+ * Idempotent: re-running is safe; already-deleted files stay gone, the
  * settings prune is a no-op once the entry is removed.
  *
  * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
@@ -70,7 +70,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 /**
  * Returns true when the inner `hooks` array contains a command entry
  * pointing at the intercept-init script. The runbook's contract is to
- * remove only matchers whose inner command matches — preserving any
+ * remove only matchers whose inner command matches, preserving any
  * other entries the user may have added.
  */
 const matchesInterceptInit = (entry: unknown): boolean => {
@@ -178,7 +178,7 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  // No flags — but reject any tokens to keep the surface small.
+  // No flags; but reject any tokens to keep the surface small.
   if (argv.length > 0) {
     structuredError({
       code: 'invalid_arguments',

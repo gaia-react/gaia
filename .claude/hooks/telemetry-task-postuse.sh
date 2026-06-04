@@ -4,7 +4,7 @@
 #
 # Thin pipe to the TS implementation. Trailer parsing, dispatch, and
 # best-effort failure logging all happen inside `gaia telemetry parse-stdin`.
-# Always exits 0 — telemetry must never block the user's flow.
+# Always exits 0, telemetry must never block the user's flow.
 
 set -uo pipefail
 

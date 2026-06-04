@@ -80,7 +80,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Failure modes — UAT-013 (malformed body → needs-human without LLM).
+# Failure modes, UAT-013 (malformed body → needs-human without LLM).
 # Each failure emits valid:false plus a precise error code.
 # ---------------------------------------------------------------------------
 
@@ -147,7 +147,7 @@ EOF
   # When the frontmatter doesn't carry `class:` and the `## Classification`
   # section also lacks a `class: <tag>` line, the parser reports the
   # missing class explicitly rather than treating it as a frontmatter
-  # problem — `class` is the one load-bearing field downstream.
+  # problem, `class` is the one load-bearing field downstream.
   body_file="$BATS_TEST_TMPDIR/no-class.md"
   cat > "$body_file" <<'EOF'
 ---
@@ -257,7 +257,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# UAT-015 — redaction tokens pass through verbatim.
+# UAT-015, redaction tokens pass through verbatim.
 # ---------------------------------------------------------------------------
 
 @test "redaction tokens pass through symptom verbatim" {
@@ -303,7 +303,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Determinism — re-running on the same input is byte-identical (UAT-009
+# Determinism, re-running on the same input is byte-identical (UAT-009
 # in spirit: deterministic, not LLM-touched).
 # ---------------------------------------------------------------------------
 
@@ -315,7 +315,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# SPEC-003 UAT-006 — pipefail + internal-error JSON envelope. When awk
+# SPEC-003 UAT-006, pipefail + internal-error JSON envelope. When awk
 # fails, the script must NOT fall through to a default valid:false; it
 # must emit `{"internal_error":true,...}` so the workflow can distinguish
 # infrastructure failure from a malformed body.
@@ -348,7 +348,7 @@ STUB
 }
 
 # ---------------------------------------------------------------------------
-# JSON shape sanity — make sure the success JSON contains all required
+# JSON shape sanity, make sure the success JSON contains all required
 # top-level keys.
 # ---------------------------------------------------------------------------
 
@@ -364,7 +364,7 @@ STUB
 }
 
 # ---------------------------------------------------------------------------
-# Control-byte hygiene — `json_escape_file` strips raw 0x01–0x1f bytes so
+# Control-byte hygiene, `json_escape_file` strips raw 0x01–0x1f bytes so
 # the emitted JSON stays valid even on pathological input.
 # ---------------------------------------------------------------------------
 
@@ -387,7 +387,7 @@ STUB
   run "$PARSER" "$fixture"
   [ "$status" -eq 0 ]
   printf '%s' "$output" | jq -e . > /dev/null
-  # Bytes on either side of the stripped 0x01 must survive — guards
+  # Bytes on either side of the stripped 0x01 must survive, guards
   # against a regression where the strip drops more than the control
   # byte (whole line, whole section, etc.). The control byte itself is
   # stripped, so the symptom collapses to "beforeafter".

@@ -20,7 +20,7 @@ const FormError: FC<FormResultProps> = ({className, hide}) => {
   const error = actionData?.error;
 
   // Dismissal is keyed to the action-data object identity, not the message
-  // text — a later action returns a fresh object, so an identical message
+  // text; a later action returns a fresh object, so an identical message
   // re-shows instead of staying hidden.
   const result =
     !hide && error !== undefined && actionData !== dismissed ? error : '';

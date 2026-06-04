@@ -10,7 +10,7 @@
  *
  * The merge inserts the canonical GAIA `statusLine` block at the top
  * level, preserving every existing key. If a `statusLine` is already
- * present and points at a non-GAIA command, it is overwritten — the
+ * present and points at a non-GAIA command, it is overwritten; the
  * runbook's intent is "this project's statusline is GAIA's wrapper."
  *
  * Atomic writes: temp + rename. Stdout: nothing on success. Exit codes:
@@ -145,7 +145,7 @@ const insertAlphabetical = (
     }
 
     if (existing === key) {
-      // Skip — the new entry will overwrite at the alphabetical slot.
+      // Skip; the new entry will overwrite at the alphabetical slot.
       continue;
     }
     next[existing] = source[existing];

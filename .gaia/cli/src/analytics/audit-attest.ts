@@ -3,7 +3,7 @@
  *
  * The four boolean assertions are real, not aspirational. The function
  * inspects the report structure recursively and computes each. If any
- * assertion would be `false`, the function THROWS — failing loud rather
+ * assertion would be `false`, the function THROWS, failing loud rather
  * than producing a misattested report (mirrors the cloud-projection
  * strict-by-default rule).
  *

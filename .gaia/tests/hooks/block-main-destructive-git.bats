@@ -4,7 +4,7 @@
 #
 # The hook blocks commits to main/master, force-push to main/master, and any
 # plain `git push` originating from main/master (PR-only flow). It fires only on
-# a real `git` INVOCATION in command position — command text that merely
+# a real `git` INVOCATION in command position; command text that merely
 # mentions `git commit` / `git push` (a grep pattern, an echo string, an
 # argument to another program) does not trip it. Foreign-repo commands pass via
 # the shared repo-scope helper.
@@ -27,7 +27,7 @@ setup() {
   git -C "$REPO" add README.md
   git -C "$REPO" commit --quiet -m "init"
 
-  # The hook sources the repo-scope helper relative to cwd — give the tmp repo
+  # The hook sources the repo-scope helper relative to cwd; give the tmp repo
   # a real copy so the foreign-repo bypass resolves.
   mkdir -p "$REPO/.claude/hooks/lib"
   cp "$HOOKS_SRC/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"

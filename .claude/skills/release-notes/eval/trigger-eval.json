@@ -1,5 +1,5 @@
 [
-  {"query": "we just merged the 1.5.0 release PR — generate the website changelog entry for it from the CHANGELOG", "should_trigger": true},
+  {"query": "we just merged the 1.5.0 release PR, generate the website changelog entry for it from the CHANGELOG", "should_trigger": true},
   {"query": "translate the [Unreleased] block into adopter-facing release notes for gaiareact.com", "should_trigger": true},
   {"query": "I need the public release notes for v1.4.0, the plain-language ones for the marketing site, not the raw changelog", "should_trigger": true},
   {"query": "backfill the changelog page on the site for 1.2.0 through 1.3.4, we skipped a bunch of versions", "should_trigger": true},

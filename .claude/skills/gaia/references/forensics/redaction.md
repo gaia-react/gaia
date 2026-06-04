@@ -1,6 +1,6 @@
 # Redaction
 
-Lazy-loaded by the forensics runbook at the redact step. Apply this algorithm verbatim to the assembled report body before writing or filing. No external lookups — this fragment is self-contained.
+Lazy-loaded by the forensics runbook at the redact step. Apply this algorithm verbatim to the assembled report body before writing or filing. No external lookups, this fragment is self-contained.
 
 The redaction contract is authoritative; it is defined in the SPEC for the `/gaia-forensics` skill. Any discrepancy between this fragment and the SPEC is a defect in this fragment.
 
@@ -16,7 +16,7 @@ The assembled report body, pre-frontmatter. This is the markdown string beginnin
 
 **Project root:** compute once via `git rev-parse --show-toplevel`. Call the result `$ROOT`.
 
-**Rule A — under project root.** Any absolute path that begins with `$ROOT/` is replaced by its suffix (the portion after `$ROOT/`). The suffix is already repo-relative.
+**Rule A, under project root.** Any absolute path that begins with `$ROOT/` is replaced by its suffix (the portion after `$ROOT/`). The suffix is already repo-relative.
 
 ```
 Before: <home>/Development/my-project/app/i18n.ts
@@ -24,7 +24,7 @@ After:  app/i18n.ts
 (project root is <home>/Development/my-project)
 ```
 
-**Rule B — outside project root (machine-leak fallback).** Any remaining absolute path that begins with `/Users/<name>/` or `/home/<name>/` (and did NOT match Rule A) is collapsed to its trailing component only — the filename, preserving no directory structure.
+**Rule B, outside project root (machine-leak fallback).** Any remaining absolute path that begins with `/Users/<name>/` or `/home/<name>/` (and did NOT match Rule A) is collapsed to its trailing component only, the filename, preserving no directory structure.
 
 ```
 Before: <home>/.config/some-other-tool.json
@@ -114,7 +114,7 @@ This pattern is the most likely false-positive source. It fires only on values 4
 
 ## Env-var policy
 
-Captured env-var **values** are always replaced with `<redacted>`. Variable **names** are preserved (`HOME`, `PATH`, `ANTHROPIC_API_KEY`, etc. — name kept, value scrubbed).
+Captured env-var **values** are always replaced with `<redacted>`. Variable **names** are preserved (`HOME`, `PATH`, `ANTHROPIC_API_KEY`, etc., name kept, value scrubbed).
 
 ```
 Before: ANTHROPIC_API_KEY=<value-shaped-string>
@@ -148,10 +148,10 @@ The following examples demonstrate the complete algorithm. All values are illust
 
 ## Order of operations
 
-1. **Path conversion** — Rule A (project-root strip), then Rule B (machine-leak fallback).
-2. **Token regex set** — patterns 1–7 in declared order (GitHub → Anthropic → OpenAI → GitLab → Slack → AWS → generic fallback).
-3. **Env-var value scrub** — scrub all env-var values regardless of whether pattern scan already caught them.
-4. **Sanity recheck** — re-run patterns 1–6 over the redacted output. Any survivor is a redaction bug; flag it and halt rather than emitting a partially-redacted body.
+1. **Path conversion**: Rule A (project-root strip), then Rule B (machine-leak fallback).
+2. **Token regex set**: patterns 1–7 in declared order (GitHub → Anthropic → OpenAI → GitLab → Slack → AWS → generic fallback).
+3. **Env-var value scrub**: scrub all env-var values regardless of whether pattern scan already caught them.
+4. **Sanity recheck**: re-run patterns 1–6 over the redacted output. Any survivor is a redaction bug; flag it and halt rather than emitting a partially-redacted body.
 
 ---
 

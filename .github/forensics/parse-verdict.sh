@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# parse-verdict.sh — extracts the classifier verdict from the
+# parse-verdict.sh: extracts the classifier verdict from the
 # anthropics/claude-code-action output. Emits JSON to stdout.
 #
 # Usage:
@@ -97,7 +97,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3: extract reasoning — everything before the verdict line. If no
+# Step 3: extract reasoning, everything before the verdict line. If no
 # verdict line was located, reasoning is the entire file (with any trailing
 # newline preserved as best-effort).
 # ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ awk '
       seen_open_fence = 1
       next
     }
-    # A new `### ` header before we see the fence ends the block — the
+    # A new `### ` header before we see the fence ends the block, the
     # author wrote the header but never opened a fence.
     if ($0 ~ /^[[:space:]]*###[[:space:]]+/) {
       in_block = 0
@@ -173,7 +173,7 @@ awk '
     # Blank lines between header and fence are fine; non-blank non-fence
     # lines mean the author skipped the fence (laxer parsing not allowed).
     if ($0 !~ /^[[:space:]]*$/) {
-      # Treat as malformed — abandon block.
+      # Treat as malformed, abandon block.
       in_block = 0
     }
     next

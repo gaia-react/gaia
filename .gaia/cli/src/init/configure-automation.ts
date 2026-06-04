@@ -8,7 +8,7 @@
  * and pushes.
  *
  * Headless: the skill prose collects values via AskUserQuestion and
- * passes them through as flags. No defaults at the CLI layer — every
+ * passes them through as flags. No defaults at the CLI layer; every
  * flag is required so an adopter who skipped the prompt cannot be
  * silently configured.
  *
@@ -32,7 +32,7 @@ const HELP_TEXT = `Usage: gaia init configure-automation \\
   --stale-branches <ci|local|off>
 
   Write .gaia/automation.json with the user's tool-mode selections and
-  setup_complete: false. Phase A of GAIA CI — no GitHub repo or workflow
+  setup_complete: false. Phase A of GAIA CI; no GitHub repo or workflow
   YAML required.
 
   Required flags:

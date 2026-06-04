@@ -54,7 +54,7 @@ describe('buildWorkflowVars', () => {
       schedule: 'daily',
       state_file: '.gaia/automation.state-wiki.json',
       tool_id: 'wiki',
-      workflow_name: 'GAIA CI — Wiki',
+      workflow_name: 'GAIA CI - Wiki',
     });
   });
 
@@ -68,7 +68,7 @@ describe('buildWorkflowVars', () => {
       schedule: 'weekly',
       state_file: '.gaia/automation.state-update-deps.json',
       tool_id: 'update-deps',
-      workflow_name: 'GAIA CI — Update Deps',
+      workflow_name: 'GAIA CI - Update Deps',
     });
   });
 
@@ -82,7 +82,7 @@ describe('buildWorkflowVars', () => {
       schedule: 'daily',
       state_file: '.gaia/automation.state-pnpm-audit.json',
       tool_id: 'pnpm-audit',
-      workflow_name: 'GAIA CI — pnpm audit',
+      workflow_name: 'GAIA CI - pnpm audit',
     });
   });
 
@@ -97,7 +97,7 @@ describe('buildWorkflowVars', () => {
       schedule: 'monthly',
       state_file: '.gaia/automation.state-stale-branches.json',
       tool_id: 'stale-branches',
-      workflow_name: 'GAIA CI — Stale Branches',
+      workflow_name: 'GAIA CI - Stale Branches',
     });
   });
 

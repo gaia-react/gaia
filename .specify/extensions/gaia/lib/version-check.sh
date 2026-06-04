@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# version-check.sh — Verify spec-kit's installed version against GAIA's pin.
+# version-check.sh: Verify spec-kit's installed version against GAIA's pin.
 #
 # Usage:
 #   version-check.sh [<repo_root>]
@@ -160,7 +160,7 @@ EOF
     ;;
 esac
 
-# --- Match — refresh cache ---
+# --- Match, refresh cache ---
 mkdir -p "$cache_dir"
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
 cat > "$cache_file" <<EOF

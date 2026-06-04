@@ -228,7 +228,7 @@ describe('gaia scaffold service', () => {
     expect(parsers).toContain('description: z.string().nullish()');
   });
 
-  test('re-run is idempotent — files unchanged, no duplicate barrel inserts', () => {
+  test('re-run is idempotent: files unchanged, no duplicate barrel inserts', () => {
     const args = [
       'projects',
       '--endpoints',
@@ -371,7 +371,7 @@ describe('gaia scaffold service', () => {
 
     expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
 
-    // The barrel must be left untouched — no partial write.
+    // The barrel must be left untouched; no partial write.
     const after = read(databasePath);
     expect(after).not.toContain('mangoes');
   });

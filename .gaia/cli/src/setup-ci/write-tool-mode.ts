@@ -3,7 +3,7 @@
  *
  * Updates a single tool's `mode` field in `.gaia/automation.json`.
  * Slice 1 ships `bump-state` for the per-tool state files but the
- * tool's `mode` lives in the committed config — a different file with
+ * tool's `mode` lives in the committed config, a different file with
  * a different schema. This primitive bridges that gap so the slash
  * command (and `--reconfigure` flow) can flip a tool's mode without
  * editing the config by hand.

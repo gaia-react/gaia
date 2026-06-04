@@ -3,17 +3,17 @@
 #
 # Three transforms run in order against the staging tree:
 #
-#   1. marker-strip — remove maintainer-only blocks delimited by HTML
+#   1. marker-strip: remove maintainer-only blocks delimited by HTML
 #      comment markers from in-scope markdown files.
 #
-#   2. json-strip — delete maintainer-only keys from structured JSON files.
+#   2. json-strip: delete maintainer-only keys from structured JSON files.
 #      Keys use dot-notation to address nested paths (e.g. "scripts.foo").
 #      Dots are path separators; a literal dot inside a key name is escaped
 #      as `\.` (e.g. "exports.\./feature"). Missing keys are silently skipped
 #      (no error). Runs after marker-strip so leak-check sees the already-
 #      clean JSON.
 #
-#   3. leak-check — run codified audit patterns against the post-strip
+#   3. leak-check: run codified audit patterns against the post-strip
 #      staging tree. Non-empty match = build failure with a leak report.
 #      Mirrors the patterns in `.claude/rules/wiki-style.md` Audit section
 #      and `.gaia/cli/health/taxonomy.md` Distribution boundary classes.
@@ -34,7 +34,7 @@ transforms:
     end: "<!-- gaia:maintainer-only:end -->"
 
   # Maintainer-only package.json keys that must not reach adopter projects.
-  # bin: registers the gaia CLI binary — only meaningful when a package is
+  # bin: registers the gaia CLI binary, only meaningful when a package is
   #   published and installed as a dependency; adopters build apps, not
   #   publishable packages.
   # scripts.test:forensics: runs GAIA's internal BATS suite against
@@ -72,7 +72,7 @@ transforms:
           # flags, with concrete-ID examples by design.
           - ".claude/skills/gaia/references/wiki/lint.md"
         # Lines matching ANY of these regexes are exempt. Structural matches
-        # only — see `.claude/rules/wiki-style.md` Exceptions for the contract.
+        # only; see `.claude/rules/wiki-style.md` Exceptions for the contract.
         line-allowlist:
           # Identifier fragments inside variable names: uat_id, uats_block,
           # seen_uat_files, --uat-id CLI flag form.
@@ -129,10 +129,10 @@ transforms:
           - ".specify/extensions/gaia/rules/**"
           - ".specify/extensions/gaia/templates/**"
         path-allowlist:
-          # Self-referential — the rule's body cites the audit greps it
+          # Self-referential: the rule's body cites the audit greps it
           # codifies, including the maintainer-only `.gaia/tests/` scope.
           - ".claude/rules/wiki-style.md"
-          # Self-referential — the lint playbook's documentation describes
+          # Self-referential: the lint playbook's documentation describes
           # the same audit greps and target paths.
           - ".claude/skills/gaia/references/wiki/lint.md"
           # Documents the smoke-harness convention split between
@@ -141,7 +141,7 @@ transforms:
           # are the rule's classification table, not stray references.
           - ".specify/extensions/gaia/rules/smoke.md"
           # Telemetry concept page describes maintainer architecture
-          # (`.gaia/cli/src/`) by design — the framing line caveats it.
+          # (`.gaia/cli/src/`) by design; the framing line caveats it.
           # Allowlisted by the audit taxonomy.
           - "wiki/concepts/Telemetry.md"
           # Adopter-owned sentinels that ship in the tarball but contain
@@ -165,7 +165,7 @@ transforms:
           - ".specify/extensions/gaia/rules/**"
           - ".specify/extensions/gaia/templates/**"
         path-allowlist:
-          # Same hot/log carve-out as maintainer-paths — they get
+          # Same hot/log carve-out as maintainer-paths; they get
           # release-baseline content via `gaia-maintainer release scrub-wiki`.
           - "wiki/hot.md"
           - "wiki/log.md"
@@ -179,7 +179,7 @@ transforms:
         path-allowlist:
           # The rule's own counter-example prose documents this pattern.
           - ".claude/rules/instruction-files.md"
-          # Forensics redaction documents Rule B's regex literally — the
+          # Forensics redaction documents Rule B's regex literally; the
           # pattern `/Users/<name>/` and `/home/<name>/` is the load-bearing
           # algorithm input the skill executes against. Removing the literal
           # would break the documentation's correspondence to the regex.
@@ -228,7 +228,7 @@ transforms:
       # `_internal-assert-memory-rules` in the 10th audit precisely to
       # remove the path/contract signposting. The old name must not
       # reappear in shared surfaces. (The bundled `gaia` binary contains
-      # source strings verbatim — this is a different surface, exempt by
+      # source strings verbatim; this is a different surface, exempt by
       # the "Decided / not findings" entry.)
       - id: obscurity-cli-subcommand
         description: "Obscurity contract: deprecated CLI subcommand name in shipped surfaces"
@@ -241,7 +241,7 @@ transforms:
       # If the exclude lines are reverted by mistake, the files would
       # silently ship and adopters would inherit GAIA's governance. Using
       # `.*` as the pattern means any line (including the empty file
-      # `LICENSE`) triggers a leak — file presence is the signal.
+      # `LICENSE`) triggers a leak; file presence is the signal.
       - id: governance-files
         description: "Maintainer governance files present at staging root"
         pattern: ".*"
@@ -257,11 +257,11 @@ transforms:
       # Marker-strip catches blocks the maintainer wraps with
       # gaia:maintainer-only markers. This check defends the case where
       # the maintainer forgets to wrap a wikilink whose target is
-      # release-excluded — the link survives the strip but resolves to
+      # release-excluded; the link survives the strip but resolves to
       # nothing on the adopter side. The pattern enumerates the known
       # excluded slugs; a new excluded page requires updating this list.
       # wiki/meta/ holds ephemeral dated audit artifacts (consolidate-report-*,
-      # lint-report-*) whose full slugs are not individually enumerated —
+      # lint-report-*) whose full slugs are not individually enumerated;
       # the meta-prefix alternative below covers them as a class.
       - id: wikilink-to-excluded
         description: "Wikilinks pointing at release-excluded wiki slugs"
@@ -280,14 +280,14 @@ transforms:
       # Prior occurrences: chromatic.yml + tests.yml denylists missed
       # `.gaia/`, `.specify/`, `studio/` (a8a4b75, c6eeecc).
       - id: workflow-denylist
-        description: "Workflow paths-ignore or inverted !pattern entries — denylists fail quiet"
+        description: "Workflow paths-ignore or inverted !pattern entries: denylists fail quiet"
         pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!"
         scope:
           - ".github/workflows/**"
 
       # ---- Runtime-optional dependency references ----
       # Hook scripts that reference .gaia/ config files guarded by `[ -f ]`
-      # are runtime-optional — adopters without the file get a graceful no-op.
+      # are runtime-optional; adopters without the file get a graceful no-op.
       # The runtime-deps checker cannot infer conditionality from shell guard
       # syntax and flags these as missing dependencies.
       - id: runtime-deps
@@ -297,9 +297,9 @@ transforms:
           - ".claude/hooks/**"
         line-allowlist:
           # gaia-ci-defer.sh line 23: variable assignment; guarded on the next
-          # line by `[ -f "$config_path" ] || return 0` — adopters without
+          # line by `[ -f "$config_path" ] || return 0`; adopters without
           # .gaia/automation.json get a graceful no-op.
           - "local config_path=.*\\.gaia/automation\\.json"
           # gaia-ci-defer.sh lines 3 and 8: shell comment lines documenting
-          # the .gaia/automation.json config file in prose — not runtime refs.
+          # the .gaia/automation.json config file in prose, not runtime refs.
           - "#.*\\.gaia/automation\\.json"

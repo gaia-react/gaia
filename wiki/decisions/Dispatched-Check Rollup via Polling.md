@@ -10,7 +10,7 @@ tags: [decision, ci, audit, github-actions]
 
 # Decision: Dispatched-Check Rollup via In-Loop Polling
 
-The audit workflow's self-heal step dispatches required sibling workflows (e.g. Chromatic, Tests) on the self-heal HEAD via `workflow_dispatch` under `GITHUB_TOKEN`. Those dispatched runs complete, but their check suites carry an empty `pull_requests` link, so GitHub excludes them from `statusCheckRollup`. Branch protection reads the rollup, so dispatched runs alone never satisfy a required-check rule — the PR stays blocked even when every dispatched run is green.
+The audit workflow's self-heal step dispatches required sibling workflows (e.g. Chromatic, Tests) on the self-heal HEAD via `workflow_dispatch` under `GITHUB_TOKEN`. Those dispatched runs complete, but their check suites carry an empty `pull_requests` link, so GitHub excludes them from `statusCheckRollup`. Branch protection reads the rollup, so dispatched runs alone never satisfy a required-check rule; the PR stays blocked even when every dispatched run is green.
 
 The shipped resolution is in-loop polling with direct Checks API stamping.
 
@@ -23,7 +23,7 @@ The audit workflow's `Re-trigger and stamp required checks on new HEAD` step for
 3. Enumerates the run's jobs.
 4. POSTs a matching check run per job to the self-heal HEAD via the Checks API.
 
-Direct Checks API POSTs land in the PR's `statusCheckRollup` regardless of suite linkage — the same mechanism the audit's own `code-review-audit` stamp uses. Branch protection sees the stamped check runs and accepts the PR.
+Direct Checks API POSTs land in the PR's `statusCheckRollup` regardless of suite linkage, the same mechanism the audit's own `code-review-audit` stamp uses. Branch protection sees the stamped check runs and accepts the PR.
 
 The empirical signature distinguishing rollup-included from rollup-excluded check runs:
 
@@ -46,16 +46,16 @@ code-review-audit (audit step, GITHUB_TOKEN)
             → stamp-dispatched-checks listener never invoked
 ```
 
-GitHub Actions suppresses `workflow_run` events for runs whose chain of triggering events traces back to `GITHUB_TOKEN`. The suppression is the same recursion guard that blocks `push` and `pull_request` events from `GITHUB_TOKEN`-authored pushes — the reason the audit's self-heal re-trigger work exists in the first place.
+GitHub Actions suppresses `workflow_run` events for runs whose chain of triggering events traces back to `GITHUB_TOKEN`. The suppression is the same recursion guard that blocks `push` and `pull_request` events from `GITHUB_TOKEN`-authored pushes, the reason the audit's self-heal re-trigger work exists in the first place.
 
-The listener fires for `push`- and `pull_request`-triggered Chromatic / Tests completions (those events are user-attributed), but those completions already enter the rollup natively — there is nothing to mirror. For the case the listener was meant to handle (`GITHUB_TOKEN`-attributed dispatched runs), the listener is never invoked.
+The listener fires for `push`- and `pull_request`-triggered Chromatic / Tests completions (those events are user-attributed), but those completions already enter the rollup natively; there is nothing to mirror. For the case the listener was meant to handle (`GITHUB_TOKEN`-attributed dispatched runs), the listener is never invoked.
 
 `workflow_dispatch` and `repository_dispatch` are the only documented exceptions allowing new runs to start from `GITHUB_TOKEN`, but the exception covers **starting** the run, not **firing downstream `workflow_run` events when it completes**.
 
 ## Alternatives considered
 
 - **Switch the dispatch from `GITHUB_TOKEN` to a PAT or GitHub App token.** Runs become user-attributed and their completions fire `workflow_run` events normally. Trades the polling cost for credential lifecycle: rotation, expiration handling, security review of granting `workflow` scope.
-- **Checks API stamping from the source workflows directly.** Each `retrigger_workflows` entry adds a tail job that POSTs a duplicate check run under `GITHUB_TOKEN`. Direct API POSTs are not subject to the recursion guard (only events are), so it works in theory — but every entry adopters add to `retrigger_workflows` then needs the same tail-job convention added to the corresponding workflow file.
+- **Checks API stamping from the source workflows directly.** Each `retrigger_workflows` entry adds a tail job that POSTs a duplicate check run under `GITHUB_TOKEN`. Direct API POSTs are not subject to the recursion guard (only events are), so it works in theory; but every entry adopters add to `retrigger_workflows` then needs the same tail-job convention added to the corresponding workflow file.
 
 ## Reference
 

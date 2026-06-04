@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# spec-folderize.sh — Migrate flat SPEC artifacts into per-SPEC folders.
+# spec-folderize.sh: Migrate flat SPEC artifacts into per-SPEC folders.
 #
 # A SPEC artifact lives at .gaia/local/specs/<spec_id>/SPEC.md (and, when
 # archived, .gaia/local/specs/archived/<spec_id>/SPEC.md). This script moves
 # any legacy flat .gaia/local/specs/SPEC-NNN.md (and archived/SPEC-NNN.md)
-# into that folder shape. The folder is the archival unit — moving it carries
+# into that folder shape. The folder is the archival unit; moving it carries
 # all sibling artifacts (REPORT.md, evidence) with it.
 #
 # Usage:
@@ -17,13 +17,13 @@
 #   - Each flat canonical file SPEC-NNN.md is moved to SPEC-NNN/SPEC.md.
 #   - Each flat sibling file SPEC-NNN-<rest>.md is moved to SPEC-NNN/<REST>.md,
 #     where <REST> is the remainder uppercased, hyphens kept. Any SPEC-NNN-*
-#     file is a sibling — no suffix allowlist.
+#     file is a sibling; no suffix allowlist.
 #     Examples: SPEC-NNN-REPORT.md          → SPEC-NNN/REPORT.md
 #               SPEC-NNN-FOLLOWUP-REPORT.md → SPEC-NNN/FOLLOWUP-REPORT.md
 #               SPEC-NNN-revised-contracts.md → SPEC-NNN/REVISED-CONTRACTS.md
 #   - `.gaia/local/specs/` and `.gaia/local/specs/archived/` are both scanned.
 #   - Tracked files (git ls-files --error-unmatch) move with `git mv`;
-#     untracked files (the common adopter case — specs are gitignored) move
+#     untracked files (the common adopter case; specs are gitignored) move
 #     with plain `mv`.
 #   - Idempotent: a file already at its target path is skipped. Running twice
 #     is a no-op. Contents are moved byte-for-byte; no frontmatter edits.
@@ -34,7 +34,7 @@
 #   2  usage error
 #   3  repo root not resolvable
 #   4  migration conflict (a flat file and its foldered counterpart both exist
-#      for the same path — never guess, never overwrite)
+#      for the same path; never guess, never overwrite)
 #
 # macOS-first: no GNU coreutils assumptions.
 set -euo pipefail
@@ -122,7 +122,7 @@ folderize_dir() {
     target="$folder/$target_name"
 
     if [ -e "$target" ]; then
-      echo "spec-folderize: conflict — both flat and foldered artifact exist for $id:" >&2
+      echo "spec-folderize: conflict: both flat and foldered artifact exist for $id:" >&2
       echo "  flat:   $flat" >&2
       echo "  folder: $target" >&2
       exit 4

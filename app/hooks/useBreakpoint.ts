@@ -15,7 +15,7 @@ const getServerSnapshot = (): boolean => false;
 export const useBreakpoint = (breakpoint: BreakpointType): boolean => {
   const query = `(min-width: ${BREAKPOINTS[breakpoint]}px)`;
 
-  // stable ref required by useSyncExternalStore — re-subscribes only when breakpoint changes
+  // stable ref required by useSyncExternalStore; re-subscribes only when breakpoint changes
   const subscribe = useCallback(
     (callback: () => void) => {
       const mql = window.matchMedia(query);

@@ -5,21 +5,21 @@
 # The hook denies `gh pr merge` unless a code-review-audit signal exists for
 # HEAD. Signal 5 (check_out_of_scope_pr) is a fail-closed allowlist bypass: it
 # allows the merge when EVERY file the PR changes (vs its merge base with the
-# default branch) lives outside audit scope — wiki/, .claude/, .specify/,
+# default branch) lives outside audit scope; wiki/, .claude/, .specify/,
 # .gaia/, docs/, and root-level markdown. Any in-scope path (app/, test/,
 # configs, .github/workflows/) keeps the marker mandatory.
 #
 # Each test drives the hook exactly as the harness does: a PreToolUse JSON
 # payload on stdin, run with the repo as the working directory (the hook uses
 # bare `git`, not `git -C`). The hook always exits 0; allow vs deny is carried
-# in stdout — a deny emits `"permissionDecision": "deny"`, an allow emits
+# in stdout; a deny emits `"permissionDecision": "deny"`, an allow emits
 # nothing. The in-scope (deny) cases double as a jq/setup canary: if jq were
 # missing the hook would exit early with no output and those assertions would
 # fail rather than false-pass.
 #
 # Setup models a PR: a base commit on `main`, then a `feature` branch carrying
 # the change under test. merge-base(HEAD, main) resolves to the base commit, so
-# the bypass diffs only the feature's files. No remote is needed — the hook
+# the bypass diffs only the feature's files. No remote is needed; the hook
 # falls back from `origin/main` to `main`.
 
 setup() {

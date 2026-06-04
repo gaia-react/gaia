@@ -23,7 +23,7 @@ decline_surrogate() {
   printf '## Symptom\nTest report body.\n' > "$report_path"
 
   printf 'Report: .gaia/local/forensics/%s-%s.md\n' "$timestamp" "$class"
-  # No gh invocation here — this is the decline branch
+  # No gh invocation here; this is the decline branch
 }
 
 setup() {

@@ -24,7 +24,7 @@ type Sandbox = {
   // 3-4 Node→git spawns per call; under full-suite contention each
   // spawn slows from ~50ms to several hundred ms, so 21 sequential
   // invocations easily blow past a 30s per-test timeout. fast-import
-  // creates the whole chain in one process — single startup, all
+  // creates the whole chain in one process; single startup, all
   // commits assembled in-memory, no per-commit pack overhead.
   commitEmptyChain: (count: number) => void;
   root: string;
@@ -229,7 +229,7 @@ describe('wiki state', () => {
     );
     execFileSync('git', ['checkout', '-q', 'main'], {cwd: sandbox.root});
 
-    // Evaluated up to the orphan at 12:00 on Jan 2 — newest reachable ancestor
+    // Evaluated up to the orphan at 12:00 on Jan 2; newest reachable ancestor
     // of HEAD at/older than that is B (Jan 2 00:00); C (Jan 3) is the window.
     writeStateFileAt(sandbox.root, orphan, '2026-01-02T12:00:00Z');
 

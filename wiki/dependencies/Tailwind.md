@@ -15,12 +15,12 @@ Utility-first CSS framework. GAIA uses **Tailwind v4** with the Vite plugin.
 
 ## Companion packages
 
-- `@tailwindcss/vite` — v4 Vite plugin
-- `@tailwindcss/forms`, `@tailwindcss/typography` — official plugins
-- `tailwind-merge` — runtime class merging (`twJoin`, `twMerge`)
-- `prettier-plugin-tailwindcss` — auto-sort classes
-- `eslint-plugin-better-tailwindcss` — lint rules
-- `stylelint-config-tailwindcss` — Stylelint integration
+- `@tailwindcss/vite`: v4 Vite plugin
+- `@tailwindcss/forms`, `@tailwindcss/typography`: official plugins
+- `tailwind-merge`: runtime class merging (`twJoin`, `twMerge`)
+- `prettier-plugin-tailwindcss`: auto-sort classes
+- `eslint-plugin-better-tailwindcss`: lint rules
+- `stylelint-config-tailwindcss`: Stylelint integration
 
 ## Conventions
 

@@ -423,7 +423,7 @@ describe('ci-revert', () => {
     it('refuses when a fresh per-PR lock is held', () => {
       const lockDir = `${sandbox.ledgerPath}.lock.pr-99`;
       mkdirSync(lockDir, {recursive: true});
-      // mtime within the threshold — a healthy concurrent revert.
+      // mtime within the threshold, a healthy concurrent revert.
       const fresh = new Date(Date.now() - 30_000);
       utimesSync(lockDir, fresh, fresh);
 
@@ -637,7 +637,7 @@ describe('ci-revert', () => {
   describe('withRevertLedgerLock', () => {
     it('propagates a non-EEXIST lock-acquire error', () => {
       // A read-only lock parent makes the lock-dir `mkdir` fail with
-      // EACCES — a genuine error, not contention. It must propagate
+      // EACCES, a genuine error, not contention. It must propagate
       // rather than be swallowed into {locked: false}.
       const ledgerDir = path.join(sandbox.root, '.gaia');
       chmodSync(ledgerDir, 0o500);
@@ -722,7 +722,7 @@ describe('ci-revert', () => {
       const result = withRevertLedgerLock(sandbox.root, 99, () => 'never-runs');
 
       expect(result.locked).toBe(false);
-      // The pre-existing fresh lock is left in place — not reclaimed.
+      // The pre-existing fresh lock is left in place, not reclaimed.
       expect(() => statSync(lockDir)).not.toThrow();
     });
   });

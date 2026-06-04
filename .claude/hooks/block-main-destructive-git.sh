@@ -3,7 +3,7 @@
 #
 # Command-position anchoring: the rules fire only when `git` is the command word
 # of a pipeline segment (start of command, after a `| & ; ( )` separator, or
-# after an env-var prefix) — a real `git commit` / `git push` INVOCATION.
+# after an env-var prefix), a real `git commit` / `git push` INVOCATION.
 # Command TEXT that merely contains the words (a grep pattern, an echo string,
 # a path, an argument to another program such as `grep -n -e git commit file`)
 # is not an invocation and never fires.
@@ -14,13 +14,13 @@ set -euo pipefail
 payload=$(cat)
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
-# Only act on git commands — short-circuit everything else. (Fast path only;
+# Only act on git commands, short-circuit everything else. (Fast path only;
 # correctness comes from the command-position scan below.)
 [[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's main-branch policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other push origin main`
-# or `cd ../other && git push`) is out of scope — allow it. Fail-closed: any
+# or `cd ../other && git push`) is out of scope, allow it. Fail-closed: any
 # ambiguity falls through and the policy still enforces.
 [ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
@@ -63,7 +63,7 @@ while IFS= read -r seg; do
   # Normalize this segment: strip EVERY -C <path> for regex matching; capture
   # the path git would actually use for branch queries. git applies multiple -C
   # cumulatively with the last absolute one winning, so capture the LAST
-  # occurrence (greedy .* consumes through it) — a first-only capture lets
+  # occurrence (greedy .* consumes through it), a first-only capture lets
   # `git -C <a> -C <b> commit` slip past the commit/push regexes. Handles
   # `git -C /abs/path` (required by shell-cwd rule).
   git_cwd=$(printf '%s' "$seg" | sed -nE 's/.*[[:space:]]-C[[:space:]]+([^[:space:]]+).*/\1/p')

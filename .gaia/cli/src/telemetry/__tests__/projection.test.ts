@@ -24,7 +24,7 @@ const baseEnvelope = {
 };
 
 describe('projectToCloud', () => {
-  describe('UAT-013 — required cloud tags + zero forbidden fields', () => {
+  describe('UAT-013: required cloud tags + zero forbidden fields', () => {
     test('projects a uat_pass envelope to a cloud line containing the five required tags', () => {
       const result = projectToCloud(baseEnvelope);
 
@@ -89,7 +89,7 @@ describe('projectToCloud', () => {
     });
   });
 
-  describe('UAT-014 — fail loud on drift', () => {
+  describe('UAT-014: fail loud on drift', () => {
     test('rejects an envelope whose payload carries an unexpected field', () => {
       const envelopeWithDrift = {
         ...baseEnvelope,
@@ -212,7 +212,7 @@ describe('projectToCloud', () => {
   describe('denylist sweep (belt-and-suspenders)', () => {
     test('does not false-positive on forbidden-key substrings in value strings', () => {
       // The denylist scans for `"<key>":` (property-name position), not
-      // raw substrings — otherwise common values like `'typescript'`
+      // raw substrings; otherwise common values like `'typescript'`
       // (contains `ip`) would trip every cloud line. This test pins
       // that boundary: a clean payload whose values incidentally
       // contain forbidden-key substrings still projects successfully.

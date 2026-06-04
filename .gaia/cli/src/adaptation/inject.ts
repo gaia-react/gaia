@@ -68,7 +68,7 @@ const filterRelevant = (
   // Fallback: with no area tags supplied, pick the first adaptation.
   // Per the brief: "Some adaptations are agent-type-scoped not area-scoped."
   // v1.0.0 ships only area-scoped adaptations, so the fallback is the
-  // simplest safe behavior — return the first available adaptation so
+  // simplest safe behavior: return the first available adaptation so
   // the caller still sees coaching when it asked without scoping.
   // Future agent-type-scoped adaptations would refine this branch.
   return adaptations[0];
@@ -95,7 +95,7 @@ const resolveCachePath = (deps: InjectionDeps): string => {
 };
 
 /**
- * Mark the current session as coaching-active. Idempotent — overwriting
+ * Mark the current session as coaching-active. Idempotent: overwriting
  * with the same `1` byte is the intended steady state when injection
  * fires on every dispatch in a session.
  */
@@ -181,7 +181,7 @@ const splitAreaTags = (raw: string | undefined): string[] | undefined => {
  * `gaia _internal-fetch-coaching` subcommand handler.
  *
  * Thin CLI wrapper over `maybeInjectCoaching`. Prints the coaching block
- * (or an empty string) to stdout. Always exits 0 — bash callers capture
+ * (or an empty string) to stdout. Always exits 0; bash callers capture
  * with `COACHING=$(.gaia/cli/gaia _internal-fetch-coaching ...)` and prepend
  * unconditionally; an empty result is the byte-identical no-op path.
  *

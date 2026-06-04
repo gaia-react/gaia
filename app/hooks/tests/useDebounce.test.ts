@@ -23,7 +23,7 @@ describe('useDebounce', () => {
     value = 'world';
     rerender();
 
-    // Not updated yet — delay has not elapsed
+    // Not updated yet; delay has not elapsed
     expect(result.current).toBe('hello');
 
     act(() => {

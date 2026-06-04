@@ -5,7 +5,7 @@
 # .gaia/local/specs/SPEC-NNN.md (and archived/SPEC-NNN.md) into that shape.
 #
 # Each test spins up its own tmp git repo via helpers/tmp-spec-repo.sh and
-# tears it down — hermetic, no reliance on the real project ledger. The
+# tears it down; hermetic, no reliance on the real project ledger. The
 # teardown uses the explicit-if form (the && idiom is a bats teardown
 # footgun: a falsy first clause makes teardown itself "fail").
 
@@ -91,7 +91,7 @@ _snapshot() {
   [[ "$output" == *"mv "* ]]
   [[ "$output" == *"SPEC-001/SPEC.md"* ]]
 
-  # Tree stays flat — no folder created, flat file untouched.
+  # Tree stays flat; no folder created, flat file untouched.
   [ -f "$REPO/.gaia/local/specs/SPEC-001.md" ]
   [ ! -e "$REPO/.gaia/local/specs/SPEC-001/SPEC.md" ]
   after="$(_snapshot "$REPO")"
@@ -100,7 +100,7 @@ _snapshot() {
 
 # --- 4: no specs -------------------------------------------------------------
 
-@test "4: no flat specs — exit 0, stderr 'nothing to migrate'" {
+@test "4: no flat specs; exit 0, stderr 'nothing to migrate'" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
   run bash -c "bash '$REPO/$FOLDERIZE' '$REPO' 2>&1 1>/dev/null"
@@ -110,7 +110,7 @@ _snapshot() {
 
 # --- 5: conflict -------------------------------------------------------------
 
-@test "5: flat + foldered for same id — exit 4, both paths in stderr, neither modified" {
+@test "5: flat + foldered for same id; exit 4, both paths in stderr, neither modified" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-flat SPEC-003 --seed-folder SPEC-003)"
   cd "$REPO"
 
@@ -143,7 +143,7 @@ _snapshot() {
   run bash -c "bash '$REPO/$FOLDERIZE' '$REPO'"
   [ "$status" -eq 0 ]
 
-  # Tracked file moved with git mv — git now tracks the new path, not the old.
+  # Tracked file moved with git mv; git now tracks the new path, not the old.
   git -C "$REPO" ls-files --error-unmatch .gaia/local/specs/SPEC-001/SPEC.md
   run bash -c "git -C '$REPO' ls-files --error-unmatch .gaia/local/specs/SPEC-001.md"
   [ "$status" -ne 0 ]
@@ -168,7 +168,7 @@ _snapshot() {
   run bash -c "bash '$REPO/$ALLOC' next '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-005" ]
-  # `next` only appends a ledger row — it must NOT create the folder.
+  # `next` only appends a ledger row; it must NOT create the folder.
   [ ! -e "$REPO/.gaia/local/specs/SPEC-005" ]
   [ "$(jq -r '.specs[-1].id' "$REPO/.gaia/specs.json")" = "SPEC-005" ]
 }
@@ -249,7 +249,7 @@ _snapshot() {
 
   # 5. highest ignores archived/ on the filesystem scan: only SPEC-001 is an
   #    active foldered artifact, but the ledger still carries SPEC-003 and the
-  #    renumbered SPEC-010 row — the allocator's highest is ledger ∪ branches ∪
+  #    renumbered SPEC-010 row; the allocator's highest is ledger ∪ branches ∪
   #    active folders, never archived/ (mindepth/maxdepth 2 stops at <id>/).
   run bash -c "find '$REPO/.gaia/local/specs' -mindepth 2 -maxdepth 2 -type f -name SPEC.md"
   [ "$status" -eq 0 ]
@@ -291,7 +291,7 @@ _snapshot() {
 
 # --- 12: sibling conflict ----------------------------------------------------
 
-@test "12: flat sibling + existing foldered sibling — exit 4, both paths in stderr, neither modified" {
+@test "12: flat sibling + existing foldered sibling; exit 4, both paths in stderr, neither modified" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" \
     --seed-flat-sibling SPEC-003-REPORT \
     --seed-folder SPEC-003)"

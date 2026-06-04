@@ -11,6 +11,6 @@ tags: [concept, claude, skill, session]
 
 `/gaia-handoff` writes a self-contained session handoff document so the next session can pick up cold without re-reading the conversation. The skill lives at `.claude/skills/gaia/references/handoff.md` (dispatched by the `/gaia` router skill).
 
-Output: `.gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`. Synthesizes accomplishments, decisions, gaps, open questions, and concrete next actions — never dumps the transcript raw. Empty sections are skipped rather than filled with "N/A".
+Output: `.gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`. Synthesizes accomplishments, decisions, gaps, open questions, and concrete next actions; never dumps the transcript raw. Empty sections are skipped rather than filled with "N/A".
 
 Pairs with [[GAIA Pickup]].

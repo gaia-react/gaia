@@ -34,7 +34,7 @@ body:
     attributes:
       label: Reproduction
       description: |
-        Minimal steps to reproduce. Even better — a link to a public repo that reproduces it.
+        Minimal steps to reproduce. Even better, a link to a public repo that reproduces it.
       placeholder: |
         1. Scaffold via `npx create-gaia@latest my-app`
         2. Run `/gaia-init` in Claude Code

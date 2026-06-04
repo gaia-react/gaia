@@ -5,11 +5,11 @@
  * reference files no longer present on disk. Detects rot like a wiki page
  * citing `.claude/hooks/wiki-stop-safety-net.sh` after that hook has been
  * deleted or renamed. Also flags any reference to sibling-monorepo paths
- * (`studio/`, `website/`) — those reach outside the GAIA repo and never
+ * (`studio/`, `website/`); those reach outside the GAIA repo and never
  * resolve on a single-repo clone.
  *
  * Output: newline-separated `wiki/path:line  dead-path` entries. Exit 0
- * always — finding rot is informational, not a failure.
+ * always; finding rot is informational, not a failure.
  */
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';

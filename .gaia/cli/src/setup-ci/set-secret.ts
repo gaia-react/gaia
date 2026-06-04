@@ -11,14 +11,14 @@
  *   - The token is NEVER echoed to stdout or stderr.
  *   - On any failure (including `gh` non-zero, gh missing from PATH,
  *     stdin empty, unknown name, etc.), the structured-error / JSON
- *     payload contains a generic message — never the captured `gh`
+ *     payload contains a generic message, never the captured `gh`
  *     stdout/stderr verbatim.
  *
  * If `gh` writes the secret to its OWN stderr (which it should not,
  * but defense in depth), the wrapper captures the stderr but this
  * handler reports a generic `gh_failure` message rather than echoing
  * the captured stderr in the structured error. This is the only place
- * in the codebase that intentionally suppresses stderr propagation —
+ * in the codebase that intentionally suppresses stderr propagation;
  * the trade-off is an opaque error message in exchange for a strict
  * no-leak guarantee.
  */

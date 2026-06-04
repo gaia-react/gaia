@@ -46,7 +46,7 @@ describe('renderProfile', () => {
 
     expect(output).toContain('## Active patterns');
     expect(output).toContain(
-      '(none — all patterns below sample threshold or strength below threshold)'
+      '(none - all patterns below sample threshold or strength below threshold)'
     );
     expect(output).toContain('## Active adaptations');
     expect(output).toContain('## Faded adaptations');
@@ -92,7 +92,7 @@ describe('renderProfile', () => {
     });
 
     expect(output).toContain(
-      'visual: below sample threshold (N=4, min 10) — no fire'
+      'visual: below sample threshold (N=4, min 10) - no fire'
     );
   });
 

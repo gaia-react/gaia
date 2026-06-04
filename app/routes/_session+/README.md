@@ -1,6 +1,6 @@
-# `_session+/` — Auth-Guarded Route Group
+# `_session+/`: Auth-Guarded Route Group
 
-Hook point for authenticated pages. Empty by design — the template is not prescriptive about auth.
+Hook point for authenticated pages. Empty by design; the template is not prescriptive about auth.
 
 ## When you add auth
 
@@ -21,7 +21,7 @@ Hook point for authenticated pages. Empty by design — the template is not pres
    export default SessionLayout;
    ```
 
-3. Add routes (e.g. `profile.tsx`, `settings.tsx`) as siblings — they inherit the guard.
+3. Add routes (e.g. `profile.tsx`, `settings.tsx`) as siblings; they inherit the guard.
 
 Using remix-flat-routes: the `_` prefix makes this a pathless layout group; everything under `_session+/` renders inside it.
 

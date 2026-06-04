@@ -105,7 +105,7 @@ describe('wiki log-prepend', () => {
     expect(exit).toBe(0);
 
     const written = readFileSync(sandbox.logPath, 'utf8');
-    expect(written).toContain('- 2026-05-07 def5678 SKIP — test');
+    expect(written).toContain('- 2026-05-07 def5678 SKIP - test');
     // The new entry should appear before the existing entry.
     const newIndex = written.indexOf('def5678');
     const oldIndex = written.indexOf('abc1234');
@@ -122,7 +122,7 @@ describe('wiki log-prepend', () => {
     expect(exit).toBe(0);
 
     const written = readFileSync(sandbox.logPath, 'utf8');
-    expect(written).toContain('- 2026-05-07 0123456 WORTHY — added module');
+    expect(written).toContain('- 2026-05-07 0123456 WORTHY - added module');
   });
 
   test('prepends a RE_ANCHOR entry', () => {
@@ -143,7 +143,7 @@ describe('wiki log-prepend', () => {
 
     const written = readFileSync(sandbox.logPath, 'utf8');
     expect(written).toContain(
-      '- 2026-05-07 feedbac RE_ANCHOR — re-anchored after history rewrite'
+      '- 2026-05-07 feedbac RE_ANCHOR - re-anchored after history rewrite'
     );
   });
 
@@ -210,6 +210,6 @@ describe('wiki log-prepend', () => {
     expect(exit).toBe(0);
 
     const written = readFileSync(sandbox.logPath, 'utf8');
-    expect(written).toContain('- 2026-05-07 def5678 SKIP — flat');
+    expect(written).toContain('- 2026-05-07 def5678 SKIP - flat');
   });
 });

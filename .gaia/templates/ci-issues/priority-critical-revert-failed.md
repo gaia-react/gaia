@@ -23,6 +23,6 @@ References:
 - Workflow: ${WORKFLOW_NAME}
 
 Until this issue is closed, the GAIA CI cron schedule for `${WORKFLOW_NAME}` is
-not suppressed automatically — the next scheduled run will proceed normally on
+not suppressed automatically; the next scheduled run will proceed normally on
 its next cycle. The hard-cap rule applies only to the specific original PR;
 unrelated runs continue.

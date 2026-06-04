@@ -217,7 +217,7 @@ describe('mentorship/config', () => {
     test('returns false for the explicit pre-decision (enabled: null) state', () => {
       const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
       // Hand-write the explicit-null shape to disk (writeMentorshipConfig
-      // does not accept null, by design — only the absent-file path produces it).
+      // does not accept null, by design; only the absent-file path produces it).
       writeMentorshipConfig({
         analyticsEnabled: false,
         decidedVia: 'gaia-init',

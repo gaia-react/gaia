@@ -5,7 +5,7 @@
 #   source "$HERE/lib/lib.sh"
 #   source "$HERE/lib/docker.sh"
 #
-# Convention matches lib.sh: this file does NOT enable `set -e` — the caller
+# Convention matches lib.sh: this file does NOT enable `set -e`; the caller
 # scenario sets `set -euo pipefail` and inherits it.
 #
 # API:
@@ -31,7 +31,7 @@ docker_token_available() {
 }
 
 # Builds the GAIA distribution-test Claude image. The Dockerfile lives in a
-# scratch dir so the image build context stays minimal — no repo files leak
+# scratch dir so the image build context stays minimal; no repo files leak
 # into the image. Pinned to the verified pattern from
 # `diagnostic/claude-auth-in-docker.md`: `claude.ai/install.sh` lands the
 # binary at `/root/.local/bin/claude`, which we put on PATH.
@@ -59,7 +59,7 @@ DOCKERFILE
 
 # `-e CLAUDE_CODE_OAUTH_TOKEN` (no `=value`) reads from the host env, so the
 # token is never on the command line where it could land in `ps` or shell
-# history. The bind mount is read-only — the Layer 2 contract is "Claude can
+# history. The bind mount is read-only; the Layer 2 contract is "Claude can
 # read the staged tree", not "Claude can mutate the staged tree".
 docker_run_claude() {
   local staging="$1"; shift

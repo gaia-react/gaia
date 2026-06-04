@@ -6,7 +6,7 @@
  * semver bump, and either reports the proposal or applies it to
  * `package.json` and `.gaia/VERSION`.
  *
- * Bump rules — highest severity wins:
+ * Bump rules; highest severity wins:
  *
  *   - `BREAKING CHANGE` in body, or `!` suffix on type → major
  *   - `feat:` / `feat(...):`                            → minor
@@ -113,7 +113,7 @@ export const classifyCommit = (commit: Commit): BumpKind | null => {
   const subject = commit.subject.trim();
   const body = commit.body;
 
-  // Breaking change — major.
+  // Breaking change: major.
   if (/(^|\n)BREAKING CHANGE: /u.test(body)) return 'major';
 
   const match = CONVENTIONAL_HEADER_REGEX.exec(subject);

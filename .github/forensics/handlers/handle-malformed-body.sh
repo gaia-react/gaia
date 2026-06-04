@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# handle-malformed-body.sh — short-circuit handler for issues whose
+# handle-malformed-body.sh: short-circuit handler for issues whose
 # body cannot be parsed deterministically.
 #
 # The body parser flagged the issue as `valid:false`. Without invoking
-# the LLM (parser failures never fall through to an LLM fallback —
+# the LLM (parser failures never fall through to an LLM fallback -
 # downstream tooling parses the structured sections deterministically),
 # label the issue `needs-human` and post a comment naming the
 # missing/malformed sections. Issue stays open. No fix attempt.
@@ -59,7 +59,7 @@ comment_file="$work_dir/comment.md"
   if [ -n "$malformed_csv" ]; then
     printf 'malformed sections: `%s`\n\n' "$malformed_csv"
   fi
-  printf 'Required schema: four `##` headers — `## Symptom`, `## Classification`, `## Capture`, `## Reproduction context` — each with non-empty content. `## Classification` must include a `class: <tag>` line whose tag is one of: `init`, `update`, `wiki-sync`, `quality-gate`, `hook`, `scaffold`, `dev-server`, `other`. The forensics skill (`/gaia-forensics`) emits this shape automatically.\n'
+  printf 'Required schema: four `##` headers, `## Symptom`, `## Classification`, `## Capture`, `## Reproduction context`, each with non-empty content. `## Classification` must include a `class: <tag>` line whose tag is one of: `init`, `update`, `wiki-sync`, `quality-gate`, `hook`, `scaffold`, `dev-server`, `other`. The forensics skill (`/gaia-forensics`) emits this shape automatically.\n'
 } > "$comment_file"
 
 # Order:

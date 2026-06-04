@@ -13,7 +13,7 @@ Fired automatically by spec-kit on the `after_clarify` event (mandatory hook). R
 
 ## Audit checklist
 
-Read the draft and the gate-1 snapshot. Surface findings under each heading; do not fix in place — the wrapper folds fixes back in.
+Read the draft and the gate-1 snapshot. Surface findings under each heading; do not fix in place, the wrapper folds fixes back in.
 
 ### 1. Placeholder text
 
@@ -68,11 +68,11 @@ Emit a structured report the wrapper can fold back in:
 
 ```
 self-review findings (gate 2 gate):
-  placeholders: <N> — <field>:<line>, ...
-  scope_drift:  <N> — gate1.<field> vs current.<field>
-  inconsistency: <N> — <description>
-  ambiguous_uats: <N> — UAT-NNN: <phrasing>
-  pending: <N> — <item summary>, ...
+  placeholders: <N>: <field>:<line>, ...
+  scope_drift:  <N>: gate1.<field> vs current.<field>
+  inconsistency: <N>: <description>
+  ambiguous_uats: <N>: UAT-NNN: <phrasing>
+  pending: <N>: <item summary>, ...
 ```
 
 If every section is clean:
@@ -81,6 +81,6 @@ If every section is clean:
 
 ## Notes
 
-- This hook is the last automated gate before the human-facing gate 2. Be thorough but not noisy — surface real issues, skip nits.
+- This hook is the last automated gate before the human-facing gate 2. Be thorough but not noisy, surface real issues, skip nits.
 - Self-review never edits the draft; the wrapper does. This skill produces a report; the wrapper consumes it.
 - The pending-clarifications gate is itself a required behavior. The wrapper is responsible for honoring the user's choice and looping until pending is resolved.

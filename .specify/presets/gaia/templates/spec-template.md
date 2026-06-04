@@ -11,13 +11,13 @@ intent: |
   No implementation detail.>
 success_criteria:
   - <Observable outcome that, if true, proves the feature works.>
-  - <One bullet per criterion. No internal mechanism — only outcomes
+  - <One bullet per criterion. No internal mechanism, only outcomes
     a human or test can verify from outside the system.>
 uats:
   - uat_id: UAT-NNN
-    given: <Initial state — preconditions a verifier can establish.>
-    when: <Action — a single trigger, user-driven or system-driven.>
-    then: <Observable outcome — concrete and falsifiable. No "should",
+    given: <Initial state, preconditions a verifier can establish.>
+    when: <Action, a single trigger, user-driven or system-driven.>
+    then: <Observable outcome, concrete and falsifiable. No "should",
       no hedging. The verifier can read this and write a Playwright
       assertion against it.>
 scope_boundaries:
@@ -43,7 +43,7 @@ created: YYYY-MM-DD
 updated: YYYY-MM-DD
 ---
 
-# <Feature title — short, human-readable, mirrors `intent`>
+# <Feature title, short, human-readable, mirrors `intent`>
 
 ## One-line summary
 
@@ -62,7 +62,7 @@ expansion. Treat the reader as an engaged stakeholder, not an implementer.>
 <Walk the reader through the feature from invocation to outcome.
 Diagrams, lifecycle blocks, or numbered phases are welcome. This
 section is the cognitive scaffold for the autonomous downstream
-pipeline that consumes this SPEC — the clearer this is, the cleaner
+pipeline that consumes this SPEC, the clearer this is, the cleaner
 the resulting plan and tasks.>
 
 ## Constitution / preconditions
@@ -84,7 +84,7 @@ bootstrap step.>
 
 - <Source document, design lock, or prior SPEC the implementation
   engineer should read before starting.>
-- <External reference — upstream tool docs, philosophy doc, video.
+- <External reference, upstream tool docs, philosophy doc, video.
   One bullet per source.>
 
 ## Cross-references

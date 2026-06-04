@@ -11,7 +11,7 @@ HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 #   1. Snapshots mtimes of all files via a marker file
 #   2. Writes a fake report to the allowed path
 #   3. Optionally writes to .gaia/local/telemetry/ (allowed)
-#   4. Returns — does NOT write to any other path
+#   4. Returns; does NOT write to any other path
 # ---------------------------------------------------------------------------
 
 runbook_surrogate() {
@@ -32,7 +32,7 @@ runbook_surrogate() {
 }
 
 # ---------------------------------------------------------------------------
-# Illegal write surrogate — simulates a buggy runbook that writes outside
+# Illegal write surrogate; simulates a buggy runbook that writes outside
 # the allowlist; used to confirm the assertion logic catches violations.
 # ---------------------------------------------------------------------------
 
@@ -102,7 +102,7 @@ find_write_violations() {
   mkdir -p "$workdir/.gaia/local/forensics"
   printf 'report\n' > "$workdir/.gaia/local/forensics/20260508T143022Z-init.md"
 
-  # Find violations — should be empty because the write is in the allowlist
+  # Find violations; should be empty because the write is in the allowlist
   local violations
   violations="$(find_write_violations "$workdir" "$marker" | grep -v '.gaia-marker-' || true)"
 

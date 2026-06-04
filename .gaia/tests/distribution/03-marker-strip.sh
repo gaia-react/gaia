@@ -7,7 +7,7 @@
 #   2. Every source file containing a marker block has a smaller staged
 #      counterpart (file-size delta > 0).
 #   3. No staged counterpart shrunk to zero bytes (would indicate the
-#      whole file was inside a marker block — almost certainly wrong).
+#      whole file was inside a marker block; almost certainly wrong).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -28,7 +28,7 @@ if [ -n "$SURVIVING" ]; then
 fi
 
 # 2. Every source file with a marker block must have a smaller staged
-# counterpart. Walk the source tree (only release-shipped paths — i.e.
+# counterpart. Walk the source tree (only release-shipped paths; i.e.
 # files NOT in release-exclude). Use the same exclude mechanism as
 # build-staging.sh so we don't grep maintainer-only files.
 
@@ -84,10 +84,10 @@ if [ "${#MISSING_DELTA[@]}" -gt 0 ]; then
 fi
 
 if [ "${#ZERO_BYTE[@]}" -gt 0 ]; then
-  log "Files reduced to zero bytes by marker strip — likely whole-file blocks:"
+  log "Files reduced to zero bytes by marker strip; likely whole-file blocks:"
   for entry in "${ZERO_BYTE[@]}"; do log "  $entry"; done
   fail "${#ZERO_BYTE[@]} file(s) became empty after strip"
   exit 1
 fi
 
-pass "marker-strip transform verified — all marker-bearing files shrunk"
+pass "marker-strip transform verified; all marker-bearing files shrunk"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# spec-allocator.sh — Allocate SPEC-NNN ids using the .gaia/specs.json ledger,
+# spec-allocator.sh: Allocate SPEC-NNN ids using the .gaia/specs.json ledger,
 # self-healed against deterministic markers in git (spec-NNN-* branches) and the
 # working-tree SPEC files. The repo must be a git working tree.
 #
@@ -9,7 +9,7 @@
 #   spec-allocator.sh in_progress <repo_root>  # prints first in-progress SPEC id, or "none"
 #
 # Authority: git is the truth, .gaia/specs.json is a fast index. `next` performs a
-# self-heal pass before allocating — any SPEC id found in a branch name (the
+# self-heal pass before allocating, any SPEC id found in a branch name (the
 # deterministic marker that GAIA tooling creates) is treated as burned even if
 # missing from the ledger. A skipped slot is strictly cheaper than a duplicate id.
 # Commit messages are NOT scanned; they pick up free-text references (test
@@ -18,8 +18,7 @@
 # Concurrency: the `next` read-modify-write critical section runs under the
 # shared ledger mutex from with-ledger-lock.sh (flock when present, atomic-mkdir
 # fallback on stock macOS). Two parallel `/gaia-spec` sessions cannot allocate a
-# duplicate SPEC id. A lock-acquisition timeout (helper exit 75) maps to exit 4
-# — callers (the speckit preset) already handle 4 as "allocation failed", so a
+# duplicate SPEC id. A lock-acquisition timeout (helper exit 75) maps to exit 4; callers (the speckit preset) already handle 4 as "allocation failed", so a
 # new exit code would break their error handling. Lock env knobs
 # (GAIA_LEDGER_LOCK_TIMEOUT_SECS / _STALE_SECS / _POLL_SECS /
 # _FORCE_FALLBACK): see with-ledger-lock.sh. `highest` and `in_progress` are
@@ -38,7 +37,7 @@ ledger_path="${repo_root%/}/.gaia/specs.json"
 
 # Source the shared ledger mutex from this script's own directory so it
 # resolves identically from the speckit preset and from test copies of the
-# lib dir (no hardcoded repo path — template-distributed, repo-relative).
+# lib dir (no hardcoded repo path, template-distributed, repo-relative).
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 . "${_lib_dir}/with-ledger-lock.sh"
@@ -51,7 +50,7 @@ require_git() {
 }
 
 # Emit one bare integer per known SPEC number, one per line, unsorted.
-# Sources (all deterministic markers — no free-text scanning):
+# Sources (all deterministic markers; no free-text scanning):
 #   1. .gaia/specs.json ledger
 #   2. Local + remote branches matching ^spec-NNN-
 #   3. Working-tree folders .gaia/local/specs/<spec_id>/SPEC.md
@@ -116,10 +115,10 @@ append_ledger_row() {
 #   1. Ledger rows with status draft OR in-progress (ledger array order). The
 #      row is created at `next` (skill step 3), strictly before the first
 #      draft-<spec_id>.md cache write, so this covers the widest in-flight
-#      window — including the draft phase a parallel session would otherwise
+#      window, including the draft phase a parallel session would otherwise
 #      miss.
 #   2. Fallback: canonical .gaia/local/specs/<spec_id>/SPEC.md frontmatter
-#      scan for status: in-progress (legacy case — SPEC file in-progress but
+#      scan for status: in-progress (legacy case, SPEC file in-progress but
 #      no ledger row, e.g. a backfilled / hand-edited ledger).
 in_progress_spec() {
   if [ -f "$ledger_path" ]; then
@@ -191,7 +190,7 @@ case "$mode" in
     # ensure_ledger already mkdir -p's it via the ledger parent, but make the
     # precondition explicit and independent of ledger-init ordering.
     mkdir -p "${repo_root%/}/.gaia"
-    # Capture rc directly — NOT `if ! with_ledger_lock …; then rc=$?`: after a
+    # Capture rc directly, NOT `if ! with_ledger_lock …; then rc=$?`: after a
     # `!`-negated command, $? is the negation's status (0), masking the real
     # rc. `|| rc=$?` preserves the helper's actual exit code under set -e.
     rc=0

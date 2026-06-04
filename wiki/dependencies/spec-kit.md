@@ -34,12 +34,12 @@ specify preset add --dev .specify/presets/gaia
 
 ## When to use
 
-- `/gaia-spec` — Socratic discovery wrapper (see [[GAIA Spec]]). The user-facing entry point.
-- `/speckit.specify` / `/speckit.clarify` — invoked by the wrapper. Direct invocation also works in a GAIA project; the GAIA preset still produces GAIA-shaped artifacts.
+- `/gaia-spec`: Socratic discovery wrapper (see [[GAIA Spec]]). The user-facing entry point.
+- `/speckit.specify` / `/speckit.clarify`: invoked by the wrapper. Direct invocation also works in a GAIA project; the GAIA preset still produces GAIA-shaped artifacts.
 
 ## Architecture
 
-GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` (declares `speckit.gaia.spec` and three hook-target commands) and a **preset** at `.specify/presets/gaia/` (replaces `speckit.specify` under `strategy: wrap` and replaces `spec-template`). Both are GAIA-internal — not published to spec-kit's catalog; distribution is via the GAIA template.
+GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` (declares `speckit.gaia.spec` and three hook-target commands) and a **preset** at `.specify/presets/gaia/` (replaces `speckit.specify` under `strategy: wrap` and replaces `spec-template`). Both are GAIA-internal: not published to spec-kit's catalog; distribution is via the GAIA template.
 
 Full contract details: [[spec-kit Extension Strategy]].
 
@@ -51,5 +51,5 @@ Full contract details: [[spec-kit Extension Strategy]].
 
 ## Related
 
-- [[GAIA Spec]] — the workflow built on top.
-- [[spec-kit Extension Strategy]] — architectural decision and contract invariants.
+- [[GAIA Spec]]: the workflow built on top.
+- [[spec-kit Extension Strategy]]: architectural decision and contract invariants.

@@ -4,7 +4,7 @@
  * Deterministic file walk for `/update-gaia`: emits JSON describing
  * per-path actions (overwrite/skip/merge/add/delete/conflict). The
  * `/update-gaia` skill invokes this command, parses JSON, and only
- * surfaces conflicts and deletions to the user — no byte reading per
+ * surfaces conflicts and deletions to the user; no byte reading per
  * manifest entry from the skill side.
  *
  * Decision table:
@@ -31,7 +31,7 @@
  * (creating ancestor dirs). No commits, no deletions.
  *
  * Determinism contract: byte-for-byte equality everywhere. Never
- * normalizes line endings — the GAIA template is LF throughout.
+ * normalizes line endings; the GAIA template is LF throughout.
  */
 import {
   existsSync,
@@ -240,7 +240,7 @@ const writePatch = (
   const patchAbs = path.join(mergeRoot, `${relativePath}.patch`);
   ensureDir(path.dirname(patchAbs));
   // Patch files are regenerated scratch output under .gaia-merge/, not
-  // durable state — a plain write is sufficient; no atomic rename needed.
+  // durable state; a plain write is sufficient; no atomic rename needed.
   writeFileSync(patchAbs, patch, 'utf8');
 
   return path.relative(ctx.cwd, patchAbs);
@@ -288,7 +288,7 @@ const handleManifestPath = (
     return {kind: 'skip'};
   }
 
-  // No drift — overwrite with latest (regardless of class).
+  // No drift; overwrite with latest (regardless of class).
   if (bytesEqual(currentSnap.bytes, baselineSnap.bytes)) {
     if (bytesEqual(currentSnap.bytes, latestSnap.bytes)) {
       return {kind: 'skip'};
@@ -321,7 +321,7 @@ const handleManifestPath = (
   if (klass === 'shared') {
     if (baselineSnap.bytes === null) {
       // No baseline to three-way merge against (the file is new since the
-      // adopter's baseline) — fall back to a conflict patch.
+      // adopter's baseline); fall back to a conflict patch.
       const patch = unifiedDiff(currentSnap.bytes, latestSnap.bytes, {
         fromLabel: relativePath,
         toLabel: relativePath,
@@ -350,7 +350,7 @@ const handleManifestPath = (
     return {class: 'shared', kind: 'conflict', patch: patchPath};
   }
 
-  // `upstream` class — collapse to overwrite-on-difference.
+  // `upstream` class; collapse to overwrite-on-difference.
   writeWorkingTree(ctx, relativePath, latestSnap.bytes);
 
   return {kind: 'overwrite'};
@@ -375,7 +375,7 @@ const computeReport = (ctx: Context): UpdateMergeReport => {
     if (entry === undefined) continue;
 
     if (!latestPaths.has(relativePath)) {
-      // Listed in manifest but not in latest tarball — nothing to do
+      // Listed in manifest but not in latest tarball; nothing to do
       // here; the deletion sweep below will catch it if baseline has it.
       continue;
     }
@@ -406,7 +406,7 @@ const computeReport = (ctx: Context): UpdateMergeReport => {
     }
   }
 
-  // 2. New files in latest that the manifest doesn't list — add[].
+  // 2. New files in latest that the manifest doesn't list: add[].
   for (const relativePath of [...latestPaths].toSorted()) {
     if (manifestPaths.has(relativePath)) continue;
 
@@ -420,7 +420,7 @@ const computeReport = (ctx: Context): UpdateMergeReport => {
     add.push(relativePath);
   }
 
-  // 3. Files removed upstream — delete[]. Handles both manifest and
+  // 3. Files removed upstream: delete[]. Handles both manifest and
   // non-manifest entries: if a file lived in baseline but not latest,
   // surface it for the user to confirm. We do NOT remove the file.
   for (const relativePath of [...baselinePaths].toSorted()) {

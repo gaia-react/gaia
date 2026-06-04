@@ -43,11 +43,11 @@ If you're iterating on a hook and want a single fast check, run just `01-meaning
 
 ## Scenarios
 
-- `01-meaningful-change.sh` — Service add with an `Invariant:` body → WORTHY → wiki page created → state advances. Body-decision rule.
-- `02-typo-only-skip.sh` — Typo commit → SKIP logged, no wiki edits, state advances.
-- `03-multi-commit-catchup.sh` — 5 mixed commits (4 inventory-class + 1 invariant-bearing fix) → log carries WORTHY for the fix, `Serena handles inventory` markers for the rest, state advances to HEAD.
-- `04-non-claude-merge.sh` — Shell commit (bypassing Claude) → next session detects drift on first prompt → /gaia-wiki sync catches up.
-- `05-serena-inventory-skip.sh` — Vanilla service add with no decision body → `SKIP: Serena handles inventory` marker → no wiki page → state advances. Positive test for the post-Serena WORTHY narrowing.
+- `01-meaningful-change.sh`; Service add with an `Invariant:` body → WORTHY → wiki page created → state advances. Body-decision rule.
+- `02-typo-only-skip.sh`; Typo commit → SKIP logged, no wiki edits, state advances.
+- `03-multi-commit-catchup.sh`; 5 mixed commits (4 inventory-class + 1 invariant-bearing fix) → log carries WORTHY for the fix, `Serena handles inventory` markers for the rest, state advances to HEAD.
+- `04-non-claude-merge.sh`; Shell commit (bypassing Claude) → next session detects drift on first prompt → /gaia-wiki sync catches up.
+- `05-serena-inventory-skip.sh`; Vanilla service add with no decision body → `SKIP: Serena handles inventory` marker → no wiki page → state advances. Positive test for the post-Serena WORTHY narrowing.
 
 ## Post-Serena rubric notes
 

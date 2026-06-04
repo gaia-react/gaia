@@ -53,8 +53,8 @@ const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
     4. ceiling_14d    (last_run_at > 14 days ago)
     5. skip_safety_5  (skip_count > 5)
     6. floor_24h      (last_run_at < 24 hours ago)
-    7. app_changed    (commits to app/** since last_run_sha) — wiki only
-    8. no_app_change  (otherwise) — wiki only
+    7. app_changed    (commits to app/** since last_run_sha), wiki only
+    8. no_app_change  (otherwise), wiki only
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -67,7 +67,7 @@ const SKIP_SAFETY_THRESHOLD = 5;
 
 const toolConfigFor = (config: AutomationConfig, tool: ToolId): ToolConfig =>
   // `TOOL_ID_TO_CONFIG_KEY` is typed `Record<ToolId, ToolConfigKey>`, so the
-  // indexed access resolves directly to `ToolConfig` — no cast needed.
+  // indexed access resolves directly to `ToolConfig`; no cast needed.
   config[TOOL_ID_TO_CONFIG_KEY[tool]];
 
 type RunOptions = {
@@ -193,7 +193,7 @@ export const run = (
     structuredError({
       code: 'config_missing',
       message:
-        'cron-decide requires .gaia/automation.json — running cron-decide on an unconfigured repo is a setup bug',
+        'cron-decide requires .gaia/automation.json; running cron-decide on an unconfigured repo is a setup bug',
       subcommand: 'automation cron-decide',
     });
 
@@ -335,6 +335,6 @@ const decide = (args: DecideArgs): CronDecision | 'state_malformed' => {
   return {
     decision: 'skip',
     reason: 'no_app_change',
-    skip_log_line: `skipped — no app/** changes since ${shortSha}`,
+    skip_log_line: `skipped: no app/** changes since ${shortSha}`,
   };
 };

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# resolve-check-base.sh — resolve the incremental "since last green" base for a
+# resolve-check-base.sh: resolve the incremental "since last green" base for a
 # named CI check.
 #
 # Purpose
@@ -10,8 +10,8 @@
 #   skip the check when that delta touches no relevant files. Everything up to
 #   that commit was already green, so re-running it is wasted work.
 #
-#   When no green ancestor exists — first run of a PR, every prior run
-#   failed/cancelled (those do not anchor), or the API is unreachable — the
+#   When no green ancestor exists, first run of a PR, every prior run
+#   failed/cancelled (those do not anchor), or the API is unreachable; the
 #   helper emits the main ref so the caller falls back to a full-scope diff. It
 #   can never skip un-passed code: a commit with no green signal for this check
 #   is never chosen as a base.
@@ -24,8 +24,8 @@
 #   gh + GITHUB_REPOSITORY are available) the GitHub Checks API.
 #
 # Output (stdout, single line; suitable for `base...HEAD` diffs)
-#   <40-hex-sha>   — resolved incremental base (a green ancestor of HEAD)
-#   origin/main    — fallback: diff the full PR/branch scope
+#   <40-hex-sha>: resolved incremental base (a green ancestor of HEAD)
+#   origin/main: fallback: diff the full PR/branch scope
 #   (or origin/<base-ref> / main when origin/main is unavailable)
 #
 # Exit code
@@ -33,7 +33,7 @@
 #
 # Why "last GREEN", not "last run"
 #   Only a SUCCESS conclusion anchors a base. A failed/cancelled run on a
-#   commit leaves no green signal, so the walk continues past it — a later
+#   commit leaves no green signal, so the walk continues past it, a later
 #   prose-only commit then still diffs back to the last truly-green tree and
 #   re-runs the check, catching the broken code in between.
 #
@@ -71,7 +71,7 @@ if [ -z "$repo_root" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Resolve a "main ref" — used both for the fallback output and to bound the
+# Resolve a "main ref": used both for the fallback output and to bound the
 # ancestry walk via merge-base.
 # -----------------------------------------------------------------------------
 
@@ -94,7 +94,7 @@ resolve_main_ref() {
 main_ref="$(resolve_main_ref)"
 
 # -----------------------------------------------------------------------------
-# A check name is required, and the Checks API is the only signal — without
+# A check name is required, and the Checks API is the only signal; without
 # gh + GH_TOKEN + repo slug no commit can be confirmed green, so fall back to
 # full scope.
 # -----------------------------------------------------------------------------

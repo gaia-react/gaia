@@ -32,7 +32,7 @@ export const run = (
     const config = readMentorshipConfig(roots);
     enabled = config.enabled === true;
   } catch {
-    // Config unreadable or missing — treat as disabled and remove any
+    // Config unreadable or missing; treat as disabled and remove any
     // stale rule projection. Never fail session start over this.
     try {
       removeDisplayRule(roots);

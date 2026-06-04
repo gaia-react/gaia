@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Smoke 05: a vanilla service/component add with no decision body should
-# land as `SKIP: Serena handles inventory — ...`, NOT as a WORTHY wiki
+# land as `SKIP: Serena handles inventory; ...`, NOT as a WORTHY wiki
 # page. This is the positive test for the post-Serena WORTHY narrowing
 # in .claude/skills/gaia/references/wiki/sync.md (Step 3).
 #
 # Why this matters: Serena's LSP index reflects new symbols immediately,
 # so a Button variant or a new service with no carried decision adds
 # zero durable knowledge to the wiki. The narrowed rubric should classify
-# these as SKIP — but with a clear, greppable marker in wiki/log.md so
+# these as SKIP; but with a clear, greppable marker in wiki/log.md so
 # the audit trail still says "yes, /gaia-wiki sync looked at this and
 # decided Serena owns it."
 set -euo pipefail
@@ -58,7 +58,7 @@ git add wiki/.state.json
 git commit --quiet -m "init state"
 
 # Inventory-shaped change: vanilla service add, no decision body.
-# This is exactly the "Serena owns this" case — an LSP index already
+# This is exactly the "Serena owns this" case; an LSP index already
 # reflects the new symbol; the wiki has nothing to add.
 cat > app/services/Anthropic.ts <<'EOF'
 // Anthropic SDK wrapper service
@@ -77,11 +77,11 @@ claude -p --model sonnet --permission-mode bypassPermissions \
 
 after_files=$(find wiki -type f | wc -l | tr -d ' ')
 
-# wiki must NOT gain a services/Anthropic.md page — that's the inventory
+# wiki must NOT gain a services/Anthropic.md page; that's the inventory
 # Serena owns. wiki/log.md may have been newly created (one new file is
 # fine); anything beyond that is a regression.
 [ "$after_files" -le "$((before_files + 1))" ] || { echo "FAIL: wiki gained more than 1 file (log only) for an inventory-class commit"; exit 1; }
-[ ! -f wiki/services/Anthropic.md ] || { echo "FAIL: wiki/services/Anthropic.md was created — should be SKIP under Serena-inventory rubric"; exit 1; }
+[ ! -f wiki/services/Anthropic.md ] || { echo "FAIL: wiki/services/Anthropic.md was created; should be SKIP under Serena-inventory rubric"; exit 1; }
 
 # log must exist and contain the Serena-policy marker pointing at this commit.
 [ -f wiki/log.md ] || { echo "FAIL: wiki/log.md not created"; exit 1; }

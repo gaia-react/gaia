@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for the with-ledger-lock.sh shared mutex helper (Contract C1).
-# The helper is sourced (it defines one function: with_ledger_lock) — these
+# The helper is sourced (it defines one function: with_ledger_lock); these
 # tests source a fresh copy from a tmp repo and exercise the function in
 # isolation.
 
@@ -22,18 +22,18 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "2: passthrough — command exit 7 propagates as status 7" {
+@test "2: passthrough; command exit 7 propagates as status 7" {
   run bash -c ". '$LOCK_HELPER'; with_ledger_lock '$LOCKDIR' bash -c 'exit 7'"
   [ "$status" -eq 7 ]
 }
 
-@test "3: helper writes nothing to stdout — only command stdout passes" {
+@test "3: helper writes nothing to stdout; only command stdout passes" {
   run bash -c ". '$LOCK_HELPER'; with_ledger_lock '$LOCKDIR' bash -c 'echo HELLO'"
   [ "$status" -eq 0 ]
   [ "$output" = "HELLO" ]
 }
 
-@test "4: forced fallback — specs.lock.d appears during slow cmd, gone after" {
+@test "4: forced fallback; specs.lock.d appears during slow cmd, gone after" {
   # The slow command observes the lock dir from inside the held mutex and
   # records its presence; after the call the dir is released (rmdir'd).
   run bash -c "
@@ -51,7 +51,7 @@ teardown() {
   [[ "$output" == *"NO_FLOCK_FILE"* ]]
 }
 
-@test "5: timeout — second caller waiting on a held lock returns 75, stderr 'timed out'" {
+@test "5: timeout; second caller waiting on a held lock returns 75, stderr 'timed out'" {
   # Holder acquires the mkdir lock and sleeps; a second call with a 1s
   # timeout cannot acquire it and must return 75.
   run bash -c "
@@ -73,7 +73,7 @@ teardown() {
   [[ "$output" == *"timed out"* ]]
 }
 
-@test "6: stale recovery — pre-created stale lock dir is reclaimed, cmd code returned" {
+@test "6: stale recovery; pre-created stale lock dir is reclaimed, cmd code returned" {
   run bash -c "
     . '$LOCK_HELPER'
     export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
@@ -86,9 +86,9 @@ teardown() {
   [ "$status" -eq 3 ]
 }
 
-@test "7: flock path present — two serialized calls both succeed (skip if no flock)" {
+@test "7: flock path present; two serialized calls both succeed (skip if no flock)" {
   if ! command -v flock >/dev/null 2>&1; then
-    skip "flock not installed on this machine — mkdir fallback is the load-bearing path here"
+    skip "flock not installed on this machine; mkdir fallback is the load-bearing path here"
   fi
   run bash -c "
     . '$LOCK_HELPER'

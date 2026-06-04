@@ -4,9 +4,9 @@
  * The shipped manifest at `.gaia/manifest.json` carries a `files` map
  * keyed by repo-relative path with one of three classes:
  *
- *   - `owned`      — GAIA controls fully.
- *   - `shared`     — GAIA seeds, adopter customizes.
- *   - `wiki-owned` — GAIA-seeded wiki page; adopter may edit.
+ *   - `owned`      : GAIA controls fully.
+ *   - `shared`     : GAIA seeds, adopter customizes.
+ *   - `wiki-owned` : GAIA-seeded wiki page; adopter may edit.
  *
  * The interface contract for `gaia update merge` collapses
  * `wiki-owned` into the `shared` decision branch (same drift
@@ -22,11 +22,11 @@ export type RawManifestClass = 'owned' | 'shared' | 'wiki-owned';
 /**
  * Class normalized for `gaia update merge` decision branches.
  *
- * - `upstream` — formerly contributed but never paired with `--manifest` data;
+ * - `upstream` : formerly contributed but never paired with `--manifest` data;
  *   reserved so the `UpdateMergeReport.conflicts[].class` discriminator can
  *   represent every interface-contract value without invention.
- * - `owned`    — adopter-customized; GAIA never auto-edits.
- * - `shared`   — three-way candidate; raw `wiki-owned` collapses to this.
+ * - `owned`    : adopter-customized; GAIA never auto-edits.
+ * - `shared`   : three-way candidate; raw `wiki-owned` collapses to this.
  *
  * The three values match the `class` discriminator on
  * `UpdateMergeReport.conflicts[]` in the README contract.

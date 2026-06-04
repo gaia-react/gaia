@@ -113,7 +113,7 @@ const ensureOffProjectDirectoryCreatedTight = async (
 ): Promise<boolean> => {
   // Returns true if THIS call created the directory (so caller can chmod safely).
   if (existsSync(directory)) {
-    // Pre-existing: do not modify mode (per task brief — chmod-on-create only).
+    // Pre-existing: do not modify mode (per task brief; chmod-on-create only).
     try {
       const st = await stat(directory);
       const mode = st.mode & 0o777;
@@ -128,7 +128,7 @@ const ensureOffProjectDirectoryCreatedTight = async (
         });
       }
     } catch {
-      // stat failure is benign here — surface only if mkdir below fails.
+      // stat failure is benign here; surface only if mkdir below fails.
     }
 
     return false;
@@ -152,7 +152,7 @@ export const ensureMentorshipDirs = async (
 ): Promise<void> => {
   // Walk parents top-down so each newly-created segment gets 0o700 explicitly.
   // Path shape: <home>/.claude/projects/<slug>/gaia/telemetry/mentorship
-  // We tighten only the segments under <slug>/ — `~/.claude/projects` is owned by Claude.
+  // We tighten only the segments under <slug>/; `~/.claude/projects` is owned by Claude.
   const {mentorshipDir} = roots;
   // mentorshipDir = <home>/.claude/projects/<slug>/gaia/telemetry/mentorship
   const telemetryDirectory = path.dirname(mentorshipDir); // .../gaia/telemetry

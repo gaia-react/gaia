@@ -9,14 +9,14 @@
 #   - Docker image builds (Node + claude.ai/install.sh + correct PATH).
 #   - `claude --version` runs inside the container (binary reachable).
 #   - CLAUDE_CODE_OAUTH_TOKEN authenticates against Anthropic from the
-#     container — `claude --print` returns a real model response.
+#     container; `claude --print` returns a real model response.
 #   - The staged tree is reachable as the container's working directory.
 #
 # What this does NOT test:
 #   - Adopter flows like /gaia-init or /setup-cloned-gaia-project. Those exercise interactive
 #     skills and live in follow-up scenarios; this is the harness smoke.
 #   - Token-attribution to subscription vs. API. That is the diagnostic
-#     runbook's job — see `diagnostic/claude-auth-in-docker.md` for the
+#     runbook's job; see `diagnostic/claude-auth-in-docker.md` for the
 #     verified $0/run finding on Claude Max hosts.
 #
 # Skipped automatically when Docker is unavailable OR
@@ -29,13 +29,13 @@ source "$HERE/lib/docker.sh"
 
 if ! docker_available; then
   log "docker daemon not reachable; skipping (Layer 2 requires Docker)"
-  pass "docker unavailable — Layer 2 scenario skipped"
+  pass "docker unavailable; Layer 2 scenario skipped"
   exit 0
 fi
 
 if ! docker_token_available; then
   log "CLAUDE_CODE_OAUTH_TOKEN unset; skipping (Layer 2 requires Claude auth)"
-  pass "no Claude OAuth token — Layer 2 scenario skipped"
+  pass "no Claude OAuth token; Layer 2 scenario skipped"
   exit 0
 fi
 
@@ -48,7 +48,7 @@ trap 'rm -rf "$STAGING"' EXIT
 log "building $GAIA_DIST_IMAGE (cached after first run)"
 if ! docker_build_image; then
   # Re-run the build with output unsuppressed to surface which layer
-  # failed. The `fail; exit 1` below runs unconditionally — the diagnostic
+  # failed. The `fail; exit 1` below runs unconditionally; the diagnostic
   # build's exit code is intentionally ignored (`|| :`).
   log "docker build failed; rerunning with output for diagnosis:"
   GAIA_DIST_IMAGE="$GAIA_DIST_IMAGE" docker build -t "$GAIA_DIST_IMAGE" - <<'DOCKERFILE' || :

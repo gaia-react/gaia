@@ -17,7 +17,7 @@
  *
  * The `--props "name:type,name:type"` flag turns the bare `FC` signature
  * into a typed `FC<NameProps>` and emits a Props type alias plus a
- * destructured signature. Each entry must be `name:type` — empty entries
+ * destructured signature. Each entry must be `name:type`; empty entries
  * and malformed pairs are rejected with exit 1.
  *
  * The handler uses the shared scaffold utilities (`writeFileIfAbsent`,

@@ -17,7 +17,7 @@
  *   }
  *
  * `tools_enabled` lists every tool whose `.mode == "ci"`. The handler
- * exits 0 in every branch — `status` is a query, not a gate.
+ * exits 0 in every branch; `status` is a query, not a gate.
  */
 import {EXIT_CODES} from '../exit.js';
 import {
@@ -34,7 +34,7 @@ import {resolveRepoRoot} from '../wiki/util/git.js';
 const HELP_TEXT = `Usage: gaia setup-ci status [--json]
 
   Print whether Phase B (GAIA CI remote integration) is configured.
-  Exits 0 in every state — branch on the JSON output.
+  Exits 0 in every state; branch on the JSON output.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);

@@ -1,4 +1,4 @@
-# Claude Auth in Docker — Verification Runbook
+# Claude Auth in Docker; Verification Runbook
 
 **Status:** Verified 2026-05-08: `CLAUDE_CODE_OAUTH_TOKEN` attributes to
 subscription, cost $0/run on a Claude Max host. See `## Findings` below.
@@ -8,16 +8,16 @@ subscription, cost $0/run on a Claude Max host. See `## Findings` below.
 The official Claude Code dev-container docs at
 <https://code.claude.com/docs/en/devcontainer> settle the auth _mechanism_:
 
-- **OAuth token via `claude setup-token`** — generates a long-lived
+- **OAuth token via `claude setup-token`**; generates a long-lived
   `CLAUDE_CODE_OAUTH_TOKEN` you inject as a container env var. Designed
   for headless / non-interactive use.
-- **API key via `ANTHROPIC_API_KEY`** — pay-as-you-go fallback.
+- **API key via `ANTHROPIC_API_KEY`**; pay-as-you-go fallback.
 - **Browser sign-in inside the container, persisted in a named volume**
-  — supported but only useful for interactive editor flows.
+ ; supported but only useful for interactive editor flows.
 
 The docs also explicitly discourage bind-mounting the host's `~/.claude/`
 directory ("Avoid mounting host secrets … prefer repository-scoped or
-short-lived tokens"). Earlier drafts of this runbook tested that path —
+short-lived tokens"). Earlier drafts of this runbook tested that path
 removed.
 
 What the docs do NOT settle, and what this runbook still has to verify:
@@ -37,10 +37,10 @@ to invoke `claude` to validate end-to-end adopter flows like `/gaia-init`,
 `/setup-cloned-gaia-project`, and `/gaia-plan`. Per-run cost depends on which auth path
 activates:
 
-1. **OAuth token attributes to subscription** — **$0 marginal per run.**
-2. **OAuth token silently bills as API** — **~$0.05 per `/gaia-init`** at
+1. **OAuth token attributes to subscription**; **$0 marginal per run.**
+2. **OAuth token silently bills as API**; **~$0.05 per `/gaia-init`** at
    current pricing assumptions.
-3. **API key only** — same ~$0.05/run as (2) but at least it's expected.
+3. **API key only**; same ~$0.05/run as (2) but at least it's expected.
 
 If Layer 2 ships without confirming (1) vs (2), GAIA's CI bill becomes
 opaque.
@@ -50,7 +50,7 @@ opaque.
 Run on a Linux host with Docker installed and an active Claude Code
 subscription on the host.
 
-### Step 1 — Baseline: confirm subscription on host
+### Step 1; Baseline: confirm subscription on host
 
 ```bash
 claude /status
@@ -58,11 +58,11 @@ claude /status
 
 Expected: subscription tier shown, no API-key-mode indicator.
 
-If output looks like `API key mode`, your host is already on API key —
+If output looks like `API key mode`, your host is already on API key
 skip to Step 4 (you can't verify subscription attribution without an
 active subscription on the host).
 
-### Step 2 — Generate a long-lived OAuth token
+### Step 2; Generate a long-lived OAuth token
 
 ```bash
 claude setup-token
@@ -75,7 +75,7 @@ echo 'CLAUDE_CODE_OAUTH_TOKEN=<paste>' > /tmp/claude-probe.env
 chmod 600 /tmp/claude-probe.env
 ```
 
-### Step 3 — Build a minimal Claude-in-container image
+### Step 3; Build a minimal Claude-in-container image
 
 ```bash
 mkdir /tmp/claude-auth-probe && cd /tmp/claude-auth-probe
@@ -91,12 +91,12 @@ docker build -t gaia-claude-probe .
 ```
 
 (Adjust install URL against the [official install docs][install] at
-experiment time. The point isn't the install command — it's the auth
+experiment time. The point isn't the install command; it's the auth
 behavior at runtime.)
 
 [install]: https://docs.claude.com/en/docs/claude-code/setup
 
-### Step 4 — Subscription-via-OAuth-token attribution test
+### Step 4; Subscription-via-OAuth-token attribution test
 
 ```bash
 docker run --rm \
@@ -111,12 +111,12 @@ docker run --rm \
 ```
 
 (Slash commands like `claude /status` need an interactive REPL and don't
-work under `docker run` without a TTY — use `claude --version` as the
+work under `docker run` without a TTY; use `claude --version` as the
 sanity-check sentinel that the binary is on PATH and runnable.)
 
 Then check **Anthropic Console → Usage** at
 <https://console.anthropic.com/settings/usage>. Note: `console.anthropic.com`
-is the **API** console — subscription/Max usage is NOT itemized there.
+is the **API** console; subscription/Max usage is NOT itemized there.
 Interpret as follows:
 
 - **Nothing recorded on console.anthropic.com → Usage** + container call
@@ -130,7 +130,7 @@ Interpret as follows:
 - Container call returned an auth error or the request failed → check
   container logs; likely a network issue or token expiry.
 
-### Step 5 — API-key fallback cost reference
+### Step 5; API-key fallback cost reference
 
 Skip if Step 4 attributed to subscription; you don't need this path.
 
@@ -151,7 +151,7 @@ Inspect Anthropic Console → Usage. The print-prompt should show ~50-200
 tokens billed at API pricing. **Cost: $0.001-$0.005 per run depending on
 model selection.**
 
-### Step 6 — Document findings
+### Step 6; Document findings
 
 Replace this file's `Status:` field with one of:
 
@@ -191,7 +191,7 @@ docker run --rm \
   claude --print "Reply with the single word: ok"
 ```
 
-Returned `ok` — auth via `CLAUDE_CODE_OAUTH_TOKEN` succeeded, model
+Returned `ok`; auth via `CLAUDE_CODE_OAUTH_TOKEN` succeeded, model
 produced a real response.
 
 ### Anthropic Console attribution
@@ -201,12 +201,12 @@ hour / day / month scopes for 2026-05-08. **No entry recorded** for the
 container call (and no API usage anywhere in May 2026 on this account).
 
 The Claude Max (20x) plan's usage view at claude.ai does not itemize
-per-call usage at the 20x tier — a single small prompt does not visibly
-move the consumption indicator — so positive subscription-side
+per-call usage at the 20x tier; a single small prompt does not visibly
+move the consumption indicator; so positive subscription-side
 itemization could not be observed.
 
-The combination — successful in-container response + no auth error +
-zero API/pay-as-you-go billing — confirms by elimination that
+The combination; successful in-container response + no auth error +
+zero API/pay-as-you-go billing; confirms by elimination that
 `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` attributes to the
 Max subscription, not API pay-as-you-go.
 
@@ -241,7 +241,7 @@ Rotation procedure:
    release.
 
 Refresh-without-replay (renewing an existing token in place) is not
-supported — `setup-token` always issues a new token; rotation means
+supported; `setup-token` always issues a new token; rotation means
 generating + replacing.
 
 ### Bugs found and corrected during this run
@@ -257,7 +257,7 @@ generating + replacing.
   `claude --version` as the sanity-check sentinel instead.
 - **Step 4 attribution interpretation was misleading.** The original
   text implied subscription usage would appear in console.anthropic.com.
-  It does not — `console.anthropic.com` is the API console; Max usage is
+  It does not; `console.anthropic.com` is the API console; Max usage is
   not itemized there. Reworded so absence-from-API + successful container
   call is the correct positive signal.
 

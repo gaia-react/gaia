@@ -16,8 +16,8 @@ Trigger: user asks to add a new page/route.
 
 ## Flags
 
-- `--group` — required, `_public+` or `_session+`
-- `--loader` — emit a loader stub
-- `--action` — emit an action stub
-- `--i18n` — emit the locale file and wire the locale barrel
-- `--json` — print the scaffold result as JSON
+- `--group`, required, `_public+` or `_session+`
+- `--loader`, emit a loader stub
+- `--action`, emit an action stub
+- `--i18n`, emit the locale file and wire the locale barrel
+- `--json`, print the scaffold result as JSON

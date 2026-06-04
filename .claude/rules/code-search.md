@@ -8,7 +8,7 @@ paths:
 
 # Code Search
 
-For symbol-level queries on TS/TSX files, prefer [Serena](https://github.com/oraios/serena)'s MCP tools over Read+grep. Serena is LSP-backed — canonical, type-resolved answers vs string matches.
+For symbol-level queries on TS/TSX files, prefer [Serena](https://github.com/oraios/serena)'s MCP tools over Read+grep. Serena is LSP-backed, canonical, type-resolved answers vs string matches.
 
 ## Prefer Serena
 

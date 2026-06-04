@@ -8,7 +8,7 @@
  *   - ISO date / string values are returned verbatim as strings.
  *
  * Out of scope: nested mappings, multi-line block scalars, anchors. If a
- * future page needs richer YAML, swap in a real parser at that point —
+ * future page needs richer YAML, swap in a real parser at that point;
  * this module covers the shapes wiki pages emit today.
  */
 const FRONTMATTER_FENCE = '---';

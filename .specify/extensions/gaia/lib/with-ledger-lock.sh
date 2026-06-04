@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# with-ledger-lock.sh — Single shared mutex helper for .gaia/specs.json
+# with-ledger-lock.sh: Single shared mutex helper for .gaia/specs.json
 # read-modify-write critical sections. Sourced (not executed) by sibling lib
 # scripts (spec-allocator.sh, ledger-update.sh) so the locking logic is defined
 # exactly once and cannot drift between two copies.
@@ -8,7 +8,7 @@
 #   with_ledger_lock <lock_dir> <command> [args...]
 #
 # <lock_dir> is an already-existing directory (callers mkdir -p the ledger
-# parent before calling — typically "${repo_root%/}/.gaia"). <command> [args...]
+# parent before calling, typically "${repo_root%/}/.gaia"). <command> [args...]
 # runs inside the held mutex; its exit code passes through unchanged.
 #
 # Lock primitive selection, in order:
@@ -29,7 +29,7 @@
 #   GAIA_LEDGER_LOCK_POLL_SECS       inter-attempt sleep       (default 0.2)
 #   GAIA_LEDGER_LOCK_FORCE_FALLBACK  =1 forces the mkdir path  (unset)
 #
-# Diagnostics go to stderr only — the helper writes nothing to stdout itself.
+# Diagnostics go to stderr only; the helper writes nothing to stdout itself.
 # On acquisition timeout it returns 75 (EX_TEMPFAIL); callers map this onto
 # their own ledger-write-failure exit code (see spec-allocator.sh /
 # ledger-update.sh headers).
@@ -53,8 +53,8 @@ with_ledger_lock() {
     local lock_file="${lock_dir%/}/specs.lock"
     local rc=0
     # The subshell holds fd 9 on the lock file; flock blocks (with a timeout)
-    # until it owns the lock, then runs the command. The fd — and therefore the
-    # lock — releases when the subshell exits, even if the command fails or the
+    # until it owns the lock, then runs the command. The fd, and therefore the
+    # lock, releases when the subshell exits, even if the command fails or the
     # process is killed.
     (
       if ! flock -w "$timeout_secs" 9; then
@@ -120,7 +120,7 @@ with_ledger_lock() {
       return "$rc"
     fi
 
-    # Lock held by someone else — reclaim if stale, then retry once.
+    # Lock held by someone else; reclaim if stale, then retry once.
     if age="$(_with_ledger_lock_age_secs)" && [ -n "$age" ] \
       && [ "$age" -gt "$stale_secs" ]; then
       rm -rf "$lock_d" 2>/dev/null || true

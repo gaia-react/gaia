@@ -7,8 +7,8 @@
  *
  *     ## Active adaptations
  *
- *     - po_socratic_depth_increased — area: visual, strength: 0.62, samples: 33
- *     - engineer_commentary_verbosity_increased — area: react, strength: 0.55, samples: 18
+ *     - po_socratic_depth_increased - area: visual, strength: 0.62, samples: 33
+ *     - engineer_commentary_verbosity_increased - area: react, strength: 0.55, samples: 18
  *
  *     ## Faded adaptations
  *
@@ -22,7 +22,7 @@
  * section and the parser returns an empty array. The byte-identical
  * no-op path holds.
  *
- * Out of scope: markdown AST parsing — the regex-based scan is enough
+ * Out of scope: markdown AST parsing; the regex-based scan is enough
  * for the controlled output of `compute-profile`. If the format gets
  * richer post-launch, swap to remark-parse with no caller changes.
  */
@@ -54,13 +54,13 @@ const parseBulletLine = (raw: string): ActiveAdaptation | undefined => {
   if (bulletMatch === null) return undefined;
   // RegExpExecArray indexes 1..n (capture groups) are typed `string` under
   // TS's regexp typings (no `noUncheckedIndexedAccess` carve-out), so no
-  // assertion is needed here — both BULLET_REGEX and AREA_TAG_REGEX
+  // assertion is needed here; both BULLET_REGEX and AREA_TAG_REGEX
   // declare exactly one capture group that matches when the outer regex
   // does.
   const body = bulletMatch[1];
   // Adaptation id is the first whitespace-or-dash-delimited token that
   // matches a known adaptation id.
-  const tokens = body.split(/[\s—-]+/u).filter(Boolean);
+  const tokens = body.split(/[\s-]+/u).filter(Boolean);
   const adaptationToken = tokens.find((token) => isAdaptationId(token));
 
   if (adaptationToken === undefined) return undefined;
@@ -108,12 +108,12 @@ export const parseActiveAdaptations = (
  *
  * Returns an empty array when the file is absent (the v1.0.0 default
  * when mentorship has not yet caused `compute-profile` to write the
- * file). Synchronous IO — the file is small and the call sits on the
+ * file). Synchronous IO: the file is small and the call sits on the
  * dispatch hot path; an extra event-loop hop is unnecessary.
  *
  * The read path is lock-free: the writer's atomic write-temp-and-rename
  * guarantees we either see the prior version in full or the new version
- * in full — never half-state.
+ * in full, never half-state.
  */
 export const readActiveAdaptations = (
   profilePath: string

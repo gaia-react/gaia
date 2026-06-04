@@ -8,11 +8,11 @@ tags: [concept, claude, workflow, wiki]
 
 # Wiki Sync
 
-The wiki only stays accurate if drift between code and knowledge is detected and resolved. GAIA does this in the user's existing Claude Code session — no spawned sub-Claudes, no extra API spend — by combining four hooks with a single workhorse command.
+The wiki only stays accurate if drift between code and knowledge is detected and resolved. GAIA does this in the user's existing Claude Code session, no spawned sub-Claudes, no extra API spend, by combining four hooks with a single workhorse command.
 
 ## The four pieces
 
-1. **Drift-check hook** (`UserPromptSubmit`). Once per session, on the first prompt, compares `wiki/.state.json` to `git HEAD` and injects a one-line nudge if drifted. Catches anything that landed in the repo since the last sync — including commits made outside Claude (terminal, GitHub UI, automerge, teammate's pull).
+1. **Drift-check hook** (`UserPromptSubmit`). Once per session, on the first prompt, compares `wiki/.state.json` to `git HEAD` and injects a one-line nudge if drifted. Catches anything that landed in the repo since the last sync, including commits made outside Claude (terminal, GitHub UI, automerge, teammate's pull).
 
 2. **Commit-nudge hook** (`PostToolUse` on Bash matching `git commit`). After every commit Claude makes, injects a brief diff summary + drift count. Keeps Claude informed during a session, not just between sessions.
 
@@ -27,10 +27,10 @@ The wiki only stays accurate if drift between code and knowledge is detected and
 Wiki updates lag the code. A commit landing on `main` won't trigger an immediate wiki update. That's deliberate.
 
 - The wiki is a knowledge layer, not a CI gate. It doesn't need to be in sync at every instant.
-- It needs to be in sync **before the next meaningful action proceeds** — usually the next Claude session in the project.
+- It needs to be in sync **before the next meaningful action proceeds**, usually the next Claude session in the project.
 - The drift-check hook is the convergence point: at the start of every session, drift is surfaced. The user (or Claude) decides whether to address it now or defer.
 
-This handles the case that broke the previous design (`wiki-update-evaluator.sh`): commits made outside Claude — via `gh pr merge`, GitHub UI, or terminal — were never detected. The new system catches them at the next session, regardless of how they landed.
+This handles the case that broke the previous design (`wiki-update-evaluator.sh`): commits made outside Claude, via `gh pr merge`, GitHub UI, or terminal, were never detected. The new system catches them at the next session, regardless of how they landed.
 
 ## State file shape
 
@@ -48,11 +48,11 @@ This handles the case that broke the previous design (`wiki-update-evaluator.sh`
 
 `last_evaluated_sha` is the commit through which `/gaia-wiki sync` has fully evaluated. Drift = `git rev-list --count <last_evaluated_sha>..HEAD`.
 
-`last_evaluated_at` is the timestamp of that evaluation, and it anchors recovery. Because a SHA is fragile under squash- and rebase-merge — the recorded commit is replaced and becomes unreachable — the timestamp provides a stable second anchor: `gaia wiki state` resolves the newest commit reachable from HEAD at or older than `last_evaluated_at` and reports it as `suggested_base`, the baseline a recovering sync resumes from.
+`last_evaluated_at` is the timestamp of that evaluation, and it anchors recovery. Because a SHA is fragile under squash- and rebase-merge, the recorded commit is replaced and becomes unreachable, the timestamp provides a stable second anchor: `gaia wiki state` resolves the newest commit reachable from HEAD at or older than `last_evaluated_at` and reports it as `suggested_base`, the baseline a recovering sync resumes from.
 
 `last_consolidated_sha` is owned by `/gaia-wiki consolidate`. On the first sync that bootstraps this field, it is set to the new HEAD value, giving the consolidate gate a baseline to accumulate from.
 
-If the file is missing, the hooks treat the project as fresh (silent — no nag). The first `/gaia-wiki sync` run initializes it.
+If the file is missing, the hooks treat the project as fresh (silent, no nag). The first `/gaia-wiki sync` run initializes it.
 
 ## Cost
 
@@ -66,9 +66,9 @@ The drift check itself is free (~30 tokens of injection once per session). The c
 | 5–10       | ~30K                    | ~$0.10                  |
 | 20+        | ~80K                    | ~$0.25                  |
 
-If drift exceeds 30 commits, `/gaia-wiki sync` asks before proceeding — long-skipped projects shouldn't surprise-bill.
+If drift exceeds 30 commits, `/gaia-wiki sync` asks before proceeding; long-skipped projects shouldn't surprise-bill.
 
-`/gaia-wiki sync` dispatches a Sonnet subagent in a fresh context to run the playbook — Sonnet is sufficient for the rule-based work, and the fresh context keeps git diffs and log content out of the parent (which may be on Opus). All cost still lives in the user's Claude Code session; there are no `claude -p` background invocations.
+`/gaia-wiki sync` dispatches a Sonnet subagent in a fresh context to run the playbook; Sonnet is sufficient for the rule-based work, and the fresh context keeps git diffs and log content out of the parent (which may be on Opus). All cost still lives in the user's Claude Code session; there are no `claude -p` background invocations.
 
 ## What `/gaia-wiki sync` does
 
@@ -101,14 +101,14 @@ You don't need to run it after every commit. The hooks let you defer with full v
 ## When NOT to run `/gaia-wiki sync`
 
 - Mid-debug session, when you're going to revert anyway
-- On a feature branch that's still in flux — wait until the branch is at a checkpoint
+- On a feature branch that's still in flux: wait until the branch is at a checkpoint
 - When the only commits since last sync are pure formatting / dep bumps with no behavior change (the SKIP path will handle them, but you can also run `/gaia-wiki sync` later to consolidate)
 
 ## Failure modes
 
 - **Mid-sync interruption.** `/gaia-wiki sync` does not advance state on partial completion. The next sync resumes from the original `last_evaluated_sha`.
-- **`wiki/.state.json` corrupted.** `/gaia-wiki sync` stops and asks — won't auto-rewrite over manual edits.
-- **Orphaned baseline.** GAIA's squash-merge flow replaces the evaluated branch SHA with a new squash commit on every merge, so `last_evaluated_sha` is regularly unreachable from HEAD — not just after a manual rebase. The hooks silently skip while it is unreachable. `/gaia-wiki sync` recovers the un-evaluated window: it resolves a reachable baseline (the newest commit at or older than `last_evaluated_at`) and runs the normal evaluation pass from there, cataloguing every commit in between. Only when no baseline resolves — no `last_evaluated_at`, or it predates all history — does it fall back to a lossy re-anchor straight to HEAD with a `RE_ANCHOR` log entry.
+- **`wiki/.state.json` corrupted.** `/gaia-wiki sync` stops and asks; it won't auto-rewrite over manual edits.
+- **Orphaned baseline.** GAIA's squash-merge flow replaces the evaluated branch SHA with a new squash commit on every merge, so `last_evaluated_sha` is regularly unreachable from HEAD, not just after a manual rebase. The hooks silently skip while it is unreachable. `/gaia-wiki sync` recovers the un-evaluated window: it resolves a reachable baseline (the newest commit at or older than `last_evaluated_at`) and runs the normal evaluation pass from there, cataloguing every commit in between. Only when no baseline resolves, no `last_evaluated_at`, or it predates all history, does it fall back to a lossy re-anchor straight to HEAD with a `RE_ANCHOR` log entry.
 - **Concurrent syncs on different branches.** `wiki/log.md` will conflict on merge. Resolve by keeping both lines, sorted newest-first.
 
 ## Adopters

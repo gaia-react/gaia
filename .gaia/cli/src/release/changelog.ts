@@ -8,7 +8,7 @@
  * after human edit). Without `--draft`, the rendered block is graduated
  * into `CHANGELOG.md`:
  *
- *   1. Find `## [Unreleased]`. Replace with `## [vX.Y.Z] — YYYY-MM-DD`.
+ *   1. Find `## [Unreleased]`. Replace with `## [vX.Y.Z] - YYYY-MM-DD`.
  *   2. Insert a fresh empty `## [Unreleased]` section above.
  *   3. Place the rendered block under the new dated heading.
  *
@@ -262,7 +262,7 @@ export const graduateChangelog = (
   block: string,
   today: string
 ): GraduateOutcome => {
-  const versionHeading = `## [${newVersion}] — ${today}`;
+  const versionHeading = `## [${newVersion}] - ${today}`;
 
   if (current.includes(`## [${newVersion}]`)) {
     return {kind: 'duplicate'};
@@ -282,7 +282,7 @@ export const graduateChangelog = (
   //
   //   ## [Unreleased]
   //
-  //   ## [vX.Y.Z] — DATE
+  //   ## [vX.Y.Z] - DATE
   //   <block>
   const blockLines = block.split('\n');
 

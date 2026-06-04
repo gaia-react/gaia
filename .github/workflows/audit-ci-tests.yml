@@ -1,7 +1,7 @@
 name: Audit CI Tests
 
 # Runs the bats suites for the .github/audit/ helpers that
-# code-review-audit.yml consumes — check-trailer.sh (skip-logic gate) and
+# code-review-audit.yml consumes, check-trailer.sh (skip-logic gate) and
 # resolve-audit-base.sh (incremental review base). Maintainer-only:
 # adopters receive these as GAIA-controlled (`owned`) code they never
 # modify, so the suite only catches regressions from maintainer edits.

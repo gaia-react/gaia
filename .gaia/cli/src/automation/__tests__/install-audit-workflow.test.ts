@@ -101,7 +101,7 @@ describe('automation install-audit-workflow', () => {
     );
   });
 
-  it('is idempotent — overwrites an existing file on repeat invocation', () => {
+  it('is idempotent: overwrites an existing file on repeat invocation', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});

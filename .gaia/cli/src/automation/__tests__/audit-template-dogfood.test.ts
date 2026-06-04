@@ -5,7 +5,7 @@
  *
  * In an adopter clone the in-tree workflow is release-excluded and absent,
  * so the test skips gracefully. In the maintainer clone both files exist and
- * must match — any divergence means either the live gate or the install
+ * must match; any divergence means either the live gate or the install
  * source was edited without updating the other.
  */
 import {existsSync, readFileSync} from 'node:fs';

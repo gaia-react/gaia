@@ -8,7 +8,7 @@
  *
  * Atomic write: write-temp-and-rename. POSIX rename is atomic on the same
  * filesystem, so a crash mid-write leaves either the old file or the new
- * file — never a half-written one (mirrors the profile.md atomic-write contract).
+ * file, never a half-written one (mirrors the profile.md atomic-write contract).
  */
 import {existsSync, mkdirSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';

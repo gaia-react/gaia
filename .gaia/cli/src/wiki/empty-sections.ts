@@ -7,7 +7,7 @@
  *   1. no child heading (no heading of level > L), AND
  *   2. no non-blank, non-heading content line.
  *
- * A parent heading (one that has child headings) is never flagged — its
+ * A parent heading (one that has child headings) is never flagged; its
  * children are evaluated individually, and a genuinely-empty leaf child gets
  * flagged on its own. Content inside fenced code blocks (```) counts as body
  * and a `#` inside a fence is not a heading; the leading frontmatter block is
@@ -18,7 +18,7 @@
  *
  * Output: one `path:line  heading` line per finding, or a clean message.
  * With `--json`, emits { "empty": [ { path, line, heading } ] }. Exit 0
- * always — empty sections are informational, not a failure.
+ * always; empty sections are informational, not a failure.
  */
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
@@ -29,7 +29,7 @@ import {parseFrontmatter} from './util/frontmatter.js';
 const HELP_TEXT = `Usage: gaia wiki empty-sections [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**, wiki/hot.md, wiki/log.md) for
-  LEAF headings with no body — no child heading and no non-blank, non-heading
+  LEAF headings with no body, no child heading and no non-blank, non-heading
   content before the next sibling/shallower heading or EOF. Parent headings
   are never flagged. Fenced code blocks and the frontmatter block are handled.
   Without --json, prints one "path:line  heading" line per finding. With

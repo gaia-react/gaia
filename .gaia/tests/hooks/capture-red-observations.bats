@@ -6,14 +6,14 @@
 # `(pnpm|npm) test --run [scope]` PostToolUse, it re-invokes vitest with the
 # json reporter, reads the per-test results, and appends every genuinely-failing
 # test to the ledger (.gaia/local/red-ledger/observations.jsonl). It only
-# observes — it never blocks and always exits 0.
+# observes; it never blocks and always exits 0.
 #
 # vitest's config `include` glob is `./app/**/*.test.{ts,tsx}`, so the fixture
 # test files under .gaia/tests/hooks/fixtures/red-ledger/ cannot be run by a
 # real vitest invocation (they fall outside the include set). The deterministic
 # assertions therefore feed CANNED vitest json via the hook's documented test
 # seam RED_CAPTURE_JSON_OVERRIDE, while the source-file fixtures supply the real
-# bodies the signal helper hashes — so the signals are genuine, not stubbed. The
+# bodies the signal helper hashes; so the signals are genuine, not stubbed. The
 # negative/robustness cases exercise the real (no-override) code path: they bail
 # before vitest ever runs, so they stay fast and offline.
 #
@@ -109,7 +109,7 @@ ledger_lines() {
     "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
     "$JSON_REL/assertion-fail.json"
   [ "$status" -eq 0 ]
-  # Only one line, and it is the failing one — the passing test never appears.
+  # Only one line, and it is the failing one; the passing test never appears.
   [ "$(ledger_lines)" -eq 1 ]
   run grep -c '"fullName":"passes fine"' "$LEDGER_ABS"
   [ "$output" = "0" ]

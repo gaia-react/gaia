@@ -1,11 +1,11 @@
 ---
 name: gaia-init
-description: Initialize a new project from the GAIA React template — renames, strips GAIA branding, configures i18n, installs Claude skills/plugins.
+description: Initialize a new project from the GAIA React template, renames, strips GAIA branding, configures i18n, installs Claude skills/plugins.
 ---
 
 Initialize a new project from the GAIA React template. The template already ships clean (no example code, no docs site, no auth). This command renames, strips GAIA-specific branding, configures i18n, installs Claude skills/plugins, and hands you a ready-to-build project.
 
-**Language meta-instruction:** Conduct this entire conversation in the language the user has been typing in. Detect it from prior context — no explicit detection step needed. Do not translate source files, rules, skills, or wiki entries — those stay English regardless. Only translate the prompts you show the user.
+**Language meta-instruction:** Conduct this entire conversation in the language the user has been typing in. Detect it from prior context, no explicit detection step needed. Do not translate source files, rules, skills, or wiki entries, those stay English regardless. Only translate the prompts you show the user.
 
 ## Step 0: Ensure pnpm is available
 
@@ -23,9 +23,9 @@ If this fails, stop and report the error. `corepack enable pnpm` installs the pn
 
 ## Step 1: Install dependencies
 
-The project was just created from the template — `node_modules/` does not exist yet. Install before doing anything else so later steps (typecheck, tests, build) can run.
+The project was just created from the template, `node_modules/` does not exist yet. Install before doing anything else so later steps (typecheck, tests, build) can run.
 
-Tell the user: "Installing dependencies — this may take a minute…" then run:
+Tell the user: "Installing dependencies, this may take a minute…" then run:
 
 ```bash
 pnpm install
@@ -33,11 +33,11 @@ pnpm install
 
 If install fails, stop and report the error. Do not continue.
 
-Then run `/update-deps` to bring all packages to their latest compatible versions before continuing. If `/update-deps` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/update-deps` runs its own quality gate at the end — if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
+Then run `/update-deps` to bring all packages to their latest compatible versions before continuing. If `/update-deps` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/update-deps` runs its own quality gate at the end, if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
 
 ## Step 2: Gather user input (in the user's language)
 
-This whole conversation has been in the user's language so far. Continue in that language for every prompt below. Do not translate source files, rules, skills, or wiki entries — those stay English regardless. Only translate the prompts you show the user.
+This whole conversation has been in the user's language so far. Continue in that language for every prompt below. Do not translate source files, rules, skills, or wiki entries, those stay English regardless. Only translate the prompts you show the user.
 
 Before asking any questions, detect the project folder name:
 
@@ -49,11 +49,11 @@ Use this as the slug default. Derive the title default by replacing hyphens and 
 
 Use AskUserQuestion. Ask up to three questions, in this exact order:
 
-### Q1 — Primary app language
+### Q1, Primary app language
 
 > What should be the primary language for this app's UI?
 >
-> - {detected user language} (default — what you've been typing in)
+> - {detected user language} (default, what you've been typing in)
 > - English
 > - Other (you'll specify the ISO 639-1 code and English name in a follow-up free-text prompt)
 
@@ -61,14 +61,14 @@ If the user picks "Other", follow up with a free-text question:
 
 > Enter the ISO 639-1 code (e.g. `pl`) and the English name (e.g. `Polish`).
 
-### Q2 — Additional languages
+### Q2, Additional languages
 
 > Any additional languages to support?
 >
 > - None
 > - Comma-separated list of ISO 639-1 codes (free-text, e.g. `es, de, ar`)
 
-### Q3 — Localize later? (only ask if Q1 + Q2 collapses to a single language)
+### Q3, Localize later? (only ask if Q1 + Q2 collapses to a single language)
 
 Compute `LOCALES = unique(Q1 code, Q2 codes)`. If `len(LOCALES) > 1`, skip Q3.
 
@@ -76,8 +76,8 @@ Otherwise, ask:
 
 > You've picked one language. Plan to localize later?
 >
-> - Yes — keep i18n scaffolding wired up; translations will be English-only for now.
-> - No — strip i18n out entirely. Less infrastructure, smaller bundle, easier to remove than to add later.
+> - Yes, keep i18n scaffolding wired up; translations will be English-only for now.
+> - No, strip i18n out entirely. Less infrastructure, smaller bundle, easier to remove than to add later.
 
 Default: Yes.
 
@@ -104,7 +104,7 @@ Run sequentially, stopping at the first non-zero exit:
 .gaia/cli/gaia init wire-statusline --mode project
 ```
 
-If any of these exit non-zero, surface the structured error verbatim (the CLI prints a JSON line to stderr) and stop. The user can re-run the failing command manually after addressing the cause, then resume with `.gaia/cli/gaia init resume` — completed steps are skipped automatically.
+If any of these exit non-zero, surface the structured error verbatim (the CLI prints a JSON line to stderr) and stop. The user can re-run the failing command manually after addressing the cause, then resume with `.gaia/cli/gaia init resume`, completed steps are skipped automatically.
 
 ## Step 4: Locale-specific scaffolding (when not stripping i18n)
 
@@ -121,12 +121,12 @@ If `STRIP_I18N == true`, read `.claude/instructions/remove-i18n.md` and execute 
 
 ## Step 5: Replace the logo + update CODEOWNERS
 
-- Replace `app/assets/images/gaia-logo.svg` with the project's own logo SVG. The Storybook brand logo imports it directly — no `preview.ts` edits needed.
+- Replace `app/assets/images/gaia-logo.svg` with the project's own logo SVG. The Storybook brand logo imports it directly, no `preview.ts` edits needed.
 - Replace `.github/CODEOWNERS` contents with just the user's GitHub username (the whole file becomes a single line like `* @username`).
 
 ## Step 6: Check `.env`
 
-Run the CLI — it copies `.env.example` to `.env` when `.env` is absent, no-op otherwise. Routing through the CLI subprocess bypasses the project's `Write(.env)` deny rule, which guards against Claude writing secrets, not against init seeding from the example file.
+Run the CLI, it copies `.env.example` to `.env` when `.env` is absent, no-op otherwise. Routing through the CLI subprocess bypasses the project's `Write(.env)` deny rule, which guards against Claude writing secrets, not against init seeding from the example file.
 
 ```bash
 .gaia/cli/gaia init bootstrap-env
@@ -150,13 +150,13 @@ If any install step fails, print the command so the user can run it manually.
 
 ### Install tools
 
-GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`) — they ship with the clone. Three external tools still need per-machine setup. The Serena MCP entry below requires `uv` (Astral's Python toolchain runner) on the host — GAIA precheck-installs it just like Step 0 precheck-installs pnpm.
+GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`), they ship with the clone. Three external tools still need per-machine setup. The Serena MCP entry below requires `uv` (Astral's Python toolchain runner) on the host, GAIA precheck-installs it just like Step 0 precheck-installs pnpm.
 
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
 - [Playwright CLI](https://github.com/microsoft/playwright-cli) binary: `npm install -g @playwright/cli@latest`
-  Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing. Used for E2E debugging and authoring Playwright specs with minimal token cost — each interaction is one shell call instead of a round-trip through an MCP session.
-- [Serena](https://github.com/oraios/serena) MCP server: semantic code-search and editing tools (find symbol, find references, replace symbol body) backed by language servers — pulls Claude away from grep-the-world toward symbol-aware operations. First, ensure `uv` is available — tell the user: "Checking for uv…" then run:
+  Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing. Used for E2E debugging and authoring Playwright specs with minimal token cost, each interaction is one shell call instead of a round-trip through an MCP session.
+- [Serena](https://github.com/oraios/serena) MCP server: semantic code-search and editing tools (find symbol, find references, replace symbol body) backed by language servers, pulls Claude away from grep-the-world toward symbol-aware operations. First, ensure `uv` is available, tell the user: "Checking for uv…" then run:
 
   ```bash
   if ! command -v uv &>/dev/null; then
@@ -164,7 +164,7 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
   fi
   ```
 
-  After install, source the shell rc the installer modifies (or add `~/.local/bin` to `PATH` for this session) and verify with `uv --version`. If the verification fails, halt `/gaia-init` with: `uv is required for GAIA. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh — then re-run /gaia-init.` Once `uv` is confirmed present, register Serena with:
+  After install, source the shell rc the installer modifies (or add `~/.local/bin` to `PATH` for this session) and verify with `uv --version`. If the verification fails, halt `/gaia-init` with: `uv is required for GAIA. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh, then re-run /gaia-init.` Once `uv` is confirmed present, register Serena with:
 
   ```bash
   claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.2.0 serena start-mcp-server --open-web-dashboard false
@@ -180,7 +180,7 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
 
 ### Initialize spec-kit and install the GAIA extension + preset
 
-The GAIA `/gaia-spec` Socratic discovery workflow runs on top of [spec-kit](https://github.com/github/spec-kit). The template already ships the GAIA extension at `.specify/extensions/gaia/` and the GAIA preset at `.specify/presets/gaia/` — they need spec-kit's runtime registered around them.
+The GAIA `/gaia-spec` Socratic discovery workflow runs on top of [spec-kit](https://github.com/github/spec-kit). The template already ships the GAIA extension at `.specify/extensions/gaia/` and the GAIA preset at `.specify/presets/gaia/`, they need spec-kit's runtime registered around them.
 
 Pin spec-kit at the version declared in `.specify/extensions/gaia/extension.yml` `requires.speckit_version` (currently `>=0.8.5,<0.10.0`; the floor is the runtime pin). Tell the user: "Initializing spec-kit and registering the GAIA extension + preset…" then run:
 
@@ -202,23 +202,23 @@ rm -rf /tmp/gaia-preset-tmp
 
 After install, `.specify/extensions/.registry` lists the `gaia` extension with all four registered commands (`speckit.gaia.spec`, `speckit.gaia.constitution-check`, `speckit.gaia.lint`, `speckit.gaia.self-review`); `.specify/presets/.registry` lists the `gaia` preset (priority 10, replaces `speckit.specify` and `spec-template`); `.claude/skills/speckit-gaia-*/SKILL.md` exist for each GAIA hook target; and `.claude/skills/speckit-specify/SKILL.md` is the GAIA preset wrap (core body spliced in via `{CORE_TEMPLATE}` substitution under `strategy: wrap`).
 
-If any step fails, surface the error verbatim and halt — do not silently continue. The user can re-run the failing command manually and resume `/gaia-init` once spec-kit is in place.
+If any step fails, surface the error verbatim and halt, do not silently continue. The user can re-run the failing command manually and resume `/gaia-init` once spec-kit is in place.
 
 ### Configure CI integrations
 
 Two GitHub Actions workflows ship with GAIA:
 
-- `.github/workflows/code-review-audit.yml` — pre-merge gate that runs the `code-review-audit` agent against every PR.
-- `.github/workflows/forensics-triage.yml` — autonomous triage for issues labeled `gaia-forensics`.
+- `.github/workflows/code-review-audit.yml`, pre-merge gate that runs the `code-review-audit` agent against every PR.
+- `.github/workflows/forensics-triage.yml`, autonomous triage for issues labeled `gaia-forensics`.
 
-Both invoke Claude via `claude-code-action` and require the repo secret `CLAUDE_CODE_OAUTH_TOKEN`. If the project isn't pushed to GitHub yet, or the maintainer doesn't want CI Claude billing yet, opt out — the workflow files move to `.gaia/templates/workflows/`, and `/update-gaia` respects the deletion as adopter intent (per the file-class decision table on the Update Workflow concept page).
+Both invoke Claude via `claude-code-action` and require the repo secret `CLAUDE_CODE_OAUTH_TOKEN`. If the project isn't pushed to GitHub yet, or the maintainer doesn't want CI Claude billing yet, opt out, the workflow files move to `.gaia/templates/workflows/`, and `/update-gaia` respects the deletion as adopter intent (per the file-class decision table on the Update Workflow concept page).
 
 Use AskUserQuestion (in the user's language; this configuration block stays in English):
 
 > Enable GAIA CI (GitHub Actions workflows) now?
 >
-> - **Yes — enable now** (Recommended). I'll print the `gh` commands you run yourself with maintainer credentials, and ensure the `gaia-forensics` issue label exists.
-> - **Skip — disable for now.** I'll move both workflow files to `.gaia/templates/workflows/`. Copy them back to `.github/workflows/` whenever you decide to enable.
+> - **Yes, enable now** (Recommended). I'll print the `gh` commands you run yourself with maintainer credentials, and ensure the `gaia-forensics` issue label exists.
+> - **Skip, disable for now.** I'll move both workflow files to `.gaia/templates/workflows/`. Copy them back to `.github/workflows/` whenever you decide to enable.
 
 **On "Yes":**
 
@@ -230,7 +230,7 @@ Use AskUserQuestion (in the user's language; this configuration block stays in E
 
    If `gh auth status` exits non-zero, halt `/gaia-init` with: `GitHub CLI is not authenticated. Run 'gh auth login' and re-run /gaia-init.`
 
-2. Print the copy-pasteable enable recipe verbatim — the user runs these themselves on the maintainer's machine once the project is on GitHub:
+2. Print the copy-pasteable enable recipe verbatim, the user runs these themselves on the maintainer's machine once the project is on GitHub:
 
    ```bash
    # 1. Mint an OAuth token from a Claude Code-authenticated machine, then store it as a repo secret.
@@ -273,7 +273,7 @@ The CLI in Step 3 wired the statusline command into Claude settings; the wrapper
 chmod +x .gaia/statusline/*.sh
 ```
 
-(Idempotent — safe to run regardless.)
+(Idempotent, safe to run regardless.)
 
 ### Verify installs
 
@@ -296,11 +296,11 @@ After all probes run: if any component shows `[FAIL]`, print the full table, the
 
 If all probes pass, print the full table and continue to Step 9.
 
-The same probe set applies when setting up from an existing clone — `/setup-cloned-gaia-project` runs it after registering external tools.
+The same probe set applies when setting up from an existing clone, `/setup-cloned-gaia-project` runs it after registering external tools.
 
 ## Step 9: Configure GAIA CI (Phase A)
 
-GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/update-deps`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A — this step — is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia-ci` to wire up tokens and activate CI (Phase B).
+GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/update-deps`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia-ci` to wire up tokens and activate CI (Phase B).
 
 Tell the user (in their language; the table headers stay English):
 
@@ -324,11 +324,11 @@ If the user picks "Customize per tool", show this table and use AskUserQuestion 
 
 Mode meanings:
 
-- `ci` — runs in GitHub Actions on the documented cadence; PRs auto-merge on green CI.
-- `local` — does not run in CI; only the adopter's local invocation runs the tool.
-- `off` — never runs (neither in CI nor locally via the smart entrypoints).
+- `ci`, runs in GitHub Actions on the documented cadence; PRs auto-merge on green CI.
+- `local`, does not run in CI; only the adopter's local invocation runs the tool.
+- `off`, never runs (neither in CI nor locally via the smart entrypoints).
 
-The fifth config key, `update_gaia.mode`, is fixed to `local` and not surfaced as a question — `/update-gaia` is a per-machine command by design.
+The fifth config key, `update_gaia.mode`, is fixed to `local` and not surfaced as a question, `/update-gaia` is a per-machine command by design.
 
 ### Apply the answer
 
@@ -350,13 +350,13 @@ End of Step 9.
 
 ## Step 10: Mentorship opt-in
 
-Tell the user (in their language): "GAIA includes an optional mentorship layer that learns how you work and adapts in-session — fully on your machine, never sent off it. Let's set the default."
+Tell the user (in their language): "GAIA includes an optional mentorship layer that learns how you work and adapts in-session, fully on your machine, never sent off it. Let's set the default."
 
-Then show the privacy explainer (this block stays English regardless of UI language — it's the canonical contract):
+Then show the privacy explainer (this block stays English regardless of UI language, it's the canonical contract):
 
 > **GAIA's mentorship layer (experimental, optional)**
 >
-> GAIA can quietly learn how you work — which kinds of specs you find easy or hard, where you tend to need more context — and adapt in-session to help you ship better specs and code over time.
+> GAIA can quietly learn how you work, which kinds of specs you find easy or hard, where you tend to need more context, and adapt in-session to help you ship better specs and code over time.
 >
 > **What it observes:** which kinds of specs you find easy or hard, where you need more context, when you amend specs after closing.
 >
@@ -368,9 +368,9 @@ Then show the privacy explainer (this block stays English regardless of UI langu
 
 Use AskUserQuestion. The question text must include the link: "Would you like to enable GAIA's mentorship layer? https://gaiareact.com/mentorship/". Three options in this exact order:
 
-- **Not now (you can enable later if you like)** — `mentorship.enabled = false`, `analytics.enabled = false`. Init proceeds.
-- **Yes, enable mentorship + anonymous analytics** — `mentorship.enabled = true`, `analytics.enabled = true`. Provision mentorship tree with `chmod 700/600`. Init proceeds.
-- **Tell me more before I decide** — short description only (e.g. "Claude will explain how mentorship works before you decide"). When selected, Claude outputs the full privacy explainer, then drops into a free-form Q&A loop; on user signal of completion, re-present the same three-option AskUserQuestion. Init does not proceed until either "Not now" or "Yes, enable" is selected.
+- **Not now (you can enable later if you like)**: `mentorship.enabled = false`, `analytics.enabled = false`. Init proceeds.
+- **Yes, enable mentorship + anonymous analytics**: `mentorship.enabled = true`, `analytics.enabled = true`. Provision mentorship tree with `chmod 700/600`. Init proceeds.
+- **Tell me more before I decide**: short description only (e.g. "Claude will explain how mentorship works before you decide"). When selected, Claude outputs the full privacy explainer, then drops into a free-form Q&A loop; on user signal of completion, re-present the same three-option AskUserQuestion. Init does not proceed until either "Not now" or "Yes, enable" is selected.
 
 ### Apply the answer
 
@@ -380,7 +380,7 @@ Use AskUserQuestion. The question text must include the link: "Would you like to
 .gaia/cli/gaia mentorship _internal-write-config --enabled false --analytics false --decided-via gaia-init
 ```
 
-(Internal subcommand — see notes.)
+(Internal subcommand, see notes.)
 
 **On "Yes, enable":**
 
@@ -454,13 +454,13 @@ Append-only. New entries at the TOP.
 
 ## Step 12: Finalize
 
-Mark per-machine setup as complete so the statusline does not show "Run /setup-cloned-gaia-project (Required)". `/gaia-init` performs all the same per-machine work as `/setup-cloned-gaia-project` (tools, plugins, spec-kit, statusline chmod, .env, mentorship), but it does not call `gaia setup mark-step` as it goes — so stamp the state file with `--force` now that everything is done:
+Mark per-machine setup as complete so the statusline does not show "Run /setup-cloned-gaia-project (Required)". `/gaia-init` performs all the same per-machine work as `/setup-cloned-gaia-project` (tools, plugins, spec-kit, statusline chmod, .env, mentorship), but it does not call `gaia setup mark-step` as it goes, so stamp the state file with `--force` now that everything is done:
 
 ```bash
 .gaia/cli/gaia setup finalize --force
 ```
 
-Then run the CLI's init finalize step — it removes the `/init` interceptor hook, prunes the matching entry from `.claude/settings.json`, and deletes this command file:
+Then run the CLI's init finalize step, it removes the `/init` interceptor hook, prunes the matching entry from `.claude/settings.json`, and deletes this command file:
 
 ```bash
 .gaia/cli/gaia init finalize

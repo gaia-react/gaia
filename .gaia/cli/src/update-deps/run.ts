@@ -15,7 +15,7 @@
  *          `groups.ts`. Packages with no rule become `singleton:<name>`.
  * Phase 3: Classify each group: any major bump → Wave B (per-group PR),
  *          else Wave A (batched). Groups with one major member pull all
- *          outdated siblings along — so the group moves together.
+ *          outdated siblings along; so the group moves together.
  *
  * Output: a JSON payload at the path passed to `--emit-updates`. The
  * shape is fixed and shared with the workflow template author. Schema in
@@ -145,7 +145,7 @@ const parseSegments = (raw: string): readonly number[] => {
   const cleaned = stripRange(raw);
   // Take only the dot-separated leading numeric part. `1.2.3-beta.1` →
   // `[1, 2, 3]`. Non-numeric chunks beyond the first three slots are
-  // ignored — the SKILL only needs leading-integer comparison.
+  // ignored; the SKILL only needs leading-integer comparison.
   const parts = cleaned.split(/[+-]/u)[0]?.split('.') ?? [];
   const out: number[] = [];
 
@@ -208,7 +208,7 @@ const readPackageJson = (cwd: string): PackageJsonShape => {
 
 /**
  * The version actually installed in `node_modules`. The package.json range
- * spec does not reveal it — a `^1.2.3` spec can resolve to any 1.x, and
+ * spec does not reveal it; a `^1.2.3` spec can resolve to any 1.x, and
  * `workspace:*` / tag / url specs carry no version at all. Returns
  * `undefined` when the package is not installed.
  */
@@ -379,7 +379,7 @@ const applyEslintCap = (
   const highest9x = findHighest9x(cache.versions);
 
   if (highest9x === undefined) {
-    // Cap requested but no 9.x line exists upstream — drop the entry to
+    // Cap requested but no 9.x line exists upstream; drop the entry to
     // avoid surfacing it. Adopters know about the cap; surfacing is noise.
     return {kind: 'drop'};
   }
@@ -418,7 +418,7 @@ const fetchLatestVersion = (
 /**
  * Read `minimumReleaseAge` (in minutes) from the workspace's
  * `pnpm-workspace.yaml`. Returns 0 when the file is absent, unparsable, or the
- * key is missing / non-positive — in which case the cooldown is a no-op and
+ * key is missing / non-positive; in which case the cooldown is a no-op and
  * the version selection matches the pre-cooldown behaviour exactly (no extra
  * registry calls). pnpm 11 enforces this same setting on the lockfile; honour
  * it here so the dependabot flow never targets a version pnpm 11 would reject.
@@ -433,7 +433,7 @@ const readMinimumReleaseAge = (cwd: string): number => {
   }
 
   // The setting is a top-level integer minute count. Match it directly rather
-  // than pulling a YAML parser into the bundle for one scalar — commented and
+  // than pulling a YAML parser into the bundle for one scalar; commented and
   // indented lines do not match the start-anchored key, and any inline comment
   // sits past the captured digits.
   for (const line of raw.split('\n')) {
@@ -497,7 +497,7 @@ const isPrerelease = (version: string): boolean => version.includes('-');
 /**
  * The newest stable version that is an upgrade over `current`, at or below
  * `latest`, and published on or before `cutoffMs`. Returns `undefined` when no
- * such version exists — every available upgrade is still inside the cooldown
+ * such version exists; every available upgrade is still inside the cooldown
  * window. `time` carries `created` / `modified` pseudo-keys alongside the real
  * version keys; both are skipped.
  */
@@ -557,8 +557,8 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   const pkg = readPackageJson(options.cwd);
 
   // `pnpm outdated` exits 0 (nothing outdated) or 1 (packages outdated) on
-  // a healthy run. Any other status — including the null status of a
-  // failed spawn — means pnpm itself failed; parsing its empty stdout
+  // a healthy run. Any other status, including the null status of a
+  // failed spawn, means pnpm itself failed; parsing its empty stdout
   // would masquerade as "everything up to date".
   const result = pnpmRunner(['outdated', '--json'], {cwd: options.cwd});
 
@@ -589,7 +589,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     | {kind: 'unresolved'} => {
     if (minimumReleaseAgeMinutes <= 0) return {kind: 'ok', latest};
 
-    // Not an upgrade (sibling already current, or a downgrade) — nothing to
+    // Not an upgrade (sibling already current, or a downgrade); nothing to
     // gate; leave it so up-to-date members still flow through unchanged.
     if (compareSegments(parseSegments(latest), parseSegments(current)) <= 0) {
       return {kind: 'ok', latest};
@@ -653,7 +653,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     const kind = classifyKind(entry.current, cooledLatest);
 
     if (kind === 'patch' && entry.current === cooledLatest) {
-      // Already up to date after cap rewrite. Defensive — applyEslintCap's
+      // Already up to date after cap rewrite. Defensive; applyEslintCap's
       // drop branch already handles "already on highest 9.x", but a
       // best-of belt-and-suspenders guard for non-eslint paths.
       continue;
@@ -672,7 +672,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
 
   // Bucket by group. A group lands in Wave B if any member is major;
   // otherwise every member becomes a Wave A row (singletons stay
-  // singletons, but companion groups stay grouped — we expose them as
+  // singletons, but companion groups stay grouped; we expose them as
   // separate Wave A rows since Wave A is batched into one install anyway).
   const byGroup = new Map<string, Adjusted[]>();
 
@@ -718,7 +718,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
       const latest = fetchLatestVersion(siblingName, options.cwd, pnpmRunner);
 
       if (latest === undefined) {
-        // Registry call failed — omit from emit, record in skipped.
+        // Registry call failed; omit from emit, record in skipped.
         skipped.push({
           current,
           latest: '',
@@ -789,7 +789,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
       });
     } else {
       for (const member of members) {
-        // Wave A entries can only be minor or patch — narrow the type.
+        // Wave A entries can only be minor or patch; narrow the type.
         if (member.kind === 'major') continue;
 
         waveA.push({

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-scope.sh — SPEC-002 path-policy primitive (default-deny).
+# check-scope.sh: SPEC-002 path-policy primitive (default-deny).
 #
 # Usage:
 #   check-scope.sh <path1> [<path2> ...]
@@ -106,7 +106,7 @@ classify_path() {
 # Escapes a string for embedding inside a JSON string literal.
 #
 # Handles backslash and double-quote. Control bytes (U+0000..U+001F) are
-# NOT escaped here — the caller is expected to detect them via
+# NOT escaped here, the caller is expected to detect them via
 # find_control_byte() and reject the input with a structured error.
 # This split keeps json_escape predictable: its output is always valid
 # JSON-string content provided the input contains no control bytes.

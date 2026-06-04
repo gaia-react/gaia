@@ -15,7 +15,7 @@ tags: [module, structure]
 
 | Folder             | Concern                                    | Wiki page      |
 | ------------------ | ------------------------------------------ | -------------- |
-| `assets/`          | Global images / svgs                       | —              |
+| `assets/`          | Global images / svgs                       | -              |
 | `components/`      | Shared UI components                       | [[Components]] |
 | `hooks/`           | Global custom hooks                        | [[Hooks]]      |
 | `languages/`       | TypeScript-based i18n strings              | [[i18n]]       |
@@ -26,11 +26,11 @@ tags: [module, structure]
 | `sessions.server/` | Cookie session storage (language, theme)   | [[Sessions]]   |
 | `state/`           | Context+Provider state                     | [[State]]      |
 | `styles/`          | `tailwind.css`                             | [[Styles]]     |
-| `types/`           | Global TS types                            | —              |
+| `types/`           | Global TS types                            | -              |
 | `utils/`           | Pure helpers                               | [[Utils]]      |
 
 ## Conventions
 
-- The `pages/` vs `components/` split is load-bearing — see [[Thin Routes]] and [[Pages]] for the rationale
+- The `pages/` vs `components/` split is load-bearing; see [[Thin Routes]] and [[Pages]] for the rationale
 - `.server/` suffix excludes a folder from the client bundle (used by `sessions.server/`)
-- Top-level files (`entry.client.tsx`, `entry.server.tsx`, `root.tsx`, `i18n.ts`, `routes.ts`, `env.server.ts`) follow React Router 7's required entry-point names — query Serena to read them rather than mirroring their contents here.
+- Top-level files (`entry.client.tsx`, `entry.server.tsx`, `root.tsx`, `i18n.ts`, `routes.ts`, `env.server.ts`) follow React Router 7's required entry-point names; query Serena to read them rather than mirroring their contents here.

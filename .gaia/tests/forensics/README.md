@@ -1,6 +1,6 @@
 # Forensics UAT harness
 
-Maintainer-only fixture suite for the `/gaia-forensics` skill. Excluded from the release bundle via `.gaia/release-exclude` (category `.gaia/tests/`). Every test is hermetic — no network, no real Claude Code calls, no real `gh` invocations.
+Maintainer-only fixture suite for the `/gaia-forensics` skill. Excluded from the release bundle via `.gaia/release-exclude` (category `.gaia/tests/`). Every test is hermetic; no network, no real Claude Code calls, no real `gh` invocations.
 
 ## Coverage
 
@@ -24,7 +24,7 @@ Every UAT from UAT-001 through UAT-013 has at least one binding assertion. UAT-0
 - **Classification + evidence** (`02`): verifies the classifier table lookup in `lib/classify.sh` for all eight taxonomy classes. Confirms evidence cite shape.
 - **Strict schema** (`03`): asserts golden files carry the four required sections (`## Symptom`, `## Classification`, `## Capture`, `## Reproduction context`) in declared order, with no extra top-level headers. Verifies frontmatter field presence.
 - **Write surface** (`04`): snapshots working-tree mtimes via a marker file, runs the runbook surrogate, asserts no writes outside `.gaia/local/forensics/` and `.gaia/local/telemetry/`. Also includes a negative test that confirms the detection logic catches violations.
-- **gh invocation shape** (`05`): stubs `gh` via `lib/stub-gh.sh` (argv-capture), asserts captured argv contains `--repo gaia-react/gaia`, `--label gaia-forensics`, `--title "forensics: <class> — <one-line>"`, and `--body-file`. Also tests the failure path (UAT-006): a failing-gh stub exits non-zero; the local report is left in place and gh's stderr is surfaced verbatim.
+- **gh invocation shape** (`05`): stubs `gh` via `lib/stub-gh.sh` (argv-capture), asserts captured argv contains `--repo gaia-react/gaia`, `--label gaia-forensics`, `--title "forensics: <class>; <one-line>"`, and `--body-file`. Also tests the failure path (UAT-006): a failing-gh stub exits non-zero; the local report is left in place and gh's stderr is surfaced verbatim.
 - **Decline saves locally** (`06`): confirms the "No, save locally only" branch writes the report file and does not call `gh`.
 - **gh not installed** (`07`): removes `gh` from `$PATH`, asserts exit-zero plus one-line note, report file present.
 - **User-config no-gh** (`08`): diagnoses user-config signals (dirty tree, wrong Node, missing env var); confirms surrogate saves locally, prints remediation, never calls `gh`.
@@ -42,9 +42,9 @@ Every UAT from UAT-001 through UAT-013 has at least one binding assertion. UAT-0
 
 | File                                  | Scenario                                                        |
 | ------------------------------------- | --------------------------------------------------------------- |
-| `fixtures/input-init-failure.txt`     | UAT-001 input — clean init failure (no secrets)                 |
-| `fixtures/input-update-conflict.txt`  | UAT-002 input — update conflict with arg                        |
-| `fixtures/input-with-secrets.txt`     | UAT-003 input — absolute paths + placeholder env-var entries    |
+| `fixtures/input-init-failure.txt`     | UAT-001 input; clean init failure (no secrets)                 |
+| `fixtures/input-update-conflict.txt`  | UAT-002 input; update conflict with arg                        |
+| `fixtures/input-with-secrets.txt`     | UAT-003 input; absolute paths + placeholder env-var entries    |
 | `fixtures/golden-init-redacted.md`    | UAT-001 expected body (byte-identical post-redaction)           |
 | `fixtures/golden-update-redacted.md`  | UAT-002 expected body                                           |
 | `fixtures/golden-secrets-redacted.md` | UAT-003 expected body (paths stripped, env-var values scrubbed) |
@@ -73,7 +73,7 @@ bats .gaia/tests/forensics/01-redaction-roundtrip.bats
   - Debian/Ubuntu CI: `apt-get install -y bats`
   - Any platform: `npx -y bats-core@latest` (the run-all.sh entrypoint falls back to this)
 - `git` on `$PATH` (used in write-surface and redaction tests for `git init`/`git rev-parse`)
-- `python3` on `$PATH` (used for synthetic token generation in redaction tests — falls back to `printf` if absent)
+- `python3` on `$PATH` (used for synthetic token generation in redaction tests; falls back to `printf` if absent)
 
 ## CI integration
 

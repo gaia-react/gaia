@@ -19,7 +19,7 @@
 #                               status: in-progress frontmatter and NO ledger
 #                               row (the legacy fallback case)
 #   --seed-flat SPEC-NNN        write a legacy flat .gaia/local/specs/
-#                               SPEC-NNN.md (status: draft frontmatter) — a
+#                               SPEC-NNN.md (status: draft frontmatter); a
 #                               migration candidate for spec-folderize.sh
 #   --seed-archived-flat SPEC-NNN  same but under
 #                               .gaia/local/specs/archived/SPEC-NNN.md
@@ -28,7 +28,7 @@
 #                               status: in-progress frontmatter and NO ledger
 #                               row (the foldered legacy fallback case)
 #   --seed-flat-sibling SPEC-NNN-SUFFIX  write a legacy flat sibling file
-#                               .gaia/local/specs/SPEC-NNN-SUFFIX.md — a
+#                               .gaia/local/specs/SPEC-NNN-SUFFIX.md; a
 #                               sibling migration candidate for spec-folderize.sh
 #   --seed-archived-flat-sibling SPEC-NNN-SUFFIX  same but under
 #                               .gaia/local/specs/archived/SPEC-NNN-SUFFIX.md

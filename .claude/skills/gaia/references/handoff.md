@@ -6,9 +6,9 @@ Write a self-contained handoff doc so the next session can pick up cold without 
 
 ## Inputs
 
-- `$ARGUMENTS` (the args after `handoff`) — optional inline notes from the user (decisions, gaps, open questions).
-- Conversation transcript — primary source for accomplishments, decisions, gaps.
-- Git state — branch, last commit, dirty files.
+- `$ARGUMENTS` (the args after `handoff`), optional inline notes from the user (decisions, gaps, open questions).
+- Conversation transcript, primary source for accomplishments, decisions, gaps.
+- Git state, branch, last commit, dirty files.
 
 ## Steps
 
@@ -24,9 +24,9 @@ Run in parallel:
 
 Path: `.gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
 
-Derive `{YYYY-MM-DD}` from `date +%F` and the **Date** line's timestamps from `date '+%Y-%m-%d %H:%M'` (shell) — never guess the current date/time.
+Derive `{YYYY-MM-DD}` from `date +%F` and the **Date** line's timestamps from `date '+%Y-%m-%d %H:%M'` (shell), never guess the current date/time.
 
-Use the template below. **Omit any section with no real content** — don't leave empty headings. Keep entries factual and concrete (file paths, commit hashes, command invocations). Cross-reference files with `@path/to/file:line` so the next session can jump straight in.
+Use the template below. **Omit any section with no real content**, don't leave empty headings. Keep entries factual and concrete (file paths, commit hashes, command invocations). Cross-reference files with `@path/to/file:line` so the next session can jump straight in.
 
 ```markdown
 # Session Handoff
@@ -39,7 +39,7 @@ Use the template below. **Omit any section with no real content** — don't leav
 
 ## Accomplishments
 
-- {what shipped / was built — include commit hashes if committed}
+- {what shipped / was built, include commit hashes if committed}
 
 ## Decisions
 
@@ -58,7 +58,7 @@ Use the template below. **Omit any section with no real content** — don't leav
 
 ## Environment State
 
-- **Branch:** `{branch}` — {pushed/dirty}
+- **Branch:** `{branch}`, {pushed/dirty}
 - **Background processes:** {e.g. `pnpm dev` still running}
 - **Devices / simulators:** {physical device IDs, sim names, build installed}
 - **Test user / data:** {relevant fixtures}
@@ -88,8 +88,8 @@ Report in one line: saved path + count of accomplishments / decisions / gaps / n
 
 ## Rules
 
-- Do **not** dump the conversation verbatim — synthesize.
+- Do **not** dump the conversation verbatim, synthesize.
 - Every "Next Action" must be concrete enough to execute without context.
 - Every "Gap" must name a file and a diagnostic, not just "look into X".
 - Skip empty sections entirely rather than writing "N/A".
-- Never fabricate commit hashes, file paths, or device IDs — if unsure, omit.
+- Never fabricate commit hashes, file paths, or device IDs, if unsure, omit.

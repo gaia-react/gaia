@@ -10,11 +10,11 @@
  *
  * No-op on a main checkout (not a linked worktree). Pre-existing plain
  * files / dirs are moved to <path>.bak.<timestamp> before the symlink is
- * created. Exits 1 on any `failed` action — the user explicitly invoked
+ * created. Exits 1 on any `failed` action; the user explicitly invoked
  * the CLI, so surfacing the error is correct (the script counterpart
  * always exits 0 because it must not break worktree creation).
  *
- * Frozen JSON shape — see SPEC-005 plan README.md for the contract.
+ * Frozen JSON shape; see SPEC-005 plan README.md for the contract.
  */
 import {execFileSync} from 'node:child_process';
 import {
@@ -35,7 +35,7 @@ const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
   Idempotently create the three worktree shared-state symlinks pointing at
   the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
-  No-op on a main checkout (not a linked worktree) — exits 0 with a
+  No-op on a main checkout (not a linked worktree); exits 0 with a
   one-line "not a linked worktree" message.
 
   --json   Print a single JSON line describing the result instead of the
@@ -77,7 +77,7 @@ type SharedPathSpec = {
   /**
    * Whether the main-side target should be ensured (created if missing) as
    * a directory before the symlink is made. `setup-state.json` is a file
-   * and is intentionally NOT pre-created — the symlink dangles until the
+   * and is intentionally NOT pre-created; the symlink dangles until the
    * normal setup flow writes it; readers treat missing as "no state yet".
    */
   ensureTargetDir: boolean;
@@ -85,7 +85,7 @@ type SharedPathSpec = {
 };
 
 /**
- * Frozen path set — three entries, in this order, always present in the
+ * Frozen path set; three entries, in this order, always present in the
  * output `actions` array regardless of result. See SPEC-005 plan README.
  */
 const SHARED_PATHS: readonly SharedPathSpec[] = [
@@ -160,7 +160,7 @@ const linkOne = (inputs: LinkOneInputs): Action => {
         return {path: spec.relativePath, result: 'already-linked'};
       }
 
-      // Wrong target — back up the symlink and recreate.
+      // Wrong target; back up the symlink and recreate.
       const backupPath = `${sourcePath}.bak.${timestamp}`;
       renameSync(sourcePath, backupPath);
       symlink(targetPath, sourcePath);
@@ -172,7 +172,7 @@ const linkOne = (inputs: LinkOneInputs): Action => {
       };
     }
 
-    // Plain file / directory present — move aside and replace.
+    // Plain file / directory present; move aside and replace.
     const backupPath = `${sourcePath}.bak.${timestamp}`;
     renameSync(sourcePath, backupPath);
     symlink(targetPath, sourcePath);
@@ -291,7 +291,7 @@ export const run = (
 
   // Canonicalize the cwd (resolve symlinks like macOS /var -> /private/var)
   // so the main_root and worktree_root paths emitted in the JSON are
-  // self-consistent — git always returns canonical paths from --show-toplevel,
+  // self-consistent; git always returns canonical paths from --show-toplevel,
   // so the input cwd must be canonicalized before comparison.
   let canonicalCwd: string;
 
@@ -317,7 +317,7 @@ export const run = (
 
   // Resolve the current worktree root (may equal mainRoot on a main checkout).
   // Use git --show-toplevel mirroring the script. If `resolveMainWorktreeRoot`
-  // succeeded above, this fork is essentially guaranteed to succeed too — but
+  // succeeded above, this fork is essentially guaranteed to succeed too, but
   // guard for the unlikely case anyway.
   let worktreeRoot: string;
 

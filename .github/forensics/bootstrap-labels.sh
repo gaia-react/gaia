@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bootstrap-labels.sh — assert SPEC-002 phase-2 label vocabulary on the upstream
+# bootstrap-labels.sh: assert SPEC-002 phase-2 label vocabulary on the upstream
 # repo. Idempotent. Operator-wins on existing labels (color/description drift is
 # logged, never overwritten). Run-once by the maintainer before the triage
 # workflow ships; not invoked by CI.
@@ -42,10 +42,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Frozen label contract — name|color|description (per SPEC-002 task spec).
+# Frozen label contract, name|color|description (per SPEC-002 task spec).
 LABELS=(
   "gaia-forensics|5319e7|End-user bug report routed via /gaia-forensics. Triggers autonomous triage."
-  "gaia-triaged|0e8a16|Forensics triage workflow has processed this issue. Idempotency key — re-firing is a no-op."
+  "gaia-triaged|0e8a16|Forensics triage workflow has processed this issue. Idempotency key; re-firing is a no-op."
   "non-issue|cccccc|Triaged: not a bug. User-config issue, missing prerequisite, or duplicate. Issue closed."
   "needs-human|d93f0b|Triaged: out of autofix scope, malformed body, or ambiguous verdict. Maintainer review required."
   "auto-fixable|1d76db|Triaged: classifier proposed a fix in allowlisted scope. See linked draft PR."
@@ -85,7 +85,7 @@ for entry in "${LABELS[@]}"; do
     cur_color="${current%%|*}"
     cur_desc="${current#*|}"
     if [[ "$cur_color" != "$color" || "$cur_desc" != "$description" ]]; then
-      echo "::notice::label '$name' exists with drifted color/description — operator wins, not overwriting"
+      echo "::notice::label '$name' exists with drifted color/description, operator wins, not overwriting"
       drift=$((drift + 1))
       summary+=("$name|exists (drift)")
     else
@@ -106,9 +106,9 @@ echo
 
 if [[ $created -eq 0 ]]; then
   if [[ $DRY_RUN -eq 1 && $exists -eq ${#LABELS[@]} ]]; then
-    echo "no-op — all labels present"
+    echo "no-op: all labels present"
   elif [[ $DRY_RUN -eq 0 ]]; then
-    echo "no-op — all labels present"
+    echo "no-op: all labels present"
   fi
 fi
 

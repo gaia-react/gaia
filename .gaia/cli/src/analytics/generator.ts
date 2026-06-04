@@ -10,7 +10,7 @@
  * Writes nothing. The caller (writer.ts) handles persistence.
  *
  * The audit block is computed by `audit-attest.ts` after the rest of the
- * report is assembled — failing loud if any forbidden field would land.
+ * report is assembled, failing loud if any forbidden field would land.
  */
 import {decodeTime, ulid} from 'ulid';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
@@ -26,7 +26,7 @@ import {computeAuditBlock} from './audit-attest.js';
  * compute-profile's exact export path. TypeScript's structural typing
  * matches at the call site against compute-profile's exported type.
  *
- * `components` is `unknown` — analytics doesn't read it (the report exports
+ * `components` is `unknown`; analytics doesn't read it (the report exports
  * pattern aggregates, not the raw component breakdown), so the field is
  * carried for shape-compat with compute-profile's `{metric, value}[]` shape
  * without binding to that exact array shape here.
@@ -251,7 +251,7 @@ const buildPatternAggregates = (
  * v1.0.0 ships wired-but-inert: pattern-detection sample threshold (N≥10)
  * blocks any active pattern from firing until real-usage data accumulates.
  * Until then, every PatternResult yields no adaptation. This function is
- * the placeholder structure — adaptations land empty at v1.0.0 and shape
+ * the placeholder structure: adaptations land empty at v1.0.0 and shape
  * up against real signal in v1.x.
  */
 const buildAdaptationAggregates = (
@@ -270,7 +270,7 @@ type GenerateArgs = {
  *
  * Pure assembly; the caller atomically writes the result via writer.ts.
  * Throws via `computeAuditBlock` if the assembled body would carry any
- * forbidden field — drift surfaces at generation time, not after the
+ * forbidden field; drift surfaces at generation time, not after the
  * file lands.
  */
 export const generateAnalyticsReport = async (

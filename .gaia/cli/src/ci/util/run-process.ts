@@ -10,7 +10,7 @@
  *
  * Both helpers are synchronous (mirroring `wiki/util/git.ts`) and
  * return a small `{exitCode, stdout, stderr}` shape. We never throw
- * for non-zero exit codes — handlers branch on `exitCode` and emit
+ * for non-zero exit codes; handlers branch on `exitCode` and emit
  * structured errors themselves.
  */
 import {spawnSync} from 'node:child_process';

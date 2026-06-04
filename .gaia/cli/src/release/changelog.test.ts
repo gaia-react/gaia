@@ -108,7 +108,7 @@ describe('graduateChangelog', () => {
 
 ## [Unreleased]
 
-## [1.0.0] — 2026-01-01
+## [1.0.0] - 2026-01-01
 
 - Old entry
 `;
@@ -120,7 +120,7 @@ describe('graduateChangelog', () => {
 
     if (outcome.kind !== 'ok') return;
     expect(outcome.updated).toContain('## [Unreleased]');
-    expect(outcome.updated).toContain('## [1.1.0] — 2026-05-07');
+    expect(outcome.updated).toContain('## [1.1.0] - 2026-05-07');
     const unreleasedIdx = outcome.updated.indexOf('## [Unreleased]');
     const datedIdx = outcome.updated.indexOf('## [1.1.0]');
     expect(unreleasedIdx).toBeLessThan(datedIdx);
@@ -134,7 +134,7 @@ describe('graduateChangelog', () => {
   });
 
   test('returns no-unreleased when heading missing', () => {
-    const minimal = '# Changelog\n\n## [1.0.0] — 2026-01-01\n';
+    const minimal = '# Changelog\n\n## [1.0.0] - 2026-01-01\n';
     const outcome = graduateChangelog(
       minimal,
       '1.1.0',
@@ -160,7 +160,7 @@ const setupSandbox = (currentVersion: string): Sandbox => {
   );
   writeFileSync(
     path.join(root, 'CHANGELOG.md'),
-    `# Changelog\n\n## [Unreleased]\n\n## [1.0.0] — 2026-01-01\n\n- old\n`,
+    `# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n- old\n`,
     'utf8'
   );
 
@@ -255,7 +255,7 @@ describe('release changelog CLI', () => {
       path.join(sandbox.root, 'CHANGELOG.md'),
       'utf8'
     );
-    expect(changelog).toContain('## [1.1.0] — 2026-05-07');
+    expect(changelog).toContain('## [1.1.0] - 2026-05-07');
     expect(changelog).toContain('## [Unreleased]');
     expect(changelog).toContain('- shiny');
   });
@@ -284,7 +284,7 @@ describe('release changelog CLI', () => {
     sandbox = setupSandbox('1.1.0');
     writeFileSync(
       path.join(sandbox.root, 'CHANGELOG.md'),
-      '# Changelog\n\n## [1.0.0] — 2026-01-01\n',
+      '# Changelog\n\n## [1.0.0] - 2026-01-01\n',
       'utf8'
     );
     const runner = buildRunner([{subject: 'feat: shiny'}]);
@@ -315,6 +315,6 @@ describe('release changelog CLI', () => {
       path.join(sandbox.root, 'CHANGELOG.md'),
       'utf8'
     );
-    expect(changelog).toContain('## [2.0.0] — 2026-05-07');
+    expect(changelog).toContain('## [2.0.0] - 2026-05-07');
   });
 });

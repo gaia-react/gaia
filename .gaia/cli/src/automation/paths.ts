@@ -1,7 +1,7 @@
 /**
  * Path constants for GAIA CI configuration and per-tool state files.
  *
- * Every helper takes an explicit `repoRoot` argument — these primitives
+ * Every helper takes an explicit `repoRoot` argument; these primitives
  * never call `process.cwd()` themselves. Callers resolve the root via
  * `resolveRepoRoot` from `wiki/util/git.ts`, matching the wiki
  * primitives' pattern.

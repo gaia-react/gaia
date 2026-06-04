@@ -34,7 +34,7 @@ For the detected class, read only the files listed below. Record filename + one-
 | path                  | one-line summary rule                                                                                   |
 | --------------------- | ------------------------------------------------------------------------------------------------------- |
 | `.gaia/manifest.json` | presence + `version` field value                                                                        |
-| _(conflicted paths)_  | output of `git diff --name-only --diff-filter=U` — list of repo-relative conflicted paths, one per line |
+| _(conflicted paths)_  | output of `git diff --name-only --diff-filter=U`, list of repo-relative conflicted paths, one per line |
 
 ### wiki-sync
 
@@ -52,7 +52,7 @@ The verbatim failing command output stays in `## Symptom` (user-supplied). The `
 | path                    | one-line summary rule                                                       |
 | ----------------------- | --------------------------------------------------------------------------- |
 | `.claude/settings.json` | presence + top-level keys of the `hooks` object (key names only, no values) |
-| _(failing hook)_        | filename only if the user named it — never the script body                  |
+| _(failing hook)_        | filename only if the user named it, never the script body                  |
 
 ### scaffold
 
@@ -73,11 +73,11 @@ Universal envelope only. No class-specific reads.
 
 ## Exclusions
 
-The following are never captured — not even filenames in some cases:
+The following are never captured, not even filenames in some cases:
 
 - **Bodies of files under `app/` and `wiki/`.** Filenames from these directories are allowed in state summaries; full file contents are never read or included.
 - **Claude Code session JSONL contents.** Files matching `~/.claude/projects/*/session-*.jsonl` are entirely excluded in phase 1. Filenames from this path are also excluded.
-- **`.env*` files.** Always excluded — not even filenames appear in the snapshot.
+- **`.env*` files.** Always excluded, not even filenames appear in the snapshot.
 - **`node_modules/`.** Any path under `node_modules/` is excluded in full.
 - **`git log` body beyond one line.** Only the most recent commit's subject line is ever included; the full log body is excluded.
 - **Outputs exceeding ~80 lines or 4 KB.** If a captured snapshot entry exceeds either threshold, truncate and append `... (truncated)`.
@@ -109,6 +109,6 @@ class_state_files:
   - <repo-relative path>: <one-line summary>
 ```
 
-`class_state_files` is a YAML-style list of `<repo-relative path>: <one-line summary>` entries — one entry per file inspected for the detected class, in the order listed in the class-specific table above. For `quality-gate`, the single entry is `user-supplied output: <verbatim output>`. For `other`, `class_state_files` is an empty list (`[]`).
+`class_state_files` is a YAML-style list of `<repo-relative path>: <one-line summary>` entries, one entry per file inspected for the detected class, in the order listed in the class-specific table above. For `quality-gate`, the single entry is `user-supplied output: <verbatim output>`. For `other`, `class_state_files` is an empty list (`[]`).
 
 If a file is absent, its entry is `<repo-relative path>: absent`. If a field cannot be read, its entry is `<repo-relative path>: unreadable`.

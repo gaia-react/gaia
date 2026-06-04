@@ -34,7 +34,7 @@ const ROUTE_HANDLER_DEPTH_FROM_ROOT = ['.gaia', 'cli', 'src', 'scaffold'];
  * its template directory and repo root via `import.meta.url`; we stub
  * `import.meta.url` by spying on `fileURLToPath` is brittle, so instead we
  * test the handler by directly constructing inputs that match its
- * `repoRoot()` calculation. We do that by chdir-ing — but the handler does
+ * `repoRoot()` calculation. We do that by chdir-ing, but the handler does
  * not use cwd. Instead, we test the handler by invoking it with a
  * monkey-patched module path is overkill. Use a simpler strategy: spy on
  * `fileURLToPath` is hard since it's read at module load.
@@ -158,7 +158,7 @@ const seedLocaleBarrel = (fakeRoot: string, body: string): string => {
   return filePath;
 };
 
-describe('scaffold route — argument validation', () => {
+describe('scaffold route: argument validation', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
@@ -214,7 +214,7 @@ describe('scaffold route — argument validation', () => {
   });
 });
 
-describe('scaffold route — base emission (_session+)', () => {
+describe('scaffold route: base emission (_session+)', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
@@ -342,7 +342,7 @@ describe('scaffold route — base emission (_session+)', () => {
   });
 });
 
-describe('scaffold route — flag combos', () => {
+describe('scaffold route: flag combos', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
@@ -487,7 +487,7 @@ describe('scaffold route — flag combos', () => {
   });
 });
 
-describe('scaffold route — idempotency', () => {
+describe('scaffold route: idempotency', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
@@ -553,7 +553,7 @@ describe('scaffold route — idempotency', () => {
   });
 });
 
-describe('scaffold route — barrel alphabetical insert correctness', () => {
+describe('scaffold route: barrel alphabetical insert correctness', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {

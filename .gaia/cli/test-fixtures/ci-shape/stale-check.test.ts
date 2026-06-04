@@ -18,7 +18,7 @@ import {run} from '../../src/ci/stale-check.js';
 import {installGhMock, type GhMock} from './gh-mock.js';
 import {captureStdio, setupSandbox, type Sandbox} from './sandbox.js';
 
-describe('UAT-019 — stale-PR pre-run skip', () => {
+describe('UAT-019; stale-PR pre-run skip', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
   let mock: GhMock;

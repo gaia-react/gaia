@@ -5,7 +5,7 @@
  * `parseRemoteUrl`. Returns the four parsed fields on success; returns
  * `{ found: false, ... }` on missing remote.
  *
- * Exits 0 in every branch where the working directory is a git repo —
+ * Exits 0 in every branch where the working directory is a git repo;
  * `detect-remote` is a query. Exits non-zero only for `not_a_git_repo`.
  */
 import {execFileSync} from 'node:child_process';

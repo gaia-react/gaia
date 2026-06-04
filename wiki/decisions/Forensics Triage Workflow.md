@@ -12,7 +12,7 @@ tags: [decision, ci, automation, security]
 
 A GitHub Actions workflow at `.github/workflows/forensics-triage.yml` triages every `gaia-forensics`-labeled issue on the upstream repo without human action. It closes non-issues, escalates real-but-out-of-scope reports to the maintainer, and opens scope-bounded draft PRs (gated by the [[Quality Gate]] and human review on `main`) for fixable defects.
 
-The workflow is autonomous by design. The maintainer's irreducible attention surface is reviewing the candidate fix on the draft PR — never reading raw issue traffic, never running mechanical classification.
+The workflow is autonomous by design. The maintainer's irreducible attention surface is reviewing the candidate fix on the draft PR, never reading raw issue traffic, never running mechanical classification.
 
 ## What it does
 
@@ -22,13 +22,13 @@ Lifecycle:
 
 1. **Idempotency check.** If the issue already carries `gaia-triaged`, the workflow exits with no work. The fail-forward final step also suppresses re-application of the label.
 2. **Body parse.** A pure-shell parser at `.github/forensics/parse-issue-body.sh` extracts the four required sections (`## Symptom`, `## Classification`, `## Capture`, `## Reproduction context`) plus frontmatter from the strict-schema issue body. The LLM is never invoked for extraction. Missing or malformed sections route the issue to `needs-human` with a comment naming the offending section, and no classification runs.
-3. **Classify.** `anthropics/claude-code-action` runs the prompt at `.github/forensics/prompt.md` with the parsed sections rendered in. The action runs with `--max-turns 1` and tool access disabled (no `Bash`, `Read`, `Edit`, `Write`, `WebFetch`, `WebSearch`) — judgment only, no side effects on the working tree. The classifier emits a single trailing `GAIA-VERDICT: <class>` line; `parse-verdict.sh` extracts it deterministically. Missing, duplicated, or out-of-set verdict lines downgrade to `ambiguous` and route to `needs-human`.
+3. **Classify.** `anthropics/claude-code-action` runs the prompt at `.github/forensics/prompt.md` with the parsed sections rendered in. The action runs with `--max-turns 1` and tool access disabled (no `Bash`, `Read`, `Edit`, `Write`, `WebFetch`, `WebSearch`); judgment only, no side effects on the working tree. The classifier emits a single trailing `GAIA-VERDICT: <class>` line; `parse-verdict.sh` extracts it deterministically. Missing, duplicated, or out-of-set verdict lines downgrade to `ambiguous` and route to `needs-human`.
 4. **Act on verdict.**
-   - `non-issue` — close the issue, comment with the classifier's reasoning, label `non-issue`.
-   - `needs-human` — label `needs-human`, comment with the reasoning, mention the maintainer. Issue stays open.
-   - `auto-fixable` — proceed to the fix-attempt path.
+   - `non-issue`: close the issue, comment with the classifier's reasoning, label `non-issue`.
+   - `needs-human`: label `needs-human`, comment with the reasoning, mention the maintainer. Issue stays open.
+   - `auto-fixable`: proceed to the fix-attempt path.
 5. **Scope check (pre-fix).** `check-scope.sh` runs over the classifier's `Proposed paths` block. Any path outside the allowlist (or on the explicit denylist) demotes the issue to `needs-human` with a comment naming the rejected paths. No branch is created.
-6. **Apply fix.** A second `claude-code-action` invocation runs the fix-application prompt with `--allowedTools Edit,Read,Write` only — no shell, no git, no network. The branch `forensics/<issue-num>-<class-slug>` is created locally from `origin/main`.
+6. **Apply fix.** A second `claude-code-action` invocation runs the fix-application prompt with `--allowedTools Edit,Read,Write` only; no shell, no git, no network. The branch `forensics/<issue-num>-<class-slug>` is created locally from `origin/main`.
 7. **Post-fix scope check.** Even within the allowlist, the diff must be a subset of the classifier's proposed paths. Any deviation aborts before commit and demotes to `needs-human`.
 8. **Quality Gate.** `.github/forensics/run-quality-gate.sh` runs `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test --run`, and `pnpm knip` in order, halt-on-first-fail. Gate failure abandons the branch (it was never pushed) and demotes the issue to `needs-human` with a comment naming the failed step and a log excerpt.
 9. **Open draft PR.** Gate pass pushes the branch and opens a draft PR. PR body cites the `## Capture` section verbatim. Labels `auto-fixable` and `gaia-bug-confirmed` attach to the issue.
@@ -50,7 +50,7 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 | `.claude/commands/`         | Slash command definitions.                        |
 | `.claude/agents/`           | Sub-agent definitions.                            |
 | `.gaia/statusline/`         | Statusline scripts.                               |
-| `.specify/extensions/gaia/` | GAIA spec-kit extension — excluding `templates/`. |
+| `.specify/extensions/gaia/` | GAIA spec-kit extension, excluding `templates/`. |
 | `.gaia/manifest.json`       | Distribution manifest.                            |
 
 ### Denylist (never modify)
@@ -85,12 +85,12 @@ The `gaia-forensics` trigger label is owned by phase 1 of the forensics arc (the
 
 The workflow handles two secrets:
 
-- `ANTHROPIC_API_KEY` — consumed only by `anthropics/claude-code-action`. Never echoed.
-- `GITHUB_TOKEN` — workflow-default token, scoped to the minimum permissions: `issues: write`, `contents: write`, `pull-requests: write`, `actions: read`.
+- `ANTHROPIC_API_KEY`: consumed only by `anthropics/claude-code-action`. Never echoed.
+- `GITHUB_TOKEN`: workflow-default token, scoped to the minimum permissions: `issues: write`, `contents: write`, `pull-requests: write`, `actions: read`.
 
-Secret-shape masking: before rendering either prompt, the workflow scans the parsed issue sections for byte patterns that look like leaked tokens (`sk-ant-…`, `ghp_…`, `github_pat_…`) and emits `::add-mask::` for each match. Phase 1 redacts the body before the issue ever opens — this is defense-in-depth against an unredacted leak slipping through.
+Secret-shape masking: before rendering either prompt, the workflow scans the parsed issue sections for byte patterns that look like leaked tokens (`sk-ant-…`, `ghp_…`, `github_pat_…`) and emits `::add-mask::` for each match. Phase 1 redacts the body before the issue ever opens; this is defense-in-depth against an unredacted leak slipping through.
 
-Redaction passthrough: phase-1 redaction tokens (`<redacted>`, repo-relative paths derived from absolutes) appear verbatim in every derived artifact — classifier comment, PR body, branch content. The workflow never re-redacts, de-redacts, or normalizes.
+Redaction passthrough: phase-1 redaction tokens (`<redacted>`, repo-relative paths derived from absolutes) appear verbatim in every derived artifact, classifier comment, PR body, branch content. The workflow never re-redacts, de-redacts, or normalizes.
 
 Branch protection and the draft-PR contract are the autonomous-mode safety rails:
 
@@ -110,7 +110,7 @@ Branch protection and the draft-PR contract are the autonomous-mode safety rails
 | **Two events for the same issue fire in rapid succession.**                                                                                                             | A `concurrency` block keyed on the issue number with `cancel-in-progress: false` queues the second run. The first run applies `gaia-triaged`; the queued run hits the early-exit and does no work. No duplicate label, comment, branch, or PR.                |
 | **Job exceeds 30 minutes.**                                                                                                                                             | The job-level timeout aborts cleanly. The workflow is fail-forward: any labels applied before the timeout stay (no rollback).                                                                                                                                 |
 
-There is no retry loop. One fix attempt per issue; failure is terminal in autonomous mode. A maintainer can manually unstick by removing `gaia-triaged` and re-firing — that is a manual operation, outside the workflow's contract.
+There is no retry loop. One fix attempt per issue; failure is terminal in autonomous mode. A maintainer can manually unstick by removing `gaia-triaged` and re-firing; that is a manual operation, outside the workflow's contract.
 
 ## Amendment process
 
@@ -120,16 +120,16 @@ The auto-fix allowlist and the canonical denylist are part of the workflow's imm
 2. The classifier prompt at `.github/forensics/prompt.md` (rendered into the `{{ALLOWLIST}}` and `{{DENYLIST}}` placeholders by the workflow YAML).
 3. The deterministic check at `.github/forensics/check-scope.sh`.
 
-Amending either list requires a SPEC reopen — adding a path through a PR-only change is not an authorized path. The SPEC artifact is the source of truth; this page and the scripts are derivations.
+Amending either list requires a SPEC reopen; adding a path through a PR-only change is not an authorized path. The SPEC artifact is the source of truth; this page and the scripts are derivations.
 
 Adding a new label to the vocabulary:
 
 1. Append the entry to `bootstrap-labels.sh`'s `LABELS` array (`name|color|description`).
-2. Re-run `bootstrap-labels.sh` against the upstream repo (idempotent — re-runs are no-ops on existing labels).
+2. Re-run `bootstrap-labels.sh` against the upstream repo (idempotent; re-runs are no-ops on existing labels).
 3. Update the label vocabulary table on this page.
 4. Wire any handler that needs to apply the new label.
 
-Modifying the workflow YAML or any `.github/forensics/` script is a normal PR — except those paths are themselves on the workflow's denylist, so the changes ship through human-authored PRs only, never through autonomous triage.
+Modifying the workflow YAML or any `.github/forensics/` script is a normal PR; except those paths are themselves on the workflow's denylist, so the changes ship through human-authored PRs only, never through autonomous triage.
 
 ## Signals to revisit
 
@@ -137,11 +137,11 @@ The default-deny path policy and the no-cross-issue-learning posture are deliber
 
 ### Allowlist expansion
 
-`needs-human` comments name the rejected paths in their `reason: out-of-scope` body. When a single unenumerated path recurs across five or more distinct issues, it is a candidate for the auto-fix allowlist. Adding the path requires a SPEC reopen — not a PR-only edit — because the allowlist is part of the workflow's immutable contract.
+`needs-human` comments name the rejected paths in their `reason: out-of-scope` body. When a single unenumerated path recurs across five or more distinct issues, it is a candidate for the auto-fix allowlist. Adding the path requires a SPEC reopen, not a PR-only edit, because the allowlist is part of the workflow's immutable contract.
 
 ### Cross-issue learning
 
-The classifier runs on each issue independently. Manual maintainer corrections accumulate as a queue of human-corrected outcomes: re-labelled issues, manual closures, rejected draft PRs. When that queue exceeds fifty items across all classes, the data set is worth feeding back into the classifier as priors, batched-triage queues, or supervised retraining loops — work that warrants its own SPEC.
+The classifier runs on each issue independently. Manual maintainer corrections accumulate as a queue of human-corrected outcomes: re-labelled issues, manual closures, rejected draft PRs. When that queue exceeds fifty items across all classes, the data set is worth feeding back into the classifier as priors, batched-triage queues, or supervised retraining loops, work that warrants its own SPEC.
 
 Both signals are tracked by the maintainer health audit, which aggregates the reason-codes and flags threshold crossings.
 
@@ -169,7 +169,7 @@ GitHub Actions logs apply `::add-mask::` automatically: any masked value renders
 
 1. From the Actions tab, open the run.
 2. Each `::group::` block (e.g. `quality-gate: lint`) collapses verbose output. Expand only what is relevant to the question.
-3. The `Run Quality Gate` step's `summary_file` JSON is the canonical failure record — it contains the failed step, exit code, and a trimmed log excerpt. The full per-step log lives in the runner's temp dir and only surfaces in the action log; it is never posted to comments or PR bodies.
+3. The `Run Quality Gate` step's `summary_file` JSON is the canonical failure record; it contains the failed step, exit code, and a trimmed log excerpt. The full per-step log lives in the runner's temp dir and only surfaces in the action log; it is never posted to comments or PR bodies.
 4. If a comment or PR body looks like it might contain a secret, treat it as a leak and rotate the secret. The workflow never intentionally writes secret-shaped values to derived artifacts; an unmasked secret in a comment is a regression.
 
 ### Inspect a fix attempt without merging
@@ -178,5 +178,5 @@ Draft PRs the workflow opens are normal PRs in every other respect. Check out th
 
 ## See also
 
-- [[Quality Gate]] — the gate this workflow runs on every fix-attempt branch.
-- [[Wiki Management]] — adjacent automation primitives (different surface).
+- [[Quality Gate]]: the gate this workflow runs on every fix-attempt branch.
+- [[Wiki Management]]: adjacent automation primitives (different surface).

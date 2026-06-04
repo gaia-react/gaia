@@ -4,7 +4,7 @@
  * No `AskUserQuestion`. Existing files are NOT touched (data preserved); the
  * compute-profile guard short-circuits while disabled.
  *
- * `analyticsEnabled` is carried forward from the prior config state — disable
+ * `analyticsEnabled` is carried forward from the prior config state; disable
  * does not flip the analytics preference. Disable only addresses the
  * mentorship flag and JSONL writes.
  */
@@ -65,7 +65,7 @@ export const run = (
     return EXIT_CODES.CONFIG_INVALID;
   }
 
-  // Remove the mentorship-display rule from per-machine memory. Idempotent —
+  // Remove the mentorship-display rule from per-machine memory. Idempotent;
   // a no-op when the rule was never installed (e.g. the user is disabling
   // an enable that was set via the legacy `.claude/rules/` path).
   removeDisplayRule(roots);

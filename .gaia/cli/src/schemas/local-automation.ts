@@ -49,7 +49,7 @@ export const readLocalAutomation = (
     parsed = JSON.parse(raw);
   } catch (error) {
     return {
-      error: `${filePath}: invalid JSON — ${error instanceof Error ? error.message : String(error)}`,
+      error: `${filePath}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
       status: 'malformed',
     };
   }

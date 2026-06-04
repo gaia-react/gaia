@@ -119,7 +119,7 @@ export const findCollisions = (
         const slugB = slugs[j] as string;
         const normB = normalizeSlug(slugB);
 
-        // Skip true duplicates (identical raw slug) — that case can't
+        // Skip true duplicates (identical raw slug); that case can't
         // happen on a real filesystem and is meaningless to flag.
         if (slugA === slugB) continue;
 

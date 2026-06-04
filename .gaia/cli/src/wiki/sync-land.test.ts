@@ -5,7 +5,7 @@
  * --show-toplevel` resolves the sandbox root, then inject a fake
  * `CommandRunner` that returns canned `SpawnSyncReturns<string>` values
  * keyed off the argv. Each test asserts both the handler's exit code
- * and the exact sequence of git/gh invocations the fake observed —
+ * and the exact sequence of git/gh invocations the fake observed;
  * proving the CLI shapes the call pipeline correctly without depending
  * on a real `gh` binary or remote.
  */
@@ -152,7 +152,7 @@ describe('wiki sync land', () => {
     vi.restoreAllMocks();
   });
 
-  test('on a feature branch with only wiki changes — in-place commit, exit 0', () => {
+  test('on a feature branch with only wiki changes: in-place commit, exit 0', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
@@ -197,7 +197,7 @@ describe('wiki sync land', () => {
     expect(ghVerbs).toHaveLength(0);
   });
 
-  test('on main without --branch-aware — exit 1 with branch-policy message', () => {
+  test('on main without --branch-aware: exit 1 with branch-policy message', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
@@ -224,7 +224,7 @@ describe('wiki sync land', () => {
     expect(recorded.find((c) => c.command === 'gh')).toBeUndefined();
   });
 
-  test('on main with --branch-aware — branch + commit + push + PR + auto-merge', () => {
+  test('on main with --branch-aware: branch + commit + push + PR + auto-merge', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
@@ -435,7 +435,7 @@ describe('wiki sync land', () => {
   test('in-place flow unstages wiki when commit fails after a successful add', () => {
     // Regression: the `staged` flag is derived from a structured `marks`
     // field on the step descriptor, not the first argv token. A failed
-    // commit after a successful `add` must still reset the index — proving
+    // commit after a successful `add` must still reset the index; proving
     // the derivation does not depend on argv position.
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
@@ -476,7 +476,7 @@ describe('wiki sync land', () => {
     expect(recorded.filter((c) => c.command === 'gh')).toHaveLength(0);
   });
 
-  test('working tree with non-wiki changes — exit 1', () => {
+  test('working tree with non-wiki changes: exit 1', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
@@ -501,7 +501,7 @@ describe('wiki sync land', () => {
     expect(recorded.find((c) => c.args[0] === 'commit')).toBeUndefined();
   });
 
-  test('empty working tree — exit 1', () => {
+  test('empty working tree: exit 1', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(

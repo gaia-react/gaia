@@ -11,7 +11,7 @@
 #
 # Usage: GAIA_CI_SHAPE_E2E=1 bash .gaia/cli/test-fixtures/ci-shape/composite-actions.smoke.sh
 #
-# Skipped silently when GAIA_CI_SHAPE_E2E is unset — the default
+# Skipped silently when GAIA_CI_SHAPE_E2E is unset; the default
 # `pnpm test --run` should not depend on these tools being installed.
 
 set -euo pipefail

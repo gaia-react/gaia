@@ -3,7 +3,7 @@
  *
  * Replaces the prose `new-service` skill. Emits the per-service folder
  * (`app/services/gaia/<name>/`) with parsers, types, requests, urls, and a
- * barrel — and, when `--mocks` is passed, the matching MSW mock collection
+ * barrel, and when `--mocks` is passed, the matching MSW mock collection
  * under `test/mocks/<name>/` plus an alphabetical insert into
  * `test/mocks/database.ts`.
  *
@@ -693,7 +693,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   });
   writeRendered(path.join(mockDir, 'index.ts'), barrelBody, result);
 
-  // Edit the database barrel — only when --mocks; otherwise no edit.
+  // Edit the database barrel; only when --mocks, otherwise no edit.
   const databasePath = path.join(repoRoot, 'test', 'mocks', 'database.ts');
 
   if (existsSync(databasePath)) {

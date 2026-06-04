@@ -6,7 +6,7 @@
  * synthetic manifest. Run the handler against each fixture and assert
  * both the JSON report and the on-disk side effects.
  *
- * `git merge-file` is exercised for real (no mock) — it ships with git,
+ * `git merge-file` is exercised for real (no mock); it ships with git,
  * which is already a hard dependency of the CLI.
  */
 import {execFileSync} from 'node:child_process';
@@ -298,7 +298,7 @@ describe('update merge', () => {
     // A command/skill rename drops the old path from the manifest and the
     // latest tarball and enters the new path into both. The adopter still
     // carries the old file. The merge decomposes this into an add for the
-    // new path and a delete surfaced for the old one — no auto-removal.
+    // new path and a delete surfaced for the old one; no auto-removal.
     const body = 'command body\n';
     sandbox.writeTree('cwd', '.claude/commands/old-name.md', body);
     sandbox.writeTree('baseline', '.claude/commands/old-name.md', body);

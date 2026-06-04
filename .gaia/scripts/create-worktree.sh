@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# WorktreeCreate hook — creates a git worktree and sets up GAIA shared-state
+# WorktreeCreate hook: creates a git worktree and sets up GAIA shared-state
 # symlinks. Claude Code fires this hook and waits for the worktree path on
 # stdout before the agent starts.
 #
-# Input:  JSON on stdin — worktree_name, base_ref, cwd (plus common fields).
+# Input:  JSON on stdin: worktree_name, base_ref, cwd (plus common fields).
 # Output: absolute worktree path on stdout.
 # Exit:   0 on success with path; non-zero aborts the caller.
 

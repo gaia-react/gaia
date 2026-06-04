@@ -10,14 +10,14 @@ Fired automatically by spec-kit on the `before_implement` event (mandatory hook)
 
 The render target is the SPEC artifact whose UATs back the upcoming `/speckit-implement` run. In a GAIA project that artifact lives at `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 
-Resolve the path in this order (4-step algorithm; locked post-probe — `.specify/feature.json` carries no SPEC backreference, so a feature-cross-walk step was dropped):
+Resolve the path in this order (4-step algorithm; locked post-probe, `.specify/feature.json` carries no SPEC backreference, so a feature-cross-walk step was dropped):
 
 1. If `$ARGUMENTS` carries an explicit `SPEC-NNN` id or absolute path, use it.
 2. Otherwise pick the most-recent `.gaia/local/specs/SPEC-NNN/SPEC.md` with `status: in-progress`, modified within the last 30 minutes.
 3. Otherwise the single `.gaia/local/specs/SPEC-NNN/SPEC.md` with `status: in-progress` (only if exactly one exists).
 4. Otherwise `AskUserQuestion`: list all in-progress SPECs and ask which one to render. Do NOT guess.
 
-The GAIA preset's `/speckit-specify` wrapper relocates and stamps the SPEC immediately after authoring, so the just-written SPEC is the most-recent in-progress entry — step 2 covers the `/speckit-specify` → `/gaia-plan` → `/speckit-implement` chain. Step 3 handles the common single-feature case.
+The GAIA preset's `/speckit-specify` wrapper relocates and stamps the SPEC immediately after authoring, so the just-written SPEC is the most-recent in-progress entry, step 2 covers the `/speckit-specify` → `/gaia-plan` → `/speckit-implement` chain. Step 3 handles the common single-feature case.
 
 ## Run the render helper
 
@@ -33,15 +33,15 @@ The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe thro
 
   > `before_implement` UAT-write complete: <written> written, <rewritten> rewritten, <deleted> deleted, <fixme> fixme, <unchanged> unchanged. Specs at `.playwright/e2e/<spec-dir>/`. Cache: `.gaia/local/cache/uat-write/<SPEC-ID>.json`.
 
-  Then, if `summary.fixme > 0`, list each fixme'd UAT with its `abstraction_blocker`. The implementer needs to see these on turn 1 — those UATs need a SPEC reopen before they can turn green.
+  Then, if `summary.fixme > 0`, list each fixme'd UAT with its `abstraction_blocker`. The implementer needs to see these on turn 1, those UATs need a SPEC reopen before they can turn green.
 
   Suggest the implementer's first command:
 
-  > Suggested first action: `pnpm pw .playwright/e2e/<spec-dir>/` — confirms red-state baseline.
+  > Suggested first action: `pnpm pw .playwright/e2e/<spec-dir>/`, confirms red-state baseline.
 
-- **Operational failure (`ok: false`, exit `1`).** Emit the helper's `error` message verbatim. Do NOT proceed to `/speckit-implement`'s source edits — the implementer agent is responsible for reading the failure and halting the lifecycle.
+- **Operational failure (`ok: false`, exit `1`).** Emit the helper's `error` message verbatim. Do NOT proceed to `/speckit-implement`'s source edits, the implementer agent is responsible for reading the failure and halting the lifecycle.
 
-- **Usage error (exit `2`).** Treat as a tooling problem, not a SPEC problem. Report the stderr message and skip without blocking the lifecycle. The user's `/speckit-implement` continues, but without a generated harness — the implementer should write tests inline as fallback and acknowledge the harness was not available.
+- **Usage error (exit `2`).** Treat as a tooling problem, not a SPEC problem. Report the stderr message and skip without blocking the lifecycle. The user's `/speckit-implement` continues, but without a generated harness, the implementer should write tests inline as fallback and acknowledge the harness was not available.
 
 ## Notes
 

@@ -141,7 +141,7 @@ run_in() {
   [ "$(readlink "$LINKED/.gaia/local/setup-state.json")" = "$MAIN/.gaia/local/setup-state.json" ]
 
   # The broken symlink got renamed to a .bak file (which is itself still a
-  # broken symlink — `mv` of a symlink moves the link, not the target).
+  # broken symlink; `mv` of a symlink moves the link, not the target).
   bak="$(ls "$LINKED/.gaia/local/" | grep '^setup-state\.json\.bak\.')"
   [ -n "$bak" ]
   [ -L "$LINKED/.gaia/local/$bak" ]

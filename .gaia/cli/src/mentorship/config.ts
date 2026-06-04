@@ -10,7 +10,7 @@ export const CONFIG_FILENAME = 'mentorship.json';
 /**
  * Resolve `<repoRoot>/.gaia/local/mentorship.json`.
  *
- * `StorageRoots` is a frozen contract — extending it for this single
+ * `StorageRoots` is a frozen contract; extending it for this single
  * sibling-of-`.project-id` path would force a contract change for a path that
  * only the mentorship module reads/writes. `roots.projectIdPath` is
  * `<repoRoot>/.gaia/local/.project-id`, so its parent directory is the
@@ -35,7 +35,7 @@ const PRE_DECISION_DEFAULT: MentorshipConfig = {
  * default ({ enabled: null, ... }) without writing anything to disk.
  *
  * Validates against MentorshipConfigSchema. Throws on malformed JSON or a
- * shape that fails validation — a corrupted config should fail loud rather
+ * shape that fails validation; a corrupted config should fail loud rather
  * than silently default to "off".
  */
 export const readMentorshipConfig = (roots: StorageRoots): MentorshipConfig => {
@@ -65,7 +65,7 @@ type WriteArguments = {
  * Write the mentorship config atomically (write-temp-and-rename to avoid
  * half-written state visible to a concurrent reader).
  *
- * Mode 644 — the file lives under `.gaia/local/` (gitignored, in-project)
+ * Mode 644; the file lives under `.gaia/local/` (gitignored, in-project)
  * and records the user's mentorship choice, not identity.
  *
  * `decided_at` is set to the current ISO-8601 UTC timestamp.

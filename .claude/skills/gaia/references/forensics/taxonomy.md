@@ -13,7 +13,7 @@ The forensics classifier uses a closed set of eight classes. Every report carrie
 | hook         | `.claude/hooks/*.sh` misfire                                     | "hook", "PreToolUse", "PostToolUse", "session-start", "session-stop" | `.claude/settings.json`, `.claude/hooks/<failing>.sh` filename only   |
 | scaffold     | `new-component` / `new-route` / `new-hook` / `new-service` skill | "scaffold", "new-component", "skeleton", "template"                  | `.claude/skills/<failing>/SKILL.md`                                   |
 | dev-server   | `pnpm dev` / Vite / SSR boot                                     | "dev server", "vite", "5173", "SSR error"                            | `vite.config.ts` filename, `package.json` `scripts.dev`               |
-| other        | unknown / multi-class / novel                                    | (none — fallthrough)                                                 | (none — capture is the generic snapshot only)                         |
+| other        | unknown / multi-class / novel                                    | (none, fallthrough)                                                 | (none, capture is the generic snapshot only)                         |
 
 State files are advisory pointers to class-specific evidence. For per-class capture details and version-fetch primitives, see `capture.md` in this directory.
 
@@ -22,7 +22,7 @@ State files are advisory pointers to class-specific evidence. For per-class capt
 The agent is the classifier. The table above is the contract; the procedure below shapes the agent's application of it.
 
 1. Tokenize the user's problem description (and any prior-turn context if the user invoked the skill with no argument and answered the single clarifying question).
-2. For each class in the table's declared order — `init`, `update`, `wiki-sync`, `quality-gate`, `hook`, `scaffold`, `dev-server`, `other` — check whether any signal phrase appears. Match is case-insensitive substring; no regex engine required.
+2. For each class in the table's declared order, `init`, `update`, `wiki-sync`, `quality-gate`, `hook`, `scaffold`, `dev-server`, `other`, check whether any signal phrase appears. Match is case-insensitive substring; no regex engine required.
 3. If exactly one class matches: that is the class.
 4. If multiple classes match: pick the **first** in the table's declared order. Cite all matched signal phrases in the evidence note.
 5. If zero classes match: class is `other`. Evidence note: `no taxonomy class matched`.
@@ -62,9 +62,9 @@ After classification, the agent decides whether the failure is a user-config iss
 
 **User-config branch:** print the remediation steps inline. Do NOT offer to file a GH issue. Saving the local report still happens unconditionally.
 
-**Probable-bug branch:** save locally, then offer the GH issue. Do NOT print user-config remediation — the problem is not the user's environment.
+**Probable-bug branch:** save locally, then offer the GH issue. Do NOT print user-config remediation, the problem is not the user's environment.
 
-The two branches are mutually exclusive per invocation. If multiple signals fire (e.g. wrong Node version AND an unexpected crash), apply the user-config branch — the environment is the more likely root cause and the user can rerun after fixing it.
+The two branches are mutually exclusive per invocation. If multiple signals fire (e.g. wrong Node version AND an unexpected crash), apply the user-config branch, the environment is the more likely root cause and the user can rerun after fixing it.
 
 ## Disjointness from other taxonomies
 

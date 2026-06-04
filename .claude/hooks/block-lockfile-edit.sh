@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse Edit/Write hook: deny direct edits to package lockfiles.
 # Lockfile changes must come from `pnpm install` (or equivalent), never from
-# manual edits — which routinely produce broken/inconsistent lockfiles.
+# manual edits, which routinely produce broken/inconsistent lockfiles.
 set -euo pipefail
 
 payload=$(cat)

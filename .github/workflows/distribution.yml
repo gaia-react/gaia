@@ -4,7 +4,7 @@ name: Distribution
 # need only Node + pnpm; Layer 2 additionally needs Docker (pre-installed on
 # ubuntu-latest) and a Claude OAuth token (from org secrets).
 #
-# Trigger is `workflow_dispatch` only — used to run the harness on a feature
+# Trigger is `workflow_dispatch` only, used to run the harness on a feature
 # branch for ad-hoc verification of harness changes themselves. The
 # production gate lives inside `release.yml` (pre-publish, before tarball
 # build). No automatic trigger here on purpose: `release.published` fires

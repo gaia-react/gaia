@@ -100,7 +100,7 @@ const buildRunner =
     return okResult('');
   };
 
-/** A realistic full 40-char SHA — the value `gaia wiki state` records. */
+/** A realistic full 40-char SHA: the value `gaia wiki state` records. */
 const STATE_SHA = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
 /** `git log` range query uses the resolved (full) SHA. */
 const DRIFT_RANGE = `${STATE_SHA}..HEAD`;
@@ -109,7 +109,7 @@ const REVPARSE_ARGS = ['rev-parse', '--verify', `${STATE_SHA}^{commit}`];
 
 /**
  * The recovery baseline `gaia wiki state` reports as `suggested_base` when the
- * recorded SHA is orphaned (`reachable:false`) — an abbreviated SHA, like
+ * recorded SHA is orphaned (`reachable:false`), an abbreviated SHA, like
  * `state_sha`.
  */
 const SUGGESTED_BASE = 'f6e5d4c3';
@@ -431,7 +431,7 @@ describe('release preflight', () => {
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('wiki is 2 commits behind HEAD');
-    // The orphaned state_sha range is topologically unreliable after a squash —
+    // The orphaned state_sha range is topologically unreliable after a squash;
     // the gate inspects suggested_base..HEAD, never state_sha..HEAD.
     expect(recorded.some((call) => call.args.includes(SUGGESTED_RANGE))).toBe(
       true
@@ -473,7 +473,7 @@ describe('release preflight', () => {
   });
 
   test('exit 0 when orphaned state has no recoverable baseline', () => {
-    // suggested_base empty means the timestamp predates all history — there is
+    // suggested_base empty means the timestamp predates all history; there is
     // nothing un-evaluated to recover, so today's pass is preserved.
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
@@ -547,7 +547,7 @@ describe('release preflight', () => {
   test('reachable path ignores suggested_base and uses state_sha', () => {
     // Defensive regression: the recovery branch is gated on `!reachable`. Even
     // if a payload carried suggested_base while reachable, the count must come
-    // from the JSON's commits_ahead and the range from state_sha — byte
+    // from the JSON's commits_ahead and the range from state_sha; byte
     // identical to the pre-recovery behavior.
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(

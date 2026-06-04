@@ -9,7 +9,7 @@
 # one hook in isolation against canned inputs; this suite drives the REAL
 # capture code path to WRITE the ledger and then the REAL check code path to
 # READ it, in one tmp repo, so the signal one hook records is the exact signal
-# the other recomputes — the central guarantee the gate rests on.
+# the other recomputes; the central guarantee the gate rests on.
 #
 # Both hooks run with pwd = the tmp repo, mirroring production's pwd = repo
 # root. The shared shell lib (.claude/hooks/lib) and the signal helper
@@ -23,7 +23,7 @@
 # vitest json through the capture hook's documented RED_CAPTURE_JSON_OVERRIDE
 # seam. The signal is NOT canned: the capture hook recomputes it from the staged
 # test file's real on-disk body via the helper, and the check hook recomputes it
-# the same way — so RED→GREEN proves a genuine signal handshake, and
+# the same way; so RED→GREEN proves a genuine signal handshake, and
 # edited-after-RED proves the handshake breaks when the body changes.
 
 setup() {
@@ -132,7 +132,7 @@ test("adds two numbers", () => {
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
 
-  # Stage the (unchanged) test — its current signal equals the captured one.
+  # Stage the (unchanged) test; its current signal equals the captured one.
   stage "app/x/index.test.ts"
   run_check
   [ "$status" -eq 0 ]

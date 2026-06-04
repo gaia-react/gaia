@@ -13,6 +13,6 @@ export type PatternResult = {
   components: {metric: string; value: number}[];
   pattern_id: PatternId;
   sample_count: number;
-  // null when sample_count < MIN_SAMPLE_COUNT — "below sample threshold".
+  // null when sample_count < MIN_SAMPLE_COUNT: "below sample threshold".
   strength: null | number;
 };

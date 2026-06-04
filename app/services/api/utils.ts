@@ -101,7 +101,7 @@ export const getUri = (
 ): string => appendSearchParams(setPathParams(uri, pathParams), options);
 
 export const getBaseUrl = (): string => {
-  // server api call — API_URL is validated at startup in env.server
+  // server api call; API_URL is validated at startup in env.server
   if (typeof window === 'undefined') return process.env.API_URL ?? '';
 
   // client api call

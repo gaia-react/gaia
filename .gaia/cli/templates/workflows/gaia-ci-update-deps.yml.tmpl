@@ -59,7 +59,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Apply the `/update-deps` skill scoped to **wave A only** —
+            Apply the `/update-deps` skill scoped to **wave A only**:
             the minor and patch bumps batched into a single install. The
             plan emitted by `gaia update-deps run --emit-updates` is at
             `${{ steps.emit_updates.outputs.updates_file }}`; read its
@@ -79,7 +79,7 @@ jobs:
             4. Run the quality gate exactly: `pnpm typecheck`,
                `pnpm lint`, `pnpm test --run`, `pnpm pw`, `pnpm build`.
                If the gate fails, revert the entire wave-A batch and
-               exit non-zero — the auto-merge partial will see no
+               exit non-zero; the auto-merge partial will see no
                changes and skip the PR.
 
             Wave-B (per-group major bumps) is handled in a separate
@@ -173,11 +173,11 @@ jobs:
             exit 0
           fi
           git add -A
-          git commit -m "chore({{tool_id}}): wave-B major bump — ${GROUP}"
+          git commit -m "chore({{tool_id}}): wave-B major bump: ${GROUP}"
           git push origin "$BRANCH"
           pr_url=$(gh pr create \
-            --title "chore({{tool_id}}): wave-B major bump — ${GROUP}" \
-            --body "Per-group major-bump PR opened by GAIA CI ({{workflow_name}}). Group: \`${GROUP}\`. Review the migration carefully — wave-B PRs are not auto-merged." \
+            --title "chore({{tool_id}}): wave-B major bump: ${GROUP}" \
+            --body "Per-group major-bump PR opened by GAIA CI ({{workflow_name}}). Group: \`${GROUP}\`. Review the migration carefully; wave-B PRs are not auto-merged." \
             --label gaia-ci,{{needs_human_review_label}} \
             --head "$BRANCH" \
             --base "${{ github.event.repository.default_branch }}")

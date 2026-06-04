@@ -7,7 +7,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 cd "$TMP"
 
-# (Same scaffold as 01 — extract to a helper if duplication grows annoying)
+# (Same scaffold as 01; extract to a helper if duplication grows annoying)
 GAIA_REPO="${GAIA_REPO:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 git init --quiet --initial-branch=main
 git config user.email "smoke@example.com"
@@ -58,7 +58,7 @@ claude -p --model sonnet --permission-mode bypassPermissions \
 after_files=$(find wiki -type f | wc -l | tr -d ' ')
 
 # wiki should have ZERO new files (typo doesn't warrant a wiki page)
-# wiki/log.md may have been newly created — that's fine, it's the log
+# wiki/log.md may have been newly created; that's fine, it's the log
 [ "$after_files" -le "$((before_files + 1))" ] || { echo "FAIL: wiki gained more than 1 file (log only) for a typo commit"; exit 1; }
 
 # log should mention SKIP

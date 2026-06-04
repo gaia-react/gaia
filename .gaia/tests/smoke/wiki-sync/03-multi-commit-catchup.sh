@@ -64,7 +64,7 @@ EOF
 git add wiki/.state.json
 git commit --quiet -m "init state"
 
-# Commit 1: feature — new service
+# Commit 1: feature; new service
 cat > app/services/Stripe.ts <<'EOF'
 // Stripe payment service
 export class StripeService {
@@ -74,7 +74,7 @@ EOF
 git add app/services/Stripe.ts
 git commit --quiet -m "feat: add Stripe payment service"
 
-# Commit 2: feature — new component
+# Commit 2: feature; new component
 cat > app/components/PaymentForm.tsx <<'EOF'
 // Payment form component
 export const PaymentForm = () => {
@@ -87,7 +87,7 @@ git commit --quiet -m "feat: add PaymentForm component"
 # Commit 3: bug fix in service, body carries an invariant.
 # Under the post-Serena rubric, services-only commits are SKIP unless the
 # body mentions a trade-off / invariant / gotcha / workaround. The
-# "Invariant:" line below is what flips this commit to WORTHY — it's the
+# "Invariant:" line below is what flips this commit to WORTHY; it's the
 # only one in the batch that should produce a wiki page.
 cat > app/services/Stripe.ts <<'EOF'
 // Stripe payment service
@@ -119,7 +119,7 @@ rm package.json.bak
 git add package.json
 git commit --quiet -m "chore(deps): bump react to 18.3.1"
 
-# Sanity: 6 drifted commits — the "init state" commit + 5 feature commits.
+# Sanity: 6 drifted commits; the "init state" commit + 5 feature commits.
 # init_sha was captured before "init state" was written, so drift counts both.
 drift=$(git rev-list --count "$init_sha"..HEAD)
 [ "$drift" = "6" ] || { echo "FAIL: expected 6 drifted commits, got $drift"; exit 1; }
@@ -146,7 +146,7 @@ grep -q "SKIP" wiki/log.md || { echo "FAIL: wiki/log.md missing SKIP entry"; exi
 
 # Post-Serena rubric: commits 1 and 2 (Stripe service add, PaymentForm
 # component add) carry no decision body, so they should land as
-# `SKIP: Serena handles inventory — ...`. The literal substring
+# `SKIP: Serena handles inventory; ...`. The literal substring
 # "Serena handles inventory" is the greppable marker the wiki-sync
 # playbook guarantees for this skip class.
 grep -q "Serena handles inventory" wiki/log.md || { echo "FAIL: wiki/log.md missing Serena-policy SKIP marker for inventory-class commits"; exit 1; }

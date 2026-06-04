@@ -122,7 +122,7 @@ const makePnpmRunner = (
       };
     }
 
-    // pnpm view <name> time --json — used by the release-age cooldown.
+    // pnpm view <name> time --json; used by the release-age cooldown.
     if (args[0] === 'view' && args[2] === 'time' && args[3] === '--json') {
       const pkgName = args[1] as string;
       const times = fakeViewTimes?.[pkgName];
@@ -136,7 +136,7 @@ const makePnpmRunner = (
       }
     }
 
-    // pnpm view <name> version — used to fetch latest for sibling expansion
+    // pnpm view <name> version; used to fetch latest for sibling expansion
     if (args[0] === 'view' && args[2] === 'version' && args.length === 3) {
       const pkgName = args[1] as string;
       const resolved = fakeViewVersions?.[pkgName];
@@ -158,7 +158,7 @@ const makePnpmRunner = (
   };
 };
 
-describe('update-deps run — version classification', () => {
+describe('update-deps run: version classification', () => {
   test('classifyKind returns major when leading integer differs', () => {
     expect(classifyKind('1.2.3', '2.0.0')).toBe('major');
     expect(classifyKind('6.30.0', '7.0.0')).toBe('major');
@@ -184,7 +184,7 @@ describe('update-deps run — version classification', () => {
   });
 });
 
-describe('update-deps run — group resolution', () => {
+describe('update-deps run: group resolution', () => {
   test('react-router family maps to react-router group', () => {
     expect(resolveGroup('react-router')).toBe('react-router');
     expect(resolveGroup('react-router-dom')).toBe('react-router');
@@ -236,7 +236,7 @@ describe('update-deps run — group resolution', () => {
   });
 });
 
-describe('update-deps run — computeUpdates', () => {
+describe('update-deps run: computeUpdates', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
@@ -593,7 +593,7 @@ describe('update-deps run — computeUpdates', () => {
           foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
         },
         undefined,
-        // These would never be called — react group has no outdated trigger
+        // These would never be called; react group has no outdated trigger
         {}
       ),
     });
@@ -676,7 +676,7 @@ describe('update-deps run — computeUpdates', () => {
   });
 });
 
-describe('update-deps run — group membership', () => {
+describe('update-deps run: group membership', () => {
   test('resolveGroupMembers returns all package.json members for an exact-name group', () => {
     const allNames = ['react', 'react-dom', '@types/react', 'lodash'];
     expect(resolveGroupMembers('react', allNames)).toEqual(
@@ -706,7 +706,7 @@ describe('update-deps run — group membership', () => {
   });
 });
 
-describe('update-deps run — CLI', () => {
+describe('update-deps run: CLI', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
 
@@ -794,7 +794,7 @@ describe('update-deps run — CLI', () => {
   });
 });
 
-describe('update-deps run — release-age cooldown', () => {
+describe('update-deps run: release-age cooldown', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
@@ -925,7 +925,7 @@ describe('update-deps run — release-age cooldown', () => {
     sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
     // No pnpm-workspace.yaml written. The runner provides no time table, so a
     // stray cooldown lookup would fall through to "unexpected args" and skip
-    // foo — this asserts the cooldown never runs.
+    // foo; this asserts the cooldown never runs.
 
     const result = computeUpdates({
       cwd: sandbox.root,

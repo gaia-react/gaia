@@ -15,7 +15,7 @@ How `/update-gaia` pulls a newer GAIA release into an initialized project withou
 
 | File                  | Role                                                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `.gaia/VERSION`       | Adopter's current baseline — which GAIA version `my-app/` was scaffolded from (or last `/update-gaia`d to).         |
+| `.gaia/VERSION`       | Adopter's current baseline: which GAIA version `my-app/` was scaffolded from (or last `/update-gaia`d to).         |
 | `.gaia/manifest.json` | Ships with every release. Maps each file in the release to a class.                                                 |
 | `.gaia/cache/`        | Gitignored. Holds downloaded baseline + latest tarballs for the 3-way comparison.                                   |
 | `.gaia-merge/`        | Gitignored. Sidecar `.patch` files emitted for files the update can't safely auto-merge. Adopter resolves manually. |
@@ -27,9 +27,9 @@ The manifest assigns each shipped file exactly one class. Anything **not** in th
 
 | Class        | Meaning                                                                                                                                     | Drift handling                                                                                        |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `owned`      | GAIA controls fully — skills, commands, rules, hooks, config files.                                                                         | Pristine → overwrite silently. Drifted → prompt: skip / overwrite / backup+overwrite.                 |
-| `shared`     | GAIA seeds; adopter customizes — `package.json`, `CLAUDE.md`, `README.md`, `.claude/settings.json`, `.github/workflows/*`, `wiki/index.md`. | Pristine → overwrite silently. Drifted → write `.gaia-merge/<path>.patch`, skip, let adopter resolve. `package.json` is the exception — merged field-aware (see below), not whole-file. |
-| `wiki-owned` | GAIA-seeded wiki pages adopter may edit — concepts, decisions, modules, flows, dependencies.                                                | Same as `shared`.                                                                                     |
+| `owned`      | GAIA controls fully: skills, commands, rules, hooks, config files.                                                                         | Pristine → overwrite silently. Drifted → prompt: skip / overwrite / backup+overwrite.                 |
+| `shared`     | GAIA seeds; adopter customizes: `package.json`, `CLAUDE.md`, `README.md`, `.claude/settings.json`, `.github/workflows/*`, `wiki/index.md`. | Pristine → overwrite silently. Drifted → write `.gaia-merge/<path>.patch`, skip, let adopter resolve. `package.json` is the exception, merged field-aware (see below), not whole-file. |
+| `wiki-owned` | GAIA-seeded wiki pages adopter may edit: concepts, decisions, modules, flows, dependencies.                                                | Same as `shared`.                                                                                     |
 | _(implicit)_ | Adopter-owned. `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, and any file the adopter created.                                              | Never touched by `/update-gaia`.                                                                      |
 
 Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`.
@@ -52,8 +52,8 @@ For every file `P` in the latest manifest:
 
 | Condition                                                 | Action                                                                 |
 | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Not in adopter, not in baseline                           | **New file** — add (default yes).                                      |
-| Not in adopter, present in baseline                       | Adopter deleted — **skip** (respect intent).                           |
+| Not in adopter, not in baseline                           | **New file**: add (default yes).                                      |
+| Not in adopter, present in baseline                       | Adopter deleted: **skip** (respect intent).                           |
 | `adopter[P] == baseline[P]`                               | **Overwrite** with latest (any class).                                 |
 | Adopter drifted, latest unchanged from baseline           | **Skip** (no upstream change).                                         |
 | Adopter drifted, latest changed, `owned`                  | Show diff, prompt `skip` (default) / `overwrite` / `backup+overwrite`. |
@@ -71,21 +71,21 @@ Files deleted upstream (in baseline, not in latest):
 
 A whole-file three-way merge of `package.json` is pure noise: every adopter rewrites `name` / `description` / `author` and resets `version` at init, and GAIA bumps its own `version` every release, so adopter, baseline, and latest all differ on every release. `package.json` is therefore merged at JSON-key granularity, acting only on the genuine upstream delta `B → L`.
 
-- **Adopter-owned keys** — every top-level key except the managed sections (`name`, `version`, `description`, `author`, `private`, `type`, `bin`, `sideEffects`, …) is left untouched. Identity drift is invisible.
-- **Managed sections** — `dependencies`, `devDependencies`, `scripts`, `engines`, `pnpm.overrides`, top-level `overrides` (merged per entry), plus `packageManager` and other `pnpm.*` keys (merged as a single value).
+- **Adopter-owned keys**: every top-level key except the managed sections (`name`, `version`, `description`, `author`, `private`, `type`, `bin`, `sideEffects`, …) is left untouched. Identity drift is invisible.
+- **Managed sections**: `dependencies`, `devDependencies`, `scripts`, `engines`, `pnpm.overrides`, top-level `overrides` (merged per entry), plus `packageManager` and other `pnpm.*` keys (merged as a single value).
 
 Per managed entry key `k`:
 
 | Condition | Action |
 | --- | --- |
-| GAIA didn't change `k` (`baseline == latest`) | No-op — adopter's value stands (kept, re-pinned, or **removed**). |
+| GAIA didn't change `k` (`baseline == latest`) | No-op: adopter's value stands (kept, re-pinned, or **removed**). |
 | GAIA changed `k`, adopter still at baseline pin | Apply latest to the working tree. |
-| GAIA changed `k`, adopter re-pinned independently | Conflict — leave adopter's value, note both pins. |
-| GAIA changed `k`, adopter had removed it | Suggestion — never re-add; note as opt-in. |
-| GAIA added `k` (latest only) | Suggestion — never auto-insert; note as opt-in. |
-| GAIA removed `k` (baseline only) | No-op — if adopter still has it, leave it. |
+| GAIA changed `k`, adopter re-pinned independently | Conflict: leave adopter's value, note both pins. |
+| GAIA changed `k`, adopter had removed it | Suggestion: never re-add; note as opt-in. |
+| GAIA added `k` (latest only) | Suggestion: never auto-insert; note as opt-in. |
+| GAIA removed `k` (baseline only) | No-op: if adopter still has it, leave it. |
 
-The load-bearing guarantee: a dependency the adopter removed is **never re-added** unless GAIA changed it this release *and* the adopter opts in — the JSON-key analog of the file-level "respect adopter deletions" rule. Clean applies are written surgically (the changed line only, preserving the adopter's formatting). Re-pin conflicts and dep suggestions go to `.gaia-merge/package.json.notes`. A version-only release touches nothing and emits no notes.
+The load-bearing guarantee: a dependency the adopter removed is **never re-added** unless GAIA changed it this release *and* the adopter opts in, the JSON-key analog of the file-level "respect adopter deletions" rule. Clean applies are written surgically (the changed line only, preserving the adopter's formatting). Re-pin conflicts and dep suggestions go to `.gaia-merge/package.json.notes`. A version-only release touches nothing and emits no notes.
 
 ## Safety invariants
 
@@ -98,16 +98,16 @@ The load-bearing guarantee: a dependency the adopter removed is **never re-added
 
 `/update-gaia` does not commit, so the rollback path depends on whether the adopter has already committed the merge.
 
-**Before commit** — discard the entire update:
+**Before commit**: discard the entire update:
 
 ```bash
 git restore --staged --worktree .
 rm -rf .gaia-merge .gaia-backup
 ```
 
-`git restore` reverts every overwritten file (including `.gaia/VERSION` and `.gaia/manifest.json`) to its committed baseline. The sidecar `.gaia-merge/` and `.gaia-backup/` directories are gitignored, so `git restore` does not touch them — the `rm -rf` is the cleanup pass.
+`git restore` reverts every overwritten file (including `.gaia/VERSION` and `.gaia/manifest.json`) to its committed baseline. The sidecar `.gaia-merge/` and `.gaia-backup/` directories are gitignored, so `git restore` does not touch them; the `rm -rf` is the cleanup pass.
 
-**After commit** — revert the commit:
+**After commit**: revert the commit:
 
 ```bash
 git revert <update-commit-sha>
@@ -119,15 +119,15 @@ In both cases the adopter is back at the prior baseline and can retry `/update-g
 
 ## When to run
 
-After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cadence is fully at the adopter's discretion — skipping versions is fine; the three-way diff works with any gap.
+After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cadence is fully at the adopter's discretion; skipping versions is fine; the three-way diff works with any gap.
 
 ## See also
 
-- [[Quality Gate]] — run the gate after the `update-gaia` skill finishes and before committing.
+- [[Quality Gate]]: run the gate after the `update-gaia` skill finishes and before committing.
 
 ## Communications Guidance (User-Facing Docs)
 
-The update flow is **fully automatic from the adopter's perspective**: the `gaia-session-update-prompt.sh` SessionStart hook detects available updates and presents the choice. **Do not mention `/update-gaia`, the `update-gaia` skill, or any manual update step in user-facing release notes, README, CHANGELOG, or marketing docs.** Surfacing a manual command implies adopters need to remember to run it — which is wrong.
+The update flow is **fully automatic from the adopter's perspective**: the `gaia-session-update-prompt.sh` SessionStart hook detects available updates and presents the choice. **Do not mention `/update-gaia`, the `update-gaia` skill, or any manual update step in user-facing release notes, README, CHANGELOG, or marketing docs.** Surfacing a manual command implies adopters need to remember to run it, which is wrong.
 
 The skill and command files in `.claude/skills/update-gaia/` exist as the implementation but must not be promoted as a user-invoked workflow in external-facing copy.
 

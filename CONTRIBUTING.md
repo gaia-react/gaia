@@ -55,9 +55,9 @@ GAIA's wiki is a living knowledge layer. Adopters scaffold from a release tarbal
 
 Three Claude Code hooks keep Claude informed about wiki state:
 
-- `wiki-drift-check.sh` — UserPromptSubmit, once per session. Compares `wiki/.state.json` to HEAD; nudges if drifted.
-- `wiki-commit-nudge.sh` — PostToolUse on Bash. Injects diff summary + drift count after each `git commit`.
-- `wiki-session-stop.sh` — Stop hook. Two reminders share one git/jq pass: nudge to refresh `wiki/hot.md` if wiki/ files were modified this session, and a safety-net nag at session end if commits landed but `wiki/.state.json` didn't advance.
+- `wiki-drift-check.sh`: UserPromptSubmit, once per session. Compares `wiki/.state.json` to HEAD; nudges if drifted.
+- `wiki-commit-nudge.sh`: PostToolUse on Bash. Injects diff summary + drift count after each `git commit`.
+- `wiki-session-stop.sh`: Stop hook. Two reminders share one git/jq pass: nudge to refresh `wiki/hot.md` if wiki/ files were modified this session, and a safety-net nag at session end if commits landed but `wiki/.state.json` didn't advance.
 
 The workhorse is `/gaia-wiki sync`. It's the only thing that writes `wiki/.state.json`. Hooks are read-only consumers.
 
@@ -114,14 +114,14 @@ If `/gaia-wiki sync` reports drift but you decide a commit doesn't warrant a wik
 | `.claude/skills/gaia/references/wiki/*.md` | Yes                                                      |
 | `wiki/.state.json`                         | Yes (committed)                                          |
 | `wiki/concepts/Wiki Sync.md`               | Yes                                                      |
-| `.gaia/tests/`                             | **No** — `.gaia/release-exclude` excludes the whole tree |
-| `.claude/wiki-{drift,safety}-checked`      | **No** — gitignored, never committed                     |
+| `.gaia/tests/`                             | **No**: `.gaia/release-exclude` excludes the whole tree  |
+| `.claude/wiki-{drift,safety}-checked`      | **No**: gitignored, never committed                      |
 
 ### Troubleshooting
 
-- **Drift check is too noisy.** It only fires on the first prompt of each session. If you're seeing it more often, check `.claude/wiki-drift-checked` — the marker file should match your current `session_id`. If a hook is failing to write the marker, that's the bug.
-- **`/gaia-wiki sync` reports zero drift but you know there were commits.** Check `wiki/.state.json`'s `last_evaluated_sha` — it may already match HEAD if a prior sync ran. Or the SHA may be unreachable (rebase) and the hook silently skipped.
-- **Smoke tests are failing in CI.** They shouldn't be — smoke tests are MANUAL only. CI should run only `bats .gaia/tests/hooks/`. If a CI workflow is invoking smoke, that's a misconfiguration; remove it.
+- **Drift check is too noisy.** It only fires on the first prompt of each session. If you're seeing it more often, check `.claude/wiki-drift-checked`; the marker file should match your current `session_id`. If a hook is failing to write the marker, that's the bug.
+- **`/gaia-wiki sync` reports zero drift but you know there were commits.** Check `wiki/.state.json`'s `last_evaluated_sha`; it may already match HEAD if a prior sync ran. Or the SHA may be unreachable (rebase) and the hook silently skipped.
+- **Smoke tests are failing in CI.** They shouldn't be; smoke tests are MANUAL only. CI should run only `bats .gaia/tests/hooks/`. If a CI workflow is invoking smoke, that's a misconfiguration; remove it.
 
 ## Code of conduct
 

@@ -385,14 +385,14 @@ const buildFlakeDownweight = (): string[] => {
 // ---------------------------------------------------------------------------
 //
 // Mix of all 8 mentorship event types across visual / react / form /
-// typescript area tags. Volume is deliberately modest — this fixture exists
+// typescript area tags. Volume is deliberately modest; this fixture exists
 // for the Phase 6 smoke harness to walk an end-to-end pipeline shape; it is
 // NOT shaped to fire any specific pattern.
 const buildMultiArea = (): string[] => {
   const lines: string[] = [];
   const areas = ['visual', 'react', 'form', 'typescript'] as const;
 
-  // 4 uat_pass — one per area.
+  // 4 uat_pass; one per area.
   for (const [index, area] of areas.entries()) {
     lines.push(
       buildLine({
@@ -408,7 +408,7 @@ const buildMultiArea = (): string[] => {
       })
     );
   }
-  // 4 uat_fail — one per area, varying failure_class.
+  // 4 uat_fail; one per area, varying failure_class.
   const failureClasses = [
     'assertion',
     'exception',
@@ -433,7 +433,7 @@ const buildMultiArea = (): string[] => {
       })
     );
   }
-  // 4 needs_context_returned — one per area.
+  // 4 needs_context_returned; one per area.
   const contextClasses = [
     'unclear_acceptance_criteria',
     'missing_codebase_knowledge',
@@ -457,7 +457,7 @@ const buildMultiArea = (): string[] => {
       })
     );
   }
-  // 4 blocked_returned — one per area, varying classification.
+  // 4 blocked_returned; one per area, varying classification.
   const classifications = ['intent', 'spec', 'code', 'intent'] as const;
 
   for (const [index, area] of areas.entries()) {

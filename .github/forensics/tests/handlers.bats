@@ -127,7 +127,7 @@ first_captured_body() {
 }
 
 # ---------------------------------------------------------------------------
-# handle-non-issue.sh — UAT-002
+# handle-non-issue.sh: UAT-002
 # ---------------------------------------------------------------------------
 
 @test "non-issue: usage error with no args" {
@@ -187,7 +187,7 @@ first_captured_body() {
 }
 
 # ---------------------------------------------------------------------------
-# handle-needs-human.sh — UAT-003 / UAT-005 / UAT-007 / UAT-014
+# handle-needs-human.sh: UAT-003 / UAT-005 / UAT-007 / UAT-014
 # ---------------------------------------------------------------------------
 
 @test "needs-human: usage error with too few args" {
@@ -278,7 +278,7 @@ first_captured_body() {
 }
 
 # ---------------------------------------------------------------------------
-# handle-auto-fixable.sh — UAT-004 / UAT-008 / UAT-015
+# handle-auto-fixable.sh: UAT-004 / UAT-008 / UAT-015
 # ---------------------------------------------------------------------------
 
 @test "auto-fixable: usage error with too few args" {
@@ -296,7 +296,7 @@ first_captured_body() {
   printf '## Capture\nverbatim\n' > "$body"
   GIT_LS_REMOTE_FAIL=1 run "$HANDLERS/handle-auto-fixable.sh" 42 quality-gate forensics/42-quality-gate "$body"
   [ "$status" -eq 1 ]
-  # No gh write calls when the sanity check fails — guard against
+  # No gh write calls when the sanity check fails, guard against
   # half-applied state.
   [ "$(gh_log_count 'gh issue edit')" -eq 0 ]
   [ "$(gh_log_count 'gh pr create')" -eq 0 ]
@@ -328,7 +328,7 @@ first_captured_body() {
   [ "$status" -eq 0 ]
   pr_line="$(grep -F 'gh pr create' "$GH_LOG")"
   [[ "$pr_line" == *'--body-file'* ]]
-  # Inline --body must NOT appear — passthrough goes through file only.
+  # Inline --body must NOT appear, passthrough goes through file only.
   [[ "$pr_line" != *'--body '* ]]
 }
 
@@ -380,7 +380,7 @@ first_captured_body() {
 }
 
 # ---------------------------------------------------------------------------
-# handle-malformed-body.sh — UAT-013
+# handle-malformed-body.sh: UAT-013
 # ---------------------------------------------------------------------------
 
 @test "malformed-body: usage error with no args" {
@@ -411,7 +411,7 @@ first_captured_body() {
   grep -qF 'symptom' "$body_path"
   grep -qF 'capture' "$body_path"
   grep -qF 'missing-section' "$body_path"
-  # User-facing comment must not surface internal UAT identifiers — they
+  # User-facing comment must not surface internal UAT identifiers, they
   # rot as UATs are renumbered and confuse adopters who file issues by hand.
   ! grep -qE 'UAT-[0-9]+' "$body_path"
 }
@@ -437,7 +437,7 @@ first_captured_body() {
 }
 
 # ---------------------------------------------------------------------------
-# handle-already-triaged.sh — UAT-006
+# handle-already-triaged.sh: UAT-006
 # ---------------------------------------------------------------------------
 
 @test "already-triaged: usage error with no args" {
@@ -456,7 +456,7 @@ first_captured_body() {
 @test "already-triaged: makes zero gh / git calls (no-op)" {
   run "$HANDLERS/handle-already-triaged.sh" 42
   [ "$status" -eq 0 ]
-  # gh and git logs may not even exist — that's the no-op contract.
+  # gh and git logs may not even exist, that's the no-op contract.
   if [ -f "$GH_LOG" ]; then
     [ "$(wc -l < "$GH_LOG" | tr -d ' ')" = "0" ]
   fi

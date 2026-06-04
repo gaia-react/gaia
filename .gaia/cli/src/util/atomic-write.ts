@@ -2,7 +2,7 @@
  * Atomic file writes: serialize to a uniquely-named temporary file in the
  * target's own directory, fsync it so the bytes are durable, then rename
  * over the target. POSIX `rename` is atomic on the same filesystem; the
- * fsync is what makes the result crash-safe — without it a crash right
+ * fsync is what makes the result crash-safe; without it a crash right
  * after the rename can leave the target pointing at unflushed (empty or
  * partial) data.
  */
@@ -17,8 +17,8 @@ import {
 } from 'node:fs';
 import {open, rename, unlink} from 'node:fs/promises';
 
-// A crypto-random suffix keeps concurrent writers — same process or
-// different processes — from colliding on the temp file name, and is
+// A crypto-random suffix keeps concurrent writers, same process or
+// different processes, from colliding on the temp file name, and is
 // portable across platforms.
 const temporaryPath = (filePath: string): string =>
   `${filePath}.tmp.${randomBytes(8).toString('hex')}`;

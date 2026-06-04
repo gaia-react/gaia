@@ -25,7 +25,7 @@ playwright-cli close
 
 ## How interaction refs work
 
-After every command, playwright-cli emits a snapshot file (`.playwright-cli/page-*.yml`). Element refs (`e3`, `e7`, `e15`) come from that snapshot — read it before the next interactive command. Use `playwright-cli snapshot` to refresh on demand.
+After every command, playwright-cli emits a snapshot file (`.playwright-cli/page-*.yml`). Element refs (`e3`, `e7`, `e15`) come from that snapshot, read it before the next interactive command. Use `playwright-cli snapshot` to refresh on demand.
 
 ```bash
 > playwright-cli goto https://example.com
@@ -61,14 +61,14 @@ playwright-cli close-all      # close every browser
 
 ## Command reference
 
-Full surface — core, navigation, keyboard, mouse, save-as, tabs, storage (cookies / localStorage / sessionStorage), network, devtools, open parameters, snapshots, browser sessions, end-to-end examples — is in [references/commands.md](references/commands.md).
+Full surface, core, navigation, keyboard, mouse, save-as, tabs, storage (cookies / localStorage / sessionStorage), network, devtools, open parameters, snapshots, browser sessions, end-to-end examples, is in [references/commands.md](references/commands.md).
 
 ## Specific tasks
 
-- **Request mocking** — [references/request-mocking.md](references/request-mocking.md)
-- **Running Playwright code** — [references/running-code.md](references/running-code.md)
-- **Browser session management** — [references/session-management.md](references/session-management.md)
-- **Storage state (cookies, localStorage)** — [references/storage-state.md](references/storage-state.md)
-- **Test generation** — [references/test-generation.md](references/test-generation.md)
-- **Tracing** — [references/tracing.md](references/tracing.md)
-- **Video recording** — [references/video-recording.md](references/video-recording.md)
+- **Request mocking**: [references/request-mocking.md](references/request-mocking.md)
+- **Running Playwright code**: [references/running-code.md](references/running-code.md)
+- **Browser session management**: [references/session-management.md](references/session-management.md)
+- **Storage state (cookies, localStorage)**: [references/storage-state.md](references/storage-state.md)
+- **Test generation**: [references/test-generation.md](references/test-generation.md)
+- **Tracing**: [references/tracing.md](references/tracing.md)
+- **Video recording**: [references/video-recording.md](references/video-recording.md)

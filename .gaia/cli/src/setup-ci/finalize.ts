@@ -3,7 +3,7 @@
  *
  * Sets `setup_complete: true` in `.gaia/automation.json` via the
  * schema-typed write helper. The only primitive that flips
- * `setup_complete`. Idempotent — re-running on an already-finalized
+ * `setup_complete`. Idempotent; re-running on an already-finalized
  * config returns `already_finalized: true` without changing the
  * file's content (the write itself runs and is a no-op shape-wise).
  */

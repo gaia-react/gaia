@@ -14,7 +14,7 @@
 #   8. AUDIT_TREE_SHA != current tree       -> decline "tree changed since audit started"
 #   9. not in a git repo                    -> decline "not in a git repo"
 #
-# The helper never pushes — the agent caller pushes after writing the
+# The helper never pushes; the agent caller pushes after writing the
 # audit marker (see .claude/agents/code-review-audit.md "Audit marker
 # (gate handshake)"). Marker-before-push ensures a stamp commit never
 # reaches remote history without a corresponding marker.
@@ -118,7 +118,7 @@ trailer_on_head() {
   trailer=$(trailer_on_head)
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
 
-  # Helper never pushes — upstream must NOT have advanced. The caller
+  # Helper never pushes; upstream must NOT have advanced. The caller
   # pushes after writing the audit marker.
   after_remote_sha=$(git -C "$REMOTE" rev-parse main)
   [ "$before_remote_sha" = "$after_remote_sha" ]
@@ -144,7 +144,7 @@ trailer_on_head() {
 @test "detached HEAD: writes empty commit (treats as pushed; helper never pushes)" {
   # Simulate the CI checkout: actions/checkout with `ref: <sha>` lands
   # on a detached HEAD. Without an upstream probe, the script must NOT
-  # fall through to the un-pushed amend path — that would rewrite a
+  # fall through to the un-pushed amend path; that would rewrite a
   # commit the runner does not own.
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")

@@ -87,7 +87,7 @@ assert_frontmatter_fields() {
 }
 
 # ---------------------------------------------------------------------------
-# Frontmatter structure (simulated — we construct a synthetic report)
+# Frontmatter structure (simulated; we construct a synthetic report)
 # ---------------------------------------------------------------------------
 
 @test "UAT-007: frontmatter block contains required fields" {

@@ -14,17 +14,17 @@ opaque.
 
 ## Classes
 
-- `non-issue` — the report describes a user-config issue, missing
+- `non-issue`: the report describes a user-config issue, missing
   prerequisite, duplicate of a known closed issue, or otherwise no GAIA
   defect. Closing with a one-line explanation is the correct action.
-- `needs-human` — a real defect, but autonomous fixing is unsafe or
+- `needs-human`: a real defect, but autonomous fixing is unsafe or
   out-of-scope. Pick this if ANY of the following hold:
   - The fix would touch a path NOT in the allowlist below.
   - The fix would touch a path on the denylist below.
   - You cannot determine which paths the fix would touch.
   - The defect is genuinely ambiguous and you would have to guess to pick
     a fix.
-- `auto-fixable` — a real defect AND every file the fix would touch is
+- `auto-fixable`: a real defect AND every file the fix would touch is
   inside the allowlist AND none are on the denylist AND you can name the
   paths up front. The triage workflow re-checks scope deterministically
   after you respond, so be precise; lying about scope is wasted work.
@@ -74,7 +74,7 @@ Cite specific lines from the parsed sections as evidence; the maintainer
 reads this to audit your call.
 
 If your verdict is `auto-fixable`, you MUST include a fenced section
-listing the proposed paths (paths only — no diffs, no patches):
+listing the proposed paths (paths only, no diffs, no patches):
 
 ````
 ### Proposed paths
@@ -96,5 +96,5 @@ GAIA-VERDICT: <non-issue|needs-human|auto-fixable>
 
 Do not emit more than one `GAIA-VERDICT:` line. Do not emit a verdict
 value outside the closed set above. If you are unsure between two
-classes, pick `needs-human` — escalation on ambiguity is correct
+classes, pick `needs-human`, escalation on ambiguity is correct
 behavior, not failure.

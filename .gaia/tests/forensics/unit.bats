@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# .gaia/tests/forensics/unit.bats — SPEC-002 layer B regression suite.
+# .gaia/tests/forensics/unit.bats; SPEC-002 layer B regression suite.
 #
 # This file delegates to the bats suites under `.github/forensics/tests/`
 # (parser, scope-checker, verdict-parser, handlers, quality-gate runner)
@@ -47,7 +47,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Layer-A fixture invariants — `valid` group.
+# Layer-A fixture invariants; `valid` group.
 # ---------------------------------------------------------------------------
 
 @test "fixture valid-init-failure parses cleanly" {
@@ -72,7 +72,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Layer-A fixture invariants — `malformed` group (UAT-013).
+# Layer-A fixture invariants; `malformed` group (UAT-013).
 # ---------------------------------------------------------------------------
 
 @test "fixture malformed-missing-symptom returns missing-section" {
@@ -91,7 +91,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Layer-A fixture invariants — UAT-015 redaction passthrough.
+# Layer-A fixture invariants; UAT-015 redaction passthrough.
 #
 # The fixture deliberately carries TWO tokens: a `<redacted>` literal AND
 # a repo-relative path (`.gaia/cli/src/config/load.ts`) derived from an
@@ -114,7 +114,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Layer-A fixture invariants — UAT-007 (denylist) and UAT-014 (unenumerated).
+# Layer-A fixture invariants; UAT-007 (denylist) and UAT-014 (unenumerated).
 #
 # Both fixtures parse as VALID bodies; the boundary they exercise is the
 # scope checker that the workflow runs AFTER the classifier proposes
@@ -130,13 +130,13 @@ setup() {
 @test "UAT-007: mixed allow + deny path proposal denies the whole attempt" {
   # The fixture's reproduction-context names two paths: one in the allowlist
   # (`.claude/hooks/`), one on the canonical denylist (`app/`). Per UAT-007
-  # the WHOLE attempt is denied — `ok:false` — not just the denylisted path.
+  # the WHOLE attempt is denied; `ok:false`; not just the denylisted path.
   run "$SCOPE" .claude/hooks/wiki-session-stop.sh app/routes/_index.tsx
   [ "$status" -eq 0 ]
   [[ "$output" == *'"ok":false'* ]]
   [[ "$output" == *'app/routes/_index.tsx'* ]]
   [[ "$output" == *'"reason":"denylist"'* ]]
-  # The allowed leg still appears in `allowed[]` — the partition is informational —
+  # The allowed leg still appears in `allowed[]`; the partition is informational
   # but `ok` is false, which is what the workflow gates on.
   [[ "$output" == *'.claude/hooks/wiki-session-stop.sh'* ]]
 }
