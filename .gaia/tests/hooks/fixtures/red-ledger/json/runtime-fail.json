@@ -1,0 +1,24 @@
+{
+  "numTotalTestSuites": 1,
+  "numFailedTests": 1,
+  "numPassedTests": 0,
+  "numTotalTests": 1,
+  "success": false,
+  "testResults": [
+    {
+      "name": ".gaia/tests/hooks/fixtures/red-ledger/runtime-fail.test.ts",
+      "status": "failed",
+      "message": "",
+      "assertionResults": [
+        {
+          "title": "calls a not-yet-implemented function",
+          "fullName": "calls a not-yet-implemented function",
+          "status": "failed",
+          "failureMessages": [
+            "TypeError: __vite_ssr_import_1__.notImplemented is not a function\n    at <anonymous>"
+          ]
+        }
+      ]
+    }
+  ]
+}

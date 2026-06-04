@@ -1,0 +1,30 @@
+{
+  "numTotalTestSuites": 1,
+  "numFailedTests": 1,
+  "numPassedTests": 1,
+  "numTotalTests": 2,
+  "success": false,
+  "testResults": [
+    {
+      "name": ".gaia/tests/hooks/fixtures/red-ledger/mixed-pass-fail.test.ts",
+      "status": "failed",
+      "message": "",
+      "assertionResults": [
+        {
+          "title": "passes fine",
+          "fullName": "passes fine",
+          "status": "passed",
+          "failureMessages": []
+        },
+        {
+          "title": "fails on assertion",
+          "fullName": "fails on assertion",
+          "status": "failed",
+          "failureMessages": [
+            "AssertionError: expected 1 to be 2 // Object.is equality\n    at <anonymous>"
+          ]
+        }
+      ]
+    }
+  ]
+}

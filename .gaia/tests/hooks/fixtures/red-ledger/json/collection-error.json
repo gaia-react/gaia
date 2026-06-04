@@ -1,0 +1,16 @@
+{
+  "numTotalTestSuites": 1,
+  "numFailedTestSuites": 1,
+  "numFailedTests": 0,
+  "numPassedTests": 0,
+  "numTotalTests": 0,
+  "success": false,
+  "testResults": [
+    {
+      "name": ".gaia/tests/hooks/fixtures/red-ledger/broken.test.ts",
+      "status": "failed",
+      "message": "Transform failed with 1 error:\n\n[PARSE_ERROR] Expected `}` but found `EOF`\n   app/broken.test.ts:5:19",
+      "assertionResults": []
+    }
+  ]
+}
