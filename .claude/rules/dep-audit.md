@@ -19,4 +19,4 @@ Two filters keep the same unfixable transitive advisory from spamming every revi
 
 ## Reference
 
-Extraction recipe + bucket format + acting-on-output: `.claude/agents/code-review-audit.md` (Dependency-CVE advisory). Blocking CI path: `.gaia/cli/src/automation/templates/workflows/gaia-ci-pnpm-audit.yml.tmpl`.
+Extraction recipe + bucket format + acting-on-output: `.claude/agents/code-review-audit.md` (Dependency-CVE advisory). Blocking CI path: the `gaia-ci-pnpm-audit` workflow at `.github/workflows/gaia-ci-pnpm-audit.yml` (wired up by `/setup-gaia-ci`).
