@@ -114,8 +114,12 @@ else
 fi
 
 # 4. revised-contracts contains the wiki_promote_targets sub-section.
+# .gaia/local/ is machine-local (gitignored), so this SPEC artifact is absent
+# in fresh clones and CI. Skip-with-PASS when absent, matching the
+# framework-neutral graceful-skip used for the specify CLI below; the content
+# check runs only where the local artifact exists.
 if [ ! -f "$REVISED_CONTRACTS" ]; then
-    fail "revised-contracts missing at $REVISED_CONTRACTS"
+    pass "revised-contracts check skipped; $REVISED_CONTRACTS absent (machine-local .gaia/local/)"
 else
     pass "revised-contracts present"
 
