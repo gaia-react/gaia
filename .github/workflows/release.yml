@@ -61,6 +61,11 @@ jobs:
           # artifacts, etc.), then filter out paths matched by
           # .gaia/release-exclude.
           git ls-files > /tmp/all-tracked.txt
+          # The sed expression escapes regex metacharacters literally; its
+          # single quotes are intentional (double quotes would make the shell
+          # expand the `$()` inside the character class and corrupt the
+          # pattern). SC2016 is a false positive here.
+          # shellcheck disable=SC2016
           awk '/^[[:space:]]*#/ {next} NF==0 {next} {print}' .gaia/release-exclude \
             | sed 's|[][\\.*^$()+?{}|]|\\&|g' \
             | awk '{print "^"$0"(/|$)"}' \
