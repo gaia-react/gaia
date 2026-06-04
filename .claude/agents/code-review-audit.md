@@ -27,7 +27,7 @@ When constructing each specialist subagent's prompt below, append the full conte
 Work happens in two layers, dispatched in parallel:
 
 - **Main agent (you)** — cross-cutting concerns: security reasoning, architectural fit, performance at the module/data-flow level, accessibility, edge cases, maintainability. Do this yourself.
-- **Specialist subagents** — line-level rule compliance against the project's skills/rules files. Spawned in parallel from a single tool call, alongside `react-doctor` and `pnpm knip --reporter json`.
+- **Specialist subagents** — line-level rule compliance against the project's skills/rules files. Spawned in parallel from a single tool call, alongside `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json`.
 
 Don't duplicate work: if a subagent is going to check every `useEffect` against the react-code skill, you don't need to do that line by line too. Focus your own review on the issues only a full-context reviewer can catch.
 
@@ -45,7 +45,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 - **CSRF/SSRF**: Missing CSRF protections in actions, server-side request forgery in outbound API calls
 - **Data exposure**: Sensitive data leaking through loader returns to client bundles, PII in logs, over-returning user records
 - **Timing attacks**: Constant-time comparison for tokens/secrets
-- **Dependency concerns**: Known vulnerable patterns with current dependencies
+- **Dependency concerns**: Known-vulnerable dependencies are NOT your call to recall; an LLM cannot know current CVEs reliably. A deterministic `pnpm audit --json` run in the parallel advisory dispatch is the oracle for this; its high/critical findings surface in the advisory bucket (see "Dependency-CVE advisory" under the Rules-Based Audit). Do not LLM-judge or guess at known-vulnerable packages here.
 
 ### 2. Performance Issues
 
@@ -101,7 +101,7 @@ Beyond general best practices, verify adherence to these project-specific patter
 
 ## Finding Proof Gate (holistic reviewer)
 
-Every finding you (the main agent) report must clear this gate before it reaches the report. The gate sits **on top of** the tool-specific false-positive patterns elsewhere in this agent (the react-doctor barrel-import / multiple-useState noise called out under "Merge findings", the knip bucket classification); it does not replace them. Those patterns reject *known* bad findings. This gate makes *every* finding prove itself. The deterministic advisories (react-doctor, knip) are oracles, not probabilistic judgments, so they pass through under their own false-positive handling and are not subject to this gate.
+Every finding you (the main agent) report must clear this gate before it reaches the report. The gate sits **on top of** the tool-specific false-positive patterns elsewhere in this agent (the react-doctor barrel-import / multiple-useState noise called out under "Merge findings", the knip bucket classification); it does not replace them. Those patterns reject *known* bad findings. This gate makes *every* finding prove itself. The deterministic advisories (react-doctor, knip, pnpm audit) are oracles, not probabilistic judgments, so they pass through under their own false-positive handling and are not subject to this gate.
 
 Before reporting a finding, run all four checks:
 
@@ -112,7 +112,7 @@ Before reporting a finding, run all four checks:
 
 **Fail any check, drop or demote the finding.** A finding that cannot cite a line or name a concrete failure mode is dropped. A finding that is real but whose severity you cannot defend at the assigned tier is demoted to the tier you can defend (and dropped if that lands below Suggestion). Demote rather than delete when the defect is genuine but smaller than first judged.
 
-**Adversarially verify every Critical and Important survivor.** The four checks above are self-applied, so they share your blind spots. Before a holistic finding is reported at Critical or Important, hand it to a fresh-context refuter that did not produce it. Spawn one `Agent` refuter per surviving Critical/Important holistic finding, in parallel from a single tool-call message (the same dispatch discipline as the rule-based subagents). This pass applies only to your own (probabilistic) findings at those two tiers; Suggestions stay self-policed, and the react-doctor / knip oracles and the rule-based subagent findings are out of scope.
+**Adversarially verify every Critical and Important survivor.** The four checks above are self-applied, so they share your blind spots. Before a holistic finding is reported at Critical or Important, hand it to a fresh-context refuter that did not produce it. Spawn one `Agent` refuter per surviving Critical/Important holistic finding, in parallel from a single tool-call message (the same dispatch discipline as the rule-based subagents). This pass applies only to your own (probabilistic) findings at those two tiers; Suggestions stay self-policed, and the react-doctor / knip / pnpm audit oracles and the rule-based subagent findings are out of scope.
 
 A refuter overturns a finding only with **concrete counter-evidence**, the mirror of the gate's concrete-failure-mode bar:
 
@@ -195,13 +195,13 @@ Include only when there are specific, concrete patterns worth reinforcing. Skip 
 5. **Be specific** — never say "this could be improved" without saying exactly how and why
 6. **Be proportionate** — don't nitpick formatting when there are security holes; focus energy on what matters most
 7. **Respect existing patterns** — if the codebase has an established way of doing something, don't suggest alternatives unless there's a concrete benefit
-8. **Dispatch in parallel** — once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor` and `pnpm knip --reporter json` from a single tool-call message so they run concurrently with your own review
+8. **Dispatch in parallel** — once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` from a single tool-call message so they run concurrently with your own review
 9. **Verify Critical/Important survivors adversarially**: after your own review produces candidate findings and before finalizing the report, run each surviving holistic Critical/Important finding through a fresh-context refuter per the Finding Proof Gate, then drop, demote, or keep it on the refuter's verdict. The report is not produced until this pass completes.
 10. **Resolve suggestions before writing the marker** — after the report is produced and before deciding on the marker, attempt to auto-fix every item in the Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale — escalated suggestions unconditionally block the marker. Never proceed to the marker with any suggestion that is neither fixed in the working tree nor explicitly escalated.
 
-## Rules-Based Audit (Specialist Subagents + react-doctor + knip)
+## Rules-Based Audit (Specialist Subagents + react-doctor + knip + pnpm audit)
 
-Rule-based line-level checks are done by specialist subagents in parallel with `react-doctor` and `pnpm knip --reporter json`. This runs concurrently with your own cross-cutting review.
+Rule-based line-level checks are done by specialist subagents in parallel with `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json`. This runs concurrently with your own cross-cutting review.
 
 ### How to run
 
@@ -217,6 +217,7 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
    - 1 × `Agent` call per surviving subagent (foreground — results merge on return)
    - 1 × `Bash` call for `npx -y react-doctor@latest . --verbose --diff` (also foreground, runs alongside)
    - 1 × `Bash` call for `pnpm knip --reporter json` (also foreground, runs alongside) — pre-merge is post-task by design, so the noise concern from `.claude/rules/knip.md` doesn't apply here
+   - 1 × `Bash` call for `pnpm audit --json || true` (also foreground, runs alongside). This is the deterministic CVE oracle: read-only, advisory. It is NOT the blocking CI `pnpm audit` (that lives in GAIA CI automation and opens security PRs); this local run only reads + reports. See "Dependency-CVE advisory" below for the extraction, the high/critical threshold, and the baseline filter.
 4. **Merge findings** into your report under Critical/Important/Suggestions. Deduplicate against your own findings, keeping the more detailed version. Many react-doctor barrel-import and multiple-useState warnings are false positives in this codebase — cross-reference against project conventions before including them.
 
 ### Knip findings
@@ -230,6 +231,49 @@ Parse the JSON output from `pnpm knip --reporter json` (an `issues[]` array keye
 Knip findings are **advisory, not blocking** — like react-doctor's. Surface them in the audit summary with the recommended bucket and action so the user can decide. Do not auto-delete or auto-edit `knip.config.ts` during the review.
 
 When reporting knip in the Tooling table: if `issues` is an empty array, write **No issues** — do not paste the raw `{"issues":[]}` JSON.
+
+### Dependency-CVE advisory
+
+A deterministic `pnpm audit --json` run is the oracle for "known vulnerable dependencies", the concern dim 1 no longer LLM-judges. It is **read-only and advisory**: it surfaces findings so the operator can decide, exactly like knip and react-doctor. It never blocks the marker and it never opens a PR or files an issue. It does **not** duplicate the blocking CI `pnpm audit` path (GAIA CI automation, which opens review-required security PRs/issues for high/critical); the two are deliberately separate: CI blocks the merge train on the network side; this local run only informs one review.
+
+**Run + parse.** `pnpm audit` can exit non-zero when advisories exist, so append `|| true` and parse the JSON regardless of exit code. The top-level `advisories` field is an object keyed by advisory ID; each value carries `id`, `module_name`, `severity`, `title`, `cves`, `url`, `patched_versions`, and `findings[].paths`.
+
+**Severity threshold (entry gate).** Only `high` and `critical` advisories are candidates. This matches the GAIA CI blocking path's own high/critical floor and drops the long tail of low/moderate transitive noise. (Within-run dedup is free: the JSON is already keyed by advisory ID.)
+
+**Baseline suppression (cross-review noise scoping).** A machine-local, gitignored allowlist at `.gaia/local/dep-audit-baseline.json` lets the operator acknowledge an unfixable transitive advisory so it does not respam every review. Shape:
+
+```jsonc
+{ "acknowledged": [ { "id": 1098765, "module": "tough-cookie", "note": "why" } ] }
+```
+
+The audit only ever **reads** this file: acknowledging is an explicit operator action, never something the audit writes (writing it would make a suppression list the audit controls, which would erode the advisory-not-gate property). Missing file ⇒ empty baseline ⇒ every high/critical advisory surfaces.
+
+**Extraction + filter (canonical recipe):**
+
+```bash
+audit_json=$(pnpm audit --json || true)
+candidates=$(printf '%s' "$audit_json" \
+  | jq -c '[.advisories | to_entries[] | .value
+           | select(.severity == "high" or .severity == "critical")]')
+baseline=".gaia/local/dep-audit-baseline.json"
+if [ -f "$baseline" ]; then ack_ids=$(jq -c '[.acknowledged[].id]' "$baseline"); else ack_ids='[]'; fi
+surfaced=$(printf '%s' "$candidates" \
+  | jq --argjson ack "$ack_ids" '[.[] | select(.id as $i | ($ack | index($i)) | not)]')
+suppressed_count=$(printf '%s' "$candidates" \
+  | jq --argjson ack "$ack_ids" '[.[] | select(.id as $i | ($ack | index($i)))] | length')
+```
+
+**Report format (mirror the knip bucket).** Surface in the audit's Tooling/advisory section, NOT in Critical/Important/Suggestions. Per surfaced advisory, one row:
+
+- **Package**: `<module_name>`
+- **Severity**: `high` | `critical`
+- **Advisory**: `<cves[0] // id>`, `<title>`
+- **Fix path**: `patched_versions` if present, else "no patched range, transitive; consider an override or a baseline acknowledgment in `.gaia/local/dep-audit-baseline.json`".
+- **Link**: `<url>`
+
+If `surfaced` is empty, write **No high/critical advisories**, do not paste raw JSON (same empty-state rule as knip's **No issues**). If `suppressed_count` > 0, append one line: `<N> acknowledged advisory(ies) suppressed via .gaia/local/dep-audit-baseline.json`.
+
+These advisories are **advisory, not blocking**, like knip's and react-doctor's. They never block the audit marker.
 
 ### Subagent 1: React Patterns & Accessibility Audit
 
@@ -390,7 +434,7 @@ After producing the report (which includes the adversarial verification of Criti
   3. The Suggestions section is empty, OR every suggestion is auto-fixed in the working tree (verify by re-reading the relevant file). **Escalated suggestions do not satisfy this condition** — an escalation is not a resolution.
 - **Do NOT write the marker** when any Critical Issue exists, any Important Issue remains unaddressed, or any Suggestion is either unaddressed or escalated. Escalated suggestions block unconditionally — the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written.
 
-Knip and react-doctor advisories remain advisory and never block the marker.
+Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
 When the marker is warranted, the write is a three-step "stamp → mark → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the _new_ HEAD; _then_ push. Marker-before-push is load-bearing — it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The `[ ! -f "$marker" ]` guard makes the write idempotent — re-running the audit on the same HEAD never overwrites an existing marker:
 

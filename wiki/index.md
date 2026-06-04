@@ -80,6 +80,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[react-icons]]
 - [[gaia-lint]]
 - [[knip]]
+- [[pnpm-audit]]: dependency-CVE advisory oracle (`pnpm audit --json`); read-only, advisory, baseline-scoped.
 - [[Vitest]]
 - [[React Testing Library]]
 - [[Playwright]]
