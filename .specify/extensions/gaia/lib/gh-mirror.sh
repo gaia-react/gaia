@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gh-mirror.sh — Optionally mirror a saved SPEC to a GitHub Issue.
+# gh-mirror.sh: Optionally mirror a saved SPEC to a GitHub Issue.
 #
 # Usage:
 #   gh-mirror.sh <repo_root> <spec_id> <spec_path_relative_to_repo_root>
@@ -90,7 +90,7 @@ case "$permission" in
   *) skip "no_write_permission" "viewer=$viewer_login permission=$permission on $repo_slug" ;;
 esac
 
-# --- All three conditions passed — build title and create the issue ---
+# --- All three conditions passed, build title and create the issue ---
 intent_first_line="$(awk '
   /^intent:[[:space:]]*\|/ { in_intent = 1; next }
   in_intent {

@@ -2,8 +2,8 @@
 # GAIA-owned Stop hook (merged: session-stop + safety-net).
 #
 # Two reminders share one git/jq pass:
-#   1. WIKI_CHANGED — wiki/ files committed this session → prompt to refresh hot.md.
-#   2. End-of-session safety net — session committed but wiki/.state.json did not
+#   1. WIKI_CHANGED, wiki/ files committed this session → prompt to refresh hot.md.
+#   2. End-of-session safety net, session committed but wiki/.state.json did not
 #      fully advance → nag to /gaia-wiki sync.
 #
 # Upstream contract: claude-obsidian/hooks/hooks.json::Stop. Why GAIA overrides:
@@ -33,21 +33,21 @@ start_sha=$(cat "$session_marker" 2>/dev/null) || exit 0
 [ -n "$start_sha" ] || exit 0
 head_sha=$(git rev-parse HEAD 2>/dev/null) || exit 0
 
-# No commits since session start — nothing to do.
+# No commits since session start, nothing to do.
 [ "$start_sha" = "$head_sha" ] && exit 0
 
-# Marker SHA must be reachable from HEAD; otherwise rebase/reset/shallow — reset marker.
+# Marker SHA must be reachable from HEAD; otherwise rebase/reset/shallow, reset marker.
 if ! git merge-base --is-ancestor "$start_sha" HEAD 2>/dev/null; then
   echo "$head_sha" > "$session_marker"
   exit 0
 fi
 
-# Reminder #1 — wiki files modified this session → refresh hot cache.
+# Reminder #1, wiki files modified this session → refresh hot cache.
 if git log "$start_sha..HEAD" --name-only --pretty=format: 2>/dev/null | grep -q '^wiki/'; then
   echo 'WIKI_CHANGED: Wiki pages were modified this session. Please update wiki/hot.md with a brief summary of what changed (under 200 words). Use the hot cache format: Last Updated, Key Recent Facts, Recent Changes, Active Threads. Keep it factual. Overwrite the file completely. It is a cache, not a journal.'
 fi
 
-# Reminder #2 — safety net: did wiki state advance to HEAD?
+# Reminder #2, safety net: did wiki state advance to HEAD?
 if command -v jq >/dev/null 2>&1 && [ -f wiki/.state.json ]; then
   payload=$(cat 2>/dev/null || echo "")
   session_id=$(jq -r '.session_id // empty' <<<"$payload" 2>/dev/null || echo "")

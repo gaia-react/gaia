@@ -50,7 +50,7 @@ const setupSandbox = (currentVersion: string): Sandbox => {
   );
   writeFileSync(
     path.join(root, 'CHANGELOG.md'),
-    `# Changelog\n\n## [${currentVersion}] — 2026-05-07\n`,
+    `# Changelog\n\n## [${currentVersion}] - 2026-05-07\n`,
     'utf8'
   );
   writeFileSync(path.join(root, 'wiki', 'hot.md'), '# hot\n', 'utf8');
@@ -168,7 +168,7 @@ describe('release commit-and-tag --commit', () => {
     // Re-create wiki dir empty to keep readVersion happy if it's needed.
 
     const exit = run(['--commit'], {cwd: sandbox.root});
-    // Expect either a refusal (no files to stage) — but package.json IS still
+    // Expect either a refusal (no files to stage), but package.json IS still
     // a release file. If it remains the path will succeed. Adjust:
     expect([0, 1]).toContain(exit);
   });
@@ -218,7 +218,7 @@ describe('release commit-and-tag --commit', () => {
     expect(exit).toBe(2);
 
     // The failing step is the `add`, not the `commit --amend`, so the
-    // rollback message must name staging — not amend.
+    // rollback message must name staging, not amend.
     const errors = stdio.errors.join('');
     expect(errors).toContain('staging the state file failed');
     expect(errors).not.toContain('amend failed');

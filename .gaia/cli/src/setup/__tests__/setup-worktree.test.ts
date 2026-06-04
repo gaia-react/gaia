@@ -3,7 +3,7 @@
  *
  * The state-file resolver derives the canonical path from
  * `git rev-parse --git-common-dir`, so when the cwd is a linked worktree the
- * helper resolves to the MAIN checkout's `.gaia/local/setup-state.json` —
+ * helper resolves to the MAIN checkout's `.gaia/local/setup-state.json`,
  * never the linked worktree's own `.gaia/local/`.
  *
  * Strategy: each test gets a fresh `setupWorktreeSandbox()` that creates BOTH

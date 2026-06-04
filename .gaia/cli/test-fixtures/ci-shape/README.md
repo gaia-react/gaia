@@ -56,7 +56,7 @@ workflow that runs them on every PR.
      ledger after.
 4. Run `pnpm test --run ci-shape` to verify.
 
-The fixture deliberately uses inline assertions instead of snapshots —
+The fixture deliberately uses inline assertions instead of snapshots
 slice 2's invariants (the hard cap, the both-predicates rule) are too
 load-bearing for snapshot drift to silently absorb.
 
@@ -68,5 +68,5 @@ load-bearing for snapshot drift to silently absorb.
 - The polling helpers (`wait-for-merge.sh` / `wait-for-ci.sh`). They
   are pure shell; `shellcheck` is the only static analysis applied to
   them. Slice 3's per-tool workflows will exercise them on real PRs.
-- Time-related ledger fields beyond `opened_at` — slice 2 doesn't
+- Time-related ledger fields beyond `opened_at`; slice 2 doesn't
   introduce other timestamps.

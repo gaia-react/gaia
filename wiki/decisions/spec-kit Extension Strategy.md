@@ -30,7 +30,7 @@ Five contract facts about spec-kit v0.8.5's extension API:
 
 When core invokes a skill (e.g. `/speckit-specify`), it reads `.specify/extensions.yml` for the matching event and emits an `EXECUTE_COMMAND: <id>` markdown directive into the agent's reasoning context. The agent then invokes the rendered slash command as a normal Claude skill. **No JSON payload, no stdin pipe, no env var.**
 
-Block semantics live inside the hook command body — a "block" is a refusal message that the wrapper agent reads and chooses not to proceed past. There is no machine-enforced halt.
+Block semantics live inside the hook command body; a "block" is a refusal message that the wrapper agent reads and chooses not to proceed past. There is no machine-enforced halt.
 
 ### 2. There is no `on_save` event
 
@@ -50,7 +50,7 @@ The extension and preset declare `requires.speckit_version: ">=0.8.5,<0.10.0"`. 
 
 ### 5. Extension and preset are GAIA-internal
 
-Neither is published to spec-kit's public extension/preset catalog. Distribution is via the GAIA template — `/gaia-init` clones them in place during scaffold, then runs `specify extension add --dev` and `specify preset add --dev` against the local directories.
+Neither is published to spec-kit's public extension/preset catalog. Distribution is via the GAIA template; `/gaia-init` clones them in place during scaffold, then runs `specify extension add --dev` and `specify preset add --dev` against the local directories.
 
 ## How the install lands
 
@@ -66,6 +66,6 @@ specify preset add --dev .specify/presets/gaia
 
 ## Related
 
-- [[GAIA Spec]] — the wrapper workflow this strategy enables.
-- [[spec-kit]] — pin, install command, runtime requirements.
-- [[GAIA Plan]] — downstream chain target.
+- [[GAIA Spec]]: the wrapper workflow this strategy enables.
+- [[spec-kit]]: pin, install command, runtime requirements.
+- [[GAIA Plan]]: downstream chain target.

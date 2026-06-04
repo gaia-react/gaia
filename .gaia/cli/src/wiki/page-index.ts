@@ -14,7 +14,7 @@
  * Inbound counts are computed by matching either the page slug, the page
  * title, or any `[[<title>]]` reference across the corpus. Resolution
  * matches against both the slug (filename minus `.md`) and the title
- * (H1). Duplicate references inside one page count multiple times — that
+ * (H1). Duplicate references inside one page count multiple times; that
  * matches how Obsidian counts them.
  */
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';

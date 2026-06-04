@@ -17,14 +17,14 @@ GAIA's verification artifacts split across two trees: `.specify/extensions/gaia/
 ## Naming convention
 
 - UAT runbooks: `.specify/extensions/gaia/test/smoke-<feature>.md`.
-- Release-gate harnesses: `.gaia/tests/smoke/<feature>/{run.sh, README.md, fixture/}` — matches `wiki-promote/`, `wiki-sync/` precedent.
+- Release-gate harnesses: `.gaia/tests/smoke/<feature>/{run.sh, README.md, fixture/}`, matches `wiki-promote/`, `wiki-sync/` precedent.
 - Existing artifacts that pre-date this convention (`smoke.md`, `uat-evidence.md`, `v2-validation.md`) are grandfathered by name and retain their original filenames.
 
 ## Precedent shapes
 
-- Release-gate harness canonical example: `.gaia/tests/smoke/wiki-promote/run.sh` — `set -euo pipefail`, `pass()`/`fail()` helpers, structural assertions, exit-code summary.
-- UAT runbook canonical example: `.specify/extensions/gaia/test/smoke.md` — narrative steps a maintainer reads and walks through.
+- Release-gate harness canonical example: `.gaia/tests/smoke/wiki-promote/run.sh`, `set -euo pipefail`, `pass()`/`fail()` helpers, structural assertions, exit-code summary.
+- UAT runbook canonical example: `.specify/extensions/gaia/test/smoke.md`, narrative steps a maintainer reads and walks through.
 
 ## Enforcement
 
-Maintainer rule + good-faith review. No CI lint, no `/gaia-spec close` audit hook. When authoring a new verification artifact, classify it by shape against the decision table and place it in the matching tree; when reviewing, flag misclassification and migrate. If repeated violations surface post-launch, escalate to a `/gaia-spec close` audit step — never CI lint.
+Maintainer rule + good-faith review. No CI lint, no `/gaia-spec close` audit hook. When authoring a new verification artifact, classify it by shape against the decision table and place it in the matching tree; when reviewing, flag misclassification and migrate. If repeated violations surface post-launch, escalate to a `/gaia-spec close` audit step, never CI lint.

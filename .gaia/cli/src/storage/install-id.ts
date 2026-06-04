@@ -7,7 +7,7 @@ import type {StorageRoots} from './paths.js';
  * Read or generate the install-id at <home>/.claude/projects/<slug>/gaia/install-id.txt.
  * Returns the ULID. Side effect: writes the file with mode 600 if absent.
  *
- * Caller must ensureMentorshipDirs first — this function does not create parent
+ * Caller must ensureMentorshipDirs first; this function does not create parent
  * directories. Synchronous so it can be called from emit-time hot paths without
  * forcing them async.
  */
@@ -20,7 +20,7 @@ export const readOrCreateInstallId = (roots: StorageRoots): string => {
     if (existing.length === 26) {
       return existing;
     }
-    // Malformed (truncated, empty, or wrong length) — regenerate.
+    // Malformed (truncated, empty, or wrong length); regenerate.
   }
   const id = ulid();
   // The helper always creates a fresh temp file with the given mode, so the

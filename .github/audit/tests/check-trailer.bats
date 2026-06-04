@@ -15,7 +15,7 @@
 #
 # The status fallback path is exercised by mocking `gh` on a prepended
 # PATH (see `install_gh_mock`). It runs only when HEAD has no GAIA-Audit
-# trailer — the default sandbox commit gives that state.
+# trailer, the default sandbox commit gives that state.
 #
 # Coverage:
 #   1. No trailer present                        → skip=false reason=no-trailer
@@ -82,7 +82,7 @@ current_tree() {
 }
 
 # Install a fake `gh` on a prepended PATH to exercise the status fallback.
-# The mock ignores `gh`'s args — the script's `--jq` expression runs
+# The mock ignores `gh`'s args, the script's `--jq` expression runs
 # server-side against the real API; the mock just emits the already-
 # extracted GAIA-Audit description string directly.
 #   $1 behavior:

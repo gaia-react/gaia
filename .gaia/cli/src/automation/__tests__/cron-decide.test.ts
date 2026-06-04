@@ -192,7 +192,7 @@ describe('automation cron-decide', () => {
     expect(decision.reason).toBe('app_changed');
   });
 
-  it('skips with reason no_app_change when nothing in app/** since last_run_sha — UAT-001', () => {
+  it('skips with reason no_app_change when nothing in app/** since last_run_sha (UAT-001)', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     sandbox.writeState(
       'wiki',
@@ -210,7 +210,7 @@ describe('automation cron-decide', () => {
     expect(decision.decision).toBe('skip');
     expect(decision.reason).toBe('no_app_change');
     expect(decision.skip_log_line).toBe(
-      `skipped — no app/** changes since ${sandbox.headSha.slice(0, 7)}`
+      `skipped: no app/** changes since ${sandbox.headSha.slice(0, 7)}`
     );
   });
 
@@ -220,7 +220,7 @@ describe('automation cron-decide', () => {
       'wiki',
       validState(sandbox.headSha, {last_run_at: '2026-04-20T00:00:00Z'})
     );
-    // No app/** changes — should still run because of ceiling.
+    // No app/** changes; should still run because of ceiling.
     const exit = runCronDecide(
       ['wiki', '--json', '--now', '2026-05-09T00:00:00Z'],
       {cwd: sandbox.root}

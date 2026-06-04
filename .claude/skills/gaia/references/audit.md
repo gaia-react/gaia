@@ -1,12 +1,12 @@
 # /gaia-audit
 
-## Execution model — READ FIRST
+## Execution model, READ FIRST
 
 **Do not execute the playbook yourself in the current conversation.** Dispatch subagents via the `Agent` tool. Each subagent runs in isolated context.
 
 Calling `/gaia-audit` is the intent to apply. The default chains research and apply: Stage 1 produces a report, Stage 2 executes it. The two-stage split exists for technical reasons (different reasoning loads, drift-check between stages), not as a user-confirmation gate.
 
-### Path resolution (portable — no hardcoding)
+### Path resolution (portable, no hardcoding)
 
 This command ships in a template and runs in many clones across many machines. Neither this file nor the subagent prompts may hardcode a project root or a user-scoped memory path. The subagent resolves both at the start of its run:
 
@@ -23,7 +23,7 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 **Default (`/gaia-audit`)** → Stage 1, then Stage 2.
 
 1. Spawn the Stage 1 (Research) subagent below. Wait for it to return.
-2. If Stage 1 succeeded (a report path was printed), spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest report by mtime — no path argument needed.
+2. If Stage 1 succeeded (a report path was printed), spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest report by mtime, no path argument needed.
 3. Relay both summaries verbatim, in order.
 4. If Stage 1 failed, do not spawn Stage 2. Surface the error.
 
@@ -38,7 +38,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
 - `description`: `"Knowledge audit (research)"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are Stage 1 of a two-stage knowledge audit. Your job is to PRODUCE A REPORT ONLY — do not mutate any files outside .gaia/local/audit/. The Stage 2 agent will execute the actions immediately after you return.`
+  > `You are Stage 1 of a two-stage knowledge audit. Your job is to PRODUCE A REPORT ONLY, do not mutate any files outside .gaia/local/audit/. The Stage 2 agent will execute the actions immediately after you return.`
   >
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
   >
@@ -50,7 +50,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
   >
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
-  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical — include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here — the user runs /gaia-wiki for those.`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical, include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here, the user runs /gaia-wiki for those.`
 
 ### Stage 2 subagent (Apply)
 
@@ -59,7 +59,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
 - `description`: `"Knowledge audit (apply)"`
 - `prompt`: the string below (literal):
 
-  > `You are Stage 2 of a two-stage knowledge audit. Stage 1 produced a report. Your job is to execute the unchecked actions MECHANICALLY — do not reason about whether an action is correct, do not expand scope, do not merge or split actions.`
+  > `You are Stage 2 of a two-stage knowledge audit. Stage 1 produced a report. Your job is to execute the unchecked actions MECHANICALLY, do not reason about whether an action is correct, do not expand scope, do not merge or split actions.`
   >
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
   >
@@ -69,7 +69,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
   > AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
   > ```
   >
-  > `Compare these to the "project_root" / "memory_dir" fields recorded in the report's frontmatter. If they differ, STOP and print a clear error — do not improvise.`
+  > `Compare these to the "project_root" / "memory_dir" fields recorded in the report's frontmatter. If they differ, STOP and print a clear error, do not improvise.`
   >
   > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Apply procedure" section (Step 5). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
 
@@ -81,7 +81,7 @@ Relay each subagent's final summary verbatim (report path + action counts, then 
 
 ## Research procedure
 
-Audit the knowledge stores for duplication, stale entries, and auto-load bloat. **Wiki is the source of truth.** Memory is machine-local only. Auto-loaded files carry a token cost every session — keep them as pointers, push detail behind lazy wikilinks.
+Audit the knowledge stores for duplication, stale entries, and auto-load bloat. **Wiki is the source of truth.** Memory is machine-local only. Auto-loaded files carry a token cost every session, keep them as pointers, push detail behind lazy wikilinks.
 
 The report you produce is a **contract** to a Sonnet-level executor. Assume it can read, edit, and run bash, but will not reason about intent. Every action needs a literal before/after.
 
@@ -101,11 +101,11 @@ The report you produce is a **contract** to a Sonnet-level executor. Assume it c
 | Wiki domain pages                              | `$PROJECT_ROOT/wiki/<domain>/`                  | On demand                                                   |
 | Nested `CLAUDE.md` files (any monorepo layout) | any `$PROJECT_ROOT/**/CLAUDE.md` below the root | Auto when cwd matches                                       |
 
-## Step 0 — Prune old reports
+## Step 0, Prune old reports
 
 Before writing the new report, self-maintain `$PROJECT_ROOT/.gaia/local/audit/`:
 
-- **Keep the newest 5 reports regardless of age** (floor — protects long gaps between runs).
+- **Keep the newest 5 reports regardless of age** (floor, protects long gaps between runs).
 - Of anything beyond the newest 5, **delete reports older than 30 days**.
 
 ```bash
@@ -120,7 +120,7 @@ fi
 
 Report the count pruned in the summary line at the end of the run (e.g. `pruned 2 stale reports`).
 
-## Step 1 — Inventory
+## Step 1, Inventory
 
 Run in parallel:
 
@@ -145,18 +145,18 @@ wc -w "$PROJECT_ROOT"/CLAUDE.md "$PROJECT_ROOT"/wiki/hot.md "$PROJECT_ROOT"/.cla
 
 Record per file: path, word count, last-modified. Compute totals per store.
 
-## Step 2 — Cross-store duplication
+## Step 2, Cross-store duplication
 
 For every memory entry and every rules file, check whether the same fact lives in the wiki. Use `Grep` with 2–3 representative phrases from each entry. Classify each hit:
 
-- **DUPLICATE** — fact already canonical in wiki → mark memory/rules entry for deletion
-- **PROMOTE** — durable knowledge only in memory → propose moving to a specific wiki page (name the page)
-- **KEEP-LOCAL** — genuinely machine-local (personal pref, machine path, unique dev env) → keep in memory
-- **STALE** — references a file/branch/feature no longer present → mark for deletion
+- **DUPLICATE**: fact already canonical in wiki → mark memory/rules entry for deletion
+- **PROMOTE**: durable knowledge only in memory → propose moving to a specific wiki page (name the page)
+- **KEEP-LOCAL**: genuinely machine-local (personal pref, machine path, unique dev env) → keep in memory
+- **STALE**: references a file/branch/feature no longer present → mark for deletion
 
 Rules-vs-wiki: a `.claude/rules/*.md` file is allowed to duplicate wiki content **only** if it exists to enforce auto-loading for a specific `paths:` glob. Otherwise it should link to the wiki page.
 
-## Step 3 — Auto-load budget
+## Step 3, Auto-load budget
 
 Targets (flag anything over):
 
@@ -164,19 +164,19 @@ Targets (flag anything over):
 | ---------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
 | `wiki/hot.md`                                                                      | ≤200 words | Cache discipline per `wiki/hot.md` comment |
 | `CLAUDE.md` (root)                                                                 | ≤400 words | Routing + principles only                  |
-| `wiki/README.md`                                                                   | —          | On demand — no auto-load budget needed     |
+| `wiki/README.md`                                                                   |,          | On demand, no auto-load budget needed     |
 | Any nested `CLAUDE.md` discovered in Step 1 (monorepo package, subapp, docs, etc.) | ≤400 words | Scoped routing                             |
 | Any single `.claude/rules/*.md`                                                    | ≤200 lines | Focused rule                               |
 
 For each over-budget file, propose one of: inline facts → wiki, consolidate duplicated sections, or split into narrower files.
 
-## Step 4 — Report
+## Step 4, Report
 
 Write `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md`. Create `$PROJECT_ROOT/.gaia/local/audit/` if missing. Also snapshot `git status --short` into the report's frontmatter so Stage 2 can detect drift.
 
-Derive the timestamp from the shell — never guess the current date/time: `date '+%Y-%m-%d-%H%M'` for the `{YYYY-MM-DD-HHMM}` filename, `date '+%Y-%m-%d %H:%M'` for the `generated:` field.
+Derive the timestamp from the shell, never guess the current date/time: `date '+%Y-%m-%d-%H%M'` for the `{YYYY-MM-DD-HHMM}` filename, `date '+%Y-%m-%d %H:%M'` for the `generated:` field.
 
-### Report template (strict schema — Stage 2 parses this)
+### Report template (strict schema, Stage 2 parses this)
 
 ````markdown
 ---
@@ -190,7 +190,7 @@ git_status_snapshot: |
   {verbatim output of `git status --short` at research time}
 ---
 
-# Knowledge Audit — {YYYY-MM-DD HH:MM}
+# Knowledge Audit, {YYYY-MM-DD HH:MM}
 
 Resolved paths (Stage 2 must match these):
 
@@ -208,7 +208,7 @@ Resolved paths (Stage 2 must match these):
 
 ## Actions
 
-Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips the checkbox from `[ ]` to `[x]` on success, `[~]` on skip, `[!]` on failure. Every block MUST include `expect` (verbatim snippet of current target content) and where applicable `after` (verbatim replacement). Paths MUST be absolute (already expanded — no `$PROJECT_ROOT` placeholders in action bodies).
+Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips the checkbox from `[ ]` to `[x]` on success, `[~]` on skip, `[!]` on failure. Every block MUST include `expect` (verbatim snippet of current target content) and where applicable `after` (verbatim replacement). Paths MUST be absolute (already expanded, no `$PROJECT_ROOT` placeholders in action bodies).
 
 ### Delete
 
@@ -217,7 +217,7 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
   type: delete
   path: {absolute path}
   reason:
-    {one line — cite canonical wiki page + line range where the same fact lives}
+    {one line, cite canonical wiki page + line range where the same fact lives}
   expect_sha256: {sha256 of the file's current content}
   ```
 ````
@@ -229,7 +229,7 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
   type: delete-entry
   path: {absolute path}
   expect: |
-    {verbatim block to remove, including heading — must match exactly}
+    {verbatim block to remove, including heading, must match exactly}
   reason: {…}
   ```
 
@@ -242,9 +242,9 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
   source_expect_sha256: {sha256 of source content}
   target_page: {absolute wiki path}
   target_action: {append_section | insert_after_heading | create_new}
-  target_heading: {e.g. "## Bar" — only if insert_after_heading}
+  target_heading: {e.g. "## Bar", only if insert_after_heading}
   target_expect: |
-    {verbatim snippet at insertion point — omit for create_new}
+    {verbatim snippet at insertion point, omit for create_new}
   body: |
     {verbatim content to insert, frontmatter-ready if target_action=create_new}
   index_entry: {one-line addition to wiki/index.md, or null}
@@ -259,7 +259,7 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
   type: replace
   path: {absolute path}
   before: |
-    {verbatim current block — must match byte-for-byte}
+    {verbatim current block, must match byte-for-byte}
   after: |
     {verbatim replacement, typically a wikilink line}
   reason: {…}
@@ -269,7 +269,7 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
 
 Stage 2 must apply actions in this order: `shrink` → `delete-entry` → `promote` → `delete`. Rationale: shrinks never reference content that later gets touched; deletes come last so earlier pointers don't go stale.
 
-Wiki-internal redundancy and broken-link repair are handled by `/gaia-wiki consolidate` and `/gaia-wiki lint` respectively — `merge` and `fix-link` action types are not part of this workflow.
+Wiki-internal redundancy and broken-link repair are handled by `/gaia-wiki consolidate` and `/gaia-wiki lint` respectively, `merge` and `fix-link` action types are not part of this workflow.
 
 ## To re-apply
 
@@ -279,15 +279,15 @@ Apply runs immediately after this report. To re-apply later (e.g., after fixing 
 
 End the research run by printing: report path and total actions per category. (Stage 2 runs next automatically.)
 
-## Step 5 — Apply procedure (Stage 2, Sonnet)
+## Step 5, Apply procedure (Stage 2, Sonnet)
 
 You are executing, not reasoning. Follow this loop exactly.
 
 ### Pre-flight
 
-1. Find the newest `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report — run /gaia-audit first`.
-2. Parse the report's frontmatter. Verify `project_root`, `memory_dir`, and `agent_memory_dir` match the values you resolved at startup. If any differ, stop and print a clear error — the report was generated on a different machine or in a different clone.
-3. Run `git rev-parse HEAD` — if it differs from `git_head` in the report, print a warning but continue. Run `git status --short` — any file that is currently dirty AND appears as a target in the report is marked `SKIP (dirty)` before any action runs.
+1. Find the newest `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report, run /gaia-audit first`.
+2. Parse the report's frontmatter. Verify `project_root`, `memory_dir`, and `agent_memory_dir` match the values you resolved at startup. If any differ, stop and print a clear error, the report was generated on a different machine or in a different clone.
+3. Run `git rev-parse HEAD`, if it differs from `git_head` in the report, print a warning but continue. Run `git status --short`, any file that is currently dirty AND appears as a target in the report is marked `SKIP (dirty)` before any action runs.
 4. Read the `## Ordering` section. Process actions in that order.
 
 ### Per-action loop
@@ -321,7 +321,7 @@ next: review diff, commit if satisfied
 
 - Never delete a memory entry unless the action's `reason` cites a canonical wiki location. (Stage 1 must supply this; Stage 2 doesn't judge.)
 - Never edit `wiki/log.md` anywhere except prepending a new line at the top.
-- Never `git add` or `git commit` — leave changes in working tree for the human to review.
+- Never `git add` or `git commit`, leave changes in working tree for the human to review.
 - Never improvise: if drift-check fails, skip and report. Do not search for the "right" target.
 - Never merge two actions: each block is atomic.
 - If an action targets a path that doesn't exist, mark `[!]` with `target missing` and continue.

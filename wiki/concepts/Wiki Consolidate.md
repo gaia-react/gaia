@@ -8,7 +8,7 @@ tags: [concept, claude, workflow, wiki]
 
 # Wiki Consolidate
 
-`/gaia-wiki consolidate` audits the wiki for redundancy and contradiction across promoted pages. It detects supersession candidates, reversed decisions, near-collision slugs, and subject-orphans — then surfaces each finding as a proposal the maintainer can apply, defer, or acknowledge as intentional. The playbook lives at `.claude/skills/gaia/references/wiki/consolidate.md`.
+`/gaia-wiki consolidate` audits the wiki for redundancy and contradiction across promoted pages. It detects supersession candidates, reversed decisions, near-collision slugs, and subject-orphans, then surfaces each finding as a proposal the maintainer can apply, defer, or acknowledge as intentional. The playbook lives at `.claude/skills/gaia/references/wiki/consolidate.md`.
 
 ## Role in the wiki system
 
@@ -26,7 +26,7 @@ Three wiki commands with non-overlapping scopes:
 
 1. **Supersession candidates.** Two pages in the same domain whose titles are near-identical (Jaccard ≥ 0.7) and whose `promoted_from` provenance differs by ≥ 30 days. Newer is canonical; older is the candidate.
 2. **Reversed decisions.** A newer decision page whose body references the older page's title with negation phrases (`"no longer use"`, `"supersedes"`, `"replaces"`, etc.). Older page is flagged for retirement.
-3. **Near-collision slugs.** Pairs of slugs in the same domain with Levenshtein distance ≤ 2 or prefix overlap ≥ 3 chars. Editorial disambiguation prompt. Distance 2 is the floor — distance 3 produces excessive false positives in dense domains with short slugs.
+3. **Near-collision slugs.** Pairs of slugs in the same domain with Levenshtein distance ≤ 2 or prefix overlap ≥ 3 chars. Editorial disambiguation prompt. Distance 2 is the floor; distance 3 produces excessive false positives in dense domains with short slugs.
 4. **Subject-orphaned pages.** Pages with no wikilink references in `wiki/concepts/` or `wiki/modules/` that haven't been touched in 90+ days.
 
 Findings where the user previously selected "Keep both" are suppressed via `consolidation_ack` frontmatter on the canonical page.
@@ -43,7 +43,7 @@ The split is forced by `AskUserQuestion`: dispatched subagents cannot surface it
 - **Near-collision:** rename the non-canonical page (user picks canonical), update all wikilinks.
 - **Subject-orphan:** retire to `wiki/_archived/` or set `consolidation_ack: [self]` to suppress future flags.
 
-Consolidate does NOT commit — it stages edits and hands off to `/gaia-wiki sync` (or `wiki-commit-nudge`) for the branch-aware commit.
+Consolidate does NOT commit; it stages edits and hands off to `/gaia-wiki sync` (or `wiki-commit-nudge`) for the branch-aware commit.
 
 ## State tracking
 
@@ -55,6 +55,6 @@ Consolidate does NOT commit — it stages edits and hands off to `/gaia-wiki syn
 
 ## Pairs with
 
-- [[Wiki Sync]] — drives the commit and owns the parallel sync-state fields.
-- [[GAIA Spec]] — source of wiki-promote writes that consolidate audits.
-- [[spec-kit Extension Strategy]] — the extension+preset design that produces `promoted_from` provenance.
+- [[Wiki Sync]]: drives the commit and owns the parallel sync-state fields.
+- [[GAIA Spec]]: source of wiki-promote writes that consolidate audits.
+- [[spec-kit Extension Strategy]]: the extension+preset design that produces `promoted_from` provenance.

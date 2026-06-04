@@ -14655,7 +14655,7 @@ var PATTERN_TO_ADAPTATION = {
 var ADAPTATION_TEXT = {
   engineer_commentary_verbosity_increased: "The user has needed more codebase orientation when working in {{area}}. Front-load orientation context: what file owns this, what calls it, what depends on it. Reduce surprise.",
   po_example_specs_offered: "The user has historically amended specs after closing in {{area}}. Surface example SPECs from prior similar work during Q&A; lengthen the question phase before drafting.",
-  po_socratic_depth_increased: "The user has historically had trouble articulating success criteria for {{area}} work. Coach more on observable outcomes \u2014 what changes, what stays, what would prove this done? Push past 'looks right' or 'feels good' to concrete checks."
+  po_socratic_depth_increased: "The user has historically had trouble articulating success criteria for {{area}} work. Coach more on observable outcomes: what changes, what stays, what would prove this done? Push past 'looks right' or 'feels good' to concrete checks."
 };
 
 // src/schemas/mentorship-payloads.ts
@@ -14910,7 +14910,7 @@ var parseBulletLine = (raw) => {
   const bulletMatch = BULLET_REGEX.exec(raw);
   if (bulletMatch === null) return void 0;
   const body = bulletMatch[1];
-  const tokens = body.split(/[\s—-]+/u).filter(Boolean);
+  const tokens = body.split(/[\s-]+/u).filter(Boolean);
   const adaptationToken = tokens.find((token) => isAdaptationId(token));
   if (adaptationToken === void 0) return void 0;
   const areaMatch = AREA_TAG_REGEX.exec(body);
@@ -15105,7 +15105,7 @@ var readAutomationConfig = (repoRoot2) => {
     parsed = JSON.parse(raw);
   } catch (error51) {
     return {
-      error: `${filePath}: invalid JSON \u2014 ${error51 instanceof Error ? error51.message : String(error51)}`,
+      error: `${filePath}: invalid JSON: ${error51 instanceof Error ? error51.message : String(error51)}`,
       status: "malformed"
     };
   }
@@ -15149,7 +15149,7 @@ var readAutomationState = (repoRoot2, tool) => {
     parsed = JSON.parse(raw);
   } catch (error51) {
     return {
-      error: `${filePath}: invalid JSON \u2014 ${error51 instanceof Error ? error51.message : String(error51)}`,
+      error: `${filePath}: invalid JSON: ${error51 instanceof Error ? error51.message : String(error51)}`,
       status: "malformed"
     };
   }
@@ -15596,8 +15596,8 @@ var HELP_TEXT3 = `Usage: gaia automation cron-decide <tool> [--json]
     4. ceiling_14d    (last_run_at > 14 days ago)
     5. skip_safety_5  (skip_count > 5)
     6. floor_24h      (last_run_at < 24 hours ago)
-    7. app_changed    (commits to app/** since last_run_sha) \u2014 wiki only
-    8. no_app_change  (otherwise) \u2014 wiki only
+    7. app_changed    (commits to app/** since last_run_sha), wiki only
+    8. no_app_change  (otherwise), wiki only
 `;
 var HELP_TOKENS3 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TOOL_ID_SET3 = new Set(TOOL_IDS);
@@ -15607,7 +15607,7 @@ var CEILING_DAYS = 14;
 var SKIP_SAFETY_THRESHOLD = 5;
 var toolConfigFor = (config2, tool) => (
   // `TOOL_ID_TO_CONFIG_KEY` is typed `Record<ToolId, ToolConfigKey>`, so the
-  // indexed access resolves directly to `ToolConfig` — no cast needed.
+  // indexed access resolves directly to `ToolConfig`; no cast needed.
   config2[TOOL_ID_TO_CONFIG_KEY[tool]]
 );
 var run4 = (argv, options = {}) => {
@@ -15697,7 +15697,7 @@ var run4 = (argv, options = {}) => {
   if (configResult.status === "missing") {
     structuredError({
       code: "config_missing",
-      message: "cron-decide requires .gaia/automation.json \u2014 running cron-decide on an unconfigured repo is a setup bug",
+      message: "cron-decide requires .gaia/automation.json; running cron-decide on an unconfigured repo is a setup bug",
       subcommand: "automation cron-decide"
     });
     return EXIT_CODES.CONFIG_INVALID;
@@ -15798,7 +15798,7 @@ var decide = (args) => {
   return {
     decision: "skip",
     reason: "no_app_change",
-    skip_log_line: `skipped \u2014 no app/** changes since ${shortSha2}`
+    skip_log_line: `skipped: no app/** changes since ${shortSha2}`
   };
 };
 
@@ -15915,7 +15915,7 @@ var run5 = (argv, options = {}) => {
   if (existsSync7(targetPath)) {
     structuredError({
       code: "state_already_exists",
-      message: `${targetPath} already exists \u2014 use record-run, bump-state, or clear-overage`,
+      message: `${targetPath} already exists; use record-run, bump-state, or clear-overage`,
       subcommand: "automation init-state",
       tool
     });
@@ -16537,7 +16537,7 @@ var resolvePartials = (raw, partialsDir) => raw.replaceAll(PARTIAL_PATTERN, (_ma
   const body = readPartialBody(partialsDir, name);
   if (body.includes("{{>")) {
     throw new Error(
-      `partial '${name}' contains '{{>' \u2014 partials may not include other partials`
+      `partial '${name}' contains '{{>'; partials may not include other partials`
     );
   }
   return body;
@@ -16565,10 +16565,10 @@ var DEFAULT_SCHEDULE_BY_TOOL = {
   wiki: "daily"
 };
 var WORKFLOW_NAME_BY_TOOL = {
-  "pnpm-audit": "GAIA CI \u2014 pnpm audit",
-  "stale-branches": "GAIA CI \u2014 Stale Branches",
-  "update-deps": "GAIA CI \u2014 Update Deps",
-  wiki: "GAIA CI \u2014 Wiki"
+  "pnpm-audit": "GAIA CI - pnpm audit",
+  "stale-branches": "GAIA CI - Stale Branches",
+  "update-deps": "GAIA CI - Update Deps",
+  wiki: "GAIA CI - Wiki"
 };
 var cronForSchedule = (schedule) => CRON_BY_SCHEDULE[schedule];
 var buildWorkflowVars = (config2, tool) => {
@@ -16933,7 +16933,7 @@ var HELP_TEXT13 = `Usage: gaia init configure-automation \\
   --stale-branches <ci|local|off>
 
   Write .gaia/automation.json with the user's tool-mode selections and
-  setup_complete: false. Phase A of GAIA CI \u2014 no GitHub repo or workflow
+  setup_complete: false. Phase A of GAIA CI; no GitHub repo or workflow
   YAML required.
 
   Required flags:
@@ -17629,7 +17629,7 @@ var removeIfPresent2 = (cwd, relative) => {
 var writeReadme = (cwd, title) => {
   const templatePath = path15.join(cwd, README_TEMPLATE);
   if (!existsSync13(templatePath)) {
-    throw new Error(`${README_TEMPLATE} not found \u2014 cannot replace README`);
+    throw new Error(`${README_TEMPLATE} not found; cannot replace README`);
   }
   const template = readFileSync12(templatePath, "utf8");
   const rendered = template.split(PLACEHOLDER).join(title);
@@ -18102,7 +18102,7 @@ import path17 from "node:path";
 
 // src/mentorship/display-rule.ts
 var DISPLAY_RULE_FILE_NAME = "feedback_mentorship_display.md";
-var DISPLAY_RULE_INDEX_LINE = "- [Mentorship raw events are off-limits](feedback_mentorship_display.md) \u2014 never display, summarize, or tail mentorship event files";
+var DISPLAY_RULE_INDEX_LINE = "- [Mentorship raw events are off-limits](feedback_mentorship_display.md): never display, summarize, or tail mentorship event files";
 var DISPLAY_RULE_BODY = `---
 name: Mentorship Display Rule
 description: Claude must not display, summarize, tail, or surface raw mentorship event files
@@ -18121,10 +18121,10 @@ Mentorship raw event files contain identity-bearing data. Claude must not displa
 
 **How to apply:** Refuse all read/show/summarize/tail/grep requests against any path under the mentorship subtree. Do not pipe such files through Bash output back to the conversation. Surface instead:
 
-- \`~/.claude/projects/<slug>/gaia/profile.md\` \u2014 Claude-displayable aggregate, regenerated by \`gaia telemetry compute-profile\`.
-- \`gaia mentorship --tail\` \u2014 user-facing CLI for live tail.
+- \`~/.claude/projects/<slug>/gaia/profile.md\`: Claude-displayable aggregate, regenerated by \`gaia telemetry compute-profile\`.
+- \`gaia mentorship --tail\`: user-facing CLI for live tail.
 
-Firm: no "just one event", no "summarize the last hour", no "what did I work on yesterday based on the events" \u2014 even if the user asks.
+Firm: no "just one event", no "summarize the last hour", no "what did I work on yesterday based on the events", even if the user asks.
 `;
 
 // src/mentorship/display-rule-memory.ts
@@ -19594,7 +19594,7 @@ var readVersion = (cwd, override) => {
 };
 var UNRELEASED_HEADING = "## [Unreleased]";
 var graduateChangelog = (current, newVersion, block, today) => {
-  const versionHeading = `## [${newVersion}] \u2014 ${today}`;
+  const versionHeading = `## [${newVersion}] - ${today}`;
   if (current.includes(`## [${newVersion}]`)) {
     return { kind: "duplicate" };
   }
@@ -19879,12 +19879,12 @@ var runCommitMode = (ctx) => {
         });
         if (!stepSucceeded(rollback)) {
           process.stderr.write(
-            `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; the release commit is left in place \u2014 undo it manually before retrying
+            `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; the release commit is left in place; undo it manually before retrying
 `
           );
         } else {
           process.stderr.write(
-            `commit-and-tag: ${failedStage} failed; rolled back the release commit (git reset --soft HEAD~1) \u2014 fix the cause and retry
+            `commit-and-tag: ${failedStage} failed; rolled back the release commit (git reset --soft HEAD~1); fix the cause and retry
 `
           );
         }
@@ -19921,12 +19921,12 @@ var runTagMode = (ctx) => {
       });
       if (!stepSucceeded(rollback)) {
         process.stderr.write(
-          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; the local tag ${tagName} is left in place \u2014 delete it manually before retrying
+          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; the local tag ${tagName} is left in place; delete it manually before retrying
 `
         );
       } else {
         process.stderr.write(
-          `commit-and-tag: push failed; deleted the local tag ${tagName} \u2014 fix the cause and retry
+          `commit-and-tag: push failed; deleted the local tag ${tagName} ; fix the cause and retry
 `
         );
       }
@@ -20574,7 +20574,7 @@ var runWikiStateJson = (cwd) => {
     return {
       commits_ahead: commitsAhead2,
       // Default reachable to true on a malformed payload so the orphaned-state
-      // recovery never fires off bad input — the gate falls back to today's
+      // recovery never fires off bad input; the gate falls back to today's
       // `commits_ahead` reading.
       reachable: typeof reachable === "boolean" ? reachable : true,
       state_sha: typeof stateSha === "string" ? stateSha : "",
@@ -20680,7 +20680,7 @@ var run38 = (argv, options = {}) => {
   if (driftCount !== 0) {
     const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
     const benign = driftSubjects !== null && // Guards the vacuous-truth case: zero subjects with `driftCount > 0`
-    // means the range count disagrees with `git log` — a broken state, not
+    // means the range count disagrees with `git log`, a broken state, not
     // a benign one.
     driftSubjects.length > 0 && driftSubjects.every((subject) => subject.startsWith("wiki:"));
     if (!benign) {
@@ -25599,7 +25599,7 @@ var HELP_TEXT37 = `Usage: gaia setup link-worktree [--json]
 
   Idempotently create the three worktree shared-state symlinks pointing at
   the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
-  No-op on a main checkout (not a linked worktree) \u2014 exits 0 with a
+  No-op on a main checkout (not a linked worktree); exits 0 with a
   one-line "not a linked worktree" message.
 
   --json   Print a single JSON line describing the result instead of the
@@ -26691,7 +26691,7 @@ var readMentorshipEvents = async (args) => {
 };
 
 // src/profile/header.ts
-var PROFILE_DO_NOT_EDIT_HEADER = "> DO NOT EDIT \u2014 regenerated by `gaia telemetry compute-profile`. Use `gaia mentorship purge` or `disable` to change state.";
+var PROFILE_DO_NOT_EDIT_HEADER = "> DO NOT EDIT - regenerated by `gaia telemetry compute-profile`. Use `gaia mentorship purge` or `disable` to change state.";
 
 // src/profile/writer.ts
 var PATTERN_DISPLAY_ORDER = [
@@ -26721,7 +26721,7 @@ var renderActivePatternsSection = (patterns) => {
     return [
       "## Active patterns",
       "",
-      "(none \u2014 all patterns below sample threshold or strength below threshold)"
+      "(none - all patterns below sample threshold or strength below threshold)"
     ].join("\n");
   }
   return [
@@ -26757,13 +26757,13 @@ var renderFadedAdaptationsSection = (adaptations) => renderAdaptationSection(
 );
 var renderPatternDetailLine = (pattern) => {
   if (pattern.strength === null) {
-    return `- ${pattern.area_tag}: below sample threshold (N=${pattern.sample_count}, min 10) \u2014 no fire`;
+    return `- ${pattern.area_tag}: below sample threshold (N=${pattern.sample_count}, min 10) - no fire`;
   }
   const verb = pattern.strength >= STRENGTH_THRESHOLD ? "fired" : "below threshold";
   return `- ${pattern.area_tag}: strength ${formatNumber(
     pattern.strength,
     2
-  )} (N=${pattern.sample_count}) \u2014 ${verb}`;
+  )} (N=${pattern.sample_count}) - ${verb}`;
 };
 var renderPatternDetailGroup = (groupPatternId, patterns) => {
   const groupResults = patterns.filter(
@@ -29389,7 +29389,7 @@ var classify = (commit) => {
     return { reason: "test: test-only change", suggestion: "SKIP" };
   }
   return {
-    reason: "no matching prefix \u2014 defer to human review",
+    reason: "no matching prefix, defer to human review",
     suggestion: "WORTHY"
   };
 };
@@ -29868,7 +29868,7 @@ var parseFrontmatter = (raw) => {
 var HELP_TEXT49 = `Usage: gaia wiki empty-sections [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**, wiki/hot.md, wiki/log.md) for
-  LEAF headings with no body \u2014 no child heading and no non-blank, non-heading
+  LEAF headings with no body, no child heading and no non-blank, non-heading
   content before the next sibling/shallower heading or EOF. Parent headings
   are never flagged. Fenced code blocks and the frontmatter block are handled.
   Without --json, prints one "path:line  heading" line per finding. With
@@ -30241,7 +30241,7 @@ var run63 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const date5 = options.today ?? todayUtc3();
-  const newLine = `- ${date5} ${parsed.flags.sha} ${parsed.flags.decision} \u2014 ${parsed.flags.reason}`;
+  const newLine = `- ${date5} ${parsed.flags.sha} ${parsed.flags.decision} - ${parsed.flags.reason}`;
   const insertionIndex = findInsertionIndex(lines, scan.endLineIndex);
   const next = [
     ...lines.slice(0, insertionIndex),
@@ -30788,7 +30788,7 @@ var HELP_TEXT56 = `Usage: gaia wiki state-init <sha>
   Create wiki/.state.json with {version: 1, last_evaluated_sha,
   last_evaluated_at}. Refuses if the file already exists.
 
-  <sha> may be any ref (full sha, short sha, branch, tag) \u2014 it is
+  <sha> may be any ref (full sha, short sha, branch, tag); it is
   resolved to a full 40-char sha via \`git rev-parse\`.
 `;
 var HELP_TOKENS54 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -30863,7 +30863,7 @@ var run68 = (argv, options = {}) => {
   if (existsSync43(statePath)) {
     structuredError({
       code: "state_already_exists",
-      message: "wiki/.state.json already exists \u2014 use `gaia wiki state-bump` to update fields",
+      message: "wiki/.state.json already exists; use `gaia wiki state-bump` to update fields",
       subcommand: "wiki state-init"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;

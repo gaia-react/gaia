@@ -3,7 +3,7 @@
  * a list of `gaia telemetry emit` invocations to dispatch.
  *
  * The trailer is the canonical way agent skills surface mentorship events
- * back to the parent — a fenced YAML block at the end of the agent's
+ * back to the parent, a fenced YAML block at the end of the agent's
  * Task-tool return string:
  *
  *     ... agent prose ...
@@ -19,7 +19,7 @@
  * and returns the emit invocations. No I/O, no env reads. The caller decides
  * how to dispatch (production: invoke `handleEmit`; tests: assert on result).
  *
- * Idempotency is handled downstream — `handleEmit` writes content-derived
+ * Idempotency is handled downstream; `handleEmit` writes content-derived
  * ULIDs, so a double-fire of the same payload short-circuits at the
  * append-idempotent layer.
  */

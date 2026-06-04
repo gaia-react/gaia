@@ -6,7 +6,7 @@
  * PR-merge dance on `main`, or (b) in-place commit on a feature branch.
  *
  * Determinism contract:
- *   - No prose narration on stdout — only a one-line summary.
+ *   - No prose narration on stdout; only a one-line summary.
  *   - All branch-state checks resolve to git/gh exit codes.
  *   - Exit codes:
  *       0  success
@@ -18,7 +18,7 @@
  *     and gh invocation routes through `runner`, which tests replace with
  *     a fake.
  *   - Failure of any git/gh step inside the protected-branch landing
- *     sequence short-circuits with exit code 2 — no narration, the
+ *     sequence short-circuits with exit code 2; no narration, the
  *     command's own stderr is piped through.
  */
 import {type SpawnSyncReturns} from 'node:child_process';
@@ -180,7 +180,7 @@ const todayUtc = (now: Date = new Date()): string => {
 /**
  * Best-effort rollback of the local-only landing steps: return to the
  * original branch and delete the half-created sync branch. Remote state is
- * never auto-reverted. The rollback git calls are themselves best-effort —
+ * never auto-reverted. The rollback git calls are themselves best-effort;
  * a failure here is not surfaced over the original step failure.
  */
 const rollbackLocalLanding = (

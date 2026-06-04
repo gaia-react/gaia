@@ -5,7 +5,7 @@
 # the project's own quality gate. End-to-end smoke that the scaffold
 # the adopter receives compiles and tests green without further setup.
 #
-# This is Layer 0 — host pnpm available. For Layer 1 (no pnpm on PATH),
+# This is Layer 0; host pnpm available. For Layer 1 (no pnpm on PATH),
 # see `05-clean-env.sh` (validates the bootstrap path differently).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -23,7 +23,7 @@ trap 'rm -rf "$STAGING"' EXIT
 cd "$STAGING"
 
 # `pnpm install` reads packageManager + lockfile from the staged tree.
-# `--frozen-lockfile` asserts the lockfile is sufficient — drift would
+# `--frozen-lockfile` asserts the lockfile is sufficient; drift would
 # fail loudly. The staging tree is post-scrub so the lockfile is the one
 # adopters get.
 log "pnpm install (this takes a minute)"

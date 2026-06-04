@@ -3,7 +3,7 @@
 #
 # The N-parallel test is robust against flake by design: every background
 # `next` job blocks until a shared start-flag file exists, then all race at
-# once. A passing run with no contention proves nothing — the barrier forces
+# once. A passing run with no contention proves nothing; the barrier forces
 # genuine overlap, so the UNLOCKED read-modify-write would fail this test
 # (two jobs read the same highest_num, allocate a duplicate id, and the
 # second `mv` clobbers the first appended row → fewer than N rows and/or a
@@ -35,14 +35,14 @@ _run_parallel_next() {
       '"${LOCK_ENV:-}"' bash "$repo/$alloc" next "$repo" > "$repo/out.$idx" 2>/dev/null
     ' _ "$REPO" "$ALLOC" "$i" &
   done
-  # Release the barrier — all jobs were spinning on this file's existence.
+  # Release the barrier; all jobs were spinning on this file's existence.
   touch "$REPO/start.flag"
   wait
 }
 
 # --- Test 8: N-parallel next → N distinct ids, zero lost rows -----------------
 
-@test "8a: N-parallel next (real flock if present) — N distinct ids, N rows, no dupes" {
+@test "8a: N-parallel next (real flock if present); N distinct ids, N rows, no dupes" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
   N=10
@@ -63,7 +63,7 @@ _run_parallel_next() {
   done <<< "$distinct"
 }
 
-@test "8b: N-parallel next (forced mkdir fallback) — N distinct ids, N rows, no dupes" {
+@test "8b: N-parallel next (forced mkdir fallback); N distinct ids, N rows, no dupes" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
   N=10
@@ -84,7 +84,7 @@ _run_parallel_next() {
 
 # --- Test 9: stale-lock recovery in `next` -----------------------------------
 
-@test "9: stale-lock recovery in next — reclaims stale dir, allocates next id" {
+@test "9: stale-lock recovery in next; reclaims stale dir, allocates next id" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   cd "$REPO"
   mkdir -p "$REPO/.gaia/specs.lock.d"
@@ -105,7 +105,7 @@ _run_parallel_next() {
   [ "$output" = "SPEC-007" ]
 }
 
-@test "11: in_progress fallback — canonical folder file, no ledger row" {
+@test "11: in_progress fallback; canonical folder file, no ledger row" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-013)"
   cd "$REPO"
   run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
@@ -113,7 +113,7 @@ _run_parallel_next() {
   [ "$output" = "SPEC-013" ]
 }
 
-@test "12: in_progress none — empty ledger, no files" {
+@test "12: in_progress none; empty ledger, no files" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
   run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
@@ -136,7 +136,7 @@ _run_parallel_next() {
 
 # --- Test 14: exit-code preservation -----------------------------------------
 
-@test "14a: non-git dir — next exits 3" {
+@test "14a: non-git dir; next exits 3" {
   # Build a tmp repo via the helper (so the scripts + sibling source resolve),
   # then strip .git so require_git fails. REPO is set so teardown cleans up.
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
@@ -145,7 +145,7 @@ _run_parallel_next() {
   [ "$status" -eq 3 ]
 }
 
-@test "14b: forced jq failure — next exits 4 (exit code propagates THROUGH the lock)" {
+@test "14b: forced jq failure; next exits 4 (exit code propagates THROUGH the lock)" {
   # This is the load-bearing negative assertion for the Phase-2 swallowed-rc
   # bug: append_ledger_row returns 4 on jq failure; with_ledger_lock must
   # pass that 4 through unchanged, and `next` must exit 4 (NOT 0). A failing
@@ -170,11 +170,11 @@ EOF
   chmod +x "$stubdir/jq"
   run bash -c "PATH='$stubdir:$PATH' bash '$REPO/$ALLOC' next '$REPO'"
   [ "$status" -eq 4 ]
-  # Ledger left unchanged — no row appended on the failed write.
+  # Ledger left unchanged; no row appended on the failed write.
   [ "$(jq -r '[.specs[].id] | length' "$REPO/.gaia/specs.json")" -eq 0 ]
 }
 
-@test "14c: lock timeout — next exits 4, ledger unchanged (75 maps to 4)" {
+@test "14c: lock timeout; next exits 4, ledger unchanged (75 maps to 4)" {
   # Hold the lock with a slow background job, then a real `next` with a tiny
   # timeout cannot acquire it. The helper returns 75; `next` maps that to
   # exit 4 (ledger-write-class failure) per Contract C2. Asserts the timeout
@@ -214,7 +214,7 @@ EOF
 
 # --- Test 15: ledger-update racing next (Contract C3 cross-script) ------------
 
-@test "15: ledger-update racing N-parallel next — ledger valid, no row lost" {
+@test "15: ledger-update racing N-parallel next; ledger valid, no row lost" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   cd "$REPO"
   N=8

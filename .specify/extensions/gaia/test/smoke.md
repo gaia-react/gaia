@@ -1,4 +1,4 @@
-# `/gaia-spec` — manual smoke runbook
+# `/gaia-spec`, manual smoke runbook
 
 This runbook walks the full `/gaia-spec` lifecycle and maps every step to the UAT it satisfies. It is a manual document, not an executable test. Use it as the basis for the evidence file in `task-uat-verification` (Phase 3).
 
@@ -19,7 +19,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 1 — Invoke `/gaia-spec` against a populated constitution
+## Step 1: Invoke `/gaia-spec` against a populated constitution
 
 **Action.** Run `/gaia-spec "trivial test feature: render a hello world panel"` from a clean session.
 
@@ -33,7 +33,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 2 — Constitution placeholder block
+## Step 2: Constitution placeholder block
 
 **Action.** Restore `.specify/memory/constitution.md` to spec-kit's default template state (or replace one populated value with `[PLACEHOLDER]`). Re-run `/gaia-spec "trivial test feature"`.
 
@@ -47,7 +47,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 3 — Resume-vs-start-new prompt
+## Step 3: Resume-vs-start-new prompt
 
 **Action.** With an in-progress SPEC already at `.gaia/local/specs/SPEC-NNN/SPEC.md`, invoke `/gaia-spec "another feature"` without a force-new flag.
 
@@ -61,7 +61,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 4 — Socratic loop: AskUserQuestion mediation
+## Step 4: Socratic loop: AskUserQuestion mediation
 
 **Action.** Continue through the discovery loop on the new SPEC. Trigger several closed-set questions.
 
@@ -70,13 +70,13 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 - Every closed-set question goes through `AskUserQuestion`.
 - Options are ordered: recommended FIRST (annotated `(Recommended)`), alternatives, `Other` (free text), `Discuss this`.
 - Open-ended questions use a plain prompt with no enumerated options.
-- Exactly one question per turn — no multi-question forms, no silent stacking.
+- Exactly one question per turn, no multi-question forms, no silent stacking.
 
 **UATs covered.** UAT-003.
 
 ---
 
-## Step 5 — `Discuss this` escape
+## Step 5: `Discuss this` escape
 
 **Action.** On any closed-set question, pick `Discuss this`. Engage in plain Q&A. Once the topic feels settled, send an explicit settlement signal (e.g. `"ok, that one"`).
 
@@ -90,7 +90,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 6 — Per-topic exhaustion checkpoint
+## Step 6: Per-topic exhaustion checkpoint
 
 **Action.** Continue answering questions on a single topic until the PO runs out of natural follow-ups.
 
@@ -103,7 +103,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 7 — Research subagent dispatch
+## Step 7: Research subagent dispatch
 
 **Action.** Reach a question that requires prior-art lookup, repo-convention investigation, or competitive analysis (e.g. "what naming convention does this codebase use for Zustand stores?").
 
@@ -117,7 +117,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 8 — Gate 1 (shape confirmation)
+## Step 8: Gate 1 (shape confirmation)
 
 **Action.** When the PO believes it has enough material, observe the gate-1 step.
 
@@ -131,7 +131,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 9 — `after_clarify` self-review
+## Step 9: `after_clarify` self-review
 
 **Action.** Allow the clarify loop to complete and the `after_clarify` hook to run.
 
@@ -145,7 +145,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 10 — `clarifications.pending` block-or-defer
+## Step 10: `clarifications.pending` block-or-defer
 
 **Action.** Force at least one item into `clarifications.pending[]` (e.g. via the `Discuss this` flow that was deferred). Run through to gate 2.
 
@@ -158,7 +158,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 11 — Gate 2 (artifact confirmation)
+## Step 11: Gate 2 (artifact confirmation)
 
 **Action.** After `after_clarify` clears, observe the gate-2 step.
 
@@ -172,21 +172,21 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 12 — `after_specify` immutability lint
+## Step 12: `after_specify` immutability lint
 
 **Action.** On gate-2 confirmation, observe `after_specify.sh` running.
 
 **Expected outcome.**
 
 - Lint checks frontmatter for `immutable: true`, `status: in-progress`, well-formed `UAT-NNN` IDs, no placeholder text, and presence of all required schema fields.
-- Lint also performs the path-allowlist audit on the session — only `.gaia/local/specs/**`, `.specify/**`, `.gaia/local/cache/**`, `.gaia/local/telemetry/**` may have been written.
+- Lint also performs the path-allowlist audit on the session, only `.gaia/local/specs/**`, `.specify/**`, `.gaia/local/cache/**`, `.gaia/local/telemetry/**` may have been written.
 - Lint pass returns `{"action": "proceed"}`. Lint fail returns `{"action": "block", "reason": "..."}` and save is halted.
 
 **UATs covered.** UAT-008, UAT-015 (write-surface audit).
 
 ---
 
-## Step 13 — SPEC saved to disk
+## Step 13: SPEC saved to disk
 
 **Action.** Lint passes. The wrapper writes the artifact.
 
@@ -200,23 +200,23 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 14 — GitHub Issue mirror (conditional)
+## Step 14: GitHub Issue mirror (conditional)
 
 **Action.** With all three conditions met (gh auth ok, repo Issues enabled, viewer write permission), the wrapper invokes `lib/gh-mirror.sh`.
 
-**Expected outcome — happy path.**
+**Expected outcome, happy path.**
 
 - A new GitHub Issue is created titled `"<spec-id>: <intent first line>"` with the SPEC body as the issue body.
 - The SPEC frontmatter gains a `gh_issue_url: <url>` field.
 - A telemetry record `{status:"mirrored", detail:"<url>"}` is appended to `.gaia/local/telemetry/gh-mirror.jsonl`.
 
-**Action — failure paths.** Repeat the smoke after each of the following individually:
+**Action, failure paths.** Repeat the smoke after each of the following individually:
 
 1. `gh auth logout` (auth fails)
 2. Disable Issues on the GitHub repo (has_issues=false)
 3. Run as a user without write permission (read-only collaborator)
 
-**Expected outcome — each failure path.**
+**Expected outcome, each failure path.**
 
 - `gh-mirror.sh` exits 0 (no error to lifecycle).
 - A telemetry record `{status:"skipped", event:"<gh_auth_failed|issues_disabled|no_write_permission>"}` is appended.
@@ -227,9 +227,9 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 15 — Inline chain-trigger prompt
+## Step 15: Inline chain-trigger prompt
 
-**Action.** After save (and any optional GH mirror), the `/gaia-spec` wrapper executes Step 11 of `.claude/skills/gaia/references/spec.md` — an inline `AskUserQuestion`. There is no `on_save` hook in spec-kit v0.8.5; the chain trigger lives in the wrapper itself.
+**Action.** After save (and any optional GH mirror), the `/gaia-spec` wrapper executes Step 11 of `.claude/skills/gaia/references/spec.md`, an inline `AskUserQuestion`. There is no `on_save` hook in spec-kit v0.8.5; the chain trigger lives in the wrapper itself.
 
 **Expected outcome.**
 
@@ -241,7 +241,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 16 — Immutable UAT enforcement (post-save mutation attempt)
+## Step 16: Immutable UAT enforcement (post-save mutation attempt)
 
 **Action.** Manually edit `.gaia/local/specs/SPEC-NNN/SPEC.md` to change a UAT body. Re-invoke `/gaia-spec` so the lint hook re-evaluates the saved artifact.
 
@@ -255,7 +255,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 17 — No-machine-local-memory rule
+## Step 17: No-machine-local-memory rule
 
 **Action.** Snapshot machine-local memory after the smoke pass: `find ~/.claude/projects/$(pwd | sed 's|/|-|g')/memory -type f 2>/dev/null > /tmp/gaia-smoke-memory-after.txt`. Diff against the pre-flight snapshot.
 
@@ -268,7 +268,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 18 — Write-surface audit
+## Step 18: Write-surface audit
 
 **Action.** After the full smoke run, capture the post-run tree state and diff.
 

@@ -30,12 +30,12 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 
 | Skill           | Triggers on                                                                                                                              |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `new-component` | "create a component", "scaffold a card" — drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir          |
-| `new-hook`      | "create a useFoo hook", "add a hook under app/hooks" — drops a `useThing.ts` + Vitest test                                               |
-| `new-route`     | "add a new page", "scaffold /dashboard" — wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                               |
-| `new-service`   | "add a service", "scaffold the projects API" — drops `app/services/gaia/{name}/` (parsers, types, requests) and matching MSW collections |
-| `update-deps`   | Autonomous Dependabot — fired by `/gaia-init`, accepted from the statusline `Run /update-deps` indicator, or "update dependencies"       |
-| `update-gaia`   | Pull a later GAIA release into the project — accepted from the SessionStart update prompt, or "pull the latest GAIA"                     |
+| `new-component` | "create a component", "scaffold a card": drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir          |
+| `new-hook`      | "create a useFoo hook", "add a hook under app/hooks": drops a `useThing.ts` + Vitest test                                               |
+| `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                               |
+| `new-service`   | "add a service", "scaffold the projects API": drops `app/services/gaia/{name}/` (parsers, types, requests) and matching MSW collections |
+| `update-deps`   | Autonomous Dependabot: fired by `/gaia-init`, accepted from the statusline `Run /update-deps` indicator, or "update dependencies"       |
+| `update-gaia`   | Pull a later GAIA release into the project: accepted from the SessionStart update prompt, or "pull the latest GAIA"                     |
 
 ### Context-triggered
 
@@ -51,17 +51,17 @@ GAIA's skills split into three groups: a `/gaia` router for user-invoked workflo
 
 ### Statusline update indicators
 
-`update-deps` and `update-gaia` are surfaced by the **statusline**, not by a hook. `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns a yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segment when applicable. The wrapper delegates left-side rendering to `~/.claude/settings.json`'s existing `statusLine.command` so the adopter's existing global statusline appears unchanged, falling back to a bare `Claude Code` label. The hot path is cache-only — no network, no `pnpm` calls — and a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. The outdated count derives from `gaia update-deps run` rather than raw `pnpm outdated`, so it counts only the plan the skill will apply and inherits the `minimumReleaseAge` cooldown and major-version cap (see [[pnpm]]) — the nudge never advertises an update the skill would skip. Silent on missing cache or missing `jq`.
+`update-deps` and `update-gaia` are surfaced by the **statusline**, not by a hook. `.gaia/statusline/gaia-statusline.sh` reads `.gaia/cache/update-check.json` and right-aligns a yellow `Run /update-deps (N outdated)` and/or cyan `Run /update-gaia (X.Y.Z available)` segment when applicable. The wrapper delegates left-side rendering to `~/.claude/settings.json`'s existing `statusLine.command` so the adopter's existing global statusline appears unchanged, falling back to a bare `Claude Code` label. The hot path is cache-only (no network, no `pnpm` calls) and a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. The outdated count derives from `gaia update-deps run` rather than raw `pnpm outdated`, so it counts only the plan the skill will apply and inherits the `minimumReleaseAge` cooldown and major-version cap (see [[pnpm]]); the nudge never advertises an update the skill would skip. Silent on missing cache or missing `jq`.
 
 The statusline surface is chosen over a `SessionStart` `<system-reminder>` hook because system-reminders are visible only to the model; the user never sees them, so prompts fire and snooze without the user being shown a choice. The statusline is always visible, has no snooze state, and clears itself the moment the underlying cache reports clean.
 
-## Rules vs. Skills — decision criteria
+## Rules vs. Skills: decision criteria
 
 GAIA's `.claude/` surface places each kind of guidance in the layer that loads it most efficiently. Use this matrix when adding new guidance:
 
 | Layer                                 | Loads when…                                            | Use for                                                                            |
 | ------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Hook (`.claude/hooks/`)               | Tool call matches a registered event                   | Mechanical enforcement (block / advise) on a specific tool shape — no judgment     |
+| Hook (`.claude/hooks/`)               | Tool call matches a registered event                   | Mechanical enforcement (block / advise) on a specific tool shape, no judgment     |
 | Rule (`.claude/rules/`)               | Matching `paths:` glob in scope (or always when empty) | File-path-bound conventions: project-wide style, route layout, accessibility, i18n |
 | Skill (`.claude/skills/`)             | `description:` matches user intent / context           | Cross-file reasoning patterns: refactor playbooks, error-fix recipes, TDD loop     |
 | Instruction (`.claude/instructions/`) | Dispatched by a command/skill at runtime               | Parameterized one-shot runbooks (add a locale, strip i18n, etc.); self-deleting    |
@@ -76,7 +76,7 @@ Heuristic when migrating:
 
 `SKILL.md` is stack-agnostic lazy philosophy. It auto-loads into context, so it must stay short and general.
 
-Stack-specific or deep-dive content lives in `references/{topic}.md` inside the skill directory, loaded on demand. `SKILL.md` hints at available references via markdown links. Adding support for a new stack means adding a new reference file — `SKILL.md` itself is never touched.
+Stack-specific or deep-dive content lives in `references/{topic}.md` inside the skill directory, loaded on demand. `SKILL.md` hints at available references via markdown links. Adding support for a new stack means adding a new reference file; `SKILL.md` itself is never touched.
 
 **Example:** `skills/tdd/SKILL.md` links to `skills/tdd/references/tests-react.md`. A new Svelte testing reference would go in `skills/tdd/references/tests-svelte.md`.
 
@@ -99,7 +99,7 @@ The plugin ships more `claude-obsidian:*` skills than these (canvas, autoresearc
 
 GAIA uses the `playwright-cli` skill (Bash-invoked CLI) rather than the Playwright MCP server. The MCP server was evaluated and rejected.
 
-**Why:** MCP servers load tools into the system prompt every conversation, paying a token tax even when unused. For Playwright specifically, the per-test workflow is independent enough that CLI invocation works fine — there is no warm-state benefit that justifies the tax.
+**Why:** MCP servers load tools into the system prompt every conversation, paying a token tax even when unused. For Playwright specifically, the per-test workflow is independent enough that CLI invocation works fine; there is no warm-state benefit that justifies the tax.
 
 **How to apply:** Do not recommend the Playwright MCP server for GAIA. When browser automation is needed, point at the existing `playwright-cli` skill.
 

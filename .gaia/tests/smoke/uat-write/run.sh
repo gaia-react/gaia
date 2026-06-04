@@ -7,7 +7,7 @@
 # write/rewrite/delete branches, idempotency, fixme heuristic, cache mirror,
 # and manifest declarations.
 #
-# Does NOT exercise the live /speckit-implement hook fire — that requires a
+# Does NOT exercise the live /speckit-implement hook fire; that requires a
 # real spec-kit invocation and is out of scope for the smoke layer (same
 # caveat as wiki-promote/run.sh). The manifest rows for the implement-time
 # hook are checked structurally; the EXECUTE_COMMAND directive emission is

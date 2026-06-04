@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uat-write.sh — Render PO-authored UATs into Playwright e2e specs.
+# uat-write.sh: Render PO-authored UATs into Playwright e2e specs.
 #
 # Usage:
 #   uat-write.sh <spec-path>
@@ -83,7 +83,7 @@ sha256_of_stdin() {
 # (test name, expect message). Backslash and single-quote are escaped; CR/NL
 # collapsed to a single space, NULs dropped. The escaped form is also valid
 # inside `//` line comments because JS comment semantics do not interpret
-# backslash escapes — `\'` reads as the two characters \ and ' to a human, but
+# backslash escapes, `\'` reads as the two characters \ and ' to a human, but
 # the parser is unaffected.
 sanitize_for_jstring() {
   local s
@@ -240,7 +240,7 @@ parsed=$(printf '%s\n' "$uats_block" | awk '
   }
   /^[[:space:]]*$/ { next }
   {
-    # Continuation line — fold into current field with a leading space.
+    # Continuation line, fold into current field with a leading space.
     line = $0
     sub(/^[[:space:]]+/, "", line)
     if (current == "g") g = g " " line
@@ -318,7 +318,7 @@ while IFS=$'\t' read -r uat_id uat_given uat_when uat_then; do
   #  - backslash escaped to `\\`
   #  - single-quote escaped to `\'`
   #  - newlines collapsed to space (so single-line comments stay intact)
-  # The escaped form remains valid inside `//` comments — JS comment semantics
+  # The escaped form remains valid inside `//` comments, JS comment semantics
   # do not interpret backslash escapes.
   given_c=$(sanitize_for_jstring "$uat_given")
   when_c=$(sanitize_for_jstring "$uat_when")
@@ -338,7 +338,7 @@ while IFS=$'\t' read -r uat_id uat_given uat_when uat_then; do
   tmpl_body=$(cat "$tmpl")
 
   # Render with a sentinel for the timestamp first; hash the canonical form
-  # (sans timestamp) for idempotency. The timestamp must not perturb hashes —
+  # (sans timestamp) for idempotency. The timestamp must not perturb hashes -
   # otherwise the SECOND run on an unchanged SPEC would always see a "new"
   # file (different timestamp ⇒ different hash ⇒ rewrite). We compare by
   # stripping the timestamp line from both rendered and existing content.

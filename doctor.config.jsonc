@@ -5,20 +5,20 @@
   // which runs in CI alongside react-doctor and carries a curated
   // `ignoreDependencies` list plus app/services|hooks|utils + test as entry
   // points (see knip.config.ts). react-doctor's deslop pass re-flags that same
-  // intentional template surface — scaffolding entry points the new-service
+  // intentional template surface: scaffolding entry points the new-service
   // skill extends, documented public helpers, and template-only deps. Disable
   // the duplicate pass; knip remains the single dead-code authority.
   "deadCode": false,
 
   "ignore": {
-    // Per-path rule suppressions. Each rule stays active everywhere else —
+    // Per-path rule suppressions. Each rule stays active everywhere else;
     // these are evidenced false positives at specific sites, not blanket-offs.
     "overrides": [
       {
         // .gaia/cli is maintainer CLI tooling, and both perf rules misfire here:
         //  - js-set-map-lookups flags String.prototype.includes/indexOf
         //    (substring/char search like token.indexOf(':'), entry.includes('\t')),
-        //    not Array membership — a Set cannot replace them.
+        //    not Array membership; a Set cannot replace them.
         //  - async-await-in-loop flags intentional sequential loops (ordered
         //    nested-dir creation, bounded-memory per-file reads, a poll loop),
         //    several already carrying `eslint-disable no-await-in-loop -- intentional`.
@@ -30,7 +30,7 @@
       },
       {
         // Route modules must co-locate loader/middleware/meta exports with the
-        // default component export — framework-mandated by React Router, not a
+        // default component export; framework-mandated by React Router, not a
         // Fast-Refresh hazard. Rule stays active for non-route component files.
         "files": ["app/root.tsx", "app/routes/**"],
         "rules": ["react-doctor/only-export-components"]

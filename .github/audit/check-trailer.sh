@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-trailer.sh — CI skip-logic for the GAIA-Audit commit trailer.
+# check-trailer.sh: CI skip-logic for the GAIA-Audit commit trailer.
 #
 # Purpose
 #   Implements the "CI skip logic (frozen)" contract from
@@ -21,19 +21,19 @@
 #   reason=<short-string>
 #
 # Reasons
-#   trailer-matches        — skip=true; matched both version and tree
-#   status-matches         — skip=true; no trailer, but a GAIA-Audit commit
+#   trailer-matches: skip=true; matched both version and tree
+#   status-matches: skip=true; no trailer, but a GAIA-Audit commit
 #                             status on HEAD matched both version and tree
-#   no-trailer             — skip=false; HEAD has no GAIA-Audit trailer AND
+#   no-trailer: skip=false; HEAD has no GAIA-Audit trailer AND
 #                             no usable GAIA-Audit commit status (status
 #                             absent, malformed, or the API was unusable)
-#   version-mismatch       — skip=false; trailer present but version drift
-#   tree-mismatch          — skip=false; trailer present but tree drift
-#   status-version-mismatch — skip=false; GAIA-Audit status present but
+#   version-mismatch: skip=false; trailer present but version drift
+#   tree-mismatch: skip=false; trailer present but tree drift
+#   status-version-mismatch: skip=false; GAIA-Audit status present but
 #                             version drift
-#   status-tree-mismatch   — skip=false; GAIA-Audit status present but tree
+#   status-tree-mismatch: skip=false; GAIA-Audit status present but tree
 #                             drift
-#   version-file-missing   — skip=false; .gaia/VERSION missing or empty
+#   version-file-missing: skip=false; .gaia/VERSION missing or empty
 #                             (defensive: matches the stamp helper's
 #                             "no stamp without VERSION" invariant)
 #
@@ -63,7 +63,7 @@
 #     audit signal as a commit status, not a commit-message trailer). The
 #     fallback needs `GH_TOKEN` in the environment and the `gh` CLI. A
 #     missing token, absent `gh`, API failure, or absent status is
-#     inconclusive and never skips the audit — it falls through to
+#     inconclusive and never skips the audit; it falls through to
 #     `no-trailer`.
 
 set -euo pipefail
@@ -116,7 +116,7 @@ fi
 
 cur_tree=$(git -C "$repo_root" rev-parse "HEAD^{tree}" 2>/dev/null || true)
 if [ -z "$cur_tree" ]; then
-  # No HEAD (empty repo) — nothing to skip on.
+  # No HEAD (empty repo); nothing to skip on.
   emit "false" "" "" "no-trailer"
   exit 0
 fi
@@ -125,7 +125,7 @@ fi
 # Extract trailers from HEAD's commit message
 # -----------------------------------------------------------------------------
 
-# Frozen regex (POSIX ERE) — see trailer-format.md.
+# Frozen regex (POSIX ERE); see trailer-format.md.
 trailer_regex='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
 
 # Parse trailers; filter to GAIA-Audit lines that match the regex shape.
@@ -146,7 +146,7 @@ git -C "$repo_root" log -1 --format='%B' \
   > "$trailers_tmp"
 
 while IFS= read -r line; do
-  # Quick prefix filter — skip non-GAIA-Audit trailers cheaply.
+  # Quick prefix filter; skip non-GAIA-Audit trailers cheaply.
   case "$line" in
     GAIA-Audit:*) ;;
     *) continue ;;
@@ -157,7 +157,7 @@ while IFS= read -r line; do
     last_tree="${BASH_REMATCH[2]}"
   fi
   # Malformed GAIA-Audit lines are silently ignored (per the contract:
-  # the helper "matches the regex on each trailer line" — non-matching
+  # the helper "matches the regex on each trailer line"; non-matching
   # lines are not trailer entries for our purposes).
 done < "$trailers_tmp"
 
@@ -166,7 +166,7 @@ done < "$trailers_tmp"
 # -----------------------------------------------------------------------------
 # CI-stamped PRs carry the audit signal as a GitHub Commit Status with
 # context "GAIA-Audit" (description "<version> <tree-sha>"), NOT as a commit
-# message trailer. (The workflow no longer pushes an empty marker commit —
+# message trailer. (The workflow no longer pushes an empty marker commit -
 # pushing it would strand the PR on a check-less HEAD.) When HEAD has no
 # matching trailer, query the API for that status and apply the same
 # version + tree match logic.

@@ -1,4 +1,4 @@
-# .gaia/audit-ci.yml — adopter-tunable knobs for the code-review-audit CI workflow.
+# .gaia/audit-ci.yml: adopter-tunable knobs for the code-review-audit CI workflow.
 # This file ships in the GAIA template; adopters edit values to tune behavior.
 # The workflow reads this file at job start; missing file falls back to the defaults below.
 

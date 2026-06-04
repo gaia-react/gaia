@@ -3,9 +3,9 @@
  *
  * Step 1 + Step 2 of the maintainer release runbook codified as exit codes:
  *
- *   1. Branch state check — must be on `main` (or maintainer-designated
+ *   1. Branch state check: must be on `main` (or maintainer-designated
  *      release branch) with a clean working tree.
- *   2. Wiki state check — `gaia wiki state --json`'s `commits_ahead === 0`.
+ *   2. Wiki state check: `gaia wiki state --json`'s `commits_ahead === 0`.
  *
  * Stdout: nothing on success.
  * Stderr: clear refusal on each failure.
@@ -132,8 +132,8 @@ type WikiState = {
 type WikiStateProbe = (cwd: string) => WikiState | null;
 
 const runWikiStateJson: WikiStateProbe = (cwd) => {
-  // Capture stdout from the wiki state subcommand via an injected sink —
-  // `wiki/state.ts` writes through `options.write` — so the global
+  // Capture stdout from the wiki state subcommand via an injected sink;
+  // `wiki/state.ts` writes through `options.write`, so the global
   // `process.stdout` is never mutated.
   const chunks: string[] = [];
   const exit = runWikiState(['--json'], {
@@ -158,7 +158,7 @@ const runWikiStateJson: WikiStateProbe = (cwd) => {
     return {
       commits_ahead: commitsAhead,
       // Default reachable to true on a malformed payload so the orphaned-state
-      // recovery never fires off bad input — the gate falls back to today's
+      // recovery never fires off bad input; the gate falls back to today's
       // `commits_ahead` reading.
       reachable: typeof reachable === 'boolean' ? reachable : true,
       state_sha: typeof stateSha === 'string' ? stateSha : '',
@@ -195,7 +195,7 @@ const resolveCommit = (
 
 /**
  * Subjects of the commits in `<base>..HEAD`, newest first. `null` if the range
- * can't be read (e.g. `base` is empty, ambiguous, or git fails) — callers treat
+ * can't be read (e.g. `base` is empty, ambiguous, or git fails); callers treat
  * `null` as "can't prove the drift is benign" and refuse.
  */
 const readDriftSubjects = (
@@ -317,7 +317,7 @@ export const run = (
 
   // Resolve the effective drift window. On the reachable path the wiki-state
   // JSON's `commits_ahead`/`state_sha` are authoritative. On the orphaned path
-  // (`reachable:false` — the normal post-squash-merge condition) the JSON
+  // (`reachable:false`, the normal post-squash-merge condition) the JSON
   // hardcodes `commits_ahead:0`, blind to any un-evaluated window; recover the
   // window from `suggested_base..HEAD`, the reachable baseline `gaia wiki state`
   // reports for exactly this case. `suggested_base` is `''` on the reachable
@@ -329,7 +329,7 @@ export const run = (
     const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
 
     // A git failure counting the recovered window can't prove the wiki is
-    // current — refuse rather than green-light a release on an unknown window.
+    // current; refuse rather than green-light a release on an unknown window.
     if (recovered === null) {
       return refuse(
         `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
@@ -337,7 +337,7 @@ export const run = (
     }
 
     driftCount = recovered;
-    // Inspect `suggested_base..HEAD` — NOT the orphaned `state_sha`, whose
+    // Inspect `suggested_base..HEAD`, NOT the orphaned `state_sha`, whose
     // `..HEAD` range is topologically unreliable after a squash rewrites the SHA.
     driftBase = wikiState.suggested_base;
   }
@@ -350,12 +350,12 @@ export const run = (
     // `wiki:`-subject prefix is the same marker `gaia wiki commit-classify`
     // uses to flag self-referential sync commits. Without this the gate is
     // unsatisfiable for the standard release flow. Substantive (non-`wiki:`)
-    // drift still STOPs — the wiki is genuinely stale.
+    // drift still STOPs; the wiki is genuinely stale.
     const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
     const benign =
       driftSubjects !== null &&
       // Guards the vacuous-truth case: zero subjects with `driftCount > 0`
-      // means the range count disagrees with `git log` — a broken state, not
+      // means the range count disagrees with `git log`, a broken state, not
       // a benign one.
       driftSubjects.length > 0 &&
       driftSubjects.every((subject) => subject.startsWith('wiki:'));

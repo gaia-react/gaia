@@ -190,7 +190,7 @@ describe('wiki state-bump', () => {
     expect(stdio.errors.join('')).toContain('exactly');
   });
 
-  test('idempotent — running twice with the same value leaves identical bytes', () => {
+  test('idempotent: running twice with the same value leaves identical bytes', () => {
     const initial = `${JSON.stringify({version: 1, foo: 'bar'}, null, 2)}\n`;
     sandbox = setupSandbox(initial);
 

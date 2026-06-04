@@ -15,4 +15,4 @@ Author and maintainer of [[GAIA]] React template.
 - LinkedIn: <https://www.linkedin.com/in/stevensacks/>
 - Author of the original GAIA Flash Framework
 
-Built from decades of greenfield project experience — informed by what works, what breaks at scale, and what pays off long-term in modern React.
+Built from decades of greenfield project experience, informed by what works, what breaks at scale, and what pays off long-term in modern React.

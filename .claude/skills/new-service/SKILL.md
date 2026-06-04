@@ -13,18 +13,18 @@ Trigger: user asks to scaffold an API service.
 1. Confirm: name (kebab), endpoints, schema (`name:type` pairs), with mocks?
 2. Run: `.gaia/cli/gaia scaffold service <name> --endpoints "..." --schema "..." [--mocks]`
 3. Verify: `pnpm typecheck` clean; if `--mocks`, run a single MSW round-trip in a vitest test.
-4. Wire the service into the consuming page/hook (CLI does not do this — manual).
+4. Wire the service into the consuming page/hook (CLI does not do this, manual).
 
 ## Flags
 
-- `--endpoints "get,post,put,delete"` — required (subset of get/post/put/delete)
-- `--schema "id:string,name:string,status:enum(active,archived)"` — required
-- `--mocks` — also emit MSW mock collection
-- `--json` — emit `ScaffoldResult` JSON
+- `--endpoints "get,post,put,delete"`, required (subset of get/post/put/delete)
+- `--schema "id:string,name:string,status:enum(active,archived)"`, required
+- `--mocks`, also emit MSW mock collection
+- `--json`, emit `ScaffoldResult` JSON
 
 Schema types: `string`, `number`, `boolean`, `datetime`, `enum(a,b,...)`. Append `?` for optional.
 
 ## See
 
-- `wiki/concepts/API Service Pattern.md` — pattern source of truth
-- `.claude/rules/api-service.md` — quick pointer
+- `wiki/concepts/API Service Pattern.md`, pattern source of truth
+- `.claude/rules/api-service.md`, quick pointer

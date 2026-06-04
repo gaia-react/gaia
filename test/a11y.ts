@@ -2,7 +2,7 @@ import axeCore from 'axe-core';
 import type {AxeResults, RunOptions} from 'axe-core';
 import {expect} from 'vitest';
 
-// Callers must use `// @vitest-environment jsdom` — happy-dom breaks axe-core (capricorn86/happy-dom#978).
+// Callers must use `// @vitest-environment jsdom`; happy-dom breaks axe-core (capricorn86/happy-dom#978).
 
 const assertJsdomEnvironment = (): void => {
   // jsdom includes "jsdom" in userAgent; happy-dom does not.
@@ -22,7 +22,7 @@ export const runAxe = async (
 ): Promise<AxeResults> => {
   assertJsdomEnvironment();
 
-  // Omit options when undefined — axe.run treats trailing undefined as callback mode.
+  // Omit options when undefined; axe.run treats trailing undefined as callback mode.
   return options === undefined ?
       axeCore.run(container)
     : axeCore.run(container, options);

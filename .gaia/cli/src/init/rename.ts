@@ -6,7 +6,7 @@
  *
  *   - `package.json` "name" → kebab-case title.
  *   - `CLAUDE.md` "# GAIA React" heading → "# <Title>" (only the first
- *     occurrence — preserves later content).
+ *     occurrence, preserves later content).
  *   - `app/languages/en/common.ts` `meta.siteName` → `<Title>`.
  *   - `app/languages/en/pages/_index.ts` `meta.title`, `title`, and
  *     `heroTitle` → `<Title>` (when the keys exist).
@@ -208,7 +208,7 @@ const renameCommonTs = (cwd: string, title: string): void => {
 
   if (!existsSync(target)) return;
   const original = readFileSync(target, 'utf8');
-  // common.ts only carries one identity-bearing key — `siteName`. Other
+  // common.ts only carries one identity-bearing key, `siteName`. Other
   // `*Name` properties exist (e.g. form labels) but no other `siteName`,
   // so a global rewrite is safe.
   const next = replaceStringPropertyAll(original, 'siteName', title);
@@ -226,7 +226,7 @@ const renameIndexPage = (cwd: string, title: string): void => {
   let next = original;
   // The seeded `_index.ts` has exactly three identity-bearing keys whose
   // value is the project title: top-level `heroTitle`, top-level `title`,
-  // and `meta.title`. Scope the rewrite to those precise locations — a
+  // and `meta.title`. Scope the rewrite to those precise locations; a
   // global `title` rewrite would clobber `title` keys in extra routes a
   // user may have added (data loss on a diverged file).
   next = replaceTopLevelStringProperty(next, 'heroTitle', title);

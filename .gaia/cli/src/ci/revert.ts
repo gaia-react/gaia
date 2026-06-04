@@ -2,7 +2,7 @@
  * `gaia ci-revert {open|mark-failed|is-cap-reached}`
  *
  * Owner of the SPEC's hard-cap rule: one revert attempt per original PR
- * (UAT-009/UAT-010). The CLI is the single enforcement surface — the
+ * (UAT-009/UAT-010). The CLI is the single enforcement surface; the
  * Phase 2 composite action trusts the CLI's exit codes and never
  * inspects the ledger directly.
  *
@@ -268,7 +268,7 @@ const handleOpen = (argv: readonly string[], options: RunOptions): number => {
   // Serialize the ledger read-check-write so the "one revert per PR"
   // hard cap is not defeated by two concurrent `ci-revert open` runs for
   // the same PR both passing the existence check before either writes.
-  // The lock is scoped to `pr` — reverts of distinct PRs do not block.
+  // The lock is scoped to `pr`; reverts of distinct PRs do not block.
   const locked = withRevertLedgerLock(repoRoot, pr, () =>
     handleOpenLocked({json, label, options, pr, reason, repoRoot})
   );
@@ -418,7 +418,7 @@ const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
 
   // Capture the branch the repo was on before we create the revert
   // branch, so a later failure can restore it. An empty result (detached
-  // HEAD) is fine — the rollback simply skips the checkout-back step.
+  // HEAD) is fine; the rollback simply skips the checkout-back step.
   const priorBranchResult = runGit(
     ['symbolic-ref', '--quiet', '--short', 'HEAD'],
     {cwd: repoRoot}
@@ -436,7 +436,7 @@ const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
   }
 
   // Restore the repo to its pre-revert state: leave the revert branch
-  // and delete it. Best-effort — every step is non-fatal because the
+  // and delete it. Best-effort; every step is non-fatal because the
   // surfaced failure is the one that matters.
   const rollbackRevertBranch = (): void => {
     if (priorBranch !== '') {

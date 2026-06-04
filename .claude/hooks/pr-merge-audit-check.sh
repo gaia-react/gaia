@@ -3,7 +3,7 @@
 # code-review-audit exists for the current HEAD. Three signals and one
 # bypass are accepted:
 #
-#   1. Local marker file at .gaia/local/audit/<sha>.ok — written by the
+#   1. Local marker file at .gaia/local/audit/<sha>.ok, written by the
 #      audit agent at the end of a clean local review.
 #
 #   2. GAIA-Audit trailer on HEAD's commit message, when the trailer's
@@ -20,17 +20,17 @@
 #      /update-deps wrapper runs the full quality gate locally before
 #      pushing, so the audit signal is implicit for this PR class. Mirrors
 #      the same narrowing applied to code-review-audit.yml, tests.yml, and
-#      chromatic.yml — all four surfaces skip together on chore(deps) PRs.
+#      chromatic.yml, all four surfaces skip together on chore(deps) PRs.
 #
 #   5. Out-of-scope bypass: every file the PR changes (vs its merge base with
-#      the default branch) lives on a surface outside audit scope — wiki,
+#      the default branch) lives on a surface outside audit scope, wiki,
 #      instruction files (.claude / .specify), .gaia metadata, prose docs, and
 #      root-level markdown. These mirror the surfaces code-review-audit.yml
 #      treats as out of scope via its `has_source` check, so the agent has no
 #      rules that apply and there is nothing to audit. Evaluated fail-closed:
 #      any in-scope path (app/, test/, configs, .github/workflows/) makes the
 #      marker mandatory again, so a PR that changes auditable source can never
-#      reach this branch — it cannot mask an audit that withheld its marker
+#      reach this branch, it cannot mask an audit that withheld its marker
 #      over unresolved findings. Pure local git; works even when the repo's
 #      installed code-review-audit.yml predates the out-of-scope status stamp
 #      (or CI is absent), which is the case on clones that enabled CI before
@@ -42,7 +42,7 @@
 # merge call. To unblock:
 #   1. Spawn the code-review-audit agent on the current branch, OR push to the
 #      PR branch and wait for CI's audit to stamp the GitHub commit status (CI
-#      skips when the PR modifies the audit workflow file itself — in that case
+#      skips when the PR modifies the audit workflow file itself, in that case
 #      only the local audit will satisfy the gate).
 #   2. Address any findings; commit and push.
 #   3. Re-spawn the agent on the new HEAD; let it write the marker.
@@ -61,11 +61,11 @@ command -v jq >/dev/null 2>&1 || exit 0
 tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 [ "$tool_name" = "Bash" ] || exit 0
 
-# Note: avoid naming this `command` — it would shadow bash's `command` builtin
+# Note: avoid naming this `command`, it would shadow bash's `command` builtin
 # and make any later `command -v ...` calls in this script silently misbehave.
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Match `gh pr merge` only when it appears as an actual shell invocation —
+# Match `gh pr merge` only when it appears as an actual shell invocation,
 # either at the very start of the command (after optional whitespace) or
 # immediately after a shell separator (&&, ;, ||, |, newline). This avoids
 # false positives on heredoc body text and quoted strings (e.g. commit
@@ -86,7 +86,7 @@ fi
 # Repo-scope: this gate enforces the home repo's audit contract only. A
 # `gh pr merge` aimed at a different repo (e.g. a sibling project merged via
 # `cd ../other && gh pr merge` or `gh pr merge -R owner/other`) has no bearing
-# on this repo's audit markers — allow it.
+# on this repo's audit markers, allow it.
 [ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then
@@ -107,7 +107,7 @@ fi
 
 # Trailer fallback: accept a GAIA-Audit trailer on HEAD when its tree-sha
 # matches HEAD's current tree. The trailer format (per audit-stamp-trailer.sh)
-# is "GAIA-Audit: <version> <tree-sha>" — two space-separated fields after the
+# is "GAIA-Audit: <version> <tree-sha>", two space-separated fields after the
 # colon. Tree-sha equality is the load-bearing check: identical trees mean
 # identical content, so an audit on a different commit-sha but the same tree
 # is auditing the same code being merged.
@@ -130,7 +130,7 @@ fi
 # the PR HEAD without check runs). Query the API for a matching status on HEAD.
 # Description shape: "<version> <40-hex-tree>". Both must match .gaia/VERSION
 # and HEAD's tree. Falls through silently on any error (no gh, no token, no
-# GITHUB_REPOSITORY, API failure) — the deny path below fires as normal.
+# GITHUB_REPOSITORY, API failure), the deny path below fires as normal.
 check_github_status() {
   command -v gh >/dev/null 2>&1 || return 1
 
@@ -188,7 +188,7 @@ fi
 #
 # Title is queried via `gh pr view`. On any failure (no gh, no auth, no PR
 # for the current branch, network error) the bypass does not fire and the
-# normal deny path runs — the bypass is opt-in proof, not a fallback.
+# normal deny path runs, the bypass is opt-in proof, not a fallback.
 check_chore_deps_pr() {
   command -v gh >/dev/null 2>&1 || return 1
   pr_title=$(gh pr view --json title --jq .title 2>/dev/null || true)
@@ -206,7 +206,7 @@ fi
 # Out-of-scope bypass: accept the merge when every file this PR changes lives
 # on a surface outside audit scope. The agent has no rules that apply to wiki,
 # instruction files, .gaia metadata, or prose, so there is nothing to audit and
-# no marker is required — the same determination code-review-audit.yml's
+# no marker is required, the same determination code-review-audit.yml's
 # `has_source` check makes when it skips. Keep the out-of-scope set below in
 # sync with that check's complement (.github/workflows/code-review-audit.yml).
 #
@@ -214,11 +214,11 @@ fi
 # must be non-empty, and EVERY path must be out of scope. Any unresolved base,
 # diff error, or in-scope path (app/, test/, configs, .github/workflows/) falls
 # through to the normal deny. A PR that touches auditable source therefore can
-# never reach this bypass — it cannot mask an audit that withheld its marker
+# never reach this bypass, it cannot mask an audit that withheld its marker
 # over unresolved findings, since that PR's diff carries in-scope paths by
 # definition. Pure local git: no gh, no network, no dependence on a CI stamp.
 check_out_of_scope_pr() {
-  # Resolve the PR base — the default branch this work forks from. Prefer the
+  # Resolve the PR base, the default branch this work forks from. Prefer the
   # remote's advertised default; fall back to main. The merge base scopes the
   # diff to THIS PR's changes, not unrelated drift already on the base branch.
   default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
@@ -263,12 +263,12 @@ None of the accepted signals is present:
   - GitHub CI status: absent or version/tree mismatch
   - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
   - Out-of-scope:    PR changes at least one in-scope path (app/, test/, configs,
-                     .github/workflows/) — not a wiki/docs/.gaia-only diff
+                     .github/workflows/), not a wiki/docs/.gaia-only diff
 
 To unblock:
   1. Spawn the code-review-audit agent locally, OR push to the PR branch
      and wait for CI's audit to stamp the GitHub commit status (CI skips
-     when the PR modifies the audit workflow file itself — in that case
+     when the PR modifies the audit workflow file itself, in that case
      only the local audit will satisfy the gate).
   2. Address any Critical/Important findings; commit and push.
   3. Re-spawn the agent on the new HEAD; let it write the marker.
@@ -276,7 +276,7 @@ To unblock:
 
 LOCAL-SYNC FAILURE NOTE: if a previous gh pr merge exited with
 'fatal: main is already used by worktree at <path>', the GitHub-side merge
-already succeeded. Verify with: gh pr view <N> --json state — do NOT retry
+already succeeded. Verify with: gh pr view <N> --json state, do NOT retry
 the merge.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."

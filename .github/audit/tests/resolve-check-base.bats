@@ -79,7 +79,7 @@ sha_of() {
 # Install a fake `gh`. $@ = "sha=check-name" pairs, each meaning "this commit
 # has a green (success) check-run with this name". The mock prints 1 when both
 # the SHA and the name appear in the call args (the SHA in the URL path, the
-# name in the --jq filter), else 0 — mirroring `[...] | length` on the real API.
+# name in the --jq filter), else 0, mirroring `[...] | length` on the real API.
 install_gh_mock() {
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   MAP="$BATS_TEST_TMPDIR/gh-check-map"
@@ -127,7 +127,7 @@ EOF
 
 # -----------------------------------------------------------------------------
 # 2. Green check on the parent → that parent SHA. (A skipped-but-green run is
-#    indistinguishable here — its job check-run is also conclusion=success.)
+#    indistinguishable here, its job check-run is also conclusion=success.)
 # -----------------------------------------------------------------------------
 
 @test "green check on parent → parent SHA" {

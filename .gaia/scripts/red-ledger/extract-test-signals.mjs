@@ -15,7 +15,7 @@
 // Output (stdout): one JSON object per discovered test(...)/it(...) call,
 // newline-delimited:
 //   {"fullName":"...","signal":"sha256:..."}
-// Exit 0 on success (even when zero tests are found — emits nothing).
+// Exit 0 on success (even when zero tests are found; emits nothing).
 // Exit non-zero with a one-line stderr message on a parse failure.
 //
 // fullName: the titles of all enclosing describe(...) blocks (outermost
@@ -125,7 +125,7 @@ function baseCalleeName(node) {
 
 // The first string-literal/template title argument of a test/describe call.
 // Returns the literal text, or null when the title is dynamic (template with
-// substitutions, an identifier, etc.) — a dynamic title cannot be matched to
+// substitutions, an identifier, etc.); a dynamic title cannot be matched to
 // a recorded fullName, so we skip it.
 function titleOf(node) {
   const arg = node.arguments[0];

@@ -102,7 +102,7 @@ describe('detectArticulationGap (unit)', () => {
     expect(visual?.strength).toBeCloseTo(1, 5);
   });
 
-  test('only fires for unclear_acceptance_criteria — knowledge-gap class is ignored', () => {
+  test('only fires for unclear_acceptance_criteria; knowledge-gap class is ignored', () => {
     const events: MentorshipEvent[] = [];
 
     for (let index = 0; index < 30; index += 1) {

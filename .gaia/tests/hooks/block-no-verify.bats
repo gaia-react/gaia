@@ -4,7 +4,7 @@
 #
 # The hook denies `git commit` / `git push` carrying a hook bypass so the
 # Quality Gate floor (typecheck / lint / test, run by the Husky pre-commit
-# hook) cannot be skipped. Bypass tokens: --no-verify, `-n` (commit only —
+# hook) cannot be skipped. Bypass tokens: --no-verify, `-n` (commit only
 # `push -n` is --dry-run), a falsy HUSKY= env prefix, and a `-c
 # core.hooksPath=` override. Foreign-repo commands pass via the shared
 # repo-scope helper.
@@ -12,7 +12,7 @@
 # Each test drives the hook exactly as the harness does: a PreToolUse JSON
 # payload on stdin, run with the repo as the working directory (the hook loads
 # .claude/hooks/lib/repo-scope.sh relative to cwd, so the helper is copied into
-# the tmp repo). The hook always exits 0; allow vs deny is carried in stdout —
+# the tmp repo). The hook always exits 0; allow vs deny is carried in stdout
 # a deny emits `"permissionDecision": "deny"`, an allow emits nothing. The
 # deny cases double as a jq/setup canary: a missing jq would exit early with no
 # output and those assertions would fail rather than false-pass.
@@ -31,7 +31,7 @@ setup() {
   git -C "$REPO" commit --quiet -m "init"
   git -C "$REPO" checkout --quiet -b feature
 
-  # The hook sources the repo-scope helper relative to cwd — give the tmp repo
+  # The hook sources the repo-scope helper relative to cwd; give the tmp repo
   # a real copy so the foreign-repo bypass resolves.
   mkdir -p "$REPO/.claude/hooks/lib"
   cp "$HOOKS_SRC/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
@@ -133,7 +133,7 @@ assert_allowed() {
 
 @test "home-repo git -C commit (no bypass) is allowed" {
   # Capital -C changes directory; it is not a bypass. The home repo's own
-  # `git -C <home> commit` must pass — only lowercase `-c core.hooksPath=`
+  # `git -C <home> commit` must pass; only lowercase `-c core.hooksPath=`
   # (the next test) carries a bypass.
   run_hook "git -C $REPO commit -m \"x\""
   assert_allowed

@@ -28,7 +28,7 @@ Slash-separated paths mirror the component's parent directory: `Components/MyCom
 
 Apply stubs outermost → innermost: `state` then `reactRouter`. Only include stubs the component actually needs (`stubs.state()` only when the component reads from `~/state`). Import from `test/stubs`.
 
-`stubs.reactRouter()` options: `path` (default `/`), `loader`, `action` (string storyId, `Record<Method, storyId>`, or full `ActionFunction`), and `routes` (`{path, storyId}[]` — navigates to a story when the path loads).
+`stubs.reactRouter()` options: `path` (default `/`), `loader`, `action` (string storyId, `Record<Method, storyId>`, or full `ActionFunction`), and `routes` (`{path, storyId}[]`, navigates to a story when the path loads).
 
 ```tsx
 decorators: [
@@ -57,7 +57,7 @@ Layout is `fullscreen`. Use `parameters.wrap: 'p-4'` for padding instead of wrap
 
 ## Dark-mode and Chromatic
 
-`ChromaticDecorator` renders light + dark side-by-side automatically — no per-story setup needed. Override via story-level parameters:
+`ChromaticDecorator` renders light + dark side-by-side automatically, no per-story setup needed. Override via story-level parameters:
 
 ```tsx
 parameters: {
@@ -71,7 +71,7 @@ parameters: {
 
 ## i18n in stories
 
-i18n is global — no setup needed. Use `useTranslation()` inside the story function to vary content by locale (`i18n.language`).
+i18n is global, no setup needed. Use `useTranslation()` inside the story function to vary content by locale (`i18n.language`).
 
 ## Test data
 

@@ -2,7 +2,7 @@
  * `gaia wiki frontmatter [--json]` handler.
  *
  * Flags wiki pages missing required frontmatter. The required-field floor is
- * `type` and `status` — the two fields essentially all GAIA pages carry. A
+ * `type` and `status`, the two fields essentially all GAIA pages carry. A
  * page gaps if it is missing the frontmatter block entirely, or if either
  * required field is absent or null.
  *
@@ -10,7 +10,7 @@
  * not follow the page frontmatter convention).
  *
  * Output: one `path: missing a, b` line per gap, or a clean message. With
- * `--json`, emits { "gaps": [ { path, missing } ] }. Exit 0 always — gaps
+ * `--json`, emits { "gaps": [ { path, missing } ] }. Exit 0 always; gaps
  * are informational, not a failure.
  */
 import {readdirSync, readFileSync, statSync} from 'node:fs';

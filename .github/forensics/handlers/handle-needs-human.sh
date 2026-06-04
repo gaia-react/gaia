@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# handle-needs-human.sh — needs-human triage handler.
+# handle-needs-human.sh: needs-human triage handler.
 #
 # Labels a forensics-triaged issue as `needs-human` and posts a comment
 # that mentions the maintainer (@stevensacks), names the reason-code, and
@@ -65,7 +65,7 @@ trap 'rm -rf "$work_dir"' EXIT
 # reason-code summary + reasoning passthrough.
 comment_file="$work_dir/comment.md"
 {
-  printf '%s — needs-human triage.\n\n' "$MAINTAINER"
+  printf '%s: needs-human triage.\n\n' "$MAINTAINER"
   printf 'reason: `%s`\n\n' "$reason_code"
   printf '%s\n\n' "$summary"
   printf -- '---\n\n'
@@ -76,7 +76,7 @@ comment_file="$work_dir/comment.md"
 #   1. Apply `needs-human` (the classification label).
 #   2. Post the comment.
 #   3. Apply `gaia-triaged` LAST (idempotency key).
-# The issue is NOT closed — every needs-human path keeps the issue open
+# The issue is NOT closed, every needs-human path keeps the issue open
 # so the maintainer can triage by hand.
 gh issue edit "$issue_num" --add-label "needs-human"
 gh issue comment "$issue_num" --body-file "$comment_file"

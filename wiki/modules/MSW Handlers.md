@@ -21,15 +21,15 @@ See also: [[API Service Pattern]], [[Services]], [[Testing]], [[Test Runner]].
 
 ## Why MSW lives at the network layer
 
-MSW intercepts HTTP requests at the network layer — no monkey-patching, no import mocking. Because the service layer uses `ky` with `API_URL` as the prefix, every outbound request goes through a real fetch. MSW catches it before it leaves the process (Node) or browser (Service Worker).
+MSW intercepts HTTP requests at the network layer; no monkey-patching, no import mocking. Because the service layer uses `ky` with `API_URL` as the prefix, every outbound request goes through a real fetch. MSW catches it before it leaves the process (Node) or browser (Service Worker).
 
 This means tests exercise the full request path: route loader → service function → ky → MSW handler → fake DB → response parsing. Import-level mocking would skip the request layer and hide URL drift, parser bugs, and serialization issues.
 
-## Service-layer contract — the load-bearing invariant
+## Service-layer contract: the load-bearing invariant
 
 **MSW handler URLs must exactly match the URLs the service layer constructs at runtime.**
 
-A request URL is built by joining `API_URL` (env, e.g. `http://localhost:3001/api/`) with a path token from `GAIA_URLS` (e.g. `'resources/:id'`). `ky` does the join in the service layer. The handler must use the same logic — the `url()` helper in `test/mocks/url.ts` mirrors ky's prefix-join (strips trailing slash from prefix, leading slash from path, joins with exactly one `/`).
+A request URL is built by joining `API_URL` (env, e.g. `http://localhost:3001/api/`) with a path token from `GAIA_URLS` (e.g. `'resources/:id'`). `ky` does the join in the service layer. The handler must use the same logic; the `url()` helper in `test/mocks/url.ts` mirrors ky's prefix-join (strips trailing slash from prefix, leading slash from path, joins with exactly one `/`).
 
 ```ts
 import {http} from 'msw';
@@ -46,18 +46,18 @@ The fix: both sides import `GAIA_URLS` from `app/services/gaia/urls.ts`. **Never
 
 ## Three runtime modes
 
-- **Dev** — Browser Service Worker (client) + Node `SetupServer` (SSR) run simultaneously when `MSW_ENABLED=true` in `.env`.
-- **Vitest** — Node `setupServer` via `test/test.server.ts`, registered in `test/setup.ts`. `beforeAll → listen`, `afterEach → resetHandlers`, `afterAll → close`.
-- **Playwright** — MSW is **not** wired automatically. Start `pnpm dev` with `MSW_ENABLED=true` and point Playwright's `baseURL` at it.
+- **Dev**: Browser Service Worker (client) + Node `SetupServer` (SSR) run simultaneously when `MSW_ENABLED=true` in `.env`.
+- **Vitest**: Node `setupServer` via `test/test.server.ts`, registered in `test/setup.ts`. `beforeAll → listen`, `afterEach → resetHandlers`, `afterAll → close`.
+- **Playwright**: MSW is **not** wired automatically. Start `pnpm dev` with `MSW_ENABLED=true` and point Playwright's `baseURL` at it.
 
 ## Writing a new mock
 
-**Ask Claude to scaffold it via `/new-service`.** The skill creates the full mock layer alongside the service so the two stay in sync — request functions and matching handlers drop in together, URLs share `GAIA_URLS` constants, and the database factory registers the new resource.
+**Ask Claude to scaffold it via `/new-service`.** The skill creates the full mock layer alongside the service so the two stay in sync; request functions and matching handlers drop in together, URLs share `GAIA_URLS` constants, and the database factory registers the new resource.
 
 If you're editing an existing mock by hand instead of scaffolding, the invariants you must preserve:
 
 - Handlers use `url(GAIA_URLS.key)`, never a hardcoded string
-- Mock data stays snake_case (server shape) — camelCase conversion happens in the service layer
+- Mock data stays snake_case (server shape); camelCase conversion happens in the service layer
 - New collections register their `reset*()` in `resetTestData()`
 
 See the `api-service` rule (`.claude/rules/api-service.md`) for the full contract and [[API Service Pattern]] for the service side.
@@ -82,8 +82,8 @@ await things.update((q) => q.where({id: 'abc'}), {
 
 `resetTestData()` is async; it's called:
 
-- **Once on module load** — seeds the database for the first test in a file.
-- **Explicitly in test files** — `await` it in `beforeEach` when a test mutates data and the next test must start clean.
+- **Once on module load**: seeds the database for the first test in a file.
+- **Explicitly in test files**: `await` it in `beforeEach` when a test mutates data and the next test must start clean.
 
 ```ts
 import {resetTestData} from 'test/mocks/database';
@@ -94,7 +94,7 @@ beforeEach(async () => {
 ```
 
 > [!warning] `resetHandlers` ≠ `resetTestData`
-> `test/test.server.ts` calls `server.resetHandlers()` in `afterEach` — this resets runtime handler overrides but **not** the database. Always `await resetTestData()` explicitly in tests that write, update, or delete records.
+> `test/test.server.ts` calls `server.resetHandlers()` in `afterEach`; this resets runtime handler overrides but **not** the database. Always `await resetTestData()` explicitly in tests that write, update, or delete records.
 
 `test/mocks/faker.ts` exports a seeded `faker` instance (seed `7`) so generated values are deterministic across runs.
 

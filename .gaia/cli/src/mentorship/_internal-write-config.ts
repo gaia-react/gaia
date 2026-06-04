@@ -125,7 +125,7 @@ export const run = (
 
   // Project the mentorship-display rule into per-machine user memory.
   // gaia-init calls this subcommand with both enabled=true and enabled=false
-  // outcomes — install on opt-in, remove on opt-out so the rule never
+  // outcomes: install on opt-in, remove on opt-out so the rule never
   // wastes context tokens for users who declined mentorship.
   try {
     if (flags.enabled) {

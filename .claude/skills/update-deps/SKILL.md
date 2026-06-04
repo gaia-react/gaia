@@ -1,13 +1,13 @@
 ---
 name: update-deps
-description: Autonomous Dependabot — auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /update-deps` indicator or asks "update dependencies", "bump deps", "run dependabot".
+description: Autonomous Dependabot, auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /update-deps` indicator or asks "update dependencies", "bump deps", "run dependabot".
 ---
 
-Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts — just execute.
+Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts, just execute.
 
 ## Pre-flight: Worktree check
 
-This wrapper writes a new `pnpm-lock.yaml` and opens a PR — both belong on the main checkout, not a per-SPEC worktree branch. If invoked from a linked worktree, reject hard with a message that surfaces the cached state from main so the user knows whether action is even pending.
+This wrapper writes a new `pnpm-lock.yaml` and opens a PR, both belong on the main checkout, not a per-SPEC worktree branch. If invoked from a linked worktree, reject hard with a message that surfaces the cached state from main so the user knows whether action is even pending.
 
 Detection (run this first, before anything else):
 
@@ -21,7 +21,7 @@ if [ -n "$common_dir" ]; then
   main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
   current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$main_root" ] && [ -n "$current_root" ] && [ "$main_root" != "$current_root" ]; then
-    cached_line="Cached state unavailable on main; symlinks may be broken — run \`.gaia/cli/gaia setup link-worktree\` to repair."
+    cached_line="Cached state unavailable on main; symlinks may be broken, run \`.gaia/cli/gaia setup link-worktree\` to repair."
     cache_file="$main_root/.gaia/cache/update-check.json"
     if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then
       outdated_count="$(jq -r '.outdatedCount // 0' "$cache_file" 2>/dev/null)"
@@ -61,9 +61,9 @@ If the detection does not fire, fall through to the existing `## Pre-flight: Bra
 git branch --show-current
 ```
 
-If the current branch is `main` or `master` **and not running in CI**, set a flag (`SHOULD_CREATE_BRANCH=true`) but **do not create the branch yet** — branch creation is deferred until after Phase 1 confirms there are packages to update. Creating a branch when there is nothing to update pollutes the branch list.
+If the current branch is `main` or `master` **and not running in CI**, set a flag (`SHOULD_CREATE_BRANCH=true`) but **do not create the branch yet**, branch creation is deferred until after Phase 1 confirms there are packages to update. Creating a branch when there is nothing to update pollutes the branch list.
 
-In CI (`CI=true`, set by GitHub Actions, GitLab CI, CircleCI, and most CI providers), skip branch creation — the workflow owns branch management and pre-creates the appropriate branch before this skill runs.
+In CI (`CI=true`, set by GitHub Actions, GitLab CI, CircleCI, and most CI providers), skip branch creation, the workflow owns branch management and pre-creates the appropriate branch before this skill runs.
 
 Otherwise set `SHOULD_CREATE_BRANCH=false` and proceed on the current branch.
 
@@ -71,10 +71,10 @@ Otherwise set `SHOULD_CREATE_BRANCH=false` and proceed on the current branch.
 
 When invoked with `--scope <group-name>` (e.g. `/update-deps --scope react-router`):
 
-- Skip Phase 0 (override audit) — out of scope for a single-group run.
-- Skip Phase 1 (discovery) — the group's members are known from the
+- Skip Phase 0 (override audit), out of scope for a single-group run.
+- Skip Phase 1 (discovery), the group's members are known from the
   companion-group table.
-- Skip Phase 3 (wave classification) — the run is implicitly a single
+- Skip Phase 3 (wave classification), the run is implicitly a single
   group; treat it as Wave A if all members are minor/patch, else Wave B.
 - Phase 4 / Phase 5 still apply, scoped to the named group's members
   in root `package.json`.
@@ -117,15 +117,15 @@ Parse the JSON. For each entry record:
 
 **ESLint cap:** if `eslint` or `@eslint/js` show a `latest` whose major is `>= 10`, find the highest available `9.x` (`pnpm view eslint versions --json` and pick the highest `9.x.y`) and treat that as the target. If already on the latest `9.x`, drop the entry.
 
-Apply this silently. Capped packages MUST NOT appear anywhere in the final report — not in Updated, not in Skipped, not in Breaking changes. Adopters know about the cap; surfacing it on every run is noise.
+Apply this silently. Capped packages MUST NOT appear anywhere in the final report, not in Updated, not in Skipped, not in Breaking changes. Adopters know about the cap; surfacing it on every run is noise.
 
-**Release-age cooldown:** `pnpm-workspace.yaml` may set `minimumReleaseAge` (the minutes a version must be published before pnpm installs it). pnpm 11 enforces this against the whole lockfile on every install, so a target newer than the window makes the install fail. For each candidate target, cap it to the newest version that has already cleared the window: read publish times from `pnpm view <name> time --json` and pick the newest stable version that is an upgrade, at or below `latest`, and old enough. If no upgrade has cleared the window yet, skip the package this run — it bumps automatically once the version ages out. When `minimumReleaseAge` is unset, the cooldown is a no-op. Apply this silently too, like the ESLint cap. (The `update-deps run --emit-updates` primitive already does this — it records cooldown skips under `skipped` with reason `release-age-cooldown`, or `release-age-unresolved` if the publish-time lookup fails.)
+**Release-age cooldown:** `pnpm-workspace.yaml` may set `minimumReleaseAge` (the minutes a version must be published before pnpm installs it). pnpm 11 enforces this against the whole lockfile on every install, so a target newer than the window makes the install fail. For each candidate target, cap it to the newest version that has already cleared the window: read publish times from `pnpm view <name> time --json` and pick the newest stable version that is an upgrade, at or below `latest`, and old enough. If no upgrade has cleared the window yet, skip the package this run, it bumps automatically once the version ages out. When `minimumReleaseAge` is unset, the cooldown is a no-op. Apply this silently too, like the ESLint cap. (The `update-deps run --emit-updates` primitive already does this, it records cooldown skips under `skipped` with reason `release-age-cooldown`, or `release-age-unresolved` if the publish-time lookup fails.)
 
 If nothing is outdated after this filtering, print `All packages are up to date.` and exit.
 
 ### Phase 2: Resolve companion groups
 
-Map each outdated package into its group. **When any member of a group is outdated, include all members present in `package.json`** in the update — even ones not flagged outdated — so the group moves together.
+Map each outdated package into its group. **When any member of a group is outdated, include all members present in `package.json`** in the update, even ones not flagged outdated, so the group moves together.
 
 | Group             | Members                                                                                                                                                                      |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -151,8 +151,8 @@ Packages not matched form singleton groups.
 
 ### Phase 3: Classify into waves
 
-- **Wave A** — groups whose members all have minor or patch bumps only. Batched into one install.
-- **Wave B** — groups containing at least one major bump. Processed individually, ordered: `react-router`, `react`, `tailwindcss`, `storybook`, `vitest`, `playwright`, `eslint`, then remaining alphabetically.
+- **Wave A**: groups whose members all have minor or patch bumps only. Batched into one install.
+- **Wave B**: groups containing at least one major bump. Processed individually, ordered: `react-router`, `react`, `tailwindcss`, `storybook`, `vitest`, `playwright`, `eslint`, then remaining alphabetically.
 
 ### Phase 4: Wave A (batch minor/patch)
 
@@ -179,7 +179,7 @@ Report back to the orchestrator with:
 
 - Override audit results (removed / retained)
 - Wave A results (updated packages, any skipped)
-- **Wave B groups** — list each group name and its major bump (e.g. `react-router: 6 → 7`)
+- **Wave B groups**: list each group name and its major bump (e.g. `react-router: 6 → 7`)
 - Quality gate results
 
 ---
@@ -195,7 +195,7 @@ After the Haiku agent returns:
 
 ```bash
 git checkout -b chore/update-deps-$(date +%Y-%m-%d-%H-%M)
-# CREATED_NEW_BRANCH=true — used in Phase 8
+# CREATED_NEW_BRANCH=true, used in Phase 8
 ```
 
 Otherwise (`SHOULD_CREATE_BRANCH=false`), proceed on the current branch and **remember that you did NOT create a new branch**.
@@ -221,7 +221,7 @@ You are upgrading the `{GROUP}` dependency group from `{FROM}` to `{TO}`.
 **Scope.** Operate on the **root pnpm project only**.
 
 - Run every `pnpm` command from the project root. Never `cd` into subdirectories or use `-C <path>`.
-- For code edits and grep-style searches, scan only `app/`, `test/`, and root config files (`*.config.*`, `tsconfig*.json` at root). Do **not** scan the entire repository — sibling directories may be independent pnpm projects with their own `package.json`/`pnpm-lock.yaml`, and they are out of scope for this skill.
+- For code edits and grep-style searches, scan only `app/`, `test/`, and root config files (`*.config.*`, `tsconfig*.json` at root). Do **not** scan the entire repository, sibling directories may be independent pnpm projects with their own `package.json`/`pnpm-lock.yaml`, and they are out of scope for this skill.
 - A directory is "out of scope" if it contains its own `package.json` or `pnpm-lock.yaml`. Skip those subtrees entirely.
 
 1. **Fetch migration guide** via WebFetch using the table below. If no URL applies, scan the GitHub release notes.
@@ -230,7 +230,7 @@ You are upgrading the `{GROUP}` dependency group from `{FROM}` to `{TO}`.
    - All others: `pnpm add <pkg1>@<latest> <pkg2>@<latest> ...` for every group member present in root `package.json`.
 3. **Conflict check**: `pnpm ls 2>&1`. On peer-dep error, attempt one `pnpm.overrides` fix. If still failing, revert the group and skip with reason.
 4. **Apply breaking changes** within root scope: from the migration guide, identify code-affecting changes (renamed APIs, removed exports, config schema changes). Grep `app/`, `test/`, and root config files for affected patterns. Edit only files inside root scope.
-5. **Verify root `package.json` moved**: read root `package.json` and confirm every group member you bumped now shows the new version. If `pnpm add` did not change root's spec (e.g. the dep is declared in a sibling project's `package.json` and not actually consumed by root code), revert the install and report the package as **skipped — not a root dep**. The skill does not resolve cross-project declarations; the maintainer must clean up manually. If the dep is in root `package.json` but has zero call sites in root scope, that's a phantom declaration: bump it anyway so the version stays current, and add a one-line note `phantom: no call sites in root` to the breaking-changes report so the maintainer can investigate.
+5. **Verify root `package.json` moved**: read root `package.json` and confirm every group member you bumped now shows the new version. If `pnpm add` did not change root's spec (e.g. the dep is declared in a sibling project's `package.json` and not actually consumed by root code), revert the install and report the package as **skipped, not a root dep**. The skill does not resolve cross-project declarations; the maintainer must clean up manually. If the dep is in root `package.json` but has zero call sites in root scope, that's a phantom declaration: bump it anyway so the version stays current, and add a one-line note `phantom: no call sites in root` to the breaking-changes report so the maintainer can investigate.
 6. **Quality gate**:
    ```bash
    pnpm typecheck
@@ -270,11 +270,11 @@ Build the report **only** from the agent reports returned to you. Do not add row
 
 **What goes in each section:**
 
-- **Updated packages** — every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
-- **Breaking changes applied** — only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
-- **Overrides audited** — only what the Phase 0 / Phase 6 audit reports. If `pnpm.overrides` was empty, write "None" and move on.
-- **Skipped packages** — _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the Phase 1 ESLint 9.x cap or the release-age cooldown). Those are silent by design — surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
-- **Quality gate** — the gate result reported by the agents, verbatim.
+- **Updated packages**: every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
+- **Breaking changes applied**: only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
+- **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If `pnpm.overrides` was empty, write "None" and move on.
+- **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the Phase 1 ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
+- **Quality gate**: the gate result reported by the agents, verbatim.
 
 If a section would be empty, write "None" rather than leaving it blank or fabricating filler.
 
@@ -291,8 +291,8 @@ Print the report. Do not commit.
 - [group] description
 
 ### Overrides audited
-- Removed: <key> — <reason>
-- Retained: <key> — <reason>
+- Removed: <key>, <reason>
+- Retained: <key>, <reason>
 
 ### Skipped packages
 | Package | Reason |
@@ -321,6 +321,6 @@ Print the report. Do not commit.
    ```bash
    git push
    ```
-2. Do not open a PR — the user owns the branch context.
+2. Do not open a PR, the user owns the branch context.
 
 In both cases, print the resulting PR URL (if created) or confirm the push completed.

@@ -13,7 +13,7 @@
 # Right side suppression in linked worktrees: the right-side indicators
 # (`Run /setup-cloned-gaia-project`, `Run /update-deps`, `Run /update-gaia`) all prod the
 # user toward maintenance flows that belong on the main checkout. Inside a
-# linked worktree the right side is empty — the worktree is detected via
+# linked worktree the right side is empty; the worktree is detected via
 # `dirname(git rev-parse --git-common-dir) != PROJECT_ROOT`. The background
 # refresher still fires from worktrees so the canonical cache (which the
 # worktree's `.gaia/cache/` symlinks to) keeps updating.
@@ -22,7 +22,7 @@
 # The worktree-detection adds at most one `git rev-parse` fork.
 # A background refresher (.gaia/scripts/check-updates.sh) writes the cache.
 #
-# Partial failures are silent — a broken statusline disappears in Claude Code,
+# Partial failures are silent; a broken statusline disappears in Claude Code,
 # which is the worst UX. Do NOT add `set -e`.
 
 # Resolve script directory so cache lookups work regardless of caller cwd.
@@ -73,7 +73,7 @@ fi
 
 # ---------- Right side from cache ----------
 # Per-machine setup gate: when .gaia/local/setup-state.json is missing or
-# its completed_at is null, the right side shows ONLY `Run /setup-cloned-gaia-project` —
+# its completed_at is null, the right side shows ONLY `Run /setup-cloned-gaia-project`;
 # the other indicators are suppressed until the developer has run through
 # the per-clone setup at least once. The setup file is gitignored, so each
 # clone gets its own state.
@@ -85,7 +85,7 @@ fi
 right=""
 if [ "$is_worktree" -eq 0 ]; then
   if [ -f "$PROJECT_ROOT/.claude/commands/gaia-init.md" ]; then
-    : # /gaia-init in progress — no right-side indicators
+    : # /gaia-init in progress, no right-side indicators
   else
     SETUP_STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"
     setup_complete="false"

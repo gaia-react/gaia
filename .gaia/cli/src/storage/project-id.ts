@@ -63,7 +63,7 @@ export const readOrCreateProjectId = (roots: StorageRoots): string => {
   }
 
   // The repoRoot the projectIdPath was resolved from is the only stable input
-  // for the derivation. Recover it from the path — projectIdPath ends in
+  // for the derivation. Recover it from the path; projectIdPath ends in
   // `<repoRoot>/.gaia/local/.project-id`, so the root is three levels up.
   const repoRoot = repoRootFromProjectIdPath(filePath);
   const id = deriveProjectId(repoRoot);

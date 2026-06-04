@@ -8,7 +8,7 @@
 #   - rm -rf .   (cwd)
 #   - rm -rf *   (unscoped glob)
 #   - rm -rf .git
-#   - rm -rf node_modules (anywhere — must use pnpm clean / explicit path)
+#   - rm -rf node_modules (anywhere, must use pnpm clean / explicit path)
 #
 # Allowed (whitelist of safe scratch paths):
 #   - .gaia/local/plans/*
@@ -19,7 +19,7 @@
 #   - build/*
 #
 # Anything that does not match a denied pattern AND is not on the whitelist
-# falls through (exit 0) — this hook intentionally only blocks the well-known
+# falls through (exit 0), this hook intentionally only blocks the well-known
 # footguns; broader policy lives in settings.json permissions.
 set -euo pipefail
 
@@ -65,7 +65,7 @@ for tok in "${tokens[@]}"; do
 
   case "$tok" in
     /|/*)
-      # Allow specific safe absolute prefixes — currently none whitelisted absolutely.
+      # Allow specific safe absolute prefixes, currently none whitelisted absolutely.
       deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
       ;;
     '~'|'~/'|'~/'*|'$HOME'|'$HOME/'*|'\$HOME'|'\$HOME/'*)
@@ -81,7 +81,7 @@ for tok in "${tokens[@]}"; do
       deny "BLOCKED: rm -rf of .git is forbidden."
       ;;
     node_modules|./node_modules|*/node_modules|node_modules/*)
-      deny "BLOCKED: rm -rf of node_modules is forbidden — use 'pnpm store prune' or remove deliberately."
+      deny "BLOCKED: rm -rf of node_modules is forbidden, use 'pnpm store prune' or remove deliberately."
       ;;
     .gaia/local/plans/*|./.gaia/local/plans/*)
       : # whitelisted
@@ -102,7 +102,7 @@ for tok in "${tokens[@]}"; do
       : # whitelisted
       ;;
     *)
-      : # unknown relative path — let it through; permissions / other hooks may still gate it.
+      : # unknown relative path, let it through; permissions / other hooks may still gate it.
       ;;
   esac
 done

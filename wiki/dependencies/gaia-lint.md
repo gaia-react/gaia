@@ -17,14 +17,14 @@ GAIA's lint config, extracted to a standalone package under `github.com/gaia-rea
 ## Why a separate repo
 
 - Reuse across gaia-react org repos (gaia, create-gaia bootstrapper, branding, docs, future apps) without copy/paste drift.
-- Single upgrade path — bump `@gaia-react/lint` instead of chasing 21 plugin upgrades per consumer.
-- Engine swap freedom — name doesn't mention ESLint, so a v2 Biome backend is a non-breaking rename.
+- Single upgrade path: bump `@gaia-react/lint` instead of chasing 21 plugin upgrades per consumer.
+- Engine swap freedom: name doesn't mention ESLint, so a v2 Biome backend is a non-breaking rename.
 
 ## Where rules live
 
-Source of truth: `gaia-lint/src/configs/*.ts` (per export — `base.ts`, `react.ts`, `style-hygiene.ts`, `guardrails.ts`, `testing.ts`, `storybook.ts`, `playwright.ts`, `prettier.ts`, `better-tailwind.ts`, `ignores.ts`). Custom plugins (`no-enum`, `no-switch`) live in `gaia-lint/src/plugins/`.
+Source of truth: `gaia-lint/src/configs/*.ts` (per export: `base.ts`, `react.ts`, `style-hygiene.ts`, `guardrails.ts`, `testing.ts`, `storybook.ts`, `playwright.ts`, `prettier.ts`, `better-tailwind.ts`, `ignores.ts`). Custom plugins (`no-enum`, `no-switch`) live in `gaia-lint/src/plugins/`.
 
-GAIA's `eslint.config.mjs` is a thin consumer — it spreads the package's exported arrays and adds GAIA-specific overrides last.
+GAIA's `eslint.config.mjs` is a thin consumer: it spreads the package's exported arrays and adds GAIA-specific overrides last.
 
 ## Override pattern
 

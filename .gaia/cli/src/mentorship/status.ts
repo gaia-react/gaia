@@ -13,7 +13,7 @@
  *   - active_pattern_count / active_adaptation_count (parsed from profile.md)
  *
  * Sensible defaults when fields are missing. Works whether enabled or not.
- * Never prompts. Never throws on missing files — they all fall back to
+ * Never prompts. Never throws on missing files; they all fall back to
  * documented defaults.
  */
 import {existsSync, readdirSync, readFileSync} from 'node:fs';

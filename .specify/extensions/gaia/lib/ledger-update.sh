@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# ledger-update.sh — Merge a JSON object into the .gaia/specs.json row matching
+# ledger-update.sh: Merge a JSON object into the .gaia/specs.json row matching
 # spec_id. Existing fields are overwritten; absent fields are preserved.
 #
 # Usage:
 #   ledger-update.sh <repo_root> <spec_id> '<json-object>'
 #
-# Refuses if the row is missing — callers must allocate via spec-allocator.sh first.
+# Refuses if the row is missing, callers must allocate via spec-allocator.sh first.
 #
 # The jq…>tmp; mv critical section runs inside the shared ledger mutex
 # (with-ledger-lock.sh) so it serializes against spec-allocator.sh's row

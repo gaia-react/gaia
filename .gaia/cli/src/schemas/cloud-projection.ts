@@ -6,7 +6,7 @@ import {z} from 'zod';
 // Forbidden fields (developer_id, email, username, GitHub username, machine
 // ID, hostname, IP) never appear.
 //
-// Drift fails loud — every schema is a `z.strictObject()`. An unexpected field
+// Drift fails loud; every schema is a `z.strictObject()`. An unexpected field
 // on a cloud event triggers a non-zero exit at projection time.
 //
 // `cloud-telemetry-scope` is the source of truth for what belongs on the

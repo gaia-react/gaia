@@ -2,7 +2,7 @@
  * `gaia automation read-state <tool> [--json]` handler.
  *
  * Thin wrapper around `readAutomationState`. Exits non-zero with
- * `state_missing` when the state file does not exist — the CLI is a
+ * `state_missing` when the state file does not exist; the CLI is a
  * primitive, not a fall-back-to-defaults abstraction. The workflow
  * uses `cron-decide` to handle first-run, not this command.
  */

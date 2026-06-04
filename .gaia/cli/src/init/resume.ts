@@ -3,14 +3,14 @@
  *
  * Reads `.gaia/init-state.json` and replays the canonical step sequence
  * from step N (1-indexed) onward. Steps already recorded in
- * `completed_steps` are skipped — the per-step subcommand is still
+ * `completed_steps` are skipped; the per-step subcommand is still
  * idempotent, but skipping at the orchestrator level keeps the surface
  * deterministic when a step's flags would not be available without
  * re-prompting the user.
  *
  * Each step's saved arguments live in `step_args` keyed by step name.
  * Resume reads them back and re-invokes the step's `run()` with the
- * original argv-shape — so a step that ran with `--title "X"` resumes
+ * original argv-shape; so a step that ran with `--title "X"` resumes
  * with the same `--title "X"`. Steps that were never run before this
  * resume cannot be replayed (their args are unknown); resume stops with
  * exit 1 and asks the maintainer to invoke the missing step manually
@@ -132,7 +132,7 @@ const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
 
 /**
  * Reconstructs the argv used the first time a step ran from its saved
- * `step_args`. Returns `null` when a required key is missing — caller
+ * `step_args`. Returns `null` when a required key is missing; caller
  * surfaces that as exit 1.
  */
 export const argvFromStepArgs = (
@@ -220,7 +220,7 @@ export const argvFromStepArgs = (
 
 type RunOptions = {
   cwd?: string;
-  /** Test seam — override the per-step runners. */
+  /** Test seam: override the per-step runners. */
   runners?: Partial<Record<StepName, StepRunner>>;
 };
 

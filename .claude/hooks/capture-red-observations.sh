@@ -9,13 +9,13 @@
 # decide whether a `git commit` introducing a now-passing new test may land.
 #
 # This hook ONLY observes. It never blocks, never emits a deny, and ALWAYS
-# exits 0 — a missing capture only means the check may later deny, which is the
+# exits 0, a missing capture only means the check may later deny, which is the
 # safe direction. It mirrors the merge-audit gate's split of "observe and
 # record" from "deny the consequential action."
 #
 # Valid RED = a per-test `assertionResults[].status == "failed"`. A file-level
 # collection/compile error (file status "failed", empty assertionResults,
-# non-empty message — no test body ran) is NOT a valid RED and is skipped.
+# non-empty message, no test body ran) is NOT a valid RED and is skipped.
 #
 # Test seam: set RED_CAPTURE_JSON_OVERRIDE to an existing json file to feed
 # canned vitest output and skip the real vitest re-run (used by the bats suite
@@ -42,7 +42,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || ec
 # block-bare-test.sh and never reaches a passing PostToolUse). `test:ci` /
 # `test:lint-staged` carry a `test:` token, not a bare `test` token, so the
 # `test([[:space:]]|$)` boundary skips them unless they also pass `--run` as an
-# explicit arg — keeping behavior aligned with the bare-test hook.
+# explicit arg, keeping behavior aligned with the bare-test hook.
 printf '%s' "$cmd" \
   | grep -Eq '(^|[^[:alnum:]_-])(pnpm|npm)[[:space:]]+(run[[:space:]]+)?test([[:space:]]|$)' \
   || exit 0
@@ -88,7 +88,7 @@ else
 
   # Re-invoke vitest directly (not `pnpm test`) with the json reporter. Using
   # `pnpm exec vitest` avoids the project `test` script, passes json cleanly,
-  # and dodges block-bare-test.sh (different command word) — and this is a hook
+  # and dodges block-bare-test.sh (different command word), and this is a hook
   # subprocess, not a Bash-tool call, so no PreToolUse hook intercepts it.
   # shellcheck disable=SC2086 # $scope is an intentional word-split arg list.
   pnpm exec vitest --run --reporter=json --outputFile="$json_file" $scope \
@@ -107,7 +107,7 @@ observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
 
 # Walk each file (testResults[]). Emit a TSV line "file<TAB>fullName<TAB>kind"
 # per genuinely-failing per-test result. Collection-error files (status failed,
-# zero assertionResults, non-empty message — no test body ran) yield nothing.
+# zero assertionResults, non-empty message, no test body ran) yield nothing.
 # failureKind is informational: a missing-implementation runtime error
 # (TypeError/ReferenceError/is not a function/is not defined) → "runtime",
 # otherwise "assertion".
@@ -145,7 +145,7 @@ if [ -n "$failures" ]; then
     [ -n "$cached_signals" ] || continue
 
     # Match the failing fullName to the helper's signal output. Exact-match the
-    # fullName field; skip (fail-open) when no signal is found — never invent one.
+    # fullName field; skip (fail-open) when no signal is found, never invent one.
     signal=$(printf '%s\n' "$cached_signals" | jq -r --arg fn "$full_name" \
       'select(.fullName == $fn) | .signal' 2>/dev/null | head -n1)
     [ -n "$signal" ] || continue

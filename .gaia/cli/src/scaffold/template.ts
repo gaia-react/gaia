@@ -2,11 +2,11 @@
  * Minimal mustache-style template engine for the scaffolder family.
  *
  * Supported forms:
- *   {{var}}                 — scalar substitution (string or stringified bool/array).
- *   {{#flag}}...{{/flag}}   — boolean section. Body is included iff `flag` is truthy
+ *   {{var}}                 : scalar substitution (string or stringified bool/array).
+ *   {{#flag}}...{{/flag}}   : boolean section. Body is included iff `flag` is truthy
  *                             (true, non-empty string, non-empty array). Bodies do
  *                             not nest sub-sections in this implementation.
- *   {{#each items}}...{{/each}} — iterates an array. Inside, `{{this}}` is the
+ *   {{#each items}}...{{/each}}: iterates an array. Inside, `{{this}}` is the
  *                                 current scalar. Bodies do not nest sub-sections.
  *
  * Intentional minimalism: the four scaffolder tasks each ship one template file

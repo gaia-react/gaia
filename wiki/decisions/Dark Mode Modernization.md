@@ -16,14 +16,14 @@ GAIA's original dark-mode implementation was inherited from a 2022-era pattern: 
 
 The old implementation had three real problems:
 
-1. **State-sync drift.** Four sources of truth (cookie, `localStorage`, React state, OS `matchMedia`) drifted out of sync. The provider's persistence `useEffect` ran only on mount, so a click that flipped React state did not reliably `submit()` to the cookie route — meaning toggles could fail to persist. A `setTimeout(saveInitialTheme)` workaround masked the same race on first render.
-2. **Inline blocking script.** `clientThemeCode` ran synchronously before hydration to set the right class on `<html>` and prevent FOUC. With the cookie as truth and SSR rendering the class directly, the script is unnecessary — and its absence improves the CSP story.
+1. **State-sync drift.** Four sources of truth (cookie, `localStorage`, React state, OS `matchMedia`) drifted out of sync. The provider's persistence `useEffect` ran only on mount, so a click that flipped React state did not reliably `submit()` to the cookie route, meaning toggles could fail to persist. A `setTimeout(saveInitialTheme)` workaround masked the same race on first render.
+2. **Inline blocking script.** `clientThemeCode` ran synchronously before hydration to set the right class on `<html>` and prevent FOUC. With the cookie as truth and SSR rendering the class directly, the script is unnecessary, and its absence improves the CSP story.
 3. **`localStorage` for theme.** `localStorage` is a duplicate of the cookie. With the cookie already round-tripping every request, `localStorage` adds nothing except a way for the two to disagree.
 
 ## What changed
 
 - **Added** `app/utils/theme.server.ts`, `app/utils/request-info.ts`, `app/hooks/useTheme.ts`.
-- **Added** `app/routes/resources+/theme-switch.tsx` — co-located action, schema, hooks, and `ThemeSwitch` component.
+- **Added** `app/routes/resources+/theme-switch.tsx`: co-located action, schema, hooks, and `ThemeSwitch` component.
 - **Removed** `app/state/theme.tsx`, `app/sessions.server/theme.ts`, `app/routes/actions+/set-theme.ts`, `app/components/ThemeSwitcher/index.tsx`.
 - **Updated** `app/root.tsx` loader to return `requestInfo`. `<State>` no longer carries `theme`.
 - **Updated** `app/components/Document/index.tsx` to call `useOptionalTheme()` and render `<ClientHintCheck/>` in `<head>`.
@@ -44,6 +44,6 @@ The old implementation had three real problems:
 
 ## Storybook
 
-`@vueless/storybook-dark-mode` continues to work — it toggles the `dark` class on `<html>`, which Tailwind's `@custom-variant dark` matches. No story changes required.
+`@vueless/storybook-dark-mode` continues to work; it toggles the `dark` class on `<html>`, which Tailwind's `@custom-variant dark` matches. No story changes required.
 
 See [[Theme Flow]], [[Styles]], [[State]].

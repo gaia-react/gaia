@@ -49,7 +49,7 @@ default_retrigger_block() {
 # --- 1. File missing → all defaults -----------------------------------------
 
 @test "missing config file: all defaults emitted in order" {
-  # No write_config — file does not exist.
+  # No write_config; file does not exist.
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "$(default_block)" ]
@@ -195,7 +195,7 @@ push_fixes: true"
 }
 
 @test "max_turns: -1 (negative) → default 30 + stderr warning" {
-  # The integer validator only accepts ^[0-9]+$ — `-1` contains a
+  # The integer validator only accepts ^[0-9]+$; `-1` contains a
   # non-digit and therefore falls back. Locking the contract.
   write_config "max_turns: -1"
   run run_in_sandbox

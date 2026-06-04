@@ -9,7 +9,7 @@
  *   `{ "applied": true }` on success.
  *   `{ "applied": false, "error": "gh_api_error" }` on failure.
  *
- * The error code is a stable identifier — never raw `gh` stderr —
+ * The error code is a stable identifier, never raw `gh` stderr,
  * because the slash command echoes this JSON to operator surfaces
  * that could leak tokens or repository internals.
  *

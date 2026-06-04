@@ -48,7 +48,7 @@ const baseVars: WorkflowTemplateVars = {
   schedule: 'daily',
   state_file: '.gaia/automation.state-wiki.json',
   tool_id: 'wiki',
-  workflow_name: 'GAIA CI — Test',
+  workflow_name: 'GAIA CI - Test',
 };
 
 describe('resolvePartials', () => {
@@ -150,7 +150,7 @@ describe('renderWorkflowTemplate', () => {
 
     const out = renderWorkflowTemplate(tmpl, sandbox.partialsDir, baseVars);
 
-    expect(out).toBe('name: GAIA CI — Test\ncron: 0 4 * * *');
+    expect(out).toBe('name: GAIA CI - Test\ncron: 0 4 * * *');
   });
 
   it('renders boolean section bodies based on flag value', () => {
@@ -180,7 +180,7 @@ describe('renderWorkflowTemplate', () => {
 
     const out = renderWorkflowTemplate(tmpl, sandbox.partialsDir, baseVars);
 
-    expect(out).toBe('name: GAIA CI — Test\nrest');
+    expect(out).toBe('name: GAIA CI - Test\nrest');
   });
 
   it('produces output with no remaining {{ or }} tokens', () => {

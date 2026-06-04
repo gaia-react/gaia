@@ -21,7 +21,7 @@ expect(screen.getByText('Hello')).toBeInTheDocument();
 ## Stubs, never framework mocks
 
 > [!warning] Never manually mock framework deps
-> Don't mock `react-router`, `react-i18next`, or other framework deps. Use the stubs in `test/stubs/` instead — they wire real providers with sensible defaults.
+> Don't mock `react-router`, `react-i18next`, or other framework deps. Use the stubs in `test/stubs/` instead; they wire real providers with sensible defaults.
 
 `test/stubs/` exposes `stubs.reactRouter()`, `stubs.state()`, etc. Apply as decorators in `tests/index.stories.tsx`; the stories pull them in for both Storybook and Vitest. Only mock **external services** or **utilities** the component imports directly.
 
@@ -31,10 +31,10 @@ Stateful custom form components MUST use `useInputControl` to stay in sync with 
 
 ## Reference example
 
-`app/components/Form/YearMonthDay/tests/` — three Selects driven by a local hidden ISO date input, fully tested via `composeStory` and `useInputControl`.
+`app/components/Form/YearMonthDay/tests/`: three Selects driven by a local hidden ISO date input, fully tested via `composeStory` and `useInputControl`.
 
-For the current file pattern (where to put `.stories.tsx` vs `.test.tsx`), Serena and the scaffolders (`/new-component`, `/new-route`) handle it — query Serena rather than maintaining the layout here.
+For the current file pattern (where to put `.stories.tsx` vs `.test.tsx`), Serena and the scaffolders (`/new-component`, `/new-route`) handle it; query Serena rather than maintaining the layout here.
 
 ## Accessibility assertions
 
-`test/a11y.ts` exports `expectNoA11yViolations(container, options?)` and `runAxe(container, options?)` — thin wrappers around `axe-core` that fail a test on any WCAG-relevant violation. The scaffolder injects an `a11y` block into every new component test by default. The helper requires the `jsdom` runtime: tests calling it must declare `// @vitest-environment jsdom` as the very first line of the file. The global env stays `happy-dom` for speed; the per-file opt-in exists because `axe-core` mutates `Node.prototype.isConnected`, which `happy-dom` defines as a getter-only property. The helper throws a clear setup error when the env is wrong, so a missing directive surfaces immediately.
+`test/a11y.ts` exports `expectNoA11yViolations(container, options?)` and `runAxe(container, options?)`, thin wrappers around `axe-core` that fail a test on any WCAG-relevant violation. The scaffolder injects an `a11y` block into every new component test by default. The helper requires the `jsdom` runtime: tests calling it must declare `// @vitest-environment jsdom` as the very first line of the file. The global env stays `happy-dom` for speed; the per-file opt-in exists because `axe-core` mutates `Node.prototype.isConnected`, which `happy-dom` defines as a getter-only property. The helper throws a clear setup error when the env is wrong, so a missing directive surfaces immediately.

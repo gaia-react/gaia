@@ -7,7 +7,7 @@
  * renameSync(tmp, target)` idiom used by `automation/util/state-write.ts`
  * and the wiki state writers.
  *
- * Validates against `LocalAutomationSchema` before writing — no caller
+ * Validates against `LocalAutomationSchema` before writing; no caller
  * can persist a malformed shape.
  */
 import {mkdirSync, renameSync, writeFileSync} from 'node:fs';
@@ -23,7 +23,7 @@ export const writeLocalAutomation = (
   payload: LocalAutomation
 ): void => {
   // Validate the shape (throws on malformed input). Serialize the raw
-  // payload — not the parsed output — so unknown fields land
+  // payload, not the parsed output, so unknown fields land
   // round-trip-safe instead of being silently stripped by Zod's default
   // `.strip()` behaviour.
   LocalAutomationSchema.parse(payload);

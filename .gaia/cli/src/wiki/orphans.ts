@@ -24,8 +24,8 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 // Maintainer-only domains. `wiki/meta/` is dated audit artifacts (lint
 // reports, dashboards) that exist as standalone documents without inbound
 // links by design. `wiki/entities/` is the maintainer's project-specific
-// people / org pages. Both are release-excluded — adopters never see them
-// — and flagging them as orphans is noise the maintainer can't act on.
+// people / org pages. Both are release-excluded; adopters never see them,
+// and flagging them as orphans is noise the maintainer can't act on.
 // `page-index.ts` deliberately emits these domains and leaves filtering
 // to the consumer; this is the orphans consumer's filter.
 const isMaintainerOnly = (path: string): boolean =>

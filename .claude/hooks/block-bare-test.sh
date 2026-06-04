@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Block bare `pnpm test` / `npm test` (and `run test` variants) without `--run` —
+# Block bare `pnpm test` / `npm test` (and `run test` variants) without `--run`,
 # they start vitest in watch mode and never exit in CI / agent contexts.
 # Exit 2 = block the tool call, stderr is shown to Claude as the reason.
 

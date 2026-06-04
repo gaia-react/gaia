@@ -3,7 +3,7 @@
  *
  * The Phase B remote-integration surface for GAIA CI. Every primitive
  * the `/setup-gaia-ci` slash command shells out to lives under this
- * namespace — remote detection, admin permission probe, token
+ * namespace: remote detection, admin permission probe, token
  * piping (stdin only), workflow_dispatch verification, and the
  * `setup_complete` flip.
  *

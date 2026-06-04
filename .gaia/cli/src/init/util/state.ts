@@ -1,5 +1,5 @@
 /**
- * Read/write `.gaia/init-state.json` — the per-repo resumability cursor
+ * Read/write `.gaia/init-state.json`: the per-repo resumability cursor
  * for `gaia init`. Each subcommand records its name into `completed_steps`
  * on success so a failed run can be resumed via `gaia init resume`.
  *

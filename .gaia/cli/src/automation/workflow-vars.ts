@@ -46,10 +46,10 @@ const DEFAULT_SCHEDULE_BY_TOOL: Readonly<Record<ToolId, WorkflowSchedule>> = {
 };
 
 const WORKFLOW_NAME_BY_TOOL: Readonly<Record<ToolId, string>> = {
-  'pnpm-audit': 'GAIA CI — pnpm audit',
-  'stale-branches': 'GAIA CI — Stale Branches',
-  'update-deps': 'GAIA CI — Update Deps',
-  wiki: 'GAIA CI — Wiki',
+  'pnpm-audit': 'GAIA CI - pnpm audit',
+  'stale-branches': 'GAIA CI - Stale Branches',
+  'update-deps': 'GAIA CI - Update Deps',
+  wiki: 'GAIA CI - Wiki',
 };
 
 export const cronForSchedule = (schedule: WorkflowSchedule): string =>
@@ -57,7 +57,7 @@ export const cronForSchedule = (schedule: WorkflowSchedule): string =>
 
 /**
  * Build the per-template variables for one tool. Returns `null` if the
- * tool's mode in the config is not `'ci'` — callers short-circuit on
+ * tool's mode in the config is not `'ci'`; callers short-circuit on
  * `null` and skip rendering that workflow.
  */
 export const buildWorkflowVars = (
@@ -67,7 +67,7 @@ export const buildWorkflowVars = (
   const configKey = TOOL_ID_TO_CONFIG_KEY[tool];
   const toolConfig = config[configKey];
 
-  // Defensive narrowing — TOOL_ID_TO_CONFIG_KEY only points at ToolConfig
+  // Defensive narrowing: TOOL_ID_TO_CONFIG_KEY only points at ToolConfig
   // entries, but the AutomationConfig union also contains UpdateGaiaConfig
   // and primitive values. The four ToolIds are guaranteed by construction
   // to map to ToolConfig rows.

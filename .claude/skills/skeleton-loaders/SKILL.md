@@ -10,7 +10,7 @@ Build skeleton loading states that are pixel-perfect matches of real content.
 
 ## Transparent Text Technique
 
-Use real HTML elements (`<p>`, `<span>`, `<h2>`, `<button>`) with the same font classes as the real component, plus shimmer + transparency classes. This makes skeletons inherit exact line-height, font-size, and weight — producing pixel-perfect dimensions without hardcoded `h-*`/`w-*` values.
+Use real HTML elements (`<p>`, `<span>`, `<h2>`, `<button>`) with the same font classes as the real component, plus shimmer + transparency classes. This makes skeletons inherit exact line-height, font-size, and weight, producing pixel-perfect dimensions without hardcoded `h-*`/`w-*` values.
 
 ### Shimmer class constant
 
@@ -39,7 +39,7 @@ import {twJoin} from 'tailwind-merge';
 
 ### Non-text elements (images, icons, avatars)
 
-Keep as empty divs with the shimmer class — no text needed:
+Keep as empty divs with the shimmer class, no text needed:
 
 ```tsx
 <div className={twJoin('size-14 shrink-0', shimmer)} />

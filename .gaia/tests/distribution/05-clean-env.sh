@@ -12,12 +12,12 @@
 #     pnpm.
 #
 # What this does NOT test:
-#   - /gaia-init or /setup-cloned-gaia-project execution (would need Claude — see
+#   - /gaia-init or /setup-cloned-gaia-project execution (would need Claude; see
 #     `diagnostic/claude-auth-in-docker.md`).
 #   - Full filesystem isolation (a true Docker run is the answer; deferred).
 #   - Linux-only adopter environments (the host OS is what it is).
 #
-# Skipped automatically if `corepack` is not on PATH — the bootstrap path
+# Skipped automatically if `corepack` is not on PATH; the bootstrap path
 # is unverifiable without it.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -25,13 +25,13 @@ source "$HERE/lib/lib.sh"
 
 if ! command -v corepack >/dev/null 2>&1; then
   log "corepack not on PATH; skipping (Node 16.13+ ships corepack)"
-  pass "corepack unavailable — scenario skipped (Node ships corepack since v16.13)"
+  pass "corepack unavailable; scenario skipped (Node ships corepack since v16.13)"
   exit 0
 fi
 
 # We need a populated staging tree to extract; reuse the build helper
 # in the OUTER environment (PATH-stripping happens for the bootstrap
-# step, not the staging step — staging needs git/tar/rsync/jq/the CLI
+# step, not the staging step; staging needs git/tar/rsync/jq/the CLI
 # binary, all of which Layer 0 maintainers have).
 STAGING="$(mktemp -d -t gaia-dist-cleanenv-stage-XXXXXX)"
 SCAFFOLD="$(mktemp -d -t gaia-dist-cleanenv-scaffold-XXXXXX)"
@@ -41,7 +41,7 @@ trap 'rm -rf "$STAGING" "$SCAFFOLD" "$FAKE_HOME"' EXIT
 "$HERE/lib/build-staging.sh" "$STAGING" \
   || { fail "build-staging failed"; exit 1; }
 
-# Tar the staged tree, then extract into SCAFFOLD — same shape as
+# Tar the staged tree, then extract into SCAFFOLD; same shape as
 # create-gaia's download+extract step. Bypasses the actual GitHub fetch
 # (we have the staging dir locally).
 TARBALL="$(mktemp -t gaia-dist-cleanenv-tar.XXXXXX).tar.gz"
@@ -49,7 +49,7 @@ trap 'rm -rf "$STAGING" "$SCAFFOLD" "$FAKE_HOME" "$TARBALL"' EXIT
 tar -czf "$TARBALL" -C "$STAGING" .
 
 # Resolve the corepack and node paths in the OUTER PATH (we'll stash
-# them so the inner subshell can still find them — the test isn't about
+# them so the inner subshell can still find them; the test isn't about
 # hiding Node itself, just dev tools the adopter wouldn't have).
 NODE_BIN="$(command -v node)"
 COREPACK_BIN="$(command -v corepack)"
@@ -74,9 +74,9 @@ ln -s "$GIT_BIN"      "$FAKE_HOME/bin/git"
   export HOME="$FAKE_HOME"
   export PATH="/usr/bin:/bin:$FAKE_HOME/bin"
 
-  # Confirm pnpm is NOT visible — this is the test invariant.
+  # Confirm pnpm is NOT visible; this is the test invariant.
   if command -v pnpm >/dev/null 2>&1; then
-    printf 'pnpm IS visible in stripped subshell — PATH-strip failed\n' >&2
+    printf 'pnpm IS visible in stripped subshell; PATH-strip failed\n' >&2
     exit 1
   fi
 
@@ -88,7 +88,7 @@ ln -s "$GIT_BIN"      "$FAKE_HOME/bin/git"
   git config commit.gpgsign false
   git add . >/dev/null 2>&1
 
-  # Mirror create-gaia's ensurePnpm() — corepack first, npm install -g
+  # Mirror create-gaia's ensurePnpm(); corepack first, npm install -g
   # fallback. Only test the corepack path here (the npm fallback would
   # mutate the host's global npm, which we don't want in a test).
   corepack enable pnpm

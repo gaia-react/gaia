@@ -3,7 +3,7 @@
  *
  * Creates `wiki/.state.json` from scratch with `{version: 1,
  * last_evaluated_sha, last_evaluated_at}`. Refuses if the file already
- * exists — use `state-bump` to update an existing state file.
+ * exists; use `state-bump` to update an existing state file.
  *
  * Replaces the prose bootstrap write in `wiki/sync.md` Step 1: a fresh
  * project has no `wiki/.state.json`, and `state-bump` will not create
@@ -23,7 +23,7 @@ const HELP_TEXT = `Usage: gaia wiki state-init <sha>
   Create wiki/.state.json with {version: 1, last_evaluated_sha,
   last_evaluated_at}. Refuses if the file already exists.
 
-  <sha> may be any ref (full sha, short sha, branch, tag) — it is
+  <sha> may be any ref (full sha, short sha, branch, tag); it is
   resolved to a full 40-char sha via \`git rev-parse\`.
 `;
 
@@ -129,7 +129,7 @@ export const run = (
     structuredError({
       code: 'state_already_exists',
       message:
-        'wiki/.state.json already exists — use `gaia wiki state-bump` to update fields',
+        'wiki/.state.json already exists; use `gaia wiki state-bump` to update fields',
       subcommand: 'wiki state-init',
     });
 

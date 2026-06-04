@@ -8,7 +8,7 @@
  * breakdown.
  *
  * Port of `.gaia/scripts/generate-manifest.mjs`. Output is byte-identical
- * to the script for the current repo state — see the snapshot test in
+ * to the script for the current repo state; see the snapshot test in
  * `manifest.test.ts`.
  *
  * `--check` mode reads the committed manifest, regenerates an expected
@@ -216,7 +216,7 @@ export type ClassifierOverlap = {
  * entry that's matched by an exclude pattern is dead code: `buildManifest`
  * runs the exclude filter first, so the classifier never sees the path.
  *
- * For prefix sets, probe the prefix without its trailing slash — exclude
+ * For prefix sets, probe the prefix without its trailing slash; exclude
  * regexes are anchored `^P(/|$)` so the directory path itself matches.
  */
 export const lintClassifierSets = (

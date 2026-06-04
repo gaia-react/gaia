@@ -31,7 +31,7 @@ import {MENTORSHIP_EVENT_TYPES} from '../schemas/mentorship-payloads.js';
  * cloud event payloads (Holistic Reviewer, Skill Curator, Package Steward,
  * Custodian) land with their respective Sequel features in v1.x.
  *
- * This is the single source of truth — `emit.ts` re-exports it as
+ * This is the single source of truth; `emit.ts` re-exports it as
  * `CLOUD_ONLY_EVENT_TYPES` so projection and emit share one list.
  */
 const KNOWN_CLOUD_ONLY_TYPES = [
@@ -63,7 +63,7 @@ const MENTORSHIP_TYPE_SET: ReadonlySet<string> = new Set(
 );
 
 /**
- * Cloud-only payload schema — v1 placeholder. Sequel features will
+ * Cloud-only payload schema, v1 placeholder. Sequel features will
  * register strict per-event schemas here. `passthrough()` is intentional
  * for v1: the per-consumer field sets aren't locked yet, and the
  * envelope-level guarantees (project_id, agent_type, etc.) plus the
@@ -131,7 +131,7 @@ const resolvePayloadSchema = (eventType: string): undefined | z.ZodType => {
  * 7. Return `{ ok: true, cloudEvent, cloudLine }`.
  *
  * Caller (emit) maps `{ ok: false }` to `EXIT_CODES.CLOUD_PROJECTION_DRIFT`
- * and writes nothing to either stream — projection runs BEFORE either write.
+ * and writes nothing to either stream; projection runs BEFORE either write.
  */
 const LOCAL_KEY = '_local';
 
@@ -155,7 +155,7 @@ export const projectToCloud = (
   const envelopeResult = EnvelopeSchema.safeParse(cloudEvent);
 
   if (!envelopeResult.success) {
-    // Envelope parse failed — `cloudEvent.event_type` is statically typed
+    // Envelope parse failed; `cloudEvent.event_type` is statically typed
     // `string` but may be absent/non-string at runtime here. Coerce.
     return {
       code: 'cloud_projection_drift',
@@ -191,7 +191,7 @@ export const projectToCloud = (
     };
   }
 
-  // 5. Re-attach the parsed (validated) payload — `.strict()` would have
+  // 5. Re-attach the parsed (validated) payload; `.strict()` would have
   //    errored on unknown keys, so success means payload is clean.
   const projected: Record<string, unknown> = {
     ...cloudEvent,
@@ -231,7 +231,7 @@ export const projectToCloud = (
  * Canonical cloud-only event-type list. `emit.ts` re-exports this as
  * `CLOUD_ONLY_EVENT_TYPES` so emit-core can decide whether an unknown
  * event_type is a cloud-only future-Sequel type vs. an outright unknown
- * event — both modules share one list, no drift possible.
+ * event; both modules share one list, no drift possible.
  */
 export const KNOWN_CLOUD_ONLY_EVENT_TYPES: readonly KnownCloudOnlyType[] =
   KNOWN_CLOUD_ONLY_TYPES;

@@ -18,15 +18,15 @@ status: developing
 
 Domain breakdown: components (6), concepts (28), decisions (10), dependencies (21), entities (2), flows (3), meta (1 dashboard), modules (17), root (5)
 
-DragonScale Mechanism 2 (Address Validation): skipped — `./scripts/allocate-address.sh` or `.vault-meta/address-counter.txt` not present.
-DragonScale Mechanism 3 (Semantic Tiling): skipped — `./scripts/tiling-check.py` not present.
+DragonScale Mechanism 2 (Address Validation): skipped: `./scripts/allocate-address.sh` or `.vault-meta/address-counter.txt` not present.
+DragonScale Mechanism 3 (Semantic Tiling): skipped: `./scripts/tiling-check.py` not present.
 
 **Resolved since 2026-05-06:**
 
-- ✓ [[README]] dead link `[[Note Name]]` — fixed.
-- ✓ [[README]] stale `sources/` directory reference — fixed.
-- ✓ Missing index entry for `lint-report-2026-05-04` — fixed.
-- ✓ YAML `depends_on:` frontmatter parse errors (10 pages) — fixed (converted to YAML list format).
+- ✓ [[README]] dead link `[[Note Name]]`: fixed.
+- ✓ [[README]] stale `sources/` directory reference: fixed.
+- ✓ Missing index entry for `lint-report-2026-05-04`: fixed.
+- ✓ YAML `depends_on:` frontmatter parse errors (10 pages): fixed (converted to YAML list format).
 
 ---
 
@@ -40,9 +40,9 @@ None.
 
 ### Empty Sections
 
-Carry-over from prior report — not yet addressed:
+Carry-over from prior report: not yet addressed:
 
-1. **[[Agentic Design]]** (`concepts/Agentic Design.md`): 6 empty sub-sections under `## The 12 patterns GAIA implements` — `### Core`, `### Reasoning & Strategy`, `### Orchestration`, `### Infrastructure & State`, `### Reliability & Control`. Structural placeholders. Suggest: fill content or collapse into the parent section with inline notes.
+1. **[[Agentic Design]]** (`concepts/Agentic Design.md`): 6 empty sub-sections under `## The 12 patterns GAIA implements`: `### Core`, `### Reasoning & Strategy`, `### Orchestration`, `### Infrastructure & State`, `### Reliability & Control`. Structural placeholders. Suggest: fill content or collapse into the parent section with inline notes.
 
 2. **[[PR Merge Workflow]]** (`concepts/PR Merge Workflow.md`): empty section `## Four-step protocol`. Suggest: add the protocol steps or remove the heading.
 
@@ -58,19 +58,19 @@ Carry-over from prior report — not yet addressed:
 
 ## Suggestions (worth considering)
 
-### Cross-Reference Gaps — Telemetry (new page)
+### Cross-Reference Gaps: Telemetry (new page)
 
 The new `[[Telemetry]]` page is linked from `wiki/index.md` only. The four pages it cites in its "Pairs with" section do not reciprocally link back:
 
-6. **[[GAIA Spec]]** — mentions `.gaia/local/telemetry/` in two places (lines 19, 35) as plain text. Suggest: add a `[[Telemetry]]` wikilink in the "Pairs with" or a relevant prose mention.
+6. **[[GAIA Spec]]**: mentions `.gaia/local/telemetry/` in two places (lines 19, 35) as plain text. Suggest: add a `[[Telemetry]]` wikilink in the "Pairs with" or a relevant prose mention.
 
-7. **[[GAIA Plan]]** — emits `plan_revised` events per the Telemetry page but does not mention this. Suggest: add a `[[Telemetry]]` reference in the "Pairs with" section.
+7. **[[GAIA Plan]]**: emits `plan_revised` events per the Telemetry page but does not mention this. Suggest: add a `[[Telemetry]]` reference in the "Pairs with" section.
 
-8. **[[Claude Hooks]]** — referenced as the `PostToolUse Task` hook backstop for engineer-return events, but `Claude Hooks.md` has no mention of the telemetry connection. Suggest: add a note linking to `[[Telemetry]]`.
+8. **[[Claude Hooks]]**: referenced as the `PostToolUse Task` hook backstop for engineer-return events, but `Claude Hooks.md` has no mention of the telemetry connection. Suggest: add a note linking to `[[Telemetry]]`.
 
 ### Carry-Over Cross-Reference Gaps (high-frequency)
 
-9. **Serena, Conform, Storybook, React Router 7, Playwright, Vitest, Chromatic, i18next** — same unlinked plain-text mentions catalogued in 2026-05-06 report (items 17–24). No new pages added to this set; none addressed yet. See prior report for full page-by-page breakdown.
+9. **Serena, Conform, Storybook, React Router 7, Playwright, Vitest, Chromatic, i18next**: same unlinked plain-text mentions catalogued in 2026-05-06 report (items 17–24). No new pages added to this set; none addressed yet. See prior report for full page-by-page breakdown.
 
 ---
 
@@ -92,7 +92,7 @@ None. All wikilinks in non-meta pages resolve to existing pages.
 
 Note: `[[GAIA Spec\|...]]` and `[[Wiki Sync\|...]]` in `concepts/Wiki Consolidate.md` use backslash-escaped pipe aliases (Obsidian pipe-alias syntax inside a table cell). The link targets `GAIA Spec` and `Wiki Sync` both exist. Not a dead link.
 
-`[[modules/Claude Integration|...]]` in `concepts/Claude Skills.md` and `concepts/Claude Integration Conventions.md` uses a path-qualified wikilink form. The file `wiki/modules/Claude Integration.md` exists. Not a dead link (though path-form links are fragile if the page moves — consider switching to `[[Claude Integration|...]]`).
+`[[modules/Claude Integration|...]]` in `concepts/Claude Skills.md` and `concepts/Claude Integration Conventions.md` uses a path-qualified wikilink form. The file `wiki/modules/Claude Integration.md` exists. Not a dead link (though path-form links are fragile if the page moves: consider switching to `[[Claude Integration|...]]`).
 
 ## Address Validation
 

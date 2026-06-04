@@ -130,7 +130,7 @@ const sumWikiLinesAtRef = (cwd: string, ref: string): number => {
 /**
  * Sum `lines_added + lines_removed` across all `wiki/**` files in the
  * `<base>...HEAD` diff. Binary files (numstat reports `-\t-`) are
- * skipped — the wiki vault is text-only, so this is informational.
+ * skipped; the wiki vault is text-only, so this is informational.
  */
 const sumChangedLines = (cwd: string, base: string): number => {
   let raw: string;

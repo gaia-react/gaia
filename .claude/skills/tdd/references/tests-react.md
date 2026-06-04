@@ -2,7 +2,7 @@
 
 ## Testing Layers
 
-Four layers share one mocking foundation (`msw` + `@msw/data`). Write tests at the **lowest layer that can verify the behavior** — a button's disabled state is a component test, not E2E; a route's redirect is E2E, a loader's parsing is a service test.
+Four layers share one mocking foundation (`msw` + `@msw/data`). Write tests at the **lowest layer that can verify the behavior**, a button's disabled state is a component test, not E2E; a route's redirect is E2E, a loader's parsing is a service test.
 
 | Layer       | Tool                           | Runner     | File location                  | What to assert                                      |
 | ----------- | ------------------------------ | ---------- | ------------------------------ | --------------------------------------------------- |
@@ -13,7 +13,7 @@ Four layers share one mocking foundation (`msw` + `@msw/data`). Write tests at t
 
 ## Component Tests via `composeStory`
 
-The story is the test's source of truth. Use `composeStory` — never render a fresh `<Component prop={...} />` directly in tests, because stories already set up decorators (i18n, router, state) via `test/stubs`. Rendering fresh bypasses those stubs and produces flaky or incomplete tests.
+The story is the test's source of truth. Use `composeStory`, never render a fresh `<Component prop={...} />` directly in tests, because stories already set up decorators (i18n, router, state) via `test/stubs`. Rendering fresh bypasses those stubs and produces flaky or incomplete tests.
 
 ```tsx
 // app/components/PriceTag/tests/index.stories.tsx
@@ -53,7 +53,7 @@ describe('PriceTag', () => {
 });
 ```
 
-The tracer bullet for any component: `composeStory(Default, Meta)` renders without throwing. Use ARIA roles and accessible names as selectors — `getByRole('button', {name: 'Save'})`, `getByText('$49.99')` — not class selectors or test ids.
+The tracer bullet for any component: `composeStory(Default, Meta)` renders without throwing. Use ARIA roles and accessible names as selectors, `getByRole('button', {name: 'Save'})`, `getByText('$49.99')`, not class selectors or test ids.
 
 ## Hook Tests via `renderHook`
 
@@ -76,11 +76,11 @@ describe('useToggle', () => {
 });
 ```
 
-Assert on `result.current` — the observable hook surface. Don't reach into closures or internal state.
+Assert on `result.current`, the observable hook surface. Don't reach into closures or internal state.
 
 ## Service Tests via MSW
 
-MSW handlers run inside Vitest — you're exercising the real `api()` wrapper, real Zod parsing, and real URL resolution. No `vi.mock('fetch')`.
+MSW handlers run inside Vitest, you're exercising the real `api()` wrapper, real Zod parsing, and real URL resolution. No `vi.mock('fetch')`.
 
 ```tsx
 // app/services/gaia/things/tests/requests.test.ts
@@ -129,7 +129,7 @@ Mock at **system boundaries** only:
 
 **Mutating data in a test**: write to `database` directly; reset in `afterEach` via `resetTestData()` from `test/mocks/database`. The read-then-verify shape tests the interface end-to-end and survives schema renames as long as the public service contract holds.
 
-MSW handlers run in Vitest, Storybook, AND Playwright — one mock layer, three testing scopes.
+MSW handlers run in Vitest, Storybook, AND Playwright, one mock layer, three testing scopes.
 
 ## Testing Forms with Conform
 
@@ -212,16 +212,16 @@ test('saveThing called POST', async () => {
 });
 ```
 
-Why bad: handler existence proves nothing. Assert on the effect — database state after the call, or the returned value.
+Why bad: handler existence proves nothing. Assert on the effect, database state after the call, or the returned value.
 
 ## Red Flags
 
 - `vi.fn()` spy on a function the component uses internally
 - `toHaveBeenCalled` as the only assertion (you're testing call-through, not behavior)
 - Importing from `../internals` or `.server.ts` files the public consumer wouldn't touch
-- Test names like "`useX` returns an object with `a`, `b`, `c`" — that's testing shape, not behavior
+- Test names like "`useX` returns an object with `a`, `b`, `c`", that's testing shape, not behavior
 - Asserting on i18n keys, raw class lists, or DOM structure instead of accessible roles and text
-- `vi.mock('~/services/...')` — you've mocked something MSW already handles
-- `vi.mock('~/hooks/...')` or `vi.mock('~/components/...')` — internal collaborator mocking
+- `vi.mock('~/services/...')`, you've mocked something MSW already handles
+- `vi.mock('~/hooks/...')` or `vi.mock('~/components/...')`, internal collaborator mocking
 - Test setup that reimplements application logic to seed data (write to `database` instead)
 - A fixture file larger than the code it tests

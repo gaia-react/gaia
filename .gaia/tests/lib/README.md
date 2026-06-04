@@ -3,7 +3,7 @@
 Maintainer-only bats suite for the SPEC ledger machinery:
 `.specify/extensions/gaia/lib/spec-allocator.sh`, `ledger-update.sh`, and the
 shared `with-ledger-lock.sh` mutex. Excluded from the release bundle via
-`.gaia/release-exclude` (category `.gaia/tests/`). Every test is hermetic —
+`.gaia/release-exclude` (category `.gaia/tests/`). Every test is hermetic
 each spins up its own tmp git repo via `helpers/tmp-spec-repo.sh` and tears it
 down; no reliance on the real project `.gaia/specs.json`.
 
@@ -16,7 +16,7 @@ down; no reliance on the real project `.gaia/specs.json`.
 | `spec-folder-layout.bats`         | Per-SPEC folder layout + migration (Contract C7): `spec-folderize.sh` happy path (flat + `archived/` → `<id>/SPEC.md`, byte-identical contents), idempotent re-run, `--dry-run` no-op, empty-tree no-op, flat+foldered conflict → exit 4, tracked-vs-untracked move strategy (`git mv` vs `mv`); allocator `highest`/`next`/`in_progress` over foldered specs (`next` creates no folder, ledger-first wins, foldered fallback resolves); `spec-renumber.sh` folder rename keeping `SPEC.md` named `SPEC.md` with siblings carried + collision guard; a flat→folderize→`next`→renumber→archive round-trip; read-only modes take no lock and create no folder. |
 
 The N-parallel test uses a start-flag barrier so the `next` calls genuinely
-overlap. A passing run with no contention proves nothing — with the barrier,
+overlap. A passing run with no contention proves nothing; with the barrier,
 the unlocked read-modify-write would fail (duplicate id + lost ledger row).
 Several `@test`s assert that a non-zero exit code propagates _through_
 `with_ledger_lock` (forced jq failure → 4, invalid patch → 5, lock timeout →

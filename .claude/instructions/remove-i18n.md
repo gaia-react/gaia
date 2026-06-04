@@ -1,6 +1,6 @@
 ---
 name: remove-i18n
-description: Deterministic runbook that strips the entire i18next stack from a GAIA-derived project — packages, source wiring, audit checks, hooks, manifest entries, and wiki pages.
+description: Deterministic runbook that strips the entire i18next stack from a GAIA-derived project, packages, source wiring, audit checks, hooks, manifest entries, and wiki pages.
 ---
 
 # Remove i18n
@@ -9,13 +9,13 @@ All paths in this file are repo-relative. The executing agent runs from the proj
 
 Execute every section in order, top to bottom. No skipping, no reordering. After Section I passes, Section J self-deletes this file.
 
-This runbook takes no variables — i18n removal is identical for every project.
+This runbook takes no variables, i18n removal is identical for every project.
 
 If any verification command in Section I fails, **stop** and report the failure verbatim. Do **not** self-delete.
 
 ---
 
-## Section A — Unwrap `useTranslation` / `t()` calls in source
+## Section A, Unwrap `useTranslation` / `t()` calls in source
 
 Discover every call site:
 
@@ -23,7 +23,7 @@ Discover every call site:
 grep -rln "useTranslation\|i18next" app test
 ```
 
-For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`, `app/languages/`, `app/sessions.server/language.ts`, `app/routes/actions+/set-language.ts`, `app/components/LanguageSelect/` — those are deleted in Section C):
+For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`, `app/languages/`, `app/sessions.server/language.ts`, `app/routes/actions+/set-language.ts`, `app/components/LanguageSelect/`, those are deleted in Section C):
 
 1. Open the file.
 2. Delete the import line: `import {useTranslation} from 'react-i18next';`
@@ -31,7 +31,7 @@ For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`,
 4. Replace every `t('key')` and `t('key', {…})` call with the literal English string from `app/languages/en/`.
 5. If the file used `<Trans>` from `react-i18next`, replace the JSX with the literal English markup.
 
-The seeded list of files known to use `t()` (verify against the grep output — add any newcomers, drop any that have already been unwrapped):
+The seeded list of files known to use `t()` (verify against the grep output, add any newcomers, drop any that have already been unwrapped):
 
 - `app/components/Header/index.tsx`
 - `app/components/Footer/index.tsx`
@@ -52,7 +52,7 @@ After unwrapping all source files, re-run the grep. If any matches remain in `ap
 
 ---
 
-## Section B — Root + entry files
+## Section B, Root + entry files
 
 These three files have structural i18n wiring that the regex-style unwrap in Section A does not cover. Apply the diffs below verbatim.
 
@@ -198,11 +198,11 @@ with:
 <ServerRouter context={entryContext} url={request.url} />
 ```
 
-The `routerContext` parameter is now unused — drop it from the `handleRequest` signature.
+The `routerContext` parameter is now unused, drop it from the `handleRequest` signature.
 
 ---
 
-## Section C — Delete files
+## Section C, Delete files
 
 ```bash
 rm -rf \
@@ -227,7 +227,7 @@ rm -rf \
 
 ---
 
-## Section D — Storybook preview, test infra
+## Section D, Storybook preview, test infra
 
 ### D1. `.storybook/preview.ts`
 
@@ -292,7 +292,7 @@ For each caller, drop the import and replace any usage with the literal `'en'`.
 
 ---
 
-## Section E — package.json
+## Section E, package.json
 
 Open `package.json` and:
 
@@ -309,7 +309,7 @@ Remove these keys from `devDependencies`:
 - `accept-language-parser`
 - `@types/accept-language-parser`
 
-Remove any keys from `pnpm.overrides` whose name starts with `remix-i18next>` (none may exist if overrides is empty `{}` — leave it that way).
+Remove any keys from `pnpm.overrides` whose name starts with `remix-i18next>` (none may exist if overrides is empty `{}`, leave it that way).
 
 Then run:
 
@@ -319,7 +319,7 @@ pnpm install
 
 ---
 
-## Section F — `.claude/` skills, rules, hooks, agents
+## Section F, `.claude/` skills, rules, hooks, agents
 
 ### F1. `.claude/agents/code-review-audit.md`
 
@@ -377,7 +377,7 @@ In `hooks.PreToolUse`, find the entry whose `matcher` is `Edit|Write|MultiEdit`.
 
 ---
 
-## Section G — `.gaia/manifest.json`
+## Section G, `.gaia/manifest.json`
 
 Open `.gaia/manifest.json` and remove every key whose path matches any of:
 
@@ -399,7 +399,7 @@ Open `.gaia/manifest.json` and remove every key whose path matches any of:
 - `wiki/dependencies/i18next.md`
 - `wiki/dependencies/remix-i18next.md`
 
-Discovery sweep — confirm no leftover entries:
+Discovery sweep, confirm no leftover entries:
 
 ```bash
 grep -nE "i18n|languages/|LanguageSelect|set-language|check-i18n|react-i18next|translation-patterns|Language Flow" .gaia/manifest.json
@@ -409,18 +409,18 @@ Should print nothing.
 
 ---
 
-## Section H — wiki
+## Section H, wiki
 
 Edit each (skip any file that does not exist in this project):
 
-- `wiki/index.md` — drop the lines `[[i18n]]`, `[[remix-i18next]]`, `[[i18next]]`.
-- `wiki/overview.md` — drop the i18n bullet from "What's in the box". Drop `languages/` and `middleware/i18next.ts` mentions from the folder map. Drop any "i18n examples" row from feature tables.
-- `wiki/modules/Folder Structure.md` — drop `languages/` and `middleware/i18next.ts` mentions.
-- `wiki/modules/Middleware.md` — drop the `i18nextMiddleware` entry/section.
-- `wiki/decisions/Quality Gate.md` — replace any "missing i18n keys" example with a generic "missing strings".
-- `wiki/concepts/Component Testing.md` — drop "Render with i18n provider configured" if present.
-- `wiki/dependencies/Storybook.md` — drop `storybook-react-i18next` from the addons list.
-- `wiki/dependencies/React Router 7.md` — drop `[[remix-i18next]]` from related-deps lists.
+- `wiki/index.md`, drop the lines `[[i18n]]`, `[[remix-i18next]]`, `[[i18next]]`.
+- `wiki/overview.md`, drop the i18n bullet from "What's in the box". Drop `languages/` and `middleware/i18next.ts` mentions from the folder map. Drop any "i18n examples" row from feature tables.
+- `wiki/modules/Folder Structure.md`, drop `languages/` and `middleware/i18next.ts` mentions.
+- `wiki/modules/Middleware.md`, drop the `i18nextMiddleware` entry/section.
+- `wiki/decisions/Quality Gate.md`, replace any "missing i18n keys" example with a generic "missing strings".
+- `wiki/concepts/Component Testing.md`, drop "Render with i18n provider configured" if present.
+- `wiki/dependencies/Storybook.md`, drop `storybook-react-i18next` from the addons list.
+- `wiki/dependencies/React Router 7.md`, drop `[[remix-i18next]]` from related-deps lists.
 
 Discovery sweep:
 
@@ -428,11 +428,11 @@ Discovery sweep:
 grep -rln "i18n\|useTranslation\|languages/\|i18next" wiki .claude
 ```
 
-Review every match. Edit or delete each — the only acceptable surviving matches are inside this very file (`remove-i18n.md`) and inside the `add-locale.md` template. Both will be self-deleted after they run.
+Review every match. Edit or delete each, the only acceptable surviving matches are inside this very file (`remove-i18n.md`) and inside the `add-locale.md` template. Both will be self-deleted after they run.
 
 ---
 
-## Section I — Verify
+## Section I, Verify
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test --run && pnpm build
@@ -442,7 +442,7 @@ If any step fails, **stop** and report the failing command + output verbatim. Do
 
 ---
 
-## Section J — Self-delete
+## Section J, Self-delete
 
 On full verification success:
 
@@ -450,4 +450,4 @@ On full verification success:
 rm .claude/instructions/remove-i18n.md
 ```
 
-Print: `remove-i18n — done`.
+Print: `remove-i18n, done`.

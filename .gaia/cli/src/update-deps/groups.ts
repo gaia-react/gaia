@@ -4,7 +4,7 @@
  * The skill at `.claude/skills/update-deps/SKILL.md` (Phase 2) defines a
  * fixed table that maps each outdated package to a group so the wave is
  * processed atomically. This module replicates that table deterministically
- * for the CLI primitive — the LLM-driven skill and the CLI must agree on
+ * for the CLI primitive; the LLM-driven skill and the CLI must agree on
  * which packages move together.
  *
  * Resolution rules:
@@ -14,7 +14,7 @@
  *   - The `prettier` group's `eslint-config-prettier` and
  *     `eslint-plugin-prettier` exact matches MUST take precedence over the
  *     `eslint` group's broader `eslint-config-*` / `eslint-plugin-*`
- *     prefixes — that's why exact-name matches are checked first.
+ *     prefixes; that's why exact-name matches are checked first.
  *   - `msw-storybook-addon` belongs to both `storybook` and `msw` per the
  *     SKILL table; we route it to `storybook` (more specific addon scope).
  *   - Anything unmatched becomes `singleton:<name>`.
@@ -23,7 +23,7 @@
 type GroupRule = {
   /**
    * Exact package names (highest precedence). Listed packages that are not
-   * outdated still count as group members when computing wave grouping —
+   * outdated still count as group members when computing wave grouping;
    * but only outdated packages appear in the emitted JSON.
    */
   readonly exactNames: readonly string[];
@@ -33,7 +33,7 @@ type GroupRule = {
 };
 
 /**
- * Order matters only for the singleton fallback — exact / prefix lookups
+ * Order matters only for the singleton fallback; exact / prefix lookups
  * are precomputed below into maps. The `prettier` rule precedes `eslint`
  * not because of ordering but because exact-name lookup runs first.
  */
@@ -216,10 +216,10 @@ export const resolveGroup = (name: string): string => {
 /**
  * Given a companion group name and the full set of package names present in
  * `package.json`, return all members of that group. This is used to expand
- * groups beyond what `pnpm outdated` flagged — so all siblings move together.
+ * groups beyond what `pnpm outdated` flagged; so all siblings move together.
  *
  * Singletons (group name starts with "singleton:") always return an empty
- * array — they have no companion members to expand.
+ * array; they have no companion members to expand.
  */
 export const resolveGroupMembers = (
   groupName: string,

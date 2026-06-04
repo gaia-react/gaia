@@ -40,7 +40,7 @@ jobs:
                 cve=$(printf '%s' "$advisory" | jq -r '.cves[0] // .id')
                 url=$(printf '%s' "$advisory" | jq -r '.url')
                 # Issue (dedupe by exact title against open gaia-ci+security
-                # issues — daily cron must not stack duplicates while a
+                # issues; daily cron must not stack duplicates while a
                 # vulnerability remains unpatched).
                 TITLE="[GAIA CI] $severity: $pkg ($cve)"
                 existing_issue=$(TITLE="$TITLE" gh issue list \

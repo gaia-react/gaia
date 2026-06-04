@@ -9,7 +9,7 @@ tags: [concept, cli, telemetry, mentorship]
 
 # Telemetry
 
-GAIA's telemetry system captures structured events across the dev workflow to power mentorship feedback and aggregated analytics. It ships as a single self-contained bundled binary at `.gaia/cli/gaia` — invoked by hooks and slash-command emits.
+GAIA's telemetry system captures structured events across the dev workflow to power mentorship feedback and aggregated analytics. It ships as a single self-contained bundled binary at `.gaia/cli/gaia`, invoked by hooks and slash-command emits.
 
 ## Three-stream architecture
 
@@ -25,19 +25,19 @@ Mentorship data stays off-project. Cloud + analytics live in `.gaia/local/teleme
 
 ## CLI workspace
 
-`.gaia/cli/` houses the CLI workspace. Maintainer source lives at `.gaia/cli/src/`; `pnpm bundle` (esbuild, ESM, ~630KB) emits a self-contained `.gaia/cli/gaia` binary with `#!/usr/bin/env node` shebang. Adopters receive only the bundled binary — source, tests, and fixtures are excluded from the release tarball. Subcommand router uses a static handler map (no switch; project's `no-switch` rule).
+`.gaia/cli/` houses the CLI workspace. Maintainer source lives at `.gaia/cli/src/`; `pnpm bundle` (esbuild, ESM, ~630KB) emits a self-contained `.gaia/cli/gaia` binary with `#!/usr/bin/env node` shebang. Adopters receive only the bundled binary; source, tests, and fixtures are excluded from the release tarball. Subcommand router uses a static handler map (no switch; project's `no-switch` rule).
 
 Top-level subcommands:
 
-- `telemetry emit <event_type> [--field value …]` — universal emit; writes to mentorship + cloud streams based on config
-- `telemetry compute-profile` — regenerates `profile.md` from mentorship events via three pattern detectors
-- `mentorship enable|disable|purge|status` — opt-in lifecycle; state machine in `src/mentorship/config.ts`
-- `mentorship analytics enable|disable|dry-run` — analytics stream opt-in
-- `_internal-fetch-coaching` — reads `profile.md`, writes `.gaia/cache/coaching-active.txt` if active adaptations match; consumed by `/gaia-spec` at session start
+- `telemetry emit <event_type> [--field value …]`: universal emit; writes to mentorship + cloud streams based on config
+- `telemetry compute-profile`: regenerates `profile.md` from mentorship events via three pattern detectors
+- `mentorship enable|disable|purge|status`: opt-in lifecycle; state machine in `src/mentorship/config.ts`
+- `mentorship analytics enable|disable|dry-run`: analytics stream opt-in
+- `_internal-fetch-coaching`: reads `profile.md`, writes `.gaia/cache/coaching-active.txt` if active adaptations match; consumed by `/gaia-spec` at session start
 
 ## Universal envelope
 
-Every emit writes a `UniversalEnvelope` (Zod schema in `src/schemas/envelope.ts`): `event_id` (content-derived ULID), `event_type`, `install_id`, `project_id`, `timestamp`, plus event-specific payload fields. Cloud projection applies a strict field whitelist and a denylist sweep that exits 12 on drift — any new field that reaches the cloud without explicit allow is a build break.
+Every emit writes a `UniversalEnvelope` (Zod schema in `src/schemas/envelope.ts`): `event_id` (content-derived ULID), `event_type`, `install_id`, `project_id`, `timestamp`, plus event-specific payload fields. Cloud projection applies a strict field whitelist and a denylist sweep that exits 12 on drift: any new field that reaches the cloud without explicit allow is a build break.
 
 ## Storage paths
 
@@ -56,9 +56,9 @@ Every emit writes a `UniversalEnvelope` (Zod schema in `src/schemas/envelope.ts`
 
 `gaia telemetry compute-profile` runs three pattern detectors over mentorship events:
 
-- **articulation-gap** — detects spec sessions where clarify-loop question counts spike
-- **knowledge-gap** — detects recurring research-agent dispatch on the same topic cluster
-- **intent-clarity-gap** — detects gate-2 revision cycles
+- **articulation-gap**: detects spec sessions where clarify-loop question counts spike
+- **knowledge-gap**: detects recurring research-agent dispatch on the same topic cluster
+- **intent-clarity-gap**: detects gate-2 revision cycles
 
 Detectors are wired-but-inert at v1.0.0: production behavior requires N ≥ 10 events above threshold. Strength + fade helpers use `FLAKE_DOWNWEIGHT=0.25` to discount single-occurrence spikes. Output: `profile.md` with `DO-NOT-EDIT` header and atomic write.
 
@@ -76,6 +76,6 @@ Statusline shows a compass segment when mentorship is enabled (wired in `.gaia/s
 
 ## Pairs with
 
-- [[GAIA Spec]] — emits time_to_resolved_spec; receives coaching injection via `_internal-fetch-coaching`
-- [[GAIA Plan]] — emits plan_revised on slug collision
-- [[Claude Hooks]] — PostToolUse Task hook backstops engineer-return and code-review-audit events
+- [[GAIA Spec]]: emits time_to_resolved_spec; receives coaching injection via `_internal-fetch-coaching`
+- [[GAIA Plan]]: emits plan_revised on slug collision
+- [[Claude Hooks]]: PostToolUse Task hook backstops engineer-return and code-review-audit events

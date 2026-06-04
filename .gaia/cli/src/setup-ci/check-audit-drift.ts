@@ -10,9 +10,9 @@
  *
  *   { "state": "in_sync" | "drifted" | "missing" }
  *
- * - `in_sync`  — installed file matches the template byte-for-byte.
- * - `drifted`  — installed file exists but bytes differ from the template.
- * - `missing`  — the file is absent (audit not yet installed or excluded).
+ * - `in_sync` : installed file matches the template byte-for-byte.
+ * - `drifted` : installed file exists but bytes differ from the template.
+ * - `missing` : the file is absent (audit not yet installed or excluded).
  *
  * This is a read-only query command; it always exits 0.
  */

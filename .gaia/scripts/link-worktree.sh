@@ -13,10 +13,10 @@
 #   - Idempotent: re-running on an already-linked worktree is a no-op.
 #   - Pre-existing plain files / dirs are moved to <path>.bak.<ts> first.
 #   - No-op when invoked from the main checkout (not a linked worktree).
-#   - Always exits 0 — a broken hook MUST NOT break worktree creation.
+#   - Always exits 0; a broken hook MUST NOT break worktree creation.
 #     Failures (e.g. Windows symlink permission errors) log to stderr.
 #
-# DO NOT add `set -e` — each path is independent and one failure must not
+# DO NOT add `set -e`; each path is independent and one failure must not
 # abort the rest of the operations.
 
 # Frozen log labels (consumed by the CLI subcommand parser):
@@ -66,7 +66,7 @@ mkdir -p "$main_root/.gaia/local/audit" 2>/dev/null
 mkdir -p "$main_root/.gaia/cache" 2>/dev/null
 # `setup-state.json` is a file: do NOT pre-create it. If it doesn't exist on
 # main, the symlink will dangle until the main checkout writes it via the
-# normal setup flow — that's fine; readers gracefully treat missing as
+# normal setup flow; that's fine. Readers gracefully treat missing as
 # "no setup state yet".
 
 # ---------- helper: link one path ----------
@@ -89,7 +89,7 @@ link_one() {
       log "already-linked: $src"
       return 0
     fi
-    # Wrong target — back up the broken/incorrect symlink.
+    # Wrong target; back up the broken/incorrect symlink.
     backup="$src.bak.$ts"
     if mv "$src" "$backup" 2>/dev/null; then
       if ln -s "$target" "$src" 2>/dev/null; then
@@ -118,7 +118,7 @@ link_one() {
     return 0
   fi
 
-  # Missing — create the symlink.
+  # Missing: create the symlink.
   if ln -s "$target" "$src" 2>/dev/null; then
     log "linked: $src"
   else

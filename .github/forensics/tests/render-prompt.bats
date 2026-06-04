@@ -101,7 +101,7 @@ Capture: /path/to/file" ]
 @test "placeholder token inside a value is NOT re-substituted by a later pass" {
   # CAPTURE substitutes first (lexical order in args is preserved by the
   # script). Its value contains the literal string `{{SYMPTOM}}`. SYMPTOM's
-  # subsequent pass MUST NOT re-substitute that string — single-pass-per-
+  # subsequent pass MUST NOT re-substitute that string, single-pass-per-
   # placeholder guarantee.
   run "$SCRIPT" "$FIXTURES/render-template-placeholder-collision.md" \
     "CAPTURE=user wrote {{SYMPTOM}} in their capture" \
@@ -180,7 +180,7 @@ Denylist: dl-val" ]
     "SYMPTOM=" \
     "CAPTURE=x"
   [ "$status" -eq 0 ]
-  # Template has `Symptom: {{SYMPTOM}}` — empty value collapses the
+  # Template has `Symptom: {{SYMPTOM}}`, empty value collapses the
   # placeholder but the literal space before it stays. The expected
   # string has a trailing space after `Symptom:`.
   expected="Symptom: "$'\n'"Capture: x"

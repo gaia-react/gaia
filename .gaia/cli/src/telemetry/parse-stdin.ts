@@ -1,10 +1,10 @@
 /**
- * `gaia telemetry parse-stdin` — read the PostToolUse `Task` hook input JSON
+ * `gaia telemetry parse-stdin`: read the PostToolUse `Task` hook input JSON
  * from stdin, extract the structured-trailer YAML block, and dispatch one or
  * more `gaia telemetry emit` invocations against `handleEmit` directly (no
  * sub-process spawn).
  *
- * Always exits 0 — telemetry must never block the user's flow. Emit-level
+ * Always exits 0; telemetry must never block the user's flow. Emit-level
  * failures are logged best-effort to `/tmp/gaia-telemetry-hook.log` and
  * swallowed.
  *

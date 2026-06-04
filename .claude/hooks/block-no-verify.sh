@@ -10,12 +10,12 @@
 # Bypass tokens denied (on commit OR push, unless noted):
 #   --no-verify                     skips client-side hooks
 #   -n                              COMMIT ONLY (= --no-verify). On `push`, -n
-#                                   means --dry-run and is harmless — never block it.
+#                                   means --dry-run and is harmless, never block it.
 #   HUSKY=0 (or falsy HUSKY= prefix) disables Husky for the invocation
 #   -c core.hooksPath=<path>        redirects hooks to a path with no floor
 #
 # Command-position anchoring: a token is only a bypass when it belongs to a
-# real `git commit` / `git push` INVOCATION — i.e. `git` is the command word of
+# real `git commit` / `git push` INVOCATION, i.e. `git` is the command word of
 # a pipeline segment (start of command, after a `| & ; ( )` separator, or after
 # an env-var prefix like `HUSKY=0`). Command TEXT that merely mentions the words
 # (a grep pattern, an echo string, a path, an argument to another program such
@@ -27,7 +27,7 @@
 # No carve-out is needed for GAIA's own legitimate --no-verify automation
 # (audit-stamp trailer, wiki autocommit squash): those run as hook scripts
 # (Stop / PreToolUse), not as Bash-tool calls, so a PreToolUse Bash hook never
-# intercepts them. Do not "fix" the missing carve-out — there is no bug.
+# intercepts them. Do not "fix" the missing carve-out, there is no bug.
 #
 # Residual fail-closed edge: a bypass token written literally INSIDE a commit
 # message (e.g. `git commit -m "use --no-verify"`) still over-blocks. That is
@@ -40,13 +40,13 @@ set -euo pipefail
 payload=$(cat)
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
-# Only act on git commands — short-circuit everything else. (Fast path only;
+# Only act on git commands, short-circuit everything else. (Fast path only;
 # correctness comes from the command-position scan below.)
 [[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's commit-floor policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)
-# is out of scope — allow it. Fail-closed: any ambiguity falls through and the
+# is out of scope, allow it. Fail-closed: any ambiguity falls through and the
 # policy still enforces. Mirrors block-main-destructive-git.sh.
 [ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
@@ -66,13 +66,13 @@ deny() {
 }
 
 floor_msg() {
-  echo "Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the Husky pre-commit hook — fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
+  echo "Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the Husky pre-commit hook, fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
 }
 
 # Walk each command-position segment. Separators (`| & ; ( )`, newlines) become
 # line breaks so every line begins at a command word; leading env-var
 # assignments are stripped to expose it. A segment acts only when its command
-# word is `git` and it carries a `commit` / `push` subcommand token — so a
+# word is `git` and it carries a `commit` / `push` subcommand token, so a
 # `-n` that belongs to a different program on the same command line (the
 # `git commit && grep -n …` case) never trips the commit branch.
 saw_commit=0
@@ -98,17 +98,17 @@ while IFS= read -r seg; do
 
   # All bypass checks are scoped to THIS git segment.
 
-  # --no-verify — both commit and push.
+  # --no-verify, both commit and push.
   if [[ "$seg" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
     deny "$(floor_msg '--no-verify')"
   fi
 
-  # Falsy HUSKY= prefix (HUSKY=0, HUSKY=false, HUSKY=no, or empty) — both.
+  # Falsy HUSKY= prefix (HUSKY=0, HUSKY=false, HUSKY=no, or empty), both.
   if [[ "$seg" =~ (^|[[:space:]])HUSKY=(0|false|no)?([[:space:]]|$) ]]; then
     deny "$(floor_msg 'HUSKY disabled')"
   fi
 
-  # -c core.hooksPath=<path> override — both. Git config keys are
+  # -c core.hooksPath=<path> override, both. Git config keys are
   # case-insensitive, so match the key case-insensitively.
   if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$seg"; then
     deny "$(floor_msg '-c core.hooksPath override')"
@@ -129,7 +129,7 @@ done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 # trailing bypass flag from its `git` segment (e.g. `git commit -m "a|b"
 # --no-verify`). These three tokens are specific enough that a whole-command
 # match, given a confirmed command-position commit/push above, is a real bypass
-# — re-assert it. (`-n` is deliberately excluded: it is too common in other
+#, re-assert it. (`-n` is deliberately excluded: it is too common in other
 # programs to test whole-command without re-introducing false positives.)
 if [[ "$saw_commit" -eq 1 || "$saw_push" -eq 1 ]]; then
   sub="commit"

@@ -21,7 +21,7 @@ type AppendResult = {
  * that dedupes purely against the in-memory set.
  *
  * This bounds disk reads to one per file per process instead of one per
- * emit — the prior implementation re-read the whole daily file on every
+ * emit; the prior implementation re-read the whole daily file on every
  * call, which is O(n^2) over a day of emits from a long-lived process.
  */
 const seenByFile = new Map<string, Set<string>>();
@@ -61,7 +61,7 @@ const seenSetFor = (filePath: string): Set<string> => {
  *
  * Concurrent emits of the same content yield the same `event_id`, so the
  * dedup step may race across processes (both seed before either writes).
- * Acceptable for v1 — the worst case is a duplicate line per content
+ * Acceptable for v1; the worst case is a duplicate line per content
  * within the race window, against the desired single line. Daily rotation
  * keeps the dup window finite. v1.1 may add `flock` if real-world rates
  * demand it.

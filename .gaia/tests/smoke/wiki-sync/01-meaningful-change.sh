@@ -86,7 +86,7 @@ EOF
 
 # Capture HEAD before claude runs. Sync advances state to the SHA it
 # evaluated (the pre-sync HEAD), then commits the wiki updates as a new commit
-# on top — so post-sync state == pre_claude_head, not current HEAD.
+# on top; so post-sync state == pre_claude_head, not current HEAD.
 pre_claude_head=$(git rev-parse HEAD)
 
 # Now run claude -p with /gaia-wiki sync

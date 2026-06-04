@@ -29,10 +29,10 @@ const handleClickNavigate = async () => {
 Use inline `export const` declarations instead of a grouped `export { ... }` statement to avoid circular fix warnings between these two rules.
 
 ```tsx
-// BAD — causes circular fix between prettier and canonical
+// BAD, causes circular fix between prettier and canonical
 export {DAYS, DURATIONS, FITNESS_GOALS};
 
-// GOOD — declare with export directly
+// GOOD, declare with export directly
 export const DAYS = ['mon', 'tue'] as const;
 export const DURATIONS = [15, 30, 45] as const;
 export const FITNESS_GOALS = ['weight_loss'] as const;
@@ -49,11 +49,11 @@ Never suppress with `eslint-disable`. Always fix the underlying deprecation.
 Common case: Zod v4 deprecated `z.string().email()` in favor of `z.email()`.
 
 ```tsx
-// BAD — suppressing the warning
+// BAD, suppressing the warning
 // eslint-disable-next-line sonarjs/deprecation
 email: z.string().email(),
 
-// GOOD — use the non-deprecated API
+// GOOD, use the non-deprecated API
 email: z.email(),
 ```
 
@@ -88,7 +88,7 @@ screen.getByRole('button');
 
 ## testing-library/await-async-events
 
-`userEvent` methods are async — always `await` them.
+`userEvent` methods are async, always `await` them.
 
 ```tsx
 // BAD

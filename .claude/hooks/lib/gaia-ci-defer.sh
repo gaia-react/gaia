@@ -4,7 +4,7 @@
 # When the matching config entry has mode == "ci", emit a one-line log and
 # exit 0. Otherwise return without side effects so the caller continues.
 #
-# The argument is the snake_case CONFIG KEY from the automation schema —
+# The argument is the snake_case CONFIG KEY from the automation schema,
 # the same identifier used as the top-level field in .gaia/automation.json
 # (e.g. `wiki`, `pnpm_audit`, `stale_branches`, `update_deps`, `update_gaia`).
 # It is NOT necessarily the CLI tool id (kebab-case `pnpm-audit` vs

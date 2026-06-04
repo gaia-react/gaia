@@ -134,7 +134,7 @@ describe('detectIntentClarityGap (unit)', () => {
       (component) => component.metric === 'amended_rate'
     );
 
-    // amended_rate = 2 amended / 10 closed = 0.2 — the denominator must not
+    // amended_rate = 2 amended / 10 closed = 0.2; the denominator must not
     // be inflated by the amended spec IDs (which would give 2/10 here too,
     // but a wrong denominator surfaces when amended specs lack a ttr event).
     expect(amendedRate?.value).toBeCloseTo(0.2, 5);
@@ -155,7 +155,7 @@ describe('detectIntentClarityGap (unit)', () => {
       (component) => component.metric === 'amended_rate'
     );
 
-    // 10 amended / 10 closed = 1.0 — saturated, but correctly so.
+    // 10 amended / 10 closed = 1.0; saturated, but correctly so.
     expect(amendedRate?.value).toBeCloseTo(1, 5);
   });
 

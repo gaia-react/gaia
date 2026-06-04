@@ -3,8 +3,8 @@
  * projection into per-machine user memory.
  *
  * Targets `<home>/.claude/projects/<slug>/memory/`:
- *   - `feedback_mentorship_display.md` — the rule body (frontmatter + content).
- *   - `MEMORY.md` — index file. We add or remove a single pointer line.
+ *   - `feedback_mentorship_display.md`: the rule body (frontmatter + content).
+ *   - `MEMORY.md`: index file. We add or remove a single pointer line.
  *
  * The bundled `display-rule.ts` module is the source of truth; these
  * helpers read from it so the file always reflects the binary's text.
@@ -59,7 +59,7 @@ const removeIndexLine = (indexBody: string, line: string): string => {
   if (indexBody === '') return '';
   const lines = indexBody.split('\n');
   const filtered = lines.filter((current) => current !== line);
-  // Preserve the trailing newline pattern of the original — if the file
+  // Preserve the trailing newline pattern of the original; if the file
   // ended in a newline, keep the trailing empty element; if not, drop it.
   if (filtered.join('\n') === indexBody) return indexBody;
 

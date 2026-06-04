@@ -25,7 +25,7 @@ import {appendIdempotent} from './ndjson-writer.js';
 import {KNOWN_CLOUD_ONLY_EVENT_TYPES, projectToCloud} from './projection.js';
 
 /**
- * Cloud-only event types — accepted by the CLI for envelope-validation only.
+ * Cloud-only event types; accepted by the CLI for envelope-validation only.
  * Per-consumer payload shapes ship with the relevant Sequel feature; v1
  * accepts arbitrary payloads here and lets the cloud-projection module
  * surface drift via its `.strict()` defense.
@@ -569,7 +569,7 @@ const writeStreams = async (args: WriteStreamsArgs): Promise<number> => {
  * Handle one `gaia telemetry emit <event_type> [--field value ...]`
  * invocation. Returns the process exit code; never returns when the caller
  * exits via `process.exit` after this resolves. Silent success on the
- * happy path — no stdout writes.
+ * happy path; no stdout writes.
  */
 export const handleEmit = async (
   argv: readonly string[],

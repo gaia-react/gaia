@@ -1,4 +1,4 @@
-name: 'GAIA CI — Merge and Watch'
+name: 'GAIA CI, Merge and Watch'
 description: |
   Enables auto-merge on a GAIA CI PR, watches post-merge CI, and runs the
   one-shot auto-revert + escalation pipeline on failure. Slice 2 of SPEC-001.
@@ -162,7 +162,7 @@ runs:
           --body-file -)"
         issue_number="${issue_url##*/}"
         echo "high_issue=$issue_number" >> "$GITHUB_OUTPUT"
-        echo "::notice title=GAIA CI::PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR} — see issue #${issue_number} (priority:high)"
+        echo "::notice title=GAIA CI::PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR}; see issue #${issue_number} (priority:high)"
 
     - id: wait-for-revert-merge
       if: steps.open-revert.outcome == 'success' && steps.open-revert.conclusion == 'success'
@@ -223,13 +223,13 @@ runs:
         gaia ci-revert mark-failed --pr "$PR_NUMBER" --json >/dev/null
         body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/priority-critical-revert-failed.md")"
         issue_url="$(printf '%s\n' "$body" | gh issue create \
-          --title "GAIA CI: revert of PR #${ORIGINAL_PR} also failed — bot stopped" \
+          --title "GAIA CI: revert of PR #${ORIGINAL_PR} also failed; bot stopped" \
           --label "priority:critical" \
           --label "gaia-ci" \
           --body-file -)"
         issue_number="${issue_url##*/}"
         echo "critical_issue=$issue_number" >> "$GITHUB_OUTPUT"
-        echo "::error title=GAIA CI::revert PR #${REVERT_PR} failed CI; bot stopped — see issue #${issue_number} (priority:critical)"
+        echo "::error title=GAIA CI::revert PR #${REVERT_PR} failed CI; bot stopped; see issue #${issue_number} (priority:critical)"
 
     - id: summarize
       shell: bash

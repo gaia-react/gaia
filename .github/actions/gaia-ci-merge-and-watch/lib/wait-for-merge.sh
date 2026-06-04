@@ -7,8 +7,8 @@
 # Exit 0 on terminal state; exit 1 on timeout.
 #
 # Env overrides:
-#   TIMEOUT_SECONDS — defaults to 14400 (4 hours)
-#   SLEEP_SECONDS — defaults to 30
+#   TIMEOUT_SECONDS: defaults to 14400 (4 hours)
+#   SLEEP_SECONDS: defaults to 30
 
 set -euo pipefail
 

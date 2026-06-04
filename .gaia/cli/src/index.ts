@@ -87,7 +87,7 @@ const main = async (): Promise<number> => {
   // dispatch-time callers) to fetch profile-driven coaching text. Wired
   // top-level rather than under `mentorship` because it's an
   // implementation detail consumed by skill scaffolding, not a
-  // user-facing surface — kept out of the help text to match the
+  // user-facing surface; kept out of the help text to match the
   // `mentorship _internal-*` precedent.
   if (subcommand === '_internal-fetch-coaching') {
     return runFetchCoaching(rest);

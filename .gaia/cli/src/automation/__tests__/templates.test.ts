@@ -44,11 +44,11 @@ const expectedSteps = [
   'Setup pnpm',
   'Setup Node',
   'Install dependencies',
-  'Pre-run skip — open gaia-ci PR or cron-decide',
+  'Pre-run skip - open gaia-ci PR or cron-decide',
   'Quality Gate',
 ] as const;
 
-describe('workflow templates — gaia-ci-wiki', () => {
+describe('workflow templates: gaia-ci-wiki', () => {
   const rendered = renderForTool('wiki');
   const doc = parseRendered(rendered);
 
@@ -115,7 +115,7 @@ describe('workflow templates — gaia-ci-wiki', () => {
   });
 });
 
-describe('workflow templates — gaia-ci-update-deps', () => {
+describe('workflow templates: gaia-ci-update-deps', () => {
   const rendered = renderForTool('update-deps');
   const doc = parseRendered(rendered);
 
@@ -159,7 +159,7 @@ describe('workflow templates — gaia-ci-update-deps', () => {
   });
 });
 
-describe('workflow templates — gaia-ci-pnpm-audit', () => {
+describe('workflow templates: gaia-ci-pnpm-audit', () => {
   const rendered = renderForTool('pnpm-audit');
   const doc = parseRendered(rendered);
 
@@ -197,7 +197,7 @@ describe('workflow templates — gaia-ci-pnpm-audit', () => {
   });
 });
 
-describe('workflow templates — gaia-ci-stale-branches', () => {
+describe('workflow templates: gaia-ci-stale-branches', () => {
   const rendered = renderForTool('stale-branches');
   const doc = parseRendered(rendered);
 
@@ -236,7 +236,7 @@ describe('workflow templates — gaia-ci-stale-branches', () => {
   });
 });
 
-describe('workflow templates — cross-tool invariants', () => {
+describe('workflow templates: cross-tool invariants', () => {
   const tools: readonly ToolId[] = [
     'wiki',
     'update-deps',

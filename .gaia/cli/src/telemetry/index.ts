@@ -4,7 +4,7 @@ import {EXIT_CODES} from '../exit.js';
  *
  * Wires `emit`, `compute-profile`, and `parse-stdin` (the latter consumes a
  * PostToolUse `Task` hook payload on stdin and dispatches emits derived from
- * the agent's structured-trailer block — replaces the legacy awk parser
+ * the agent's structured-trailer block; replaces the legacy awk parser
  * that lived in `.claude/hooks/telemetry-task-postuse.sh`).
  */
 import {computeProfile} from '../profile/index.js';

@@ -131,7 +131,7 @@ describe('computeProfile', () => {
     expect(contents).toContain('(below sample threshold across all areas)');
     expect(contents).toContain('## Active patterns');
     expect(contents).toContain(
-      '(none — all patterns below sample threshold or strength below threshold)'
+      '(none - all patterns below sample threshold or strength below threshold)'
     );
     // UAT-035: file mode 600.
     expect(statSync(sandbox.roots.profilePath).mode & 0o777).toBe(0o600);

@@ -16,7 +16,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Path conversion — Rule A (under project root)
+# Path conversion; Rule A (under project root)
 # ---------------------------------------------------------------------------
 
 @test "UAT-003: absolute path under project root becomes repo-relative" {
@@ -34,7 +34,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Path conversion — Rule B (outside project root, machine-leak fallback)
+# Path conversion; Rule B (outside project root, machine-leak fallback)
 # ---------------------------------------------------------------------------
 
 @test "UAT-003: absolute path outside project root collapses to filename only" {
@@ -52,7 +52,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Token patterns — GitHub tokens (pattern 1)
+# Token patterns; GitHub tokens (pattern 1)
 # Synthetic tokens constructed at test runtime; never stored in fixture files.
 # ---------------------------------------------------------------------------
 
@@ -133,7 +133,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Idempotency — running redact twice yields same output
+# Idempotency; running redact twice yields same output
 # ---------------------------------------------------------------------------
 
 @test "UAT-003: redaction is idempotent (double-pass equals single-pass)" {

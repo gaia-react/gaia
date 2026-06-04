@@ -122,7 +122,7 @@ jobs:
           # share one base: everything before <base> was already cleared. Falls
           # back to origin/main (full PR scope) when no audited ancestor exists
           # (first audit, prior runs cancelled/failed, or a .gaia/VERSION bump
-          # invalidated them). A helper failure must never fail the audit —
+          # invalidated them). A helper failure must never fail the audit;
           # default to full scope.
           base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
@@ -142,7 +142,7 @@ jobs:
           # build/lint/test/typecheck configs. PRs whose UN-AUDITED DELTA
           # (<audit-base>...HEAD) only touches wiki/, .claude/, .specify/,
           # prose docs, .gaia/ metadata, or .gaia/cli/src (maintainer-only
-          # CLI, tested by health-audit) are skipped — the agent has no rules
+          # CLI, tested by health-audit) are skipped; the agent has no rules
           # that would meaningfully apply. The base is the last clean-audited
           # ancestor, so once a code commit is audited clean a later prose-only
           # commit reviews an empty auditable delta and skips. origin/main (no
@@ -256,13 +256,13 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             Run the code-review-audit agent at .claude/agents/code-review-audit.md.
-            Review the INCREMENTAL diff ${{ steps.base.outputs.base }}...HEAD — this
+            Review the INCREMENTAL diff ${{ steps.base.outputs.base }}...HEAD; this
             base is the most recent commit on this PR that already passed a clean
             audit under the current agent version (or origin/main if none), so
             everything before it is already cleared and only the delta needs
             review. For any exported symbol whose signature or contract changed in
             this delta, also check its importers across the repo even if those
-            files are unchanged — an incremental scope must still catch a delta
+            files are unchanged; an incremental scope must still catch a delta
             that breaks an already-cleared caller. When the agent's report has
             no Critical or Important issues, you MUST stamp the GAIA-Audit
             trailer per .claude/hooks/audit-stamp-trailer.sh. The checkout is at
@@ -274,7 +274,7 @@ jobs:
             stamp helper. After the audit and stamp, post a single PR comment
             summarizing findings (and whether self-heal commits were pushed).
 
-            SELF-HEAL CONSTRAINTS — read before making any edits:
+            SELF-HEAL CONSTRAINTS: read before making any edits:
             1. Run `git diff --name-only origin/main...HEAD` first. Self-heal edits
                are ONLY permitted on files that appear in this list. Never edit a
                file that was not changed by this PR.
@@ -285,7 +285,7 @@ jobs:
                PR removed. The PR diff is the source of truth for intent.
             4. NEVER edit files under `.claude/`, `.specify/`, or `wiki/` as part of
                a self-heal. These define the project's conventions, skills, and this
-               agent's own definition — not code defects. If one looks wrong, raise
+               agent's own definition, not code defects. If one looks wrong, raise
                it as a finding for human review. The workflow's self-heal scope gate
                refuses any self-heal that touches them.
           claude_args: |
@@ -480,7 +480,7 @@ jobs:
           # is satisfied without a ceremonial local run. has_source=='false'
           # structurally excludes the already-audited path (has_source=='true'
           # && trailer.skip) and the self-modification path (has_source=='true'
-          # && self_modified) — both require has_source=='true' — so neither
+          # && self_modified), both require has_source=='true', so neither
           # auto-stamps. The description carries HEAD's tree (the merge hook
           # checks tree equality against the content being merged), not a
           # base/audit-sha tree.
@@ -533,10 +533,10 @@ jobs:
           #    `workflow_dispatch`-event suites whose `pull_requests` link
           #    is empty), so branch protection never sees them. Direct
           #    POST'd check runs land in the rollup regardless of suite
-          #    linkage — same mechanism as the `code-review-audit` stamp.
+          #    linkage; same mechanism as the `code-review-audit` stamp.
           #
           # Each `gh workflow run` failure (workflow not present, lacks
-          # `workflow_dispatch:` trigger, etc.) is logged and tolerated —
+          # `workflow_dispatch:` trigger, etc.) is logged and tolerated;
           # an adopter may list a workflow that doesn't exist in their
           # repo, and the audit should not fail the PR over that.
 
@@ -566,7 +566,7 @@ jobs:
 
           # Poll a dispatched workflow run to completion, then POST a
           # check run per job into the AUDIT_SHA's rollup. Returns 0
-          # always — internal failures are logged and tolerated.
+          # always; internal failures are logged and tolerated.
           poll_and_stamp() {
             workflow_name="$1"
             dispatch_ts="$2"
@@ -664,10 +664,10 @@ jobs:
       # Terminal status steps. Exactly one fires per run; together they
       # guarantee the job reaches a clean conclusion on every code path
       # so the required check is satisfied (advisory comment is the only
-      # surface — the check name itself carries the pass/fail).
+      # surface; the check name itself carries the pass/fail).
       # ----------------------------------------------------------------
 
-      - name: Status — skipped (gate label missing)
+      - name: Status - skipped (gate label missing)
         if: steps.gate.outputs.gated == 'true'
         env:
           GATE_LABEL: ${{ steps.config.outputs.gate_label }}
@@ -676,7 +676,7 @@ jobs:
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: gate_label '$GATE_LABEL' not present on PR"
 
-      - name: Status — skipped (chore-deps PR)
+      - name: Status - skipped (chore-deps PR)
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.chore-deps.outputs.skip == 'true'
@@ -685,7 +685,7 @@ jobs:
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: chore(deps) / chore(deps-dev) PRs are pre-verified by the /update-deps wrapper's local quality gate"
 
-      - name: Status — skipped (no source changes)
+      - name: Status - skipped (no source changes)
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'false'
@@ -694,7 +694,7 @@ jobs:
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit); GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied with no local audit run"
 
-      - name: Status — skipped (trailer matches)
+      - name: Status - skipped (trailer matches)
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
@@ -709,7 +709,7 @@ jobs:
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: GAIA-Audit trailer matches version $MATCHED_VERSION tree $short_tree"
 
-      - name: Status — skipped (workflow self-modification)
+      - name: Status - skipped (workflow self-modification)
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
@@ -719,7 +719,7 @@ jobs:
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: PR modifies the audit workflow itself; claude-code-action's workflow-validation guardrail would refuse to run"
 
-      - name: Status — audit aborted
+      - name: Status - audit aborted
         # `continue-on-error: true` on the audit step keeps the workflow
         # alive after the audit fails so this terminal step can post the
         # truthful comment. `outcome != 'success'` is the only reliable
@@ -728,7 +728,7 @@ jobs:
         # Common causes: max-turns hit, SDK error, transient API
         # failure, or a workflow-validation refusal that slipped past
         # the self-modification skip. After commenting, `exit 1`
-        # surfaces the abort as a red check on the PR — without it, the
+        # surfaces the abort as a red check on the PR; without it, the
         # green-check-plus-aborted-comment combo silently hides real
         # audit failures from PR authors.
         if: |
@@ -743,7 +743,7 @@ jobs:
             --body "code-review-audit aborted: workflow validation refusal, max-turns, SDK error, or transient API failure (see workflow run logs)"
           exit 1
 
-      - name: Status — audit complete
+      - name: Status - audit complete
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
@@ -762,9 +762,9 @@ jobs:
             mode="advisory (push_fixes=false)"
           elif [ "$REFUSED" = "true" ]; then
             if [ "$REFUSED_REASON" = "instruction-surface" ]; then
-              mode="self-heal REFUSED — edited instruction/convention surfaces (.claude/**, .specify/**, or wiki/**), which are off-limits to self-heal; see workflow logs and review manually"
+              mode="self-heal REFUSED: edited instruction/convention surfaces (.claude/**, .specify/**, or wiki/**), which are off-limits to self-heal; see workflow logs and review manually"
             else
-              mode="self-heal REFUSED — diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
+              mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
             fi
           elif [ "$PUSHED" = "true" ]; then
             mode="self-heal pushed"

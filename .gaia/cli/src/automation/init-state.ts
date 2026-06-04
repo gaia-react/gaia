@@ -165,7 +165,7 @@ export const run = (
   if (existsSync(targetPath)) {
     structuredError({
       code: 'state_already_exists',
-      message: `${targetPath} already exists — use record-run, bump-state, or clear-overage`,
+      message: `${targetPath} already exists; use record-run, bump-state, or clear-overage`,
       subcommand: 'automation init-state',
       tool,
     });
@@ -186,7 +186,7 @@ export const run = (
     version: 1,
   };
 
-  // Validate the assembled shape before persisting — a malformed `--at`
+  // Validate the assembled shape before persisting; a malformed `--at`
   // would otherwise silently corrupt the state file. Mirrors `record-run`.
   const validation = AutomationStateFileSchema.safeParse(candidate);
 

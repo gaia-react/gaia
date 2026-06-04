@@ -237,7 +237,7 @@ pnpm_log_count() {
   # The excerpt is JSON-escaped so each newline shows as \n; count those.
   newline_count=$(awk 'BEGIN { RS = ""; FS = "\"log_excerpt\": \"" } NR==1 { sub(/".*/, "", $2); n = gsub(/\\n/, "&", $2); print n }' "$SUMMARY")
   [ "$newline_count" -le 50 ]
-  # And the LAST line (line-199) must be retained — tail-50, not head-50.
+  # And the LAST line (line-199) must be retained, tail-50, not head-50.
   grep -qF 'line-199' "$SUMMARY"
   # An EARLY line dropped by the tail trim must NOT be present.
   ! grep -qF 'line-0\\n' "$SUMMARY"

@@ -1,12 +1,12 @@
 # UAT-write smoke
 
-Structural smoke for the `before_implement` Playwright UAT auto-write hook. Drives `.specify/extensions/gaia/lib/uat-write.sh` against a sandbox SPEC fixture (`SPEC-099`) and verifies the renderer's write/rewrite/delete branches, idempotency, fixme heuristic, cache mirror, and manifest declarations. Ported from a prior maintainer runbook (every step is procedural-deterministic — release-gate-harness genre, not UAT-runbook genre).
+Structural smoke for the `before_implement` Playwright UAT auto-write hook. Drives `.specify/extensions/gaia/lib/uat-write.sh` against a sandbox SPEC fixture (`SPEC-099`) and verifies the renderer's write/rewrite/delete branches, idempotency, fixme heuristic, cache mirror, and manifest declarations. Ported from a prior maintainer runbook (every step is procedural-deterministic; release-gate-harness genre, not UAT-runbook genre).
 
 ## Scope
 
 What this smoke covers:
 
-- The renderer writes one Playwright spec per UAT under `.playwright/e2e/spec-099/`, each carrying the stable `UAT-NNN — SPEC-099` test name and the `@playwright/test` import line.
+- The renderer writes one Playwright spec per UAT under `.playwright/e2e/spec-099/`, each carrying the stable `UAT-NNN; SPEC-099` test name and the `@playwright/test` import line.
 - Idempotency: re-running on an unchanged SPEC produces zero file diffs and byte-identical sha256 hashes.
 - Selective rewrite: mutating one UAT's `then:` clause rewrites only that file; the other two stay byte-identical.
 - Hard-delete: removing a UAT from the SPEC hard-deletes its rendered file (no `_archived/` directory).
@@ -18,10 +18,10 @@ What this smoke covers:
 
 What this smoke does NOT cover:
 
-- Live `/speckit-implement` hook fire — that requires a real spec-kit invocation and is out of scope for the smoke layer (same caveat as `wiki-promote/run.sh`).
-- The `EXECUTE_COMMAND: speckit.gaia.uat-write` directive emission on `/speckit-implement` — UI-driven, hand-verified.
+- Live `/speckit-implement` hook fire; that requires a real spec-kit invocation and is out of scope for the smoke layer (same caveat as `wiki-promote/run.sh`).
+- The `EXECUTE_COMMAND: speckit.gaia.uat-write` directive emission on `/speckit-implement`; UI-driven, hand-verified.
 - The full Playwright assertion-pass cycle once the implementer turns the harness green.
-- The `AskUserQuestion` and explicit `$ARGUMENTS` branches of the SPEC resolution algorithm — UI-driven; only the documented algorithm is grep-checked.
+- The `AskUserQuestion` and explicit `$ARGUMENTS` branches of the SPEC resolution algorithm; UI-driven; only the documented algorithm is grep-checked.
 
 ## Run
 
@@ -33,5 +33,5 @@ Exits `0` with `uat-write smoke: PASS (N/N checks)` on success, `1` with `uat-wr
 
 ## Files
 
-- `run.sh` — the harness. Drives the renderer, asserts structural facts, cleans up.
-- `fixture/SPEC-099.md` — the sandbox SPEC fixture (three concrete UATs, one per renderer branch). Copied to `.gaia/local/specs/SPEC-099.md` at run time, restored / removed on exit.
+- `run.sh`; the harness. Drives the renderer, asserts structural facts, cleans up.
+- `fixture/SPEC-099.md`; the sandbox SPEC fixture (three concrete UATs, one per renderer branch). Copied to `.gaia/local/specs/SPEC-099.md` at run time, restored / removed on exit.

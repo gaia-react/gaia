@@ -16,7 +16,7 @@ separated word.
 | (empty)         | Full chain: sync → (gated) consolidate → lint. See "Full chain".             |
 | (anything else) | Print help.                                                                  |
 
-`--force` is positional-flexible but the contract is "trailing" — it must be
+`--force` is positional-flexible but the contract is "trailing", it must be
 the LAST argument so it doesn't shadow `sync` / `consolidate` / `lint`:
 
 - `/gaia-wiki --force` (full chain, force)
@@ -76,7 +76,7 @@ If `STATUS != "ci"`, behave as before (no defer, no force, no record-run).
 
 ## Sync
 
-Dispatch a Haiku subagent via `Agent`. The work is mechanical (rule-based WORTHY/SKIP classification, file edits, structured commits) — Haiku is sufficient, and a fresh context avoids dragging git diffs and log content into the parent.
+Dispatch a Haiku subagent via `Agent`. The work is mechanical (rule-based WORTHY/SKIP classification, file edits, structured commits), Haiku is sufficient, and a fresh context avoids dragging git diffs and log content into the parent.
 
 Spawn:
 
@@ -85,17 +85,17 @@ Spawn:
 - `description`: `"Wiki sync"`
 - `prompt`: the string below (literal, no paraphrasing):
 
-  > `You are running the GAIA wiki-sync workflow in a fresh context. Read .claude/skills/gaia/references/wiki/sync.md from the project root and execute the "Playbook" section (Steps 1–9) verbatim. Your working directory is the project root. Print only the final summary block from Step 8 followed by the CONSOLIDATE_TRIGGERED line from Step 9 — no preamble, no recap, no narration of intermediate steps.`
+  > `You are running the GAIA wiki-sync workflow in a fresh context. Read .claude/skills/gaia/references/wiki/sync.md from the project root and execute the "Playbook" section (Steps 1–9) verbatim. Your working directory is the project root. Print only the final summary block from Step 8 followed by the CONSOLIDATE_TRIGGERED line from Step 9, no preamble, no recap, no narration of intermediate steps.`
 
 When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
 
-If invoked as `/gaia-wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint — that's only the no-arg form's job. The sub-arg form `/gaia-wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
+If invoked as `/gaia-wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint, that's only the no-arg form's job. The sub-arg form `/gaia-wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
 
 ## Consolidate
 
 Two-stage. **Detection (Steps 1–3) runs in a Sonnet subagent** so the heavy page-index walk and frontmatter reads stay out of the parent. **Apply, state, and report (Steps 4–6) run in the parent** because Step 4 calls `AskUserQuestion` per finding, and `AskUserQuestion` is unavailable inside dispatched subagents.
 
-### Stage 1 — detection subagent
+### Stage 1, detection subagent
 
 Spawn:
 
@@ -104,7 +104,7 @@ Spawn:
 - `description`: `"Wiki consolidate (detection)"`
 - `prompt`: the string below (literal):
 
-  > `You are running the detection stage of the GAIA wiki-consolidate workflow in a fresh context. Read .claude/skills/gaia/references/wiki/consolidate.md from the project root and execute Steps 1–3 of the "Playbook" section verbatim, then STOP. Do NOT execute Steps 4–6. Your working directory is the project root. After writing the report file in Step 3, return ONLY a JSON payload on stdout — no preamble, no narration:`
+  > `You are running the detection stage of the GAIA wiki-consolidate workflow in a fresh context. Read .claude/skills/gaia/references/wiki/consolidate.md from the project root and execute Steps 1–3 of the "Playbook" section verbatim, then STOP. Do NOT execute Steps 4–6. Your working directory is the project root. After writing the report file in Step 3, return ONLY a JSON payload on stdout, no preamble, no narration:`
   >
   > ```json
   > {
@@ -123,7 +123,7 @@ Spawn:
   > }
   > ```
 
-### Stage 2 — parent loop
+### Stage 2, parent loop
 
 After the subagent returns, the parent (the agent reading this file in the live conversation):
 
@@ -136,7 +136,7 @@ If any HIGH-severity supersession or reversed-decision finding is applied, surfa
 
 ## Lint
 
-Dispatch a Haiku subagent via `Agent`. The work is mechanical (rule-based orphan/dead-link/frontmatter checks plus a deterministic drift severity table) — Haiku is sufficient.
+Dispatch a Haiku subagent via `Agent`. The work is mechanical (rule-based orphan/dead-link/frontmatter checks plus a deterministic drift severity table), Haiku is sufficient.
 
 Spawn:
 
@@ -154,11 +154,11 @@ When the subagent returns, relay its summary verbatim. If the drift severity is 
 Run sync first, then branch on its `CONSOLIDATE_TRIGGERED` line, then run lint.
 
 1. **Sync.** Run the "Sync" section above. Capture the final summary.
-2. **Inspect last line of summary.** Step 9 of sync emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on partial-sync interruptions (Step 7 failure mode) — both leave the wiki in a known-incomplete state. Branch on its presence:
-   - **Line absent** — skip both consolidate and lint. The maintainer needs to address the exceptional state first.
-   - **`CONSOLIDATE_TRIGGERED: true`** — run consolidate, then run lint.
-   - **`CONSOLIDATE_TRIGGERED: false`** — skip consolidate, run lint.
+2. **Inspect last line of summary.** Step 9 of sync emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on partial-sync interruptions (Step 7 failure mode), both leave the wiki in a known-incomplete state. Branch on its presence:
+   - **Line absent**: skip both consolidate and lint. The maintainer needs to address the exceptional state first.
+   - **`CONSOLIDATE_TRIGGERED: true`**: run consolidate, then run lint.
+   - **`CONSOLIDATE_TRIGGERED: false`**: skip consolidate, run lint.
 
 3. **Lint runs last** because consolidate may move, rename, or archive pages, and lint's orphan/dead-link/drift checks need the true post-state.
 
-Each sub-section dispatches its own subagent — never run their playbooks yourself in this conversation.
+Each sub-section dispatches its own subagent, never run their playbooks yourself in this conversation.

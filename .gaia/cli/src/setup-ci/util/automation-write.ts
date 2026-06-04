@@ -21,7 +21,7 @@ export const writeAutomationConfig = (
   payload: AutomationConfig
 ): void => {
   // Validate the shape (throws on malformed input). Serialize the raw
-  // payload — not the parsed output — so unknown fields a future slice
+  // payload, not the parsed output, so unknown fields a future slice
   // adds to `.gaia/automation.json` survive a round-trip through this
   // helper instead of being silently stripped by Zod's default
   // `.strip()` behaviour.

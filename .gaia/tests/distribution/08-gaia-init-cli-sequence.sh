@@ -14,7 +14,7 @@
 #
 # Why it exists: 07 catches release-exclude drift on strip-branding's
 # template/deletion/edit targets. This scenario catches the same class of
-# drift on the four remaining CLI surfaces — any of them silently
+# drift on the four remaining CLI surfaces; any of them silently
 # no-ops if its target file is missing from the staged tree (existsSync
 # guards), so a missing target ships green from 07 but breaks the adopter
 # flow at the matching `/gaia-init` step.
@@ -45,7 +45,7 @@
 #                   intercept-init.sh.
 #
 # Layer 0.5: runs on the host or runner, no Docker, no Claude OAuth
-# token. Cheap (~few seconds after build-staging) — file-level transforms
+# token. Cheap (~few seconds after build-staging); file-level transforms
 # only, no pnpm install.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -66,13 +66,13 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 # Pre-conditions on the staged tree. Each guarantees one of the CLI
 # subcommands has its target file. configure-i18n / rename / finalize all
 # use `existsSync` guards, so a missing target produces a silent no-op
-# rather than an error — the assertion would then fail downstream with a
+# rather than an error; the assertion would then fail downstream with a
 # confusing message. Failing pre-flight here points the maintainer at
 # release-exclude.
 [ -x "$SCAFFOLD/.gaia/cli/gaia" ] \
   || { fail "staged tree missing or non-executable .gaia/cli/gaia (bundled CLI)"; exit 1; }
 
-# strip-branding targets (covered by 07 — re-checked here so 08 can run
+# strip-branding targets (covered by 07; re-checked here so 08 can run
 # standalone if 07 is skipped or rerun-after-edit).
 [ -f "$SCAFFOLD/.gaia/templates/README.md" ] \
   || { fail "staged tree missing .gaia/templates/README.md (strip-branding template source)"; exit 1; }
@@ -95,7 +95,7 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 [ -f "$SCAFFOLD/app/languages/en/pages/_index.ts" ] \
   || { fail "staged tree missing app/languages/en/pages/_index.ts (rename heroTitle/title target)"; exit 1; }
 
-# finalize targets — the staged tree must ship both the interceptor hook
+# finalize targets; the staged tree must ship both the interceptor hook
 # script and the command file so finalize has something to delete, and
 # the settings file must contain a UserPromptExpansion entry for the
 # prune to fire.
@@ -106,7 +106,7 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 [ -f "$SCAFFOLD/.claude/settings.json" ] \
   || { fail "staged tree missing .claude/settings.json (finalize prune target)"; exit 1; }
 grep -q "intercept-init.sh" "$SCAFFOLD/.claude/settings.json" \
-  || { fail "staged .claude/settings.json has no intercept-init.sh entry — finalize would no-op silently"; exit 1; }
+  || { fail "staged .claude/settings.json has no intercept-init.sh entry; finalize would no-op silently"; exit 1; }
 
 TITLE="Test Project"
 KEBAB="test-project"
@@ -120,7 +120,7 @@ run_step() {
   local stdout
   stdout="$(cd "$SCAFFOLD" && "$GAIA" "$@" 2>/dev/null)" || {
     # Re-run with stderr unsuppressed for diagnosis. The `fail; exit 1`
-    # below runs unconditionally — the diagnostic re-run's exit code is
+    # below runs unconditionally; the diagnostic re-run's exit code is
     # intentionally ignored (`|| :`).
     log "gaia $* exited non-zero; rerunning with stderr:"
     ( cd "$SCAFFOLD" && "$GAIA" "$@" ) || :
@@ -135,12 +135,12 @@ run_step() {
   fi
 }
 
-# Step 1 — strip-branding. Sets up the tree for the remaining steps;
+# Step 1; strip-branding. Sets up the tree for the remaining steps;
 # post-conditions are covered by 07.
 run_step "strip-branding" \
   init strip-branding --title "$TITLE"
 
-# Step 2 — configure-i18n. --strip false keeps the i18n surface and
+# Step 2; configure-i18n. --strip false keeps the i18n surface and
 # rewrites the locale list; --strip true would delete the surface
 # entirely (covered by a separate scenario in a follow-up PR).
 run_step "configure-i18n" \
@@ -156,12 +156,12 @@ grep -q "LANGUAGES = \['en', 'es'\]" "$LANGUAGES_INDEX" \
 grep -q "fallbackLng: 'en'" "$SCAFFOLD/app/i18n.ts" \
   || { fail "configure-i18n did not set fallbackLng: 'en' in app/i18n.ts"; exit 1; }
 
-# Step 3 — rename. Touches package.json, CLAUDE.md H1, and two seeded
+# Step 3; rename. Touches package.json, CLAUDE.md H1, and two seeded
 # language files.
 run_step "rename" \
   init rename --title "$TITLE" --kebab "$KEBAB"
 
-# package.json "name" — JSON-aware grep avoids matching a "name" key
+# package.json "name"; JSON-aware grep avoids matching a "name" key
 # inside dependencies.
 grep -qE '^\s*"name":\s*"test-project"\s*,?\s*$' "$SCAFFOLD/package.json" \
   || { fail "rename did not set package.json name to 'test-project'"; exit 1; }
@@ -173,21 +173,21 @@ first_h1="$(grep -m1 '^# ' "$SCAFFOLD/CLAUDE.md" || true)"
 grep -qE "siteName:\s*['\"]Test Project['\"]" "$SCAFFOLD/app/languages/en/common.ts" \
   || { fail "rename did not set siteName: 'Test Project' in en/common.ts"; exit 1; }
 # _index.ts heroTitle + title (both rewritten globally, including nested
-# meta.title — see rename.ts replaceStringPropertyAll).
+# meta.title; see rename.ts replaceStringPropertyAll).
 grep -qE "heroTitle:\s*['\"]Test Project['\"]" "$SCAFFOLD/app/languages/en/pages/_index.ts" \
   || { fail "rename did not set heroTitle: 'Test Project' in en/pages/_index.ts"; exit 1; }
 grep -qE "title:\s*['\"]Test Project['\"]" "$SCAFFOLD/app/languages/en/pages/_index.ts" \
   || { fail "rename did not set title: 'Test Project' in en/pages/_index.ts"; exit 1; }
 
-# Step 4 — wire-statusline. --mode project so the merge writes to the
-# scaffold's .claude/settings.json — never the host's ~/.claude.
+# Step 4; wire-statusline. --mode project so the merge writes to the
+# scaffold's .claude/settings.json; never the host's ~/.claude.
 run_step "wire-statusline" \
   init wire-statusline --mode project
 
 SETTINGS="$SCAFFOLD/.claude/settings.json"
 [ -f "$SETTINGS" ] \
   || { fail "wire-statusline did not produce .claude/settings.json"; exit 1; }
-# JSON validity — wire-statusline does an atomic temp+rename, so a
+# JSON validity; wire-statusline does an atomic temp+rename, so a
 # parse failure here points at the merge logic, not a torn write.
 node -e "JSON.parse(require('node:fs').readFileSync('$SETTINGS','utf8'))" 2>/dev/null \
   || { fail "wire-statusline produced invalid JSON in .claude/settings.json"; exit 1; }
@@ -196,7 +196,7 @@ grep -q '"command": "bash .gaia/statusline/gaia-statusline.sh"' "$SETTINGS" \
 grep -q '"statusLine":' "$SETTINGS" \
   || { fail "wire-statusline did not insert statusLine key"; exit 1; }
 
-# Step 5 — finalize. Removes the interceptor hook + command file, prunes
+# Step 5; finalize. Removes the interceptor hook + command file, prunes
 # the matching UserPromptExpansion entry from settings.json.
 run_step "finalize" \
   init finalize

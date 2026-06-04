@@ -2,7 +2,7 @@
  * Three-way file compare helpers for `gaia update merge`.
  *
  * Compares (current, baseline, latest) for a single repo-relative path.
- * The decision logic itself lives in the `merge.ts` handler — this
+ * The decision logic itself lives in the `merge.ts` handler; this
  * module just exposes deterministic byte-equality and merge primitives.
  *
  * The clean-merge primitive shells out to `git merge-file --stdout`,

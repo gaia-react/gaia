@@ -4,7 +4,7 @@
  * Thin wrapper around `readAutomationConfig`. JSON output is the
  * schema-typed object verbatim; human output is a few-line key:value
  * summary. Exits non-zero with `config_missing` when the config file
- * does not exist (the CLI is a primitive — callers handle missing
+ * does not exist (the CLI is a primitive; callers handle missing
  * configs explicitly).
  */
 import {EXIT_CODES} from '../exit.js';

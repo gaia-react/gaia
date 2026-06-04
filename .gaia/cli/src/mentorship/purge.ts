@@ -7,7 +7,7 @@
  *   - <repo>/.gaia/local/telemetry/analytics/*.json
  *   - the mentorship-display rule projected into per-machine user memory
  *
- * Does NOT touch the cloud stream files. Does NOT delete mentorship.json —
+ * Does NOT touch the cloud stream files. Does NOT delete mentorship.json;
  * the user keeps their opt-in preference.
  *
  * Regenerates install-id.txt as a fresh ULID after deletion (privacy
@@ -69,7 +69,7 @@ const deleteMentorshipSubtree = (roots: StorageRoots): void => {
     unlinkSync(roots.profilePath);
   }
 
-  // install-id.txt — delete so readOrCreateInstallId regenerates a fresh ULID.
+  // install-id.txt: delete so readOrCreateInstallId regenerates a fresh ULID.
   if (existsSync(roots.installIdPath)) {
     unlinkSync(roots.installIdPath);
   }
@@ -145,7 +145,7 @@ export const run = async (
 
     return EXIT_CODES.STORAGE_INACCESSIBLE;
   }
-  // Regenerate install-id.txt — readOrCreateInstallId recreates the file
+  // Regenerate install-id.txt: readOrCreateInstallId recreates the file
   // (with mode 600) when absent. Caller must ensure the parent claude-project
   // directory exists, which the prior writes guarantee unless the user
   // purged a never-enabled tree.

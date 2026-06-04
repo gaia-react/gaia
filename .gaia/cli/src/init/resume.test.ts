@@ -185,7 +185,7 @@ describe('init resume', () => {
     });
     expect(exit).toBe(0);
 
-    // configure-i18n + strip-branding are step 1 and 2 — and ALSO marked
+    // configure-i18n + strip-branding are step 1 and 2, and ALSO marked
     // complete. They should not run regardless of skip-vs-from-step.
     expect(calls.map((c) => c.step)).toEqual([
       'rename',

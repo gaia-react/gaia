@@ -1,6 +1,6 @@
 ---
 name: add-locale
-description: Add a single locale to the GAIA i18n setup. Parameterized — substitute LOCALE_CODE / LANGUAGE_NAME_EN / LANGUAGE_NAME_NATIVE / IS_RTL before executing.
+description: Add a single locale to the GAIA i18n setup. Parameterized, substitute LOCALE_CODE / LANGUAGE_NAME_EN / LANGUAGE_NAME_NATIVE / IS_RTL before executing.
 ---
 
 # add-locale instruction
@@ -20,7 +20,7 @@ Before executing any step, verify all four variables below have been replaced wi
 
 ---
 
-## Step 1 — Mirror the English language tree
+## Step 1, Mirror the English language tree
 
 For each file under `app/languages/en/`, create the same path under `app/languages/{{LOCALE_CODE}}/` with the same TypeScript module shape (same keys, same exports).
 
@@ -36,12 +36,12 @@ Files to create (mirroring the `en/` tree):
 Translation rules:
 
 - Translate all user-visible string values from English to `{{LANGUAGE_NAME_EN}}`.
-- If a confident translation cannot be produced for a key (proper noun, brand name, code identifier embedded in a string, placeholder like `{{count}}` or `{{name}}`), copy the English value verbatim — an English placeholder is better than a wrong translation.
+- If a confident translation cannot be produced for a key (proper noun, brand name, code identifier embedded in a string, placeholder like `{{count}}` or `{{name}}`), copy the English value verbatim, an English placeholder is better than a wrong translation.
 - Keep all TypeScript structure, export shapes, key names, and template literals (`{{count}}`, `{{name}}`, `{{status}}`) identical to the `en/` source. Only string values change.
 
 ---
 
-## Step 2 — Register the locale
+## Step 2, Register the locale
 
 Edit `app/languages/index.ts`:
 
@@ -52,7 +52,7 @@ Edit `app/languages/index.ts`:
 
 ---
 
-## Step 3 — LanguageSelect
+## Step 3, LanguageSelect
 
 Edit `app/components/LanguageSelect/index.tsx`:
 
@@ -62,7 +62,7 @@ Ordering rule: English (`en`) stays at the top of the array. All other options a
 
 ---
 
-## Step 4 — Storybook preview
+## Step 4, Storybook preview
 
 Edit `.storybook/preview.ts`:
 
@@ -100,11 +100,11 @@ If `{{LOCALE_CODE}}` is not in the table above, use the locale code in brackets 
 
 ---
 
-## Step 5 — RTL handling (only if `{{IS_RTL}}` is `true`)
+## Step 5, RTL handling (only if `{{IS_RTL}}` is `true`)
 
 **Only execute this step when `{{IS_RTL}}` is `true`.**
 
-Verify that `app/root.tsx` already uses `i18n.dir(i18n.language)` for the `dir` attribute on the HTML element. The seeded template sets this up — i18next handles RTL natively for locales in its known-RTL list.
+Verify that `app/root.tsx` already uses `i18n.dir(i18n.language)` for the `dir` attribute on the HTML element. The seeded template sets this up, i18next handles RTL natively for locales in its known-RTL list.
 
 No additional work is needed for the four standard ISO 639-1 RTL codes that i18next recognizes natively: `ar`, `he`, `fa`, `ur`.
 
@@ -114,14 +114,14 @@ For RTL locales **outside** that standard four (e.g. a custom or less common cod
 
 ---
 
-## Step 6 — Playwright spec
+## Step 6, Playwright spec
 
 Check whether `.playwright/e2e/language-switch.spec.ts` exists.
 
 **If the file does not exist**, create it as a new spec. The spec must:
 
 - Import from `@playwright/test`.
-- Use a `test.describe` block named `'language switch — EN ↔ {{LOCALE_CODE}}'`.
+- Use a `test.describe` block named `'language switch, EN ↔ {{LOCALE_CODE}}'`.
 - Test the following flow:
   1. Navigate to `/`.
   2. Assert that the page title (from `app/languages/en/pages/_index.ts` → `meta.title`) is visible in English.
@@ -133,7 +133,7 @@ Check whether `.playwright/e2e/language-switch.spec.ts` exists.
 
 ---
 
-## Step 7 — Manifest
+## Step 7, Manifest
 
 Edit `.gaia/manifest.json`:
 
@@ -152,7 +152,7 @@ Insert these entries so the overall `"files"` object remains sorted alphabetical
 
 ---
 
-## Step 8 — Verify
+## Step 8, Verify
 
 Run from the project root:
 
@@ -170,7 +170,7 @@ Only proceed to Step 9 if both commands exit with code 0.
 
 ---
 
-## Step 9 — Self-delete
+## Step 9, Self-delete
 
 On success (both `pnpm typecheck` and `pnpm lint` pass):
 
@@ -181,5 +181,5 @@ rm .claude/instructions/add-locale.md
 Print a one-line summary:
 
 ```
-add-locale {{LOCALE_CODE}} ({{LANGUAGE_NAME_EN}}) — done
+add-locale {{LOCALE_CODE}} ({{LANGUAGE_NAME_EN}}), done
 ```

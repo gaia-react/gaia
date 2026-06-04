@@ -11,7 +11,7 @@ Applies to `app/state/**`. All React Context creation lives there by convention.
 
 - **Context**: cross-tree global state (theme, async data from loader)
 - **`useState`**: component-local or lifted state that doesn't need tree-wide access
-- **URL state** (`useSearchParams`): filter/sort/pagination — shareable, bookmarkable
+- **URL state** (`useSearchParams`): filter/sort/pagination, shareable, bookmarkable
 
 ## File Location
 
@@ -22,8 +22,8 @@ Each state slice lives in `app/state/{name}.tsx`. The barrel `app/state/index.ts
 | Piece               | Convention                            | Example               |
 | ------------------- | ------------------------------------- | --------------------- |
 | Provider component  | `XProvider`                           | `ThingsProvider`      |
-| Required read hook  | `useX()` — throws if outside Provider | `useThings()`         |
-| Optional read hook  | `useMaybeX()` — returns `Maybe<T>`    | `useMaybeThings()`    |
+| Required read hook  | `useX()`, throws if outside Provider | `useThings()`         |
+| Optional read hook  | `useMaybeX()`, returns `Maybe<T>`    | `useMaybeThings()`    |
 | Context variable    | `XContext` (unexported)               | `ThingsContext`       |
 | Context type        | `XContextValue`                       | `ThingsContextValue`  |
 | Provider props type | `XProviderProps`                      | `ThingsProviderProps` |
@@ -75,10 +75,10 @@ XProvider.displayName = 'XProvider';
 
 ## Rules
 
-- **Never export the Context** — only export the Provider and hook(s)
+- **Never export the Context**: only export the Provider and hook(s)
 - **Always set `displayName`** on the Provider component
 - **Always throw** in `useX()` when called outside the Provider
 - **`useMaybeX()`** (no throw) is appropriate when the value is genuinely optional (e.g., `useUser` vs `useMaybeUser`)
 - **`initialState` prop** passes SSR loader data into the Provider; avoids hydration mismatches
-- Providers are composed in `app/state/index.tsx` — register new ones there
-- Do not reach into `app/state/` from outside `app/` — consumers import the hook only
+- Providers are composed in `app/state/index.tsx`, register new ones there
+- Do not reach into `app/state/` from outside `app/`, consumers import the hook only

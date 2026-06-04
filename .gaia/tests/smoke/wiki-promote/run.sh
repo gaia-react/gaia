@@ -4,7 +4,7 @@
 # Verifies the manifest + command files + revised-contracts amendment are
 # present and parse cleanly.
 #
-# Does NOT exercise the live hook fire — that requires a real
+# Does NOT exercise the live hook fire; that requires a real
 # spec-kit invocation against a synthetic SPEC, branch, and PR, which is out
 # of scope for the smoke layer. See README.md for the full scope statement.
 set -euo pipefail
@@ -62,7 +62,7 @@ else
         fail "manifest does not register speckit.gaia.wiki-promote under hooks.after_implement"
     fi
 
-    # YAML parse if python3 is available — non-fatal otherwise.
+    # YAML parse if python3 is available; non-fatal otherwise.
     if command -v python3 >/dev/null 2>&1; then
         if python3 -c "
 import sys

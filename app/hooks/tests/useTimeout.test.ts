@@ -58,7 +58,7 @@ describe('useTimeout', () => {
       vi.advanceTimersByTime(500);
     });
 
-    // Still false — the timer was cleared before it fired
+    // Still false; the timer was cleared before it fired
     expect(result.current).toBe(false);
   });
 });

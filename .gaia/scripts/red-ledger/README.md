@@ -11,7 +11,7 @@ no matching RED on record.
 - **Directory:** `.gaia/local/red-ledger/` (under the gitignored `.gaia/local/`,
   so the ledger never gets committed). The capture hook `mkdir -p`s it on first
   write.
-- **File:** `.gaia/local/red-ledger/observations.jsonl` — append-only JSON
+- **File:** `.gaia/local/red-ledger/observations.jsonl`; append-only JSON
   Lines, one observation per line. Capture never rewrites or dedups; duplicate
   observations for the same `(file, fullName, signal)` are harmless and the
   check treats "at least one matching valid RED exists" as satisfied.
@@ -22,18 +22,18 @@ no matching RED on record.
 {"schema":1,"file":"app/x/index.test.ts","fullName":"X does Y","signal":"sha256:…","failureKind":"assertion","observedAt":"2026-06-04T20:55:00Z"}
 ```
 
-- `schema` (number) — version, currently `1`. Readers ignore lines whose
+- `schema` (number); version, currently `1`. Readers ignore lines whose
   schema they do not understand (forward-compat).
-- `file` (string) — repo-relative POSIX path to the test file. No leading
+- `file` (string); repo-relative POSIX path to the test file. No leading
   `./`, never absolute.
-- `fullName` (string) — vitest's `assertionResults[].fullName`: the enclosing
+- `fullName` (string); vitest's `assertionResults[].fullName`: the enclosing
   describe titles plus the test title, space-joined.
-- `signal` (string) — `sha256:` followed by the lowercase-hex sha256 of the
+- `signal` (string); `sha256:` followed by the lowercase-hex sha256 of the
   test's normalized source span (see below).
-- `failureKind` (string) — `"assertion"` or `"runtime"`. Both are valid REDs.
+- `failureKind` (string); `"assertion"` or `"runtime"`. Both are valid REDs.
   A `"collection"` kind is never written: a suite-level collection or compile
   error where no test body ran is not a valid RED.
-- `observedAt` (string) — ISO-8601 UTC timestamp.
+- `observedAt` (string); ISO-8601 UTC timestamp.
 
 ## Content signal
 
@@ -59,6 +59,6 @@ tests are found); non-zero with a one-line stderr message on a parse failure.
 
 `fullName` is the enclosing describe titles (outermost first) plus the test
 title, single-space-joined. `signal` is `sha256:` plus the lowercase-hex
-sha256 of the test call expression's normalized source — trimmed, with internal
+sha256 of the test call expression's normalized source; trimmed, with internal
 whitespace runs collapsed to single spaces, so it stays stable across pure
 reformatting and changes when the title, assertion, or body changes.

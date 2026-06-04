@@ -11,7 +11,7 @@ tags: [decision, philosophy]
 # Decision: No Component Library
 
 > [!key-insight] GAIA ships zero UI components by default
-> No Material UI, Radix, shadcn, etc. The only components are infrastructure (Button, Form/, Toast, Layout) — UI styling is intentionally minimal so each project can pick what fits.
+> No Material UI, Radix, shadcn, etc. The only components are infrastructure (Button, Form/, Toast, Layout); UI styling is intentionally minimal so each project can pick what fits.
 
 ## Rationale
 
@@ -23,7 +23,7 @@ tags: [decision, philosophy]
 ## Implications
 
 - New projects must pick a UI library on day one (or roll their own)
-- The Form components (Conform-bound) are the exception — they're the headline feature
+- The Form components (Conform-bound) are the exception; they're the headline feature
 - Storybook is included so whatever you pick has a place to live
 
 See [[GAIA Philosophy]].

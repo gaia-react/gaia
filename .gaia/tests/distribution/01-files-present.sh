@@ -11,7 +11,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
 
-require_cmd jq "jq required for manifest parsing — install via 'brew install jq'"
+require_cmd jq "jq required for manifest parsing; install via 'brew install jq'"
 require_cmd rsync "rsync required for staging build"
 
 STAGING="$(mktemp -d -t gaia-dist-presence-XXXXXX)"
@@ -71,12 +71,12 @@ FILE_VER="$(tr -d '[:space:]' < "$STAGING/.gaia/VERSION")"
 # that `gaia-maintainer release scrub-wiki` writes (Step 8 + 9 of
 # `/gaia-release`).
 # Asserting on the actual rendered content is stricter than a line-count
-# proxy — it catches "scrub-wiki didn't run" AND "scrub-wiki wrote the
+# proxy; it catches "scrub-wiki didn't run" AND "scrub-wiki wrote the
 # wrong version". Marker shapes are pinned to scrub-wiki.ts:renderHotMd /
 # renderLogMd.
 grep -qF "## [v$PKG_VER]" "$STAGING/wiki/log.md" \
-  || { fail "wiki/log.md missing '## [v$PKG_VER]' release marker — scrub-wiki did not run or wrote a wrong version"; exit 1; }
+  || { fail "wiki/log.md missing '## [v$PKG_VER]' release marker; scrub-wiki did not run or wrote a wrong version"; exit 1; }
 grep -qF "GAIA v$PKG_VER" "$STAGING/wiki/hot.md" \
-  || { fail "wiki/hot.md missing 'GAIA v$PKG_VER' release marker — scrub-wiki did not run or wrote a wrong version"; exit 1; }
+  || { fail "wiki/hot.md missing 'GAIA v$PKG_VER' release marker; scrub-wiki did not run or wrote a wrong version"; exit 1; }
 
 pass "manifest, exclude list, and sentinels all consistent with staging"

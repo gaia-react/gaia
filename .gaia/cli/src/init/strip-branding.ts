@@ -10,7 +10,7 @@
  *   3. Edit `app/components/Header/index.tsx` to drop the `GaiaLogo` import
  *      and replace the `<GaiaLogo … />` element with a text wordmark.
  *
- * Idempotent: re-running is safe — files already removed stay removed,
+ * Idempotent: re-running is safe; files already removed stay removed,
  * the README replacement is unchanged once written, and the Header edit
  * is a no-op once the wordmark is already in place.
  *
@@ -113,7 +113,7 @@ const writeReadme = (cwd: string, title: string): void => {
   const templatePath = path.join(cwd, README_TEMPLATE);
 
   if (!existsSync(templatePath)) {
-    throw new Error(`${README_TEMPLATE} not found — cannot replace README`);
+    throw new Error(`${README_TEMPLATE} not found; cannot replace README`);
   }
   const template = readFileSync(templatePath, 'utf8');
   const rendered = template.split(PLACEHOLDER).join(title);
@@ -137,7 +137,7 @@ const stripGaiaLogoFromHeader = (cwd: string): void => {
   const original = readFileSync(target, 'utf8');
   let next = original;
 
-  // Drop the import line — match common forms (`import GaiaLogo from
+  // Drop the import line; match common forms (`import GaiaLogo from
   // '~/components/GaiaLogo';` with or without trailing newline / whitespace).
   next = next.replaceAll(
     /^import\s+GaiaLogo\s+from\s+['"]~\/components\/GaiaLogo['"];?\n/gmu,

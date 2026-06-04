@@ -6,7 +6,7 @@
 # project-only base.
 #
 # Reads JSON from stdin (Claude Code convention) and prints a single line.
-# No network calls. No `set -e` — partial failure must degrade gracefully.
+# No network calls. No `set -e`; partial failure must degrade gracefully.
 
 input=$(cat)
 

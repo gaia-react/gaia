@@ -63,7 +63,7 @@ Two-segment fixture across the rolling 30-day window:
   for `visual` → 11 visual events, rate ≈ 2/11 ≈ 0.18.
 
 30-day aggregate: 32 needs_context / 86 visual events ≈ 0.372 → strength
-≈ `min(1, 0.372 / 0.30)` ≈ 1.0 — passes threshold pre-fade.
+≈ `min(1, 0.372 / 0.30)` ≈ 1.0; passes threshold pre-fade.
 
 Improvement = (0.40 - 0.18) / 0.40 = 0.55 → fade_factor =
 `max(0, 1 - 0.55 / 0.50)` = 0 → effective strength = 0.
@@ -90,7 +90,7 @@ downweighted count. The detector tests assert `weightForUatFail` matches
 
 Cross-cutting fixture: every one of the 8 mentorship event types appears
 across the four area tags `visual` / `react` / `form` / `typescript`.
-Volume is deliberately modest (24 events total) — this fixture exists
+Volume is deliberately modest (24 events total); this fixture exists
 for the Phase 6 smoke harness to walk an end-to-end shape; it is NOT
 shaped to fire any specific pattern.
 

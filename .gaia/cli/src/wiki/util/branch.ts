@@ -3,7 +3,7 @@
  *
  * Every helper shells out via `child_process.spawnSync` so that the
  * vitest suite can mock the entire surface with a single `vi.mock`. The
- * `runner` parameter on each function is the indirection point — tests
+ * `runner` parameter on each function is the indirection point; tests
  * inject a fake `spawnSync` that returns canned `SpawnSyncReturns`.
  *
  * Errors are surfaced two ways:
@@ -79,7 +79,7 @@ export type WorkingTreeStatus = {
  *
  * Uses `git status --porcelain=v1 -uall`. The first two columns are
  * status codes; column 3 onwards is the path. Renames emit `orig -> new`
- * — we treat both halves as touched paths.
+ * we treat both halves as touched paths.
  */
 export const inspectWorkingTree = (
   cwd: string,

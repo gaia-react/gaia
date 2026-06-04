@@ -3,8 +3,8 @@ import type {MentorshipEvent} from '../reader.js';
  * Intent-clarity-gap pattern detector.
  *
  * Source events:
- *   - `spec_amended`           — amendment_rate signal
- *   - `time_to_resolved_spec`  — question_count signal
+ *   - `spec_amended`           : amendment_rate signal
+ *   - `time_to_resolved_spec`  : question_count signal
  *
  * Per area_tag composite:
  *   amended_rate = spec_amended_count_in_area / total_specs_closed_in_area
@@ -17,7 +17,7 @@ import type {MentorshipEvent} from '../reader.js';
  * `spec_amended` events do not carry `area_tags` directly. They are
  * attributed to whichever areas the same spec_id was tagged with by its
  * `time_to_resolved_spec` event in the window. Specs with no
- * time_to_resolved_spec event in the window bucket under `_unknown` — a
+ * time_to_resolved_spec event in the window bucket under `_unknown`; a
  * sentinel that is dropped from the detector output entirely, so it can
  * never reach the firing threshold or surface in coaching text.
  */
@@ -34,7 +34,7 @@ const UNKNOWN_AREA = '_unknown';
 
 type AreaStats = {
   amendedCount: number;
-  /** Distinct spec IDs *closed* in the area — the amended_rate denominator. */
+  /** Distinct spec IDs *closed* in the area: the amended_rate denominator. */
   closedSpecIds: Set<string>;
   questionCounts: number[];
   ttrCount: number;
@@ -126,7 +126,7 @@ const accumulateTimeToResolved = (
     entry.ttrCount += 1;
     entry.questionCounts.push(questionCount);
 
-    // A time_to_resolved_spec event represents a closed spec — its ID is
+    // A time_to_resolved_spec event represents a closed spec; its ID is
     // the only thing that belongs in the amended_rate denominator.
     if (specId !== undefined) entry.closedSpecIds.add(specId);
   }
@@ -183,7 +183,7 @@ const buildAreaResult = (area: string, stats: AreaStats): PatternResult => {
   const closedSpecs = stats.closedSpecIds.size;
   // A spec amended more than once contributes >1 to `amendedCount` while its
   // closed-spec ID contributes only 1 to the denominator, so the raw ratio
-  // can exceed 1. Clamp at the source — the `amended_rate` component value
+  // can exceed 1. Clamp at the source; the `amended_rate` component value
   // must be a bounded rate in [0, 1].
   const amendedRate =
     closedSpecs === 0 ? 0 : Math.min(1, stats.amendedCount / closedSpecs);

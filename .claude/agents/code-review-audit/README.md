@@ -23,7 +23,7 @@ Valid `subagents` values map to the three specialist subagents:
 - `typescript` → Subagent 2 (`.ts` + `.tsx` files: types, architecture, conventions)
 - `translation` → Subagent 3 (files with `useTranslation` / `t(` calls)
 
-`library` is documentation only — it identifies which dependency this file covers.
+`library` is documentation only, it identifies which dependency this file covers.
 
 ## When to update
 

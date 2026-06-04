@@ -4,7 +4,7 @@
  * Reads `<roots.mentorshipDir>/events-YYYY-MM-DD.jsonl` for each day in
  * the trailing N-day window (inclusive of both bookends). Validates each
  * line through the envelope schema then dispatches to the per-event-type
- * payload schema. Malformed lines are skipped (logged via stderr) — one
+ * payload schema. Malformed lines are skipped (logged via stderr); one
  * bad line should not poison the whole window.
  */
 import {readFile} from 'node:fs/promises';
@@ -116,7 +116,7 @@ const parseLine = (
 
   if (!isMentorshipEventType(eventType)) {
     // Cloud-only events should never land in the mentorship file in the
-    // v1 design; if one does, skip silently — not our pattern's concern.
+    // v1 design; if one does, skip silently - not our pattern's concern.
     return null;
   }
   const payloadSchema = MentorshipPayloadByType[eventType];

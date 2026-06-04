@@ -244,7 +244,7 @@ describe('gaia scaffold hook', () => {
     expect(payload.code).toBe('missing_argument');
   });
 
-  test('is idempotent — second invocation reports skipped', () => {
+  test('is idempotent: second invocation reports skipped', () => {
     const stdoutA = captureStdout();
 
     try {

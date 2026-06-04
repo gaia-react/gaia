@@ -54,7 +54,7 @@ EOF
 git add wiki/.state.json
 git commit --quiet -m "init state"
 
-# Now make a commit via plain shell — no Claude in the loop at all
+# Now make a commit via plain shell; no Claude in the loop at all
 cat > app/modules/Auth.ts <<'EOF'
 // Auth module — added via shell, NOT via Claude
 export class AuthModule {
@@ -69,7 +69,7 @@ state_sha=$(jq -r '.last_evaluated_sha' wiki/.state.json)
 drift=$(git rev-list --count "$state_sha"..HEAD)
 [ "$drift" -ge "1" ] || { echo "FAIL: expected drift >= 1 after shell commit, got $drift"; exit 1; }
 
-# Run claude -p with a generic prompt — drift-check should fire on first prompt
+# Run claude -p with a generic prompt; drift-check should fire on first prompt
 # and mention drift / wiki sync.
 first_output=$(claude -p --model sonnet --permission-mode bypassPermissions \
   "What's the status of this repo?" 2>&1 || true)

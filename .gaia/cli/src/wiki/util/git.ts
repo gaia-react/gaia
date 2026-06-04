@@ -2,7 +2,7 @@
  * Shared git helpers for the `gaia wiki` subcommand family.
  *
  * Every function shells out to git via `child_process` synchronously and
- * returns trimmed stdout. Errors are surfaced as thrown `Error`s — the
+ * returns trimmed stdout. Errors are surfaced as thrown `Error`s; the
  * subcommand handler is responsible for translating to exit codes.
  */
 import {execFileSync} from 'node:child_process';
@@ -77,7 +77,7 @@ export const isReachable = (sha: string, cwd: string): boolean => {
  * rebase-merge orphans the recorded `last_evaluated_sha`: the orphaned SHA is
  * gone from HEAD's history, but the timestamp it was recorded with still maps
  * to the commit the last sync stopped at. Returns '' when nothing matches (the
- * timestamp predates all history) or on git failure — the caller falls back to
+ * timestamp predates all history) or on git failure; the caller falls back to
  * the lossy jump-to-HEAD re-anchor in that case.
  */
 export const ancestorBefore = (isoTimestamp: string, cwd: string): string => {
@@ -228,7 +228,7 @@ const parseChunk = (chunk: string): ChunkParse => {
   const commitLineIndex = lines.findIndex((line) => line.startsWith('COMMIT '));
 
   if (commitLineIndex === -1) {
-    // No COMMIT line in this chunk — the chunk is the trailing-stat-only
+    // No COMMIT line in this chunk; the chunk is the trailing-stat-only
     // tail produced after the final commit's separator.
     return {precedingStat: trimmed, record: null};
   }
@@ -262,7 +262,7 @@ const parseChunk = (chunk: string): ChunkParse => {
  * record), so each chunk after the first carries the previous commit's
  * stat block AND the current commit's record. File paths are fetched
  * per commit via `git diff-tree --name-only` (one extra call per commit;
- * acceptable because the caller is bounded to a single sync window —
+ * acceptable because the caller is bounded to a single sync window;
  * typically < 50 commits).
  */
 export const commitDetails = (

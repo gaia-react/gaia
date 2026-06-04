@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# resolve-audit-base.sh — resolve the incremental review base for the
+# resolve-audit-base.sh: resolve the incremental review base for the
 # code-review-audit agent.
 #
 # Purpose
 #   The audit reviews the diff from a "base" commit to HEAD. The base is
 #   the most recent ancestor of HEAD that previously passed a CLEAN audit
-#   under the CURRENT agent version — proven by either a GAIA-Audit commit
+#   under the CURRENT agent version, proven by either a GAIA-Audit commit
 #   trailer (locally-stamped) or a GAIA-Audit commit status (CI-stamped).
 #   Everything up to that commit was already cleared, so reviewing only
 #   <base>..HEAD is correct and far cheaper than re-reviewing the whole
 #   origin/main..HEAD diff on every push to an open PR.
 #
-#   When no usable ancestor exists — first audit of a PR, every prior run
+#   When no usable ancestor exists, first audit of a PR, every prior run
 #   cancelled or failed (those stamp nothing), a .gaia/VERSION bump
-#   invalidated older audits, or the version file is missing — the helper
+#   invalidated older audits, or the version file is missing; the helper
 #   emits the main ref so the caller falls back to a full-scope review. It
 #   can never skip uncleared code: an uncleared commit carries no signal to
 #   anchor on.
@@ -25,8 +25,8 @@
 #   and (when GH_TOKEN + gh are available) the GitHub Commit Status API.
 #
 # Output (stdout, single line; suitable for `base...HEAD` diffs)
-#   <40-hex-sha>   — resolved incremental base (an audited PR ancestor)
-#   origin/main    — fallback: review the full PR diff
+#   <40-hex-sha>: resolved incremental base (an audited PR ancestor)
+#   origin/main: fallback: review the full PR diff
 #   (or origin/<base-ref> / main when origin/main is unavailable)
 #
 # Exit code
@@ -39,7 +39,7 @@
 #   empty-commit stamp carries the parent's audited tree, which is the empty
 #   commit's own tree), so re-checking it adds nothing here. A version
 #   mismatch means the ruleset changed since that audit, so code cleared
-#   under the old version may now have findings — that commit is NOT a safe
+#   under the old version may now have findings; that commit is NOT a safe
 #   base, and the walk continues, ultimately falling back to a full
 #   re-audit under the new ruleset.
 #
@@ -75,7 +75,7 @@ if [ -z "$repo_root" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Resolve a "main ref" — used both for the fallback output and to bound the
+# Resolve a "main ref": used both for the fallback output and to bound the
 # ancestry walk via merge-base.
 # -----------------------------------------------------------------------------
 
@@ -100,7 +100,7 @@ resolve_main_ref() {
 main_ref="$(resolve_main_ref)"
 
 # -----------------------------------------------------------------------------
-# Read .gaia/VERSION — missing/empty means no base can be validated.
+# Read .gaia/VERSION: missing/empty means no base can be validated.
 # -----------------------------------------------------------------------------
 
 version_file="${repo_root}/.gaia/VERSION"
@@ -183,7 +183,7 @@ status_version_for() {
 
 for sha in $candidates; do
   # HEAD itself can't be the base (an empty diff), and never carries a
-  # *matching* signal anyway — a match would have skipped the run upstream.
+  # *matching* signal anyway, a match would have skipped the run upstream.
   [ "$sha" = "$head_sha" ] && continue
 
   tv="$(trailer_version_for "$sha")"

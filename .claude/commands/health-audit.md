@@ -7,11 +7,11 @@ description: Maintainer-only autonomous health audit + auto-heal loop. Runs N=3 
 
 Maintainer-only. You are the **Orchestrator** for a GAIA health audit.
 
-## Step 1 — Read the runbook
+## Step 1, Read the runbook
 
 Read `.gaia/cli/health/runbook.md` end-to-end before doing anything else. The runbook codifies role structure, bucket definitions, fixer lane mapping, model selection, circuit breakers, and escalation criteria. Do not improvise around it.
 
-## Step 2 — Run the loop
+## Step 2, Run the loop
 
 Execute the cycle loop from the runbook (max N=3):
 
@@ -36,11 +36,11 @@ On clean exit: rm -rf .gaia/local/audit/c* (whitelisted)
 On escalation: preserve all c*/ dirs; surface paths in escalation report
 ```
 
-Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories. The Triager does not re-specify those checks — it reads the wiki page and runs its protocol. Fitness findings route to the existing `claude-surface` Fixer lane.
+Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories. The Triager does not re-specify those checks, it reads the wiki page and runs its protocol. Fitness findings route to the existing `claude-surface` Fixer lane.
 
-A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cycle's verification. Within a cycle, the Triager may execute buckets directly via parallel tool calls or dispatch fresh subagents — see runbook §Roles.
+A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cycle's verification. Within a cycle, the Triager may execute buckets directly via parallel tool calls or dispatch fresh subagents, see runbook §Roles.
 
-## Step 3 — Honor the circuit breakers
+## Step 3, Honor the circuit breakers
 
 A Fixer dispatch pauses for human-confirm if the proposed fix:
 
@@ -53,7 +53,7 @@ A Fixer dispatch pauses for human-confirm if the proposed fix:
 
 If the human refuses → escalate.
 
-## Step 4 — Report
+## Step 4, Report
 
 On clean exit (no open findings remain; the reported grade is the honest floor: A+ when there were no findings at all, otherwise capped by any non-blocking residual `info`, typically A):
 
@@ -71,8 +71,8 @@ On escalation:
 
 ```
 HEALTH AUDIT: ESCALATED
-Overall grade: <F-to-A+ — floor of Bucket D verdict, findings-count signal, shared-fitness grade>
-Shared-fitness grade: <F-to-A+ — floor of seven category grades from Bucket E>
+Overall grade: <F-to-A+, floor of Bucket D verdict, findings-count signal, shared-fitness grade>
+Shared-fitness grade: <F-to-A+, floor of seven category grades from Bucket E>
 Reason: <max-loops | oscillation | circuit-breaker | unclassified-finding | fixer-unable-to-fix>
 Outstanding findings: <list with fingerprints>
 Cycles run: <N>
@@ -84,7 +84,7 @@ The overall grade is F-to-A+ and is never higher than the shared-fitness grade. 
 ## What you do NOT do
 
 - Do not fix anything yourself. Fixers fix; you orchestrate.
-- Do not re-grade between cycles — only on a clean Triager report or on escalation.
+- Do not re-grade between cycles, only on a clean Triager report or on escalation.
 - Do not commit. Fixers leave the working tree dirty; the human commits.
 - Do not write to `wiki/log.md` or `wiki/hot.md`.
 - Do not edit the runbook mid-loop. If the runbook needs changing, escalate first.

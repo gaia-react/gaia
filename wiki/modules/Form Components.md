@@ -3,7 +3,7 @@ type: module
 path: app/components/Form/
 status: active
 language: typescript
-purpose: Conform + Zod-powered form components — the star of GAIA
+purpose: Conform + Zod-powered form components, the star of GAIA
 depends_on:
   - '[[Conform]]'
   - '[[Zod]]'
@@ -19,16 +19,16 @@ tags: [module, components, forms]
 
 ## Replace native inputs
 
-Per [[Coding Guidelines]] — use these instead of native `<input>`, `<select>`, `<textarea>`. Exceptions: `<input type="hidden">`, `<input type="file">`, `<input type="radio">` inside custom radio groups.
+Per [[Coding Guidelines]]: use these instead of native `<input>`, `<select>`, `<textarea>`. Exceptions: `<input type="hidden">`, `<input type="file">`, `<input type="radio">` inside custom radio groups.
 
 ## Deep dives by component family
 
-- [[Form Field]] — label + input + error wrapper that every other Form component composes
-- [[Form Layout]] — `Chain`, `FormActions`, `FormError`
-- [[Form Text Inputs]] — `InputText`, `InputEmail`, `InputPassword`, `TextArea`
-- [[Form Select]] — native select with icon, optgroup, placeholder
-- [[Form Choices]] — `Checkbox` / `Checkboxes` / `RadioButtons` / `BaseRadioButtons`
-- [[Form YearMonthDay]] — composite date input; documents the Conform gotchas
+- [[Form Field]]: label + input + error wrapper that every other Form component composes
+- [[Form Layout]]: `Chain`, `FormActions`, `FormError`
+- [[Form Text Inputs]]: `InputText`, `InputEmail`, `InputPassword`, `TextArea`
+- [[Form Select]]: native select with icon, optgroup, placeholder
+- [[Form Choices]]: `Checkbox` / `Checkboxes` / `RadioButtons` / `BaseRadioButtons`
+- [[Form YearMonthDay]]: composite date input; documents the Conform gotchas
 
 For the current bundled inventory, query Serena (`.claude/rules/code-search.md`).
 
@@ -53,7 +53,7 @@ See [[Component Testing]] for the canonical example (`YearMonthDay/tests/`).
 
 - Use `parseWithZod(formData, {schema})` in actions
 - Schemas live next to the component or as part of the action
-- Server-side validation is the source of truth — client validation just provides UX
+- Server-side validation is the source of truth; client validation just provides UX
 
 ## Accessibility
 

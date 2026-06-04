@@ -3,7 +3,7 @@
 # than the one these hooks are installed in (the "home repo").
 #
 # Template-distributed and portable: the home repo is whatever repo contains
-# .claude/hooks (resolved via `git rev-parse --show-toplevel`) — never a
+# .claude/hooks (resolved via `git rev-parse --show-toplevel`), never a
 # hardcoded slug. Adopters get the same cross-repo isolation for free: a
 # guard installed in project A never fires on a `git`/`gh` command aimed at
 # a sibling project B.
@@ -18,7 +18,7 @@
 # `gh -R/--repo owner/repo` whose repo name differs). Any ambiguity, parse
 # failure, OR a deliberately under-specified form it cannot model exactly
 # (e.g. multiple `git -C` flags, where git's last-wins semantics defeat a
-# single capture) returns 1 so the caller still enforces — protection never
+# single capture) returns 1 so the caller still enforces, protection never
 # weakens silently, even for crafted command strings.
 
 cmd_targets_foreign_repo() {
@@ -31,7 +31,7 @@ cmd_targets_foreign_repo() {
   # 1. Explicit `gh ... -R owner/repo` / `--repo owner/repo` (space OR `=`
   #    form). gh ignores cwd when this is given, so it is authoritative.
   #    Comparison is repo-NAME only (basename): a same-named fork
-  #    (`-R myfork/<homename>`) classifies as home and over-enforces —
+  #    (`-R myfork/<homename>`) classifies as home and over-enforces,
   #    fail-closed and safe, but worth knowing for fork workflows.
   ghrepo=$(printf '%s' "$cmd" | sed -nE 's/.*(-R|--repo)[[:space:]=]+([^[:space:]]+).*/\2/p' | head -1)
   if [ -n "$ghrepo" ]; then
@@ -66,10 +66,10 @@ cmd_targets_foreign_repo() {
   esac
 
   # Expand a leading ~ (our cross-repo flows use ~/path targets). The tilde
-  # arrives as a literal character in the command text — bash never expanded
-  # it because it was inside the tool_input string — so strip it by offset.
+  # arrives as a literal character in the command text, bash never expanded
+  # it because it was inside the tool_input string, so strip it by offset.
   # SC2088 fires on the quoted tilde, but these are case PATTERNS matching a
-  # literal '~' in the input string, not an expansion attempt — intentional.
+  # literal '~' in the input string, not an expansion attempt, intentional.
   # shellcheck disable=SC2088
   case "$target_dir" in
     '~') target_dir="$HOME" ;;

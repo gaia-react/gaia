@@ -6,14 +6,14 @@
  * `.gaia/release-exclude`) and the final `tar -czf`. Three transforms run
  * in order against the staging tree:
  *
- *   1. marker-strip — remove maintainer-only blocks delimited by HTML
+ *   1. marker-strip: remove maintainer-only blocks delimited by HTML
  *      comment markers. Source becomes superset; bundle is subset.
  *
- *   2. json-strip — delete maintainer-only keys from structured JSON files
+ *   2. json-strip: delete maintainer-only keys from structured JSON files
  *      using dot-notation paths (e.g. "scripts.test:forensics"). Dots are
  *      path separators; a literal dot inside a key name is escaped as `\.`.
  *
- *   3. leak-check — run codified audit patterns from
+ *   3. leak-check: run codified audit patterns from
  *      `.claude/rules/wiki-style.md` Audit section + the distribution-
  *      boundary classes in `.gaia/cli/health/taxonomy.md` against the
  *      post-strip staging tree. Non-empty match = build failure with a
@@ -23,10 +23,10 @@
  * staging directory.
  *
  * Exit codes:
- *   0 — clean (no leaks; transforms applied successfully)
- *   1 — user-correctable (leaks detected, unbalanced markers, missing
+ *   0: clean (no leaks; transforms applied successfully)
+ *   1: user-correctable (leaks detected, unbalanced markers, missing
  *       staging dir, malformed config flags)
- *   2 — unexpected (config parse error, filesystem IO failure)
+ *   2: unexpected (config parse error, filesystem IO failure)
  */
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
@@ -285,15 +285,15 @@ export type JsonStripResult = {
 /**
  * Split a dot-notation key path into segments. A literal `.` inside a key
  * name is expressed with a backslash escape (`\.`), so a package.json key
- * that contains a dot — e.g. `exports.\.\/feature` — stays addressable.
+ * that contains a dot, e.g. `exports.\.\/feature`, stays addressable.
  *
  * `scripts.test:forensics` → `['scripts', 'test:forensics']`
  * String.raw`scripts.foo\.bar` → `['scripts', 'foo.bar']`
  *
  * A trailing lone backslash is treated literally.
  *
- * Rejects malformed input: an empty segment — produced by a leading,
- * trailing, or doubled dot, or an empty key string — is never a valid
+ * Rejects malformed input: an empty segment (produced by a leading,
+ * trailing, or doubled dot, or an empty key string) is never a valid
  * object key path, so it throws rather than silently mis-targeting.
  */
 export const parseKeyPath = (key: string): string[] => {

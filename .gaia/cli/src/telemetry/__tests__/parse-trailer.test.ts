@@ -11,7 +11,7 @@ const buildHookInput = (subagentType: string, output: string): string =>
 const trailer = (...lines: readonly string[]): string =>
   ['Some agent prose here.', '', '---', ...lines, '---', ''].join('\n');
 
-describe('parseTrailer — guard rails', () => {
+describe('parseTrailer: guard rails', () => {
   test('returns wrong_tool when tool_name is not Task', () => {
     const input = JSON.stringify({tool_name: 'Bash'});
     const result = parseTrailer(input);
@@ -67,7 +67,7 @@ describe('parseTrailer — guard rails', () => {
   });
 });
 
-describe('parseTrailer — code-review-audit', () => {
+describe('parseTrailer: code-review-audit', () => {
   test('emits one invocation per finding', () => {
     const findings = JSON.stringify([
       {
@@ -158,7 +158,7 @@ describe('parseTrailer — code-review-audit', () => {
   });
 });
 
-describe('parseTrailer — engineer-return path', () => {
+describe('parseTrailer: engineer-return path', () => {
   test('emits uat_pass per entry in uat_passes_json', () => {
     const uats = JSON.stringify([
       {

@@ -1,9 +1,9 @@
 /**
- * Workflow YAML render pipeline — partial resolver + per-tool renderer.
+ * Workflow YAML render pipeline: partial resolver + per-tool renderer.
  *
  * The four `gaia-ci-<tool>.yml.tmpl` files include shared partials via a
  * mustache-style `{{> partials/<name> }}` token. This module resolves
- * those includes (recursion depth one — partials may not include other
+ * those includes (recursion depth one; partials may not include other
  * partials), then hands the resulting string to the scaffold engine's
  * `substituteVars` core for variable / section / each substitution.
  *
@@ -38,7 +38,7 @@ const readPartialBody = (partialsDir: string, name: string): string => {
 
 /**
  * Replace each `{{> partials/<name> }}` token in `raw` with the contents
- * of `<partialsDir>/<name>.yml.tmpl`. Recursion depth is one — partials
+ * of `<partialsDir>/<name>.yml.tmpl`. Recursion depth is one; partials
  * may not include other partials. Throws a structured error if a partial
  * body contains a `{{>` token (even non-matching forms) so accidental
  * recursion is caught at render time, and if a partial cannot be read.
@@ -49,7 +49,7 @@ export const resolvePartials = (raw: string, partialsDir: string): string =>
 
     if (body.includes('{{>')) {
       throw new Error(
-        `partial '${name}' contains '{{>' — partials may not include other partials`
+        `partial '${name}' contains '{{>'; partials may not include other partials`
       );
     }
 
@@ -70,7 +70,7 @@ export const renderWorkflowTemplate = (
   const resolved = resolvePartials(raw, partialsDir);
 
   // WorkflowTemplateVars is a strict subset of TemplateVars (string |
-  // boolean | number) — the engine accepts string|boolean|string[]. Numbers
+  // boolean | number); the engine accepts string|boolean|string[]. Numbers
   // are stringified by the substitution core as expected, but we widen to
   // satisfy the engine's looser type.
   const engineVars: TemplateVars = {};

@@ -9,7 +9,7 @@
  *   [[Wiki Sync#Step 3]]
  *   [[Wiki Sync#Step 3|step three]]
  *
- * The target — the slug we count for inbound/outbound — is the part before
+ * The target, the slug we count for inbound/outbound, is the part before
  * `#` and `|`, trimmed.
  */
 const WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
@@ -17,7 +17,7 @@ const WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
 /**
  * Return every wikilink target referenced in `body`. Targets are normalized
  * by stripping `#anchor`, `|alias`, and surrounding whitespace. Duplicates
- * are preserved — callers that want unique targets should `new Set(...)`.
+ * are preserved; callers that want unique targets should `new Set(...)`.
  */
 export const extractWikilinks = (body: string): string[] => {
   const targets: string[] = [];

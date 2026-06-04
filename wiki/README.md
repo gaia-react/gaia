@@ -9,8 +9,8 @@ tags: [meta, schema]
 # GAIA React: LLM Wiki
 
 Mode: B (Codebase) + E (Research)
-Plugin baseline: claude-obsidian v1.9.2 (DragonScale features intentionally not adopted — see [[DragonScale Opt-Out]])
-Purpose: Persistent knowledge base for the GAIA React workflow — architecture, conventions, decisions, Claude integration.
+Plugin baseline: claude-obsidian v1.9.2 (DragonScale features intentionally not adopted, see [[DragonScale Opt-Out]])
+Purpose: Persistent knowledge base for the GAIA React workflow: architecture, conventions, decisions, Claude integration.
 Owner: Steven Sacks
 Created: 2026-04-20
 
@@ -24,7 +24,7 @@ wiki/
 ├── overview.md         # executive summary
 ├── modules/            # major architectural areas (routing, auth, i18n, etc.)
 ├── components/         # reusable UI components (Form, Toast, Layout, etc.)
-├── decisions/          # ADRs — why GAIA chose X over Y
+├── decisions/          # ADRs: why GAIA chose X over Y
 ├── dependencies/       # external deps with role + version
 ├── flows/              # data flows (auth, theme, language, form submit)
 <!-- gaia:maintainer-only:start -->
@@ -39,15 +39,15 @@ wiki/
 ## Conventions
 
 - All notes use YAML frontmatter: type, status, created, updated, tags (minimum)
-- Wikilinks use `[[overview]]` — filenames are unique, no paths needed
-- `.raw/` contains source documents — never modify them
-- `wiki/index.md` is the master catalog — update on every ingest
-- `wiki/log.md` is append-only — new entries at the TOP
+- Wikilinks use `[[overview]]` - filenames are unique, no paths needed
+- `.raw/` contains source documents - never modify them
+- `wiki/index.md` is the master catalog - update on every ingest
+- `wiki/log.md` is append-only - new entries at the TOP
 - Keep pages 100-300 lines; split if longer
 
 ## Operations
 
 - Ingest: drop a source in `.raw/`, say "ingest [filename]"
-- Query: ask any question — Claude reads `hot.md` → `index.md` → drills in
+- Query: ask any question - Claude reads `hot.md` → `index.md` → drills in
 - Lint: say "lint the wiki" for a health check
 - Save: "/save" to file the current chat as a note

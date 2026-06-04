@@ -6,13 +6,13 @@
 # Exit 0 on terminal (success | failure); exit 1 on timeout.
 #
 # Args:
-#   $1 — commit SHA to query.
+#   $1: commit SHA to query.
 # Env (required):
-#   GITHUB_REPOSITORY — owner/repo (provided by Actions runner).
-#   DEFAULT_BRANCH — usually github.event.repository.default_branch.
+#   GITHUB_REPOSITORY: owner/repo (provided by Actions runner).
+#   DEFAULT_BRANCH: usually github.event.repository.default_branch.
 # Env overrides:
-#   TIMEOUT_SECONDS — defaults to 5400 (90 minutes)
-#   SLEEP_SECONDS — defaults to 30
+#   TIMEOUT_SECONDS: defaults to 5400 (90 minutes)
+#   SLEEP_SECONDS: defaults to 30
 
 set -euo pipefail
 

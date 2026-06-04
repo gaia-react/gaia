@@ -23,10 +23,10 @@
 #   body  - the assembled report body (post-frontmatter) to redact
 #
 # Order of operations (mirrors redaction.md § Order of operations):
-#   1. Path conversion — Rule A (project-root strip), then Rule B (machine-leak fallback)
-#   2. Token regex set — patterns 1–7 in declared order
+#   1. Path conversion; Rule A (project-root strip), then Rule B (machine-leak fallback)
+#   2. Token regex set; patterns 1–7 in declared order
 #   3. Env-var value scrub
-#   4. Sanity recheck — re-run patterns 1–6; survivor = redaction bug
+#   4. Sanity recheck; re-run patterns 1–6; survivor = redaction bug
 
 set -euo pipefail
 
@@ -39,15 +39,15 @@ redact_body() {
   # Step 1: Path conversion
   # -------------------------------------------------------------------------
 
-  # Rule A — under project root: strip leading $root/ to make repo-relative.
+  # Rule A; under project root: strip leading $root/ to make repo-relative.
   # Escape special regex characters in root path.
   local escaped_root
   escaped_root="$(printf '%s' "$root" | sed 's|[[\.*^$()+?{|]|\\&|g')"
   out="$(printf '%s' "$out" | sed "s|${escaped_root}/||g")"
 
-  # Rule B — outside project root: collapse /Users/<name>/... or /home/<name>/...
+  # Rule B; outside project root: collapse /Users/<name>/... or /home/<name>/...
   # to just the trailing filename component.
-  # Run two separate passes (one for /Users/, one for /home/) — BSD sed does not
+  # Run two separate passes (one for /Users/, one for /home/); BSD sed does not
   # reliably support alternation (A|B) inside groups.
   # Pattern (per pass): /Users/<name>(/component)*/filename  -> filename
   out="$(printf '%s' "$out" | \
@@ -61,7 +61,7 @@ redact_body() {
   # Token prefixes (gho_, sk-ant-, etc.) are sufficiently distinctive.
   # -------------------------------------------------------------------------
 
-  # Pattern 1: GitHub tokens — gho_, ghp_, ghs_, ghr_, ghu_ followed by 20+ alphanum
+  # Pattern 1: GitHub tokens; gho_, ghp_, ghs_, ghr_, ghu_ followed by 20+ alphanum
   # Split into separate passes to avoid BSD sed alternation issues.
   out="$(printf '%s' "$out" | sed -E 's/gho_[A-Za-z0-9]{20,}/<redacted>/g')"
   out="$(printf '%s' "$out" | sed -E 's/ghp_[A-Za-z0-9]{20,}/<redacted>/g')"
@@ -69,31 +69,31 @@ redact_body() {
   out="$(printf '%s' "$out" | sed -E 's/ghr_[A-Za-z0-9]{20,}/<redacted>/g')"
   out="$(printf '%s' "$out" | sed -E 's/ghu_[A-Za-z0-9]{20,}/<redacted>/g')"
 
-  # Pattern 2: Anthropic API key — sk-ant- followed by 20+ alphanum/dash/underscore
+  # Pattern 2: Anthropic API key; sk-ant- followed by 20+ alphanum/dash/underscore
   # Must precede pattern 3 (sk-) because sk-ant- starts with sk-
   out="$(printf '%s' "$out" | sed -E 's/sk-ant-[A-Za-z0-9_-]{20,}/<redacted>/g')"
 
-  # Pattern 3: OpenAI API key — sk- followed by 20+ alphanum
+  # Pattern 3: OpenAI API key; sk- followed by 20+ alphanum
   # (sk-ant- already consumed by pattern 2 above)
   out="$(printf '%s' "$out" | sed -E 's/sk-[A-Za-z0-9]{20,}/<redacted>/g')"
 
-  # Pattern 4: GitLab personal access token — glpat- followed by 20+ alphanum/dash/underscore
+  # Pattern 4: GitLab personal access token; glpat- followed by 20+ alphanum/dash/underscore
   out="$(printf '%s' "$out" | sed -E 's/glpat-[A-Za-z0-9_-]{20,}/<redacted>/g')"
 
-  # Pattern 5: Slack token — xoxb/xoxa/xoxp/xoxr/xoxs followed by 10+ alphanum/dash
+  # Pattern 5: Slack token; xoxb/xoxa/xoxp/xoxr/xoxs followed by 10+ alphanum/dash
   out="$(printf '%s' "$out" | sed -E 's/xoxb-[A-Za-z0-9-]{10,}/<redacted>/g')"
   out="$(printf '%s' "$out" | sed -E 's/xoxa-[A-Za-z0-9-]{10,}/<redacted>/g')"
   out="$(printf '%s' "$out" | sed -E 's/xoxp-[A-Za-z0-9-]{10,}/<redacted>/g')"
   out="$(printf '%s' "$out" | sed -E 's/xoxr-[A-Za-z0-9-]{10,}/<redacted>/g')"
   out="$(printf '%s' "$out" | sed -E 's/xoxs-[A-Za-z0-9-]{10,}/<redacted>/g')"
 
-  # Pattern 6: AWS access key ID — 4 uppercase letters + 16 uppercase alphanum (20 total)
+  # Pattern 6: AWS access key ID; 4 uppercase letters + 16 uppercase alphanum (20 total)
   # No \b; the structural prefix (AKIA, ASIA, AROA, etc.) anchors the match.
   out="$(printf '%s' "$out" | sed -E 's/[A-Z]{4}[0-9A-Z]{16}/<redacted>/g')"
 
   # Pattern 7: Generic high-entropy fallback (token|key|secret + 40+ chars)
   # Preserve the label; replace only the value.
-  # Three separate passes — BSD sed alternation in groups is not reliable.
+  # Three separate passes; BSD sed alternation in groups is not reliable.
   out="$(printf '%s' "$out" | \
     sed -E "s/([Tt][Oo][Kk][Ee][Nn])[[:space:]=:]+[\"']?[A-Za-z0-9+\/=_-]{40,}[\"']?/\1=<redacted>/g")"
   out="$(printf '%s' "$out" | \
@@ -110,7 +110,7 @@ redact_body() {
     sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)=.+$/\1=<redacted>/g')"
 
   # -------------------------------------------------------------------------
-  # Step 4: Sanity recheck — re-run patterns 1–6
+  # Step 4: Sanity recheck; re-run patterns 1–6
   # If any credential-shaped value survived, that is a redaction bug.
   # Report and exit non-zero rather than emitting a partially-redacted body.
   # grep -E supports \b on some systems, but to be portable we use the same

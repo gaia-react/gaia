@@ -77,7 +77,7 @@ export const readRevertLedger = (repoRoot: string): ReadRevertLedgerResult => {
     parsed = JSON.parse(raw);
   } catch (error) {
     return {
-      error: `${filePath}: invalid JSON — ${error instanceof Error ? error.message : String(error)}`,
+      error: `${filePath}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
       status: 'malformed',
     };
   }
@@ -119,7 +119,7 @@ const STALE_LOCK_MS = 5 * 60_000;
  * several slow `git`/`gh` calls before writing the entry back. Two
  * concurrent invocations targeting the same PR can both pass the check and
  * both open a revert PR. `mkdir` is atomic on POSIX, so it serves as the
- * lock primitive — exactly one caller wins the directory create.
+ * lock primitive; exactly one caller wins the directory create.
  *
  * The lock is scoped per `originalPr`: the lock directory carries the PR
  * number, so reverts of distinct PRs touch disjoint locks and never
@@ -131,7 +131,7 @@ const STALE_LOCK_MS = 5 * 60_000;
  *
  * Returns `{locked: true}` and runs `critical` under the lock, or returns
  * `{locked: false}` without running it when a fresh lock for the same PR
- * is already held (a concurrent revert is in flight — refuse rather than
+ * is already held (a concurrent revert is in flight; refuse rather than
  * race). A non-`EEXIST` failure from lock acquisition propagates to the
  * caller as a genuine error rather than being masked as contention.
  */
@@ -147,7 +147,7 @@ export const withRevertLedgerLock = <T>(
   const lockDir = `${target}.lock.pr-${originalPr}`;
 
   try {
-    // `recursive: false` is the default — fails with EEXIST if the lock
+    // `recursive: false` is the default; fails with EEXIST if the lock
     // directory already exists, which is the contended path.
     mkdirSync(lockDir);
   } catch (error) {
@@ -179,11 +179,11 @@ const reclaimStaleLock = (lockDir: string): boolean => {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
 
-    // The lock vanished between the failed `mkdir` and the `stat` — retry.
+    // The lock vanished between the failed `mkdir` and the `stat`; retry.
     return retryLockMkdir(lockDir);
   }
 
-  // A fresh lock belongs to a healthy concurrent revert — refuse.
+  // A fresh lock belongs to a healthy concurrent revert; refuse.
   if (Date.now() - mtimeMs <= STALE_LOCK_MS) return false;
 
   // Stale: presumed orphaned by a killed process. Reclaim it.

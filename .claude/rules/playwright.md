@@ -25,7 +25,7 @@ pnpm pw-ui      # run with Playwright UI (interactive)
 Match the feature or route: `language-switch.spec.ts`, `things.spec.ts`.
 One spec file per major user flow; one `test.describe` block per scenario group.
 
-## Selectors — prefer semantic over structural
+## Selectors, prefer semantic over structural
 
 Use ARIA roles and accessible names first:
 
@@ -43,7 +43,7 @@ page.locator('select', {hasText: 'English'});
 
 Do **not** use CSS class selectors or XPath.
 
-## Waiting — web-first assertions only
+## Waiting, web-first assertions only
 
 Never use `page.waitForTimeout`. Use `expect(locator).toBeVisible()` or any
 web-first `expect` assertion; Playwright retries until timeout.
@@ -101,14 +101,14 @@ await page.setExtraHTTPHeaders({'Accept-Language': 'ja'});
 
 ## Parallelism and CI
 
-- `fullyParallel: true` — all specs run in parallel by default.
+- `fullyParallel: true`, all specs run in parallel by default.
 - CI: `workers: 1`, `retries: 2`, `forbidOnly: true`.
 - Locally: unlimited workers, no retries, multi-browser opt-in via `TEST_ALL_BROWSERS`.
 - Primary browser: Chromium only by default. Other browsers (webkit, firefox, mobile) guarded behind `TEST_ALL_BROWSERS` flag.
 
 ## Traces and screenshots
 
-- `trace: 'retain-on-failure'` — traces saved to `.playwright/output/` on failure.
+- `trace: 'retain-on-failure'`, traces saved to `.playwright/output/` on failure.
 - No explicit screenshot calls in specs; rely on Playwright trace viewer for debugging.
 
 ## Accessibility scans

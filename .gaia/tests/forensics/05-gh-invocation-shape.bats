@@ -104,7 +104,7 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
-# UAT-006: gh failure path — error surfaced verbatim, local report preserved,
+# UAT-006: gh failure path; error surfaced verbatim, local report preserved,
 #          exit non-zero. Tested via a "failing-gh" stub that exits 1.
 # ---------------------------------------------------------------------------
 
@@ -181,6 +181,6 @@ invoke_gh_failing_surrogate() {
 
   local call_count
   call_count="$(wc -l < "$count_file" | tr -d ' ')"
-  # Must be exactly 1 — no retry
+  # Must be exactly 1; no retry
   [[ "$call_count" -eq 1 ]]
 }

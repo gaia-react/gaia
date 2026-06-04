@@ -1,13 +1,13 @@
 ---
 type: meta
-title: Consolidate Report — 2026-06-04
+title: Consolidate Report: 2026-06-04
 status: active
 created: 2026-06-04
 updated: 2026-06-04
 tags: [meta, consolidate]
 ---
 
-# Consolidate Report — 2026-06-04
+# Consolidate Report: 2026-06-04
 
 Run summary: 0 findings across 0 domains.
 

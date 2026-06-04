@@ -5,10 +5,10 @@
 #   source "$(dirname "$0")/lib/lib.sh"
 #
 # Convention: scenarios set `set -euo pipefail` themselves. This file
-# intentionally does NOT enable `set -e` — sourcing would inherit it into
+# intentionally does NOT enable `set -e`; sourcing would inherit it into
 # the caller, which is fine, but explicit-in-scenario is the convention.
 #
-# API (frozen — see plan README):
+# API (frozen; see plan README):
 #   PROJECT_ROOT  - absolute path to GAIA repo root (git rev-parse --show-toplevel)
 #   pass MSG      - prints "PASS  <basename of $0>: MSG" to stdout; returns 0
 #   fail MSG      - prints "FAIL  <basename of $0>: MSG" to stderr; returns 1

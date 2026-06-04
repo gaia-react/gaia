@@ -69,7 +69,7 @@ describe('analytics/golden', () => {
         windowDays: 30,
       });
 
-      // Schema parse (strict) — drops anything unexpected.
+      // Schema parse (strict): drops anything unexpected.
       expect(() => AnalyticsReportSchema.parse(report)).not.toThrow();
 
       // Top-level keys exactly match the golden list.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Tests for `.github/forensics/parse-verdict.sh`.
 #
-# Coverage maps to SPEC-002 UAT-003 case (b) — the classifier output is
+# Coverage maps to SPEC-002 UAT-003 case (b), the classifier output is
 # parsed deterministically; ambiguity routes to `needs-human` without any
 # LLM fallback.
 
@@ -11,7 +11,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Clean verdicts — one verdict line, last non-blank line, value in the
+# Clean verdicts, one verdict line, last non-blank line, value in the
 # closed set.
 # ---------------------------------------------------------------------------
 
@@ -83,7 +83,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Ambiguity — no verdict line.
+# Ambiguity, no verdict line.
 # ---------------------------------------------------------------------------
 
 @test "no GAIA-VERDICT line returns ambiguous" {
@@ -105,7 +105,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Ambiguity — multiple GAIA-VERDICT lines (UAT-003 case b).
+# Ambiguity, multiple GAIA-VERDICT lines (UAT-003 case b).
 # ---------------------------------------------------------------------------
 
 @test "two conflicting verdict lines return ambiguous" {
@@ -137,7 +137,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Ambiguity — malformed verdict value.
+# Ambiguity, malformed verdict value.
 # ---------------------------------------------------------------------------
 
 @test "verdict value outside closed set returns ambiguous" {
@@ -165,7 +165,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Ambiguity — verdict line is not the last non-blank line.
+# Ambiguity, verdict line is not the last non-blank line.
 # ---------------------------------------------------------------------------
 
 @test "verdict line followed by content returns ambiguous" {
@@ -183,7 +183,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# auto-fixable contract — must include a parseable proposed-paths fence.
+# auto-fixable contract, must include a parseable proposed-paths fence.
 # ---------------------------------------------------------------------------
 
 @test "auto-fixable verdict without proposed_paths section downgrades to ambiguous" {
@@ -255,7 +255,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# non-issue / needs-human verdicts ignore proposed_paths existence — only
+# non-issue / needs-human verdicts ignore proposed_paths existence, only
 # auto-fixable requires them.
 # ---------------------------------------------------------------------------
 
@@ -286,7 +286,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Reasoning extraction — everything before the verdict line, with one
+# Reasoning extraction, everything before the verdict line, with one
 # trailing blank line trimmed.
 # ---------------------------------------------------------------------------
 
@@ -317,11 +317,11 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Determinism — same input twice yields byte-identical output.
+# Determinism, same input twice yields byte-identical output.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# SPEC-003 UAT-006 — pipefail + internal-error JSON envelope. When awk
+# SPEC-003 UAT-006, pipefail + internal-error JSON envelope. When awk
 # fails, the script must NOT fall through to a default verdict:ambiguous;
 # it must emit `{"internal_error":true,...}` so the workflow can
 # distinguish infrastructure failure from a non-conformant classifier
