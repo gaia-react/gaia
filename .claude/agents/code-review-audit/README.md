@@ -23,6 +23,8 @@ Valid `subagents` values map to the three specialist subagents:
 - `typescript` → Subagent 2 (`.ts` + `.tsx` files: types, architecture, conventions)
 - `translation` → Subagent 3 (files with `useTranslation` / `t(` calls)
 
+These values are **rule-injection labels** (metadata selecting which specialist prompt receives this file's rules), NOT skill or command names. The agent dispatches each specialist via the Agent (Task) tool, never via the Skill tool, and there is no `subagent:<name> files:<paths>` argument string.
+
 `library` is documentation only, it identifies which dependency this file covers.
 
 ## When to update

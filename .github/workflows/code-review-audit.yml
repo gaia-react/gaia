@@ -269,7 +269,14 @@ jobs:
             a detached HEAD (PR head sha), so the stamp helper writes an empty
             `chore: code review audit passed` commit carrying the trailer; do
             not pass `AUDIT_SELF_HEALED=true` (the helper's amend path would
-            rewrite a commit the workflow runner does not own). Any self-heal
+            rewrite a commit the workflow runner does not own). On a clean
+            report you MUST also write the local clean marker file
+            `.gaia/local/audit/<HEAD-sha>.ok` for the current HEAD (the "Audit
+            marker" step in the agent definition). Write it even if the trailer
+            stamp declines or makes no commit: when nothing is pushed, the
+            workflow promotes this marker to the durable GAIA-Audit commit
+            status on HEAD, and a clean audit that leaves no marker strands the
+            merge gate. Any self-heal
             file edits go in their own commit (or commits) BEFORE you call the
             stamp helper. After the audit and stamp, post a single PR comment
             summarizing findings (and whether self-heal commits were pushed).
@@ -340,10 +347,12 @@ jobs:
             echo "code-review-audit: self-heal touched instruction/convention surfaces -- refusing." >&2
             printf '%s\n' "$self_heal_paths" \
               | grep -E '^(\.claude|\.specify|wiki)/' >&2 || true
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
-            echo "marker_only=false" >> "$GITHUB_OUTPUT"
-            echo "refused=true" >> "$GITHUB_OUTPUT"
-            echo "refused_reason=instruction-surface" >> "$GITHUB_OUTPUT"
+            {
+              echo "pushed=false"
+              echo "marker_only=false"
+              echo "refused=true"
+              echo "refused_reason=instruction-surface"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -362,11 +371,13 @@ jobs:
               echo "Files staged:" >&2
               git diff --cached --name-only >&2
               git reset >/dev/null
-              echo "pushed=false" >> "$GITHUB_OUTPUT"
-              echo "marker_only=false" >> "$GITHUB_OUTPUT"
-              echo "refused=true" >> "$GITHUB_OUTPUT"
-              echo "refused_reason=file-count" >> "$GITHUB_OUTPUT"
-              echo "refused_count=$files_changed" >> "$GITHUB_OUTPUT"
+              {
+                echo "pushed=false"
+                echo "marker_only=false"
+                echo "refused=true"
+                echo "refused_reason=file-count"
+                echo "refused_count=$files_changed"
+              } >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
@@ -391,8 +402,10 @@ jobs:
 
           ahead=$(git rev-list --count "origin/${PR_BRANCH}..HEAD" 2>/dev/null || echo 0)
           if [ "$ahead" -eq 0 ]; then
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
-            echo "marker_only=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "pushed=false"
+              echo "marker_only=false"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -403,9 +416,11 @@ jobs:
           if [ "$ahead" -eq 1 ] && is_marker_commit HEAD; then
             audit_sha="$(git rev-parse HEAD~1)"
             echo "code-review-audit: marker-only HEAD; not pushing the empty commit." >&2
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
-            echo "marker_only=true" >> "$GITHUB_OUTPUT"
-            echo "audit_sha=${audit_sha}" >> "$GITHUB_OUTPUT"
+            {
+              echo "pushed=false"
+              echo "marker_only=true"
+              echo "audit_sha=${audit_sha}"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -426,9 +441,11 @@ jobs:
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "HEAD:$PR_BRANCH"
           audit_sha="$(git rev-parse HEAD)"
-          echo "pushed=true" >> "$GITHUB_OUTPUT"
-          echo "marker_only=false" >> "$GITHUB_OUTPUT"
-          echo "audit_sha=${audit_sha}" >> "$GITHUB_OUTPUT"
+          {
+            echo "pushed=true"
+            echo "marker_only=false"
+            echo "audit_sha=${audit_sha}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Write GAIA-Audit commit status
         if: |
@@ -461,6 +478,60 @@ jobs:
           fi
           tree_sha="$(git rev-parse "${AUDIT_SHA}^{tree}")"
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${AUDIT_SHA}" \
+            --method POST \
+            --field state=success \
+            --field context=GAIA-Audit \
+            --field description="${version} ${tree_sha}"
+
+      - name: Write GAIA-Audit commit status (clean, no push)
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.trailer.outputs.skip == 'false' &&
+          steps.config.outputs.push_fixes == 'true' &&
+          steps.audit.outcome == 'success' &&
+          steps.push-fixes.outputs.pushed != 'true' &&
+          steps.push-fixes.outputs.marker_only != 'true' &&
+          steps.push-fixes.outputs.refused != 'true'
+        run: |
+          set -eu
+          # Genuinely-clean-but-no-commit path. A clean audit that makes no
+          # self-heal commits AND no empty trailer commit leaves push-fixes
+          # with neither `pushed` nor `marker_only` set, so the stamp step
+          # above is skipped and HEAD carries no GAIA-Audit status. The merge
+          # hook (.claude/hooks/pr-merge-audit-check.sh) then finds no signal
+          # and blocks the merge even though the audit passed; the only escape
+          # used to be a local agent pushing an empty trailer commit, the very
+          # HEAD-moving workaround the design avoids. Close that gap by stamping
+          # the GAIA-Audit status DIRECTLY on the current PR HEAD: no empty
+          # commit, nothing to advance (HEAD is detached at the PR head sha).
+          #
+          # Proven-clean guard (must never false-pass): the audit agent writes
+          # the local marker file .gaia/local/audit/<HEAD>.ok ONLY when the
+          # review is clean (no Critical, every Important addressed, every
+          # Suggestion fixed or none). It is NEVER written while findings
+          # remain. A dirty audit also reaches this step (it pushed nothing),
+          # but its marker is absent, so no status is stamped and the merge
+          # stays blocked until a local audit clears it. This is the same
+          # artifact the merge hook trusts as its first accepted signal. The
+          # marker lives under .gaia/local/ (gitignored), so it exists only in
+          # this runner's workspace and only for this run.
+          head_sha="$(git rev-parse HEAD)"
+          marker=".gaia/local/audit/${head_sha}.ok"
+          if [ ! -f "$marker" ]; then
+            echo "code-review-audit: clean marker ${marker} absent; audit not proven clean, not stamping." >&2
+            exit 0
+          fi
+          version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
+          version="${version#"${version%%[![:space:]]*}"}"
+          version="${version%"${version##*[![:space:]]}"}"
+          if [ -z "$version" ]; then
+            echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
+            exit 0
+          fi
+          tree_sha="$(git rev-parse "HEAD^{tree}")"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
             --method POST \
             --field state=success \
             --field context=GAIA-Audit \
