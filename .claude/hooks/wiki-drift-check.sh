@@ -27,7 +27,10 @@ fi
 # GAIA CI deferral. When wiki.mode == "ci", local automatic triggers stand
 # down so they don't collide with the cron-managed wiki run. The marker is
 # NOT advanced here so a future config change still gets the drift check.
-. .claude/hooks/lib/gaia-ci-defer.sh 2>/dev/null && gaia_ci_defer_if_managed wiki || true
+if [ -f .claude/hooks/lib/gaia-ci-defer.sh ]; then
+  . .claude/hooks/lib/gaia-ci-defer.sh
+  gaia_ci_defer_if_managed wiki || true
+fi
 
 state_sha=$(jq -r '.last_evaluated_sha // empty' wiki/.state.json 2>/dev/null || echo "")
 [ -n "$state_sha" ] || exit 0
