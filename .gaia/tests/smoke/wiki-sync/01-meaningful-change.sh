@@ -2,8 +2,17 @@
 # Smoke 01: meaningful change should produce a wiki update on /gaia-wiki sync.
 set -euo pipefail
 
+# Resolve GAIA_REPO from the script's own location BEFORE the cd below.
+# Resolving it after `cd "$TMP"` makes the `git -C "$(dirname ...)"` fallback
+# resolve a relative BASH_SOURCE against the temp dir, dying before any
+# assertion runs and masking the real failure. The subshell pwd promotes the
+# script dir to an absolute path so a relative invocation still works.
+GAIA_REPO="${GAIA_REPO:-$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel)}"
+
 TMP=$(mktemp -d -t gaia-smoke-01-XXXXXX)
-trap 'rm -rf "$TMP"' EXIT
+# On any non-zero exit, surface the captured claude session output before
+# cleanup so a failure is diagnosable instead of a silent blackhole.
+trap 'rc=$?; if [ "$rc" -ne 0 ] && [ -f "$TMP/claude-sync.log" ]; then echo "----- claude sync session output (captured) -----"; cat "$TMP/claude-sync.log"; fi; rm -rf "$TMP"' EXIT
 
 cd "$TMP"
 
@@ -13,16 +22,20 @@ git config user.email "smoke@example.com"
 git config user.name "Smoke"
 git config commit.gpgsign false
 
-mkdir -p wiki/services .claude/hooks .claude/skills/gaia-wiki .claude/skills/gaia/references/wiki app/services
+mkdir -p wiki/services .claude/hooks .claude/skills/gaia-wiki .claude/skills/gaia/references/wiki .gaia/cli app/services
 
 # Copy the hooks + gaia wiki skill structure from the gaia repo into the smoke fixture
-GAIA_REPO="${GAIA_REPO:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)}"
 cp "$GAIA_REPO/.claude/hooks/wiki-drift-check.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-commit-nudge.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/hooks/wiki-session-stop.sh" .claude/hooks/
 cp "$GAIA_REPO/.claude/skills/gaia-wiki/SKILL.md" .claude/skills/gaia-wiki/
 cp "$GAIA_REPO/.claude/skills/gaia/references/wiki.md" .claude/skills/gaia/references/
 cp "$GAIA_REPO/.claude/skills/gaia/references/wiki/sync.md" .claude/skills/gaia/references/wiki/
+# The sync playbook (Steps 1-9) shells out to .gaia/cli/gaia for every state
+# read, commit classification, log write, and land. Without the bundled CLI the
+# subagent has no deterministic oracle and bails at Step 1, so provision it.
+cp "$GAIA_REPO/.gaia/cli/gaia" .gaia/cli/gaia
+chmod +x .gaia/cli/gaia
 
 # Minimal settings.json that wires the hooks
 cat > .claude/settings.json <<'EOF'
@@ -91,7 +104,7 @@ pre_claude_head=$(git rev-parse HEAD)
 
 # Now run claude -p with /gaia-wiki sync
 output=$(claude -p --model sonnet --permission-mode bypassPermissions \
-  "Run /gaia-wiki sync. Report what was done." 2>&1)
+  "Run /gaia-wiki sync. Report what was done." 2>&1 | tee "$TMP/claude-sync.log")
 
 # Assertions
 echo "$output" | grep -q "Gemini" || { echo "FAIL: Gemini not mentioned in /gaia-wiki sync output"; exit 1; }

@@ -13,13 +13,17 @@ These are MANUAL / pre-release. Not run in CI. Run them before cutting a GAIA re
 
 ## Running
 
-### All wiki-sync scenarios
+### All wiki-sync scenarios (advisory)
 
 ```bash
-bash .gaia/tests/smoke/run-all.sh
+bash .gaia/tests/smoke/wiki-sync/run.sh
 ```
 
-Prints PASS/FAIL per scenario and a final summary. Exits non-zero on any failure.
+Runs every scenario with bounded retries (one retry by default; override with
+`WIKI_SYNC_MAX_ATTEMPTS`), prints a PASS/FAIL summary, and on a final failure
+surfaces the captured `claude` session output so the failure is diagnosable.
+`run-all.sh` invokes this same runner as an ADVISORY lane: it reports a signal
+but never sets the release gate's exit code (see "Why advisory" below).
 
 ### Individual scenario
 
@@ -27,13 +31,36 @@ Prints PASS/FAIL per scenario and a final summary. Exits non-zero on any failure
 bash .gaia/tests/smoke/wiki-sync/01-meaningful-change.sh
 ```
 
+Runs from any cwd: each scenario resolves the gaia repo root from its own
+location, so you do not need to `cd` first or export `GAIA_REPO` (set
+`GAIA_REPO=/path/to/gaia` to override the source repo).
+
 Each scenario:
 
 - Creates a tmp directory
-- Scaffolds a minimal GAIA-like project with the wiki-sync hooks installed
+- Scaffolds a minimal GAIA-like project: the wiki-sync hooks, the `gaia-wiki`
+  skill + sync runbook, AND the bundled `.gaia/cli/gaia` binary the playbook
+  shells out to at every step
 - Drives `claude -p` through prompts
-- Asserts the expected behavior
+- Asserts the expected behavior, dumping the captured session output on failure
 - Cleans up
+
+## Why advisory (not a blocking gate)
+
+The sync playbook runs every step through the `.gaia/cli/gaia` CLI (state read,
+commit classification, log writes, land), so the binary must be present in the
+fixture for the playbook to execute at all. With the CLI provisioned the
+scenarios exercise the real deterministic path, but their assertions still ride
+on free-form LLM output: which page got created, the exact reason string logged
+to `wiki/log.md`, whether a prose answer mentions "drift". That output is not
+reproducible run-to-run, so a green run today can flake red tomorrow on
+identical code. Blocking a release on that is the flaky-gate anti-pattern.
+
+The deterministic core (`commit-classify`, `log-prepend`, `state`, `sync land`)
+is unit-tested under `.gaia/cli/src/wiki/` and gated by `cli-tests.yml`; these
+E2E scenarios uniquely cover the LLM-playbook integration, which cannot be made
+deterministic. So they run as an advisory signal with retries, and the
+deterministic layer stays the hard gate.
 
 ## Cost discipline
 
