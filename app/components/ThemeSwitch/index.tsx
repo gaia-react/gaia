@@ -3,6 +3,7 @@ import {useTranslation} from 'react-i18next';
 import {IoDesktopOutline, IoMoon, IoSunny} from 'react-icons/io5';
 import {useFetcher} from 'react-router';
 import {useOptimisticThemeMode} from '~/hooks/useTheme';
+// eslint-disable-next-line import-x/no-restricted-paths -- the theme-switch resource route is a typed data endpoint; its action type powers useFetcher<typeof action>()
 import type {action} from '~/routes/resources+/theme-switch';
 import type {Theme} from '~/utils/theme.server';
 
