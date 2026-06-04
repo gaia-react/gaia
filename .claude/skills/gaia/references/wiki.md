@@ -76,12 +76,12 @@ If `STATUS != "ci"`, behave as before (no defer, no force, no record-run).
 
 ## Sync
 
-Dispatch a Haiku subagent via `Agent`. The work is mechanical (rule-based WORTHY/SKIP classification, file edits, structured commits), Haiku is sufficient, and a fresh context avoids dragging git diffs and log content into the parent.
+Dispatch a Sonnet subagent via `Agent`. Sync generates judgment and prose (deep-reading WORTHY diffs, locating the right page, writing accurate edits and ADRs), which is beyond Haiku's reliability on a long multi-step run; a fresh context also keeps git diffs and log content out of the parent. The playbook's Step 5b fabrication guard backstops any model that narrates edits without writing them.
 
 Spawn:
 
 - `subagent_type`: `"general-purpose"`
-- `model`: `"haiku"`
+- `model`: `"sonnet"`
 - `description`: `"Wiki sync"`
 - `prompt`: the string below (literal, no paraphrasing):
 
