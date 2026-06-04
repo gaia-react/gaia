@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-03
-updated: 2026-06-02
+updated: 2026-06-05
 tags: [concept, claude, workflow, wiki]
 ---
 
@@ -68,7 +68,7 @@ The drift check itself is free (~30 tokens of injection once per session). The c
 
 If drift exceeds 30 commits, `/gaia-wiki sync` asks before proceeding; long-skipped projects shouldn't surprise-bill.
 
-`/gaia-wiki sync` dispatches a Sonnet subagent in a fresh context to run the playbook; Sonnet is sufficient for the rule-based work, and the fresh context keeps git diffs and log content out of the parent (which may be on Opus). All cost still lives in the user's Claude Code session; there are no `claude -p` background invocations.
+`/gaia-wiki sync` dispatches a Sonnet subagent in a fresh context to run the playbook; Sonnet handles the judgment and prose work (deep-reading WORTHY diffs, locating the right page, writing accurate edits and ADRs), and the fresh context keeps git diffs and log content out of the parent (which may be on Opus). All cost still lives in the user's Claude Code session; there are no `claude -p` background invocations.
 
 ## What `/gaia-wiki sync` does
 
@@ -77,6 +77,7 @@ For each commit since `last_evaluated_sha`:
 1. **First-pass:** read subject + file stats. Classify WORTHY (likely needs a wiki update) or SKIP (typo, formatting, dep bump with no behavior change, etc.).
 2. **Second-pass on WORTHY only:** read the diff. Edit the relevant `wiki/services/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/dependencies/`, etc. pages. If a commit looks worthy from its subject but turns out to be a refactor on diff inspection, demote to SKIP.
 3. **Log every decision** (worthy and skipped) to `wiki/log.md` with a one-line reason.
+3b. **Fabrication guard.** Before advancing state, asserts every WORTHY edit was actually written to disk: a per-path porcelain check confirms each claimed page shows as changed or created, and a broader content-change check confirms at least one wiki content file is modified when the WORTHY set is non-empty. Any failure aborts the run before state advances, leaving `last_evaluated_sha` unchanged so the next sync re-evaluates the same range.
 4. **Advance state** to current HEAD.
 5. **Commit** the wiki changes as `wiki: sync through <short_sha> (N updated, N skipped)`. The landing strategy is branch-aware: on `main` (push-protected), it creates `wiki/sync-YYYY-MM-DD`, pushes, opens a PR, and squash-merges; on any other branch (feature/fix/release/worktree), it commits in place so the maintainer's working state isn't fragmented.
 
@@ -107,6 +108,7 @@ You don't need to run it after every commit. The hooks let you defer with full v
 ## Failure modes
 
 - **Mid-sync interruption.** `/gaia-wiki sync` does not advance state on partial completion. The next sync resumes from the original `last_evaluated_sha`.
+- **Fabrication guard abort.** If WORTHY commits were classified but the decided edits are absent from the working tree (a model narrated edits without writing them), the run aborts before Step 6/7. State is not advanced and nothing is committed; the next sync re-evaluates the same range from the unchanged `last_evaluated_sha`. Distinct from a mid-sync interruption: here the gap is between decided and written, not started and finished.
 - **`wiki/.state.json` corrupted.** `/gaia-wiki sync` stops and asks; it won't auto-rewrite over manual edits.
 - **Orphaned baseline.** GAIA's squash-merge flow replaces the evaluated branch SHA with a new squash commit on every merge, so `last_evaluated_sha` is regularly unreachable from HEAD, not just after a manual rebase. The hooks silently skip while it is unreachable. `/gaia-wiki sync` recovers the un-evaluated window: it resolves a reachable baseline (the newest commit at or older than `last_evaluated_at`) and runs the normal evaluation pass from there, cataloguing every commit in between. Only when no baseline resolves, no `last_evaluated_at`, or it predates all history, does it fall back to a lossy re-anchor straight to HEAD with a `RE_ANCHOR` log entry.
 - **Concurrent syncs on different branches.** `wiki/log.md` will conflict on merge. Resolve by keeping both lines, sorted newest-first.

@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [v1.4.0] 2026-06-02 | Released
 
+- 2026-06-04 f7f6d9f WORTHY - fabrication guard + Sonnet dispatch for wiki-sync → wiki/concepts/Wiki Sync.md
+- 2026-06-04 4f9b17e SKIP - wiki: self-referential (sync commit)
 - 2026-06-04 e68dbfd SKIP - wiki: self-referential (sync commit)
 - 2026-06-04 d739bf2 SKIP - prose path allowlist in runtime-deps; maintainer-only CLI, no adopter architecture change
 - 2026-06-04 aae3722 SKIP - wiki-sync smoke harness repair; test infrastructure only
