@@ -153,3 +153,42 @@ assert_allowed() {
   run_hook 'pnpm run build'
   assert_allowed
 }
+
+# --- command-position anchoring: the words appear, but git is not the program ---
+
+@test "grep with -n searching for the text 'git commit' is allowed" {
+  # The reported false positive: -n belongs to grep, 'git commit' is the search
+  # pattern. git is not in command position, so nothing fires.
+  run_hook 'grep -n -e git commit app/foo.ts'
+  assert_allowed
+}
+
+@test "echo of 'git commit' piped to grep -n is allowed" {
+  run_hook 'echo git commit && grep -n foo bar'
+  assert_allowed
+}
+
+@test "real git commit followed by grep -n is allowed (-n is grep's)" {
+  # -n is scoped to the git segment; the grep on the other side of && is inert.
+  run_hook 'git commit -m "x" && grep -n foo bar'
+  assert_allowed
+}
+
+@test "tail -n over a file path containing 'commit' is allowed" {
+  run_hook 'tail -n 5 git-commit-notes.txt'
+  assert_allowed
+}
+
+# --- command-position anchoring still catches real bypasses ---
+
+@test "git commit -n after an unrelated piped command is denied" {
+  run_hook 'echo hi | git commit -n -m "x"'
+  assert_denied
+}
+
+@test "bypass orphaned by a pipe inside the commit message is still denied" {
+  # Segment-splitting on the quoted '|' would orphan --no-verify from its git
+  # segment; the whole-command safety net re-asserts it.
+  run_hook 'git commit -m "a|b" --no-verify'
+  assert_denied
+}
