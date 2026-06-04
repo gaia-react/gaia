@@ -468,6 +468,7 @@
     "wiki/decisions/pnpm.md": "wiki-owned",
     "wiki/decisions/Quality Gate.md": "wiki-owned",
     "wiki/decisions/spec-kit Extension Strategy.md": "wiki-owned",
+    "wiki/decisions/TDD RED Verification.md": "wiki-owned",
     "wiki/decisions/Thin Routes.md": "wiki-owned",
     "wiki/decisions/TypeScript Language Files.md": "wiki-owned",
     "wiki/decisions/Wiki Management.md": "wiki-owned",
@@ -518,6 +519,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-04T16:18:41.047Z",
+  "generated": "2026-06-04T19:07:17.339Z",
   "version": "1.4.0"
 }

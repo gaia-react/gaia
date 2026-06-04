@@ -81,6 +81,8 @@ For each commit since `last_evaluated_sha`:
 4. **Advance state** to current HEAD.
 5. **Commit** the wiki changes as `wiki: sync through <short_sha> (N updated, N skipped)`. The landing strategy is branch-aware: on `main` (push-protected), it creates `wiki/sync-YYYY-MM-DD`, pushes, opens a PR, and squash-merges; on any other branch (feature/fix/release/worktree), it commits in place so the maintainer's working state isn't fragmented.
 
+`sync land` uses `git status --porcelain=v1` to inspect the working tree. Git wraps paths containing spaces or special characters in double quotes; the CLI strips that quoting before classifying paths as wiki or non-wiki changes. Nearly every GAIA wiki page has a space in its filename, so this normalization is required for `sync land` to recognize wiki edits and proceed.
+
 The skip-with-reason audit trail is load-bearing: a project that always says "skipped: typo" tells you the system is running. A project with no log entries tells you the system has stopped. `/gaia-wiki lint` check #11 surfaces this drift.
 
 ## Consolidation gate
