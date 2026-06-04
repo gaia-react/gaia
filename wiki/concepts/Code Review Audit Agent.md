@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-06-02
+updated: 2026-06-05
 tags: [concept, claude, agent, review]
 ---
 
@@ -17,6 +17,14 @@ Reviews security, performance, code smells, architecture, robustness, and mainta
 Knip runs pre-merge here (post-task by design) and its findings are bucketed advisory: real dead code, intentional library export (update `entry` globs), or implicit dependency (update `ignoreDependencies`). See [[knip]].
 
 A deterministic `pnpm audit --json` run is the oracle for known-vulnerable dependencies; the Security dimension does not LLM-judge current CVEs. Its high/critical advisories surface in an advisory bucket (read-only; never blocking the marker), scoped by a severity threshold and a machine-local baseline allowlist at `.gaia/local/dep-audit-baseline.json`. It is distinct from the blocking GAIA CI `pnpm audit` cron, which opens review-required security PRs. See [[pnpm-audit]].
+
+## Finding proof gate and adversarial verification
+
+Every holistic-reviewer finding must clear a four-check proof gate before it is reported: the finding must cite an exact `file:line`, name a concrete failure mode (input + state + bad outcome), confirm that callers and tests were read, and assign a defensible severity. Any check that fails drops or demotes the finding.
+
+Critical and Important holistic findings that survive the proof gate go to a selective adversarial pass: a fresh-context refuter subagent that did not produce the finding reads the cited evidence and attempts to rebut. A refuter overturns a finding only with concrete counter-evidence (a guard at `file:line`, a covering test, or an unreachable path). Without that, the verdict defaults to STANDS. Outcome options: drop on "cannot occur," demote on "smaller blast radius," keep otherwise. The resulting disposition flows into the marker-decision interlock so a dropped Critical does not block the merge gate.
+
+Deterministic oracles (`react-doctor`, `knip`) are exempt from the proof gate and adversarial pass; they are not probabilistic judgments.
 
 ## Incremental scope
 
