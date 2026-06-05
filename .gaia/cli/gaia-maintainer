@@ -20737,7 +20737,9 @@ var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
   ".claude/wiki-safety-checked"
 ]);
 var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
-var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([".github/workflows"]);
+var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
+  ".github/workflows"
+]);
 var PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
 var stripCommentSuffix = (line) => {
   if (/^\s*#/.test(line)) return "";
@@ -30089,7 +30091,9 @@ var run62 = (argv, options = {}) => {
       process.stdout.write("No frontmatter gaps found.\n");
       return EXIT_CODES.OK;
     }
-    const lines = gaps.map((gap) => `${gap.path}: missing ${gap.missing.join(", ")}`);
+    const lines = gaps.map(
+      (gap) => `${gap.path}: missing ${gap.missing.join(", ")}`
+    );
     process.stdout.write(`${lines.join("\n")}
 `);
     return EXIT_CODES.OK;
