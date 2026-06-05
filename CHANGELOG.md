@@ -10,6 +10,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-05
+
+### Added
+
+- dependency-CVE deterministic-oracle advisory (#299)
+- mechanical TDD RED-verification (SPEC-003) (#297)
+- decouple from upstream claude-obsidian, add native checks (#289)
+- add maintainer-only release-notes skill (#283)
+
+### Changed
+
+- add /gaia-fitness to commands table (#281)
+- split /gaia router into discrete /gaia-* commands and migrate all references (#277)
+
+### Fixed
+
+- repair PR-merge audit gate (specialist dispatch + clean no-change marker) (#313)
+- exclude self-referential wiki-sync commits from drift count (#311)
+- strip git-quoted paths in inspectWorkingTree (#308)
+- run sync on Sonnet and add fabrication guard (#307)
+- stop runtime-deps flagging prose path tokens as leaks (#304)
+- repair flaky wiki-sync release-gate smoke harness (#303)
+- repair two pre-existing release-gate failures (#302)
+- close distribution-boundary leak failing the smoke suite (#301)
+- guard CI-defer source so missing lib doesn't kill wiki hooks (#298)
+- anchor git guards to command position (#296)
+- exempt non-blocking residuals from the clean-A+ gate (#293)
+- alias-proof bare `gaia` CLI calls to repo-relative `.gaia/cli/gaia` (#291)
+- regenerate report fresh each run; never reuse a stale #11 (#286)
+- out-of-scope bypass for docs/metadata-only PRs (#276) (#280)
+- field-aware package.json merge (#275) (#279)
+- inline literal sibling-repo paths in gaia-release pushes
+- add repo-scope.sh to audit-ci-tests paths filter
+- strip surrounding quotes from repo-scope path captures
+
 ### Changed
 
 - replace the `/gaia <subcommand>` router with discrete `/gaia-*` entries so every workflow surfaces in slash-command autocomplete: `/gaia-plan`, `/gaia-spec`, `/gaia-audit`, `/gaia-fitness`, `/gaia-forensics` (commands) plus `/gaia-wiki`, `/gaia-handoff`, `/gaia-pickup` (skills, `gaia-wiki` stays a skill so the wiki-CI agent can still invoke it). The old space-form `/gaia <sub>` is removed; sub-arguments are unchanged (`/gaia-wiki sync`, `/gaia-spec auto`, `/gaia-audit --apply`). Workflow logic is untouched; the new entries dispatch into the same `references/*` instructions
