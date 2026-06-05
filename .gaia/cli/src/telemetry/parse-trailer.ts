@@ -24,6 +24,8 @@
  * append-idempotent layer.
  */
 
+import {isValidFindingClass} from '../schemas/finding-class.js';
+
 export type EmitInvocation = {
   args: readonly string[];
   eventType: string;
@@ -149,6 +151,11 @@ const buildAuditFindings = (trailer: string): readonly EmitInvocation[] => {
     const severity = stringField(finding, 'severity');
 
     if (findingClass === undefined || severity === undefined) continue;
+
+    // A finding whose class is not in the controlled set is not a countable
+    // finding; drop it before it reaches an emit so free-text drift never
+    // lands in the tally.
+    if (!isValidFindingClass(findingClass)) continue;
 
     invocations.push({
       args: [

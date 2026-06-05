@@ -19,8 +19,15 @@
       "id": "SPEC-003",
       "allocated_at": "2026-06-04T09:35:37Z",
       "source": "allocated",
-      "status": "in-progress",
+      "status": "shipped",
       "intent": "GAIA's test-driven workflow already instructs the agent to write a failing"
+    },
+    {
+      "id": "SPEC-004",
+      "allocated_at": "2026-06-05T08:44:29Z",
+      "source": "allocated",
+      "status": "in-progress",
+      "intent": "GAIA's code-review-audit flags anti-patterns review after review, but each"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {FindingClassSchema} from './finding-class.js';
 
 const SPEC_ID_REGEX = /^SPEC-\d{3,}$/;
 const UAT_ID_REGEX = /^UAT-\d{3,}$/;
@@ -103,7 +104,7 @@ export type TimeToResolvedSpecPayload = z.infer<
 export const CodeReviewAuditFindingPayload = z.object({
   area_tags: AreaTagsSchema,
   auditor_type: z.string(),
-  finding_class: z.string(),
+  finding_class: FindingClassSchema,
   pr_number: z.number().int().min(1),
   severity: z.enum(['error', 'warning', 'suggestion']),
   spec_id: z.string().regex(SPEC_ID_REGEX).optional(),

@@ -288,7 +288,7 @@ describe('projectToCloud', () => {
         payload: {
           area_tags: ['typescript'],
           auditor_type: 'code-review-audit',
-          finding_class: 'type_hole',
+          finding_class: 'react-doctor/no-generic-handler-names',
           pr_number: 42,
           severity: 'warning',
         },
@@ -303,7 +303,7 @@ describe('projectToCloud', () => {
       expect(result.cloudEvent.event_type).toBe('code_review_audit_finding');
       expect(result.cloudEvent.payload).toMatchObject({
         area_tags: ['typescript'],
-        finding_class: 'type_hole',
+        finding_class: 'react-doctor/no-generic-handler-names',
         pr_number: 42,
       });
     });
