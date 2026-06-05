@@ -44,6 +44,8 @@ The wiki (`wiki/`) is the source of truth for patterns, decisions, and conventio
 
 Library-specific audit rules live in `.claude/agents/code-review-audit/*.md`. Each file targets one or more specialist subagents via YAML frontmatter (`subagents: [react-patterns, typescript, translation]`). The agent reads all extension files at startup and injects their rules into the relevant subagent prompts.
 
+The `subagents:` values (`react-patterns`, `typescript`, `translation`) are **rule-injection labels** - metadata that selects which specialist prompt receives this file's rules. They are not skill or command names. The agent dispatches each specialist via the **Agent (Task) tool** with an explicit `subagent_type`. Routing a specialist through the Skill tool misroutes it to a fuzzy-matched command (e.g. `/gaia-audit`), which rejects the args and aborts the audit before its marker is written.
+
 To swap a library: remove its extension file, add one for the replacement. The main agent definition stays unchanged. See the `README.md` in that directory for the full format.
 
 | File                 | Library              |

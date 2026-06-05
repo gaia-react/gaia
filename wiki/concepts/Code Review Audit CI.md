@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-06-02
+updated: 2026-06-05
 tags: [concept, ci, audit, claude]
 ---
 
@@ -50,6 +50,12 @@ The `Check for source-code changes` step diffs only the **un-audited delta**: `<
 On this skip path the `Write GAIA-Audit commit status (out-of-scope skip)` step stamps a `GAIA-Audit` commit status (`<version> <tree>`) on HEAD, mirroring the full-audit path's status. An out-of-scope PR (CLI-only, docs-only, wiki-only, `.claude`-only) therefore satisfies the [[PR Merge Workflow]] merge hook with no local audit run; the agent would find nothing in scope to review. The description carries HEAD's own tree, since the hook checks tree equality against the content being merged.
 
 The stamp fires on the out-of-scope reason only. The already-audited reason (the `GAIA-Audit:` trailer already matches, so a status is redundant) and the workflow-self-modification reason (auto-approving a change to the audit gate itself would be a security hole) do not stamp. The `has_source == 'false'` condition structurally enforces this: both other reasons require `has_source == 'true'`. A self-modifying PR (including one editing `code-review-audit.yml`) gets no auto-stamp and still needs a local marker to merge.
+
+## Clean audit, no push
+
+A genuinely-clean audit that produces no self-heal commits and no empty trailer commit leaves the `push-fixes` step with neither `pushed` nor `marker_only` set. Without intervention, HEAD carries no `GAIA-Audit` status and the merge hook blocks the merge even though the audit passed.
+
+The `Write GAIA-Audit commit status (clean, no push)` step closes this gap: it stamps the `GAIA-Audit` commit status directly on the current PR HEAD with no empty commit. A proven-clean guard prevents false passes: the audit agent writes `.gaia/local/audit/<HEAD>.ok` only on a clean pass (no Critical Issues, all Important Issues addressed, all Suggestions resolved). The step checks for this marker before stamping; a dirty audit that pushed nothing has no marker and receives no status, keeping the merge blocked until the audit clears.
 
 This is the audit's instance of the cross-workflow mechanism in [[Incremental CI Skipping]].
 
