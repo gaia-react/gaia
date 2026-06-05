@@ -261,7 +261,7 @@ Example (overall **B+**, the floor of one `B+` category over six `A`/`A+` catego
 
 ```text
 +------------------------------------------------------------------------------+
-| > /gaia-fitness                                                 OVERALL   B+ |
+| /gaia-fitness                                                   OVERALL   B+ |
 +------------------------------------------------------------------------------+
 | CLAUDE.md hygiene                                                1 info   A  |
 | GAIA-install fitness                                             1 info   A  |

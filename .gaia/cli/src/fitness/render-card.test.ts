@@ -11,7 +11,7 @@ const baseReport = (): FitnessReport => ({
     {grade: 'A', name: 'GAIA-install fitness'},
     {grade: 'A+', name: 'Wiki fitness'},
   ],
-  command: '> /gaia-fitness',
+  command: '/gaia-fitness',
   findings: [
     {
       category: 'Skill / command / agent frontmatter',

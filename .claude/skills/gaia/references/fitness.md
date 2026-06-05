@@ -165,7 +165,7 @@ Build the report JSON from the adjudicated findings and the computed grades. Lis
 
 ```json
 {
-  "command": "> /gaia-fitness",
+  "command": "/gaia-fitness",
   "overall": "<floor of the seven category grades>",
   "categories": [
     {"name": "Hook integrity", "grade": "<grade>"},
