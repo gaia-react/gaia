@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-05-12
+updated: 2026-06-05
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -33,7 +33,7 @@ How GAIA cuts a public release. Two surfaces (the template repo (`gaia-react/gai
 
 ## Cutting a release
 
-Run `/gaia-release` on a clean `main`. The command is a 13-step orchestrator:
+Run `/gaia-release` on a clean `main`. The command is a 15-step orchestrator:
 
 1. Verify clean working tree + on `main`.
 2. Verify `wiki/.state.json` is current: either `last_evaluated_sha == HEAD`, or the only drift commits are wiki-sync squash artifacts (subjects starting with `wiki:`). Substantive non-wiki drift STOPs the release; the wiki is stale and would ship out-of-date adopter docs. Maintainer runs `/gaia-wiki sync` first. The `wiki:`-prefix bypass exists because PR squash-merging always rewrites the SHA, so the standard flow (`/gaia-wiki sync` → merge → `/gaia-release`) leaves the state pointer one squash-commit behind even when content is current; without the bypass the gate is unsatisfiable. When a squash orphans `last_evaluated_sha` outright (`reachable:false`), `gaia wiki state` reports a hardcoded `commits_ahead:0`, a silent zero that would hide the un-evaluated window. Preflight catches this: it re-derives the drift over `suggested_base..HEAD` (the newest HEAD-reachable commit at or before `last_evaluated_at`) and applies the same wiki-artifact classification, so an orphaned state still blocks on substantive drift instead of green-lighting on the zero. See [[Wiki Sync]].
@@ -48,6 +48,8 @@ Run `/gaia-release` on a clean `main`. The command is a 13-step orchestrator:
 11. Commit on the release branch: `chore(release): vX.Y.Z`. The pre-commit dance updates `wiki/.state.json`'s `last_evaluated_sha` to the new commit's own SHA via amend, so adopters' state files match their release commit on first scaffold.
 12. Push branch, open PR via `gh`. The release PR is subject to the same CI gate (`Vitest and Playwright`, `Run Chromatic`) and `code-review-audit` merge handshake as any other PR; see [[PR Merge Workflow]]. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, and `--auto` lets GitHub complete the merge once checks pass.
 13. Once the PR shows `MERGED`, pull `main`, tag the merge commit (`v<NEW_VERSION>`), push the tag.
+14. Lockstep `create-gaia` and the website. The website update includes bumping three version constants, invoking the `release-notes` skill to generate the public changelog entry (`<version>.ts`) for the site, and overwriting the GitHub release body with adopter-facing notes rendered from that file via `render-release-md.mjs` (so the GitHub release and the website changelog stay in sync).
+15. Lockstep the docs site (`../docs` sibling checkout): update the sidebar version constant and commit directly to `main`.
 
 The tag push triggers [`release.yml`](../../.github/workflows/release.yml), which produces the scrubbed tarball.
 
