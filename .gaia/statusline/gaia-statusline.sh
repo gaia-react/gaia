@@ -108,6 +108,7 @@ if [ "$is_worktree" -eq 0 ]; then
       outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
       gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
       gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
+      harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
 
       segments=()
       COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
@@ -119,6 +120,9 @@ if [ "$is_worktree" -eq 0 ]; then
       fi
       if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
         segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
+      fi
+      if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
+        segments+=("$(printf '\033[01;35mRun /gaia-harden review (%d)\033[00m' "$harden_count")")
       fi
       if [ "${#segments[@]}" -gt 0 ]; then
         right="${segments[0]}"

@@ -35,12 +35,14 @@ prev_outdated_count=0
 prev_gaia_current=""
 prev_gaia_latest=""
 prev_gaia_has_update=false
+prev_harden_count=0
 if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_checked_at=$(jq -r '.checkedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_gaia_current=$(jq -r '.gaiaCurrent // ""' "$CACHE_FILE" 2>/dev/null)
   prev_gaia_latest=$(jq -r '.gaiaLatest // ""' "$CACHE_FILE" 2>/dev/null)
   prev_gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
+  prev_harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
   case "$prev_checked_at" in
     ''|*[!0-9]*) prev_checked_at=0 ;;
   esac
@@ -83,6 +85,28 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
 fi
 case "$outdated_count" in
   ''|*[!0-9]*) outdated_count=0 ;;
+esac
+
+# ---------- hardenCandidateCount ----------
+# Recurring-finding tally for the policy-memory loop. `harden-tally` reads the
+# rolling 90-day merged-PR window via gh, counts distinct PRs per finding_class
+# at error/warning severity, drops promoted/suppressed classes, and emits the
+# candidate_count. Runs in this same TTL pass; network is non-fatal (gh failure
+# yields candidate_count 0). Falls back to the previous cached count on any
+# failure: missing binary, network error, parse error.
+harden_count="$prev_harden_count"
+if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
+  tally_json="$(cd "$PROJECT_ROOT" && "$GAIA_BIN" harden-tally 2>/dev/null)"
+  if [ -n "$tally_json" ]; then
+    parsed=$(printf '%s' "$tally_json" | jq -r '.candidate_count // empty' 2>/dev/null)
+    case "$parsed" in
+      ''|*[!0-9]*) ;;
+      *) harden_count="$parsed" ;;
+    esac
+  fi
+fi
+case "$harden_count" in
+  ''|*[!0-9]*) harden_count=0 ;;
 esac
 
 # ---------- gaiaCurrent ----------
@@ -136,12 +160,13 @@ if command -v jq >/dev/null 2>&1; then
     --arg gaiaCurrent "$gaia_current" \
     --arg gaiaLatest "$gaia_latest" \
     --argjson gaiaHasUpdate "$gaia_has_update" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate}' \
+    --argjson hardenCandidateCount "$harden_count" \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount}' \
     > "$tmp_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s}\n' \
-    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" \
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s}\n' \
+    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" \
     > "$tmp_file" 2>/dev/null
 fi
 
