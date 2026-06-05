@@ -55,6 +55,14 @@ To swap a library: remove its extension file, add one for the replacement. The m
 | `react-i18next.md`   | `react-i18next`      |
 | `form-components.md` | GAIA Form Components |
 
+## Finding emission
+
+After the human-readable report, the agent appends a machine-readable telemetry trailer as the last fenced `---` block of its Task return. The PostToolUse Task hook parses this block; `findings_json` carries one entry per eligible finding with `finding_class`, `severity`, and `area_tags`. The cross-machine tally in [[Policy-Memory Loop]] reads these findings (plus the identical CI findings block written to the PR comment) when computing recurring-finding candidates.
+
+`finding_class` follows a per-bucket convention: oracle buckets use the tool's own id prefixed (`react-doctor/...`, `axe/...`, `knip/...`, `cve/...`); holistic and rule-subagent buckets draw from a constrained vocabulary seeded in the agent definition. A finding with no stable class is omitted from the trailer but may still appear in the prose report.
+
+The CI workflow appends the same structured findings as an HTML-comment block at the end of its PR comment (framed by `<!-- gaia-harden:findings:start -->` / `<!-- gaia-harden:findings:end -->` sentinel lines), so the tally can read findings from both local and CI runs via `gh`.
+
 ## Trigger
 
 Always before `gh pr merge` ([[PR Merge Workflow]]), enforced by the `pr-merge-audit-check.sh` advisory hook ([[Claude Hooks]]). Also on demand for any review.
