@@ -270,6 +270,41 @@ Push, own Bash invocation, **literal path inlined** (substitute the path printed
 git -C /abs/path/to/website push origin main
 ```
 
+**GitHub release body (adopter notes).** Step 12's tag fired `release.yml`, which created the GitHub release with the raw `## [<NEW_VERSION>]` CHANGELOG block as a fallback body. That block is contributor-facing (terse, internal, PR-numbered, and can carry duplicated sub-sections); overwrite it with the same adopter notes just generated. `render-release-md.mjs` derives markdown from the committed `<NEW_VERSION>.ts`, so the GitHub release and the website changelog never drift:
+
+```bash
+node "$WEB/scripts/render-release-md.mjs" <NEW_VERSION> > "/tmp/gh-notes-v<NEW_VERSION>.md"
+gh release edit "v<NEW_VERSION>" -R gaia-react/gaia --notes-file "/tmp/gh-notes-v<NEW_VERSION>.md"
+```
+
+`gh release edit` is neither a push nor a `gh pr merge`, so the repo-scope and audit hooks do not apply; no literal-path treatment is needed here.
+
+### 15. Lockstep docs
+
+The documentation site (`../docs` relative to this repo, docs.gaiareact.com) shows the current GAIA version in its sidebar colophon. Update it to match the release just cut.
+
+```bash
+DOCS="$(git rev-parse --show-toplevel)/../docs"
+[ -d "$DOCS/.git" ] || { echo "docs checkout not found at $DOCS, lockstep cannot complete here"; exit 1; }
+DOCS="$(git -C "$DOCS" rev-parse --show-toplevel)"   # canonical absolute path
+echo "docs resolved to: $DOCS"                       # ← note this literal path; inline it (NOT $DOCS) into the push below
+```
+
+- `$DOCS/src/overrides/PageSidebar.astro` → `const version = '<NEW_VERSION>';`
+
+Commit and push directly to `main` in the docs repo (mirror Step 14's website push; if docs enforces branch protection, route through a PR as in Step 11). Apply the sibling-repo push protocol from Step 13: the `add`/`commit` chain keeps `$DOCS` and combines freely, but the `git push` runs in its **own Bash tool invocation** with the **literal path inlined**.
+
+```bash
+git -C "$DOCS" add src/overrides/PageSidebar.astro
+git -C "$DOCS" commit -m "chore: lockstep GAIA v<NEW_VERSION>"
+```
+
+Push, own Bash invocation, **literal path inlined** (substitute the path printed by the discovery step for the placeholder; not `$DOCS`):
+
+```bash
+git -C /abs/path/to/docs push origin main
+```
+
 ## Recovery: I tagged on the wrong commit
 
 ```bash
