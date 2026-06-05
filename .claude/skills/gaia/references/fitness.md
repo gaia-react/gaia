@@ -4,7 +4,7 @@
 
 The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state harness layer described below. That harness layer, auto-branching, the unsafe-state guard, is `/gaia-fitness`-specific and is not part of the protocol in that page.
 
-**Scope note:** the harness this file wraps around the protocol is minimal, no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. v1 introduces no `gaia` CLI subcommand, the agent runs the checks the wiki page defines (greps / `jq` / `.gaia/cli/gaia wiki …` calls) inline.
+**Scope note:** the harness this file wraps around the protocol is minimal, no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. The agent runs the checks the wiki page defines (greps / `jq` / `.gaia/cli/gaia wiki …` calls) inline; the only fitness-specific `gaia` subcommand it calls is `gaia fitness render-card`, which renders the final report card from the findings JSON (presentation only, it runs no checks).
 
 ---
 
@@ -159,54 +159,51 @@ After each heal cycle, re-run the affected category checks (the Auditors for the
 
 ## Step 6, Report
 
-Print the following to chat:
+Emit the report as a **single ASCII card** rendered by `gaia fitness render-card`, and paste the rendered card directly into your chat reply inside a fenced code block. Do not surface it as a tool result, the harness collapses long tool output; the card must be a first-class part of your message.
 
-### Findings section
+Build the report JSON from the adjudicated findings and the computed grades. List all seven categories with the grade you computed (the renderer sorts them alphabetically and derives the per-category note column from the findings, so order and counts are not your job):
 
-Group findings by the seven taxonomy category names. For each finding:
-
-```
-- [severity] `file:line`, remediation
-```
-
-Unresolved / unfixable findings are included with their recommended approach. On a clean run (zero adjudicated findings, overall A+), omit the Findings section entirely, print only the grades table and the "no findings" post-heal line.
-
-### Grades section
-
-Print a grade table:
-
-```
-| Category | Grade | Findings |
-|---|---|---|
-| Hook integrity | <grade> | <count and severity summary> |
-| Skill / command / agent frontmatter | <grade> | ... |
-| Rule hygiene | <grade> | ... |
-| CLAUDE.md hygiene | <grade> | ... |
-| Settings hygiene | <grade> | ... |
-| GAIA-install fitness | <grade> | ... |
-| Wiki fitness | <grade> | ... |
-
-**Overall grade: <grade>** (floor of category grades)
+```json
+{
+  "command": "> /gaia-fitness",
+  "overall": "<floor of the seven category grades>",
+  "categories": [
+    {"name": "Hook integrity", "grade": "<grade>"},
+    {"name": "Skill / command / agent frontmatter", "grade": "<grade>"},
+    {"name": "Rule hygiene", "grade": "<grade>"},
+    {"name": "CLAUDE.md hygiene", "grade": "<grade>"},
+    {"name": "Settings hygiene", "grade": "<grade>"},
+    {"name": "GAIA-install fitness", "grade": "<grade>"},
+    {"name": "Wiki fitness", "grade": "<grade>"}
+  ],
+  "findings": [
+    {"category": "<category name>", "grade": "<category grade>",
+     "severity": "error|warning|info", "file": "<repo-relative path[:line]>",
+     "remediation": "<one-line fix or recommended approach>"}
+  ]
+}
 ```
 
-### Post-heal instructions
+Render it (the renderer self-sizes the box to `clamp(longest line, floor, min(terminal width, 120))` and wraps remediation text):
 
-**If a `chore/gaia-fitness-<timestamp>` branch was created:**
+```bash
+.gaia/cli/gaia fitness render-card \
+  --cols "$(tput cols 2>/dev/null || echo 100)" <<'JSON'
+{ ...the report JSON above... }
+JSON
+```
 
-> Changes applied on branch `chore/gaia-fitness-<timestamp>`. Review with `git diff main`, commit when satisfied, or discard with:
->
-> ```
-> git checkout main && git branch -D chore/gaia-fitness-<timestamp>
-> ```
+Paste the command's stdout verbatim into your reply as a fenced code block.
 
-**If healing happened in place on an existing branch (`CURRENT_BRANCH`):**
+The `findings` array drives both the per-category note column and the grouped FINDINGS block. Unresolved / unfixable findings are included with their recommended approach in the `remediation`. On a clean run (zero adjudicated findings, overall A+), pass an empty `findings` array, the card omits the FINDINGS block.
 
-> Changes applied on current branch `<CURRENT_BRANCH>`. Review with `git diff`, commit when satisfied, or discard with `git checkout -- .`
+**Post-heal instructions.** The card carries no footer. After pasting it, print one post-heal line as prose below the card, by harness state (from Steps 2 and 4):
 
-**If triage-only (unsafe repo state from Step 2):**
+| State | Line |
+| --- | --- |
+| Branch created | Changes applied on branch `chore/gaia-fitness-<timestamp>`. Review with `git diff main`; discard with `git checkout main && git branch -D chore/gaia-fitness-<timestamp>`. |
+| In place on `CURRENT_BRANCH` | Changes applied on `<CURRENT_BRANCH>`. Review with `git diff`; discard with `git checkout -- .`. |
+| Triage-only (unsafe state) | Heal skipped, `<reason>`. Re-run `/gaia-fitness` after `<resolution steps>`. |
+| Zero findings (A+) | No findings. Overall A+. No changes made, no branch created. |
 
-> Heal skipped, `<reason>` (e.g. HEAD is detached / rebase in progress). Re-run `/gaia-fitness` after `<resolution steps>`.
-
-**If zero findings (overall A+):**
-
-> No findings. Overall A+. No changes made, no branch created.
+Format, taxonomy, and grading rubric source of truth: `wiki/decisions/Claude Integration Fitness.md` (Chat Report Format, Grading Rubric, Severity Vocabulary).

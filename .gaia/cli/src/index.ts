@@ -14,6 +14,7 @@ import {run as runAutomation} from './automation/index.js';
 import {run as runCiRevert} from './ci/revert.js';
 import {run as runCiStaleCheck} from './ci/stale-check.js';
 import {EXIT_CODES} from './exit.js';
+import {run as runFitness} from './fitness/index.js';
 import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
 import {run as runScaffold} from './scaffold/index.js';
@@ -33,6 +34,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
+  fitness render-card [--cols N]
   automation read-config|read-state|init-state|bump-state|cron-decide|record-run|record-overage|clear-overage
   ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
   ci-revert open|mark-failed|is-cap-reached
@@ -59,6 +61,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   automation: runAutomation,
   'ci-revert': runCiRevert,
   'ci-stale-check': runCiStaleCheck,
+  fitness: runFitness,
   init: runInit,
   mentorship: runMentorship,
   scaffold: runScaffold,
