@@ -190,6 +190,6 @@ Use this only for an internal-only release or a genuinely one-line story. Anythi
 
 ## See
 
-- `.claude/commands/gaia-release.md`, the release process this feeds; Step 14 already locksteps other website version sites.
+- `.claude/commands/gaia-release.md`, the release process this feeds: Step 14 invokes this skill for the changelog page entry and locksteps the other website version sites.
 - `CHANGELOG.md`, the source. Read-only. Never edited here.
 - `eval/probe.py`, trigger-boundary validation harness (maintainer-only, excluded from the tarball). After editing the frontmatter `description`, re-run `python3 .claude/skills/release-notes/eval/probe.py --runs 3` to confirm the boundary still holds (target: 100% recall, 0% false-positive). Options in its docstring.

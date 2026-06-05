@@ -218,7 +218,7 @@ npm view create-gaia@<NEW_VERSION> version    # registry CDN may lag a minute
 
 ### 14. Lockstep website
 
-The marketing/docs site (`../website` relative to this repo) embeds three version references that must match the release just cut. Update all three before considering the release complete.
+The marketing/docs site (`../website` relative to this repo) embeds three version references plus a public changelog entry that must match the release just cut. Update all of them before considering the release complete.
 
 ```bash
 WEB="$(git rev-parse --show-toplevel)/../website"
@@ -246,12 +246,21 @@ Example: current is `installed=1.2.0, available=1.2.2`. On `1.3.0` → `installe
 
 - `$WEB/index.html` → `"softwareVersion": "<NEW_VERSION>",`
 
+**Public changelog page (release notes).** The three edits above are version strings; the human-readable "what's new" entry on the site's changelog page is a separate artifact owned by the `release-notes` skill. Generate it for the version just cut:
+
+- Invoke the `release-notes` skill with `<NEW_VERSION>` (no leading `v`). It reads the graduated `## [<NEW_VERSION>]` block from `CHANGELOG.md`, translates it to adopter-facing notes, writes `$WEB/src/pages/changelog/releases/<NEW_VERSION>.ts` (the page auto-discovers the file via `import.meta.glob`; there is no index to update), and prints an editorial-decisions report.
+- The report is a human gate: review the **Dropped** and **Consolidated** lists and resolve every **Needs a human ruling** item before accepting, then adjust the file per the maintainer's rulings.
+- The skill only reads `CHANGELOG.md`; never edit the changelog here.
+
+Stage the generated `<NEW_VERSION>.ts` alongside the three version edits so all four land in one website commit.
+
 Commit and push directly to `main` in the website repo (no branch protection on `website`). Apply the sibling-repo push protocol from Step 13: the `add`/`commit` chain keeps `$WEB` and combines freely, but the `git push` runs in its **own Bash tool invocation** with the **literal path inlined**. A `git -C "$WEB" push origin main` resolves the target to the literal string `$WEB`, fails closed, and is denied as a home-repo push to `main`.
 
 ```bash
 git -C "$WEB" add src/pages/get-started/sections/GetStarted.tsx \
                src/pages/features/sections/Fitness.tsx \
-               index.html
+               index.html \
+               src/pages/changelog/releases/<NEW_VERSION>.ts
 git -C "$WEB" commit -m "chore: lockstep GAIA v<NEW_VERSION>"
 ```
 
