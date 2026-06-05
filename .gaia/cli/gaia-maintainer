@@ -14658,6 +14658,60 @@ var ADAPTATION_TEXT = {
   po_socratic_depth_increased: "The user has historically had trouble articulating success criteria for {{area}} work. Coach more on observable outcomes: what changes, what stays, what would prove this done? Push past 'looks right' or 'feels good' to concrete checks."
 };
 
+// src/schemas/finding-class.ts
+var ORACLE_PREFIXES = [
+  "react-doctor",
+  "axe",
+  "knip",
+  "cve"
+];
+var HOLISTIC_FINDING_CLASSES = [
+  "holistic/missing-auth-check",
+  "holistic/secret-exposure",
+  "holistic/n-plus-one",
+  "holistic/unnecessary-rerender",
+  "holistic/unhandled-promise-rejection",
+  "holistic/swallowed-error",
+  "holistic/over-permissive-zod",
+  "holistic/business-logic-in-component",
+  "holistic/hardcoded-string",
+  "holistic/non-null-assertion"
+];
+var RULE_FINDING_CLASSES = [
+  "rule/use-effect-derived-state",
+  "rule/use-effect-state-reset",
+  "rule/unnecessary-use-callback",
+  "rule/missing-effect-cleanup",
+  "rule/generic-handler-name",
+  "rule/switch-statement",
+  "rule/interface-declaration",
+  "rule/z-enum",
+  "rule/array-generic-syntax",
+  "rule/thin-route-violation"
+];
+var CLOSED_VOCABULARY = /* @__PURE__ */ new Set([
+  ...HOLISTIC_FINDING_CLASSES,
+  ...RULE_FINDING_CLASSES
+]);
+var splitPrefix = (value) => {
+  const separatorIndex = value.indexOf("/");
+  if (separatorIndex === -1) return void 0;
+  return {
+    prefix: value.slice(0, separatorIndex),
+    slug: value.slice(separatorIndex + 1)
+  };
+};
+var isOraclePrefix = (prefix) => ORACLE_PREFIXES.includes(prefix);
+var isValidFindingClass = (value) => {
+  const parts = splitPrefix(value);
+  if (parts === void 0) return false;
+  if (isOraclePrefix(parts.prefix)) return parts.slug.length > 0;
+  return CLOSED_VOCABULARY.has(value);
+};
+var FindingClassSchema = external_exports.string().refine(isValidFindingClass, {
+  message: "finding_class must match the per-bucket convention (oracle id or controlled vocabulary)"
+});
+
 // src/schemas/mentorship-payloads.ts
 var SPEC_ID_REGEX = /^SPEC-\d{3,}$/;
 var UAT_ID_REGEX = /^UAT-\d{3,}$/;
@@ -14733,7 +14787,7 @@ var TimeToResolvedSpecPayload = external_exports.object({
 var CodeReviewAuditFindingPayload = external_exports.object({
   area_tags: AreaTagsSchema,
   auditor_type: external_exports.string(),
-  finding_class: external_exports.string(),
+  finding_class: FindingClassSchema,
   pr_number: external_exports.number().int().min(1),
   severity: external_exports.enum(["error", "warning", "suggestion"]),
   spec_id: external_exports.string().regex(SPEC_ID_REGEX).optional()
@@ -27382,7 +27436,7 @@ var TimeToResolvedSpecCloudPayload = external_exports.strictObject({
 var CodeReviewAuditFindingCloudPayload = external_exports.strictObject({
   area_tags: external_exports.array(external_exports.string()),
   auditor_type: external_exports.string(),
-  finding_class: external_exports.string(),
+  finding_class: FindingClassSchema,
   pr_number: external_exports.number().int(),
   severity: external_exports.string(),
   spec_id: external_exports.string().optional()
@@ -27928,6 +27982,7 @@ var buildAuditFindings = (trailer) => {
     const findingClass = stringField(finding, "finding_class");
     const severity = stringField(finding, "severity");
     if (findingClass === void 0 || severity === void 0) continue;
+    if (!isValidFindingClass(findingClass)) continue;
     invocations.push({
       args: [
         "--pr-number",
