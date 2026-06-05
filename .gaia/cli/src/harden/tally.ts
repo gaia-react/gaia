@@ -89,7 +89,7 @@ const parseGhPr = (value: unknown): GhPr | null => {
  */
 const fetchWindowPrs = (cwd: string, now: Date): TallyPrRecord[] => {
   const search = `merged:>=${windowStartDate(now)}`;
-  const result: ProcessResult = runGh(
+  const ghResult: ProcessResult = runGh(
     [
       'pr',
       'list',
@@ -105,12 +105,12 @@ const fetchWindowPrs = (cwd: string, now: Date): TallyPrRecord[] => {
     {cwd}
   );
 
-  if (result.exitCode !== 0) return [];
+  if (ghResult.exitCode !== 0) return [];
 
   let parsed: unknown;
 
   try {
-    parsed = JSON.parse(result.stdout);
+    parsed = JSON.parse(ghResult.stdout);
   } catch {
     return [];
   }
@@ -158,7 +158,7 @@ export const run = (argv: readonly string[], options: RunOptions = {}): number =
     path.join(cwd, '.claude', 'rules')
   );
 
-  const result = computeTally({
+  const tallyResult = computeTally({
     coveredClass: (findingClass) => covered.has(findingClass),
     prs,
     suppressedClass: makeLedgerSuppressionPredicate({cwd, runLedger}),
@@ -168,7 +168,7 @@ export const run = (argv: readonly string[], options: RunOptions = {}): number =
   // Self-clean the ledger: drop declines whose class no longer recurs.
   pruneLedger({cwd, runLedger, windowClasses: windowClasses(prs)});
 
-  process.stdout.write(`${JSON.stringify(result)}\n`);
+  process.stdout.write(`${JSON.stringify(tallyResult)}\n`);
 
   return EXIT_CODES.OK;
 };
