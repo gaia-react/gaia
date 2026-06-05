@@ -16,6 +16,7 @@
 import {run as runFetchCoaching} from './adaptation/inject.js';
 import {run as runAutomation} from './automation/index.js';
 import {EXIT_CODES} from './exit.js';
+import {run as runFitness} from './fitness/index.js';
 import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
 import {run as runRelease} from './release/index.js';
@@ -37,6 +38,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
+  fitness render-card [--cols N]
   automation read-config|read-state|init-state|bump-state|cron-decide|record-run|record-overage|clear-overage
   update merge --baseline <dir> --latest <dir> --manifest <path>
   update-deps run --emit-updates <path>
@@ -59,6 +61,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   automation: runAutomation,
+  fitness: runFitness,
   init: runInit,
   mentorship: runMentorship,
   release: runRelease,

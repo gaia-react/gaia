@@ -247,36 +247,50 @@ After each heal cycle, re-run the affected category checks. Recompute the affect
 
 ## Chat Report Format
 
+The report is a single self-sizing ASCII card, emitted as a fenced code block in the chat reply. It has three regions:
+
+- **Header**: the command and the **overall grade** (floor of the seven category grades), right-aligned.
+- **Grades block**: the seven categories sorted alphabetically by name; each row carries a right-aligned severity-count note (`1 warning`, `2 errors, 1 info`) and the category grade.
+- **Findings block**: findings grouped by category, each as `[severity] file` with the `remediation` wrapped beneath. Omitted entirely on a clean run.
+
+The card carries no footer; the `/gaia-fitness` skill prints post-heal instructions as prose below it.
+
+The card width self-sizes: `clamp(longest content line, floor, min(terminal width, 120))`, where `floor` keeps the grades block from colliding. Remediation text wraps to the chosen width, so the card grows to one line per finding on a wide terminal and wraps on a narrow one. `/gaia-fitness` renders it with `gaia fitness render-card`, which takes the findings JSON on stdin and a `--cols` width; the skill's report step builds that JSON from the adjudicated findings and pastes the rendered card into the reply.
+
+Example (overall **B+**, the floor of one `B+` category over six `A`/`A+` categories):
+
+```text
++------------------------------------------------------------------------------+
+| /gaia-fitness                                                   OVERALL   B+ |
++------------------------------------------------------------------------------+
+| CLAUDE.md hygiene                                                1 info   A  |
+| GAIA-install fitness                                             1 info   A  |
+| Hook integrity                                                            A+ |
+| Rule hygiene                                                              A+ |
+| Settings hygiene                                                          A+ |
+| Skill / command / agent frontmatter                           1 warning   B+ |
+| Wiki fitness                                                              A+ |
++------------------------------------------------------------------------------+
+| FINDINGS                                                                     |
+|                                                                              |
+| CLAUDE.md hygiene: A                                                         |
+|   [info]    CLAUDE.md                                                        |
+|             @-import of a path-scoped rule resolves but is always-loaded;    |
+|             consider whether it warrants it.                                 |
+|                                                                              |
+| GAIA-install fitness: A                                                      |
+|   [info]    .gaia/manifest.json                                              |
+|             GAIA v1.1.1 installed; v1.2.0 available. Run /update-gaia to     |
+|             upgrade.                                                         |
+|                                                                              |
+| Skill / command / agent frontmatter: B+                                      |
+|   [warning] .claude/commands/deploy.md                                       |
+|             description frontmatter is missing; add a concise description of |
+|             what this command does.                                          |
++------------------------------------------------------------------------------+
 ```
-## Claude Integration Fitness Report
 
-### Category Grades
-| Category | Grade | Findings |
-|---|---|---|
-| Hook integrity | A+ | 0 |
-| Skill / command / agent frontmatter | B+ | 1 warning |
-| Rule hygiene | A+ | 0 |
-| CLAUDE.md hygiene | A | 1 info |
-| Settings hygiene | A+ | 0 |
-| GAIA-install fitness | A | 1 info |
-| Wiki fitness | A+ | 0 |
-
-**Overall grade: A** (floor of category grades)
-
-### Findings
-
-#### Skill / command / agent frontmatter: B+
-- ⚠️ **warning** `<path-to-command>`: `description` frontmatter is missing. Add a concise description of what this command does.
-
-#### CLAUDE.md hygiene: A
-- ℹ️ **info** `CLAUDE.md`: `@`-import of `<path-to-rule>` resolves but the rule is path-scoped; consider whether it warrants always-loading.
-
-#### GAIA-install fitness: A
-- ℹ️ **info** `.gaia/manifest.json`: GAIA v1.1.1 installed; v1.2.0 available. Run `/update-gaia` to upgrade.
-
-### Post-heal instructions
-Changes applied to the working tree. Review with `git diff`, commit when satisfied, or discard with `git checkout -- .` (and `git branch -D chore/gaia-fitness-<timestamp>` if a branch was created).
-```
+The overall grade is the floor of the seven category grades: the single `B+` category sets the headline; the six `A`/`A+` categories do not lift it.
 
 ---
 
