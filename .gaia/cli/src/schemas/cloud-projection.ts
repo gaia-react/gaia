@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {FindingClassSchema} from './finding-class.js';
 
 // Cloud payloads strip identity-bearing fields. Mirror the mentorship payloads
 // minus any field that could re-identify the developer.
@@ -95,7 +96,7 @@ export type TimeToResolvedSpecCloudPayload = z.infer<
 export const CodeReviewAuditFindingCloudPayload = z.strictObject({
   area_tags: z.array(z.string()),
   auditor_type: z.string(),
-  finding_class: z.string(),
+  finding_class: FindingClassSchema,
   pr_number: z.number().int(),
   severity: z.string(),
   spec_id: z.string().optional(),

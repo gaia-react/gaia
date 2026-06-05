@@ -1,0 +1,76 @@
+import {describe, expect, it} from 'vitest';
+import {
+  FINDING_CLASS_PREFIXES,
+  FindingClassSchema,
+  HOLISTIC_FINDING_CLASSES,
+  isValidFindingClass,
+  RULE_FINDING_CLASSES,
+} from '../finding-class.js';
+
+describe('schemas/finding-class', () => {
+  describe('oracle buckets (open id space after the prefix)', () => {
+    it.each([
+      'react-doctor/no-generic-handler-names',
+      'axe/color-contrast',
+      'knip/exports',
+      'knip/types',
+      'knip/dependencies',
+      'cve/1098765',
+    ])('accepts a well-formed oracle id: %s', (value) => {
+      expect(FindingClassSchema.safeParse(value).success).toBe(true);
+      expect(isValidFindingClass(value)).toBe(true);
+    });
+
+    it('rejects an oracle prefix with an empty slug', () => {
+      expect(FindingClassSchema.safeParse('react-doctor/').success).toBe(false);
+      expect(isValidFindingClass('axe/')).toBe(false);
+    });
+  });
+
+  describe('closed holistic/rule buckets (controlled vocabulary)', () => {
+    it.each(HOLISTIC_FINDING_CLASSES)(
+      'accepts seeded holistic member: %s',
+      (value) => {
+        expect(FindingClassSchema.safeParse(value).success).toBe(true);
+      }
+    );
+
+    it.each(RULE_FINDING_CLASSES)(
+      'accepts seeded rule member: %s',
+      (value) => {
+        expect(FindingClassSchema.safeParse(value).success).toBe(true);
+      }
+    );
+
+    it('rejects an unseeded holistic member (closed bucket)', () => {
+      expect(
+        FindingClassSchema.safeParse('holistic/something-made-up').success
+      ).toBe(false);
+      expect(isValidFindingClass('holistic/something-made-up')).toBe(false);
+    });
+
+    it('rejects an unseeded rule member (closed bucket)', () => {
+      expect(
+        FindingClassSchema.safeParse('rule/totally-invented').success
+      ).toBe(false);
+    });
+  });
+
+  describe('free-text drift', () => {
+    it.each(['just free text', '', 'no-prefix-slug', 'unknown/whatever'])(
+      'rejects: %j',
+      (value) => {
+        expect(FindingClassSchema.safeParse(value).success).toBe(false);
+        expect(isValidFindingClass(value)).toBe(false);
+      }
+    );
+  });
+
+  describe('exported vocabulary', () => {
+    it('exposes the six known prefixes', () => {
+      expect(new Set(FINDING_CLASS_PREFIXES)).toEqual(
+        new Set(['axe', 'cve', 'holistic', 'knip', 'react-doctor', 'rule'])
+      );
+    });
+  });
+});

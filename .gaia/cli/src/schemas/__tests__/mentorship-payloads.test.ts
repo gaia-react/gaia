@@ -255,7 +255,7 @@ describe('schemas/mentorship-payloads', () => {
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
           auditor_type: 'code-review-audit',
-          finding_class: 'type_hole',
+          finding_class: 'react-doctor/no-generic-handler-names',
           pr_number: 42,
           severity: 'warning',
           spec_id: 'SPEC-014',
@@ -268,7 +268,7 @@ describe('schemas/mentorship-payloads', () => {
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
           auditor_type: 'code-review-audit',
-          finding_class: 'type_hole',
+          finding_class: 'holistic/missing-auth-check',
           pr_number: 42,
           severity: 'warning',
         })
@@ -280,7 +280,7 @@ describe('schemas/mentorship-payloads', () => {
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
           auditor_type: 'code-review-audit',
-          finding_class: 'type_hole',
+          finding_class: 'axe/color-contrast',
           pr_number: 0,
           severity: 'warning',
         })
@@ -292,9 +292,33 @@ describe('schemas/mentorship-payloads', () => {
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
           auditor_type: 'code-review-audit',
-          finding_class: 'type_hole',
+          finding_class: 'axe/color-contrast',
           pr_number: 42,
           severity: 'critical',
+        })
+      ).toThrow();
+    });
+
+    it('rejects a free-text finding_class (drift)', () => {
+      expect(() =>
+        CodeReviewAuditFindingPayload.parse({
+          area_tags: ['typescript'],
+          auditor_type: 'code-review-audit',
+          finding_class: 'type_hole',
+          pr_number: 42,
+          severity: 'warning',
+        })
+      ).toThrow();
+    });
+
+    it('rejects an unseeded holistic finding_class', () => {
+      expect(() =>
+        CodeReviewAuditFindingPayload.parse({
+          area_tags: ['typescript'],
+          auditor_type: 'code-review-audit',
+          finding_class: 'holistic/something-made-up',
+          pr_number: 42,
+          severity: 'warning',
         })
       ).toThrow();
     });

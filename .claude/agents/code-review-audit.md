@@ -186,6 +186,39 @@ Every suggestion must be resolved before the audit passes:
 
 Include only when there are specific, concrete patterns worth reinforcing. Skip the section entirely if there's nothing substantive, don't pad with generic praise.
 
+## Finding emission (telemetry trailer)
+
+After the human-readable report, append a machine-readable telemetry trailer as the **last** fenced `---` block of your Task return. The PostToolUse Task hook parses this block to record each finding for the recurring-finding policy-memory loop, which raises a `/gaia-harden` nudge when the same `finding_class` recurs across distinct PRs. The human report and this trailer are independent channels: a finding can appear in the prose report without appearing here.
+
+Trailer shape (the closing `---` must be the final fence in your return):
+
+```
+---
+findings_json: [{"finding_class":"react-doctor/no-generic-handler-names","severity":"warning","area_tags":["app/components"]}, {"finding_class":"holistic/missing-auth-check","severity":"error","area_tags":["app/routes"]}]
+pr_number: 1234
+---
+```
+
+Rules for the block:
+
+- **One entry per eligible finding** you report. `findings_json` is a JSON array; emit `[]` when you classified nothing.
+- **Carry ONLY `finding_class`, `severity`, and `area_tags`** per entry. Never code, never file contents, never a path beyond a coarse area tag (`app/components`, `app/routes`). `pr_number` is a sibling scalar on the trailer, not on each entry.
+- **`severity`** is one of `error`, `warning`, `suggestion`, the same tiers as the report (`Critical`/`Important`/`Suggestion`).
+- **Assign `finding_class` by the per-bucket convention** below. A finding you cannot assign a stable class to is simply omitted from `findings_json`; it can still appear in the prose report. A finding with no stable class is not a countable finding.
+
+### Per-bucket `finding_class` convention
+
+- **Oracle buckets (deterministic tools): the tool's own id, prefixed.** The tool owns the id space, so any well-formed id after the prefix is valid.
+  - react-doctor: the rule id, prefixed `react-doctor/` (e.g. `react-doctor/no-generic-handler-names`).
+  - axe (accessibility): the axe rule id, prefixed `axe/` (e.g. `axe/color-contrast`).
+  - knip: the issue type, prefixed `knip/` (e.g. `knip/exports`, `knip/types`, `knip/dependencies`).
+  - dependency-CVE (`pnpm audit`): the advisory id, prefixed `cve/` (e.g. `cve/1098765`).
+- **Holistic / rule-subagent buckets: a controlled vocabulary.** Use one of the seeded members below verbatim; do not invent new members. If a holistic or rule finding does not map to a seeded member, omit it from `findings_json`.
+  - Holistic (your own cross-cutting findings): `holistic/missing-auth-check`, `holistic/secret-exposure`, `holistic/n-plus-one`, `holistic/unnecessary-rerender`, `holistic/unhandled-promise-rejection`, `holistic/swallowed-error`, `holistic/over-permissive-zod`, `holistic/business-logic-in-component`, `holistic/hardcoded-string`, `holistic/non-null-assertion`.
+  - Rule (line-level subagent findings): `rule/use-effect-derived-state`, `rule/use-effect-state-reset`, `rule/unnecessary-use-callback`, `rule/missing-effect-cleanup`, `rule/generic-handler-name`, `rule/switch-statement`, `rule/interface-declaration`, `rule/z-enum`, `rule/array-generic-syntax`, `rule/thin-route-violation`.
+
+The schema enforces this convention: an entry whose `finding_class` is free text or an unseeded holistic/rule member is dropped before it reaches the tally, so a misclassified entry is silently lost rather than miscounted. When in doubt, omit the entry.
+
 ## Methodology
 
 1. **Read the code carefully**: understand the intent before critiquing the implementation

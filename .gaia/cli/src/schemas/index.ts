@@ -10,6 +10,8 @@ export * from './cloud-projection.js';
 
 export * from './envelope.js';
 
+export * from './finding-class.js';
+
 export * from './local-automation.js';
 
 export * from './local-namespace.js';

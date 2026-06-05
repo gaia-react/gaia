@@ -72,10 +72,10 @@ describe('parseTrailer: code-review-audit', () => {
     const findings = JSON.stringify([
       {
         area_tags: ['security', 'auth'],
-        finding_class: 'sqli',
-        severity: 'high',
+        finding_class: 'holistic/missing-auth-check',
+        severity: 'error',
       },
-      {finding_class: 'race-condition', severity: 'medium'},
+      {finding_class: 'react-doctor/no-generic-handler-names', severity: 'warning'},
     ]);
     const input = buildHookInput(
       'code-review-audit',
@@ -90,9 +90,9 @@ describe('parseTrailer: code-review-audit', () => {
         '--pr-number',
         '97',
         '--finding-class',
-        'sqli',
+        'holistic/missing-auth-check',
         '--severity',
-        'high',
+        'error',
         '--area-tags',
         'security,auth',
         '--auditor-type',
@@ -103,12 +103,16 @@ describe('parseTrailer: code-review-audit', () => {
       eventType: 'code_review_audit_finding',
     });
 
-    expect(invocations[1]?.args).toContain('race-condition');
+    expect(invocations[1]?.args).toContain(
+      'react-doctor/no-generic-handler-names'
+    );
     expect(invocations[1]?.args.at(-3)).toBe('code-review-audit');
   });
 
   test('defaults pr_number to "0" when absent', () => {
-    const findings = JSON.stringify([{finding_class: 'x', severity: 'low'}]);
+    const findings = JSON.stringify([
+      {finding_class: 'axe/color-contrast', severity: 'warning'},
+    ]);
     const input = buildHookInput(
       'code-review-audit',
       trailer(`findings_json: ${findings}`)
@@ -120,9 +124,9 @@ describe('parseTrailer: code-review-audit', () => {
 
   test('skips findings missing finding_class or severity', () => {
     const findings = JSON.stringify([
-      {finding_class: 'good', severity: 'high'},
-      {severity: 'medium'},
-      {finding_class: 'no-severity'},
+      {finding_class: 'cve/1098765', severity: 'error'},
+      {severity: 'warning'},
+      {finding_class: 'knip/exports'},
       {},
     ]);
     const input = buildHookInput(
@@ -132,7 +136,38 @@ describe('parseTrailer: code-review-audit', () => {
 
     const {invocations} = parseTrailer(input);
     expect(invocations).toHaveLength(1);
-    expect(invocations[0]?.args).toContain('good');
+    expect(invocations[0]?.args).toContain('cve/1098765');
+  });
+
+  test('drops findings whose finding_class fails the controlled-set check', () => {
+    const findings = JSON.stringify([
+      {finding_class: 'axe/color-contrast', severity: 'error'},
+      {finding_class: 'type_hole', severity: 'error'},
+      {finding_class: 'holistic/something-made-up', severity: 'warning'},
+      {finding_class: 'just free text', severity: 'error'},
+    ]);
+    const input = buildHookInput(
+      'code-review-audit',
+      trailer(`findings_json: ${findings}`)
+    );
+
+    const {invocations} = parseTrailer(input);
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]?.args).toContain('axe/color-contrast');
+  });
+
+  test('returns invalid_trailer_json when every finding has an invalid class', () => {
+    const findings = JSON.stringify([
+      {finding_class: 'type_hole', severity: 'error'},
+    ]);
+    const input = buildHookInput(
+      'code-review-audit',
+      trailer(`findings_json: ${findings}`)
+    );
+
+    const result = parseTrailer(input);
+    expect(result.invocations).toEqual([]);
+    expect(result.reason).toBe('invalid_trailer_json');
   });
 
   test('returns invalid_trailer_json when findings_json is not parseable', () => {

@@ -281,6 +281,31 @@ jobs:
             stamp helper. After the audit and stamp, post a single PR comment
             summarizing findings (and whether self-heal commits were pushed).
 
+            FINDINGS BLOCK: append a machine-readable findings block to the END
+            of that same PR comment, after the human-readable summary. The block
+            is a JSON object wrapped INSIDE an HTML comment so it does not render,
+            framed by two stable sentinel lines. The cross-machine tally pass
+            parses it; the sentinels are the parse anchors, emit them verbatim:
+
+            <!-- gaia-harden:findings:start -->
+            <!--
+            {"schema":1,"pr_number":PR_NUMBER,"auditor":"ci","findings":[
+              {"finding_class":"react-doctor/no-generic-handler-names","severity":"warning","area_tags":["app/components"]},
+              {"finding_class":"holistic/missing-auth-check","severity":"error","area_tags":["app/routes"]}
+            ]}
+            -->
+            <!-- gaia-harden:findings:end -->
+
+            Substitute PR_NUMBER with this PR's number. One object per finding you
+            assigned a stable `finding_class`, using the per-bucket convention in
+            `.claude/agents/code-review-audit.md` (oracle ids verbatim with the
+            tool prefix; the controlled holistic/rule vocabulary otherwise). Carry
+            only `finding_class`, `severity` (error/warning/suggestion), and
+            `area_tags` per finding, never code or file contents. Omit any finding
+            with no stable class (it stays in the prose summary). If you classified
+            zero findings, still emit the block with `"findings":[]`, an explicit
+            empty block is parseable, a missing one is ambiguous.
+
             SELF-HEAL CONSTRAINTS: read before making any edits:
             1. Run `git diff --name-only origin/main...HEAD` first. Self-heal edits
                are ONLY permitted on files that appear in this list. Never edit a

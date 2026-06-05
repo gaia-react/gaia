@@ -52,4 +52,16 @@ describe('audit-template dogfood drift-guard', () => {
 
     expect(inTree).toBe(template);
   });
+
+  it('instructs the audit agent to emit the machine-readable findings block', () => {
+    const template = readFileSync(workflowAuditTemplatePath(), 'utf8');
+
+    // The tally pass parses findings from the PR comment via these stable
+    // sentinels; freezing them in the prompt is the contract anchor.
+    expect(template).toContain('<!-- gaia-harden:findings:start -->');
+    expect(template).toContain('<!-- gaia-harden:findings:end -->');
+    // The finding_class values come from the per-bucket convention in the
+    // agent definition, not a second one re-derived in the workflow.
+    expect(template).toContain('.claude/agents/code-review-audit.md');
+  });
 });

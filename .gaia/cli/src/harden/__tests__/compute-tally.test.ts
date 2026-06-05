@@ -1,0 +1,277 @@
+import {describe, expect, it} from 'vitest';
+import {
+  computeTally,
+  type TallyPrRecord,
+  windowClasses,
+} from '../compute-tally.js';
+
+const pr = (
+  prNumber: number,
+  findings: TallyPrRecord['findings']
+): TallyPrRecord => ({findings, pr_number: prNumber});
+
+const noCover = (): boolean => false;
+const noSuppress = (): boolean => false;
+
+describe('computeTally', () => {
+  it('surfaces a class seen on 3 distinct PRs at warning severity', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [
+        pr(1201, [
+          {
+            area_tags: ['app/components'],
+            finding_class: 'react-doctor/no-generic-handler-names',
+            severity: 'warning',
+          },
+        ]),
+        pr(1188, [
+          {
+            area_tags: ['app/components'],
+            finding_class: 'react-doctor/no-generic-handler-names',
+            severity: 'warning',
+          },
+        ]),
+        pr(1175, [
+          {
+            area_tags: ['app/hooks'],
+            finding_class: 'react-doctor/no-generic-handler-names',
+            severity: 'warning',
+          },
+        ]),
+      ],
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(1);
+    expect(result.window_days).toBe(90);
+
+    const [candidate] = result.candidates;
+    expect(candidate?.finding_class).toBe(
+      'react-doctor/no-generic-handler-names'
+    );
+    expect(candidate?.distinct_pr_count).toBe(3);
+    expect(candidate?.severity_max).toBe('warning');
+    expect(candidate?.pr_numbers).toEqual([1201, 1188, 1175]);
+    expect(candidate?.area_tags).toEqual(['app/components', 'app/hooks']);
+  });
+
+  it('does not surface a class on only 2 distinct PRs', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [
+        pr(2, [
+          {area_tags: [], finding_class: 'knip/exports', severity: 'warning'},
+        ]),
+        pr(1, [
+          {area_tags: [], finding_class: 'knip/exports', severity: 'warning'},
+        ]),
+      ],
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(0);
+  });
+
+  it('does not surface a class repeated 3 times within ONE PR', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [
+        pr(1, [
+          {area_tags: [], finding_class: 'knip/exports', severity: 'warning'},
+          {area_tags: [], finding_class: 'knip/exports', severity: 'warning'},
+          {area_tags: [], finding_class: 'knip/exports', severity: 'warning'},
+        ]),
+      ],
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(0);
+  });
+
+  it('ignores suggestion-only findings but counts the same class at warning', () => {
+    const suggestionOnly = computeTally({
+      coveredClass: noCover,
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'holistic/hardcoded-string',
+            severity: 'suggestion',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+    expect(suggestionOnly.candidate_count).toBe(0);
+
+    const atWarning = computeTally({
+      coveredClass: noCover,
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'holistic/hardcoded-string',
+            severity: 'warning',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+    expect(atWarning.candidate_count).toBe(1);
+  });
+
+  it('combines CI-run and local-run findings for the same class across distinct PRs', () => {
+    // Each PR contributes one comment block (CI or local); the core only sees a
+    // per-PR finding list, so auditor location never changes eligibility.
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [
+        pr(10, [
+          {
+            area_tags: ['app'],
+            finding_class: 'rule/switch-statement',
+            severity: 'warning',
+          },
+        ]),
+        pr(11, [
+          {
+            area_tags: ['app'],
+            finding_class: 'rule/switch-statement',
+            severity: 'error',
+          },
+        ]),
+        pr(12, [
+          {
+            area_tags: ['app'],
+            finding_class: 'rule/switch-statement',
+            severity: 'warning',
+          },
+        ]),
+      ],
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(1);
+    expect(result.candidates[0]?.severity_max).toBe('error');
+  });
+
+  it('collapses two same-class findings in one PR to a single distinct-PR count', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [30, 20, 10].map((n) =>
+        pr(n, [
+          {
+            area_tags: ['app/routes'],
+            finding_class: 'holistic/missing-auth-check',
+            severity: 'error',
+          },
+          {
+            area_tags: ['app/pages'],
+            finding_class: 'holistic/missing-auth-check',
+            severity: 'warning',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidates[0]?.distinct_pr_count).toBe(3);
+    expect(result.candidates[0]?.severity_max).toBe('error');
+    expect(result.candidates[0]?.area_tags).toEqual([
+      'app/routes',
+      'app/pages',
+    ]);
+  });
+
+  it('ignores class-less / invalid findings entirely', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {area_tags: [], finding_class: '', severity: 'error'},
+          {area_tags: [], finding_class: 'not-a-real-prefix/x', severity: 'error'},
+          {
+            area_tags: [],
+            finding_class: 'holistic/something-made-up',
+            severity: 'error',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(0);
+  });
+
+  it('drops a class a promoted rule already covers', () => {
+    const result = computeTally({
+      coveredClass: (c) => c === 'rule/switch-statement',
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'warning',
+          },
+        ])
+      ),
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(0);
+  });
+
+  it('drops a class the ledger reports suppressed and passes the live PR count', () => {
+    const seen: number[] = [];
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'axe/color-contrast',
+            severity: 'error',
+          },
+        ])
+      ),
+      suppressedClass: (_c, currentPrCount) => {
+        seen.push(currentPrCount);
+
+        return true;
+      },
+      windowDays: 90,
+    });
+
+    expect(result.candidate_count).toBe(0);
+    expect(seen).toContain(3);
+  });
+
+  it('windowClasses returns classes with >= threshold recurrence regardless of suppression', () => {
+    const prs = [
+      ...[3, 2, 1].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'axe/color-contrast',
+            severity: 'warning',
+          },
+        ])
+      ),
+      pr(99, [
+        {area_tags: [], finding_class: 'knip/types', severity: 'warning'},
+      ]),
+    ];
+
+    expect(windowClasses(prs)).toEqual(['axe/color-contrast']);
+  });
+});
