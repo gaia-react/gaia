@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [v1.4.0] 2026-06-02 | Released
 
+- 2026-06-05 592914b SKIP - chore(release): release plumbing
+- 2026-06-05 ba30e2a SKIP - fix(hooks): exclude self-referential sync commits from drift count; implementation detail, Wiki Sync concept already covers drift-check behavior
+- 2026-06-05 f947ed9 SKIP - build(deps): @gaia-react/lint upgrade + prettier sweep; wiki changes are table alignment only, no content
+- 2026-06-05 f02e0ad WORTHY - fixed CI audit gate: specialist dispatch via Task tool (not Skill), added clean-no-push GAIA-Audit status stamp path → wiki/concepts/Code Review Audit Agent.md, wiki/concepts/Code Review Audit CI.md
 - 2026-06-04 1eb85b9 WORTHY - fix git-quoted path stripping in inspectWorkingTree (sync land) → wiki/concepts/Wiki Sync.md
 - 2026-06-04 0404aeb SKIP - wiki: self-referential (sync commit)
 - 2026-06-04 26740f1 SKIP - chore(release): manifest update only; no architecture change
