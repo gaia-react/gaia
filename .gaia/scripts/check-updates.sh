@@ -172,7 +172,7 @@ applied_at=0
 draft_pending=false
 AUDIT_DIR="$PROJECT_ROOT/.gaia/local/audit"
 if [ -d "$AUDIT_DIR" ]; then
-  for f in $(ls -t "$AUDIT_DIR"/KNOWLEDGE-*.md 2>/dev/null); do
+  while IFS= read -r f; do
     [ -f "$f" ] || continue
     fm_status=$(sed -n '1,/^---[[:space:]]*$/p' "$f" 2>/dev/null \
       | grep -m1 -E '^status:[[:space:]]*' 2>/dev/null \
@@ -188,7 +188,7 @@ if [ -d "$AUDIT_DIR" ]; then
     elif [ "$fm_status" = "draft" ]; then
       draft_pending=true
     fi
-  done
+  done < <(ls -t "$AUDIT_DIR"/KNOWLEDGE-*.md 2>/dev/null)
 fi
 # Advance the last-applied anchor (and reset the memory baseline to the count at
 # that audit) only when a newer applied report appears. This is the debounce:
