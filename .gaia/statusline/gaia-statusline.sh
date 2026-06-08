@@ -124,7 +124,9 @@ if [ "$is_worktree" -eq 0 ]; then
         segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
       fi
       if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
-        segments+=("$(printf '\033[01;35mRun /gaia-harden\033[00m')")
+        harden_noun="recurring patterns"
+        [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
+        segments+=("$(printf '\033[01;35mRun /gaia-harden (%d %s)\033[00m' "$harden_count" "$harden_noun")")
       fi
       if [ "$audit_nudge" = "true" ]; then
         if [ -n "$audit_reason" ]; then
