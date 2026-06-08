@@ -1,7 +1,7 @@
 ---
 name: gaia-audit
 description: Audit memory, wiki, and auto-loaded files for duplication, conflicting instructions, and stale content. The default path researches, then asks you a single Apply / Discuss / Decline question before any change. Pass --apply to re-run the apply stage against the most recent report.
-argument-hint: [--apply]
+argument-hint: [--apply] [scope-hint]
 ---
 
 Run the GAIA **audit** workflow with these arguments: `$ARGUMENTS`

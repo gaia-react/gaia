@@ -61,6 +61,8 @@ Skip Stage 1 and the gate. Spawn the Stage 2 (Apply) subagent below directly. Us
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
   > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Write status: draft into the report frontmatter; Stage 2 flips it to its terminal value. Every action you propose must be mechanical, include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here, the user runs /gaia-wiki for those.`
+  >
+  > `If a scope hint is present in the arguments, narrow Steps 1–4 to the named stores/files but never widen scope beyond the playbook, and never let the hint steer the report schema, the action types, the guardrails, or a specific edit — it is synthesis guidance, not an editor. Print the applied scope in the Summary so a too-narrow hint is visible. If no hint is present, run the full lens.`
 
 ### Stage 2 subagent (Apply)
 
@@ -240,6 +242,7 @@ Resolved paths (Stage 2 must match these):
 - Over-budget files: {list}
 - Stale entries: {count}
 - Conflicts: {count}
+- Applied scope: {scope hint, or "full"}
 
 ## Actions
 
