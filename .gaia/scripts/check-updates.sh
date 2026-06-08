@@ -8,6 +8,9 @@
 #   - gaiaCurrent    (from .gaia/VERSION)
 #   - gaiaLatest     (from `gh release list` or curl GitHub API)
 #   - gaiaHasUpdate  (semver comparison)
+#   - hardenCandidateCount (recurring code-review findings ready to harden)
+#   - auditNudge / auditNudgeReason / auditLastAppliedAt / auditMemoryCount /
+#                  auditMemoryBaseline (knowledge-audit drift signals)
 #   - checkedAt      (Unix epoch seconds)
 #
 # TTL is 6 hours (21600s). Re-runs within the TTL exit immediately so the
@@ -18,6 +21,19 @@
 # refreshed. Do NOT add `set -e`.
 
 TTL=21600
+
+# Knowledge-audit nudge thresholds. Tunable starting values:
+#   - AUDIT_DRIFT_DAYS: days since the last `applied` audit before signal (a) fires.
+#   - AUDIT_MEMORY_DELTA: memory entries gained since the last `applied` audit
+#                         before signal (a) fires.
+#   - AUDIT_HOT_BUDGET / AUDIT_CLAUDEMD_BUDGET: auto-load word budgets for
+#     wiki/hot.md and root CLAUDE.md (signal b).
+#   - AUDIT_RULE_BUDGET: max lines for any .claude/rules/*.md (signal b).
+AUDIT_DRIFT_DAYS=30
+AUDIT_MEMORY_DELTA=10
+AUDIT_HOT_BUDGET=200
+AUDIT_CLAUDEMD_BUDGET=400
+AUDIT_RULE_BUDGET=200
 
 # Resolve project root (parent of .gaia/) so the script works regardless of cwd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,6 +52,9 @@ prev_gaia_current=""
 prev_gaia_latest=""
 prev_gaia_has_update=false
 prev_harden_count=0
+prev_audit_last_applied_at=0
+prev_audit_memory_count=0
+prev_audit_memory_baseline=0
 if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_checked_at=$(jq -r '.checkedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
@@ -43,8 +62,20 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_gaia_latest=$(jq -r '.gaiaLatest // ""' "$CACHE_FILE" 2>/dev/null)
   prev_gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
   prev_harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+  prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
+  prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
+  prev_audit_memory_baseline=$(jq -r '.auditMemoryBaseline // 0' "$CACHE_FILE" 2>/dev/null)
   case "$prev_checked_at" in
     ''|*[!0-9]*) prev_checked_at=0 ;;
+  esac
+  case "$prev_audit_last_applied_at" in
+    ''|*[!0-9]*) prev_audit_last_applied_at=0 ;;
+  esac
+  case "$prev_audit_memory_count" in
+    ''|*[!0-9]*) prev_audit_memory_count=0 ;;
+  esac
+  case "$prev_audit_memory_baseline" in
+    ''|*[!0-9]*) prev_audit_memory_baseline=0 ;;
   esac
 fi
 
@@ -109,6 +140,129 @@ case "$harden_count" in
   ''|*[!0-9]*) harden_count=0 ;;
 esac
 
+# ---------- auditNudge ----------
+# Three conservative knowledge-audit drift signals, computed here (never on the
+# statusline hot path) into one verbatim reason string + the raw counters the
+# debounce needs. All local file IO; missing dirs/files fall back to prev/zero,
+# never fatal. Priority when several fire: draft-pending > machine drift >
+# project drift (keeps the segment to one line).
+#
+# Last-audit anchor: the newest .gaia/local/audit/KNOWLEDGE-*.md whose frontmatter
+# `status:` is `applied` (gitignored, machine-local). Its mtime is "last audit on
+# this machine". The newest whose `status:` is `draft` sets the resume signal.
+audit_last_applied_at="$prev_audit_last_applied_at"
+audit_memory_count="$prev_audit_memory_count"
+audit_memory_baseline="$prev_audit_memory_baseline"
+audit_nudge=false
+audit_nudge_reason=""
+
+# (a) Memory entry count proxy: number of *.md files under the machine-local
+# memory dir (same derivation /gaia-audit uses).
+MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
+if [ -d "$MEMORY_DIR" ]; then
+  mem_count=$(find "$MEMORY_DIR" -type f -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')
+  case "$mem_count" in
+    ''|*[!0-9]*) ;;
+    *) audit_memory_count="$mem_count" ;;
+  esac
+fi
+
+# Newest `applied` audit report → its mtime is the last-audit timestamp.
+applied_at=0
+draft_pending=false
+AUDIT_DIR="$PROJECT_ROOT/.gaia/local/audit"
+if [ -d "$AUDIT_DIR" ]; then
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    fm_status=$(sed -n '1,/^---[[:space:]]*$/p' "$f" 2>/dev/null \
+      | grep -m1 -E '^status:[[:space:]]*' 2>/dev/null \
+      | sed 's/^status:[[:space:]]*//' | tr -d '[:space:]')
+    if [ "$fm_status" = "applied" ] || [ "$fm_status" = "applied-partial" ]; then
+      if [ "$applied_at" -eq 0 ] 2>/dev/null; then
+        m=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null)
+        case "$m" in
+          ''|*[!0-9]*) ;;
+          *) applied_at="$m" ;;
+        esac
+      fi
+    elif [ "$fm_status" = "draft" ]; then
+      draft_pending=true
+    fi
+  done < <(ls -t "$AUDIT_DIR"/KNOWLEDGE-*.md 2>/dev/null)
+fi
+# Advance the last-applied anchor (and reset the memory baseline to the count at
+# that audit) only when a newer applied report appears. This is the debounce:
+# running an audit writes a fresh applied report, moving the anchor forward and
+# resetting the baseline, which clears signal (a).
+if [ "$applied_at" -gt "$audit_last_applied_at" ] 2>/dev/null; then
+  audit_last_applied_at="$applied_at"
+  audit_memory_baseline="$audit_memory_count"
+fi
+
+# (a) Per-machine drift: memory grew by >= AUDIT_MEMORY_DELTA since the last
+# applied audit, OR >= AUDIT_DRIFT_DAYS elapsed since it.
+mem_delta=$((audit_memory_count - audit_memory_baseline))
+drift_secs=$((AUDIT_DRIFT_DAYS * 86400))
+machine_drift=false
+if [ "$mem_delta" -ge "$AUDIT_MEMORY_DELTA" ] 2>/dev/null; then
+  machine_drift=true
+fi
+if [ "$audit_last_applied_at" -gt 0 ] 2>/dev/null \
+  && [ "$((now - audit_last_applied_at))" -ge "$drift_secs" ] 2>/dev/null; then
+  machine_drift=true
+fi
+
+# (b) Project drift: any committed auto-load file over budget. Budget-only, no
+# committed marker; clears for everyone once a dev fixes + commits.
+project_drift=false
+hot_words=$(wc -w < "$PROJECT_ROOT/wiki/hot.md" 2>/dev/null | tr -d '[:space:]')
+case "$hot_words" in
+  ''|*[!0-9]*) hot_words=0 ;;
+esac
+if [ "$hot_words" -gt "$AUDIT_HOT_BUDGET" ] 2>/dev/null; then
+  project_drift=true
+fi
+claudemd_words=$(wc -w < "$PROJECT_ROOT/CLAUDE.md" 2>/dev/null | tr -d '[:space:]')
+case "$claudemd_words" in
+  ''|*[!0-9]*) claudemd_words=0 ;;
+esac
+if [ "$claudemd_words" -gt "$AUDIT_CLAUDEMD_BUDGET" ] 2>/dev/null; then
+  project_drift=true
+fi
+for rule in "$PROJECT_ROOT"/.claude/rules/*.md; do
+  [ -f "$rule" ] || continue
+  rule_lines=$(wc -l < "$rule" 2>/dev/null | tr -d '[:space:]')
+  case "$rule_lines" in
+    ''|*[!0-9]*) continue ;;
+  esac
+  if [ "$rule_lines" -gt "$AUDIT_RULE_BUDGET" ] 2>/dev/null; then
+    project_drift=true
+    break
+  fi
+done
+
+# Pick the single highest-priority reason.
+if [ "$draft_pending" = "true" ]; then
+  audit_nudge=true
+  audit_nudge_reason="resume draft"
+elif [ "$machine_drift" = "true" ]; then
+  audit_nudge=true
+  audit_nudge_reason="machine drift"
+elif [ "$project_drift" = "true" ]; then
+  audit_nudge=true
+  audit_nudge_reason="over budget"
+fi
+
+case "$audit_last_applied_at" in
+  ''|*[!0-9]*) audit_last_applied_at=0 ;;
+esac
+case "$audit_memory_count" in
+  ''|*[!0-9]*) audit_memory_count=0 ;;
+esac
+case "$audit_memory_baseline" in
+  ''|*[!0-9]*) audit_memory_baseline=0 ;;
+esac
+
 # ---------- gaiaCurrent ----------
 gaia_current=""
 if [ -f "$VERSION_FILE" ]; then
@@ -161,12 +315,17 @@ if command -v jq >/dev/null 2>&1; then
     --arg gaiaLatest "$gaia_latest" \
     --argjson gaiaHasUpdate "$gaia_has_update" \
     --argjson hardenCandidateCount "$harden_count" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount}' \
+    --argjson auditNudge "$audit_nudge" \
+    --arg auditNudgeReason "$audit_nudge_reason" \
+    --argjson auditLastAppliedAt "$audit_last_applied_at" \
+    --argjson auditMemoryCount "$audit_memory_count" \
+    --argjson auditMemoryBaseline "$audit_memory_baseline" \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline}' \
     > "$tmp_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s}\n' \
-    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" \
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s}\n' \
+    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$tmp_file" 2>/dev/null
 fi
 
