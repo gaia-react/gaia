@@ -117,14 +117,16 @@ if [ "$is_worktree" -eq 0 ]; then
       if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
         segments+=("🧭")
       fi
-      if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-        segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
-      fi
       if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
         segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
       fi
+      if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
+        segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
+      fi
       if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
-        segments+=("$(printf '\033[01;35mRun /gaia-harden review (%d)\033[00m' "$harden_count")")
+        harden_noun="recurring patterns"
+        [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
+        segments+=("$(printf '\033[01;35mRun /gaia-harden (%d %s)\033[00m' "$harden_count" "$harden_noun")")
       fi
       if [ "$audit_nudge" = "true" ]; then
         if [ -n "$audit_reason" ]; then
