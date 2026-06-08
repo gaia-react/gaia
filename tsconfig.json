@@ -1,14 +1,13 @@
 {
   "compilerOptions": {
-    "allowJs": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
     "lib": ["DOM", "ESNext"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
+    "noUncheckedSideEffectImports": true,
     "paths": {
       "~/*": ["./app/*"],
       "test/*": ["./test/*"]
@@ -16,6 +15,7 @@
     "resolveJsonModule": true,
     "rootDirs": [".", "./.react-router/types"],
     "skipLibCheck": true,
+    "stableTypeOrdering": true,
     "strict": true,
     "target": "ES2022",
     "types": ["@react-router/node", "vite/client"]
