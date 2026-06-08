@@ -139,7 +139,7 @@ const computeInner = (
 };
 
 export const renderCard = (report: FitnessReport, cols: number): string => {
-  const categories = [...report.categories].sort((a, b) =>
+  const categories = report.categories.toSorted((a, b) =>
     a.name.localeCompare(b.name)
   );
 

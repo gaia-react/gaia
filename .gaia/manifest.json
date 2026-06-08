@@ -393,7 +393,6 @@
     "public/favicon.svg": "owned",
     "public/mockServiceWorker.js": "owned",
     "public/site.webmanifest": "owned",
-    "react-doctor.config.json": "owned",
     "react-router.config.ts": "owned",
     "stylelint.config.mjs": "owned",
     "test/a11y.ts": "owned",
