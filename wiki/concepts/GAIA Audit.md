@@ -3,7 +3,7 @@ type: concept
 title: GAIA Audit
 status: active
 created: 2026-04-20
-updated: 2026-05-03
+updated: 2026-06-09
 tags: [concept, claude, skill, knowledge, hygiene]
 ---
 
@@ -16,17 +16,27 @@ tags: [concept, claude, skill, knowledge, hygiene]
 - After an ingestion spree that may have introduced overlap
 - When auto-load payload starts feeling heavy (CLAUDE.md, `wiki/hot.md`, or rules growing)
 - Periodic hygiene pass
+- When the statusline shows `Run /gaia-audit (<reason>)`: GAIA nudges on per-machine memory drift, an auto-load file over budget, or a pending draft to resume
 
-## Two-stage execution
+## Two-stage execution with a decision gate
 
-`/gaia-audit` is the intent to apply. The default chains both stages; Stage 1 produces a report, Stage 2 executes it. The two-stage split is for technical reasons (different reasoning loads, drift-check between stages), not as a user-confirmation gate.
+`/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, the main conversation summarizes it and asks a single **Apply / Discuss / Decline** question, and only on **Apply** does Stage 2 execute it. The two-stage split is technical (different reasoning loads, a drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1.
 
-| Invocation            | Stages            | When to use                                                                          |
-| --------------------- | ----------------- | ------------------------------------------------------------------------------------ |
-| `/gaia-audit`         | Stage 1 → Stage 2 | Default. Research, then apply, in sequence                                           |
-| `/gaia-audit --apply` | Stage 2 only      | Retry against the most recent existing report (after drift fix or interrupted apply) |
+- **Apply**: spawn Stage 2 to execute the report now (the one-keystroke fast path).
+- **Discuss / refine**: talk it through, edit the report in place, then re-ask.
+- **Decline**: delete the report; nothing is applied.
+
+| Invocation             | Path                              | When to use                                                                                                       |
+| ---------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/gaia-audit`          | Stage 1 → gate → Stage 2 on Apply | Default. Research, review at the gate, then apply                                                                 |
+| `/gaia-audit "<hint>"` | Same, scoped to the hint          | Narrow Stage 1 to named stores or files; a scoped run still applies by default                                   |
+| `/gaia-audit --apply`  | Stage 2 only                      | Retry against the most recent draft or partial report (after drift fix or interrupted apply), within a 72h grace |
 
 Stage 1 (Sonnet) proposes actions (`delete`, `delete-entry`, `promote`, `shrink`), each with verbatim `expect` snippets and sha256 drift signals, written to `.gaia/local/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model. Contradiction findings (CONFLICT research category) emit `replace` or `delete` action types in the report, not a separate action type.
+
+### Report lifecycle
+
+Each report carries a `status:` field. Stage 1 writes it as `draft`; Stage 2 flips it to `applied` when every action lands cleanly, or `applied-partial` when some actions are skipped or fail (kept so `/gaia-audit --apply` can retry the remainder). A `draft` survives an interrupted run and is resumable. The Step 0 prune keeps the newest few `applied` reports and never deletes a `draft`; declining at the gate deletes the report immediately. Recovery for tracked files is git, printed as a `recovery:` line after apply (`git restore` / `git checkout --` / `git clean`).
 
 ## What it catches
 
