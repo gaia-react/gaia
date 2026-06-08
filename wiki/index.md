@@ -93,6 +93,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 - [[No Component Library]]
 - [[TypeScript Language Files]]
+- [[TypeScript 7 Readiness]]: tsconfig pre-adopts the TS7 strict baseline; the 7.1 upgrade is a dep swap gated on typescript-eslint's programmatic API.
 - [[Thin Routes]]
 - [[Co-located Tests Folder]]
 - [[composeStory Pattern]]
