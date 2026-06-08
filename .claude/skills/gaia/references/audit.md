@@ -2,9 +2,9 @@
 
 ## Execution model, READ FIRST
 
-**Do not execute the playbook yourself in the current conversation.** Dispatch subagents via the `Agent` tool. Each subagent runs in isolated context.
+**Do not execute the playbook yourself in the current conversation.** Dispatch the Stage 1 and Stage 2 subagents via the `Agent` tool. Each subagent runs in isolated context. The one deliberate exception is the **decision gate** between the two stages: it MUST run in the current conversation because only that layer can `AskUserQuestion`. Do not "fix" the gate back into a subagent.
 
-Calling `/gaia-audit` is the intent to apply. The default chains research and apply: Stage 1 produces a report, Stage 2 executes it. The two-stage split exists for technical reasons (different reasoning loads, drift-check between stages), not as a user-confirmation gate.
+Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, the main conversation summarizes it and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation.
 
 ### Path resolution (portable, no hardcoding)
 
@@ -20,16 +20,26 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 
 ### Branch on `$ARGUMENTS`
 
-**Default (`/gaia-audit`)** → Stage 1, then Stage 2.
+**Default (`/gaia-audit`)** → Stage 1 (Research), then the **decision gate**, then branch.
 
-1. Spawn the Stage 1 (Research) subagent below. Wait for it to return.
-2. If Stage 1 succeeded (a report path was printed), spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest report by mtime, no path argument needed.
-3. Relay both summaries verbatim, in order.
-4. If Stage 1 failed, do not spawn Stage 2. Surface the error.
+1. Spawn the Stage 1 (Research) subagent below. Wait for it to return. Stage 1 writes the report with `status: draft`.
+2. If Stage 1 succeeded (a report path was printed), **in the main conversation** summarize the report's findings to the user, then ask via `AskUserQuestion`:
+   - **header:** `"Apply audit?"`
+   - **question:** `"Stage 1 found {N} actions. Apply them?"`
+   - **options (this exact order):**
+     1. `{ label: "Apply", description: "Spawn Stage 2 to execute the report now." }`
+     2. `{ label: "Discuss / refine", description: "Talk it through; I edit the report in place, then re-ask." }`
+     3. `{ label: "Decline", description: "Delete the report; nothing is applied." }`
+   - **Apply** → spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest non-`applied` report, no path argument needed.
+   - **Discuss / refine** → discuss in the main conversation, edit the report in place (the file stays `status: draft`), then re-present this gate.
+   - **Decline** → `rm` the report file immediately; nothing applied; stop.
+3. If Stage 1 failed, do not gate or spawn Stage 2. Surface the error.
 
-**`/gaia-audit --apply`** → Stage 2 only.
+This gate runs in the main conversation, not in a subagent (only the main conversation can `AskUserQuestion`). "Apply" is the one-keystroke fast path that keeps the one-go feel.
 
-Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-apply an existing report after fixing drift, or to retry without re-researching.
+**`/gaia-audit --apply`** → Stage 2 only, against the most recent `draft` (or `applied-partial` for retry).
+
+Skip Stage 1 and the gate. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-apply an existing report after fixing drift, or to retry without re-researching.
 
 ### Stage 1 subagent (Research)
 
@@ -50,7 +60,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
   >
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
-  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Every action you propose must be mechanical, include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here, the user runs /gaia-wiki for those.`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Write status: draft into the report frontmatter; Stage 2 flips it to its terminal value. Every action you propose must be mechanical, include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here, the user runs /gaia-wiki for those.`
 
 ### Stage 2 subagent (Apply)
 
@@ -103,14 +113,21 @@ The report you produce is a **contract** to a Sonnet-level executor. Assume it c
 
 ## Step 0, Prune old reports
 
-Before writing the new report, self-maintain `$PROJECT_ROOT/.gaia/local/audit/`:
+Before writing the new report, self-maintain `$PROJECT_ROOT/.gaia/local/audit/`. The prune applies to `applied` / `applied-partial` reports only:
 
-- **Keep the newest 5 reports regardless of age** (floor, protects long gaps between runs).
-- Of anything beyond the newest 5, **delete reports older than 30 days**.
+- **Never prune a `draft`** (live, unfinished work — it is resumable via `--apply`). Treat a missing `status:` as non-`applied`, do not prune it either.
+- Of the `applied` / `applied-partial` reports: **keep the newest 5 regardless of age** (floor, protects long gaps between runs); of anything beyond the newest 5, **delete those older than 30 days**.
 
 ```bash
 if [ -d ".gaia/local/audit" ]; then
-  ls -t .gaia/local/audit/KNOWLEDGE-*.md 2>/dev/null | tail -n +6 | while IFS= read -r f; do
+  # Select only applied / applied-partial reports, newest first; drafts and
+  # status-less reports are never candidates for prune.
+  ls -t .gaia/local/audit/KNOWLEDGE-*.md 2>/dev/null | while IFS= read -r f; do
+    status="$(sed -n 's/^status:[[:space:]]*//p' "$f" 2>/dev/null | head -n1)"
+    case "$status" in
+      applied|applied-partial) printf '%s\n' "$f" ;;
+    esac
+  done | tail -n +6 | while IFS= read -r f; do
     if [ -n "$(find "$f" -mtime +30 -print 2>/dev/null)" ]; then
       rm -- "$f"
     fi
@@ -198,6 +215,7 @@ Derive the timestamp from the shell, never guess the current date/time: `date '+
 ---
 generated: {YYYY-MM-DD HH:MM}
 generator: audit-knowledge stage-1 sonnet
+status: draft
 project_root: {resolved PROJECT_ROOT}
 memory_dir: {resolved MEMORY_DIR}
 agent_memory_dir: {resolved AGENT_MEMORY_DIR}
@@ -302,7 +320,7 @@ You are executing, not reasoning. Follow this loop exactly.
 
 ### Pre-flight
 
-1. Find the newest `$PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-*.md`. If none, or mtime >24h, stop and print `no fresh report, run /gaia-audit first`.
+1. Find the most recent non-`applied` report under `$PROJECT_ROOT/.gaia/local/audit/`: the newest `KNOWLEDGE-*.md` whose frontmatter `status:` is `draft` or `applied-partial` (an `applied` report has already been executed and must not be re-applied; skip it). If none, or its mtime is >24h, stop and print `no fresh report, run /gaia-audit first`.
 2. Parse the report's frontmatter. Verify `project_root`, `memory_dir`, and `agent_memory_dir` match the values you resolved at startup. If any differ, stop and print a clear error, the report was generated on a different machine or in a different clone.
 3. Run `git rev-parse HEAD`, if it differs from `git_head` in the report, print a warning but continue. Run `git status --short`, any file that is currently dirty AND appears as a target in the report is marked `SKIP (dirty)` before any action runs.
 4. Read the `## Ordering` section. Process actions in that order.
@@ -323,13 +341,16 @@ For each unchecked action block:
 
 ### Post-flight
 
-Print a final summary to stdout:
+Set the report frontmatter `status:` to its terminal value: `applied` if every action is `[x]`, otherwise `applied-partial` (any action ended `[~]` skipped or `[!]` failed). `applied-partial` is kept so `--apply` can retry the remainder. This is the one place that sets terminal status.
+
+Then print a final summary to stdout:
 
 ```
 
 audit apply: {done}/{total} applied · {skipped} skipped · {failed} failed
 diff footprint:
 {git status --short}
+recovery: changes are uncommitted; revert any unwanted edit with `git restore <path>` (or `git checkout -- <path>` / `git clean` for new files).
 next: review diff, commit if satisfied
 
 ```
