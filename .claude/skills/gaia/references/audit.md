@@ -55,7 +55,7 @@ Skip Stage 1. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-
 ### Stage 2 subagent (Apply)
 
 - `subagent_type`: `"general-purpose"`
-- `model`: `"haiku"`
+- `model`: `"sonnet"`
 - `description`: `"Knowledge audit (apply)"`
 - `prompt`: the string below (literal):
 
@@ -153,6 +153,10 @@ For every memory entry and every rules file, check whether the same fact lives i
 - **PROMOTE**: durable knowledge only in memory → propose moving to a specific wiki page (name the page)
 - **KEEP-LOCAL**: genuinely machine-local (personal pref, machine path, unique dev env) → keep in memory
 - **STALE**: references a file/branch/feature no longer present → mark for deletion
+- **CONFLICT**: a store asserts a policy that *contradicts* another canonical source on the same subject — opposed, not merely duplicated. Two scopes:
+  - **Cross-store**: a memory entry or a `.claude/rules/*.md` file contradicts the wiki's canonical statement on the same subject. **Resolution favors the wiki.** Emit a `replace` swapping the contradicting line for a wikilink to the canonical page, or a `delete` if the contradicting entry has no residual value. Cite the canonical wiki page + line range in `reason` and note the superseded value inline (e.g. `reason: contradicts wiki/decisions/Foo.md L12-15 (canonical); local store asserted the opposite`).
+  - **Project-internal**: two committed project files assert opposing facts on the same subject (e.g. a command file vs a skill playbook vs a wiki page on which model a stage uses). **Resolution favors the authoritative source for that fact**, which you determine and justify in `reason` — it is NOT always the wiki (the command can be wrong and the wiki right; the wiki can be stale and the playbook right). Emit a `replace` on the non-authoritative file.
+  - **Two exclusions.** (a) A live `paths:`-scoped rule — including any provenance-marked `gaia-harden:` rule — that differs from the wiki is the sanctioned Rules-vs-wiki duplication case, never a CONFLICT; do not propose editing it on contradiction grounds. (b) If the conflict is **wiki-page-vs-wiki-page**, do NOT act — note it in the Summary as `wiki-internal conflict (out of scope, run /gaia-wiki consolidate)` and move on.
 
 Rules-vs-wiki: a `.claude/rules/*.md` file is allowed to duplicate wiki content **only** if it exists to enforce auto-loading for a specific `paths:` glob. Otherwise it should link to the wiki page.
 
@@ -217,6 +221,7 @@ Resolved paths (Stage 2 must match these):
 - Auto-load total: {Z words} (budget: {total budget})
 - Over-budget files: {list}
 - Stale entries: {count}
+- Conflicts: {count}
 
 ## Actions
 

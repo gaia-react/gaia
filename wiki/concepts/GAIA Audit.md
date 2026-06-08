@@ -26,16 +26,16 @@ tags: [concept, claude, skill, knowledge, hygiene]
 | `/gaia-audit`         | Stage 1 → Stage 2 | Default. Research, then apply, in sequence                                           |
 | `/gaia-audit --apply` | Stage 2 only      | Retry against the most recent existing report (after drift fix or interrupted apply) |
 
-Stage 1 (Sonnet) proposes actions (`delete`, `delete-entry`, `promote`, `shrink`, `merge`, `fix-link`), each with verbatim `expect` snippets and sha256 drift signals, written to `.gaia/local/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model.
+Stage 1 (Sonnet) proposes actions (`delete`, `delete-entry`, `promote`, `shrink`, `conflict`), each with verbatim `expect` snippets and sha256 drift signals, written to `.gaia/local/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model.
 
 ## What it catches
 
 - **Cross-store duplication**: fact lives in both memory and wiki → wiki wins; the memory entry is deleted
+- **Contradictions**: a memory entry, rule, or project file that asserts the opposite of the authoritative source on a subject → resolved toward the authoritative source (cross-store favors the wiki; project-internal favors whichever file is canonical for that fact).
 - **Promotable memory**: durable knowledge stuck in machine-local memory → moves to a specific wiki page
-- **Intra-wiki duplication**: merges overlapping pages into a canonical + redirects
 - **Auto-load bloat**: flags `wiki/hot.md`, `CLAUDE.md`, and rules over budget
-- **Broken wikilinks** and **dead file paths**
 - **Stale entries** referencing removed code, branches, or features
+- Wiki-internal redundancy and broken links are out of scope here — see [[GAIA Wiki]] (consolidate / lint).
 
 Guardrails and portability details live in `.claude/skills/gaia/references/audit.md`. Key invariants: Stage 2 never deletes unless Stage 1 named the wiki target; never runs `git add` / `git commit`; reports gitignored under `.gaia/local/audit/`.
 
