@@ -308,7 +308,7 @@ Wiki-internal redundancy and broken-link repair are handled by `/gaia-wiki conso
 
 ## To re-apply
 
-Apply runs immediately after this report. To re-apply later (e.g., after fixing drift): `/gaia-audit --apply` within 24h.
+Apply runs immediately after this report (or at the decision gate). To re-apply later (e.g., after fixing drift): `/gaia-audit --apply` within 72h.
 
 ```
 
@@ -320,7 +320,10 @@ You are executing, not reasoning. Follow this loop exactly.
 
 ### Pre-flight
 
-1. Find the most recent non-`applied` report under `$PROJECT_ROOT/.gaia/local/audit/`: the newest `KNOWLEDGE-*.md` whose frontmatter `status:` is `draft` or `applied-partial` (an `applied` report has already been executed and must not be re-applied; skip it). If none, or its mtime is >24h, stop and print `no fresh report, run /gaia-audit first`.
+1. Find the most recent non-`applied` report under `$PROJECT_ROOT/.gaia/local/audit/`: the newest `KNOWLEDGE-*.md` whose frontmatter `status:` is `draft` or `applied-partial` (an `applied` report has already been executed and must not be re-applied; skip it). If none, stop and print `no fresh report, run /gaia-audit first`. Otherwise check its mtime:
+   - mtime ≤ 24h → proceed normally.
+   - 24h < mtime ≤ 72h → print `WARNING: draft is {age}h old; drift checks will catch any staleness` and continue.
+   - mtime > 72h → stop and print `draft too old (>72h), re-run /gaia-audit`.
 2. Parse the report's frontmatter. Verify `project_root`, `memory_dir`, and `agent_memory_dir` match the values you resolved at startup. If any differ, stop and print a clear error, the report was generated on a different machine or in a different clone.
 3. Run `git rev-parse HEAD`, if it differs from `git_head` in the report, print a warning but continue. Run `git status --short`, any file that is currently dirty AND appears as a target in the report is marked `SKIP (dirty)` before any action runs.
 4. Read the `## Ordering` section. Process actions in that order.
@@ -339,15 +342,29 @@ For each unchecked action block:
    - `type: replace` → Edit with `old_string: before`, `new_string: after`. If `before` is not unique, prepend additional context from the file until unique.
 3. Flip the checkbox: `[ ]` → `[x]` on success, `[~]` on skip, `[!]` on error. Record the reason inline on the checkbox line.
 
+### Post-apply verification (mechanical, no judgment)
+
+Before printing the summary, verify each flipped action actually landed. This is mechanical, no judgment, no re-deciding whether an action was correct:
+
+1. **Every `promote` flipped `[x]`:**
+   - If the action's `target_action: create_new`: confirm `target_page` exists and is non-empty (the `body` *is* the new page).
+   - Otherwise (`append_section` / `insert_after_heading`): confirm the inserted `body` snippet appears in `target_page`.
+   - Then, if `delete_source_after: true`, confirm `source_path` is gone.
+   - On **any** failure, downgrade the checkbox `[x]` → `[!]`, note `promote unverified` on the checkbox line, and the report's terminal `status` is `applied-partial`.
+2. **Every `delete` / `delete-entry` flipped `[x]`:** confirm the path (delete) or the `expect` block (delete-entry) is gone. On failure, downgrade to `[!]`, note `delete unverified`, terminal `status` = `applied-partial`.
+3. **If a `shrink`/`replace` ran on `wiki/hot.md` or root `CLAUDE.md`:** recompute `wc -w`; if still over budget, note `still over budget` (informational only, does NOT downgrade the checkbox or change status).
+
+This verification is the single authority for the report's terminal `status`: after running it, `status` is `applied` only if every action is `[x]`, and `applied-partial` if any action ended `[~]` skipped or `[!]` failed (including a `promote`/`delete` downgraded to `[!]` here).
+
 ### Post-flight
 
-Set the report frontmatter `status:` to its terminal value: `applied` if every action is `[x]`, otherwise `applied-partial` (any action ended `[~]` skipped or `[!]` failed). `applied-partial` is kept so `--apply` can retry the remainder. This is the one place that sets terminal status.
+Set the report frontmatter `status:` to the terminal value the verification step above decided: `applied` if every action is `[x]`, otherwise `applied-partial`. `applied-partial` is kept so `--apply` can retry the remainder. That verification checklist is the authority for this value, do not re-derive it here.
 
 Then print a final summary to stdout:
 
 ```
 
-audit apply: {done}/{total} applied · {skipped} skipped · {failed} failed
+applied: {n} shrink · {n} delete-entry · {n} promote · {n} delete | skipped: {n} | failed: {n}
 diff footprint:
 {git status --short}
 recovery: changes are uncommitted; revert any unwanted edit with `git restore <path>` (or `git checkout -- <path>` / `git clean` for new files).
