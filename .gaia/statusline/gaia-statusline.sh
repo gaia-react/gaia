@@ -109,6 +109,8 @@ if [ "$is_worktree" -eq 0 ]; then
       gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
       gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
       harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+      audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
+      audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
 
       segments=()
       COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
@@ -123,6 +125,13 @@ if [ "$is_worktree" -eq 0 ]; then
       fi
       if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
         segments+=("$(printf '\033[01;35mRun /gaia-harden review (%d)\033[00m' "$harden_count")")
+      fi
+      if [ "$audit_nudge" = "true" ]; then
+        if [ -n "$audit_reason" ]; then
+          segments+=("$(printf '\033[01;32mRun /gaia-audit (%s)\033[00m' "$audit_reason")")
+        else
+          segments+=("$(printf '\033[01;32mRun /gaia-audit\033[00m')")
+        fi
       fi
       if [ "${#segments[@]}" -gt 0 ]; then
         right="${segments[0]}"
