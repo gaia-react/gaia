@@ -11,6 +11,21 @@ tags: [meta, log]
 
 ## 2026-06-05 | Policy-Memory Loop
 
+- 2026-06-08 1b27445 SKIP - wiki: self-referential (sync commit)
+- 2026-06-08 bbad535 SKIP - wiki: self-referential (PR squash of sync commit)
+- 2026-06-08 fa73560 SKIP - wiki: self-referential (hot cache refresh)
+- 2026-06-08 0b6559f SKIP - chore(spec): mark SPEC-004 shipped; no wiki-facing content change
+- 2026-06-08 7d51a0e WORTHY - fix(gaia-audit): CONFLICT class added; wiki/concepts/GAIA Audit.md updated in-commit
+- 2026-06-08 33cab08 WORTHY - feat(statusline): gaia-audit nudge signals; wiki/concepts/GAIA Audit.md updated in 8dac32c
+- 2026-06-08 c4a77f1 WORTHY - feat(gaia-audit): decision gate + stateful report lifecycle; wiki/concepts/GAIA Audit.md updated in 8dac32c
+- 2026-06-08 5cb0f0a WORTHY - feat(gaia-audit): post-apply verification + 72h staleness grace; wiki/concepts/GAIA Audit.md updated in 8dac32c
+- 2026-06-08 64803e2 WORTHY - feat(gaia-audit): scope-hint argument; wiki/concepts/GAIA Audit.md updated in 8dac32c
+- 2026-06-08 33e1287 WORTHY - fix(audit): wiki/concepts/GAIA Audit.md updated in-commit to correct CONFLICT action-type description
+- 2026-06-08 8dac32c WORTHY - docs(gaia-audit): wiki/concepts/GAIA Audit.md updated in-commit to reflect decision gate, lifecycle, scope hint, 72h grace, statusline nudge
+- 2026-06-08 fdd0e97 SKIP - chore: generic chore (code review audit passed)
+- 2026-06-08 17a3776 SKIP - fix(react-doctor): remove shadowed legacy config + update-gaia SKILL.md hardening; no wiki page covers react-doctor config or update-gaia internals
+- 2026-06-08 8c5686a SKIP - chore(statusline): cosmetic label reorder, no wiki page covers statusline indicator ordering
+- 2026-06-09 1e295c4 SKIP - chore(statusline): cosmetic label change, no wiki page covers statusline nudge text
 - 2026-06-05 971b9e0 SKIP - merge commit (Merge pull request #322)
 - 2026-06-05 f56e872 SKIP - chore: generic chore (code review audit passed)
 - 2026-06-05 5e134db WORTHY - chore(gaia-harden): rebuild CLI bundle; binary rebuild, no wiki update
