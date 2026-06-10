@@ -26,7 +26,6 @@ export type WorkflowTemplateVars = {
   needs_human_review_label: string;
   pr_label: string;
   schedule: WorkflowSchedule;
-  state_file: string;
   tool_id: ToolId;
   workflow_name: string;
 };
@@ -98,7 +97,6 @@ export const buildWorkflowVars = (
     needs_human_review_label: 'needs-human-review',
     pr_label: 'gaia-ci',
     schedule,
-    state_file: `.gaia/automation.state-${tool}.json`,
     tool_id: tool,
     workflow_name: WORKFLOW_NAME_BY_TOOL[tool],
   };

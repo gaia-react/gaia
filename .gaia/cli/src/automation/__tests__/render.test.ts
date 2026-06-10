@@ -45,7 +45,6 @@ const baseVars: WorkflowTemplateVars = {
   needs_human_review_label: 'needs-human-review',
   pr_label: 'gaia-ci',
   schedule: 'daily',
-  state_file: '.gaia/automation.state-wiki.json',
   tool_id: 'wiki',
   workflow_name: 'GAIA CI - Test',
 };

@@ -51,7 +51,6 @@ describe('buildWorkflowVars', () => {
       needs_human_review_label: 'needs-human-review',
       pr_label: 'gaia-ci',
       schedule: 'daily',
-      state_file: '.gaia/automation.state-wiki.json',
       tool_id: 'wiki',
       workflow_name: 'GAIA CI - Wiki',
     });
@@ -65,7 +64,6 @@ describe('buildWorkflowVars', () => {
       cron: '0 4 * * 0',
       enable_major_bump_split: true,
       schedule: 'weekly',
-      state_file: '.gaia/automation.state-update-deps.json',
       tool_id: 'update-deps',
       workflow_name: 'GAIA CI - Update Deps',
     });
@@ -79,7 +77,6 @@ describe('buildWorkflowVars', () => {
       cron: '0 4 * * *',
       enable_security_pr: true,
       schedule: 'daily',
-      state_file: '.gaia/automation.state-pnpm-audit.json',
       tool_id: 'pnpm-audit',
       workflow_name: 'GAIA CI - pnpm audit',
     });
@@ -94,7 +91,6 @@ describe('buildWorkflowVars', () => {
       enable_auto_merge: false,
       enable_stale_branch_delete: true,
       schedule: 'monthly',
-      state_file: '.gaia/automation.state-stale-branches.json',
       tool_id: 'stale-branches',
       workflow_name: 'GAIA CI - Stale Branches',
     });
