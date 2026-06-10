@@ -166,6 +166,16 @@ ledger_lines() {
   [ "$(ledger_lines)" -eq 0 ]
 }
 
+@test "a --body string mentioning 'pnpm test --run' exits 0 and writes nothing" {
+  # Command-position anchoring: the phrase appears inside a PR-body argument,
+  # not as a `pnpm`/`npm` command word, so no spurious full-suite vitest re-run
+  # fires and nothing is recorded. (Regression guard for the bare-test false
+  # positive that this hook shared the token grammar with.)
+  run_capture "Bash" 'gh pr create --body "see `pnpm test --run` output"'
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+}
+
 @test "a non-Bash tool call exits 0 and writes nothing" {
   run_capture "Edit" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
     "$JSON_REL/assertion-fail.json"

@@ -37,16 +37,26 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || ec
 [ -n "$cmd" ] || exit 0
 
 # --- scope match: a `(pnpm|npm) [run] test … --run …` invocation --------------
-# Reuse block-bare-test.sh's token grammar for the `(pnpm|npm) test` detection,
-# but require the POSITIVE `--run` case (a bare run is blocked upstream by
-# block-bare-test.sh and never reaches a passing PostToolUse). `test:ci` /
-# `test:lint-staged` carry a `test:` token, not a bare `test` token, so the
-# `test([[:space:]]|$)` boundary skips them unless they also pass `--run` as an
-# explicit arg, keeping behavior aligned with the bare-test hook.
-printf '%s' "$cmd" \
-  | grep -Eq '(^|[^[:alnum:]_-])(pnpm|npm)[[:space:]]+(run[[:space:]]+)?test([[:space:]]|$)' \
-  || exit 0
-printf '%s' "$cmd" | grep -Eq -- '--run([[:space:]]|$)' || exit 0
+# Reuse block-bare-test.sh's ANCHORED detection: walk pipeline segments, strip
+# leading env-var prefixes, and act only when `pnpm`/`npm` is the segment's
+# command word AND `test` is the script position, requiring the POSITIVE
+# `--run` case scoped to that same segment (a bare run is blocked upstream by
+# block-bare-test.sh and never reaches a passing PostToolUse). Command TEXT that
+# merely mentions the phrase (a commit message, a `--body` string) is not an
+# invocation, so a spurious full-suite vitest re-run never fires on prose.
+# `test:ci` / `test:lint-staged` carry a `test:` token, not a bare `test`, so
+# the `test([[:space:]]|$)` boundary skips them, aligned with the bare-test hook.
+# $test_seg is the matched invocation with its env prefix stripped; the scope
+# parse below reads it (not the whole command) so only that call's args count.
+test_seg=""
+while IFS= read -r seg; do
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  [[ "$seg_cmd" =~ ^(pnpm|npm)[[:space:]]+(run[[:space:]]+)?test([[:space:]]|$) ]] || continue
+  [[ "$seg_cmd" =~ (^|[[:space:]])--run([[:space:]]|$) ]] || continue
+  test_seg="$seg_cmd"
+  break
+done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+[ -n "$test_seg" ] || exit 0
 
 # --- source the shared lib (ledger path, repo-rel, signal helper) -------------
 [ -f .claude/hooks/lib/red-ledger.sh ] && . .claude/hooks/lib/red-ledger.sh
@@ -63,12 +73,13 @@ cleanup_json=0
 if [ -n "${RED_CAPTURE_JSON_OVERRIDE:-}" ] && [ -f "${RED_CAPTURE_JSON_OVERRIDE}" ]; then
   json_file="${RED_CAPTURE_JSON_OVERRIDE}"
 else
-  # Parse the agent command for a scope arg (a path/dir/pattern) so the json
-  # re-run is bounded to the same files the agent targeted. Take the tokens
+  # Parse the matched invocation ($test_seg) for a scope arg (a path/dir/pattern)
+  # so the json re-run is bounded to the same files the agent targeted. Take the
+  # tokens
   # AFTER the `test` token, dropping recognizable flags/options. If none
   # remain, re-run the whole suite (capture cost is accepted at this stage; the
   # SPEC forbids re-running only at the COMMIT gate).
-  scope=$(printf '%s\n' "$cmd" | awk '
+  scope=$(printf '%s\n' "$test_seg" | awk '
     {
       seen = 0
       for (i = 1; i <= NF; i++) {
