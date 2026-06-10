@@ -16,7 +16,7 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 
 1. **Simplify**: run `simplify` skill; apply all endorsed changes.
 2. **Localization check**: no hardcoded user-facing strings or unfilled keys.
-3. `pnpm typecheck`: zero errors.
+3. `pnpm typecheck`: zero errors. This is the sole enforcer for type-only tests (`expectTypeOf`/`assertType`/`@ts-expect-error`), which [[TDD RED Verification]] exempts from its runtime-RED demand.
 4. `pnpm lint`: zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it.
 5. `pnpm test --run`: all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
 6. `pnpm pw`: all Playwright E2E tests pass.
