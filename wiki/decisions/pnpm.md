@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-05-01
+updated: 2026-06-10
 tags: [decision, tooling, package-manager, security]
 ---
 
@@ -16,21 +16,20 @@ GAIA uses **pnpm** for installs and dependency resolution. The `packageManager` 
 
 - **Speed**: content-addressed store with hard-linking installs significantly faster than npm.
 - **Strict isolation**: flat `node_modules/` is gone. A package can only `require` what it declared. Phantom deps fail loud.
-- **Built-in supply-chain protection**: `pnpm-workspace.yaml` sets `minimumReleaseAge: 10080` (7 days), blocking installs of versions less than a week old, plus `trustPolicy: no-downgrade`, which fails the install when a package's trust level drops versus prior releases (possible takeover). The release-age delay catches the bulk of compromised-package incidents in the window between publish and detection.
+- **Built-in supply-chain protection**: `pnpm-workspace.yaml` sets `minimumReleaseAge: 10080` (7 days), blocking installs of versions less than a week old, plus `trustPolicy: no-downgrade`, which fails the install when a package's trust level drops versus prior releases (possible takeover). The release-age delay catches the bulk of compromised-package incidents in the window between publish and detection. pnpm enforces both policies against the entire lockfile on every install, including `--frozen-lockfile` runs in CI, so a latent pre-provenance transitive surfaces at install time rather than only on re-resolution. `trustPolicyExclude` acknowledges the few old, pre-provenance final-major releases that trip `no-downgrade` because a newer major later added npm provenance; each entry is scoped to an exact version and names its requiring dependent.
 - **Reproducible installs**: `pnpm-lock.yaml` + CI `--frozen-lockfile` guarantees the lockfile is the only source of truth.
 
 ## How
 
 - `package.json` declares `"packageManager": "pnpm@<version>"`.
-- `package.json` declares `"pnpm": { "overrides": { ... } }` using pnpm's `parent>child` syntax (the previous npm `overrides.parent.child` shape does not apply).
-- `.npmrc` carries only what pnpm 10.x+ still reads from it: registry/auth and a few resolution flags: `strict-peer-dependencies=false` (keeps the npm `legacy-peer-deps=true` semantics, so peer-dep mismatches warn instead of erroring), `save-exact=true`, and `public-hoist-pattern[]` entries for tools that need flat resolution (stylelint, prettier plugins).
-- `pnpm-workspace.yaml` carries everything else pnpm reads, including supply-chain hardening; it lives here, not `.npmrc`:
-  ```
-  minimumReleaseAge: 10080
-  trustPolicy: no-downgrade
-  ```
+- `pnpm-workspace.yaml` carries every non-auth setting pnpm reads:
+  - supply-chain hardening: `minimumReleaseAge`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`;
+  - dependency `overrides`, using pnpm's `parent>child` / version-range key syntax;
+  - the `allowBuilds` map, which names the packages permitted to run install scripts (`true` = allowed); with `strictDepBuilds` on by default, an unlisted package that needs to build fails the install loudly instead of silently skipping;
+  - resolution flags: `strictPeerDependencies: false` (peer-dep mismatches warn instead of erroring), `savePrefix: ''` (pin exact versions on `pnpm add`), and `publicHoistPattern` (lift stylelint's shared config/plugins and prettier plugins to the root `node_modules` so those tools resolve them).
+- pnpm reads none of the above from the `package.json` `pnpm` field or from `.npmrc`. `.npmrc` carries only registry and auth settings; resolution and supply-chain keys placed there are ignored.
 - `pnpm-lock.yaml` is committed. `package-lock.json` is forbidden: delete on sight.
-- CI workflows install pnpm via `pnpm/action-setup@v4` (which reads `packageManager`), use `cache: 'pnpm'` in `actions/setup-node`, and install with `pnpm install --frozen-lockfile`.
+- CI workflows install pnpm via `pnpm/action-setup` (pinned by commit SHA, no `version:` input, so it reads the `packageManager` field), use `cache: 'pnpm'` in `actions/setup-node`, and install with `pnpm install --frozen-lockfile`. Because the action keys off `packageManager`, bumping that one field moves CI's pnpm version in lockstep.
 - Adopters bootstrap pnpm with `corepack enable pnpm`. `/gaia-init` does this in Step 0 with a `npm install -g pnpm` fallback for environments without corepack.
 
 ## Pinning
@@ -39,7 +38,7 @@ Caret ranges (`^x.y.z`) are kept in `package.json`. The lockfile is the authorit
 
 ## Override audit
 
-Overrides drift. The `update-deps` skill's Phase 0 toggles each `pnpm.overrides` key out, runs `pnpm install`, scans `pnpm ls` for peer-dep errors, and removes any override that is no longer needed. Phase 6 re-checks retained overrides after a wave updates surrounding packages.
+Overrides drift. The `update-deps` skill's Phase 0 toggles each `overrides` key out, runs `pnpm install`, scans `pnpm ls` for peer-dep errors, and removes any override that is no longer needed. Phase 6 re-checks retained overrides after a wave updates surrounding packages.
 
 ## Release-age-aware version selection
 
