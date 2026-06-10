@@ -10,11 +10,14 @@
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {run as runMerge} from './merge.js';
+import {run as runMergeWorkspace} from './merge-workspace.js';
 
 const HELP_TEXT = `Usage: gaia update <subcommand> [args]
 
   merge --baseline <dir> --latest <dir> --manifest <path> [--json]
                                               Three-way file compare per manifest class.
+  merge-workspace --baseline <file> --latest <file> --current <file> [--json]
+                                              Field-aware pnpm-workspace.yaml verdict.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -25,6 +28,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   merge: runMerge,
+  'merge-workspace': runMergeWorkspace,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {

@@ -382,7 +382,7 @@
     "package.json": "shared",
     "playwright.config.ts": "owned",
     "pnpm-lock.yaml": "owned",
-    "pnpm-workspace.yaml": "owned",
+    "pnpm-workspace.yaml": "shared",
     "prettier.config.mjs": "owned",
     "public/android-chrome-192x192.png": "owned",
     "public/android-chrome-512x512.png": "owned",

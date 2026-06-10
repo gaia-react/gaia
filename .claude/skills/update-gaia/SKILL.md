@@ -196,10 +196,16 @@ Track seven lists plus a `package.json` sub-report internally (`UpdateMergeRepor
     suggestions: string[];  // managed keys GAIA added, or changed but the adopter had removed, surfaced opt-in, never applied
     notes_path?: string;    // .gaia-merge/package.json.notes when conflicts or suggestions exist
   };
+  pnpmWorkspace: {       // field-aware result for pnpm-workspace.yaml (Step 7b)
+    applied: string[];      // managed keys / overrides+allowBuilds entries GAIA changed that the adopter still tracked, written to the working tree
+    conflicts: string[];    // managed keys / entries GAIA changed but the adopter independently re-pinned, left as the adopter's, noted
+    suggestions: string[];  // managed keys / entries GAIA added, or changed but the adopter had removed, surfaced opt-in, never applied
+    notes_path?: string;    // .gaia-merge/pnpm-workspace.yaml.notes when conflicts or suggestions exist
+  };
 }
 ```
 
-**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json`**, that one path is handled field-aware in **Step 7a** below (whole-file `cmp`/`diff` can't separate adopter identity and intentional dep removals from the real upstream delta). Skip it during this walk.
+**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json` and `pnpm-workspace.yaml`**, both are handled field-aware below (`package.json` in **Step 7a**, `pnpm-workspace.yaml` in **Step 7b**). A whole-file `cmp`/`diff` can't separate adopter identity and intentional removals from the real upstream delta, and `pnpm-workspace.yaml` is a mixed file (GAIA-authored supply-chain / resolution settings plus adopter-extensible `overrides` and `allowBuilds` maps) that drifts the moment an adopter adds one override. Skip both during this walk.
 
 Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DIR/<path>`. Use `cmp -s` for equality; `mkdir -p` before writing.
 
@@ -224,6 +230,7 @@ Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DI
 - `delete[]`: **ask the user before removing** each path.
 - `conflicts[]`: read the patch at `.gaia-merge/<path>.patch` and walk the user through the decision per file.
 - `packageJson`: populated by **Step 7a**. The `applied[]` keys are already written to the working tree (report counts only); walk the user through `conflicts[]` (re-pinned keys) and mention `suggestions[]` (added / removed-then-changed deps) as opt-in, both detailed in `.gaia-merge/package.json.notes`.
+- `pnpmWorkspace`: populated by **Step 7b**. Same shape and handling as `packageJson`, detailed in `.gaia-merge/pnpm-workspace.yaml.notes`.
 
 ### Step 7a: Field-aware `package.json` merge
 
@@ -290,6 +297,45 @@ Apply the same rule to the scalar `packageManager` by hand: `B == L` → no-op; 
 - **Version-only release** (no managed-key delta) → identity ignored, zero applied/conflicts/suggestions → **clean skip, no notes file.** Fixes the every-release noise.
 - **Dep-bump release** → only the entries GAIA actually changed (and that the adopter still tracks) are applied; re-pin conflicts and added/removed-dep suggestions go to the notes file, never re-adding a dependency the adopter removed, never overwriting an adopter pin.
 
+### Step 7b: Field-aware `pnpm-workspace.yaml` merge
+
+`pnpm-workspace.yaml` is classed `shared`, but it is a **mixed** file, so a whole-file three-way merge produces the same noise `package.json` does. It carries GAIA-authored settings (`minimumReleaseAge`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, `publicHoistPattern`, `savePrefix`, `strictPeerDependencies`) **and** adopter-extensible maps (`overrides`, `allowBuilds`). pnpm 11 reads dependency overrides and build approvals only from here, so any adopter who adds a single override drifts the file and eats a full-file conflict patch on every release that touches it. Merge it at YAML-key / map-entry granularity instead, acting only on the genuine upstream delta `B → L`.
+
+Let `A` = working-tree `pnpm-workspace.yaml`, `B` = `$BASELINE_DIR/pnpm-workspace.yaml`, `L` = `$LATEST_DIR/pnpm-workspace.yaml`.
+
+**Presence triage first** (older baselines predate pnpm 11 and have no `pnpm-workspace.yaml`). Match the first row that applies; only the last row runs the field-aware merge:
+
+| Condition                       | Action                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `L` missing                     | Upstream dropped the file; fold into the Step 7 deletion sweep (`delete[]`). Skip 7b.                    |
+| `A` missing and `B` missing     | Genuinely new; copy `L` → `pnpm-workspace.yaml`. Record in `add[]`. Skip 7b.                             |
+| `A` missing and `B` exists      | Adopter deleted it; respect the deletion, leave absent. Record in `removed[]`. Skip 7b.                  |
+| `A` exists and `B` missing      | No baseline to field-merge against; `diff -u A L > .gaia-merge/pnpm-workspace.yaml.patch`. Surface as a conflict. Skip 7b. |
+| `A`, `B`, `L` all exist         | Run the field-aware merge below.                                                                        |
+
+**Compute the per-key / per-entry verdicts** with the bundled CLI (it parses all three files with `js-yaml` and never writes the YAML):
+
+```bash
+.gaia/cli/gaia update merge-workspace \
+  --baseline "$BASELINE_DIR/pnpm-workspace.yaml" \
+  --latest "$LATEST_DIR/pnpm-workspace.yaml" \
+  --current pnpm-workspace.yaml \
+  --json
+```
+
+The command exits non-zero with a structured error if any file is missing or not valid YAML (for example the adopter introduced a syntax error). On a non-zero exit, fall back to a whole-file conflict patch (`diff -u A L > .gaia-merge/pnpm-workspace.yaml.patch`) and surface it as a conflict; do not proceed with the JSON path.
+
+The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 'key' | 'entry', section?, key, baseline?, latest?, adopter?, reason? }`. The CLI iterates only `keys(B) ∪ keys(L)` per managed key and per `overrides` / `allowBuilds` entry, so an adopter-only override or build approval is never visited, never clobbered. The seven GAIA-managed keys are compared whole-value; the two map sections are compared per entry. Both use the identical verdict table as Step 7a (`apply` / `conflict` / `suggest-add` / `suggest-removed`).
+
+**Apply clean changes (`applied[]`):** for each item, edit the working-tree `pnpm-workspace.yaml` so the key's (or entry's) value becomes `latest`, using the **Edit** tool. Preserve the file's comments, key order, and quote style; change only the value text. Do **not** reserialize the file (`js-yaml` `dump` strips every comment). A whole-value list change replaces the list block; a scalar or map-entry change edits the single line.
+
+**Record conflicts + suggestions:** if either bucket is non-empty, write a human-readable `.gaia-merge/pnpm-workspace.yaml.notes` listing, per item: the section (if any), the key, the adopter / baseline / latest values, and the recommended action. Set `notes_path`. This file is informational; the adopter reconciles re-pin conflicts by hand and accepts or ignores suggestions. It is **not** a `diff -u` patch and is **not** added to the file-level `conflicts[]` bucket.
+
+**Net effect:**
+
+- **No managed-key delta** (overrides / allowBuilds / settings unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.**
+- **Settings or override change** → only the keys / entries GAIA actually changed (and that the adopter still tracks) are applied; re-pin conflicts and added/removed suggestions go to the notes file, never re-adding a key the adopter removed, never overwriting an adopter override.
+
 ### Step 8: Bump `.gaia/VERSION`
 
 **Only** after the full walk completes without errors:
@@ -354,12 +400,13 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Conflicts:    <n>  (see .gaia-merge/)
   Deleted:      <n>  (removed upstream; surfaced, not auto-deleted)
   package.json: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/package.json.notes)
+  pnpm-workspace.yaml: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/pnpm-workspace.yaml.notes)
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
   Specs migrated: <n>  (flat .gaia/local/specs files folded into per-SPEC folders)
   Trailer invalidations: <n>  (open PRs stamped v$BASELINE will re-audit on next push)
 ```
 
-When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference.
+When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference. Apply the same rule to the `pnpm-workspace.yaml` row: `pnpm-workspace.yaml: no managed-key changes (clean skip)` when all three of its counts are zero. If 7b fell back to a whole-file conflict patch (presence triage or a parse failure), render the row as `pnpm-workspace.yaml: whole-file conflict (see .gaia-merge/pnpm-workspace.yaml.patch)` instead.
 
 Use `SPECS_MIGRATED` for the `Specs migrated` row. If it is `"conflict"`, emit the row as `Specs migrated: conflict, see action item below` and, after the table, print a blocking action item naming the conflicting ids/paths from `$spec_folderize_out`:
 
@@ -383,8 +430,8 @@ The next SessionStart hook fires the background refresher; the session after tha
 
 Tell the user:
 
-1. Review any conflict patches in `.gaia-merge/` and reconcile manually. Delete the patch file once resolved. If `.gaia-merge/package.json.notes` exists, reconcile the re-pin conflicts and decide on the dep suggestions, then delete it.
-2. If the `package.json` merge applied any dependency or `packageManager` change, run `pnpm install` to sync `pnpm-lock.yaml` before the quality gate.
+1. Review any conflict patches in `.gaia-merge/` and reconcile manually. Delete the patch file once resolved. If `.gaia-merge/package.json.notes` or `.gaia-merge/pnpm-workspace.yaml.notes` exists, reconcile the re-pin conflicts and decide on the suggestions, then delete it.
+2. If the `package.json` or `pnpm-workspace.yaml` merge applied any change (a dependency / `packageManager` bump, or an override / `allowBuilds` / resolution-setting change), run `pnpm install` to sync `pnpm-lock.yaml` before the quality gate.
 3. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
 4. Inspect the diff (`git diff`) before committing.
 5. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
