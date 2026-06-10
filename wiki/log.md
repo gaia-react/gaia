@@ -11,6 +11,21 @@ tags: [meta, log]
 
 ## 2026-06-05 | Policy-Memory Loop
 
+- 2026-06-10 a2f6046 SKIP - chore(cli): tooling-internal (retire dead state_file workflow template var)
+- 2026-06-10 05b8497 SKIP - chore(cli): tooling-internal (retire cost-overage feature)
+- 2026-06-10 bd45949 WORTHY - chore(cli): retire dead smart-cron starvation valve; no wiki page covers cron-decide internals
+- 2026-06-10 2e96002 SKIP - chore(cli): tooling-internal (retire init-state command)
+- 2026-06-10 cab882e SKIP - chore(cli): tooling-internal (subcommand reachability guard)
+- 2026-06-10 e0de32b WORTHY - chore(cli): retire gaia update merge; wiki/concepts/Update Merge.md deleted in-commit, wiki/index.md updated in-commit
+- 2026-06-10 4b85e25 WORTHY - feat(update-gaia): Step 7b field-aware merge for pnpm-workspace.yaml; wiki/decisions/pnpm.md updated in-commit
+- 2026-06-10 9a5d6af WORTHY - fix(skills): repoint pnpm-11 override location; skills/instructions fix, no wiki page covers these internals
+- 2026-06-10 7330031 WORTHY - chore(deps): pnpm 11.5.2 upgrade; wiki/decisions/pnpm.md updated in-commit
+- 2026-06-10 742e2de WORTHY - chore(deps): deps refresh for 1.6.0/pnpm 11.5; trustPolicyExclude pattern already documented in wiki/decisions/pnpm.md
+- 2026-06-10 84805b8 WORTHY - docs(wiki): TypeScript 7 Readiness ADR created in-commit at wiki/decisions/TypeScript 7 Readiness.md
+- 2026-06-10 d7199af WORTHY - chore(ts): TS7-readiness tsconfig flags; covered by wiki/decisions/TypeScript 7 Readiness.md (84805b8)
+- 2026-06-10 482c4a3 SKIP - wiki: self-referential (lint report commit)
+- 2026-06-10 69d8b54 SKIP - wiki: self-referential (PR squash of sync commit)
+- 2026-06-10 243732a SKIP - wiki: self-referential (sync commit)
 - 2026-06-08 1b27445 SKIP - wiki: self-referential (sync commit)
 - 2026-06-08 bbad535 SKIP - wiki: self-referential (PR squash of sync commit)
 - 2026-06-08 fa73560 SKIP - wiki: self-referential (hot cache refresh)
