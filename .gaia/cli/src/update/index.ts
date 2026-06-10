@@ -1,21 +1,20 @@
 /**
  * `gaia update` subcommand router.
  *
- * The `/update-gaia` skill drives tarball fetching and user-facing
- * prompts; this router wires the deterministic byte-level merge under
- * `gaia update merge` so the skill never reads bytes per manifest entry.
+ * Hosts the field-aware `merge-workspace` verdict oracle the
+ * `/update-gaia` skill invokes for `pnpm-workspace.yaml` (Step 7b). The
+ * skill hand-walks the per-file decision table (Step 7) and field-merges
+ * `package.json` (Step 7a) itself, so the router carries no generic
+ * whole-file merge command.
  *
  * Object-map dispatch (no `switch`) per the project's typescript skill rules.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {run as runMerge} from './merge.js';
 import {run as runMergeWorkspace} from './merge-workspace.js';
 
 const HELP_TEXT = `Usage: gaia update <subcommand> [args]
 
-  merge --baseline <dir> --latest <dir> --manifest <path> [--json]
-                                              Three-way file compare per manifest class.
   merge-workspace --baseline <file> --latest <file> --current <file> [--json]
                                               Field-aware pnpm-workspace.yaml verdict.
 `;
@@ -27,7 +26,6 @@ type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
-  merge: runMerge,
   'merge-workspace': runMergeWorkspace,
 };
 

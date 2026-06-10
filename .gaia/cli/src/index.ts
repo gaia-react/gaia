@@ -42,7 +42,6 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   automation read-config|read-state|init-state|bump-state|cron-decide|record-run|record-overage|clear-overage
   ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
   ci-revert open|mark-failed|is-cap-reached
-  update merge --baseline <dir> --latest <dir> --manifest <path>
   update merge-workspace --baseline <file> --latest <file> --current <file>
   update-deps run --emit-updates <path>
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume

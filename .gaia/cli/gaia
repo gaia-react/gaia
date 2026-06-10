@@ -842,10 +842,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema2) {
   return mergeDefs(schema2._zod.def);
 }
-function getElementAtPath(obj, path55) {
-  if (!path55)
+function getElementAtPath(obj, path53) {
+  if (!path53)
     return obj;
-  return path55.reduce((acc, key) => acc?.[key], obj);
+  return path53.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -1254,11 +1254,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path55, issues) {
+function prefixIssues(path53, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path55);
+    iss.path.unshift(path53);
     return iss;
   });
 }
@@ -1405,16 +1405,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path55 = []) => {
+  const processError = (error52, path53 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path55, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path53, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path55, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path53, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path55, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path53, ...issue2.path]);
       } else {
-        const fullpath = [...path55, ...issue2.path];
+        const fullpath = [...path53, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -1441,17 +1441,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path55 = []) => {
+  const processError = (error52, path53 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path55, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path53, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path55, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path53, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path55, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path53, ...issue2.path]);
       } else {
-        const fullpath = [...path55, ...issue2.path];
+        const fullpath = [...path53, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -1483,8 +1483,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path55 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path55) {
+  const path53 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path53) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -3114,13 +3114,13 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
     }
     return propValues;
   });
-  const isObject4 = isObject;
+  const isObject3 = isObject;
   const catchall = def.catchall;
   let value;
   inst._zod.parse = (payload, ctx) => {
     value ?? (value = _normalized.value);
     const input = payload.value;
-    if (!isObject4(input)) {
+    if (!isObject3(input)) {
       payload.issues.push({
         expected: "object",
         code: "invalid_type",
@@ -3247,7 +3247,7 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
     return (payload, ctx) => fn(shape, payload, ctx);
   };
   let fastpass;
-  const isObject4 = isObject;
+  const isObject3 = isObject;
   const jit = !globalConfig.jitless;
   const allowsEval2 = allowsEval;
   const fastEnabled = jit && allowsEval2.value;
@@ -3256,7 +3256,7 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
   inst._zod.parse = (payload, ctx) => {
     value ?? (value = _normalized.value);
     const input = payload.value;
-    if (!isObject4(input)) {
+    if (!isObject3(input)) {
       payload.issues.push({
         expected: "object",
         code: "invalid_type",
@@ -14176,13 +14176,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path55 = ref.slice(1).split("/").filter(Boolean);
-  if (path55.length === 0) {
+  const path53 = ref.slice(1).split("/").filter(Boolean);
+  if (path53.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path55[0] === defsKey) {
-    const key = path55[1];
+  if (path53[0] === defsKey) {
+    const key = path53[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -26180,649 +26180,15 @@ var run64 = async (argv) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-// src/update/merge.ts
-import {
-  existsSync as existsSync36,
-  mkdirSync as mkdirSync20,
-  readdirSync as readdirSync6,
-  statSync as statSync4,
-  writeFileSync as writeFileSync15
-} from "node:fs";
-import path43 from "node:path";
-
-// src/update/util/manifest.ts
-import { existsSync as existsSync34, readFileSync as readFileSync31 } from "node:fs";
-var VALID_RAW_CLASSES = /* @__PURE__ */ new Set([
-  "owned",
-  "shared",
-  "wiki-owned"
-]);
-var normalizeClass = (rawClass) => {
-  if (rawClass === "owned") return "owned";
-  return "shared";
-};
-var isObject2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-var loadManifest = (manifestPath) => {
-  if (!existsSync34(manifestPath)) {
-    return {
-      ok: false,
-      message: `manifest not found: ${manifestPath}`
-    };
-  }
-  let raw;
-  try {
-    raw = readFileSync31(manifestPath, "utf8");
-  } catch (error51) {
-    return {
-      ok: false,
-      message: `failed to read manifest: ${error51 instanceof Error ? error51.message : String(error51)}`
-    };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error51) {
-    return {
-      ok: false,
-      message: `manifest is not valid JSON: ${error51 instanceof Error ? error51.message : String(error51)}`
-    };
-  }
-  if (!isObject2(parsed)) {
-    return { ok: false, message: "manifest root is not an object" };
-  }
-  const shape = parsed;
-  if (!isObject2(shape.files)) {
-    return { ok: false, message: "manifest.files is missing or not an object" };
-  }
-  const files = /* @__PURE__ */ new Map();
-  for (const [path55, value] of Object.entries(shape.files)) {
-    if (typeof value !== "string") {
-      return {
-        ok: false,
-        message: `manifest.files["${path55}"] is not a string`
-      };
-    }
-    if (!VALID_RAW_CLASSES.has(value)) {
-      return {
-        ok: false,
-        message: `manifest.files["${path55}"] has unknown class: "${value}"`
-      };
-    }
-    const rawClass = value;
-    files.set(path55, {
-      normalizedClass: normalizeClass(rawClass),
-      rawClass
-    });
-  }
-  const version2 = typeof shape.version === "string" ? shape.version : void 0;
-  return {
-    ok: true,
-    manifest: { files, version: version2 }
-  };
-};
-
-// src/update/util/three-way.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
-import {
-  existsSync as existsSync35,
-  mkdtempSync,
-  readFileSync as readFileSync32,
-  rmSync as rmSync5,
-  writeFileSync as writeFileSync14
-} from "node:fs";
-import { tmpdir } from "node:os";
-import path42 from "node:path";
-var snapshot = (absPath) => {
-  if (!existsSync35(absPath)) {
-    return { absPath, bytes: null, exists: false };
-  }
-  let bytes;
-  try {
-    bytes = readFileSync32(absPath);
-  } catch {
-    return { absPath, bytes: null, exists: false };
-  }
-  return { absPath, bytes, exists: true };
-};
-var bytesEqual = (a, b) => {
-  if (a === null && b === null) return true;
-  if (a === null || b === null) return false;
-  if (a.length !== b.length) return false;
-  return a.equals(b);
-};
-var cleanMerge = (current, baseline, latest) => {
-  const dir = mkdtempSync(path42.join(tmpdir(), "gaia-merge-"));
-  const currentPath = path42.join(dir, "current");
-  const baselinePath = path42.join(dir, "baseline");
-  const latestPath = path42.join(dir, "latest");
-  try {
-    writeFileSync14(currentPath, current);
-    writeFileSync14(baselinePath, baseline);
-    writeFileSync14(latestPath, latest);
-    const result = spawnSync3(
-      "git",
-      ["merge-file", "--stdout", currentPath, baselinePath, latestPath],
-      { encoding: "buffer" }
-    );
-    if (result.error !== void 0) {
-      return {
-        conflicted: Buffer.alloc(0),
-        ok: false,
-        reason: "error"
-      };
-    }
-    const status = result.status ?? -1;
-    const stdout = result.stdout ?? Buffer.alloc(0);
-    if (status === 0) {
-      return { merged: stdout, ok: true };
-    }
-    if (status > 0) {
-      return { conflicted: stdout, ok: false, reason: "conflict" };
-    }
-    return { conflicted: stdout, ok: false, reason: "error" };
-  } finally {
-    try {
-      rmSync5(dir, { force: true, recursive: true });
-    } catch {
-    }
-  }
-};
-var unifiedDiff = (from, to, options) => {
-  const fromText = from === null ? "" : from.toString("utf8");
-  const toText = to === null ? "" : to.toString("utf8");
-  if (fromText === toText) return "";
-  return buildUnifiedDiff(fromText, toText, options);
-};
-var tokenize = (text) => {
-  if (text === "") return [];
-  const out = [];
-  let start = 0;
-  while (start <= text.length) {
-    const next = text.indexOf("\n", start);
-    if (next === -1) {
-      if (start < text.length) {
-        out.push({ newline: false, text: text.slice(start) });
-      }
-      break;
-    }
-    out.push({ newline: true, text: text.slice(start, next) });
-    start = next + 1;
-    if (start === text.length) break;
-  }
-  return out;
-};
-var diffTokens = (a, b) => {
-  const n = a.length;
-  const m = b.length;
-  const lcs = Array.from(
-    { length: n + 1 },
-    () => new Array(m + 1).fill(0)
-  );
-  for (let i2 = n - 1; i2 >= 0; i2 -= 1) {
-    for (let j2 = m - 1; j2 >= 0; j2 -= 1) {
-      if (a[i2].text === b[j2].text) {
-        lcs[i2][j2] = (lcs[i2 + 1]?.[j2 + 1] ?? 0) + 1;
-      } else {
-        const down = lcs[i2 + 1]?.[j2] ?? 0;
-        const right = lcs[i2]?.[j2 + 1] ?? 0;
-        lcs[i2][j2] = Math.max(down, right);
-      }
-    }
-  }
-  const ops = [];
-  let i = 0;
-  let j = 0;
-  while (i < n && j < m) {
-    const ai = a[i];
-    const bj = b[j];
-    if (ai.text === bj.text) {
-      ops.push({ kind: "equal", token: ai });
-      i += 1;
-      j += 1;
-      continue;
-    }
-    const down = lcs[i + 1]?.[j] ?? 0;
-    const right = lcs[i]?.[j + 1] ?? 0;
-    if (down >= right) {
-      ops.push({ kind: "delete", token: ai });
-      i += 1;
-    } else {
-      ops.push({ kind: "insert", token: bj });
-      j += 1;
-    }
-  }
-  while (i < n) {
-    ops.push({ kind: "delete", token: a[i] });
-    i += 1;
-  }
-  while (j < m) {
-    ops.push({ kind: "insert", token: b[j] });
-    j += 1;
-  }
-  return ops;
-};
-var annotate = (ops) => {
-  const out = [];
-  let oldLine = 1;
-  let newLine = 1;
-  for (const op of ops) {
-    out.push({ ...op, newLine, oldLine });
-    if (op.kind === "equal") {
-      oldLine += 1;
-      newLine += 1;
-    } else if (op.kind === "delete") {
-      oldLine += 1;
-    } else {
-      newLine += 1;
-    }
-  }
-  return out;
-};
-var renderToken = (prefix, token) => {
-  if (token.newline) return [`${prefix}${token.text}`];
-  return [`${prefix}${token.text}`, "\\ No newline at end of file"];
-};
-var buildUnifiedDiff = (fromText, toText, options) => {
-  const fromTokens = tokenize(fromText);
-  const toTokens = tokenize(toText);
-  const rawOps = diffTokens(fromTokens, toTokens);
-  const ops = annotate(rawOps);
-  const context = 3;
-  const ranges = [];
-  for (let index = 0; index < ops.length; index += 1) {
-    if (ops[index].kind === "equal") continue;
-    const last = ranges[ranges.length - 1];
-    if (last !== void 0 && index - last.end <= context * 2) {
-      last.end = index;
-    } else {
-      ranges.push({ end: index, start: index });
-    }
-  }
-  if (ranges.length === 0) return "";
-  const lines = [
-    `--- a/${options.fromLabel}`,
-    `+++ b/${options.toLabel}`
-  ];
-  for (const range of ranges) {
-    const startIndex = Math.max(0, range.start - context);
-    const endIndex = Math.min(ops.length - 1, range.end + context);
-    const slice = ops.slice(startIndex, endIndex + 1);
-    let oldStart = 0;
-    let newStart = 0;
-    let oldCount = 0;
-    let newCount = 0;
-    const body = [];
-    for (const op of slice) {
-      if (op.kind === "equal") {
-        if (oldStart === 0) oldStart = op.oldLine;
-        if (newStart === 0) newStart = op.newLine;
-        oldCount += 1;
-        newCount += 1;
-        body.push(...renderToken(" ", op.token));
-        continue;
-      }
-      if (op.kind === "delete") {
-        if (oldStart === 0) oldStart = op.oldLine;
-        oldCount += 1;
-        body.push(...renderToken("-", op.token));
-        continue;
-      }
-      if (newStart === 0) newStart = op.newLine;
-      newCount += 1;
-      body.push(...renderToken("+", op.token));
-    }
-    const oldHeader = oldCount === 0 ? 0 : oldStart === 0 ? 1 : oldStart;
-    const newHeader = newCount === 0 ? 0 : newStart === 0 ? 1 : newStart;
-    lines.push(`@@ -${oldHeader},${oldCount} +${newHeader},${newCount} @@`);
-    lines.push(...body);
-  }
-  return `${lines.join("\n")}
-`;
-};
-
-// src/update/merge.ts
-var HELP_TEXT52 = `Usage: gaia update merge --baseline <dir> --latest <dir> --manifest <path> [--json]
-
-  Three-way file compare across baseline and latest tarball trees,
-  classified by .gaia/manifest.json. Replaces the prose Step 7 of the
-  update-gaia skill.
-
-  Outputs a deterministic report. Writes overwrites, clean three-way
-  merges, and conflict patches; never commits, never deletes.
-
-  Exit codes:
-    0  success (clean run, may include conflicts to resolve)
-    1  user-correctable error (missing dir, malformed manifest)
-    2  unexpected (filesystem failure)
-`;
-var HELP_TOKENS50 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT9 = 2;
-var MERGE_DIR = ".gaia-merge";
-var takeValue8 = (argv, index, flag) => {
-  const value = argv[index];
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
-var parseFlags12 = (argv) => {
-  let baseline;
-  let latest;
-  let manifest;
-  let json3 = false;
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === "--baseline") {
-      const taken = takeValue8(argv, index + 1, "--baseline");
-      if (!taken.ok) return taken;
-      baseline = taken.value;
-      index += 1;
-      continue;
-    }
-    if (token === "--latest") {
-      const taken = takeValue8(argv, index + 1, "--latest");
-      if (!taken.ok) return taken;
-      latest = taken.value;
-      index += 1;
-      continue;
-    }
-    if (token === "--manifest") {
-      const taken = takeValue8(argv, index + 1, "--manifest");
-      if (!taken.ok) return taken;
-      manifest = taken.value;
-      index += 1;
-      continue;
-    }
-    if (token === "--json") {
-      json3 = true;
-      continue;
-    }
-    return { message: `unknown flag: ${token}`, ok: false };
-  }
-  if (baseline === void 0)
-    return { message: "--baseline is required", ok: false };
-  if (latest === void 0) return { message: "--latest is required", ok: false };
-  if (manifest === void 0)
-    return { message: "--manifest is required", ok: false };
-  return { flags: { baseline, json: json3, latest, manifest }, ok: true };
-};
-var walkRelative = (rootDir) => {
-  const out = [];
-  const visit = (relative) => {
-    const absolute = path43.join(rootDir, relative);
-    let names;
-    try {
-      names = readdirSync6(absolute);
-    } catch {
-      return;
-    }
-    for (const name of names) {
-      const child = relative === "" ? name : path43.join(relative, name);
-      const childAbs = path43.join(rootDir, child);
-      let info;
-      try {
-        info = statSync4(childAbs);
-      } catch {
-        continue;
-      }
-      if (info.isDirectory()) {
-        visit(child);
-        continue;
-      }
-      if (info.isFile()) out.push(child);
-    }
-  };
-  if (!existsSync36(rootDir) || !statSync4(rootDir).isDirectory()) return out;
-  visit("");
-  return out.sort();
-};
-var ensureDir2 = (absDir) => {
-  mkdirSync20(absDir, { recursive: true });
-};
-var writePatch = (ctx, relativePath, patch) => {
-  const mergeRoot = path43.join(ctx.cwd, MERGE_DIR);
-  const patchAbs = path43.join(mergeRoot, `${relativePath}.patch`);
-  ensureDir2(path43.dirname(patchAbs));
-  writeFileSync15(patchAbs, patch, "utf8");
-  return path43.relative(ctx.cwd, patchAbs);
-};
-var writeWorkingTree = (ctx, relativePath, bytes) => {
-  const target = path43.join(ctx.cwd, relativePath);
-  ensureDir2(path43.dirname(target));
-  atomicWriteFileSync(target, bytes);
-};
-var handleManifestPath = (ctx, relativePath, klass) => {
-  const baselineSnap = snapshot(path43.join(ctx.baselineDir, relativePath));
-  const latestSnap = snapshot(path43.join(ctx.latestDir, relativePath));
-  const currentSnap = snapshot(path43.join(ctx.cwd, relativePath));
-  if (!latestSnap.exists) return null;
-  if (!currentSnap.exists) {
-    if (!baselineSnap.exists) {
-      writeWorkingTree(ctx, relativePath, latestSnap.bytes);
-      return { kind: "add" };
-    }
-    return { kind: "skip" };
-  }
-  if (bytesEqual(currentSnap.bytes, baselineSnap.bytes)) {
-    if (bytesEqual(currentSnap.bytes, latestSnap.bytes)) {
-      return { kind: "skip" };
-    }
-    writeWorkingTree(ctx, relativePath, latestSnap.bytes);
-    return { kind: "overwrite" };
-  }
-  if (bytesEqual(latestSnap.bytes, baselineSnap.bytes)) {
-    return { kind: "skip" };
-  }
-  if (bytesEqual(currentSnap.bytes, latestSnap.bytes)) {
-    return { kind: "skip" };
-  }
-  if (klass === "owned") {
-    const patch = unifiedDiff(currentSnap.bytes, latestSnap.bytes, {
-      fromLabel: relativePath,
-      toLabel: relativePath
-    });
-    const patchPath = writePatch(ctx, relativePath, patch);
-    return { class: "owned", kind: "conflict", patch: patchPath };
-  }
-  if (klass === "shared") {
-    if (baselineSnap.bytes === null) {
-      const patch2 = unifiedDiff(currentSnap.bytes, latestSnap.bytes, {
-        fromLabel: relativePath,
-        toLabel: relativePath
-      });
-      const patchPath2 = writePatch(ctx, relativePath, patch2);
-      return { class: "shared", kind: "conflict", patch: patchPath2 };
-    }
-    const merged = cleanMerge(
-      currentSnap.bytes,
-      baselineSnap.bytes,
-      latestSnap.bytes
-    );
-    if (merged.ok) {
-      return { bytes: merged.merged, kind: "merge" };
-    }
-    const patch = unifiedDiff(currentSnap.bytes, latestSnap.bytes, {
-      fromLabel: relativePath,
-      toLabel: relativePath
-    });
-    const patchPath = writePatch(ctx, relativePath, patch);
-    return { class: "shared", kind: "conflict", patch: patchPath };
-  }
-  writeWorkingTree(ctx, relativePath, latestSnap.bytes);
-  return { kind: "overwrite" };
-};
-var computeReport = (ctx) => {
-  const overwrite = [];
-  const skip = [];
-  const mergeList = [];
-  const add = [];
-  const deleteList = [];
-  const conflicts = [];
-  const latestPaths = new Set(walkRelative(ctx.latestDir));
-  const baselinePaths = new Set(walkRelative(ctx.baselineDir));
-  const manifestPaths = new Set(ctx.manifest.files.keys());
-  for (const relativePath of [...manifestPaths].toSorted()) {
-    const entry = ctx.manifest.files.get(relativePath);
-    if (entry === void 0) continue;
-    if (!latestPaths.has(relativePath)) {
-      continue;
-    }
-    const decision = handleManifestPath(
-      ctx,
-      relativePath,
-      entry.normalizedClass
-    );
-    if (decision === null) continue;
-    if (decision.kind === "add") {
-      add.push(relativePath);
-    } else if (decision.kind === "overwrite") {
-      overwrite.push(relativePath);
-    } else if (decision.kind === "skip") {
-      skip.push(relativePath);
-    } else if (decision.kind === "merge") {
-      writeWorkingTree(ctx, relativePath, decision.bytes);
-      mergeList.push(relativePath);
-    } else {
-      conflicts.push({
-        class: decision.class,
-        path: relativePath,
-        patch_path: decision.patch
-      });
-    }
-  }
-  for (const relativePath of [...latestPaths].toSorted()) {
-    if (manifestPaths.has(relativePath)) continue;
-    const currentSnap = snapshot(path43.join(ctx.cwd, relativePath));
-    if (currentSnap.exists) continue;
-    const latestSnap = snapshot(path43.join(ctx.latestDir, relativePath));
-    if (!latestSnap.exists) continue;
-    writeWorkingTree(ctx, relativePath, latestSnap.bytes);
-    add.push(relativePath);
-  }
-  for (const relativePath of [...baselinePaths].toSorted()) {
-    if (latestPaths.has(relativePath)) continue;
-    const currentSnap = snapshot(path43.join(ctx.cwd, relativePath));
-    if (!currentSnap.exists) continue;
-    deleteList.push(relativePath);
-  }
-  return {
-    add: add.sort(),
-    conflicts: conflicts.sort((a, b) => a.path.localeCompare(b.path)),
-    delete: deleteList.sort(),
-    merge: mergeList.sort(),
-    overwrite: overwrite.sort(),
-    skip: skip.sort()
-  };
-};
-var printHuman9 = (report) => {
-  const lines = [
-    "gaia update merge",
-    `  Overwrite: ${report.overwrite.length}`,
-    `  Merge:     ${report.merge.length}`,
-    `  Skip:      ${report.skip.length}`,
-    `  Add:       ${report.add.length}`,
-    `  Delete:    ${report.delete.length}`,
-    `  Conflicts: ${report.conflicts.length}`
-  ];
-  const sections = [
-    ["Overwrite", report.overwrite],
-    ["Merge", report.merge],
-    ["Skip", report.skip],
-    ["Add", report.add],
-    ["Delete", report.delete]
-  ];
-  for (const [label, items] of sections) {
-    if (items.length === 0) continue;
-    lines.push("", `${label}:`);
-    for (const item of items) lines.push(`  ${item}`);
-  }
-  if (report.conflicts.length > 0) {
-    lines.push("", "Conflicts:");
-    for (const conflict of report.conflicts) {
-      lines.push(
-        `  [${conflict.class}] ${conflict.path} \u2192 ${conflict.patch_path}`
-      );
-    }
-  }
-  process.stdout.write(`${lines.join("\n")}
-`);
-};
-var run65 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS50.has(argv[0])) {
-    process.stdout.write(HELP_TEXT52);
-    return EXIT_CODES.OK;
-  }
-  const parsed = parseFlags12(argv);
-  if (!parsed.ok) {
-    structuredError({
-      code: "invalid_arguments",
-      message: parsed.message,
-      subcommand: "update merge"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const cwd = options.cwd ?? process.cwd();
-  const baselineDir = path43.isAbsolute(parsed.flags.baseline) ? parsed.flags.baseline : path43.join(cwd, parsed.flags.baseline);
-  const latestDir = path43.isAbsolute(parsed.flags.latest) ? parsed.flags.latest : path43.join(cwd, parsed.flags.latest);
-  const manifestPath = path43.isAbsolute(parsed.flags.manifest) ? parsed.flags.manifest : path43.join(cwd, parsed.flags.manifest);
-  if (!existsSync36(baselineDir) || !statSync4(baselineDir).isDirectory()) {
-    structuredError({
-      code: "baseline_missing",
-      message: `--baseline directory not found: ${baselineDir}`,
-      subcommand: "update merge"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  if (!existsSync36(latestDir) || !statSync4(latestDir).isDirectory()) {
-    structuredError({
-      code: "latest_missing",
-      message: `--latest directory not found: ${latestDir}`,
-      subcommand: "update merge"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const manifestResult = loadManifest(manifestPath);
-  if (!manifestResult.ok) {
-    structuredError({
-      code: "manifest_invalid",
-      message: manifestResult.message,
-      subcommand: "update merge"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  let report;
-  try {
-    report = computeReport({
-      baselineDir,
-      cwd,
-      latestDir,
-      manifest: manifestResult.manifest
-    });
-  } catch (error51) {
-    structuredError({
-      code: "merge_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "update merge"
-    });
-    return UNEXPECTED_EXIT9;
-  }
-  if (parsed.flags.json) {
-    process.stdout.write(`${JSON.stringify(report)}
-`);
-  } else {
-    printHuman9(report);
-  }
-  return EXIT_CODES.OK;
-};
-
 // src/update/merge-workspace.ts
-import { existsSync as existsSync37, readFileSync as readFileSync33 } from "node:fs";
-import path44 from "node:path";
+import { existsSync as existsSync34, readFileSync as readFileSync31 } from "node:fs";
+import path42 from "node:path";
 
 // node_modules/.pnpm/js-yaml@4.1.1/node_modules/js-yaml/dist/js-yaml.mjs
 function isNothing(subject) {
   return typeof subject === "undefined" || subject === null;
 }
-function isObject3(subject) {
+function isObject2(subject) {
   return typeof subject === "object" && subject !== null;
 }
 function toArray(sequence) {
@@ -26852,7 +26218,7 @@ function isNegativeZero(number4) {
   return number4 === 0 && Number.NEGATIVE_INFINITY === 1 / number4;
 }
 var isNothing_1 = isNothing;
-var isObject_1 = isObject3;
+var isObject_1 = isObject2;
 var toArray_1 = toArray;
 var repeat_1 = repeat;
 var isNegativeZero_1 = isNegativeZero;
@@ -29405,7 +28771,7 @@ var safeLoadAll = renamed("safeLoadAll", "loadAll");
 var safeDump = renamed("safeDump", "dump");
 
 // src/update/merge-workspace.ts
-var HELP_TEXT53 = `Usage: gaia update merge-workspace --baseline <file> --latest <file> --current <file> [--json]
+var HELP_TEXT52 = `Usage: gaia update merge-workspace --baseline <file> --latest <file> --current <file> [--json]
 
   Field-aware three-way verdict for pnpm-workspace.yaml. Reads three YAML
   files (baseline / latest tarball + working-tree current), classifies the
@@ -29419,7 +28785,7 @@ var HELP_TEXT53 = `Usage: gaia update merge-workspace --baseline <file> --latest
     0  success
     1  user-correctable error (missing flag / file, malformed YAML)
 `;
-var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS50 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var MANAGED_WHOLE_VALUE_KEYS = [
   "minimumReleaseAge",
   "trustPolicy",
@@ -29430,7 +28796,7 @@ var MANAGED_WHOLE_VALUE_KEYS = [
   "strictPeerDependencies"
 ];
 var SHARED_MAP_SECTIONS = ["overrides", "allowBuilds"];
-var takeValue9 = (argv, index, flag) => {
+var takeValue8 = (argv, index, flag) => {
   const value = argv[index];
   if (value === void 0)
     return { message: `${flag} requires a value`, ok: false };
@@ -29441,7 +28807,7 @@ var VALUE_FLAGS = {
   "--current": "current",
   "--latest": "latest"
 };
-var parseFlags13 = (argv) => {
+var parseFlags12 = (argv) => {
   const collected = {};
   let json3 = false;
   for (let index = 0; index < argv.length; index += 1) {
@@ -29452,7 +28818,7 @@ var parseFlags13 = (argv) => {
     }
     const field = VALUE_FLAGS[token];
     if (field !== void 0) {
-      const taken = takeValue9(argv, index + 1, token);
+      const taken = takeValue8(argv, index + 1, token);
       if (!taken.ok) return taken;
       collected[field] = taken.value;
       index += 1;
@@ -29512,7 +28878,7 @@ var buildItem = (triple) => {
 };
 var sortKey = (item) => `${item.section ?? ""}\0${item.key}`;
 var bySortKey = (a, b) => sortKey(a).localeCompare(sortKey(b));
-var computeReport2 = (baseline, latest, current) => {
+var computeReport = (baseline, latest, current) => {
   const applied = [];
   const conflicts = [];
   const suggestions = [];
@@ -29566,7 +28932,7 @@ var computeReport2 = (baseline, latest, current) => {
     suggestions: suggestions.sort(bySortKey)
   };
 };
-var printHuman10 = (report) => {
+var printHuman9 = (report) => {
   const lines = [
     "gaia update merge-workspace",
     `  Applied:     ${report.applied.length}`,
@@ -29588,7 +28954,7 @@ var printHuman10 = (report) => {
 `);
 };
 var loadWorkspace = (absPath, role) => {
-  if (!existsSync37(absPath)) {
+  if (!existsSync34(absPath)) {
     return {
       code: "workspace_file_missing",
       message: `${role} workspace file not found: ${absPath}`,
@@ -29597,7 +28963,7 @@ var loadWorkspace = (absPath, role) => {
   }
   let parsed;
   try {
-    parsed = load(readFileSync33(absPath, "utf8"));
+    parsed = load(readFileSync31(absPath, "utf8"));
   } catch (error51) {
     return {
       code: "workspace_parse_failed",
@@ -29607,13 +28973,13 @@ var loadWorkspace = (absPath, role) => {
   }
   return { ok: true, root: asRecord(parsed) };
 };
-var resolvePath = (cwd, value) => path44.isAbsolute(value) ? value : path44.join(cwd, value);
-var run66 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS51.has(argv[0])) {
-    process.stdout.write(HELP_TEXT53);
+var resolvePath = (cwd, value) => path42.isAbsolute(value) ? value : path42.join(cwd, value);
+var run65 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS50.has(argv[0])) {
+    process.stdout.write(HELP_TEXT52);
     return EXIT_CODES.OK;
   }
-  const parsed = parseFlags13(argv);
+  const parsed = parseFlags12(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -29642,34 +29008,31 @@ var run66 = (argv, options = {}) => {
     roots.push(result.root);
   }
   const [baseline, latest, current] = roots;
-  const report = computeReport2(baseline, latest, current);
+  const report = computeReport(baseline, latest, current);
   if (parsed.flags.json) {
     process.stdout.write(`${JSON.stringify(report)}
 `);
   } else {
-    printHuman10(report);
+    printHuman9(report);
   }
   return EXIT_CODES.OK;
 };
 
 // src/update/index.ts
-var HELP_TEXT54 = `Usage: gaia update <subcommand> [args]
+var HELP_TEXT53 = `Usage: gaia update <subcommand> [args]
 
-  merge --baseline <dir> --latest <dir> --manifest <path> [--json]
-                                              Three-way file compare per manifest class.
   merge-workspace --baseline <file> --latest <file> --current <file> [--json]
                                               Field-aware pnpm-workspace.yaml verdict.
 `;
-var HELP_TOKENS52 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS6 = {
-  merge: run65,
-  "merge-workspace": run66
+  "merge-workspace": run65
 };
-var run67 = async (argv) => {
+var run66 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS52.has(subcommand)) {
-    process.stdout.write(HELP_TEXT54);
+  if (subcommand === void 0 || HELP_TOKENS51.has(subcommand)) {
+    process.stdout.write(HELP_TEXT53);
     return EXIT_CODES.OK;
   }
   const handler = SUBCOMMAND_HANDLERS6[subcommand];
@@ -29686,9 +29049,9 @@ var run67 = async (argv) => {
 };
 
 // src/update-deps/run.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
-import { mkdirSync as mkdirSync21, readFileSync as readFileSync34, writeFileSync as writeFileSync16 } from "node:fs";
-import path45 from "node:path";
+import { spawnSync as spawnSync3 } from "node:child_process";
+import { mkdirSync as mkdirSync20, readFileSync as readFileSync32, writeFileSync as writeFileSync14 } from "node:fs";
+import path43 from "node:path";
 
 // src/update-deps/groups.ts
 var GROUP_RULES = [
@@ -29847,7 +29210,7 @@ var resolveGroupMembers = (groupName, allPackageNames) => {
 };
 
 // src/update-deps/run.ts
-var HELP_TEXT55 = `Usage: gaia update-deps run --emit-updates <path>
+var HELP_TEXT54 = `Usage: gaia update-deps run --emit-updates <path>
 
   Discover outdated packages via \`pnpm outdated --json\`, classify each
   into Wave A (minor/patch, batched) or Wave B (major, per-group), and
@@ -29857,9 +29220,9 @@ var HELP_TEXT55 = `Usage: gaia update-deps run --emit-updates <path>
   --emit-updates <path>   Required. JSON file to write. Parent dirs are
                           created on demand.
 `;
-var HELP_TOKENS53 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS52 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var defaultPnpmRunner = (args, options) => {
-  const result = spawnSync4("pnpm", args, {
+  const result = spawnSync3("pnpm", args, {
     cwd: options.cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
@@ -29915,13 +29278,13 @@ var compareSegments = (a, b) => {
   return 0;
 };
 var readPackageJson = (cwd) => {
-  const raw = readFileSync34(path45.join(cwd, "package.json"), "utf8");
+  const raw = readFileSync32(path43.join(cwd, "package.json"), "utf8");
   return JSON.parse(raw);
 };
 var readInstalledVersion = (cwd, name) => {
   try {
-    const raw = readFileSync34(
-      path45.join(cwd, "node_modules", name, "package.json"),
+    const raw = readFileSync32(
+      path43.join(cwd, "node_modules", name, "package.json"),
       "utf8"
     );
     const parsed = JSON.parse(raw);
@@ -30019,7 +29382,7 @@ var fetchLatestVersion = (name, cwd, pnpmRunner) => {
 var readMinimumReleaseAge = (cwd) => {
   let raw;
   try {
-    raw = readFileSync34(path45.join(cwd, "pnpm-workspace.yaml"), "utf8");
+    raw = readFileSync32(path43.join(cwd, "pnpm-workspace.yaml"), "utf8");
   } catch {
     return 0;
   }
@@ -30262,10 +29625,10 @@ var parseArgs7 = (argv) => {
   }
   return { emitUpdates };
 };
-var run68 = (argv, options = {}) => {
+var run67 = (argv, options = {}) => {
   for (const token of argv) {
-    if (HELP_TOKENS53.has(token)) {
-      process.stdout.write(HELP_TEXT55);
+    if (HELP_TOKENS52.has(token)) {
+      process.stdout.write(HELP_TEXT54);
       return EXIT_CODES.OK;
     }
   }
@@ -30286,9 +29649,9 @@ var run68 = (argv, options = {}) => {
       pnpmRunner: options.pnpmRunner
     });
     const stamped = payload;
-    const outPath = path45.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path45.join(cwd, parsed.emitUpdates);
-    mkdirSync21(path45.dirname(outPath), { recursive: true });
-    writeFileSync16(outPath, `${JSON.stringify(stamped, null, 2)}
+    const outPath = path43.isAbsolute(parsed.emitUpdates) ? parsed.emitUpdates : path43.join(cwd, parsed.emitUpdates);
+    mkdirSync20(path43.dirname(outPath), { recursive: true });
+    writeFileSync14(outPath, `${JSON.stringify(stamped, null, 2)}
 `, "utf8");
     return EXIT_CODES.OK;
   } catch (error51) {
@@ -30302,22 +29665,22 @@ var run68 = (argv, options = {}) => {
 };
 
 // src/update-deps/index.ts
-var HELP_TEXT56 = `Usage: gaia update-deps <subcommand> [args]
+var HELP_TEXT55 = `Usage: gaia update-deps <subcommand> [args]
 
   run --emit-updates <path>                   Discover outdated packages,
                                               classify into Wave A / Wave B,
                                               and emit a JSON payload at
                                               <path>.
 `;
-var HELP_TOKENS54 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS53 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS7 = {
-  run: run68
+  run: run67
 };
-var run69 = async (argv) => {
+var run68 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS54.has(subcommand)) {
-    process.stdout.write(HELP_TEXT56);
+  if (subcommand === void 0 || HELP_TOKENS53.has(subcommand)) {
+    process.stdout.write(HELP_TEXT55);
     return EXIT_CODES.OK;
   }
   const handler = SUBCOMMAND_HANDLERS7[subcommand];
@@ -30334,25 +29697,25 @@ var run69 = async (argv) => {
 };
 
 // src/wiki/commit-classify.ts
-var HELP_TEXT57 = `Usage: gaia wiki commit-classify --since <sha> [--json]
+var HELP_TEXT56 = `Usage: gaia wiki commit-classify --since <sha> [--json]
 
   Emit a deterministic WORTHY/SKIP suggestion for every commit in
   <sha>..HEAD. Without --json, prints a tabular summary.
 `;
-var HELP_TOKENS55 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var takeValue10 = (argv, index, flag) => {
+var HELP_TOKENS54 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var takeValue9 = (argv, index, flag) => {
   const value = argv[index];
   if (value === void 0)
     return { message: `${flag} requires a value`, ok: false };
   return { ok: true, value };
 };
-var parseFlags14 = (argv) => {
+var parseFlags13 = (argv) => {
   let since;
   let json3 = false;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--since") {
-      const taken = takeValue10(argv, index + 1, "--since");
+      const taken = takeValue9(argv, index + 1, "--since");
       if (!taken.ok) return taken;
       since = taken.value;
       index += 1;
@@ -30489,7 +29852,7 @@ var classify = (commit) => {
     suggestion: "WORTHY"
   };
 };
-var printHuman11 = (classification) => {
+var printHuman10 = (classification) => {
   if (classification.commits.length === 0) {
     process.stdout.write("No commits to classify.\n");
     return;
@@ -30507,12 +29870,12 @@ var printHuman11 = (classification) => {
   process.stdout.write(`${lines.join("\n")}
 `);
 };
-var run70 = (argv, options = {}) => {
-  if (argv.length === 0 || HELP_TOKENS55.has(argv[0])) {
-    process.stdout.write(HELP_TEXT57);
+var run69 = (argv, options = {}) => {
+  if (argv.length === 0 || HELP_TOKENS54.has(argv[0])) {
+    process.stdout.write(HELP_TEXT56);
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
-  const parsed = parseFlags14(argv);
+  const parsed = parseFlags13(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -30562,15 +29925,15 @@ var run70 = (argv, options = {}) => {
     process.stdout.write(`${JSON.stringify(classification)}
 `);
   } else {
-    printHuman11(classification);
+    printHuman10(classification);
   }
   return EXIT_CODES.OK;
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync35, statSync as statSync5 } from "node:fs";
-import path46 from "node:path";
-var HELP_TEXT58 = `Usage: gaia wiki dead-paths [--json]
+import { readdirSync as readdirSync6, readFileSync as readFileSync33, statSync as statSync4 } from "node:fs";
+import path44 from "node:path";
+var HELP_TEXT57 = `Usage: gaia wiki dead-paths [--json]
 
   Scan wiki/**/*.md for backticked repo-relative paths under .claude/, .gaia/,
   app/, test/, wiki/ that no longer exist on disk, plus any reference to
@@ -30579,7 +29942,7 @@ var HELP_TEXT58 = `Usage: gaia wiki dead-paths [--json]
   and wiki/meta/** (audit artifacts that legitimately reference historical
   paths).
 `;
-var HELP_TOKENS56 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS55 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TRACKED_PREFIXES = [
   ".claude/",
   ".gaia/",
@@ -30607,32 +29970,32 @@ var isTrackedPath = (token) => {
 };
 var shouldSkipFile = (relPath) => SKIP_PATH_FRAGMENTS.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown = (root, dir) => {
-  const entries = readdirSync7(dir, { withFileTypes: true });
+  const entries = readdirSync6(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path46.join(dir, entry.name);
+    const full = path44.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown(root, full));
       continue;
     }
     if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path46.relative(root, full));
+      out.push(path44.relative(root, full));
     }
   }
   return out;
 };
 var pathExists = (root, candidate) => {
   try {
-    statSync5(path46.join(root, candidate));
+    statSync4(path44.join(root, candidate));
     return true;
   } catch {
     return false;
   }
 };
 var findDeadPaths = (cwd) => {
-  const wikiDir = path46.join(cwd, "wiki");
+  const wikiDir = path44.join(cwd, "wiki");
   try {
-    statSync5(wikiDir);
+    statSync4(wikiDir);
   } catch {
     return [];
   }
@@ -30640,7 +30003,7 @@ var findDeadPaths = (cwd) => {
   const files = walkMarkdown(cwd, wikiDir);
   for (const filePath of files) {
     if (shouldSkipFile(filePath)) continue;
-    const content = readFileSync35(path46.join(cwd, filePath), "utf8");
+    const content = readFileSync33(path44.join(cwd, filePath), "utf8");
     const lines = content.split("\n");
     for (const [index, line] of lines.entries()) {
       if (HISTORICAL_BULLET_PATTERN.test(line)) continue;
@@ -30660,11 +30023,11 @@ var findDeadPaths = (cwd) => {
   }
   return dead;
 };
-var run71 = (argv, options = {}) => {
+var run70 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS56.has(token)) {
-      process.stdout.write(HELP_TEXT58);
+    if (HELP_TOKENS55.has(token)) {
+      process.stdout.write(HELP_TEXT57);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -30703,7 +30066,7 @@ var run71 = (argv, options = {}) => {
 
 // src/wiki/diff-size.ts
 import { execFileSync as execFileSync7 } from "node:child_process";
-var HELP_TEXT59 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>] [--json]
+var HELP_TEXT58 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>] [--json]
 
   Compute wiki/** lines-changed (added + removed) between <base> (default
   HEAD~1) and HEAD as a percentage of the base tree's wiki line count.
@@ -30715,7 +30078,7 @@ var HELP_TEXT59 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>]
                       changed_lines, threshold_pct } instead of the bare
                       keyword.
 `;
-var HELP_TOKENS57 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS56 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var WIKI_PREFIX = "wiki/";
 var git = (cwd, args) => execFileSync7("git", ["-C", cwd, ...args], {
   encoding: "utf8",
@@ -30857,10 +30220,10 @@ var emitJson = (result) => {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
 };
-var run72 = (argv, options = {}) => {
+var run71 = (argv, options = {}) => {
   for (const token of argv) {
-    if (HELP_TOKENS57.has(token)) {
-      process.stdout.write(HELP_TEXT59);
+    if (HELP_TOKENS56.has(token)) {
+      process.stdout.write(HELP_TEXT58);
       return EXIT_CODES.OK;
     }
   }
@@ -30898,8 +30261,8 @@ var run72 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync8, readFileSync as readFileSync36, statSync as statSync6 } from "node:fs";
-import path47 from "node:path";
+import { readdirSync as readdirSync7, readFileSync as readFileSync34, statSync as statSync5 } from "node:fs";
+import path45 from "node:path";
 
 // src/wiki/util/frontmatter.ts
 var FRONTMATTER_FENCE = "---";
@@ -30961,7 +30324,7 @@ var parseFrontmatter = (raw) => {
 };
 
 // src/wiki/empty-sections.ts
-var HELP_TEXT60 = `Usage: gaia wiki empty-sections [--json]
+var HELP_TEXT59 = `Usage: gaia wiki empty-sections [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**, wiki/hot.md, wiki/log.md) for
   LEAF headings with no body, no child heading and no non-blank, non-heading
@@ -30970,23 +30333,23 @@ var HELP_TEXT60 = `Usage: gaia wiki empty-sections [--json]
   Without --json, prints one "path:line  heading" line per finding. With
   --json, emits { "empty": [ { path, line, heading } ] }.
 `;
-var HELP_TOKENS58 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS57 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SKIP_PATH_FRAGMENTS2 = ["wiki/meta/"];
 var SKIP_PATHS = /* @__PURE__ */ new Set(["wiki/hot.md", "wiki/log.md"]);
 var ATX_HEADING_PATTERN = /^ {0,3}(#{1,6})(?:\s|$)/u;
 var FENCE_PATTERN = /^\s*(?:```|~~~)/u;
 var shouldSkipFile2 = (relPath) => SKIP_PATHS.has(relPath) || SKIP_PATH_FRAGMENTS2.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown2 = (root, dir) => {
-  const entries = readdirSync8(dir, { withFileTypes: true });
+  const entries = readdirSync7(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path47.join(dir, entry.name);
+    const full = path45.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown2(root, full));
       continue;
     }
     if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path47.relative(root, full));
+      out.push(path45.relative(root, full));
     }
   }
   return out;
@@ -31039,9 +30402,9 @@ var findInBody = (body, bodyLineOffset, relPath) => {
   return found;
 };
 var findEmptySections = (cwd) => {
-  const wikiDir = path47.join(cwd, "wiki");
+  const wikiDir = path45.join(cwd, "wiki");
   try {
-    statSync6(wikiDir);
+    statSync5(wikiDir);
   } catch {
     return [];
   }
@@ -31049,18 +30412,18 @@ var findEmptySections = (cwd) => {
   const files = walkMarkdown2(cwd, wikiDir).sort();
   for (const filePath of files) {
     if (shouldSkipFile2(filePath)) continue;
-    const content = readFileSync36(path47.join(cwd, filePath), "utf8");
+    const content = readFileSync34(path45.join(cwd, filePath), "utf8");
     const { body } = parseFrontmatter(content);
     const offset = content.split("\n").length - body.split("\n").length;
     empty.push(...findInBody(body, offset, filePath));
   }
   return empty;
 };
-var run73 = (argv, options = {}) => {
+var run72 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS58.has(token)) {
-      process.stdout.write(HELP_TEXT60);
+    if (HELP_TOKENS57.has(token)) {
+      process.stdout.write(HELP_TEXT59);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -31103,39 +30466,39 @@ var run73 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync9, readFileSync as readFileSync37, statSync as statSync7 } from "node:fs";
-import path48 from "node:path";
-var HELP_TEXT61 = `Usage: gaia wiki frontmatter [--json]
+import { readdirSync as readdirSync8, readFileSync as readFileSync35, statSync as statSync6 } from "node:fs";
+import path46 from "node:path";
+var HELP_TEXT60 = `Usage: gaia wiki frontmatter [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**) for pages missing required
   frontmatter. Required floor is type and status. Without --json, prints one
   "path: missing a, b" line per gap. With --json, emits
   { "gaps": [ { path, missing } ] }.
 `;
-var HELP_TOKENS59 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS58 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var REQUIRED_FIELDS = ["type", "status"];
 var SKIP_PATH_FRAGMENTS3 = ["wiki/meta/"];
 var shouldSkipFile3 = (relPath) => SKIP_PATH_FRAGMENTS3.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown3 = (root, dir) => {
-  const entries = readdirSync9(dir, { withFileTypes: true });
+  const entries = readdirSync8(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
-    const full = path48.join(dir, entry.name);
+    const full = path46.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...walkMarkdown3(root, full));
       continue;
     }
     if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(path48.relative(root, full));
+      out.push(path46.relative(root, full));
     }
   }
   return out;
 };
 var hasField = (frontmatter, field) => Object.prototype.hasOwnProperty.call(frontmatter, field) && frontmatter[field] !== null;
 var findFrontmatterGaps = (cwd) => {
-  const wikiDir = path48.join(cwd, "wiki");
+  const wikiDir = path46.join(cwd, "wiki");
   try {
-    statSync7(wikiDir);
+    statSync6(wikiDir);
   } catch {
     return [];
   }
@@ -31143,7 +30506,7 @@ var findFrontmatterGaps = (cwd) => {
   const files = walkMarkdown3(cwd, wikiDir).sort();
   for (const filePath of files) {
     if (shouldSkipFile3(filePath)) continue;
-    const content = readFileSync37(path48.join(cwd, filePath), "utf8");
+    const content = readFileSync35(path46.join(cwd, filePath), "utf8");
     const { frontmatter } = parseFrontmatter(content);
     const missing = REQUIRED_FIELDS.filter(
       (field) => !hasField(frontmatter, field)
@@ -31154,11 +30517,11 @@ var findFrontmatterGaps = (cwd) => {
   }
   return gaps;
 };
-var run74 = (argv, options = {}) => {
+var run73 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS59.has(token)) {
-      process.stdout.write(HELP_TEXT61);
+    if (HELP_TOKENS58.has(token)) {
+      process.stdout.write(HELP_TEXT60);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -31201,44 +30564,44 @@ var run74 = (argv, options = {}) => {
 };
 
 // src/wiki/log-prepend.ts
-import { existsSync as existsSync38, readFileSync as readFileSync38, renameSync as renameSync11, writeFileSync as writeFileSync17 } from "node:fs";
-import path49 from "node:path";
-var HELP_TEXT62 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
+import { existsSync as existsSync35, readFileSync as readFileSync36, renameSync as renameSync11, writeFileSync as writeFileSync15 } from "node:fs";
+import path47 from "node:path";
+var HELP_TEXT61 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
   Prepends one canonical line to wiki/log.md after the frontmatter.
 `;
-var HELP_TOKENS60 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS59 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var VALID_DECISIONS = /* @__PURE__ */ new Set(["RE_ANCHOR", "SKIP", "WORTHY"]);
 var FRONTMATTER_FENCE2 = "---";
-var takeValue11 = (argv, index, flag) => {
+var takeValue10 = (argv, index, flag) => {
   const value = argv[index];
   if (value === void 0) {
     return { message: `${flag} requires a value`, ok: false };
   }
   return { ok: true, value };
 };
-var parseFlags15 = (argv) => {
+var parseFlags14 = (argv) => {
   let sha;
   let decision;
   let reason;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--sha") {
-      const taken = takeValue11(argv, index + 1, "--sha");
+      const taken = takeValue10(argv, index + 1, "--sha");
       if (!taken.ok) return taken;
       sha = taken.value;
       index += 1;
       continue;
     }
     if (token === "--decision") {
-      const taken = takeValue11(argv, index + 1, "--decision");
+      const taken = takeValue10(argv, index + 1, "--decision");
       if (!taken.ok) return taken;
       decision = taken.value;
       index += 1;
       continue;
     }
     if (token === "--reason") {
-      const taken = takeValue11(argv, index + 1, "--reason");
+      const taken = takeValue10(argv, index + 1, "--reason");
       if (!taken.ok) return taken;
       reason = taken.value;
       index += 1;
@@ -31288,17 +30651,17 @@ var findInsertionIndex = (lines, endFenceIndex) => {
   }
   return endFenceIndex + 1;
 };
-var run75 = (argv, options = {}) => {
+var run74 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT62);
+    process.stdout.write(HELP_TEXT61);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const first = argv[0];
-  if (HELP_TOKENS60.has(first)) {
-    process.stdout.write(HELP_TEXT62);
+  if (HELP_TOKENS59.has(first)) {
+    process.stdout.write(HELP_TEXT61);
     return EXIT_CODES.OK;
   }
-  const parsed = parseFlags15(argv);
+  const parsed = parseFlags14(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -31318,8 +30681,8 @@ var run75 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const logPath = path49.join(repoRoot2, "wiki", "log.md");
-  if (!existsSync38(logPath)) {
+  const logPath = path47.join(repoRoot2, "wiki", "log.md");
+  if (!existsSync35(logPath)) {
     structuredError({
       code: "log_missing",
       message: "wiki/log.md does not exist",
@@ -31327,7 +30690,7 @@ var run75 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync38(logPath, "utf8");
+  const raw = readFileSync36(logPath, "utf8");
   const lines = raw.split("\n");
   const scan = scanFrontmatter(lines);
   if (scan.kind === "missing" || scan.kind === "malformed") {
@@ -31347,20 +30710,20 @@ var run75 = (argv, options = {}) => {
     ...lines.slice(insertionIndex)
   ].join("\n");
   const tmpPath = `${logPath}.tmp`;
-  writeFileSync17(tmpPath, next, "utf8");
+  writeFileSync15(tmpPath, next, "utf8");
   renameSync11(tmpPath, logPath);
   return EXIT_CODES.OK;
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync39, readdirSync as readdirSync10, statSync as statSync8 } from "node:fs";
-import path50 from "node:path";
-var HELP_TEXT63 = `Usage: gaia wiki near-collisions [--max-distance 3]
+import { existsSync as existsSync36, readdirSync as readdirSync9, statSync as statSync7 } from "node:fs";
+import path48 from "node:path";
+var HELP_TEXT62 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
   Per-domain Levenshtein over slugs. Emits tab-separated rows:
   <domain>  <slugA>  <slugB>  <distance>
 `;
-var HELP_TOKENS61 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS60 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DEFAULT_MAX_DISTANCE = 3;
 var DOMAIN_DIRS = [
   "components",
@@ -31398,9 +30761,9 @@ var levenshtein = (a, b) => {
 var collectDomainSlugs = (wikiRoot) => {
   const collected = [];
   for (const domain2 of DOMAIN_DIRS) {
-    const domainDir = path50.join(wikiRoot, domain2);
-    if (!existsSync39(domainDir) || !statSync8(domainDir).isDirectory()) continue;
-    const entries = readdirSync10(domainDir, { withFileTypes: true });
+    const domainDir = path48.join(wikiRoot, domain2);
+    if (!existsSync36(domainDir) || !statSync7(domainDir).isDirectory()) continue;
+    const entries = readdirSync9(domainDir, { withFileTypes: true });
     const slugs = [];
     for (const entry of entries) {
       if (!entry.isFile()) continue;
@@ -31441,18 +30804,18 @@ var findCollisions = (domainGroups, maxDistance) => {
   });
   return results;
 };
-var takeValue12 = (argv, index, flag) => {
+var takeValue11 = (argv, index, flag) => {
   const value = argv[index];
   if (value === void 0)
     return { message: `${flag} requires a value`, ok: false };
   return { ok: true, value };
 };
-var parseFlags16 = (argv) => {
+var parseFlags15 = (argv) => {
   let maxDistance = DEFAULT_MAX_DISTANCE;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--max-distance") {
-      const taken = takeValue12(argv, index + 1, "--max-distance");
+      const taken = takeValue11(argv, index + 1, "--max-distance");
       if (!taken.ok) return taken;
       const parsed = Number.parseInt(taken.value, 10);
       if (Number.isNaN(parsed) || parsed < 1) {
@@ -31469,12 +30832,12 @@ var parseFlags16 = (argv) => {
   }
   return { flags: { maxDistance }, ok: true };
 };
-var run76 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS61.has(argv[0])) {
-    process.stdout.write(HELP_TEXT63);
+var run75 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS60.has(argv[0])) {
+    process.stdout.write(HELP_TEXT62);
     return EXIT_CODES.OK;
   }
-  const parsed = parseFlags16(argv);
+  const parsed = parseFlags15(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -31494,7 +30857,7 @@ var run76 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path50.join(repoRoot2, "wiki");
+  const wikiRoot = path48.join(repoRoot2, "wiki");
   const domainGroups = collectDomainSlugs(wikiRoot);
   const collisions = findCollisions(domainGroups, parsed.flags.maxDistance);
   if (collisions.length === 0) return EXIT_CODES.OK;
@@ -31507,8 +30870,8 @@ var run76 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync40, readdirSync as readdirSync11, readFileSync as readFileSync39, statSync as statSync9 } from "node:fs";
-import path51 from "node:path";
+import { existsSync as existsSync37, readdirSync as readdirSync10, readFileSync as readFileSync37, statSync as statSync8 } from "node:fs";
+import path49 from "node:path";
 
 // src/wiki/util/wikilinks.ts
 var WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
@@ -31528,12 +30891,12 @@ var extractWikilinks = (body) => {
 };
 
 // src/wiki/page-index.ts
-var HELP_TEXT64 = `Usage: gaia wiki page-index [--json]
+var HELP_TEXT63 = `Usage: gaia wiki page-index [--json]
 
   Walk wiki/<domain>/*.md, parse frontmatter, and count inbound/outbound
   wikilinks. Without --json, prints a tabular summary.
 `;
-var HELP_TOKENS62 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS61 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DOMAIN_DIRS2 = [
   "components",
   "concepts",
@@ -31546,7 +30909,7 @@ var DOMAIN_DIRS2 = [
 ];
 var SKIPPED_FILES2 = /* @__PURE__ */ new Set(["_index.md", "README.md"]);
 var ROOT_LINK_SOURCES = ["index.md", "overview.md", "hot.md"];
-var slugFromPath = (filePath) => path51.basename(filePath, ".md");
+var slugFromPath = (filePath) => path49.basename(filePath, ".md");
 var extractTitle = (body, fallback) => {
   const lines = body.split("\n");
   for (const line of lines) {
@@ -31572,16 +30935,16 @@ var arrayOfStrings = (value) => {
 var collectPages = (wikiRoot) => {
   const pages = [];
   for (const domain2 of DOMAIN_DIRS2) {
-    const domainDir = path51.join(wikiRoot, domain2);
-    if (!existsSync40(domainDir) || !statSync9(domainDir).isDirectory()) continue;
-    const entries = readdirSync11(domainDir, { withFileTypes: true });
+    const domainDir = path49.join(wikiRoot, domain2);
+    if (!existsSync37(domainDir) || !statSync8(domainDir).isDirectory()) continue;
+    const entries = readdirSync10(domainDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isFile()) continue;
       if (!entry.name.endsWith(".md")) continue;
       if (SKIPPED_FILES2.has(entry.name)) continue;
       if (entry.name.startsWith("_")) continue;
-      const absPath = path51.join(domainDir, entry.name);
-      const raw = readFileSync39(absPath, "utf8");
+      const absPath = path49.join(domainDir, entry.name);
+      const raw = readFileSync37(absPath, "utf8");
       const { body, frontmatter } = parseFrontmatter(raw);
       const slug = slugFromPath(entry.name);
       const title = extractTitle(body, slug);
@@ -31590,7 +30953,7 @@ var collectPages = (wikiRoot) => {
         body,
         domain: domain2,
         outboundTargets: targets,
-        relativePath: path51.posix.join("wiki", domain2, entry.name),
+        relativePath: path49.posix.join("wiki", domain2, entry.name),
         slug,
         status: stringValue(frontmatter.status),
         tags: arrayOfStrings(frontmatter.tags),
@@ -31604,9 +30967,9 @@ var collectPages = (wikiRoot) => {
 var collectRootLinkSources = (wikiRoot) => {
   const sources = [];
   for (const filename of ROOT_LINK_SOURCES) {
-    const absPath = path51.join(wikiRoot, filename);
-    if (!existsSync40(absPath)) continue;
-    const raw = readFileSync39(absPath, "utf8");
+    const absPath = path49.join(wikiRoot, filename);
+    if (!existsSync37(absPath)) continue;
+    const raw = readFileSync37(absPath, "utf8");
     const { body } = parseFrontmatter(raw);
     sources.push(extractWikilinks(body));
   }
@@ -31642,7 +31005,7 @@ var buildIndex = (pages, rootSources = []) => {
     }))
   };
 };
-var printHuman12 = (index) => {
+var printHuman11 = (index) => {
   if (index.pages.length === 0) {
     process.stdout.write("No wiki pages found.\n");
     return;
@@ -31658,16 +31021,16 @@ var printHuman12 = (index) => {
 };
 var computePageIndex = (cwd) => {
   const repoRoot2 = resolveRepoRoot2(cwd);
-  const wikiRoot = path51.join(repoRoot2, "wiki");
+  const wikiRoot = path49.join(repoRoot2, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   return buildIndex(pages, rootSources);
 };
-var run77 = (argv, options = {}) => {
+var run76 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS62.has(token)) {
-      process.stdout.write(HELP_TEXT64);
+    if (HELP_TOKENS61.has(token)) {
+      process.stdout.write(HELP_TEXT63);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -31692,7 +31055,7 @@ var run77 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path51.join(repoRoot2, "wiki");
+  const wikiRoot = path49.join(repoRoot2, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   const index = buildIndex(pages, rootSources);
@@ -31700,25 +31063,25 @@ var run77 = (argv, options = {}) => {
     process.stdout.write(`${JSON.stringify(index)}
 `);
   } else {
-    printHuman12(index);
+    printHuman11(index);
   }
   return EXIT_CODES.OK;
 };
 
 // src/wiki/orphans.ts
-var HELP_TEXT65 = `Usage: gaia wiki orphans [--json]
+var HELP_TEXT64 = `Usage: gaia wiki orphans [--json]
 
   List wiki pages with zero inbound wikilinks. Without --json, prints one
   repo-relative path per line. With --json, emits { "orphans": [ { path,
   title, domain } ] }.
 `;
-var HELP_TOKENS63 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var isMaintainerOnly = (path55) => path55.startsWith("wiki/meta/") || path55.startsWith("wiki/entities/");
-var run78 = (argv, options = {}) => {
+var HELP_TOKENS62 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var isMaintainerOnly = (path53) => path53.startsWith("wiki/meta/") || path53.startsWith("wiki/entities/");
+var run77 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS63.has(token)) {
-      process.stdout.write(HELP_TEXT65);
+    if (HELP_TOKENS62.has(token)) {
+      process.stdout.write(HELP_TEXT64);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -31769,11 +31132,11 @@ var run78 = (argv, options = {}) => {
 };
 
 // src/wiki/state.ts
-import { existsSync as existsSync41, readdirSync as readdirSync12, readFileSync as readFileSync40, statSync as statSync10 } from "node:fs";
-import path52 from "node:path";
-var HELP_TEXT66 = `Usage: gaia wiki state [--json]
+import { existsSync as existsSync38, readdirSync as readdirSync11, readFileSync as readFileSync38, statSync as statSync9 } from "node:fs";
+import path50 from "node:path";
+var HELP_TEXT65 = `Usage: gaia wiki state [--json]
 `;
-var HELP_TOKENS64 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS63 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var classifySeverity = (commitCount) => {
   if (commitCount <= 0) return "none";
   if (commitCount <= 5) return "low";
@@ -31793,12 +31156,12 @@ var DOMAIN_DIRS3 = [
 var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS3) {
-    const domainDir = path52.join(wikiRoot, domain2);
-    if (!existsSync41(domainDir) || !statSync10(domainDir).isDirectory()) {
+    const domainDir = path50.join(wikiRoot, domain2);
+    if (!existsSync38(domainDir) || !statSync9(domainDir).isDirectory()) {
       counts[domain2] = 0;
       continue;
     }
-    const entries = readdirSync12(domainDir, { withFileTypes: true });
+    const entries = readdirSync11(domainDir, { withFileTypes: true });
     let count = 0;
     for (const entry of entries) {
       if (!entry.isFile()) continue;
@@ -31811,15 +31174,15 @@ var countDomainPages = (wikiRoot) => {
   return counts;
 };
 var readStateFile2 = (statePath) => {
-  if (!existsSync41(statePath)) return null;
-  const raw = readFileSync40(statePath, "utf8");
+  if (!existsSync38(statePath)) return null;
+  const raw = readFileSync38(statePath, "utf8");
   try {
     return JSON.parse(raw);
   } catch {
     return null;
   }
 };
-var printHuman13 = (state, write) => {
+var printHuman12 = (state, write) => {
   const lines = [
     "Wiki state",
     `  HEAD:           ${state.head_short}`,
@@ -31843,14 +31206,14 @@ var printHuman13 = (state, write) => {
   write(`${lines.join("\n")}
 `);
 };
-var run79 = (argv, options = {}) => {
+var run78 = (argv, options = {}) => {
   const write = options.write ?? ((chunk) => {
     process.stdout.write(chunk);
   });
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS64.has(token)) {
-      write(HELP_TEXT66);
+    if (HELP_TOKENS63.has(token)) {
+      write(HELP_TEXT65);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -31875,8 +31238,8 @@ var run79 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path52.join(repoRoot2, "wiki");
-  const statePath = path52.join(wikiRoot, ".state.json");
+  const wikiRoot = path50.join(repoRoot2, "wiki");
+  const statePath = path50.join(wikiRoot, ".state.json");
   const stateFile = readStateFile2(statePath);
   const stateSha = stateFile?.last_evaluated_sha ?? "";
   const stateAt = stateFile?.last_evaluated_at ?? "";
@@ -31904,21 +31267,21 @@ var run79 = (argv, options = {}) => {
     write(`${JSON.stringify(state)}
 `);
   } else {
-    printHuman13(state, write);
+    printHuman12(state, write);
   }
   return EXIT_CODES.OK;
 };
 
 // src/wiki/state-bump.ts
-import { existsSync as existsSync42, readFileSync as readFileSync41 } from "node:fs";
-import path53 from "node:path";
-var HELP_TEXT67 = `Usage: gaia wiki state-bump <field> <value>
+import { existsSync as existsSync39, readFileSync as readFileSync39 } from "node:fs";
+import path51 from "node:path";
+var HELP_TEXT66 = `Usage: gaia wiki state-bump <field> <value>
 
   Updates a single field in wiki/.state.json. Sibling fields and key order
   are preserved. <value> is parsed as JSON when it parses (numbers,
   booleans, null, arrays, objects); otherwise treated as a string.
 `;
-var HELP_TOKENS65 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS64 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var tryParseJson2 = (raw) => {
   try {
     return JSON.parse(raw);
@@ -31940,13 +31303,13 @@ var reorderObject = (source, field, newValue) => {
   next[field] = newValue;
   return next;
 };
-var run80 = (argv, options = {}) => {
+var run79 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT67);
+    process.stdout.write(HELP_TEXT66);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (HELP_TOKENS65.has(argv[0])) {
-    process.stdout.write(HELP_TEXT67);
+  if (HELP_TOKENS64.has(argv[0])) {
+    process.stdout.write(HELP_TEXT66);
     return EXIT_CODES.OK;
   }
   const positional = [];
@@ -31981,8 +31344,8 @@ var run80 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const statePath = path53.join(repoRoot2, "wiki", ".state.json");
-  if (!existsSync42(statePath)) {
+  const statePath = path51.join(repoRoot2, "wiki", ".state.json");
+  if (!existsSync39(statePath)) {
     structuredError({
       code: "state_missing",
       message: "wiki/.state.json does not exist",
@@ -31990,7 +31353,7 @@ var run80 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const raw = readFileSync41(statePath, "utf8");
+  const raw = readFileSync39(statePath, "utf8");
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -32020,9 +31383,9 @@ var run80 = (argv, options = {}) => {
 
 // src/wiki/state-init.ts
 import { execFileSync as execFileSync8 } from "node:child_process";
-import { existsSync as existsSync43, mkdirSync as mkdirSync22 } from "node:fs";
-import path54 from "node:path";
-var HELP_TEXT68 = `Usage: gaia wiki state-init <sha>
+import { existsSync as existsSync40, mkdirSync as mkdirSync21 } from "node:fs";
+import path52 from "node:path";
+var HELP_TEXT67 = `Usage: gaia wiki state-init <sha>
 
   Create wiki/.state.json with {version: 1, last_evaluated_sha,
   last_evaluated_at}. Refuses if the file already exists.
@@ -32030,7 +31393,7 @@ var HELP_TEXT68 = `Usage: gaia wiki state-init <sha>
   <sha> may be any ref (full sha, short sha, branch, tag); it is
   resolved to a full 40-char sha via \`git rev-parse\`.
 `;
-var HELP_TOKENS66 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS65 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var resolveFullSha2 = (ref, cwd) => {
   try {
     const out = execFileSync8(
@@ -32047,13 +31410,13 @@ var resolveFullSha2 = (ref, cwd) => {
     return null;
   }
 };
-var run81 = (argv, options = {}) => {
+var run80 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT68);
+    process.stdout.write(HELP_TEXT67);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (HELP_TOKENS66.has(argv[0])) {
-    process.stdout.write(HELP_TEXT68);
+  if (HELP_TOKENS65.has(argv[0])) {
+    process.stdout.write(HELP_TEXT67);
     return EXIT_CODES.OK;
   }
   const positional = [];
@@ -32097,9 +31460,9 @@ var run81 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiDir = path54.join(repoRoot2, "wiki");
-  const statePath = path54.join(wikiDir, ".state.json");
-  if (existsSync43(statePath)) {
+  const wikiDir = path52.join(repoRoot2, "wiki");
+  const statePath = path52.join(wikiDir, ".state.json");
+  if (existsSync40(statePath)) {
     structuredError({
       code: "state_already_exists",
       message: "wiki/.state.json already exists; use `gaia wiki state-bump` to update fields",
@@ -32107,7 +31470,7 @@ var run81 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  mkdirSync22(wikiDir, { recursive: true });
+  mkdirSync21(wikiDir, { recursive: true });
   const nowDate = (options.now ?? (() => /* @__PURE__ */ new Date()))();
   const isoNow = nowDate.toISOString();
   const payload = {
@@ -32122,8 +31485,8 @@ var run81 = (argv, options = {}) => {
 };
 
 // src/wiki/util/branch.ts
-import { spawnSync as spawnSync5 } from "node:child_process";
-var defaultRunner = (command, args, options) => spawnSync5(command, args, {
+import { spawnSync as spawnSync4 } from "node:child_process";
+var defaultRunner = (command, args, options) => spawnSync4(command, args, {
   cwd: options.cwd,
   encoding: "utf8",
   stdio: ["ignore", "pipe", "pipe"]
@@ -32179,7 +31542,7 @@ var inspectWorkingTree = (cwd, runner = defaultRunner) => {
 };
 
 // src/wiki/sync-land.ts
-var HELP_TEXT69 = `Usage: gaia wiki sync land [--branch-aware]
+var HELP_TEXT68 = `Usage: gaia wiki sync land [--branch-aware]
 
   Land staged wiki changes via the correct branch strategy:
     - on main/master: refuses unless --branch-aware (then branch + PR + auto-merge)
@@ -32190,9 +31553,9 @@ var HELP_TEXT69 = `Usage: gaia wiki sync land [--branch-aware]
     1  user-correctable refusal (dirty tree, missing flag, ...)
     2  unexpected (git/gh failure)
 `;
-var HELP_TOKENS67 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT10 = 2;
-var parseFlags17 = (argv) => {
+var HELP_TOKENS66 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT9 = 2;
+var parseFlags16 = (argv) => {
   let branchAware = false;
   for (const token of argv) {
     if (token === "--branch-aware") {
@@ -32221,7 +31584,7 @@ var passthroughFailure = (result, step) => {
     process.stderr.write(`${stderr}
 `);
   }
-  return UNEXPECTED_EXIT10;
+  return UNEXPECTED_EXIT9;
 };
 var stepSucceeded = (result) => result.error === void 0 && (result.status ?? -1) === 0;
 var inPlaceLanding = (ctx) => {
@@ -32316,12 +31679,12 @@ var protectedBranchLanding = (ctx, options) => {
   );
   return EXIT_CODES.OK;
 };
-var run82 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS67.has(argv[0])) {
-    process.stdout.write(HELP_TEXT69);
+var run81 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS66.has(argv[0])) {
+    process.stdout.write(HELP_TEXT68);
     return EXIT_CODES.OK;
   }
-  const parsed = parseFlags17(argv);
+  const parsed = parseFlags16(argv);
   if (!parsed.ok) {
     structuredError({
       code: "invalid_arguments",
@@ -32353,7 +31716,7 @@ var run82 = (argv, options = {}) => {
       `sync-land: ${error51 instanceof Error ? error51.message : String(error51)}
 `
     );
-    return UNEXPECTED_EXIT10;
+    return UNEXPECTED_EXIT9;
   }
   if (workingTree.hasNonWikiChanges) {
     return refuse("sync-land: working tree has non-wiki changes; aborting");
@@ -32375,7 +31738,7 @@ var run82 = (argv, options = {}) => {
       `sync-land: ${error51 instanceof Error ? error51.message : String(error51)}
 `
     );
-    return UNEXPECTED_EXIT10;
+    return UNEXPECTED_EXIT9;
   }
   const ctx = {
     cwd: repoRoot2,
@@ -32403,7 +31766,7 @@ var spawnHead = (runner, cwd) => {
 };
 
 // src/wiki/index.ts
-var HELP_TEXT70 = `Usage: gaia wiki <subcommand> [args]
+var HELP_TEXT69 = `Usage: gaia wiki <subcommand> [args]
 
   state [--json]                              Drift report.
   commit-classify --since <sha> [--json]      Per-commit WORTHY/SKIP.
@@ -32426,16 +31789,16 @@ var SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
   land [--branch-aware]                       Land staged wiki changes via the correct
                                               branch strategy.
 `;
-var HELP_TOKENS68 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS67 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var runSync = async (args) => {
   const subcommand = args[0];
   const rest = args.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS68.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS67.has(subcommand)) {
     process.stdout.write(SYNC_HELP_TEXT);
     return EXIT_CODES.OK;
   }
   if (subcommand === "land") {
-    return run82(rest);
+    return run81(rest);
   }
   structuredError({
     code: "unknown_subcommand",
@@ -32445,25 +31808,25 @@ var runSync = async (args) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 var SUBCOMMAND_HANDLERS8 = {
-  "commit-classify": run70,
-  "dead-paths": run71,
-  "diff-size": run72,
-  "empty-sections": run73,
-  frontmatter: run74,
-  "log-prepend": run75,
-  "near-collisions": run76,
-  orphans: run78,
-  "page-index": run77,
-  state: run79,
-  "state-bump": run80,
-  "state-init": run81,
+  "commit-classify": run69,
+  "dead-paths": run70,
+  "diff-size": run71,
+  "empty-sections": run72,
+  frontmatter: run73,
+  "log-prepend": run74,
+  "near-collisions": run75,
+  orphans: run77,
+  "page-index": run76,
+  state: run78,
+  "state-bump": run79,
+  "state-init": run80,
   sync: runSync
 };
-var run83 = async (argv) => {
+var run82 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS68.has(subcommand)) {
-    process.stdout.write(HELP_TEXT70);
+  if (subcommand === void 0 || HELP_TOKENS67.has(subcommand)) {
+    process.stdout.write(HELP_TEXT69);
     return EXIT_CODES.OK;
   }
   const handler = SUBCOMMAND_HANDLERS8[subcommand];
@@ -32480,7 +31843,7 @@ var run83 = async (argv) => {
 };
 
 // src/index.ts
-var HELP_TEXT71 = `Usage: gaia <subcommand> [args]
+var HELP_TEXT70 = `Usage: gaia <subcommand> [args]
 
   telemetry emit <event_type> [--field value ...]
   telemetry compute-profile
@@ -32494,7 +31857,6 @@ var HELP_TEXT71 = `Usage: gaia <subcommand> [args]
   automation read-config|read-state|init-state|bump-state|cron-decide|record-run|record-overage|clear-overage
   ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
   ci-revert open|mark-failed|is-cap-reached
-  update merge --baseline <dir> --latest <dir> --manifest <path>
   update merge-workspace --baseline <file> --latest <file> --current <file>
   update-deps run --emit-updates <path>
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
@@ -32502,9 +31864,9 @@ var HELP_TEXT71 = `Usage: gaia <subcommand> [args]
   setup-ci status|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|set-secret|verify-run|finalize|write-tool-mode
 `;
 var printHelp2 = () => {
-  process.stdout.write(HELP_TEXT71);
+  process.stdout.write(HELP_TEXT70);
 };
-var HELP_TOKENS69 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS68 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS9 = {
   automation: run12,
   "ci-revert": run14,
@@ -32518,14 +31880,14 @@ var SUBCOMMAND_HANDLERS9 = {
   setup: run49,
   "setup-ci": run63,
   telemetry: run64,
-  update: run67,
-  "update-deps": run69,
-  wiki: run83
+  update: run66,
+  "update-deps": run68,
+  wiki: run82
 };
 var main = async () => {
   const subcommand = process.argv[2];
   const rest = process.argv.slice(3);
-  if (subcommand === void 0 || HELP_TOKENS69.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS68.has(subcommand)) {
     printHelp2();
     return EXIT_CODES.OK;
   }
