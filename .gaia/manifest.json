@@ -9,6 +9,7 @@
     ".claude/commands/gaia-audit.md": "owned",
     ".claude/commands/gaia-fitness.md": "owned",
     ".claude/commands/gaia-forensics.md": "owned",
+    ".claude/commands/gaia-harden.md": "owned",
     ".claude/commands/gaia-init.md": "owned",
     ".claude/commands/gaia-plan.md": "owned",
     ".claude/commands/gaia-spec.md": "owned",
@@ -71,6 +72,7 @@
     ".claude/skills/gaia/references/forensics/redaction.md": "owned",
     ".claude/skills/gaia/references/forensics/taxonomy.md": "owned",
     ".claude/skills/gaia/references/handoff.md": "owned",
+    ".claude/skills/gaia/references/harden.md": "owned",
     ".claude/skills/gaia/references/pickup.md": "owned",
     ".claude/skills/gaia/references/plan.md": "owned",
     ".claude/skills/gaia/references/spec.md": "owned",
@@ -446,6 +448,7 @@
     "wiki/concepts/GAIA Spec.md": "wiki-owned",
     "wiki/concepts/Git Workflow.md": "wiki-owned",
     "wiki/concepts/Incremental CI Skipping.md": "wiki-owned",
+    "wiki/concepts/Policy-Memory Loop.md": "wiki-owned",
     "wiki/concepts/PR Merge Workflow.md": "wiki-owned",
     "wiki/concepts/Pre-commit Hooks.md": "wiki-owned",
     "wiki/concepts/Serena Integration.md": "wiki-owned",
@@ -469,6 +472,7 @@
     "wiki/decisions/spec-kit Extension Strategy.md": "wiki-owned",
     "wiki/decisions/TDD RED Verification.md": "wiki-owned",
     "wiki/decisions/Thin Routes.md": "wiki-owned",
+    "wiki/decisions/TypeScript 7 Readiness.md": "wiki-owned",
     "wiki/decisions/TypeScript Language Files.md": "wiki-owned",
     "wiki/decisions/Wiki Management.md": "wiki-owned",
     "wiki/dependencies/Chromatic.md": "wiki-owned",
@@ -518,6 +522,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-05T04:28:52.188Z",
+  "generated": "2026-06-10T10:29:30.048Z",
   "version": "1.5.0"
 }
