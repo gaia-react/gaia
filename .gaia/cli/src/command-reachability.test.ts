@@ -58,6 +58,12 @@ const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([
 // itself. `.gaia/cli/src/automation/templates` holds the bundled CI workflow
 // templates that render into an adopter's `.github/`, the real home of the
 // `automation` and `wiki diff-size` invocations.
+//
+// Completeness of this list is the guard's single point of rot. If the
+// "every leaf has an external invoker" test goes red on a command you know
+// is live, the fix is almost always a missing surface here (a new invoker
+// location, a new binary, a new invocation prefix), NOT an INTERNAL_COMMANDS
+// entry. Allowlisting a live command silently stops the guard watching it.
 const INVOKER_SURFACES: readonly string[] = [
   '.claude/skills',
   '.claude/commands',
