@@ -235,8 +235,10 @@ Let `A` = working-tree `package.json`, `B` = `$BASELINE_DIR/package.json`, `L` =
 
 **Managed sections, three-way merged per entry:**
 
-- **Object sections, merged per entry key:** `dependencies`, `devDependencies`, `scripts`, `engines`, `pnpm.overrides`, top-level `overrides`.
-- **Scalar / whole-value keys, merged as a single value:** `packageManager`, and any non-`overrides` key under `pnpm` (e.g. `onlyBuiltDependencies`).
+- **Object sections, merged per entry key:** `dependencies`, `devDependencies`, `scripts`, `engines`.
+- **Scalar / whole-value keys, merged as a single value:** `packageManager`.
+
+Resolution, `overrides`, and build-approval (`allowBuilds`) settings live in `pnpm-workspace.yaml`, classed `owned` and merged by the generic Step 7 walk, not here. pnpm 11 reads them only from there; the `package.json` `pnpm` field and a top-level `overrides` key are not pnpm-managed `package.json` sections.
 
 For each managed entry key `k` (within its section), with `Bk` / `Lk` / `Ak` its value in baseline / latest / adopter:
 
@@ -251,7 +253,7 @@ For each managed entry key `k` (within its section), with `Bk` / `Lk` / `Ak` its
 
 **The load-bearing row is the first one:** a dependency the adopter removed (present in `B`, absent from `A`) is **never re-added** unless GAIA itself changed it this release _and_ the adopter opts in. The default everywhere is to respect the adopter's value. This is the JSON-key analog of the file-level "respect adopter deletions" rule the generic table already enforces.
 
-**Compute the per-key verdicts** with `jq` (covers the object sections including nested `pnpm.overrides`):
+**Compute the per-key verdicts** with `jq` (covers the object sections):
 
 ```bash
 jq -n \
@@ -259,7 +261,7 @@ jq -n \
   --slurpfile b "$BASELINE_DIR/package.json" \
   --slurpfile l "$LATEST_DIR/package.json" '
   ($a[0]) as $A | ($b[0]) as $B | ($l[0]) as $L
-  | [["dependencies"],["devDependencies"],["scripts"],["engines"],["overrides"],["pnpm","overrides"]] as $sections
+  | [["dependencies"],["devDependencies"],["scripts"],["engines"]] as $sections
   | [ $sections[] as $sp
       | (($B | getpath($sp)) // {}) as $bs
       | (($L | getpath($sp)) // {}) as $ls

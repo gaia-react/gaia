@@ -73,9 +73,10 @@ jobs:
                otherwise → `^<latest>`.
             2. Run a single `pnpm add ...` with all entries combined.
             3. Run `pnpm ls 2>&1`. On peer-dep error, attempt one
-               targeted `pnpm.overrides` fix (e.g. `parent>child`),
-               then `pnpm install` again. If still failing, revert the
-               offending package(s) and proceed with the rest.
+               targeted `overrides:` fix in `pnpm-workspace.yaml`
+               (e.g. `parent>child`), then `pnpm install` again. If
+               still failing, revert the offending package(s) and
+               proceed with the rest.
             4. Run the quality gate exactly: `pnpm typecheck`,
                `pnpm lint`, `pnpm test --run`, `pnpm pw`, `pnpm build`.
                If the gate fails, revert the entire wave-A batch and

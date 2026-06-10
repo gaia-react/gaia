@@ -4,3 +4,10 @@
 # project instead of this standalone maintainer CLI. pnpm resolves the nearest
 # pnpm-workspace.yaml, so this keeps .gaia/cli's own pnpm-lock.yaml and
 # node_modules isolated. Maintainer-only; release-excluded.
+
+# Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
+# with the allowBuilds map (true = the package may run install/build scripts).
+# esbuild builds a native binary in its postinstall; without this, the
+# --frozen-lockfile install fails with ERR_PNPM_IGNORED_BUILDS.
+allowBuilds:
+  esbuild: true

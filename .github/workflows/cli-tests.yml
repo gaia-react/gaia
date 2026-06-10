@@ -33,15 +33,7 @@ jobs:
               # or template drift lands silently.
               - '.github/workflows/code-review-audit.yml'
       - if: steps.filter.outputs.code == 'true'
-        # Pinned to v4.4.0 (not v6.0.5 like the other workflows), bumping
-        # to v6 surfaces an ERR_PNPM_IGNORED_BUILDS regression on the
-        # `pnpm -C .gaia/cli install --frozen-lockfile` invocation: pnpm 10
-        # blocks the esbuild postinstall scripts even though
-        # `.gaia/cli/package.json`'s `pnpm.onlyBuiltDependencies` lists
-        # esbuild. Other workflows install at the project root where the
-        # same allowlist works fine. Eats the Node.js 20 deprecation
-        # alone (auto-forced to Node 24 starting 2026-06-02 by GitHub).
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
       - if: steps.filter.outputs.code == 'true'
         name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0

@@ -309,7 +309,7 @@ Remove these keys from `devDependencies`:
 - `accept-language-parser`
 - `@types/accept-language-parser`
 
-Remove any keys from `pnpm.overrides` whose name starts with `remix-i18next>` (none may exist if overrides is empty `{}`, leave it that way).
+Remove any keys from the `overrides:` map in `pnpm-workspace.yaml` whose name starts with `remix-i18next>` (none may exist if the map is empty, leave it that way).
 
 Then run:
 
