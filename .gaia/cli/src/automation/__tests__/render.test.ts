@@ -36,7 +36,6 @@ const setupSandbox = (): Sandbox => {
 
 const baseVars: WorkflowTemplateVars = {
   config_key: 'wiki',
-  cost_ceiling_dollars: 5,
   cron: '0 4 * * *',
   enable_auto_merge: true,
   enable_diff_size_check: true,
@@ -99,14 +98,14 @@ describe('resolvePartials', () => {
 
   it('supports kebab-case partial names', () => {
     sandbox.writePartial('auto-merge', 'AM');
-    sandbox.writePartial('cost-accounting', 'CA');
+    sandbox.writePartial('pre-run-skip', 'PRS');
 
     const out = resolvePartials(
-      '{{> partials/auto-merge }} | {{> partials/cost-accounting }}',
+      '{{> partials/auto-merge }} | {{> partials/pre-run-skip }}',
       sandbox.partialsDir
     );
 
-    expect(out).toBe('AM | CA');
+    expect(out).toBe('AM | PRS');
   });
 
   it('throws when a partial body contains {{>', () => {

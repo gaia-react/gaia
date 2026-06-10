@@ -38,12 +38,7 @@ import {describe, expect, it} from 'vitest';
 // Subcommands reachable only through their router with no external invoker,
 // allowed on purpose. Each entry needs a reason. Wiring or retiring a command
 // here makes the "no stale entries" test fail until the entry is removed.
-const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([
-  [
-    'automation record-overage',
-    'Write-side of the cost_overage flag. record-run already sets cost_overage inline (cost > 5), so this standalone post-run edit is redundant in production; it survives as the fixture-builder for the cron-decide cost_overage test, paired with the operator-facing clear-overage. Kept for that pairing.',
-  ],
-]);
+const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([]);
 
 // Directories under the repo root scanned for invocation strings. None of
 // these contain a router or a test file, so a command can never vouch for

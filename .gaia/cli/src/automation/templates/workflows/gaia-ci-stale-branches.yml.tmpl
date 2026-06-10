@@ -17,8 +17,6 @@ jobs:
 {{#enable_stale_branch_delete}}
       - name: Delete branches merged > 30 days ago
         if: steps.pre_run.outputs.decision == 'run'
-        env:
-          RUN_COST_DOLLARS: "0"
         run: |
           set -euo pipefail
           cutoff=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s)
@@ -41,4 +39,3 @@ jobs:
               done
 {{/enable_stale_branch_delete}}
 {{> partials/auto-merge }}
-{{> partials/cost-accounting }}

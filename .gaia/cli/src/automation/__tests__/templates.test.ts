@@ -87,7 +87,6 @@ describe('workflow templates: gaia-ci-wiki', () => {
       ...expectedSteps,
       'Run gaia wiki chain',
       'Open and auto-merge gaia-ci PR',
-      'Post-run cost accounting',
     ]);
   });
 
@@ -225,10 +224,6 @@ describe('workflow templates: gaia-ci-stale-branches', () => {
     expect(stepNames(doc)).not.toContain('Open and auto-merge gaia-ci PR');
   });
 
-  it('still emits the cost-accounting step', () => {
-    expect(stepNames(doc)).toContain('Post-run cost accounting');
-  });
-
   it('contains no unresolved {{ or }} mustache tokens', () => {
     const stripped = rendered.replaceAll(/\$\{\{[\s\S]*?\}\}/gu, '');
     expect(stripped).not.toContain('{{');
@@ -282,14 +277,6 @@ describe('workflow templates: cross-tool invariants', () => {
       const rendered = renderForTool(tool);
       expect(rendered).toContain('pnpm typecheck');
       expect(rendered).toContain('pnpm lint');
-    }
-  );
-
-  it.each(tools)(
-    'every rendered file runs the cost-accounting record-run (%s)',
-    (tool) => {
-      const rendered = renderForTool(tool);
-      expect(rendered).toContain('automation record-run');
     }
   );
 });

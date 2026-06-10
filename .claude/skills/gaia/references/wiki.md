@@ -56,23 +56,9 @@ GAIA CI manages /gaia-wiki for this repo. Running it locally now risks colliding
 with the next scheduled run. To override, re-invoke with --force.
 ```
 
-If `STATUS == "ci"` and `FORCE == "true"`, the chain runs as normal. After
-the chain commits its wiki edits, the parent ALSO calls:
+If `STATUS == "ci"` and `FORCE == "true"`, the chain runs as normal.
 
-```
-.gaia/cli/gaia automation record-run wiki \
-  --sha "$(git rev-parse HEAD)" \
-  --trigger force \
-  --cost 0
-git add .gaia/automation.state-wiki.json
-git commit --amend --no-edit
-```
-
-The state changes commit in the same commit as the wiki content change.
-The dispatched sub-agent commits but does not push, so the amend is local
-only and the bundled commit is the one that hits the remote.
-
-If `STATUS != "ci"`, behave as before (no defer, no force, no record-run).
+If `STATUS != "ci"`, behave as before (no defer, no force).
 
 ## Sync
 

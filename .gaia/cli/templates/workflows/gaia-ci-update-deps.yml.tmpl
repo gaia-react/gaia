@@ -54,7 +54,6 @@ jobs:
         # working tree dirty for the auto-merge partial to commit.
         env:
           UPDATES_FILE: ${{ steps.emit_updates.outputs.updates_file }}
-          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -96,7 +95,6 @@ jobs:
             --disallowedTools WebFetch,WebSearch
 {{/enable_major_bump_split}}
 {{> partials/auto-merge }}
-{{> partials/cost-accounting }}
 
 {{#enable_major_bump_split}}
   wave_b:
@@ -139,7 +137,6 @@ jobs:
         # gate. Web tools enabled so the migration guide is fetchable.
         env:
           GROUP: ${{ matrix.group }}
-          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -183,26 +180,4 @@ jobs:
             --head "$BRANCH" \
             --base "${{ github.event.repository.default_branch }}")
           echo "wave-B PR opened: $pr_url"
-
-      - name: Wave-B cost accounting
-        if: always()
-        env:
-          GAIA_CI_COST_CEILING: '{{cost_ceiling_dollars}}'
-          GROUP: ${{ matrix.group }}
-        run: |
-          set -euo pipefail
-          cost="${RUN_COST_DOLLARS:-0}"
-          .gaia/cli/gaia automation record-run \
-            {{tool_id}} \
-            --sha "$(git rev-parse HEAD)" \
-            --trigger cron \
-            --cost "$cost"
-          overage=$(.gaia/cli/gaia automation read-state {{tool_id}} --json \
-            | jq -r '.cost_overage // false')
-          if [ "$overage" = "true" ]; then
-            gh issue create \
-              --title "[GAIA CI] {{workflow_name}} wave-B cost overage (${GROUP}): \$${cost}" \
-              --label gaia-ci,priority:high \
-              --body "{{workflow_name}} wave-B run for group \`${GROUP}\` reported \$${cost} (ceiling: \$${GAIA_CI_COST_CEILING}). Next run for {{tool_id}} is suppressed until cleared via 'gaia automation clear-overage {{tool_id}}'."
-          fi
 {{/enable_major_bump_split}}

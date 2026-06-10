@@ -1,15 +1,14 @@
 /**
- * `gaia automation cron-decide <tool> [--json] [--now <iso>]` handler.
+ * `gaia automation cron-decide <tool> [--json]` handler.
  *
- * The smart-cron decision primitive. Returns a deterministic
- * `{decision, reason, skip_log_line}` triple per the SPEC's per-tool
- * cron logic. Pure: never mutates state. Workflows inspect `decision`
- * and act.
+ * The smart-cron decision primitive. Reads `.gaia/automation.json` and
+ * returns a deterministic `{decision, reason, skip_log_line}` triple.
+ * Pure config-only: it never reads or mutates any state file. An enabled
+ * wiki tool runs; a non-wiki tool emits a not-yet-implemented placeholder
+ * skip; a tool whose mode is `off` emits a tool_off skip.
  *
  * Exit code 0 covers both `run` and `skip` decisions. Non-zero covers
- * configuration errors (missing/malformed config or malformed state).
- *
- * `--now <iso>` is a hidden, tests-only flag that overrides `new Date()`.
+ * configuration errors (missing or malformed config).
  */
 import {EXIT_CODES} from '../exit.js';
 import {
@@ -20,19 +19,10 @@ import {
   type ToolId,
 } from '../schemas/automation-config.js';
 import {readAutomationConfig} from '../schemas/automation-config.js';
-import {readAutomationState} from '../schemas/automation-state.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
-import {appChangedSince} from './util/source-changed.js';
 
-type CronReason =
-  | 'app_changed'
-  | 'ceiling_14d'
-  | 'cost_overage'
-  | 'first_run'
-  | 'floor_24h'
-  | 'no_app_change'
-  | 'tool_off';
+type CronReason = 'enabled' | 'tool_off';
 
 type CronDecision = {
   decision: 'run' | 'skip';
@@ -42,24 +32,16 @@ type CronDecision = {
 
 const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
 
-  Smart-cron decision primitive. Reads .gaia/automation.json and the
-  per-tool state file, then emits {decision, reason, skip_log_line}.
+  Smart-cron decision primitive. Reads .gaia/automation.json and emits
+  {decision, reason, skip_log_line}.
   Decision priority:
-    1. tool_off       (config.<tool>.mode == "off")
-    2. first_run      (state file missing)
-    3. cost_overage   (state.cost_overage == true)
-    4. ceiling_14d    (last_run_at > 14 days ago)
-    5. floor_24h      (last_run_at < 24 hours ago)
-    6. app_changed    (commits to app/** since last_run_sha), wiki only
-    7. no_app_change  (otherwise), wiki only
+    1. tool_off   (config.<tool>.mode == "off")
+    2. enabled    (wiki, mode != off -> run)
+  Non-wiki tools are not yet implemented and skip with a placeholder.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const TOOL_ID_SET: ReadonlySet<string> = new Set(TOOL_IDS);
-
-const MS_PER_HOUR = 60 * 60 * 1000;
-const FLOOR_HOURS = 24;
-const CEILING_DAYS = 14;
 
 const toolConfigFor = (config: AutomationConfig, tool: ToolId): ToolConfig =>
   // `TOOL_ID_TO_CONFIG_KEY` is typed `Record<ToolId, ToolConfigKey>`, so the
@@ -68,7 +50,6 @@ const toolConfigFor = (config: AutomationConfig, tool: ToolId): ToolConfig =>
 
 type RunOptions = {
   cwd?: string;
-  now?: () => Date;
 };
 
 export const run = (
@@ -83,44 +64,12 @@ export const run = (
 
   let tool: ToolId | undefined;
   let json = false;
-  let nowOverride: Date | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] as string;
 
     if (token === '--json') {
       json = true;
-
-      continue;
-    }
-
-    if (token === '--now') {
-      const value = argv[index + 1];
-
-      if (value === undefined) {
-        structuredError({
-          code: 'invalid_arguments',
-          message: '--now requires an ISO timestamp',
-          subcommand: 'automation cron-decide',
-        });
-
-        return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-      }
-
-      const parsed = new Date(value);
-
-      if (Number.isNaN(parsed.getTime())) {
-        structuredError({
-          code: 'invalid_arguments',
-          message: `--now must be a parseable ISO timestamp; got: "${value}"`,
-          subcommand: 'automation cron-decide',
-        });
-
-        return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-      }
-
-      nowOverride = parsed;
-      index += 1;
 
       continue;
     }
@@ -208,18 +157,7 @@ export const run = (
 
   const toolConfig = toolConfigFor(configResult.config, tool);
 
-  const decision = decide({
-    appChangedSince: (sha) => appChangedSince(repoRoot, sha),
-    now: nowOverride ?? options.now?.() ?? new Date(),
-    repoRoot,
-    stateResult: readAutomationState(repoRoot, tool),
-    tool,
-    toolConfig,
-  });
-
-  if (decision === 'state_malformed') {
-    return EXIT_CODES.CONFIG_INVALID;
-  }
+  const decision = decide({tool, toolConfig});
 
   if (json) {
     process.stdout.write(`${JSON.stringify(decision)}\n`);
@@ -235,22 +173,12 @@ export const run = (
 };
 
 type DecideArgs = {
-  appChangedSince: (sha: string) => boolean;
-  now: Date;
-  repoRoot: string;
-  stateResult: ReturnType<typeof readAutomationState>;
   tool: ToolId;
   toolConfig: ToolConfig;
 };
 
-const decide = (args: DecideArgs): CronDecision | 'state_malformed' => {
-  const {
-    appChangedSince: appChanged,
-    now,
-    stateResult,
-    tool,
-    toolConfig,
-  } = args;
+const decide = (args: DecideArgs): CronDecision => {
+  const {tool, toolConfig} = args;
 
   // 1. tool_off
   if (toolConfig.mode === 'off') {
@@ -261,10 +189,9 @@ const decide = (args: DecideArgs): CronDecision | 'state_malformed' => {
     };
   }
 
-  // Slice-1 limitation: cron-decide governs only the wiki tool. Non-wiki
-  // tools land in a future slice that adds per-tool source sets; for now,
-  // emit a clearly-tagged tool_off-shaped placeholder so the workflow can
-  // see the limitation and bail.
+  // Non-wiki tools are not yet implemented. Emit a clearly-tagged
+  // tool_off-shaped placeholder so the workflow can see the limitation
+  // and bail.
   if (tool !== 'wiki') {
     return {
       decision: 'skip',
@@ -273,59 +200,6 @@ const decide = (args: DecideArgs): CronDecision | 'state_malformed' => {
     };
   }
 
-  // 2. first_run / state_malformed and 3. cost_overage
-  if (stateResult.status === 'malformed') {
-    structuredError({
-      code: 'state_malformed',
-      message: stateResult.error,
-      subcommand: 'automation cron-decide',
-    });
-
-    return 'state_malformed';
-  }
-
-  if (stateResult.status === 'missing') {
-    return {decision: 'run', reason: 'first_run', skip_log_line: null};
-  }
-
-  const state = stateResult.state;
-
-  if (state.cost_overage) {
-    return {
-      decision: 'skip',
-      reason: 'cost_overage',
-      skip_log_line: 'cost overage; suppressed',
-    };
-  }
-
-  // 4. ceiling_14d
-  const lastRunMs = new Date(state.last_run_at).getTime();
-  const ageMs = now.getTime() - lastRunMs;
-
-  if (ageMs > CEILING_DAYS * 24 * MS_PER_HOUR) {
-    return {decision: 'run', reason: 'ceiling_14d', skip_log_line: null};
-  }
-
-  // 5. floor_24h
-  if (ageMs < FLOOR_HOURS * MS_PER_HOUR) {
-    return {
-      decision: 'skip',
-      reason: 'floor_24h',
-      skip_log_line: 'within 24h floor; skipping',
-    };
-  }
-
-  // 6. app_changed (wiki only)
-  if (appChanged(state.last_run_sha)) {
-    return {decision: 'run', reason: 'app_changed', skip_log_line: null};
-  }
-
-  // 7. no_app_change (wiki only)
-  const shortSha = state.last_run_sha.slice(0, 7);
-
-  return {
-    decision: 'skip',
-    reason: 'no_app_change',
-    skip_log_line: `skipped: no app/** changes since ${shortSha}`,
-  };
+  // 2. enabled: a configured wiki tool always runs.
+  return {decision: 'run', reason: 'enabled', skip_log_line: null};
 };

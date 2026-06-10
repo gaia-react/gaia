@@ -7,23 +7,15 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {run as runClearOverage} from './clear-overage.js';
 import {run as runCronDecide} from './cron-decide.js';
 import {run as runInstallAuditWorkflow} from './install-audit-workflow.js';
 import {run as runReadConfig} from './read-config.js';
-import {run as runReadState} from './read-state.js';
-import {run as runRecordOverage} from './record-overage.js';
-import {run as runRecordRun} from './record-run.js';
 import {run as runRenderWorkflows} from './render-workflows.js';
 
 const HELP_TEXT = `Usage: gaia automation <subcommand> [args]
 
   read-config [--json]
-  read-state <tool> [--json]
   cron-decide <tool> [--json]
-  record-run <tool> --sha <sha> --trigger <cron|force|workflow_dispatch> --cost <dollars> [--at <iso>]
-  record-overage <tool> --cost <dollars>
-  clear-overage <tool>
   render-workflows --out-dir <path> [--tools <csv>] [--dry-run]
   install-audit-workflow --out-dir <path> [--dry-run]
 `;
@@ -35,13 +27,9 @@ type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
-  'clear-overage': runClearOverage,
   'cron-decide': runCronDecide,
   'install-audit-workflow': runInstallAuditWorkflow,
   'read-config': runReadConfig,
-  'read-state': runReadState,
-  'record-overage': runRecordOverage,
-  'record-run': runRecordRun,
   'render-workflows': runRenderWorkflows,
 };
 

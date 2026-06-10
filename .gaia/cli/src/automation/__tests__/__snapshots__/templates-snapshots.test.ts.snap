@@ -88,8 +88,6 @@ jobs:
 
       - name: Run pnpm audit and open security PR for high/critical
         if: steps.pre_run.outputs.decision == 'run'
-        env:
-          RUN_COST_DOLLARS: "0"
         run: |
           set -euo pipefail
           default=$(gh api repos/\${{ github.repository }} --jq '.default_branch' 2>/dev/null || echo "main")
@@ -174,32 +172,6 @@ jobs:
 
           gh pr merge "$pr_number" --auto --squash
 
-
-      - name: Post-run cost accounting
-        if: always() && steps.pre_run.outputs.decision == 'run'
-        env:
-          GAIA_CI_COST_CEILING: '5'
-        run: |
-          set -euo pipefail
-          # Cost is emitted by anthropics/claude-code-action when used; for
-          # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
-          cost="\${RUN_COST_DOLLARS:-0}"
-          .gaia/cli/gaia automation record-run \\
-            pnpm-audit \\
-            --sha "$(git rev-parse HEAD)" \\
-            --trigger cron \\
-            --cost "$cost"
-          # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility; the next
-          # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(.gaia/cli/gaia automation read-state pnpm-audit --json \\
-            | jq -r '.cost_overage // false')
-          if [ "$overage" = "true" ]; then
-            gh issue create \\
-              --title "[GAIA CI] GAIA CI - pnpm audit cost overage: \\$\${cost}" \\
-              --label gaia-ci,priority:high \\
-              --body "GAIA CI - pnpm audit run reported \\$\${cost} (ceiling: \\$\${GAIA_CI_COST_CEILING}). Next run for pnpm-audit is suppressed until cleared via 'gaia automation clear-overage pnpm-audit'."
-          fi
 
 "
 `;
@@ -290,8 +262,6 @@ jobs:
 
       - name: Delete branches merged > 30 days ago
         if: steps.pre_run.outputs.decision == 'run'
-        env:
-          RUN_COST_DOLLARS: "0"
         run: |
           set -euo pipefail
           cutoff=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s)
@@ -317,32 +287,6 @@ jobs:
       # stale-branches workflow (which doesn't open a PR) emits no
       # merge invocation in its rendered YAML.
 
-
-      - name: Post-run cost accounting
-        if: always() && steps.pre_run.outputs.decision == 'run'
-        env:
-          GAIA_CI_COST_CEILING: '5'
-        run: |
-          set -euo pipefail
-          # Cost is emitted by anthropics/claude-code-action when used; for
-          # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
-          cost="\${RUN_COST_DOLLARS:-0}"
-          .gaia/cli/gaia automation record-run \\
-            stale-branches \\
-            --sha "$(git rev-parse HEAD)" \\
-            --trigger cron \\
-            --cost "$cost"
-          # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility; the next
-          # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(.gaia/cli/gaia automation read-state stale-branches --json \\
-            | jq -r '.cost_overage // false')
-          if [ "$overage" = "true" ]; then
-            gh issue create \\
-              --title "[GAIA CI] GAIA CI - Stale Branches cost overage: \\$\${cost}" \\
-              --label gaia-ci,priority:high \\
-              --body "GAIA CI - Stale Branches run reported \\$\${cost} (ceiling: \\$\${GAIA_CI_COST_CEILING}). Next run for stale-branches is suppressed until cleared via 'gaia automation clear-overage stale-branches'."
-          fi
 
 "
 `;
@@ -470,7 +414,6 @@ jobs:
         # working tree dirty for the auto-merge partial to commit.
         env:
           UPDATES_FILE: \${{ steps.emit_updates.outputs.updates_file }}
-          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
           claude_code_oauth_token: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -541,32 +484,6 @@ jobs:
           gh pr merge "$pr_number" --auto --squash
 
 
-      - name: Post-run cost accounting
-        if: always() && steps.pre_run.outputs.decision == 'run'
-        env:
-          GAIA_CI_COST_CEILING: '5'
-        run: |
-          set -euo pipefail
-          # Cost is emitted by anthropics/claude-code-action when used; for
-          # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
-          cost="\${RUN_COST_DOLLARS:-0}"
-          .gaia/cli/gaia automation record-run \\
-            update-deps \\
-            --sha "$(git rev-parse HEAD)" \\
-            --trigger cron \\
-            --cost "$cost"
-          # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility; the next
-          # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(.gaia/cli/gaia automation read-state update-deps --json \\
-            | jq -r '.cost_overage // false')
-          if [ "$overage" = "true" ]; then
-            gh issue create \\
-              --title "[GAIA CI] GAIA CI - Update Deps cost overage: \\$\${cost}" \\
-              --label gaia-ci,priority:high \\
-              --body "GAIA CI - Update Deps run reported \\$\${cost} (ceiling: \\$\${GAIA_CI_COST_CEILING}). Next run for update-deps is suppressed until cleared via 'gaia automation clear-overage update-deps'."
-          fi
-
 
 
   wave_b:
@@ -622,7 +539,6 @@ jobs:
         # gate. Web tools enabled so the migration guide is fetchable.
         env:
           GROUP: \${{ matrix.group }}
-          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
           claude_code_oauth_token: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -666,28 +582,6 @@ jobs:
             --head "$BRANCH" \\
             --base "\${{ github.event.repository.default_branch }}")
           echo "wave-B PR opened: $pr_url"
-
-      - name: Wave-B cost accounting
-        if: always()
-        env:
-          GAIA_CI_COST_CEILING: '5'
-          GROUP: \${{ matrix.group }}
-        run: |
-          set -euo pipefail
-          cost="\${RUN_COST_DOLLARS:-0}"
-          .gaia/cli/gaia automation record-run \\
-            update-deps \\
-            --sha "$(git rev-parse HEAD)" \\
-            --trigger cron \\
-            --cost "$cost"
-          overage=$(.gaia/cli/gaia automation read-state update-deps --json \\
-            | jq -r '.cost_overage // false')
-          if [ "$overage" = "true" ]; then
-            gh issue create \\
-              --title "[GAIA CI] GAIA CI - Update Deps wave-B cost overage (\${GROUP}): \\$\${cost}" \\
-              --label gaia-ci,priority:high \\
-              --body "GAIA CI - Update Deps wave-B run for group \\\`\${GROUP}\\\` reported \\$\${cost} (ceiling: \\$\${GAIA_CI_COST_CEILING}). Next run for update-deps is suppressed until cleared via 'gaia automation clear-overage update-deps'."
-          fi
 
 "
 `;
@@ -785,8 +679,6 @@ jobs:
         # \`gaia wiki sync land --branch-aware\`; subsequent commits from
         # consolidate's apply phase ride on top before the auto-merge
         # partial wraps the diff into a PR.
-        env:
-          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
           claude_code_oauth_token: \${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -856,32 +748,6 @@ jobs:
 
           gh pr merge "$pr_number" --auto --squash
 
-
-      - name: Post-run cost accounting
-        if: always() && steps.pre_run.outputs.decision == 'run'
-        env:
-          GAIA_CI_COST_CEILING: '5'
-        run: |
-          set -euo pipefail
-          # Cost is emitted by anthropics/claude-code-action when used; for
-          # non-LLM tools (pnpm-audit, stale-branches) the cost is zero.
-          cost="\${RUN_COST_DOLLARS:-0}"
-          .gaia/cli/gaia automation record-run \\
-            wiki \\
-            --sha "$(git rev-parse HEAD)" \\
-            --trigger cron \\
-            --cost "$cost"
-          # If the run exceeded the per-run cost ceiling, record-run sets
-          # cost_overage=true. Open one issue for visibility; the next
-          # cron evaluation suppresses the run until the flag is cleared.
-          overage=$(.gaia/cli/gaia automation read-state wiki --json \\
-            | jq -r '.cost_overage // false')
-          if [ "$overage" = "true" ]; then
-            gh issue create \\
-              --title "[GAIA CI] GAIA CI - Wiki cost overage: \\$\${cost}" \\
-              --label gaia-ci,priority:high \\
-              --body "GAIA CI - Wiki run reported \\$\${cost} (ceiling: \\$\${GAIA_CI_COST_CEILING}). Next run for wiki is suppressed until cleared via 'gaia automation clear-overage wiki'."
-          fi
 
 "
 `;

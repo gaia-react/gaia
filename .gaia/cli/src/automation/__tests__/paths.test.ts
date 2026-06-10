@@ -2,7 +2,6 @@ import path from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {
   automationConfigPath,
-  automationStatePath,
   githubWorkflowsDirectory,
   localAutomationPath,
   workflowAuditTemplatePath,
@@ -23,28 +22,6 @@ describe('automation/paths', () => {
       expect(automationConfigPath('/tmp/repo/')).toBe(
         path.join('/tmp/repo/', '.gaia', 'automation.json')
       );
-    });
-  });
-
-  describe('automationStatePath', () => {
-    it('returns the correct path for each tool id', () => {
-      expect(automationStatePath('/r', 'wiki')).toBe(
-        path.join('/r', '.gaia', 'automation.state-wiki.json')
-      );
-      expect(automationStatePath('/r', 'update-deps')).toBe(
-        path.join('/r', '.gaia', 'automation.state-update-deps.json')
-      );
-      expect(automationStatePath('/r', 'pnpm-audit')).toBe(
-        path.join('/r', '.gaia', 'automation.state-pnpm-audit.json')
-      );
-      expect(automationStatePath('/r', 'stale-branches')).toBe(
-        path.join('/r', '.gaia', 'automation.state-stale-branches.json')
-      );
-    });
-
-    it('does not nest into a per-tool subdirectory', () => {
-      const result = automationStatePath('/r', 'wiki');
-      expect(result.includes(path.join('.gaia', 'wiki'))).toBe(false);
     });
   });
 
