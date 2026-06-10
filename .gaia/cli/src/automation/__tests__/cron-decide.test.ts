@@ -119,6 +119,23 @@ describe('automation cron-decide', () => {
     expect(decision.skip_log_line).toBe('cost overage; suppressed');
   });
 
+  it('never suppresses on cost overage; a configured wiki tool always runs (reason=enabled)', () => {
+    sandbox.writeConfig(VALID_BASE_CONFIG);
+    // A present state file with cost_overage=true used to force a skip.
+    sandbox.writeState(
+      'wiki',
+      validState(sandbox.headSha, {cost_overage: true})
+    );
+
+    const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const decision = decisionFromStdout(stdio.outputs.join(''));
+    expect(decision.decision).toBe('run');
+    expect(decision.reason).toBe('enabled');
+    expect(decision.skip_log_line).toBeNull();
+  });
+
   it('runs with reason ceiling_14d when last_run_at is older than 14 days', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     sandbox.writeState(
