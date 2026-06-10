@@ -19,8 +19,6 @@ jobs:
 {{#enable_security_pr}}
       - name: Run pnpm audit and open security PR for high/critical
         if: steps.pre_run.outputs.decision == 'run'
-        env:
-          RUN_COST_DOLLARS: "0"
         run: |
           set -euo pipefail
           default=$(gh api repos/${{ github.repository }} --jq '.default_branch' 2>/dev/null || echo "main")
@@ -77,4 +75,3 @@ jobs:
               done
 {{/enable_security_pr}}
 {{> partials/auto-merge }}
-{{> partials/cost-accounting }}

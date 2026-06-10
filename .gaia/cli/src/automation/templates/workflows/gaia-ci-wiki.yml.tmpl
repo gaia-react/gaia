@@ -24,8 +24,6 @@ jobs:
         # `gaia wiki sync land --branch-aware`; subsequent commits from
         # consolidate's apply phase ride on top before the auto-merge
         # partial wraps the diff into a PR.
-        env:
-          RUN_COST_DOLLARS: "0"  # placeholder; overwritten by claude-code-action wrapper
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -58,4 +56,3 @@ jobs:
             --disallowedTools WebFetch,WebSearch
 {{/enable_diff_size_check}}
 {{> partials/auto-merge }}
-{{> partials/cost-accounting }}

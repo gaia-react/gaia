@@ -39,7 +39,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   fitness render-card [--cols N]
   harden-ledger list|record|is-suppressed|prune
   harden-tally
-  automation read-config|read-state|cron-decide|record-run|record-overage|clear-overage
+  automation read-config|cron-decide
   ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
   ci-revert open|mark-failed|is-cap-reached
   update merge-workspace --baseline <file> --latest <file> --current <file>

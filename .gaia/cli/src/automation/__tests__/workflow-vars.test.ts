@@ -42,7 +42,6 @@ describe('buildWorkflowVars', () => {
 
     expect(vars).toEqual({
       config_key: 'wiki',
-      cost_ceiling_dollars: 5,
       cron: '0 4 * * *',
       enable_auto_merge: true,
       enable_diff_size_check: true,

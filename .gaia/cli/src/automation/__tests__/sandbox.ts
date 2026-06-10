@@ -1,16 +1,14 @@
 /**
  * Shared sandbox helpers for automation tests. Each sandbox is a tmp dir
  * with `git init`, an initial commit, and a `.gaia/` directory ready for
- * config and state files.
+ * a config file.
  */
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {AutomationConfig} from '../../schemas/automation-config.js';
-import type {AutomationStateFile} from '../../schemas/automation-state.js';
-import {automationConfigPath, automationStatePath} from '../paths.js';
-import type {ToolId} from '../../schemas/automation-config.js';
+import {automationConfigPath} from '../paths.js';
 
 export type Sandbox = {
   cleanup: () => void;
@@ -18,7 +16,6 @@ export type Sandbox = {
   headSha: string;
   root: string;
   writeConfig: (config: AutomationConfig) => void;
-  writeState: (tool: ToolId, state: AutomationStateFile) => void;
 };
 
 export const VALID_BASE_CONFIG: AutomationConfig = {
@@ -70,14 +67,6 @@ export const setupSandbox = (prefix = 'gaia-automation-'): Sandbox => {
     writeFileSync(automationConfigPath(root), JSON.stringify(config), 'utf8');
   };
 
-  const writeState = (tool: ToolId, state: AutomationStateFile): void => {
-    writeFileSync(
-      automationStatePath(root, tool),
-      JSON.stringify(state),
-      'utf8'
-    );
-  };
-
   return {
     cleanup: () => {
       rmSync(root, {force: true, recursive: true});
@@ -86,6 +75,5 @@ export const setupSandbox = (prefix = 'gaia-automation-'): Sandbox => {
     headSha,
     root,
     writeConfig,
-    writeState,
   };
 };

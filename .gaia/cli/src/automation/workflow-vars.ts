@@ -17,7 +17,6 @@ export type WorkflowSchedule = 'daily' | 'weekly' | 'monthly';
 
 export type WorkflowTemplateVars = {
   config_key: string;
-  cost_ceiling_dollars: number;
   cron: string;
   enable_auto_merge: boolean;
   enable_diff_size_check: boolean;
@@ -88,7 +87,6 @@ export const buildWorkflowVars = (
 
   return {
     config_key: configKey,
-    cost_ceiling_dollars: 5,
     cron: cronForSchedule(schedule),
     // stale-branches doesn't open a PR, so auto-merge is suppressed.
     // The auto-merge partial gates its body on this flag.
