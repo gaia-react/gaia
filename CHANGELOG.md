@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ### Fixed
 
+- the bare-test guard no longer false-positives on quoted prose: `block-bare-test.sh` anchors detection to command position (splits on pipeline separators, strips leading env-var prefixes, acts only when `pnpm`/`npm` is the command word and `test` is the script position), so the phrase appearing inside a commit message (`git commit -m "run pnpm test"`) or a `--body` string (`gh pr create --body "...pnpm test --run..."`) is no longer blocked, and the `--run` opt-out is scoped to the matched segment; the sibling `capture-red-observations.sh` gate is anchored the same way so a prose mention no longer triggers a spurious full-suite vitest re-run
 - type-only tests no longer hit an unsatisfiable TDD RED-verification gate: the signal helper classifies each test `runtime` vs `type-only`, and the commit check exempts type-only tests (assertions all type-level via `expectTypeOf`/`assertType`/`@ts-expect-error`, no runtime expectation), delegating their correctness to the `tsc` quality gate
 
 ## [1.5.0] - 2026-06-05
