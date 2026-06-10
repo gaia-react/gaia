@@ -91,15 +91,15 @@ Spawn a **Haiku agent** (`model: "haiku"`) to run Phases 0–4. Pass it these in
 
 ### Phase 0: Override audit
 
-For each key in `pnpm.overrides` (in `package.json`):
+For each key in the top-level `overrides:` map in `pnpm-workspace.yaml` (pnpm 11 reads overrides here; the `package.json` `pnpm.overrides` field is no longer honored):
 
-1. Temporarily remove that single key from `pnpm.overrides`.
+1. Temporarily remove that single key from the `overrides:` map.
 2. Run `pnpm install`.
 3. Run `pnpm ls 2>&1` and scan for peer-dep errors.
 4. If no errors → override is obsolete. Leave it removed. Note as **removed** in final report.
 5. If errors → restore that key. Note as **retained** in final report.
 
-Operate on one key at a time. Always `pnpm install` after each toggle.
+Operate on one key at a time, leaving every other `pnpm-workspace.yaml` setting untouched. Always `pnpm install` after each toggle.
 
 ### Phase 1: Discover outdated packages
 
@@ -159,7 +159,7 @@ Packages not matched form singleton groups.
 1. Build install args. For each package: if `is_pinned` use exact target, else use `^<latest>`. Example: `pnpm add foo@1.2.3 bar@^4.5.0 ...`.
 2. Run the single `pnpm add` command.
 3. Run `pnpm ls 2>&1`. Scan for peer-dep errors.
-4. On error: try one targeted `pnpm.overrides` fix (e.g. add a `parent>child` pin), then `pnpm install` again.
+4. On error: try one targeted fix in the `overrides:` map in `pnpm-workspace.yaml` (e.g. add a `parent>child` pin), then `pnpm install` again.
 5. If still failing: revert the offending packages (`pnpm add <pkg>@<previous>`) and log them as **skipped** with the reason.
 6. Run the quality gate (below). If it fails, revert the entire Wave A batch.
 
@@ -228,7 +228,7 @@ You are upgrading the `{GROUP}` dependency group from `{FROM}` to `{TO}`.
 2. **Install** the group, **from project root only**:
    - `storybook` group: run `pnpm dlx storybook@latest upgrade` (Storybook's own upgrade tool migrates config alongside the version bump).
    - All others: `pnpm add <pkg1>@<latest> <pkg2>@<latest> ...` for every group member present in root `package.json`.
-3. **Conflict check**: `pnpm ls 2>&1`. On peer-dep error, attempt one `pnpm.overrides` fix. If still failing, revert the group and skip with reason.
+3. **Conflict check**: `pnpm ls 2>&1`. On peer-dep error, attempt one `overrides:` fix in `pnpm-workspace.yaml`. If still failing, revert the group and skip with reason.
 4. **Apply breaking changes** within root scope: from the migration guide, identify code-affecting changes (renamed APIs, removed exports, config schema changes). Grep `app/`, `test/`, and root config files for affected patterns. Edit only files inside root scope.
 5. **Verify root `package.json` moved**: read root `package.json` and confirm every group member you bumped now shows the new version. If `pnpm add` did not change root's spec (e.g. the dep is declared in a sibling project's `package.json` and not actually consumed by root code), revert the install and report the package as **skipped, not a root dep**. The skill does not resolve cross-project declarations; the maintainer must clean up manually. If the dep is in root `package.json` but has zero call sites in root scope, that's a phantom declaration: bump it anyway so the version stays current, and add a one-line note `phantom: no call sites in root` to the breaking-changes report so the maintainer can investigate.
 6. **Quality gate**:
@@ -272,7 +272,7 @@ Build the report **only** from the agent reports returned to you. Do not add row
 
 - **Updated packages**: every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
 - **Breaking changes applied**: only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
-- **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If `pnpm.overrides` was empty, write "None" and move on.
+- **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If the `overrides:` map was empty, write "None" and move on.
 - **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the Phase 1 ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Quality gate**: the gate result reported by the agents, verbatim.
 
