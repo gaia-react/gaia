@@ -9,6 +9,15 @@ minimumReleaseAge: 10080
 # Fail the install if a package's trust level has decreased vs prior releases.
 trustPolicy: no-downgrade
 
+# Acknowledge a known-good package that trips no-downgrade. semver's 6.x line
+# ended at 6.3.1 (before npm provenance was standard), so it carries no
+# attestation while the 7.x line does; pnpm reads that as a trust downgrade.
+# eslint-plugin-import (via @gaia-react/lint) pins semver ^6.3.1, so 6.3.1 is
+# the correct, required version, not a supply-chain regression. Scope the
+# exception to exactly that version; no-downgrade stays enforced everywhere else.
+trustPolicyExclude:
+  - 'semver@6.3.1'
+
 # Exempt first-party packages from the release-age delay. The 7-day window
 # defends against malicious THIRD-party updates; @gaia-react/lint is authored,
 # reviewed, and published by this project's own maintainer, so the
