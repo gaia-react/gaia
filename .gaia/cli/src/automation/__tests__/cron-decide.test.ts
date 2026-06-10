@@ -136,13 +136,20 @@ describe('automation cron-decide', () => {
     expect(decision.reason).toBe('ceiling_14d');
   });
 
-  it('runs with reason skip_safety_5 when skip_count > 5', () => {
+  it('ignores skip_count entirely; a high skip_count never forces a run', () => {
+    // The skip_safety_5 starvation valve was retired: nothing in the live
+    // flow ever advanced skip_count (only the unwired bump-state did), and
+    // the per-tool state file never persisted across runs, so the rule was
+    // doubly inert. skip_count survives as a reported-but-unused field; it
+    // must not participate in the decision. Here a state outside the 24h
+    // floor with no app/** change since last_run_sha must fall through to
+    // the steady-state no_app_change skip regardless of skip_count.
     sandbox.writeConfig(VALID_BASE_CONFIG);
     sandbox.writeState(
       'wiki',
       validState(sandbox.headSha, {
         last_run_at: '2026-05-08T00:00:00Z',
-        skip_count: 6,
+        skip_count: 999,
       })
     );
 
@@ -152,8 +159,8 @@ describe('automation cron-decide', () => {
     );
     expect(exit).toBe(0);
     const decision = decisionFromStdout(stdio.outputs.join(''));
-    expect(decision.decision).toBe('run');
-    expect(decision.reason).toBe('skip_safety_5');
+    expect(decision.decision).toBe('skip');
+    expect(decision.reason).toBe('no_app_change');
   });
 
   it('skips with reason floor_24h when last_run_at < 24h ago', () => {

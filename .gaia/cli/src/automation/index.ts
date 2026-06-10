@@ -7,7 +7,6 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {run as runBumpState} from './bump-state.js';
 import {run as runClearOverage} from './clear-overage.js';
 import {run as runCronDecide} from './cron-decide.js';
 import {run as runInstallAuditWorkflow} from './install-audit-workflow.js';
@@ -21,7 +20,6 @@ const HELP_TEXT = `Usage: gaia automation <subcommand> [args]
 
   read-config [--json]
   read-state <tool> [--json]
-  bump-state <tool> --field <name> --value <json>
   cron-decide <tool> [--json]
   record-run <tool> --sha <sha> --trigger <cron|force|workflow_dispatch> --cost <dollars> [--at <iso>]
   record-overage <tool> --cost <dollars>
@@ -37,7 +35,6 @@ type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
-  'bump-state': runBumpState,
   'clear-overage': runClearOverage,
   'cron-decide': runCronDecide,
   'install-audit-workflow': runInstallAuditWorkflow,

@@ -4,8 +4,7 @@
  * The smart-cron decision primitive. Returns a deterministic
  * `{decision, reason, skip_log_line}` triple per the SPEC's per-tool
  * cron logic. Pure: never mutates state. Workflows inspect `decision`
- * and act; `skip_count` advancement after a `floor_24h` skip is the
- * caller's responsibility (via `bump-state`).
+ * and act.
  *
  * Exit code 0 covers both `run` and `skip` decisions. Non-zero covers
  * configuration errors (missing/malformed config or malformed state).
@@ -33,7 +32,6 @@ type CronReason =
   | 'first_run'
   | 'floor_24h'
   | 'no_app_change'
-  | 'skip_safety_5'
   | 'tool_off';
 
 type CronDecision = {
@@ -51,10 +49,9 @@ const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
     2. first_run      (state file missing)
     3. cost_overage   (state.cost_overage == true)
     4. ceiling_14d    (last_run_at > 14 days ago)
-    5. skip_safety_5  (skip_count > 5)
-    6. floor_24h      (last_run_at < 24 hours ago)
-    7. app_changed    (commits to app/** since last_run_sha), wiki only
-    8. no_app_change  (otherwise), wiki only
+    5. floor_24h      (last_run_at < 24 hours ago)
+    6. app_changed    (commits to app/** since last_run_sha), wiki only
+    7. no_app_change  (otherwise), wiki only
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -63,7 +60,6 @@ const TOOL_ID_SET: ReadonlySet<string> = new Set(TOOL_IDS);
 const MS_PER_HOUR = 60 * 60 * 1000;
 const FLOOR_HOURS = 24;
 const CEILING_DAYS = 14;
-const SKIP_SAFETY_THRESHOLD = 5;
 
 const toolConfigFor = (config: AutomationConfig, tool: ToolId): ToolConfig =>
   // `TOOL_ID_TO_CONFIG_KEY` is typed `Record<ToolId, ToolConfigKey>`, so the
@@ -310,12 +306,7 @@ const decide = (args: DecideArgs): CronDecision | 'state_malformed' => {
     return {decision: 'run', reason: 'ceiling_14d', skip_log_line: null};
   }
 
-  // 5. skip_safety_5
-  if (state.skip_count > SKIP_SAFETY_THRESHOLD) {
-    return {decision: 'run', reason: 'skip_safety_5', skip_log_line: null};
-  }
-
-  // 6. floor_24h
+  // 5. floor_24h
   if (ageMs < FLOOR_HOURS * MS_PER_HOUR) {
     return {
       decision: 'skip',
@@ -324,12 +315,12 @@ const decide = (args: DecideArgs): CronDecision | 'state_malformed' => {
     };
   }
 
-  // 7. app_changed (wiki only)
+  // 6. app_changed (wiki only)
   if (appChanged(state.last_run_sha)) {
     return {decision: 'run', reason: 'app_changed', skip_log_line: null};
   }
 
-  // 8. no_app_change (wiki only)
+  // 7. no_app_change (wiki only)
   const shortSha = state.last_run_sha.slice(0, 7);
 
   return {

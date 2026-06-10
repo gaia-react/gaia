@@ -323,6 +323,7 @@ jobs:
           claude_args: |
             --max-turns ${{ steps.config.outputs.max_turns }}
             --allowedTools Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*)
+            --verbose
 
       - name: Commit and push self-heal
         id: push-fixes
