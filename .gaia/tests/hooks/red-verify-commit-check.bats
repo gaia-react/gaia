@@ -280,6 +280,69 @@ test(`dynamic ${n}`, () => {
   ! denied
 }
 
+# --- Type-only tests -> exempt (no runtime assertion; tsc is the enforcer) ---
+
+TYPE_ONLY_EXPECTTYPEOF='import {expectTypeOf, test} from "vitest";
+test("type matches", () => {
+  expectTypeOf<number>().toEqualTypeOf<number>();
+});
+'
+
+TYPE_ONLY_TS_EXPECT_ERROR='import {test} from "vitest";
+const double = (n: number): number => n * 2;
+test("rejects a bad arg", () => {
+  // @ts-expect-error - double requires a number
+  double("nope");
+});
+'
+
+@test "allows a new type-only test (expectTypeOf, no runtime assertion)" {
+  # No RED on record, yet the commit is allowed: a type-only test has no
+  # runtime failure mode for this gate to demand. tsc enforces it instead.
+  stage_file "app/x/index.test.ts" "$TYPE_ONLY_EXPECTTYPEOF"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  ! denied
+}
+
+@test "allows a new type-only test (@ts-expect-error proof, no runtime assertion)" {
+  stage_file "app/x/index.test.ts" "$TYPE_ONLY_TS_EXPECT_ERROR"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  ! denied
+}
+
+@test "exempts the type-only sibling but still denies the runtime sibling" {
+  stage_file "app/x/index.test.ts" 'import {expectTypeOf, expect, test} from "vitest";
+test("type-only sibling", () => {
+  expectTypeOf<number>().toEqualTypeOf<number>();
+});
+test("runtime sibling", () => {
+  expect(1 + 1).toBe(2);
+});
+'
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  denied
+  [[ "$output" == *"runtime sibling"* ]]
+  [[ "$output" != *"type-only sibling"* ]]
+}
+
+@test "denies a mixed runtime+type test (runtime assertion present) with no RED" {
+  # A type-level proof does NOT exempt a test that also carries a runtime
+  # assertion: the runtime red-green still must be observed.
+  stage_file "app/x/index.test.ts" 'import {expectTypeOf, expect, test} from "vitest";
+test("mixed assertions", () => {
+  expect(1 + 1).toBe(2);
+  expectTypeOf<number>().toEqualTypeOf<number>();
+});
+'
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  denied
+  [[ "$output" == *"mixed assertions"* ]]
+}
+
 # --- Forward-compat: a ledger line with an unknown schema is ignored ---
 
 @test "ignores a ledger line with an unrecognized schema version" {

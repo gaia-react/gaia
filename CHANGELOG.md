@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+### Fixed
+
+- type-only tests no longer hit an unsatisfiable TDD RED-verification gate: the signal helper classifies each test `runtime` vs `type-only`, and the commit check exempts type-only tests (assertions all type-level via `expectTypeOf`/`assertType`/`@ts-expect-error`, no runtime expectation), delegating their correctness to the `tsc` quality gate
+
 ## [1.5.0] - 2026-06-05
 
 ### Added

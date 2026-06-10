@@ -23,6 +23,14 @@
 # posture for uncomputable identity and its "edits/refactors never demand a
 # RED" spirit. A new dynamic-title test passing on first run is not blocked.
 #
+# Type-only tests are EXEMPT for a distinct, principled reason: the helper tags
+# each test kind=type-only when its assertions are all type-level (expectTypeOf
+# /assertType, or a `@ts-expect-error` proof) with no runtime expectation. Such
+# a test has no runtime failure mode, so there is no runtime red-green for this
+# gate to verify; the `tsc` Quality Gate step enforces it instead. This is the
+# correctly-keyed exemption (no runtime assertion), as opposed to the
+# dynamic-title carve-out above, which is keyed to uncomputable identity.
+#
 # Fail-open vs fail-closed (threat model: a cooperative-but-fallible agent):
 #   - git / jq / node unavailable  -> exit 0 (allow). Sibling-hook posture.
 #   - a staged test file the helper cannot parse (mid-edit syntax error)
@@ -153,7 +161,16 @@ while IFS= read -r path; do
     [ -n "$line" ] || continue
     full=$(printf '%s' "$line" | jq -r '.fullName // empty' 2>/dev/null || true)
     sig=$(printf '%s' "$line" | jq -r '.signal // empty' 2>/dev/null || true)
+    kind=$(printf '%s' "$line" | jq -r '.kind // empty' 2>/dev/null || true)
     [ -n "$full" ] && [ -n "$sig" ] || continue
+
+    # Type-only test (all assertions type-level, no runtime expectation): it
+    # has no runtime failure mode, so there is no runtime red-green for this
+    # gate to demand. The `tsc` Quality Gate step enforces its correctness;
+    # demanding a runtime RED here would be unsatisfiable. An absent kind (an
+    # older signal helper) falls through to runtime enforcement, the safe
+    # default.
+    [ "$kind" = "type-only" ] && continue
 
     # New-at-HEAD test? Present-at-HEAD fullNames are out of scope (edits,
     # renames, refactors of an existing test never demand a fresh RED), even

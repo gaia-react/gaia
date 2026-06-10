@@ -61,11 +61,21 @@ node .gaia/scripts/red-ledger/extract-test-signals.mjs <path> --stdin
 
 Reads the file from disk (or stdin with `--stdin`) and prints one JSON object
 per discovered `test(...)`/`it(...)` call, newline-delimited:
-`{"fullName":"…","signal":"sha256:…"}`. Exit `0` on success (no output when no
-tests are found); non-zero with a one-line stderr message on a parse failure.
+`{"fullName":"…","signal":"sha256:…","kind":"runtime"|"type-only"}`. Exit `0`
+on success (no output when no tests are found); non-zero with a one-line stderr
+message on a parse failure.
 
 `fullName` is the enclosing describe titles (outermost first) plus the test
 title, single-space-joined. `signal` is `sha256:` plus the lowercase-hex
 sha256 of the test call expression's normalized source; trimmed, with internal
 whitespace runs collapsed to single spaces, so it stays stable across pure
 reformatting and changes when the title, assertion, or body changes.
+
+`kind` is `"type-only"` when the test's assertions are all type-level (an
+`expectTypeOf`/`assertType` call, or a `@ts-expect-error` proof) and it carries
+no runtime assertion (`expect`/`assert`); `"runtime"` otherwise. A type-only
+test has no runtime failure mode, so the commit check exempts it from the
+runtime-RED demand and delegates its correctness to the `tsc` Quality Gate
+step. The predicate defaults to `"runtime"` (enforce) when no type-level signal
+is present, so a no-assertion test is never silently exempted. `kind` is part
+of the helper output only; it is not stored in the ledger schema above.

@@ -98,6 +98,41 @@ run_lib() {
   [ "$sig_a" != "$sig_changed" ]
 }
 
+# --- signal helper: kind classification ---
+
+@test "helper tags an expectTypeOf-only test kind=type-only" {
+  run_helper "$FIX_REL/kind-type-only.test.ts"
+  [ "$status" -eq 0 ]
+  local kind
+  kind=$(printf '%s\n' "$output" \
+    | jq -r 'select(.fullName=="type proof via expectTypeOf") | .kind')
+  [ "$kind" = "type-only" ]
+}
+
+@test "helper tags a @ts-expect-error-only test kind=type-only" {
+  run_helper "$FIX_REL/kind-type-only.test.ts"
+  [ "$status" -eq 0 ]
+  local kind
+  kind=$(printf '%s\n' "$output" \
+    | jq -r 'select(.fullName=="type proof via ts-expect-error") | .kind')
+  [ "$kind" = "type-only" ]
+}
+
+@test "helper tags a plain runtime test kind=runtime" {
+  run_helper "$FIX_REL/top-level.test.ts"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | jq -r '.kind')" = "runtime" ]
+}
+
+@test "helper tags both mixed runtime+type tests kind=runtime" {
+  run_helper "$FIX_REL/kind-mixed.test.ts"
+  [ "$status" -eq 0 ]
+  # Two tests, and every one classifies runtime (a runtime assertion present
+  # alongside a type-level proof is still runtime, never type-only).
+  [ "$(printf '%s\n' "$output" | grep -c '"fullName"')" -eq 2 ]
+  [ "$(printf '%s\n' "$output" | jq -r '.kind' | sort -u)" = "runtime" ]
+}
+
 # --- signal helper: exit codes ---
 
 @test "helper exits 0 with no output on a valid file with no tests" {
