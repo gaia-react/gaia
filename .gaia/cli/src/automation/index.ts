@@ -10,7 +10,6 @@ import {structuredError} from '../stderr.js';
 import {run as runBumpState} from './bump-state.js';
 import {run as runClearOverage} from './clear-overage.js';
 import {run as runCronDecide} from './cron-decide.js';
-import {run as runInitState} from './init-state.js';
 import {run as runInstallAuditWorkflow} from './install-audit-workflow.js';
 import {run as runReadConfig} from './read-config.js';
 import {run as runReadState} from './read-state.js';
@@ -22,7 +21,6 @@ const HELP_TEXT = `Usage: gaia automation <subcommand> [args]
 
   read-config [--json]
   read-state <tool> [--json]
-  init-state <tool> --sha <sha> [--at <iso>]
   bump-state <tool> --field <name> --value <json>
   cron-decide <tool> [--json]
   record-run <tool> --sha <sha> --trigger <cron|force|workflow_dispatch> --cost <dollars> [--at <iso>]
@@ -42,7 +40,6 @@ const SUBCOMMAND_HANDLERS: Readonly<
   'bump-state': runBumpState,
   'clear-overage': runClearOverage,
   'cron-decide': runCronDecide,
-  'init-state': runInitState,
   'install-audit-workflow': runInstallAuditWorkflow,
   'read-config': runReadConfig,
   'read-state': runReadState,

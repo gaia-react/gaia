@@ -39,7 +39,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   scaffold component|hook|route|service
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   fitness render-card [--cols N]
-  automation read-config|read-state|init-state|bump-state|cron-decide|record-run|record-overage|clear-overage
+  automation read-config|read-state|bump-state|cron-decide|record-run|record-overage|clear-overage
   update merge-workspace --baseline <file> --latest <file> --current <file>
   update-deps run --emit-updates <path>
   release preflight|bump|changelog|scrub-wiki|manifest|scrub|runtime-deps|commit-and-tag
