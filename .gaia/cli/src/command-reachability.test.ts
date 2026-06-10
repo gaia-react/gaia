@@ -40,10 +40,6 @@ import {describe, expect, it} from 'vitest';
 // here makes the "no stale entries" test fail until the entry is removed.
 const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([
   [
-    'automation bump-state',
-    'Unwired half of the smart-cron starvation valve: cron-decide rule 5 (skip_safety_5) forces a run once skip_count exceeds 5, but only bump-state advances that counter and no workflow template calls it, so the valve is currently inert. Kept as the breadcrumb to the fix (wire skip_count advancement on a skip decision), not retired.',
-  ],
-  [
     'automation record-overage',
     'Write-side of the cost_overage flag. record-run already sets cost_overage inline (cost > 5), so this standalone post-run edit is redundant in production; it survives as the fixture-builder for the cron-decide cost_overage test, paired with the operator-facing clear-overage. Kept for that pairing.',
   ],
