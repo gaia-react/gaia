@@ -41,15 +41,11 @@ import {describe, expect, it} from 'vitest';
 const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([
   [
     'automation bump-state',
-    'Automation-state lifecycle primitive with no external invoker (no skill/command/hook/agent/workflow/template/wiki string, no programmatic caller). Suspected vestigial, pending maintainer triage to wire or retire.',
-  ],
-  [
-    'automation init-state',
-    'Automation-state lifecycle primitive with no external invoker. Suspected vestigial, pending maintainer triage to wire or retire.',
+    'Unwired half of the smart-cron starvation valve: cron-decide rule 5 (skip_safety_5) forces a run once skip_count exceeds 5, but only bump-state advances that counter and no workflow template calls it, so the valve is currently inert. Kept as the breadcrumb to the fix (wire skip_count advancement on a skip decision), not retired.',
   ],
   [
     'automation record-overage',
-    'Cost-overage lifecycle primitive with no external invoker (the live cost path calls record-run / read-state; only clear-overage is surfaced to operators). Suspected vestigial, pending maintainer triage to wire or retire.',
+    'Write-side of the cost_overage flag. record-run already sets cost_overage inline (cost > 5), so this standalone post-run edit is redundant in production; it survives as the fixture-builder for the cron-decide cost_overage test, paired with the operator-facing clear-overage. Kept for that pairing.',
   ],
 ]);
 
