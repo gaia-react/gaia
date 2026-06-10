@@ -115,24 +115,11 @@
     "vite": "8.0.16",
     "vitest": "4.1.8"
   },
-  "pnpm": {
-    "overrides": {
-      "brace-expansion@>=5.0.0 <5.0.6": ">=5.0.6",
-      "qs": ">=6.15.2",
-      "ws@>=8.0.0 <8.20.1": ">=8.20.1"
-    },
-    "onlyBuiltDependencies": [
-      "core-js-pure",
-      "esbuild",
-      "msw",
-      "unrs-resolver"
-    ]
-  },
   "msw": {
     "workerDirectory": "public"
   },
   "engines": {
     "node": ">=22.19.0"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@11.5.2+sha512.71c631e382066efc25625d5cf029075de07b61b37f6e27350fbd84b1bda5864c8c1967adc280776b45c30a715c0359a3be08fef42d5bb09e2b99029979692916"
 }
