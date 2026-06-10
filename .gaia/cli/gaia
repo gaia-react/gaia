@@ -15758,7 +15758,6 @@ var buildWorkflowVars = (config2, tool) => {
     needs_human_review_label: "needs-human-review",
     pr_label: "gaia-ci",
     schedule,
-    state_file: `.gaia/automation.state-${tool}.json`,
     tool_id: tool,
     workflow_name: WORKFLOW_NAME_BY_TOOL[tool]
   };
