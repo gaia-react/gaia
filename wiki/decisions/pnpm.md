@@ -46,9 +46,15 @@ Overrides drift. The `update-deps` skill's Phase 0 toggles each `overrides` key 
 
 The statusline `Run /update-deps (N outdated)` count derives from `gaia update-deps run`, counting only the plan the skill will actually apply. It inherits the same cooldown and major-version cap, so the nudge never advertises an update the skill would skip.
 
+## Field-aware update merge
+
+`pnpm-workspace.yaml` is a mixed file: GAIA-authored settings (`minimumReleaseAge`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, `publicHoistPattern`, `savePrefix`, `strictPeerDependencies`) live alongside adopter-extensible `overrides` and `allowBuilds` maps. `/update-gaia` therefore merges it field-aware (Step 7b), the YAML analog of the `package.json` step: GAIA-managed keys merge whole-value, the two maps merge per entry, and the iteration spans only `keys(baseline) ∪ keys(latest)` so an adopter-only override is never visited. An adopter who adds one override no longer drifts the whole file into a full-file conflict patch; only the keys GAIA actually changed surface, with re-pin conflicts and added/removed entries written to `.gaia-merge/pnpm-workspace.yaml.notes`.
+
+The verdicts come from the `gaia update merge-workspace` CLI primitive, which parses the three files with the bundled `js-yaml` and emits a JSON report. It is read-only: the skill applies the clean changes with the Edit tool so comments, key order, and quote style survive. A reserialization approach (`js-yaml` `dump`, or piping through an external `yq`) is rejected because `dump` strips every comment and the supply-chain rationale comments in this file are load-bearing. The file is classed `shared` in `.gaia/manifest.json`, matching `package.json`; both are excluded from the generic merge walk by name.
+
 ## Source of truth
 
-This page. Mechanics: `package.json`, `.npmrc`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.github/workflows/tests.yml`, `.github/workflows/chromatic.yml`. Bootstrap: `.claude/commands/gaia-init.md` Step 0. Migration tooling: `.claude/skills/update-deps/SKILL.md` (release-age selection implemented in the CLI binary).
+This page. Mechanics: `package.json`, `.npmrc`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.github/workflows/tests.yml`, `.github/workflows/chromatic.yml`. Bootstrap: `.claude/commands/gaia-init.md` Step 0. Migration tooling: `.claude/skills/update-deps/SKILL.md` (release-age selection implemented in the CLI binary). Field-aware workspace merge: `.claude/skills/update-gaia/SKILL.md` (Step 7b), `.gaia/cli/src/update/merge-workspace.ts`. See [[Update Merge]].
 
 > [!key-insight] minimumReleaseAge is the cheap supply-chain win
 > Most npm supply-chain attacks are caught and yanked within hours. A 7-day quarantine cuts the dominant attack window for the cost of one config line. No infra. No subscription. No agent.

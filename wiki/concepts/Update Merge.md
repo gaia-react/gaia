@@ -28,3 +28,5 @@ When a project cloned from GAIA needs to incorporate template updates (bug fixes
 ## Integration
 
 Invoked via `/gaia update merge` (the skill), which walks the user through reviewing and confirming the merge. Can also be run manually as `gaia update merge` from the project root.
+
+Two files are special-cased out of the whole-file walk and merged field-aware so adopter drift never forces a full-file conflict patch: `package.json` (at JSON-key granularity, via inline `jq`) and `pnpm-workspace.yaml` (at YAML-key / `overrides`+`allowBuilds` map-entry granularity, via the `gaia update merge-workspace` verdict oracle, which parses with the bundled `js-yaml` and never reserializes, so comments survive). See [[pnpm]] for the workspace-file rationale.

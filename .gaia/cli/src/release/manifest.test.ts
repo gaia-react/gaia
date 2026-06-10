@@ -107,6 +107,7 @@ describe('classifyPath', () => {
   test('shared exact and prefix matches', () => {
     expect(classifyPath('.claude/settings.json')).toBe('shared');
     expect(classifyPath('package.json')).toBe('shared');
+    expect(classifyPath('pnpm-workspace.yaml')).toBe('shared');
     expect(classifyPath('CLAUDE.md')).toBe('shared');
     expect(classifyPath('wiki/index.md')).toBe('shared');
     expect(classifyPath('.github/workflows/release.yml')).toBe('shared');
