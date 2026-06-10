@@ -149,7 +149,6 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Wiki Sync]]: `/gaia-wiki sync` + drift hooks: keep the wiki convergent with code without spawned sub-Claudes.
 - [[Wiki Consolidate]]: `/gaia-wiki consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
 - [[GAIA Init Workflow]]: `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, finalize, resume.
-- [[Update Merge]]: `gaia update merge`: three-way file comparison with manifest-driven inventory.
 - [[Telemetry]]: three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.
 - [[Serena Integration]]: Serena handles live code; the wiki handles institutional memory.
 - [[Chromatic Opt-Out]]

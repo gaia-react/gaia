@@ -455,7 +455,6 @@
     "wiki/concepts/Task Orchestration.md": "wiki-owned",
     "wiki/concepts/Telemetry.md": "wiki-owned",
     "wiki/concepts/Test Runner.md": "wiki-owned",
-    "wiki/concepts/Update Merge.md": "wiki-owned",
     "wiki/concepts/Update Workflow.md": "wiki-owned",
     "wiki/concepts/Wiki Consolidate.md": "wiki-owned",
     "wiki/concepts/Wiki Sync.md": "wiki-owned",
@@ -522,6 +521,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-10T10:29:30.048Z",
+  "generated": "2026-06-10T10:52:46.086Z",
   "version": "1.5.0"
 }
