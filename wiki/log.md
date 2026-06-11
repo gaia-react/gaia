@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## 2026-06-05 | Policy-Memory Loop
 
+- 2026-06-11 25d9207 WORTHY - fix: maintainer-path leak in wiki/decisions/pnpm.md replaced with adopter-facing CLI primitive; edit landed in commit
+- 2026-06-11 10c7c3c SKIP - wiki: self-referential sync commit (duplicate of d812255 squash)
+- 2026-06-11 d812255 WORTHY - wiki sync commit; wiki/concepts/Update Workflow.md updated inline in commit
 - 2026-06-11 460e722 SKIP - wiki sync commit; wiki pages updated directly in that commit
 - 2026-06-11 49a5f65 WORTHY - code-review-audit tuned for Opus 4.8 recall; wiki/concepts/Agentic Design.md and Code Review Audit Agent.md updated in commit
 - 2026-06-11 a661911 SKIP - docs: prose-only (scope response style to conversation)
