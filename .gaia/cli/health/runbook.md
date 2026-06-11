@@ -10,26 +10,28 @@ Operational protocol for the autonomous audit + auto-heal loop, invoked by `/hea
 
 ## Roles
 
-- **Orchestrator**: top-level coordinator. Owns the cycle loop, the circuit breakers, and the final verdict. Spawns a Triager per cycle. Never fixes anything itself.
-- **Triager** (per cycle); runs the Audit Team (buckets A–E), waits for reports, classifies findings, updates the taxonomy directly for non-fix cases, and either reports clean to Orchestrator or dispatches Fixers.
-- **Auditors**: bucket executors. The Triager MAY execute the five buckets directly via parallel tool calls, OR dispatch fresh `general-purpose` subagents (one per bucket). Both modes are acceptable so long as: each bucket's spec below is followed verbatim, the five buckets run in parallel (not serially), and outputs are captured as independently-checkable artifacts (stdout, file reads). The verifiable property is the artifact, not the dispatch mechanism. **Bucket E** is the one exception to this free choice: it always runs as a fresh subagent (never inline), because its seven-category fitness protocol produces voluminous raw output that must stay isolated from the Triager's context. Prefer fresh-subagent dispatch when a bucket is expected to produce high finding volume (preserves Triager context budget) or when the human explicitly requests strict isolation (e.g. compliance audit). Auditors write raw outputs to `.gaia/local/audit/c<N>/<bucket>/` (paths specified per bucket below) and return summary + file path in their report; not raw content. The Triager reads files on demand for triage. This avoids subagent return-budget truncation in dirty cycles.
-- **Fixers**: fix agents, lane-aware so multiple run in parallel without merge conflicts.
+Subagents are leaf nodes: a spawned subagent cannot spawn another subagent (the hard depth-1 limit, independent of its tools config). So the Orchestrator on the main thread owns every spawn; the Auditors, the Adjudicator, and the Fixers are all leaves it dispatches directly. No middle layer spawns workers.
+
+- **Orchestrator**: top-level coordinator, runs on the main thread. Owns the cycle loop, per-cycle directory creation, spawning the Audit buckets, spawning the Adjudicator, the cross-cycle oscillation compare, the circuit breakers, spawning the Fixers, and the final verdict. Stays mechanical (counters, disk reads, `jq`/`comm`, dispatch); it never audits, adjudicates, or fixes in its own context, so session state it inherits cannot bias a grade. Never fixes anything itself.
+- **Auditors**: bucket executors, one fresh `general-purpose` leaf subagent per bucket (A–E), spawned in parallel by the Orchestrator with each bucket's assigned model (see §Model selection). Each follows its bucket spec below verbatim, runs in parallel (not serially), writes raw output to disk under `.gaia/local/audit/c<N>/<bucket>/` (paths per bucket below), and returns summary + file path in its report, not raw content. The verifiable property is the artifact, not the dispatch mechanism. This avoids subagent return-budget truncation in dirty cycles. **Bucket E** is spawned the same way; its seven-category fitness protocol produces voluminous raw output, which is exactly why it is its own leaf writing JSON to disk: the Adjudicator reads that JSON, never Bucket E's raw context.
+- **Adjudicator** (per cycle): a fresh `general-purpose` leaf subagent the Orchestrator spawns once the buckets return. It reads the cycle's bucket artifacts from disk, classifies findings, updates the taxonomy Issue Classes directly for non-fix cases (circuit-breaker-gated edits route back to the Orchestrator, see §Finding classification), and writes `c<N>/findings.json`. A fresh context per cycle keeps prior-cycle findings from bleeding into this cycle's verification; it never reads a prior cycle's `findings.json` (the Orchestrator owns the cross-cycle compare). It does not spawn anything and does not dispatch Fixers.
+- **Fixers**: fix agents, lane-aware leaf subagents the Orchestrator spawns so multiple run in parallel without merge conflicts.
 
 ## Cycle loop
 
 ```
 Orchestrator initializes .gaia/local/audit/ (archives any stale prior run)
 For cycle in 1..3:
-  Triager creates c<N>/ and bucket sub-dirs under .gaia/local/audit/
-  spawn Triager → Triager runs Audit Team in parallel (buckets A–E) → reports
+  Orchestrator creates c<N>/ and bucket sub-dirs under .gaia/local/audit/
+  Orchestrator spawns the Audit buckets (A–E) as parallel leaf subagents → each writes artifacts, returns summary + path
+  Orchestrator spawns a fresh Adjudicator leaf → it reads the c<N> bucket artifacts, classifies, writes c<N>/findings.json → reports
   if clean (no open findings, Bucket D verdict A+ readiness, effective shared-fitness grade = A+; see §Termination):
     Orchestrator removes .gaia/local/audit/c* (whitelisted; top-level dir kept as marker)
     report the honest overall grade (A+ when no findings of any kind, else the floor that non-blocking residuals may cap at A), exit
-  Triager classifies findings → writes c<N>/findings.json
   Orchestrator checks open-finding fingerprints vs prior cycle (mechanical diff via jq; non-blocking residuals excluded, see §Termination) → if oscillation: escalate (Orchestrator preserves all c*/ dirs, surfaces paths in escalation report)
-  Triager dispatches parallel Fixers (lane-aware)
-  Fixers complete, Triager reports post-fix state to Orchestrator
-  Orchestrator shuts down the team, starts the next cycle
+  Orchestrator spawns parallel Fixers (lane-aware leaf subagents)
+  Fixers complete and report post-fix state to Orchestrator
+  Orchestrator starts the next cycle
 After cycle 3 without clean: escalate (max loops hit; Orchestrator preserves all c*/ dirs, surfaces paths in escalation report)
 ```
 
@@ -62,8 +64,8 @@ Human refuses → escalate.
 
 | Role                                                                                                              | Model  |
 | ----------------------------------------------------------------------------------------------------------------- | ------ |
-| Orchestrator                                                                                                      | Sonnet |
-| Triager                                                                                                           | Sonnet |
+| Orchestrator                                                                                                      | main thread (session model) |
+| Adjudicator                                                                                                      | Sonnet |
 | Bucket A (static checks)                                                                                          | Haiku  |
 | Bucket B (source greps)                                                                                           | Haiku  |
 | Bucket C (bundle simulation)                                                                                      | Haiku  |
@@ -75,7 +77,7 @@ Human refuses → escalate.
 | Fixer: wiki-content                                                                                               | Sonnet |
 | Fixer: claude-surface                                                                                             | Sonnet |
 
-Promote a role to Opus only on Triager flag for high-complexity fixes (cross-module refactor, tricky type inference, > 300-line change).
+Promote a role to Opus only on Adjudicator flag for high-complexity fixes (cross-module refactor, tricky type inference, > 300-line change): the Adjudicator records the flag in `findings.json` and the Orchestrator spawns that Fixer with `model: opus`.
 
 Bucket E model assignments follow the wiki page's spec: mechanical category checks (file-exists, JSON parse, hash-diff, `gaia wiki` invocations) on Haiku; judgment-bearing checks (frontmatter substantiveness, content-vs-glob coherence, size evaluation) and grade synthesis on Sonnet. See `wiki/decisions/Claude Integration Fitness.md` §Triage phase for the per-category model table.
 
@@ -227,7 +229,7 @@ The wiki page defines:
 - The F-to-A+ per-category grading rubric (every band; including `A−` and `C−`; reachable; `shared_fitness_grade` may be any of them).
 - The bounded loop (default 3 cycles) with oscillation detection; which the wiki page's own "Composed inside a deeper loop" note hands off to the outer harness when this protocol runs as a bucket. See the loop-nesting rule below.
 
-**Loop nesting.** Bucket E does not run the wiki page's bounded heal loop. The outer `/health-audit` cycle loop _is_ that loop: each outer cycle, Bucket E runs the wiki page's triage phase once (audit the seven categories, adjudicate, grade) and returns a `shared_fitness_grade` (F-to-A+, the floor of the seven category grades) plus per-category grades to the Triager; it does not heal or verify on its own. The Triager folds Bucket E's findings into `c<N>/findings.json` alongside the other buckets' findings, so fitness fingerprints participate in the **outer** oscillation guard (no separate inner guard), and routes the fitness fixes to the `claude-surface` Fixer lane (or `settings`/`gitignore`/`manifest` as appropriate) in the outer heal phase. The verify step for a cycle's fitness fixes is the next outer cycle's fresh Bucket E run. No new Fixer lane is introduced, and there is no inner cycle count to tune; the outer `1..3` bound covers fitness too.
+**Loop nesting.** Bucket E does not run the wiki page's bounded heal loop. The outer `/health-audit` cycle loop _is_ that loop: each outer cycle, Bucket E runs the wiki page's triage phase once (audit the seven categories, grade) and writes its per-category findings JSON plus a `shared_fitness_grade` (F-to-A+, the floor of the seven category grades) to disk; it does not heal or verify on its own. The Adjudicator folds Bucket E's findings into `c<N>/findings.json` alongside the other buckets' findings, so fitness fingerprints participate in the **outer** oscillation guard (no separate inner guard), and tags the fitness fixes for the `claude-surface` Fixer lane (or `settings`/`gitignore`/`manifest` as appropriate); the Orchestrator dispatches them in the outer heal phase. The verify step for a cycle's fitness fixes is the next outer cycle's fresh Bucket E run. No new Fixer lane is introduced, and there is no inner cycle count to tune; the outer `1..3` bound covers fitness too.
 
 **Outputs:** `.gaia/local/audit/c<N>/bucket-e/`; per-category findings JSON and the per-category + overall fitness grade report, following the same structure as the wiki page's Findings Schema.
 
@@ -245,7 +247,7 @@ The wiki page defines:
     wiki-fitness.json
 ```
 
-Crash-safety: Bucket E writes incrementally per category; a crash mid-run leaves partial output. The Triager treats a missing `shared_fitness_grade.txt` as Bucket E incomplete; re-spawn Bucket E on the next cycle (the outer loop handles this).
+Crash-safety: Bucket E writes incrementally per category; a crash mid-run leaves partial output. The Adjudicator treats a missing `shared_fitness_grade.txt` as Bucket E incomplete; the Orchestrator re-spawns Bucket E on the next cycle (the outer loop handles this).
 
 ## Fixer lanes
 
@@ -266,12 +268,12 @@ If a single finding's fix straddles multiple lanes, dispatch one Fixer with mult
 
 ## Finding classification
 
-Each finding fits one bucket:
+The Adjudicator assigns each finding one action and records it in `findings.json`; the Orchestrator executes the action (dispatching Fixers, gating circuit breakers, applying breaker-gated edits). Each finding fits one action:
 
-- **real-fix** → dispatch Fixer in the appropriate lane.
-- **taxonomy-update** (new genuine class) → Triager edits `.gaia/cli/health/taxonomy.md` directly: add an Issue Class entry under the right section. Then dispatch Fixer for the fix.
-- **false-positive** → dispatch config-yaml-md Fixer to tighten pattern or extend allowlist with a written justification.
-- **decided-not-finding** → the finding matches a "Decided / not findings" entry (in `.gaia/cli/health/taxonomy.md` or the fitness spec). **If the entry already exists**, record the match and move on (no edit, no circuit breaker); it becomes a non-blocking residual (see §Termination), retained in `findings.json` but excluded from the clean gate and the oscillation guard. **If it is a new not-a-finding class**, the Triager adds the entry to the appropriate list directly (this trips a circuit breaker; pause for human-confirm before writing), after which it is likewise a non-blocking residual.
+- **real-fix** → the Orchestrator dispatches a Fixer in the appropriate lane.
+- **taxonomy-update** (new genuine class) → the Adjudicator adds an Issue Class entry under the right section of `.gaia/cli/health/taxonomy.md` (this section is not circuit-breaker-gated). The Orchestrator then dispatches a Fixer for the fix.
+- **false-positive** → the Orchestrator dispatches a config-yaml-md Fixer to tighten the pattern or extend the allowlist with a written justification.
+- **decided-not-finding** → the finding matches a "Decided / not findings" entry (in `.gaia/cli/health/taxonomy.md` or the fitness spec). **If the entry already exists**, the Adjudicator records the match and moves on (no edit, no circuit breaker); it becomes a non-blocking residual (see §Termination), retained in `findings.json` but excluded from the clean gate and the oscillation guard. **If it is a new not-a-finding class**, the Adjudicator records the proposed entry in `findings.json` rather than writing it (a leaf subagent cannot pause for human-confirm). The Orchestrator gates it on the circuit breaker, gets human-confirm, and writes the entry, after which it is likewise a non-blocking residual.
 
 ## Escalation
 
@@ -280,7 +282,7 @@ Orchestrator escalates to human (returns control with structured report) on:
 - N=3 cycles without a clean report.
 - Oscillation (same fingerprint two consecutive cycles).
 - Any circuit-breaker trip the human declines.
-- Triager can't classify a finding (not in taxonomy, not allowlist, not structural).
+- Adjudicator can't classify a finding (not in taxonomy, not allowlist, not structural).
 - Fixer reports unable to fix (e.g. test failure that requires a product decision).
 
 ## Audit artifacts
@@ -328,9 +330,9 @@ The `verdict` field stores Bucket D's verdict verbatim. It is _not_ a synthesize
 Lifecycle:
 
 - **At `/health-audit` start**: Orchestrator runs `[ -d .gaia/local/audit ] && mv .gaia/local/audit .gaia/local/audit.prev-$(date +%s) ; mkdir -p .gaia/local/audit`. Archives stale dirs from prior interrupted runs.
-- **At cycle start**: Triager creates `c<N>/` and bucket sub-dirs.
+- **At cycle start**: Orchestrator creates `c<N>/` and bucket sub-dirs.
 - **Auditors**: write raw outputs to their per-cycle paths; return summary + file path in their report (not the full content).
-- **Triager**: reads bucket files for triage; writes `c<N>/findings.json`.
+- **Adjudicator**: reads bucket files, classifies, writes `c<N>/findings.json`.
 - **Orchestrator (oscillation detection)**: mechanical diff via `jq -r '.findings[].fingerprint' .gaia/local/audit/c<N>/findings.json | sort` against the prior cycle's same. Non-empty intersection → oscillation, escalate.
 - **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an _effective_ shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker.
 - **Escalation**: Orchestrator preserves all `c*/` dirs and surfaces their paths in the escalation report for human review.

@@ -612,7 +612,7 @@ There is no `on_save` hook in spec-kit. The chain-trigger lives here, inline, af
 
 On `No`, stop and report to the user that the SPEC is saved and `/gaia-plan` can be invoked when ready. On `Yes`, enter the plan-dispatch loop. All plans dispatched through the loop share the slug prefix `spec-NNN-*`, so `ls .gaia/local/plans/ | grep ^spec-NNN-` discovers them as a group.
 
-**Each `/gaia-plan` invocation runs in its own `general-purpose` Agent**, not in-session. The wrapper's context stays bounded regardless of plan count, each Agent reads the SPEC, runs the plan skill end-to-end, and returns only the resolved `PLAN_DIR` and the kickoff prompt. The wrapper never sees the planner's investigation, the per-task docs, or any intermediate output.
+**Each `/gaia-plan` invocation is followed inline on this (the spec) main thread**, not delegated to a wrapper subagent. Subagents are leaf nodes: a spawned wrapper could not spawn the planner, and could not run plan.md step 2's `AskUserQuestion`. So this main thread runs plan.md's thin orchestration directly, and the planner it spawns at plan.md step 4 is the single Opus-pinned leaf. The heavy synthesis stays isolated in that planner (it returns only a two-field payload), so this thread's context grows by at most plan.md's thin orchestration per slice, which keeps the multi-plan loop bounded.
 
 #### 11a. First plan dispatch
 
@@ -626,18 +626,7 @@ where:
 - `<intent first line>` is the first sentence of the SPEC's `intent` paragraph (truncated at the first period or newline)
 - `<absolute path…>` is the absolute path to the saved SPEC artifact
 
-Spawn a `general-purpose` Agent with this prompt (interpolate the dispatch input):
-
-> Read `.claude/skills/gaia/references/plan.md` and follow its steps using this feature description as `$ARGUMENTS`:
->
->     <dispatch input>
->
-> Run the entire plan skill end-to-end, including spawning the planner sub-Agent at its step 4. When complete, return ONLY this two-field payload, no narrative, no file lists, no recap of the plan contents:
->
->     PLAN_DIR: <absolute path>
->     KICKOFF_PROMPT: <verbatim copy of the kickoff prompt the plan skill printed to its user>
-
-When the Agent returns, parse the two fields. Append the `PLAN_DIR` to a running `PLAN_DIRS[]`. Print the kickoff prompt to the user as a fenced code block. Append `plan_dispatched` telemetry with `plan_idx: 1` and the `PLAN_DIR`.
+**Read `.claude/skills/gaia/references/plan.md` and follow its steps on this main thread**, using the dispatch input above as `$ARGUMENTS`. Do not spawn a wrapper subagent to run plan.md. Auto mode is non-interactive: at plan.md step 2 take its non-interactive branch (default the planner to Opus without prompting); plan.md step 4 spawns that planner as the single leaf. When plan.md finishes it has resolved a `PLAN_DIR` (step 3) and printed a kickoff prompt (step 5); both are visible on this thread. Append the `PLAN_DIR` to a running `PLAN_DIRS[]`. Print the kickoff prompt to the user as a fenced code block. Append `plan_dispatched` telemetry with `plan_idx: 1` and the `PLAN_DIR`.
 
 #### 11b. Subsequent plans (multi-plan loop)
 
@@ -655,9 +644,9 @@ On `Plan another slice`, ask via plain prompt (open-ended, not `AskUserQuestion`
 
     SPEC-NNN: <user's slice description>, see <absolute path to SPEC>
 
-Spawn a fresh Agent with the same template as 11a. Parse its return, append the resolved `PLAN_DIR` to `PLAN_DIRS[]`, print the kickoff prompt as a fenced block, append `plan_dispatched` telemetry with `plan_idx: <next>`. Loop until the user picks `Done`.
+**Follow `.claude/skills/gaia/references/plan.md` inline again** with the fresh dispatch input (same as 11a, no wrapper subagent). Append the resolved `PLAN_DIR` to `PLAN_DIRS[]`, print the kickoff prompt as a fenced block, append `plan_dispatched` telemetry with `plan_idx: <next>`. Loop until the user picks `Done`.
 
-**Output note.** The plan skill prints each kickoff prompt only into its own Agent's context, which the user never sees. The wrapper-printed fenced blocks are the authoritative source the user copies from.
+**Output note.** Run inline, plan.md prints each kickoff prompt directly to the user at its step 5; the fenced blocks recorded here are the same content, captured so 11c can list every plan slice in one place.
 
 #### 11c. Final confirmation
 
