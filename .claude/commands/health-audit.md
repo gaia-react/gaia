@@ -20,17 +20,19 @@ if .gaia/local/audit/ exists: mv it to .gaia/local/audit.prev-$(date +%s)/
 mkdir -p .gaia/local/audit
 
 For cycle in 1..3:
-  spawn fresh Triager → Triager runs Audit Team in parallel (buckets A–E)
-  Triager writes findings to .gaia/local/audit/c<N>/findings.json
+  you create c<N>/ and bucket sub-dirs
+  you spawn the five Audit buckets (A–E) as parallel, model-pinned leaf subagents
+    each writes its raw output to disk under c<N>/ and returns a summary + path
+  you spawn a fresh Adjudicator leaf for this cycle: it reads the c<N> bucket
+    artifacts from disk, classifies, and writes c<N>/findings.json
     (includes shared_fitness_grade from Bucket E and overall_grade)
   if clean (no open findings + Bucket D = A+ readiness + effective Bucket E shared_fitness_grade = A+; non-blocking residuals exempt, see runbook §Termination):
     report honest overall grade (A+ when no findings at all, else the floor that residual info may cap at A), exit
-  Triager classifies findings
   you compare open-finding (action=real-fix) fingerprints between
     c<N>/findings.json and c<N-1>/findings.json (jq + comm); escalate on intersection
-  Triager dispatches parallel Fixers (lane-aware); fitness findings → claude-surface lane
-  Fixers complete, Triager reports post-fix state to you
-  shut down the team, start the next cycle
+  you spawn parallel Fixers (lane-aware) as leaf subagents; fitness findings → claude-surface lane
+  Fixers complete and report post-fix state to you
+  start the next cycle
 After cycle 3 without clean: escalate (max loops hit)
 
 On clean exit: rm -rf .gaia/local/audit/c* (whitelisted)
@@ -39,9 +41,11 @@ On escalation: preserve all c*/ dirs; surface paths in escalation report
 
 **Oscillation threshold (definition).** The loop is oscillating when any fingerprint is present in both this cycle's and the prior cycle's open-finding set, where the open-finding set is the `action=real-fix` findings recorded in `c<N>/findings.json`. The check is a set intersection of those fingerprints against `c<N-1>/findings.json` (`jq` + `comm`); a non-empty intersection means a fix attempt left the finding unchanged. On any such intersection, escalate with reason `oscillation` rather than spending another cycle.
 
-Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories. The Triager does not re-specify those checks, it reads the wiki page and runs its protocol. Fitness findings route to the existing `claude-surface` Fixer lane.
+Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories. The Bucket E auditor does not re-specify those checks, it reads the wiki page and runs its protocol. Fitness findings route to the existing `claude-surface` Fixer lane.
 
-A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cycle's verification: the Triager never reads a prior cycle's `findings.json` (you, the Orchestrator, own the cross-cycle oscillation compare), so every cycle's Triager starts on clean context. Within a cycle, the Triager may execute buckets directly via parallel tool calls or dispatch fresh subagents (see runbook §Roles), with one exception that **always requires a fresh subagent**: **Bucket E**, which runs the full seven-category fitness protocol whose raw check output must stay isolated from the Triager's context.
+You spawn the five buckets, the Adjudicator, and the Fixers, and every one is a leaf subagent, because a subagent cannot spawn another subagent (the hard depth-1 limit). So you, the Orchestrator on this main thread, own every spawn. Stay mechanical: counters, directory creation, disk reads, the `jq`/`comm` oscillation compare, and dispatch. You never audit, adjudicate, or fix in your own context, so whatever session state you inherit cannot bias a grade.
+
+A fresh Adjudicator per cycle keeps prior-cycle findings from bleeding into this cycle's verification: it never reads a prior cycle's `findings.json` (you own the cross-cycle oscillation compare), so every cycle's Adjudicator starts on clean context. **Bucket E** runs as its own leaf so its voluminous raw fitness output stays on disk and out of the Adjudicator's context: the Adjudicator reads only Bucket E's findings JSON. Each bucket is spawned with its assigned model (Haiku for the mechanical buckets, Sonnet for the judgment-bearing ones; see the runbook's model table), which pins per-bucket models correctly now that the Orchestrator dispatches them directly.
 
 ## Step 3, Honor the circuit breakers
 
@@ -87,7 +91,7 @@ The overall grade is F-to-A+ and is never higher than the shared-fitness grade. 
 ## What you do NOT do
 
 - Do not fix anything yourself. Fixers fix; you orchestrate.
-- Do not re-grade between cycles, only on a clean Triager report or on escalation.
+- Do not re-grade between cycles, only on a clean Adjudicator report or on escalation.
 - Do not commit. Fixers leave the working tree dirty; the human commits.
 - Do not write to `wiki/log.md` or `wiki/hot.md`.
 - Do not edit the runbook mid-loop. If the runbook needs changing, escalate first.

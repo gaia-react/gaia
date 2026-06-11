@@ -31,17 +31,18 @@ If no SPEC reference is detected, `SPEC_SLUG_SEED` and `SPEC_PATH` are unset; st
 
 ### 2. Check model
 
-Check your current model from session context.
+The deep synthesis runs in the planner spawned at step 4, and the planner's model is pinned at spawn time, so it can be Opus even when this orchestration runs on Sonnet. Decide the planner's model:
 
-- If you are on Opus, skip to step 3.
-- If not, call `AskUserQuestion` with:
+- If you are on Opus, the planner inherits Opus; skip to step 3.
+- If you are running non-interactively (no user to prompt, e.g. dispatched by `/gaia-spec auto`), default the planner to Opus: spawn it with `model: opus` at step 4. Skip to step 3.
+- Otherwise call `AskUserQuestion` with:
   - question: `"You're on [model name]. Use Opus for planning?"`
   - header: `"Model"`
   - options:
-    - `{ label: "Use Opus (Recommended)", description: "Spawn the planning agent on Opus 4.7 for higher-quality plans." }`
+    - `{ label: "Use Opus (Recommended)", description: "Spawn the planning agent on Opus for higher-quality plans." }`
     - `{ label: "Use [model name]", description: "Keep the current model." }`
-  - If user picks option 1: spawn the agent with `model: opus`.
-  - If user picks option 2: spawn without a model override (inherit current).
+  - If the user picks option 1: spawn the agent with `model: opus`.
+  - If the user picks option 2: spawn without a model override (inherit current).
 
 ### 3. Resolve plan directory
 
@@ -70,7 +71,7 @@ Launch a `general-purpose` Agent with the model determined above and this prompt
 
 ---
 
-You are planning a feature using task orchestration. Do not implement anything. Investigate the codebase, then write the plan files directly to disk.
+You are planning a feature using task orchestration. Do not implement anything. Investigate the codebase, then write the plan files directly to disk. You are a leaf subagent and cannot spawn further subagents; parallelize investigation with parallel tool calls (batch reads and greps in one step), not sub-agent dispatch.
 
 **Plan directory:** `{PLAN_DIR}`
 
@@ -80,8 +81,7 @@ You are planning a feature using task orchestration. Do not implement anything. 
 
 - You may write only under `{PLAN_DIR}/`. Never edit source files, configs, or anything outside this directory.
 - Final plan artifacts go directly under `{PLAN_DIR}/` (no subdirectories for deliverables).
-- For ephemeral scratch (mid-investigation notes, intermediate research dumps), create a unique subdirectory under `{PLAN_DIR}/.work/` via `mktemp -d "{PLAN_DIR}/.work/<role>.XXXXXX"`. Never write directly to `.work/`, and never touch another subdir there, peer agents may own it. Delete your own subdir before returning.
-- If you spawn sub-subagents in parallel, each must create its own `mktemp -d` scratch subdir under `{PLAN_DIR}/.work/`. The parent does a defensive cleanup of `{PLAN_DIR}/.work` after you return; treat that as belt-and-suspenders, not as your cleanup.
+- For ephemeral scratch (mid-investigation notes, intermediate research dumps), create a unique subdirectory under `{PLAN_DIR}/.work/` via `mktemp -d "{PLAN_DIR}/.work/<role>.XXXXXX"`. Never write directly to `.work/` itself. Delete your scratch subdir before returning; the parent also runs a defensive cleanup of `{PLAN_DIR}/.work` after you return, as belt-and-suspenders.
 
 **Feature:** {feature description from step 1}
 
