@@ -25,7 +25,8 @@ For cycle in 1..3:
     (includes shared_fitness_grade from Bucket E and overall_grade)
   if clean (no open findings + Bucket D = A+ readiness + effective Bucket E shared_fitness_grade = A+; non-blocking residuals exempt, see runbook §Termination):
     report honest overall grade (A+ when no findings at all, else the floor that residual info may cap at A), exit
-  Triager classifies findings; compare open-finding (action=real-fix) fingerprints between
+  Triager classifies findings
+  you compare open-finding (action=real-fix) fingerprints between
     c<N>/findings.json and c<N-1>/findings.json (jq + comm); escalate on intersection
   Triager dispatches parallel Fixers (lane-aware); fitness findings → claude-surface lane
   Fixers complete, Triager reports post-fix state to you
@@ -40,7 +41,7 @@ On escalation: preserve all c*/ dirs; surface paths in escalation report
 
 Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories. The Triager does not re-specify those checks, it reads the wiki page and runs its protocol. Fitness findings route to the existing `claude-surface` Fixer lane.
 
-A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cycle's verification. Within a cycle, the Triager may execute buckets directly via parallel tool calls or dispatch fresh subagents (see runbook §Roles), with two exceptions that **always require fresh subagents**: **Bucket E** (it runs the full seven-category fitness protocol, whose raw check output must stay isolated from the Triager's context) and **every bucket on cycle 2 onward** (the cycle-2+ Triager reads the prior cycle's `findings.json` for the oscillation check, so its context already holds prior-cycle state; running buckets inline would fold raw output back in and reintroduce the bleed the fresh-Triager rule exists to prevent).
+A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cycle's verification: the Triager never reads a prior cycle's `findings.json` (you, the Orchestrator, own the cross-cycle oscillation compare), so every cycle's Triager starts on clean context. Within a cycle, the Triager may execute buckets directly via parallel tool calls or dispatch fresh subagents (see runbook §Roles), with one exception that **always requires a fresh subagent**: **Bucket E**, which runs the full seven-category fitness protocol whose raw check output must stay isolated from the Triager's context.
 
 ## Step 3, Honor the circuit breakers
 
