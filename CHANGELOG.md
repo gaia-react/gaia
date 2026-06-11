@@ -10,6 +10,56 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-11
+
+### Added
+
+- point React Router work at version-exact local docs
+- public-safe audit progress breadcrumbs (#350)
+- preview + snooze step before applying (#347)
+- field-aware merge for pnpm-workspace.yaml (Step 7b) (#335)
+- optional scope-hint argument
+- post-apply verification, counted summary, 72h staleness grace
+- decision gate + stateful report lifecycle (status field)
+- Run /gaia-audit nudge from drift/budget/draft signals
+- /gaia-harden command + /gaia-audit provenance handling + docs
+- decline ledger + TTL tally refresher + statusline nudge
+- finding-class emission contract + CI machine-readable findings block
+- render the report as a width-aware ASCII card
+
+### Changed
+
+- sync wiki orchestration topology to depth-1 (Opus 4.8) (#364)
+- make load-bearing wiki fetches imperative, tag deep-dives (#361)
+- bound the autonomous + TDD loops, reconcile coding-guidelines (Opus 4.8) (#359)
+- align skeleton-loader placeholders with the translation rule (#360)
+- scope response style to conversation, add coaching (#358)
+- record TypeScript 7 readiness decision
+- sync wiki concept page with the decision gate and lifecycle
+- set GitHub release body to adopter notes + lockstep docs
+- wire release-notes into the website lockstep
+
+### Fixed
+
+- close maintainer-path leaks and stale manifest (Opus 4.8) (#367)
+- main-thread orchestrator owns every spawn (depth-1) (Opus 4.8) (#363)
+- bound autonomous-loop stops in update-deps/update-gaia (Opus 4.8) (#355)
+- require subagents on stateful audit re-runs (Opus 4.8) (#356)
+- make .specify dispatch explicit, not prose (Opus 4.8) (#357)
+- defer version bump past summary; clarify orchestrator boundary (#362)
+- coverage-first finding stage in gaia audit/judge prompts (Opus 4.8) (#354)
+- tune for Opus 4.8 recall; bump model to opus (#353)
+- retry once locally to absorb the cold-optimize-cache flake (#349)
+- anchor bare-test guard to command position (#345)
+- exempt type-only tests from the RED-verification gate (#344)
+- repoint pnpm-11 override location to pnpm-workspace.yaml (#334)
+- remove shadowed legacy react-doctor.config.json
+- self-heal ls-loop anti-pattern and wiki action-type inaccuracy
+- add CONFLICT class, set Stage 2 to Sonnet, sync wiki concept page
+- rename vague `result` variables in tally.ts to `ghResult` and `tallyResult`
+- drop the leading "> " from the report card header
+- trigger CLI tests on code-review-audit.yml edits
+
 ### Added
 
 - CI audit progress breadcrumbs: the `code-review-audit` workflow prints a curated
@@ -18,11 +68,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
   otherwise-silent CI run (the action hides agent output on public repos) a public-safe
   signal of progress. Opt-in observability only: no raw tool output, no secrets, and a
   breadcrumb write never blocks the audit
+- `/gaia-harden`: human-gated Policy-Memory Loop. When `code-review-audit` flags the same finding class across three or more distinct PRs at warning or higher within a rolling 90-day window, the statusline nudges; running `/gaia-harden` judges the lightest durable enforcement form (a path-scoped prose rule, a deterministic check, or a skill) and drafts it for your approval. Nothing is committed or activated without your say-so. Adds the `harden-tally` and `harden-ledger` CLI subcommands (#321)
+- `/update-deps` interactive preview and snooze: updates are grouped (major, minor, patch, non-semver) and you can defer any group before applying. Snoozes persist in the gitignored `.gaia/local/declined-updates.json` and resurface after 14 days or when a newer version ships. Adds the `update-deps decline` CLI subcommand; `CI=true` and `--scope` runs skip the preview (#347)
+- React Router local-docs rule: a path-scoped rule (`app/routes/**`, `app/pages/**`, `app/root.tsx`, `react-router.config.ts`) points React Router framework-mode work at the version-exact docs React Router 7.17.0+ ships as markdown under `node_modules/react-router/docs`, falling back to the online docs only when the local copy is absent
+
+### Changed
+
+- pnpm upgraded from 10.33.0 to 11.5.2; `packageManager` is pinned to `pnpm@11.5.2`. Workspace settings (`overrides`, `allowBuilds`, `publicHoistPattern`, `savePrefix`, `strictPeerDependencies`) move from `package.json` and `.npmrc` to `pnpm-workspace.yaml` (#333)
+- `/update-gaia` merges `pnpm-workspace.yaml` field by field through the new `gaia update merge-workspace` primitive, keeping adopter-only overrides and build approvals while applying the release delta (#335)
+- `/gaia-audit` researches first and presents a single Apply, Discuss, or Decline gate before changing any file. Adds a CONFLICT finding class, a resumable report lifecycle with a 72-hour re-apply grace window, a post-apply verification step, and an optional scope-hint argument; the apply stage runs on Sonnet (#326)
+- `/gaia-fitness` renders its report as a deterministic width-aware ASCII card through the new `gaia fitness render-card` CLI subcommand (#320)
+- TypeScript 7 readiness: `tsconfig.json` adopts `stableTypeOrdering` and `noUncheckedSideEffectImports` while still on TypeScript 6 (#331)
+- `code-review-audit` runs its holistic review on Opus with a coverage-first pass that surfaces every candidate (tagged with severity and confidence) before adversarial verification filters them (#353, #354)
+- `/gaia-plan` and `/gaia-spec` dispatch every subagent from a single depth-1 orchestrator, and per-bucket Haiku and Sonnet model pinning is now applied (#363)
+- skeleton-loaders: static translatable text (labels, headings, button text) must use `t()` or `<Trans>`, and skeleton containers require `role="status" aria-busy="true"` (#360)
+- statusline: `/update-gaia` now precedes `/update-deps`, and the harden nudge reads `Run /gaia-harden (N recurring patterns)` (#328)
+- dependency refresh: react and react-dom 19.2.7, storybook 10.4.2, axe-core 4.12.0, chromatic 17.2.0, happy-dom 20.10.1, i18next 26.3.1; the `brace-expansion` and `ws` CVE overrides are dropped (resolved natively) and the `qs` override is retained (#332, #348)
+- the `react-router` group is bumped to 7.17.0 (`react-router`, `react-router-dom`, and the `@react-router/dev`, `@react-router/node`, `@react-router/serve`, `@react-router/fs-routes`, `@react-router/remix-routes-option-adapter` packages); 7.17.0 ships its official docs as markdown under `node_modules/react-router/docs` for local lookup
+- `update-deps` and `update-gaia` repoint dependency-override management to `pnpm-workspace.yaml` for pnpm 11 (#334)
+- react-doctor reads a single `doctor.config.jsonc`; the legacy `react-doctor.config.json` is removed from the template (#327)
+- the project `CLAUDE.md` response-style guidance is scoped to conversation, with a coverage carve-out for audits, reviews, plans, and specs, and a coaching register (#358)
+- `coding-guidelines` clarifies that the impossible-scenario test ban does not cover real failure modes such as non-zero exits, loop non-convergence, and network errors (#359)
+- CLI internals cleanup: several dead or unwired maintainer subcommands are retired (the generic `gaia update merge`, `automation init-state`, the cost-overage feature and `automation.state` layer, the smart-cron starvation valve, and the dead `state_file` workflow template var), a subcommand reachability guard rejects calls to commands the binary no longer exposes, and the CI audit gains a `--verbose` log mode (#336, #337, #338, #339, #340, #341)
+- `/gaia-release` (maintainer-only) wires the `release-notes` skill into the website lockstep, overwrites the GitHub release body with the generated adopter-facing notes, and adds a docs-site version lockstep step (#318, #319)
+- load-bearing wiki fetches in the instruction files are marked imperative (must-read) and deep-dive pages are tagged, tightening how the assistant pulls wiki context during a task (#361)
 
 ### Fixed
 
 - the bare-test guard no longer false-positives on quoted prose: `block-bare-test.sh` anchors detection to command position (splits on pipeline separators, strips leading env-var prefixes, acts only when `pnpm`/`npm` is the command word and `test` is the script position), so the phrase appearing inside a commit message (`git commit -m "run pnpm test"`) or a `--body` string (`gh pr create --body "...pnpm test --run..."`) is no longer blocked, and the `--run` opt-out is scoped to the matched segment; the sibling `capture-red-observations.sh` gate is anchored the same way so a prose mention no longer triggers a spurious full-suite vitest re-run
 - type-only tests no longer hit an unsatisfiable TDD RED-verification gate: the signal helper classifies each test `runtime` vs `type-only`, and the commit check exempts type-only tests (assertions all type-level via `expectTypeOf`/`assertType`/`@ts-expect-error`, no runtime expectation), delegating their correctness to the `tsc` quality gate
+- `/update-gaia` defers the VERSION-file bump until after the run summary prints, so an interrupted run resumes at the baseline version instead of dead-ending as already up to date (#362)
+- `/update-deps` and `/update-gaia` bound their retry and heal loops to one remediation pass plus a single gate re-run, then revert and log, instead of iterating open-ended (#355)
+- the autonomous `/gaia-audit` and `/gaia-fitness` re-run paths require a fresh subagent on every stateful re-run, so a resumed cycle can't silently reuse a stale in-context report (#356)
+- `/update-deps` override audit adds a security-floor pin test so a CVE-pinned override is never dropped as obsolete while a live advisory remains (#348)
+- `/update-deps` skill no longer references a maintainer-only source path that is absent on adopter clones (#367)
+- Playwright retries once on local runs to absorb the cold optimize-cache flake (#349)
+- the `.specify` GAIA commands dispatch tools and skills explicitly instead of emitting prose narration (#357)
+- the CLI test suite triggers on `code-review-audit.yml` edits, closing a gap where workflow changes shipped without exercising the CLI tests (#317)
 
 ## [1.5.0] - 2026-06-05
 
