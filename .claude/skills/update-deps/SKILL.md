@@ -86,7 +86,7 @@ out one PR per major-bump group.
 ## Companion groups (reference)
 
 The fixed table mapping each package to its group. `gaia update-deps run`
-(`.gaia/cli/src/update-deps/groups.ts`) implements it and is the source of
+resolves grouping internally and is the source of
 truth at runtime; every emitted entry already carries its resolved `group`.
 **When any member of a group is outdated, all members present in `package.json`
 update together**, so a group moves as one unit (and snoozes as one unit).
