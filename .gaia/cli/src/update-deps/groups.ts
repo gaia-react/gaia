@@ -1,9 +1,9 @@
 /**
  * Companion-group resolution for `gaia update-deps run`.
  *
- * The skill at `.claude/skills/update-deps/SKILL.md` (Phase 2) defines a
- * fixed table that maps each outdated package to a group so the wave is
- * processed atomically. This module replicates that table deterministically
+ * The skill at `.claude/skills/update-deps/SKILL.md` ("Companion groups"
+ * reference) defines a fixed table that maps each outdated package to a group
+ * so the wave is processed atomically. This module replicates that table
  * for the CLI primitive; the LLM-driven skill and the CLI must agree on
  * which packages move together.
  *

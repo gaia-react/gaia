@@ -101,10 +101,17 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
   updates_tmp="$(mktemp "$CACHE_DIR/.updates.XXXXXX" 2>/dev/null)"
   if [ -n "$updates_tmp" ]; then
     if (cd "$PROJECT_ROOT" && "$GAIA_BIN" update-deps run --emit-updates "$updates_tmp") >/dev/null 2>&1 && [ -s "$updates_tmp" ]; then
+      # Prefer the payload's `actionable_count`: it already excludes packages
+      # the human snoozed via /update-deps (the gitignored decline ledger) and
+      # counts only genuine upgrades. Older payloads without the field fall back
+      # to the inline recount, keeping the statusline backward-safe.
       parsed=$(jq '
-        [.wave_a[]?, (.wave_b[]?.packages[]?)]
-        | map(select(.current != .latest))
-        | length
+        if (.actionable_count | type) == "number" then .actionable_count
+        else
+          ([.wave_a[]?, (.wave_b[]?.packages[]?)]
+           | map(select(.current != .latest))
+           | length)
+        end
       ' "$updates_tmp" 2>/dev/null)
       case "$parsed" in
         ''|*[!0-9]*) ;;

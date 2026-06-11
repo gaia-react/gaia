@@ -10,12 +10,14 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
+  classifyBucket,
   classifyKind,
   computeUpdates,
   resolveGroup,
   run,
   type PnpmRunner,
 } from './run.js';
+import {saveDeclines} from './declines.js';
 import {resolveGroupMembers} from './groups.js';
 
 type Sandbox = {
@@ -1033,5 +1035,103 @@ describe('update-deps run: release-age cooldown', () => {
     expect(rrd).toBeDefined();
     expect(rrd?.kind).toBe('patch');
     expect(rrd?.latest).toBe('7.2.0');
+  });
+});
+
+describe('update-deps run: preview payload fields', () => {
+  let sandbox: Sandbox;
+  const NOW = (): Date => new Date('2026-06-11T18:00:00.000Z');
+
+  beforeEach(() => {
+    sandbox = setupSandbox();
+  });
+
+  afterEach(() => {
+    sandbox.cleanup();
+  });
+
+  test('classifyBucket buckets a pre-1.0 current as nonsemver', () => {
+    expect(classifyBucket('0.4.0', '0.5.0')).toBe('nonsemver');
+    expect(classifyBucket('0.4.0', '1.0.0')).toBe('nonsemver');
+  });
+
+  test('classifyBucket falls back to patch/minor/major at or above 1.0', () => {
+    expect(classifyBucket('1.2.3', '1.2.4')).toBe('patch');
+    expect(classifyBucket('1.2.3', '1.3.0')).toBe('minor');
+    expect(classifyBucket('1.2.3', '2.0.0')).toBe('major');
+  });
+
+  test('each wave entry carries a display bucket; 0.x is nonsemver', () => {
+    sandbox.writePackageJson({
+      dependencies: {foo: '^1.2.3', tiny: '^0.4.0'},
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner({
+        foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+        tiny: {current: '0.4.0', latest: '0.5.0', wanted: '0.5.0'},
+      }),
+    });
+
+    const foo = result.wave_a.find((entry) => entry.name === 'foo');
+    const tiny = result.wave_a.find((entry) => entry.name === 'tiny');
+    expect(foo?.bucket).toBe('minor');
+    expect(tiny?.bucket).toBe('nonsemver');
+  });
+
+  test('total_count counts every package; actionable_count equals it with no ledger', () => {
+    sandbox.writePackageJson({
+      dependencies: {bar: '^4.5.0', foo: '^1.2.3'},
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner({
+        bar: {current: '4.5.0', latest: '4.5.1', wanted: '4.5.1'},
+        foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+      }),
+    });
+
+    expect(result.total_count).toBe(2);
+    expect(result.actionable_count).toBe(2);
+  });
+
+  test('a snoozed group drops out of actionable_count but not total_count', () => {
+    sandbox.writePackageJson({
+      dependencies: {
+        foo: '^1.2.3',
+        'react-router': '^7.1.0',
+        'react-router-dom': '^7.1.0',
+      },
+    });
+    saveDeclines(sandbox.root, [
+      {
+        declined_at: NOW().toISOString(),
+        group: 'react-router',
+        targets: {'react-router': '7.2.0', 'react-router-dom': '7.2.0'},
+      },
+    ]);
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner({
+        foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+        'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'},
+        'react-router-dom': {
+          current: '7.1.0',
+          latest: '7.2.0',
+          wanted: '7.2.0',
+        },
+      }),
+    });
+
+    // 3 outstanding (foo + 2 react-router); the snoozed react-router group
+    // leaves only foo actionable.
+    expect(result.total_count).toBe(3);
+    expect(result.actionable_count).toBe(1);
   });
 });
