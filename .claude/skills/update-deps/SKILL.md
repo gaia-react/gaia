@@ -205,7 +205,7 @@ Each `.advisories` key is one advisory ID; this file is the set of advisories th
 Then, for each override key, one at a time, leaving every other `pnpm-workspace.yaml` setting untouched:
 
 1. Temporarily remove that single key from the `overrides:` map.
-2. Run `pnpm install`.
+2. Run `pnpm install`. If it exits non-zero, restore the key, note as **retained (install error)**, and move to the next key, do not diagnose the failure or run the tests below for this key.
 3. **Peer-dep test:** run `pnpm ls 2>&1` and scan for peer-dep errors.
 4. **Security-floor test:** run `pnpm audit --json` and extract its advisory IDs the same way. Any ID present now but absent from `/tmp/audit-baseline.txt` means removing this override reintroduced a known vulnerability.
 
@@ -316,7 +316,7 @@ You are upgrading the `{GROUP}` dependency group from `{FROM}` to `{TO}`.
    pnpm pw
    pnpm build
    ```
-   On failure, attempt fixes inferred from the migration guide. If unfixable after a reasonable attempt, revert the entire group and log as skipped.
+   On failure, make one remediation pass: apply fixes inferred from the migration guide, then re-run the gate once. If it still fails after that single re-run, revert the entire group and log as skipped. Do not keep iterating.
 
 Migration guide URLs:
 
@@ -350,7 +350,7 @@ Build the report **only** from the agent reports returned to you, plus the snooz
 - **Updated packages**: every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
 - **Breaking changes applied**: only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
 - **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If the `overrides:` map was empty, write "None" and move on.
-- **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
+- **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. When you cannot tell whether a package was policy-filtered before installation or attempted and reverted mid-run, include it in Skipped, a spurious row is recoverable but a silently dropped real failure is not. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
 - **Quality gate**: the gate result reported by the agents, verbatim.
 
@@ -406,3 +406,5 @@ Print the report. Do not commit.
 2. Do not open a PR, the user owns the branch context.
 
 In both cases, print the resulting PR URL (if created) or confirm the push completed.
+
+If any `git push` or `gh pr create` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or failed PR creation is the user's call to resolve (usually a manual rebase or a remote-side block).
