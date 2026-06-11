@@ -1,3 +1,4 @@
+// Throwaway no-op to trigger a CI audit run for breadcrumb verification. Revert.
 export const range = (start: number, end: number): number[] => {
   if (start > end) return [];
 
