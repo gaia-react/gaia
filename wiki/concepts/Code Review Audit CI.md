@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-06-05
+updated: 2026-06-11
 tags: [concept, ci, audit, claude]
 ---
 
@@ -58,6 +58,26 @@ A genuinely-clean audit that produces no self-heal commits and no empty trailer 
 The `Write GAIA-Audit commit status (clean, no push)` step closes this gap: it stamps the `GAIA-Audit` commit status directly on the current PR HEAD with no empty commit. A proven-clean guard prevents false passes: the audit agent writes `.gaia/local/audit/<HEAD>.ok` only on a clean pass (no Critical Issues, all Important Issues addressed, all Suggestions resolved). The step checks for this marker before stamping; a dirty audit that pushed nothing has no marker and receives no status, keeping the merge blocked until the audit clears.
 
 This is the audit's instance of the cross-workflow mechanism in [[Incremental CI Skipping]].
+
+## Progress breadcrumbs
+
+The workflow runs the [[Code Review Audit Agent]] with `show_full_output: false`. This is deliberate: `gaia-react/gaia` is a public repo and full output would expose tool results that may contain secrets. As a result, the agent's own output is invisible in the Actions log.
+
+To provide a public-safe, post-hoc view of audit progress, the agent writes a curated per-phase breadcrumb line to `.gaia/local/audit/progress.log` (runner-local, gitignored; the same directory as the `<sha>.ok` clean marker) via its `Write`/`Edit` tool. Each line is a phase label plus integer counts only: no code, no file contents, no raw tool output, no secrets. These writes are best-effort: a write failure never blocks or fails the audit.
+
+A trailing workflow step (`Print audit progress breadcrumbs`) reads that file after the agent step completes and prints it into `$GITHUB_STEP_SUMMARY`. Its gate mirrors the agent step's gate exactly (gate label present, source changes present, no workflow self-modification, no matching trailer), so breadcrumbs surface whenever the audit ran. Partial breadcrumbs appear even when the audit aborts due to max-turns or an SDK error. The step always exits successfully, so it never affects the required `code-review-audit` check status.
+
+The agent itself cannot write directly to the runner log because its `Bash` tool is captured by the SDK and bare `echo`/`cat` commands are not in the workflow `allowedTools` globs. The progress file plus trailing print step is the split that makes runner-log output possible.
+
+Five phases emit a breadcrumb, in run order:
+
+| # | Phase label | Emitted when |
+|---|---|---|
+| 1 | `scope resolved` | Changed-file list resolved against the incremental base, before dispatch |
+| 2 | `oracles done` | Parallel oracle dispatch returns (react-doctor, pnpm knip, pnpm audit, rule subagents) |
+| 3 | `holistic review done` | Cross-cutting review produces candidate findings, before the adversarial pass |
+| 4 | `adversarial verify done` | Finding Proof Gate adversarial refuter pass completes |
+| 5 | `report stamped` | Audit-marker decision complete: marker written or not, self-heal applied or not |
 
 ## Adopter knobs
 
@@ -120,6 +140,7 @@ Editing HEAD between the local stamp and `gh pr merge` invalidates the trailer (
 - Config reader: `.gaia/scripts/read-audit-ci-config.sh`
 - Default config: `.gaia/audit-ci.yml`
 - Frozen contracts (trailer format, skip logic, check name, event triggers): `.gaia/local/plans/code-review-audit-ci/trailer-format.md`
+- Progress breadcrumb file (runner-local, gitignored): `.gaia/local/audit/progress.log`
 
 ## See also
 

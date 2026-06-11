@@ -10,6 +10,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+### Added
+
+- CI audit progress breadcrumbs: the `code-review-audit` workflow prints a curated
+  per-phase timeline (scope resolved, oracles done, holistic review done, adversarial
+  verify done, report stamped) into the GitHub Actions step summary, giving the
+  otherwise-silent CI run (the action hides agent output on public repos) a public-safe
+  signal of progress. Opt-in observability only: no raw tool output, no secrets, and a
+  breadcrumb write never blocks the audit
+
 ### Fixed
 
 - the bare-test guard no longer false-positives on quoted prose: `block-bare-test.sh` anchors detection to command position (splits on pipeline separators, strips leading env-var prefixes, acts only when `pnpm`/`npm` is the command word and `test` is the script position), so the phrase appearing inside a commit message (`git commit -m "run pnpm test"`) or a `--body` string (`gh pr create --body "...pnpm test --run..."`) is no longer blocked, and the `--run` opt-out is scoped to the matched segment; the sibling `capture-red-observations.sh` gate is anchored the same way so a prose mention no longer triggers a spurious full-suite vitest re-run
