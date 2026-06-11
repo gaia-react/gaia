@@ -79,6 +79,8 @@ Surface via `AskUserQuestion`:
 
 Update the `.gaia/specs.json` row for `<spec_id>` to record the merge: set `status: merged` and stamp `merged_at` with the current UTC timestamp. Disposition lives on the artifact (and in telemetry); the ledger tracks SPEC lifecycle independently of artifact location.
 
+Run using the Bash tool:
+
 ```bash
 PATCH=$(jq -nc --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
   '{status: "merged", merged_at: $ts}')
