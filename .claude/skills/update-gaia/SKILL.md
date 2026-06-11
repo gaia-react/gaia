@@ -63,13 +63,9 @@ If the detection does not fire, fall through to the existing `## Pre-flight: Bra
 git branch --show-current
 ```
 
-If the current branch is `main` or `master`, create and switch to a new branch:
+If the current branch is `main` or `master`, set a flag (`SHOULD_CREATE_BRANCH=true`) but **do not create the branch yet**, creation is deferred until after the Step 4 "Proceed" confirmation. Steps 1-4 can exit early (already up to date, or the user aborts); branching before then leaves an orphan `chore/update-gaia-*` branch when there was nothing to update.
 
-```bash
-git checkout -b chore/update-gaia-$(date +%Y-%m-%d-%H-%M)
-```
-
-Otherwise proceed on the current branch.
+Otherwise set `SHOULD_CREATE_BRANCH=false` and proceed on the current branch.
 
 ## Step 1: Read baseline version
 
@@ -119,6 +115,14 @@ Print the notes to the user. Then use `AskUserQuestion`:
 
 On `Abort`, exit cleanly with no filesystem changes.
 
+If `SHOULD_CREATE_BRANCH=true`, create and switch to the branch now that the user has confirmed:
+
+```bash
+git checkout -b chore/update-gaia-$(date +%Y-%m-%d-%H-%M)
+```
+
+Otherwise stay on the current branch.
+
 ## Model selection
 
 After the user confirms, determine the model for the execution agent:
@@ -141,20 +145,25 @@ Cache under `.gaia/cache/` (gitignored) so repeated runs don't redownload:
 mkdir -p .gaia/cache
 for tag in "v$BASELINE" "$LATEST_TAG"; do
   dir=".gaia/cache/$tag"
-  if [ ! -d "$dir" ]; then
-    mkdir -p "$dir"
-    gh release download "$tag" \
+  [ -d "$dir" ] && continue
+  mkdir -p "$dir"
+  if ! gh release download "$tag" \
       --repo gaia-react/gaia \
       --pattern "gaia-${tag}.tar.gz" \
-      --dir "$dir"
-    tar -xzf "$dir/gaia-${tag}.tar.gz" -C "$dir" --strip-components=1
+      --dir "$dir" \
+    || ! tar -xzf "$dir/gaia-${tag}.tar.gz" -C "$dir" --strip-components=1; then
+    rm -rf "$dir"
+    echo "FETCH_FAILED $tag"
   fi
 done
 ```
 
 `BASELINE_DIR=".gaia/cache/v$BASELINE"`, `LATEST_DIR=".gaia/cache/$LATEST_TAG"`.
 
-If the baseline tarball is unavailable (older release, pre-manifest), stop and explain, the adopter can manually cherry-pick changes by comparing their project to the `$LATEST_DIR`.
+The block prints `FETCH_FAILED <tag>` for any tag whose download or extraction did not complete, and removes the partial cache dir so a re-run retries cleanly. On any `FETCH_FAILED`, **stop, do not proceed to Step 6**:
+
+- `FETCH_FAILED $LATEST_TAG`: the latest release is unreachable (network, auth, or a missing release asset). Tell the user, then re-run once it is reachable.
+- `FETCH_FAILED v$BASELINE`: the baseline tarball is unavailable (older release, pre-manifest). The three-way merge needs a baseline, so stop and explain the adopter can manually cherry-pick changes by comparing their project to `$LATEST_DIR`.
 
 ### Step 6: Load the latest manifest
 
@@ -358,7 +367,7 @@ if command -v gh >/dev/null 2>&1; then
   if [ -n "$pr_list" ]; then
     while IFS= read -r sha; do
       [ -z "$sha" ] && continue
-      msg=$(git -C "$repo_root" log -1 --format='%B' "$sha" 2>/dev/null || true)
+      msg=$(git log -1 --format='%B' "$sha" 2>/dev/null || true)
       if echo "$msg" | grep -qE "^GAIA-Audit:[[:space:]]+${OLD_VERSION}[[:space:]]+[0-9a-f]{40}"; then
         INVALIDATED_COUNT=$((INVALIDATED_COUNT + 1))
       fi
@@ -384,7 +393,7 @@ Parse the result for the Step 9 summary:
 
 - The script writes `spec-folderize: migrated <n> SPEC artifact(s) ...` to stderr on a successful migration. Persist `<n>` as `SPECS_MIGRATED`. On a no-op (already foldered or no specs) the script exits `0` with a `nothing to migrate` line, set `SPECS_MIGRATED=0`.
 - Exit code `4` is a migration conflict: a flat `SPEC-<id>.md` **and** a folder `<id>/SPEC.md` both exist for the same id. The script names both conflicting paths on stderr and changes nothing. **Do not swallow this and do not auto-resolve it.** Capture the conflicting ids/paths from `$spec_folderize_out`, set `SPECS_MIGRATED="conflict"`, and surface it in Step 9 as a blocking action item the user must reconcile by hand.
-- Any other non-zero exit (`2` usage, `3` unresolvable repo root) is a script-invocation error: surface `$spec_folderize_out` to the user and treat it as a blocking action item.
+- Any other non-zero exit (`2` usage, `3` unresolvable repo root) is a script-invocation error: surface `$spec_folderize_out` to the user as a blocking action item. **Stop here, do not proceed to Step 9.** The version bump (Step 8) already landed, so after fixing the invocation or environment the user finishes the migration by re-running `bash .specify/extensions/gaia/lib/spec-folderize.sh` manually.
 
 ### Step 9: Summary
 
@@ -442,6 +451,8 @@ Do **not** auto-commit on behalf of the user, they need to review the changes fi
 
 After the Step 10 commit lands, `/update-gaia` must not leave the branch stranded, open a PR so the update can be reviewed and merged.
 
+Step 10 hands the commit to the user, so **do not run this step until the user confirms the commit landed.** After Step 10, stop and wait; when the user confirms they have reviewed the diff and committed, run this step. Do not push on the user's behalf before that confirmation, the `git rev-list` guard below is only a backstop for the empty-branch case, not a replacement for it.
+
 Push the branch and open a PR, but only if it has no open PR already, a re-run of `/update-gaia` on the same branch updates the existing PR instead of duplicating it:
 
 ```bash
@@ -450,6 +461,7 @@ branch="$(git branch --show-current)"
 # The update must be committed first (Step 10). No commits ahead of main → finish Step 10.
 if [ "$(git rev-list --count main.."$branch" 2>/dev/null || echo 0)" -eq 0 ]; then
   echo "Nothing committed ahead of main, commit the update (Step 10) before opening a PR."
+  exit 0
 elif ! git push -u origin "$branch"; then
   echo "Push failed, resolve the push error, then open the PR manually: $branch → main."
 else
