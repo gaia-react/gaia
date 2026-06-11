@@ -3,7 +3,7 @@ type: concept
 title: GAIA Plan
 status: active
 created: 2026-04-30
-updated: 2026-05-01
+updated: 2026-06-11
 tags: [concept, claude, skill, orchestration]
 ---
 
@@ -14,8 +14,8 @@ tags: [concept, claude, skill, orchestration]
 ## Steps
 
 1. **Get description.** Use `$ARGUMENTS` if provided; otherwise ask "What do you want me to orchestrate?" and wait.
-2. **Pick the planner model.** If the current session is on Opus, use it. Otherwise ask "Use Opus for planning? (Y/n)"; default yes.
-3. **Spawn the planner.** Launch a `general-purpose` Agent with the chosen model and a prompt that builds the plan files in `.gaia/local/plans/{slug}/`: per-task docs, `README.md` (task graph + frozen interface contracts), `ORCHESTRATOR.md` (execution playbook), and `KICKOFF.md` (the cold-start prompt). See [[Task Orchestration]] for the artifact contract.
+2. **Pick the planner model.** The planner's model is pinned at spawn, so it runs on Opus even when the session is on Sonnet. If the session is on Opus, the planner inherits it. When the run is non-interactive (e.g. dispatched by `/gaia-spec auto`), the planner defaults to Opus without a prompt. Otherwise ask "Use Opus for planning? (Y/n)"; default yes.
+3. **Spawn the planner.** Launch a `general-purpose` Agent with the chosen model and a prompt that builds the plan files in `.gaia/local/plans/{slug}/`: per-task docs, `README.md` (task graph + frozen interface contracts), `ORCHESTRATOR.md` (execution playbook), and `KICKOFF.md` (the cold-start prompt). The planner is a leaf sub-agent: it investigates with parallel tool calls and writes the files, and it cannot spawn further sub-agents (see [[Task Orchestration#Topology]]). See [[Task Orchestration]] for the artifact contract.
 4. **Hand off.** Print a short summary of the plan, then a fenced one-line resume prompt (`Read /abs/path/to/.gaia/local/plans/{slug}/KICKOFF.md and execute it.`). The skill probes for a clipboard tool (`pbcopy` / `wl-copy` / `xclip` / `xsel` / `clip.exe` / `clip`) and copies the prompt automatically when one is available, then prints either `Prompt copied to clipboard. Type /clear then paste.` or `Type /clear and paste the prompt above.` accordingly.
 
 ## Orchestrator contract
