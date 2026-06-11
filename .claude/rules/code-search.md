@@ -24,4 +24,4 @@ Cold-start tsserver warm-up. Files outside `tsconfig` `include` invisible. Gener
 
 ## Reference
 
-Output quirks + wiki/Serena division of labor: `wiki/concepts/Serena Integration.md`.
+Output quirks + wiki/Serena division of labor (optional deep-dive): `wiki/concepts/Serena Integration.md`.
