@@ -58,7 +58,7 @@ Decide whether the failure is a **user-config issue** or a **probable bug**:
 - Wrong Node version, missing required env var, or dirty working tree blocking a workflow → **user-config**.
 - Any other failure pattern → **probable bug**.
 - Class is `other` → always **probable bug**.
-- If multiple signals fire (e.g. wrong Node version AND an unexpected crash), apply the **user-config** branch, the environment is the more likely root cause.
+- If multiple signals fire (e.g. wrong Node version AND an unexpected crash), apply the **user-config** branch, the environment is the more likely root cause. Record the co-occurring probable-bug signal in the report under `## Reproduction context` with a note that if fixing the environment does not resolve the issue, the user should re-run the forensics flow. Do not discard the probable-bug signal silently.
 
 Record the diagnosis. It gates the branch in step 8.
 
