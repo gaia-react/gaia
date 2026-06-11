@@ -46,7 +46,7 @@ The [[Code Review Audit Agent]] is a manager-and-specialists system. The lead re
 
 #### Resource-Aware Optimization
 
-Model tier follows task complexity. [[GAIA Audit]] runs both stages on Sonnet; drift checks (sha256 + verbatim before/after snippets) carry the safety, so the research stage doesn't need a heavier model. `/gaia-plan` asks the user whether to use Opus for planning, defaulting to yes; per-task implementation sub-agents inherit the running model (typically Sonnet). The Code Review Audit declares `model: sonnet` in its frontmatter so the structured rule-based review runs cheaply, leaving Opus for harder reasoning. Cost and quality discipline is wired in, not left to the user.
+Model tier follows task complexity. [[GAIA Audit]] runs both stages on Sonnet; drift checks (sha256 + verbatim before/after snippets) carry the safety, so the research stage doesn't need a heavier model. `/gaia-plan` asks the user whether to use Opus for planning, defaulting to yes; per-task implementation sub-agents inherit the running model (typically Sonnet). The Code Review Audit declares `model: opus` in its frontmatter: the holistic finder does the hard cross-cutting reasoning (security, data flow, architecture) where bug-finding recall and precision matter most, and it delegates cheaper line-level rule compliance to Sonnet specialist subagents plus deterministic oracles (`react-doctor`, `knip`, `pnpm audit`). Reasoning runs on the heavier tier; mechanical rule-matching runs cheaply alongside it. Cost and quality discipline is wired in, not left to the user.
 
 ### Infrastructure & State
 
