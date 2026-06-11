@@ -81,6 +81,6 @@ If every section is clean:
 
 ## Notes
 
-- This hook is the last automated gate before the human-facing gate 2. Be thorough but not noisy, surface real issues, skip nits.
+- This hook is the last automated gate before the human-facing gate 2. Surface every candidate finding in each section, including borderline and low-confidence ones; do not pre-filter for importance or confidence. Gate 2 (the human) triages. Suppressing a borderline finding here is the failure mode this gate exists to catch.
 - Self-review never edits the draft; the wrapper does. This skill produces a report; the wrapper consumes it.
 - The pending-clarifications gate is itself a required behavior. The wrapper is responsible for honoring the user's choice and looping until pending is resolved.
