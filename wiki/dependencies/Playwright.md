@@ -5,7 +5,7 @@ package: '@playwright/test'
 version: 1.59.1
 role: e2e-testing
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-06-11
 tags: [dependency, testing, e2e]
 ---
 
@@ -45,7 +45,7 @@ When a project requires authentication, use a global setup file (`auth.setup.ts`
 
 ## Parallelism and CI
 
-`fullyParallel: true`; CI uses `workers: 1`, `retries: 2`. Multi-browser (webkit, Firefox, mobile) is opt-in via `TEST_ALL_BROWSERS`. See `.claude/rules/playwright.md` for the full table.
+`fullyParallel: true`; CI uses `workers: 1`, `retries: 2`. Locally, `retries: 1`: the first run after a dependency or `vite.config` change boots the dev server with a cold Vite dep-optimize cache, which can fail the dynamic import of `entry.client.tsx` before hydration completes; the retry runs against the now-warm server. A genuine failure still fails on both attempts. Multi-browser (webkit, Firefox, mobile) is opt-in via `TEST_ALL_BROWSERS`. See `.claude/rules/playwright.md` for the full table.
 
 ## Traces and screenshots
 

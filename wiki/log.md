@@ -11,6 +11,14 @@ tags: [meta, log]
 
 ## 2026-06-05 | Policy-Memory Loop
 
+- 2026-06-11 3946d24 SKIP - wiki/concepts/Code Review Audit CI.md updated in the commit's own docs(ci) sub-commit
+- 2026-06-11 a5c6c3a WORTHY - playwright local retries=1 for cold-cache flake → wiki/dependencies/Playwright.md
+- 2026-06-11 c944079 SKIP - chore(deps): version bump only
+- 2026-06-11 071c0c4 WORTHY - update-deps preview+snooze; actionable_count statusline → wiki/decisions/pnpm.md
+- 2026-06-11 f4b6b4d WORTHY - bare-test command-position anchoring → wiki/concepts/Test Runner.md
+- 2026-06-11 ddebfe0 SKIP - wiki pages (TDD RED Verification.md, Claude Hooks.md) updated within the same commit's docs sub-commit
+- 2026-06-11 07e85f6 SKIP - wiki: self-referential
+- 2026-06-11 74f4e3c SKIP - wiki: self-referential
 - 2026-06-10 a2f6046 SKIP - chore(cli): tooling-internal (retire dead state_file workflow template var)
 - 2026-06-10 05b8497 SKIP - chore(cli): tooling-internal (retire cost-overage feature)
 - 2026-06-10 bd45949 WORTHY - chore(cli): retire dead smart-cron starvation valve; no wiki page covers cron-decide internals
