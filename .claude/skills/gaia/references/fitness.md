@@ -86,7 +86,7 @@ Remember `CURRENT_BRANCH`, `DEFAULT_BRANCH`, and `ON_DEFAULT_BRANCH`, they gover
 
 Run the triage phase from `wiki/decisions/Claude Integration Fitness.md`.
 
-Dispatch the seven category checks as **parallel subagents** (or parallel tool calls, the verifiable property is the structured findings artifact, not the dispatch mechanism) per the wiki page's bucket-and-model spec:
+Dispatch the seven category checks per the model assignment in the table below (this table is authoritative; do not defer to the wiki page for the bucket-and-model spec). Prefer **parallel subagents** so each Auditor's raw command output stays isolated. The initial triage here runs on clean orchestrator context, so parallel tool calls inline are an acceptable substitute on this first pass, the verifiable property is the structured findings array, not the dispatch mechanism. Every Step 5 verify re-run, by contrast, happens after findings are already in the orchestrator's context, so those **require real subagents**, an inline re-run would fold raw output back in and risk contaminating the next grade.
 
 | Category                            | Model  |
 | ----------------------------------- | ------ |
@@ -139,11 +139,11 @@ Dispatch lane-aware Fixer subagents (Sonnet) in parallel per the wiki page's lan
 
 If a finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope.
 
-Run inside the bounded loop (default 3 cycles) with oscillation detection as described in the wiki page:
+Run inside the bounded heal loop. The cap and stop conditions below are authoritative in this file, do not defer to the wiki page to discover them (the wiki page carries the same rule):
 
 - After each heal cycle, run the verify phase (Step 5).
-- Compare fingerprint sets across consecutive cycles. Any fingerprint appearing in both the current and prior cycle's findings has survived a fix attempt unchanged, stop the loop for that finding and mark it unresolved.
-- On loop exhaustion, report remaining unresolved findings with the affected grades.
+- **Oscillation stop.** Compare fingerprint sets across consecutive cycles (fingerprint format `{check-id}:{file}:{line}:{first-40-chars-of-match-text}`). Any fingerprint appearing in both the current and prior cycle's findings has survived a fix attempt unchanged, stop the loop for that finding and mark it unresolved.
+- **Cycle cap.** Run at most 3 heal cycles (the default). After the third without an overall A+, exit the loop and report the remaining unresolved findings with their affected grades.
 
 **Too-invasive fixes:** a Fixer that judges a fix too invasive to apply without product context leaves it unapplied and surfaces it in the report with a recommended approach. Never force an invasive edit.
 
@@ -153,7 +153,7 @@ Run inside the bounded loop (default 3 cycles) with oscillation detection as des
 
 ## Step 5, Verify
 
-After each heal cycle, re-run the affected category checks (the Auditors for the categories that had at least one finding addressed in that cycle). Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean.
+After each heal cycle, re-dispatch the affected category checks as fresh subagents (the Auditors for the categories that had at least one finding addressed in that cycle; subagents are required here per Step 3, the orchestrator already holds findings). Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean.
 
 ---
 

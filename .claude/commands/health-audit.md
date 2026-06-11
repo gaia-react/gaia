@@ -36,9 +36,11 @@ On clean exit: rm -rf .gaia/local/audit/c* (whitelisted)
 On escalation: preserve all c*/ dirs; surface paths in escalation report
 ```
 
+**Oscillation threshold (definition).** The loop is oscillating when any fingerprint is present in both this cycle's and the prior cycle's open-finding set, where the open-finding set is the `action=real-fix` findings recorded in `c<N>/findings.json`. The check is a set intersection of those fingerprints against `c<N-1>/findings.json` (`jq` + `comm`); a non-empty intersection means a fix attempt left the finding unchanged. On any such intersection, escalate with reason `oscillation` rather than spending another cycle.
+
 Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories. The Triager does not re-specify those checks, it reads the wiki page and runs its protocol. Fitness findings route to the existing `claude-surface` Fixer lane.
 
-A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cycle's verification. Within a cycle, the Triager may execute buckets directly via parallel tool calls or dispatch fresh subagents, see runbook §Roles.
+A fresh Triager per cycle keeps prior-cycle findings from bleeding into this cycle's verification. Within a cycle, the Triager may execute buckets directly via parallel tool calls or dispatch fresh subagents (see runbook §Roles), with two exceptions that **always require fresh subagents**: **Bucket E** (it runs the full seven-category fitness protocol, whose raw check output must stay isolated from the Triager's context) and **every bucket on cycle 2 onward** (the cycle-2+ Triager reads the prior cycle's `findings.json` for the oscillation check, so its context already holds prior-cycle state; running buckets inline would fold raw output back in and reintroduce the bleed the fresh-Triager rule exists to prevent).
 
 ## Step 3, Honor the circuit breakers
 
