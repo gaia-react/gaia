@@ -47,9 +47,9 @@ strictPeerDependencies: false
 # "pnpm" field is no longer honored. Keys use pnpm's parent>child / version-range
 # syntax.
 overrides:
-  'brace-expansion@>=5.0.0 <5.0.6': '>=5.0.6'
+  # Security floor: express pulls qs <6.15.2 (GHSA-q8mj-m7cp-5q26, DoS). Not a
+  # peer-dep override, so the Phase 0 obsolescence test can't see why it exists.
   'qs': '>=6.15.2'
-  'ws@>=8.0.0 <8.20.1': '>=8.20.1'
 
 # Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
 # with the allowBuilds map (true = the package may run install/build scripts).
