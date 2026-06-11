@@ -21,6 +21,8 @@ The GAIA preset's `/speckit-specify` wrapper relocates and stamps the SPEC immed
 
 ## Run the render helper
 
+Run using the Bash tool:
+
 ```bash
 bash .specify/extensions/gaia/lib/uat-write.sh <resolved-spec-path>
 ```
@@ -39,7 +41,7 @@ The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe thro
 
   > Suggested first action: `pnpm pw .playwright/e2e/<spec-dir>/`, confirms red-state baseline.
 
-- **Operational failure (`ok: false`, exit `1`).** Emit the helper's `error` message verbatim. Do NOT proceed to `/speckit-implement`'s source edits, the implementer agent is responsible for reading the failure and halting the lifecycle.
+- **Operational failure (`ok: false`, exit `1`).** Emit the helper's `error` message verbatim, then **stop**, do not proceed to `/speckit-implement`'s source edits and do not call any further tool. End the turn on the failure so the lifecycle halts here rather than relying on a downstream agent to notice and stop.
 
 - **Usage error (exit `2`).** Treat as a tooling problem, not a SPEC problem. Report the stderr message and skip without blocking the lifecycle. The user's `/speckit-implement` continues, but without a generated harness, the implementer should write tests inline as fallback and acknowledge the harness was not available.
 
@@ -52,3 +54,4 @@ The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe thro
 - The hook fires only on `before_implement`. It is not invoked by any other lifecycle event.
 - Pluggability: only Playwright is supported in this SPEC. Vitest e2e / Cypress is a future SPEC.
 - The helper is pure: same SPEC in, same JSON out. Any rendering logic belongs in `lib/uat-write.sh`, never inline in this command body.
+- On completion (success, failure, or skip) this hook returns control to the lifecycle; it touches only `.playwright/e2e/<spec-dir>/` and its cache file, and performs no other action.

@@ -22,6 +22,8 @@ If no candidate resolves, surface:
 
 ## Run the lint helper
 
+Run using the Bash tool:
+
 ```bash
 bash .specify/extensions/gaia/lib/lint.sh <resolved-spec-path>
 ```
@@ -53,6 +55,7 @@ The helper emits a JSON result on stdout: `{"ok": true, "findings": []}` on pass
 
 ## Notes
 
-- This hook is read-only; it never edits the SPEC.
+- This hook is read-only. Its only action is to emit the helper's findings and stop, it never edits, deletes, moves, or auto-fixes the SPEC. Fixing the SPEC is the `/gaia-spec` wrapper's job (looping back to the user); lint only reports.
 - "Block save" semantics: a failing lint surfaces the findings to the agent driving `/gaia-spec`; that agent is responsible for halting before the on-disk save and looping back to the user.
 - The helper is pure: same SPEC in, same JSON out. Any mutation logic belongs in `/gaia-spec` (the wrapper command), never here.
+- On completion (pass, fail, or skip) this hook returns control to the running `/gaia-spec` (or `/speckit-specify`) wrapper; it performs no further action and calls no further tool itself.
