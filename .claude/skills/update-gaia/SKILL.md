@@ -101,7 +101,9 @@ If both fail, stop and ask the user to supply the target version explicitly.
 
 ## Step 3: Compare versions
 
-- If `LATEST == BASELINE` → print "You are up to date on GAIA v$BASELINE." and exit.
+- If `LATEST == BASELINE`:
+  - **First, detect an interrupted prior run.** If `.gaia/VERSION` differs from the last commit (`git diff --quiet HEAD -- .gaia/VERSION` exits non-zero, this catches a staged or unstaged bump), a previous `/update-gaia` already bumped the version but the update was never committed. Do **not** print "up to date", the bumped VERSION makes every re-run look current, so saying it dead-ends the user. Instead read the committed baseline (`git show HEAD:.gaia/VERSION`) for context and tell the user: the update to `v$LATEST` is already applied to the working tree but not committed. Review `git diff` and commit it (Step 10 guidance), or run `git checkout -- .gaia/VERSION` to discard the bump and re-run `/update-gaia` to start over. Exit.
+  - Otherwise print "You are up to date on GAIA v$BASELINE." and exit.
 - If `semver(LATEST) < semver(BASELINE)` → print a warning that the installed version is ahead of the latest release and exit. Never downgrade.
 
 ## Step 4: Show the release notes and confirm
@@ -336,19 +338,9 @@ The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 
 - **No managed-key delta** (overrides / allowBuilds / settings unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.**
 - **Settings or override change** → only the keys / entries GAIA actually changed (and that the adopter still tracks) are applied; re-pin conflicts and added/removed suggestions go to the notes file, never re-adding a key the adopter removed, never overwriting an adopter override.
 
-### Step 8: Bump `.gaia/VERSION`
+### Step 8: Count trailer invalidations
 
-**Only** after the full walk completes without errors:
-
-```bash
-echo "$LATEST" > .gaia/VERSION
-```
-
-If the walk was aborted mid-way (user cancels, disk error), leave `.gaia/VERSION` at `BASELINE` so a re-run resumes cleanly. Any files already overwritten are safe, their new state is recorded via `.gaia-backup/`.
-
-Also copy `.gaia/manifest.json` from `$LATEST_DIR/.gaia/manifest.json` into the project so the next `/update-gaia` has the right baseline.
-
-Then count open PRs whose `GAIA-Audit` trailer is stamped with the old version, these will be invalidated by the version bump and will re-run the full CI audit on their next push:
+The version bump itself is deferred to Step 9 (after the summary prints) so an interrupted run stays resumable, see that step for the rationale. First, while `BASELINE` still names the installed version, count open PRs whose `GAIA-Audit` trailer is stamped with it. The upcoming bump invalidates them, they re-run the full CI audit on their next push:
 
 ```bash
 INVALIDATED_COUNT=0
@@ -384,7 +376,7 @@ Parse the result for the Step 9 summary:
 
 - The script writes `spec-folderize: migrated <n> SPEC artifact(s) ...` to stderr on a successful migration. Persist `<n>` as `SPECS_MIGRATED`. On a no-op (already foldered or no specs) the script exits `0` with a `nothing to migrate` line, set `SPECS_MIGRATED=0`.
 - Exit code `4` is a migration conflict: a flat `SPEC-<id>.md` **and** a folder `<id>/SPEC.md` both exist for the same id. The script names both conflicting paths on stderr and changes nothing. **Do not swallow this and do not auto-resolve it.** Capture the conflicting ids/paths from `$spec_folderize_out`, set `SPECS_MIGRATED="conflict"`, and surface it in Step 9 as a blocking action item the user must reconcile by hand.
-- Any other non-zero exit (`2` usage, `3` unresolvable repo root) is a script-invocation error: surface `$spec_folderize_out` to the user and treat it as a blocking action item.
+- Any other non-zero exit (`2` usage, `3` unresolvable repo root) is a script-invocation error. **Do not hard-stop here**, that would discard the Step 9 summary covering every file already merged. Capture `$spec_folderize_out`, set `SPECS_MIGRATED="error"`, and route it through Step 9 as a blocking action item (same handling as the exit-`4` conflict).
 
 ### Step 9: Summary
 
@@ -412,6 +404,10 @@ Use `SPECS_MIGRATED` for the `Specs migrated` row. If it is `"conflict"`, emit t
 
 > **Action required:** SPEC migration could not complete. A flat `SPEC-<id>.md` and a folder `<id>/SPEC.md` exist for the same id: <conflicting paths>. Resolve by hand (keep one, remove the other), then re-run `bash .specify/extensions/gaia/lib/spec-folderize.sh` to finish the migration. The freshly-updated runbooks reference the folder layout, so leaving this unresolved breaks SPEC tooling.
 
+If `SPECS_MIGRATED` is `"error"`, emit the row as `Specs migrated: error, see action item below` and, after the table, print a blocking action item carrying the script-invocation failure from `$spec_folderize_out`:
+
+> **Action required:** SPEC migration could not run, the `spec-folderize.sh` script errored: <`$spec_folderize_out`>. The GAIA file merge completed and is summarized above; only the SPEC-artifact migration was skipped. Fix the reported error, then re-run `bash .specify/extensions/gaia/lib/spec-folderize.sh` to finish the migration. The freshly-updated runbooks reference the folder layout, so leaving this unresolved breaks SPEC tooling.
+
 If `INVALIDATED_COUNT` is `"unknown"`, emit instead:
 
 ```
@@ -421,6 +417,16 @@ If `INVALIDATED_COUNT` is `"unknown"`, emit instead:
 If `INVALIDATED_COUNT` is greater than 0, also print after the table:
 
 > **Note:** $INVALIDATED_COUNT open PR(s) carry a `GAIA-Audit` trailer stamped with v$BASELINE. On their next push, CI re-runs the full audit (one extra billing cycle per PR). This is intentional, a newer GAIA agent version may catch issues the prior version missed. To minimize re-audit churn, merge or close these PRs before updating GAIA.
+
+The merge walk is complete and the summary is recorded, so finalize the version. Write the new version and refresh the manifest:
+
+```bash
+echo "$LATEST" > .gaia/VERSION
+```
+
+Also copy `.gaia/manifest.json` from `$LATEST_DIR/.gaia/manifest.json` into the project so the next `/update-gaia` has the right baseline. Unresolved conflict patches, re-pin notes, or a SPEC-migration action item do **not** block this bump, they are follow-ups the user resolves against the already-recorded update; `.gaia/VERSION` tracks the file merge, which is done.
+
+Deferring the bump to this point (rather than before the walk) keeps an interrupted run resumable: any abort during the walk (user cancels, disk error) leaves `.gaia/VERSION` at `BASELINE`, and because the merge is idempotent (already-merged files match latest and skip), a re-run picks up cleanly. Overwritten files are safe, their prior state is in `.gaia-backup/`. Step 3 catches the remaining window where the bump landed but the user has not yet committed.
 
 Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session. Use the Write tool to overwrite `.gaia/cache/update-check.json` with `gaiaCurrent` set to `$LATEST`, `gaiaLatest` set to `$LATEST`, `gaiaHasUpdate` set to `false`, `outdatedCount` set to `0`, and `checkedAt` set to the current Unix timestamp. If the cache file does not exist, skip this step.
 
@@ -437,6 +443,12 @@ Tell the user:
 5. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
 
 Do **not** auto-commit on behalf of the user, they need to review the changes first.
+
+---
+
+## Steps 11–12 (orchestrator, after the user commits)
+
+The execution agent's work ends at Step 10, it returns its `UpdateMergeReport` and the orchestrator relays the summary. Steps 11-12 run in the **orchestrator**, not the spawned agent: they depend on the Step 10 commit, which is the user's manual action and lands after the one-shot agent has already returned. Run them once that commit exists.
 
 ### Step 11: Open a pull request
 
