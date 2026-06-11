@@ -26,6 +26,11 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {
+  computeActionableCount,
+  loadDeclines,
+  totalCount,
+} from './declines.js';
 import {resolveGroup, resolveGroupMembers} from './groups.js';
 
 export {resolveGroup} from './groups.js';
@@ -45,7 +50,16 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 export type Kind = 'major' | 'minor' | 'patch';
 
+/**
+ * Display bucket for the interactive preview. `nonsemver` collects pre-1.0
+ * packages (current major is 0), where semver makes no breaking-change
+ * guarantee, mirroring npm-check. It is a display label only; wave routing
+ * (`kind`) is unaffected.
+ */
+export type Bucket = 'major' | 'minor' | 'nonsemver' | 'patch';
+
 export type WaveAEntry = {
+  bucket: Bucket;
   current: string;
   group: string;
   is_pinned: boolean;
@@ -56,6 +70,7 @@ export type WaveAEntry = {
 };
 
 export type WaveBPackage = {
+  bucket: Bucket;
   current: string;
   is_pinned: boolean;
   kind: Kind;
@@ -77,9 +92,13 @@ export type SkippedEntry = {
 };
 
 export type UpdatesPayload = {
+  /** Outstanding package count after removing currently-snoozed groups. */
+  actionable_count: number;
   generated_at: string;
   schema_version: 1;
   skipped: readonly SkippedEntry[];
+  /** Outstanding package count across both waves, pre-snooze. */
+  total_count: number;
   wave_a: readonly WaveAEntry[];
   wave_b: readonly WaveBGroup[];
 };
@@ -173,6 +192,17 @@ export const classifyKind = (current: string, latest: string): Kind => {
   if ((a[1] ?? 0) !== (b[1] ?? 0)) return 'minor';
 
   return 'patch';
+};
+
+/**
+ * Preview display bucket. A pre-1.0 `current` (major segment 0) is `nonsemver`
+ * regardless of which segment moved; otherwise defer to `classifyKind`. Display
+ * only, it does not influence Wave A/B routing.
+ */
+export const classifyBucket = (current: string, latest: string): Bucket => {
+  if ((parseSegments(current)[0] ?? 0) === 0) return 'nonsemver';
+
+  return classifyKind(current, latest);
 };
 
 const compareSegments = (
@@ -779,6 +809,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
       waveB.push({
         group,
         packages: sorted.map((member) => ({
+          bucket: classifyBucket(member.current, member.latest),
           current: member.current,
           is_pinned: member.is_pinned,
           kind: member.kind,
@@ -793,6 +824,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
         if (member.kind === 'major') continue;
 
         waveA.push({
+          bucket: classifyBucket(member.current, member.latest),
           current: member.current,
           group: member.group,
           is_pinned: member.is_pinned,
@@ -817,10 +849,19 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     : 0
   );
 
+  // Snooze suppression affects the count ONLY. The waves still carry every
+  // outstanding package so the interactive preview shows snoozed groups as
+  // updatable; the ledger is absent in CI, so `actionable_count` equals
+  // `total_count` there.
+  const countable = {wave_a: waveA, wave_b: waveB};
+  const declines = loadDeclines(options.cwd);
+
   return {
+    actionable_count: computeActionableCount(countable, declines, now),
     generated_at: now.toISOString(),
     schema_version: 1,
     skipped,
+    total_count: totalCount(countable),
     wave_a: waveA,
     wave_b: waveB,
   };

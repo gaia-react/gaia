@@ -3,7 +3,7 @@ name: update-deps
 description: Autonomous Dependabot, auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /update-deps` indicator or asks "update dependencies", "bump deps", "run dependabot".
 ---
 
-Autonomous superpowered Dependabot. Auto-discover all outdated packages, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. No user prompts, just execute.
+Superpowered Dependabot. Auto-discover all outdated packages, preview them grouped by severity so you can snooze any you are not ready for, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. In CI it runs unattended (no preview); interactively it shows the preview first.
 
 ## Pre-flight: Worktree check
 
@@ -72,60 +72,24 @@ Otherwise set `SHOULD_CREATE_BRANCH=false` and proceed on the current branch.
 When invoked with `--scope <group-name>` (e.g. `/update-deps --scope react-router`):
 
 - Skip Phase 0 (override audit), out of scope for a single-group run.
-- Skip Phase 1 (discovery), the group's members are known from the
-  companion-group table.
-- Skip Phase 3 (wave classification), the run is implicitly a single
-  group; treat it as Wave A if all members are minor/patch, else Wave B.
-- Phase 4 / Phase 5 still apply, scoped to the named group's members
+- Skip the discovery + preview phase, no preview runs in `--scope`; the
+  group's members are known from the companion-group table.
+- Skip wave classification, the run is implicitly a single group; treat it
+  as Wave A if all members are minor/patch, else Wave B.
+- Wave A / Wave B still apply, scoped to the named group's members
   in root `package.json`.
 - Quality gate, return value, and final report still run.
 
 Used by the GAIA CI update-deps workflow's wave-B matrix shards to fan
 out one PR per major-bump group.
 
-## Phase 0–4: Haiku agent
+## Companion groups (reference)
 
-Spawn a **Haiku agent** (`model: "haiku"`) to run Phases 0–4. Pass it these instructions verbatim:
-
----
-
-### Phase 0: Override audit
-
-For each key in the top-level `overrides:` map in `pnpm-workspace.yaml` (pnpm 11 reads overrides here; the `package.json` `pnpm.overrides` field is no longer honored):
-
-1. Temporarily remove that single key from the `overrides:` map.
-2. Run `pnpm install`.
-3. Run `pnpm ls 2>&1` and scan for peer-dep errors.
-4. If no errors → override is obsolete. Leave it removed. Note as **removed** in final report.
-5. If errors → restore that key. Note as **retained** in final report.
-
-Operate on one key at a time, leaving every other `pnpm-workspace.yaml` setting untouched. Always `pnpm install` after each toggle.
-
-### Phase 1: Discover outdated packages
-
-```bash
-pnpm outdated --json
-```
-
-Parse the JSON. For each entry record:
-
-- `name`
-- `current` version
-- `latest` version
-- `is_major_bump` (compare leading integers)
-- `is_pinned` (no `^` or `~` prefix in the spec found in `package.json`)
-
-**ESLint cap:** if `eslint` or `@eslint/js` show a `latest` whose major is `>= 10`, find the highest available `9.x` (`pnpm view eslint versions --json` and pick the highest `9.x.y`) and treat that as the target. If already on the latest `9.x`, drop the entry.
-
-Apply this silently. Capped packages MUST NOT appear anywhere in the final report, not in Updated, not in Skipped, not in Breaking changes. Adopters know about the cap; surfacing it on every run is noise.
-
-**Release-age cooldown:** `pnpm-workspace.yaml` may set `minimumReleaseAge` (the minutes a version must be published before pnpm installs it). pnpm 11 enforces this against the whole lockfile on every install, so a target newer than the window makes the install fail. For each candidate target, cap it to the newest version that has already cleared the window: read publish times from `pnpm view <name> time --json` and pick the newest stable version that is an upgrade, at or below `latest`, and old enough. If no upgrade has cleared the window yet, skip the package this run, it bumps automatically once the version ages out. When `minimumReleaseAge` is unset, the cooldown is a no-op. Apply this silently too, like the ESLint cap. (The `update-deps run --emit-updates` primitive already does this, it records cooldown skips under `skipped` with reason `release-age-cooldown`, or `release-age-unresolved` if the publish-time lookup fails.)
-
-If nothing is outdated after this filtering, print `All packages are up to date.` and exit.
-
-### Phase 2: Resolve companion groups
-
-Map each outdated package into its group. **When any member of a group is outdated, include all members present in `package.json`** in the update, even ones not flagged outdated, so the group moves together.
+The fixed table mapping each package to its group. `gaia update-deps run`
+(`.gaia/cli/src/update-deps/groups.ts`) implements it and is the source of
+truth at runtime; every emitted entry already carries its resolved `group`.
+**When any member of a group is outdated, all members present in `package.json`
+update together**, so a group moves as one unit (and snoozes as one unit).
 
 | Group             | Members                                                                                                                                                                      |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -149,14 +113,108 @@ Map each outdated package into its group. **When any member of a group is outdat
 
 Packages not matched form singleton groups.
 
-### Phase 3: Classify into waves
+## Phase 1: Discover, preview, decide (orchestrator)
 
-- **Wave A**: groups whose members all have minor or patch bumps only. Batched into one install.
-- **Wave B**: groups containing at least one major bump. Processed individually, ordered: `react-router`, `react`, `tailwindcss`, `storybook`, `vitest`, `playwright`, `eslint`, then remaining alphabetically.
+Discover deterministically via the CLI primitive, the single source of truth for
+grouping, the ESLint 9.x cap, and the release-age cooldown (all already applied):
 
-### Phase 4: Wave A (batch minor/patch)
+```bash
+updates_json="$(mktemp)"
+.gaia/cli/gaia update-deps run --emit-updates "$updates_json"
+```
 
-1. Build install args. For each package: if `is_pinned` use exact target, else use `^<latest>`. Example: `pnpm add foo@1.2.3 bar@^4.5.0 ...`.
+Read the payload. If `total_count` is `0`, print `All packages are up to date.`
+and exit (no branch, no changes). Each `wave_a[]` and `wave_b[].packages[]` entry
+carries `bucket` (`patch` | `minor` | `major` | `nonsemver`), `current`, `latest`,
+`group`, `is_pinned`, and `kind`. `total_count` is the genuine-upgrade count;
+`actionable_count` is for the statusline only (it already subtracts local
+snoozes), ignore it here.
+
+**In CI (`CI=true`) or with `--scope <group>`, skip the preview and decision
+entirely.** The apply set is the full payload (CI) or the named group
+(`--scope`); jump straight to the apply phases with an empty skip set and no
+ledger write.
+
+### Preview
+
+Group the entries for display into four sections in this order: **Major**,
+**Non-semver**, **Minor**, **Patch**. A companion group (any `group` not prefixed
+`singleton:`) renders as ONE block under the section of its most-severe member
+(severity major > nonsemver > minor > patch) and is a single choice that updates
+together. Render each row as `name  current → next`; for a companion group, list
+its members under one labelled block (e.g. "react-router group, updates
+together"). Default is to update everything.
+
+If `update_deps.mode` in `.gaia/automation.json` is `ci`, first print one line:
+`CI owns updates; snoozing here only quiets your local statusline.`
+
+Then ask with `AskUserQuestion` (single-select, options in this order):
+
+- **Update all** (default, first option): apply every group.
+- **Choose what to skip**: the human names the package or group names to skip;
+  everything else applies.
+- **Cancel**: exit now, no branch, no changes, no ledger write.
+
+### Decision
+
+- **Update all** → clear any prior snoozes, apply everything:
+  ```bash
+  .gaia/cli/gaia update-deps decline --clear
+  ```
+  Apply set = the full payload.
+- **Choose what to skip** → collect the names, then record the snooze:
+  ```bash
+  .gaia/cli/gaia update-deps decline --source "$updates_json" --skip "<n1,n2,...>"
+  ```
+  Each name expands to its whole companion group (a partial group cannot be
+  skipped); an unknown name errors so you can re-ask. Apply set = the payload
+  minus the skipped groups. Echo the resulting apply set back for confirmation.
+  **If the apply set is now empty** (everything was skipped), print
+  `Snoozed N group(s); nothing to update now.` and exit (no branch).
+- **Cancel** → stop here.
+
+The snooze ledger (`.gaia/local/declined-updates.json`) is local-only and
+gitignored: it suppresses the statusline nudge until a newer version ships or 14
+days pass. It never gates a run, a snoozed group still appears (and is updatable)
+in every future preview, and CI ignores it entirely (CI is the freshness
+backstop and keeps opening PRs).
+
+Carry the **apply set** (filtered `wave_a` and `wave_b`) into the phases below.
+
+## Override audit + Wave A: Haiku agent
+
+Spawn a **Haiku agent** (`model: "haiku"`) to run the override audit and the
+Wave A batch install on the **apply set** computed above. Pass it these
+instructions verbatim, substituting the apply set's Wave A entries into the
+Wave A input:
+
+---
+
+### Phase 0: Override audit
+
+For each key in the top-level `overrides:` map in `pnpm-workspace.yaml` (pnpm 11 reads overrides here; the `package.json` `pnpm.overrides` field is no longer honored):
+
+1. Temporarily remove that single key from the `overrides:` map.
+2. Run `pnpm install`.
+3. Run `pnpm ls 2>&1` and scan for peer-dep errors.
+4. If no errors → override is obsolete. Leave it removed. Note as **removed** in final report.
+5. If errors → restore that key. Note as **retained** in final report.
+
+Operate on one key at a time, leaving every other `pnpm-workspace.yaml` setting untouched. Always `pnpm install` after each toggle.
+
+### Wave A input
+
+You are given the **Wave A apply set**: the `wave_a` entries from the
+orchestrator's discovery, minus any group the human chose to skip. Each entry
+carries `name`, `current`, `latest`, `is_pinned`, and `kind` (`minor` or
+`patch`). Do **not** run `pnpm outdated` or re-discover, the ESLint 9.x cap, the
+release-age cooldown, and companion-group expansion are already applied. If the
+Wave A apply set is empty, skip straight to the quality gate (Wave B groups, if
+any, are handled by the orchestrator).
+
+### Wave A (batch minor/patch)
+
+1. Build install args. For each entry: if `is_pinned` use the exact target, else use `^<latest>`. Example: `pnpm add foo@1.2.3 bar@^4.5.0 ...`.
 2. Run the single `pnpm add` command.
 3. Run `pnpm ls 2>&1`. Scan for peer-dep errors.
 4. On error: try one targeted fix in the `overrides:` map in `pnpm-workspace.yaml` (e.g. add a `parent>child` pin), then `pnpm install` again.
@@ -179,17 +237,17 @@ Report back to the orchestrator with:
 
 - Override audit results (removed / retained)
 - Wave A results (updated packages, any skipped)
-- **Wave B groups**: list each group name and its major bump (e.g. `react-router: 6 → 7`)
 - Quality gate results
 
 ---
 
 ## Branch creation (after discovery)
 
-After the Haiku agent returns:
+Phase 1 already exited if nothing was outstanding or the human cancelled or
+skipped everything, so reaching here means the apply set is non-empty. After the
+Haiku agent returns:
 
-- If Phase 1 reported `All packages are up to date.`, skip the rest of this skill entirely. **Do not create a branch.**
-- Otherwise, updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes. Use the Write tool to overwrite `.gaia/cache/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, and `gaiaHasUpdate` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If the cache file does not exist, skip this step.
+- Updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes. Use the Write tool to overwrite `.gaia/cache/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, and `gaiaHasUpdate` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If the cache file does not exist, skip this step. (Snoozed groups are already excluded by the ledger on the next real check.)
 
 - If `SHOULD_CREATE_BRANCH=true`, create the branch now and **remember that you created it** (this determines publish behavior in Phase 8):
 
@@ -202,7 +260,8 @@ Otherwise (`SHOULD_CREATE_BRANCH=false`), proceed on the current branch and **re
 
 ## Phase 5: Wave B (per-group major bumps)
 
-After the Haiku agent returns, if there are no Wave B groups, skip to Phase 6.
+Use the **Wave B groups from the apply set** (the payload's `wave_b` minus any
+group the human skipped). If there are none, skip to Phase 6.
 
 For each Wave B group, classify complexity and assign a model:
 
@@ -266,14 +325,15 @@ For every override that was **retained** in Phase 0, repeat the Phase 0 toggle t
 
 ## Phase 7: Final report
 
-Build the report **only** from the agent reports returned to you. Do not add rows from your own memory of the run.
+Build the report **only** from the agent reports returned to you, plus the snooze decision from Phase 1. Do not add rows from your own memory of the run.
 
 **What goes in each section:**
 
 - **Updated packages**: every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
 - **Breaking changes applied**: only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
 - **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If the `overrides:` map was empty, write "None" and move on.
-- **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the Phase 1 ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
+- **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. If nothing was actually skipped during the run, write "None" or omit the table.
+- **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
 - **Quality gate**: the gate result reported by the agents, verbatim.
 
 If a section would be empty, write "None" rather than leaving it blank or fabricating filler.
@@ -297,6 +357,10 @@ Print the report. Do not commit.
 ### Skipped packages
 | Package | Reason |
 | --- | --- |
+
+### Snoozed (deferred this run)
+| Group | Snoozed at version | Resurfaces |
+| --- | --- | --- |
 
 ### Quality gate
 | Step | Result |

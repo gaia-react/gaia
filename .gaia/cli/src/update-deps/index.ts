@@ -11,6 +11,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {run as runDecline} from './decline.js';
 import {run as runEmit} from './run.js';
 
 const HELP_TEXT = `Usage: gaia update-deps <subcommand> [args]
@@ -19,6 +20,9 @@ const HELP_TEXT = `Usage: gaia update-deps <subcommand> [args]
                                               classify into Wave A / Wave B,
                                               and emit a JSON payload at
                                               <path>.
+  decline --source <path> --skip <a,b,...>    Snooze update groups so the
+                                              statusline stops counting them
+                                              (local only). --clear resets.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -28,6 +32,7 @@ type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
+  decline: runDecline,
   run: runEmit,
 };
 

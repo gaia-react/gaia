@@ -69,4 +69,16 @@ describe('update-deps namespace router', () => {
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Usage: gaia update-deps run');
   });
+
+  test('namespace help lists the decline subcommand', async () => {
+    const exit = await run([]);
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('decline');
+  });
+
+  test('decline --help routes to the decline handler and exits 0', async () => {
+    const exit = await run(['decline', '--help']);
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('Usage: gaia update-deps decline');
+  });
 });
