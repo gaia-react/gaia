@@ -37,7 +37,7 @@ Test for `.gaia/local/cache/wiki-promote/<spec_id>.json`.
 
 1. Read the cache. Run `gh pr list --head "$branch" --state merged --json number,mergedAt,url,body --limit 1`.
 2. If still unmerged: report `<spec_id>: PR for branch <branch> not yet merged. Re-run after merge.` and exit. Do not delete the cache. Do not proceed to disposition, the SPEC is not closed yet.
-3. If merged: re-invoke `/speckit-gaia-wiki-promote` with the SPEC ID as context. Wiki-promote's Step 3 detects the merged PR, runs Steps 4–7, and deletes the cache. **Wiki-promote's Step 8 chain is suppressed in this drain context** to avoid re-entering spec-close, pass `drained: true` in the chain context (see wiki-promote Step 8 for the guard).
+3. If merged: re-invoke `/speckit-gaia-wiki-promote` by calling the Skill tool to run that command with the SPEC ID as its argument, and include the exact literal string `drained: true` in the invoking message. Wiki-promote's Step 3 detects the merged PR, runs Steps 4–7, and deletes the cache. **Wiki-promote's Step 8 chain is suppressed in this drain context** to avoid re-entering spec-close: its Step 8 suppression guard matches that literal `drained: true` token in the invocation, so emit it verbatim, not a paraphrase, and do not rely on the surrounding conversation to convey it (see wiki-promote Step 8 for the guard).
 
 **If no cache exists** (immediate-merge or never-promoted path): skip drain. Proceed to Step 3.
 
@@ -78,6 +78,8 @@ Surface via `AskUserQuestion`:
 ## Step 5: Flip ledger status
 
 Update the `.gaia/specs.json` row for `<spec_id>` to record the merge: set `status: merged` and stamp `merged_at` with the current UTC timestamp. Disposition lives on the artifact (and in telemetry); the ledger tracks SPEC lifecycle independently of artifact location.
+
+Run using the Bash tool:
 
 ```bash
 PATCH=$(jq -nc --arg ts "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \

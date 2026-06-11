@@ -153,8 +153,11 @@ Slot semantics:
   topic order is fluid, the PO names the topic with the highest
   remaining question count.
 
-The exhaustion checkpoint never collapses into a default-advance -
-the user's choice is required.
+The exhaustion checkpoint never collapses into a default-advance, the
+user's choice is required. After firing the `AskUserQuestion`, await
+the user's reply before any further action, do not advance topics,
+dispatch research, or author anything on the assumption the recommended
+option was taken.
 
 ---
 
@@ -176,8 +179,11 @@ Slot semantics:
   Quote it back so the user knows what was sent and can correct
   scope before the subagent runs.
 
-Findings are folded into `research_summary` of the SPEC. The PO
-never asks the human to do the research themselves.
+After announcing, the PO performs the dispatch by calling the Agent
+tool (`subagent_type: general-purpose`) with `<question>` as the task,
+the announce line above is narration, not the dispatch itself. Findings
+are folded into `research_summary` of the SPEC. The PO never asks the
+human to do the research themselves.
 
 ---
 

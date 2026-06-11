@@ -13,7 +13,7 @@ Fired automatically by spec-kit on the `before_specify` event (mandatory hook). 
 
 ## Step 1: version-pin drift detection
 
-Run the version-check helper and capture its result:
+Run the version-check helper using the Bash tool, and capture its result:
 
 ```bash
 bash .specify/extensions/gaia/lib/version-check.sh
@@ -42,10 +42,10 @@ If both checks pass, emit a single confirmation line and let `/speckit-specify` 
 
 > `before_specify` ok: constitution populated, spec-kit version matches pin.
 
-This hook has no return value to spec-kit; control returns to the running `/speckit-specify` (or `/speckit-gaia-spec`) skill on completion.
+This hook has no return value to spec-kit. After emitting the confirmation line, **return control to the caller**, end this hook's turn and let the running `/speckit-specify` (or `/speckit-gaia-spec`) skill continue. Do not call any further tool on the pass-through path.
 
 ## Notes
 
 - The check is read-only. No writes to `.specify/memory/`, no writes to `.gaia/local/`.
 - The helper script is the single source of truth for the version-pin format; this skill never inlines version constants.
-- "Block" here means: the agent reads this skill's output, sees the block message, and chooses not to call `/speckit-specify`. Spec-kit does not enforce a hard halt, discipline is in the prompt.
+- "Block" here means: the agent emits the block message and then **STOPS**, it does not call `/speckit-specify` or any further tool. Spec-kit does not enforce a hard halt, so the STOP is the discipline: end the turn after the block message rather than continuing the lifecycle.

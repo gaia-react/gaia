@@ -99,7 +99,7 @@ Beyond general best practices, verify adherence to these project-specific patter
 - No `eslint-disable react-hooks/exhaustive-deps` to hide missing fetcher deps, fix the deps instead
 - No `.catch(() => {})`, use `void` for fire-and-forget promises
 - Route files (`app/routes/`) are thin shells, loader, action, meta, and a one-line page import. UI belongs in `app/pages/`.
-- Localization: every user-facing string comes from `t()`. Hardcoded JSX strings are bugs.
+- Localization: every user-facing string comes from `t()`. Hardcoded JSX strings are bugs (except approximate skeleton-loader placeholders standing in for dynamic values).
 
 ## Finding Proof Gate (holistic reviewer)
 
@@ -430,7 +430,7 @@ Prompt the subagent with these rules to check:
 
 **From `.claude/rules/i18n.md`:**
 
-- Every user-visible string in JSX, labels, headings, placeholders, button text, error messages, tooltips, status text, `aria-label`, `alt`, `title`, must come from a `t()` call. Flag hardcoded English strings. Exceptions: punctuation-only strings, single-character symbols, developer-facing content (console.log, comments, test assertions).
+- Every user-visible string in JSX, labels, headings, placeholders, button text, error messages, tooltips, status text, `aria-label`, `alt`, `title`, must come from a `t()` call. Flag hardcoded English strings. Exceptions: punctuation-only strings, single-character symbols, developer-facing content (console.log, comments, test assertions), and approximate skeleton-loader placeholder text standing in for a dynamic runtime value (skeleton text mirroring static `t()` content must still use `t()`).
 
 **Library-specific rules (injected from extensions):**
 

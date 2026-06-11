@@ -33,13 +33,13 @@ Branch on `wiki_promote_default`:
 
 ## Step 3 - Detect merged PR
 
-Determine the current branch:
+Determine the current branch using the Bash tool:
 
 ```bash
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 ```
 
-Probe for a merged PR matching the branch:
+Probe for a merged PR matching the branch using the Bash tool:
 
 ```bash
 pr_json=$(gh pr list --head "$current_branch" --state merged --json number,mergedAt,url,body --limit 1 2>/dev/null || echo '[]')
@@ -224,7 +224,7 @@ Render the body in the following sections, in order, immediately after the closi
    Substitutions:
    - `SPEC-NNN`, the SPEC ID from Step 1.
    - The repo-relative path uses `../../` because promoted wiki pages live at `wiki/<subdomain>/<page>.md` (two segments deep from the repo root).
-   - `<owner>/<repo>`, resolved once per run via:
+   - `<owner>/<repo>`, resolved once per run by running, via the Bash tool:
 
      ```bash
      repo_slug=$(gh repo view --json owner,name -q '"\(.owner.login)/\(.name)"' 2>/dev/null)
@@ -290,9 +290,9 @@ Emit a structured payload to stdout (the next agent reads it as conversation con
 }
 ```
 
-Then invoke `/gaia-wiki sync` directly:
+Then invoke `/gaia-wiki sync` by calling the Skill tool (skill `gaia-wiki`, args `sync`), do not merely print the line below; it states the intent, it is not the call:
 
-`Invoke /gaia-wiki sync now to handle the branch-aware commit step for these pages.`
+> Invoking `/gaia-wiki sync` to handle the branch-aware commit step for these pages.
 
 (`/gaia-wiki sync` will read the staged-but-uncommitted wiki changes from `git status`, write to `wiki/log.md` and `wiki/.state.json`, then commit per its branch-aware rules.)
 
@@ -320,11 +320,11 @@ If any pages were skipped due to hand-edit detection, include a one-line note:
 
 This step fires only when Step 3 found a merged PR and Steps 4–7 ran full. On the deferred path, Step 3 exits before reaching here. On the silent-skip path (`wiki_promote_default: no`) and the preview path (`--preview`), Step 2 exits before reaching here. So an unconditional invoke at this step is safe, the only way to land here is the immediate-merge full-run.
 
-**Suppression guard.** If wiki-promote was re-fired from `/speckit-gaia-spec-close` Step 2's drain (deferred path), spec-close passes the context flag `drained: true` to wiki-promote. Detect that flag in the invoking conversation context, if present, skip this step (spec-close is the parent in that case and will handle disposition itself once wiki-promote returns).
+**Suppression guard.** If wiki-promote was re-fired from `/speckit-gaia-spec-close` Step 2's drain (deferred path), spec-close passes the literal flag `drained: true` in the invocation that triggered this run. Skip this step **only when** the invoking message contains the exact string `drained: true`, match the literal token; do not infer "drained" from the surrounding conversation or from the fact that a cache was cleared. When `drained: true` is present, spec-close is the parent and will handle disposition itself once wiki-promote returns; skip Step 8.
 
-Otherwise, invoke `/speckit-gaia-spec-close` directly:
+Otherwise, invoke `/speckit-gaia-spec-close` directly by calling the Skill tool to run that command with `<spec_id>` as its argument, the line below states the intent, it is not a substitute for the call:
 
-`Invoke /speckit-gaia-spec-close <spec_id> now. wiki-promote completed inline; the cache is already cleared. Spec-close will skip drain and go straight to the disposition prompt.`
+> Invoking `/speckit-gaia-spec-close <spec_id>`. wiki-promote completed inline; the cache is already cleared. Spec-close will skip drain and go straight to the disposition prompt.
 
 This presents the user with the archive / delete / keep prompt for the local SPEC artifact. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<spec_id>/`.
 
