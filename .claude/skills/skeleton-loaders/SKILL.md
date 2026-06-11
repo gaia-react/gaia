@@ -23,18 +23,23 @@ const shimmer =
 
 ### Text elements
 
-Copy the real component's element type and font classes, add `shimmer`, use placeholder text of similar character count:
+Copy the real component's element type and font classes, add `shimmer`. How you fill the text depends on whether the real text is static or dynamic:
+
+- **Static, translatable text** (labels, headings, button text): use the same `t()` value the real component uses. The text is transparent, but reusing `t()` makes the skeleton width match the revealed text exactly.
+- **Dynamic runtime values** (`{data.name}`, API content): you cannot know the real value, so use hardcoded placeholder text of similar character count to approximate its width.
 
 ```tsx
 import {twJoin} from 'tailwind-merge';
 
 // Real component
-<p className="truncate text-sm font-semibold text-white">{data.name}</p>
-<p className="text-xs text-slate-400">{data.value}</p>
+<h2 className="text-lg font-bold text-white">{t('profile.heading')}</h2>   // static
+<p className="truncate text-sm font-semibold text-white">{data.name}</p>   // dynamic
+<p className="text-xs text-slate-400">{data.value}</p>                     // dynamic
 
 // Skeleton
-<p className={twJoin('truncate text-sm font-semibold', shimmer)}>Name</p>
-<p className={twJoin('text-xs', shimmer)}>Example value</p>
+<h2 className={twJoin('text-lg font-bold', shimmer)}>{t('profile.heading')}</h2>  // same t(), exact width
+<p className={twJoin('truncate text-sm font-semibold', shimmer)}>Name</p>         // approximate
+<p className={twJoin('text-xs', shimmer)}>Example value</p>                        // approximate
 ```
 
 ### Non-text elements (images, icons, avatars)
@@ -47,7 +52,7 @@ Keep as empty divs with the shimmer class, no text needed:
 
 ### Interactive elements (buttons)
 
-Use the real element type with `tabIndex={-1}` to prevent focus:
+Use the real element type with `tabIndex={-1}` to prevent focus. Button labels are static text, so use the real `t()` value (exact width on reveal):
 
 ```tsx
 <button
@@ -55,7 +60,7 @@ Use the real element type with `tabIndex={-1}` to prevent focus:
   tabIndex={-1}
   type="button"
 >
-  Click me
+  {t('common.submit')}
 </button>
 ```
 
@@ -84,6 +89,13 @@ return <MySkeleton />;
 - Async data sections (lists, profiles, detail views)
 - Route transitions with pending loader data
 
+## Accessibility
+
+Skeleton text is transparent, but screen readers still announce it (placeholder text and any `t()` labels). Hide the skeleton from assistive tech and announce loading instead:
+
+- Put `aria-hidden` on the skeleton's root element so assistive tech skips the decorative placeholders.
+- Mark the region that will receive the content with `aria-busy="true"` while loading, or render a visually-hidden `role="status"` "Loading" message so screen-reader users know content is on the way.
+
 ## Full Example Implementation
 
 ```tsx
@@ -93,7 +105,7 @@ const shimmer =
   'animate-shimmer rounded-sm bg-linear-to-r from-slate-950 via-slate-900 to-slate-950 bg-size-[200%_100%] text-transparent select-none';
 
 const ExampleSkeleton = () => (
-  <div className="border border-slate-700 bg-slate-900">
+  <div aria-hidden className="border border-slate-700 bg-slate-900">
     <div className="flex items-center gap-3 p-3">
       <div className={twJoin('size-14 shrink-0', shimmer)} />
       <div className="min-w-0 flex-1">
