@@ -11,6 +11,19 @@ tags: [meta, log]
 
 ## 2026-06-05 | Policy-Memory Loop
 
+- 2026-06-11 460e722 SKIP - wiki sync commit; wiki pages updated directly in that commit
+- 2026-06-11 49a5f65 WORTHY - code-review-audit tuned for Opus 4.8 recall; wiki/concepts/Agentic Design.md and Code Review Audit Agent.md updated in commit
+- 2026-06-11 a661911 SKIP - docs: prose-only (scope response style to conversation)
+- 2026-06-11 ad47361 SKIP - coverage-first finding stage in .claude/skills and .specify; implementation prompt detail, no wiki-layer facts
+- 2026-06-11 5511007 SKIP - docs: prose-only (skeleton-loader placeholder alignment)
+- 2026-06-11 9363230 SKIP - docs: prose-only (bound autonomous + TDD loops)
+- 2026-06-11 dc7a40c SKIP - docs: prose-only (make load-bearing wiki fetches imperative)
+- 2026-06-11 05460df WORTHY - defer version bump past summary in update-gaia → wiki/concepts/Update Workflow.md updated
+- 2026-06-11 4868bfc SKIP - .specify dispatch made explicit; implementation detail in extension commands, no wiki-layer facts
+- 2026-06-11 07e586e SKIP - fitness.md/health-audit.md/plan.md subagent dispatch tightening; no new wiki-layer facts
+- 2026-06-11 782ec5c WORTHY - bound autonomous-loop stops in update-deps/update-gaia → wiki/concepts/Update Workflow.md updated
+- 2026-06-11 0ba9c3b SKIP - depth-1 orchestration collapse in .claude/commands and skills; wiki pages updated in b8f9d73
+- 2026-06-11 b8f9d73 WORTHY - docs: sync wiki orchestration topology to depth-1 → wiki/concepts/Task Orchestration.md, GAIA Plan.md, GAIA Spec.md updated in commit
 - 2026-06-11 3946d24 SKIP - wiki/concepts/Code Review Audit CI.md updated in the commit's own docs(ci) sub-commit
 - 2026-06-11 a5c6c3a WORTHY - playwright local retries=1 for cold-cache flake → wiki/dependencies/Playwright.md
 - 2026-06-11 c944079 SKIP - chore(deps): version bump only
