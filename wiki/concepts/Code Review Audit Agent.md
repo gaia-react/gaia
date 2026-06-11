@@ -8,7 +8,7 @@ tags: [concept, claude, agent, review]
 
 # Code Review Audit Agent
 
-Defined in `.claude/agents/code-review-audit.md`. Sonnet-class subagent for comprehensive code review beyond what ESLint and TypeScript catch.
+Defined in `.claude/agents/code-review-audit.md`. Opus-class holistic reviewer for comprehensive code review beyond what ESLint and TypeScript catch; it dispatches cheaper Sonnet specialist subagents for line-level rule compliance.
 
 Full spec: `.claude/agents/code-review-audit.md`.
 
