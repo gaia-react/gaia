@@ -12,7 +12,7 @@ Surface assumptions explicitly, present interpretations when ambiguous, push bac
 
 ## 2. Simplicity First
 
-Write the minimum code that solves the problem, no speculative features, abstractions, or impossible-scenario error handling. If it could be 50 lines, don't write 200.
+Write the minimum code that solves the problem, no speculative features, abstractions, or impossible-scenario error handling. If it could be 50 lines, don't write 200. Impossible-scenario means a state that cannot occur; real failure modes (a command exits non-zero, a loop does not converge, a network call fails) still get handled and bounded. Simplicity governs the code you write, not the surrounding code (that is Surgical Changes).
 
 ## 3. Surgical Changes
 
@@ -20,7 +20,7 @@ Touch only what's needed: don't improve adjacent code, don't refactor unbroken t
 
 ## 4. Goal-Driven Execution
 
-Define verifiable success criteria before starting; loop until verified. For multistep tasks, state a brief plan with steps and verification checks.
+Define verifiable success criteria before starting, then loop until verified. Bound the loop: if a fixed number of attempts fails or you hit a blocker you cannot resolve, stop and surface it rather than looping indefinitely. For multistep tasks, state a brief plan with steps and verification checks.
 
 ## 5. Always Use Test Driven Development
 
