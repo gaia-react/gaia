@@ -219,6 +219,32 @@ Rules for the block:
 
 The schema enforces this convention: an entry whose `finding_class` is free text or an unseeded holistic/rule member is dropped before it reaches the tally, so a misclassified entry is silently lost rather than miscounted. When in doubt, omit the entry.
 
+## Progress breadcrumbs (CI observability)
+
+The agent runs in CI with `show_full_output: false` (a deliberate public-repo safety choice). To give the CI step summary a post-hoc phase timeline, write ONE curated line per review phase to a fixed gitignored file using the `Write` or `Edit` tool (both are in the CI `allowedTools`).
+
+**File path (fixed, never sha-keyed):** `.gaia/local/audit/progress.log`
+
+**Line format:** `<phase label>, <counts>` -- phase label and integer counts only. Never include file contents, code, raw tool output, file paths beyond coarse counts, or anything secret-shaped. This is the public-safety crux: the workflow print step exposes this file in the GitHub Actions step summary.
+
+**Five phases, in run order:**
+
+| # | Label | Counts |
+|---|-------|--------|
+| 1 | `scope resolved` | number of changed files in scope |
+| 2 | `oracles done` | per-oracle counts: `react-doctor N, knip N, audit N` |
+| 3 | `holistic review done` | count of candidate Critical/Important holistic findings |
+| 4 | `adversarial verify done` | count that STAND (survived refutation) |
+| 5 | `report stamped` | marker state + self-heal state, e.g. `marker written, self-heal none` |
+
+**Truncate-on-first-write:** the first breadcrumb (`scope resolved`) overwrites the file using `Write` so a stale prior run's breadcrumbs never appear. Breadcrumbs 2-5 append using `Edit` (insert after the last line) so each phase accumulates in order.
+
+**Best-effort, never blocking:** wrap every breadcrumb write so that a `Write`/`Edit` failure is swallowed and never aborts or alters the audit result. A missing or partial progress file is harmless -- the workflow print step handles it gracefully. Do NOT harden a breadcrumb write into a blocking step.
+
+**Directory:** `.gaia/local/audit/` is already gitignored via `.gaia/local/` in `.gitignore`. The marker step creates the directory with `mkdir -p .gaia/local/audit` before writing the `<sha>.ok` file; your first breadcrumb write must also ensure the directory exists (run `mkdir -p .gaia/local/audit` before the `Write` call, wrapped in the same best-effort guard).
+
+**Locally harmless:** when the agent runs locally the file is simply written to a gitignored path. No behavioral change, no secrets risk.
+
 ## Methodology
 
 1. **Read the code carefully**: understand the intent before critiquing the implementation
@@ -228,9 +254,9 @@ The schema enforces this convention: an entry whose `finding_class` is free text
 5. **Be specific**: never say "this could be improved" without saying exactly how and why
 6. **Be proportionate**: don't nitpick formatting when there are security holes; focus energy on what matters most
 7. **Respect existing patterns**: if the codebase has an established way of doing something, don't suggest alternatives unless there's a concrete benefit
-8. **Dispatch in parallel**: once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` from a single tool-call message so they run concurrently with your own review
-9. **Verify Critical/Important survivors adversarially**: after your own review produces candidate findings and before finalizing the report, run each surviving holistic Critical/Important finding through a fresh-context refuter per the Finding Proof Gate, then drop, demote, or keep it on the refuter's verdict. The report is not produced until this pass completes.
-10. **Resolve suggestions before writing the marker**: after the report is produced and before deciding on the marker, attempt to auto-fix every item in the Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale, escalated suggestions unconditionally block the marker. Never proceed to the marker with any suggestion that is neither fixed in the working tree nor explicitly escalated.
+8. **Dispatch in parallel**: once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` from a single tool-call message so they run concurrently with your own review. When the parallel dispatch returns: (a) emit the `oracles done` breadcrumb with per-oracle finding counts; (b) after you have produced your own holistic candidate findings from the cross-cutting review dimensions, emit the `holistic review done` breadcrumb with the count of candidate Critical/Important holistic findings. Both breadcrumbs are emitted before the adversarial pass (see Progress breadcrumbs).
+9. **Verify Critical/Important survivors adversarially**: after your own review produces candidate findings and before finalizing the report, run each surviving holistic Critical/Important finding through a fresh-context refuter per the Finding Proof Gate, then drop, demote, or keep it on the refuter's verdict. The report is not produced until this pass completes. When the adversarial pass is complete, emit the `adversarial verify done` breadcrumb (see Progress breadcrumbs).
+10. **Resolve suggestions before writing the marker**: after the report is produced and before deciding on the marker, attempt to auto-fix every item in the Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale, escalated suggestions unconditionally block the marker. Never proceed to the marker with any suggestion that is neither fixed in the working tree nor explicitly escalated. When the marker decision is made and recorded, emit the `report stamped` breadcrumb (see Progress breadcrumbs).
 
 ## Rules-Based Audit (Specialist Subagents + react-doctor + knip + pnpm audit)
 
@@ -242,6 +268,7 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
    - Resolve the base: if the invoking context provides one (CI passes `<base>...HEAD` in the agent prompt), use it; otherwise run `.github/audit/resolve-audit-base.sh`. It returns the most recent ancestor that already passed a clean audit under the current `.gaia/VERSION` (via a GAIA-Audit trailer or commit status), or `origin/main` when none exists.
    - List changed files: `git diff --name-only "$(.github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
+   - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
 2. **Gate each subagent** on file scope, don't spawn a subagent that has nothing to review:
    - No `.tsx` files changed → skip Subagent 1 (React Patterns & Accessibility)
    - No `.ts` or `.tsx` files changed → skip Subagent 2 (TypeScript & Architecture)
@@ -515,6 +542,8 @@ if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
   fi
 fi
 ```
+
+After the marker decision is made (marker written or not, self-heal applied or not), emit the `report stamped` breadcrumb (see Progress breadcrumbs). Example counts: `marker written, self-heal none` or `marker not written, self-heal applied`.
 
 Then surface, as the final line of your report, pick the line that matches the `stamp_line` + `push_status` combination:
 

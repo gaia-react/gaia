@@ -325,6 +325,39 @@ jobs:
             --allowedTools Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*)
             --verbose
 
+      - name: Print audit progress breadcrumbs
+        # Public-safe observability. The agent (show_full_output:false hides its
+        # SDK output) writes curated per-phase breadcrumbs to a gitignored file
+        # via Write/Edit; this step surfaces them in the step summary AFTER the
+        # agent runs. Gate MIRRORS the agent step exactly (not always(), not
+        # success()) so partial breadcrumbs surface even on an aborted audit.
+        # Always exits 0: a missing/empty file must never fail the required check.
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.trailer.outputs.skip == 'false'
+        run: |
+          set +e
+          progress=".gaia/local/audit/progress.log"
+          {
+            echo "## code-review-audit progress"
+            echo ""
+            if [ -s "$progress" ]; then
+              echo '```'
+              cat "$progress"
+              echo '```'
+            else
+              echo "_No breadcrumbs recorded (audit wrote none, or aborted before the first phase)._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null
+          # Mirror to the step log for log-only consumers.
+          if [ -s "$progress" ]; then
+            echo "code-review-audit progress:"
+            cat "$progress"
+          fi
+          exit 0
+
       - name: Commit and push self-heal
         id: push-fixes
         if: |
