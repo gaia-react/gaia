@@ -63,8 +63,12 @@ export default defineConfig({
   // Once you have a lot of tests, you can change this to 'github' or 'dot' on CI
   reporter: 'list',
 
-  // Retry on CI only
-  retries: process.env.CI ? 2 : 0,
+  // CI retries twice. Locally retry once: the first `pnpm pw` after a dep or
+  // Vite-config change boots the dev server with a cold dep-optimize cache, and
+  // that first request can lose the race to Vite's optimizer and fail the
+  // dynamic import of entry.client.tsx (page never hydrates). The retry runs
+  // against the now-warm server and passes.
+  retries: process.env.CI ? 2 : 1,
   testDir: './.playwright/e2e',
   testMatch: '**/*.spec.ts',
 
