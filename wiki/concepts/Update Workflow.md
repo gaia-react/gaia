@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-06-03
+updated: 2026-06-11
 tags: [release, claude, adopter, drift]
 ---
 
@@ -38,12 +38,12 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 
 1. Read `.gaia/VERSION`. Missing → tell user to run `/gaia-init` on a fresh `create-gaia` scaffold.
 2. Resolve latest release via `gh release list --repo gaia-react/gaia` (or GitHub API fallback).
-3. Compare to baseline. Same or older → exit. Never downgrade.
-4. Show the adopter the release notes and **confirm** before touching anything.
-5. Download baseline + latest tarballs to `.gaia/cache/`.
+3. Compare to baseline. Same or older → exit, unless `.gaia/VERSION` has been bumped but not committed (an interrupted prior run), in which case surface the residual state so the adopter can commit or discard. Never downgrade.
+4. Show the adopter the release notes and **confirm** before touching anything. If on `main`/`master`, create the feature branch only after this confirmation — not before — so an early exit leaves no orphan branch.
+5. Download baseline + latest tarballs to `.gaia/cache/`. Stop on any download or extraction failure; do not proceed with a partial cache.
 6. Walk the latest manifest. For each file, apply the decision table below.
-7. Only after the full walk succeeds, bump `.gaia/VERSION` and replace `.gaia/manifest.json` with the latest version's copy.
-8. Report summary: overwritten / added / removed / skipped / conflicts / deleted / backed up.
+7. Report summary: overwritten / added / removed / skipped / conflicts / deleted / backed up.
+8. Bump `.gaia/VERSION` and replace `.gaia/manifest.json` with the latest version's copy. This happens after the summary prints so that if the walk was aborted mid-way the version stays at baseline and a re-run resumes cleanly.
 9. Remind the adopter to review `.gaia-merge/`, run the [[Quality Gate]], and commit manually.
 
 ## Decision table
@@ -91,7 +91,7 @@ The load-bearing guarantee: a dependency the adopter removed is **never re-added
 
 - **Never touch adopter-owned paths.** Anything not in the manifest is invisible.
 - **Never auto-clobber drift.** `owned` drift prompts; `shared` / `wiki-owned` drift writes a patch.
-- **Atomic version marker.** `.gaia/VERSION` flips to latest only after the full walk succeeds. Abort mid-walk → version stays at baseline, and a re-run resumes cleanly. Any already-overwritten files live in `.gaia-backup/`.
+- **Atomic version marker.** `.gaia/VERSION` flips to latest only after the summary prints (Step 8). Abort during the walk → version stays at baseline, and a re-run resumes cleanly because the merge walk is idempotent (already-merged files match latest and skip). Any already-overwritten files live in `.gaia-backup/`. If the version was bumped but not committed (e.g. an interrupted Step 8), Step 3 detects the mismatch and surfaces it.
 - **No auto-commit.** `/update-gaia` leaves the working tree dirty; the adopter reviews + commits.
 
 ## Rollback
