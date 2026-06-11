@@ -67,8 +67,10 @@ rules for the Socratic loop:
 4. **Research subagent dispatch is your job, not the human's.** When
    a question needs prior-art lookup, repo-convention inspection, or
    competitive comparison, announce `"Dispatching research agent for
-<question>"` and dispatch. Fold findings into `research_summary`.
-   Never punt the research to the human.
+<question>"`, then actually dispatch by calling the Agent tool
+   (`subagent_type: general-purpose`) with that question, the announce
+   line is narration, not the dispatch. Fold the returned findings into
+   `research_summary`. Never punt the research to the human.
 5. **Two-gate ceremony.** After discovery is materially complete:
    - **Gate 1: shape confirmation.** Present intent + UATs in plain
      English. Wait for explicit confirmation before authoring the
@@ -79,12 +81,17 @@ rules for the Socratic loop:
    text, scope drift relative to gate 1, internal inconsistency
    between fields, and ambiguous UAT phrasing. Fix before you show
    the human.
-7. **Block save while `clarifications.pending` is non-empty** unless
-   each pending item is explicitly deferred with rationale recorded.
+7. **Block save while `clarifications.pending` is non-empty.** Do not
+   write the SPEC artifact while any item remains pending. For each
+   pending item, surface it via `AskUserQuestion` (resolve it, or defer
+   it with a recorded rationale); proceed to save only once every
+   pending item is resolved or explicitly deferred with rationale.
 8. **No machine-local memory for project decisions.** Spec-relevant
    decisions live in the SPEC artifact. Do not stash them in
-   `~/.claude/projects/.../memory/`. Personal tone preferences are
-   the only allowed exception.
+   `~/.claude/projects/.../memory/`. The only exception is a literal
+   formatting preference (e.g. "no em dashes", "terse over
+   grammatical"); nothing about the feature, its scope, or any
+   decision the SPEC records may go to machine-local memory.
 
 ---
 
