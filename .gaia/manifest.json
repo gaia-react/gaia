@@ -53,6 +53,7 @@
     ".claude/rules/playwright.md": "owned",
     ".claude/rules/pr-merge.md": "owned",
     ".claude/rules/quality-gate.md": "owned",
+    ".claude/rules/react-router-docs.md": "owned",
     ".claude/rules/routes.md": "owned",
     ".claude/rules/shell-cwd.md": "owned",
     ".claude/rules/state-pattern.md": "owned",
@@ -520,6 +521,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-11T13:56:44.463Z",
-  "version": "1.5.0"
+  "generated": "2026-06-11T16:48:02.424Z",
+  "version": "1.6.0"
 }
