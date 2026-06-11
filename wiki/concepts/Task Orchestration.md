@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-21
-updated: 2026-05-07
+updated: 2026-06-11
 tags: [concept, claude, workflow]
 ---
 
@@ -28,6 +28,16 @@ When the user pastes the resume prompt, the orchestrator runs through:
 3. **Stop conditions.** Any sub-agent failure or quality-gate failure halts the run; the orchestrator surfaces the error to the user, appends a `## Phase N - <title> (HALTED)` block to `SUMMARY.md` with the failure context, and does NOT commit, push, or "fix and continue."
 4. **Final summary.** After the last commit lands and before awaiting merge confirmation, the orchestrator reads `SUMMARY.md` and prints a brief summary: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, quality-gate status, and the highest-signal findings/deviations/follow-ups drawn from the ledger so nothing is lost to compression. A few lines plus the surfaced notes, not a recap of every change.
 5. **Final self-cleanup.** After all implementation phases pass and the user confirms the PR is ready to merge, the orchestrator deletes its own plan folder (`rm -rf .gaia/local/plans/{slug}/`) so scaffolding does not persist locally. If `.gaia/local/plans/` is gitignored (the GAIA default, checked via `git check-ignore`), the deletion is invisible to git and no commit is needed. If the path is tracked, the orchestrator commits and pushes the deletion as the **final commit on the PR**. If the user explicitly asks to keep the folder for archival, the orchestrator skips the deletion and reports.
+
+## Topology
+
+GAIA orchestration is a depth-1 star: the main thread is the only agent that spawns, and every worker it dispatches is a leaf. Claude Code sub-agents cannot spawn further sub-agents and cannot prompt the user, so a worker never owns a team and never runs an interactive gate.
+
+- **`/gaia-plan`** runs its thin orchestration on the invoking thread and spawns one planner leaf for the deep synthesis. The planner investigates with parallel tool calls and writes the plan files; it does not spawn sub-agents.
+- **The execution orchestrator** (a fresh session started from `KICKOFF.md`) is itself a main thread, so it dispatches the per-phase implementation sub-agents as leaves and runs the pre-merge `code-review-audit`.
+- **`/gaia-spec`** chains into `/gaia-plan` by following it inline on the spec thread, not by spawning a wrapper sub-agent. A wrapper could neither spawn the planner nor run the model prompt, so the planner stays the single spawned leaf.
+
+Models pin at spawn, so the main thread, even on Sonnet, puts the synthesis on Opus by spawning the planner with `model: opus`. Interactive steps stay on the main thread because only it can prompt.
 
 ## Why
 

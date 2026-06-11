@@ -3,7 +3,7 @@ type: concept
 title: GAIA Spec
 status: active
 created: 2026-05-06
-updated: 2026-05-06
+updated: 2026-06-11
 tags: [concept, claude, skill, orchestration, spec-kit]
 ---
 
@@ -33,7 +33,7 @@ The wrapper is implemented as a spec-kit extension plus preset; the architectura
 8. **Save** to `.gaia/local/specs/SPEC-NNN/SPEC.md`. The folder is the archival unit. Sibling artifacts (reports, evidence) live beside `SPEC.md` in the same folder; a flat `SPEC-NNN-<rest>.md` file maps to `SPEC-NNN/<REST>.md` (remainder uppercased, hyphens kept). `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
 9. **`after_specify` hook.** Spec-kit fires `/speckit-gaia-lint`, which runs `lib/lint.sh` (frontmatter, frozen UAT-NNN ids, no placeholders, write-allowlist audit). For mutations of an already-saved SPEC, the lint enforces the explicit reopen ceremony: `## Reopen rationale` and `## UAT diff` sections required.
 10. **Optional GH Issue mirror.** `lib/gh-mirror.sh` creates an Issue if `gh auth status` succeeds, the repo has Issues enabled, and the viewer has write/admin permission. Otherwise appends a skip record to `.gaia/local/telemetry/gh-mirror.jsonl` and exits 0. Absence never blocks save.
-11. **Inline chain-trigger to `/gaia-plan`.** No `on_save` hook exists in spec-kit; the chain lives here, inline. `AskUserQuestion` offers "Yes, trigger /gaia-plan (Recommended)" or "No, defer". On Yes, dispatch `/gaia-plan` with the SPEC path; on No, stop.
+11. **Inline chain-trigger to `/gaia-plan`.** No `on_save` hook exists in spec-kit; the chain lives here, inline. `AskUserQuestion` offers "Yes, trigger /gaia-plan (Recommended)" or "No, defer". On Yes, the skill follows `/gaia-plan` inline on the spec thread (no wrapper sub-agent) with the SPEC path; the planner it spawns is the single Opus-pinned leaf. On No, stop. See [[Task Orchestration#Topology]] for why the chain runs inline.
 
 ## UAT divergence contract
 
