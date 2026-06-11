@@ -66,6 +66,8 @@ Write ONE test that confirms ONE thing end-to-end for this layer. `RED → GREEN
 
 For each remaining behavior: `RED → GREEN`. One test at a time. Only enough code to pass the current test. Don't anticipate future tests.
 
+**Bound the green chase.** If a test won't pass after a few focused attempts, stop and reassess instead of thrashing the implementation: the test, the interface, or an assumption may be wrong. Surface the blocker rather than looping indefinitely to force green.
+
 ### 4. Refactor
 
 After all tests pass, look for [refactor candidates](refactoring.md):
