@@ -125,6 +125,41 @@ git checkout -b chore/update-gaia-$(date +%Y-%m-%d-%H-%M)
 
 Otherwise stay on the current branch.
 
+## Step 4b: Prune prior-run artifacts
+
+Three gitignored directories accumulate across updates: `.gaia-backup/`, `.gaia/cache/`, and `.gaia-merge/`. Prune the prior runs' leftovers here, at the start of a confirmed update and **before this run creates any of its own artifacts** (Step 5 populates the cache, Step 7 creates `$BACKUP_DIR`), so the current run's fresh safety net is never touched. This runs only after the Step 4 `Proceed`, so an abort, an already-up-to-date exit, and the interrupted-prior-run case Step 3 surfaces (whose backups and patches are still in flight) never reach it.
+
+```bash
+# .gaia-backup/: prior runs' pre-overwrite copies. Once an update is committed,
+# git history is the durable recovery, so prior backups are redundant. This run
+# creates its own $BACKUP_DIR in Step 7.
+rm -rf .gaia-backup
+
+# .gaia/cache/: keep the baseline tarball (v$BASELINE is this run's baseline,
+# reused by Step 5 instead of re-downloading) and update-check.json (the
+# SessionStart hook reads it). Delete every other cached tag dir.
+if [ -d .gaia/cache ]; then
+  for d in .gaia/cache/*/; do
+    [ -d "$d" ] || continue
+    [ "$(basename "$d")" = "v$BASELINE" ] && continue
+    rm -rf "$d"
+  done
+fi
+
+# .gaia-merge/: conflict patches + .notes the operator resolves by hand (Step
+# 11). Remove only when empty; a populated dir holds unresolved action items, so
+# never delete it, warn and name the leftovers instead.
+if [ -d .gaia-merge ]; then
+  if [ -n "$(ls -A .gaia-merge 2>/dev/null)" ]; then
+    echo "Heads up: .gaia-merge/ still holds unresolved patches from a prior run, NOT deleted:"
+    ls -A .gaia-merge
+    echo "Resolve or delete them by hand, then re-run /update-gaia."
+  else
+    rmdir .gaia-merge
+  fi
+fi
+```
+
 ## Model selection
 
 After the user confirms, determine the model for the execution agent:
