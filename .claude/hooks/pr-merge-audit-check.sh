@@ -36,10 +36,25 @@
 #      (or CI is absent), which is the case on clones that enabled CI before
 #      the stamp step existed.
 #
+#   6. Self-mod-only GAIA-update bypass: the only in-scope path the PR changes
+#      is .github/workflows/code-review-audit.yml AND its committed bytes are a
+#      verbatim re-render of the bundled template
+#      (.gaia/cli/templates/workflows/code-review-audit.yml.tmpl), with every
+#      other changed path out of scope. This is the self-mod-only case
+#      /update-gaia Step 12 produces: it refreshes a stale audit workflow by
+#      copying the release template verbatim, which makes CI self-mod-skip (no
+#      stamp) and trips the in-scope guard of signal 5. The changed bytes are
+#      GAIA's own template, not adopter code, so there is nothing to audit.
+#      Stricter than signal 5 and fail-closed: exactly one in-scope path, it
+#      must be the audit workflow, and git-blob identity must prove its bytes
+#      equal the template; any other in-scope path, an absent template, or a
+#      non-matching byte falls through to deny.
+#
 # Signals 1-4 prove the audit ran against this content and the agent saw no
-# Critical Issues and no unresolved Important Issues; signal 5 proves there is
-# nothing in audit scope to review. Without one, the hook denies the gh pr
-# merge call. To unblock:
+# Critical Issues and no unresolved Important Issues; signals 5-6 prove there is
+# nothing in audit scope to review (5: the whole diff is out of scope; 6: the
+# one in-scope path is a verbatim re-render of GAIA's audit-workflow template).
+# Without one, the hook denies the gh pr merge call. To unblock:
 #   1. Spawn the code-review-audit agent on the current branch, OR push to the
 #      PR branch and wait for CI's audit to stamp the GitHub commit status (CI
 #      skips when the PR modifies the audit workflow file itself, in that case
@@ -255,6 +270,78 @@ if check_out_of_scope_pr; then
   exit 0
 fi
 
+# Self-mod-only GAIA-update bypass: accept the merge when the ONLY in-scope path
+# the PR changes is .github/workflows/code-review-audit.yml AND its committed
+# bytes are a verbatim re-render of the bundled template
+# (.gaia/cli/templates/workflows/code-review-audit.yml.tmpl), with every other
+# changed path out of audit scope. This is the self-mod-only case /update-gaia
+# Step 12 produces: it refreshes a stale installed audit workflow by copying the
+# release template verbatim, which makes the update PR self-modifying.
+# claude-code-action's workflow-validation guardrail then refuses to run CI's
+# audit (no GAIA-Audit stamp can land), and the out-of-scope bypass above denies
+# because .github/workflows/ is in scope, so without this signal the operator is
+# forced into a ceremonial local re-audit of bytes that are GAIA's own template,
+# not adopter code.
+#
+# Stricter than check_out_of_scope_pr: exactly ONE in-scope path, it must be the
+# audit workflow, and git-blob identity must prove its bytes equal the template.
+# Fail-closed: any other in-scope path (app/, test/, a config, a second
+# workflow), an absent template, or a single non-matching byte returns 1 and
+# falls through to the normal deny. A malicious PR cannot smuggle code here, an
+# app/test/config path is in scope and unrecognized, so the loop returns 1 on
+# first sight. Pure local git: no gh, no network, no CI stamp.
+check_self_mod_only_update_pr() {
+  audit_wf=".github/workflows/code-review-audit.yml"
+  audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+
+  default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's@^refs/remotes/origin/@@')
+  [ -n "$default_branch" ] || default_branch="main"
+
+  base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
+    || git merge-base HEAD "${default_branch}" 2>/dev/null \
+    || true)
+  [ -n "$base" ] || return 1
+
+  changed=$(git diff --name-only "${base}...HEAD" 2>/dev/null) || return 1
+  [ -n "$changed" ] || return 1
+
+  # Classify every changed path. Out-of-scope surfaces are always fine; the ONE
+  # permitted in-scope path is the audit workflow itself. Any other in-scope
+  # path (app/, test/, configs, a different workflow) denies immediately. The
+  # quoted "$audit_wf" arm is a literal match (no globbing) and precedes the
+  # catch-all `*/*` arm, so the workflow path is recognized before `*/*` claims
+  # it; every other nested path still falls to `*/*` and denies.
+  seen_audit_wf=0
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) continue ;;
+      "$audit_wf") seen_audit_wf=1 ;;
+      */*) return 1 ;;
+      *.md) continue ;;
+      *) return 1 ;;
+    esac
+  done <<< "$changed"
+
+  # The audit workflow must actually be the in-scope change (otherwise this is a
+  # pure out-of-scope PR the earlier bypass already cleared) AND its committed
+  # bytes must be a verbatim copy of the bundled template. Git stores blobs by
+  # content hash, so equal blob SHAs mean byte-identical files. Comparing HEAD's
+  # blobs (not the working tree) keeps the check fail-closed against local dirt;
+  # a missing file makes rev-parse fail and the merge denies.
+  [ "$seen_audit_wf" -eq 1 ] || return 1
+  wf_blob=$(git rev-parse "HEAD:${audit_wf}" 2>/dev/null) || return 1
+  tmpl_blob=$(git rev-parse "HEAD:${audit_tmpl}" 2>/dev/null) || return 1
+  [ "$wf_blob" = "$tmpl_blob" ] || return 1
+
+  return 0
+}
+
+if check_self_mod_only_update_pr; then
+  exit 0
+fi
+
 reason="PR merge gate: no code-review-audit signal for HEAD ${sha:0:12}.
 
 None of the accepted signals is present:
@@ -264,6 +351,9 @@ None of the accepted signals is present:
   - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
   - Out-of-scope:    PR changes at least one in-scope path (app/, test/, configs,
                      .github/workflows/), not a wiki/docs/.gaia-only diff
+  - Self-mod-only:   in-scope change is not a verbatim re-render of the bundled
+                     code-review-audit.yml template (adopter edit, extra in-scope
+                     path, or missing template)
 
 To unblock:
   1. Spawn the code-review-audit agent locally, OR push to the PR branch
