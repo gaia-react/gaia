@@ -18627,9 +18627,9 @@ var PATCH_TYPES = /* @__PURE__ */ new Set([
   "test"
 ]);
 var CONVENTIONAL_HEADER_REGEX = /^(?<type>[a-z]+)(?:\([^)]*\))?(?<bang>!?):/u;
-var classifyCommit = (commit) => {
-  const subject = commit.subject.trim();
-  const body = commit.body;
+var classifyCommit = (commit2) => {
+  const subject = commit2.subject.trim();
+  const body = commit2.body;
   if (/(^|\n)BREAKING CHANGE: /u.test(body)) return "major";
   const match = CONVENTIONAL_HEADER_REGEX.exec(subject);
   if (match === null) return null;
@@ -18643,8 +18643,8 @@ var classifyCommit = (commit) => {
 var RANK = { major: 3, minor: 2, patch: 1 };
 var aggregateBump = (commits) => {
   let highest = null;
-  for (const commit of commits) {
-    const classified = classifyCommit(commit);
+  for (const commit2 of commits) {
+    const classified = classifyCommit(commit2);
     if (classified === null) continue;
     if (highest === null || RANK[classified] > RANK[highest]) {
       highest = classified;
@@ -18893,8 +18893,8 @@ var TYPE_TO_SECTION = {
 var CONVENTIONAL_HEADER_REGEX2 = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?!?:\s*(?<rest>.*)$/u;
 var groupCommits = (commits) => {
   const sections = { Added: [], Changed: [], Fixed: [] };
-  for (const commit of commits) {
-    const subject = commit.subject.trim();
+  for (const commit2 of commits) {
+    const subject = commit2.subject.trim();
     const match = CONVENTIONAL_HEADER_REGEX2.exec(subject);
     if (match === null) continue;
     const groups = match.groups ?? {};
@@ -19796,8 +19796,8 @@ var printHuman = (state, write) => {
   }
   if (state.recent_commits.length > 0) {
     lines.push("  Recent unsynced:");
-    for (const commit of state.recent_commits) {
-      lines.push(`    - ${commit.sha} ${commit.subject}`);
+    for (const commit2 of state.recent_commits) {
+      lines.push(`    - ${commit2.sha} ${commit2.subject}`);
     }
   }
   lines.push("  Per-domain pages:");
@@ -28495,13 +28495,368 @@ var run54 = async (argv) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
+// src/wiki/util/branch.ts
+import { spawnSync as spawnSync6 } from "node:child_process";
+var defaultRunner5 = (command, args, options) => spawnSync6(command, args, {
+  cwd: options.cwd,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"]
+});
+var PROTECTED_BRANCHES = /* @__PURE__ */ new Set(["main", "master"]);
+var expectSuccess3 = (result, command, args) => {
+  if (result.error !== void 0) {
+    throw new Error(
+      `${command} ${args.join(" ")} failed: ${result.error.message}`
+    );
+  }
+  if ((result.status ?? -1) !== 0) {
+    const stderr = (result.stderr ?? "").trim();
+    throw new Error(
+      `${command} ${args.join(" ")} exited ${result.status ?? -1}: ${stderr}`
+    );
+  }
+  return result.stdout ?? "";
+};
+var currentBranch = (cwd, runner = defaultRunner5) => {
+  const args = ["rev-parse", "--abbrev-ref", "HEAD"];
+  const out = expectSuccess3(runner("git", args, { cwd }), "git", args);
+  return out.trim();
+};
+var isProtectedBranch = (branch) => PROTECTED_BRANCHES.has(branch);
+var defaultBranch = (cwd, runner = defaultRunner5) => {
+  const args = ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"];
+  const result = runner("git", args, { cwd });
+  if (result.error !== void 0 || (result.status ?? -1) !== 0) return "main";
+  const ref = (result.stdout ?? "").trim();
+  const stripped = ref.startsWith("origin/") ? ref.slice("origin/".length) : ref;
+  return stripped.length > 0 ? stripped : "main";
+};
+var inspectWorkingTree = (cwd, runner = defaultRunner5) => {
+  const args = ["status", "--porcelain=v1", "-uall"];
+  const out = expectSuccess3(runner("git", args, { cwd }), "git", args);
+  const paths = [];
+  for (const rawLine of out.split("\n")) {
+    const line = rawLine.replace(/\r$/u, "");
+    if (line.length === 0) continue;
+    const rawPayload = line.slice(3);
+    const payload = rawPayload.startsWith('"') && rawPayload.endsWith('"') ? rawPayload.slice(1, -1) : rawPayload;
+    const renameSplit = payload.indexOf(" -> ");
+    if (renameSplit === -1) {
+      paths.push(payload);
+    } else {
+      paths.push(payload.slice(0, renameSplit));
+      paths.push(payload.slice(renameSplit + 4));
+    }
+  }
+  let hasWikiChanges = false;
+  let hasNonWikiChanges = false;
+  for (const candidate of paths) {
+    if (candidate.startsWith("wiki/")) {
+      hasWikiChanges = true;
+    } else {
+      hasNonWikiChanges = true;
+    }
+  }
+  return { hasNonWikiChanges, hasWikiChanges, paths };
+};
+
+// src/wiki/util/land.ts
+var UNEXPECTED_EXIT17 = 2;
+var todayUtc3 = (now = /* @__PURE__ */ new Date()) => {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+var refuse2 = (message) => {
+  process.stderr.write(`${message}
+`);
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+var commandSucceeded = (result) => result.error === void 0 && (result.status ?? -1) === 0;
+var passthroughFailure2 = (prefix, result, command, args) => {
+  const stderr = (result.stderr ?? "").trim();
+  const errorPart = result.error !== void 0 ? ` (${result.error.message})` : "";
+  const status = result.status ?? -1;
+  process.stderr.write(
+    `${prefix}: ${command} ${args.join(" ")} exited ${status}${errorPart}
+`
+  );
+  if (stderr.length > 0) process.stderr.write(`${stderr}
+`);
+  return UNEXPECTED_EXIT17;
+};
+
+// src/wiki/chain.ts
+var WIKI_CHAIN_BRANCH_PREFIX = "wiki-sync/";
+var passthroughFailure3 = (result, command, args) => passthroughFailure2("chain", result, command, args);
+var stepOk = commandSucceeded;
+var HELP_TOKENS41 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TEXT43 = `Usage: gaia wiki chain <begin|commit|finish> [args]
+
+  begin [--branch-aware]       On main/master: cut wiki-sync/<date>-<sha> so the
+                               whole chain lands on one branch + PR. On a feature
+                               branch: no-op (the chain commits in place).
+  commit --label "<subject>"   In-place commit of this stage's wiki/ changes.
+                               No-op when nothing changed; refuses non-wiki changes.
+  finish [--branch-aware]      Push the chain branch, open one PR, enable
+                               auto-merge, return to the base branch. Removes an
+                               empty chain branch; no-op for in-place runs.
+
+  Exit codes:
+    0  success
+    1  user-correctable refusal (on main without --branch-aware, missing --label, ...)
+    2  unexpected (git/gh failure)
+`;
+var resolveRoot = (cwdOption, action) => {
+  try {
+    return resolveRepoRoot2(cwdOption);
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki chain must run inside a git repository",
+      subcommand: `wiki chain ${action}`
+    });
+    return null;
+  }
+};
+var resolveShortHead = (runner, cwd) => {
+  const result = runner("git", ["rev-parse", "HEAD"], { cwd });
+  if (!stepOk(result)) return null;
+  return shortSha((result.stdout ?? "").trim(), cwd);
+};
+var parseBranchAware = (argv) => {
+  let branchAware = false;
+  for (const token of argv) {
+    if (token === "--branch-aware") {
+      branchAware = true;
+      continue;
+    }
+    return { message: `unknown flag: ${token}`, ok: false };
+  }
+  return { branchAware, ok: true };
+};
+var parseCommitFlags = (argv) => {
+  let label;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--label") {
+      const value = argv[index + 1];
+      if (value === void 0) return { message: "--label requires a value", ok: false };
+      label = value;
+      index += 1;
+      continue;
+    }
+    return { message: `unknown flag: ${token}`, ok: false };
+  }
+  if (label === void 0 || label.length === 0)
+    return { message: "--label is required", ok: false };
+  return { label, ok: true };
+};
+var begin = (argv, options) => {
+  const parsed = parseBranchAware(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "wiki chain begin"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const runner = options.runner ?? defaultRunner5;
+  const repoRoot2 = resolveRoot(cwd, "begin");
+  if (repoRoot2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  let branch;
+  try {
+    branch = currentBranch(repoRoot2, runner);
+  } catch (error51) {
+    process.stderr.write(
+      `chain: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return UNEXPECTED_EXIT17;
+  }
+  if (!isProtectedBranch(branch)) {
+    process.stdout.write(`chain begin: in-place on ${branch}
+`);
+    return EXIT_CODES.OK;
+  }
+  if (!parsed.branchAware) {
+    return refuse2(
+      "chain begin: refusing to start a wiki chain on main; pass --branch-aware or check out a feature branch"
+    );
+  }
+  const shortHead = resolveShortHead(runner, repoRoot2);
+  if (shortHead === null) {
+    process.stderr.write("chain: could not resolve HEAD\n");
+    return UNEXPECTED_EXIT17;
+  }
+  const branchName = `${WIKI_CHAIN_BRANCH_PREFIX}${options.today ?? todayUtc3()}-${shortHead}`;
+  const args = ["checkout", "-b", branchName];
+  const result = runner("git", args, { cwd: repoRoot2 });
+  if (!stepOk(result)) return passthroughFailure3(result, "git", args);
+  process.stdout.write(`chain begin: started ${branchName}
+`);
+  return EXIT_CODES.OK;
+};
+var commit = (argv, options) => {
+  const parsed = parseCommitFlags(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "wiki chain commit"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const runner = options.runner ?? defaultRunner5;
+  const repoRoot2 = resolveRoot(cwd, "commit");
+  if (repoRoot2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  let workingTree;
+  try {
+    workingTree = inspectWorkingTree(repoRoot2, runner);
+  } catch (error51) {
+    process.stderr.write(
+      `chain: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return UNEXPECTED_EXIT17;
+  }
+  if (workingTree.hasNonWikiChanges) {
+    return refuse2("chain commit: working tree has non-wiki changes; aborting");
+  }
+  if (!workingTree.hasWikiChanges) {
+    process.stdout.write("chain commit: nothing to commit\n");
+    return EXIT_CODES.OK;
+  }
+  const addArgs = ["add", "wiki"];
+  const addResult = runner("git", addArgs, { cwd: repoRoot2 });
+  if (!stepOk(addResult)) return passthroughFailure3(addResult, "git", addArgs);
+  const commitArgs = ["commit", "-m", parsed.label];
+  const commitResult = runner("git", commitArgs, { cwd: repoRoot2 });
+  if (!stepOk(commitResult)) {
+    runner("git", ["reset", "HEAD", "--", "wiki"], { cwd: repoRoot2 });
+    return passthroughFailure3(commitResult, "git", commitArgs);
+  }
+  process.stdout.write(`chain commit: ${parsed.label}
+`);
+  return EXIT_CODES.OK;
+};
+var finish = (argv, options) => {
+  const parsed = parseBranchAware(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "wiki chain finish"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const runner = options.runner ?? defaultRunner5;
+  const repoRoot2 = resolveRoot(cwd, "finish");
+  if (repoRoot2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  let branch;
+  try {
+    branch = currentBranch(repoRoot2, runner);
+  } catch (error51) {
+    process.stderr.write(
+      `chain: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return UNEXPECTED_EXIT17;
+  }
+  if (!branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX)) {
+    process.stdout.write(
+      `chain finish: in-place commits remain on ${branch}; no PR opened
+`
+    );
+    return EXIT_CODES.OK;
+  }
+  const base = defaultBranch(repoRoot2, runner);
+  const countArgs = ["rev-list", "--count", `${base}..HEAD`];
+  const countResult = runner("git", countArgs, { cwd: repoRoot2 });
+  if (!stepOk(countResult)) return passthroughFailure3(countResult, "git", countArgs);
+  const ahead = Number.parseInt((countResult.stdout ?? "").trim(), 10);
+  if (!Number.isNaN(ahead) && ahead === 0) {
+    let dirty = true;
+    try {
+      const tree = inspectWorkingTree(repoRoot2, runner);
+      dirty = tree.hasWikiChanges || tree.hasNonWikiChanges;
+    } catch {
+      dirty = true;
+    }
+    if (dirty) {
+      process.stdout.write(
+        `chain finish: ${branch} has uncommitted changes and no commits; left in place for review
+`
+      );
+      return EXIT_CODES.OK;
+    }
+    const checkoutArgs = ["checkout", base];
+    const checkoutResult = runner("git", checkoutArgs, { cwd: repoRoot2 });
+    if (!stepOk(checkoutResult))
+      return passthroughFailure3(checkoutResult, "git", checkoutArgs);
+    runner("git", ["branch", "-D", branch], { cwd: repoRoot2 });
+    process.stdout.write(
+      `chain finish: nothing to land; removed empty branch ${branch}
+`
+    );
+    return EXIT_CODES.OK;
+  }
+  const shortHead = resolveShortHead(runner, repoRoot2) ?? branch;
+  const prTitle = `wiki: maintenance chain through ${shortHead}`;
+  const prBody = `Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via \`gaia wiki chain finish\`.`;
+  const remoteSequence = [
+    { args: ["push", "-u", "origin", branch], command: "git" },
+    {
+      args: ["pr", "create", "--title", prTitle, "--body", prBody],
+      command: "gh"
+    },
+    { args: ["pr", "merge", "--squash", "--auto"], command: "gh" }
+  ];
+  for (const step of remoteSequence) {
+    const result = runner(step.command, step.args, { cwd: repoRoot2 });
+    if (!stepOk(result)) return passthroughFailure3(result, step.command, step.args);
+  }
+  runner("git", ["checkout", base], { cwd: repoRoot2 });
+  process.stdout.write(
+    `chain finish: opened PR for ${branch} and enabled auto-merge
+`
+  );
+  return EXIT_CODES.OK;
+};
+var ACTIONS = {
+  begin,
+  commit,
+  finish
+};
+var run55 = (argv, options = {}) => {
+  const action = argv[0];
+  const rest = argv.slice(1);
+  if (action === void 0 || HELP_TOKENS41.has(action)) {
+    process.stdout.write(HELP_TEXT43);
+    return EXIT_CODES.OK;
+  }
+  const handler = ACTIONS[action];
+  if (handler !== void 0) return handler(rest, options);
+  structuredError({
+    code: "unknown_subcommand",
+    message: `unknown wiki chain action: ${action}`,
+    subcommand: `wiki chain ${action}`
+  });
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+
 // src/wiki/commit-classify.ts
-var HELP_TEXT43 = `Usage: gaia wiki commit-classify --since <sha> [--json]
+var HELP_TEXT44 = `Usage: gaia wiki commit-classify --since <sha> [--json]
 
   Emit a deterministic WORTHY/SKIP suggestion for every commit in
   <sha>..HEAD. Without --json, prints a tabular summary.
 `;
-var HELP_TOKENS41 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS42 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var takeValue15 = (argv, index, flag) => {
   const value = argv[index];
   if (value === void 0)
@@ -28554,10 +28909,10 @@ var APP_INVENTORY_PREFIXES = [
 var touchesAny = (files, prefixes) => files.some((file2) => prefixes.some((prefix) => file2.startsWith(prefix)));
 var touchesAppNonTest = (files) => files.some((file2) => file2.startsWith("app/") && !file2.includes(".test."));
 var touchesOnlyTests = (files) => files.length > 0 && files.every((file2) => file2.includes(".test."));
-var classify = (commit) => {
-  const subject = commit.subject;
-  const body = commit.body;
-  const files = commit.files;
+var classify = (commit2) => {
+  const subject = commit2.subject;
+  const body = commit2.body;
+  const files = commit2.files;
   if (subject.startsWith("Merge pull request")) {
     return { reason: "merge commit", suggestion: "SKIP" };
   }
@@ -28657,21 +29012,21 @@ var printHuman5 = (classification) => {
     return;
   }
   const lines = [`Classified ${classification.commits.length} commit(s):`, ""];
-  for (const commit of classification.commits) {
+  for (const commit2 of classification.commits) {
     lines.push(
-      `  ${commit.sha.slice(0, 7)}  ${commit.suggestion.padEnd(7)}  ${commit.subject}`
+      `  ${commit2.sha.slice(0, 7)}  ${commit2.suggestion.padEnd(7)}  ${commit2.subject}`
     );
-    lines.push(`            reason: ${commit.suggestion_reason}`);
+    lines.push(`            reason: ${commit2.suggestion_reason}`);
     lines.push(
-      `            ${commit.files_changed} files, +${commit.insertions} -${commit.deletions}`
+      `            ${commit2.files_changed} files, +${commit2.insertions} -${commit2.deletions}`
     );
   }
   process.stdout.write(`${lines.join("\n")}
 `);
 };
-var run55 = (argv, options = {}) => {
-  if (argv.length === 0 || HELP_TOKENS41.has(argv[0])) {
-    process.stdout.write(HELP_TEXT43);
+var run56 = (argv, options = {}) => {
+  if (argv.length === 0 || HELP_TOKENS42.has(argv[0])) {
+    process.stdout.write(HELP_TEXT44);
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
   const parsed = parseFlags21(argv);
@@ -28732,7 +29087,7 @@ var run55 = (argv, options = {}) => {
 // src/wiki/dead-paths.ts
 import { readdirSync as readdirSync8, readFileSync as readFileSync36, statSync as statSync6 } from "node:fs";
 import path44 from "node:path";
-var HELP_TEXT44 = `Usage: gaia wiki dead-paths [--json]
+var HELP_TEXT45 = `Usage: gaia wiki dead-paths [--json]
 
   Scan wiki/**/*.md for backticked repo-relative paths under .claude/, .gaia/,
   app/, test/, wiki/ that no longer exist on disk, plus any reference to
@@ -28741,7 +29096,7 @@ var HELP_TEXT44 = `Usage: gaia wiki dead-paths [--json]
   and wiki/meta/** (audit artifacts that legitimately reference historical
   paths).
 `;
-var HELP_TOKENS42 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS43 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TRACKED_PREFIXES = [
   ".claude/",
   ".gaia/",
@@ -28822,11 +29177,11 @@ var findDeadPaths = (cwd) => {
   }
   return dead;
 };
-var run56 = (argv, options = {}) => {
+var run57 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS42.has(token)) {
-      process.stdout.write(HELP_TEXT44);
+    if (HELP_TOKENS43.has(token)) {
+      process.stdout.write(HELP_TEXT45);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -28865,7 +29220,7 @@ var run56 = (argv, options = {}) => {
 
 // src/wiki/diff-size.ts
 import { execFileSync as execFileSync5 } from "node:child_process";
-var HELP_TEXT45 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>] [--json]
+var HELP_TEXT46 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>] [--json]
 
   Compute wiki/** lines-changed (added + removed) between <base> (default
   HEAD~1) and HEAD as a percentage of the base tree's wiki line count.
@@ -28877,7 +29232,7 @@ var HELP_TEXT45 = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>]
                       changed_lines, threshold_pct } instead of the bare
                       keyword.
 `;
-var HELP_TOKENS43 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS44 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var WIKI_PREFIX = "wiki/";
 var git = (cwd, args) => execFileSync5("git", ["-C", cwd, ...args], {
   encoding: "utf8",
@@ -29019,10 +29374,10 @@ var emitJson = (result) => {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
 };
-var run57 = (argv, options = {}) => {
+var run58 = (argv, options = {}) => {
   for (const token of argv) {
-    if (HELP_TOKENS43.has(token)) {
-      process.stdout.write(HELP_TEXT45);
+    if (HELP_TOKENS44.has(token)) {
+      process.stdout.write(HELP_TEXT46);
       return EXIT_CODES.OK;
     }
   }
@@ -29123,7 +29478,7 @@ var parseFrontmatter = (raw) => {
 };
 
 // src/wiki/empty-sections.ts
-var HELP_TEXT46 = `Usage: gaia wiki empty-sections [--json]
+var HELP_TEXT47 = `Usage: gaia wiki empty-sections [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**, wiki/hot.md, wiki/log.md) for
   LEAF headings with no body, no child heading and no non-blank, non-heading
@@ -29132,7 +29487,7 @@ var HELP_TEXT46 = `Usage: gaia wiki empty-sections [--json]
   Without --json, prints one "path:line  heading" line per finding. With
   --json, emits { "empty": [ { path, line, heading } ] }.
 `;
-var HELP_TOKENS44 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS45 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SKIP_PATH_FRAGMENTS2 = ["wiki/meta/"];
 var SKIP_PATHS = /* @__PURE__ */ new Set(["wiki/hot.md", "wiki/log.md"]);
 var ATX_HEADING_PATTERN = /^ {0,3}(#{1,6})(?:\s|$)/u;
@@ -29218,11 +29573,11 @@ var findEmptySections = (cwd) => {
   }
   return empty;
 };
-var run58 = (argv, options = {}) => {
+var run59 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS44.has(token)) {
-      process.stdout.write(HELP_TEXT46);
+    if (HELP_TOKENS45.has(token)) {
+      process.stdout.write(HELP_TEXT47);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -29267,14 +29622,14 @@ var run58 = (argv, options = {}) => {
 // src/wiki/frontmatter.ts
 import { readdirSync as readdirSync10, readFileSync as readFileSync38, statSync as statSync8 } from "node:fs";
 import path46 from "node:path";
-var HELP_TEXT47 = `Usage: gaia wiki frontmatter [--json]
+var HELP_TEXT48 = `Usage: gaia wiki frontmatter [--json]
 
   Scan wiki/**/*.md (excluding wiki/meta/**) for pages missing required
   frontmatter. Required floor is type and status. Without --json, prints one
   "path: missing a, b" line per gap. With --json, emits
   { "gaps": [ { path, missing } ] }.
 `;
-var HELP_TOKENS45 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS46 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var REQUIRED_FIELDS = ["type", "status"];
 var SKIP_PATH_FRAGMENTS3 = ["wiki/meta/"];
 var shouldSkipFile3 = (relPath) => SKIP_PATH_FRAGMENTS3.some((fragment) => relPath.startsWith(fragment));
@@ -29316,11 +29671,11 @@ var findFrontmatterGaps = (cwd) => {
   }
   return gaps;
 };
-var run59 = (argv, options = {}) => {
+var run60 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS45.has(token)) {
-      process.stdout.write(HELP_TEXT47);
+    if (HELP_TOKENS46.has(token)) {
+      process.stdout.write(HELP_TEXT48);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -29365,11 +29720,11 @@ var run59 = (argv, options = {}) => {
 // src/wiki/log-prepend.ts
 import { existsSync as existsSync35, readFileSync as readFileSync39, renameSync as renameSync8, writeFileSync as writeFileSync13 } from "node:fs";
 import path47 from "node:path";
-var HELP_TEXT48 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
+var HELP_TEXT49 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
   Prepends one canonical line to wiki/log.md after the frontmatter.
 `;
-var HELP_TOKENS46 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS47 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var VALID_DECISIONS = /* @__PURE__ */ new Set(["RE_ANCHOR", "SKIP", "WORTHY"]);
 var FRONTMATTER_FENCE2 = "---";
 var takeValue16 = (argv, index, flag) => {
@@ -29420,7 +29775,7 @@ var parseFlags22 = (argv) => {
   }
   return { flags: { decision, reason, sha }, ok: true };
 };
-var todayUtc3 = () => {
+var todayUtc4 = () => {
   const now = /* @__PURE__ */ new Date();
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, "0");
@@ -29450,14 +29805,14 @@ var findInsertionIndex = (lines, endFenceIndex) => {
   }
   return endFenceIndex + 1;
 };
-var run60 = (argv, options = {}) => {
+var run61 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT48);
+    process.stdout.write(HELP_TEXT49);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const first = argv[0];
-  if (HELP_TOKENS46.has(first)) {
-    process.stdout.write(HELP_TEXT48);
+  if (HELP_TOKENS47.has(first)) {
+    process.stdout.write(HELP_TEXT49);
     return EXIT_CODES.OK;
   }
   const parsed = parseFlags22(argv);
@@ -29500,7 +29855,7 @@ var run60 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const date5 = options.today ?? todayUtc3();
+  const date5 = options.today ?? todayUtc4();
   const newLine = `- ${date5} ${parsed.flags.sha} ${parsed.flags.decision} - ${parsed.flags.reason}`;
   const insertionIndex = findInsertionIndex(lines, scan.endLineIndex);
   const next = [
@@ -29517,12 +29872,12 @@ var run60 = (argv, options = {}) => {
 // src/wiki/near-collisions.ts
 import { existsSync as existsSync36, readdirSync as readdirSync11, statSync as statSync9 } from "node:fs";
 import path48 from "node:path";
-var HELP_TEXT49 = `Usage: gaia wiki near-collisions [--max-distance 3]
+var HELP_TEXT50 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
   Per-domain Levenshtein over slugs. Emits tab-separated rows:
   <domain>  <slugA>  <slugB>  <distance>
 `;
-var HELP_TOKENS47 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS48 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DEFAULT_MAX_DISTANCE = 3;
 var DOMAIN_DIRS2 = [
   "components",
@@ -29631,9 +29986,9 @@ var parseFlags23 = (argv) => {
   }
   return { flags: { maxDistance }, ok: true };
 };
-var run61 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS47.has(argv[0])) {
-    process.stdout.write(HELP_TEXT49);
+var run62 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS48.has(argv[0])) {
+    process.stdout.write(HELP_TEXT50);
     return EXIT_CODES.OK;
   }
   const parsed = parseFlags23(argv);
@@ -29690,12 +30045,12 @@ var extractWikilinks = (body) => {
 };
 
 // src/wiki/page-index.ts
-var HELP_TEXT50 = `Usage: gaia wiki page-index [--json]
+var HELP_TEXT51 = `Usage: gaia wiki page-index [--json]
 
   Walk wiki/<domain>/*.md, parse frontmatter, and count inbound/outbound
   wikilinks. Without --json, prints a tabular summary.
 `;
-var HELP_TOKENS48 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS49 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DOMAIN_DIRS3 = [
   "components",
   "concepts",
@@ -29825,11 +30180,11 @@ var computePageIndex = (cwd) => {
   const rootSources = collectRootLinkSources(wikiRoot);
   return buildIndex(pages, rootSources);
 };
-var run62 = (argv, options = {}) => {
+var run63 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS48.has(token)) {
-      process.stdout.write(HELP_TEXT50);
+    if (HELP_TOKENS49.has(token)) {
+      process.stdout.write(HELP_TEXT51);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -29868,19 +30223,19 @@ var run62 = (argv, options = {}) => {
 };
 
 // src/wiki/orphans.ts
-var HELP_TEXT51 = `Usage: gaia wiki orphans [--json]
+var HELP_TEXT52 = `Usage: gaia wiki orphans [--json]
 
   List wiki pages with zero inbound wikilinks. Without --json, prints one
   repo-relative path per line. With --json, emits { "orphans": [ { path,
   title, domain } ] }.
 `;
-var HELP_TOKENS49 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS50 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var isMaintainerOnly = (path52) => path52.startsWith("wiki/meta/") || path52.startsWith("wiki/entities/");
-var run63 = (argv, options = {}) => {
+var run64 = (argv, options = {}) => {
   let json3 = false;
   for (const token of argv) {
-    if (HELP_TOKENS49.has(token)) {
-      process.stdout.write(HELP_TEXT51);
+    if (HELP_TOKENS50.has(token)) {
+      process.stdout.write(HELP_TEXT52);
       return EXIT_CODES.OK;
     }
     if (token === "--json") {
@@ -29933,13 +30288,13 @@ var run63 = (argv, options = {}) => {
 // src/wiki/state-bump.ts
 import { existsSync as existsSync38, readFileSync as readFileSync41 } from "node:fs";
 import path50 from "node:path";
-var HELP_TEXT52 = `Usage: gaia wiki state-bump <field> <value>
+var HELP_TEXT53 = `Usage: gaia wiki state-bump <field> <value>
 
   Updates a single field in wiki/.state.json. Sibling fields and key order
   are preserved. <value> is parsed as JSON when it parses (numbers,
   booleans, null, arrays, objects); otherwise treated as a string.
 `;
-var HELP_TOKENS50 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var tryParseJson = (raw) => {
   try {
     return JSON.parse(raw);
@@ -29961,13 +30316,13 @@ var reorderObject = (source, field, newValue) => {
   next[field] = newValue;
   return next;
 };
-var run64 = (argv, options = {}) => {
+var run65 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT52);
+    process.stdout.write(HELP_TEXT53);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (HELP_TOKENS50.has(argv[0])) {
-    process.stdout.write(HELP_TEXT52);
+  if (HELP_TOKENS51.has(argv[0])) {
+    process.stdout.write(HELP_TEXT53);
     return EXIT_CODES.OK;
   }
   const positional = [];
@@ -30043,7 +30398,7 @@ var run64 = (argv, options = {}) => {
 import { execFileSync as execFileSync6 } from "node:child_process";
 import { existsSync as existsSync39, mkdirSync as mkdirSync19 } from "node:fs";
 import path51 from "node:path";
-var HELP_TEXT53 = `Usage: gaia wiki state-init <sha>
+var HELP_TEXT54 = `Usage: gaia wiki state-init <sha>
 
   Create wiki/.state.json with {version: 1, last_evaluated_sha,
   last_evaluated_at}. Refuses if the file already exists.
@@ -30051,7 +30406,7 @@ var HELP_TEXT53 = `Usage: gaia wiki state-init <sha>
   <sha> may be any ref (full sha, short sha, branch, tag); it is
   resolved to a full 40-char sha via \`git rev-parse\`.
 `;
-var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS52 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var resolveFullSha = (ref, cwd) => {
   try {
     const out = execFileSync6(
@@ -30068,13 +30423,13 @@ var resolveFullSha = (ref, cwd) => {
     return null;
   }
 };
-var run65 = (argv, options = {}) => {
+var run66 = (argv, options = {}) => {
   if (argv.length === 0) {
-    process.stdout.write(HELP_TEXT53);
+    process.stdout.write(HELP_TEXT54);
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (HELP_TOKENS51.has(argv[0])) {
-    process.stdout.write(HELP_TEXT53);
+  if (HELP_TOKENS52.has(argv[0])) {
+    process.stdout.write(HELP_TEXT54);
     return EXIT_CODES.OK;
   }
   const positional = [];
@@ -30142,65 +30497,8 @@ var run65 = (argv, options = {}) => {
   return EXIT_CODES.OK;
 };
 
-// src/wiki/util/branch.ts
-import { spawnSync as spawnSync6 } from "node:child_process";
-var defaultRunner5 = (command, args, options) => spawnSync6(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-});
-var PROTECTED_BRANCHES = /* @__PURE__ */ new Set(["main", "master"]);
-var expectSuccess3 = (result, command, args) => {
-  if (result.error !== void 0) {
-    throw new Error(
-      `${command} ${args.join(" ")} failed: ${result.error.message}`
-    );
-  }
-  if ((result.status ?? -1) !== 0) {
-    const stderr = (result.stderr ?? "").trim();
-    throw new Error(
-      `${command} ${args.join(" ")} exited ${result.status ?? -1}: ${stderr}`
-    );
-  }
-  return result.stdout ?? "";
-};
-var currentBranch = (cwd, runner = defaultRunner5) => {
-  const args = ["rev-parse", "--abbrev-ref", "HEAD"];
-  const out = expectSuccess3(runner("git", args, { cwd }), "git", args);
-  return out.trim();
-};
-var isProtectedBranch = (branch) => PROTECTED_BRANCHES.has(branch);
-var inspectWorkingTree = (cwd, runner = defaultRunner5) => {
-  const args = ["status", "--porcelain=v1", "-uall"];
-  const out = expectSuccess3(runner("git", args, { cwd }), "git", args);
-  const paths = [];
-  for (const rawLine of out.split("\n")) {
-    const line = rawLine.replace(/\r$/u, "");
-    if (line.length === 0) continue;
-    const rawPayload = line.slice(3);
-    const payload = rawPayload.startsWith('"') && rawPayload.endsWith('"') ? rawPayload.slice(1, -1) : rawPayload;
-    const renameSplit = payload.indexOf(" -> ");
-    if (renameSplit === -1) {
-      paths.push(payload);
-    } else {
-      paths.push(payload.slice(0, renameSplit));
-      paths.push(payload.slice(renameSplit + 4));
-    }
-  }
-  let hasWikiChanges = false;
-  let hasNonWikiChanges = false;
-  for (const candidate of paths) {
-    if (candidate.startsWith("wiki/")) {
-      hasWikiChanges = true;
-    } else {
-      hasNonWikiChanges = true;
-    }
-  }
-  return { hasNonWikiChanges, hasWikiChanges, paths };
-};
-
 // src/wiki/sync-land.ts
-var HELP_TEXT54 = `Usage: gaia wiki sync land [--branch-aware]
+var HELP_TEXT55 = `Usage: gaia wiki sync land [--branch-aware]
 
   Land staged wiki changes via the correct branch strategy:
     - on main/master: refuses unless --branch-aware (then branch + PR + auto-merge)
@@ -30211,8 +30509,7 @@ var HELP_TEXT54 = `Usage: gaia wiki sync land [--branch-aware]
     1  user-correctable refusal (dirty tree, missing flag, ...)
     2  unexpected (git/gh failure)
 `;
-var HELP_TOKENS52 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT17 = 2;
+var HELP_TOKENS53 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var parseFlags24 = (argv) => {
   let branchAware = false;
   for (const token of argv) {
@@ -30224,27 +30521,9 @@ var parseFlags24 = (argv) => {
   }
   return { flags: { branchAware }, ok: true };
 };
-var refuse2 = (message) => {
-  process.stderr.write(`${message}
-`);
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-};
 var runStep = (runner, step, cwd) => runner(step.command, step.args, { cwd });
-var passthroughFailure2 = (result, step) => {
-  const stderr = (result.stderr ?? "").trim();
-  const errorPart = result.error !== void 0 ? ` (${result.error.message})` : "";
-  const status = result.status ?? -1;
-  process.stderr.write(
-    `sync-land: ${step.command} ${step.args.join(" ")} exited ${status}${errorPart}
-`
-  );
-  if (stderr.length > 0) {
-    process.stderr.write(`${stderr}
-`);
-  }
-  return UNEXPECTED_EXIT17;
-};
-var stepSucceeded2 = (result) => result.error === void 0 && (result.status ?? -1) === 0;
+var passthroughFailure4 = (result, step) => passthroughFailure2("sync-land", result, step.command, step.args);
+var stepSucceeded2 = commandSucceeded;
 var inPlaceLanding = (ctx) => {
   const message = `wiki: sync through ${ctx.shortHead}`;
   const sequence = [
@@ -30262,7 +30541,7 @@ var inPlaceLanding = (ctx) => {
           ctx.cwd
         );
       }
-      return passthroughFailure2(result, step);
+      return passthroughFailure4(result, step);
     }
     if (step.marks === "staged") staged = true;
   }
@@ -30271,12 +30550,6 @@ var inPlaceLanding = (ctx) => {
 `
   );
   return EXIT_CODES.OK;
-};
-var todayUtc4 = (now = /* @__PURE__ */ new Date()) => {
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(now.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 };
 var rollbackLocalLanding = (ctx, branchName, onSyncBranch) => {
   if (!onSyncBranch) return;
@@ -30323,13 +30596,13 @@ var protectedBranchLanding = (ctx, options) => {
     const result = runStep(ctx.runner, step, ctx.cwd);
     if (!stepSucceeded2(result)) {
       rollbackLocalLanding(ctx, branchName, onSyncBranch);
-      return passthroughFailure2(result, step);
+      return passthroughFailure4(result, step);
     }
     if (step.marks === "onSyncBranch") onSyncBranch = true;
   }
   for (const step of remoteSequence) {
     const result = runStep(ctx.runner, step, ctx.cwd);
-    if (!stepSucceeded2(result)) return passthroughFailure2(result, step);
+    if (!stepSucceeded2(result)) return passthroughFailure4(result, step);
   }
   process.stdout.write(
     `sync-land: landed via branch-and-PR commit ${ctx.shortHead}
@@ -30337,9 +30610,9 @@ var protectedBranchLanding = (ctx, options) => {
   );
   return EXIT_CODES.OK;
 };
-var run66 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS52.has(argv[0])) {
-    process.stdout.write(HELP_TEXT54);
+var run67 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS53.has(argv[0])) {
+    process.stdout.write(HELP_TEXT55);
     return EXIT_CODES.OK;
   }
   const parsed = parseFlags24(argv);
@@ -30405,7 +30678,7 @@ var run66 = (argv, options = {}) => {
     shortHead
   };
   if (isProtectedBranch(branch)) {
-    return protectedBranchLanding(ctx, { today: options.today ?? todayUtc4() });
+    return protectedBranchLanding(ctx, { today: options.today ?? todayUtc3() });
   }
   return inPlaceLanding(ctx);
 };
@@ -30424,7 +30697,7 @@ var spawnHead = (runner, cwd) => {
 };
 
 // src/wiki/index.ts
-var HELP_TEXT55 = `Usage: gaia wiki <subcommand> [args]
+var HELP_TEXT56 = `Usage: gaia wiki <subcommand> [args]
 
   state [--json]                              Drift report.
   commit-classify --since <sha> [--json]      Per-commit WORTHY/SKIP.
@@ -30441,22 +30714,24 @@ var HELP_TEXT55 = `Usage: gaia wiki <subcommand> [args]
   diff-size --threshold-pct N [--base <ref>] [--json]
                                               Gate auto-merge on wiki byte-delta vs base.
   sync land [--branch-aware]                  Branch-aware landing of staged wiki changes.
+  chain <begin|commit|finish>                 One-branch / one-PR orchestration of the
+                                              full /gaia-wiki chain.
 `;
 var SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
 
   land [--branch-aware]                       Land staged wiki changes via the correct
                                               branch strategy.
 `;
-var HELP_TOKENS53 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS54 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var runSync = async (args) => {
   const subcommand = args[0];
   const rest = args.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS53.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS54.has(subcommand)) {
     process.stdout.write(SYNC_HELP_TEXT);
     return EXIT_CODES.OK;
   }
   if (subcommand === "land") {
-    return run66(rest);
+    return run67(rest);
   }
   structuredError({
     code: "unknown_subcommand",
@@ -30466,25 +30741,26 @@ var runSync = async (args) => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 var SUBCOMMAND_HANDLERS8 = {
-  "commit-classify": run55,
-  "dead-paths": run56,
-  "diff-size": run57,
-  "empty-sections": run58,
-  frontmatter: run59,
-  "log-prepend": run60,
-  "near-collisions": run61,
-  orphans: run63,
-  "page-index": run62,
+  chain: run55,
+  "commit-classify": run56,
+  "dead-paths": run57,
+  "diff-size": run58,
+  "empty-sections": run59,
+  frontmatter: run60,
+  "log-prepend": run61,
+  "near-collisions": run62,
+  orphans: run64,
+  "page-index": run63,
   state: run33,
-  "state-bump": run64,
-  "state-init": run65,
+  "state-bump": run65,
+  "state-init": run66,
   sync: runSync
 };
-var run67 = async (argv) => {
+var run68 = async (argv) => {
   const subcommand = argv[0];
   const rest = argv.slice(1);
-  if (subcommand === void 0 || HELP_TOKENS53.has(subcommand)) {
-    process.stdout.write(HELP_TEXT55);
+  if (subcommand === void 0 || HELP_TOKENS54.has(subcommand)) {
+    process.stdout.write(HELP_TEXT56);
     return EXIT_CODES.OK;
   }
   const handler = SUBCOMMAND_HANDLERS8[subcommand];
@@ -30501,7 +30777,7 @@ var run67 = async (argv) => {
 };
 
 // src/index.maintainer.ts
-var HELP_TEXT56 = `Usage: gaia-maintainer <subcommand> [args]
+var HELP_TEXT57 = `Usage: gaia-maintainer <subcommand> [args]
 
 Maintainer-only binary. Adopters use 'gaia' (no release namespace).
 
@@ -30520,9 +30796,9 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   setup status|mark-step|finalize|link-worktree
 `;
 var printHelp2 = () => {
-  process.stdout.write(HELP_TEXT56);
+  process.stdout.write(HELP_TEXT57);
 };
-var HELP_TOKENS54 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var HELP_TOKENS55 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SUBCOMMAND_HANDLERS9 = {
   automation: run6,
   fitness: run8,
@@ -30534,12 +30810,12 @@ var SUBCOMMAND_HANDLERS9 = {
   telemetry: run49,
   update: run51,
   "update-deps": run54,
-  wiki: run67
+  wiki: run68
 };
 var main = async () => {
   const subcommand = process.argv[2];
   const rest = process.argv.slice(3);
-  if (subcommand === void 0 || HELP_TOKENS54.has(subcommand)) {
+  if (subcommand === void 0 || HELP_TOKENS55.has(subcommand)) {
     printHelp2();
     return EXIT_CODES.OK;
   }
