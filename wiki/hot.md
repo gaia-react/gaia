@@ -2,8 +2,8 @@
 type: meta
 title: Hot Cache
 status: active
-created: 2026-06-11
-updated: 2026-06-11
+created: 2026-06-12
+updated: 2026-06-12
 tags: [meta, cache]
 ---
 
@@ -11,7 +11,7 @@ tags: [meta, cache]
 
 ## Last Updated
 
-2026-06-11. Released as GAIA v1.6.0. Fresh slate.
+2026-06-12. Released as GAIA v1.6.1. Fresh slate.
 
 ## Active Threads
 
