@@ -17,9 +17,9 @@ How `/update-gaia` pulls a newer GAIA release into an initialized project withou
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `.gaia/VERSION`       | Adopter's current baseline: which GAIA version `my-app/` was scaffolded from (or last `/update-gaia`d to).          |
 | `.gaia/manifest.json` | Ships with every release. Maps each file in the release to a class.                                                 |
-| `.gaia/cache/`        | Gitignored. Holds downloaded baseline + latest tarballs for the 3-way comparison.                                   |
-| `.gaia-merge/`        | Gitignored. Sidecar `.patch` files emitted for files the update can't safely auto-merge. Adopter resolves manually. |
-| `.gaia-backup/`       | Gitignored. Per-timestamp backups of any file the adopter agreed to overwrite.                                      |
+| `.gaia/cache/`        | Gitignored. Holds downloaded baseline + latest tarballs for the 3-way comparison. Pruned to the baseline tarball (plus `update-check.json`) at the start of each confirmed update; other cached tag dirs are removed. |
+| `.gaia-merge/`        | Gitignored. Sidecar `.patch` files emitted for files the update can't safely auto-merge. Adopter resolves manually. Removed at the start of an update only when empty; a populated dir is kept and its leftover patches flagged. |
+| `.gaia-backup/`       | Gitignored. Per-timestamp backups of any file the adopter agreed to overwrite. Prior runs' backups are pruned at the start of each confirmed update; once an update is committed git history is the durable recovery. |
 
 ## File classes
 
@@ -40,7 +40,7 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 2. Resolve latest release via `gh release list --repo gaia-react/gaia` (or GitHub API fallback).
 3. Compare to baseline. Same or older → exit, unless `.gaia/VERSION` has been bumped but not committed (an interrupted prior run), in which case surface the residual state so the adopter can commit or discard. Never downgrade.
 4. Show the adopter the release notes and **confirm** before touching anything. If on `main`/`master`, create the feature branch only after this confirmation, not before, so an early exit leaves no orphan branch.
-5. Download baseline + latest tarballs to `.gaia/cache/`. Stop on any download or extraction failure; do not proceed with a partial cache.
+5. Prune prior runs' leftover artifacts before this run creates its own: drop stale `.gaia-backup/` copies and stale `.gaia/cache/` tag dirs (keeping the baseline tarball), and remove `.gaia-merge/` only when empty. Then download baseline + latest tarballs to `.gaia/cache/`. Stop on any download or extraction failure; do not proceed with a partial cache.
 6. Walk the latest manifest. For each file, apply the decision table below.
 7. Report summary: overwritten / added / removed / skipped / conflicts / deleted / backed up.
 8. Bump `.gaia/VERSION` and replace `.gaia/manifest.json` with the latest version's copy. This happens after the summary prints so that if the walk was aborted mid-way the version stays at baseline and a re-run resumes cleanly.
