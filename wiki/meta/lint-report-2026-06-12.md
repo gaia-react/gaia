@@ -11,7 +11,7 @@ status: developing
 
 ## #11: Wiki drift check
 
-ℹ 1 commits behind HEAD. Run /gaia-wiki sync at next opportunity.
+ℹ 1 commit behind HEAD. Run /gaia-wiki sync at next opportunity.
 
 ## #12: Dead repo-relative paths
 

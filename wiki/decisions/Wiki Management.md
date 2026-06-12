@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-07
 created: 2026-05-07
-updated: 2026-06-02
+updated: 2026-06-12
 tags: [decision, wiki, cli]
 ---
 
@@ -33,6 +33,14 @@ The wiki is critical infrastructure; it decays when drift between code and docum
 **`gaia wiki dead-paths`**: Lists backticked repo paths in `wiki/` body prose that don't exist on disk. Used by `/gaia-wiki lint` to catch zombie filename references after merges and renames.
 
 **`gaia wiki sync land`**: Branch-aware landing of staged wiki changes: commits in place on a feature branch; on `main`, stages a branch and opens a PR. Used by `/gaia-wiki sync` as the deterministic write step.
+
+**`gaia wiki chain <begin|commit|finish>`**: Manages the branch lifecycle for the `/gaia-wiki` full chain so all stages (sync, consolidate, lint) land in one PR rather than opening separate PRs.
+
+- `begin` (before sync): cuts a `wiki-sync/<date>-<sha>` branch from `main`; no-op on a feature branch, where stages commit in place.
+- `commit` (after each stage): commits that stage's `wiki/` changes in place; gracefully no-ops when nothing changed; refuses non-wiki changes.
+- `finish` (after lint): pushes the branch, opens one PR for all stage commits, enables auto-merge, then returns to base. Drops the branch if it is empty. Leaves an aborted dirty tree in place for review. No-op for in-place runs on a feature branch.
+
+Standalone `/gaia-wiki sync`, `/gaia-wiki consolidate`, and `/gaia-wiki lint` are unaffected; the chain commands are invoked only by the no-arg `/gaia-wiki` full-chain wrapper.
 
 ## State file
 

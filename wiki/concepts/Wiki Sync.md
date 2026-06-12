@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-03
-updated: 2026-06-05
+updated: 2026-06-12
 tags: [concept, claude, workflow, wiki]
 ---
 
@@ -80,6 +80,8 @@ For each commit since `last_evaluated_sha`:
    3b. **Fabrication guard.** Before advancing state, asserts every WORTHY edit was actually written to disk: a per-path porcelain check confirms each claimed page shows as changed or created, and a broader content-change check confirms at least one wiki content file is modified when the WORTHY set is non-empty. Any failure aborts the run before state advances, leaving `last_evaluated_sha` unchanged so the next sync re-evaluates the same range.
 4. **Advance state** to current HEAD.
 5. **Commit** the wiki changes as `wiki: sync through <short_sha> (N updated, N skipped)`. The landing strategy is branch-aware: on `main` (push-protected), it creates `wiki/sync-YYYY-MM-DD`, pushes, opens a PR, and squash-merges; on any other branch (feature/fix/release/worktree), it commits in place so the maintainer's working state isn't fragmented.
+
+When invoked as part of the no-arg `/gaia-wiki` full chain, `gaia wiki chain begin` pre-cuts the branch before sync runs, so this same step commits in place rather than opening its own PR. `gaia wiki chain finish` opens one PR covering all stage commits (sync, consolidate, lint) at the end of the chain. Standalone `/gaia-wiki sync` is unaffected: it still self-lands via `sync land --branch-aware`.
 
 `sync land` uses `git status --porcelain=v1` to inspect the working tree. Git wraps paths containing spaces or special characters in double quotes; the CLI strips that quoting before classifying paths as wiki or non-wiki changes. Nearly every GAIA wiki page has a space in its filename, so this normalization is required for `sync land` to recognize wiki edits and proceed.
 

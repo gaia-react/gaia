@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [v1.6.0] 2026-06-11 | Released
 
+- 2026-06-12 e76dcea SKIP - wiki: self-referential sync result commit
+- 2026-06-12 6b6c146 SKIP - wiki: self-referential sync+lint result commit
+- 2026-06-12 5633b5e WORTHY - feat(gaia-wiki): adds gaia wiki chain begin|commit|finish CLI subcommand; documented in wiki/decisions/Wiki Management.md and wiki/concepts/Wiki Sync.md
+- 2026-06-12 05304c6 SKIP - refactor(.claude/rules/dep-audit.md) to wiki pointer only; no new wiki content, canonical wiki/dependencies/pnpm-audit.md unchanged
 - 2026-06-12 4045c41 SKIP - wiki: self-referential
 - 2026-06-12 9daa0d6 SKIP - chore: generic chore
 - 2026-06-12 3602248 SKIP - fix(audit): hooks-only change; no wiki page covers the audit-stamp dirty-check implementation
