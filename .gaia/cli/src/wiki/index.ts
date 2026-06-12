@@ -10,6 +10,7 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {run as runChain} from './chain.js';
 import {run as runCommitClassify} from './commit-classify.js';
 import {run as runDeadPaths} from './dead-paths.js';
 import {run as runDiffSize} from './diff-size.js';
@@ -41,6 +42,8 @@ const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
   diff-size --threshold-pct N [--base <ref>] [--json]
                                               Gate auto-merge on wiki byte-delta vs base.
   sync land [--branch-aware]                  Branch-aware landing of staged wiki changes.
+  chain <begin|commit|finish>                 One-branch / one-PR orchestration of the
+                                              full /gaia-wiki chain.
 `;
 
 const SYNC_HELP_TEXT = `Usage: gaia wiki sync <subcommand> [args]
@@ -81,6 +84,7 @@ const runSync: SubcommandHandler = async (
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
+  chain: runChain,
   'commit-classify': runCommitClassify,
   'dead-paths': runDeadPaths,
   'diff-size': runDiffSize,

@@ -77,6 +77,8 @@ When the subagent returns, relay its final summary verbatim. Do not redo the wor
 
 If invoked as `/gaia-wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint, that's only the no-arg form's job. The sub-arg form `/gaia-wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
 
+Standalone, sync's Step 7 lands on its own: from `main` it cuts a `wiki-sync/<date>-<sha>` branch and opens its own PR; from a feature branch it commits in place. In the no-arg full chain the parent pre-cuts the branch via `chain begin`, so the same Step 7 commits in place on the chain branch and the chain opens a single PR at the end (see "Full chain").
+
 ## Consolidate
 
 Two-stage. **Detection (Steps 1–3) runs in a Sonnet subagent** so the heavy page-index walk and frontmatter reads stay out of the parent. **Apply, state, and report (Steps 4–6) run in the parent** because Step 4 calls `AskUserQuestion` per finding, and `AskUserQuestion` is unavailable inside dispatched subagents.
@@ -137,14 +139,21 @@ When the subagent returns, relay its summary verbatim. If the drift severity is 
 
 ## Full chain (no sub-arg)
 
-Run sync first, then branch on its `CONSOLIDATE_TRIGGERED` line, then run lint.
+The whole chain lands on **one branch and one PR**, not one PR per stage. The parent (the agent reading this file) owns the branch lifecycle through `gaia wiki chain`; each stage still runs as its own subagent. The `chain` calls are the only parent-side git/branch/PR actions, the playbook bans inlining any other branch logic, manual `gh pr` calls, or push narrative.
 
-1. **Sync.** Run the "Sync" section above. Capture the final summary.
-2. **Inspect last line of summary.** Step 9 of sync emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on partial-sync interruptions (Step 7 failure mode), both leave the wiki in a known-incomplete state. Branch on its presence:
-   - **Line absent**: skip both consolidate and lint. The maintainer needs to address the exceptional state first.
-   - **`CONSOLIDATE_TRIGGERED: true`**: run consolidate, then run lint.
-   - **`CONSOLIDATE_TRIGGERED: false`**: skip consolidate, run lint.
+1. **Begin the chain.** Run `.gaia/cli/gaia wiki chain begin --branch-aware`. On `main`/`master` it cuts a `wiki-sync/<date>-<sha>` branch so every stage commits there instead of landing separately; on a feature branch it is a no-op and the chain commits in place. Proceed regardless of which.
 
-3. **Lint runs last** because consolidate may move, rename, or archive pages, and lint's orphan/dead-link/drift checks need the true post-state.
+2. **Sync.** Run the "Sync" section above. Capture the final summary. The chain branch is already checked out, so sync's Step 7 (`gaia wiki sync land --branch-aware`) commits in place on the chain branch rather than opening its own PR.
 
-Each sub-section dispatches its own subagent, never run their playbooks yourself in this conversation.
+3. **Inspect last line of summary.** Step 9 of sync emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on partial-sync interruptions (Step 7 failure mode), both leave the wiki in a known-incomplete state. Branch on its presence:
+   - **Line absent**: skip consolidate and lint, then go straight to step 6 (finish) and surface the exceptional state. `chain finish` lands a lone re-anchor commit, removes the branch if sync committed nothing, or leaves an aborted (uncommitted) tree in place for the maintainer.
+   - **`CONSOLIDATE_TRIGGERED: true`**: run consolidate (step 4), then lint (step 5), then finish (step 6).
+   - **`CONSOLIDATE_TRIGGERED: false`**: skip consolidate, run lint (step 5), then finish (step 6).
+
+4. **Consolidate.** Run the "Consolidate" section above. After its apply loop completes, commit the staged edits: `.gaia/cli/gaia wiki chain commit --label "wiki: consolidate through <head-sha>"` (the short HEAD sha sync reported in `State advanced to {head_sha}`). The command is a no-op when nothing was applied.
+
+5. **Lint.** Run the "Lint" section above. Lint runs after consolidate because consolidate may move, rename, or archive pages and lint's orphan/dead-link/drift checks need the true post-state. After the lint subagent returns, commit its report: `.gaia/cli/gaia wiki chain commit --label "wiki: lint through <head-sha>"`.
+
+6. **Finish the chain.** Run `.gaia/cli/gaia wiki chain finish --branch-aware`. On the chain branch it pushes, opens ONE PR carrying every stage's commit, enables auto-merge, and returns to the base branch (deleting the branch if no stage produced a commit). On a feature-branch (in-place) run it is a no-op and the commits remain on the current branch. Relay its summary / the resulting PR to the user.
+
+Each stage still dispatches its own subagent; never run their playbooks yourself in this conversation.

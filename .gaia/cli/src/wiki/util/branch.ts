@@ -67,6 +67,27 @@ export const currentBranch = (
 export const isProtectedBranch = (branch: string): boolean =>
   PROTECTED_BRANCHES.has(branch);
 
+/**
+ * Resolve the repository's default branch (the base a chain PR targets and
+ * the branch `chain finish` returns to). Reads `origin/HEAD`; falls back to
+ * `main` when the symbolic ref is unset (e.g. a freshly-cloned sandbox or a
+ * repo whose remote HEAD was never resolved).
+ */
+export const defaultBranch = (
+  cwd: string,
+  runner: CommandRunner = defaultRunner
+): string => {
+  const args = ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'];
+  const result = runner('git', args, {cwd});
+
+  if (result.error !== undefined || (result.status ?? -1) !== 0) return 'main';
+
+  const ref = (result.stdout ?? '').trim();
+  const stripped = ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref;
+
+  return stripped.length > 0 ? stripped : 'main';
+};
+
 export type WorkingTreeStatus = {
   hasNonWikiChanges: boolean;
   hasWikiChanges: boolean;

@@ -32,6 +32,13 @@ import {
   type CommandRunner,
 } from './util/branch.js';
 import {resolveRepoRoot, shortSha} from './util/git.js';
+import {
+  UNEXPECTED_EXIT,
+  commandSucceeded,
+  passthroughFailure as passthroughFailureWithPrefix,
+  refuse,
+  todayUtc,
+} from './util/land.js';
 
 const HELP_TEXT = `Usage: gaia wiki sync land [--branch-aware]
 
@@ -46,7 +53,6 @@ const HELP_TEXT = `Usage: gaia wiki sync land [--branch-aware]
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-const UNEXPECTED_EXIT = 2;
 
 type ParsedFlags = {
   branchAware: boolean;
@@ -79,12 +85,6 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {flags: {branchAware}, ok: true};
 };
 
-const refuse = (message: string): number => {
-  process.stderr.write(`${message}\n`);
-
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-};
-
 type RunStep = {
   args: readonly string[];
   command: string;
@@ -106,26 +106,10 @@ const runStep = (
 const passthroughFailure = (
   result: SpawnSyncReturns<string>,
   step: RunStep
-): number => {
-  // Surface the failing command + its stderr so the caller has enough
-  // context to diagnose without re-running. The CLI itself adds nothing.
-  const stderr = (result.stderr ?? '').trim();
-  const errorPart =
-    result.error !== undefined ? ` (${result.error.message})` : '';
-  const status = result.status ?? -1;
-  process.stderr.write(
-    `sync-land: ${step.command} ${step.args.join(' ')} exited ${status}${errorPart}\n`
-  );
+): number =>
+  passthroughFailureWithPrefix('sync-land', result, step.command, step.args);
 
-  if (stderr.length > 0) {
-    process.stderr.write(`${stderr}\n`);
-  }
-
-  return UNEXPECTED_EXIT;
-};
-
-const stepSucceeded = (result: SpawnSyncReturns<string>): boolean =>
-  result.error === undefined && (result.status ?? -1) === 0;
+const stepSucceeded = commandSucceeded;
 
 type LandingContext = {
   cwd: string;
@@ -167,14 +151,6 @@ const inPlaceLanding = (ctx: LandingContext): number => {
   );
 
   return EXIT_CODES.OK;
-};
-
-const todayUtc = (now: Date = new Date()): string => {
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(now.getUTCDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
 };
 
 /**
