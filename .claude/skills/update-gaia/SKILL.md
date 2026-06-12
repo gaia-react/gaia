@@ -490,18 +490,66 @@ fi
 
 If `gh` is unavailable or errors, tell the user to open the PR manually: `$branch` → `main`.
 
-### Step 12: Flag a stale CI audit workflow
+### Step 12: Refresh a stale CI audit workflow
 
-`.github/workflows/code-review-audit.yml` is **not** synced by `/update-gaia`, it installs and updates only via `/setup-gaia-ci`. A project that enabled GAIA CI on an older release therefore keeps whatever audit workflow shipped then, frozen, even after this update pulls a newer template. A stale workflow still audits in-scope PRs correctly, but an older copy may not stamp the `GAIA-Audit` status on out-of-scope (docs/metadata-only) PRs, which includes the update PR just opened. The merge gate's out-of-scope bypass keeps that PR mergeable regardless, but the workflow is worth refreshing.
+`.github/workflows/code-review-audit.yml` is **not** synced by the manifest walk (Steps 6-7); the audit workflow installs and updates through its own template, not a manifest class. A project that enabled GAIA CI on an older release therefore keeps whatever audit workflow shipped then, frozen, even after this update pulls a newer template. That stale copy is the root of an ordering trap: if this update's payload makes `has_source=true` (a dependency or config bump), CI runs a **full** audit under the **stale** workflow on the PR just opened, which cannot earn a clean `GAIA-Audit` stamp, and the operator then has to run `/setup-gaia-ci` by hand to refresh it (a second commit that self-mod-skips). Refreshing the workflow **inside this update PR** collapses that into a single, expected self-mod-skip.
 
-Probe for drift and advise only when the installed workflow is behind:
+The audit workflow is **adopter-tunable**: an adopter may have customized it (self-hosted runners, extra secrets wiring, concurrency, extra steps), so it is refreshed via a 3-way classify that never clobbers real edits. The audit template is static (no render), so the three inputs are files already on disk:
+
+- `A` = the installed workflow, `.github/workflows/code-review-audit.yml`
+- `L_old` = the prior release's template, `$BASELINE_DIR/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`
+- `L_new` = this release's template, `$LATEST_DIR/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`
+
+`gaia setup-ci check-audit-drift` classifies them and the SKILL acts on the verdict: `missing` (CI not installed → silent no-op, this is the opt-in guard), `in_sync` (already current, or this release did not touch the template → no-op), `clean` (`A == L_old`, stale but un-customized → safe to overwrite), or `conflict` (`A` matches neither template, or the baseline template is unavailable → never auto-write).
 
 ```bash
-audit_drift="$(.gaia/cli/gaia setup-ci check-audit-drift --json 2>/dev/null \
-  | jq -r '.state // "unknown"' 2>/dev/null || echo unknown)"
-if [ "$audit_drift" = "drifted" ]; then
-  echo "Heads up: .github/workflows/code-review-audit.yml is out of date vs the $LATEST_TAG template. Run /setup-gaia-ci to refresh it so the CI audit stamps the GAIA-Audit status correctly (including on out-of-scope PRs). The merge gate's out-of-scope bypass keeps this docs-only update PR mergeable in the meantime."
-fi
+# $BASELINE (pre-update version) and $LATEST_TAG carry from the run, as in
+# Step 11. The release tarball cache from Step 5 still holds both templates.
+BASELINE_DIR=".gaia/cache/v$BASELINE"
+LATEST_DIR=".gaia/cache/$LATEST_TAG"
+audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+audit_wf=".github/workflows/code-review-audit.yml"
+
+audit_state="$(.gaia/cli/gaia setup-ci check-audit-drift \
+  --baseline "$BASELINE_DIR/$audit_tmpl" \
+  --latest "$LATEST_DIR/$audit_tmpl" \
+  --json 2>/dev/null | jq -r '.state // "unknown"' 2>/dev/null || echo unknown)"
+
+case "$audit_state" in
+  clean)
+    # Stale but un-customized: overwrite with the new template and land it in
+    # the update PR so CI sees the refreshed workflow from the start. The
+    # commit stages only a workflow YAML (no ts/tsx/css), so the Quality Gate
+    # has nothing to check.
+    cp "$LATEST_DIR/$audit_tmpl" "$audit_wf"
+    git add "$audit_wf"
+    if git commit -m "chore: re-render code-review-audit.yml for $LATEST_TAG" && git push; then
+      echo "Refreshed $audit_wf from the $LATEST_TAG template and pushed it to the update PR."
+    else
+      echo "Refreshed $audit_wf from the $LATEST_TAG template; commit and push it to the update PR manually."
+    fi
+    cat <<EOF
+Expectation: re-rendering $audit_wf makes this update PR self-modifying, so claude-code-action's workflow-validation guardrail refuses to run the audit on it. CI self-mod-skips the audit, one expected skip instead of a wasted full audit under the stale workflow plus a manual /setup-gaia-ci step. This does NOT earn a clean CI GAIA-Audit stamp; the merge still relies on a local audit marker / trailer or the out-of-scope bypass (see PR Merge Workflow). This is a UX/ordering cleanup, not a path to a clean stamp.
+EOF
+    ;;
+  conflict)
+    # Adopter customized the workflow, or the baseline template is missing.
+    # Never auto-write: emit a sidecar patch (installed -> latest template) and
+    # defer to a manual refresh, mirroring the Step 7 conflict handling.
+    mkdir -p .gaia-merge
+    diff -u "$audit_wf" "$LATEST_DIR/$audit_tmpl" \
+      > ".gaia-merge/code-review-audit.yml.patch" || true
+    echo "Heads up: $audit_wf has local customizations, so the $LATEST_TAG template was NOT applied. Review .gaia-merge/code-review-audit.yml.patch, reconcile, then run /setup-gaia-ci to refresh it. The merge gate's out-of-scope bypass / local audit keeps this update PR mergeable in the meantime."
+    ;;
+  missing | in_sync)
+    : # missing → GAIA CI not installed (opt-in), stay silent. in_sync → nothing to do.
+    ;;
+  *)
+    # Unknown verdict (e.g. a CLI predating 3-way support, or a probe error):
+    # fall back to the manual nudge so there is zero regression.
+    echo "Heads up: $audit_wf may be out of date vs the $LATEST_TAG template. Run /setup-gaia-ci to refresh it so the CI audit stamps the GAIA-Audit status correctly. The merge gate's out-of-scope bypass keeps this update PR mergeable in the meantime."
+    ;;
+esac
 ```
 
-`in_sync` means nothing to do; `missing` means GAIA CI is not installed (the merge gate falls back to the local `code-review-audit` agent, or the out-of-scope bypass for docs/metadata-only PRs), so stay silent. Only `drifted` warrants the nudge.
+Only `clean` auto-refreshes; `conflict` and any unknown verdict defer to the manual `/setup-gaia-ci` nudge, and `missing` / `in_sync` do nothing.
