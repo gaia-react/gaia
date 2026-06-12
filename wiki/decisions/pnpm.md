@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-06-10
+updated: 2026-06-12
 tags: [decision, tooling, package-manager, security]
 ---
 
@@ -30,6 +30,7 @@ GAIA uses **pnpm** for installs and dependency resolution. The `packageManager` 
 - pnpm reads none of the above from the `package.json` `pnpm` field or from `.npmrc`. `.npmrc` carries only registry and auth settings; resolution and supply-chain keys placed there are ignored.
 - `pnpm-lock.yaml` is committed. `package-lock.json` is forbidden: delete on sight.
 - CI workflows install pnpm via `pnpm/action-setup` (pinned by commit SHA, no `version:` input, so it reads the `packageManager` field), use `cache: 'pnpm'` in `actions/setup-node`, and install with `pnpm install --frozen-lockfile`. Because the action keys off `packageManager`, bumping that one field moves CI's pnpm version in lockstep.
+- Every Docker stage that runs a pnpm command, including the final runtime stage, needs `pnpm-workspace.yaml` copied alongside `package.json` and `pnpm-lock.yaml`. pnpm reads `overrides`, `allowBuilds`, and supply-chain policy only from that file, so a stage that copies just the manifest and lockfile fails two ways: `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` on a `--frozen-lockfile` install, and `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` when a script such as `pnpm start` runs its pre-run deps check in a no-TTY stage. Copy all three together.
 - Adopters bootstrap pnpm with `corepack enable pnpm`. `/gaia-init` does this in Step 0 with a `npm install -g pnpm` fallback for environments without corepack.
 
 ## Pinning
