@@ -10,6 +10,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-06-12
+
+### Added
+
+- land the full chain on one branch and one PR (#379)
+- prune prior-run artifacts at the start of a confirmed update (#376)
+- accept a verbatim audit-workflow re-render as a no-marker bypass (#375)
+- auto-render stale audit workflow on update (#371, #372) (#374)
+
+### Changed
+
+- shrink dep-audit.md to a wiki pointer (#380)
+- pnpm-workspace.yaml must be copied into Docker pnpm stages (#373)
+
+### Fixed
+
+- exclude .claude-pr/ from the stamp dirty check (#370)
+
 ## [1.6.0] - 2026-06-11
 
 ### Added
