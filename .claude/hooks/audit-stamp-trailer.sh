@@ -105,8 +105,16 @@ fi
 # Tree state preconditions
 # -----------------------------------------------------------------------------
 
-# Working tree must be clean.
-if [ -n "$(git -C "$repo_root" status --porcelain 2>/dev/null)" ]; then
+# Working tree must be clean, except for claude-code-action's runtime
+# working area `.claude-pr/`, a verbatim mirror of the repo the action
+# creates for sandboxed execution. It is never audit output and is always
+# untracked, so it must not count as a dirty tree. Relying on the adopter's
+# `.gitignore` to hide it is fragile: that file is manifest-class `owned` and
+# drifts, so an adopter copy can lack the entry and then decline the trailer
+# on every otherwise-clean audit. Exclude it at the check instead. A real
+# tracked modification (staged or unstaged) outside `.claude-pr/` still
+# registers as dirty and declines.
+if [ -n "$(git -C "$repo_root" status --porcelain -- . ':(exclude).claude-pr' 2>/dev/null)" ]; then
   emit_decline "tree dirty"
   exit 0
 fi

@@ -9,6 +9,8 @@
 #   3. AUDIT_SELF_HEALED=true               -> amend regardless of push status
 #   4. detached HEAD (CI checkout)         -> empty commit (no auto-push)
 #   5. tree dirty                           -> decline "tree dirty"
+#   5b. dirty ONLY from .claude-pr/ runtime  -> stamps (artifact ignored)
+#   5c. .claude-pr/ PLUS real dirt           -> decline "tree dirty"
 #   6. .gaia/VERSION missing                -> decline "version file missing"
 #   7. .gaia/VERSION empty                  -> decline "version file empty"
 #   8. AUDIT_TREE_SHA != current tree       -> decline "tree changed since audit started"
@@ -204,6 +206,51 @@ trailer_on_head() {
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
 
+  echo "uncommitted" >> "$REPO/README.md"
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: tree dirty" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  [ "$before_sha" = "$after_sha" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "dirty ONLY from .claude-pr/ runtime artifacts: stamps anyway" {
+  # claude-code-action mirrors the repo into .claude-pr/ for sandboxed
+  # execution, leaving it untracked. That is not audit output and must not
+  # block the stamp. Without the exclusion this declines "tree dirty".
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  mkdir -p "$REPO/.claude-pr/.claude/agents"
+  echo "mirror" > "$REPO/.claude-pr/.claude/agents/code-review-audit.md"
+  echo "mirror" > "$REPO/.claude-pr/settings.json"
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  [ "$before_sha" != "$after_sha" ]
+
+  trailer=$(trailer_on_head)
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${before_tree}" ]
+}
+
+@test ".claude-pr/ artifacts PLUS a real dirty file: still declines" {
+  # The exclusion is scoped to .claude-pr/ only; genuine uncommitted audit
+  # work outside it must still block the stamp.
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  mkdir -p "$REPO/.claude-pr"
+  echo "mirror" > "$REPO/.claude-pr/x"
   echo "uncommitted" >> "$REPO/README.md"
 
   cd "$REPO"
