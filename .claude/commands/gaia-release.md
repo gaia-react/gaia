@@ -231,7 +231,7 @@ echo "website resolved to: $WEB"                   # ← note this literal path;
 
 - `$WEB/src/pages/get-started/sections/GetStarted.tsx` → `const GAIA_VERSION = '<NEW_VERSION>';`
 
-**Fitness page**, one string contains two version slots: `"GAIA v<installed>, v<available> available · /update-gaia"`:
+**Fitness page**, one string contains two version slots: `"GAIA v<installed> installed; v<available> available. Run /update-gaia to upgrade."`:
 
 - **available**: always set to `<NEW_VERSION>`.
 - **installed**: represents the `<major>.<minor>.0` baseline for the current minor series, but only advances to a new minor once that minor has at least one patch release:
@@ -240,7 +240,7 @@ echo "website resolved to: $WEB"                   # ← note this literal path;
 
 Example: current is `installed=1.2.0, available=1.2.2`. On `1.3.0` → `installed=1.2.0, available=1.3.0`. On `1.3.1` → `installed=1.3.0, available=1.3.1`.
 
-- `$WEB/src/pages/features/sections/Fitness.tsx` → `detail: 'GAIA v<installed>, v<NEW_VERSION> available · /update-gaia'`
+- `$WEB/src/pages/features/sections/Fitness.tsx` → `remediation: 'GAIA v<installed> installed; v<NEW_VERSION> available. Run /update-gaia to upgrade.'`
 
 **Structured data (JSON-LD)**, the `SoftwareApplication` schema in the site's root `index.html` carries a `softwareVersion` field. Always set it to `<NEW_VERSION>` (the latest released version; no `v` prefix, matching the existing string form):
 
@@ -290,12 +290,12 @@ DOCS="$(git -C "$DOCS" rev-parse --show-toplevel)"   # canonical absolute path
 echo "docs resolved to: $DOCS"                       # ← note this literal path; inline it (NOT $DOCS) into the push below
 ```
 
-- `$DOCS/src/overrides/PageSidebar.astro` → `const version = '<NEW_VERSION>';`
+- `$DOCS/src/version.ts` → `export const GAIA_VERSION = '<NEW_VERSION>';` (imported by `src/overrides/PageSidebar.astro`'s colophon)
 
 Commit and push directly to `main` in the docs repo (mirror Step 14's website push; if docs enforces branch protection, route through a PR as in Step 11). Apply the sibling-repo push protocol from Step 13: the `add`/`commit` chain keeps `$DOCS` and combines freely, but the `git push` runs in its **own Bash tool invocation** with the **literal path inlined**.
 
 ```bash
-git -C "$DOCS" add src/overrides/PageSidebar.astro
+git -C "$DOCS" add src/version.ts
 git -C "$DOCS" commit -m "chore: lockstep GAIA v<NEW_VERSION>"
 ```
 
