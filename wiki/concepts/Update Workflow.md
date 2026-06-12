@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-06-11
+updated: 2026-06-12
 tags: [release, claude, adopter, drift]
 ---
 
@@ -39,7 +39,7 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 1. Read `.gaia/VERSION`. Missing → tell user to run `/gaia-init` on a fresh `create-gaia` scaffold.
 2. Resolve latest release via `gh release list --repo gaia-react/gaia` (or GitHub API fallback).
 3. Compare to baseline. Same or older → exit, unless `.gaia/VERSION` has been bumped but not committed (an interrupted prior run), in which case surface the residual state so the adopter can commit or discard. Never downgrade.
-4. Show the adopter the release notes and **confirm** before touching anything. If on `main`/`master`, create the feature branch only after this confirmation — not before — so an early exit leaves no orphan branch.
+4. Show the adopter the release notes and **confirm** before touching anything. If on `main`/`master`, create the feature branch only after this confirmation, not before, so an early exit leaves no orphan branch.
 5. Download baseline + latest tarballs to `.gaia/cache/`. Stop on any download or extraction failure; do not proceed with a partial cache.
 6. Walk the latest manifest. For each file, apply the decision table below.
 7. Report summary: overwritten / added / removed / skipped / conflicts / deleted / backed up.
@@ -86,6 +86,23 @@ Per managed entry key `k`:
 | GAIA removed `k` (baseline only)                  | No-op: if adopter still has it, leave it.                        |
 
 The load-bearing guarantee: a dependency the adopter removed is **never re-added** unless GAIA changed it this release _and_ the adopter opts in, the JSON-key analog of the file-level "respect adopter deletions" rule. Clean applies are written surgically (the changed line only, preserving the adopter's formatting). Re-pin conflicts and dep suggestions go to `.gaia-merge/package.json.notes`. A version-only release touches nothing and emits no notes.
+
+## CI audit workflow refresh
+
+`.github/workflows/code-review-audit.yml` is not a manifest-class file, so the merge walk never touches it; it tracks its own template at `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`. After the PR opens, `/update-gaia` refreshes a stale copy in place so the update PR carries the current workflow instead of auditing itself under a frozen one.
+
+The refresh is a **3-way text classify** (the audit template is static, so there is no render): installed `A`, the baseline release's template `L_old`, and the latest release's template `L_new`, both pulled from the `.gaia/cache/` tarballs. `gaia setup-ci check-audit-drift --baseline <L_old> --latest <L_new>` returns the verdict:
+
+| Verdict    | Meaning                                             | Action                                                        |
+| ---------- | --------------------------------------------------- | ------------------------------------------------------------- |
+| `missing`  | CI not installed (audit is opt-in)                  | Silent no-op.                                                 |
+| `in_sync`  | Installed already current, or release left it alone | No-op.                                                        |
+| `clean`    | `A == L_old`: stale but un-customized               | Overwrite with `L_new`, commit, and push into the update PR.  |
+| `conflict` | `A` matches neither, or baseline unavailable        | Write `.gaia-merge/code-review-audit.yml.patch`; never write. |
+
+The audit workflow is **adopter-tunable**: `conflict` never clobbers adopter edits (self-hosted runners, extra secrets wiring, concurrency, extra steps), it emits a sidecar patch and defers to a manual `/setup-gaia-ci` refresh, mirroring the `shared` drift rule. The scheduled `gaia-ci-*` workflows stay disposable (regenerated wholesale on `/setup-gaia-ci --reconfigure`); only the audit workflow gets the 3-way.
+
+Re-rendering the workflow makes the update PR self-modifying, so [[Code Review Audit CI]]'s `claude-code-action` refuses to audit it and the run self-mod-skips. This is a UX/ordering cleanup: it replaces a wasted full audit under the stale workflow plus a manual refresh step with one expected skip. It does **not** earn a clean CI `GAIA-Audit` stamp; the merge proceeds on a local audit marker / trailer or the out-of-scope bypass (see [[PR Merge Workflow]]).
 
 ## Safety invariants
 

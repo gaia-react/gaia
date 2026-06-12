@@ -22014,15 +22014,27 @@ var run44 = async (argv, options = {}) => {
 // src/setup-ci/check-audit-drift.ts
 import { readFileSync as readFileSync24 } from "node:fs";
 import path32 from "node:path";
-var HELP_TEXT32 = `Usage: gaia setup-ci check-audit-drift [--workflows-dir <p>] [--json]
+var HELP_TEXT32 = `Usage: gaia setup-ci check-audit-drift [--workflows-dir <p>]
+                                       [--baseline <p> [--latest <p>]] [--json]
 
-  Compare installed audit workflow vs template.
+  Compare the installed audit workflow against the template(s).
 
-  Byte-compares <workflows-dir>/code-review-audit.yml against the canonical
-  template. Reports state: in_sync | drifted | missing.
+  Default (2-way): byte-compares <workflows-dir>/code-review-audit.yml
+  against the canonical bundled template. Reports state:
+  in_sync | drifted | missing.
+
+  With --baseline (3-way): classifies the installed file against the prior
+  release's template (--baseline) and this release's template (--latest,
+  defaulting to the bundled template). Reports state:
+  in_sync | clean | conflict | missing. Used by /update-gaia to refresh a
+  stale audit workflow without clobbering adopter edits.
 
   --workflows-dir <path>   Optional. Override of .github/workflows. Defaults
                            to <repoRoot>/.github/workflows.
+  --baseline <path>        Prior release's code-review-audit.yml.tmpl. Enables
+                           3-way mode.
+  --latest <path>          This release's code-review-audit.yml.tmpl. Defaults
+                           to the bundled template. Requires --baseline.
   --json                   Emit machine-readable JSON instead of a human
                            report.
 `;
@@ -22030,24 +22042,42 @@ var HELP_TOKENS30 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var parseArgs4 = (argv) => {
   let json3 = false;
   let workflowsDir;
+  let baseline;
+  let latest;
+  const takePath = (flag, index) => {
+    const next = argv[index + 1];
+    if (next === void 0 || next.startsWith("--")) {
+      return { error: `${flag} requires a path argument` };
+    }
+    return { value: next };
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--json") {
       json3 = true;
       continue;
     }
-    if (token === "--workflows-dir") {
-      const next = argv[index + 1];
-      if (next === void 0 || next.startsWith("--")) {
-        return { error: "--workflows-dir requires a path argument" };
+    if (token === "--workflows-dir" || token === "--baseline" || token === "--latest") {
+      const taken = takePath(token, index);
+      if ("error" in taken) {
+        return { error: taken.error };
       }
-      workflowsDir = next;
+      if (token === "--workflows-dir") {
+        workflowsDir = taken.value;
+      } else if (token === "--baseline") {
+        baseline = taken.value;
+      } else {
+        latest = taken.value;
+      }
       index += 1;
       continue;
     }
     return { error: `unknown flag: ${token}` };
   }
-  return { json: json3, workflowsDir };
+  if (latest !== void 0 && baseline === void 0) {
+    return { error: "--latest requires --baseline" };
+  }
+  return { baseline, json: json3, latest, workflowsDir };
 };
 var safeReadFile = (filePath) => {
   try {
@@ -22084,22 +22114,40 @@ var run45 = (argv, options = {}) => {
   const workflowsDir = parsed.workflowsDir ?? path32.join(repoRoot2, ".github", "workflows");
   const installedPath = path32.join(workflowsDir, "code-review-audit.yml");
   const onDisk = safeReadFile(installedPath);
-  let state;
-  if (onDisk === null) {
-    state = "missing";
-  } else {
-    let template;
+  const readTemplateOrFail = (templatePath) => {
     try {
-      template = readFileSync24(workflowAuditTemplatePath(), "utf8");
+      return { content: readFileSync24(templatePath, "utf8") };
     } catch (error51) {
       structuredError({
         code: "template_unreadable",
         error: error51 instanceof Error ? error51.message : String(error51),
         subcommand: "setup-ci check-audit-drift"
       });
-      return EXIT_CODES.STORAGE_INACCESSIBLE;
+      return { exitCode: EXIT_CODES.STORAGE_INACCESSIBLE };
     }
-    state = onDisk === template ? "in_sync" : "drifted";
+  };
+  let state;
+  if (onDisk === null) {
+    state = "missing";
+  } else if (parsed.baseline === void 0) {
+    const template = readTemplateOrFail(workflowAuditTemplatePath());
+    if ("exitCode" in template) {
+      return template.exitCode;
+    }
+    state = onDisk === template.content ? "in_sync" : "drifted";
+  } else {
+    const latest = readTemplateOrFail(parsed.latest ?? workflowAuditTemplatePath());
+    if ("exitCode" in latest) {
+      return latest.exitCode;
+    }
+    const baseline = safeReadFile(parsed.baseline);
+    if (onDisk === latest.content || baseline === latest.content) {
+      state = "in_sync";
+    } else if (baseline !== null && onDisk === baseline) {
+      state = "clean";
+    } else {
+      state = "conflict";
+    }
   }
   if (parsed.json) {
     process.stdout.write(`${JSON.stringify({ state })}
@@ -23319,8 +23367,9 @@ var HELP_TEXT44 = `Usage: gaia setup-ci <subcommand> [args]
   status [--json]                          Print Phase B configuration status.
   check-drift [--workflows-dir <p>] [--json]
                                            Compare rendered workflows vs template render.
-  check-audit-drift [--workflows-dir <p>] [--json]
-                                           Compare installed audit workflow vs template.
+  check-audit-drift [--workflows-dir <p>] [--baseline <p> [--latest <p>]] [--json]
+                                           Compare installed audit workflow vs template
+                                           (2-way), or 3-way classify vs baseline+latest.
   detect-remote [--json]                   Read git remote get-url origin.
   warn-existing-tools [--json]             Detect Dependabot / Renovate configs.
   check-admin --owner <o> --repo <r> [--json]

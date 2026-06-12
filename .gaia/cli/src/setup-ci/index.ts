@@ -32,8 +32,9 @@ const HELP_TEXT = `Usage: gaia setup-ci <subcommand> [args]
   status [--json]                          Print Phase B configuration status.
   check-drift [--workflows-dir <p>] [--json]
                                            Compare rendered workflows vs template render.
-  check-audit-drift [--workflows-dir <p>] [--json]
-                                           Compare installed audit workflow vs template.
+  check-audit-drift [--workflows-dir <p>] [--baseline <p> [--latest <p>]] [--json]
+                                           Compare installed audit workflow vs template
+                                           (2-way), or 3-way classify vs baseline+latest.
   detect-remote [--json]                   Read git remote get-url origin.
   warn-existing-tools [--json]             Detect Dependabot / Renovate configs.
   check-admin --owner <o> --repo <r> [--json]

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-06-11
+updated: 2026-06-12
 tags: [concept, ci, audit, claude]
 ---
 
@@ -50,6 +50,14 @@ The `Check for source-code changes` step diffs only the **un-audited delta**: `<
 On this skip path the `Write GAIA-Audit commit status (out-of-scope skip)` step stamps a `GAIA-Audit` commit status (`<version> <tree>`) on HEAD, mirroring the full-audit path's status. An out-of-scope PR (CLI-only, docs-only, wiki-only, `.claude`-only) therefore satisfies the [[PR Merge Workflow]] merge hook with no local audit run; the agent would find nothing in scope to review. The description carries HEAD's own tree, since the hook checks tree equality against the content being merged.
 
 The stamp fires on the out-of-scope reason only. The already-audited reason (the `GAIA-Audit:` trailer already matches, so a status is redundant) and the workflow-self-modification reason (auto-approving a change to the audit gate itself would be a security hole) do not stamp. The `has_source == 'false'` condition structurally enforces this: both other reasons require `has_source == 'true'`. A self-modifying PR (including one editing `code-review-audit.yml`) gets no auto-stamp and still needs a local marker to merge.
+
+## Workflow refresh on /update-gaia
+
+The installed `code-review-audit.yml` is not synced by `/update-gaia`'s manifest walk; it tracks its own template. When an update finds the installed workflow stale, `/update-gaia` refreshes it **inside the update PR** via a 3-way classify (`gaia setup-ci check-audit-drift --baseline <prior-template> --latest <new-template>`), overwriting only when the installed file is an un-customized copy of the prior release's template. Adopter customizations classify as `conflict` and are never clobbered; the workflow is adopter-tunable (see [[Update Workflow]] for the full verdict table).
+
+The refresh is deliberately self-modifying, and that is the point. A GAIA-update PR whose payload changes auditable files (a dependency or config bump making `has_source=true`) would otherwise run a **full** audit under the **stale** workflow, which cannot earn a clean stamp, then need a separate manual `/setup-gaia-ci` commit. Landing the refresh in the same PR collapses both into one expected self-mod-skip: the `Check workflow self-modification` step trips on the changed `code-review-audit.yml`, the agent never runs, and the terminal `Status: skipped (workflow self-modification)` step reports green.
+
+This is a UX/ordering cleanup, not a clean-stamp path. The self-mod-skip stamps no `GAIA-Audit` status (auto-approving a change to the audit gate would be a security hole), so the update PR merges on the local audit marker / `GAIA-Audit:` trailer or the out-of-scope bypass, see [[PR Merge Workflow]]. Earning a CI stamp would require landing the workflow refresh on `main` in a separate PR merged before the payload, which is not worth it for a tooling-only update.
 
 ## Clean audit, no push
 
