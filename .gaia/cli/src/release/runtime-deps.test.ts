@@ -158,6 +158,20 @@ describe('extractPathRefs', () => {
     );
     expect(refs.map((r) => r.path)).toContain('.github/workflows/deploy.yml');
   });
+
+  test('skips the allowlisted audit-workflow path constant', () => {
+    // pr-merge-audit-check.sh's check_self_mod_only_update_pr() assigns the
+    // audit workflow path to compare against the PR diff and template blob; it
+    // never sources or executes the file. The path is release-excluded, so the
+    // exact full-path token is allowlisted as a non-dependency.
+    const refs = extractPathRefs(
+      '.claude/hooks/pr-merge-audit-check.sh',
+      'audit_wf=".github/workflows/code-review-audit.yml"\n'
+    );
+    expect(refs.map((r) => r.path)).not.toContain(
+      '.github/workflows/code-review-audit.yml'
+    );
+  });
 });
 
 describe('release runtime-deps CLI', () => {

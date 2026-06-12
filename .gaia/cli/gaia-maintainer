@@ -20118,7 +20118,8 @@ var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
 ]);
 var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
 var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
-  ".github/workflows"
+  ".github/workflows",
+  ".github/workflows/code-review-audit.yml"
 ]);
 var PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
 var stripCommentSuffix = (line) => {
