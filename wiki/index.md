@@ -80,6 +80,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[react-icons]]
 - [[gaia-lint]]
 - [[knip]]
+- [[react-doctor]]: React security/perf/a11y scanner (`npx`); advisory, single canonical `doctor.config.ts`, duplicate-config guard.
 - [[pnpm-audit]]: dependency-CVE advisory oracle (`pnpm audit --json`); read-only, advisory, baseline-scoped.
 - [[pnpm-overrides]]: applying `overrides`/security-floor changes needs `pnpm dedupe`; `pnpm install` short-circuits "Already up to date".
 - [[Vitest]]
