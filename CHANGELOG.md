@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 ### Fixed
 
 - `/update-deps` override audit re-resolves with `pnpm dedupe` instead of `pnpm install` (which short-circuits "Already up to date" on an overrides-only change and could leave a security-floor override unapplied), and asserts the lockfile `overrides` block matches `pnpm-workspace.yaml` before finishing (#388)
+- Playwright e2e self-heals the cold dev-server hydration race: `hydration()` probes for the hydrated meta then reloads once onto the now-optimized Vite bundle, and a global-setup `/` warm-up front-loads the first dep-optimize, so a cold `pnpm pw` passes without the local retry mask (#400)
 
 ## [1.6.1] - 2026-06-12
 
