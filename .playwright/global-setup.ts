@@ -13,7 +13,7 @@ import {hydration} from './utils';
  * for it. Playwright starts the configured `webServer` before global setup, so
  * the server is up by the time this runs; on a warm server it returns quickly.
  */
-const globalSetup = async (config: FullConfig) => {
+const globalSetup = async (config: FullConfig): Promise<void> => {
   const baseURL = config.projects[0]?.use.baseURL ?? 'http://localhost:5173';
   const browser = await chromium.launch();
 
