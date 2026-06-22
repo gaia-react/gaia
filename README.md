@@ -93,7 +93,7 @@ The quality gate keeps each commit clean and Knip keeps dead code out (see [Tech
 
 Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configured and wired into the Claude layer.
 
-- **1,314 lint rules** across 20+ ESLint plugins, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/), including 82 Stylelint rules that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS. [Knip](https://knip.dev/) detects unused files, exports, and dependencies.
+- **1,314 lint rules** via ESLint, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/), including 82 Stylelint rules that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS. [Knip](https://knip.dev/) detects unused files, exports, and dependencies.
 - **Pre-commit hooks** ([Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged)): typecheck, lint, and test before CI.
 - **Testing** via [Vitest](https://vitest.dev) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for unit and integration, [Playwright](https://playwright.dev/docs/intro) for E2E, and [Chromatic](https://chromatic.com/) for visual regression, all sharing one [MSW](https://mswjs.io/) mock layer.
 - **[Storybook](https://storybook.js.org/)** with React Router + i18n + dark mode + [MSW](https://mswjs.io/) integration.
