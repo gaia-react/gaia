@@ -33,6 +33,22 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
+      # react-doctor resolves the highest-precedence config file and silently
+      # ignores the rest, so a stray duplicate (e.g. doctor.config.json beside
+      # doctor.config.ts) shadows the canonical config with no warning. Backstop
+      # for the pre-commit guard of the same name (.husky/pre-commit). Runs
+      # unconditionally so a duplicate fails even when the suite below is gated
+      # off by the chore-deps / incremental-delta checks.
+      - name: Assert a single react-doctor config
+        run: |
+          set -eu
+          n=$(find . -maxdepth 1 -type f \( -name 'doctor.config.*' -o -name 'react-doctor.config.*' \) | wc -l | tr -d ' ')
+          if [ "$n" -gt 1 ]; then
+            echo "::error::Multiple react-doctor configs found; keep only doctor.config.ts"
+            find . -maxdepth 1 -type f \( -name 'doctor.config.*' -o -name 'react-doctor.config.*' \)
+            exit 1
+          fi
+          echo "OK: ${n} react-doctor config file(s)"
       # Pre-verified dep-bump PRs (the /update-deps wrapper runs the full
       # quality gate locally before pushing) skip the CI suite. Title-pattern
       # gate is restricted to `chore(deps):` and `chore(deps-dev):` so other
