@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ## [Unreleased]
 
+### Added
+
+- point Zod schema work at Zod's official LLM docs, auto-discovered from `node_modules/zod/package.json` (`llmsFull`/`llms`), and treat them as authoritative over training memory so valid Zod 4 forms are not rejected from stale v3 recollection
+
 ### Fixed
 
 - `/update-deps` override audit re-resolves with `pnpm dedupe` instead of `pnpm install` (which short-circuits "Already up to date" on an overrides-only change and could leave a security-floor override unapplied), and asserts the lockfile `overrides` block matches `pnpm-workspace.yaml` before finishing (#388)

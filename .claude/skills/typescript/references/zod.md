@@ -1,5 +1,22 @@
 # Zod 4, Zod 3 → Zod 4 Migration Map
 
+## Authoritative source, consult before judging a schema
+
+Zod 4 reworked the API heavily from v3, and most v3 forms still type-check, so training memory is an unreliable guide here: it is easy to "correct" valid v4 code back into deprecated v3 code, or to reject a valid form as invalid. The array union `z.literal(['a', 'b'])` in the migration map below is real Zod 4, not a mistake. So before writing a schema you are unsure of, and especially before flagging or rewriting an existing Zod form as wrong, verify it against the installed Zod's official docs and treat them as authoritative over memory.
+
+The docs are hosted, and the package advertises their URLs through the `package.json` auto-discovery convention. Read the URL from the installed package rather than hardcoding it:
+
+```bash
+node -p "require('./node_modules/zod/package.json').llmsFull"  # https://zod.dev/llms-full.txt, full concatenated docs
+node -p "require('./node_modules/zod/package.json').llms"      # https://zod.dev/llms.txt, curated index
+```
+
+WebFetch that URL with a specific question instead of reading it into context. The full doc is ~65k tokens, but WebFetch distills it through a side model and returns only the answer, so context pays for the answer, not the doc. Ask for the exact signature and request a verbatim quote (e.g. "quote the exact `z.literal` signature for multiple values"). When the topic is unclear, WebFetch the smaller index first to find the right page. If the fields are absent, fall back to `https://zod.dev/llms-full.txt`.
+
+Version caveat: these hosted docs track the latest published Zod, not the installed one, so confirm the installed major matches before trusting them with `node -p "require('./node_modules/zod/package.json').version"`. If the project is ever pinned behind what zod.dev serves, the docs run ahead of the installed API and the memory-versus-reality problem returns.
+
+## Migration map
+
 This project uses Zod 4. Several Zod 3 forms still type-check and lint clean, so nothing flags them until runtime or a `react-doctor` scan. Default to the Zod 4 form in every schema.
 
 | Zod 3, avoid                             | Zod 4, use                            |

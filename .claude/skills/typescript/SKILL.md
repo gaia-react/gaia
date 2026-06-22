@@ -77,4 +77,4 @@ export const formatDate = (date: Date): string => format(date, 'yyyy-MM-dd');
 
 - **`z.literal([...])` not `z.enum()`** for string unions, sort values alphanumerically
 
-Read `references/zod.md` for the full Zod 3 → Zod 4 migration map (`z.strictObject`, top-level string formats, `z.record` arity, function and error shapes).
+Read `references/zod.md` for the full Zod 3 → Zod 4 migration map (`z.strictObject`, top-level string formats, `z.record` arity, function and error shapes). It opens with a standing directive to verify uncertain or suspect Zod forms against the official docs (WebFetched, auto-discovered from `node_modules/zod/package.json`) rather than trusting v3-era memory.
