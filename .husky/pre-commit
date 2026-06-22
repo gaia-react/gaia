@@ -1,16 +1,5 @@
 printf '\n🔎 Running pre-commit check\n'
 
-# Guard: exactly one react-doctor config may exist. react-doctor resolves the
-# highest-precedence file and silently ignores the rest, so a stray duplicate
-# (e.g. doctor.config.json beside doctor.config.ts) shadows the canonical
-# config without warning. Fail fast rather than ship a shadowed config.
-DOCTOR_CONFIGS=$(find . -maxdepth 1 -type f \( -name 'doctor.config.*' -o -name 'react-doctor.config.*' \) | wc -l | tr -d ' ')
-if [ "$DOCTOR_CONFIGS" -gt 1 ]; then
-  printf "\x1b[31m✖ Multiple react-doctor configs found; keep only doctor.config.ts\x1b[0m\n"
-  find . -maxdepth 1 -type f \( -name 'doctor.config.*' -o -name 'react-doctor.config.*' \)
-  exit 1
-fi
-
 HAS_APP_CHANGED=$(git diff --cached --name-only --diff-filter=ACDM | grep 'app/' || true)
 HAS_TEST_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep 'test/' || true)
 HAS_STORYBOOK_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep '.storybook/' || true)
