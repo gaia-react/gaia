@@ -376,6 +376,24 @@ jobs:
           git config user.name 'gaia-code-review-audit[bot]'
           git config user.email 'gaia-code-review-audit[bot]@users.noreply.github.com'
 
+          # Drop claude-code-action's untrusted-PR file restore before the tree
+          # is inspected or staged. The action restores a fixed set of sensitive
+          # config/hook paths from origin/main into the runner's working tree
+          # before the agent runs (it logs "Restoring ... from origin/main (PR
+          # head is untrusted)"). When this PR legitimately modifies one of them,
+          # that restore REVERTS the PR's change in the working tree; the
+          # `git add -u` below would then stage the revert and commit it as a
+          # bogus self-heal -- this is what stripped a .husky/pre-commit guard a
+          # PR had just added. The agent is never an allowed editor of these
+          # convention/hook surfaces, so any working-tree delta on them is either
+          # the action's restore or a forbidden edit; reset each to HEAD either
+          # way. Keep this list in sync with claude-code-action's restore set.
+          for restored_path in \
+            .husky .mcp.json .claude.json .gitmodules .ripgreprc \
+            CLAUDE.md CLAUDE.local.md; do
+            git checkout HEAD -- "$restored_path" 2>/dev/null || true
+          done
+
           # Surface untracked files for transparency. The agent or
           # claude-code-action may leave runtime artifacts (e.g. .claude-pr/)
           # behind; .gitignore should cover known cases. We never stage them.
