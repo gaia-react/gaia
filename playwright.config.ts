@@ -47,6 +47,10 @@ export default defineConfig({
   // Run tests in files in parallel
   fullyParallel: true,
 
+  // Serial `/` warm-up after the dev server boots, so the first parallel spec
+  // does not race Vite's cold dep-optimize. See ./.playwright/global-setup.ts.
+  globalSetup: './.playwright/global-setup.ts',
+
   // the .gitignore file is configured to ignore this directory
   // if you change this, change it in .gitignore, as well
   outputDir: './.playwright/output',
@@ -63,12 +67,13 @@ export default defineConfig({
   // Once you have a lot of tests, you can change this to 'github' or 'dot' on CI
   reporter: 'list',
 
-  // CI retries twice. Locally retry once: the first `pnpm pw` after a dep or
-  // Vite-config change boots the dev server with a cold dep-optimize cache, and
-  // that first request can lose the race to Vite's optimizer and fail the
-  // dynamic import of entry.client.tsx (page never hydrates). The retry runs
-  // against the now-warm server and passes.
-  retries: process.env.CI ? 2 : 1,
+  // No local retries: the global-setup warm-up and the hydration helper's
+  // probe-then-reload self-heal the cold dep-optimize race (the first `pnpm pw`
+  // after a dep or Vite-config change boots a cold cache and the first request
+  // can lose the race to Vite's optimizer, failing the dynamic import of
+  // entry.client.tsx so the page never hydrates), so a real flake fails instead
+  // of being masked. CI keeps retries as general flake insurance.
+  retries: process.env.CI ? 2 : 0,
   testDir: './.playwright/e2e',
   testMatch: '**/*.spec.ts',
 
