@@ -190,6 +190,7 @@
     ".playwright/e2e/home-a11y.spec.ts": "owned",
     ".playwright/e2e/language-switch-a11y.spec.ts": "owned",
     ".playwright/fixtures.ts": "owned",
+    ".playwright/global-setup.ts": "owned",
     ".playwright/utils.ts": "owned",
     ".prettierignore": "owned",
     ".specify/extensions/gaia/commands/constitution-check.md": "owned",
