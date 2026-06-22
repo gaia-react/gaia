@@ -64,6 +64,13 @@ const App: FC = () => {
     }
   }, [toast]);
 
+  // Escape `<` so a `</script>` in env values cannot break out of the inline
+  // script. Hoisted to a variable to avoid a nested template literal.
+  const serializedEnvironment = JSON.stringify({env: ENV}).replaceAll(
+    '<',
+    String.raw`\u003c`
+  );
+
   return (
     <Document
       dir={i18n.dir(i18n.language)}
@@ -72,9 +79,7 @@ const App: FC = () => {
     >
       <script
         dangerouslySetInnerHTML={{
-          __html: `window.process = ${JSON.stringify({
-            env: ENV,
-          })}`,
+          __html: `window.process = ${serializedEnvironment}`,
         }}
         nonce={nonce}
       />

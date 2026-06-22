@@ -1,0 +1,33 @@
+name: Config Guard
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  single-doctor-config:
+    name: Single react-doctor config
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      # react-doctor resolves the highest-precedence config file and silently
+      # ignores the rest, so a stray duplicate (e.g. doctor.config.json beside
+      # doctor.config.ts) shadows the canonical config with no warning. This
+      # un-gated check is the backstop for the pre-commit guard of the same name.
+      - name: Assert a single react-doctor config
+        run: |
+          set -eu
+          n=$(find . -maxdepth 1 -type f \( -name 'doctor.config.*' -o -name 'react-doctor.config.*' \) | wc -l | tr -d ' ')
+          if [ "$n" -gt 1 ]; then
+            echo "::error::Multiple react-doctor configs found; keep only doctor.config.ts"
+            find . -maxdepth 1 -type f \( -name 'doctor.config.*' -o -name 'react-doctor.config.*' \)
+            exit 1
+          fi
+          echo "OK: ${n} react-doctor config file(s)"
