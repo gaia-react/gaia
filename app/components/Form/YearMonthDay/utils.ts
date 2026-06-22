@@ -3,22 +3,22 @@ import {z} from 'zod';
 import {range} from '~/utils/array';
 import {formatISO8601Date} from '~/utils/date';
 
-const TODAY = set(new Date(), {
-  hours: 12,
-  milliseconds: 0,
-  minutes: 0,
-  seconds: 0,
-});
+export const getCurrentYear = () => new Date().getFullYear();
 
-const THIS_YEAR = TODAY.getFullYear();
-
-export const YEARS = range(THIS_YEAR - 120, THIS_YEAR - 12).toReversed();
+export const YEARS = range(
+  getCurrentYear() - 120,
+  getCurrentYear() - 12
+).toReversed();
 
 export const MONTHS = range(1, 12);
 
-export const DEFAULT_DATE = set(TODAY, {
+export const DEFAULT_DATE = set(new Date(), {
   date: 1,
+  hours: 12,
+  milliseconds: 0,
+  minutes: 0,
   month: 0,
+  seconds: 0,
   year: 2000,
 });
 
