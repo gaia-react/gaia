@@ -15,4 +15,4 @@ tags: [meta, cache]
 
 ## Active Threads
 
-- None.
+- claude-obsidian PostCompact hot-cache restore is now handled by GAIA's own hooks (`wiki-recompact-{sentinel,inject}.sh`, registered in `.claude/settings.json`), so it no longer depends on the plugin's prompt hook. Optional cleanup: `jq 'del(.hooks.PostCompact)'` on the plugin cache silences a cosmetic "prompt-type hooks not supported" error if one ever shows up.

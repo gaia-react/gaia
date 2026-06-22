@@ -36,6 +36,21 @@
           {
             "type": "command",
             "command": ".claude/hooks/wiki-drift-check.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/wiki-recompact-inject.sh"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/wiki-recompact-sentinel.sh"
           }
         ]
       }

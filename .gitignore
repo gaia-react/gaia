@@ -50,6 +50,7 @@ coverage
 .claude/wiki-drift-checked
 .claude/wiki-safety-checked
 .claude/i18n-strings-checked
+.claude/wiki-recompact-pending
 
 # GAIA release/update working directories
 .gaia/cache
