@@ -14876,14 +14876,14 @@ var resolveRepoRoot = () => {
   }
   return cachedRepoRoot;
 };
-var deriveClaudeSlug = (repoRoot2) => repoRoot2.replaceAll("/", "-");
+var deriveClaudeSlug = (repoRoot) => repoRoot.replaceAll("/", "-");
 var resolveStorageRoots = (args) => {
-  const repoRoot2 = args?.repoRoot ?? resolveRepoRoot();
+  const repoRoot = args?.repoRoot ?? resolveRepoRoot();
   const home = args?.homeDir ?? homedir();
-  const slug = deriveClaudeSlug(repoRoot2);
-  const cloudDir = path2.join(repoRoot2, ".gaia", "local", "telemetry", "cloud");
+  const slug = deriveClaudeSlug(repoRoot);
+  const cloudDir = path2.join(repoRoot, ".gaia", "local", "telemetry", "cloud");
   const analyticsDir = path2.join(
-    repoRoot2,
+    repoRoot,
     ".gaia",
     "local",
     "telemetry",
@@ -14892,7 +14892,7 @@ var resolveStorageRoots = (args) => {
   const claudeProjectDir = path2.join(home, ".claude", "projects", slug, "gaia");
   const mentorshipDir = path2.join(claudeProjectDir, "telemetry", "mentorship");
   const installIdPath = path2.join(claudeProjectDir, "install-id.txt");
-  const projectIdPath = path2.join(repoRoot2, ".gaia", "local", ".project-id");
+  const projectIdPath = path2.join(repoRoot, ".gaia", "local", ".project-id");
   const profilePath = path2.join(claudeProjectDir, "profile.md");
   const memoryDir = path2.join(home, ".claude", "projects", slug, "memory");
   return {
@@ -15012,10 +15012,10 @@ ${body}
 var resolveCachePath = (deps) => {
   if (deps.cachePath !== void 0) return deps.cachePath;
   const roots = deps.roots ?? resolveStorageRoots();
-  const repoRoot2 = path3.dirname(
+  const repoRoot = path3.dirname(
     path3.dirname(path3.dirname(roots.projectIdPath))
   );
-  return path3.join(repoRoot2, ".gaia", "cache", "coaching-active.txt");
+  return path3.join(repoRoot, ".gaia", "cache", "coaching-active.txt");
 };
 var markCoachingActive = (cachePath) => {
   const parent = path3.dirname(cachePath);
@@ -15090,7 +15090,7 @@ import { existsSync as existsSync5, readFileSync as readFileSync3 } from "node:f
 // src/automation/paths.ts
 import path4 from "node:path";
 import { fileURLToPath } from "node:url";
-var automationConfigPath = (repoRoot2) => path4.join(repoRoot2, ".gaia", "automation.json");
+var automationConfigPath = (repoRoot) => path4.join(repoRoot, ".gaia", "automation.json");
 var TEMPLATES_RELATIVE_DIR = path4.join("templates", "workflows");
 var resolveTemplatesDirectory = () => {
   const here = fileURLToPath(import.meta.url);
@@ -15141,8 +15141,8 @@ var TOOL_ID_TO_CONFIG_KEY = {
   "update-deps": "update_deps",
   wiki: "wiki"
 };
-var readAutomationConfig = (repoRoot2) => {
-  const filePath = automationConfigPath(repoRoot2);
+var readAutomationConfig = (repoRoot) => {
+  const filePath = automationConfigPath(repoRoot);
   if (!existsSync5(filePath)) return { status: "missing" };
   let raw;
   try {
@@ -15407,9 +15407,9 @@ var run2 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -15418,7 +15418,7 @@ var run2 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const configResult = readAutomationConfig(repoRoot2);
+  const configResult = readAutomationConfig(repoRoot);
   if (configResult.status === "missing") {
     structuredError({
       code: "config_missing",
@@ -15583,9 +15583,9 @@ var run4 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -15594,7 +15594,7 @@ var run4 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const result = readAutomationConfig(repoRoot2);
+  const result = readAutomationConfig(repoRoot);
   if (result.status === "missing") {
     structuredError({
       code: "config_missing",
@@ -15853,9 +15853,9 @@ var run5 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -15864,11 +15864,11 @@ var run5 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const configResult = readAutomationConfig(repoRoot2);
+  const configResult = readAutomationConfig(repoRoot);
   if (configResult.status === "missing") {
     structuredError({
       code: "config_missing",
-      message: `.gaia/automation.json not found under ${repoRoot2}`,
+      message: `.gaia/automation.json not found under ${repoRoot}`,
       path: ".gaia/automation.json",
       subcommand: "automation render-workflows"
     });
@@ -16293,9 +16293,9 @@ var run9 = (argv, options = {}) => {
 // src/setup-ci/util/automation-write.ts
 import { mkdirSync as mkdirSync6, renameSync as renameSync2, writeFileSync as writeFileSync5 } from "node:fs";
 import path10 from "node:path";
-var writeAutomationConfig = (repoRoot2, payload) => {
+var writeAutomationConfig = (repoRoot, payload) => {
   AutomationConfigSchema.parse(payload);
-  const target = automationConfigPath(repoRoot2);
+  const target = automationConfigPath(repoRoot);
   mkdirSync6(path10.dirname(target), { recursive: true });
   const serialized = `${JSON.stringify(payload, null, 2)}
 `;
@@ -19441,15 +19441,15 @@ var listGitFiles = (cwd) => execFileSync2("git", ["ls-files"], {
   stdio: ["ignore", "pipe", "pipe"]
 }).split("\n").filter((line) => line.length > 0);
 var buildManifest = (cwd, options = {}) => {
-  const repoRoot2 = options.repoRoot ?? resolveRepoRoot3(cwd);
-  const versionPath = path23.resolve(repoRoot2, ".gaia/VERSION");
-  const excludePath = path23.resolve(repoRoot2, ".gaia/release-exclude");
+  const repoRoot = options.repoRoot ?? resolveRepoRoot3(cwd);
+  const versionPath = path23.resolve(repoRoot, ".gaia/VERSION");
+  const excludePath = path23.resolve(repoRoot, ".gaia/release-exclude");
   const version2 = readFileSync20(versionPath, "utf8").trim();
   const excludePatterns = parseExcludePatterns(
     readFileSync20(excludePath, "utf8")
   );
   const isExcluded = (candidate) => excludePatterns.some((pattern) => pattern.test(candidate));
-  const tracked = listGitFiles(repoRoot2);
+  const tracked = listGitFiles(repoRoot);
   const entries = [];
   for (const relativePath of tracked) {
     if (isExcluded(relativePath)) continue;
@@ -19566,14 +19566,14 @@ var renderCheckReport = (result, jsonMode) => {
 `;
 };
 var runCheck = (cwd, generatedAt, jsonMode) => {
-  let repoRoot2;
+  let repoRoot;
   let expected;
   let excludePatterns;
   try {
-    repoRoot2 = resolveRepoRoot3(cwd);
-    expected = buildManifest(cwd, { generatedAt, repoRoot: repoRoot2 });
+    repoRoot = resolveRepoRoot3(cwd);
+    expected = buildManifest(cwd, { generatedAt, repoRoot });
     excludePatterns = parseExcludePatterns(
-      readFileSync20(path23.resolve(repoRoot2, ".gaia/release-exclude"), "utf8")
+      readFileSync20(path23.resolve(repoRoot, ".gaia/release-exclude"), "utf8")
     );
   } catch (error51) {
     structuredError({
@@ -19583,7 +19583,7 @@ var runCheck = (cwd, generatedAt, jsonMode) => {
     });
     return UNEXPECTED_EXIT12;
   }
-  const manifestPath = path23.resolve(repoRoot2, ".gaia/manifest.json");
+  const manifestPath = path23.resolve(repoRoot, ".gaia/manifest.json");
   if (!existsSync21(manifestPath)) {
     structuredError({
       code: "manifest_missing",
@@ -19676,12 +19676,12 @@ var run32 = (argv, options = {}) => {
     return runCheck(cwd, options.generatedAt, parsed.flags.json);
   }
   let manifest;
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot3(cwd);
+    repoRoot = resolveRepoRoot3(cwd);
     manifest = buildManifest(cwd, {
       generatedAt: options.generatedAt,
-      repoRoot: repoRoot2
+      repoRoot
     });
   } catch (error51) {
     structuredError({
@@ -19696,7 +19696,7 @@ var run32 = (argv, options = {}) => {
     process.stdout.write(serialized);
     return EXIT_CODES.OK;
   }
-  const target = parsed.flags.outPath ? path23.isAbsolute(parsed.flags.outPath) ? parsed.flags.outPath : path23.join(cwd, parsed.flags.outPath) : path23.join(repoRoot2, ".gaia", "manifest.json");
+  const target = parsed.flags.outPath ? path23.isAbsolute(parsed.flags.outPath) ? parsed.flags.outPath : path23.join(cwd, parsed.flags.outPath) : path23.join(repoRoot, ".gaia", "manifest.json");
   if (!existsSync21(path23.dirname(target))) {
     structuredError({
       code: "output_dir_missing",
@@ -19828,9 +19828,9 @@ var run33 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -19839,21 +19839,21 @@ var run33 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path24.join(repoRoot2, "wiki");
+  const wikiRoot = path24.join(repoRoot, "wiki");
   const statePath = path24.join(wikiRoot, ".state.json");
   const stateFile = readStateFile(statePath);
   const stateSha = stateFile?.last_evaluated_sha ?? "";
   const stateAt = stateFile?.last_evaluated_at ?? "";
-  const head = headSha(repoRoot2);
-  const headShort = shortSha(head, repoRoot2);
-  const stateShort = stateSha === "" ? "" : shortSha(stateSha, repoRoot2);
-  const reachable = stateSha !== "" && isReachable(stateSha, repoRoot2);
-  const ahead = stateSha === "" || !reachable ? 0 : commitsAhead(stateSha, repoRoot2);
-  const recent = stateSha === "" || !reachable ? [] : recentCommits(stateSha, repoRoot2, 5);
+  const head = headSha(repoRoot);
+  const headShort = shortSha(head, repoRoot);
+  const stateShort = stateSha === "" ? "" : shortSha(stateSha, repoRoot);
+  const reachable = stateSha !== "" && isReachable(stateSha, repoRoot);
+  const ahead = stateSha === "" || !reachable ? 0 : commitsAhead(stateSha, repoRoot);
+  const recent = stateSha === "" || !reachable ? [] : recentCommits(stateSha, repoRoot, 5);
   const severity = classifySeverity(ahead);
   const counts = countDomainPages(wikiRoot);
-  const suggestedFull = !reachable && stateAt !== "" ? ancestorBefore(stateAt, repoRoot2) : "";
-  const suggestedBase = suggestedFull === "" ? "" : shortSha(suggestedFull, repoRoot2);
+  const suggestedFull = !reachable && stateAt !== "" ? ancestorBefore(stateAt, repoRoot) : "";
+  const suggestedBase = suggestedFull === "" ? "" : shortSha(suggestedFull, repoRoot);
   const state = {
     commits_ahead: ahead,
     drift_severity: severity,
@@ -23546,14 +23546,16 @@ import path28 from "node:path";
 var ensureDir = (absPath) => {
   mkdirSync12(absPath, { recursive: true });
 };
-var writeFileIfAbsent = (absPath, contents) => {
+var writeFileIfAbsent = (absPath, contents, options = {}) => {
   if (existsSync24(absPath)) {
     const existing = readFileSync25(absPath, "utf8");
     if (existing === contents) return { written: false };
     throw new Error(`refusing to overwrite ${absPath}`);
   }
-  ensureDir(path28.dirname(absPath));
-  atomicWriteFileSync(absPath, contents);
+  if (options.dryRun !== true) {
+    ensureDir(path28.dirname(absPath));
+    atomicWriteFileSync(absPath, contents);
+  }
   return { written: true };
 };
 
@@ -23988,8 +23990,8 @@ var run40 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const repoRoot2 = options.repoRoot ?? resolveRepoRoot4();
-  const hooksDir = path30.join(repoRoot2, "app", "hooks");
+  const repoRoot = options.repoRoot ?? resolveRepoRoot4();
+  const hooksDir = path30.join(repoRoot, "app", "hooks");
   const hookFilePath = path30.join(hooksDir, `${name}.ts`);
   const testFilePath = path30.join(hooksDir, "tests", `${name}.test.ts`);
   let result;
@@ -24029,6 +24031,7 @@ var HELP_TEXT29 = `Usage: gaia scaffold route <name> --group <_public+|_session+
   --loader    emit a loader stub
   --action    emit an action stub
   --i18n      emit a locale file and wire the locale barrel
+  --dry-run   print what would be written without touching the filesystem
   --json      print ScaffoldResult as JSON
 `;
 var userError = (message, subcommand = "scaffold route") => {
@@ -24038,6 +24041,7 @@ var userError = (message, subcommand = "scaffold route") => {
 var parseFlags18 = (rest) => {
   const flags = {
     action: false,
+    dryRun: false,
     group: null,
     i18n: false,
     json: false,
@@ -24056,6 +24060,8 @@ var parseFlags18 = (rest) => {
       flags.action = true;
     } else if (flag === "--i18n") {
       flags.i18n = true;
+    } else if (flag === "--dry-run") {
+      flags.dryRun = true;
     } else if (flag === "--json") {
       flags.json = true;
     } else {
@@ -24073,18 +24079,14 @@ var toCamelCase = (kebab) => {
     ...rest.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
   ].join("");
 };
-var repoRoot = () => {
-  const here = fileURLToPath4(import.meta.url);
-  return path31.resolve(path31.dirname(here), "..", "..", "..", "..");
-};
 var templateDir = () => {
   const here = fileURLToPath4(import.meta.url);
   return path31.join(path31.dirname(here), "templates", "route");
 };
-var insertIntoLocaleBarrel = (barrelPath, importName, folderName) => {
+var insertIntoLocaleBarrel = (barrelPath, importName, moduleName, dryRun) => {
   if (!existsSync26(barrelPath)) return "missing";
   const original = readFileSync26(barrelPath, "utf8");
-  const importLine = `import ${importName} from './${folderName}';`;
+  const importLine = `import ${importName} from './${moduleName}';`;
   if (original.includes(importLine)) return "present";
   const lines = original.split("\n");
   const importLines = [];
@@ -24154,7 +24156,7 @@ var insertIntoLocaleBarrel = (barrelPath, importName, folderName) => {
       `locale barrel edit did not apply cleanly to ${barrelPath}: expected import "${importName}" and a matching default-export entry. Add the entries by hand or fix the barrel shape.`
     );
   }
-  atomicWriteFileSync(barrelPath, next);
+  if (!dryRun) atomicWriteFileSync(barrelPath, next);
   return "inserted";
 };
 var templatePaths = () => {
@@ -24173,7 +24175,9 @@ var resolveNames = (kebabName, group) => {
   return {
     groupSegment: segment,
     i18nKey: toCamelCase(kebabName),
-    pageName: pascal,
+    // Page folder, component, and the route's import use the `<Pascal>Page`
+    // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
+    pageName: `${pascal}Page`,
     routeName: pascal
   };
 };
@@ -24188,27 +24192,37 @@ var buildRouteVars = (names, flags, kebabName) => ({
   routeFile: kebabName,
   routeName: names.routeName
 });
-var writeFile = (result, absPath, contents) => {
-  const { written } = writeFileIfAbsent(absPath, contents);
+var writeFile = (result, absPath, contents, dryRun) => {
+  const { written } = writeFileIfAbsent(absPath, contents, { dryRun });
   if (written) {
     result.written.push(absPath);
   } else {
     result.skipped.push(absPath);
   }
 };
-var printHumanReadable = (result) => {
-  for (const file2 of result.written) process.stdout.write(`written  ${file2}
+var printHumanReadable = (result, dryRun) => {
+  if (dryRun) process.stdout.write("dry-run: no files written\n");
+  const writeLabel = dryRun ? "would write" : "written";
+  const editLabel = dryRun ? "would edit" : "edited";
+  const pad = (label) => label.padEnd(11);
+  for (const file2 of result.written) {
+    process.stdout.write(`${pad(writeLabel)} ${file2}
 `);
-  for (const file2 of result.edited) process.stdout.write(`edited   ${file2}
+  }
+  for (const file2 of result.edited) {
+    process.stdout.write(`${pad(editLabel)} ${file2}
 `);
-  for (const file2 of result.skipped) process.stdout.write(`skipped  ${file2}
+  }
+  for (const file2 of result.skipped) {
+    process.stdout.write(`${pad("skipped")} ${file2}
 `);
+  }
 };
 var printJson = (result) => {
   process.stdout.write(`${JSON.stringify(result)}
 `);
 };
-var run41 = (rest) => {
+var run41 = (rest, options = {}) => {
   const [first] = rest;
   if (first === void 0 || first === "--help" || first === "-h") {
     process.stdout.write(HELP_TEXT29);
@@ -24232,7 +24246,8 @@ var run41 = (rest) => {
       `--group must be one of: _public+, _session+ (got "${flags.group}")`
     );
   }
-  const root = repoRoot();
+  const root = options.cwd ?? process.cwd();
+  const { dryRun } = flags;
   const names = resolveNames(name, flags.group);
   const tmpls = templatePaths();
   const result = { edited: [], skipped: [], written: [] };
@@ -24245,7 +24260,7 @@ var run41 = (rest) => {
       flags.group,
       `${name}.tsx`
     );
-    writeFile(result, routeAbs, renderTemplate(tmpls.route, routeVars));
+    writeFile(result, routeAbs, renderTemplate(tmpls.route, routeVars), dryRun);
     const pageDir = path31.join(
       root,
       "app",
@@ -24263,17 +24278,20 @@ var run41 = (rest) => {
     writeFile(
       result,
       path31.join(pageDir, "index.tsx"),
-      renderTemplate(tmpls.pageIndex, pageVars)
+      renderTemplate(tmpls.pageIndex, pageVars),
+      dryRun
     );
     writeFile(
       result,
       path31.join(pageDir, "tests", "index.test.tsx"),
-      renderTemplate(tmpls.pageTest, pageVars)
+      renderTemplate(tmpls.pageTest, pageVars),
+      dryRun
     );
     writeFile(
       result,
       path31.join(pageDir, "tests", "index.stories.tsx"),
-      renderTemplate(tmpls.pageStories, pageVars)
+      renderTemplate(tmpls.pageStories, pageVars),
+      dryRun
     );
     if (flags.i18n) {
       const localeFile = path31.join(
@@ -24282,15 +24300,19 @@ var run41 = (rest) => {
         "languages",
         "en",
         "pages",
-        names.pageName,
-        "index.ts"
+        `${name}.ts`
       );
       const localeVars = {
         i18nKey: names.i18nKey,
         pageName: names.pageName,
         routeName: name
       };
-      writeFile(result, localeFile, renderTemplate(tmpls.locale, localeVars));
+      writeFile(
+        result,
+        localeFile,
+        renderTemplate(tmpls.locale, localeVars),
+        dryRun
+      );
       const localeBarrel = path31.join(
         root,
         "app",
@@ -24303,16 +24325,22 @@ var run41 = (rest) => {
       const status = insertIntoLocaleBarrel(
         localeBarrel,
         importName,
-        names.pageName
+        name,
+        dryRun
       );
       if (status === "inserted") result.edited.push(localeBarrel);
       else if (status === "present") result.skipped.push(localeBarrel);
+      else {
+        return userError(
+          `locale barrel not found at ${localeBarrel}; the locale file was written but its import was not wired. Run from the repo root, or add "import ${importName} from './${name}';" to the barrel by hand.`
+        );
+      }
     }
   } catch (error51) {
     return userError(error51 instanceof Error ? error51.message : String(error51));
   }
   if (flags.json) printJson(result);
-  else printHumanReadable(result);
+  else printHumanReadable(result, dryRun);
   return EXIT_CODES.OK;
 };
 
@@ -24636,9 +24664,9 @@ var writeRendered = (absPath, contents, result) => {
   }
 };
 var emitServiceFiles = (context, result) => {
-  const { derived, endpoints, fields, repoRoot: repoRoot2 } = context;
+  const { derived, endpoints, fields, repoRoot } = context;
   const serviceDir = path32.join(
-    repoRoot2,
+    repoRoot,
     "app",
     "services",
     "gaia",
@@ -24674,8 +24702,8 @@ var emitServiceFiles = (context, result) => {
   writeRendered(path32.join(serviceDir, "index.ts"), indexBody, result);
 };
 var emitMockFiles = (context, result) => {
-  const { derived, endpoints, fields, repoRoot: repoRoot2 } = context;
-  const mockDir = path32.join(repoRoot2, "test", "mocks", derived.name);
+  const { derived, endpoints, fields, repoRoot } = context;
+  const mockDir = path32.join(repoRoot, "test", "mocks", derived.name);
   ensureDir(mockDir);
   const baseVars = {
     NAME_UPPER: derived.NAME_UPPER,
@@ -24723,7 +24751,7 @@ var emitMockFiles = (context, result) => {
     ...composeMockBarrel(endpoints)
   });
   writeRendered(path32.join(mockDir, "index.ts"), barrelBody, result);
-  const databasePath = path32.join(repoRoot2, "test", "mocks", "database.ts");
+  const databasePath = path32.join(repoRoot, "test", "mocks", "database.ts");
   if (existsSync27(databasePath)) {
     const { written } = updateDatabaseBarrel(databasePath, derived);
     if (written) result.edited.push(databasePath);
@@ -24843,9 +24871,9 @@ var SETUP_STEPS = [
   "mentorship-decision"
 ];
 var isSetupStep = (value) => SETUP_STEPS.includes(value);
-var resolveStateFilePath = (repoRoot2) => path33.join(repoRoot2, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
-var readStateFile2 = (repoRoot2) => {
-  const filePath = resolveStateFilePath(repoRoot2);
+var resolveStateFilePath = (repoRoot) => path33.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
+var readStateFile2 = (repoRoot) => {
+  const filePath = resolveStateFilePath(repoRoot);
   if (!existsSync28(filePath)) return null;
   const raw = readFileSync28(filePath, "utf8");
   const parsed = JSON.parse(raw);
@@ -24871,8 +24899,8 @@ var readStateFile2 = (repoRoot2) => {
     version: 1
   };
 };
-var writeStateFile = (repoRoot2, state) => {
-  const filePath = resolveStateFilePath(repoRoot2);
+var writeStateFile = (repoRoot, state) => {
+  const filePath = resolveStateFilePath(repoRoot);
   const parent = path33.dirname(filePath);
   if (!existsSync28(parent)) {
     mkdirSync13(parent, { mode: 493, recursive: true });
@@ -24914,9 +24942,9 @@ var run44 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
+    repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -24927,7 +24955,7 @@ var run44 = (argv, options = {}) => {
   }
   let state;
   try {
-    state = readStateFile2(repoRoot2);
+    state = readStateFile2(repoRoot);
   } catch (error51) {
     structuredError({
       code: "state_malformed",
@@ -24955,7 +24983,7 @@ var run44 = (argv, options = {}) => {
     version: 1
   };
   next.completed_at = isoNow;
-  writeStateFile(repoRoot2, next);
+  writeStateFile(repoRoot, next);
   process.stdout.write(
     `${JSON.stringify({
       code: "setup_finalized",
@@ -25239,9 +25267,9 @@ var run46 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
+    repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -25254,7 +25282,7 @@ var run46 = (argv, options = {}) => {
   const isoNow = nowDate.toISOString();
   let state;
   try {
-    state = readStateFile2(repoRoot2);
+    state = readStateFile2(repoRoot);
   } catch (error51) {
     structuredError({
       code: "state_malformed",
@@ -25272,7 +25300,7 @@ var run46 = (argv, options = {}) => {
   if (!next.completed_steps.includes(first)) {
     next.completed_steps = [...next.completed_steps, first];
   }
-  writeStateFile(repoRoot2, next);
+  writeStateFile(repoRoot, next);
   process.stdout.write(
     `${JSON.stringify({
       code: "setup_step_recorded",
@@ -25331,9 +25359,9 @@ var run47 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
+    repoRoot = resolveMainWorktreeRoot(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -25344,7 +25372,7 @@ var run47 = (argv, options = {}) => {
   }
   let state;
   try {
-    state = readStateFile2(repoRoot2);
+    state = readStateFile2(repoRoot);
   } catch (error51) {
     structuredError({
       code: "state_malformed",
@@ -25437,8 +25465,8 @@ var readOrCreateProjectId = (roots) => {
   if (!existsSync30(parent)) {
     mkdirSync15(parent, { mode: 493, recursive: true });
   }
-  const repoRoot2 = repoRootFromProjectIdPath(filePath);
-  const id = deriveProjectId(repoRoot2);
+  const repoRoot = repoRootFromProjectIdPath(filePath);
+  const id = deriveProjectId(repoRoot);
   writeFileSync9(filePath, `${id}
 `, { mode: 420 });
   return id;
@@ -25563,8 +25591,8 @@ var isoDateUtc = (date5) => {
   return `${year}-${month}-${day}`;
 };
 var readGaiaVersion = (roots) => {
-  const repoRoot2 = repoRootFromProjectIdPath(roots.projectIdPath);
-  const packagePath = path36.join(repoRoot2, "package.json");
+  const repoRoot = repoRootFromProjectIdPath(roots.projectIdPath);
+  const packagePath = path36.join(repoRoot, "package.json");
   if (!existsSync31(packagePath)) return "unknown";
   try {
     const raw = readFileSync30(packagePath, "utf8");
@@ -28666,11 +28694,11 @@ var begin = (argv, options) => {
   }
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner5;
-  const repoRoot2 = resolveRoot(cwd, "begin");
-  if (repoRoot2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  const repoRoot = resolveRoot(cwd, "begin");
+  if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   let branch;
   try {
-    branch = currentBranch(repoRoot2, runner);
+    branch = currentBranch(repoRoot, runner);
   } catch (error51) {
     process.stderr.write(
       `chain: ${error51 instanceof Error ? error51.message : String(error51)}
@@ -28688,14 +28716,14 @@ var begin = (argv, options) => {
       "chain begin: refusing to start a wiki chain on main; pass --branch-aware or check out a feature branch"
     );
   }
-  const shortHead = resolveShortHead(runner, repoRoot2);
+  const shortHead = resolveShortHead(runner, repoRoot);
   if (shortHead === null) {
     process.stderr.write("chain: could not resolve HEAD\n");
     return UNEXPECTED_EXIT17;
   }
   const branchName = `${WIKI_CHAIN_BRANCH_PREFIX}${options.today ?? todayUtc3()}-${shortHead}`;
   const args = ["checkout", "-b", branchName];
-  const result = runner("git", args, { cwd: repoRoot2 });
+  const result = runner("git", args, { cwd: repoRoot });
   if (!stepOk(result)) return passthroughFailure3(result, "git", args);
   process.stdout.write(`chain begin: started ${branchName}
 `);
@@ -28713,11 +28741,11 @@ var commit = (argv, options) => {
   }
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner5;
-  const repoRoot2 = resolveRoot(cwd, "commit");
-  if (repoRoot2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  const repoRoot = resolveRoot(cwd, "commit");
+  if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   let workingTree;
   try {
-    workingTree = inspectWorkingTree(repoRoot2, runner);
+    workingTree = inspectWorkingTree(repoRoot, runner);
   } catch (error51) {
     process.stderr.write(
       `chain: ${error51 instanceof Error ? error51.message : String(error51)}
@@ -28733,12 +28761,12 @@ var commit = (argv, options) => {
     return EXIT_CODES.OK;
   }
   const addArgs = ["add", "wiki"];
-  const addResult = runner("git", addArgs, { cwd: repoRoot2 });
+  const addResult = runner("git", addArgs, { cwd: repoRoot });
   if (!stepOk(addResult)) return passthroughFailure3(addResult, "git", addArgs);
   const commitArgs = ["commit", "-m", parsed.label];
-  const commitResult = runner("git", commitArgs, { cwd: repoRoot2 });
+  const commitResult = runner("git", commitArgs, { cwd: repoRoot });
   if (!stepOk(commitResult)) {
-    runner("git", ["reset", "HEAD", "--", "wiki"], { cwd: repoRoot2 });
+    runner("git", ["reset", "HEAD", "--", "wiki"], { cwd: repoRoot });
     return passthroughFailure3(commitResult, "git", commitArgs);
   }
   process.stdout.write(`chain commit: ${parsed.label}
@@ -28757,11 +28785,11 @@ var finish = (argv, options) => {
   }
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner5;
-  const repoRoot2 = resolveRoot(cwd, "finish");
-  if (repoRoot2 === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  const repoRoot = resolveRoot(cwd, "finish");
+  if (repoRoot === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   let branch;
   try {
-    branch = currentBranch(repoRoot2, runner);
+    branch = currentBranch(repoRoot, runner);
   } catch (error51) {
     process.stderr.write(
       `chain: ${error51 instanceof Error ? error51.message : String(error51)}
@@ -28776,15 +28804,15 @@ var finish = (argv, options) => {
     );
     return EXIT_CODES.OK;
   }
-  const base = defaultBranch(repoRoot2, runner);
+  const base = defaultBranch(repoRoot, runner);
   const countArgs = ["rev-list", "--count", `${base}..HEAD`];
-  const countResult = runner("git", countArgs, { cwd: repoRoot2 });
+  const countResult = runner("git", countArgs, { cwd: repoRoot });
   if (!stepOk(countResult)) return passthroughFailure3(countResult, "git", countArgs);
   const ahead = Number.parseInt((countResult.stdout ?? "").trim(), 10);
   if (!Number.isNaN(ahead) && ahead === 0) {
     let dirty = true;
     try {
-      const tree = inspectWorkingTree(repoRoot2, runner);
+      const tree = inspectWorkingTree(repoRoot, runner);
       dirty = tree.hasWikiChanges || tree.hasNonWikiChanges;
     } catch {
       dirty = true;
@@ -28797,17 +28825,17 @@ var finish = (argv, options) => {
       return EXIT_CODES.OK;
     }
     const checkoutArgs = ["checkout", base];
-    const checkoutResult = runner("git", checkoutArgs, { cwd: repoRoot2 });
+    const checkoutResult = runner("git", checkoutArgs, { cwd: repoRoot });
     if (!stepOk(checkoutResult))
       return passthroughFailure3(checkoutResult, "git", checkoutArgs);
-    runner("git", ["branch", "-D", branch], { cwd: repoRoot2 });
+    runner("git", ["branch", "-D", branch], { cwd: repoRoot });
     process.stdout.write(
       `chain finish: nothing to land; removed empty branch ${branch}
 `
     );
     return EXIT_CODES.OK;
   }
-  const shortHead = resolveShortHead(runner, repoRoot2) ?? branch;
+  const shortHead = resolveShortHead(runner, repoRoot) ?? branch;
   const prTitle = `wiki: maintenance chain through ${shortHead}`;
   const prBody = `Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via \`gaia wiki chain finish\`.`;
   const remoteSequence = [
@@ -28819,10 +28847,10 @@ var finish = (argv, options) => {
     { args: ["pr", "merge", "--squash", "--auto"], command: "gh" }
   ];
   for (const step of remoteSequence) {
-    const result = runner(step.command, step.args, { cwd: repoRoot2 });
+    const result = runner(step.command, step.args, { cwd: repoRoot });
     if (!stepOk(result)) return passthroughFailure3(result, step.command, step.args);
   }
-  runner("git", ["checkout", base], { cwd: repoRoot2 });
+  runner("git", ["checkout", base], { cwd: repoRoot });
   process.stdout.write(
     `chain finish: opened PR for ${branch} and enabled auto-merge
 `
@@ -29039,9 +29067,9 @@ var run56 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -29052,7 +29080,7 @@ var run56 = (argv, options = {}) => {
   }
   let details;
   try {
-    details = commitDetails(parsed.flags.since, repoRoot2);
+    details = commitDetails(parsed.flags.since, repoRoot);
   } catch (error51) {
     structuredError({
       code: "git_failed",
@@ -29825,9 +29853,9 @@ var run61 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -29836,7 +29864,7 @@ var run61 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const logPath = path47.join(repoRoot2, "wiki", "log.md");
+  const logPath = path47.join(repoRoot, "wiki", "log.md");
   if (!existsSync35(logPath)) {
     structuredError({
       code: "log_missing",
@@ -30001,9 +30029,9 @@ var run62 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -30012,7 +30040,7 @@ var run62 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path48.join(repoRoot2, "wiki");
+  const wikiRoot = path48.join(repoRoot, "wiki");
   const domainGroups = collectDomainSlugs(wikiRoot);
   const collisions = findCollisions(domainGroups, parsed.flags.maxDistance);
   if (collisions.length === 0) return EXIT_CODES.OK;
@@ -30175,8 +30203,8 @@ var printHuman6 = (index) => {
 `);
 };
 var computePageIndex = (cwd) => {
-  const repoRoot2 = resolveRepoRoot2(cwd);
-  const wikiRoot = path49.join(repoRoot2, "wiki");
+  const repoRoot = resolveRepoRoot2(cwd);
+  const wikiRoot = path49.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   return buildIndex(pages, rootSources);
@@ -30199,9 +30227,9 @@ var run63 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -30210,7 +30238,7 @@ var run63 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiRoot = path49.join(repoRoot2, "wiki");
+  const wikiRoot = path49.join(repoRoot, "wiki");
   const pages = collectPages(wikiRoot);
   const rootSources = collectRootLinkSources(wikiRoot);
   const index = buildIndex(pages, rootSources);
@@ -30347,9 +30375,9 @@ var run65 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const [field, valueRaw] = positional;
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -30358,7 +30386,7 @@ var run65 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const statePath = path50.join(repoRoot2, "wiki", ".state.json");
+  const statePath = path50.join(repoRoot, "wiki", ".state.json");
   if (!existsSync38(statePath)) {
     structuredError({
       code: "state_missing",
@@ -30454,9 +30482,9 @@ var run66 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const ref = positional[0];
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(options.cwd ?? process.cwd());
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -30465,7 +30493,7 @@ var run66 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const fullSha = resolveFullSha(ref, repoRoot2);
+  const fullSha = resolveFullSha(ref, repoRoot);
   if (fullSha === null) {
     structuredError({
       code: "sha_unresolvable",
@@ -30474,7 +30502,7 @@ var run66 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const wikiDir = path51.join(repoRoot2, "wiki");
+  const wikiDir = path51.join(repoRoot, "wiki");
   const statePath = path51.join(wikiDir, ".state.json");
   if (existsSync39(statePath)) {
     structuredError({
@@ -30627,9 +30655,9 @@ var run67 = (argv, options = {}) => {
   }
   const cwdOption = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner5;
-  let repoRoot2;
+  let repoRoot;
   try {
-    repoRoot2 = resolveRepoRoot2(cwdOption);
+    repoRoot = resolveRepoRoot2(cwdOption);
   } catch {
     structuredError({
       code: "not_a_git_repo",
@@ -30641,8 +30669,8 @@ var run67 = (argv, options = {}) => {
   let branch;
   let workingTree;
   try {
-    branch = currentBranch(repoRoot2, runner);
-    workingTree = inspectWorkingTree(repoRoot2, runner);
+    branch = currentBranch(repoRoot, runner);
+    workingTree = inspectWorkingTree(repoRoot, runner);
   } catch (error51) {
     process.stderr.write(
       `sync-land: ${error51 instanceof Error ? error51.message : String(error51)}
@@ -30663,8 +30691,8 @@ var run67 = (argv, options = {}) => {
   }
   let shortHead;
   try {
-    const head = spawnHead(runner, repoRoot2);
-    shortHead = shortSha(head, repoRoot2);
+    const head = spawnHead(runner, repoRoot);
+    shortHead = shortSha(head, repoRoot);
   } catch (error51) {
     process.stderr.write(
       `sync-land: ${error51 instanceof Error ? error51.message : String(error51)}
@@ -30673,7 +30701,7 @@ var run67 = (argv, options = {}) => {
     return UNEXPECTED_EXIT17;
   }
   const ctx = {
-    cwd: repoRoot2,
+    cwd: repoRoot,
     originalBranch: branch,
     runner,
     shortHead
