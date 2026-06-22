@@ -39,7 +39,7 @@ Caret ranges (`^x.y.z`) are kept in `package.json`. The lockfile is the authorit
 
 ## Override audit
 
-Overrides drift. The `update-deps` skill's Phase 0 toggles each `overrides` key out, runs `pnpm install`, scans `pnpm ls` for peer-dep errors, and removes any override that is no longer needed. Phase 6 re-checks retained overrides after a wave updates surrounding packages.
+Overrides drift. The `update-deps` skill's Phase 0 toggles each `overrides` key out, re-resolves with `pnpm dedupe`, then runs two tests, `pnpm ls` for peer-dep errors and `pnpm audit` for reintroduced advisories, and removes only an override that regresses neither. Phase 6 re-checks retained overrides after a wave updates surrounding packages. The re-resolution primitive is `pnpm dedupe`, not `pnpm install`: an overrides-only change does not re-resolve under `pnpm install`, which short-circuits with "Already up to date" and leaves the floor unapplied. See [[pnpm-overrides]].
 
 ## Release-age-aware version selection
 

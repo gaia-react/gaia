@@ -40,7 +40,7 @@ This local check is read-only. GAIA CI's automation runs its own `pnpm audit` cr
 High/critical advisories surface in the audit's advisory bucket, never in Critical/Important/Suggestions (those are blocking tiers). They are **advisory, not blocking**, like knip's and react-doctor's; they never block the audit marker or [[PR Merge Workflow]]. Per surfaced advisory, the fix path is one of:
 
 1. **Bump**: a `patched_versions` range exists; update the dependency to a patched version.
-2. **Override**: no patched range and the advisory is transitive; pin a safe version via a `pnpm.overrides` entry.
+2. **Override**: no patched range and the advisory is transitive; pin a safe version via an `overrides` entry in `pnpm-workspace.yaml`. Apply it with `pnpm dedupe`, not `pnpm install`, which does not re-resolve an overrides-only change; see [[pnpm-overrides]].
 3. **Acknowledge**: unfixable for now; add the advisory `id` to `.gaia/local/dep-audit-baseline.json` so it is suppressed (count-only) on later reviews.
 
-See [[Code Review Audit Agent]], [[PR Merge Workflow]], [[Quality Gate]].
+See [[Code Review Audit Agent]], [[PR Merge Workflow]], [[Quality Gate]], [[pnpm-overrides]].

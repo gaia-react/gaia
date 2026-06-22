@@ -484,6 +484,7 @@
     "wiki/dependencies/MSW.md": "wiki-owned",
     "wiki/dependencies/Playwright.md": "wiki-owned",
     "wiki/dependencies/pnpm-audit.md": "wiki-owned",
+    "wiki/dependencies/pnpm-overrides.md": "wiki-owned",
     "wiki/dependencies/React Router 7.md": "wiki-owned",
     "wiki/dependencies/React Testing Library.md": "wiki-owned",
     "wiki/dependencies/react-icons.md": "wiki-owned",
