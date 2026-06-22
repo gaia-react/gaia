@@ -37,8 +37,6 @@
     ".claude/hooks/telemetry-task-postuse.sh": "owned",
     ".claude/hooks/wiki-commit-nudge.sh": "owned",
     ".claude/hooks/wiki-drift-check.sh": "owned",
-    ".claude/hooks/wiki-recompact-inject.sh": "owned",
-    ".claude/hooks/wiki-recompact-sentinel.sh": "owned",
     ".claude/hooks/wiki-session-start.sh": "owned",
     ".claude/hooks/wiki-session-stop.sh": "owned",
     ".claude/hooks/wiki-squash-autocommits.sh": "owned",
@@ -181,7 +179,6 @@
     ".github/ISSUE_TEMPLATE/feature_request.yml": "owned",
     ".github/pull_request_template.md": "owned",
     ".github/workflows/chromatic.yml": "shared",
-    ".github/workflows/config-guard.yml": "shared",
     ".github/workflows/tests.yml": "shared",
     ".gitignore": "owned",
     ".husky/pre-commit": "owned",
@@ -382,7 +379,7 @@
     "app/utils/theme.server.ts": "owned",
     "CLAUDE.md": "shared",
     "Dockerfile": "owned",
-    "doctor.config.ts": "owned",
+    "doctor.config.jsonc": "owned",
     "eslint.config.mjs": "owned",
     "knip.config.ts": "owned",
     "package.json": "shared",
@@ -491,7 +488,6 @@
     "wiki/dependencies/pnpm-overrides.md": "wiki-owned",
     "wiki/dependencies/React Router 7.md": "wiki-owned",
     "wiki/dependencies/React Testing Library.md": "wiki-owned",
-    "wiki/dependencies/react-doctor.md": "wiki-owned",
     "wiki/dependencies/react-icons.md": "wiki-owned",
     "wiki/dependencies/remix-flat-routes.md": "wiki-owned",
     "wiki/dependencies/remix-i18next.md": "wiki-owned",
@@ -527,6 +523,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-22T18:56:34.230Z",
+  "generated": "2026-06-12T12:38:21.111Z",
   "version": "1.6.1"
 }
