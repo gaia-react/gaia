@@ -1,4 +1,4 @@
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {
   existsSync,
   mkdirSync,
@@ -9,104 +9,24 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import {run} from './route.js';
 
 /**
- * The route handler resolves the repo root from `import.meta.url`. To
- * exercise the handler against an isolated tree we mirror the same depth
- * (`<root>/.gaia/cli/src/scaffold/`) inside a temp dir, plant `app/` at
- * the mirrored root, and `chdir` so the relative scaffold paths resolve
- * deterministically.
+ * The route handler resolves output paths from an injectable `cwd` (default
+ * `process.cwd()`) and reads its templates from the module location. We point
+ * `cwd` at a fresh temp dir so the scaffolded `app/` tree lands in isolation,
+ * and let the real shipped templates render unchanged.
  */
 type Sandbox = {
   cleanup: () => void;
   fakeRoot: string;
 };
 
-const HERE = fileURLToPath(import.meta.url);
-const TEMPLATES_DIR = path.join(path.dirname(HERE), 'templates', 'route');
-const ROUTE_HANDLER_DEPTH_FROM_ROOT = ['.gaia', 'cli', 'src', 'scaffold'];
-
-/**
- * Construct a temporary "repo root" with a mirrored `.gaia/cli/src/scaffold/`
- * directory containing copies of the route templates. The handler resolves
- * its template directory and repo root via `import.meta.url`; we stub
- * `import.meta.url` by spying on `fileURLToPath` is brittle, so instead we
- * test the handler by directly constructing inputs that match its
- * `repoRoot()` calculation. We do that by chdir-ing, but the handler does
- * not use cwd. Instead, we test the handler by invoking it with a
- * monkey-patched module path is overkill. Use a simpler strategy: spy on
- * `fileURLToPath` is hard since it's read at module load.
- *
- * Pragmatic alternative: write the inputs the handler will write to under
- * the real repo (a subfolder we own), assert outputs, then clean up. We
- * keep this test scoped to the temp scaffold directory by parameterizing
- * the handler indirectly through a minimal in-process integration: use a
- * subprocess of the actual handler with `--json` and an isolated `cwd`
- * that has the right structure.
- *
- * Implementation: spawn a fresh module load of `route.ts` with patched
- * `import.meta.url` is not feasible via plain vi mocks. Instead, since
- * `route.ts` derives root from `import.meta.url` once per call (inside
- * `repoRoot()`), we mock `node:url`'s `fileURLToPath` for the duration of
- * each test to return a controlled path that puts the handler's "root" at
- * our temp dir.
- */
-
-vi.mock('node:url', async () => {
-  const actual = await vi.importActual<typeof import('node:url')>('node:url');
-
-  return {
-    ...actual,
-    fileURLToPath: (input: string | URL): string => {
-      const real = actual.fileURLToPath(input);
-      const override = (globalThis as {__gaiaRouteRoot?: string})
-        .__gaiaRouteRoot;
-
-      if (override !== undefined && real.includes('/scaffold/')) {
-        return path.join(
-          override,
-          ...ROUTE_HANDLER_DEPTH_FROM_ROOT,
-          'route.ts'
-        );
-      }
-
-      return real;
-    },
-  };
-});
-
 const setupSandbox = (): Sandbox => {
   const fakeRoot = mkdtempSync(path.join(tmpdir(), 'gaia-route-'));
-  const scaffoldDir = path.join(
-    fakeRoot,
-    ...ROUTE_HANDLER_DEPTH_FROM_ROOT,
-    'templates',
-    'route'
-  );
-  mkdirSync(scaffoldDir, {recursive: true});
-
-  // Copy real templates into the sandbox so renderTemplate can read them.
-  const templates = [
-    'route.tsx.tmpl',
-    'page.index.tsx.tmpl',
-    'page.test.tsx.tmpl',
-    'page.stories.tsx.tmpl',
-    'locale.ts.tmpl',
-  ];
-
-  for (const tmpl of templates) {
-    const source = path.join(TEMPLATES_DIR, tmpl);
-    const dest = path.join(scaffoldDir, tmpl);
-    writeFileSync(dest, readFileSync(source, 'utf8'), 'utf8');
-  }
-
-  (globalThis as {__gaiaRouteRoot?: string}).__gaiaRouteRoot = fakeRoot;
 
   return {
     cleanup: () => {
-      delete (globalThis as {__gaiaRouteRoot?: string}).__gaiaRouteRoot;
       rmSync(fakeRoot, {force: true, recursive: true});
     },
     fakeRoot,
@@ -171,7 +91,7 @@ describe('scaffold route: argument validation', () => {
 
   test('rejects missing --group', () => {
     const stderr = captureStderr();
-    const exit = run(['dashboard']);
+    const exit = run(['dashboard'], {cwd: sandbox.fakeRoot});
     const out = stderr.restore();
 
     expect(exit).toBe(1);
@@ -180,7 +100,9 @@ describe('scaffold route: argument validation', () => {
 
   test('rejects invalid --group value', () => {
     const stderr = captureStderr();
-    const exit = run(['dashboard', '--group', '_admin+']);
+    const exit = run(['dashboard', '--group', '_admin+'], {
+      cwd: sandbox.fakeRoot,
+    });
     const out = stderr.restore();
 
     expect(exit).toBe(1);
@@ -189,7 +111,9 @@ describe('scaffold route: argument validation', () => {
 
   test('rejects non-kebab name', () => {
     const stderr = captureStderr();
-    const exit = run(['Dashboard', '--group', '_session+']);
+    const exit = run(['Dashboard', '--group', '_session+'], {
+      cwd: sandbox.fakeRoot,
+    });
     const out = stderr.restore();
 
     expect(exit).toBe(1);
@@ -198,7 +122,9 @@ describe('scaffold route: argument validation', () => {
 
   test('rejects unknown flag', () => {
     const stderr = captureStderr();
-    const exit = run(['dashboard', '--group', '_session+', '--bogus']);
+    const exit = run(['dashboard', '--group', '_session+', '--bogus'], {
+      cwd: sandbox.fakeRoot,
+    });
     const out = stderr.restore();
 
     expect(exit).toBe(1);
@@ -207,7 +133,7 @@ describe('scaffold route: argument validation', () => {
 
   test('prints help when invoked with no args', () => {
     const stdout = captureStdout();
-    const exit = run([]);
+    const exit = run([], {cwd: sandbox.fakeRoot});
     stdout.restore();
 
     expect(exit).toBe(1);
@@ -227,7 +153,9 @@ describe('scaffold route: base emission (_session+)', () => {
 
   test('emits route file, page index, test, and story', () => {
     const stdout = captureStdout();
-    const exit = run(['dashboard', '--group', '_session+']);
+    const exit = run(['dashboard', '--group', '_session+'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout.restore();
 
     expect(exit).toBe(0);
@@ -244,7 +172,7 @@ describe('scaffold route: base emission (_session+)', () => {
       'app',
       'pages',
       'Session',
-      'Dashboard',
+      'DashboardPage',
       'index.tsx'
     );
     const pageTest = path.join(
@@ -252,7 +180,7 @@ describe('scaffold route: base emission (_session+)', () => {
       'app',
       'pages',
       'Session',
-      'Dashboard',
+      'DashboardPage',
       'tests',
       'index.test.tsx'
     );
@@ -261,7 +189,7 @@ describe('scaffold route: base emission (_session+)', () => {
       'app',
       'pages',
       'Session',
-      'Dashboard',
+      'DashboardPage',
       'tests',
       'index.stories.tsx'
     );
@@ -273,23 +201,25 @@ describe('scaffold route: base emission (_session+)', () => {
 
     const routeBody = readFileSync(routeFile, 'utf8');
     expect(routeBody).toContain(
-      "import Dashboard from '~/pages/Session/Dashboard'"
+      "import DashboardPage from '~/pages/Session/DashboardPage'"
     );
     expect(routeBody).toContain('const DashboardRoute');
     expect(routeBody).not.toContain('export const loader');
     expect(routeBody).not.toContain('export const action');
 
     const pageBody = readFileSync(pageIndex, 'utf8');
-    expect(pageBody).toContain('const Dashboard: FC');
-    expect(pageBody).toContain('export default Dashboard');
+    expect(pageBody).toContain('const DashboardPage: FC');
+    expect(pageBody).toContain('export default DashboardPage');
 
     const storiesBody = readFileSync(pageStories, 'utf8');
-    expect(storiesBody).toContain('Pages/Session/Dashboard');
+    expect(storiesBody).toContain('Pages/Session/DashboardPage');
   });
 
-  test('hyphenated names map to PascalCase folder', () => {
+  test('hyphenated names map to <Pascal>Page folder', () => {
     const stdout = captureStdout();
-    const exit = run(['user-settings', '--group', '_session+']);
+    const exit = run(['user-settings', '--group', '_session+'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout.restore();
 
     expect(exit).toBe(0);
@@ -299,7 +229,7 @@ describe('scaffold route: base emission (_session+)', () => {
       'app',
       'pages',
       'Session',
-      'UserSettings',
+      'UserSettingsPage',
       'index.tsx'
     );
     expect(existsSync(pageIndex)).toBe(true);
@@ -313,11 +243,16 @@ describe('scaffold route: base emission (_session+)', () => {
     );
     const routeBody = readFileSync(routeFile, 'utf8');
     expect(routeBody).toContain('const UserSettingsRoute');
+    expect(routeBody).toContain(
+      "import UserSettingsPage from '~/pages/Session/UserSettingsPage'"
+    );
   });
 
   test('_public+ group writes to Public segment', () => {
     const stdout = captureStdout();
-    const exit = run(['marketing', '--group', '_public+']);
+    const exit = run(['marketing', '--group', '_public+'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout.restore();
 
     expect(exit).toBe(0);
@@ -327,7 +262,7 @@ describe('scaffold route: base emission (_session+)', () => {
       'app',
       'pages',
       'Public',
-      'Marketing',
+      'MarketingPage',
       'index.tsx'
     );
     const routeFile = path.join(
@@ -355,7 +290,9 @@ describe('scaffold route: flag combos', () => {
 
   test('--loader emits loader export', () => {
     const stdout = captureStdout();
-    run(['dashboard', '--group', '_session+', '--loader']);
+    run(['dashboard', '--group', '_session+', '--loader'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout.restore();
 
     const routeFile = path.join(
@@ -373,7 +310,9 @@ describe('scaffold route: flag combos', () => {
 
   test('--action emits action export', () => {
     const stdout = captureStdout();
-    run(['dashboard', '--group', '_session+', '--action']);
+    run(['dashboard', '--group', '_session+', '--action'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout.restore();
 
     const routeFile = path.join(
@@ -390,7 +329,9 @@ describe('scaffold route: flag combos', () => {
 
   test('--loader and --action together', () => {
     const stdout = captureStdout();
-    run(['dashboard', '--group', '_session+', '--loader', '--action']);
+    run(['dashboard', '--group', '_session+', '--loader', '--action'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout.restore();
 
     const routeFile = path.join(
@@ -421,7 +362,9 @@ describe('scaffold route: flag combos', () => {
     );
 
     const stdout = captureStdout();
-    const exit = run(['dashboard', '--group', '_session+', '--i18n']);
+    const exit = run(['dashboard', '--group', '_session+', '--i18n'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout.restore();
 
     expect(exit).toBe(0);
@@ -432,24 +375,23 @@ describe('scaffold route: flag combos', () => {
       'languages',
       'en',
       'pages',
-      'Dashboard',
-      'index.ts'
+      'dashboard.ts'
     );
     expect(existsSync(localeFile)).toBe(true);
     const localeBody = readFileSync(localeFile, 'utf8');
     expect(localeBody).toContain(
       "description: 'Description of the dashboard page'"
     );
-    expect(localeBody).toContain("title: 'Dashboard'");
+    expect(localeBody).toContain("title: 'DashboardPage'");
 
     const after = readFileSync(barrelPath, 'utf8');
-    expect(after).toContain("import dashboard from './Dashboard';");
+    expect(after).toContain("import dashboard from './dashboard';");
 
     // Alphabetical: dashboard < index < legal by import-name comparison.
     const lines = after.split('\n');
     const importLines = lines.filter((line) => /^import\s/u.test(line));
     expect(importLines).toEqual([
-      "import dashboard from './Dashboard';",
+      "import dashboard from './dashboard';",
       "import index from './_index';",
       "import legal from './legal';",
     ]);
@@ -463,7 +405,7 @@ describe('scaffold route: flag combos', () => {
         'app',
         'pages',
         'Session',
-        'Dashboard',
+        'DashboardPage',
         'index.tsx'
       ),
       'utf8'
@@ -473,9 +415,23 @@ describe('scaffold route: flag combos', () => {
     );
   });
 
+  test('--i18n with a missing barrel surfaces the failure', () => {
+    // No barrel seeded: the locale file is written but cannot be wired.
+    const stderr = captureStderr();
+    const exit = run(['dashboard', '--group', '_session+', '--i18n'], {
+      cwd: sandbox.fakeRoot,
+    });
+    const out = stderr.restore();
+
+    expect(exit).toBe(1);
+    expect(out).toContain('locale barrel not found');
+  });
+
   test('--json emits a single ScaffoldResult JSON line', () => {
     const stdout = captureStdout();
-    const exit = run(['dashboard', '--group', '_session+', '--json']);
+    const exit = run(['dashboard', '--group', '_session+', '--json'], {
+      cwd: sandbox.fakeRoot,
+    });
     const out = stdout.restore();
 
     expect(exit).toBe(0);
@@ -484,6 +440,91 @@ describe('scaffold route: flag combos', () => {
     expect(parsed).toHaveProperty('edited');
     expect(parsed).toHaveProperty('skipped');
     expect(Array.isArray(parsed['written'])).toBe(true);
+  });
+});
+
+describe('scaffold route: --dry-run', () => {
+  let sandbox: Sandbox;
+
+  beforeEach(() => {
+    sandbox = setupSandbox();
+  });
+
+  afterEach(() => {
+    sandbox.cleanup();
+  });
+
+  test('reports would-be writes without touching the filesystem', () => {
+    const stdout = captureStdout();
+    const exit = run(['dashboard', '--group', '_session+', '--dry-run'], {
+      cwd: sandbox.fakeRoot,
+    });
+    const out = stdout.restore();
+
+    expect(exit).toBe(0);
+    expect(out).toContain('dry-run: no files written');
+    expect(out).toContain('would write');
+
+    const routeFile = path.join(
+      sandbox.fakeRoot,
+      'app',
+      'routes',
+      '_session+',
+      'dashboard.tsx'
+    );
+    const pageIndex = path.join(
+      sandbox.fakeRoot,
+      'app',
+      'pages',
+      'Session',
+      'DashboardPage',
+      'index.tsx'
+    );
+    expect(existsSync(routeFile)).toBe(false);
+    expect(existsSync(pageIndex)).toBe(false);
+  });
+
+  test('--dry-run is orthogonal to --json and writes nothing', () => {
+    const barrelBody = [
+      "import index from './_index';",
+      '',
+      'export default {',
+      '  index,',
+      '};',
+      '',
+    ].join('\n');
+    const barrelPath = seedLocaleBarrel(sandbox.fakeRoot, barrelBody);
+
+    const stdout = captureStdout();
+    const exit = run(
+      ['dashboard', '--group', '_session+', '--i18n', '--dry-run', '--json'],
+      {cwd: sandbox.fakeRoot}
+    );
+    const out = stdout.restore();
+
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(out.trim()) as {
+      edited: string[];
+      written: string[];
+    };
+    expect(parsed.written.length).toBeGreaterThan(0);
+    expect(parsed.edited).toContain(barrelPath);
+
+    // The barrel is reported as a would-be edit but stays untouched on disk.
+    expect(readFileSync(barrelPath, 'utf8')).toBe(barrelBody);
+    expect(
+      existsSync(
+        path.join(
+          sandbox.fakeRoot,
+          'app',
+          'languages',
+          'en',
+          'pages',
+          'dashboard.ts'
+        )
+      )
+    ).toBe(false);
   });
 });
 
@@ -500,7 +541,9 @@ describe('scaffold route: idempotency', () => {
 
   test('second invocation with same args is a no-op (no throws, files unchanged)', () => {
     const stdout1 = captureStdout();
-    const exit1 = run(['dashboard', '--group', '_session+']);
+    const exit1 = run(['dashboard', '--group', '_session+'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout1.restore();
     expect(exit1).toBe(0);
 
@@ -514,7 +557,9 @@ describe('scaffold route: idempotency', () => {
     const before = readFileSync(routeFile, 'utf8');
 
     const stdout2 = captureStdout();
-    const exit2 = run(['dashboard', '--group', '_session+']);
+    const exit2 = run(['dashboard', '--group', '_session+'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout2.restore();
 
     expect(exit2).toBe(0);
@@ -536,13 +581,17 @@ describe('scaffold route: idempotency', () => {
     );
 
     const stdout1 = captureStdout();
-    run(['dashboard', '--group', '_session+', '--i18n']);
+    run(['dashboard', '--group', '_session+', '--i18n'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout1.restore();
 
     const afterFirst = readFileSync(barrelPath, 'utf8');
 
     const stdout2 = captureStdout();
-    run(['dashboard', '--group', '_session+', '--i18n']);
+    run(['dashboard', '--group', '_session+', '--i18n'], {
+      cwd: sandbox.fakeRoot,
+    });
     stdout2.restore();
 
     const afterSecond = readFileSync(barrelPath, 'utf8');
@@ -578,7 +627,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
     );
 
     const stdout = captureStdout();
-    run(['admin', '--group', '_session+', '--i18n']);
+    run(['admin', '--group', '_session+', '--i18n'], {cwd: sandbox.fakeRoot});
     stdout.restore();
 
     const after = readFileSync(barrelPath, 'utf8');
@@ -586,7 +635,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
       .split('\n')
       .filter((line) => /^import\s/u.test(line));
     expect(importLines).toEqual([
-      "import admin from './Admin';",
+      "import admin from './admin';",
       "import legal from './legal';",
     ]);
   });
@@ -595,7 +644,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
     const barrelPath = seedLocaleBarrel(
       sandbox.fakeRoot,
       [
-        "import admin from './Admin';",
+        "import admin from './admin';",
         "import legal from './legal';",
         '',
         'export default {',
@@ -607,7 +656,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
     );
 
     const stdout = captureStdout();
-    run(['zone', '--group', '_session+', '--i18n']);
+    run(['zone', '--group', '_session+', '--i18n'], {cwd: sandbox.fakeRoot});
     stdout.restore();
 
     const after = readFileSync(barrelPath, 'utf8');
@@ -615,9 +664,9 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
       .split('\n')
       .filter((line) => /^import\s/u.test(line));
     expect(importLines).toEqual([
-      "import admin from './Admin';",
+      "import admin from './admin';",
       "import legal from './legal';",
-      "import zone from './Zone';",
+      "import zone from './zone';",
     ]);
   });
 });

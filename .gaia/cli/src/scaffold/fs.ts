@@ -28,10 +28,14 @@ type WriteResult = {written: boolean};
  * - File present and different → throw `Error("refusing to overwrite ...")`.
  *
  * Always ensures the parent directory exists before writing.
+ *
+ * Pass `{dryRun: true}` to compute the same result (and surface the same
+ * overwrite conflict) without touching the filesystem.
  */
 export const writeFileIfAbsent = (
   absPath: string,
-  contents: string
+  contents: string,
+  options: {dryRun?: boolean} = {}
 ): WriteResult => {
   if (existsSync(absPath)) {
     const existing = readFileSync(absPath, 'utf8');
@@ -40,8 +44,10 @@ export const writeFileIfAbsent = (
     throw new Error(`refusing to overwrite ${absPath}`);
   }
 
-  ensureDir(path.dirname(absPath));
-  atomicWriteFileSync(absPath, contents);
+  if (options.dryRun !== true) {
+    ensureDir(path.dirname(absPath));
+    atomicWriteFileSync(absPath, contents);
+  }
 
   return {written: true};
 };

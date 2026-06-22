@@ -33,10 +33,17 @@ const KEBAB_PATTERN = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
 
 type ParsedFlags = {
   action: boolean;
+  dryRun: boolean;
   group: string | null;
   i18n: boolean;
   json: boolean;
   loader: boolean;
+};
+
+/** Options for `run`, mirroring the other scaffolders so tests can inject a root. */
+type RunOptions = {
+  /** Repo root used to resolve output paths. Defaults to `process.cwd()`. */
+  cwd?: string;
 };
 
 const HELP_TEXT = `Usage: gaia scaffold route <name> --group <_public+|_session+> [flags]
@@ -45,6 +52,7 @@ const HELP_TEXT = `Usage: gaia scaffold route <name> --group <_public+|_session+
   --loader    emit a loader stub
   --action    emit an action stub
   --i18n      emit a locale file and wire the locale barrel
+  --dry-run   print what would be written without touching the filesystem
   --json      print ScaffoldResult as JSON
 `;
 
@@ -57,6 +65,7 @@ const userError = (message: string, subcommand = 'scaffold route'): number => {
 const parseFlags = (rest: readonly string[]): ParsedFlags | null => {
   const flags: ParsedFlags = {
     action: false,
+    dryRun: false,
     group: null,
     i18n: false,
     json: false,
@@ -78,6 +87,8 @@ const parseFlags = (rest: readonly string[]): ParsedFlags | null => {
       flags.action = true;
     } else if (flag === '--i18n') {
       flags.i18n = true;
+    } else if (flag === '--dry-run') {
+      flags.dryRun = true;
     } else if (flag === '--json') {
       flags.json = true;
     } else {
@@ -106,13 +117,6 @@ const toCamelCase = (kebab: string): string => {
   ].join('');
 };
 
-const repoRoot = (): string => {
-  // This file lives at .gaia/cli/src/scaffold/route.ts; repo root is four levels up.
-  const here = fileURLToPath(import.meta.url);
-
-  return path.resolve(path.dirname(here), '..', '..', '..', '..');
-};
-
 const templateDir = (): string => {
   const here = fileURLToPath(import.meta.url);
 
@@ -132,11 +136,12 @@ type LocaleBarrelInsertResult = 'inserted' | 'present' | 'missing';
 const insertIntoLocaleBarrel = (
   barrelPath: string,
   importName: string,
-  folderName: string
+  moduleName: string,
+  dryRun: boolean
 ): LocaleBarrelInsertResult => {
   if (!existsSync(barrelPath)) return 'missing';
   const original = readFileSync(barrelPath, 'utf8');
-  const importLine = `import ${importName} from './${folderName}';`;
+  const importLine = `import ${importName} from './${moduleName}';`;
 
   if (original.includes(importLine)) return 'present';
 
@@ -251,7 +256,7 @@ const insertIntoLocaleBarrel = (
     );
   }
 
-  atomicWriteFileSync(barrelPath, next);
+  if (!dryRun) atomicWriteFileSync(barrelPath, next);
 
   return 'inserted';
 };
@@ -290,7 +295,9 @@ const resolveNames = (kebabName: string, group: string): ResolvedNames => {
   return {
     groupSegment: segment,
     i18nKey: toCamelCase(kebabName),
-    pageName: pascal,
+    // Page folder, component, and the route's import use the `<Pascal>Page`
+    // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
+    pageName: `${pascal}Page`,
     routeName: pascal,
   };
 };
@@ -314,9 +321,10 @@ const buildRouteVars = (
 const writeFile = (
   result: ScaffoldResult,
   absPath: string,
-  contents: string
+  contents: string,
+  dryRun: boolean
 ): void => {
-  const {written} = writeFileIfAbsent(absPath, contents);
+  const {written} = writeFileIfAbsent(absPath, contents, {dryRun});
 
   if (written) {
     result.written.push(absPath);
@@ -325,10 +333,21 @@ const writeFile = (
   }
 };
 
-const printHumanReadable = (result: ScaffoldResult): void => {
-  for (const file of result.written) process.stdout.write(`written  ${file}\n`);
-  for (const file of result.edited) process.stdout.write(`edited   ${file}\n`);
-  for (const file of result.skipped) process.stdout.write(`skipped  ${file}\n`);
+const printHumanReadable = (result: ScaffoldResult, dryRun: boolean): void => {
+  if (dryRun) process.stdout.write('dry-run: no files written\n');
+  const writeLabel = dryRun ? 'would write' : 'written';
+  const editLabel = dryRun ? 'would edit' : 'edited';
+  const pad = (label: string): string => label.padEnd(11);
+
+  for (const file of result.written) {
+    process.stdout.write(`${pad(writeLabel)} ${file}\n`);
+  }
+  for (const file of result.edited) {
+    process.stdout.write(`${pad(editLabel)} ${file}\n`);
+  }
+  for (const file of result.skipped) {
+    process.stdout.write(`${pad('skipped')} ${file}\n`);
+  }
 };
 
 const printJson = (result: ScaffoldResult): void => {
@@ -338,7 +357,10 @@ const printJson = (result: ScaffoldResult): void => {
 /**
  * Entry point for `gaia scaffold route ...`. Returns the process exit code.
  */
-export const run = (rest: readonly string[]): number => {
+export const run = (
+  rest: readonly string[],
+  options: RunOptions = {}
+): number => {
   const [first] = rest;
 
   if (first === undefined || first === '--help' || first === '-h') {
@@ -370,7 +392,12 @@ export const run = (rest: readonly string[]): number => {
     );
   }
 
-  const root = repoRoot();
+  // Output paths resolve from the working directory, matching the other
+  // scaffolders. The shipped CLI is a single bundle two levels shallower
+  // than its source, so deriving the root from the module location (as an
+  // earlier version did) overshot the repo root by two directories.
+  const root = options.cwd ?? process.cwd();
+  const {dryRun} = flags;
   const names = resolveNames(name, flags.group);
   const tmpls = templatePaths();
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
@@ -385,7 +412,7 @@ export const run = (rest: readonly string[]): number => {
       flags.group,
       `${name}.tsx`
     );
-    writeFile(result, routeAbs, renderTemplate(tmpls.route, routeVars));
+    writeFile(result, routeAbs, renderTemplate(tmpls.route, routeVars), dryRun);
 
     const pageDir = path.join(
       root,
@@ -405,35 +432,45 @@ export const run = (rest: readonly string[]): number => {
     writeFile(
       result,
       path.join(pageDir, 'index.tsx'),
-      renderTemplate(tmpls.pageIndex, pageVars)
+      renderTemplate(tmpls.pageIndex, pageVars),
+      dryRun
     );
     writeFile(
       result,
       path.join(pageDir, 'tests', 'index.test.tsx'),
-      renderTemplate(tmpls.pageTest, pageVars)
+      renderTemplate(tmpls.pageTest, pageVars),
+      dryRun
     );
     writeFile(
       result,
       path.join(pageDir, 'tests', 'index.stories.tsx'),
-      renderTemplate(tmpls.pageStories, pageVars)
+      renderTemplate(tmpls.pageStories, pageVars),
+      dryRun
     );
 
     if (flags.i18n) {
+      // Locales are flat files keyed by the kebab route name
+      // (app/languages/en/pages/<kebab>.ts), wired into the sibling
+      // index.ts barrel by `import <i18nKey> from './<kebab>'`.
       const localeFile = path.join(
         root,
         'app',
         'languages',
         'en',
         'pages',
-        names.pageName,
-        'index.ts'
+        `${name}.ts`
       );
       const localeVars: TemplateVars = {
         i18nKey: names.i18nKey,
         pageName: names.pageName,
         routeName: name,
       };
-      writeFile(result, localeFile, renderTemplate(tmpls.locale, localeVars));
+      writeFile(
+        result,
+        localeFile,
+        renderTemplate(tmpls.locale, localeVars),
+        dryRun
+      );
 
       const localeBarrel = path.join(
         root,
@@ -447,18 +484,29 @@ export const run = (rest: readonly string[]): number => {
       const status = insertIntoLocaleBarrel(
         localeBarrel,
         importName,
-        names.pageName
+        name,
+        dryRun
       );
 
       if (status === 'inserted') result.edited.push(localeBarrel);
       else if (status === 'present') result.skipped.push(localeBarrel);
+      else {
+        // 'missing': the locale file was emitted but the barrel could not be
+        // located, so the page's translations are not wired. Fail loudly with
+        // an actionable message rather than reporting a misleading success.
+        return userError(
+          `locale barrel not found at ${localeBarrel}; the locale file was ` +
+            `written but its import was not wired. Run from the repo root, or ` +
+            `add "import ${importName} from './${name}';" to the barrel by hand.`
+        );
+      }
     }
   } catch (error) {
     return userError(error instanceof Error ? error.message : String(error));
   }
 
   if (flags.json) printJson(result);
-  else printHumanReadable(result);
+  else printHumanReadable(result, dryRun);
 
   return EXIT_CODES.OK;
 };

@@ -11,7 +11,7 @@ Trigger: user asks to add a new page/route.
 ## Workflow
 
 1. Confirm with the user: name (kebab-case), group (`_public+` or `_session+`), and which of `--loader`, `--action`, `--i18n` they want.
-2. Run: `.gaia/cli/gaia scaffold route <name> --group <group> [flags]`
+2. Run from the repo root: `.gaia/cli/gaia scaffold route <name> --group <group> [flags]` (output paths resolve from the working directory).
 3. Verify: `pnpm typecheck` clean; `pnpm dev` reaches the new route.
 
 ## Flags
@@ -20,4 +20,5 @@ Trigger: user asks to add a new page/route.
 - `--loader`, emit a loader stub
 - `--action`, emit an action stub
 - `--i18n`, emit the locale file and wire the locale barrel
+- `--dry-run`, print what would be written without touching the filesystem
 - `--json`, print the scaffold result as JSON
