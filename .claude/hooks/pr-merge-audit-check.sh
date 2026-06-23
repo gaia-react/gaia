@@ -10,11 +10,13 @@
 #      tree-sha matches HEAD's current tree. Written by a local audit run
 #      via .claude/hooks/audit-stamp-trailer.sh.
 #
-#   3. GAIA-Audit GitHub commit status on HEAD, description "<version> <tree>",
-#      when both version and tree-sha match. CI stamps this status instead of
-#      pushing an empty marker commit (pushing it would re-trigger CI and leave
-#      the PR HEAD without check runs). Queried via `gh api` using GH_TOKEN or
-#      the ambient gh auth session.
+#   3. GAIA-Audit GitHub commit status on HEAD with state: success, description
+#      "<version> <tree>", when both version and tree-sha match. CI stamps this
+#      status instead of pushing an empty marker commit (pushing it would
+#      re-trigger CI and leave the PR HEAD without check runs). A non-success
+#      status (e.g. a local-mode stand-down's pending status on the same context
+#      and SHA) is not a cleared signal even when its description matches.
+#      Queried via `gh api` using GH_TOKEN or the ambient gh auth session.
 #
 #   4. chore(deps) PR bypass: PR title matches `^chore\(deps(-dev)?\):`. The
 #      /update-deps wrapper runs the full quality gate locally before
@@ -143,9 +145,12 @@ fi
 # GitHub commit status fallback: CI stamps a GAIA-Audit commit status instead
 # of pushing an empty marker commit (pushing it would re-trigger CI and leave
 # the PR HEAD without check runs). Query the API for a matching status on HEAD.
-# Description shape: "<version> <40-hex-tree>". Both must match .gaia/VERSION
-# and HEAD's tree. Falls through silently on any error (no gh, no token, no
-# GITHUB_REPOSITORY, API failure), the deny path below fires as normal.
+# The status must be state: success; its description shape is
+# "<version> <40-hex-tree>", and both must match .gaia/VERSION and HEAD's tree.
+# A non-success status (e.g. a local-mode stand-down's pending status) is
+# filtered out at the source, so a pending status carrying HEAD's version+tree
+# is not treated as cleared. Falls through silently on any error (no gh, no
+# token, no GITHUB_REPOSITORY, API failure), the deny path below fires as normal.
 check_github_status() {
   command -v gh >/dev/null 2>&1 || return 1
 
@@ -176,7 +181,7 @@ check_github_status() {
 
   status_desc=$(gh api \
     "repos/${repo}/commits/${sha}/statuses" \
-    --jq 'map(select(.context == "GAIA-Audit")) | first | .description' \
+    --jq 'map(select(.context == "GAIA-Audit" and .state == "success")) | first | .description' \
     2>/dev/null || true)
 
   [ -n "$status_desc" ] && [ "$status_desc" != "null" ] || return 1

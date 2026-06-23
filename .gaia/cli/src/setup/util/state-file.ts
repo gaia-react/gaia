@@ -74,6 +74,7 @@ export const SETUP_STEPS = [
   'chmod-statusline',
   'bootstrap-env',
   'mentorship-decision',
+  'audit-mode-decision',
 ] as const;
 
 export type SetupStep = (typeof SETUP_STEPS)[number];

@@ -29,15 +29,69 @@ run_in_sandbox() {
   ( cd "$SANDBOX" && "$SCRIPT" )
 }
 
+# Run the resolve path. Args are passed through to the script (e.g.
+# `--resolve-author alice`). PATH is restricted to system bins so the
+# host's real `gh` is never picked up; tests that want a `gh` stub install
+# one under "$SANDBOX/bin" via stub_gh_* and pass STUB_PATH=1.
+#
+# Usage: resolve_in_sandbox [STUB_PATH] -- <script-args...>
+resolve_in_sandbox() {
+  local path="/usr/bin:/bin"
+  if [ "$1" = "STUB_PATH" ]; then
+    path="$SANDBOX/bin:/usr/bin:/bin"
+    shift
+  fi
+  ( cd "$SANDBOX" && PATH="$path" "$SCRIPT" "$@" )
+}
+
+# stub_gh_confirms: install a fake `gh` that reports GAIA-Audit as a
+# registered required check and a valid repo slug. Lets a `local`
+# resolution survive verification instead of failing closed.
+stub_gh_confirms() {
+  mkdir -p "$SANDBOX/bin"
+  cat > "$SANDBOX/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+[ -n "${GH_LOG:-}" ] && echo "gh $*" >> "$GH_LOG"
+case "$1" in
+  repo) echo "owner/repo" ;;
+  api) printf 'GAIA-Audit\n' ;;
+esac
+STUB
+  chmod +x "$SANDBOX/bin/gh"
+}
+
+# stub_gh_recording: install a fake `gh` that only records its invocations
+# (used to prove the ci path never calls the branch-protection API). Returns
+# no contexts, so any `local` resolution would fail closed.
+stub_gh_recording() {
+  mkdir -p "$SANDBOX/bin"
+  cat > "$SANDBOX/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+[ -n "${GH_LOG:-}" ] && echo "gh $*" >> "$GH_LOG"
+case "$1" in
+  repo) echo "owner/repo" ;;
+esac
+STUB
+  chmod +x "$SANDBOX/bin/gh"
+}
+
 # write_config <yaml-body>
 write_config() {
   printf '%s\n' "$1" > "$SANDBOX/.gaia/audit-ci.yml"
 }
 
-# Expected default block (one big string, deterministic order).
+# Expected default block (one big string, deterministic order). The three
+# per-author keys (default_mode/override_label/audit_authors) emit between
+# push_fixes and the retrigger heredoc, matching the script's emit order.
 default_block() {
-  printf 'gate_label=\nbudget_seconds=1800\nmax_turns=30\npush_fixes=true\n%s' \
-    "$(default_retrigger_block)"
+  printf 'gate_label=\nbudget_seconds=1800\nmax_turns=30\npush_fixes=true\n%s\n%s' \
+    "$(default_new_keys_block)" "$(default_retrigger_block)"
+}
+
+# The per-author key defaults, in emit order. Kept in one place so every
+# exact-match assertion stays in sync with the script's contract.
+default_new_keys_block() {
+  printf 'default_mode=ci\noverride_label=run-audit\naudit_authors='
 }
 
 # The retrigger_workflows default uses GitHub Actions multiline-output
@@ -166,7 +220,7 @@ push_fixes: true"
   write_config "push_fixes: maybe"
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [[ "$output" == *"push_fixes=true" ]]
+  [[ "$output" == *"push_fixes=true"$'\n'* ]]
   [[ "$output" == *"not a recognized boolean"* ]]
 }
 
@@ -226,6 +280,7 @@ budget_seconds: 60"
 budget_seconds=60
 max_turns=30
 push_fixes=true
+$(default_new_keys_block)
 $(default_retrigger_block)"
   [ "$output" = "$expected" ]
 }
@@ -252,6 +307,7 @@ max_turns: 5
 budget_seconds=1800
 max_turns=5
 push_fixes=true
+$(default_new_keys_block)
 $(default_retrigger_block)"
   [ "$output" = "$expected" ]
 }
@@ -275,6 +331,7 @@ push_fixes: false
 budget_seconds=600
 max_turns=10
 push_fixes=false
+$(default_new_keys_block)
 $(default_retrigger_block)"
   [ "$output" = "$expected" ]
 }
@@ -301,6 +358,7 @@ gate_label: needs-review"
 budget_seconds=60
 max_turns=5
 push_fixes=false
+$(default_new_keys_block)
 $(default_retrigger_block)"
   [ "$output" = "$expected" ]
 }
@@ -318,6 +376,7 @@ $(default_retrigger_block)"
 budget_seconds=1800
 max_turns=30
 push_fixes=true
+$(default_new_keys_block)
 retrigger_workflows<<__GAIA_END__
 Chromatic
 Vitest and Playwright
@@ -413,4 +472,335 @@ push_fixes: false"
   [ "$status" -eq 0 ]
   [[ "$output" == *"push_fixes=false"* ]]
   [[ "$output" == *"retrigger_workflows<<__GAIA_END__"$'\n'"Chromatic"$'\n'"Tests"$'\n'"__GAIA_END__"* ]]
+}
+
+# ===========================================================================
+# Per-author audit-mode resolver: new keys, --resolve-author, precedence,
+# normalization, required-check verification (fail-closed).
+# ===========================================================================
+
+# --- 24. New keys: absent → defaults in the emit-all path -------------------
+
+@test "new keys: absent default_mode/override_label/audit_authors emit ci/run-audit/empty" {
+  # No config file at all; the three new keys take their defaults.
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default_mode=ci"$'\n'* ]]
+  [[ "$output" == *"override_label=run-audit"$'\n'* ]]
+  [[ "$output" == *"audit_authors="$'\n'* ]]
+}
+
+# --- 25. default_mode: explicit + off-coercion ------------------------------
+
+@test "default_mode: explicit local emitted verbatim" {
+  write_config "default_mode: local"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default_mode=local"$'\n'* ]]
+}
+
+@test "default_mode: off coerces to ci when audit workflow present (warns)" {
+  mkdir -p "$SANDBOX/.github/workflows"
+  : > "$SANDBOX/.github/workflows/code-review-audit.yml"
+  write_config "default_mode: off"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default_mode=ci"$'\n'* ]]
+  [[ "$output" == *"default_mode=off is not a valid audit mode"* ]]
+  [[ "$output" == *"coercing to ci"* ]]
+}
+
+@test "default_mode: off coerces to local when audit workflow absent (warns)" {
+  # No .github/workflows/code-review-audit.yml in the sandbox.
+  write_config "default_mode: off"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default_mode=local"$'\n'* ]]
+  [[ "$output" == *"default_mode=off is not a valid audit mode"* ]]
+  [[ "$output" == *"coercing to local"* ]]
+}
+
+# --- 26. Precedence rule 1: override label present --------------------------
+
+@test "resolve-author: override present forces ci should_run true" {
+  write_config "default_mode: local
+audit_authors: \"alice=local\""
+  run env OVERRIDE_LABEL_PRESENT=true bash -c '
+    cd "$1" && PATH="/usr/bin:/bin" "$2" --resolve-author alice
+  ' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+  [[ "$output" == *"should_run=true"$'\n'* ]]
+}
+
+# --- 27. Precedence rule 2: audit_authors hit wins over default_mode --------
+
+@test "resolve-author: audit_authors hit wins over default_mode" {
+  # alice resolves local (and survives the required-check stub) even though
+  # default_mode is ci.
+  stub_gh_confirms
+  write_config "default_mode: ci
+audit_authors: \"alice=local priya=ci\""
+  run resolve_in_sandbox STUB_PATH --resolve-author alice
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=local"$'\n'* ]]
+  [[ "$output" == *"should_run=false"$'\n'* ]]
+}
+
+# --- 28. Precedence rule 3: fall back to default_mode ----------------------
+
+@test "resolve-author: falls back to default_mode when author absent" {
+  write_config "default_mode: ci
+audit_authors: \"alice=local\""
+  run resolve_in_sandbox --resolve-author stranger
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+  [[ "$output" == *"should_run=true"$'\n'* ]]
+}
+
+# --- 29. Duplicate logins: first match wins (no deadlock) ------------------
+
+@test "resolve-author: duplicate logins, first match wins (no deadlock)" {
+  # bob=local appears first; the scan must stop there (local), not bob=ci.
+  stub_gh_confirms
+  write_config "audit_authors: \"bob=local bob=ci\""
+  run resolve_in_sandbox STUB_PATH --resolve-author bob
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=local"$'\n'* ]]
+}
+
+# --- 30. Login comparison is case-insensitive ------------------------------
+
+@test "resolve-author: login comparison is case-insensitive" {
+  # StevenSacks (display casing) matches stevensacks=local. Use the
+  # confirming stub so the match resolves to local rather than failing closed
+  # (a fall-through to default_mode=ci would not prove the match).
+  stub_gh_confirms
+  write_config "default_mode: ci
+audit_authors: \"stevensacks=local\""
+  run resolve_in_sandbox STUB_PATH --resolve-author StevenSacks
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=local"$'\n'* ]]
+}
+
+# --- 31. Mode token normalization (case-fold + trim) -----------------------
+
+@test "resolve-author: mode token CI / trailing space normalized to ci" {
+  write_config "audit_authors: \"carol=CI \""
+  run resolve_in_sandbox --resolve-author carol
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+  # ci resolution never warns about coercion.
+  [[ "$output" != *"recognized audit mode"* ]]
+}
+
+# --- 32. Unknown mode coerced by workflow presence (warns) -----------------
+
+@test "resolve-author: unknown mode remote coerced to valid non-off (warns)" {
+  # Audit workflow present → remote coerces to ci (a valid non-off mode).
+  mkdir -p "$SANDBOX/.github/workflows"
+  : > "$SANDBOX/.github/workflows/code-review-audit.yml"
+  write_config "audit_authors: \"dave=remote\""
+  run resolve_in_sandbox --resolve-author dave
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"is not a recognized audit mode"* ]]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+}
+
+# --- 33. Malformed pairs skipped, valid one still resolves -----------------
+
+@test "resolve-author: malformed pairs (bob= / =ci / bare) skipped with warning, not crash" {
+  write_config "audit_authors: \"bob= =ci barebob eve=ci\""
+  run resolve_in_sandbox --resolve-author eve
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"is malformed (empty mode)"* ]]
+  [[ "$output" == *"is malformed (empty login)"* ]]
+  [[ "$output" == *"is malformed (no '='"* ]]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+  [[ "$output" == *"should_run=true"$'\n'* ]]
+}
+
+# --- 34. Required-check fail-closed (BLOCKER) ------------------------------
+
+@test "resolve-author: local mode forces ci when GAIA-Audit required check unconfirmable (fail-closed)" {
+  # No gh on PATH (system bins only) → required_check_confirmed returns
+  # non-zero → a would-be local resolution is forced to ci.
+  write_config "default_mode: local"
+  run resolve_in_sandbox --resolve-author anyone
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+  [[ "$output" == *"should_run=true"$'\n'* ]]
+  [[ "$output" == *"GAIA-Audit required check not confirmed"* ]]
+  [[ "$output" == *"forcing ci (fail-closed)"* ]]
+}
+
+# --- 35. ci resolution does not invoke branch-protection API ---------------
+
+@test "resolve-author: ci resolution does not invoke branch-protection API" {
+  # A recording gh stub logs every call. A ci resolution must never reach
+  # the branch-protection API (no api call logged), and must not emit a
+  # fail-closed warning (that path is local-only).
+  stub_gh_recording
+  GH_LOG="$SANDBOX/gh.log"
+  : > "$GH_LOG"
+  write_config "default_mode: ci"
+  run env GH_LOG="$GH_LOG" bash -c '
+    cd "$1" && PATH="$1/bin:/usr/bin:/bin" "$2" --resolve-author anyone
+  ' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+  [[ "$output" != *"fail-closed"* ]]
+  # No branch-protection API call was recorded.
+  run grep -F 'api repos/' "$GH_LOG"
+  [ "$status" -ne 0 ]
+}
+
+# ===========================================================================
+# Write-side round-trip: prove the reader parses exactly what the setup
+# prompts write (default_mode/override_label via /setup-gaia-ci; audit_authors
+# via /setup-cloned-gaia-project through the append-audit-author.sh helper).
+# ===========================================================================
+
+# Install the append helper alongside the reader inside the sandbox's
+# `.gaia/scripts/`, so the helper's sibling-script lookup finds the reader and
+# its `git rev-parse` resolves the fixture's audit-ci.yml. Returns the helper
+# path on stdout.
+install_append_helper() {
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  cp "$THIS_DIR/../read-audit-ci-config.sh" "$SANDBOX/.gaia/scripts/read-audit-ci-config.sh"
+  cp "$THIS_DIR/../append-audit-author.sh" "$SANDBOX/.gaia/scripts/append-audit-author.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/read-audit-ci-config.sh" "$SANDBOX/.gaia/scripts/append-audit-author.sh"
+  printf '%s\n' "$SANDBOX/.gaia/scripts/append-audit-author.sh"
+}
+
+# Run the append helper from inside the sandbox so its config-path lookup
+# hits the fixture tree. Args pass through (e.g. `stevensacks local`).
+append_in_sandbox() {
+  ( cd "$SANDBOX" && "$SANDBOX/.gaia/scripts/append-audit-author.sh" "$@" )
+}
+
+# --- 36. audit_authors round-trip: two-developer string resolves each login --
+
+@test "audit_authors append: two-developer string resolves each login" {
+  # The append helper writes the exact format the resolver consumes. Append
+  # two developers, then resolve each. stevensacks is local (survives the
+  # required-check stub), priya is ci.
+  install_append_helper >/dev/null
+  stub_gh_confirms
+  append_in_sandbox stevensacks local
+  append_in_sandbox priya ci
+
+  # The written value is the canonical space-separated pair string.
+  [ "$(cat "$SANDBOX/.gaia/audit-ci.yml")" = 'audit_authors: "stevensacks=local priya=ci"' ]
+
+  run resolve_in_sandbox STUB_PATH --resolve-author stevensacks
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=local"$'\n'* ]]
+
+  run resolve_in_sandbox STUB_PATH --resolve-author priya
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+}
+
+# --- 37. default_mode local + override_label run-audit round-trip -----------
+
+@test "default_mode local + override_label run-audit round-trip" {
+  # /setup-gaia-ci's team-policy prompt writes both keys; the argument-less
+  # emit must read them back verbatim.
+  write_config "default_mode: local
+override_label: run-audit"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default_mode=local"$'\n'* ]]
+  [[ "$output" == *"override_label=run-audit"$'\n'* ]]
+}
+
+# --- 38. Append preserves existing entries (no clobber) ---------------------
+
+@test "audit_authors append preserves existing entries" {
+  # A developer appending their pair must not drop a teammate's entry.
+  install_append_helper >/dev/null
+  append_in_sandbox alice ci
+  run append_in_sandbox bob local
+  [ "$status" -eq 0 ]
+  [ "$output" = "alice=ci bob=local" ]
+  [ "$(cat "$SANDBOX/.gaia/audit-ci.yml")" = 'audit_authors: "alice=ci bob=local"' ]
+}
+
+# --- 39. Append preserves sibling keys when the file is populated ------------
+
+@test "audit_authors append preserves sibling keys in a populated file" {
+  # The team-policy keys and other knobs already present must survive the
+  # in-place rewrite of the audit_authors line.
+  install_append_helper >/dev/null
+  cat > "$SANDBOX/.gaia/audit-ci.yml" <<'YAML'
+gate_label: null
+default_mode: local
+override_label: run-audit
+audit_authors: "alice=ci"
+push_fixes: true
+YAML
+  run append_in_sandbox bob local
+  [ "$status" -eq 0 ]
+  [ "$output" = "alice=ci bob=local" ]
+  # Sibling keys untouched; audit_authors rewritten in place.
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default_mode=local"$'\n'* ]]
+  [[ "$output" == *"override_label=run-audit"$'\n'* ]]
+  [[ "$output" == *"push_fixes=true"$'\n'* ]]
+  [[ "$output" == *"audit_authors=alice=ci bob=local"$'\n'* ]]
+}
+
+# --- 40. Append replaces a developer's own prior entry in place -------------
+
+@test "audit_authors append replaces a re-running developer's own entry" {
+  # A developer who re-runs /setup-cloned-gaia-project flips their own mode
+  # rather than stacking a second pair; teammates' entries are preserved.
+  install_append_helper >/dev/null
+  append_in_sandbox stevensacks local
+  append_in_sandbox priya ci
+  run append_in_sandbox stevensacks ci
+  [ "$status" -eq 0 ]
+  # Own prior pair dropped, re-appended at the end; priya preserved.
+  [ "$output" = "priya=ci stevensacks=ci" ]
+}
+
+# --- 41. Append usage error on missing arguments ---------------------------
+
+@test "audit_authors append: missing arguments exit 2 with usage error" {
+  install_append_helper >/dev/null
+  run append_in_sandbox stevensacks
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"usage: append-audit-author.sh <login> <mode>"* ]]
+}
+
+# --- 42. noglob guard: a glob char in audit_authors is not pathname-expanded -
+
+@test "resolve-author: a glob char in audit_authors is not pathname-expanded" {
+  # A would-be glob match sits in the resolver's cwd. Without the set -f guard,
+  # `*=local` would expand to this filename and fabricate a realdev=local entry.
+  : > "$SANDBOX/realdev=local"
+  stub_gh_confirms
+  write_config "default_mode: ci
+audit_authors: \"*=local\""
+  # With the guard the literal entry is login '*', which never matches realdev,
+  # so realdev falls through to default_mode=ci rather than the glob-fabricated local.
+  run resolve_in_sandbox STUB_PATH --resolve-author realdev
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+}
+
+@test "audit_authors append: a glob char in the existing value is not pathname-expanded" {
+  # The worst case: without the set -f guard the helper globs the existing value
+  # against the cwd and writes a corrupted audit_authors string back to the file.
+  install_append_helper >/dev/null
+  : > "$SANDBOX/evil=ci"
+  printf '%s\n' 'audit_authors: "*=ci"' > "$SANDBOX/.gaia/audit-ci.yml"
+  run append_in_sandbox newdev local
+  [ "$status" -eq 0 ]
+  # The literal '*=ci' entry survives; the cwd filename never leaks in.
+  written="$(cat "$SANDBOX/.gaia/audit-ci.yml")"
+  [[ "$written" == *'*=ci'* ]]
+  [[ "$written" != *'evil'* ]]
 }

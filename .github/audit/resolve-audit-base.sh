@@ -160,8 +160,11 @@ trailer_version_for() {
 }
 
 # status_version_for <sha> → echoes the GAIA-Audit commit status version, or
-# empty. Needs gh + GH_TOKEN + repo slug; a missing token / absent gh / API
-# failure / no status all yield empty (the walk continues).
+# empty. Only a state: success status counts; a non-success status (e.g. a
+# local-mode stand-down's pending status on this SHA) is filtered out at the
+# source, so such a commit is not a usable base from the status path. Needs
+# gh + GH_TOKEN + repo slug; a missing token / absent gh / API failure / no
+# success status all yield empty (the walk continues).
 status_version_for() {
   local sha="$1" repo desc
   [ -n "${GH_TOKEN:-}" ] || return 0
@@ -169,7 +172,7 @@ status_version_for() {
   repo="${GITHUB_REPOSITORY:-}"
   [ -n "$repo" ] || return 0
   desc=$(gh api "repos/${repo}/commits/${sha}/statuses" \
-    --jq 'map(select(.context == "GAIA-Audit")) | last | .description' \
+    --jq 'map(select(.context == "GAIA-Audit" and .state == "success")) | last | .description' \
     2>/dev/null || true)
   if [ -z "$desc" ] || [ "$desc" = "null" ]; then
     return 0

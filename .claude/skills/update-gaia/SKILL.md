@@ -219,7 +219,18 @@ Apply the decision table directly, there is no CLI for this step.
 ```bash
 BACKUP_DIR=".gaia-backup/$(date +%Y%m%d-%H%M%S)"
 mkdir -p .gaia-merge "$BACKUP_DIR"
+
+# Snapshot whether the installed audit-ci.yml already declares default_mode,
+# captured BEFORE the Step 7c merge can write the key. The Step 10 opt-in nudge
+# reads this; gating on the post-merge file state would let the merge pre-silence
+# the nudge on the very run that should surface it.
+had_default_mode_before_merge=false
+if [ -f .gaia/audit-ci.yml ] && grep -qE '^[[:space:]]*default_mode[[:space:]]*:' .gaia/audit-ci.yml; then
+  had_default_mode_before_merge=true
+fi
 ```
+
+Persist `had_default_mode_before_merge` for Step 10.
 
 Track seven lists plus a `package.json` sub-report internally (`UpdateMergeReport`):
 
@@ -248,10 +259,16 @@ Track seven lists plus a `package.json` sub-report internally (`UpdateMergeRepor
     suggestions: string[];  // managed keys / entries GAIA added, or changed but the adopter had removed, surfaced opt-in, never applied
     notes_path?: string;    // .gaia-merge/pnpm-workspace.yaml.notes when conflicts or suggestions exist
   };
+  auditCiYml: {          // field-aware result for .gaia/audit-ci.yml (Step 7c)
+    applied: string[];      // managed scalar knobs / audit_authors entries GAIA changed that the adopter still tracked, written to the working tree
+    conflicts: string[];    // knobs / entries GAIA changed but the adopter independently diverged, left as the adopter's, noted
+    suggestions: string[];  // knobs / entries GAIA added, or changed but the adopter had removed, surfaced opt-in, never applied
+    notes_path?: string;    // .gaia-merge/audit-ci.yml.notes when conflicts or suggestions exist
+  };
 }
 ```
 
-**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json` and `pnpm-workspace.yaml`**, both are handled field-aware below (`package.json` in **Step 7a**, `pnpm-workspace.yaml` in **Step 7b**). A whole-file `cmp`/`diff` can't separate adopter identity and intentional removals from the real upstream delta, and `pnpm-workspace.yaml` is a mixed file (GAIA-authored supply-chain / resolution settings plus adopter-extensible `overrides` and `allowBuilds` maps) that drifts the moment an adopter adds one override. Skip both during this walk.
+**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json`, `pnpm-workspace.yaml`, and `.gaia/audit-ci.yml`**, all three are handled field-aware below (`package.json` in **Step 7a**, `pnpm-workspace.yaml` in **Step 7b**, `.gaia/audit-ci.yml` in **Step 7c**). A whole-file `cmp`/`diff` can't separate adopter identity and intentional removals from the real upstream delta; `pnpm-workspace.yaml` is a mixed file (GAIA-authored supply-chain / resolution settings plus adopter-extensible `overrides` and `allowBuilds` maps) that drifts the moment an adopter adds one override; and `.gaia/audit-ci.yml` is a mixed file (GAIA-authored scalar knobs plus the adopter-extensible `audit_authors` login=mode string) that drifts the moment a developer commits one per-author entry. Skip all three during this walk.
 
 Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DIR/<path>`. Use `cmp -s` for equality; `mkdir -p` before writing.
 
@@ -277,6 +294,7 @@ Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DI
 - `conflicts[]`: read the patch at `.gaia-merge/<path>.patch` and walk the user through the decision per file.
 - `packageJson`: populated by **Step 7a**. The `applied[]` keys are already written to the working tree (report counts only); walk the user through `conflicts[]` (re-pinned keys) and mention `suggestions[]` (added / removed-then-changed deps) as opt-in, both detailed in `.gaia-merge/package.json.notes`.
 - `pnpmWorkspace`: populated by **Step 7b**. Same shape and handling as `packageJson`, detailed in `.gaia-merge/pnpm-workspace.yaml.notes`.
+- `auditCiYml`: populated by **Step 7c**. Same shape and handling as `packageJson`, detailed in `.gaia-merge/audit-ci.yml.notes`.
 
 ### Step 7a: Field-aware `package.json` merge
 
@@ -382,6 +400,45 @@ The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 
 - **No managed-key delta** (overrides / allowBuilds / settings unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.**
 - **Settings or override change** → only the keys / entries GAIA actually changed (and that the adopter still tracks) are applied; re-pin conflicts and added/removed suggestions go to the notes file, never re-adding a key the adopter removed, never overwriting an adopter override.
 
+### Step 7c: Field-aware `.gaia/audit-ci.yml` merge
+
+`.gaia/audit-ci.yml` is classed `shared`, but it is a **mixed** file like `pnpm-workspace.yaml`. It carries GAIA-authored scalar knobs (`gate_label`, `budget_seconds`, `max_turns`, `push_fixes`, `default_mode`, `override_label`, the `retrigger_workflows` list) **and** the adopter-extensible `audit_authors` string, a space-separated `login=mode` list each developer appends their own pair to via `/setup-cloned-gaia-project`. A whole-file three-way merge emits a full-file conflict patch the moment one developer commits an entry, so merge it at YAML-key / per-author-entry granularity instead, acting only on the genuine upstream delta `B → L`.
+
+Let `A` = working-tree `.gaia/audit-ci.yml`, `B` = `$BASELINE_DIR/.gaia/audit-ci.yml`, `L` = `$LATEST_DIR/.gaia/audit-ci.yml`.
+
+**Presence triage first** (older baselines predate this file). Match the first row that applies; only the last row runs the field-aware merge:
+
+| Condition                       | Action                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `L` missing                     | Upstream dropped the file; fold into the Step 7 deletion sweep (`delete[]`). Skip 7c.                    |
+| `A` missing and `B` missing     | Genuinely new; copy `L` → `.gaia/audit-ci.yml`. Record in `add[]`. Skip 7c.                              |
+| `A` missing and `B` exists      | Adopter deleted it; respect the deletion, leave absent. Record in `removed[]`. Skip 7c.                  |
+| `A` exists and `B` missing      | No baseline to field-merge against; `diff -u A L > .gaia-merge/audit-ci.yml.patch`. Surface as a conflict. Skip 7c. |
+| `A`, `B`, `L` all exist         | Run the field-aware merge below.                                                                        |
+
+**Compute the per-key / per-entry verdicts** with the bundled CLI (it parses all three files with `js-yaml` and never writes the YAML):
+
+```bash
+.gaia/cli/gaia update merge-audit-ci \
+  --baseline "$BASELINE_DIR/.gaia/audit-ci.yml" \
+  --latest "$LATEST_DIR/.gaia/audit-ci.yml" \
+  --current .gaia/audit-ci.yml \
+  --json
+```
+
+The command exits non-zero with a structured error if any file is missing or not valid YAML. On a non-zero exit, fall back to a whole-file conflict patch (`diff -u A L > .gaia-merge/audit-ci.yml.patch`) and surface it as a conflict; do not proceed with the JSON path.
+
+The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 'key' | 'entry', section?, key, baseline?, latest?, adopter?, reason? }`. The CLI iterates only `keys(B) ∪ keys(L)` per managed scalar key and per `audit_authors` login, so an adopter-only developer entry is never visited, never clobbered. The seven managed knobs are compared whole-value; `audit_authors` is parsed into per-login entries (the login compared case-insensitively, matching the resolver's case-fold) and compared per login. Both use the identical verdict table as Step 7a (`apply` / `conflict` / `suggest-add` / `suggest-removed`).
+
+**Apply clean changes (`applied[]`):** for each item, edit the working-tree `.gaia/audit-ci.yml` so the key's (or author entry's) value becomes `latest`, using the **Edit** tool. Preserve the file's comments, key order, and quote style; change only the value text. For an `audit_authors` entry item, edit that login's `=mode` token inside the existing `audit_authors` string; do not rewrite the whole string or reorder the other developers' entries. Do **not** reserialize the file.
+
+**Record conflicts + suggestions:** if either bucket is non-empty, write a human-readable `.gaia-merge/audit-ci.yml.notes` listing, per item: the section (if any), the key, the adopter / baseline / latest values, and the recommended action. Set `notes_path`. This file is informational; it is **not** a `diff -u` patch and is **not** added to the file-level `conflicts[]` bucket.
+
+**Net effect:**
+
+- **No managed-key delta** (knobs and any shipped `audit_authors` entries unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.** An adopter whose only divergence is their committed `audit_authors` entries never sees a conflict.
+- **Reader safe-defaults absent keys:** an adopter whose installed file predates these keys is fine, the reader defaults `default_mode=ci`, `override_label=run-audit`, `audit_authors=` empty. The merge adds the keys; behavior is unchanged until the adopter acts.
+
 ### Step 8: Count trailer invalidations
 
 The version bump itself is deferred to Step 9 (after the summary prints) so an interrupted run stays resumable, see that step for the rationale. First, while `BASELINE` still names the installed version, count open PRs whose `GAIA-Audit` trailer is stamped with it. The upcoming bump invalidates them, they re-run the full CI audit on their next push:
@@ -437,12 +494,13 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Deleted:      <n>  (removed upstream; surfaced, not auto-deleted)
   package.json: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/package.json.notes)
   pnpm-workspace.yaml: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/pnpm-workspace.yaml.notes)
+  audit-ci.yml: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/audit-ci.yml.notes)
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
   Specs migrated: <n>  (flat .gaia/local/specs files folded into per-SPEC folders)
   Trailer invalidations: <n>  (open PRs stamped v$BASELINE will re-audit on next push)
 ```
 
-When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference. Apply the same rule to the `pnpm-workspace.yaml` row: `pnpm-workspace.yaml: no managed-key changes (clean skip)` when all three of its counts are zero. If 7b fell back to a whole-file conflict patch (presence triage or a parse failure), render the row as `pnpm-workspace.yaml: whole-file conflict (see .gaia-merge/pnpm-workspace.yaml.patch)` instead.
+When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference. Apply the same rule to the `pnpm-workspace.yaml` row: `pnpm-workspace.yaml: no managed-key changes (clean skip)` when all three of its counts are zero. If 7b fell back to a whole-file conflict patch (presence triage or a parse failure), render the row as `pnpm-workspace.yaml: whole-file conflict (see .gaia-merge/pnpm-workspace.yaml.patch)` instead. Apply the same two rules to the `audit-ci.yml` row: `audit-ci.yml: no managed-key changes (clean skip)` when all three counts are zero, or `audit-ci.yml: whole-file conflict (see .gaia-merge/audit-ci.yml.patch)` when 7c fell back.
 
 Use `SPECS_MIGRATED` for the `Specs migrated` row. If it is `"conflict"`, emit the row as `Specs migrated: conflict, see action item below` and, after the table, print a blocking action item naming the conflicting ids/paths from `$spec_folderize_out`:
 
@@ -485,6 +543,10 @@ Tell the user:
 3. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
 4. Inspect the diff (`git diff`) before committing.
 5. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
+
+**Opt-in nudge (only when `had_default_mode_before_merge` is `false`).** Show this line only when the pre-Step-7 snapshot found no `default_mode` key in the installed `.gaia/audit-ci.yml`, i.e. the adopter's config predates the per-author audit mode. Gate on the snapshot, NOT the post-merge file state: the Step 7c merge may have just added the key, and gating on the current file would pre-silence the nudge on the very run that should surface it. Once the adopter's own config carries `default_mode` (a later run's snapshot finds it), the nudge no longer fires.
+
+> **New: per-author audit mode.** The code-review-audit can now run locally at merge time for developers who prefer it, falling back to CI per-author over a team default. Behavior is unchanged until you opt in. Run `/setup-gaia-ci` to set the team policy; each developer runs `/setup-cloned-gaia-project` for their own preference.
 
 Do **not** auto-commit on behalf of the user, they need to review the changes first.
 

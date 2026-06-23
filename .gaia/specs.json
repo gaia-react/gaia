@@ -28,6 +28,13 @@
       "source": "allocated",
       "status": "shipped",
       "intent": "GAIA's code-review-audit flags anti-patterns review after review, but each"
+    },
+    {
+      "id": "SPEC-005",
+      "allocated_at": "2026-06-23T03:23:53Z",
+      "source": "allocated",
+      "status": "in-progress",
+      "intent": "Give the mandatory pre-merge code-review-audit a per-author mode so a"
     }
   ]
 }

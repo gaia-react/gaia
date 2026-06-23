@@ -237,9 +237,13 @@ Use AskUserQuestion (in the user's language; this configuration block stays in E
    claude setup-token
    gh secret set CLAUDE_CODE_OAUTH_TOKEN
 
-   # 2. Make code-review-audit a required check on main (run after the workflow's first successful PR run).
+   # 2. Make GAIA-Audit a required check on main (run after the workflow's first successful PR run).
+   #    The gate is the GAIA-Audit COMMIT STATUS, not the code-review-audit job name.
+   #    The job reaches a green terminal step on every path (including a local-mode
+   #    stand-down where no audit ran), so requiring the job name would let an unaudited
+   #    PR merge. Only the GAIA-Audit status (success == cleared for HEAD's tree) is the gate.
    gh api -X PUT "repos/{owner}/{repo}/branches/main/protection/required_status_checks" \
-     -f strict=true -f 'contexts[]=code-review-audit'
+     -f strict=true -f 'contexts[]=GAIA-Audit'
    ```
 
 3. Ensure the `gaia-forensics` label exists, but only if the project already has a GitHub remote that gh can read:
@@ -263,7 +267,18 @@ git mv .github/workflows/forensics-triage.yml .gaia/templates/workflows/forensic
   || mv .github/workflows/forensics-triage.yml .gaia/templates/workflows/forensics-triage.yml
 ```
 
-To re-enable later: `cp .gaia/templates/workflows/*.yml .github/workflows/`, then run the "Yes" recipe above. `/update-gaia` reads `.gaia/manifest.json` and treats deleted-from-adopter files as intentional, so the opt-out persists across updates.
+Then set the audit `default_mode` to `local` in `.gaia/audit-ci.yml`. CI cannot produce the `GAIA-Audit` stamp once its workflow lives in `.gaia/templates/`, so the local audit agent is the only producer; the resolver must resolve to `local` for every author by default. Never set this to `off` or any other disabled value, the audit gate is non-negotiable and `local` is the only valid baseline when CI is declined.
+
+```bash
+# Idempotent: rewrite an existing default_mode line, or append the key if absent.
+if grep -qE '^default_mode:' .gaia/audit-ci.yml; then
+  sed -i.bak -E 's/^default_mode:.*/default_mode: local/' .gaia/audit-ci.yml && rm -f .gaia/audit-ci.yml.bak
+else
+  printf '\n# Team baseline audit mode. CI workflow is in .gaia/templates/, so the\n# local audit agent is the only GAIA-Audit producer; local is the only valid value here.\ndefault_mode: local\n' >> .gaia/audit-ci.yml
+fi
+```
+
+To re-enable later: `cp .gaia/templates/workflows/*.yml .github/workflows/`, set `default_mode: ci` in `.gaia/audit-ci.yml`, then run the "Yes" recipe above. `/update-gaia` reads `.gaia/manifest.json` and treats deleted-from-adopter files as intentional, so the opt-out persists across updates.
 
 ### Make the statusline executable
 
@@ -302,6 +317,12 @@ The same probe set applies when setting up from an existing clone, `/setup-clone
 
 GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/update-deps`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia-ci` to wire up tokens and activate CI (Phase B).
 
+**Carry the Configure-CI decision forward.** The Configure CI integrations block above already recorded whether the user enabled CI ("Yes") or declined it ("Skip"). Hold that decision as init-state for this step, do NOT re-probe the filesystem (e.g. by checking whether `code-review-audit.yml` moved). Step 9 branches on it: a CI decline means CI is not a valid target for any maintenance tool, so the contradictory "Enable all four in CI mode" recommendation is never shown.
+
+**The unconditional terminal action of Step 9, on every exit path (the enumerated recommendation, a free-text answer, a CI decline, or a resumed run), is a single `gaia init configure-automation` call with all four tool modes set to valid values.** No branch may end Step 9 with a half-written or absent `.gaia/automation.json`. The CLI handler writes a complete, schema-valid config (`setup_complete: false`, `update_gaia.mode: local`, all four tool modes) in one atomic write; the prose's only job is to guarantee that call always runs with derived modes.
+
+### Branch A, CI was enabled
+
 Tell the user (in their language; the table headers stay English):
 
 > Configure GAIA's automated maintenance jobs. Recommended: enable all four in CI mode so they run unattended. You can pick a different mode per tool.
@@ -322,9 +343,22 @@ If the user picks "Customize per tool", show this table and use AskUserQuestion 
 | `pnpm_audit`     | `ci`    | Daily security audit; targeted PR for high/critical. | `ci` / `local` / `off` |
 | `stale_branches` | `ci`    | Monthly cleanup of branches merged >30 days ago.     | `ci` / `local` / `off` |
 
+### Branch B, CI was declined
+
+Do NOT show the "Enable all four in CI mode" recommendation, CI is not a valid target. Auto-derive every tool's mode to `local` (the only producer is the adopter's local invocation) and tell the user (in their language; table headers stay English):
+
+> You declined GAIA CI, so the maintenance tools default to `local`, they run only when you invoke them on this machine. Set any tool to `off` if you don't want it at all.
+
+Use AskUserQuestion to confirm the all-`local` derivation OR open per-tool overrides between `local` and `off` only (never `ci`):
+
+> How should GAIA's maintenance tools run? (CI is unavailable.)
+>
+> - **All four `local` (Recommended).** Sets `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches` to `local`. Each runs only when you invoke it here.
+> - **Customize per tool.** Choose `local` or `off` for each of the four tools.
+
 Mode meanings:
 
-- `ci`, runs in GitHub Actions on the documented cadence; PRs auto-merge on green CI.
+- `ci`, runs in GitHub Actions on the documented cadence; PRs auto-merge on green CI. (Only offered when CI was enabled.)
 - `local`, does not run in CI; only the adopter's local invocation runs the tool.
 - `off`, never runs (neither in CI nor locally via the smart entrypoints).
 
@@ -332,7 +366,7 @@ The fifth config key, `update_gaia.mode`, is fixed to `local` and not surfaced a
 
 ### Apply the answer
 
-Once you have a value for each of the four tools, run:
+Once you have a value for each of the four tools (from Branch A, Branch B, or a resumed run's saved arguments), run, ALWAYS, the terminal write:
 
 ```bash
 .gaia/cli/gaia init configure-automation \
@@ -342,7 +376,7 @@ Once you have a value for each of the four tools, run:
   --stale-branches <stale-branches-mode>
 ```
 
-Substitute each `<*-mode>` with the user's selection (`ci`, `local`, or `off`).
+Substitute each `<*-mode>` with the derived selection (`ci` is only valid on the CI-enabled branch; the CI-declined branch substitutes `local` or `off`). This call is mandatory on every exit path, there is no Step 9 branch that skips it.
 
 If the CLI exits non-zero, surface the structured-error JSON verbatim and stop. The user can re-run the failing command manually after addressing the cause, then resume `/gaia-init` with `.gaia/cli/gaia init resume`.
 

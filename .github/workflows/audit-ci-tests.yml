@@ -2,7 +2,9 @@ name: Audit CI Tests
 
 # Runs the bats suites for the .github/audit/ helpers that
 # code-review-audit.yml consumes, check-trailer.sh (skip-logic gate) and
-# resolve-audit-base.sh (incremental review base). Maintainer-only:
+# resolve-audit-base.sh (incremental review base), plus the
+# pr-merge-audit-check.sh PreToolUse merge hook (GAIA-Audit status reader).
+# Maintainer-only:
 # adopters receive these as GAIA-controlled (`owned`) code they never
 # modify, so the suite only catches regressions from maintainer edits.
 # Mirrors cli-tests.yml's narrow-surface, paths-filtered, step-gated shape.
@@ -38,9 +40,15 @@ jobs:
               - '.github/audit/**'
               - '.github/workflows/audit-ci-tests.yml'
               - '.claude/hooks/lib/repo-scope.sh'
+              - '.claude/hooks/pr-merge-audit-check.sh'
+              - '.claude/hooks/post-audit-status.sh'
+              - '.gaia/scripts/**'
       - if: steps.filter.outputs.code == 'true'
         name: Install bats
         run: sudo apt-get update && sudo apt-get install -y bats
       - if: steps.filter.outputs.code == 'true'
         name: Run .github/audit bats suites
         run: bats .github/audit/tests/
+      - if: steps.filter.outputs.code == 'true'
+        name: Run .gaia/scripts bats suites
+        run: bats .gaia/scripts/tests/

@@ -67,12 +67,15 @@ export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   'wiki/log.md',
 ]);
 
-// `package.json` and `pnpm-workspace.yaml` are `shared` but special-cased out
-// of the generic /update-gaia walk: both are field-aware merged (package.json
-// at JSON-key granularity, pnpm-workspace.yaml at YAML-key / map-entry
-// granularity) so adopter drift never forces a full-file conflict patch.
+// `package.json`, `pnpm-workspace.yaml`, and `.gaia/audit-ci.yml` are `shared`
+// but special-cased out of the generic /update-gaia walk: all three are
+// field-aware merged (package.json at JSON-key granularity, pnpm-workspace.yaml
+// at YAML-key / map-entry granularity, audit-ci.yml at YAML-key granularity
+// with its `audit_authors` login=mode string merged entry-by-entry) so adopter
+// drift never forces a full-file conflict patch.
 const SHARED = new Set([
   '.claude/settings.json',
+  '.gaia/audit-ci.yml',
   '.github/CODEOWNERS',
   '.github/FUNDING.yml',
   'CLAUDE.md',

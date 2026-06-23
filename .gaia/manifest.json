@@ -112,7 +112,7 @@
     ".claude/skills/update-gaia/SKILL.md": "owned",
     ".editorconfig": "owned",
     ".env.example": "owned",
-    ".gaia/audit-ci.yml": "owned",
+    ".gaia/audit-ci.yml": "shared",
     ".gaia/cli/gaia": "owned",
     ".gaia/cli/templates/.gitkeep": "owned",
     ".gaia/cli/templates/component/index.stories.tsx.tmpl": "owned",

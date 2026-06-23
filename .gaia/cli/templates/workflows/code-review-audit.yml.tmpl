@@ -11,10 +11,25 @@ name: Code Review Audit
 # run, so the audit cannot complete regardless). Adopter-tunable knobs
 # live at .gaia/audit-ci.yml.
 #
-# Required-check semantics under classic branch protection: the job MUST
-# reach a terminal "set check status" step on every code path. A skipped
-# job (job-level `if:`) does not satisfy a required check. All gating is
-# expressed at the step level (mirrors `.github/workflows/tests.yml`).
+# Per-author mode (local vs ci): the "Resolve audit decision" step calls the
+# shared resolver (.gaia/scripts/read-audit-ci-config.sh --resolve-author)
+# with the PR author and override-label presence. When it resolves `local`
+# with no override AND the change is in audit scope, CI stands down: it spends
+# no audit tokens and the "Stand down" step posts a `pending` GAIA-Audit status
+# (no cleared-shaped description) so the merge stays blocked until the local
+# merge path runs the audit and clears it. Every expensive step and the
+# audit-downstream stamps gain `&& should_run == 'true'`; the resolution is
+# subordinate to the scope gates (it only runs in-scope and not self-modifying),
+# so out-of-scope / self-mod PRs take the existing success-stamp paths unchanged
+# and never also post a stand-down.
+#
+# Required-check semantics under classic branch protection: the job is
+# green-by-design on every code path (including a local-mode stand-down where
+# no audit ran); the GATE is the `GAIA-Audit` commit STATUS, not the job name.
+# Each path still reaches a terminal "set check status / comment" step so the
+# job concludes cleanly. A `pending` GAIA-Audit status (the stand-down) blocks
+# the merge button; a `success` status with HEAD's version+tree clears it. All
+# gating is expressed at the step level (mirrors `.github/workflows/tests.yml`).
 #
 # Pinned action SHAs match `.github/workflows/forensics-triage.yml`:
 #   actions/checkout              @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
@@ -180,12 +195,51 @@ jobs:
             echo "self_modified=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve audit decision
+        id: decision
+        # Per-author mode resolution. Subordinate to the scope gates above:
+        # only meaningful once there is in-scope source and the PR is not
+        # self-modifying. Delegates to the shared resolver
+        # (.gaia/scripts/read-audit-ci-config.sh --resolve-author) so the CI
+        # side and the local merge path read the SAME resolved_mode for an
+        # author and can never diverge. should_run == 'false' (local mode, no
+        # override, in scope) means CI stands down and the local path runs the
+        # audit instead.
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.chore-deps.outputs.skip == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false'
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          OVERRIDE_LABEL: ${{ steps.config.outputs.override_label }}
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -eu
+          # Compute override-label presence from the PR's labels, then pass it
+          # to the shared resolver via the Phase 1 input form
+          # (OVERRIDE_LABEL_PRESENT=true; any-case true/yes/1 → present, absent
+          # → not present). The resolver owns precedence + normalization +
+          # required-check fail-closed; this step stays thin so it is
+          # reviewable by inspection.
+          if [ -n "$OVERRIDE_LABEL" ] \
+              && printf '%s' "$PR_LABELS_JSON" \
+                | jq -e --arg l "$OVERRIDE_LABEL" 'index($l)' >/dev/null; then
+            override_present=true
+          else
+            override_present=false
+          fi
+          OVERRIDE_LABEL_PRESENT="$override_present" \
+            bash .gaia/scripts/read-audit-ci-config.sh \
+              --resolve-author "$PR_AUTHOR" >> "$GITHUB_OUTPUT"
+
       - name: Check audit trailer
         id: trailer
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'false'
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true'
         run: bash .github/audit/check-trailer.sh >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm
@@ -193,6 +247,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
 
@@ -201,6 +256,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -212,6 +268,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         run: pnpm install --frozen-lockfile
 
@@ -221,6 +278,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         env:
           BUDGET_SECONDS: ${{ steps.config.outputs.budget_seconds }}
@@ -244,6 +302,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         # Continue on failure: max-turns / SDK / API errors must not strand
         # the PR check in a half-state. The status-summary terminal steps
@@ -336,6 +395,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
         run: |
           set +e
@@ -364,6 +424,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success'
@@ -529,6 +590,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success' &&
           (steps.push-fixes.outputs.marker_only == 'true' ||
@@ -565,6 +627,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success' &&
@@ -613,6 +676,35 @@ jobs:
             --field state=success \
             --field context=GAIA-Audit \
             --field description="${version} ${tree_sha}"
+
+      - name: Stand down (local-mode, no override)
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.chore-deps.outputs.skip == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'false'
+        run: |
+          set -eu
+          # Local-mode stand-down: this author's resolved mode is `local` with
+          # no override label, and the change is in audit scope. CI does NOT run
+          # the audit (no tokens spent); the local merge path runs it instead.
+          # Post a `pending` GAIA-Audit status on HEAD so the required check
+          # blocks the merge button until the local audit clears it. The
+          # description deliberately carries NO `<version> <tree-sha>` cleared
+          # shape -- a fixed sentinel that cannot match HEAD's tree -- so even a
+          # state-blind reader cannot mistake it for cleared (defense in depth
+          # behind the state-aware readers, which reject any non-success state).
+          # Subordinate to the scope gates (has_source == true && self_modified
+          # == false): out-of-scope / self-mod PRs take the existing
+          # success-stamp paths and never reach here, so exactly one terminal
+          # status lands per run.
+          head_sha="$(git rev-parse HEAD)"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+            --method POST \
+            --field state=pending \
+            --field context=GAIA-Audit \
+            --field description="local-mode stand-down: audit pending"
 
       - name: Write GAIA-Audit commit status (out-of-scope skip)
         if: |
@@ -811,8 +903,10 @@ jobs:
       # ----------------------------------------------------------------
       # Terminal status steps. Exactly one fires per run; together they
       # guarantee the job reaches a clean conclusion on every code path
-      # so the required check is satisfied (advisory comment is the only
-      # surface; the check name itself carries the pass/fail).
+      # (the job is green-by-design). The required-check gate is the
+      # `GAIA-Audit` commit STATUS posted by the stamp / stand-down steps
+      # above, not the job name: a `pending` stand-down blocks the merge
+      # while the job is still green. These comments are advisory.
       # ----------------------------------------------------------------
 
       - name: Status - skipped (gate label missing)
@@ -867,6 +961,25 @@ jobs:
           gh pr comment "$PR_NUMBER" \
             --body "code-review-audit skipped: PR modifies the audit workflow itself; claude-code-action's workflow-validation guardrail would refuse to run"
 
+      - name: Status - local-mode stand-down
+        # Green terminal step for the local-mode stand-down path. The JOB
+        # stays green-by-design; the GATE is the `GAIA-Audit` STATUS, which
+        # the stand-down step posted as `pending` (blocking the required
+        # check). Gated identically to the stand-down step so exactly one
+        # terminal status step fires per run.
+        if: |
+          steps.gate.outputs.gated == 'false' &&
+          steps.chore-deps.outputs.skip == 'false' &&
+          steps.source-changes.outputs.has_source == 'true' &&
+          steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'false'
+        env:
+          OVERRIDE_LABEL: ${{ steps.config.outputs.override_label }}
+        run: |
+          set -eu
+          gh pr comment "$PR_NUMBER" \
+            --body "code-review-audit standing down for this author (local mode). Merge via Claude (which runs the audit locally) or add the '${OVERRIDE_LABEL}' label to force a CI audit."
+
       - name: Status - audit aborted
         # `continue-on-error: true` on the audit step keeps the workflow
         # alive after the audit fails so this terminal step can post the
@@ -883,6 +996,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome != 'success'
         run: |
@@ -896,6 +1010,7 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
+          steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success'
         env:

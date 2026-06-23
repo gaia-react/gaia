@@ -31,6 +31,8 @@
 #   11. Single-commit PR (only HEAD)               → main ref
 #   12. Malformed trailer (short sha) ignored      → main ref
 #   13. gh absent / no token (status unreachable)  → main ref
+#   14. Pending status on ancestor → not a usable base → main ref
+#   15. Success status on ancestor → usable base       → ancestor SHA
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -119,6 +121,54 @@ done < "$MAP"
 # No GAIA-Audit status for this commit → the real --jq would yield null.
 printf 'null\n'
 exit 0
+EOF
+  chmod +x "$GH_BIN/gh"
+  export PATH="$GH_BIN:$PATH"
+  export GH_TOKEN="fake-token"
+  export GITHUB_REPOSITORY="gaia-react/gaia"
+}
+
+# Install a fake `gh` keyed by commit SHA that returns a full JSON statuses
+# array and runs the script's real `--jq` against it, exercising the production
+# state filter (map(select(... and .state == "success"))). The mock finds the
+# SHA in its argv, looks up that SHA's crafted array, and pipes it through the
+# real jq with the script's own --jq expression, so a pending status is filtered
+# out exactly as the resolver filters it. A SHA with no mapped array yields the
+# empty-array result (null), the resolver's "no status" path.
+#   $@ = "sha=<json-array>" pairs.
+install_gh_array_mock() {
+  GH_BIN="$BATS_TEST_TMPDIR/bin"
+  MAP_DIR="$BATS_TEST_TMPDIR/gh-array-map"
+  mkdir -p "$GH_BIN" "$MAP_DIR"
+  for pair in "$@"; do
+    sha="${pair%%=*}"
+    payload="${pair#*=}"
+    printf '%s' "$payload" > "$MAP_DIR/$sha"
+  done
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+# Mock \`gh api repos/<repo>/commits/<sha>/statuses --jq <expr>\`: pull the SHA
+# and the --jq expression from argv, then run the real jq against the crafted
+# array mapped for that SHA (empty array when unmapped).
+map_dir="$MAP_DIR"
+EOF
+  cat >> "$GH_BIN/gh" <<'EOF'
+jq_expr=""
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--jq" ]; then jq_expr="$a"; break; fi
+  prev="$a"
+done
+[ -n "$jq_expr" ] || { printf 'null\n'; exit 0; }
+payload="[]"
+for f in "$map_dir"/*; do
+  [ -e "$f" ] || continue
+  sha="$(basename "$f")"
+  case "$*" in
+    *"$sha"*) payload="$(cat "$f")"; break ;;
+  esac
+done
+printf '%s' "$payload" | jq -r "$jq_expr"
 EOF
   chmod +x "$GH_BIN/gh"
   export PATH="$GH_BIN:$PATH"
@@ -314,4 +364,38 @@ GAIA-Audit: 1.2.3 abc123
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
+}
+
+# -----------------------------------------------------------------------------
+# 14. A pending GAIA-Audit status on an ancestor is not a usable base
+# -----------------------------------------------------------------------------
+
+@test "status base: pending GAIA-Audit ancestor is not a usable base" {
+  add_commit a
+  base="$(sha_of HEAD)"
+  add_commit b
+  base_tree="$(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
+  # The ancestor carries a pending status with the current version+tree. The
+  # state filter rejects it, so it is not picked; the walk falls to main.
+  install_gh_array_mock \
+    "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${base_tree}\"}]"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+}
+
+# -----------------------------------------------------------------------------
+# 15. A success GAIA-Audit status on an ancestor IS a usable base
+# -----------------------------------------------------------------------------
+
+@test "status base: success GAIA-Audit ancestor is a usable base" {
+  add_commit a
+  base="$(sha_of HEAD)"
+  add_commit b
+  base_tree="$(git -C "$SANDBOX" rev-parse "${base}^{tree}")"
+  install_gh_array_mock \
+    "${base}=[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${base_tree}\"}]"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "$base" ]
 }
