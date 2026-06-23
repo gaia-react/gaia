@@ -76,6 +76,14 @@ Inspect the `finding_class` prefix and the pattern's nature:
 
 When a pattern is mechanizable, the recommendation is the deterministic check, not a skill and not a prose rule.
 
+### Axis 3, will it earn its weight (efficacy lens)
+
+A recurring finding proves the problem is real, the cost of NOT acting. It does not prove the chosen guidance will fix it. Before presenting, ask one question: **what cheap evidence would show this form actually changes behavior, and can I get it?**
+
+Prose is the weakest form on this axis: it advises rather than enforces, a capable agent may already honor it or may rationalize past it, and it costs context on every matching task. A deterministic check enforces. So the efficacy lens reinforces Axis 2: when the pattern is mechanizable, prefer the check.
+
+The evidence bar is deliberately low, a couple of before/after task replays or a single reproduction of the agent ignoring vs following the guidance, never a benchmark. If the recommended form is prose and you cannot name even that cheap evidence (because it restates a principle a strong agent already honors, or the anti-pattern is judgment-laden and easy to talk past), say so in the rationale and surface **weak efficacy evidence, consider defer until it recurs again, or decline** in the action framing. Never auto-decline, the human owns the call; the lens sharpens the recommendation and the rationale, nothing more.
+
 ### Present and act
 
 For each candidate, present: the finding_class, its distinct-PR count and the PRs it recurred on, the recommended form, and the one-line rationale. Then offer the action set: **approve / decline / defer / redirect**.
@@ -174,4 +182,5 @@ Run `harden-tally`, find the candidate whose `finding_class` matches the argumen
 - A decline is machine-local only (gitignored ledger); it never vetoes the candidate for a teammate.
 - A defer persists nothing.
 - Recommend exactly one form per candidate, with rationale; check edit-vs-new first; bias to the lowest-context-weight form. Never reflexively author a prose rule.
+- Factor the efficacy lens (Axis 3) into the recommendation and rationale: a recurring finding proves the problem, not the fix. When the recommended form is prose and no cheap evidence shows it would change behavior, surface that as a defer/decline signal for the human, never as an auto-decline.
 - Do not read the privacy-sealed mentorship event store to make any of these decisions; this loop keys only on `finding_class` recurrence from the PR window.

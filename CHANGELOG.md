@@ -12,6 +12,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 
 ### Added
 
+- `react-code` skill leads with a platform-first ladder (existing GAIA code → web platform like `Intl`/`URL`/`crypto.randomUUID` → already-installed dep → new dep → custom code) to walk before adding a dependency or hand-rolling a primitive
+- `/gaia-harden` weighs an efficacy lens (Axis 3) before recommending a form: a recurring finding proves the problem, not the fix, so when the recommended form is prose and no cheap before/after evidence shows it would change behavior, that surfaces as a defer/decline signal for the human, never an auto-decline
 - point Zod schema work at Zod's official LLM docs, auto-discovered from `node_modules/zod/package.json` (`llmsFull`/`llms`), and treat them as authoritative over training memory so valid Zod 4 forms are not rejected from stale v3 recollection
 
 ### Fixed
