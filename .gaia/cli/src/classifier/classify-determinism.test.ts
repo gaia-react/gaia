@@ -45,6 +45,16 @@ const HELPER = path.join(
   '.gaia/scripts/classifier/classify-determinism.mjs'
 );
 
+// The helper resolves `typescript` by walking up from its own location to the
+// repo-root node_modules. The CLI Tests CI job installs deps only in
+// `.gaia/cli`, so typescript lives there, not at the (uninstalled) repo root.
+// Expose `.gaia/cli/node_modules` via NODE_PATH so the exec'd helper resolves
+// typescript whether or not the repo root is installed.
+const HELPER_ENV = {
+  ...process.env,
+  NODE_PATH: path.join(REPO_ROOT, '.gaia/cli/node_modules'),
+};
+
 type Classification = {
   classification: 'emergent' | 'strict';
   file: string;
@@ -56,6 +66,7 @@ const classifyFile = (repoRelPath: string): Classification => {
   const out = execFileSync('node', [HELPER, repoRelPath], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
+    env: HELPER_ENV,
   });
 
   return JSON.parse(out) as Classification;
@@ -71,6 +82,7 @@ const classifySource = (
     cwd: REPO_ROOT,
     encoding: 'utf8',
     input: source,
+    env: HELPER_ENV,
   });
 
   return JSON.parse(out) as Classification;

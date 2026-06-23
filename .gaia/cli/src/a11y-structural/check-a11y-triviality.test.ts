@@ -50,6 +50,16 @@ const HELPER = path.join(
   '.gaia/scripts/a11y-structural/check-a11y-triviality.mjs'
 );
 
+// The helper resolves `typescript` by walking up from its own location to the
+// repo-root node_modules. The CLI Tests CI job installs deps only in
+// `.gaia/cli`, so typescript lives there, not at the (uninstalled) repo root.
+// Expose `.gaia/cli/node_modules` via NODE_PATH so the exec'd helper resolves
+// typescript whether or not the repo root is installed.
+const HELPER_ENV = {
+  ...process.env,
+  NODE_PATH: path.join(REPO_ROOT, '.gaia/cli/node_modules'),
+};
+
 type Finding = {fullName: string; reason: string};
 type Verdict = {
   file: string;
@@ -92,6 +102,7 @@ const check = (
     cwd: REPO_ROOT,
     encoding: 'utf8',
     input: source,
+    env: HELPER_ENV,
   });
 
   return JSON.parse(out) as Verdict;

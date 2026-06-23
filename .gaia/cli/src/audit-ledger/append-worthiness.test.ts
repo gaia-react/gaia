@@ -49,6 +49,15 @@ const SIGNAL_HELPER = path.join(
   '.gaia/scripts/red-ledger/extract-test-signals.mjs'
 );
 
+// The helper (and the signal helper the writer spawns) resolves `typescript`
+// by walking up from its own location to the repo-root node_modules. The CLI
+// Tests CI job installs deps only in `.gaia/cli`, so typescript lives there,
+// not at the (uninstalled) repo root. Expose `.gaia/cli/node_modules` via
+// NODE_PATH so the exec'd scripts resolve typescript whether or not the repo
+// root is installed. The writer inherits this env when it spawns the signal
+// helper, so the path propagates transitively.
+const CLI_NODE_MODULES = path.join(REPO_ROOT, '.gaia/cli/node_modules');
+
 type LedgerLine = {
   artifact?: string;
   auditedAt: string;
@@ -79,7 +88,12 @@ const redSignalFor = (fullName: string): string => {
   const out = execFileSync(
     'node',
     [SIGNAL_HELPER, TEST_FILE_REL, '--stdin'],
-    {cwd: workDir, encoding: 'utf8', input: TEST_SOURCE}
+    {
+      cwd: workDir,
+      encoding: 'utf8',
+      input: TEST_SOURCE,
+      env: {...process.env, NODE_PATH: CLI_NODE_MODULES},
+    }
   );
   const line = out
     .trim()
@@ -96,7 +110,11 @@ const runWriter = (args: string[]): void => {
   execFileSync('node', [WRITER, ...args], {
     cwd: workDir,
     encoding: 'utf8',
-    env: {...process.env, WORTHINESS_LEDGER_PATH: ledgerPath},
+    env: {
+      ...process.env,
+      NODE_PATH: CLI_NODE_MODULES,
+      WORTHINESS_LEDGER_PATH: ledgerPath,
+    },
   });
 };
 
