@@ -17,7 +17,13 @@
  * devDependency, so the test runner can exec it.
  */
 import {execFileSync} from 'node:child_process';
-import {existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -85,20 +91,16 @@ let testFileAbs: string;
 // Recompute the RED-ledger signal for the fixture's single test, so the
 // assertion checks byte-equality against the canonical primitive.
 const redSignalFor = (fullName: string): string => {
-  const out = execFileSync(
-    'node',
-    [SIGNAL_HELPER, TEST_FILE_REL, '--stdin'],
-    {
-      cwd: workDir,
-      encoding: 'utf8',
-      input: TEST_SOURCE,
-      env: {...process.env, NODE_PATH: CLI_NODE_MODULES},
-    }
-  );
+  const out = execFileSync('node', [SIGNAL_HELPER, TEST_FILE_REL, '--stdin'], {
+    cwd: workDir,
+    encoding: 'utf8',
+    input: TEST_SOURCE,
+    env: {...process.env, NODE_PATH: CLI_NODE_MODULES},
+  });
   const line = out
     .trim()
     .split('\n')
-    .map((l) => JSON.parse(l) as {fullName: string; signal: string})
+    .map((rawLine) => JSON.parse(rawLine) as {fullName: string; signal: string})
     .find((entry) => entry.fullName === fullName);
 
   if (!line) throw new Error(`no signal for ${fullName}`);
@@ -123,7 +125,7 @@ const readLedger = (): LedgerLine[] =>
     .trim()
     .split('\n')
     .filter(Boolean)
-    .map((l) => JSON.parse(l) as LedgerLine);
+    .map((rawLine) => JSON.parse(rawLine) as LedgerLine);
 
 beforeEach(() => {
   // Each test gets a private working tree so the writer's on-disk read of the
@@ -183,7 +185,10 @@ describe('append-worthiness', () => {
 
     const lines = readLedger();
     expect(lines).toHaveLength(2);
-    expect(lines.map((l) => l.verdict)).toEqual(['keep', 'fix']);
+    expect(lines.map((ledgerLine) => ledgerLine.verdict)).toEqual([
+      'keep',
+      'fix',
+    ]);
   });
 
   it('rejects an unknown verdict', () => {
@@ -199,8 +204,6 @@ describe('append-worthiness', () => {
   });
 
   it('fails when the named test is not found in the file', () => {
-    expect(() =>
-      runWriter([TEST_FILE_REL, 'no such test', 'keep'])
-    ).toThrow();
+    expect(() => runWriter([TEST_FILE_REL, 'no such test', 'keep'])).toThrow();
   });
 });
