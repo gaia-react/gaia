@@ -361,7 +361,7 @@ describe('scaffold component', () => {
     expect(stdio.errors.join('')).toContain('--props entry must be name:type');
   });
 
-  test('comma-bearing object type exits 1 and writes no file', () => {
+  test('comma-bearing Record type scaffolds a single prop with the full type', () => {
     const exit = run(
       [
         'Widget',
@@ -373,15 +373,62 @@ describe('scaffold component', () => {
       {cwd: sandbox.root}
     );
 
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('comma-bearing');
-    expect(stdio.errors.join('')).toContain('one --props flag per prop');
-    expect(() =>
-      read(path.join(sandbox.parent, 'Widget', 'index.tsx'))
-    ).toThrow();
+    expect(exit).toBe(0);
+
+    const indexContents = read(
+      path.join(sandbox.parent, 'Widget', 'index.tsx')
+    );
+    expect(indexContents).toContain('type WidgetProps = {');
+    expect(indexContents).toContain('  meta: Record<string, unknown>;');
+    expect(indexContents).toContain(
+      'const Widget: FC<WidgetProps> = ({meta}) => ('
+    );
   });
 
-  test('comma-bearing function type exits 1 and writes no file (no silent garbage)', () => {
+  test('comma-bearing tuple type scaffolds a single prop with the full type', () => {
+    const exit = run(
+      [
+        'Pair',
+        '--parent',
+        'app/components',
+        '--props',
+        'pair:[string, number]',
+      ],
+      {cwd: sandbox.root}
+    );
+
+    expect(exit).toBe(0);
+
+    const indexContents = read(path.join(sandbox.parent, 'Pair', 'index.tsx'));
+    expect(indexContents).toContain('  pair: [string, number];');
+    expect(indexContents).toContain(
+      'const Pair: FC<PairProps> = ({pair}) => ('
+    );
+  });
+
+  test('a plain prop and a comma-bearing prop separate into two props', () => {
+    const exit = run(
+      [
+        'Card',
+        '--parent',
+        'app/components',
+        '--props',
+        'title:string,meta:Record<string, unknown>',
+      ],
+      {cwd: sandbox.root}
+    );
+
+    expect(exit).toBe(0);
+
+    const indexContents = read(path.join(sandbox.parent, 'Card', 'index.tsx'));
+    expect(indexContents).toContain('  title: string;');
+    expect(indexContents).toContain('  meta: Record<string, unknown>;');
+    expect(indexContents).toContain(
+      'const Card: FC<CardProps> = ({title, meta}) => ('
+    );
+  });
+
+  test('multi-arg function prop scaffolds one prop with a callable no-op fallback', () => {
     const exit = run(
       [
         'Picker',
@@ -389,15 +436,32 @@ describe('scaffold component', () => {
         'app/components',
         '--props',
         'onSelect:(id: string, ev: Event) => void',
+        '--no-story',
       ],
       {cwd: sandbox.root}
     );
 
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('comma-bearing');
-    expect(() =>
-      read(path.join(sandbox.parent, 'Picker', 'index.tsx'))
-    ).toThrow();
+    expect(exit).toBe(0);
+
+    const indexContents = read(
+      path.join(sandbox.parent, 'Picker', 'index.tsx')
+    );
+    expect(indexContents).toContain(
+      '  onSelect: (id: string, ev: Event) => void;'
+    );
+    expect(indexContents).toContain(
+      'const Picker: FC<PickerProps> = ({onSelect}) => ('
+    );
+
+    const testContents = read(
+      path.join(sandbox.parent, 'Picker', 'tests', 'index.test.tsx')
+    );
+    // The render attribute must be a CALLABLE no-op cast, so wiring the prop
+    // into the render body survives being invoked with arguments.
+    expect(testContents).toContain(
+      'onSelect={(() => undefined) as (id: string, ev: Event) => void}'
+    );
+    expect(testContents).not.toContain('onSelect={{} as');
   });
 
   test('single-arg function prop scaffolds with a callable no-op fallback (not {} as)', () => {

@@ -18,9 +18,9 @@
  * The `--props "name:type,name:type"` flag turns the bare `FC` signature
  * into a typed `FC<NameProps>` and emits a Props type alias plus a
  * destructured signature. Each entry must be `name:type`; empty entries
- * and malformed pairs are rejected with exit 1. Commas separate props, so
- * comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are not
- * supported and are rejected with exit 1; pass one `--props` flag per prop.
+ * and malformed pairs are rejected with exit 1. Only depth-0 commas separate
+ * props, so comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are
+ * supported within a single entry.
  *
  * The handler uses the shared scaffold utilities (`writeFileIfAbsent`,
  * `loadTemplate`, `renderTemplate`) so behavior matches the other
@@ -47,19 +47,13 @@ const CLOSERS = new Set(Object.values(BRACKET_PAIRS));
  * Split a `--props` value on prop-separating commas only. A comma at bracket
  * depth 0 separates props; a comma inside a bracket pair (`<>`, `()`, `[]`,
  * `{}`) belongs to a comma-bearing type (`Record<string, unknown>`,
- * `(id: string, ev: Event) => void`, a tuple `[string, number]`).
- *
- * `hasNestedComma` is true when any depth>0 comma is present. The honest-reject
- * path uses that flag today; the segment list it returns is the seam a future
- * change would use to split on depth-0 commas instead of rejecting.
+ * `(id: string, ev: Event) => void`, a tuple `[string, number]`) and is kept
+ * intact inside its segment.
  */
-const splitTopLevelCommas = (
-  raw: string
-): {hasNestedComma: boolean; segments: string[]} => {
+const splitTopLevelCommas = (raw: string): string[] => {
   const segments: string[] = [];
   let depth = 0;
   let current = '';
-  let hasNestedComma = false;
 
   for (const char of raw) {
     if (char in BRACKET_PAIRS) {
@@ -68,14 +62,10 @@ const splitTopLevelCommas = (
       depth -= 1;
     }
 
-    if (char === ',') {
-      if (depth > 0) {
-        hasNestedComma = true;
-      } else {
-        segments.push(current);
-        current = '';
-        continue;
-      }
+    if (char === ',' && depth === 0) {
+      segments.push(current);
+      current = '';
+      continue;
     }
 
     current += char;
@@ -83,7 +73,7 @@ const splitTopLevelCommas = (
 
   segments.push(current);
 
-  return {hasNestedComma, segments};
+  return segments;
 };
 
 type ParsedFlags = {
@@ -118,21 +108,14 @@ const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
   --props "a:string,b:number"
                       Typed props rendered as a Props type alias.
                       Comma-bearing types (Record<K, V>, (a, b) => void,
-                      tuples) are not supported; pass one --props flag per prop.
+                      tuples) are supported; only top-level commas split props.
   --json              Emit ScaffoldResult JSON on stdout
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const parseProps = (raw: string): FlagParseResult => {
-  const {hasNestedComma, segments} = splitTopLevelCommas(raw);
-
-  if (hasNestedComma) {
-    return {
-      message: `--props value contains a comma-bearing type (got: "${raw}"); comma-bearing types (Record<K, V>, (a, b) => void, tuples) are not supported. Pass one --props flag per prop, or split the type out.`,
-      ok: false,
-    };
-  }
+  const segments = splitTopLevelCommas(raw);
 
   const entries = segments.flatMap((entry) => {
     const trimmed = entry.trim();
