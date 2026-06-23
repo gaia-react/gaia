@@ -142,6 +142,11 @@
             "type": "command",
             "command": ".claude/hooks/pr-merge-audit-check.sh",
             "statusMessage": "Checking PR-merge audit gate…"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/worthiness-presence-check.sh",
+            "statusMessage": "Checking worthiness presence gate…"
           }
         ]
       }
