@@ -138,3 +138,18 @@ EOF
   # Allow path: the hook exits 0 with no output (no deny JSON).
   [ -z "$output" ]
 }
+
+# -----------------------------------------------------------------------------
+# 3. No signal at all (no marker, no trailer, no status) denies gh pr merge
+# -----------------------------------------------------------------------------
+
+@test "merge hook: no signal at all denies gh pr merge" {
+  # Empty statuses array: no GAIA-Audit status. The sandbox has no marker and
+  # no trailer, and the in-scope app/ change keeps the marker mandatory.
+  install_gh_array_mock "[]"
+
+  run run_hook
+  [ "$status" -eq 0 ]
+  decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')
+  [ "$decision" = "deny" ]
+}

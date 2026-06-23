@@ -41,6 +41,7 @@ jobs:
               - '.github/workflows/audit-ci-tests.yml'
               - '.claude/hooks/lib/repo-scope.sh'
               - '.claude/hooks/pr-merge-audit-check.sh'
+              - '.claude/hooks/post-audit-status.sh'
               - '.gaia/scripts/**'
       - if: steps.filter.outputs.code == 'true'
         name: Install bats

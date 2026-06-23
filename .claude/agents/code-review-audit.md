@@ -503,7 +503,7 @@ After producing the report (which includes the adversarial verification of Criti
 
 Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
-When the marker is warranted, the write is a three-step "stamp → mark → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the _new_ HEAD; _then_ push. Marker-before-push is load-bearing, it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The `[ ! -f "$marker" ]` guard makes the write idempotent, re-running the audit on the same HEAD never overwrites an existing marker:
+When the marker is warranted, the write is a "stamp → mark → status → push" sequence: first stamp HEAD locally with the `GAIA-Audit:` trailer (the helper picks amend vs empty-commit per the placement rule, but never pushes); then re-read HEAD (it may have moved due to amend / empty-commit) and write the marker file for the _new_ HEAD; then post the `GAIA-Audit` success commit status on HEAD, gated on the marker file already existing; _then_ push. Marker-before-push is load-bearing, it ensures a `chore: code review audit passed` commit never reaches remote history without a corresponding marker, even if the marker write step is interrupted (the un-pushed commit is recoverable via `git reset --hard HEAD~1`). The status POST is gated on the marker so it never runs inline with the clean judgment ahead of the marker write; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The `[ ! -f "$marker" ]` guard makes the write idempotent, re-running the audit on the same HEAD never overwrites an existing marker:
 
 ```bash
 # 1. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per
@@ -525,6 +525,13 @@ if [ ! -f "$marker" ]; then
     "$HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     > "$marker"
 fi
+
+# 2b. Post the GAIA-Audit success status on HEAD, gated on the marker
+#     existing first (the helper re-checks `[ -f "$marker" ]`). Best-effort:
+#     gh absent / unauthenticated skips the POST and the marker still clears
+#     the Claude merge path, while the github.com button stays blocked until
+#     a success status lands. The status POST never runs ahead of the marker.
+audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
 
 # 3. Push the stamp commit only when the helper created an empty commit
 #    AND HEAD is on an attached tracking branch with an upstream. Amend
@@ -551,6 +558,8 @@ fi
 ```
 
 After the marker decision is made (marker written or not, self-heal applied or not), emit the `report stamped` breadcrumb (see Progress breadcrumbs). Example counts: `marker written, self-heal none` or `marker not written, self-heal applied`.
+
+When the marker is written, also surface `audit_status_line` (the line `post-audit-status.sh` emits) on its own line below the marker line, so the operator sees whether the `GAIA-Audit` success status landed (`status: posted GAIA-Audit success <short-sha>`) or was skipped (`status: declined: <reason>`, e.g. `gh unauthenticated`, in which case Claude can still merge but the github.com button stays blocked until a status lands).
 
 Then surface, as the final line of your report, pick the line that matches the `stamp_line` + `push_status` combination:
 
