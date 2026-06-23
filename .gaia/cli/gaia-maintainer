@@ -23676,6 +23676,29 @@ ${entries}
 `;
 };
 var buildPropsGeneric = (componentName, props) => props.length === 0 ? "" : `<${componentName}Props>`;
+var buildPropAttribute = (prop) => {
+  const type2 = prop.type;
+  if (type2 === "string") return `${prop.name}="${prop.name}"`;
+  if (type2 === "number") return `${prop.name}={0}`;
+  if (type2 === "boolean") return `${prop.name}={true}`;
+  if (type2.endsWith("[]")) return `${prop.name}={[]}`;
+  return `${prop.name}={{} as ${type2}}`;
+};
+var buildPropAttributes = (props) => props.map(buildPropAttribute).join(" ");
+var buildRenderJsx = (componentName, props, withStory) => {
+  if (withStory || props.length === 0) return `<${componentName} />`;
+  return `<${componentName} ${buildPropAttributes(props)} />`;
+};
+var buildStoryDefault = (componentName, props) => {
+  if (props.length === 0) {
+    return `export const Default: StoryFn = () => <${componentName} />;`;
+  }
+  return [
+    "export const Default: StoryFn = () => (",
+    `  <${componentName} ${buildPropAttributes(props)} />`,
+    ");"
+  ].join("\n");
+};
 var buildTestImports = (componentName, withStory) => {
   if (withStory) {
     return [
@@ -23714,23 +23737,25 @@ var renderComponentFile = (templatesRoot, componentName, props) => {
     propsTypeBlock
   });
 };
-var renderTestFile = (templatesRoot, componentName, withStory) => {
+var renderTestFile = (templatesRoot, componentName, props, withStory) => {
   const templatePath = path29.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.test.tsx.tmpl`
   );
   return renderTemplate(templatePath, {
     Name: componentName,
+    renderJsx: buildRenderJsx(componentName, props, withStory),
     testImports: buildTestImports(componentName, withStory)
   });
 };
-var renderStoryFile = (templatesRoot, componentName, parent) => {
+var renderStoryFile = (templatesRoot, componentName, props, parent) => {
   const templatePath = path29.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
   );
   return renderTemplate(templatePath, {
     Name: componentName,
+    storyDefault: buildStoryDefault(componentName, props),
     storyTitle: buildStoryTitle(parent, componentName)
   });
 };
@@ -23802,13 +23827,13 @@ var run39 = (argv, options = {}) => {
     );
     writeOne(
       testPath,
-      renderTestFile(templatesRoot, flags.name, flags.story),
+      renderTestFile(templatesRoot, flags.name, flags.props, flags.story),
       result
     );
     if (flags.story) {
       writeOne(
         storyPath,
-        renderStoryFile(templatesRoot, flags.name, flags.parent),
+        renderStoryFile(templatesRoot, flags.name, flags.props, flags.parent),
         result
       );
     }

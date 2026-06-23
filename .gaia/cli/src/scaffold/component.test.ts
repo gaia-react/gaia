@@ -200,6 +200,72 @@ describe('scaffold component', () => {
     );
   });
 
+  test('--props story Default renders a non-degenerate instance with representative prop values', () => {
+    const exit = run(
+      [
+        'Card',
+        '--parent',
+        'app/components',
+        '--props',
+        'title:string,count:number',
+      ],
+      {cwd: sandbox.root}
+    );
+
+    expect(exit).toBe(0);
+
+    const storyContents = read(
+      path.join(sandbox.parent, 'Card', 'tests', 'index.stories.tsx')
+    );
+    // Default must carry representative props, not a bare `<Card />`, so the
+    // story-driven a11y check renders against a real DOM and can fail.
+    expect(storyContents).toContain('export const Default: StoryFn = () => (');
+    expect(storyContents).toContain('title="title"');
+    expect(storyContents).toContain('count={0}');
+    expect(storyContents).not.toContain('=> <Card />;');
+
+    // The a11y test renders the composed Default, which now carries props.
+    const testContents = read(
+      path.join(sandbox.parent, 'Card', 'tests', 'index.test.tsx')
+    );
+    expect(testContents).toContain('const Card = composeStory(Default, Meta);');
+    expect(testContents).toContain('await expectNoA11yViolations(container);');
+  });
+
+  test('--props --no-story test renders the component with representative props', () => {
+    const exit = run(
+      ['Bar', '--parent', 'app/components', '--props', 'label:string', '--no-story'],
+      {cwd: sandbox.root}
+    );
+
+    expect(exit).toBe(0);
+
+    const testContents = read(
+      path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')
+    );
+    expect(testContents).not.toContain('composeStory');
+    expect(testContents).toContain("import Bar from '..'");
+    // Required props must be supplied at the render site so the test typechecks
+    // and renders a non-degenerate instance the a11y check can fail against.
+    expect(testContents).toContain('render(<Bar label="label" />)');
+    expect(testContents).toContain('await expectNoA11yViolations(container);');
+  });
+
+  test('no-props a11y test carries a starting-point caveat comment', () => {
+    const exit = run(['Foo', '--parent', 'app/components'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(0);
+
+    const testContents = read(
+      path.join(sandbox.parent, 'Foo', 'tests', 'index.test.tsx')
+    );
+    // The render-only a11y check is a starting point, not complete a11y
+    // evidence (consistent with the tracer-bullet/a11y caveat).
+    expect(testContents.toLowerCase()).toContain('starting point');
+  });
+
   test('lowercase name exits 1 with PascalCase message', () => {
     const exit = run(['foo', '--parent', 'app/components'], {
       cwd: sandbox.root,

@@ -213,6 +213,62 @@ const buildPropsGeneric = (
   props: readonly PropEntry[]
 ): string => (props.length === 0 ? '' : `<${componentName}Props>`);
 
+/**
+ * A representative value literal for a prop, ready to splice into a JSX
+ * attribute (`name={value}` or, for strings, the quoted form `name="value"`).
+ * Primitives get an honest non-degenerate value so the scaffolded a11y test
+ * renders real DOM. Exotic types fall back to a typed cast the author replaces
+ * (kept type-safe so the generated test still typechecks).
+ */
+const buildPropAttribute = (prop: PropEntry): string => {
+  const type = prop.type;
+
+  if (type === 'string') return `${prop.name}="${prop.name}"`;
+  if (type === 'number') return `${prop.name}={0}`;
+  if (type === 'boolean') return `${prop.name}={true}`;
+  if (type.endsWith('[]')) return `${prop.name}={[]}`;
+
+  return `${prop.name}={{} as ${type}}`;
+};
+
+const buildPropAttributes = (props: readonly PropEntry[]): string =>
+  props.map(buildPropAttribute).join(' ');
+
+/**
+ * The JSX the test renders. With a story, the test renders the composed
+ * `Default` (props live on the story). Without a story, the component is
+ * rendered directly, so required props must be supplied at the render site.
+ */
+const buildRenderJsx = (
+  componentName: string,
+  props: readonly PropEntry[],
+  withStory: boolean
+): string => {
+  if (withStory || props.length === 0) return `<${componentName} />`;
+
+  return `<${componentName} ${buildPropAttributes(props)} />`;
+};
+
+/**
+ * The `Default` story export. With props, `Default` renders a non-degenerate
+ * instance carrying representative values so the story-driven a11y check has
+ * real DOM to assert against; without props it renders the bare component.
+ */
+const buildStoryDefault = (
+  componentName: string,
+  props: readonly PropEntry[]
+): string => {
+  if (props.length === 0) {
+    return `export const Default: StoryFn = () => <${componentName} />;`;
+  }
+
+  return [
+    'export const Default: StoryFn = () => (',
+    `  <${componentName} ${buildPropAttributes(props)} />`,
+    ');',
+  ].join('\n');
+};
+
 const buildTestImports = (
   componentName: string,
   withStory: boolean
@@ -281,6 +337,7 @@ const renderComponentFile = (
 const renderTestFile = (
   templatesRoot: string,
   componentName: string,
+  props: readonly PropEntry[],
   withStory: boolean
 ): string => {
   const templatePath = path.join(
@@ -290,6 +347,7 @@ const renderTestFile = (
 
   return renderTemplate(templatePath, {
     Name: componentName,
+    renderJsx: buildRenderJsx(componentName, props, withStory),
     testImports: buildTestImports(componentName, withStory),
   });
 };
@@ -297,6 +355,7 @@ const renderTestFile = (
 const renderStoryFile = (
   templatesRoot: string,
   componentName: string,
+  props: readonly PropEntry[],
   parent: string
 ): string => {
   const templatePath = path.join(
@@ -306,6 +365,7 @@ const renderStoryFile = (
 
   return renderTemplate(templatePath, {
     Name: componentName,
+    storyDefault: buildStoryDefault(componentName, props),
     storyTitle: buildStoryTitle(parent, componentName),
   });
 };
@@ -407,14 +467,14 @@ export const run = (
     );
     writeOne(
       testPath,
-      renderTestFile(templatesRoot, flags.name, flags.story),
+      renderTestFile(templatesRoot, flags.name, flags.props, flags.story),
       result
     );
 
     if (flags.story) {
       writeOne(
         storyPath,
-        renderStoryFile(templatesRoot, flags.name, flags.parent),
+        renderStoryFile(templatesRoot, flags.name, flags.props, flags.parent),
         result
       );
     }

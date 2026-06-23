@@ -214,6 +214,95 @@ test('saveThing called POST', async () => {
 
 Why bad: handler existence proves nothing. Assert on the effect, database state after the call, or the returned value.
 
+## Worth Keeping: the Discriminator, Composition, and Platform Rules
+
+A test that passes can still be worthless. The honesty rules ("Bad Tests" above) ask whether a test _can_ fail for a real reason; these rules ask whether the test is worth having at all. Tests that re-prove a dependency, re-prove a child component, or pin the byte output of a platform formatter add maintenance cost and break on unrelated upgrades while catching none of your bugs.
+
+### The discriminator
+
+Before keeping any test, ask:
+
+> If this test failed, would the bug be in MY code or in the dependency? If the dependency, delete the test.
+
+`date-fns`, `Intl`, Zod, `react-router`, `react-i18next` all have their own suites. A test whose only failure mode is "the library changed" tests the library, not you.
+
+### The composition rule
+
+A test for component `C` asserts the **emergent behavior of its children together**: the seam where data and events flow through `C`. It never re-proves what the children's own suites already cover.
+
+```tsx
+// app/components/Checkout/tests/index.test.tsx
+// GOOD - the seam: PriceTag + QuantityStepper feeding the running total in Checkout
+test('total updates when quantity changes', async () => {
+  render(<DefaultCheckout />);
+  await userEvent.click(screen.getByRole('button', {name: 'Increase quantity'}));
+  expect(screen.getByRole('status', {name: 'Order total'})).toHaveTextContent('$99.98');
+});
+
+// BAD - re-proves PriceTag's own suite; nothing here is about Checkout
+test('price renders with two decimals', () => {
+  render(<DefaultCheckout />);
+  expect(screen.getByText('$49.99')).toBeInTheDocument(); // PriceTag's job, tested in PriceTag's suite
+});
+```
+
+This is a judgment call, not a lint rule: applied bluntly it strips real integration regressions. An agent applies it **PROPOSE-only and NEVER auto-deletes a child-redundant test.** Any proposed delete must cite both the specific redundant sibling assertion AND the seam assertion that subsumes it, and the cited sibling assertion is machine-verified to contain a matching assertion before the proposal reaches a human. Security, escaping, and data-integrity seam tests (for example a Toast XSS-escaping test) carry a never-delete-without-a-verified-sibling carve-out: they stay even when a sibling looks redundant.
+
+### The platform rule
+
+When a helper delegates to a platform formatter (`Intl`, `date-fns`), test the logic you own, not the formatter's output bytes.
+
+```tsx
+// WORTHLESS - tests Intl, not you
+// formatPrice = (n) => new Intl.NumberFormat('en-US',
+//   {style: 'currency', currency: 'USD'}).format(n);
+test('formats as USD', () => expect(formatPrice(49.99)).toBe('$49.99'));
+
+// WORTHY - tests YOUR logic; Intl is just the boundary it delegates to
+// formatPrice = (cents, currency) => {
+//   if (cents == null) return '';
+//   return new Intl.NumberFormat(LOCALE_BY_CURRENCY[currency],
+//     {style: 'currency', currency}).format(cents / 100);
+// };
+test('renders nothing for a null amount', () =>
+  expect(formatPrice(null, 'USD')).toBe(''));
+test('converts cents to major units', () =>
+  expect(formatPrice(4999, 'USD')).toBe('$49.99'));
+test('picks the locale for the currency', () => {
+  // Assert the locale SELECTION you own with a TOLERANT matcher, never byte-exact
+  // glyphs. Intl uses a narrow no-break space that varies by ICU version, so
+  // toBe('49,99 €') is itself the platform-coupled anti-pattern this rule warns
+  // against - it breaks on a Node/ICU upgrade with no bug in your code.
+  const out = formatPrice(4999, 'EUR');
+  expect(out).toMatch(/49,99/);
+  expect(out).toContain('€');
+});
+```
+
+The null-amount guard and the cents-to-major conversion and the currency-to-locale selection are yours. The decimal separator, currency glyph, and spacing belong to `Intl`. Assert the first set; tolerate the second.
+
+### Thin wrappers over a platform formatter
+
+A helper that only selects a locale or format and delegates to `Intl` or `date-fns` is the platform rule's most common shape. `formatMY` in `app/utils/date.ts` delegates straight to `date-fns`'s `format` with a fixed `MM/yy` pattern:
+
+```ts
+export const formatMY = (date = new Date()): string => format(date, 'MM/yy');
+```
+
+```ts
+// WORTHLESS - re-proves date-fns formats MM/yy; the bug would be in date-fns
+test('formats MM/yy', () =>
+  expect(formatMY(new Date('2026-01-15'))).toBe('01/26'));
+```
+
+`formatMY` owns no branching logic to test, so it has nothing worth a unit test of its own; it is exercised through the components that render a card expiry. A sibling like `formatFullYear`, which DOES branch on language (`'en'` versus the `年` suffix), is worth testing on the branch you own, not on the year digits `date-fns` produces.
+
+## Tracer Bullets and a11y
+
+The tracer bullet for any component, `composeStory(Default, Meta)` renders without throwing, and the structural a11y check, `expectNoA11yViolations` on that render, are both **starting points, approved as a complete test ONLY for components with no interactive behavior** (a Spinner, a static badge). For a behavior-rich component, a tracer-bullet-only test is the start of a test, not the whole of it: the interactions, state transitions, and error paths still need assertions.
+
+The same caveat extends to accessibility: `expectNoA11yViolations` on a render-only container is a starting point for interactive components, not a complete a11y test. A render-only axe pass says nothing about focus order, keyboard operation, or the accessible state of controls a user actually drives.
+
 ## Red Flags
 
 - `vi.fn()` spy on a function the component uses internally
