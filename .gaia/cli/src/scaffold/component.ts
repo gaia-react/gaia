@@ -380,11 +380,16 @@ type RunOptions = {
 const defaultIsDirectory = (absPath: string): boolean =>
   existsSync(absPath) && statSync(absPath).isDirectory();
 
-const renderComponentFile = (
-  templatesRoot: string,
-  componentName: string,
-  props: readonly PropEntry[]
-): string => {
+type RenderFileOptions = {
+  componentName: string;
+  parent: string;
+  props: readonly PropEntry[];
+  templatesRoot: string;
+  withStory: boolean;
+};
+
+const renderComponentFile = (options: RenderFileOptions): string => {
+  const {componentName, props, templatesRoot} = options;
   const templatePath = path.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.tsx.tmpl`
@@ -402,12 +407,8 @@ const renderComponentFile = (
   });
 };
 
-const renderTestFile = (
-  templatesRoot: string,
-  componentName: string,
-  props: readonly PropEntry[],
-  withStory: boolean
-): string => {
+const renderTestFile = (options: RenderFileOptions): string => {
+  const {componentName, props, templatesRoot, withStory} = options;
   const templatePath = path.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.test.tsx.tmpl`
@@ -420,12 +421,8 @@ const renderTestFile = (
   });
 };
 
-const renderStoryFile = (
-  templatesRoot: string,
-  componentName: string,
-  props: readonly PropEntry[],
-  parent: string
-): string => {
+const renderStoryFile = (options: RenderFileOptions): string => {
+  const {componentName, parent, props, templatesRoot} = options;
   const templatePath = path.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
@@ -527,24 +524,20 @@ export const run = (
   const templatesRoot = resolveTemplatesRoot();
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
+  const renderOptions: RenderFileOptions = {
+    componentName: flags.name,
+    parent: flags.parent,
+    props: flags.props,
+    templatesRoot,
+    withStory: flags.story,
+  };
+
   try {
-    writeOne(
-      indexPath,
-      renderComponentFile(templatesRoot, flags.name, flags.props),
-      result
-    );
-    writeOne(
-      testPath,
-      renderTestFile(templatesRoot, flags.name, flags.props, flags.story),
-      result
-    );
+    writeOne(indexPath, renderComponentFile(renderOptions), result);
+    writeOne(testPath, renderTestFile(renderOptions), result);
 
     if (flags.story) {
-      writeOne(
-        storyPath,
-        renderStoryFile(templatesRoot, flags.name, flags.props, flags.parent),
-        result
-      );
+      writeOne(storyPath, renderStoryFile(renderOptions), result);
     }
   } catch (error) {
     structuredError({
