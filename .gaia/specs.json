@@ -35,6 +35,13 @@
       "source": "allocated",
       "status": "in-progress",
       "intent": "Give the mandatory pre-merge code-review-audit a per-author mode so a"
+    },
+    {
+      "id": "SPEC-006",
+      "allocated_at": "2026-06-23T06:45:28Z",
+      "source": "allocated",
+      "status": "in-progress",
+      "intent": "GAIA's test-driven workflow gains a determinism-scoped, two-axis quality"
     }
   ]
 }
