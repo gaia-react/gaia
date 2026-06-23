@@ -1,0 +1,274 @@
+/**
+ * Tests for `gaia update merge-audit-ci`.
+ *
+ * Strategy: write three temporary `.gaia/audit-ci.yml` files (baseline /
+ * latest / current), run the handler, and assert the JSON verdict report. The
+ * command is a read-only verdict oracle: it never writes the YAML, so there are
+ * no on-disk side effects to assert (the `/update-gaia` skill applies
+ * `applied[]` via the Edit tool to preserve comments and order).
+ */
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {run, type AuditCiMergeReport} from './merge-audit-ci.js';
+
+type Sandbox = {
+  root: string;
+  baselinePath: string;
+  latestPath: string;
+  currentPath: string;
+  cleanup: () => void;
+  write: (which: 'baseline' | 'current' | 'latest', contents: string) => void;
+};
+
+const setupSandbox = (): Sandbox => {
+  const root = mkdtempSync(path.join(tmpdir(), 'gaia-merge-audit-ci-'));
+  const baselinePath = path.join(root, 'baseline.yaml');
+  const latestPath = path.join(root, 'latest.yaml');
+  const currentPath = path.join(root, 'current.yaml');
+
+  return {
+    baselinePath,
+    cleanup: () => {
+      rmSync(root, {force: true, recursive: true});
+    },
+    currentPath,
+    latestPath,
+    root,
+    write: (which, contents): void => {
+      const target =
+        which === 'baseline' ? baselinePath
+        : which === 'latest' ? latestPath
+        : currentPath;
+      writeFileSync(target, contents, 'utf8');
+    },
+  };
+};
+
+const captureStdio = (): {
+  errors: string[];
+  outputs: string[];
+  restore: () => void;
+} => {
+  const outputs: string[] = [];
+  const errors: string[] = [];
+  const stdoutSpy = vi
+    .spyOn(process.stdout, 'write')
+    .mockImplementation((chunk: unknown) => {
+      outputs.push(typeof chunk === 'string' ? chunk : String(chunk));
+
+      return true;
+    });
+  const stderrSpy = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: unknown) => {
+      errors.push(typeof chunk === 'string' ? chunk : String(chunk));
+
+      return true;
+    });
+
+  return {
+    errors,
+    outputs,
+    restore: () => {
+      stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
+    },
+  };
+};
+
+const parseJson = (outputs: readonly string[]): AuditCiMergeReport =>
+  JSON.parse(outputs.join('').trim()) as AuditCiMergeReport;
+
+const argv = (sandbox: Sandbox): string[] => [
+  '--baseline',
+  sandbox.baselinePath,
+  '--latest',
+  sandbox.latestPath,
+  '--current',
+  sandbox.currentPath,
+  '--json',
+];
+
+describe('update merge-audit-ci', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+    sandbox = setupSandbox();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('version-only release: managed keys identical → all buckets empty', () => {
+    const yaml = 'default_mode: ci\noverride_label: run-audit\nmax_turns: 60\n';
+    sandbox.write('baseline', yaml);
+    sandbox.write('latest', yaml);
+    sandbox.write('current', yaml);
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+  });
+
+  test('preserves an adopter-only audit_authors entry untouched', () => {
+    // Baseline / latest ship only stevensacks; the adopter committed alice + bob.
+    sandbox.write('baseline', 'audit_authors: "stevensacks=local"\n');
+    sandbox.write('latest', 'audit_authors: "stevensacks=local"\n');
+    sandbox.write(
+      'current',
+      'audit_authors: "stevensacks=local alice=local bob=ci"\n'
+    );
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    // alice and bob are adopter-only logins: never visited, so they appear in
+    // no bucket and are left exactly as the adopter committed them.
+    const touchedLogins = [
+      ...report.applied,
+      ...report.conflicts,
+      ...report.suggestions,
+    ]
+      .filter((item) => item.section === 'audit_authors')
+      .map((item) => item.key);
+    expect(touchedLogins).not.toContain('alice');
+    expect(touchedLogins).not.toContain('bob');
+    // stevensacks is unchanged baseline→latest, so it is a no-op too.
+    expect(report.applied).toEqual([]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+  });
+
+  test('applies an upstream scalar delta the adopter kept at baseline', () => {
+    sandbox.write('baseline', 'override_label: run-audit\n');
+    sandbox.write('latest', 'override_label: audit-now\n');
+    sandbox.write('current', 'override_label: run-audit\n');
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([
+      {
+        adopter: 'run-audit',
+        baseline: 'run-audit',
+        key: 'override_label',
+        kind: 'key',
+        latest: 'audit-now',
+      },
+    ]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+  });
+
+  test('conflicts a key the adopter diverged that upstream also changed', () => {
+    sandbox.write('baseline', 'default_mode: ci\n');
+    sandbox.write('latest', 'default_mode: local\n');
+    sandbox.write('current', 'default_mode: off\n');
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([]);
+    expect(report.conflicts).toEqual([
+      {
+        adopter: 'off',
+        baseline: 'ci',
+        key: 'default_mode',
+        kind: 'key',
+        latest: 'local',
+      },
+    ]);
+    expect(report.suggestions).toEqual([]);
+  });
+
+  test('never returns a whole-file conflict patch for an audit_authors-only divergence', () => {
+    // The only divergence is the adopter's committed audit_authors entries;
+    // every managed scalar is identical baseline→latest→current. The result is
+    // field-level (zero items), never a whole-file conflict.
+    sandbox.write('baseline', 'default_mode: ci\noverride_label: run-audit\n');
+    sandbox.write('latest', 'default_mode: ci\noverride_label: run-audit\n');
+    sandbox.write(
+      'current',
+      'default_mode: ci\noverride_label: run-audit\naudit_authors: "alice=local bob=ci"\n'
+    );
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+  });
+
+  test('applies an upstream audit_authors mode change the adopter kept at baseline', () => {
+    // GAIA flips stevensacks ci→local; the adopter still has the baseline ci and
+    // has added their own alice entry (adopter-only, untouched).
+    sandbox.write('baseline', 'audit_authors: "stevensacks=ci"\n');
+    sandbox.write('latest', 'audit_authors: "stevensacks=local"\n');
+    sandbox.write('current', 'audit_authors: "stevensacks=ci alice=local"\n');
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([
+      {
+        adopter: 'ci',
+        baseline: 'ci',
+        key: 'stevensacks',
+        kind: 'entry',
+        latest: 'local',
+        section: 'audit_authors',
+      },
+    ]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
+  });
+
+  test('login comparison is case-insensitive (display casing does not split an entry)', () => {
+    // The adopter spelled the login StevenSacks; GAIA's baseline/latest use
+    // lowercase. They are the same login, so GAIA's mode change applies.
+    sandbox.write('baseline', 'audit_authors: "stevensacks=ci"\n');
+    sandbox.write('latest', 'audit_authors: "stevensacks=local"\n');
+    sandbox.write('current', 'audit_authors: "StevenSacks=ci"\n');
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toHaveLength(1);
+    expect(report.applied[0]).toMatchObject({
+      adopter: 'ci',
+      baseline: 'ci',
+      kind: 'entry',
+      latest: 'local',
+      section: 'audit_authors',
+    });
+    expect(report.conflicts).toEqual([]);
+  });
+
+  test('missing file exits non-zero with a structured error', () => {
+    sandbox.write('baseline', 'default_mode: ci\n');
+    sandbox.write('latest', 'default_mode: ci\n');
+    // current is never written.
+
+    const exit = run(argv(sandbox));
+    expect(exit).not.toBe(0);
+    expect(stdio.errors.join('')).toContain('audit_ci_file_missing');
+  });
+});
