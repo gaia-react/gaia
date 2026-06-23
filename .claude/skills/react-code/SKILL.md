@@ -7,6 +7,18 @@ description: Patterns and conventions for writing and editing React code, includ
 
 Write and edit React components, pages, routes, hooks, and forms following project conventions.
 
+## Reach for the Platform First
+
+Before installing a package or hand-rolling a primitive, walk this ladder and stop at the first hit:
+
+1. **Existing GAIA code**, a component, hook, or util already covers it (form inputs → Gate 2).
+2. **Web platform**, a browser API or native element does the job: `Intl` (dates, numbers, lists, plurals), `URL` / `URLSearchParams`, `crypto.randomUUID()`, `structuredClone()`, `AbortController`, native `Array` / `Object` methods, `<dialog>`, modern CSS (`:has()`, container queries).
+3. **Already-installed dependency**, check `package.json` before adding a sibling that does the same job.
+4. **New dependency**, only when 1-3 genuinely fall short; the added weight has to earn its place.
+5. **Custom code**, last resort, kept minimal.
+
+The largest real savings come from `Intl` over date/number-formatting libraries and native collection methods over `lodash`/`underscore` (already enforced by `you-dont-need-lodash-underscore`). Reaching for the platform replaces a needless dependency or bespoke widget; it never overrides accessibility, input validation, or an existing GAIA component (a wrapper exists for a reason).
+
 ## Pre-Flight Gates
 
 Most hook bugs come from misidentifying the type of problem being solved. Before writing or editing hooks, run through these gate, it only applies when the relevant pattern is present in your changes.
