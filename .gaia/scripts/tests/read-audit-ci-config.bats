@@ -220,7 +220,7 @@ push_fixes: true"
   write_config "push_fixes: maybe"
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [[ "$output" == *"push_fixes=true" ]]
+  [[ "$output" == *"push_fixes=true"$'\n'* ]]
   [[ "$output" == *"not a recognized boolean"* ]]
 }
 
