@@ -66,10 +66,39 @@ and is **always human-gated**.
 ### Non-triviality is corroboration, not the producer
 
 The judge-independent producer of the non-triviality signal is a structural
-floor (a static-shape check), not the reviewer's runtime agreement. The
-reviewer's `fix` on a behavior-rich tracer-bullet-only test is corroborating
-evidence; when the reviewer and the structural floor disagree, the disagreement
-surfaces rather than the reviewer's `keep` overriding the structural `fix`.
+floor (a static-shape check at
+`.gaia/scripts/a11y-structural/check-a11y-triviality.mjs`), not the reviewer's
+runtime agreement. The reviewer's `fix` on a behavior-rich tracer-bullet-only
+test is corroborating evidence; when the reviewer and the structural floor
+disagree, the disagreement surfaces rather than the reviewer's `keep` overriding
+the structural `fix`.
+
+The floor inspects a11y test files (those calling the emergent-signal a11y
+helpers `expectNoA11yViolations` / `runAxe`) and flags a vacuous a11y test when
+EITHER its `render(...)` passes no props (only defaults) OR its rendered markup
+carries no interactive or landmark node while the component's stories declare
+interactive variants. It reads no LLM judgement and rests on no can-it-fail axis
+(an a11y render reads GREEN identically whether the test is honest or vacuous),
+so the structural shape is the mechanical pass condition. It is ADVISORY: a
+`trivial` verdict adds a `fix` to the end-of-task summary and routes into the
+ledger as a `fix`; it never blocks a commit. A render-only axe pass stays a
+complete a11y test for a component with no interactive behavior (a Spinner, a
+static badge). The a11y-helper call names are in the [[Determinism Classifier]]
+emergent set, so a vacuous a11y test never leaks to the deterministic RED
+surface; this floor grades the same test's worthiness.
+
+### Two-tier surfacing
+
+Advisory findings never interrupt mid-implementation; they surface only at
+end-of-task, in two tiers. Honesty findings auto-fix in place and are left in the
+working tree for normal review. Every proposed delete requires human
+confirmation and renders its cited redundant sibling AND the subsuming seam
+assertion inline, so the human confirms against the evidence without opening
+files. The list is capped: top-N by severity with a count (`delete` proposals
+before `fix` findings), never a wall. On the no-orchestrator path the findings
+share one end-of-task summary with the determinism roll-up; on the orchestrated
+path the same content goes into the leaf's `SUMMARY.md` and the pre-merge
+summary.
 
 ## Audit ledger
 
@@ -102,6 +131,12 @@ ledger:
   repo-relative test path, a `fullName`, a verdict, and (for non-keep) an
   artifact; recomputes the signal via the RED-ledger helper and appends one
   JSONL line. Rejects an unknown verdict and a non-keep with no artifact.
+- `.gaia/scripts/a11y-structural/check-a11y-triviality.mjs`: the structural a11y
+  floor. A Node ESM AST helper (TypeScript compiler API, repo-relative path arg,
+  `--stdin`, `--stories <path>`) that emits
+  `{file, verdict: "trivial" | "non-trivial" | "not-a11y", findings}`. It is the
+  judge-independent producer of the non-triviality signal; the reviewer's
+  matching `fix` is corroboration only.
 
 ## Consumers
 

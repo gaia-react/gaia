@@ -146,6 +146,34 @@ The guarantee this audit provides is scoped to **the subset a same-model fresh-c
 - **No-orchestrator path (this skill alone), surviving guarantees:** static honesty lint on every test; a real RED on the deterministic surface; the fresh-subagent worthiness audit **if it was dispatched**. The audit is advisory and depends on this dispatch step running; a skipped dispatch leaves only the static lint and the RED gate.
 - **Orchestrated path, additional guarantees (NOT available here):** the post-phase merge presence gate (which recomputes signals and refuses a merge whose audit ledger is absent or mismatched) and leaf isolation enforced by the orchestrator. These are orchestrator-owned; the no-orchestrator path does not provide them.
 
+### 7. Surfacing the advisory findings
+
+Advisory findings (worthiness verdicts and the structural a11y floor below) NEVER interrupt mid-implementation. There are no mid-flow prompts. They surface only where attention already is: the end-of-task summary, before commit (no-orchestrator path), and the orchestrator's `SUMMARY.md` plus the pre-merge summary (orchestrated path). This is the SAME end-of-task summary the determinism roll-up and the worthiness verdicts already render into; the surfacing rules here describe how that one summary presents the findings, not a second summary.
+
+#### Structural a11y floor (judge-independent non-triviality)
+
+Run the structural a11y floor over each changed emergent-surface test file that calls an a11y helper (`expectNoA11yViolations` / `runAxe`):
+
+```
+node .gaia/scripts/a11y-structural/check-a11y-triviality.mjs <repo-relative-test-path>
+```
+
+It emits `{file, verdict: "trivial" | "non-trivial" | "not-a11y", findings}`. A `trivial` verdict flags a vacuous a11y test as an advisory **non-triviality fix**, on a static-AST shape alone: the render passes no props (only defaults), or the rendered markup carries no interactive or landmark node while the component's stories declare interactive variants. This is the judge-independent producer of the non-triviality signal; the worthiness evaluator's matching `fix` is corroborating evidence, never the pass condition. When the floor says `trivial` and the evaluator says `keep`, the floor wins and the disagreement is surfaced. A render-only axe pass stays a complete a11y test for a component with no interactive behavior (a Spinner, a static badge); the floor only flags it when the shape or the stories show unexercised behavior. The floor is ADVISORY: it adds a `fix` finding to the summary, it never blocks a commit. Route a `trivial` finding into the worthiness ledger as a `fix` with the structural reason as its artifact.
+
+#### Two tiers, capped
+
+The summary presents advisory findings in two tiers:
+
+- **HONESTY findings auto-fix.** A test that fails the honesty axis (couples to implementation, asserts a tautology, asserts platform bytes) is rewritten in place and left in the working tree for normal review. No confirmation prompt: the fix is a normal code edit the human reviews like any other.
+- **Every proposed DELETE requires human confirmation and renders its evidence INLINE.** A delete is never acted on. Each proposed delete renders, in the summary, the cited redundant sibling assertion AND the subsuming seam assertion that makes it redundant, so the human confirms against the evidence without opening files. A delete whose cited sibling cannot be machine-verified is downgraded, never shown as a delete.
+
+Cap the list: show the **top-N by severity with a count** (`delete` proposals before `fix` findings; "3 of 11 findings shown"), never a wall of every line.
+
+#### Where it renders
+
+- **No-orchestrator path (main loop):** one end-of-task summary before commit, sharing the surface with the determinism roll-up and the worthiness verdicts. One summary, not three.
+- **Orchestrated path:** the same two-tier content goes into the leaf's `SUMMARY.md` ledger entry and the pre-merge summary, so the orchestrator's merge presence gate and the human reviewer see the deletes and their inline evidence before a merge.
+
 ## Checklist Per Cycle
 
 ```
