@@ -19,7 +19,7 @@ Trigger: user asks to create a component, scaffold a card, etc.
 
 - `--no-story`, skip Storybook story
 - `--parent <dir>`, non-default parent dir (e.g. `app/components/Form`)
-- `--props "a:string,b:number"`, typed props rendered as a Props alias and destructured in the signature. Commas separate props, so comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are not supported; pass one `--props` flag per prop.
+- `--props "a:string,b:number"`, typed props rendered as a Props alias and destructured in the signature. Only top-level commas separate props, so comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are supported within a single entry.
 
 ## Accessibility assertion
 
