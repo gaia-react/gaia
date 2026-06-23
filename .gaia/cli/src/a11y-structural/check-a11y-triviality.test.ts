@@ -113,7 +113,6 @@ describe('check-a11y-triviality', () => {
     const result = check(
       'app/components/Spinner/tests/index.test.tsx',
       [
-        '// @vitest-environment jsdom',
         "import {expectNoA11yViolations} from 'test/a11y';",
         "import {render} from 'test/rtl';",
         "import Spinner from '..';",
