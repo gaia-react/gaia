@@ -165,11 +165,13 @@ done < "$trailers_tmp"
 # GitHub Commit Status fallback
 # -----------------------------------------------------------------------------
 # CI-stamped PRs carry the audit signal as a GitHub Commit Status with
-# context "GAIA-Audit" (description "<version> <tree-sha>"), NOT as a commit
-# message trailer. (The workflow no longer pushes an empty marker commit -
-# pushing it would strand the PR on a check-less HEAD.) When HEAD has no
-# matching trailer, query the API for that status and apply the same
-# version + tree match logic.
+# context "GAIA-Audit" and state "success" (description "<version> <tree-sha>"),
+# NOT as a commit message trailer. (The workflow no longer pushes an empty
+# marker commit - pushing it would strand the PR on a check-less HEAD.) When
+# HEAD has no matching trailer, query the API for a success status and apply
+# the same version + tree match logic. A non-success status (e.g. a local-mode
+# stand-down's pending status on this SHA) is filtered out at the source, so a
+# pending status carrying HEAD's version+tree never skips the audit.
 #
 # Requires GH_TOKEN in the environment (the workflow exports it). A failed
 # or absent API call MUST NOT skip the audit: callers fall through to
@@ -192,11 +194,13 @@ check_status_fallback() {
     return 1
   fi
 
-  # Query combined status for HEAD; pull the GAIA-Audit context's
-  # description. `gh api` exits non-zero on HTTP error → handled by `||`.
+  # Query combined status for HEAD; pull the GAIA-Audit context's description,
+  # requiring the status state to be success so a non-success status (e.g. a
+  # pending stand-down) is filtered out at the source. `gh api` exits non-zero
+  # on HTTP error → handled by `||`.
   status_desc=$(gh api \
     "repos/${repo}/commits/${head_sha}/statuses" \
-    --jq 'map(select(.context == "GAIA-Audit")) | last | .description' \
+    --jq 'map(select(.context == "GAIA-Audit" and .state == "success")) | last | .description' \
     2>/dev/null || true)
 
   # No status, API failure, or jq produced "null"/empty → fall through.

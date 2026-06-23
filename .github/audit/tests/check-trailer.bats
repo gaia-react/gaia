@@ -33,6 +33,9 @@
 #  13. Status API failure                        → skip=false reason=no-trailer
 #  14. No GAIA-Audit status on HEAD              → skip=false reason=no-trailer
 #  15. Malformed status description              → skip=false reason=no-trailer
+#  16. Pending status, matching version+tree      → skip=false reason=no-trailer
+#  17. Success status, matching version+tree      → skip=true  reason=status-matches
+#  18. Pending + success both present             → skip=true  (success picked)
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -104,6 +107,41 @@ case "$behavior" in
   *)     printf '%s\n' "$desc" ;;
 esac
 EOF
+  chmod +x "$GH_BIN/gh"
+  export PATH="$GH_BIN:$PATH"
+  export GH_TOKEN="fake-token"
+  export GITHUB_REPOSITORY="gaia-react/gaia"
+}
+
+# Install a fake `gh` that returns a full JSON statuses array and runs the
+# script's real `--jq` expression against it. This exercises the production
+# state filter (map(select(... and .state == "success"))), so the test sees
+# exactly what the reader sees: a pending status is filtered out at the source,
+# a success status survives, and a SHA carrying both is resolved to the success
+# one regardless of array position. The mock parses its own argv for the value
+# following `--jq` and pipes the crafted array through the real jq.
+#   $1 JSON array string (the raw statuses payload the real API would return).
+# Also sets GH_TOKEN + GITHUB_REPOSITORY so check_status_fallback runs.
+install_gh_array_mock() {
+  local payload="$1"
+  GH_BIN="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$GH_BIN"
+  printf '%s' "$payload" > "$BATS_TEST_TMPDIR/gh-statuses.json"
+  cat > "$GH_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+# Mock `gh api ... --jq <expr>`: find the --jq expression in argv and run the
+# real jq against the crafted statuses payload, mirroring gh's server-side jq.
+jq_expr=""
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "--jq" ]; then jq_expr="$a"; break; fi
+  prev="$a"
+done
+[ -n "$jq_expr" ] || { printf 'null\n'; exit 0; }
+jq -r "$jq_expr" < "PAYLOAD_FILE"
+EOF
+  sed -i.bak "s#PAYLOAD_FILE#$BATS_TEST_TMPDIR/gh-statuses.json#" "$GH_BIN/gh"
+  rm -f "$GH_BIN/gh.bak"
   chmod +x "$GH_BIN/gh"
   export PATH="$GH_BIN:$PATH"
   export GH_TOKEN="fake-token"
@@ -383,5 +421,61 @@ reason=no-trailer"
 matched_version=
 matched_tree=
 reason=no-trailer"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 16. Pending GAIA-Audit with matching version+tree does NOT skip
+# -----------------------------------------------------------------------------
+
+@test "status fallback: pending GAIA-Audit with matching version+tree does NOT skip" {
+  tree=$(current_tree)
+  install_gh_array_mock \
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${tree}\"}]"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=false
+matched_version=
+matched_tree=
+reason=no-trailer"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 17. Success GAIA-Audit with matching version+tree skips (no regression)
+# -----------------------------------------------------------------------------
+
+@test "status fallback: success GAIA-Audit with matching version+tree skips" {
+  tree=$(current_tree)
+  install_gh_array_mock \
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"}]"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=true
+matched_version=1.2.3
+matched_tree=${tree}
+reason=status-matches"
+  [ "$output" = "$expected" ]
+}
+
+# -----------------------------------------------------------------------------
+# 18. Pending + success both present → success picked (skip=true)
+# -----------------------------------------------------------------------------
+
+@test "status fallback: pending+success both present picks success" {
+  tree=$(current_tree)
+  # Pending first, success last; both carry HEAD's version+tree. The
+  # select-inside-map filter picks the success regardless of position.
+  install_gh_array_mock \
+    "[{\"context\":\"GAIA-Audit\",\"state\":\"pending\",\"description\":\"1.2.3 ${tree}\"},{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 ${tree}\"}]"
+
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  expected="skip=true
+matched_version=1.2.3
+matched_tree=${tree}
+reason=status-matches"
   [ "$output" = "$expected" ]
 }
