@@ -41,6 +41,10 @@ setup() {
   ln -s "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$REPO/.claude/hooks/lib/red-ledger.sh"
   ln -s "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
   ln -s "$HOME_ROOT/.gaia/scripts/red-ledger" "$REPO/.gaia/scripts/red-ledger"
+  # The determinism carve-out classifies the test file via this helper; symlink
+  # it so the hook resolves it from pwd exactly as in production. The symlinked
+  # helper resolves `typescript` from the home repo's node_modules.
+  ln -s "$HOME_ROOT/.gaia/scripts/classifier" "$REPO/.gaia/scripts/classifier"
 
   # Seed a HEAD commit with a non-test file so HEAD exists. The symlinks are
   # untracked working-tree entries; they never enter the staged diff.
@@ -119,7 +123,7 @@ test("adds two numbers", () => {
 # --- new test with no matching RED -> deny ---
 
 @test "denies a new test with no ledger entry (never run)" {
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   run_commit_hook
   [ "$status" -eq 0 ]
   denied
@@ -127,9 +131,9 @@ test("adds two numbers", () => {
 }
 
 @test "denies a new first-run-pass test (ledger has no matching RED)" {
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   # An unrelated RED in the ledger must not satisfy this test.
-  seed_ledger "app/other/index.test.ts" "something else" "sha256:deadbeef"
+  seed_ledger "app/utils/other/index.test.ts" "something else" "sha256:deadbeef"
   run_commit_hook
   [ "$status" -eq 0 ]
   denied
@@ -138,8 +142,8 @@ test("adds two numbers", () => {
 # --- observed-fail then pass -> allow ---
 
 @test "allows a new test that has a matching valid RED" {
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
-  seed_matching_red "app/x/index.test.ts" "adds two numbers"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  seed_matching_red "app/utils/x/index.test.ts" "adds two numbers"
   run_commit_hook
   [ "$status" -eq 0 ]
   ! denied
@@ -148,7 +152,7 @@ test("adds two numbers", () => {
 # --- prose-only claim does not satisfy the gate ---
 
 @test "denies even when the commit message prose claims a failing test first" {
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   run_commit_hook 'git commit -m "wrote a failing test first, RED observed"'
   [ "$status" -eq 0 ]
   denied
@@ -157,9 +161,9 @@ test("adds two numbers", () => {
 # --- Edit-to-pass hole closed: RED at a stale signal does not count ---
 
 @test "denies when the test body changed after its RED (signal mismatch)" {
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   # Seed a RED for the SAME fullName but a different (stale) body signal.
-  seed_ledger "app/x/index.test.ts" "adds two numbers" "sha256:staleoldsignal"
+  seed_ledger "app/utils/x/index.test.ts" "adds two numbers" "sha256:staleoldsignal"
   run_commit_hook
   [ "$status" -eq 0 ]
   denied
@@ -170,13 +174,13 @@ test("adds two numbers", () => {
 
 @test "allows editing a test already present at HEAD even with no RED" {
   # The test exists at HEAD with the same fullName.
-  commit_file_at_head "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  commit_file_at_head "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 test("adds two numbers", () => {
   expect(1 + 1).toBe(2);
 });
 '
   # Stage an edit to that same test (same fullName, changed body) with no RED.
-  stage_file "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  stage_file "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 test("adds two numbers", () => {
   expect(2 + 1).toBe(3);
 });
@@ -187,13 +191,13 @@ test("adds two numbers", () => {
 }
 
 @test "denies a brand-new test added to a file that already exists at HEAD" {
-  commit_file_at_head "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  commit_file_at_head "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 test("existing test", () => {
   expect(1).toBe(1);
 });
 '
   # Stage: keep the existing test, add a NEW one with no RED.
-  stage_file "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  stage_file "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 test("existing test", () => {
   expect(1).toBe(1);
 });
@@ -218,7 +222,7 @@ test("brand new test", () => {
 }
 
 @test "allows when 'git commit' appears only inside a quoted message string" {
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   # No real git commit invocation: the words are inside an echo string.
   run_commit_hook 'echo "remember to git commit later"'
   [ "$status" -eq 0 ]
@@ -226,7 +230,7 @@ test("brand new test", () => {
 }
 
 @test "ignores commands that are not git commit" {
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   run_commit_hook "git status"
   [ "$status" -eq 0 ]
   ! denied
@@ -242,7 +246,7 @@ test("brand new test", () => {
   git -C "$OTHER" config commit.gpgsign false
   echo x > "$OTHER/f"; git -C "$OTHER" add f; git -C "$OTHER" commit --quiet -m i
 
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   run_commit_hook "git -C '$OTHER' commit -m change"
   [ "$status" -eq 0 ]
   ! denied
@@ -252,7 +256,7 @@ test("brand new test", () => {
 # --- Unparseable staged test -> fail-open (not denied on that file) ---
 
 @test "does not deny an unparseable staged test file" {
-  stage_file "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  stage_file "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 test("never closes", () => {
   expect(1).toBe(1)
 // missing closing brace and paren
@@ -269,7 +273,7 @@ test("never closes", () => {
   # test never enters the current-test set and is exempt by construction,
   # matching the SPEC's fail-open posture for uncomputable identity. A new
   # dynamic-title test passing first must not trigger a deny.
-  stage_file "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  stage_file "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 const n = 7;
 test(`dynamic ${n}`, () => {
   expect(n).toBe(7);
@@ -299,21 +303,21 @@ test("rejects a bad arg", () => {
 @test "allows a new type-only test (expectTypeOf, no runtime assertion)" {
   # No RED on record, yet the commit is allowed: a type-only test has no
   # runtime failure mode for this gate to demand. tsc enforces it instead.
-  stage_file "app/x/index.test.ts" "$TYPE_ONLY_EXPECTTYPEOF"
+  stage_file "app/utils/x/index.test.ts" "$TYPE_ONLY_EXPECTTYPEOF"
   run_commit_hook
   [ "$status" -eq 0 ]
   ! denied
 }
 
 @test "allows a new type-only test (@ts-expect-error proof, no runtime assertion)" {
-  stage_file "app/x/index.test.ts" "$TYPE_ONLY_TS_EXPECT_ERROR"
+  stage_file "app/utils/x/index.test.ts" "$TYPE_ONLY_TS_EXPECT_ERROR"
   run_commit_hook
   [ "$status" -eq 0 ]
   ! denied
 }
 
 @test "exempts the type-only sibling but still denies the runtime sibling" {
-  stage_file "app/x/index.test.ts" 'import {expectTypeOf, expect, test} from "vitest";
+  stage_file "app/utils/x/index.test.ts" 'import {expectTypeOf, expect, test} from "vitest";
 test("type-only sibling", () => {
   expectTypeOf<number>().toEqualTypeOf<number>();
 });
@@ -331,7 +335,7 @@ test("runtime sibling", () => {
 @test "denies a mixed runtime+type test (runtime assertion present) with no RED" {
   # A type-level proof does NOT exempt a test that also carries a runtime
   # assertion: the runtime red-green still must be observed.
-  stage_file "app/x/index.test.ts" 'import {expectTypeOf, expect, test} from "vitest";
+  stage_file "app/utils/x/index.test.ts" 'import {expectTypeOf, expect, test} from "vitest";
 test("mixed assertions", () => {
   expect(1 + 1).toBe(2);
   expectTypeOf<number>().toEqualTypeOf<number>();
@@ -346,14 +350,14 @@ test("mixed assertions", () => {
 # --- Forward-compat: a ledger line with an unknown schema is ignored ---
 
 @test "ignores a ledger line with an unrecognized schema version" {
-  stage_file "app/x/index.test.ts" "$PASSING_TEST"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   # Compute the real current signal but record it under schema 2 (unknown).
   local ndjson sig
-  ndjson=$(signals_for "app/x/index.test.ts")
+  ndjson=$(signals_for "app/utils/x/index.test.ts")
   sig=$(printf '%s\n' "$ndjson" | jq -r 'select(.fullName=="adds two numbers") | .signal' | head -1)
   mkdir -p "$REPO/.gaia/local/red-ledger"
   jq -nc --arg s "$sig" \
-    '{schema:2, file:"app/x/index.test.ts", fullName:"adds two numbers", signal:$s, failureKind:"assertion", observedAt:"2026-06-04T00:00:00Z"}' \
+    '{schema:2, file:"app/utils/x/index.test.ts", fullName:"adds two numbers", signal:$s, failureKind:"assertion", observedAt:"2026-06-04T00:00:00Z"}' \
     >> "$REPO/.gaia/local/red-ledger/observations.jsonl"
   run_commit_hook
   [ "$status" -eq 0 ]
@@ -363,7 +367,7 @@ test("mixed assertions", () => {
 # --- Multiple offenders are all named ---
 
 @test "names every offending new test in the deny reason" {
-  stage_file "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  stage_file "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 test("first new", () => { expect(1).toBe(1); });
 test("second new", () => { expect(2).toBe(2); });
 '
@@ -377,11 +381,11 @@ test("second new", () => { expect(2).toBe(2); });
 # --- Mixed: one test with a RED, one without -> deny names only the offender ---
 
 @test "allows the RED-backed test but denies its un-RED'd sibling" {
-  stage_file "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  stage_file "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 test("has red", () => { expect(1).toBe(1); });
 test("no red", () => { expect(2).toBe(2); });
 '
-  seed_matching_red "app/x/index.test.ts" "has red"
+  seed_matching_red "app/utils/x/index.test.ts" "has red"
   run_commit_hook
   [ "$status" -eq 0 ]
   denied
@@ -389,14 +393,75 @@ test("no red", () => { expect(2).toBe(2); });
   [[ "$output" != *'"has red"'* ]]
 }
 
-# --- A .tsx test file is also in scope ---
+# --- Determinism carve-out: the RED demand is scoped to the strict surface ---
+#
+# The carve-out classifies the TEST FILE ITSELF via the determinism classifier.
+# An emergent verdict relaxes the RED demand (the file is skipped); a strict
+# verdict leaves the file under the gate unchanged. The classifier is biased
+# err-EMERGENT, so it covers component (.tsx), E2E (.playwright), a11y-helper,
+# and clock/entropy/I-O signals. The deterministic surface still demands a RED.
 
-@test "denies a new .tsx test with no RED" {
-  stage_file "app/x/index.test.tsx" 'import {expect, test} from "vitest";
+@test "carve-out: a new .tsx component-interaction test commits without a RED" {
+  # A .tsx test falls outside the classifier's strict candidate path -> emergent.
+  # No RED on record, yet the commit is allowed: forcing a RED on emergent
+  # component interaction would be theater.
+  stage_file "app/components/Widget/tests/index.test.tsx" 'import {expect, test} from "vitest";
 test("renders something", () => { expect(true).toBe(true); });
 '
   run_commit_hook
   [ "$status" -eq 0 ]
+  ! denied
+}
+
+@test "carve-out: a new a11y-helper test (.ts) commits without a RED" {
+  # A static-markup a11y check is render-/environment-dependent. The classifier
+  # tags expectNoA11yViolations/runAxe as an emergent signal even in a .ts file
+  # on the otherwise-deterministic component surface -> exempt from the RED.
+  stage_file "app/components/Widget/tests/a11y.test.ts" 'import {expect, test} from "vitest";
+import {runAxe} from "test/a11y";
+const node = document.body;
+test("has no a11y violations", async () => {
+  const results = await runAxe(node);
+  expect(results).toBeDefined();
+});
+'
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  ! denied
+}
+
+@test "carve-out: a new test whose own body reads the clock commits without a RED" {
+  # The classifier labels any no-arg new Date() emergent wherever it appears,
+  # including inside the test body -> the file is exempt from the RED.
+  stage_file "app/utils/clock/index.test.ts" 'import {expect, test} from "vitest";
+test("uses wall-clock time", () => {
+  const now = new Date();
+  expect(now).toBeInstanceOf(Date);
+});
+'
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  ! denied
+}
+
+@test "carve-out: the deterministic surface STILL demands a RED" {
+  # A pure .ts test under app/utils classifies strict; the carve-out does not
+  # relax it. With no matching RED on record, the commit is denied.
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook
+  [ "$status" -eq 0 ]
   denied
-  [[ "$output" == *"renders something"* ]]
+  [[ "$output" == *"adds two numbers"* ]]
+}
+
+@test "carve-out fail-open: missing classifier falls back to the RED demand" {
+  # When the classifier helper is unavailable the carve-out must NOT fire: the
+  # gate falls back to its pre-carve behavior and still demands the RED, so the
+  # deterministic path is never broken and the relax-only posture holds.
+  rm -f "$REPO/.gaia/scripts/classifier"
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  denied
+  [[ "$output" == *"adds two numbers"* ]]
 }

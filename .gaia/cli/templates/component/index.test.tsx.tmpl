@@ -4,12 +4,14 @@ import {expectNoA11yViolations} from 'test/a11y';
 
 describe('{{Name}}', () => {
   test('renders', () => {
-    const {container} = render(<{{Name}} />);
+    const {container} = render({{renderJsx}});
     expect(container.firstChild).toBeInTheDocument();
   });
 
+  // Starting point only: a render-only axe pass is not complete a11y evidence.
+  // Add interaction-state and prop-variant a11y assertions as the component grows.
   test('a11y', async () => {
-    const {container} = render(<{{Name}} />);
+    const {container} = render({{renderJsx}});
     await expectNoA11yViolations(container);
   });
 });

@@ -32,6 +32,7 @@ The content signal is a normalized hash of the test body so that a cosmetic rena
 - New tests only: tests that already exist at the merge base are not checked.
 - Fail-open: the hook does not block when the ledger tooling (Node, the signal extractor) is unavailable or when a test file cannot be parsed by the TS compiler API.
 - Type-only tests are exempt. A test whose assertions are all type-level and which carries no runtime expectation has no runtime failure mode, so the gate has nothing to demand; `tsc` enforces it instead. See [[#Type-only tests]].
+- The RED demand is scoped to the deterministic surface. A test whose subject is emergent (clock-, entropy-, or I/O-bound, or dependent on the rendered tree) commits without a RED. See [[#Determinism carve-out]].
 
 ## Infrastructure
 
@@ -48,8 +49,24 @@ This exemption is keyed to the correct predicate (no runtime assertion), distinc
 
 Recommended idiom: prefer `expectTypeOf`/`assertType` for an honest per-assertion proof. A pure type-test file can also use the `*.test-d.ts` convention, which `tsc` checks while both vitest and this gate skip it by glob. Reserve `@ts-expect-error` for proving a specific misuse is rejected; its signal is whole-statement and inverted, holding while the error is present and breaking when the code becomes permissive enough to remove it.
 
+## Determinism carve-out
+
+The hard RED demand applies only to the deterministic surface. Not every file carries an honest RED: code that reads the clock, draws entropy, performs real I/O, or depends on a live DOM or router tree has no stable failing-then-passing run to observe, so forcing a RED onto it produces theatre. The commit check scopes its demand to deterministic-subject tests via the [[Determinism Classifier]].
+
+The binding classifies the **test file itself**. The classifier already carries every emergent signal the gate needs and is biased to err emergent, so a single check covers the whole carve-out:
+
+- a `.tsx` test under `app/components/**` (component interaction) and a `.playwright/**` E2E test fall outside the classifier's strict candidate path and classify emergent;
+- a test calling an a11y helper (`expectNoA11yViolations` / `runAxe`) classifies emergent;
+- a test reading the clock, entropy, or I/O in its own body classifies emergent.
+
+An emergent verdict relaxes the demand: that test commits with no RED. The deterministic surface (pure utils, service parsers, spec-derivable hooks) still demands and gets its RED. The classifier's own err-emergent bias supplies the over-loose posture: anything it cannot prove deterministic it returns emergent.
+
+The carve-out only relaxes; it never tightens. When the classifier is unavailable or errors, the check falls back to its pre-carve behavior and demands the RED, so the deterministic path is never broken and the fail-open posture holds. A missed RED on a genuinely emergent test is caught late by the advisory worthiness audit, which forcing RED theatre up front cannot.
+
+The honest RED on the deterministic surface is a genuine missing-implementation failure: the test is authored against the not-yet-written or stub implementation symbol, never a revert of correct production code. A single-pass author whose implementation already exists in the same change is exempt from a manufactured RED and routed to the worthiness audit instead. The [[tdd]] skill documents the authoring idiom and the per-file classifier roll-up.
+
 ## Consequences
 
-A new test always requires a one-shot vitest run that observes the test failing before the commit is allowed. This is a one-time step per new test; a green-only test that was never run red will be denied at commit time with a clear message naming the test.
+A new test on the deterministic surface always requires a one-shot vitest run that observes the test failing before the commit is allowed. This is a one-time step per new test; a green-only test that was never run red will be denied at commit time with a clear message naming the test. An emergent-subject test carries no such requirement.
 
 See [[Claude Hooks]] for hook registration. See the [[Quality Gate]] for the broader pre-commit enforcement surface.

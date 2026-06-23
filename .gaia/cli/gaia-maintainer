@@ -23565,17 +23565,53 @@ var PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
 var PROP_ENTRY_PATTERN = /^([A-Za-z_][\w$]*)\s*:\s*(.+)$/u;
 var TEMPLATES_DIR = "component";
 var COMPONENTS_DEFAULT_PARENT = "app/components";
+var BRACKET_PAIRS = { "(": ")", "<": ">", "[": "]", "{": "}" };
+var CLOSERS = new Set(Object.values(BRACKET_PAIRS));
+var splitTopLevelCommas = (raw) => {
+  const segments = [];
+  let depth = 0;
+  let current = "";
+  let hasNestedComma = false;
+  for (const char of raw) {
+    if (char in BRACKET_PAIRS) {
+      depth += 1;
+    } else if (CLOSERS.has(char) && depth > 0) {
+      depth -= 1;
+    }
+    if (char === ",") {
+      if (depth > 0) {
+        hasNestedComma = true;
+      } else {
+        segments.push(current);
+        current = "";
+        continue;
+      }
+    }
+    current += char;
+  }
+  segments.push(current);
+  return { hasNestedComma, segments };
+};
 var HELP_TEXT28 = `Usage: gaia scaffold component <Name> [flags]
 
   --no-story          Skip the index.stories.tsx file
   --parent <dir>      Parent dir under app/components/ (default: app/components/)
   --props "a:string,b:number"
-                      Typed props rendered as a Props type alias
+                      Typed props rendered as a Props type alias.
+                      Comma-bearing types (Record<K, V>, (a, b) => void,
+                      tuples) are not supported; pass one --props flag per prop.
   --json              Emit ScaffoldResult JSON on stdout
 `;
 var HELP_TOKENS28 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var parseProps = (raw) => {
-  const entries = raw.split(",").flatMap((entry) => {
+  const { hasNestedComma, segments } = splitTopLevelCommas(raw);
+  if (hasNestedComma) {
+    return {
+      message: `--props value contains a comma-bearing type (got: "${raw}"); comma-bearing types (Record<K, V>, (a, b) => void, tuples) are not supported. Pass one --props flag per prop, or split the type out.`,
+      ok: false
+    };
+  }
+  const entries = segments.flatMap((entry) => {
     const trimmed = entry.trim();
     return trimmed.length > 0 ? [trimmed] : [];
   });
@@ -23676,6 +23712,33 @@ ${entries}
 `;
 };
 var buildPropsGeneric = (componentName, props) => props.length === 0 ? "" : `<${componentName}Props>`;
+var isFunctionType = (type2) => type2.includes("=>") || /\bFunction\b/u.test(type2);
+var buildPropAttribute = (prop) => {
+  const type2 = prop.type;
+  if (type2 === "string") return `${prop.name}="${prop.name}"`;
+  if (type2 === "number") return `${prop.name}={0}`;
+  if (type2 === "boolean") return `${prop.name}={true}`;
+  if (type2.endsWith("[]")) return `${prop.name}={[]}`;
+  if (isFunctionType(type2)) {
+    return `${prop.name}={(() => undefined) as ${type2}}`;
+  }
+  return `${prop.name}={{} as ${type2}}`;
+};
+var buildPropAttributes = (props) => props.map(buildPropAttribute).join(" ");
+var buildRenderJsx = (componentName, props, withStory) => {
+  if (withStory || props.length === 0) return `<${componentName} />`;
+  return `<${componentName} ${buildPropAttributes(props)} />`;
+};
+var buildStoryDefault = (componentName, props) => {
+  if (props.length === 0) {
+    return `export const Default: StoryFn = () => <${componentName} />;`;
+  }
+  return [
+    "export const Default: StoryFn = () => (",
+    `  <${componentName} ${buildPropAttributes(props)} />`,
+    ");"
+  ].join("\n");
+};
 var buildTestImports = (componentName, withStory) => {
   if (withStory) {
     return [
@@ -23699,7 +23762,8 @@ var buildStoryTitle = (parent, componentName) => {
   return `Components/${stripped}/${componentName}`;
 };
 var defaultIsDirectory = (absPath) => existsSync25(absPath) && statSync5(absPath).isDirectory();
-var renderComponentFile = (templatesRoot, componentName, props) => {
+var renderComponentFile = (options) => {
+  const { componentName, props, templatesRoot } = options;
   const templatePath = path29.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.tsx.tmpl`
@@ -23714,23 +23778,27 @@ var renderComponentFile = (templatesRoot, componentName, props) => {
     propsTypeBlock
   });
 };
-var renderTestFile = (templatesRoot, componentName, withStory) => {
+var renderTestFile = (options) => {
+  const { componentName, props, templatesRoot, withStory } = options;
   const templatePath = path29.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.test.tsx.tmpl`
   );
   return renderTemplate(templatePath, {
     Name: componentName,
+    renderJsx: buildRenderJsx(componentName, props, withStory),
     testImports: buildTestImports(componentName, withStory)
   });
 };
-var renderStoryFile = (templatesRoot, componentName, parent) => {
+var renderStoryFile = (options) => {
+  const { componentName, parent, props, templatesRoot } = options;
   const templatePath = path29.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
   );
   return renderTemplate(templatePath, {
     Name: componentName,
+    storyDefault: buildStoryDefault(componentName, props),
     storyTitle: buildStoryTitle(parent, componentName)
   });
 };
@@ -23794,23 +23862,18 @@ var run39 = (argv, options = {}) => {
   const storyPath = path29.join(testsDir, "index.stories.tsx");
   const templatesRoot = resolveTemplatesRoot();
   const result = { edited: [], skipped: [], written: [] };
+  const renderOptions = {
+    componentName: flags.name,
+    parent: flags.parent,
+    props: flags.props,
+    templatesRoot,
+    withStory: flags.story
+  };
   try {
-    writeOne(
-      indexPath,
-      renderComponentFile(templatesRoot, flags.name, flags.props),
-      result
-    );
-    writeOne(
-      testPath,
-      renderTestFile(templatesRoot, flags.name, flags.story),
-      result
-    );
+    writeOne(indexPath, renderComponentFile(renderOptions), result);
+    writeOne(testPath, renderTestFile(renderOptions), result);
     if (flags.story) {
-      writeOne(
-        storyPath,
-        renderStoryFile(templatesRoot, flags.name, flags.parent),
-        result
-      );
+      writeOne(storyPath, renderStoryFile(renderOptions), result);
     }
   } catch (error51) {
     structuredError({

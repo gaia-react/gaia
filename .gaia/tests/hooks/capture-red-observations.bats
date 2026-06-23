@@ -166,6 +166,30 @@ ledger_lines() {
   [ "$(ledger_lines)" -eq 0 ]
 }
 
+@test "an unparseable/empty scope skips the capture (no full-suite re-run, writes nothing)" {
+  # No override and no scope arg after `test`: the hook must SKIP the capture
+  # rather than re-run the whole vitest suite. It bails before vitest is ever
+  # invoked, so it stays fast and offline and records nothing. A missing capture
+  # only means the commit check may later deny (the safe direction).
+  run_capture "Bash" "pnpm test --run"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+  # No temp vitest json was produced (the skip happens before the mktemp).
+  run bash -c "ls '$REPO_ROOT/.gaia/local/red-ledger/.tmp'/vitest-*.json 2>/dev/null | wc -l | tr -d ' '"
+  [ "$output" = "0" ]
+}
+
+@test "a scoped invocation still parses its scope (the skip is no-scope only)" {
+  # A parseable scope is unaffected by the skip: with the override seam supplying
+  # canned json, the scoped path records exactly as before. This guards that the
+  # skip changed ONLY the no-scope fallback, not the scoped behavior.
+  run_capture "Bash" \
+    "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
+    "$JSON_REL/assertion-fail.json"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+}
+
 @test "a --body string mentioning 'pnpm test --run' exits 0 and writes nothing" {
   # Command-position anchoring: the phrase appears inside a PR-body argument,
   # not as a `pnpm`/`npm` command word, so no spurious full-suite vitest re-run

@@ -18,7 +18,9 @@
  * The `--props "name:type,name:type"` flag turns the bare `FC` signature
  * into a typed `FC<NameProps>` and emits a Props type alias plus a
  * destructured signature. Each entry must be `name:type`; empty entries
- * and malformed pairs are rejected with exit 1.
+ * and malformed pairs are rejected with exit 1. Commas separate props, so
+ * comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are not
+ * supported and are rejected with exit 1; pass one `--props` flag per prop.
  *
  * The handler uses the shared scaffold utilities (`writeFileIfAbsent`,
  * `loadTemplate`, `renderTemplate`) so behavior matches the other
@@ -37,6 +39,52 @@ const PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
 const PROP_ENTRY_PATTERN = /^([A-Za-z_][\w$]*)\s*:\s*(.+)$/u;
 const TEMPLATES_DIR = 'component';
 const COMPONENTS_DEFAULT_PARENT = 'app/components';
+
+const BRACKET_PAIRS: Record<string, string> = {'(': ')', '<': '>', '[': ']', '{': '}'};
+const CLOSERS = new Set(Object.values(BRACKET_PAIRS));
+
+/**
+ * Split a `--props` value on prop-separating commas only. A comma at bracket
+ * depth 0 separates props; a comma inside a bracket pair (`<>`, `()`, `[]`,
+ * `{}`) belongs to a comma-bearing type (`Record<string, unknown>`,
+ * `(id: string, ev: Event) => void`, a tuple `[string, number]`).
+ *
+ * `hasNestedComma` is true when any depth>0 comma is present. The honest-reject
+ * path uses that flag today; the segment list it returns is the seam a future
+ * change would use to split on depth-0 commas instead of rejecting.
+ */
+const splitTopLevelCommas = (
+  raw: string
+): {hasNestedComma: boolean; segments: string[]} => {
+  const segments: string[] = [];
+  let depth = 0;
+  let current = '';
+  let hasNestedComma = false;
+
+  for (const char of raw) {
+    if (char in BRACKET_PAIRS) {
+      depth += 1;
+    } else if (CLOSERS.has(char) && depth > 0) {
+      depth -= 1;
+    }
+
+    if (char === ',') {
+      if (depth > 0) {
+        hasNestedComma = true;
+      } else {
+        segments.push(current);
+        current = '';
+        continue;
+      }
+    }
+
+    current += char;
+  }
+
+  segments.push(current);
+
+  return {hasNestedComma, segments};
+};
 
 type ParsedFlags = {
   json: boolean;
@@ -68,14 +116,25 @@ const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
   --no-story          Skip the index.stories.tsx file
   --parent <dir>      Parent dir under app/components/ (default: app/components/)
   --props "a:string,b:number"
-                      Typed props rendered as a Props type alias
+                      Typed props rendered as a Props type alias.
+                      Comma-bearing types (Record<K, V>, (a, b) => void,
+                      tuples) are not supported; pass one --props flag per prop.
   --json              Emit ScaffoldResult JSON on stdout
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const parseProps = (raw: string): FlagParseResult => {
-  const entries = raw.split(',').flatMap((entry) => {
+  const {hasNestedComma, segments} = splitTopLevelCommas(raw);
+
+  if (hasNestedComma) {
+    return {
+      message: `--props value contains a comma-bearing type (got: "${raw}"); comma-bearing types (Record<K, V>, (a, b) => void, tuples) are not supported. Pass one --props flag per prop, or split the type out.`,
+      ok: false,
+    };
+  }
+
+  const entries = segments.flatMap((entry) => {
     const trimmed = entry.trim();
 
     return trimmed.length > 0 ? [trimmed] : [];
@@ -213,6 +272,71 @@ const buildPropsGeneric = (
   props: readonly PropEntry[]
 ): string => (props.length === 0 ? '' : `<${componentName}Props>`);
 
+/**
+ * A representative value literal for a prop, ready to splice into a JSX
+ * attribute (`name={value}` or, for strings, the quoted form `name="value"`).
+ * Primitives get an honest non-degenerate value so the scaffolded a11y test
+ * renders real DOM. Exotic types fall back to a typed cast the author replaces
+ * (kept type-safe so the generated test still typechecks).
+ */
+const isFunctionType = (type: string): boolean =>
+  type.includes('=>') || /\bFunction\b/u.test(type);
+
+const buildPropAttribute = (prop: PropEntry): string => {
+  const type = prop.type;
+
+  if (type === 'string') return `${prop.name}="${prop.name}"`;
+  if (type === 'number') return `${prop.name}={0}`;
+  if (type === 'boolean') return `${prop.name}={true}`;
+  if (type.endsWith('[]')) return `${prop.name}={[]}`;
+  // Function-typed props get a callable no-op cast: `({} as () => void)()`
+  // throws TypeError the moment an author wires the prop into the render body,
+  // so the fallback must be invocable, not an empty-object cast.
+  if (isFunctionType(type)) {
+    return `${prop.name}={(() => undefined) as ${type}}`;
+  }
+
+  return `${prop.name}={{} as ${type}}`;
+};
+
+const buildPropAttributes = (props: readonly PropEntry[]): string =>
+  props.map(buildPropAttribute).join(' ');
+
+/**
+ * The JSX the test renders. With a story, the test renders the composed
+ * `Default` (props live on the story). Without a story, the component is
+ * rendered directly, so required props must be supplied at the render site.
+ */
+const buildRenderJsx = (
+  componentName: string,
+  props: readonly PropEntry[],
+  withStory: boolean
+): string => {
+  if (withStory || props.length === 0) return `<${componentName} />`;
+
+  return `<${componentName} ${buildPropAttributes(props)} />`;
+};
+
+/**
+ * The `Default` story export. With props, `Default` renders a non-degenerate
+ * instance carrying representative values so the story-driven a11y check has
+ * real DOM to assert against; without props it renders the bare component.
+ */
+const buildStoryDefault = (
+  componentName: string,
+  props: readonly PropEntry[]
+): string => {
+  if (props.length === 0) {
+    return `export const Default: StoryFn = () => <${componentName} />;`;
+  }
+
+  return [
+    'export const Default: StoryFn = () => (',
+    `  <${componentName} ${buildPropAttributes(props)} />`,
+    ');',
+  ].join('\n');
+};
+
 const buildTestImports = (
   componentName: string,
   withStory: boolean
@@ -256,11 +380,16 @@ type RunOptions = {
 const defaultIsDirectory = (absPath: string): boolean =>
   existsSync(absPath) && statSync(absPath).isDirectory();
 
-const renderComponentFile = (
-  templatesRoot: string,
-  componentName: string,
-  props: readonly PropEntry[]
-): string => {
+type RenderFileOptions = {
+  componentName: string;
+  parent: string;
+  props: readonly PropEntry[];
+  templatesRoot: string;
+  withStory: boolean;
+};
+
+const renderComponentFile = (options: RenderFileOptions): string => {
+  const {componentName, props, templatesRoot} = options;
   const templatePath = path.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.tsx.tmpl`
@@ -278,11 +407,8 @@ const renderComponentFile = (
   });
 };
 
-const renderTestFile = (
-  templatesRoot: string,
-  componentName: string,
-  withStory: boolean
-): string => {
+const renderTestFile = (options: RenderFileOptions): string => {
+  const {componentName, props, templatesRoot, withStory} = options;
   const templatePath = path.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.test.tsx.tmpl`
@@ -290,15 +416,13 @@ const renderTestFile = (
 
   return renderTemplate(templatePath, {
     Name: componentName,
+    renderJsx: buildRenderJsx(componentName, props, withStory),
     testImports: buildTestImports(componentName, withStory),
   });
 };
 
-const renderStoryFile = (
-  templatesRoot: string,
-  componentName: string,
-  parent: string
-): string => {
+const renderStoryFile = (options: RenderFileOptions): string => {
+  const {componentName, parent, props, templatesRoot} = options;
   const templatePath = path.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
@@ -306,6 +430,7 @@ const renderStoryFile = (
 
   return renderTemplate(templatePath, {
     Name: componentName,
+    storyDefault: buildStoryDefault(componentName, props),
     storyTitle: buildStoryTitle(parent, componentName),
   });
 };
@@ -399,24 +524,20 @@ export const run = (
   const templatesRoot = resolveTemplatesRoot();
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
+  const renderOptions: RenderFileOptions = {
+    componentName: flags.name,
+    parent: flags.parent,
+    props: flags.props,
+    templatesRoot,
+    withStory: flags.story,
+  };
+
   try {
-    writeOne(
-      indexPath,
-      renderComponentFile(templatesRoot, flags.name, flags.props),
-      result
-    );
-    writeOne(
-      testPath,
-      renderTestFile(templatesRoot, flags.name, flags.story),
-      result
-    );
+    writeOne(indexPath, renderComponentFile(renderOptions), result);
+    writeOne(testPath, renderTestFile(renderOptions), result);
 
     if (flags.story) {
-      writeOne(
-        storyPath,
-        renderStoryFile(templatesRoot, flags.name, flags.parent),
-        result
-      );
+      writeOne(storyPath, renderStoryFile(renderOptions), result);
     }
   } catch (error) {
     structuredError({

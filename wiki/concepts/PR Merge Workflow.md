@@ -136,6 +136,18 @@ gh pr view <N> --json state
 
 If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post-merge steps (wiki-sync, spec-close, etc.), and resolve the local worktree conflict separately. Retrying compounds the problem and can produce a duplicate squash on a non-existent branch.
 
+## Second merge gate: the worthiness presence gate
+
+`gh pr merge` passes through a second, independent PreToolUse hook,
+`.claude/hooks/worthiness-presence-check.sh`. It denies the merge when an
+emergent test the PR changed (under `app/components/**` or `.playwright/**`, as
+the [[Determinism Classifier]] labels it) has no worthiness-ledger line matching
+its current content. It checks presence and signal match only, never the
+keep/fix/delete verdict, scopes to the emergent tests this PR changed (a no-op
+when none changed), and fails open on missing tooling. It is a separate denial
+from the code-review-audit marker above; both must clear. See [[Worthiness
+Presence Gate]] for the full contract.
+
 ## No exceptions
 
 - Never merge without a marker for HEAD. The hook denies it. The audit must cover the merged content; CI produces the marker when it audits the PR, otherwise the local agent does.

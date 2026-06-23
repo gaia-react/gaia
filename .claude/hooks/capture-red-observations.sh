@@ -75,10 +75,7 @@ if [ -n "${RED_CAPTURE_JSON_OVERRIDE:-}" ] && [ -f "${RED_CAPTURE_JSON_OVERRIDE}
 else
   # Parse the matched invocation ($test_seg) for a scope arg (a path/dir/pattern)
   # so the json re-run is bounded to the same files the agent targeted. Take the
-  # tokens
-  # AFTER the `test` token, dropping recognizable flags/options. If none
-  # remain, re-run the whole suite (capture cost is accepted at this stage; the
-  # SPEC forbids re-running only at the COMMIT gate).
+  # tokens AFTER the `test` token, dropping recognizable flags/options.
   scope=$(printf '%s\n' "$test_seg" | awk '
     {
       seen = 0
@@ -91,6 +88,16 @@ else
         print tok
       }
     }')
+
+  # No scope parsed: SKIP the capture (re-run no tests) rather than re-running
+  # the whole vitest suite. A full-suite re-run on every unscoped `test --run`
+  # is an unbounded worst-case wall-clock cost. Skipping does not break the
+  # design: a missing capture only means the commit check may later deny, which
+  # is the safe direction (the same posture as the override-absent and
+  # parse-failure paths). A scoped invocation is unaffected: $scope carries the
+  # path/pattern and the re-run below stays bounded to it. Emptiness is tested on
+  # a whitespace-stripped copy so $scope itself keeps its word-split tokens.
+  [ -n "$(printf '%s' "$scope" | tr -d '[:space:]')" ] || exit 0
 
   mkdir -p "$tmp_dir" 2>/dev/null || true
   json_file=$(mktemp "${tmp_dir}/vitest-XXXXXX.json" 2>/dev/null || echo "")
