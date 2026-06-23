@@ -150,6 +150,49 @@ describe('init configure-automation', () => {
     expect(parsed.setup_opted_out).toBe(false);
   });
 
+  test('configure-automation writes complete config with all-local modes (CI-declined derivation)', () => {
+    sandbox = setupSandbox();
+
+    const exit = run(
+      [
+        '--wiki',
+        'local',
+        '--update-deps',
+        'local',
+        '--pnpm-audit',
+        'local',
+        '--stale-branches',
+        'local',
+      ],
+      {cwd: sandbox.root}
+    );
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toBe('');
+    expect(stdio.errors.join('')).toBe('');
+
+    const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
+    const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
+    expect(parsed).toEqual({
+      pnpm_audit: {mode: 'local', schedule: 'daily'},
+      setup_complete: false,
+      setup_opted_out: false,
+      stale_branches: {mode: 'local', schedule: 'monthly'},
+      update_deps: {mode: 'local', schedule: 'weekly'},
+      update_gaia: {mode: 'local'},
+      version: 1,
+      wiki: {mode: 'local'},
+    });
+
+    const state = readState(sandbox.root);
+    expect(state.completed_steps).toContain('configure-automation');
+    expect(state.step_args['configure-automation']).toEqual({
+      pnpm_audit: 'local',
+      stale_branches: 'local',
+      update_deps: 'local',
+      wiki: 'local',
+    });
+  });
+
   test('idempotent: re-running with same flags writes byte-identical content', () => {
     sandbox = setupSandbox();
 

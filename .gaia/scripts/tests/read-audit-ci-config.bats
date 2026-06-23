@@ -654,3 +654,123 @@ audit_authors: \"stevensacks=local\""
   run grep -F 'api repos/' "$GH_LOG"
   [ "$status" -ne 0 ]
 }
+
+# ===========================================================================
+# Write-side round-trip: prove the reader parses exactly what the setup
+# prompts write (default_mode/override_label via /setup-gaia-ci; audit_authors
+# via /setup-cloned-gaia-project through the append-audit-author.sh helper).
+# ===========================================================================
+
+# Install the append helper alongside the reader inside the sandbox's
+# `.gaia/scripts/`, so the helper's sibling-script lookup finds the reader and
+# its `git rev-parse` resolves the fixture's audit-ci.yml. Returns the helper
+# path on stdout.
+install_append_helper() {
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  cp "$THIS_DIR/../read-audit-ci-config.sh" "$SANDBOX/.gaia/scripts/read-audit-ci-config.sh"
+  cp "$THIS_DIR/../append-audit-author.sh" "$SANDBOX/.gaia/scripts/append-audit-author.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/read-audit-ci-config.sh" "$SANDBOX/.gaia/scripts/append-audit-author.sh"
+  printf '%s\n' "$SANDBOX/.gaia/scripts/append-audit-author.sh"
+}
+
+# Run the append helper from inside the sandbox so its config-path lookup
+# hits the fixture tree. Args pass through (e.g. `stevensacks local`).
+append_in_sandbox() {
+  ( cd "$SANDBOX" && "$SANDBOX/.gaia/scripts/append-audit-author.sh" "$@" )
+}
+
+# --- 36. audit_authors round-trip: two-developer string resolves each login --
+
+@test "audit_authors append: two-developer string resolves each login" {
+  # The append helper writes the exact format the resolver consumes. Append
+  # two developers, then resolve each. stevensacks is local (survives the
+  # required-check stub), priya is ci.
+  install_append_helper >/dev/null
+  stub_gh_confirms
+  append_in_sandbox stevensacks local
+  append_in_sandbox priya ci
+
+  # The written value is the canonical space-separated pair string.
+  [ "$(cat "$SANDBOX/.gaia/audit-ci.yml")" = 'audit_authors: "stevensacks=local priya=ci"' ]
+
+  run resolve_in_sandbox STUB_PATH --resolve-author stevensacks
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=local"$'\n'* ]]
+
+  run resolve_in_sandbox STUB_PATH --resolve-author priya
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+}
+
+# --- 37. default_mode local + override_label run-audit round-trip -----------
+
+@test "default_mode local + override_label run-audit round-trip" {
+  # /setup-gaia-ci's team-policy prompt writes both keys; the argument-less
+  # emit must read them back verbatim.
+  write_config "default_mode: local
+override_label: run-audit"
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default_mode=local"$'\n'* ]]
+  [[ "$output" == *"override_label=run-audit"$'\n'* ]]
+}
+
+# --- 38. Append preserves existing entries (no clobber) ---------------------
+
+@test "audit_authors append preserves existing entries" {
+  # A developer appending their pair must not drop a teammate's entry.
+  install_append_helper >/dev/null
+  append_in_sandbox alice ci
+  run append_in_sandbox bob local
+  [ "$status" -eq 0 ]
+  [ "$output" = "alice=ci bob=local" ]
+  [ "$(cat "$SANDBOX/.gaia/audit-ci.yml")" = 'audit_authors: "alice=ci bob=local"' ]
+}
+
+# --- 39. Append preserves sibling keys when the file is populated ------------
+
+@test "audit_authors append preserves sibling keys in a populated file" {
+  # The team-policy keys and other knobs already present must survive the
+  # in-place rewrite of the audit_authors line.
+  install_append_helper >/dev/null
+  cat > "$SANDBOX/.gaia/audit-ci.yml" <<'YAML'
+gate_label: null
+default_mode: local
+override_label: run-audit
+audit_authors: "alice=ci"
+push_fixes: true
+YAML
+  run append_in_sandbox bob local
+  [ "$status" -eq 0 ]
+  [ "$output" = "alice=ci bob=local" ]
+  # Sibling keys untouched; audit_authors rewritten in place.
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"default_mode=local"$'\n'* ]]
+  [[ "$output" == *"override_label=run-audit"$'\n'* ]]
+  [[ "$output" == *"push_fixes=true"$'\n'* ]]
+  [[ "$output" == *"audit_authors=alice=ci bob=local"$'\n'* ]]
+}
+
+# --- 40. Append replaces a developer's own prior entry in place -------------
+
+@test "audit_authors append replaces a re-running developer's own entry" {
+  # A developer who re-runs /setup-cloned-gaia-project flips their own mode
+  # rather than stacking a second pair; teammates' entries are preserved.
+  install_append_helper >/dev/null
+  append_in_sandbox stevensacks local
+  append_in_sandbox priya ci
+  run append_in_sandbox stevensacks ci
+  [ "$status" -eq 0 ]
+  # Own prior pair dropped, re-appended at the end; priya preserved.
+  [ "$output" = "priya=ci stevensacks=ci" ]
+}
+
+# --- 41. Append usage error on missing arguments ---------------------------
+
+@test "audit_authors append: missing arguments exit 2 with usage error" {
+  install_append_helper >/dev/null
+  run append_in_sandbox stevensacks
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"usage: append-audit-author.sh <login> <mode>"* ]]
+}

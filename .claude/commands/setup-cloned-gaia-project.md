@@ -29,7 +29,8 @@ Each step records itself in `.gaia/local/setup-state.json` via `gaia setup mark-
     "init-speckit",
     "chmod-statusline",
     "bootstrap-env",
-    "mentorship-decision"
+    "mentorship-decision",
+    "audit-mode-decision"
   ]
 }
 ```
@@ -237,6 +238,74 @@ After the chosen branch executes:
 
 ```bash
 .gaia/cli/gaia setup mark-step mentorship-decision
+```
+
+## Step 6.5: audit-mode-decision
+
+Skip if `audit-mode-decision` is in `completed_steps`.
+
+This step lets you choose who runs your `code-review-audit` at merge time, CI (the default) or your local machine. It only applies once the project has CI wired up. Gate it:
+
+- If `.gaia/audit-ci.yml` does not exist (CI not configured yet), skip silently and record the step:
+
+  ```bash
+  if [ ! -f .gaia/audit-ci.yml ]; then
+    .gaia/cli/gaia setup mark-step audit-mode-decision
+    # Continue to Step 7.
+  fi
+  ```
+
+- If `gh` is not authenticated (cannot resolve your login), skip with a one-line note and record the step, you can re-decide later by re-running this command after `gh auth login`:
+
+  ```bash
+  if ! gh auth status &>/dev/null; then
+    echo "Skipping audit-mode choice: gh is not authenticated. Run 'gh auth login' and re-run /setup-cloned-gaia-project to choose." >&2
+    .gaia/cli/gaia setup mark-step audit-mode-decision
+    # Continue to Step 7.
+  fi
+  ```
+
+Otherwise, resolve your GitHub login and read the team default for context:
+
+```bash
+gh api user --jq .login
+```
+
+Use AskUserQuestion with these two options in this exact order:
+
+> Who runs your code-review-audit at merge time?
+>
+> - **CI (default).** CI audits your PRs; you wait for the GAIA-Audit check. Today's behavior.
+> - **Locally.** Your audit runs at merge time when you ask Claude to merge, streaming, faster, incremental. CI stands down for you.
+
+### Apply the answer
+
+On a choice, append your `<login>=<mode>` pair to `audit_authors` in `.gaia/audit-ci.yml` via the append helper (it reads the existing value, drops any prior entry for your own login, and rewrites the line in place, so it never clobbers a teammate's entry):
+
+```bash
+.gaia/scripts/append-audit-author.sh "<your-login>" "<ci|local>"
+```
+
+Then tell the developer **explicitly** (do not paraphrase away these obligations):
+
+- This is a **committed** change to `.gaia/audit-ci.yml`, not machine-local state. Other developers see it.
+- It lands via a **one-line PR**: the only change is your `audit_authors` pair.
+- That PR clears the merge gate through BOTH the merge-hook out-of-scope bypass AND CI's out-of-scope `GAIA-Audit` success stamp, a `.gaia`-only diff is out of audit scope, so neither producer runs a full audit on it. This is **contingent on an empty `gate_label`** in `.gaia/audit-ci.yml`: a non-empty `gate_label` gates the CI audit off the label instead, which changes the path. If `gate_label` is set, expect the audit to run on your one-line PR per the label rule.
+
+Do NOT auto-commit or auto-open the PR for the developer. Guide them to review the diff, then commit and open the one-line PR themselves:
+
+```bash
+git checkout -b chore/audit-mode-<your-login>
+git add .gaia/audit-ci.yml
+git commit -m "chore(audit): set <your-login> audit mode to <ci|local>"
+git push -u origin chore/audit-mode-<your-login>
+gh pr create --fill
+```
+
+After the chosen branch executes (or the gated skip):
+
+```bash
+.gaia/cli/gaia setup mark-step audit-mode-decision
 ```
 
 ## Step 7: Finalize

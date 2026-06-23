@@ -225,6 +225,21 @@ Then shell the `bump-state` call directly:
 .gaia/cli/gaia setup-ci write-tool-mode stale-branches off
 ```
 
+## Step 6.5: Team audit-mode policy
+
+Only reached when the user picked "Enable now" in Step 5 (or is in the reconfigure flow). This sets the team baseline for how the `code-review-audit` runs at merge time. It writes two keys to the committed `.gaia/audit-ci.yml`: `default_mode` (the team fallback) and `override_label` (the sticky label that forces a CI run regardless of author).
+
+`AskUserQuestion`:
+
+> How should the code-review-audit run for your team?
+>
+> - **CI audits every PR (Recommended).** Sets `default_mode: ci`. Every PR's audit runs on CI; this is today's behavior.
+> - **Local-first.** Sets `default_mode: local`. Developers who run GAIA locally have the audit run at merge time; CI stands down for them. Each developer still opts in per-person via /setup-cloned-gaia-project; the team default is the fallback. Local-first relies on the GAIA-Audit required check being registered on the default branch (this same /setup-gaia-ci flow registers it). If that check is ever unconfirmable, the resolver fails closed to `ci`, so a local stand-down can never leave the branch unguarded.
+
+Cache the chosen mode (`ci` or `local`), then write both keys to `.gaia/audit-ci.yml`. Set `default_mode:` to the chosen value and `override_label: run-audit`, adding each key if absent and rewriting it in place if present (do not duplicate). Leave `audit_authors` untouched, individual developers append to it via /setup-cloned-gaia-project.
+
+The file is committed alongside the workflow files in Step 10's existing commit; do NOT auto-commit it here.
+
 ## Step 7: Token type selection and entry
 
 `AskUserQuestion`:
@@ -295,6 +310,29 @@ If `render-workflows` reports no paths written (the config has `mode: "ci"` for 
 No cron tools are configured for CI mode in .gaia/automation.json. The code-review-audit.yml PR gate is installed. Edit .gaia/automation.json to add cron workflows later.
 ```
 
+### Register GAIA-Audit as the required check
+
+The audit gate is the `GAIA-Audit` COMMIT STATUS, not the `code-review-audit` job name. The audit job reaches a green terminal step on every path (including a local-mode stand-down where no audit ran), so requiring the job name would let an unaudited PR merge through the github.com button. Only the `GAIA-Audit` status (`success` == cleared for HEAD's tree) is the gate. The resolver honors `default_mode: local` only when this registration is confirmed present, so registering it is what makes local-mode safe.
+
+Register `GAIA-Audit` as a `required_status_checks` context on the default branch:
+
+```bash
+gh api -X PUT "repos/<owner>/<repo>/branches/<default-branch>/protection/required_status_checks" \
+  -f strict=true -f 'contexts[]=GAIA-Audit'
+```
+
+Substitute `<owner>` and `<repo>` (cached in Step 3) and `<default-branch>` (typically `main`). A full `required_status_checks` PUT REPLACES the contexts array; if the repo already requires sibling contexts (e.g. `Tests`, `Chromatic`), include them in the SAME PUT (`-f 'contexts[]=GAIA-Audit' -f 'contexts[]=Tests' -f 'contexts[]=Chromatic'`) so they persist.
+
+This call needs repo-admin permission and a branch-protection rule on the default branch. If it returns 403 (not admin) or 404 (no protection rule yet), surface the error verbatim and tell the user:
+
+```
+Could not register the GAIA-Audit required check (admin permission and a branch-protection rule on the default branch are required). Run the registration yourself once you have admin access:
+  gh api -X PUT "repos/<owner>/<repo>/branches/<default-branch>/protection/required_status_checks" -f strict=true -f 'contexts[]=GAIA-Audit'
+Until GAIA-Audit is a required check, the merge gate falls back to ci mode for every author (the resolver fails closed).
+```
+
+Do not halt setup on a registration failure, the workflow install already succeeded; continue to Step 9.
+
 ## Step 9: Trigger verification run
 
 Pick the FIRST workflow file from the generated list (typically `.github/workflows/gaia-ci-wiki.yml`):
@@ -327,10 +365,10 @@ On Commit without verification: fall through to Step 10 with a flag that adds `(
 .gaia/cli/gaia setup-ci finalize
 ```
 
-Stage the generated workflow files plus `.gaia/automation.json`:
+Stage the generated workflow files plus `.gaia/automation.json` and the audit-policy `.gaia/audit-ci.yml`:
 
 ```bash
-git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml .gaia/automation.json
+git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml .gaia/automation.json .gaia/audit-ci.yml
 ```
 
 Commit with this exact message (when verified):
@@ -370,6 +408,7 @@ When `RECONFIGURE` is set, the short-circuit at Step 2 is skipped and the flow r
 
   On "Re-prompt", `AskUserQuestion` for each of `wiki`, `update-deps`, `pnpm-audit`, `stale-branches` with mode options `ci` / `local` / `off`. Apply each via `.gaia/cli/gaia setup-ci write-tool-mode <tool> <mode>`.
 
+- **Step 6.5** re-offers the team audit-mode policy question (CI-every-PR vs local-first) and rewrites `default_mode` / `override_label` in `.gaia/audit-ci.yml` from the answer. The audit-policy file is already in Step 10's `git add` set, so a changed default lands in the reconfigure commit.
 - **Step 7** always asks for a fresh token (never reads the existing secret, `gh secret set` overwrites silently).
 - **Step 10's** commit message changes to:
 
