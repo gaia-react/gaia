@@ -117,6 +117,35 @@ Determinism roll-up:
 
 This roll-up shares the end-of-task summary with any worthiness findings: render the classifier verdicts and the worthiness lines in ONE summary, not two.
 
+### 6. Worthiness Audit (emergent surface)
+
+The deterministic surface earns its honesty proof from the RED gate. The emergent surface (`app/components/**`, `.playwright/**`) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
+
+#### Dispatch a fresh-context audit (no-orchestrator path)
+
+On the main loop, with no orchestrator above you, the audit MUST run in a **genuine fresh-context `Agent` sub-leaf**, never as an in-context self-review by the test author. The author who just wrote the tests shares their blind spots; a same-model fresh-context reviewer that never saw the authoring rationale is the cheapest way to recover honesty signal. An in-context "I'll review my own tests" pass does not satisfy this step.
+
+Dispatch one `Agent` leaf running the committed evaluator prompt (`.claude/agents/worthiness-evaluator.md`) over the task's changed emergent test files plus their sibling suites. The evaluator judges each test on two axes (honesty, worthiness), returns a `keep`/`fix`/`delete` verdict per test, and **edits no files**: every `delete` is a proposal a human confirms.
+
+#### Write the worthiness ledger (no-orchestrator path)
+
+With no orchestrator to record verdicts, **the tdd skill is the ledger writer**, otherwise principle-6 always-on is violated and the merge presence gate has nothing to read. For each verdict the evaluator returns, append one ledger line via the writer:
+
+```
+node .gaia/scripts/audit-ledger/append-worthiness.mjs <repo-rel-test-path> <fullName> <verdict> [artifact]
+```
+
+`<verdict>` is `keep` | `fix` | `delete`; `[artifact]` is REQUIRED for a non-keep verdict (the cited machine-verified sibling for a redundancy delete, the unreachable/missing assertion for a fix) and omitted for `keep`. The writer recomputes the test-identity signal from the file via the RED-ledger signal helper, so it byte-matches what the presence gate later recomputes; the ledger at `.gaia/local/audit-ledger/worthiness.jsonl` is append-only and gitignored.
+
+Surface the evaluator's verdicts in the **same end-of-task summary** as the determinism roll-up above: one summary, not a parallel one. Deletes are proposals: present them for human confirmation, never act on them.
+
+#### Path-scoped guarantees
+
+The guarantee this audit provides is scoped to **the subset a same-model fresh-context reviewer reliably flags**, not a proof of test worthiness. State the surviving guarantees by path:
+
+- **No-orchestrator path (this skill alone), surviving guarantees:** static honesty lint on every test; a real RED on the deterministic surface; the fresh-subagent worthiness audit **if it was dispatched**. The audit is advisory and depends on this dispatch step running; a skipped dispatch leaves only the static lint and the RED gate.
+- **Orchestrated path, additional guarantees (NOT available here):** the post-phase merge presence gate (which recomputes signals and refuses a merge whose audit ledger is absent or mismatched) and leaf isolation enforced by the orchestrator. These are orchestrator-owned; the no-orchestrator path does not provide them.
+
 ## Checklist Per Cycle
 
 ```
