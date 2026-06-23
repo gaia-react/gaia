@@ -774,3 +774,33 @@ YAML
   [ "$status" -eq 2 ]
   [[ "$output" == *"usage: append-audit-author.sh <login> <mode>"* ]]
 }
+
+# --- 42. noglob guard: a glob char in audit_authors is not pathname-expanded -
+
+@test "resolve-author: a glob char in audit_authors is not pathname-expanded" {
+  # A would-be glob match sits in the resolver's cwd. Without the set -f guard,
+  # `*=local` would expand to this filename and fabricate a realdev=local entry.
+  : > "$SANDBOX/realdev=local"
+  stub_gh_confirms
+  write_config "default_mode: ci
+audit_authors: \"*=local\""
+  # With the guard the literal entry is login '*', which never matches realdev,
+  # so realdev falls through to default_mode=ci rather than the glob-fabricated local.
+  run resolve_in_sandbox STUB_PATH --resolve-author realdev
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=ci"$'\n'* ]]
+}
+
+@test "audit_authors append: a glob char in the existing value is not pathname-expanded" {
+  # The worst case: without the set -f guard the helper globs the existing value
+  # against the cwd and writes a corrupted audit_authors string back to the file.
+  install_append_helper >/dev/null
+  : > "$SANDBOX/evil=ci"
+  printf '%s\n' 'audit_authors: "*=ci"' > "$SANDBOX/.gaia/audit-ci.yml"
+  run append_in_sandbox newdev local
+  [ "$status" -eq 0 ]
+  # The literal '*=ci' entry survives; the cwd filename never leaks in.
+  written="$(cat "$SANDBOX/.gaia/audit-ci.yml")"
+  [[ "$written" == *'*=ci'* ]]
+  [[ "$written" != *'evil'* ]]
+}

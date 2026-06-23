@@ -436,10 +436,14 @@ resolve_author_mode() {
   login_lc=$(printf '%s' "$login" | tr '[:upper:]' '[:lower:]')
 
   # Iterate over whitespace-separated tokens. `set --` splits on IFS;
-  # default IFS handles spaces, tabs, and newlines.
+  # default IFS handles spaces, tabs, and newlines. `set -f` disables pathname
+  # expansion first so a glob metacharacter in the value (e.g. a hand-edit typo
+  # `*=local`) is never expanded against the cwd before tokenization.
   local pair pair_login pair_mode pair_login_lc
+  set -f
   # shellcheck disable=SC2086
   set -- $raw_authors
+  set +f
   for pair in "$@"; do
     case "$pair" in
       *=*)

@@ -69,8 +69,13 @@ fi
 login_lc=$(printf '%s' "$login" | tr '[:upper:]' '[:lower:]')
 
 new_value=""
+# `set -f` disables pathname expansion before the word-split so a glob
+# metacharacter in the existing value is never expanded against the cwd (which
+# would otherwise corrupt the rewritten audit_authors string).
+set -f
 # shellcheck disable=SC2086
 set -- $existing
+set +f
 for pair in "$@"; do
   case "$pair" in
     *=*)
