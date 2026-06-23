@@ -11,7 +11,9 @@ GAIA is opinionated. The conventions, rules, and hooks aren't suggestions. They'
 
 ## Filing issues
 
-A good issue:
+**If the bug is a GAIA workflow misfire** (a hook, skill, command, scaffold, `/gaia-wiki sync`, the dev server, or the quality gate misbehaving), run `/gaia-forensics` instead of writing the report by hand. It snapshots your environment, classifies the failure against a known taxonomy, redacts secrets and machine paths, and for a probable bug offers to file the issue here for you. If it instead finds a config problem on your end, it gives you the fix and files nothing. It's read-only and saves the report locally first, so nothing leaves your machine without your confirmation.
+
+For feature requests, docs gaps, or a bug you're filing by hand, a good issue:
 
 - A short title that names the surface (rule, hook, skill, command, wiki page).
 - A reproduction. What you ran, what you expected, what happened.
@@ -23,7 +25,20 @@ Issues that aren't bugs:
 - Questions about how to use GAIA go to the docs site at [gaiareact.com](https://gaiareact.com), or open a GitHub Discussion if enabled.
 - Security issues go to steven@gaiareact.com. Do not file public issues for vulnerabilities.
 
+## Contributing code
+
+GAIA is maintainer-driven. Issues are maintainer roadmap tracking, not an open queue of up-for-grabs work. Most are entangled with in-progress effort that isn't visible from the issue text, so a clear-looking task is often already in motion. The highest-value ways to help right now are using GAIA on a real project, filing bug reports with reproductions, and feedback that sharpens the conventions.
+
+If you do want to contribute code:
+
+- Only issues explicitly labeled `help wanted` are open for outside PRs. No `help wanted` means the issue is maintainer-owned; assume work is already underway.
+- Comment on the issue and wait to be assigned before you start. Do not open a PR against an issue you aren't assigned to.
+- Unsolicited PRs, and PRs against issues you weren't assigned, are closed without review. That is not a judgment on the code; it usually means the change collides with effort you can't see.
+- A `good first issue` label is an occasional, curated pointer for newcomers, not a standing invitation. The comment-and-be-assigned rule above still applies.
+
 ## Submitting pull requests
+
+Read **Contributing code** above first; unassigned and unsolicited PRs are closed unreviewed, no matter how good the diff.
 
 1. Fork. Branch from `main`. Name the branch by intent: `fix/`, `feat/`, `chore/`, `docs/`.
 2. Commit messages follow conventional commits: `fix(scope): what`, `feat(scope): what`. Run `git log --oneline` for examples.
