@@ -5,7 +5,7 @@ package: '@playwright/test'
 version: 1.59.1
 role: e2e-testing
 created: 2026-04-20
-updated: 2026-06-11
+updated: 2026-06-23
 tags: [dependency, testing, e2e]
 ---
 
@@ -31,6 +31,10 @@ await page.goto('/');
 await hydration(page); // must come before any interaction
 ```
 
+`hydration()` self-heals the cold dev-server race: the first browser hit of a route after a cold start triggers Vite's dep-optimize mid-flight, which can fail the dynamic import of `entry.client.tsx` so the page never hydrates. The helper probes briefly for the hydrated meta; on a cold miss it reloads once onto the now-optimized bundle and waits with a generous window. On a warm server it returns within the probe and skips the reload.
+
+A `globalSetup` (`playwright.config.ts` → `.playwright/global-setup.ts`) fires a serial `/` navigation after the dev server boots, front-loading the initial dep-optimize before the parallel specs race for it. Together these two mechanisms eliminate the need for local retries: `retries: 0` locally, `retries: 2` in CI as general flake insurance.
+
 ## Selectors
 
 Prefer ARIA roles and accessible names; fall back to `page.locator()` with text/attribute filters. Never use CSS class selectors or XPath. See `.claude/rules/playwright.md` for examples.
@@ -45,7 +49,7 @@ When a project requires authentication, use a global setup file (`auth.setup.ts`
 
 ## Parallelism and CI
 
-`fullyParallel: true`; CI uses `workers: 1`, `retries: 2`. Locally, `retries: 1`: the first run after a dependency or `vite.config` change boots the dev server with a cold Vite dep-optimize cache, which can fail the dynamic import of `entry.client.tsx` before hydration completes; the retry runs against the now-warm server. A genuine failure still fails on both attempts. Multi-browser (webkit, Firefox, mobile) is opt-in via `TEST_ALL_BROWSERS`. See `.claude/rules/playwright.md` for the full table.
+`fullyParallel: true`; CI uses `workers: 1`, `retries: 2`. Locally, `retries: 0`: the global-setup warm-up and the `hydration()` probe-then-reload self-heal the cold dep-optimize race, so a real flake fails instead of being masked. Multi-browser (webkit, Firefox, mobile) is opt-in via `TEST_ALL_BROWSERS`. See `.claude/rules/playwright.md` for the full table.
 
 ## Traces and screenshots
 

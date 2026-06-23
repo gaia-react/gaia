@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-06-05
+updated: 2026-06-23
 tags: [concept, claude, hooks]
 ---
 
@@ -57,6 +57,8 @@ The wiki sync system is convergent: the user's already-paid-for Claude session d
 
 - **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop): wiki coherence and `hot.md` refresh. The Stop hook also injects an end-of-session reminder when the session committed but `wiki/.state.json` did not advance (once-per-session via `.claude/wiki-safety-checked` marker). See [[Claude Integration Conventions]] § Wiki vendor relationship.
 - **`wiki-drift-check.sh`** (UserPromptSubmit): first prompt of each session, compares `wiki/.state.json`'s `last_evaluated_sha` to HEAD; if drifted, injects a `[wiki state]` reminder. Once-per-session via `.claude/wiki-drift-checked` marker.
+- **`wiki-recompact-sentinel.sh`** (PostCompact): on a context compaction event, drops a sentinel file (`.claude/wiki-recompact-pending`) so the next `UserPromptSubmit` knows to re-inject the hot cache. PostCompact command hooks cannot inject stdout into context directly, so the sentinel hands off to `wiki-recompact-inject.sh`. A no-op when `wiki/hot.md` does not exist.
+- **`wiki-recompact-inject.sh`** (UserPromptSubmit): on the first prompt after a compaction (sentinel present), re-injects `wiki/hot.md` into context via stdout, then removes the sentinel so it fires exactly once per compaction. Replaces the claude-obsidian prompt-type PostCompact hook, which some Claude Code builds reject. A no-op on every prompt where no compaction has occurred.
 - **`wiki-commit-nudge.sh`** (PostToolUse, Bash): fires after `git commit` invocations. Injects a `[wiki nudge]` line with the short SHA, subject, file count, and current drift count. Skips merge / amend / `wiki:` subjects to avoid loops. Never spawns sub-processes.
 - **`wiki-squash-autocommits.sh`** (Stop): folds adjacent `wiki: auto-commit` subjects into a single PR-branch commit. Failed `gh pr create` / `gh pr merge` preserves the working tree (no silent reset).
 
