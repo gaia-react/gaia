@@ -18,7 +18,9 @@
  * The `--props "name:type,name:type"` flag turns the bare `FC` signature
  * into a typed `FC<NameProps>` and emits a Props type alias plus a
  * destructured signature. Each entry must be `name:type`; empty entries
- * and malformed pairs are rejected with exit 1.
+ * and malformed pairs are rejected with exit 1. Commas separate props, so
+ * comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are not
+ * supported and are rejected with exit 1; pass one `--props` flag per prop.
  *
  * The handler uses the shared scaffold utilities (`writeFileIfAbsent`,
  * `loadTemplate`, `renderTemplate`) so behavior matches the other
@@ -37,6 +39,52 @@ const PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
 const PROP_ENTRY_PATTERN = /^([A-Za-z_][\w$]*)\s*:\s*(.+)$/u;
 const TEMPLATES_DIR = 'component';
 const COMPONENTS_DEFAULT_PARENT = 'app/components';
+
+const BRACKET_PAIRS: Record<string, string> = {'(': ')', '<': '>', '[': ']', '{': '}'};
+const CLOSERS = new Set(Object.values(BRACKET_PAIRS));
+
+/**
+ * Split a `--props` value on prop-separating commas only. A comma at bracket
+ * depth 0 separates props; a comma inside a bracket pair (`<>`, `()`, `[]`,
+ * `{}`) belongs to a comma-bearing type (`Record<string, unknown>`,
+ * `(id: string, ev: Event) => void`, a tuple `[string, number]`).
+ *
+ * `hasNestedComma` is true when any depth>0 comma is present. The honest-reject
+ * path uses that flag today; the segment list it returns is the seam a future
+ * change would use to split on depth-0 commas instead of rejecting.
+ */
+const splitTopLevelCommas = (
+  raw: string
+): {hasNestedComma: boolean; segments: string[]} => {
+  const segments: string[] = [];
+  let depth = 0;
+  let current = '';
+  let hasNestedComma = false;
+
+  for (const char of raw) {
+    if (char in BRACKET_PAIRS) {
+      depth += 1;
+    } else if (CLOSERS.has(char) && depth > 0) {
+      depth -= 1;
+    }
+
+    if (char === ',') {
+      if (depth > 0) {
+        hasNestedComma = true;
+      } else {
+        segments.push(current);
+        current = '';
+        continue;
+      }
+    }
+
+    current += char;
+  }
+
+  segments.push(current);
+
+  return {hasNestedComma, segments};
+};
 
 type ParsedFlags = {
   json: boolean;
@@ -68,14 +116,25 @@ const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
   --no-story          Skip the index.stories.tsx file
   --parent <dir>      Parent dir under app/components/ (default: app/components/)
   --props "a:string,b:number"
-                      Typed props rendered as a Props type alias
+                      Typed props rendered as a Props type alias.
+                      Comma-bearing types (Record<K, V>, (a, b) => void,
+                      tuples) are not supported; pass one --props flag per prop.
   --json              Emit ScaffoldResult JSON on stdout
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const parseProps = (raw: string): FlagParseResult => {
-  const entries = raw.split(',').flatMap((entry) => {
+  const {hasNestedComma, segments} = splitTopLevelCommas(raw);
+
+  if (hasNestedComma) {
+    return {
+      message: `--props value contains a comma-bearing type (got: "${raw}"); comma-bearing types (Record<K, V>, (a, b) => void, tuples) are not supported. Pass one --props flag per prop, or split the type out.`,
+      ok: false,
+    };
+  }
+
+  const entries = segments.flatMap((entry) => {
     const trimmed = entry.trim();
 
     return trimmed.length > 0 ? [trimmed] : [];
@@ -220,6 +279,9 @@ const buildPropsGeneric = (
  * renders real DOM. Exotic types fall back to a typed cast the author replaces
  * (kept type-safe so the generated test still typechecks).
  */
+const isFunctionType = (type: string): boolean =>
+  type.includes('=>') || /\bFunction\b/u.test(type);
+
 const buildPropAttribute = (prop: PropEntry): string => {
   const type = prop.type;
 
@@ -227,6 +289,12 @@ const buildPropAttribute = (prop: PropEntry): string => {
   if (type === 'number') return `${prop.name}={0}`;
   if (type === 'boolean') return `${prop.name}={true}`;
   if (type.endsWith('[]')) return `${prop.name}={[]}`;
+  // Function-typed props get a callable no-op cast: `({} as () => void)()`
+  // throws TypeError the moment an author wires the prop into the render body,
+  // so the fallback must be invocable, not an empty-object cast.
+  if (isFunctionType(type)) {
+    return `${prop.name}={(() => undefined) as ${type}}`;
+  }
 
   return `${prop.name}={{} as ${type}}`;
 };

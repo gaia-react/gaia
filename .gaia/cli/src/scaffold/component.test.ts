@@ -361,6 +361,69 @@ describe('scaffold component', () => {
     expect(stdio.errors.join('')).toContain('--props entry must be name:type');
   });
 
+  test('comma-bearing object type exits 1 and writes no file', () => {
+    const exit = run(
+      [
+        'Widget',
+        '--parent',
+        'app/components',
+        '--props',
+        'meta:Record<string, unknown>',
+      ],
+      {cwd: sandbox.root}
+    );
+
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('comma-bearing');
+    expect(stdio.errors.join('')).toContain('one --props flag per prop');
+    expect(() =>
+      read(path.join(sandbox.parent, 'Widget', 'index.tsx'))
+    ).toThrow();
+  });
+
+  test('comma-bearing function type exits 1 and writes no file (no silent garbage)', () => {
+    const exit = run(
+      [
+        'Picker',
+        '--parent',
+        'app/components',
+        '--props',
+        'onSelect:(id: string, ev: Event) => void',
+      ],
+      {cwd: sandbox.root}
+    );
+
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('comma-bearing');
+    expect(() =>
+      read(path.join(sandbox.parent, 'Picker', 'index.tsx'))
+    ).toThrow();
+  });
+
+  test('single-arg function prop scaffolds with a callable no-op fallback (not {} as)', () => {
+    const exit = run(
+      [
+        'Clicker',
+        '--parent',
+        'app/components',
+        '--props',
+        'onClick:() => void',
+        '--no-story',
+      ],
+      {cwd: sandbox.root}
+    );
+
+    expect(exit).toBe(0);
+
+    const testContents = read(
+      path.join(sandbox.parent, 'Clicker', 'tests', 'index.test.tsx')
+    );
+    // The render attribute must be a CALLABLE no-op cast, so wiring the prop
+    // into the render body would not throw at call time.
+    expect(testContents).toContain('onClick={(() => undefined) as () => void}');
+    expect(testContents).not.toContain('onClick={{} as');
+  });
+
   // Sanity check: the test setup is still valid even if templates move.
   test('templates dir resolves to an existing path', () => {
     expect(() =>
