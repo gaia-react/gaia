@@ -31,13 +31,26 @@
 # correctly-keyed exemption (no runtime assertion), as opposed to the
 # dynamic-title carve-out above, which is keyed to uncomputable identity.
 #
+# Emergent-subject tests are EXEMPT too: the RED demand is scoped to the
+# DETERMINISTIC surface via the determinism classifier
+# (.gaia/scripts/classifier/classify-determinism.mjs). A test whose subject is
+# clock-/entropy-/I-O-bound or tree-dependent (component interaction, async,
+# layout, E2E) has no stable failing-then-passing run to observe, so demanding a
+# RED produces theater. Such a file is skipped; the deterministic surface still
+# demands its RED. See the carve-out block below for the binding and its
+# err-EMERGENT, non-tightening fail-open.
+#
 # Fail-open vs fail-closed (threat model: a cooperative-but-fallible agent):
 #   - git / jq / node unavailable  -> exit 0 (allow). Sibling-hook posture.
 #   - a staged test file the helper cannot parse (mid-edit syntax error)
 #     -> that file is skipped, never denied (husky's GREEN gate and the
 #        agent's own run surface the syntax error). Fail-open.
+#   - the determinism classifier unavailable or erroring -> the carve-out
+#     does NOT fire; the file falls back to the pre-carve RED demand. This keeps
+#     the deterministic path intact and never relaxes the gate on uncertainty.
 #   - the deny path is fail-closed ONLY for the clean case: a parseable
-#     new-at-HEAD passing test with no matching valid RED in the ledger.
+#     new-at-HEAD passing test with no matching valid RED in the ledger that the
+#     classifier does not label emergent.
 #
 # -e is intentionally omitted: we must not abort before writing the deny JSON.
 # All error-prone commands are individually guarded (|| true, 2>/dev/null) so a
@@ -115,6 +128,49 @@ staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
 ledger=$(red_ledger_path)
 signal_script=$(red_ledger_signal_script)
 
+# ---------------------------------------------------------------------------
+# Determinism carve-out: the RED demand is scoped to the DETERMINISTIC surface.
+# A test whose subject is emergent (clock-/entropy-/I-O-bound or tree-dependent:
+# component interaction, async, layout, E2E) has no stable failing-then-passing
+# run to observe, so forcing a RED onto it produces theater. Such a test commits
+# with NO RED demand; the deterministic surface (pure utils, service parsers,
+# spec-derivable hooks) still demands and gets a natural RED.
+#
+# Binding: classify the TEST FILE ITSELF with the determinism classifier
+# (.gaia/scripts/classifier/classify-determinism.mjs). The classifier already
+# carries every emergent signal this gate cares about and is biased err-EMERGENT:
+#   - a `.tsx` test under app/components/** (component interaction) and a
+#     .playwright/** E2E test fall outside its STRICT candidate path -> emergent;
+#   - a test calling the a11y helpers (expectNoA11yViolations / runAxe) -> emergent;
+#   - a test reading the clock/entropy/I-O in its own body -> emergent.
+# The classifier's internal err-EMERGENT bias supplies the "treat as emergent
+# when we cannot prove the subject deterministic" posture: anything it cannot
+# confidently prove deterministic it returns emergent, and an emergent verdict
+# relaxes the RED demand for that file.
+#
+# Fail-open / non-tightening: when the classifier is unavailable or errors, the
+# gate falls back to its pre-carve behavior (demand the RED) so the deterministic
+# path is never broken and the existing fail-open posture is preserved exactly.
+# The carve-out RELAXES the demand only on an AFFIRMATIVE emergent verdict; it
+# never tightens it.
+classifier_script=".gaia/scripts/classifier/classify-determinism.mjs"
+
+# Echo "emergent" only when the classifier affirmatively classifies the given
+# repo-relative test path emergent; echo nothing otherwise (missing helper,
+# non-zero exit, unparseable JSON, or a strict verdict). A non-empty (emergent)
+# answer relaxes the RED demand for that file.
+test_subject_is_emergent() {
+  local rel="$1"
+  [ -f "$classifier_script" ] || return 0
+  local out
+  out=$(node "$classifier_script" "$rel" 2>/dev/null) || return 0
+  [ -n "$out" ] || return 0
+  printf '%s' "$out" \
+    | jq -r 'select((.classification // "") == "emergent") | "emergent"' \
+        2>/dev/null \
+    | head -1
+}
+
 # Collect offenders as "file\tfullName" lines.
 offenders=""
 
@@ -129,6 +185,11 @@ while IFS= read -r path; do
   esac
 
   rel=$(red_ledger_repo_rel "$path")
+
+  # Carve-out: an emergent-subject test commits without a RED demand. Skip the
+  # whole file when the classifier affirmatively labels it emergent; the
+  # deterministic surface falls through to the RED check unchanged.
+  [ -n "$(test_subject_is_emergent "$rel")" ] && continue
 
   # Current tests: helper over the working-tree (staged) file content on disk.
   # Parse failure (mid-edit syntax error) -> skip this file (fail-open).

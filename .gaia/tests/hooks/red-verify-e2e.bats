@@ -45,6 +45,11 @@ setup() {
   ln -s "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$REPO/.claude/hooks/lib/red-ledger.sh"
   ln -s "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
   ln -s "$HOME_ROOT/.gaia/scripts/red-ledger" "$REPO/.gaia/scripts/red-ledger"
+  # The check hook's determinism carve-out classifies the test file via this
+  # helper; symlink it so the carve-out resolves it as in production. The
+  # fixtures live on the strict surface (app/utils/**), so the carve-out leaves
+  # the RED demand in place and the RED->GREEN handshake is exercised genuinely.
+  ln -s "$HOME_ROOT/.gaia/scripts/classifier" "$REPO/.gaia/scripts/classifier"
 
   # Seed a HEAD commit so HEAD exists; the test files added later are new at HEAD.
   echo "# readme" > "$REPO/README.md"
@@ -124,16 +129,16 @@ test("adds two numbers", () => {
 # hooks compute the same signal for the same source.
 # ---------------------------------------------------------------------------
 @test "RED captured then GREEN: commit is allowed" {
-  write_file "app/x/index.test.ts" "$RED_TEST"
+  write_file "app/utils/x/index.test.ts" "$RED_TEST"
 
   json="$REPO/canned.json"
-  canned_fail_json "$json" "app/x/index.test.ts" "adds two numbers"
-  run_capture "app/x/index.test.ts" "$json"
+  canned_fail_json "$json" "app/utils/x/index.test.ts" "adds two numbers"
+  run_capture "app/utils/x/index.test.ts" "$json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
 
   # Stage the (unchanged) test; its current signal equals the captured one.
-  stage "app/x/index.test.ts"
+  stage "app/utils/x/index.test.ts"
   run_check
   [ "$status" -eq 0 ]
   ! denied
@@ -143,8 +148,8 @@ test("adds two numbers", () => {
 # Never-failed denied: a new passing test with no capture step has no RED.
 # ---------------------------------------------------------------------------
 @test "never captured: commit is denied" {
-  write_file "app/x/index.test.ts" "$RED_TEST"
-  stage "app/x/index.test.ts"
+  write_file "app/utils/x/index.test.ts" "$RED_TEST"
+  stage "app/utils/x/index.test.ts"
   [ "$(ledger_lines)" -eq 0 ]
   run_check
   [ "$status" -eq 0 ]
@@ -158,21 +163,21 @@ test("adds two numbers", () => {
 # content binding invalidates a stale RED.
 # ---------------------------------------------------------------------------
 @test "edited after RED: commit is denied on signal mismatch" {
-  write_file "app/x/index.test.ts" "$RED_TEST"
+  write_file "app/utils/x/index.test.ts" "$RED_TEST"
 
   json="$REPO/canned.json"
-  canned_fail_json "$json" "app/x/index.test.ts" "adds two numbers"
-  run_capture "app/x/index.test.ts" "$json"
+  canned_fail_json "$json" "app/utils/x/index.test.ts" "adds two numbers"
+  run_capture "app/utils/x/index.test.ts" "$json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
 
   # Edit the test body (same fullName, different assertion) AFTER its RED.
-  write_file "app/x/index.test.ts" 'import {expect, test} from "vitest";
+  write_file "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 test("adds two numbers", () => {
   expect(2 + 2).toBe(4);
 });
 '
-  stage "app/x/index.test.ts"
+  stage "app/utils/x/index.test.ts"
   run_check
   [ "$status" -eq 0 ]
   denied
@@ -192,7 +197,7 @@ test("adds two numbers", () => {
 }
 
 @test "pnpm test --run is NOT blocked by block-bare-test.sh" {
-  payload=$(jq -nc '{tool_name:"Bash", tool_input:{command:"pnpm test --run app/x/index.test.ts"}}')
+  payload=$(jq -nc '{tool_name:"Bash", tool_input:{command:"pnpm test --run app/utils/x/index.test.ts"}}')
   run bash -c "printf '%s' '$payload' | bash '$BARE_TEST_HOOK'"
   [ "$status" -eq 0 ]
 }
