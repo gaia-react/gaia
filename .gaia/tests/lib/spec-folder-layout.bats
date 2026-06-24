@@ -173,22 +173,23 @@ _snapshot() {
   [ "$(jq -r '.specs[-1].id' "$REPO/.gaia/specs.json")" = "SPEC-005" ]
 }
 
-@test "7b: in_progress ledger-first wins over a foldered fallback artifact" {
-  # Ledger has an in-progress row for SPEC-009; a foldered SPEC-013/SPEC.md
-  # is also status:in-progress. Ledger order wins per Contract C3.
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-009 --seed-folder SPEC-013)"
+@test "7b: in_progress sources the ledger; a foldered artifact is not a fallback" {
+  # A draft ledger row (SPEC-009) is the resume source; a foldered
+  # SPEC-013/SPEC.md with no ledger row is NOT surfaced. Ledger-only per
+  # Contract C3 (the SPEC-file frontmatter fallback is intentionally gone).
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-009 --seed-folder SPEC-013)"
   cd "$REPO"
   run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-009" ]
 }
 
-@test "7c: in_progress fallback reads a foldered status:in-progress artifact" {
+@test "7c: in_progress no fallback; a foldered artifact without a ledger row yields none" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-013)"
   cd "$REPO"
   run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
   [ "$status" -eq 0 ]
-  [ "$output" = "SPEC-013" ]
+  [ "$output" = "none" ]
 }
 
 # --- 8: renumber folder ------------------------------------------------------
