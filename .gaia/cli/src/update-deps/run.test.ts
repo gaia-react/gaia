@@ -189,7 +189,6 @@ describe('update-deps run: version classification', () => {
 describe('update-deps run: group resolution', () => {
   test('react-router family maps to react-router group', () => {
     expect(resolveGroup('react-router')).toBe('react-router');
-    expect(resolveGroup('react-router-dom')).toBe('react-router');
     expect(resolveGroup('@react-router/dev')).toBe('react-router');
     expect(resolveGroup('@react-router/serve')).toBe('react-router');
   });
@@ -299,7 +298,7 @@ describe('update-deps run: computeUpdates', () => {
     sandbox.writePackageJson({
       dependencies: {
         'react-router': '^6.30.0',
-        'react-router-dom': '^6.30.0',
+        '@react-router/serve': '^6.30.0',
       },
     });
 
@@ -307,7 +306,7 @@ describe('update-deps run: computeUpdates', () => {
       cwd: sandbox.root,
       pnpmRunner: makePnpmRunner({
         'react-router': {current: '6.30.0', latest: '7.0.0', wanted: '6.30.0'},
-        'react-router-dom': {
+        '@react-router/serve': {
           current: '6.30.0',
           latest: '7.0.0',
           wanted: '6.30.0',
@@ -462,11 +461,11 @@ describe('update-deps run: computeUpdates', () => {
   });
 
   test('sibling expansion: non-outdated group member included in wave_a when trigger is minor', () => {
-    // react-router is minor bump, react-router-dom is current but present in pkg.json
+    // react-router is minor bump, @react-router/serve is current but present in pkg.json
     sandbox.writePackageJson({
       dependencies: {
         'react-router': '^7.0.0',
-        'react-router-dom': '^7.0.0',
+        '@react-router/serve': '^7.0.0',
       },
     });
 
@@ -477,13 +476,13 @@ describe('update-deps run: computeUpdates', () => {
           'react-router': {current: '7.0.0', latest: '7.1.0', wanted: '7.1.0'},
         },
         undefined,
-        {'react-router-dom': '7.1.0'}
+        {'@react-router/serve': '7.1.0'}
       ),
     });
 
     expect(result.wave_b).toEqual([]);
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
     expect(rrd).toBeDefined();
     expect(rrd?.latest).toBe('7.1.0');
     expect(rrd?.current).toBe('7.0.0');
@@ -492,11 +491,11 @@ describe('update-deps run: computeUpdates', () => {
   });
 
   test('sibling expansion: up-to-date sibling (current === latest) still included', () => {
-    // react-router-dom is truly up-to-date after fetch; must still be included
+    // @react-router/serve is truly up-to-date after fetch; must still be included
     sandbox.writePackageJson({
       dependencies: {
         'react-router': '^7.1.0',
-        'react-router-dom': '^7.1.0',
+        '@react-router/serve': '^7.1.0',
       },
     });
 
@@ -507,23 +506,23 @@ describe('update-deps run: computeUpdates', () => {
           'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'},
         },
         undefined,
-        {'react-router-dom': '7.2.0'}
+        {'@react-router/serve': '7.2.0'}
       ),
     });
 
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
     expect(rrd).toBeDefined();
     // current 7.1.0 vs latest 7.2.0 → minor
     expect(rrd?.kind).toBe('minor');
   });
 
   test('sibling expansion: up-to-date sibling where current === latest gets kind: "patch"', () => {
-    // react-router-dom is exactly on latest after fetch → no-op, kind: "patch"
+    // @react-router/serve is exactly on latest after fetch → no-op, kind: "patch"
     sandbox.writePackageJson({
       dependencies: {
         'react-router': '^7.1.0',
-        'react-router-dom': '^7.2.0',
+        '@react-router/serve': '^7.2.0',
       },
     });
 
@@ -534,12 +533,12 @@ describe('update-deps run: computeUpdates', () => {
           'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'},
         },
         undefined,
-        {'react-router-dom': '7.2.0'}
+        {'@react-router/serve': '7.2.0'}
       ),
     });
 
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
     expect(rrd).toBeDefined();
     // current 7.2.0 vs latest 7.2.0 → equal, kind: "patch" as no-op default
     expect(rrd?.kind).toBe('patch');
@@ -981,7 +980,7 @@ describe('update-deps run: release-age cooldown', () => {
 
   test('caps a sibling-expanded version too', () => {
     sandbox.writePackageJson({
-      dependencies: {'react-router': '^7.0.0', 'react-router-dom': '^7.0.0'},
+      dependencies: {'react-router': '^7.0.0', '@react-router/serve': '^7.0.0'},
     });
     writeWorkspace(sandbox.root, 10080);
 
@@ -991,10 +990,10 @@ describe('update-deps run: release-age cooldown', () => {
       pnpmRunner: makePnpmRunner(
         {'react-router': {current: '7.0.0', latest: '7.2.0', wanted: '7.2.0'}},
         undefined,
-        {'react-router-dom': '7.3.0'},
+        {'@react-router/serve': '7.3.0'},
         {
           'react-router': {'7.0.0': ANCIENT, '7.2.0': AGED},
-          'react-router-dom': {
+          '@react-router/serve': {
             '7.0.0': ANCIENT,
             '7.2.0': AGED,
             '7.3.0': TOO_YOUNG,
@@ -1005,14 +1004,14 @@ describe('update-deps run: release-age cooldown', () => {
 
     expect(result.skipped).toEqual([]);
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
     expect(rrd?.latest).toBe('7.2.0');
     expect(rrd?.kind).toBe('minor');
   });
 
   test('an up-to-date sibling (current === latest) is still included', () => {
     sandbox.writePackageJson({
-      dependencies: {'react-router': '^7.1.0', 'react-router-dom': '^7.2.0'},
+      dependencies: {'react-router': '^7.1.0', '@react-router/serve': '^7.2.0'},
     });
     writeWorkspace(sandbox.root, 10080);
 
@@ -1022,8 +1021,8 @@ describe('update-deps run: release-age cooldown', () => {
       pnpmRunner: makePnpmRunner(
         {'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'}},
         undefined,
-        {'react-router-dom': '7.2.0'},
-        // No time table for react-router-dom: it is up to date, so the
+        {'@react-router/serve': '7.2.0'},
+        // No time table for @react-router/serve: it is up to date, so the
         // cooldown must not attempt a lookup for it.
         {'react-router': {'7.1.0': ANCIENT, '7.2.0': AGED}}
       ),
@@ -1031,7 +1030,7 @@ describe('update-deps run: release-age cooldown', () => {
 
     expect(result.skipped).toEqual([]);
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === 'react-router-dom');
+    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
     expect(rrd).toBeDefined();
     expect(rrd?.kind).toBe('patch');
     expect(rrd?.latest).toBe('7.2.0');
@@ -1104,14 +1103,14 @@ describe('update-deps run: preview payload fields', () => {
       dependencies: {
         foo: '^1.2.3',
         'react-router': '^7.1.0',
-        'react-router-dom': '^7.1.0',
+        '@react-router/serve': '^7.1.0',
       },
     });
     saveDeclines(sandbox.root, [
       {
         declined_at: NOW().toISOString(),
         group: 'react-router',
-        targets: {'react-router': '7.2.0', 'react-router-dom': '7.2.0'},
+        targets: {'react-router': '7.2.0', '@react-router/serve': '7.2.0'},
       },
     ]);
 
@@ -1121,7 +1120,7 @@ describe('update-deps run: preview payload fields', () => {
       pnpmRunner: makePnpmRunner({
         foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
         'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'},
-        'react-router-dom': {
+        '@react-router/serve': {
           current: '7.1.0',
           latest: '7.2.0',
           wanted: '7.2.0',

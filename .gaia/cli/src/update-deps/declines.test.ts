@@ -42,7 +42,7 @@ const payload: CountablePayload = {
       group: 'react-router',
       packages: [
         {current: '7.1.0', latest: '7.2.0', name: 'react-router'},
-        {current: '7.1.0', latest: '7.2.0', name: 'react-router-dom'},
+        {current: '7.1.0', latest: '7.2.0', name: '@react-router/serve'},
       ],
     },
   ],
@@ -50,7 +50,7 @@ const payload: CountablePayload = {
 
 const reactRouterTargets = {
   'react-router': '7.2.0',
-  'react-router-dom': '7.2.0',
+  '@react-router/serve': '7.2.0',
 };
 
 const now = new Date('2026-06-11T18:00:00.000Z');
