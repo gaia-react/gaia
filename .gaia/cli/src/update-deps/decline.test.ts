@@ -50,7 +50,7 @@ const SOURCE_PAYLOAD = {
           is_pinned: false,
           kind: 'major',
           latest: '7.0.0',
-          name: 'react-router-dom',
+          name: '@react-router/serve',
           wanted: '6.30.0',
         },
       ],
@@ -154,7 +154,7 @@ describe('update-deps decline', () => {
 
   test('skipping one member snoozes the whole companion group', () => {
     sandbox.writeSource('updates.json');
-    const exit = run(['--source', 'updates.json', '--skip', 'react-router-dom'], {
+    const exit = run(['--source', 'updates.json', '--skip', '@react-router/serve'], {
       cwd: sandbox.root,
       now: NOW,
     });
@@ -164,7 +164,7 @@ describe('update-deps decline', () => {
     expect(declined[0]?.group).toBe('react-router');
     expect(declined[0]?.targets).toEqual({
       'react-router': '7.0.0',
-      'react-router-dom': '7.0.0',
+      '@react-router/serve': '7.0.0',
     });
   });
 

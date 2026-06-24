@@ -20,7 +20,6 @@ The full-stack web framework GAIA is built on. Provides SSR, file-based routing,
 - `@react-router/dev`
 - `@react-router/fs-routes`
 - `@react-router/remix-routes-option-adapter`
-- `react-router-dom`
 
 The `/update-deps` command upgrades all of these together when react-router is selected.
 

@@ -16,6 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 - `/gaia-harden` weighs an efficacy lens (Axis 3) before recommending a form: a recurring finding proves the problem, not the fix, so when the recommended form is prose and no cheap before/after evidence shows it would change behavior, that surfaces as a defer/decline signal for the human, never an auto-decline
 - point Zod schema work at Zod's official LLM docs, auto-discovered from `node_modules/zod/package.json` (`llmsFull`/`llms`), and treat them as authoritative over training memory so valid Zod 4 forms are not rejected from stale v3 recollection
 
+### Removed
+
+- the vestigial `react-router-dom` dependency, a v6/v7 re-export shim that React Router 8 drops entirely; GAIA runs framework mode and imports everything from `react-router` (`HydratedRouter` comes from `react-router/dom`), so it was already dead weight on v7. `/update-gaia` leaves an existing `react-router-dom` in your `package.json` by design (adopter-owned dependencies are never auto-removed), so run `pnpm remove react-router-dom` to drop it; `pnpm knip` also flags it as unused after this release (#419)
+
 ### Fixed
 
 - `/update-deps` override audit re-resolves with `pnpm dedupe` instead of `pnpm install` (which short-circuits "Already up to date" on an overrides-only change and could leave a security-floor override unapplied), and asserts the lockfile `overrides` block matches `pnpm-workspace.yaml` before finishing (#388)

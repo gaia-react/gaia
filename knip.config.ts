@@ -30,7 +30,6 @@ export default {
     'lru-cache',
     'msw-storybook-addon',
     'nanoid',
-    'react-router-dom',
     'remix-utils',
     'stylelint-config-clean-order',
     'stylelint-config-standard',
