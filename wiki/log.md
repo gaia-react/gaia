@@ -11,6 +11,17 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-24 d6cc88f WORTHY - docs(wiki): debloat + factual-drift audit across 24 pages; pages corrected directly in-commit
+- 2026-06-24 b3d7aff WORTHY - feat(remix-utils): new wiki/dependencies/remix-utils.md decision map created in-commit
+- 2026-06-24 e371947 WORTHY - feat(spec-ledger): auto-archive merged SPECs post-reconcile; wiki/concepts/GAIA Spec.md updated in-commit
+- 2026-06-24 3f3f0a4 WORTHY - feat(spec-ledger): canonical status vocab + auto-heal; wiki/concepts/GAIA Spec.md updated in-commit
+- 2026-06-24 a2e1337 WORTHY - feat(plan): adversarial decomposition audit step 4.6; wiki/concepts/GAIA Plan.md updated in-commit
+- 2026-06-24 a49f3da WORTHY - feat(spec): adversarial SPEC-audit + lifecycle ledger; wiki/concepts/GAIA Spec.md updated in-commit
+- 2026-06-24 7df81c3 SKIP - fix(telemetry): CLI bug fix for --abandoned flag; internal, no wiki page needed
+- 2026-06-24 bbe006f SKIP - docs(changelog): backfill CHANGELOG entries only, no architecture change
+- 2026-06-24 67e903d WORTHY - feat(changelog): adopter-action convention + full-range CHANGELOG display in /update-gaia Step 4 → wiki/concepts/Update Workflow.md updated
+- 2026-06-24 c1c6121 WORTHY - chore(deps): remove react-router-dom; wiki/dependencies/React Router 7.md already updated in-commit
+- 2026-06-24 bdc0781 WORTHY - wiki: stale-claims + gap-fill across 86 pages; pages corrected directly in this commit
 - 2026-06-24 e645404 SKIP - wiki: maintenance chain commit (sync + consolidate + lint), self-referential
 - 2026-06-24 0ccc199 SKIP - chore(deps): Wave A version bumps + obsolete override pruning, no behavior change
 - 2026-06-24 0a07a8f WORTHY - fix(gaia-audit): 0-action auto-apply + statusline cache-bust; wiki/concepts/GAIA Audit.md already reflects this via 9191a32
