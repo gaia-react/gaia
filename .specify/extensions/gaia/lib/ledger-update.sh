@@ -13,7 +13,8 @@
 # env knobs (GAIA_LEDGER_LOCK_*).
 #
 # Exit codes: 0 ok, 2 usage, 4 ledger or row missing OR lock-acquisition
-# timeout (could not safely apply the ledger write), 5 invalid patch JSON.
+# timeout (could not safely apply the ledger write), 5 invalid patch JSON,
+# 6 non-canonical status value in the patch.
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
@@ -38,6 +39,27 @@ fi
 if ! jq -e --arg id "$spec_id" '.specs[] | select(.id == $id)' "$ledger_path" >/dev/null 2>&1; then
   echo "ledger-update: spec $spec_id not in ledger" >&2
   exit 4
+fi
+
+# Canonical status vocabulary guard. The ledger's status is one of the four
+# canonical values draft|specified|merged|archived, plus the tolerated legacy
+# value in-progress (wiki/concepts/GAIA Spec.md, "Ledger status vocabulary").
+# This is the single chokepoint for ledger writes, so rejecting an
+# off-vocabulary status here keeps every tool path (allocator finalize,
+# spec-reconcile, spec-close) from persisting a stray label. A patch that does
+# not set status (e.g. a merged_at-only stamp) passes untouched. An unparseable
+# patch falls through to apply_patch, which reports it as exit 5. Existing
+# off-vocabulary rows (e.g. a hand-edited "shipped") are repaired by
+# spec-reconcile.sh, which renames known aliases through this same chokepoint.
+patch_status="$(jq -r 'if type == "object" and has("status") then (.status | tostring) else empty end' <<<"$patch" 2>/dev/null || true)"
+if [ -n "$patch_status" ]; then
+  case "$patch_status" in
+    draft | specified | merged | archived | in-progress) ;;
+    *)
+      echo "ledger-update: non-canonical status '$patch_status' (allowed: draft, specified, merged, archived)" >&2
+      exit 6
+      ;;
+  esac
 fi
 
 apply_patch() {
