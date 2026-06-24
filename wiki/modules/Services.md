@@ -25,7 +25,7 @@ The pattern: each domain folder under `app/services/gaia/{domain}/` holds `parse
 
 ## Why URL constants are mandatory
 
-Each domain owns a per-domain URL constant in its own `urls.ts` (e.g. `PROJECTS_URLS` in `app/services/gaia/projects/urls.ts`). That constant is the contract between the service layer and the MSW mocks ([[MSW Handlers]]): both the request functions and the handlers import the same per-domain constant, so a path change updates both sides together. Hardcoding paths breaks the contract and lets requests escape to the real network in tests.
+Each domain owns a per-domain URL constant in its own `urls.ts` (e.g. a `projects` domain exposes `PROJECTS_URLS`). That constant is the contract between the service layer and the MSW mocks ([[MSW Handlers]]): both the request functions and the handlers import the same per-domain constant, so a path change updates both sides together. Hardcoding paths breaks the contract and lets requests escape to the real network in tests.
 
 ## See also
 
