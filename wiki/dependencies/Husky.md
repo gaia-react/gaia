@@ -2,7 +2,7 @@
 type: dependency
 status: active
 package: 'husky, lint-staged, is-ci'
-version: '9.1.7, 17.0.7'
+version: '9.1.7, 17.0.7, 4.1.0'
 role: pre-commit
 created: 2026-04-20
 updated: 2026-06-24

@@ -67,4 +67,4 @@ This page is the source of truth for quality gate steps. The always-loaded `.cla
 
 See [[Pre-commit Hooks]], [[PR Merge Workflow]], [[Task Orchestration]], [[Claude Hooks]] (the source-edit and Bash safeguards keep `.env`, lockfile, secrets, and destructive-git footguns out of the staged surface before the gate ever runs).
 
-The Forensics Triage Workflow runs the gate (install + typecheck + lint + test + knip) on every auto-fix branch; gate failure abandons the branch and demotes the issue to `needs-human` instead of opening a partial PR.
+The Forensics Triage Workflow runs its own CI gate (`.github/forensics/run-quality-gate.sh`: install → typecheck → lint → test → knip) on every auto-fix branch; gate failure abandons the branch and demotes the issue to `needs-human` instead of opening a partial PR. That gate is distinct from the developer Quality Gate above: it adds `pnpm knip` because it runs post-task against a complete tree, whereas the dev gate omits knip (see `.claude/rules/knip.md`).

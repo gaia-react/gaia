@@ -79,7 +79,7 @@ The sync design is convergent: hooks never spawn `claude -p` sub-processes. `wik
 
 ## Agents
 
-[[Code Review Audit Agent]] runs automatically before every PR merge (per [[PR Merge Workflow]]). After its own pass over security / performance / smells / architecture / robustness / maintainability, it spawns 3 parallel specialist subagents covering React patterns, TypeScript & architecture, and translation rules.
+[[Code Review Audit Agent]] runs automatically before every PR merge (per [[PR Merge Workflow]]). After its own pass over security / performance / smells / architecture / robustness / maintainability, it dispatches up to three file-scope-gated specialist subagents (React patterns when `.tsx` files changed, TypeScript & architecture when `.ts`/`.tsx` changed, translation when `t(` / `useTranslation` is present) in parallel from a single tool call, alongside the deterministic oracles `react-doctor`, `pnpm knip`, and `pnpm audit`. A subagent with no matching files is skipped.
 
 Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/` path is a gitignored scratch path (created on demand under a per-agent subdir such as `code-review-audit/`), not a source of truth.
 

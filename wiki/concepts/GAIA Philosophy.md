@@ -26,12 +26,8 @@ GAIA deliberately ships **no component library**; you choose what fits.
 - Heavy state management (no Redux, Zustand); Context+Provider is enough
 - Backend assumptions (no Prisma, Drizzle, etc.); your services layer talks to your API
 
-## See also
-
-[[Agentic Design]]: how GAIA structures the Claude Code workflow for agentic tasks.
-
 ## Positioning & Naming
 
-GAIA is **not just a React template**; it is a complete workflow for building React sites with Claude. Calling it a "template" undersells the scope.
+GAIA is **not just a React template**; it is a complete workflow for building React sites with Claude. Calling it a "template" undersells the scope. Lead with "workflow" / "system" / "Claude-first" framing.
 
-The current implementation uses React Router, but the roadmap is to support multiple React frameworks. **Taglines, marketing copy, og:description, README hero text, and any positioning must not bind to a specific framework** (no "React Router template", no "Remix workflow"). Lead with "workflow" / "system" / "Claude-first" framing. The README's "Claude as your lead engineer" line is on-brand; "React Router template" phrasing should be revised when touched.
+GAIA is React-specific, built on [[React Router 7]]. There is no multi-framework roadmap.
