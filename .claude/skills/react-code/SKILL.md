@@ -13,7 +13,7 @@ Before installing a package or hand-rolling a primitive, walk this ladder and st
 
 1. **Existing GAIA code**, a component, hook, or util already covers it (form inputs → Gate 2).
 2. **Web platform**, a browser API or native element does the job: `Intl` (dates, numbers, lists, plurals), `URL` / `URLSearchParams`, `crypto.randomUUID()`, `structuredClone()`, `AbortController`, native `Array` / `Object` methods, `<dialog>`, modern CSS (`:has()`, container queries).
-3. **Already-installed dependency**, check `package.json` before adding a sibling that does the same job.
+3. **Already-installed dependency**, check `package.json` before adding a sibling that does the same job. For component/hook traps Claude often hand-rolls (client-only/useHydrated, sse, debounce-fetcher), see the remix-utils decision map at `wiki/dependencies/remix-utils.md` before reinventing.
 4. **New dependency**, only when 1-3 genuinely fall short; the added weight has to earn its place.
 5. **Custom code**, last resort, kept minimal.
 
