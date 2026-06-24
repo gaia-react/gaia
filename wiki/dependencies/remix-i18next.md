@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: remix-i18next
-version: ^7.5.0
+version: 7.5.0
 role: i18n
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-06-24
 tags: [dependency, i18n]
 ---
 
@@ -15,13 +15,17 @@ i18n integration built on `i18next` for Remix / React Router 7. GAIA wires it th
 
 ## Companion
 
-- `i18next` ^26.0.6
-- `react-i18next` ^17.0.4
+- `i18next` 26.3.1
+- `react-i18next` 17.0.8
 - `i18next-browser-languagedetector` 8.2.1
 - `accept-language-parser` 1.5.0
 - `storybook-react-i18next` 10.1.2
 
-> [!note] `pnpm.overrides` block in package.json
-> The `pnpm.overrides` block forces `remix-i18next` to use the same `i18next` and `react-i18next` versions as the rest of the project to avoid duplicate copies. Uses pnpm's `parent>child` syntax: `"remix-i18next>i18next": "$i18next"`. See [[pnpm]] for the override audit flow that keeps this list lean.
+> [!note] Single shared version, no forcing override
+> `i18next`, `react-i18next`, and `remix-i18next` are each declared as direct dependencies, so pnpm resolves a single shared copy of each (`remix-i18next` declares `i18next`/`react-i18next` as peers, `react-i18next` declares `i18next` as a peer) and consumers stay on one version without any override. Dependency `overrides` live in `pnpm-workspace.yaml` (pnpm 11 ignores the package.json `pnpm` field); the only current override is a security floor on `qs`. See [[pnpm]] and [[pnpm-overrides]] for the override audit flow.
+
+## Client wiring
+
+The server middleware resolves the request language; the browser entry (`app/entry.client.tsx`) initializes its own `i18next` instance with `.use(LanguageDetector)` from `i18next-browser-languagedetector`, detecting the language client-side from the `htmlTag` set during SSR.
 
 See [[i18n]], [[Language Flow]].

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-06-12
+updated: 2026-06-24
 tags: [concept, ci, audit, claude]
 ---
 
@@ -35,7 +35,7 @@ The workflow's first agent-invocation step is preceded by a `Check audit trailer
 
 Version mismatch (a newer GAIA release shipped) and tree mismatch (HEAD amended after the trailer was written) both invalidate the stamp automatically. Only the PR-HEAD commit's trailers are inspected; stale trailers in earlier commits on the branch do not satisfy the gate.
 
-The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a clean local run of the audit agent. Stamp placement is automatic: amend on un-pushed HEADs, an empty `chore: code review audit passed` commit on already-pushed HEADs (never silently rewriting published history), and amend on the audit's own self-heal commits regardless of push state. The full stamp invariant and placement rule live alongside the workflow's frozen contracts at `.gaia/local/plans/code-review-audit-ci/trailer-format.md`.
+The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a clean local run of the audit agent. Stamp placement is automatic: amend on un-pushed HEADs, an empty `chore: code review audit passed` commit on already-pushed HEADs (never silently rewriting published history), and amend on the audit's own self-heal commits regardless of push state. The frozen trailer format and skip decision live in `.github/audit/check-trailer.sh`; the stamp placement rule lives in `.claude/hooks/audit-stamp-trailer.sh`.
 
 ## Skip rule (chore-deps PRs)
 
@@ -69,7 +69,7 @@ This is the audit's instance of the cross-workflow mechanism in [[Incremental CI
 
 ## Progress breadcrumbs
 
-The workflow runs the [[Code Review Audit Agent]] with `show_full_output: false`. This is deliberate: `gaia-react/gaia` is a public repo and full output would expose tool results that may contain secrets. As a result, the agent's own output is invisible in the Actions log.
+The agent's own SDK output is not surfaced in the public Actions log: `claude-code-action` does not echo tool results unless explicitly enabled, and the workflow leaves that off (it passes only `--max-turns`, `--allowedTools`, and `--verbose` in `claude_args`). This is deliberate: `gaia-react/gaia` is a public repo and full output would expose tool results that may contain secrets.
 
 To provide a public-safe, post-hoc view of audit progress, the agent writes a curated per-phase breadcrumb line to `.gaia/local/audit/progress.log` (runner-local, gitignored; the same directory as the `<sha>.ok` clean marker) via its `Write`/`Edit` tool. Each line is a phase label plus integer counts only: no code, no file contents, no raw tool output, no secrets. These writes are best-effort: a write failure never blocks or fails the audit.
 
@@ -95,9 +95,24 @@ The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the f
 | --------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `gate_label`          | `null`               | Run the audit only when the PR carries this label. `null` runs on every PR. Maintainer recommendation: leave `null` until the audit is stable in CI; flip to `ready-for-review` once it is.                                                                                                                 |
 | `budget_seconds`      | `1800`               | Hard wall-clock budget for the audit invocation. The workflow times out the agent step at this value and reports `audit aborted: budget` rather than failing red.                                                                                                                                           |
-| `max_turns`           | `30`                 | Maximum fix turns the agent is allowed inside CI. Maps to `claude_args`'s `--max-turns`. Lower = cheaper. Higher = more chance to self-heal.                                                                                                                                                                |
+| `max_turns`           | `30`                 | Maximum fix turns the agent is allowed inside CI. Maps to `claude_args`'s `--max-turns`. Lower = cheaper. Higher = more chance to self-heal. `30` is the script fallback when the key is missing; the bundled `.gaia/audit-ci.yml` ships `60`.                                                                |
 | `push_fixes`          | `true`               | Whether the agent may push self-heal commits to the PR branch. Set `false` to make the audit advisory-only (it comments findings but does not push).                                                                                                                                                        |
 | `retrigger_workflows` | `[Chromatic, Tests]` | Workflows the audit re-dispatches against the PR branch after a self-heal push (see [[#Self-heal re-trigger]]). Each entry is the workflow's `name:` field, not the filename. Workflows listed must declare `workflow_dispatch:` in their triggers; the GAIA template's `chromatic.yml` and `tests.yml` do. |
+| `default_mode`        | `ci`                 | Per-author fallback audit mode when no `audit_authors` pair matches (see [[#Per-author audit mode]]). `ci` runs the audit in CI; `local` stands CI down and defers to the local merge path.                                                                                                                  |
+| `override_label`      | `run-audit`          | PR label that forces CI to run the audit regardless of the author's resolved mode. Present on the PR ⇒ `ci`.                                                                                                                                                                                                |
+| `audit_authors`       | `""` (empty)         | `login=mode` pairs (case-insensitive login) overriding `default_mode` per author. First matching login wins; an unmatched author falls back to `default_mode`.                                                                                                                                              |
+
+## Per-author audit mode
+
+The `Resolve audit decision` step computes whether CI itself runs the audit (`should_run`) by delegating to `.gaia/scripts/read-audit-ci-config.sh --resolve-author <login>`. The same resolver feeds the local merge path, so CI and local can never disagree on an author's mode. Resolution precedence:
+
+1. `override_label` present on the PR ⇒ `ci`.
+2. else the first matching `audit_authors` `login=mode` pair (case-insensitive).
+3. else `default_mode` (itself defaulting to `ci`).
+
+When an author resolves to `local` mode with no override label and the change is in audit scope, CI stands down: every expensive step is gated on `should_run == 'true'`, so the audit spends no tokens. The `Stand down (local-mode, no override)` step posts a `pending` `GAIA-Audit` commit status on HEAD with a fixed non-cleared description, so the required check keeps the merge button blocked until the local audit clears it.
+
+The resolver fail-closes to `ci` when it cannot confirm `GAIA-Audit` is a registered required check on the default branch (network failure, unauthenticated, no repo slug): an unverifiable gate must not silently disable the audit.
 
 ## Self-heal staging guards
 
@@ -153,7 +168,6 @@ Editing HEAD between the local stamp and `gh pr merge` invalidates the trailer (
 - Incremental-base helper (CI): `.github/audit/resolve-audit-base.sh`
 - Config reader: `.gaia/scripts/read-audit-ci-config.sh`
 - Default config: `.gaia/audit-ci.yml`
-- Frozen contracts (trailer format, skip logic, check name, event triggers): `.gaia/local/plans/code-review-audit-ci/trailer-format.md`
 - Progress breadcrumb file (runner-local, gitignored): `.gaia/local/audit/progress.log`
 
 ## See also

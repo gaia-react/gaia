@@ -2,9 +2,10 @@
 type: dependency
 status: active
 package: '@gaia-react/lint'
+version: 1.5.1
 role: lint-config
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-06-24
 tags: [dependency, lint, eslint]
 ---
 
@@ -12,7 +13,7 @@ tags: [dependency, lint, eslint]
 
 ## What it is
 
-GAIA's lint config, extracted to a standalone package under `github.com/gaia-react/lint`. Currently ESLint flat-config; engine-neutral name supports a future Biome migration without consumer breakage.
+GAIA's lint config, extracted to a standalone package under `github.com/gaia-react/lint`. The default export is the ESLint flat-config factory; the package also ships Prettier and Stylelint configs as the `@gaia-react/lint/prettier` and `@gaia-react/lint/stylelint` subpath exports (optional peer deps). The engine-neutral name supports a future Biome migration without consumer breakage.
 
 ## Why a separate repo
 
@@ -22,29 +23,31 @@ GAIA's lint config, extracted to a standalone package under `github.com/gaia-rea
 
 ## Where rules live
 
-Source of truth: `gaia-lint/src/configs/*.ts` (per export: `base.ts`, `react.ts`, `style-hygiene.ts`, `guardrails.ts`, `testing.ts`, `storybook.ts`, `playwright.ts`, `prettier.ts`, `better-tailwind.ts`, `ignores.ts`). Custom plugins (`no-enum`, `no-switch`) live in `gaia-lint/src/plugins/`.
+Source of truth: `gaia-lint/src/configs/*.ts` (per export: `base.ts`, `react.ts`, `style-hygiene.ts`, `guardrails.ts`, `testing.ts`, `storybook.ts`, `playwright.ts`, `prettier.ts`, `better-tailwind.ts`, `ignores.ts`). Custom plugins (`no-enum`, `no-switch`, `no-jsx-iife`) live in `gaia-lint/src/plugins/`.
 
 GAIA's `eslint.config.mjs` is a thin consumer: it spreads the package's exported arrays and adds GAIA-specific overrides last.
 
 ## Override pattern
 
-Spread package configs first, then GAIA-specific overrides last (flat-config last-write-wins):
+The default export is a factory: call it once to get the config bundle, spread the bundle's arrays first, then add GAIA-specific overrides last (flat-config last-write-wins). `gaiaLint(opts?)` accepts `{sourceDir}` (default `'app'`) to scope file-path-based rules; pass `{sourceDir: 'src'}` when source lives elsewhere.
 
 ```js
 import gaiaLint from '@gaia-react/lint';
 import {defineConfig} from 'eslint/config';
 
+const lint = gaiaLint();
+
 export default defineConfig([
-  ...gaiaLint.ignores({gitignore: '.gitignore'}),
-  ...gaiaLint.base,
-  ...gaiaLint.react,
-  ...gaiaLint.testing,
-  ...gaiaLint.storybook,
-  ...gaiaLint.playwright,
-  ...gaiaLint.styleHygiene,
-  ...gaiaLint.guardrails,
-  ...gaiaLint.betterTailwind({entryPoint: './app/styles/tailwind.css'}),
-  ...gaiaLint.prettier,
+  ...lint.ignores({extra: ['.gaia/**']}),
+  ...lint.base,
+  ...lint.react,
+  ...lint.testing,
+  ...lint.storybook,
+  ...lint.playwright,
+  ...lint.styleHygiene,
+  ...lint.guardrails,
+  ...lint.betterTailwind({entryPoint: './app/styles/tailwind.css'}),
+  ...lint.prettier,
   // Project-specific overrides go LAST
   {
     files: ['app/some/path/**'],

@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Top-level folder layout of the GAIA app
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-06-24
 tags: [module, structure]
 ---
 
@@ -23,7 +23,7 @@ tags: [module, structure]
 | `pages/`           | Page-specific UI, organized by route group | [[Pages]]      |
 | `routes/`          | Thin route files (loader/action only)      | [[Routing]]    |
 | `services/`        | API wrapper + domain services              | [[Services]]   |
-| `sessions.server/` | Cookie session storage (language, theme)   | [[Sessions]]   |
+| `sessions.server/` | Server-only signed cookie for language      | [[Sessions]]   |
 | `state/`           | Context+Provider state                     | [[State]]      |
 | `styles/`          | `tailwind.css`                             | [[Styles]]     |
 | `types/`           | Global TS types                            | -              |

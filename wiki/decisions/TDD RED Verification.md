@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-04
 created: 2026-06-04
-updated: 2026-06-05
+updated: 2026-06-24
 tags: [decision, tdd, hooks, quality]
 ---
 
@@ -63,7 +63,7 @@ An emergent verdict relaxes the demand: that test commits with no RED. The deter
 
 The carve-out only relaxes; it never tightens. When the classifier is unavailable or errors, the check falls back to its pre-carve behavior and demands the RED, so the deterministic path is never broken and the fail-open posture holds. A missed RED on a genuinely emergent test is caught late by the advisory worthiness audit, which forcing RED theatre up front cannot.
 
-The honest RED on the deterministic surface is a genuine missing-implementation failure: the test is authored against the not-yet-written or stub implementation symbol, never a revert of correct production code. A single-pass author whose implementation already exists in the same change is exempt from a manufactured RED and routed to the worthiness audit instead. The [[tdd]] skill documents the authoring idiom and the per-file classifier roll-up.
+The honest RED on the deterministic surface is a genuine missing-implementation failure: the test is authored against the not-yet-written or stub implementation symbol, never a revert of correct production code. A single-pass author whose implementation already exists in the same change is exempt from a manufactured RED and routed to the worthiness audit instead. The `tdd` skill (`.claude/skills/tdd/SKILL.md`) documents the authoring idiom and the per-file classifier roll-up.
 
 ## Consequences
 

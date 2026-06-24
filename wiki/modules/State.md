@@ -5,13 +5,13 @@ status: active
 language: typescript
 purpose: Global React Context+Provider state
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-06-24
 tags: [module, state]
 ---
 
 # State
 
-GAIA uses plain React Context+Provider for global state; no Redux, Zustand, etc. The barrel `app/state/index.tsx` composes all providers into a single `<State>` component consumed by `root.tsx`.
+GAIA uses plain React Context+Provider for global state; no Redux, Zustand, etc. `app/state/index.tsx` defines a single `<State>` component that `root.tsx` renders around `<App />`. It is the designated composition point: consumers nest their own providers inside `<State>` as they add slices.
 
 ## Template ships with no slices
 

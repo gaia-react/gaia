@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: 'react-icons'
-version: 5.5.0
+version: 5.6.0
 role: icons
 created: 2026-05-01
-updated: 2026-05-01
+updated: 2026-06-24
 tags: [dependency, icons]
 ---
 

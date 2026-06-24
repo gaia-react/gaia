@@ -4,7 +4,7 @@ path: .claude/
 status: active
 purpose: Claude Code integration, commands, rules, hooks, agents, skills
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-06-24
 tags: [module, claude, hooks]
 ---
 
@@ -18,7 +18,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 
 - `settings.json`: committed; hooks, env, plugins
 - `settings.local.json`: gitignored; personal overrides
-- `agent-memory/`: gitignored, ephemeral; **not** a source of truth; durable knowledge belongs in the wiki
+- `agent-memory/`: gitignored scratch path created on demand by named agents; **not** a source of truth; durable knowledge belongs in the wiki
 - `agents/`: sub-agent definitions
 - `commands/`: maintainer-only slash commands
 - `hooks/`: bash hooks invoked by `settings.json`
@@ -28,7 +28,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 
 ## Commands vs. skills
 
-Maintainer-only commands live under `.claude/commands/`. Everything user-invokable is a skill in `.claude/skills/`. The `/gaia` skill routes user-invoked workflows (plan / handoff / pickup / audit). For the current inventory, query Serena or list the folder directly.
+GAIA workflows are split between slash commands under `.claude/commands/` (`/gaia-plan`, `/gaia-spec`, `/gaia-audit`, `/gaia-fitness`, `/gaia-forensics`, `/gaia-harden`, `/gaia-init`, `/gaia-release`, and more) and standalone skills under `.claude/skills/` (`gaia-handoff`, `gaia-pickup`, `gaia-wiki`, each with its own `SKILL.md`). There is no `/gaia` router; each command and skill reads a shared reference file in `.claude/skills/gaia/references/`. For the current inventory, query Serena or list the folder directly.
 
 ## Rules: auto-attached
 
@@ -51,7 +51,10 @@ These are the load-bearing safety net. They block the action outright and return
 - `block-vitest-globals-tsconfig.sh`: prevents adding `vitest/globals` to `tsconfig.json`. Use explicit imports.
 - `block-bare-test.sh`: denies bare `pnpm test` / `npm test` (watch mode). Requires `--run`.
 - `block-main-destructive-git.sh`: denies `git commit` on `main`/`master`, plain `git push` from `main`/`master` (PR-only flow), and force-push to `main`/`master`. See [[Git Workflow]].
+- `block-no-verify.sh`: denies `git commit` / `git push` carrying a hook-bypass token (`--no-verify`, falsy `HUSKY=` prefix, `core.hooksPath` redirect) and `git commit -n`, so the commit-time deterministic floor cannot be silently skipped; `git push -n` (dry-run) stays allowed.
 - `block-rm-rf.sh`: denies `rm -rf` of `/`, `~`, `.git`, and other root-level / repo-critical paths.
+- `red-verify-commit-check.sh`: denies `git commit` when a new-at-HEAD test that now passes has no recorded failing (RED) run matching its current content. The sibling `capture-red-observations.sh` (PostToolUse) records REDs at test-run time; this enforces them at commit, the mechanical-TDD RED-before-GREEN gate.
+- `worthiness-presence-check.sh`: denies `gh pr merge` when an emergent test the PR changed has no worthiness-ledger line matching its current content (see the worthiness-evaluator agent below).
 
 ### Advisory hooks (nudge, don't block)
 
@@ -64,11 +67,11 @@ These are the load-bearing safety net. They block the action outright and return
 > [!key-insight] Why three hooks for one job
 > The `claude-obsidian` plugin auto-commits `wiki/` changes via its own `PostToolUse` hook, so by Stop time its diff-check against HEAD is always empty and its `wiki/hot.md` refresh prompt never fires. GAIA's `wiki-session-start.sh` + `wiki-session-stop.sh` pair fills that gap, and `wiki-squash-autocommits.sh` keeps history clean by squashing the auto-commit chain into one `wiki:` commit per session.
 
-`wiki-update-evaluator.sh` (PostToolUse on `git commit:*`) skips `--amend` and `wiki:*` subjects, then backgrounds `claude -p --model sonnet` to evaluate the commit diff against the wiki and apply any warranted updates. Output lands in `.gaia/local/audit/` (gitignored).
+The sync design is convergent: hooks never spawn `claude -p` sub-processes. `wiki-commit-nudge.sh` (PostToolUse, `Bash`) fires after a `git commit` and injects a `[wiki nudge]` line (short SHA, subject, file count, drift count), skipping merge / amend / `wiki:` subjects. The user's session reconciles the wiki via `/gaia-wiki sync`.
 
 ### `/init` interception
 
-`intercept-init.sh` (UserPromptSubmit) blocks the built-in `/init` and auto-invokes `/gaia-init` instead, protecting the curated `CLAUDE.md` from overwrite. It removes itself when `/gaia-init` completes.
+`intercept-init.sh` (UserPromptExpansion, matcher `init`) emits `additionalContext` that overrides the built-in `/init` expansion and directs the model to invoke `/gaia-init` via the Skill tool, protecting the curated `CLAUDE.md` from overwrite. It does not block the turn (blocking erases the turn so the model never runs).
 
 ### Statusline (no hook)
 
@@ -78,21 +81,24 @@ These are the load-bearing safety net. They block the action outright and return
 
 [[Code Review Audit Agent]] runs automatically before every PR merge (per [[PR Merge Workflow]]). After its own pass over security / performance / smells / architecture / robustness / maintainability, it spawns 3 parallel specialist subagents covering React patterns, TypeScript & architecture, and translation rules.
 
-Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/code-review-audit/` directory is gitignored cache, not source of truth.
+Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/` path is a gitignored scratch path (created on demand under a per-agent subdir such as `code-review-audit/`), not a source of truth.
+
+`worthiness-evaluator` is an opus advisory agent that judges each emergent-surface test (under `app/components/**`, `.playwright/**`) on honesty and worthiness, returning a keep / fix / delete verdict per test. It proposes only and edits no files; every delete is human-gated. Its verdicts feed the worthiness ledger that `worthiness-presence-check.sh` enforces at merge.
 
 ## Skills
 
-`.claude/skills/` holds three groups:
+`.claude/skills/` holds these groups:
 
-- **`/gaia` router**: routes `/gaia <subcommand>` to plan / handoff / pickup / audit references
+- **Standalone GAIA workflows**: `gaia-handoff`, `gaia-pickup`, `gaia-wiki`
 - **Scaffolders**: `new-component`, `new-hook`, `new-route`, `new-service`, `update-deps`, `update-gaia`
-- **Context-triggered**: `eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`
+- **Context-triggered**: `a11y-fixes`, `eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`
+- **Maintainer-only**: `release-notes`
 
-The router and scaffolder skills are user-invoked. Context-triggered skills activate automatically when their `description:` matches the user's intent. See [[Claude Skills]] for the full grouped table; for the current file inventory, query Serena.
+The workflow and scaffolder skills are user-invoked. Context-triggered skills activate automatically when their `description:` matches the user's intent (`a11y-fixes` resolves axe-core accessibility violations from Vitest / Playwright / the code-review-audit a11y bucket). See [[Claude Skills]] for the full grouped table; for the current file inventory, query Serena.
 
 ## settings.json
 
-Registers PreToolUse hooks on `Edit|Write|MultiEdit` and `Bash` matchers, the PostToolUse `wiki-update-evaluator.sh` on `Bash(git commit:*)`, the `intercept-init.sh` UserPromptSubmit hook, and the `SessionStart` / `Stop` wiki-coherence hooks. Enables the `typescript-lsp@claude-plugins-official` plugin and Serena MCP (see [[Serena Integration]]).
+Registers PreToolUse hooks on `Edit|Write|MultiEdit` and `Bash` matchers; PostToolUse hooks on `Bash` (`wiki-commit-nudge.sh`, `capture-red-observations.sh`) and `Task` (`telemetry-task-postuse.sh`); the `intercept-init.sh` UserPromptExpansion hook; UserPromptSubmit, PostCompact (`wiki-recompact-sentinel.sh`), SessionStart / Stop wiki-coherence hooks, and a WorktreeCreate hook (`.gaia/scripts/create-worktree.sh`). Sets `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` and a `statusLine` command, and enables the `typescript-lsp@claude-plugins-official` plugin. Serena MCP is registered user-globally (`claude mcp add serena -s user`), not in this file (see [[Serena Integration]]).
 
 `permissions.allow` covers routine git / gh / pnpm operations plus scoped edits for `.claude/**`, `.gaia/**`, `wiki/**`, and `CHANGELOG.md`. `permissions.deny` covers `.env` writes, `pnpm-lock.yaml` writes, `.husky/_/**` internals, force-push variants on `main`/`master`, and `git reset --hard HEAD~*`. Both lists are alphabetized; path globs are repo-relative (no leading `/`).
 

@@ -11,6 +11,11 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-24 e645404 SKIP - wiki: maintenance chain commit (sync + consolidate + lint), self-referential
+- 2026-06-24 0ccc199 SKIP - chore(deps): Wave A version bumps + obsolete override pruning, no behavior change
+- 2026-06-24 0a07a8f WORTHY - fix(gaia-audit): 0-action auto-apply + statusline cache-bust; wiki/concepts/GAIA Audit.md already reflects this via 9191a32
+- 2026-06-24 2cd35cd WORTHY - fix(gaia-init): impl defects fixed in skill (pnpm purge flag, spec-kit staging, Serena probe, CODEOWNERS); wiki abstraction level accurate, no page edits needed
+- 2026-06-24 9191a32 WORTHY - wiki: stale-claims and gap-fill pass across 83 wiki pages; pages updated directly in this commit
 - 2026-06-24 ee95c09 SKIP - chore(deps): version bumps only, no behavior change
 - 2026-06-24 75108cb SKIP - wiki maintenance chain commit (sync + consolidate + lint), no new wiki content needed
 - 2026-06-23 e27a916 WORTHY - feat(scaffold): comma-bearing prop types in component --props → scaffold CLI improvement, no wiki page

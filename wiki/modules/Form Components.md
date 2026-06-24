@@ -8,7 +8,7 @@ depends_on:
   - '[[Conform]]'
   - '[[Zod]]'
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-06-24
 tags: [module, components, forms]
 ---
 
@@ -35,7 +35,7 @@ For the current bundled inventory, query Serena (`.claude/rules/code-search.md`)
 ## Conform + custom components
 
 > [!warning] useInputControl is mandatory for stateful custom components
-> When using custom form components that manage their own internal state (e.g. `YearMonthDay`, `TimePicker`), you **must** use `useInputControl` to keep them in sync with Conform's validation state. Local `useState` becomes disconnected from Conform once validation fails.
+> When using custom form components that manage their own internal state (e.g. `YearMonthDay`), you **must** use `useInputControl` to keep them in sync with Conform's validation state. Local `useState` becomes disconnected from Conform once validation fails.
 
 ```tsx
 const fieldControl = useInputControl(fields.fieldName);

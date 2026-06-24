@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-08
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-06-24
 tags: [decision, ci, automation, security]
 ---
 
@@ -28,7 +28,7 @@ Lifecycle:
    - `needs-human`: label `needs-human`, comment with the reasoning, mention the maintainer. Issue stays open.
    - `auto-fixable`: proceed to the fix-attempt path.
 5. **Scope check (pre-fix).** `check-scope.sh` runs over the classifier's `Proposed paths` block. Any path outside the allowlist (or on the explicit denylist) demotes the issue to `needs-human` with a comment naming the rejected paths. No branch is created.
-6. **Apply fix.** A second `claude-code-action` invocation runs the fix-application prompt with `--allowedTools Edit,Read,Write` only; no shell, no git, no network. The branch `forensics/<issue-num>-<class-slug>` is created locally from `origin/main`.
+6. **Apply fix.** A second `claude-code-action` invocation runs the fix-application prompt with `--allowedTools Edit,Write` only; no shell, no git, no network. The branch `forensics/<issue-num>-<class-slug>` is created locally from `origin/main`.
 7. **Post-fix scope check.** Even within the allowlist, the diff must be a subset of the classifier's proposed paths. Any deviation aborts before commit and demotes to `needs-human`.
 8. **Quality Gate.** `.github/forensics/run-quality-gate.sh` runs `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test --run`, and `pnpm knip` in order, halt-on-first-fail. Gate failure abandons the branch (it was never pushed) and demotes the issue to `needs-human` with a comment naming the failed step and a log excerpt.
 9. **Open draft PR.** Gate pass pushes the branch and opens a draft PR. PR body cites the `## Capture` section verbatim. Labels `auto-fixable` and `gaia-bug-confirmed` attach to the issue.
@@ -79,14 +79,14 @@ All five labels must pre-exist on the upstream repo. `bootstrap-labels.sh` asser
 | `auto-fixable`       | blue (`1d76db`)   | Classifier proposed a fix in allowlisted scope. See linked draft PR.                                                                      |
 | `gaia-bug-confirmed` | red (`b60205`)    | Quality Gate passed on the auto-fix branch. Draft PR open and ready for human review.                                                     |
 
-The `gaia-forensics` trigger label is owned by phase 1 of the forensics arc (the `/gaia-forensics` end-user bridge) and is not part of `bootstrap-labels.sh`'s inventory.
+The `gaia-forensics` trigger label is the first entry in `bootstrap-labels.sh`'s `LABELS` inventory (color `5319e7`); the bootstrap script creates and asserts it alongside the other five labels.
 
 ## Secret hygiene
 
 The workflow handles two secrets:
 
-- `ANTHROPIC_API_KEY`: consumed only by `anthropics/claude-code-action`. Never echoed.
-- `GITHUB_TOKEN`: workflow-default token, scoped to the minimum permissions: `issues: write`, `contents: write`, `pull-requests: write`, `actions: read`.
+- `CLAUDE_CODE_OAUTH_TOKEN`: consumed only by `anthropics/claude-code-action`. Never echoed.
+- `GITHUB_TOKEN`: workflow-default token, scoped to the minimum permissions: `issues: write`, `contents: write`, `pull-requests: write`, `actions: read`, `id-token: write`.
 
 Secret-shape masking: before rendering either prompt, the workflow scans the parsed issue sections for byte patterns that look like leaked tokens (`sk-ant-…`, `ghp_…`, `github_pat_…`) and emits `::add-mask::` for each match. Phase 1 redacts the body before the issue ever opens; this is defense-in-depth against an unredacted leak slipping through.
 

@@ -8,7 +8,7 @@ depends_on:
   - '[[Form Components]]'
   - '[[Form Field]]'
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-06-24
 tags: [component, forms, inputs]
 ---
 
@@ -25,7 +25,7 @@ Calling sites shouldn't have to remember `autoComplete='email'` and the matching
 
 ## Shared conventions
 
-- `aria-label` cascade: explicit `aria-label` → string `label` → `name`. Never silently un-labelled.
+- `aria-label` cascade: an explicit `aria-label` (via prop spread) wins; otherwise a labelled field relies on its associated visible `<label>` and sets no `aria-label`; an unlabelled field falls back to `name`. Never silently un-labelled.
 - `readOnly` is rendered as `disabled` styling + `tabIndex={-1}` so the input is visually inert but still serializes its value
 - Length tracking is local-only and only when `maxLength` is set
 - `useImperativeHandle` exposes the textarea node to Conform (allows `.focus()` / form-level field control)
@@ -36,6 +36,6 @@ Calling sites shouldn't have to remember `autoComplete='email'` and the matching
 
 ## Module convention
 
-Every component exports a single default `FC`; no named component exports. Local component files extend `ComponentProps<'input'|'textarea'|'select'>` directly rather than reimporting through `~/components/Form/types`.
+Every component exports a single default `FC`; no named component exports. Text inputs compose the shared `~/components/Form/types` types (`InputProps`, `SharedInputProps`) on top of the native `ComponentProps` element type; `Select` extends `ComponentProps<'select'>` directly plus its own `SelectOption` type.
 
 For prop signatures and the full inventory, query Serena (`.claude/rules/code-search.md`).

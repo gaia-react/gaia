@@ -8,7 +8,7 @@ depends_on:
   - '[[Form Components]]'
   - '[[Form Field]]'
 created: 2026-04-20
-updated: 2026-05-22
+updated: 2026-06-24
 tags: [component, forms, checkbox, radio]
 ---
 
@@ -20,12 +20,12 @@ Checkboxes and radios share a layout primitive (`CheckboxRadioGroup`) and a `Siz
 
 - `Checkbox` / `InputRadio` are bare inputs, usable inline or inside group wrappers
 - `Checkboxes` / `RadioButtons` add field chrome ([[Form Field]]) and group wiring
-- `BaseRadioButtons` is the field-chrome-less variant for radios rendered outside a Field, keyed by `md5(option)` (`~/utils/object`) so duplicate values don't collide
+- `BaseRadioButtons` is the field-chrome-less variant for radios rendered outside a Field, keyed by `option.value`
 
 ## Non-obvious behaviour
 
 > [!warning] `required` is gated on error state
-> Both `Checkbox` and `InputRadio` only set `required` once an error surfaces. Setting it earlier makes the native browser steal focus on submit and breaks Conform's validation flow.
+> `InputRadio` (and the `Checkboxes` group, per option) only set `required` once an error surfaces. Setting it earlier makes the native browser steal focus on submit and breaks Conform's validation flow. The bare `Checkbox` forwards `required` directly; its group wrapper (`Checkboxes`) does the error gating.
 
 - `Checkboxes` derives `disabled` and `isRequired` by inspecting every option (`every(disabled)`, `every(required)`); a single non-required option opts the group out of required
 - `Checkbox` only wraps in `FieldStatus` when `description` or `error` is present, keeping the bare-input case clean

@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-06-24
 tags: [decision, testing, components]
 ---
 
@@ -21,6 +21,6 @@ Tests and Storybook stories live in a `tests/` folder **next to** the component,
 
 ## Enforcement
 
-ESLint enforces the folder structure via `eslint-plugin-check-file/filename-naming-convention`.
+ESLint enforces the placement via `eslint-plugin-check-file/folder-match-with-fex` (stories and test files must live under a `tests/` folder), with `check-file/folder-naming-convention` restricting component subfolder names to `assets`, `hooks`, `state`, `tests`, `utils`, and nested PascalCase component folders.
 
 See [[Components]], [[Component Testing]].

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-25
-updated: 2026-05-01
+updated: 2026-06-24
 tags: [concept, philosophy, claude, agent]
 ---
 
@@ -18,7 +18,7 @@ GAIA implements 12 of those 29 structurally. "Structurally" means the implementa
 
 #### Routing
 
-Path-scoped rules in `.claude/rules/*.md` carry a `paths:` frontmatter and auto-load only when Claude is editing matching files. The i18n rule activates on `app/pages/**/*` and `app/components/**/*`; the API service rule activates on `app/services/**/*`. Conditional `Bash` hooks in `.claude/settings.json` route commands by shape: `Bash(pnpm *)` to the bare-test blocker, `Bash(git *)` to the destructive-git blocker, `Bash(gh pr merge:*)` to the audit-check reminder. Constraints are routed to context, not loaded globally.
+Path-scoped rules in `.claude/rules/*.md` carry a `paths:` frontmatter and auto-load only when Claude is editing matching files. The i18n rule activates on `app/pages/**/*` and `app/components/**/*`; the API service rule activates on `app/services/**/*`. A single `Bash` PreToolUse matcher in `.claude/settings.json` fans every Bash command out to all the block hooks, and each script routes by parsing the command word of each pipeline segment: the bare-test blocker acts only on a real `pnpm`/`npm test`, the destructive-git blocker only on a real `git commit`/`git push` to `main`, and the audit-check reminder only on `gh pr merge`. Constraints are routed to context by command shape inside the scripts, not loaded globally.
 
 #### Parallelization
 

@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: knip
-version: ^6.11.0
+version: 6.17.1
 role: dead-code-detection
 created: 2026-05-04
-updated: 2026-05-05
+updated: 2026-06-24
 tags: [dependency, quality]
 ---
 
@@ -22,7 +22,7 @@ Reports unused files, exports, types, and dependencies across the codebase. Devt
 
 ## Template-aware config
 
-GAIA's `gaia/` directory is a library template. Files in `app/components/`, `app/hooks/`, `app/utils/`, `app/services/`, and `app/types/` are intentionally exported for downstream projects to consume. The config marks these directories as `entry` globs so their exports aren't flagged as dead. Bundled deps used via Tailwind / Storybook / MSW / runtime resolution are listed in `ignoreDependencies`.
+GAIA's `gaia/` directory is a library template. Files in `app/components/`, `app/hooks/`, `app/utils/`, `app/services/`, `app/types/`, `app/middleware/`, and `app/languages/index.ts` are intentionally exported for downstream projects to consume. The config marks these as `entry` globs so their exports aren't flagged as dead, alongside the test and tooling roots `.playwright/`, `.storybook/`, and `test/`. Bundled deps used via Tailwind / Storybook / MSW / runtime resolution are listed in `ignoreDependencies`.
 
 ## When to run
 

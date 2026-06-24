@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-06-24
 tags: [concept, testing]
 ---
 
@@ -31,7 +31,7 @@ Stateful custom form components MUST use `useInputControl` to stay in sync with 
 
 ## Reference example
 
-`app/components/Form/YearMonthDay/tests/`: three Selects driven by a local hidden ISO date input, fully tested via `composeStory` and `useInputControl`.
+`app/components/Form/YearMonthDay/tests/`: a parent-controlled composite of three Selects plus a hidden input that mirrors the ISO date value for Conform. The story wires it into a Conform form with `useInputControl`; `composeStory` then drives the integration test.
 
 For the current file pattern (where to put `.stories.tsx` vs `.test.tsx`), Serena and the scaffolders (`/new-component`, `/new-route`) handle it; query Serena rather than maintaining the layout here.
 

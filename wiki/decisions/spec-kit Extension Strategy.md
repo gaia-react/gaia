@@ -5,7 +5,7 @@ status: active
 priority: 1
 date: 2026-05-06
 created: 2026-05-06
-updated: 2026-05-07
+updated: 2026-06-24
 tags: [decision, claude, spec-kit, architecture]
 ---
 
@@ -19,12 +19,12 @@ GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` and a s
 
 **Extension** declares slash commands and lifecycle hooks. **Preset** replaces core templates. Both are needed:
 
-- The extension owns `speckit.gaia.spec` (the wrapper command) plus three hook-target commands (`constitution-check`, `lint`, `self-review`) declared as `before_specify`, `after_clarify`, `after_specify`.
-- The preset replaces `speckit.specify` and `spec-template` so a bare `/speckit-specify` invocation in a GAIA project still produces GAIA-shaped artifacts at `.gaia/local/specs/SPEC-NNN.md`. Without the preset, the core path bypasses GAIA entirely.
+- The extension owns `speckit.gaia.spec` (the wrapper command) plus five hook-target commands: `constitution-check` (`before_specify`), `self-review` (`after_clarify`), `lint` (`after_specify`), `uat-write` (`before_implement`), and `wiki-promote` (`after_implement`). It also ships the unhooked `spec-close` command.
+- The preset replaces `speckit.specify` and `spec-template` so a bare `/speckit-specify` invocation in a GAIA project still produces GAIA-shaped artifacts at `.gaia/local/specs/SPEC-NNN/SPEC.md`. Without the preset, the core path bypasses GAIA entirely.
 
 ## Contract invariants
 
-Five contract facts about spec-kit v0.8.5's extension API:
+Six contract facts about spec-kit v0.8.5's extension API:
 
 ### 1. Hooks are slash commands, not shell scripts
 
@@ -34,7 +34,7 @@ Block semantics live inside the hook command body; a "block" is a refusal messag
 
 ### 2. There is no `on_save` event
 
-Spec-kit's hook lifecycle covers `before_specify`, `after_clarify`, and `after_specify`. **There is no `on_save`.** The chain-trigger from `/gaia-spec` to `/gaia-plan` lives inline at the end of the wrapper (Step 11 in `references/spec.md`), not in a hook.
+Spec-kit's hook lifecycle covers `before_specify`, `after_clarify`, `after_specify`, `before_implement`, and `after_implement`. **There is no `on_save`.** The chain-trigger from `/gaia-spec` to `/gaia-plan` lives inline at the end of the wrapper (Step 11 in `references/spec.md`), not in a hook.
 
 ### 3. Preset must declare `strategy: wrap` for command replacement
 
@@ -51,6 +51,10 @@ The extension and preset declare `requires.speckit_version: ">=0.8.5,<0.10.0"`. 
 ### 5. Extension and preset are GAIA-internal
 
 Neither is published to spec-kit's public extension/preset catalog. Distribution is via the GAIA template; `/gaia-init` clones them in place during scaffold, then runs `specify extension add --dev` and `specify preset add --dev` against the local directories.
+
+### 6. The canonical artifact layout is a folder, not a flat file
+
+Each SPEC lives in its own `.gaia/local/specs/SPEC-NNN/` folder containing `SPEC.md` plus any sibling notes (e.g. `IMPLEMENTATION-NOTES.md`). The folder is the archival unit. `lib/spec-folderize.sh` migrates any legacy flat `.gaia/local/specs/SPEC-NNN.md` into the folder shape, moving sibling `SPEC-NNN-<rest>.md` files alongside.
 
 ## How the install lands
 
