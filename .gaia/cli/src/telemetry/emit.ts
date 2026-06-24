@@ -48,11 +48,9 @@ const isCloudOnlyEventType = (
   (CLOUD_ONLY_EVENT_TYPES as readonly string[]).includes(eventType);
 
 type FlagDefinition = {
-  kind: FlagKind;
+  kind: ValueKind;
   target: string;
 };
-
-type FlagKind = 'boolean' | ValueKind;
 
 type ParsedArgs = {
   eventType: string;
@@ -122,7 +120,7 @@ const FLAG_DEFINITIONS: Readonly<Partial<Record<string, FlagDefinition>>> = {
   '--uat-id': {kind: 'string', target: 'uatId'},
 };
 
-type ValueKind = 'json' | 'list' | 'number' | 'string';
+type ValueKind = 'boolean' | 'json' | 'list' | 'number' | 'string';
 
 class ArgParseError extends Error {
   constructor(
@@ -137,6 +135,15 @@ class ArgParseError extends Error {
 const parseValueByKind: Readonly<
   Record<ValueKind, (token: string, valueToken: string) => unknown>
 > = {
+  boolean: (token, valueToken) => {
+    if (valueToken === 'true') return true;
+    if (valueToken === 'false') return false;
+
+    throw new ArgParseError(
+      `flag ${token} expects true or false; got ${valueToken}`,
+      token
+    );
+  },
   json: (token, valueToken) => {
     try {
       return JSON.parse(valueToken) as object;
@@ -193,19 +200,14 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
       throw new ArgParseError(`unknown flag: ${token}`, token);
     }
 
-    if (definition.kind === 'boolean') {
-      flags[definition.target] = true;
-      index += 1;
-    } else {
-      const valueToken = rest[index + 1] as string | undefined;
+    const valueToken = rest[index + 1] as string | undefined;
 
-      if (valueToken === undefined || valueToken.startsWith('--')) {
-        throw new ArgParseError(`flag ${token} expects a value`, token);
-      }
-      const parser = parseValueByKind[definition.kind];
-      flags[definition.target] = parser(token, valueToken);
-      index += 2;
+    if (valueToken === undefined || valueToken.startsWith('--')) {
+      throw new ArgParseError(`flag ${token} expects a value`, token);
     }
+    const parser = parseValueByKind[definition.kind];
+    flags[definition.target] = parser(token, valueToken);
+    index += 2;
   }
 
   return {eventType, flags};
