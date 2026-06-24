@@ -2,7 +2,7 @@
 type: decision
 status: active
 created: 2026-05-12
-updated: 2026-05-12
+updated: 2026-06-24
 tags: [decision, claude, fitness]
 ---
 
@@ -28,7 +28,7 @@ Checks `.claude/settings.json` and `.claude/settings.local.json` hook entries:
 - No relative path that resolves only when the shell's working directory is the project root; paths must be stated in a form that is unambiguous regardless of cwd.
 - Every hook event name is a valid Claude Code hook event.
 
-The valid Claude Code hook events (the canonical list the auditor checks against, so it does not re-derive an incomplete set from memory) are: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `UserPromptExpansion`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, `SessionStart`, `SessionEnd`, `WorktreeCreate`, plus any project-specific events the repo registers (a project that wires its own event names extends this list; an unfamiliar name is a finding only when it is neither in the list above nor registered by the project's own tooling).
+The valid Claude Code hook events (the canonical list the auditor checks against, so it does not re-derive an incomplete set from memory) are: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `UserPromptExpansion`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionStart`, `SessionEnd`, `WorktreeCreate`, plus any project-specific events the repo registers (a project that wires its own event names extends this list; an unfamiliar name is a finding only when it is neither in the list above nor registered by the project's own tooling).
 
 Findings here are typically `error` severity.
 

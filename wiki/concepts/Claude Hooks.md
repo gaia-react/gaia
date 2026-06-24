@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-06-23
+updated: 2026-06-24
 tags: [concept, claude, hooks]
 ---
 
@@ -46,6 +46,7 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 - **`block-rm-rf.sh`**: denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `node_modules`. Allows scoped scratch paths (`.gaia/local/plans/*`, `.gaia/local/audit/*`, `.gaia/local/handoff/*`, `.gaia/cache/*`, `dist/*`, `build/*`).
 - **`capture-red-observations.sh`** (PostToolUse, Bash): on a one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the agent's target, records each genuinely-failing per-test result to the RED-observation ledger (`.gaia/local/red-ledger/`). Records file, full test name, content signal, and failure kind. Collection/compile errors are excluded. Observe-only; always exits 0. See [[TDD RED Verification]].
 - **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before each `git commit`, checks every new-at-HEAD test file against the RED-observation ledger. Requires a ledger RED whose content signal still matches the current test body; no matching entry denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files. See [[TDD RED Verification]].
+- **`worthiness-presence-check.sh`** (PreToolUse, Bash deny): before each `gh pr merge`, scopes to the emergent test files the PR changed and denies the merge when a changed emergent test has no worthiness-ledger line matching its current content signal. Sits alongside `pr-merge-audit-check.sh` as an independent deny on the same event. Checks presence plus signal match only; a D-8 cross-check additionally denies a `keep` line on a file still carrying an unresolved lint-honesty error. No-op when zero emergent tests changed; fail-open on missing tooling or unparseable files. See [[Worthiness Presence Gate]].
 
 ### Advisory (Bash)
 
@@ -65,6 +66,7 @@ The wiki sync system is convergent: the user's already-paid-for Claude session d
 ### Other events
 
 - **`intercept-init.sh`** (UserPromptExpansion, matcher `init`): emits `additionalContext` that overrides the built-in `/init` expansion and tells the model to invoke `/gaia-init` via the Skill tool. Does not block the turn; earlier `UserPromptSubmit + exit-2` design blocked the model from running at all.
+- **`telemetry-task-postuse.sh`** (PostToolUse, matcher `Task`): fires when a subagent/Task completes. A thin pipe to `gaia telemetry parse-stdin`, which extracts structured-trailer events from the Task output and dispatches `gaia telemetry emit` for each. No-op when `.gaia/cli/gaia` is absent; always exits 0 so telemetry never blocks the flow. See [[Telemetry]].
 
 `update-deps` and `update-gaia` are surfaced via the **statusline** (not a hook); see [[Claude Skills]] § Statusline update indicators. The statusline surface is chosen over a SessionStart `<system-reminder>` because system-reminders are visible only to the model; passive statusline indicators are visible to the user.
 

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-24
 tags: [concept, claude, cli, workflow]
 ---
 
@@ -14,13 +14,17 @@ The `/gaia init` namespace provides subcommands for on-boarding a cloned GAIA te
 
 **`strip-branding`**: Removes GAIA-specific branding and identifiers from the codebase (references in README, config files, and CLI scaffolds). Prepares a "vanilla" template for forking or white-label adoption.
 
-**`configure-i18n`**: Guides locale setup (default language, supported locales, i18n config generation). Stores preferences in `.gaia/local/i18n.json` for use by scaffolds.
+**`configure-i18n`**: Edits `app/languages/index.ts` (the `LANGUAGES` array and `Language` union) and `app/i18n.ts` (`fallbackLng`) to match the chosen locales when `--strip false`, or removes the i18n scaffolding when `--strip true`. The locale list is recorded in the init state file.
 
 **`rename`**: Changes the project name and workspace identifier throughout the codebase (package.json, Remix config, site metadata, etc.).
 
-**`wire-statusline`**: Registers GAIA status indicators in the Claude Code statusline (shows drift count, setup gate status, mentorship state). Edits `.claude/settings.json` to inject the status hook.
+**`wire-statusline`**: Inserts the canonical GAIA `statusLine` block at the top level of the chosen Claude settings file (`--mode project` writes `.claude/settings.json`, `global` writes `~/.claude/settings.json`, `skip` is a no-op). The statusline surfaces the per-machine setup gate plus `/update-gaia`, `/update-deps`, `/gaia-harden`, and `/gaia-audit` nudges.
 
-**`finalize`**: Commits the init changes (branding removal, i18n config, renames, statusline setup) in a single structured commit: `feat: finalize gaia init, project renamed, branding stripped, i18n configured, statusline wired`.
+**`bootstrap-env`**: Copies `.env.example` to `.env` when `.env` does not yet exist, running as a CLI subprocess so it bypasses Claude Code's `Write(.env)` deny rule. No-op when `.env` already exists or `.env.example` is absent.
+
+**`configure-automation`**: Writes `.gaia/automation.json` with the four maintenance-tool mode selections (wiki, update-deps, pnpm-audit, stale-branches) and `setup_complete: false`. `/setup-gaia-ci` later flips `setup_complete` to `true`.
+
+**`finalize`**: Removes the `/init` interceptor hook (`.claude/hooks/intercept-init.sh`), prunes its `.claude/settings.json` `hooks.UserPromptExpansion` entry, and deletes `.claude/commands/gaia-init.md` so init cannot be re-run. It does not commit; the user reviews and commits the init changes.
 
 **`resume`**: Resumes an interrupted init flow. If a previous init ran and failed partway, re-runs from where it left off without re-running completed phases.
 

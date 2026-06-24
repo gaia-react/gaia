@@ -3,13 +3,13 @@ type: concept
 title: GAIA Audit
 status: active
 created: 2026-04-20
-updated: 2026-06-09
+updated: 2026-06-24
 tags: [concept, claude, skill, knowledge, hygiene]
 ---
 
 # GAIA Audit
 
-`/gaia-audit` runs a two-stage audit over every knowledge store in the project (wiki, auto-loaded `CLAUDE.md` files, `.claude/rules/`, machine-local memory) checking for duplication, stale entries, and auto-load token bloat. **Wiki is the source of truth.** The skill lives at `.claude/skills/gaia/references/audit.md` (dispatched by the `/gaia` router skill).
+`/gaia-audit` runs a two-stage audit over every knowledge store in the project (wiki, auto-loaded `CLAUDE.md` files, `.claude/rules/`, machine-local memory) checking for duplication, stale entries, and auto-load token bloat. **Wiki is the source of truth.** The skill lives at `.claude/skills/gaia/references/audit.md` (dispatched by the `/gaia-audit` command, which reads this reference and follows it).
 
 ## When to use
 
@@ -21,6 +21,8 @@ tags: [concept, claude, skill, knowledge, hygiene]
 ## Two-stage execution with a decision gate
 
 `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, the main conversation summarizes it and asks a single **Apply / Discuss / Decline** question, and only on **Apply** does Stage 2 execute it. The two-stage split is technical (different reasoning loads, a drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1.
+
+A clean audit (Stage 1 finds 0 actions) skips the gate and auto-applies: there is nothing to approve, and applying only finalizes the report's `status` and clears the statusline nudge. Leaving a 0-action report parked at the gate is the exact path that strands a `draft` that nudges indefinitely.
 
 - **Apply**: spawn Stage 2 to execute the report now (the one-keystroke fast path).
 - **Discuss / refine**: talk it through, edit the report in place, then re-ask.
@@ -45,11 +47,11 @@ Each report carries a `status:` field. Stage 1 writes it as `draft`; Stage 2 fli
 - **Promotable memory**: durable knowledge stuck in machine-local memory → moves to a specific wiki page
 - **Auto-load bloat**: flags `wiki/hot.md`, `CLAUDE.md`, and rules over budget
 - **Stale entries** referencing removed code, branches, or features
-- Wiki-internal redundancy and broken links are out of scope here — see [[GAIA Wiki]] (consolidate / lint).
+- Wiki-internal redundancy and broken links are out of scope here; see [[Wiki Management]] (consolidate / lint).
 
 Guardrails and portability details live in `.claude/skills/gaia/references/audit.md`. Key invariants: Stage 2 never deletes unless Stage 1 named the wiki target; never runs `git add` / `git commit`; reports gitignored under `.gaia/local/audit/`.
 
 ## Pairs with
 
-- [[Claude Integration]]: registered alongside the other GAIA workflows under the `/gaia` router skill
+- [[Claude Integration]]: registered alongside the other GAIA workflows as a discrete `/gaia-*` command
 - [[Quality Gate]]: code-correctness counterpart; knowledge audit is the same idea for docs

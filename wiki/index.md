@@ -3,7 +3,7 @@ type: meta
 title: Index
 status: active
 created: 2026-04-20
-updated: 2026-05-07
+updated: 2026-06-24
 tags: [meta]
 ---
 
@@ -103,6 +103,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Content Security Policy]]: per-request nonce CSP; Report-Only pending an upstream React Router fix; documents the `unsafe-inline` and no-`report-uri` trade-offs.
 - [[Dispatched-Check Rollup via Polling]]: in-loop pollers stamp dispatched-workflow jobs via the Checks API so they land in `statusCheckRollup`; documents why a `workflow_run` listener is not viable under `GITHUB_TOKEN`.
 <!-- gaia:maintainer-only:start -->
+- [[CLI-Binary-Split]]
 - [[Forensics Triage Workflow]]
 <!-- gaia:maintainer-only:end -->
 - [[Quality Gate]]

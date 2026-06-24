@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-01
+updated: 2026-06-24
 tags: [concept, claude, skills]
 ---
 
@@ -14,17 +14,23 @@ See [[modules/Claude Integration|the modules page]] for the full skills inventor
 
 ## Project-local skills
 
-GAIA's skills split into three groups: a `/gaia` router for user-invoked workflows, scaffolders for new code surfaces, and context-triggered guidance loaded by intent.
+GAIA's skills split into three groups: shared `gaia/references/` playbooks consumed by user-invoked workflows, scaffolders for new code surfaces, and context-triggered guidance loaded by intent.
 
-### `/gaia` router
+### `gaia/references/` workflow playbooks
 
-| Skill                     | Triggers on                                                                             |
-| ------------------------- | --------------------------------------------------------------------------------------- |
-| `gaia` (router)           | `/gaia <subcommand>` or natural-language asks; dispatches to one of the four refs below |
-| → `references/plan.md`    | Plan a feature using [[Task Orchestration]]. See [[GAIA Plan]].                         |
-| → `references/handoff.md` | Write a session handoff doc. See [[GAIA Handoff]].                                      |
-| → `references/pickup.md`  | Resume from the most recent handoff. See [[GAIA Pickup]].                               |
-| → `references/audit.md`   | Two-stage knowledge-store audit (Sonnet + Sonnet). See [[GAIA Audit]].                  |
+`.claude/skills/gaia/` holds no `SKILL.md`; it is a `references/` folder of nine deep-dive playbooks, each consumed by its matching `gaia-*` command or skill (the command/skill is the activation surface; the reference is the runbook it reads).
+
+| Reference               | Consumed by               | What it does                                                                                                              |
+| ----------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `references/plan.md`    | `/gaia-plan`              | Plan a feature using [[Task Orchestration]]. See [[GAIA Plan]].                                                          |
+| `references/handoff.md` | `gaia-handoff` skill      | Write a session handoff doc. See [[GAIA Handoff]].                                                                       |
+| `references/pickup.md`  | `gaia-pickup` skill       | Resume from the most recent handoff. See [[GAIA Pickup]].                                                                |
+| `references/audit.md`   | `/gaia-audit`             | Research-then-gate knowledge-store audit: Stage 1 (research) → Apply/Discuss/Decline gate → Stage 2 (apply). Both stages run `general-purpose` subagents pinned to Sonnet; a clean (0-action) audit skips the gate and auto-applies. See [[GAIA Audit]]. |
+| `references/spec.md`    | `/gaia-spec`              | Author an immutable SPEC artifact via Socratic discovery. See [[GAIA Spec]].                                             |
+| `references/fitness.md` | `/gaia-fitness`           | Health-check and auto-heal the project's Claude integration.                                                             |
+| `references/forensics.md` | `/gaia-forensics`       | Turn a workflow misfire into a classified, filing-ready bug report.                                                      |
+| `references/harden.md`  | `/gaia-harden`            | Review recurring audit findings and draft the lowest-weight hardening (check / skill / rule).                            |
+| `references/wiki.md`    | `gaia-wiki` skill         | Wiki maintenance chain (sync / consolidate / lint).                                                                      |
 
 ### Scaffolders
 

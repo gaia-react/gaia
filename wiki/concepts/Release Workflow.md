@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-06-05
+updated: 2026-06-24
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -41,7 +41,7 @@ Run `/gaia-release` on a clean `main`. The command is a 15-step orchestrator:
 4. Run the [[Quality Gate]]. Stop on failure.
 5. Create `release/vX.Y.Z` branch.
 6. Bump `package.json` + `.gaia/VERSION`.
-7. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [vX.Y.Z] - YYYY-MM-DD` and seed a new empty `## [Unreleased]`.
+7. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [X.Y.Z] - YYYY-MM-DD` (no `v` prefix; `release.yml` extracts the section by the bare version) and seed a new empty `## [Unreleased]`.
 8. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
 9. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
 10. Regenerate `.gaia/manifest.json` via `gaia-maintainer release manifest`.
@@ -110,7 +110,7 @@ Adopters receive only the bundled binary at `.gaia/cli/gaia` plus the runtime te
 
 Excluding the source prevents adopters from accidentally rebuilding the binary out from under themselves with a different toolchain.
 
-`pnpm bundle` builds two binaries from two entry points: `.gaia/cli/gaia` (adopter, no `release` namespace) and `.gaia/cli/gaia-maintainer` (maintainer-only, includes `release`). The maintainer binary is excluded from tarballs alongside the source. See [[CLI Binary Split]] for why the CLI ships as two binaries and how esbuild tree-shakes the release surface out of the adopter build.
+`pnpm -C .gaia/cli bundle` builds two binaries from two entry points: `.gaia/cli/gaia` (adopter, no `release` namespace) and `.gaia/cli/gaia-maintainer` (maintainer-only, includes `release`). The maintainer binary is excluded from tarballs alongside the source. See [[CLI-Binary-Split]] for why the CLI ships as two binaries and how esbuild tree-shakes the release surface out of the adopter build.
 
 ### 5. Release-time maintainer tooling
 
@@ -139,6 +139,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 - `.github/workflows/cli-tests.yml`: runs `.gaia/cli/` typecheck and vitest. Adopters receive only the bundled binary at `.gaia/cli/gaia`, so there is nothing for the workflow to test on their side.
 - `.github/workflows/audit-ci-tests.yml`: runs the bats suite for `.github/audit/check-trailer.sh`. Adopters receive that script as GAIA-controlled (`owned`) code they never modify, so the suite only guards maintainer edits.
 - `.github/workflows/distribution.yml`: runs the `.gaia/tests/distribution/` harness on a GitHub runner. Manual trigger only (`workflow_dispatch`); the maintainer's `CLAUDE_CODE_OAUTH_TOKEN` org secret authenticates the in-container `claude` calls used by Layer 2 scenarios. Adopters never run distribution tests against their own scaffold, so the workflow is irrelevant on their side.
+- `.github/workflows/forensics-triage.yml`: runs autonomous Claude Code triage against `gaia-forensics`-labeled issues on the upstream `gaia-react/gaia` repo, with helpers under `.github/forensics/` (also excluded). Adopters never triage GAIA's own issues, so neither the workflow nor its helpers belong on their clone.
 
 `tests.yml` and `chromatic.yml` DO ship; both are adopter-relevant. Their `paths-filter` allowlists are written without reference to maintainer-only paths so the filter stays meaningful on an adopter clone.
 
@@ -190,7 +191,7 @@ A file's presence in the GAIA source tree (`gaia/.claude/commands/`, etc.) does 
 
 **How to apply:** Before recommending or executing the removal of any file from `gaia/`, check `.gaia/release-exclude` and the release pipeline first. If the file is already excluded from distribution, leave it alone; the boundary is working. Only act when the file is actually leaking through to end users.
 
-**Note:** `gaia/.claude/commands/health-audit.md` was previously deleted based on source tree presence when it was already correctly excluded at line 20 of `.gaia/release-exclude`. The deletion stripped a working maintainer tool; the file was restored. Check the exclusion list before removing any file.
+**Note:** `gaia/.claude/commands/health-audit.md` is a working maintainer tool already excluded from distribution by `.gaia/release-exclude`. Its presence in the source tree is not grounds for deletion. Check the exclusion list before removing any file.
 
 ## See also
 

@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-06-12
+updated: 2026-06-24
 tags: [decision, tooling, package-manager, security]
 ---
 
@@ -30,7 +30,7 @@ GAIA uses **pnpm** for installs and dependency resolution. The `packageManager` 
 - pnpm reads none of the above from the `package.json` `pnpm` field or from `.npmrc`. `.npmrc` carries only registry and auth settings; resolution and supply-chain keys placed there are ignored.
 - `pnpm-lock.yaml` is committed. `package-lock.json` is forbidden: delete on sight.
 - CI workflows install pnpm via `pnpm/action-setup` (pinned by commit SHA, no `version:` input, so it reads the `packageManager` field), use `cache: 'pnpm'` in `actions/setup-node`, and install with `pnpm install --frozen-lockfile`. Because the action keys off `packageManager`, bumping that one field moves CI's pnpm version in lockstep.
-- Every Docker stage that runs a pnpm command, including the final runtime stage, needs `pnpm-workspace.yaml` copied alongside `package.json` and `pnpm-lock.yaml`. pnpm reads `overrides`, `allowBuilds`, and supply-chain policy only from that file, so a stage that copies just the manifest and lockfile fails two ways: `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` on a `--frozen-lockfile` install, and `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` when a script such as `pnpm start` runs its pre-run deps check in a no-TTY stage. Copy all three together.
+- A Docker stage that runs a pnpm command needs `pnpm-workspace.yaml` copied alongside `package.json` and `pnpm-lock.yaml`. The stages that `COPY . /app` (`development-dependencies-env`, `build-env`) pick it up implicitly; a stage that copies only the manifest and lockfile (`production-dependencies-env`, the final runtime stage) does not. pnpm reads `overrides`, `allowBuilds`, and supply-chain policy only from that file, so a selective-copy stage that omits it risks two failures: `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` on a `--frozen-lockfile` install, and `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` when a script such as `pnpm start` runs its pre-run deps check in a no-TTY stage. Copy all three together in any selective-copy stage.
 - Adopters bootstrap pnpm with `corepack enable pnpm`. `/gaia-init` does this in Step 0 with a `npm install -g pnpm` fallback for environments without corepack.
 
 ## Pinning
@@ -55,7 +55,7 @@ The verdicts come from the `gaia update merge-workspace` CLI primitive, which pa
 
 ## Source of truth
 
-This page. Mechanics: `package.json`, `.npmrc`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.github/workflows/tests.yml`, `.github/workflows/chromatic.yml`. Bootstrap: `.claude/commands/gaia-init.md` Step 0. Migration tooling: `.claude/skills/update-deps/SKILL.md` (release-age selection implemented in the CLI binary). Field-aware workspace merge: `.claude/skills/update-gaia/SKILL.md` (Step 7b); the merge is driven by the `gaia update merge-workspace` CLI primitive.
+This page. Mechanics: `package.json`, `.npmrc`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `Dockerfile`, `.github/workflows/tests.yml`, `.github/workflows/chromatic.yml`. Bootstrap: `.claude/commands/gaia-init.md` Step 0. Migration tooling: `.claude/skills/update-deps/SKILL.md` (release-age selection implemented in the CLI binary). Field-aware workspace merge: `.claude/skills/update-gaia/SKILL.md` (Step 7b); the merge is driven by the `gaia update merge-workspace` CLI primitive.
 
 > [!key-insight] minimumReleaseAge is the cheap supply-chain win
 > Most npm supply-chain attacks are caught and yanked within hours. A 7-day quarantine cuts the dominant attack window for the cost of one config line. No infra. No subscription. No agent.

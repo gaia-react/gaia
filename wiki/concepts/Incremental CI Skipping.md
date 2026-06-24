@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-02
-updated: 2026-06-02
+updated: 2026-06-24
 tags: [concept, ci, audit]
 ---
 
@@ -60,6 +60,13 @@ only), or the Checks API is unreachable (fork PRs run with a token that the
 helper falls back from)), the helper emits `origin/main` and the diff covers
 the full PR scope. The helpers never anchor on an un-passed commit, so they
 never skip code the check has not cleared.
+
+For `code-review-audit`, in-scope PRs by `local`-mode authors with no override
+label add a third terminal state: CI stands down without spending tokens and
+posts a `pending` `GAIA-Audit` commit status on HEAD. The audit job still
+concludes green, so the gate is the `GAIA-Audit` commit status, not the job
+conclusion: a `pending` stand-down keeps the merge button blocked until the
+local audit clears it. See [[Code Review Audit CI]].
 
 ## Why "last green", not "last run"
 

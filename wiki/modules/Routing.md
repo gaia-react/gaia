@@ -8,7 +8,7 @@ depends_on:
   - '[[remix-flat-routes]]'
   - '[[React Router 7]]'
 created: 2026-04-20
-updated: 2026-06-23
+updated: 2026-06-24
 tags: [module, routing]
 ---
 
@@ -23,9 +23,12 @@ Routes are organized using flat-routes folder syntax; `_` prefix + `+` suffix ma
 - `_public+`: home, marketing, public content (no auth)
 - `_session+`: hook point for auth-guarded app (intentionally a stub)
 - `_legal+`: terms of service, privacy
-- `actions+`: root-level form actions (no UI)
+- `actions+`: root-level form actions (no UI), e.g. `set-language.ts`
+- `resources+`: no-UI resource routes that handle a form submission and write a cookie or return data, e.g. `theme-switch.tsx`
 
-`_session+/_layout.tsx` is **intentionally empty**. Add a loader that throws `redirect('/login')` if the user isn't authenticated. All routes nested under `_session+/` inherit the guard. Choose any auth provider: Supabase, Clerk, Auth0, custom sessions.
+Both `actions+` and `resources+` hold no-UI server-side form endpoints. Use `actions+` for a route whose job is to mutate state and redirect; use `resources+` for a route that also serves as a data/cookie endpoint a fetcher posts to without navigating.
+
+`_session+/` ships only a `README.md` (flat-routes matches `.ts`/`.tsx`, so the README isn't a route). To guard it, add a `_layout.tsx` with a loader that throws `redirect('/login')` when the user isn't authenticated; every route nested under `_session+/` then inherits the guard. Choose any auth provider: Supabase, Clerk, Auth0, custom sessions. The README walks through the setup.
 
 ## Thin Routes Convention
 
@@ -51,7 +54,7 @@ Use `getInstance()` from the i18next middleware to translate meta tags. See [[i1
 
 ## Actions
 
-Form actions use [[Conform]] + [[Zod]] for validation: `parseWithZod(formData, {schema})`.
+Route actions validate form data with plain [[Zod]]: build a `z.object({...})` schema and call `Schema.safeParse(...)` on the `FormData` entries, returning `data(null, {status: 400})` on failure. ([[Conform]]'s `parseWithZod` is the client-side form-validation helper used in `onValidate`, not in route actions.)
 
 ## Where to look up the inventory
 

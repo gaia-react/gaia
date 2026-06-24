@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-06-24
 tags: [concept, services, api]
 ---
 
@@ -18,32 +18,32 @@ Each domain lives under `app/services/gaia/{domain}/`:
 
 | File                 | Role                                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `requests.server.ts` | API functions: `.server.ts` suffix enforces server-only                                                            |
+| `requests.ts`        | API functions: import the shared `api` from `../api` and parse responses with the domain's Zod schemas             |
 | `parsers.ts`         | Zod schemas for response validation                                                                                |
 | `types.ts`           | TypeScript types derived from Zod                                                                                  |
 | `state.tsx`          | Read-only React Context + hook (optional, add when a route needs to pass fetched data to deeply nested components) |
-| `index.ts`           | Barrel for non-server exports (parsers, types, state)                                                              |
+| `index.ts`           | Barrel re-exporting parsers, types, and urls                                                                       |
 
-Register server-side exports in `app/services/gaia/index.server.ts`.
+Each domain is self-contained: its own `urls.ts` and `index.ts`. The scaffold does not touch the root `app/services/gaia/urls.ts` or `app/services/gaia/index.server.ts`.
 
 ## Scaffold output
 
-`/new-service` emits all files for a domain. Live examples in `app/services/gaia/`:
+`/new-service` wraps the deterministic CLI `gaia scaffold service <name> --endpoints "get,post,put,delete" --schema "id:string,name:string" [--mocks]`. Endpoints are a subset of the closed `get/post/put/delete` set; schema types are `string | number | boolean | datetime | enum(a,b,...)` with a trailing `?` for optional. Mocks are opt-in via `--mocks`. It emits all files for a domain. Live examples in `app/services/gaia/`:
 
 | File                 | Key rules                                                                                                              |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `urls.ts`            | All endpoints in one `GAIA_URLS` constant; colon-prefixed segments interpolated from `pathParams`                      |
+| `urls.ts`            | A domain's endpoints in one per-domain `{NAME}_URLS` constant; colon-prefixed segments interpolated from `pathParams`  |
 | `api.ts`             | `create<ServerResponse>()` from `../api`; wraps Ky with snake↔camel, base URL, auth headers                            |
 | `parsers.ts`         | `z.iso.datetime()` not `z.string().datetime()`; `.nullish()` for optional fields; always `.parse()` not `.safeParse()` |
 | `types.ts`           | `z.infer<typeof schema>` only; never hand-maintain types alongside schemas                                             |
-| `requests.server.ts` | `.server.ts` suffix enforces server-only; `body: FormData` for mutations; `attempt()` for graceful error handling      |
-| `index.server.ts`    | Barrel: `import * as resources from './resources/requests.server'; export default {resources}`                         |
+| `requests.ts`        | `body: FormData` for mutations; calls `schema.parse(result.data)` directly and lets errors throw                       |
+| `index.ts`           | Barrel: `export * from './parsers'; export * from './types'; export * from './urls'`                                   |
 
 A typical request function:
 
 ```ts
 export const getResourceById = async (id: string): Promise<Resource> => {
-  const result = await api(GAIA_URLS.resourcesId, {pathParams: {id}});
+  const result = await api(RESOURCES_URLS.resourcesId, {pathParams: {id}});
   return resourceSchema.parse(result.data);
 };
 ```

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-21
-updated: 2026-06-11
+updated: 2026-06-24
 tags: [concept, claude, workflow]
 ---
 
@@ -15,7 +15,7 @@ Invoked via `/gaia-plan [description]`; see [[GAIA Plan]] for the skill surface.
 1. **Per-task docs** in `.gaia/local/plans/{slug}/`: self-contained for fresh-context sub-agents (context, dependencies, interface contracts, files to touch, acceptance criteria).
 2. **`README.md`** with the task graph (phases + parallelism) and frozen interface contracts.
 3. **`ORCHESTRATOR.md`**: full execution playbook: pre-flight branch policy, phase order with per-phase quality gates (`pnpm typecheck && pnpm lint`), sub-agent prompt template, orchestrator-owned git flow (commits, pushes, PR), stop conditions, the phase findings ledger contract, the mandatory final summary, and a final self-cleanup phase.
-4. **`KICKOFF.md`**: a self-contained prompt the orchestrator reads to start cold. The `/gaia-plan` skill copies the matching `Read … KICKOFF.md and execute it.` resume prompt to the system clipboard (probing `pbcopy` / `wl-copy` / `xclip` / `xsel` / `clip.exe` / `clip`) and prints it as a fenced block either way.
+4. **`KICKOFF.md`**: a self-contained prompt the orchestrator reads to start cold. The `/gaia-plan` skill prints the single-line resume prompt (`Read <abs-path>/.gaia/local/plans/{slug}/KICKOFF.md and execute it.`) as a fenced code block for the user to copy manually, followed by a `Type /clear and paste the prompt above.` instruction.
 
 `SUMMARY.md` is a runtime artifact (not authored at plan-write time): the orchestrator creates and appends to it as phases complete (see lifecycle step 2 below). It is removed with the rest of the plan folder during final self-cleanup.
 

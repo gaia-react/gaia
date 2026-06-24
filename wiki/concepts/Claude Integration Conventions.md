@@ -3,7 +3,7 @@ type: concept
 title: Claude Integration Conventions
 status: active
 created: 2026-04-21
-updated: 2026-05-01
+updated: 2026-06-24
 tags: [claude, meta, configuration]
 ---
 
@@ -21,7 +21,7 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 | `.claude/commands/`     | Maintainer-only slash commands (`/gaia-init`, `/gaia-release`)                                                                | Manual (slash invocation)    |
 | `.claude/hooks/`        | Bash scripts wired in `settings.json`                                                                                         | Auto on matched tool events  |
 | `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter                                                                 | Auto (global) or path-scoped |
-| `.claude/skills/`       | Skills: both context-triggered (`react-code`, `typescript`) and user-invoked (`/gaia` router, `new-component`, `update-deps`) | Auto on context/intent match |
+| `.claude/skills/`       | Skills: both context-triggered (`react-code`, `typescript`) and user-invoked (`gaia-handoff`, `new-component`, `update-deps`) | Auto on context/intent match |
 | `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo, not source of truth)                                                    | Auto per named agent         |
 | `wiki/`                 | Knowledge base: architecture, decisions, patterns (source of truth)                                                           | Manual (on-demand fetch)     |
 
@@ -156,9 +156,8 @@ Loading is cwd-based: the closest-up `CLAUDE.md` wins per Claude Code's conventi
 
 The governing rule from root `CLAUDE.md`: **don't cross-load domains.**
 
-- Technical work → `wiki/app/` + related technical folders only.
-- Brand/business work → `wiki/brand/`, `wiki/business/` only.
-- Only cross-load when the task genuinely spans both.
+- Technical work → `wiki/modules/`, `wiki/concepts/`, `wiki/decisions/`, `wiki/components/`, `wiki/flows/`, `wiki/dependencies/` only.
+- Only cross-load when the task genuinely spans domains.
 
 When adding new wiki top-level folders, keep them single-domain. Claude must refuse to auto-include cross-domain content during normal operation. When in doubt, ask rather than load.
 

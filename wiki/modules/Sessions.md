@@ -3,17 +3,17 @@ type: module
 path: app/sessions.server/
 status: active
 language: typescript
-purpose: Cookie session storage for language preference
+purpose: Server-only signed cookie for the language preference
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-06-24
 tags: [module, sessions, cookies]
 ---
 
 # Sessions
 
-`app/sessions.server/` contains cookie session-storage code that needs `SESSION_SECRET` for signing. The `.server` suffix excludes these from the client bundle; secrets never reach the browser.
+`app/sessions.server/` holds server-only cookie code that needs `SESSION_SECRET` for signing. The `.server` suffix excludes it from the client bundle; secrets never reach the browser.
 
-Uses React Router 7's `createCookieSessionStorage`. Secret comes from `env.SESSION_SECRET` (Zod-validated).
+The shipped file, `language.ts`, defines a signed `lng` cookie via React Router 7's `createCookie` to persist the language preference. The secret comes from `env.SESSION_SECRET` (Zod-validated). For full session storage (auth, flash messages), swap in `createCookieSessionStorage`.
 
 ## Theme cookie is **not** a session
 
@@ -21,7 +21,7 @@ The `__theme` cookie is read/written as a plain cookie via `app/utils/theme.serv
 
 ## Adding auth sessions
 
-`_session+/_layout.tsx` is the designated hook point for consumer auth. Add your own `createCookieSessionStorage` (or use Clerk, Supabase, Auth0 SDKs) in `app/sessions.server/` and wire a loader into that layout file. See [[Routing]] for the route group overview.
+`_session+/` is the designated hook point for consumer auth. Add your own `createCookieSessionStorage` (or use Clerk, Supabase, Auth0 SDKs) in `app/sessions.server/` and wire a loader into a `_layout.tsx` you create there. See [[Routing]] for the route group overview.
 
 For the current bundled session files, query Serena (`.claude/rules/code-search.md`).
 

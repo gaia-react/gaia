@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: '@playwright/test'
-version: 1.59.1
+version: 1.61.0
 role: e2e-testing
 created: 2026-04-20
-updated: 2026-06-23
+updated: 2026-06-24
 tags: [dependency, testing, e2e]
 ---
 
@@ -65,5 +65,5 @@ pnpm pw-ui     # interactive UI mode
 ## Companion packages
 
 - `@playwright-testing-library/test`
-- `eslint-plugin-playwright`
+- Playwright lint rules come from `eslint-plugin-playwright`, supplied transitively by the shared `@gaia-react/lint` config (spread as `...lint.playwright` in `eslint.config.mjs`) rather than declared directly here.
 - `playwright install --with-deps` runs in `pnpm prepare` (Husky)

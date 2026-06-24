@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: react-router
-version: ^7.14.1
+version: 7.18.0
 role: framework
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-06-24
 tags: [dependency, framework]
 ---
 
@@ -28,7 +28,7 @@ The `/update-deps` command upgrades all of these together when react-router is s
 
 - [[Routing]] (with [[remix-flat-routes]] adapter)
 - [[Middleware]]
-- [[Sessions]] (`createCookieSessionStorage`, `redirect`)
+- [[Sessions]] (`createCookie`)
 
 ## Related
 

@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-08
 created: 2026-05-08
-updated: 2026-05-08
+updated: 2026-06-24
 tags: [decision, release, maintainer, distribution-boundary]
 ---
 
@@ -13,7 +13,7 @@ tags: [decision, release, maintainer, distribution-boundary]
 > [!note] Audience
 > Maintainer-only. This page is excluded from adopter distribution by `.gaia/release-exclude`. Adopter-facing release detail lives in [[Update Workflow]]; the maintainer release flow is in [[Release Workflow]].
 
-The release tarball passes through two enforcement primitives between staging and tar: a marker-delimited section strip and a leak-check pass against the staged tree, plus a runtime-deps verification of shipped scripts.
+The release tarball passes through two enforcement primitives between staging and tar: a transform-and-leak-check pass against the staged tree (marker-delimited section strip, JSON key strip, and codified leak patterns) and a runtime-deps verification of shipped scripts.
 
 ## Why
 
@@ -27,9 +27,11 @@ Two primitives, sequenced inside `release.yml` between rsync-staging and tar:
 
 ### `gaia-maintainer release scrub <staging-dir>`
 
-Reads `.gaia/release-scrub.yml`. Two transform types:
+Reads `.gaia/release-scrub.yml`. Three transform types, applied in order:
 
-**marker-strip.** Removes content between `<!-- gaia:maintainer-only:start -->` and `<!-- gaia:maintainer-only:end -->` markers in markdown files under `wiki/`, `.claude/`, and `.specify/extensions/gaia/`. Source becomes superset; bundle is subset. The maintainer can carry useful context (entity pages, internal cross-references, audit rationale) in the source repo without leaking into adopter scaffolds. Unbalanced markers are a build failure.
+**marker-strip.** Removes content between `<!-- gaia:maintainer-only:start -->` and `<!-- gaia:maintainer-only:end -->` markers in markdown files under `wiki/`, `.claude/`, and `.specify/extensions/gaia/`. Source becomes superset; bundle is subset. The maintainer can carry useful context (entity pages, internal cross-references, audit rationale) in the source repo without leaking into adopter scaffolds. Unbalanced markers are a build failure. A second marker-strip covers `.prettierignore` (which carries maintainer-only globs for byte-sensitive `.gaia/tests/` fixtures) using `#`-comment markers (`# gaia:maintainer-only:start` / `# gaia:maintainer-only:end`), because `.prettierignore` is not markdown and HTML-comment markers would read as literal ignore globs there.
+
+**json-strip.** Deletes maintainer-only keys from structured JSON files. From `package.json` it removes `bin` (registers the `gaia` CLI binary, meaningful only for published packages, not adopter apps) and `scripts.test:forensics` (runs GAIA's internal BATS suite against release-excluded `.gaia/tests/forensics/unit.bats`). Keys use dot-notation paths; dots are path separators, and a literal dot inside a key name is escaped as `\.`. Missing keys are silently skipped. Runs after marker-strip so leak-check sees already-clean JSON.
 
 **leak-check.** For each codified check (UAT-NNN narrative, concrete maintainer SPEC IDs, release-excluded path mentions, sibling-monorepo prefixes, absolute filesystem literals), runs the pattern over the post-strip staging tree. Each check has a scope (path globs that determine which files to scan), an optional path-allowlist (files exempt from this check by design, e.g. `wiki-style.md` itself names patterns to teach the rule), and an optional line-allowlist (regexes that exempt structural matches like filename literals or identifier fragments).
 
@@ -52,7 +54,7 @@ The markers are HTML comments to keep them invisible in rendered Markdown (Obsid
 The scrub is lexical. It does not understand semantics. Things outside its reach:
 
 - **Runtime dependency chains**: caught by `runtime-deps`, not scrub.
-- **Novel wikilink targets to release-excluded pages.** The `wikilink-to-excluded` check enumerates the known release-excluded slugs (`Release Workflow`, `Bundle-time Scrub`, `GAIA`, `Steven Sacks`, `dashboard`, `Entities`, `Meta`) and flags any unwrapped `[[…]]` in shipped wiki pages. A new release-excluded page added without updating the check's pattern would still slip through. `gaia wiki dead-paths` covers backticked filesystem paths; the wikilink check covers the named slugs.
+- **Novel wikilink targets to release-excluded pages.** The `wikilink-to-excluded` check enumerates the known release-excluded slugs (`Release Workflow`, `Release-Notes`, `Bundle-time Scrub`, `GAIA`, `Steven Sacks`, `dashboard`, `Entities`, `Meta`, `CLI-Binary-Split`, `Forensics Triage Workflow`, plus the dated report-page classes `consolidate-report-*` and `lint-report-*`) and flags any unwrapped `[[…]]` in shipped wiki pages. A new release-excluded page added without updating the check's pattern would still slip through. `gaia wiki dead-paths` covers backticked filesystem paths; the wikilink check covers the named slugs.
 - **Behaviorally maintainer-only logic**: code that calls a release-excluded source path through dynamic require / variable string concatenation. The bundle architecture (esbuild bundles `.gaia/cli/src/` into the shipped binary; nothing else imports from `src/`) makes this unlikely in practice but is not prevented by the scrub.
 
 ## How to extend

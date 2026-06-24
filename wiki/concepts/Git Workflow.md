@@ -2,13 +2,13 @@
 type: concept
 status: active
 created: 2026-04-21
-updated: 2026-05-19
+updated: 2026-06-24
 tags: [concept, git, workflow]
 ---
 
 # Git Workflow
 
-Two invariants, machine-enforced by `.claude/hooks/block-main-destructive-git.sh` (PreToolUse `Bash` hook with `if: Bash(git *)`). The hook emits `permissionDecision: "deny"` with a reason string, so Claude cannot bypass it without explicit user override.
+Two invariants, machine-enforced by `.claude/hooks/block-main-destructive-git.sh` (a PreToolUse `Bash` hook that short-circuits on any command whose command word is not `git`, so only real `git` invocations are evaluated). The hook emits `permissionDecision: "deny"` with a reason string, so Claude cannot bypass it without explicit user override.
 
 The guard is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it governs this repo only. A `git` command positively aimed at a different checkout (`git -C <other>` or `cd <other> &&`) is allowed; that sibling repo's own policy applies there, not this one's. Scoping is fail-closed: any ambiguity still enforces.
 

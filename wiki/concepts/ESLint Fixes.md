@@ -2,13 +2,13 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-06-24
 tags: [concept, lint]
 ---
 
 # ESLint Fixes
 
-> Rules now live in [[gaia-lint]] (`/src/configs/`). The non-obvious fixes below still apply unchanged; they're rule-level, not config-level.
+> Rules live in [[gaia-lint]] (`src/configs/`). The non-obvious fixes below still apply unchanged; they're rule-level, not config-level.
 
 **Always fix in source, never in config** (a hook blocks edits to `eslint.config.mjs`).
 
