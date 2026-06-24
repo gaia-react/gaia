@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-24 ee95c09 SKIP - chore(deps): version bumps only, no behavior change
+- 2026-06-24 75108cb SKIP - wiki maintenance chain commit (sync + consolidate + lint), no new wiki content needed
 - 2026-06-23 e27a916 WORTHY - feat(scaffold): comma-bearing prop types in component --props → scaffold CLI improvement, no wiki page
 - 2026-06-23 c25f836 WORTHY - fix(deps): pin nested vite >=7.3.5 (GHSA-fx2h-pf6j-xcff) → CVE override, pnpm-overrides pattern already documented
 - 2026-06-23 7ef235a WORTHY - feat(tdd): SPEC-006 Phase 1-3 → wiki/decisions/{Determinism Classifier,Worthiness Audit,Worthiness Presence Gate}.md created
