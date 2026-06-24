@@ -27,6 +27,14 @@
 #                               .gaia/local/specs/SPEC-NNN/SPEC.md with
 #                               status: in-progress frontmatter and NO ledger
 #                               row (the foldered legacy fallback case)
+#   --seed-merged SPEC-NNN      append a ledger row status:"merged" and NO
+#                               folder (the archive-sweep skip-no-folder case)
+#   --seed-merged-folder SPEC-NNN  append a ledger row status:"merged" AND
+#                               write the foldered shape
+#                               .gaia/local/specs/SPEC-NNN/SPEC.md with
+#                               status: specified + immutable: true frontmatter
+#                               (the archive-sweep happy-path fixture: a merged
+#                               row with an active folder still to be swept)
 #   --seed-flat-sibling SPEC-NNN-SUFFIX  write a legacy flat sibling file
 #                               .gaia/local/specs/SPEC-NNN-SUFFIX.md; a
 #                               sibling migration candidate for spec-folderize.sh
@@ -55,7 +63,8 @@ printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/specs.json
 # Copy (not symlink) so the scripts' ${BASH_SOURCE[0]}-relative source of
 # with-ledger-lock.sh resolves to this tmp lib dir.
 for s in spec-allocator.sh ledger-update.sh with-ledger-lock.sh \
-         spec-folderize.sh spec-renumber.sh spec-reconcile.sh; do
+         spec-folderize.sh spec-renumber.sh spec-reconcile.sh \
+         spec-archive-merged.sh; do
   cp "${real_lib}/${s}" ".specify/extensions/gaia/lib/${s}"
   chmod +x ".specify/extensions/gaia/lib/${s}"
 done
@@ -130,6 +139,32 @@ EOF
 ---
 spec_id: ${id}
 status: in-progress
+---
+
+# ${id}
+EOF
+      ;;
+    --seed-merged)
+      id="$2"; shift 2
+      tmp="$(mktemp)"
+      jq --arg id "$id" \
+        '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
+        .gaia/specs.json > "$tmp"
+      mv "$tmp" .gaia/specs.json
+      ;;
+    --seed-merged-folder)
+      id="$2"; shift 2
+      tmp="$(mktemp)"
+      jq --arg id "$id" \
+        '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
+        .gaia/specs.json > "$tmp"
+      mv "$tmp" .gaia/specs.json
+      mkdir -p ".gaia/local/specs/${id}"
+      cat > ".gaia/local/specs/${id}/SPEC.md" <<EOF
+---
+spec_id: ${id}
+status: specified
+immutable: true
 ---
 
 # ${id}
