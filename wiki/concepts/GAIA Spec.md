@@ -43,6 +43,19 @@ Auto-generated Playwright specs (written by the `before_implement` hook via `lib
 - **Cosmetic divergence** (selector text, button labels, copy, URL slugs, layout assertions): editable by the implementer without reopening the SPEC.
 - **Logical divergence** (user flow, success criteria, error branches, preconditions, post-state): forbidden. Implementer must raise the divergence; the SPEC is reopened and the UAT rewritten before re-running `/speckit-implement`.
 
+## Ledger status vocabulary
+
+`.gaia/specs.json` is a fast index over git; the `status` field on each row is exactly one of four canonical values:
+
+- `draft`: allocated, still being authored. The only status `lib/spec-allocator.sh in_progress` surfaces for the resume-vs-start prompt.
+- `specified`: artifact finalized and frozen. Downstream plan → implement → merge owns the feature from here.
+- `merged`: the implementing PR has landed; `merged_at` records when. `lib/spec-reconcile.sh` sets this from git ground truth.
+- `archived`: a finalized SPEC retired to `.gaia/local/specs/archived/`. The archive disposition is carried on the SPEC artifact frontmatter (`status: archived`, `archived_at`); the ledger row tracks lifecycle and reads `merged` for a SPEC that both merged and was archived.
+
+No other value is valid. `lib/ledger-update.sh` is the single chokepoint for ledger writes; it accepts the four canonical values plus the tolerated legacy `in-progress`, and rejects anything else (exit 6), so a stray label cannot reach the ledger through a tool path. `in-progress` is a deprecated legacy value that `spec-reconcile.sh` advances toward `merged` from git; new flows use `draft → specified`.
+
+A ledger that predates the chokepoint can still hold a misnamed status (a hand-edited or backfilled `shipped`, say). These self-heal: `spec-reconcile.sh` runs on every `/gaia-spec` and renames known aliases (`shipped → merged`) to canonical through the guarded chokepoint, logging any unrecognized status rather than guessing its lifecycle position.
+
 ## Pairs with
 
 - [[spec-kit Extension Strategy]]: the architectural decision that produced this workflow.

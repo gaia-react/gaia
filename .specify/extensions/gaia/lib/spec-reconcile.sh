@@ -38,6 +38,46 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 command -v jq >/dev/null 2>&1 || exit 0
 git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 
+# --- Normalize known-misnamed statuses to canonical (local, no network) ------
+# Pre-guard ledgers can carry an off-vocabulary status (a hand-edited or
+# backfilled "shipped", say). Rename known aliases to their canonical value
+# through the guarded ledger-update.sh chokepoint, so a stray label self-heals
+# on the next housekeeping pass. Runs before the network reconcile and is
+# independent of it. An unrecognized off-vocabulary status is logged, never
+# guessed (its lifecycle position is not safely inferable).
+canon_for_status() {
+  case "$1" in
+    shipped) printf 'merged' ;;
+    *) printf '' ;;
+  esac
+}
+
+offvocab_ids="$(jq -r '
+  .specs[]
+  | select((.status // "") as $s
+      | ["draft","specified","merged","archived","in-progress"] | index($s) | not)
+  | .id
+' "$ledger_path" 2>/dev/null || true)"
+
+if [ -n "$offvocab_ids" ]; then
+  while IFS= read -r ov_id; do
+    [ -n "$ov_id" ] || continue
+    ov_status="$(jq -r --arg id "$ov_id" \
+      '.specs[] | select(.id == $id) | .status // "null"' "$ledger_path" 2>/dev/null || true)"
+    canon="$(canon_for_status "$ov_status")"
+    if [ -n "$canon" ]; then
+      patch="$(jq -nc --arg s "$canon" '{status: $s}')"
+      if bash "${_lib_dir}/ledger-update.sh" "$repo_root" "$ov_id" "$patch" >/dev/null 2>&1; then
+        printf 'normalized %s: %s -> %s\n' "$ov_id" "$ov_status" "$canon"
+      fi
+    else
+      printf 'spec-reconcile: %s has unrecognized status %s; left as-is\n' "$ov_id" "$ov_status" >&2
+    fi
+  done <<EOF
+$offvocab_ids
+EOF
+fi
+
 # Candidate rows (local, cheap): finalized but not yet recorded as merged.
 candidates="$(jq -r '
   .specs[] | select(.status == "specified" or .status == "in-progress") | .id

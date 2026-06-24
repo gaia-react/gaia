@@ -105,12 +105,16 @@ _run_parallel_next() {
   [ "$output" = "SPEC-007" ]
 }
 
-@test "11: in_progress fallback; canonical folder file, no ledger row" {
+@test "11: in_progress no fallback; folder file without a ledger row is not surfaced" {
+  # The SPEC-file frontmatter fallback is intentionally gone: in_progress
+  # sources the ledger only. A foldered SPEC.md with no ledger row must NOT be
+  # surfaced as in-flight, otherwise finalized work re-flags as resumable
+  # forever (the defect-2 staleness this design removes; see test 10).
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-013)"
   cd "$REPO"
   run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
   [ "$status" -eq 0 ]
-  [ "$output" = "SPEC-013" ]
+  [ "$output" = "none" ]
 }
 
 @test "12: in_progress none; empty ledger, no files" {
