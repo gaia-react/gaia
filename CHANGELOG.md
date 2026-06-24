@@ -8,10 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 - **Minor**: new skills, commands, or wiki concept pages; opt-in features, removed or renamed `.claude/` paths.
 - **Patch**: bugfixes, docs, and in-range dependency bumps.
 
+## Adopter-action convention
+
+A release change that requires the adopter to act, run a command or hand-migrate, is authored as a `### Removed` or `### Changed` entry carrying an explicit **Action required:** line and/or a literal command to run (for example, `pnpm remove <pkg>`). That exact phrasing is the deterministic anchor GAIA's two CHANGELOG consumers key on: `/update-gaia` cross-references it during a merge to surface a documented, opt-in cleanup suggestion (it never auto-removes a dependency or deletes a file, the adopter decides), and the maintainer-only `release-notes` skill keys on it to tell an agent-automated cleanup (reframe as a benefit or drop) from a human-must-act migration (keep, plainly framed, with a pointer to the steps). Keep the marker and command literal so both consumers match the anchor instead of free-parsing prose. The `react-router-dom` removal below is the worked example.
+
 ## [Unreleased]
 
 ### Added
 
+- an adopter-action CHANGELOG convention (a `### Removed` / `### Changed` entry carrying an **Action required:** line and/or a literal `pnpm` command) that `/update-gaia` reads to surface documented, opt-in cleanups during a merge (when GAIA drops a dependency you still have, it suggests the exact `pnpm remove` command instead of leaving a silent no-op, never acting on your behalf), and that the maintainer-only `release-notes` skill keys on to reframe or drop agent-automated cleanups while keeping genuine migrations. `/update-gaia`'s confirm gate now shows the full baseline-to-latest CHANGELOG range, so an adopter several versions behind sees every intervening entry, not just the latest tag's notes
 - `react-code` skill leads with a platform-first ladder (existing GAIA code → web platform like `Intl`/`URL`/`crypto.randomUUID` → already-installed dep → new dep → custom code) to walk before adding a dependency or hand-rolling a primitive
 - `/gaia-harden` weighs an efficacy lens (Axis 3) before recommending a form: a recurring finding proves the problem, not the fix, so when the recommended form is prose and no cheap before/after evidence shows it would change behavior, that surfaces as a defer/decline signal for the human, never an auto-decline
 - point Zod schema work at Zod's official LLM docs, auto-discovered from `node_modules/zod/package.json` (`llmsFull`/`llms`), and treat them as authoritative over training memory so valid Zod 4 forms are not rejected from stale v3 recollection

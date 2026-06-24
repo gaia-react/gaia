@@ -104,13 +104,36 @@ If both fail, stop and ask the user to supply the target version explicitly.
 
 ## Step 4: Show the release notes and confirm
 
-Fetch the release body for `LATEST_TAG`:
+Show the human the **full baseline-to-latest CHANGELOG range**, not just the single latest tag's GitHub body, an adopter several versions behind needs every intervening entry. Read GAIA's own `CHANGELOG.md` at `$LATEST_TAG` (a plain markdown file, fetched no-auth from the raw URL, with a `gh` fallback) and extract every `## [x.y.z]` section strictly newer than `$BASELINE` through `$LATEST`:
 
 ```bash
-gh release view "$LATEST_TAG" --repo gaia-react/gaia --json body --jq .body
+changelog="$(curl -fsSL "https://raw.githubusercontent.com/gaia-react/gaia/$LATEST_TAG/CHANGELOG.md" 2>/dev/null)"
+if [ -z "$changelog" ] && command -v gh >/dev/null 2>&1; then
+  changelog="$(gh api "repos/gaia-react/gaia/contents/CHANGELOG.md?ref=$LATEST_TAG" \
+    -H "Accept: application/vnd.github.raw" 2>/dev/null)"
+fi
+
+range="$(printf '%s\n' "$changelog" | awk -v baseline="$BASELINE" -v latest="$LATEST" '
+  function vcmp(a,b,   x,y,i){split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){if((x[i]+0)>(y[i]+0))return 1;if((x[i]+0)<(y[i]+0))return -1}return 0}
+  /^## \[Unreleased\]/           {printing=0; next}
+  /^\[[^][]+\]:[[:space:]]*http/ {printing=0; next}
+  /^## \[[0-9]+\.[0-9]+\.[0-9]+\]/ {
+    v=$0; sub(/^## \[/,"",v); sub(/\].*/,"",v)
+    printing=(vcmp(v,baseline)>0 && vcmp(v,latest)<=0)
+  }
+  printing {print}
+')"
+
+if [ -n "$range" ]; then
+  printf '%s\n' "$range"
+else
+  # Fetch failed (offline, private, missing file): fall back to the single-tag
+  # GitHub release body so the gate still has context.
+  gh release view "$LATEST_TAG" --repo gaia-react/gaia --json body --jq .body
+fi
 ```
 
-Print the notes to the user. Then use `AskUserQuestion`:
+The awk walks the version headers newest-first, prints the contiguous block from `$LATEST` down to (but not including) `$BASELINE`, and drops the `[Unreleased]` block and the bottom link-reference list. Print the range to the user. Then use `AskUserQuestion`:
 
 - **Question**: "Update GAIA from v$BASELINE to $LATEST_TAG?"
 - **Options**: `Proceed` / `Abort`.
@@ -242,6 +265,11 @@ Track seven lists plus a `package.json` sub-report internally (`UpdateMergeRepor
   add: string[];         // new files copied from latest
   removed: string[];     // adopter deleted a baseline file; deletion respected, left absent
   delete: string[];      // files removed upstream; surfaced but NOT auto-deleted
+  adopterActions: Array<{ // Step 9: documented, opt-in follow-ups the merge leaves
+    subject: string;      //   to the adopter (a dep GAIA dropped that you still have,
+    command?: string;     //   a delete[] file still present), recovered from the
+    changelog: string;    //   release CHANGELOG's adopter-action convention. Advisory.
+  }>;
   conflicts: Array<{
     path: string;
     class: 'owned' | 'shared' | 'wiki-owned';
@@ -323,6 +351,8 @@ For each managed entry key `k` (within its section), with `Bk` / `Lk` / `Ak` its
 | in `B`, not in `L`                                         | GAIA **removed** it                              | If the adopter still has `k`, leave it (adopter's choice).                        | ,               |
 
 **The load-bearing row is the first one:** a dependency the adopter removed (present in `B`, absent from `A`) is **never re-added** unless GAIA itself changed it this release _and_ the adopter opts in. The default everywhere is to respect the adopter's value. This is the JSON-key analog of the file-level "respect adopter deletions" rule the generic table already enforces.
+
+**The last row is the load-bearing one for Step 9:** GAIA removed `k` (in `B`, not in `L`) but the adopter still has it, so the merge leaves it (the adopter's choice). That no-op is invisible by design, the adopter is never told GAIA dropped the dependency. Step 9 cross-references these GAIA-removed-but-still-present deps against the release CHANGELOG's adopter-action convention and offers an opt-in `pnpm remove` suggestion. The merge itself never removes the dependency; only the user can.
 
 **Compute the per-key verdicts** with `jq` (covers the object sections):
 
@@ -519,6 +549,38 @@ If `INVALIDATED_COUNT` is `"unknown"`, emit instead:
 If `INVALIDATED_COUNT` is greater than 0, also print after the table:
 
 > **Note:** $INVALIDATED_COUNT open PR(s) carry a `GAIA-Audit` trailer stamped with v$BASELINE. On their next push, CI re-runs the full audit (one extra billing cycle per PR). This is intentional, a newer GAIA agent version may catch issues the prior version missed. To minimize re-audit churn, merge or close these PRs before updating GAIA.
+
+**Documented adopter actions (opt-in).** Two merge outcomes leave the adopter with a follow-up the three-way merge deliberately will **not** perform: a dependency GAIA dropped this release that the adopter still has (the Step 7a "GAIA removed it; adopter still has it" no-op, left in place by design) and files removed upstream still in the working tree (`delete[]`). Both are silent or bare, the agent knows _what_ changed but surfaces no _why_. Recover the intent from the release CHANGELOG and offer an opt-in suggestion.
+
+Read `$LATEST_DIR/CHANGELOG.md` (already on disk from Step 5, no extra fetch) and extract the `## [x.y.z]` sections strictly newer than `$BASELINE` through `$LATEST` with the same range walk Step 4 uses:
+
+```bash
+awk -v baseline="$BASELINE" -v latest="$LATEST" '
+  function vcmp(a,b,   x,y,i){split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){if((x[i]+0)>(y[i]+0))return 1;if((x[i]+0)<(y[i]+0))return -1}return 0}
+  /^## \[Unreleased\]/           {printing=0; next}
+  /^\[[^][]+\]:[[:space:]]*http/ {printing=0; next}
+  /^## \[[0-9]+\.[0-9]+\.[0-9]+\]/ {
+    v=$0; sub(/^## \[/,"",v); sub(/\].*/,"",v)
+    printing=(vcmp(v,baseline)>0 && vcmp(v,latest)<=0)
+  }
+  printing {print}
+' "$LATEST_DIR/CHANGELOG.md"
+```
+
+Within that range, match **only** convention-anchored entries: bullets under a `### Removed` or `### Changed` heading that carry an explicit `**Action required:**` line and/or a literal `pnpm` command in backticks. **Key on the heading plus that anchored phrasing; do not free-parse arbitrary prose** (the convention is documented in `CHANGELOG.md`). For each match, take the literal command (the backtick-quoted `pnpm …`) and the subject it names, then gate it on whether the action still applies to _this_ adopter and record the survivors in `adopterActions[]`:
+
+- A `pnpm remove <pkg>` / `pnpm uninstall <pkg>` action applies only when `<pkg>` is still present in the adopter's `package.json` (exactly the Step 7a removal no-op). If the adopter already removed it, skip, there is nothing to do.
+- An action naming a file that also appears in `delete[]` applies only while that file is present.
+
+When `adopterActions[]` is non-empty, print a recommendation block after the table:
+
+> **Suggested cleanup (optional).** This release documents adopter actions that `/update-gaia` leaves to you:
+>
+> - GAIA removed `react-router-dom` this release, run `pnpm remove react-router-dom`? (still in your `package.json`)
+>
+> These are advisory. Run a command only if you want it.
+
+**This stays opt-in.** The CHANGELOG context upgrades a silent no-op into a suggestion; it never changes the merge's "respect the adopter's choice" behavior and never auto-removes a dependency or deletes a file. This mirrors the Step 8b SPEC-migration action item: surfaced for the user, never auto-resolved.
 
 The merge walk is complete and the summary is recorded, so finalize the version. Write the new version and refresh the manifest:
 
