@@ -50,14 +50,6 @@ overrides:
   # Security floor: express pulls qs <6.15.2 (GHSA-q8mj-m7cp-5q26, DoS). Not a
   # peer-dep override, so the Phase 0 obsolescence test can't see why it exists.
   'qs': '>=6.15.2'
-  # security floor for jsdom/vitest-transitive undici (TLS bypass / WebSocket DoS / cross-origin routing); test-toolchain only, never shipped.
-  'undici': '>=7.28.0 <8'
-  # Security floor: @react-router/dev>vite-node pulls a vite 7.3.x copy below
-  # 7.3.5 (GHSA-fx2h-pf6j-xcff, dev-server server.fs.deny bypass on Windows
-  # alternate paths). vite-node accepts only vite ^5||^6||^7, so the nested copy
-  # cannot move to 8; pin the vulnerable 7.x line to the patched 7.x. The
-  # top-level vite@8 falls outside this selector and is untouched.
-  'vite@>=7.0.0 <7.3.5': '>=7.3.5 <8'
 
 # Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
 # with the allowBuilds map (true = the package may run install/build scripts).
