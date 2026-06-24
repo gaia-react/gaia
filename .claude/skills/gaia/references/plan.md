@@ -240,9 +240,79 @@ test -f "$PLAN_DIR/README.md" \
   && ls "$PLAN_DIR"/task-*.md >/dev/null 2>&1
 ```
 
-If any required file is missing, surface the failure to the user with the planner's return payload. Do not retry silently, the user decides whether to re-spawn or investigate. Never proceed to step 5 with an incomplete plan folder.
+If any required file is missing, surface the failure to the user with the planner's return payload. Do not retry silently, the user decides whether to re-spawn or investigate. Never proceed to step 4.6 with an incomplete plan folder.
 
-### 4.6. Telemetry: revision detection
+### 4.6. Adversarial decomposition audit (recommended)
+
+A lightweight multi-agent audit of the **decomposition itself**: the one artifact neither the upstream SPEC audit (which ran before the plan existed) nor the downstream pre-merge `code-review-audit` (which sees the executed diff) can inspect. It verifies that the task graph is a sound factoring of the work, that the frozen interface contracts resolve against the real repo, and that the SPEC's binding criteria are all covered, BEFORE a cold orchestrator burns execution cycles building against a flawed plan.
+
+This is deliberately not a clone of the SPEC audit. The plan is editable and double-netted (sub-agents report `### Deviations from plan` during execution; `code-review-audit` gates the merge), so re-running the SPEC audit's claim-grounding, testability, and security lenses here would mostly re-verify what is already verified upstream and downstream. The audit stays narrow: three checks that exist only at plan stage, no refutation pass (these findings are checkable and binary, not severity-debatable like SPEC claims). It dispatches the same parallel `general-purpose` Agent primitive step 4 uses, so it works headless and in auto mode.
+
+**The audit is a choice, presented once.** After step 4.5 confirms the artifacts exist, gauge the plan, then ask via `AskUserQuestion` whether to run the audit. Auditing a non-trivial plan is almost always worth it, so the recommended option is the audit, never "skip".
+
+**Gauge the plan (this sets the recommendation).** Read `README.md` and the `task-*.md` files once. A trivial plan (one or two tasks, a single phase, no cross-task interface contract) → recommend **Skip**. Anything with parallel tasks in a phase, multiple phases, or a shared frozen contract → recommend **Run the audit**.
+
+Present (recommended option FIRST, carrying the `(Recommended)` tag):
+
+- question: `"Run the decomposition audit before handing off the plan? It checks the task graph for hidden dependencies, verifies the interface contracts resolve against the repo, and confirms the SPEC's criteria are all covered."`
+- header: `"Audit"`
+- options:
+  - `{ label: "Run the audit (Recommended)", description: "Three parallel auditors verify decomposition soundness, contract grounding, and SPEC coverage against the real repo. A few agents, a couple of minutes." }`
+  - `{ label: "Skip the audit", description: "Hand off the plan as written. Best reserved for trivial single-phase plans." }`
+
+`Skip` is never the recommended option for a non-trivial plan. On **Skip**, proceed to step 4.7.
+
+**Auto-mode.** No prompt fires. When `/gaia-plan` runs non-interactively (dispatched by `/gaia-spec auto`), gauge the plan, run the audit if it is non-trivial, and apply its dispositions non-interactively.
+
+**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block the handoff: note the skip (`decomposition audit unavailable`) and proceed to step 4.7. The orchestrator's per-phase quality gates and the non-skippable pre-merge `code-review-audit` remain the safety net.
+
+#### 4.6a. Dispatch the lens auditors (parallel fan-out)
+
+Spawn **one `general-purpose` Agent per lens, all in parallel** (one message, one Agent tool call per lens). The **SPEC coverage** lens is dispatched only when `SPEC_PATH` was set in step 1a; the other two always run. Each agent reads the plan folder and returns only the findings JSON below, no narrative.
+
+Shared preamble (interpolate `<PLAN_DIR>` = the resolved plan directory, `<repo_root>` = `$PWD`):
+
+> You are an ADVERSARIAL auditor of a GAIA task-orchestration plan in `<PLAN_DIR>`. Repo root is `<repo_root>`; you may read any file under it, including `node_modules`. Read `<PLAN_DIR>/README.md` (the task graph and frozen interface contracts) and every `<PLAN_DIR>/task-*.md` first. Your job is to find DEFECTS that would cause the orchestrator to build a broken or conflicting result, not to praise the plan.
+>
+> - Verify EVERY checkable claim against the actual repository. Do not take the plan's assertions on faith; when a task names a file, export, type, or signature, open it and confirm it resolves.
+> - Cite evidence: the task doc and `file:line` for any ground-truth check.
+> - Severity: `blocker` = the plan is factually wrong or will produce broken/conflicting work; `high` = a gap or hidden dependency the orchestrator is forced to guess on; `medium` = should fix; `low` = nit.
+> - Give each finding a stable id prefixed with your lens code.
+> - Be concrete and falsifiable. A finding the orchestrator can act on by reading one file is a good finding; vague "could be clearer" is not.
+
+The lenses:
+
+- **Decomposition & dependency soundness (id prefix `DP`).** The highest-value lens, with no analog upstream or downstream. Attack the task graph: tasks placed in the same phase as "parallel" that actually share state, edit the same files, or consume each other's outputs; phase order that does not respect a real data or interface dependency; a frozen interface contract that two tasks interpret inconsistently; acceptance criteria that are not independently verifiable. Construct the concrete scenario where every per-task acceptance criterion passes yet the integrated result is broken.
+- **Contract grounding (id prefix `CG`).** Treat every file path, export subpath, type name, and function signature named in a task's interface contract or files-to-touch list as a factual claim, and verify each resolves against the real repo and `node_modules`. A contract that names a non-existent export, a wrong signature, or a hallucinated module is at least `high`, likely `blocker`: the orchestrator will build against it and fail at integration.
+- **SPEC coverage (id prefix `COV`, dispatched only when `SPEC_PATH` is set).** Build the matrix SPEC `UATs` + `success_criteria` ↔ task acceptance criteria. Find the holes: a UAT or success criterion no task covers; a task that drifts from or contradicts the SPEC's binding contract; scope the SPEC declared out-of-bounds that a task re-introduces. Read `<SPEC_PATH>` (interpolated) as the source of truth.
+
+Findings schema (each agent returns exactly this object):
+
+    {
+      "dimension": "<lens name>",
+      "findings": [
+        {
+          "id": "<lens-prefix>-NNN",
+          "severity": "blocker" | "high" | "medium" | "low",
+          "title": "<short>",
+          "location": "<task doc / README section>",
+          "issue": "<one sentence: what is wrong>",
+          "evidence": "<file:line or plan quote actually checked>",
+          "recommendation": "<one sentence: the fix>"
+        }
+      ]
+    }
+
+#### 4.6b. Apply findings
+
+Collect findings across all lenses. The plan is editable and unsaved-to-handoff, so applying a fix is just rewriting plan files, no ceremony.
+
+- **Localized findings** (a wrong contract, a missing acceptance criterion, an uncovered UAT): fold the fix directly into the affected `task-*.md` or `README.md` yourself.
+- **Structural findings** (the phase graph is wrong, tasks need re-factoring across phases): re-spawn the planner (step 4) with the surviving findings appended as a correction directive, rather than hand-patching the graph. This goes through the same `PLAN_DIR` and overwrites the flawed artifacts.
+
+**Interactive:** surface each material (non-`low`) finding to the user before applying (issue, evidence, recommendation; apply / keep / revise); apply `low` findings silently. **Auto-mode:** auto-apply unambiguous fixes; if a repair is ambiguous (more than one defensible fix), leave the plan unchanged and record the finding in a `## Audit notes` section appended to `README.md` so the orchestrator and user see it. If the audit re-spawned the planner, re-run step 4.5 against the regenerated folder before proceeding.
+
+### 4.7. Telemetry: revision detection
 
 If the slug-collision suffix from step 3 is greater than 1 (i.e. `PLAN_DIR` ends with `-2`, `-3`, …) AND `SPEC_PATH` was set in step 1a, this plan is a revision of a prior plan. Emit a `plan_revised` mentorship event so the over-time pattern detector sees it.
 
