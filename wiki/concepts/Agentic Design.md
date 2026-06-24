@@ -10,7 +10,7 @@ tags: [concept, philosophy, claude, agent]
 
 Agentic design is the discipline of building AI systems that reason, observe, act on tools, and iterate toward goals rather than passively responding to one-shot prompts. The [canonical taxonomy](https://zeljkoavramovic.github.io/agentic-design-patterns/) catalogs 29 patterns across five categories: Core, Reasoning & Strategy, Orchestration, Infrastructure & State, and Reliability & Control.
 
-GAIA implements 12 of those 29 structurally. "Structurally" means the implementation is wired in through hooks, agents, rules, commands, or wiki conventions. It runs the same way every session, every engineer, every model variant. Not as emergent model behavior on top of a vanilla Claude Code setup. That distinction is GAIA's defensible thesis: agentic behavior has to be structural to be predictable enough to stake production code on.
+GAIA implements 12 of those 29 structurally. "Structurally" means the implementation is wired in through hooks, agents, rules, commands, or wiki conventions. It runs the same way every session, every engineer, every model variant. Not as emergent model behavior on top of a vanilla Claude Code setup.
 
 ## The 12 patterns GAIA implements
 
@@ -46,7 +46,7 @@ The [[Code Review Audit Agent]] is a manager-and-specialists system. The lead re
 
 #### Resource-Aware Optimization
 
-Model tier follows task complexity. [[GAIA Audit]] runs both stages on Sonnet; drift checks (sha256 + verbatim before/after snippets) carry the safety, so the research stage doesn't need a heavier model. `/gaia-plan` asks the user whether to use Opus for planning, defaulting to yes; per-task implementation sub-agents inherit the running model (typically Sonnet). The Code Review Audit declares `model: opus` in its frontmatter: the holistic finder does the hard cross-cutting reasoning (security, data flow, architecture) where bug-finding recall and precision matter most, and it delegates cheaper line-level rule compliance to Sonnet specialist subagents plus deterministic oracles (`react-doctor`, `knip`, `pnpm audit`). Reasoning runs on the heavier tier; mechanical rule-matching runs cheaply alongside it. Cost and quality discipline is wired in, not left to the user.
+Model tier follows task complexity. [[GAIA Audit]] runs both stages on Sonnet; drift checks (sha256 + verbatim before/after snippets) carry the safety, so the research stage doesn't need a heavier model. `/gaia-plan` asks the user whether to use Opus for planning, defaulting to yes; per-task implementation sub-agents inherit the running model (typically Sonnet). The Code Review Audit declares `model: opus` in its frontmatter: the holistic finder does the hard cross-cutting reasoning (security, data flow, architecture) where bug-finding recall and precision matter most, and it delegates cheaper line-level rule compliance to Sonnet specialist subagents plus deterministic oracles (`react-doctor`, `knip`, `pnpm audit`). Reasoning runs on the heavier tier; mechanical rule-matching runs cheaply alongside it.
 
 ### Infrastructure & State
 
@@ -60,7 +60,7 @@ Five tiers of memory with explicit scope and decay:
 - **Agent memory**: `.claude/agent-memory/<agent-name>/MEMORY.md` accumulates patterns across reviews and is auto-loaded into the agent's prompt. Created on demand per agent.
 - **User auto-memory**: `~/.claude/projects/<project>/memory/`. Typed memories (user / feedback / project / reference) indexed by `MEMORY.md`.
 
-[[GAIA Audit]] is a periodic two-stage sweep that detects duplication, stale entries, and auto-load bloat. Memory is not a pile; it has a maintenance loop.
+[[GAIA Audit]] is a periodic two-stage sweep that detects duplication, stale entries, and auto-load bloat.
 
 #### Session Isolation
 
@@ -93,8 +93,6 @@ Six structurally enforced checkpoints between Claude's intent and impact:
 | Destructive-git hook        | Always         | No commit-to-`main`, no force-push to `main`                                  |
 | `gh pr merge` reminder hook | Pre-merge      | Reminds to run the code-review audit                                          |
 
-Human-in-the-Loop in GAIA is enforced by hooks. The bypass paths are blocked at the hook layer.
-
 #### Guardrails & Safety
 
 Defense in depth, layered from filesystem up:
@@ -106,11 +104,9 @@ Defense in depth, layered from filesystem up:
 - **Accessibility guardrails**: rules block hardcoded English strings, missing `alt`, missing keyboard handlers; the audit subagent enforces semantic HTML, focus management, ARIA.
 - **Coding-rule guardrails**: no `eslint-disable react-hooks/exhaustive-deps`, no `.catch(() => {})`, no `interface` (use `type`), no `switch`, no enums, no untyped exports.
 
-Each rule prevents a class of debt at the source rather than catching it downstream.
-
 ## Honest non-features
 
-A handful of patterns from the canonical taxonomy are deliberately absent in GAIA, and several others are partial. Worth naming so the structural claims stay defensible:
+A handful of patterns from the canonical taxonomy are deliberately absent in GAIA, and several others are partial:
 
 - **Dynamic Scaffolding**: absent by design. GAIA pre-curates a stable tool surface; tool sprawl is a non-goal.
 - **Parallel Fusion**: absent. GAIA's parallelism is divide-and-conquer (specialist subagents on different scopes), not redundant attempts on the same task.
@@ -119,12 +115,6 @@ A handful of patterns from the canonical taxonomy are deliberately absent in GAI
 - **Code-Then-Execute**: a Claude Code runtime capability, not a GAIA convention.
 
 The full pattern-by-pattern grading is 12 Strong, 13 Partial, 1 Inferential, 3 Absent.
-
-## Why structural matters
-
-Most Claude setups treat agentic behavior as emergent: give the model a good prompt and hope it reasons well. GAIA makes agentic behavior structural. Reflection loops, observation-action cycles, planning gates, specialist dispatch, model tiering, memory tiering. These are wired in, not prompted in. They run the same way every session, by any engineer on the team, whether or not they understand the underlying agentic theory.
-
-The result is a system where Claude's autonomy is bounded, its quality is enforced, and its knowledge persists. Agentic behavior is predictable enough to stake production code on.
 
 ## See also
 

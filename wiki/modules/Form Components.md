@@ -3,7 +3,7 @@ type: module
 path: app/components/Form/
 status: active
 language: typescript
-purpose: Conform + Zod-powered form components, the star of GAIA
+purpose: Conform + Zod-powered form components
 depends_on:
   - '[[Conform]]'
   - '[[Zod]]'
@@ -14,8 +14,7 @@ tags: [module, components, forms]
 
 # Form Components
 
-> [!key-insight] The star of GAIA
-> GAIA's form components are the headline feature. Built on [[Conform]] + [[Zod]], they handle label association, validation state, error display, and accessibility automatically.
+Built on [[Conform]] + [[Zod]], GAIA's form components handle label association, validation state, error display, and accessibility automatically.
 
 ## Replace native inputs
 

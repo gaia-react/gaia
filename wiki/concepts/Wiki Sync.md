@@ -8,7 +8,7 @@ tags: [concept, claude, workflow, wiki]
 
 # Wiki Sync
 
-The wiki only stays accurate if drift between code and knowledge is detected and resolved. GAIA does this in the user's existing Claude Code session, no spawned sub-Claudes, no extra API spend, by combining four hooks with a single workhorse command.
+Drift between code and knowledge is detected and resolved in the user's existing Claude Code session (no spawned sub-Claudes) by combining four hooks with a single workhorse command.
 
 ## The four pieces
 
@@ -26,13 +26,7 @@ When `.gaia/automation.json` sets the `wiki` entry's mode to `ci`, the local hoo
 
 ## Convergence, not real-time
 
-Wiki updates lag the code. A commit landing on `main` won't trigger an immediate wiki update. That's deliberate.
-
-- The wiki is a knowledge layer, not a CI gate. It doesn't need to be in sync at every instant.
-- It needs to be in sync **before the next meaningful action proceeds**, usually the next Claude session in the project.
-- The drift-check hook is the convergence point: at the start of every session, drift is surfaced. The user (or Claude) decides whether to address it now or defer.
-
-This handles the case that broke the previous design (`wiki-update-evaluator.sh`): commits made outside Claude, via `gh pr merge`, GitHub UI, or terminal, were never detected. The new system catches them at the next session, regardless of how they landed.
+Wiki updates lag the code deliberately. The drift-check hook is the convergence point: at the start of every session, drift is surfaced, and the user (or Claude) decides whether to address it now or defer. This catches commits made outside Claude (via `gh pr merge`, GitHub UI, or terminal), regardless of how they landed.
 
 ## State file shape
 
@@ -87,7 +81,7 @@ When invoked as part of the no-arg `/gaia-wiki` full chain, `gaia wiki chain beg
 
 `sync land` uses `git status --porcelain=v1` to inspect the working tree. Git wraps paths containing spaces or special characters in double quotes; the CLI strips that quoting before classifying paths as wiki or non-wiki changes. Nearly every GAIA wiki page has a space in its filename, so this normalization is required for `sync land` to recognize wiki edits and proceed.
 
-The skip-with-reason audit trail is load-bearing: a project that always says "skipped: typo" tells you the system is running. A project with no log entries tells you the system has stopped. `/gaia-wiki lint` check #11 surfaces this drift.
+The skip-with-reason audit trail is load-bearing: absence of log entries signals the system has stopped running. `/gaia-wiki lint` check #11 surfaces this drift.
 
 ## Consolidation gate
 
@@ -121,12 +115,12 @@ You don't need to run it after every commit. The hooks let you defer with full v
 
 ## Adopters
 
-This system is part of GAIA's standard scaffolding. Anyone who runs `create-gaia` gets:
+`create-gaia` scaffolds:
 
 - The four hooks pre-wired in `.claude/settings.json`
-- The `/gaia-wiki sync` command available immediately
+- The `/gaia-wiki sync` command
 - An initialized `wiki/.state.json` matching the release tag
 
-Adopters customize the wiki content (services, decisions, etc.) but inherit the sync discipline. The system stays out of the way until it has something to surface.
+Adopters customize wiki content; the sync mechanism is inherited as-is.
 
 See [[Quality Gate]], [[GAIA Plan]], [[Claude Hooks]].

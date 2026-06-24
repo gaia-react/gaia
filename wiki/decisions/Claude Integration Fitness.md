@@ -10,7 +10,7 @@ tags: [decision, claude, fitness]
 
 `/gaia-fitness` is a health check + auto-heal that answers one question, "how well-configured and coherent is this project's Claude integration?", and fixes what it can. A single invocation runs three phases: triage (walk the seven graded categories below), heal (lane-aware Fixer subagents auto-apply confident fixes inside a bounded loop with oscillation detection), and verify (re-run the affected checks).
 
-This page is the single source of truth for the check taxonomy, the F-to-A+ grading rubric, and the triage → heal → verify orchestration protocol. The protocol is harness-agnostic: `/gaia-fitness` runs it standalone, and it is written so a larger audit harness can run the same protocol over the same seven categories as one bucket of a deeper loop.
+The protocol is harness-agnostic: `/gaia-fitness` runs it standalone, and it is written so a larger audit harness can run the same protocol over the same seven categories as one bucket of a deeper loop.
 
 The `/gaia-fitness` skill's harness layer handles branch / repo-state: creating a `chore/gaia-fitness-<timestamp>` branch when HEAD is on the default branch and fixes are available, running triage-only when HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, and never committing. See the `/gaia-fitness` skill reference for the full branching algorithm. That harness layer is not part of the triage/heal protocol described here.
 
@@ -182,7 +182,7 @@ The Orchestrator dispatches the seven category checks as **parallel subagents** 
 
 **Structured findings only flow back to the Orchestrator.** Raw command output stays in subagent context to avoid return-budget truncation. Each auditor returns an array of `{severity, file, remediation, fingerprint}` objects.
 
-The auditors are recall-oriented; they surface anything suspicious from a fixed knowledge cutoff, so they over-flag (an unfamiliar-but-valid hook event, a permission pair that only looks redundant, a schema example mistaken for an unfilled placeholder). The Orchestrator adjudicates every finding against the repo before grading: drop the false positives (consult [Decided / not findings](#decided--not-findings)), keep the real ones. The grades and the heal phase operate on the adjudicated set, not the raw auditor output. Do not rubber-stamp.
+The auditors are recall-oriented; they surface anything suspicious from a fixed knowledge cutoff, so they over-flag (an unfamiliar-but-valid hook event, a permission pair that only looks redundant, a schema example mistaken for an unfilled placeholder). The Orchestrator adjudicates every finding against the repo before grading: drop the false positives (consult [Decided / not findings](#decided--not-findings)), keep the real ones. The grades and the heal phase operate on the adjudicated set, not the raw auditor output.
 
 ### Heal phase
 

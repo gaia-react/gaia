@@ -11,7 +11,7 @@ tags: [entity, project]
 
 ## What it is
 
-GAIA React is a thoroughly-configured React workflow for Claude. The current iteration (`gaia`, version `1.6.1`) is a spiritual successor to the original GAIA Flash Framework.
+GAIA React is a React workflow for Claude. The current iteration (`gaia`, version `1.6.1`) is a spiritual successor to the original GAIA Flash Framework.
 
 ## Authors / maintainers
 
@@ -24,7 +24,7 @@ GAIA React is a thoroughly-configured React workflow for Claude. The current ite
 
 ## History
 
-The original GAIA was a Flash framework: the most popular Flash framework worldwide (second only to Adobe Flex, which targeted enterprise). It was used to build 100K+ Flash sites and adopted by every major digital agency. GAIA React has been refined over 4+ years across multiple production projects.
+The original GAIA was a Flash framework, used to build 100K+ Flash sites and widely adopted across digital agencies.
 
 ## Naming convention
 
