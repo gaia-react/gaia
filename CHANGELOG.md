@@ -23,7 +23,8 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Removed
 
-- the vestigial `react-router-dom` dependency, a v6/v7 re-export shim that React Router 8 drops entirely; GAIA runs framework mode and imports everything from `react-router` (`HydratedRouter` comes from `react-router/dom`), so it was already dead weight on v7. `/update-gaia` leaves an existing `react-router-dom` in your `package.json` by design (adopter-owned dependencies are never auto-removed), so run `pnpm remove react-router-dom` to drop it; `pnpm knip` also flags it as unused after this release (#419)
+- the vestigial `react-router-dom` dependency, a v6/v7 re-export shim that React Router 8 drops entirely; GAIA runs framework mode and imports everything from `react-router` (`HydratedRouter` comes from `react-router/dom`), so it was already dead weight on v7. `/update-gaia` leaves an existing `react-router-dom` in your `package.json` by design (adopter-owned dependencies are never auto-removed); `pnpm knip` also flags it as unused after this release (#419)
+  - **Action required:** run `pnpm remove react-router-dom` to drop it
 
 ### Fixed
 
