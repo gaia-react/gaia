@@ -229,10 +229,11 @@ Persist the answer as `gh_mirror_optin: <bool>` in working memory for this sessi
 
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
-First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row):
+First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row). Then sweep any merged-but-unarchived SPEC folder into `archived/`, the safety net for a PR that merged out-of-band or a `Keep in place` disposition that left the folder active. Both passes are best-effort and fail-open; the archive sweep runs second so it acts on the rows reconcile just advanced to `merged`:
 
 ```bash
 bash .specify/extensions/gaia/lib/spec-reconcile.sh "$PWD" 2>/dev/null || true
+bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" 2>/dev/null || true
 ```
 
 Then run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an unfinalized **draft** SPEC already exists, a prior authoring session that never reached the canonical save (step 9). The allocator reports only drafts; a finalized SPEC (`specified`/`merged`) is never surfaced here, because you resume a draft, not a frozen artifact.
