@@ -87,6 +87,20 @@ const goodUatPassArgv = [
   'a'.repeat(32),
 ];
 
+const timeToResolvedArgv = (abandoned: string): string[] => [
+  'time_to_resolved_spec',
+  '--spec-id',
+  'SPEC-014',
+  '--question-count',
+  '10',
+  '--duration-seconds',
+  '1800',
+  '--area-tags',
+  'visual',
+  '--abandoned',
+  abandoned,
+];
+
 describe('handleEmit', () => {
   let sandbox: Sandbox;
   let stderrSpy: ReturnType<typeof vi.spyOn>;
@@ -140,6 +154,45 @@ describe('handleEmit', () => {
     expect(cloudLine.event_type).toBe('uat_pass');
     expect(cloudLine._local).toBeUndefined();
     expect(mentorshipLine.schema_version).toBe(1);
+  });
+
+  test('--abandoned false emits abandoned: false (success path)', async () => {
+    await enableMentorship(sandbox.roots);
+
+    const exit = await handleEmit(timeToResolvedArgv('false'), {
+      roots: sandbox.roots,
+    });
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    const cloudLine = JSON.parse(
+      readLines(todayJsonl(sandbox.roots.cloudDir))[0] ?? '{}'
+    ) as {payload?: Record<string, unknown>};
+    expect(cloudLine.payload?.abandoned).toBe(false);
+  });
+
+  test('--abandoned true emits abandoned: true (abandoned-exit path)', async () => {
+    await enableMentorship(sandbox.roots);
+
+    const exit = await handleEmit(timeToResolvedArgv('true'), {
+      roots: sandbox.roots,
+    });
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    const cloudLine = JSON.parse(
+      readLines(todayJsonl(sandbox.roots.cloudDir))[0] ?? '{}'
+    ) as {payload?: Record<string, unknown>};
+    expect(cloudLine.payload?.abandoned).toBe(true);
+  });
+
+  test('--abandoned rejects a non-boolean value, no writes', async () => {
+    await enableMentorship(sandbox.roots);
+
+    const exit = await handleEmit(timeToResolvedArgv('nope'), {
+      roots: sandbox.roots,
+    });
+
+    expect(exit).toBe(EXIT_CODES.PAYLOAD_VALIDATION_FAILED);
+    expect(existsSync(todayJsonl(sandbox.roots.cloudDir))).toBe(false);
   });
 
   test('UAT-009: writes only cloud when mentorship is disabled', async () => {

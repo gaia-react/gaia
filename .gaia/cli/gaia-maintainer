@@ -26591,6 +26591,14 @@ var ArgParseError = class extends Error {
   arg;
 };
 var parseValueByKind = {
+  boolean: (token, valueToken) => {
+    if (valueToken === "true") return true;
+    if (valueToken === "false") return false;
+    throw new ArgParseError(
+      `flag ${token} expects true or false; got ${valueToken}`,
+      token
+    );
+  },
   json: (token, valueToken) => {
     try {
       return JSON.parse(valueToken);
@@ -26631,18 +26639,13 @@ var parseArgs4 = (argv) => {
     if (definition === void 0) {
       throw new ArgParseError(`unknown flag: ${token}`, token);
     }
-    if (definition.kind === "boolean") {
-      flags[definition.target] = true;
-      index += 1;
-    } else {
-      const valueToken = rest[index + 1];
-      if (valueToken === void 0 || valueToken.startsWith("--")) {
-        throw new ArgParseError(`flag ${token} expects a value`, token);
-      }
-      const parser = parseValueByKind[definition.kind];
-      flags[definition.target] = parser(token, valueToken);
-      index += 2;
+    const valueToken = rest[index + 1];
+    if (valueToken === void 0 || valueToken.startsWith("--")) {
+      throw new ArgParseError(`flag ${token} expects a value`, token);
     }
+    const parser = parseValueByKind[definition.kind];
+    flags[definition.target] = parser(token, valueToken);
+    index += 2;
   }
   return { eventType, flags };
 };
@@ -27865,8 +27868,7 @@ var GROUP_RULES = [
       "@react-router/node",
       "@react-router/remix-routes-option-adapter",
       "@react-router/serve",
-      "react-router",
-      "react-router-dom"
+      "react-router"
     ],
     group: "react-router"
   },
