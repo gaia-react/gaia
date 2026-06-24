@@ -16,7 +16,7 @@ Evidence:
 
 - `.specify/extensions/gaia/templates/spec-template.md`: frontmatter with `spec_id`, `type`, `status: in-progress`, `immutable: true`, `wiki_promote_default`, `chain_trigger`, plus body fields.
 - `.specify/presets/gaia/templates/spec-template.md`: same skeleton, applied via the preset for any `/speckit-specify` entry path.
-- `.claude/skills/gaia/references/spec.md` Step 8, explicit save target `.gaia/local/specs/SPEC-NNN/SPEC.md`.
+- `.claude/skills/gaia/references/spec.md` Step 9, explicit save target `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 - `lib/spec-allocator.sh`: monotonic zero-padded `SPEC-NNN` ids.
 
 ## UAT-002: preset overrides applied at /specify time
@@ -74,7 +74,7 @@ Evidence:
 
 Evidence:
 
-- `.claude/skills/gaia/references/spec.md` Steps 4 (Gate 1), 7 (Gate 2), 8 (save).
+- `.claude/skills/gaia/references/spec.md` Steps 4 (Gate 1), 8 (Gate 2), 9 (save).
 - Step 4 caches the gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json` (consumed by self-review for drift detection, see UAT-016).
 
 ## UAT-007: constitution placeholder gate
@@ -101,7 +101,7 @@ Evidence (v2 reshape, slash-command, not shell script):
 - `.specify/extensions/gaia/commands/lint.md`: slash-command body that invokes `bash .specify/extensions/gaia/lib/lint.sh <path>` and surfaces findings.
 - `lib/lint.sh`: pure helper: stdin-free, takes a path arg, returns `{"ok": bool, "findings": [...]}`. Smoke test against `.gaia/local/specs/SPEC-001/SPEC.md` returns `{"ok":true,"findings":[]}`.
 - Sandbox transcript: `after_specify` event renders `EXECUTE_COMMAND: speckit.gaia.lint` directive automatically.
-- The block semantics live in `references/spec.md` Step 9, the wrapper agent reads the lint failure message and chooses not to advance past save.
+- The block semantics live in `references/spec.md` Step 10, the wrapper agent reads the lint failure message and chooses not to advance past save.
 
 ## UAT-009: no machine-local memory writes
 
@@ -123,7 +123,7 @@ Evidence:
 
 Evidence (v2 reshape, inline `AskUserQuestion`, not `on_save`):
 
-- `.claude/skills/gaia/references/spec.md` Step 11, inline `AskUserQuestion` with normative phrasing and the two options (Yes Recommended / No defer). The `on_save` hook does not exist in spec-kit; the chain-trigger lives in the wrapper command body.
+- `.claude/skills/gaia/references/spec.md` Step 12, inline `AskUserQuestion` with normative phrasing and the two options (Yes Recommended / No defer). The `on_save` hook does not exist in spec-kit; the chain-trigger lives in the wrapper command body.
 - Sandbox transcript: `on_save` event renders `(no hooks)`, confirms the lifecycle does not include this event and the inline placement is the correct location.
 
 ## UAT-011: immutability + reopen ceremony
@@ -135,7 +135,7 @@ Evidence (v2 reshape, inline `AskUserQuestion`, not `on_save`):
 Evidence:
 
 - `lib/lint.sh` reopen-ceremony branch: when `status: reopened`, body must contain `## Reopen rationale` and `## UAT diff` sections; missing → lint fail with `reopen_missing_rationale` / `reopen_missing_diff` finding codes.
-- `commands/lint.md` documents the reopen-ceremony enforcement. The wrapper (`references/spec.md` Step 9) honors the lint failure for reopens.
+- `commands/lint.md` documents the reopen-ceremony enforcement. The wrapper (`references/spec.md` Step 10) honors the lint failure for reopens.
 
 ## UAT-012: optional GitHub Issue mirror
 
@@ -146,19 +146,19 @@ Evidence:
 Evidence:
 
 - `lib/gh-mirror.sh`: three guard conditions (`gh auth`, `has_issues`, `permission ∈ {admin,write}`). On any failure: telemetry record to `.gaia/local/telemetry/gh-mirror.jsonl`, exit 0, no SPEC mutation.
-- `references/spec.md` Step 10, invocation pattern `bash .specify/extensions/gaia/lib/gh-mirror.sh "$PWD" "<spec-id>" "<spec-rel-path>"`. CLI args (no stdin payload, the v1 stdin-payload contract was fictional).
+- `references/spec.md` Step 11, invocation pattern `bash .specify/extensions/gaia/lib/gh-mirror.sh "$PWD" "<spec-id>" "<spec-rel-path>"`. CLI args (no stdin payload, the v1 stdin-payload contract was fictional).
 - On success: stamps `gh_issue_url` into the SPEC frontmatter idempotently via in-place awk rewrite.
 
-## UAT-013: resume vs start-new for in-progress SPECs
+## UAT-013: resume vs start-new for unfinalized draft SPECs
 
-**Given** an in-progress SPEC at `.gaia/local/specs/`.
+**Given** an unfinalized draft SPEC (its `.gaia/specs.json` ledger row at `status: draft`).
 **When** user invokes `/gaia-spec` without a force-new flag.
 **Then** the wrapper asks `"Resume SPEC-NNN, or start new (leaves SPEC-NNN open)?"` via `AskUserQuestion`; user choice honored.
 
 Evidence:
 
-- `.claude/skills/gaia/references/spec.md` Step 2, pre-flight `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"` returns the in-progress SPEC id (or `none`); on hit, prompt with the normative phrasing and two options.
-- `lib/spec-allocator.sh in_progress <root>`: scans `.gaia/local/specs/SPEC-*/SPEC.md` for frontmatter `status: in-progress`. Smoke test against the live repo finds nothing in-progress (SPEC-001 is in-progress per its own frontmatter).
+- `.claude/skills/gaia/references/spec.md` Step 2, pre-flight `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"` returns the first unfinalized draft SPEC id (or `none`); on hit, prompt with the normative phrasing and two options.
+- `lib/spec-allocator.sh in_progress <root>`: returns the first `.gaia/specs.json` ledger row with `status: draft`. A finalized SPEC (`specified`/`merged`/`archived`) is never returned; its merged transition is reconciled from git ground truth by `spec-reconcile.sh`.
 
 ## UAT-014: research subagent dispatch with announce
 
@@ -193,7 +193,7 @@ Evidence:
 
 - `.specify/extensions/gaia/extension.yml`: `hooks.after_clarify.command: speckit.gaia.self-review` (mandatory).
 - `.specify/extensions/gaia/commands/self-review.md`: checklist covers all five categories (placeholders, scope drift, inconsistency, ambiguity, pending). Reads gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json` for drift comparison.
-- `references/spec.md` Step 6, wrapper applies fixes for any drift/ambiguity/inconsistency findings before Gate 2 (Step 7) presents.
+- `references/spec.md` Step 6, wrapper applies fixes for any drift/ambiguity/inconsistency findings before Gate 2 (Step 8) presents.
 - Sandbox transcript: `after_clarify` event renders `EXECUTE_COMMAND: speckit.gaia.self-review` directive automatically.
 
 ## UAT-017: pending clarifications block-or-defer
@@ -227,7 +227,7 @@ All 18 UATs map to artifacts on this branch. Three UATs changed shape vs. PR #84
 | UAT     | PR #84 satisfier                                                                                     | v2 satisfier                                                                                                 |
 | ------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | UAT-008 | `hooks/after_specify.sh` shell script                                                                | `commands/lint.md` slash-command + `lib/lint.sh` helper, fired via `after_specify` hook                      |
-| UAT-010 | `on_save` hook (fictional event)                                                                     | Inline `AskUserQuestion` at Step 11 of `references/spec.md`                                                  |
+| UAT-010 | `on_save` hook (fictional event)                                                                     | Inline `AskUserQuestion` at Step 12 of `references/spec.md`                                                  |
 | UAT-018 | `requires.speckit_version: "==X.Y.Z"` + `requires.speckit_invocation` (both fictional schema fields) | `requires.speckit_version: ">=0.8.5,<0.10.0"` (real schema) + `lib/version-check.sh` runtime drift detection |
 
 The v2 model has no fictional events, no fictional manifest fields, and no shell-script hooks. Hooks are slash commands; `EXECUTE_COMMAND` directives are rendered by spec-kit's `HookExecutor` and the agent invokes them as Claude skills.

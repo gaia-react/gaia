@@ -6,7 +6,7 @@
 # Usage:
 #   spec-allocator.sh next <repo_root>      # prints next SPEC-NNN id, writes ledger row
 #   spec-allocator.sh highest <repo_root>   # prints highest known SPEC-NNN, or "none"
-#   spec-allocator.sh in_progress <repo_root>  # prints first in-progress SPEC id, or "none"
+#   spec-allocator.sh in_progress <repo_root>  # prints first unfinalized (draft) SPEC id, or "none"
 #
 # Authority: git is the truth, .gaia/specs.json is a fast index. `next` performs a
 # self-heal pass before allocating, any SPEC id found in a branch name (the
@@ -110,62 +110,35 @@ append_ledger_row() {
   mv "$tmp" "$ledger_path"
 }
 
-# Print the first in-flight SPEC id, or "none". Single-id, none-when-empty
-# contract preserved. Source order:
-#   1. Ledger rows with status draft OR in-progress (ledger array order). The
-#      row is created at `next` (skill step 3), strictly before the first
-#      draft-<spec_id>.md cache write, so this covers the widest in-flight
-#      window, including the draft phase a parallel session would otherwise
-#      miss.
-#   2. Fallback: canonical .gaia/local/specs/<spec_id>/SPEC.md frontmatter
-#      scan for status: in-progress (legacy case, SPEC file in-progress but
-#      no ledger row, e.g. a backfilled / hand-edited ledger).
+# Print the first unfinalized (draft) SPEC id, or "none". Single-id,
+# none-when-empty contract preserved.
+#
+# A SPEC is "in flight" for resume-vs-start-new purposes only while it is being
+# authored. The ledger row is created at `next` (skill step 3) with status
+# "draft" and flipped to "specified" when the SPEC artifact is finalized and
+# frozen (skill step 8). Both transitions are owned by the same authoring
+# session, so this signal cannot go stale on a fragile downstream chain.
+#
+# A finalized SPEC (specified / merged / archived) is downstream feature work
+# tracked by branches and PRs, NOT a draft a new /gaia-spec session would
+# resume, so it is deliberately not reported here. The merged transition is
+# reconciled from git ground truth by spec-reconcile.sh, out of this read path.
+#
+# Source: the .gaia/specs.json ledger only. The prior SPEC-file frontmatter
+# fallback is intentionally gone: every SPEC gets a ledger row at allocation, so
+# a draft always has one, and scanning frozen SPEC files re-flagged finalized
+# work as in-flight forever (the staleness this design removes).
 in_progress_spec() {
   if [ -f "$ledger_path" ]; then
     local id
     id="$(jq -r '
-      [.specs[] | select(.status == "draft" or .status == "in-progress")][0].id // empty
+      [.specs[] | select(.status == "draft")][0].id // empty
     ' "$ledger_path" 2>/dev/null || true)"
     if [ -n "$id" ]; then
       printf '%s\n' "$id"
       return
     fi
   fi
-
-  if [ ! -d "$specs_dir" ]; then
-    echo "none"
-    return
-  fi
-  local f
-  while IFS= read -r -d '' f; do
-    local in_fm=0 status="" id=""
-    # Canonical id is the containing folder's basename, not the filename
-    # (the inner file is always named SPEC.md).
-    id="$(basename "$(dirname "$f")")"
-    local line
-    while IFS= read -r line; do
-      if [ "$in_fm" -eq 0 ] && [ "$line" = "---" ]; then
-        in_fm=1
-        continue
-      fi
-      if [ "$in_fm" -eq 1 ] && [ "$line" = "---" ]; then
-        break
-      fi
-      if [ "$in_fm" -eq 1 ]; then
-        case "$line" in
-          status:*)
-            status="${line#status:}"
-            status="${status## }"
-            status="${status%% *}"
-            ;;
-        esac
-      fi
-    done < "$f"
-    if [ "$status" = "in-progress" ] && [ -n "$id" ]; then
-      echo "$id"
-      return
-    fi
-  done < <(find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print0 2>/dev/null | sort -z)
   echo "none"
 }
 

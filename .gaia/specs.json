@@ -33,15 +33,24 @@
       "id": "SPEC-005",
       "allocated_at": "2026-06-23T03:23:53Z",
       "source": "allocated",
-      "status": "in-progress",
-      "intent": "Give the mandatory pre-merge code-review-audit a per-author mode so a"
+      "status": "merged",
+      "intent": "Give the mandatory pre-merge code-review-audit a per-author mode so a",
+      "merged_at": "2026-06-23T09:18:52Z"
     },
     {
       "id": "SPEC-006",
       "allocated_at": "2026-06-23T06:45:28Z",
       "source": "allocated",
-      "status": "in-progress",
-      "intent": "GAIA's test-driven workflow gains a determinism-scoped, two-axis quality"
+      "status": "merged",
+      "intent": "GAIA's test-driven workflow gains a determinism-scoped, two-axis quality",
+      "merged_at": "2026-06-23T12:21:43Z"
+    },
+    {
+      "id": "SPEC-007",
+      "allocated_at": "2026-06-24T11:15:17Z",
+      "source": "allocated",
+      "status": "specified",
+      "intent": "In GAIA projects Claude hand-rolls solutions that the bundled remix-utils"
     }
   ]
 }

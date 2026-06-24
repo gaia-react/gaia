@@ -49,13 +49,13 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 3: Resume-vs-start-new prompt
 
-**Action.** With an in-progress SPEC already at `.gaia/local/specs/SPEC-NNN/SPEC.md`, invoke `/gaia-spec "another feature"` without a force-new flag.
+**Action.** With an unfinalized draft SPEC already allocated (its `.gaia/specs.json` ledger row at `status: draft`, canonical save not yet reached), invoke `/gaia-spec "another feature"` without a force-new flag.
 
 **Expected outcome.**
 
 - `before_specify.sh` returns `{"action": "prompt", "prompt": "Resume SPEC-NNN, or start new (leaves SPEC-NNN open)?", "default": "resume"}`.
 - The wrapper surfaces the prompt via `AskUserQuestion` with two options (Resume, Start new).
-- Choosing "Resume" reopens the existing draft; choosing "Start new" leaves SPEC-NNN's `status: in-progress` untouched and allocates a fresh id.
+- Choosing "Resume" reopens the existing draft; choosing "Start new" leaves SPEC-NNN's draft ledger row untouched and allocates a fresh id.
 
 **UATs covered.** UAT-013.
 
@@ -229,7 +229,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 15: Inline chain-trigger prompt
 
-**Action.** After save (and any optional GH mirror), the `/gaia-spec` wrapper executes Step 11 of `.claude/skills/gaia/references/spec.md`, an inline `AskUserQuestion`. There is no `on_save` hook in spec-kit v0.8.5; the chain trigger lives in the wrapper itself.
+**Action.** After save (and any optional GH mirror), the `/gaia-spec` wrapper executes Step 12 of `.claude/skills/gaia/references/spec.md`, an inline `AskUserQuestion`. There is no `on_save` hook in spec-kit v0.8.5; the chain trigger lives in the wrapper itself.
 
 **Expected outcome.**
 
