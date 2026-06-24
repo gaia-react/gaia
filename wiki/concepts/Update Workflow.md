@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-06-24
+updated: 2026-06-25
 tags: [release, claude, adopter, drift]
 ---
 
@@ -39,7 +39,7 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 1. Read `.gaia/VERSION`. Missing → tell user to run `/gaia-init` on a fresh `create-gaia` scaffold.
 2. Resolve latest release via `gh release list --repo gaia-react/gaia` (or GitHub API fallback).
 3. Compare to baseline. Same or older → exit, unless `.gaia/VERSION` has been bumped but not committed (an interrupted prior run), in which case surface the residual state so the adopter can commit or discard. Never downgrade.
-4. Show the adopter the release notes and **confirm** before touching anything. If on `main`/`master`, create the feature branch only after this confirmation, not before, so an early exit leaves no orphan branch.
+4. Show the adopter the **full baseline-to-latest CHANGELOG range** (every versioned section newer than `$BASELINE`, fetched no-auth from the release tarball) and **confirm** before touching anything. An adopter several versions behind sees every intervening entry, not just the latest tag's body. Step 9 cross-references the Step 7a removal no-op and deletion sweep against `**Action required:**`-anchored entries in the displayed range and surfaces a documented, opt-in cleanup suggestion for any convention-marked entry the merge walk left in place. Never auto-removes a dependency or deletes a file. If on `main`/`master`, create the feature branch only after this confirmation, not before, so an early exit leaves no orphan branch.
 5. Prune prior runs' leftover artifacts before this run creates its own: drop stale `.gaia-backup/` copies and stale `.gaia/cache/` tag dirs (keeping the baseline tarball), and remove `.gaia-merge/` only when empty. Then download baseline + latest tarballs to `.gaia/cache/`. Stop on any download or extraction failure; do not proceed with a partial cache.
 6. Walk the latest manifest. For each file, apply the decision table below.
 7. Report summary: overwritten / added / removed / skipped / conflicts / deleted / backed up.
