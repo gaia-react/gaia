@@ -11,7 +11,7 @@ tags: [dependency, claude, decision-map]
 
 # remix-utils
 
-A curated utility belt bundled for React Router 7 apps. This page is a Claude-targeted decision map: it decides *when* to reach for a bundled utility instead of hand-rolling a primitive that is redundant, or subtly wrong. It does not document *how*. The living source of truth for how each utility works is the library's own shipped reference, `node_modules/remix-utils/README.md`, cited below by section title. The export subpath is the durable key (the README is version-pinned at 9.3.1); this page copies no API prose.
+A decision map for the bundled `remix-utils` belt: *when* to reach for a utility instead of hand-rolling a primitive that is redundant or subtly wrong. For *how* each one works, see `node_modules/remix-utils/README.md`, cited below by section title.
 
 ## Decision map
 
