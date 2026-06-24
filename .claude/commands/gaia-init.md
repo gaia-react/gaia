@@ -28,8 +28,10 @@ The project was just created from the template, `node_modules/` does not exist y
 Tell the user: "Installing dependencies, this may take a minute…" then run:
 
 ```bash
-pnpm install
+pnpm install --config.confirm-modules-purge=false
 ```
+
+`--config.confirm-modules-purge=false` keeps the install non-interactive. `/gaia-init` runs with no TTY, so if the clone carries a stale or mismatched `node_modules/`, a bare `pnpm install` aborts with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` waiting for a purge confirmation it can never receive. The flag suppresses only that prompt and leaves lockfile resolution untouched, so the immediately-following `/update-deps` step can still mutate dependencies. (Do not use `CI=true`: it forces `--frozen-lockfile`, which refuses any lockfile change.)
 
 If install fails, stop and report the error. Do not continue.
 
@@ -47,9 +49,11 @@ basename "$(git rev-parse --show-toplevel)"
 
 Use this as the slug default. Derive the title default by replacing hyphens and underscores with spaces and applying title case (e.g. `my-cool-app` → `My Cool App`).
 
-Use AskUserQuestion. Ask up to three questions, in this exact order:
+Ask the two language questions one at a time (Q2 interpolates Q1's answer), then batch the three project-identity questions.
 
-### Q1, Primary app language
+### Q1, Primary app language (asked alone)
+
+Use AskUserQuestion with this single question:
 
 > What should be the primary language for this app's UI?
 >
@@ -61,39 +65,40 @@ If the user picks "Other", follow up with a free-text question:
 
 > Enter the ISO 639-1 code (e.g. `pl`) and the English name (e.g. `Polish`).
 
-### Q2, Additional languages
+Hold the resolved choice as `{primary}` (ISO code + English name); the next batch interpolates it into its labels, which is why Q1 is asked first and alone.
 
-> Any additional languages to support?
+### Q2, Additional languages + i18n scaffolding (asked alone)
+
+The primary is now known, so its name can appear in the labels below. Ask this as its own AskUserQuestion. It folds the old standalone "localize later?" decision into the no-additional-languages branch, so that decision never needs its own round-trip:
+
+> Any additional languages, on top of {primary}?
 >
-> - None
-> - Comma-separated list of ISO 639-1 codes (free-text, e.g. `es, de, ar`)
+> - Keep i18n scaffolding (Recommended): no additional languages; translations stay {primary}-only for now, and the scaffolding stays wired up so you can localize later with no rework.
+> - Strip i18n out entirely: no additional languages, and remove i18n. Smaller bundle, less infrastructure. Two costs to weigh: stripping runs a long teardown step during init (more time and tokens now), and it's **hard to reverse**: re-adding i18n later is substantial manual work (there's no add-i18n runbook; you'd reconstruct the scaffolding and re-wrap every string by hand). Only pick this if you're confident the app stays single-language.
+> - To add languages, pick "Other" and enter a comma-separated list of ISO 639-1 codes (e.g. `es, de, ar`); don't repeat {primary}.
 
-### Q3, Localize later? (only ask if Q1 + Q2 collapses to a single language)
+Mark "Keep i18n scaffolding" as the recommended/default option.
 
-Compute `LOCALES = unique(Q1 code, Q2 codes)`. If `len(LOCALES) > 1`, skip Q3.
+Resolve two values from the answer:
 
-Otherwise, ask:
+- `LOCALES = unique({primary} code, any additional codes entered above)`. Either no-additional-languages option leaves `LOCALES` as just `[{primary}]`.
+- `STRIP_I18N = true` only when the user chose "Strip i18n out entirely"; otherwise `false`. Adding languages or keeping the scaffolding both leave it `false`.
 
-> You've picked one language. Plan to localize later?
->
-> - Yes, keep i18n scaffolding wired up; translations will be English-only for now.
-> - No, strip i18n out entirely. Less infrastructure, smaller bundle, easier to remove than to add later.
+### Q3–Q5, Project identity (one AskUserQuestion, three questions)
 
-Default: Yes.
+These three go together as a group. Ask them in a single AskUserQuestion call:
 
-### Other questions still asked here
+**GitHub username for CODEOWNERS** (suggest @username format)
 
-After the language questions, ask these three together (single AskUserQuestion):
+**Project title** (default: title-cased folder name from above)
 
-- GitHub username for CODEOWNERS (suggest @username format)
-- The title of their project (default: title-cased folder name from above)
-- The kebab-case slug derived from the title (default: folder name from above)
+**kebab-case slug** derived from the title (default: folder name from above)
 
 ## Step 3: Run the init CLI
 
 The deterministic surface lives behind `gaia init`. Each subcommand is idempotent and records its own state in `.gaia/init-state.json`, so a failed step can be resumed via `gaia init resume`.
 
-Compute the boolean `STRIP_I18N`: `true` when `len(LOCALES) == 1` AND the user picked "No" in Q3, otherwise `false`.
+`STRIP_I18N` and `LOCALES` were resolved in Step 2: `STRIP_I18N` is `true` only when the user chose "strip i18n out entirely", otherwise `false`.
 
 Run sequentially, stopping at the first non-zero exit:
 
@@ -119,10 +124,17 @@ For each locale in `LOCALES` where the locale is NOT `en`:
 
 If `STRIP_I18N == true`, read `.claude/instructions/remove-i18n.md` and execute every step. Stop on any failure.
 
-## Step 5: Replace the logo + update CODEOWNERS
+## Step 5: Create CODEOWNERS
 
-- Replace `app/assets/images/gaia-logo.svg` with the project's own logo SVG. The Storybook brand logo imports it directly, no `preview.ts` edits needed.
-- Replace `.github/CODEOWNERS` contents with just the user's GitHub username (the whole file becomes a single line like `* @username`).
+GAIA branding, the logo included, is stripped automatically by `gaia init strip-branding` in Step 3: FUNDING.yml, the `GaiaLogo` component, `app/assets/images/gaia-logo.svg`, and the Storybook brand are all removed or rewritten to the project title. There is no logo to supply during init.
+
+The GAIA template does not ship a `.github/CODEOWNERS`, so create one: a single line naming the user's GitHub username as the repo-wide code owner.
+
+```bash
+printf '* @%s\n' "<github-username>" > .github/CODEOWNERS
+```
+
+`<github-username>` is the bare handle (no leading `@`); the `* @` prefix makes that user the default owner for every path.
 
 ## Step 6: Check `.env`
 
@@ -188,14 +200,18 @@ Pin spec-kit at the version declared in `.specify/extensions/gaia/extension.yml`
 SPECKIT_PIN="v0.8.5"
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify init --here --ai claude --force
-# specify extension/preset add --dev deletes the source dir when source == dest;
-# copy to /tmp first so the originals in the project tree survive.
-cp -r "${PROJECT_ROOT}/.specify/extensions/gaia" /tmp/gaia-ext-tmp
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev /tmp/gaia-ext-tmp
-rm -rf /tmp/gaia-ext-tmp
-cp -r "${PROJECT_ROOT}/.specify/presets/gaia" /tmp/gaia-preset-tmp
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev /tmp/gaia-preset-tmp
-rm -rf /tmp/gaia-preset-tmp
+# specify extension/preset add --dev consumes its source dir when source == install
+# dest (.specify/extensions|presets/gaia in PROJECT_ROOT). Stage a throwaway copy in a
+# unique in-project temp dir so source != dest and the originals in .specify/ survive.
+# A trap removes the staging dir on exit (repo-relative rm; absolute /tmp rm is sandbox-blocked).
+SPECKIT_STAGE="$(mktemp -d "${PROJECT_ROOT}/.gaia-speckit-stage.XXXXXX")"
+trap 'rm -rf "${SPECKIT_STAGE}"' EXIT
+cp -r "${PROJECT_ROOT}/.specify/extensions/gaia" "${SPECKIT_STAGE}/extension"
+yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev "${SPECKIT_STAGE}/extension"
+cp -r "${PROJECT_ROOT}/.specify/presets/gaia" "${SPECKIT_STAGE}/preset"
+yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev "${SPECKIT_STAGE}/preset"
+rm -rf "${SPECKIT_STAGE}"
+trap - EXIT
 ```
 
 `specify init --here --ai claude --force` writes `.specify/{extensions.yml, integration.json, integrations/, memory/constitution.md, scripts/, templates/, workflows/}` and `.claude/skills/speckit-*` plus `CLAUDE.md`. The `--force` flag is required because the GAIA template ships some `.specify/` paths already; `specify init` refuses without it.
@@ -298,7 +314,7 @@ After all installs and plugin registrations above, run a probe-after pass to con
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | React Doctor    | `[ -d ~/.claude/skills/react-doctor ]`                                                                                                                  |
 | Playwright CLI  | `command -v playwright-cli && playwright-cli --version >/dev/null 2>&1`                                                                                 |
-| Serena          | `claude mcp list 2>/dev/null \| grep -q '^serena '`                                                                                                     |
+| Serena          | `claude mcp list 2>/dev/null \| grep -q '^serena:'`                                                                                                     |
 | typescript-lsp  | `claude plugin list 2>/dev/null \| grep -q 'typescript-lsp'`                                                                                            |
 | claude-obsidian | `claude plugin list 2>/dev/null \| grep -q 'claude-obsidian'`                                                                                           |
 | spec-kit        | `[ -f .specify/integration.json ] && grep -q 'gaia' .specify/extensions/.registry 2>/dev/null && grep -q 'gaia' .specify/presets/.registry 2>/dev/null` |
@@ -462,7 +478,7 @@ tags: [meta, cache]
 
 ### 11b. Overwrite `wiki/log.md`
 
-Read `wiki/log.md` first, then replace the entire file with the following content (the GAIA development log is irrelevant to the new project):
+Read `wiki/log.md` first, then replace the entire file with the following content (the GAIA development log is irrelevant to the new project). Substitute `<LANGUAGES>` with this run's configured locale codes, comma-separated (e.g. `en` or `en, es, de`); if i18n was stripped, write `single-language (i18n removed)`.
 
 ```md
 ---
@@ -481,8 +497,8 @@ Append-only. New entries at the TOP.
 ## [<TODAY>] /gaia-init | project initialized
 
 - Project name: <PROJECT_TITLE>
-- Languages: en + <OTHER_LANGS>
-- Removed: GAIA branding (FUNDING.yml, GaiaLogo component); replaced gaia-logo.svg with project logo
+- Languages: <LANGUAGES>
+- Removed: GAIA branding (FUNDING.yml, GaiaLogo component, README, Storybook brand, gaia-logo.svg)
 - Installed: React Doctor, TDD, Playwright CLI skills; typescript-lsp, claude-obsidian plugins
 ```
 
@@ -500,15 +516,15 @@ Then run the CLI's init finalize step, it removes the `/init` interceptor hook, 
 .gaia/cli/gaia init finalize
 ```
 
-Then output:
+Then output the message below verbatim. Output the `cd` line exactly as written, even though Claude is currently running inside the project folder: when the user exits Claude back to the terminal, their shell returns to the directory they launched from (the parent), not the project folder. Do not tell the user they are "already inside" the folder or that they can skip the `cd`.
 
-> <Project Title> is ready for development. Before restarting, open Claude from inside the project folder:
+> <Project Title> is ready for development. To pick up the new plugin and skill state, exit Claude, then from your terminal:
 >
 > ```
 > cd <project-folder-name>
 > ```
 >
-> Then restart Claude to pick up the new plugin and skill state.
+> Then start Claude again.
 >
 > After you create your GitHub repo and push, run `/setup-gaia-ci` to wire up tokens and enable CI.
 

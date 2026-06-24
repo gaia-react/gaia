@@ -111,7 +111,6 @@ describe('classifyPath', () => {
     expect(classifyPath('CLAUDE.md')).toBe('shared');
     expect(classifyPath('wiki/index.md')).toBe('shared');
     expect(classifyPath('.github/workflows/release.yml')).toBe('shared');
-    expect(classifyPath('.github/CODEOWNERS')).toBe('shared');
     expect(classifyPath('.github/FUNDING.yml')).toBe('shared');
   });
 
@@ -643,6 +642,7 @@ describe('byte-identity vs generate-manifest.mjs', () => {
           '.claude/commands/gaia-release.md',
           '.gaia/scripts',
           '.gaia/release-exclude',
+          '.github/CODEOWNERS',
           'CHANGELOG.md',
           'README.md',
           'wiki/entities',
@@ -700,6 +700,7 @@ describe('byte-identity vs generate-manifest.mjs', () => {
         expect(manifest.files['wiki/overview.md']).toBe('wiki-owned');
         expect(manifest.files['wiki/index.md']).toBe('shared');
         expect(manifest.files['.github/workflows/release.yml']).toBe('shared');
+        expect(manifest.files['.github/CODEOWNERS']).toBeUndefined();
 
         return;
       }

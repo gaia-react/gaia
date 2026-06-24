@@ -43,6 +43,30 @@ export default Header;
 const TEMPLATE_README =
   '# {{PROJECT_TITLE}}\n\nWelcome to {{PROJECT_TITLE}}!\n';
 
+const PREVIEW_BEFORE = `import type {Preview} from '@storybook/react-vite';
+import {themes} from 'storybook/theming';
+import brandImage from '~/assets/images/gaia-logo.svg';
+import '~/styles/tailwind.css';
+
+const BRAND = {
+  brandImage,
+  brandTarget: '_blank',
+  brandTitle: 'GAIA',
+  brandUrl: 'https://gaiareact.com/docs/',
+};
+
+const preview: Preview = {
+  parameters: {
+    darkMode: {
+      dark: {...themes.dark, ...BRAND},
+      light: {...themes.light, ...BRAND},
+    },
+  },
+};
+
+export default preview;
+`;
+
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-strip-branding-'));
   mkdirSync(path.join(root, '.github'), {recursive: true});
@@ -72,6 +96,18 @@ const setupSandbox = (): Sandbox => {
     'utf8'
   );
   writeFileSync(path.join(root, 'README.md'), '# GAIA stale\n', 'utf8');
+  mkdirSync(path.join(root, '.storybook'), {recursive: true});
+  writeFileSync(
+    path.join(root, '.storybook', 'preview.ts'),
+    PREVIEW_BEFORE,
+    'utf8'
+  );
+  mkdirSync(path.join(root, 'app', 'assets', 'images'), {recursive: true});
+  writeFileSync(
+    path.join(root, 'app', 'assets', 'images', 'gaia-logo.svg'),
+    '<svg></svg>\n',
+    'utf8'
+  );
 
   return {
     cleanup: () => {
@@ -154,6 +190,22 @@ describe('init strip-branding', () => {
       '<span className="text-body text-xl font-bold">{t(\'meta.siteName\')}</span>'
     );
 
+    expect(
+      existsSync(
+        path.join(sandbox.root, 'app', 'assets', 'images', 'gaia-logo.svg')
+      )
+    ).toBe(false);
+
+    const preview = readFileSync(
+      path.join(sandbox.root, '.storybook', 'preview.ts'),
+      'utf8'
+    );
+    expect(preview).not.toContain('gaia-logo.svg');
+    expect(preview).not.toContain('brandImage');
+    expect(preview).not.toContain("brandTitle: 'GAIA'");
+    expect(preview).not.toContain('gaiareact.com');
+    expect(preview).toContain("brandTitle: 'Hello World'");
+
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('strip-branding');
     expect(state.step_args['strip-branding']).toEqual({title: 'Hello World'});
@@ -169,6 +221,10 @@ describe('init strip-branding', () => {
       path.join(sandbox.root, 'app', 'components', 'Header', 'index.tsx'),
       'utf8'
     );
+    const previewAfter = readFileSync(
+      path.join(sandbox.root, '.storybook', 'preview.ts'),
+      'utf8'
+    );
 
     const second = run(['--title', 'Hello World'], {cwd: sandbox.root});
     expect(second).toBe(0);
@@ -178,6 +234,12 @@ describe('init strip-branding', () => {
       'utf8'
     );
     expect(headerSecond).toBe(headerAfter);
+
+    const previewSecond = readFileSync(
+      path.join(sandbox.root, '.storybook', 'preview.ts'),
+      'utf8'
+    );
+    expect(previewSecond).toBe(previewAfter);
 
     const state = readState(sandbox.root);
     const stripCount = state.completed_steps.filter(
