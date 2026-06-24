@@ -53,8 +53,9 @@
       "id": "SPEC-007",
       "allocated_at": "2026-06-24T11:15:17Z",
       "source": "allocated",
-      "status": "specified",
-      "intent": "In GAIA projects Claude hand-rolls solutions that the bundled remix-utils"
+      "status": "merged",
+      "intent": "In GAIA projects Claude hand-rolls solutions that the bundled remix-utils",
+      "merged_at": "2026-06-24T17:09:24Z"
     }
   ]
 }
