@@ -8,17 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 - **Minor**: new skills, commands, or wiki concept pages; opt-in features, removed or renamed `.claude/` paths.
 - **Patch**: bugfixes, docs, and in-range dependency bumps.
 
+## Adopter-action convention
+
+A release change that requires the adopter to act, run a command or hand-migrate, is authored as a `### Removed` or `### Changed` entry carrying an explicit **Action required:** line and/or a literal command to run (for example, `pnpm remove <pkg>`). That exact phrasing is the deterministic anchor GAIA's two CHANGELOG consumers key on: `/update-gaia` cross-references it during a merge to surface a documented, opt-in cleanup suggestion (it never auto-removes a dependency or deletes a file, the adopter decides), and the maintainer-only `release-notes` skill keys on it to tell an agent-automated cleanup (reframe as a benefit or drop) from a human-must-act migration (keep, plainly framed, with a pointer to the steps). Keep the marker and command literal so both consumers match the anchor instead of free-parsing prose. The `react-router-dom` removal below is the worked example.
+
 ## [Unreleased]
 
 ### Added
 
+- an adopter-action CHANGELOG convention (a `### Removed` / `### Changed` entry carrying an **Action required:** line and/or a literal `pnpm` command) that `/update-gaia` reads to surface documented, opt-in cleanups during a merge (when GAIA drops a dependency you still have, it suggests the exact `pnpm remove` command instead of leaving a silent no-op, never acting on your behalf), and that the maintainer-only `release-notes` skill keys on to reframe or drop agent-automated cleanups while keeping genuine migrations. `/update-gaia`'s confirm gate now shows the full baseline-to-latest CHANGELOG range, so an adopter several versions behind sees every intervening entry, not just the latest tag's notes
 - `react-code` skill leads with a platform-first ladder (existing GAIA code → web platform like `Intl`/`URL`/`crypto.randomUUID` → already-installed dep → new dep → custom code) to walk before adding a dependency or hand-rolling a primitive
 - `/gaia-harden` weighs an efficacy lens (Axis 3) before recommending a form: a recurring finding proves the problem, not the fix, so when the recommended form is prose and no cheap before/after evidence shows it would change behavior, that surfaces as a defer/decline signal for the human, never an auto-decline
 - point Zod schema work at Zod's official LLM docs, auto-discovered from `node_modules/zod/package.json` (`llmsFull`/`llms`), and treat them as authoritative over training memory so valid Zod 4 forms are not rejected from stale v3 recollection
 
 ### Removed
 
-- the vestigial `react-router-dom` dependency, a v6/v7 re-export shim that React Router 8 drops entirely; GAIA runs framework mode and imports everything from `react-router` (`HydratedRouter` comes from `react-router/dom`), so it was already dead weight on v7. `/update-gaia` leaves an existing `react-router-dom` in your `package.json` by design (adopter-owned dependencies are never auto-removed), so run `pnpm remove react-router-dom` to drop it; `pnpm knip` also flags it as unused after this release (#419)
+- the vestigial `react-router-dom` dependency, a v6/v7 re-export shim that React Router 8 drops entirely; GAIA runs framework mode and imports everything from `react-router` (`HydratedRouter` comes from `react-router/dom`), so it was already dead weight on v7. `/update-gaia` leaves an existing `react-router-dom` in your `package.json` by design (adopter-owned dependencies are never auto-removed); `pnpm knip` also flags it as unused after this release (#419)
+  - **Action required:** run `pnpm remove react-router-dom` to drop it
 
 ### Fixed
 
