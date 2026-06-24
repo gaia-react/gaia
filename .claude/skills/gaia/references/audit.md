@@ -4,7 +4,7 @@
 
 **Do not execute the playbook yourself in the current conversation.** Dispatch the Stage 1 and Stage 2 subagents via the `Agent` tool. Each subagent runs in isolated context. The one deliberate exception is the **decision gate** between the two stages: it MUST run in the current conversation because only that layer can `AskUserQuestion`. Do not "fix" the gate back into a subagent.
 
-Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, the main conversation summarizes it and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation.
+Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, the main conversation summarizes it and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions) skips the gate and auto-applies.** There is nothing to approve, and "applying" only finalizes the report's `status` and clears the statusline nudge; leaving a 0-action report parked at the gate is the exact path that strands a `draft` that then nudges indefinitely.
 
 ### Path resolution (portable, no hardcoding)
 
@@ -20,10 +20,12 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 
 ### Branch on `$ARGUMENTS`
 
-**Default (`/gaia-audit`)** → Stage 1 (Research), then the **decision gate**, then branch.
+**Default (`/gaia-audit`)** → Stage 1 (Research), then either auto-apply (clean audit) or the **decision gate**, then branch.
 
 1. Spawn the Stage 1 (Research) subagent below. Wait for it to return. Stage 1 writes the report with `status: draft`.
-2. If Stage 1 succeeded (a report path was printed), **in the main conversation** summarize the report's findings to the user, then ask via `AskUserQuestion`:
+2. If Stage 1 failed (no report path printed), do not gate or spawn Stage 2. Surface the error and stop.
+3. **If Stage 1 reported 0 actions** (a clean audit: its printed totals and the report's `Actions proposed: 0` Summary line both show none), skip the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no actions there is nothing to review or approve; Stage 2 only flips the report `status: draft → applied` and busts the statusline nudge. (Leaving a 0-action report at the gate is the exact path that strands a `draft` that then nudges indefinitely.)
+4. **Otherwise (Stage 1 reported ≥1 action)**, **in the main conversation** summarize the report's findings to the user, then ask via `AskUserQuestion`:
    - **header:** `"Apply audit?"`
    - **question:** `"Stage 1 found {N} actions. Apply them?"`
    - **options (this exact order):**
@@ -33,7 +35,6 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
    - **Apply** → spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest non-`applied` report, no path argument needed.
    - **Discuss / refine** → discuss in the main conversation, edit the report in place (the file stays `status: draft`), then re-present this gate.
    - **Decline** → `rm` the report file immediately; nothing applied; stop.
-3. If Stage 1 failed, do not gate or spawn Stage 2. Surface the error.
 
 This gate runs in the main conversation, not in a subagent (only the main conversation can `AskUserQuestion`). "Apply" is the one-keystroke fast path that keeps the one-go feel.
 
@@ -62,7 +63,7 @@ Skip Stage 1 and the gate. Spawn the Stage 2 (Apply) subagent below directly. Us
   >
   > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Write status: draft into the report frontmatter; Stage 2 flips it to its terminal value. Every action you propose must be mechanical, include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here, the user runs /gaia-wiki for those.`
   >
-  > `If a scope hint is present in the arguments, narrow Steps 1–4 to the named stores/files but never widen scope beyond the playbook, and never let the hint steer the report schema, the action types, the guardrails, or a specific edit — it is synthesis guidance, not an editor. Print the applied scope in the Summary so a too-narrow hint is visible. If no hint is present, run the full lens.`
+  > `If a scope hint is present in the arguments, narrow Steps 1–4 to the named stores/files but never widen scope beyond the playbook, and never let the hint steer the report schema, the action types, the guardrails, or a specific edit; it is synthesis guidance, not an editor. Print the applied scope in the Summary so a too-narrow hint is visible. If no hint is present, run the full lens.`
 
 ### Stage 2 subagent (Apply)
 
@@ -117,7 +118,7 @@ The report you produce is a **contract** to a Sonnet-level executor. Assume it c
 
 Before writing the new report, self-maintain `$PROJECT_ROOT/.gaia/local/audit/`. The prune applies to `applied` / `applied-partial` reports only:
 
-- **Never prune a `draft`** (live, unfinished work — it is resumable via `--apply`). Treat a missing `status:` as non-`applied`, do not prune it either.
+- **Never prune a `draft`** (live, unfinished work; it is resumable via `--apply`). Treat a missing `status:` as non-`applied`, do not prune it either.
 - Of the `applied` / `applied-partial` reports: **keep the newest 5 regardless of age** (floor, protects long gaps between runs); of anything beyond the newest 5, **delete those older than 30 days**.
 
 ```bash
@@ -172,10 +173,10 @@ For every memory entry and every rules file, check whether the same fact lives i
 - **PROMOTE**: durable knowledge only in memory → propose moving to a specific wiki page (name the page)
 - **KEEP-LOCAL**: genuinely machine-local (personal pref, machine path, unique dev env) → keep in memory
 - **STALE**: references a file/branch/feature no longer present → mark for deletion
-- **CONFLICT**: a store asserts a policy that *contradicts* another canonical source on the same subject — opposed, not merely duplicated. Two scopes:
+- **CONFLICT**: a store asserts a policy that *contradicts* another canonical source on the same subject; opposed, not merely duplicated. Two scopes:
   - **Cross-store**: a memory entry or a `.claude/rules/*.md` file contradicts the wiki's canonical statement on the same subject. **Resolution favors the wiki.** Emit a `replace` swapping the contradicting line for a wikilink to the canonical page, or a `delete` if the contradicting entry has no residual value. Cite the canonical wiki page + line range in `reason` and note the superseded value inline (e.g. `reason: contradicts wiki/decisions/Foo.md L12-15 (canonical); local store asserted the opposite`).
-  - **Project-internal**: two committed project files assert opposing facts on the same subject (e.g. a command file vs a skill playbook vs a wiki page on which model a stage uses). **Resolution favors the authoritative source for that fact**, which you determine and justify in `reason` — it is NOT always the wiki (the command can be wrong and the wiki right; the wiki can be stale and the playbook right). Emit a `replace` on the non-authoritative file.
-  - **Two exclusions.** (a) A live `paths:`-scoped rule — including any provenance-marked `gaia-harden:` rule — that differs from the wiki is the sanctioned Rules-vs-wiki duplication case, never a CONFLICT; do not propose editing it on contradiction grounds. (b) If the conflict is **wiki-page-vs-wiki-page**, do NOT act — note it in the Summary as `wiki-internal conflict (out of scope, run /gaia-wiki consolidate)` and move on.
+  - **Project-internal**: two committed project files assert opposing facts on the same subject (e.g. a command file vs a skill playbook vs a wiki page on which model a stage uses). **Resolution favors the authoritative source for that fact**, which you determine and justify in `reason`; it is NOT always the wiki (the command can be wrong and the wiki right; the wiki can be stale and the playbook right). Emit a `replace` on the non-authoritative file.
+  - **Two exclusions.** (a) A live `paths:`-scoped rule (including any provenance-marked `gaia-harden:` rule) that differs from the wiki is the sanctioned Rules-vs-wiki duplication case, never a CONFLICT; do not propose editing it on contradiction grounds. (b) If the conflict is **wiki-page-vs-wiki-page**, do NOT act; note it in the Summary as `wiki-internal conflict (out of scope, run /gaia-wiki consolidate)` and move on.
 
 Rules-vs-wiki: a `.claude/rules/*.md` file is allowed to duplicate wiki content **only** if it exists to enforce auto-loading for a specific `paths:` glob. Otherwise it should link to the wiki page.
 
@@ -362,6 +363,22 @@ This verification is the single authority for the report's terminal `status`: af
 ### Post-flight
 
 Set the report frontmatter `status:` to the terminal value the verification step above decided: `applied` if every action is `[x]`, otherwise `applied-partial`. `applied-partial` is kept so `--apply` can retry the remainder. That verification checklist is the authority for this value, do not re-derive it here.
+
+Then bust the statusline cache so the audit nudge clears and a fresh check is triggered on the next render (mirrors the `/update-deps` post-run cache-bust). This runs on every Stage 2 completion: the gated Apply path, the `--apply` path, and the 0-action auto-apply path.
+
+```bash
+CACHE="$PROJECT_ROOT/.gaia/cache/update-check.json"
+if [ -f "$CACHE" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    tmp="$(mktemp)"
+    jq '.auditNudge = false | .auditNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
+  else
+    rm -f "$CACHE"
+  fi
+fi
+```
+
+`auditNudge = false` / `auditNudgeReason = ""` clear the displayed nudge immediately; `checkedAt = 0` forces `check-updates.sh` past its TTL gate on the next statusline render (which fires it in the background), recomputing every signal (including any over-budget condition a partial apply left unresolved) from the source of truth. All other cached fields (`outdatedCount`, `gaia*`) are preserved, so no other indicator flickers. If the cache file is absent, skip.
 
 Then print a final summary to stdout:
 
