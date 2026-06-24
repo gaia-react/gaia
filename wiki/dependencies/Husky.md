@@ -2,7 +2,7 @@
 type: dependency
 status: active
 package: 'husky, lint-staged, is-ci'
-version: '9.1.7, 17.0.7'
+version: '9.1.7, 17.0.7, 4.1.0'
 role: pre-commit
 created: 2026-04-20
 updated: 2026-06-24
@@ -17,7 +17,6 @@ Pre-commit hooks. Configured by `pnpm prepare`: `is-ci` skips the `husky` setup 
 
 The hook runs that sequence only when staged changes touch `app/`, `test/`, or `.storybook/`; otherwise it prints `No changed files -- skipping lint-staged` and exits. It also fails fast if more than one react-doctor config file exists at repo root, since react-doctor resolves the highest-precedence file and silently shadows the rest.
 
-> [!key-insight] Tests on commit, not just lint
-> GAIA runs **`vitest --run --changed`** from the pre-commit hook. Most setups skip this because it's slow; GAIA accepts the cost because it catches regressions before they reach CI.
+Running `vitest --run --changed` from the pre-commit hook catches regressions before they reach CI.
 
 See [[Quality Gate]].

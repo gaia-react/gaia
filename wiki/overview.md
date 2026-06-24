@@ -9,21 +9,18 @@ tags: [overview, gaia]
 
 # GAIA React
 
-GAIA React is the most thoroughly configured React workflow for Claude available. It exists to eliminate the multi-day setup tax on new projects: linting, testing, i18n, CI, pre-commit hooks, dark mode, Storybook, MSW, and Claude Code integration are all wired together and working, not just installed.
-
-It is the spiritual successor to the **GAIA Flash Framework**, the most popular Flash framework in the world (used to build 100K+ Flash sites). GAIA React has been refined over 4+ years across multiple production teams.
+GAIA React eliminates the multi-day setup tax on new projects: linting, testing, i18n, CI, pre-commit hooks, dark mode, Storybook, MSW, and Claude Code integration are all wired together and working, not just installed.
 
 ## Philosophy
 
-> [!key-insight] Complete workflow, not full-stack kit
-> GAIA deliberately ships **no component library**. You choose what fits. The value is in infrastructure and developer experience that every project needs but nobody wants to set up twice. Every tool is pre-configured but **removable**.
+GAIA deliberately ships **no component library**; you choose what fits. Every tool is pre-configured but **removable**.
 
 See [[GAIA Philosophy]] for the long version.
 
 ## Tech Stack at a Glance
 
 - **Framework**: [[React Router 7]] (SSR, file-based routing via [[remix-flat-routes]])
-- **Forms**: [[Conform]] + [[Zod]], the star of the template, see [[Form Components]]
+- **Forms**: [[Conform]] + [[Zod]], see [[Form Components]]
 - **Styling**: [[Tailwind]] v4 with `tailwind-merge`, plus [[react-icons]] icons
 - **i18n**: [[remix-i18next]] with TypeScript language files (not JSON)
 - **State**: minimal; `app/state/index.tsx` is a passthrough; theme is cookie-based (no React state for theme)
@@ -69,16 +66,12 @@ See [[Routing]].
 
 ## Quality Gate
 
-Every change passes through [[Quality Gate]]: typecheck → lint → unit test → E2E → dev smoke → build. Pre-commit hooks enforce a subset on every commit; Claude runs the full pipeline before any source-touching commit. **Zero tolerance for warnings.**
+Every change passes through [[Quality Gate]]: typecheck → lint → unit test → E2E → dev smoke → build. Pre-commit hooks enforce a subset on every commit; Claude runs the full pipeline before any source-touching commit. Zero tolerance for warnings.
 
 ## Knowledge Hygiene
 
 `/gaia-audit` runs a two-stage Sonnet audit (research → mechanical apply, gated by sha256 + verbatim drift checks) over memory, wiki, auto-loaded `CLAUDE.md` files, and `.claude/rules/`. Flags duplication, stale entries, conflicting instructions, and auto-load bloat, with wiki as the source of truth (broken wikilinks are repaired by `/gaia-wiki lint`). See [[GAIA Audit]].
 
-## Where to Go Next
+## See also
 
-- [[GAIA Philosophy]]: the **why**
-- [[Folder Structure]]: the **what**
-- [[Quality Gate]]: the **how we keep it clean**
-- [[Claude Integration]]: the **how Claude collaborates**
-- [[Form Components]]: the star feature
+[[GAIA Philosophy]], [[Folder Structure]], [[Quality Gate]], [[Claude Integration]], [[Form Components]]

@@ -8,7 +8,7 @@ tags: [concept, gaia, workflow, support]
 
 # Forensics
 
-`/gaia-forensics [description]` is a read-only GAIA skill that turns a workflow misfire into a redacted, classified, filing-ready bug report in one invocation. Any GAIA user can invoke it immediately after a failure; no prior knowledge of the internals is needed. The skill body lives at `.claude/skills/gaia/references/forensics.md` (dispatched by the `/gaia` router skill).
+`/gaia-forensics [description]` is a read-only GAIA skill that turns a workflow misfire into a redacted, classified, filing-ready bug report in one invocation. The skill body lives at `.claude/skills/gaia/references/forensics.md` (dispatched by the `/gaia` router skill).
 
 ## What it captures
 
@@ -58,9 +58,5 @@ If the failure classifies as a probable bug and `gh` is installed, the skill off
 - **Never captures file bodies from `app/` or `wiki/`.** Filenames from these directories may appear in state summaries; full contents are excluded.
 - **Never captures Claude Code session JSONL contents.** Session files are excluded in full; not even their paths appear in the report.
 - **Never pre-checks `gh` auth or label existence.** On `gh` failure, the native error is surfaced verbatim and the local report remains in place.
-
-## Why this exists
-
-When a GAIA workflow misfires, the distance between "something went wrong" and "the maintainer has enough information to reproduce it" is often large. The forensics skill closes that gap in one command, capturing the relevant environment snapshot, classifying the failure against a known taxonomy, and redacting sensitive data before anything leaves the machine.
 
 See [[Claude Skills]], [[Quality Gate]].

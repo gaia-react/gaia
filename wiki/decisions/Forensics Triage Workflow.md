@@ -59,8 +59,6 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 | ------------------------------------- | ----------------------------------------------------------------------- |
 | `app/`                                | Application source.                                                     |
 | `wiki/`                               | Knowledge base; human-curated.                                          |
-| `studio/`                             | Private maintainer vault.                                               |
-| `website/`                            | Marketing + docs site.                                                  |
 | `.specify/specs/`                     | spec-kit specs.                                                         |
 | `.specify/memory/`                    | spec-kit memory.                                                        |
 | `.gaia/local/specs/`                  | GAIA spec artifacts.                                                    |

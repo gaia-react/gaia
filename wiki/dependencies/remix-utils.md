@@ -30,7 +30,7 @@ Risk-sorted, footguns first. Each row pairs a trap to hand-roll with the resolva
 
 ## Considered but excluded
 
-Second-tier candidates weighed against the risk axis (likelihood-of-hand-rolling times cost-of-getting-it-wrong) and cut, so the curation is transparent rather than a silent cap:
+Second-tier candidates weighed against the risk axis (likelihood-of-hand-rolling times cost-of-getting-it-wrong) and cut:
 
 - `cache-assets` (`remix-utils/cache-assets`): lower-stakes perf convenience.
 - `preload-route-assets` (`remix-utils/preload-route-assets`): lower-stakes perf convenience.
@@ -38,14 +38,14 @@ Second-tier candidates weighed against the risk axis (likelihood-of-hand-rolling
 
 ## Deliberate divergences
 
-Where GAIA intentionally does not reach for remix-utils, with the reason, so the choice is not re-litigated:
+Where GAIA intentionally does not reach for remix-utils, with the reason:
 
 - **locale** → GAIA uses `remix-i18next` (full i18next: namespaces, SSR `Accept-Language`), more robust than remix-utils locales. See [[remix-i18next]].
-- **redirect** → GAIA uses a Zod `.refine()` `isLocalRedirect` guard (`app/utils/http.ts`). Validate-and-reject fits GAIA's Conform/Zod architecture better than safe-redirect's sanitize-and-fallback, and the safety is equivalent (both block `//` and `/\`). This is the in-GAIA position for the safe-redirect core row above: know the open-redirect trap, and in GAIA code guard with `isLocalRedirect`.
+- **redirect** → GAIA uses a Zod `.refine()` `isLocalRedirect` guard (`app/utils/http.ts`). Validate-and-reject fits GAIA's Conform/Zod architecture better than safe-redirect's sanitize-and-fallback, and the safety is equivalent (both block `//` and `/\`).
 - **responses** → GAIA uses native React Router 7 `data()`, the modern idiom over remix-utils `responses`.
 - **cookie** → GAIA uses native `createCookie`; locale is a known string, so a typed-cookie wrapper is low value.
 - **value-debounce** → GAIA's `useDebounce` is a *value* debounce, which is **not** remix-utils' fetcher-debounce (`use-debounce-fetcher`). No overlap, so both coexist.
 
 ## Where each layer lives
 
-`node_modules/remix-utils/README.md` is the how, this map is the when, and the two trigger surfaces (the `react-code` skill's platform-first ladder and the `react-router-docs` path-scoped rule) are the awareness that points here.
+`node_modules/remix-utils/README.md` is the API reference; this page is the decision map. Two surfaces point here: the `react-code` skill's platform-first ladder and the `react-router-docs` path-scoped rule.

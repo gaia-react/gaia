@@ -72,7 +72,7 @@ The scrubbed `wiki/hot.md` + `wiki/log.md` contain only the release marker; none
 
 Marker-delimited maintainer-only blocks let the source repo carry content useful to maintainers (entity pages, internal cross-references, audit-decision rationale) without leaking into adopter scaffolds. Wrap a block in `<!-- gaia:maintainer-only:start -->` / `<!-- gaia:maintainer-only:end -->`; `gaia-maintainer release scrub` strips the block before tar.
 
-The leak-check pass is the convergence mechanism the audit trajectory predicted: free-form audits found roughly one novel issue class per round; codified detection patterns running against the staging tree close the loop. New leak patterns become explicit `.gaia/release-scrub.yml` entries: visible, reviewable, deterministic.
+New leak patterns become explicit `.gaia/release-scrub.yml` entries: visible, reviewable, deterministic.
 
 ## Distribution Boundary
 

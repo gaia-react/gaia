@@ -9,7 +9,7 @@ tags: [entity, person]
 
 # Steven Sacks
 
-Author and maintainer of [[GAIA]] React template.
+Author and maintainer of [[GAIA]] React.
 
 - Email: `stevensacks@gmail.com`
 - LinkedIn: <https://www.linkedin.com/in/stevensacks/>

@@ -44,6 +44,6 @@ Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecor
 
 ## Test data: no MSW addon
 
-GAIA does not use `msw-storybook-addon`. API-level mocking is not used in stories; pull seed data from the `@msw/data` collections in `test/mocks/database` directly. See `.claude/rules/storybook.md` for the usage pattern.
+`msw-storybook-addon` ships in devDependencies but is **not wired into Storybook config**; stories do no API-level mocking. Pull seed data from the `@msw/data` collections in `test/mocks/database` directly. See `.claude/rules/storybook.md` for the usage pattern. The unused addon is a removal candidate.
 
 For the current `.storybook/` file inventory, query Serena (`.claude/rules/code-search.md`).
