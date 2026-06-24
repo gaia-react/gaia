@@ -144,9 +144,20 @@ Pin spec-kit at the version declared in `.specify/extensions/gaia/extension.yml`
 
 ```bash
 SPECKIT_PIN="v0.8.5"
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify init --here --ai claude --force
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev .specify/extensions/gaia
-yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev .specify/presets/gaia
+# specify extension/preset add --dev consumes its source dir when source == install
+# dest (.specify/extensions|presets/gaia in PROJECT_ROOT). Stage a throwaway copy in a
+# unique in-project temp dir so source != dest and the originals in .specify/ survive.
+# A trap removes the staging dir on exit (repo-relative rm; absolute /tmp rm is sandbox-blocked).
+SPECKIT_STAGE="$(mktemp -d "${PROJECT_ROOT}/.gaia-speckit-stage.XXXXXX")"
+trap 'rm -rf "${SPECKIT_STAGE}"' EXIT
+cp -r "${PROJECT_ROOT}/.specify/extensions/gaia" "${SPECKIT_STAGE}/extension"
+yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify extension add --dev "${SPECKIT_STAGE}/extension"
+cp -r "${PROJECT_ROOT}/.specify/presets/gaia" "${SPECKIT_STAGE}/preset"
+yes | uvx --from "git+https://github.com/github/spec-kit.git@${SPECKIT_PIN}" specify preset add --dev "${SPECKIT_STAGE}/preset"
+rm -rf "${SPECKIT_STAGE}"
+trap - EXIT
 ```
 
 If any step fails, surface verbatim and halt. After all three succeed:

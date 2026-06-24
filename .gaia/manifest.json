@@ -172,7 +172,6 @@
     ".github/audit/tests/repo-scope.bats": "owned",
     ".github/audit/tests/resolve-audit-base.bats": "owned",
     ".github/audit/tests/resolve-check-base.bats": "owned",
-    ".github/CODEOWNERS": "shared",
     ".github/FUNDING.yml": "shared",
     ".github/ISSUE_TEMPLATE/bug_report.yml": "owned",
     ".github/ISSUE_TEMPLATE/config.yml": "owned",

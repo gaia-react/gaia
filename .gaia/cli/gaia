@@ -18406,9 +18406,11 @@ var parseFlags5 = (argv) => {
 };
 var FUNDING_PATH = ".github/FUNDING.yml";
 var GAIA_LOGO_DIR = "app/components/GaiaLogo";
+var GAIA_LOGO_ASSET = "app/assets/images/gaia-logo.svg";
 var README_TEMPLATE = ".gaia/templates/README.md";
 var README_TARGET = "README.md";
 var HEADER_FILE = "app/components/Header/index.tsx";
+var PREVIEW_FILE = ".storybook/preview.ts";
 var PLACEHOLDER = "{{PROJECT_TITLE}}";
 var removeIfPresent2 = (cwd, relative) => {
   const absolute = path19.join(cwd, relative);
@@ -18448,6 +18450,27 @@ var stripGaiaLogoFromHeader = (cwd) => {
     atomicWriteFileSync(target, next);
   }
 };
+var debrandStorybook = (cwd, title) => {
+  const target = path19.join(cwd, PREVIEW_FILE);
+  if (!existsSync13(target)) return;
+  const original = readFileSync14(target, "utf8");
+  let next = original;
+  next = next.replaceAll(
+    /^import\s+brandImage\s+from\s+['"]~\/assets\/images\/gaia-logo\.svg['"];?\n/gmu,
+    ""
+  );
+  const safeTitle = title.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+  next = next.replaceAll(
+    /const BRAND = \{[\s\S]*?\};/gu,
+    () => `const BRAND = {
+  brandTarget: '_blank',
+  brandTitle: '${safeTitle}',
+};`
+  );
+  if (next !== original) {
+    atomicWriteFileSync(target, next);
+  }
+};
 var run19 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS17.has(argv[0])) {
     process.stdout.write(HELP_TEXT17);
@@ -18466,8 +18489,10 @@ var run19 = (argv, options = {}) => {
   try {
     removeIfPresent2(cwd, FUNDING_PATH);
     removeIfPresent2(cwd, GAIA_LOGO_DIR);
+    removeIfPresent2(cwd, GAIA_LOGO_ASSET);
     writeReadme(cwd, parsed.flags.title);
     stripGaiaLogoFromHeader(cwd);
+    debrandStorybook(cwd, parsed.flags.title);
   } catch (error51) {
     const message = error51 instanceof Error ? error51.message : String(error51);
     if (message.includes("not found")) {

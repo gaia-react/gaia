@@ -51,9 +51,10 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
 // Root governance files (CHANGELOG.md, CODE_OF_CONDUCT.md, CONTRIBUTING.md,
-// LICENSE, README.md, SUPPORTERS.md) are handled by `.gaia/release-exclude`
-// category 11 (maintainer-only project governance) and never reach this
-// classifier. Don't add them to the sets below.
+// LICENSE, README.md, SUPPORTERS.md) and `.github/CODEOWNERS` are handled by
+// `.gaia/release-exclude` category 11 (maintainer-only project governance) and
+// never reach this classifier. Don't add them to the sets below. /gaia-init
+// writes a fresh CODEOWNERS for the adopter, so GAIA's must not ship.
 //
 // Canonical source of the git-tracked adopter-owned sentinels. `release
 // runtime-deps` imports this set and extends it with its own runtime-only
@@ -76,7 +77,6 @@ export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
 const SHARED = new Set([
   '.claude/settings.json',
   '.gaia/audit-ci.yml',
-  '.github/CODEOWNERS',
   '.github/FUNDING.yml',
   'CLAUDE.md',
   'package.json',
