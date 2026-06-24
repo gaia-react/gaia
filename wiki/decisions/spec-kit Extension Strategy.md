@@ -34,7 +34,7 @@ Block semantics live inside the hook command body; a "block" is a refusal messag
 
 ### 2. There is no `on_save` event
 
-Spec-kit's hook lifecycle covers `before_specify`, `after_clarify`, `after_specify`, `before_implement`, and `after_implement`. **There is no `on_save`.** The chain-trigger from `/gaia-spec` to `/gaia-plan` lives inline at the end of the wrapper (Step 11 in `references/spec.md`), not in a hook.
+Spec-kit's hook lifecycle covers `before_specify`, `after_clarify`, `after_specify`, `before_implement`, and `after_implement`. **There is no `on_save`.** The chain-trigger from `/gaia-spec` to `/gaia-plan` lives inline at the end of the wrapper (Step 12 in `references/spec.md`), not in a hook.
 
 ### 3. Preset must declare `strategy: wrap` for command replacement
 
