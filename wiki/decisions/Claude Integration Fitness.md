@@ -25,7 +25,7 @@ Seven graded categories. Each category produces findings at `error`, `warning`, 
 Checks `.claude/settings.json` and `.claude/settings.local.json` hook entries:
 
 - Every hook command path exists on disk and is executable.
-- No relative path that resolves only when the shell's working directory is the project root; paths must be stated in a form that is unambiguous regardless of cwd.
+- Hook command paths resolve under GAIA's execution model. Bash runs from the repo root (`.claude/rules/shell-cwd.md`, enforced by `block-rm-rf.sh`), so repo-root-relative paths (e.g. `.claude/hooks/wiki-session-start.sh`) are the correct, intended form. Flag a path only when it resolves under neither an absolute form nor the mandated repo-root cwd.
 - Every hook event name is a valid Claude Code hook event.
 
 The valid Claude Code hook events (the canonical list the auditor checks against, so it does not re-derive an incomplete set from memory) are: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `UserPromptExpansion`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionStart`, `SessionEnd`, `WorktreeCreate`, plus any project-specific events the repo registers (a project that wires its own event names extends this list; an unfamiliar name is a finding only when it is neither in the list above nor registered by the project's own tooling).
@@ -79,7 +79,7 @@ Permission-glob semantics: the rule the auditor applies for the strict-subset ch
 
 Checks the GAIA installation:
 
-- Per-file drift between the current contents of files tracked by `.gaia/manifest.json` and the contents the installed GAIA version shipped. Each drifted file is one `warning` finding.
+- Per-file drift between the current contents of files tracked by `.gaia/manifest.json` and the contents the installed GAIA version shipped. Each drifted file is one `warning` finding. This check needs a reference snapshot of the installed version's shipped contents; when none is present (a fresh clone or after a cache clear), the per-file diff is N/A and version-currency plus `gaia-maintainer release manifest --check` carry installation freshness instead.
 - Installed GAIA version vs. latest release: if behind, one `info` finding recommending `/update-gaia`.
 
 ### 7. Wiki fitness
