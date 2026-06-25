@@ -25,7 +25,7 @@ Seven graded categories. Each category produces findings at `error`, `warning`, 
 Checks `.claude/settings.json` and `.claude/settings.local.json` hook entries:
 
 - Every hook command path exists on disk and is executable.
-- Hook command paths resolve under GAIA's execution model. Bash runs from the repo root (`.claude/rules/shell-cwd.md`, enforced by `block-rm-rf.sh`), so repo-root-relative paths (e.g. `.claude/hooks/wiki-session-start.sh`) are the correct, intended form. Flag a path only when it resolves under neither an absolute form nor the mandated repo-root cwd.
+- Hook command paths resolve under GAIA's execution model. Bash runs from the repo root (the never-cd convention in `.claude/rules/shell-cwd.md`), so repo-root-relative paths (e.g. `.claude/hooks/wiki-session-start.sh`) are the correct, intended form. Flag a path only when it resolves under neither an absolute form nor the mandated repo-root cwd.
 - Every hook event name is a valid Claude Code hook event.
 
 The valid Claude Code hook events (the canonical list the auditor checks against, so it does not re-derive an incomplete set from memory) are: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `UserPromptExpansion`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionStart`, `SessionEnd`, `WorktreeCreate`, plus any project-specific events the repo registers (a project that wires its own event names extends this list; an unfamiliar name is a finding only when it is neither in the list above nor registered by the project's own tooling).
@@ -47,7 +47,7 @@ Checks `.claude/rules/*.md` and cross-references from `CLAUDE.md`:
 
 - No `@`-import of skill files inside a rule; always-loaded rules that transitively preload skills bloat every session.
 - Path-scoping glob syntax in rule frontmatter is valid.
-- Content-vs-glob coherence: a rule path-scoped to a narrow glob must contain advice specific to those paths; universal advice must not be path-scoped (and vice versa).
+- Content-vs-glob coherence: a rule path-scoped to a narrow glob must contain advice relevant when those paths are edited. The glob is an activation trigger (it controls when the rule surfaces), not a claim that the advice is logically confined to those paths, so universal advice deliberately narrowed to an activation context is correct (e.g. portability advice scoped to `.claude/**`). Flag only the inverse defect: a narrow glob whose body is irrelevant to the globbed paths.
 - Rules referenced by `CLAUDE.md` exist at the cited path.
 
 Findings here are typically `warning` severity.
@@ -59,7 +59,7 @@ Checks `CLAUDE.md` (root and any subfolder `CLAUDE.md`s the root names in its fo
 - Size vs. the project's stated size guidance.
 - Every `@`-import resolves to an existing file.
 - Every subfolder `CLAUDE.md` named in a folder map exists.
-- No absolute machine-local paths (paths beginning with a user home directory prefix).
+- No absolute machine-local path used as an operative reference (an `@`-import target, a cited config or source path, or a path an instruction tells the agent to read or write). A home-directory path quoted as a counter-example or naming a location the prose forbids (e.g. the machine-local memory directory) is descriptive prose, not a finding, mirroring the prose carve-out in `.claude/rules/instruction-files.md`.
 - No dead backticked path references (paths cited in backticks that do not exist on disk).
 
 One finding per defect, naming the location and the remediation.
