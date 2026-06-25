@@ -97,8 +97,12 @@ Other wiki pages under `wiki/concepts/`, `wiki/decisions/`, `wiki/dependencies/`
 ### 3. Test harnesses and audit harnesses
 
 - `.gaia/tests/`: bats / smoke harness invoked by maintainer CI.
+- `.gaia/scripts/tests/`: bats suite for the shipped `.gaia/scripts/` helpers.
+- `.github/audit/tests/`: bats suite for the shipped `.github/audit/` helpers (`check-trailer.sh`, `resolve-audit-base.sh`, `resolve-check-base.sh`).
 - `.claude/rules/_internal/`: rules consumed only by the smoke harness; their `@`-imports would dangle on adopter installs.
 - `.specify/extensions/gaia/test/`: GAIA SPEC UAT runbooks.
+
+The two bats suites cover GAIA-owned scripts that ship as `owned` code an adopter never edits, and their only runner (`.github/workflows/audit-ci-tests.yml`) is itself maintainer-only (category 9). The scripts are verified at maintainer CI time and reach adopters already-green, so the suites guard only maintainer changes and have no adopter-side use. The verified scripts ship; their verification rigs do not.
 
 ### 4. CLI maintainer source
 

@@ -87,10 +87,8 @@ full scope.
 ## Source-of-truth links
 
 - Generic last-green resolver: `.github/audit/resolve-check-base.sh` (tests +
-  any future check), tested by `.github/audit/tests/resolve-check-base.bats`.
-- Version-aware audit resolver: `.github/audit/resolve-audit-base.sh`, tested
-  by `.github/audit/tests/resolve-audit-base.bats`.
-- Bats runner: `.github/workflows/audit-ci-tests.yml`.
+  any future check).
+- Version-aware audit resolver: `.github/audit/resolve-audit-base.sh`.
 
 ## See also
 
