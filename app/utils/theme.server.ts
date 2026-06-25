@@ -5,13 +5,13 @@ const COOKIE_NAME = '__theme';
 
 export type Theme = 'dark' | 'light';
 
-export const getTheme = (request: Request): null | Theme => {
+export const getTheme = (request: Request): Theme | undefined => {
   const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return null;
+  if (!cookieHeader) return undefined;
   const parsed = cookie.parse(cookieHeader)[COOKIE_NAME];
   if (parsed === 'light' || parsed === 'dark') return parsed;
 
-  return null;
+  return undefined;
 };
 
 export const setTheme = (theme: 'system' | Theme): string => {

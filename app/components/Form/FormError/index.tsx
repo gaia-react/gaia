@@ -30,7 +30,7 @@ const FormError: FC<FormResultProps> = ({className, hide}) => {
   };
 
   if (!result) {
-    return null;
+    return undefined;
   }
 
   return (

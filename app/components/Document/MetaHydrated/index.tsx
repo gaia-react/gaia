@@ -10,7 +10,7 @@ const MetaHydrated: FC = () => {
     return <meta content="true" name="hydrated" />;
   }
 
-  return null;
+  return undefined;
 };
 
 export default MetaHydrated;

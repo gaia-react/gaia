@@ -95,10 +95,9 @@ const Button: FC<ButtonProps> = ({
   ...props
 }) => {
   const Icon = icon;
-  const iconComponent =
-    Icon ?
-      <Icon className={twJoin(children && 'flex-none', classNameIcon)} />
-    : null;
+  const iconComponent = Icon && (
+    <Icon className={twJoin(children && 'flex-none', classNameIcon)} />
+  );
 
   const innerClassName = twJoin(
     icon && 'flex items-center justify-center',

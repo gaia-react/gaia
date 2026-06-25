@@ -27,7 +27,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
     const statusDiv =
       status || statusText ?
         <div className="space-x-1 pt-px pr-1.5 pl-1 font-sans text-xs leading-none text-white">
-          {status && <span>{status}</span>}
+          {status !== undefined && <span>{status}</span>}
           {statusText && <span>{statusText}</span>}
         </div>
       : undefined;
@@ -62,7 +62,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
     );
   }
 
-  return null;
+  return undefined;
 };
 
 export default ErrorStack;

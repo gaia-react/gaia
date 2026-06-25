@@ -1,6 +1,6 @@
 ---
 name: react-code
-description: Patterns and conventions for writing and editing React code, including components and hooks. Use this skill whenever writing or reviewing React components, hooks (useEffect, useCallback, useState), event handlers, or component extraction decisions. Also trigger when debugging stale closures, infinite re-renders, or unnecessary re-renders caused by memoization issues, or when deciding whether to add a dependency, reach for a web-platform API (Intl, URL, crypto.randomUUID), or hand-roll a primitive.
+description: Patterns and conventions for writing and editing React code, including components and hooks. Use this skill whenever writing or reviewing React components, hooks (useEffect, useCallback, useState), event handlers, or component extraction decisions. Also trigger when debugging stale closures, infinite re-renders, or unnecessary re-renders caused by memoization issues, or when deciding whether to add a dependency, reach for a web-platform API (Intl, URL, crypto.randomUUID), or hand-roll a primitive. Also trigger when choosing a React 19 idiom, deciding between forwardRef and ref-as-prop, useContext and use(), or Context.Provider and the Context shorthand; when conditional rendering risks the && numeric-0 leak; or when tempted to reach for React's form Actions (useActionState, useFormStatus, useOptimistic) instead of React Router's form handling.
 ---
 
 # React Code
@@ -44,7 +44,7 @@ Only use when the function is:
 
 If none apply, skip `useCallback`, it adds indirection without benefit.
 
-**`useState` type inference:** Omit explicit type when inferable from the default value. Only add types for `null` initial values, unions, or complex objects.
+**`useState` type inference:** Omit explicit type when inferable from the default value. Add types for unions or complex objects. For an absent initial value, prefer `undefined` over `null` (GAIA never-null): `useState<T>()` is already typed `T | undefined`.
 
 ### Gate 2: Form Element Check
 
@@ -94,6 +94,58 @@ Every string a user can see or hear, labels, headings, placeholders, button text
 
 See `references/translation-patterns.md` for edge cases (keyPrefix, Trans component, dedup).
 
+### Gate 4: React 19 Idiom Check
+
+GAIA writes React 19 idioms. The work here is to not regress to pre-19 habits, and to not pull in React's framework-level form APIs that React Router already owns.
+
+**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is no longer needed (slated for deprecation in a future release). GAIA has zero `forwardRef`; every Form control destructures `ref` from props. Match that.
+
+```tsx
+// BAD, needless indirection
+const InputText = forwardRef<HTMLInputElement, Props>((props, ref) => <input ref={ref} {...props} />);
+// GOOD, ref is just a prop
+const InputText: FC<Props> = ({ref, ...rest}) => <input ref={ref} {...rest} />;
+```
+
+The ref _type_ (`Ref<T>`, or `ComponentProps<'input'>` already carrying `ref`) is the typescript skill's domain.
+
+**Before writing `&&` in JSX, make the left operand a real boolean.** `&&` returns its left operand when falsy. `false`/`null`/`undefined` render nothing, but a numeric **`0`** is a renderable value and leaks the literal "0" into the DOM. This is the most common React rendering bug, and **lint does not catch it.**
+
+```tsx
+// BAD, renders "0" when the list is empty
+{items.length && <List items={items} />}
+// GOOD, force a real boolean
+{items.length > 0 && <List items={items} />}
+```
+
+For render-or-nothing, a boolean-guarded `&&` is the idiom; it replaces the old `cond ? <X/> : null`. A ternary is only for a genuine either/or where both arms render, never `: null`.
+
+**Before writing `useContext` or `<Context.Provider>`, use the React 19 forms.** Read context with `use()` (unlike `useContext`, it may be called conditionally or after an early return); render the context object directly as the provider.
+
+```tsx
+const nonce = use(NonceContext); // not useContext(NonceContext)
+<NonceContext value={nonce}>{children}</NonceContext>; // not <NonceContext.Provider>
+```
+
+`<Context.Provider>`/`<Context.Consumer>` are legacy (deprecation planned). GAIA uses the `<Context>` shorthand and `use()` exclusively, never `.Provider`, `.Consumer`, or `useContext`. Convert any you find.
+
+**Stay in React Router's lane; don't reach for React's form Actions.** GAIA submits through React Router `<Form>` / `useFetcher` + route `action` exports, validates with Conform + Zod (Gate 2), and reads pending/optimistic state from React Router. React 19's framework-level form hooks duplicate and fight that surface. When tempted, redirect:
+
+| React 19 API (don't use here)          | Use instead                                                                                   |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `useActionState`, `<form action={fn}>` | route `action` + `useActionData`                                                              |
+| `useFormStatus`                        | `useNavigation().state` / `fetcher.state`                                                     |
+| `useOptimistic`                        | fetcher-based optimism (`useOptimisticThemeMode` in `useTheme.ts`)                            |
+| `use(promise)` for route data          | loader + `useLoaderData` (`use(promise)` only for non-route promises inside `<Suspense>`)     |
+
+Metadata is the mirror case: GAIA renders `<title>`/`<meta>` as JSX (React 19 hoisting), not a React Router route `meta`/`links` export. Keep it that way; adding a route `meta` export to a page that already renders `<title>` in JSX produces duplicate tags.
+
+When you do reach for React Router's API, read it from the version-matched docs shipped at `node_modules/react-router/docs`, not the web.
+
+**Render nothing with `undefined` or `false`, never `null`.** The pre-18 "a component must `return null`" rule is gone. A guard clause falls through to an implicit `undefined`, and `return false` / `return undefined` render nothing. GAIA never uses `null` to render nothing; rewrite every `return null` and `: null` render arm to the `undefined` / `false` / `&&` form, existing code included.
+
+For `useEffectEvent` (the sanctioned replacement for stale-deps / latest-ref hacks) and ref-callback cleanup functions, see `references/hook-patterns.md`.
+
 ## Component Structure
 
 - **FC typing:** `const MyComponent: FC<Props> = ({...}) => ...`
@@ -122,11 +174,10 @@ How: Create `ParentComponent/NewSection/index.tsx`, move exclusive types/state/h
 Thin shell only:
 
 - `loader` / `action` functions
-- `meta` export
 - Zod schemas for the action
 - One-line default export: `const MyRoute: FC = () => <MyPage />;`
 
-**No UI code, hooks, state, or sub-components in route files.**
+**No UI code, hooks, state, or sub-components in route files.** Metadata renders as JSX (`<title>`/`<meta>`) in the page, not a route `meta` export (Gate 4).
 
 ### Page components (`app/pages/`)
 

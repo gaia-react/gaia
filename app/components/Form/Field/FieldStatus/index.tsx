@@ -33,10 +33,10 @@ const FieldStatus: FC<FieldStatusProps> = ({
         id={id}
         maxLength={maxLength}
       />
-    : null;
+    : undefined;
 
   const errorElement =
-    error && error !== true ? <FieldError error={error} /> : null;
+    error && error !== true ? <FieldError error={error} /> : undefined;
 
   return (
     <div className={twMerge('mt-1 ml-px', className)}>

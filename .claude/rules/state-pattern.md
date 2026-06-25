@@ -38,14 +38,14 @@ Context holds `Maybe<T>`; hook asserts non-null and returns `T`.
 const ThingsContext = createContext<Maybe<Things>>(undefined);
 
 export const useThings = (): Things => {
-  const context = useContext(ThingsContext) as Maybe<Things>;
+  const context = use(ThingsContext) as Maybe<Things>;
   if (!context)
     throw new Error('useThings must be used within a ThingsProvider');
   return context;
 };
 
 export const ThingsProvider: FC<ThingsProviderProps> = ({children, things}) => (
-  <ThingsContext.Provider value={things}>{children}</ThingsContext.Provider>
+  <ThingsContext value={things}>{children}</ThingsContext>
 );
 ThingsProvider.displayName = 'ThingsProvider';
 ```
@@ -61,14 +61,14 @@ type XContextValue = [Maybe<number>, Dispatch<SetStateAction<Maybe<number>>>];
 const XContext = createContext<XContextValue>([undefined, noop]);
 
 export const useX = () => {
-  const context = useContext(XContext) as Maybe<XContextValue>;
+  const context = use(XContext) as Maybe<XContextValue>;
   if (!context) throw new Error('useX must be used within an XProvider');
   return context;
 };
 
 export const XProvider: FC<XProviderProps> = ({children, initialState}) => {
   const value = useState(initialState);
-  return <XContext.Provider value={value}>{children}</XContext.Provider>;
+  return <XContext value={value}>{children}</XContext>;
 };
 XProvider.displayName = 'XProvider';
 ```

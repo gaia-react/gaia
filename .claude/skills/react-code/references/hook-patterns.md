@@ -7,6 +7,8 @@
 - [Strict Mode & Cleanup](#strict-mode--cleanup)
 - [useCallback, When to Use](#usecallback--when-to-use)
 - [useMemo, When to Use](#usememo--when-to-use)
+- [useEffectEvent, Non-Reactive Effect Logic](#useeffectevent-non-reactive-effect-logic)
+- [Ref Callback Cleanup](#ref-callback-cleanup)
 
 ---
 
@@ -240,3 +242,47 @@ const label = `Hello, ${name}`;
 ```
 
 Missing or stale deps in `useMemo` introduce the same stale closure bugs as `useCallback`, the memoized value silently reads an old snapshot of whatever was omitted from the deps array.
+
+---
+
+## useEffectEvent, Non-Reactive Effect Logic
+
+`useEffectEvent` (stable in React 19.2) extracts a non-reactive read out of an Effect, so the Effect uses a current value without listing it as a dependency. It is the sanctioned replacement for "I had to omit X from the deps array" and for the latest-ref workaround (e.g. `TextArea` keeping `onAutoSizeRef.current = onAutoSize` behind an `eslint-disable react-hooks/refs`).
+
+```tsx
+// onVisit reads numItems, but the Effect should re-run only when url changes
+const onVisit = useEffectEvent((visitedUrl: string) => {
+  log(visitedUrl, numItems); // numItems is non-reactive here
+});
+
+useEffect(() => {
+  onVisit(url);
+}, [url]); // numItems intentionally absent, and lint won't demand it
+```
+
+Use sparingly, only for values that are genuinely non-reactive (the Effect should not re-run when they change). If the Effect should react to the value, keep it in the deps array.
+
+---
+
+## Ref Callback Cleanup
+
+A ref callback may return a cleanup function, run when the element leaves the DOM. When it returns a cleanup, React no longer calls the callback again with `null`.
+
+```tsx
+<div
+  ref={(node) => {
+    const observer = new ResizeObserver(() => {/* … */});
+    observer.observe(node);
+    return () => observer.disconnect(); // runs on unmount
+  }}
+/>;
+```
+
+**Strict-TS pitfall:** because a returned value is now read as a cleanup function, an arrow ref-callback with an implicit return of a non-`undefined` value flags. Use a block body so the callback returns `undefined`.
+
+```tsx
+// BAD, implicit return of the assignment is read as a cleanup
+<input ref={(node) => (ref.current = node)} />;
+// GOOD, block body returns undefined
+<input ref={(node) => { ref.current = node; }} />;
+```

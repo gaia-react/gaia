@@ -18,7 +18,7 @@ export const useComponentRect = (
     y: 0,
   });
 
-  const timeoutRef = useRef<null | number>(null);
+  const timeoutRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (ref.current) {

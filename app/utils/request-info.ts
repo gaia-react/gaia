@@ -4,7 +4,7 @@ import type {Theme} from '~/utils/theme.server';
 export type RequestInfo = {
   origin: string;
   path: string;
-  userPrefs: {theme: null | Theme};
+  userPrefs: {theme?: Theme};
 };
 
 type RootLoaderShape = {requestInfo: RequestInfo};
