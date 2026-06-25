@@ -11,6 +11,11 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-25 5c0afcf SKIP - wiki: maintenance chain commit (sync+lint run), not a source change
+- 2026-06-25 75ad7f3 SKIP - chore(release): release plumbing, no wiki-content change needed
+- 2026-06-25 c2c6d97 WORTHY - fix(checks): reconcile check definitions contradicting GAIA design → wiki pages updated in commit
+- 2026-06-25 5eed5a7 WORTHY - chore(lint): bump @gaia-react/lint 1.5.1→1.6.0; D-8 rules active → wiki/dependencies/gaia-lint.md
+- 2026-06-25 d67753f WORTHY - fix(release-scrub): derive excluded-slug set at scan time → wiki/decisions/Bundle-time Scrub.md updated in commit
 - 2026-06-24 d6cc88f WORTHY - docs(wiki): debloat + factual-drift audit across 24 pages; pages corrected directly in-commit
 - 2026-06-24 b3d7aff WORTHY - feat(remix-utils): new wiki/dependencies/remix-utils.md decision map created in-commit
 - 2026-06-24 e371947 WORTHY - feat(spec-ledger): auto-archive merged SPECs post-reconcile; wiki/concepts/GAIA Spec.md updated in-commit
