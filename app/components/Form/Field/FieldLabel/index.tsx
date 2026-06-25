@@ -43,7 +43,7 @@ const FieldLabel: FC<FieldLabelProps> = ({
   const requiredExtra = (!!required || !!extra) && (
     <div>
       {required && <FieldRequiredText disabled={disabled} error={error} />}
-      {extra && <FieldExtra>{extra}</FieldExtra>}
+      {!!extra && <FieldExtra>{extra}</FieldExtra>}
     </div>
   );
 

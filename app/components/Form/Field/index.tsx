@@ -72,7 +72,7 @@ const Field: FC<FieldProps> = ({
     />
   );
 
-  const fieldLabel = label && (
+  const fieldLabel = !!label && (
     <FieldLabel
       className={classNameLabel}
       disabled={disabled}
