@@ -97,6 +97,10 @@ const RUNTIME_MARKERS: ReadonlySet<string> = new Set([
   '.claude/i18n-strings-checked',
   '.claude/wiki-drift-checked',
   '.claude/wiki-safety-checked',
+  // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
+  // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
+  // it. Created on first compaction event; never a shipped dependency.
+  '.claude/wiki-recompact-pending',
 ]);
 
 const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;

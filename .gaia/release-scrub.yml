@@ -122,7 +122,7 @@ transforms:
       # ---- Release-excluded paths leaked into shipped surfaces ----
       - id: maintainer-paths
         description: "Release-excluded paths referenced in shipped surfaces"
-        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.gaia/tests/|\\.claude/rules/_internal/"
+        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.gaia/tests/|\\.gaia/scripts/tests/|\\.github/audit/tests/|\\.claude/rules/_internal/"
         scope:
           - "CLAUDE.md"
           - ".claude/**"
