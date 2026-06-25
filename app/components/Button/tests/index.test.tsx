@@ -12,7 +12,9 @@ describe('Button', () => {
     const button = screen.getByRole('button');
     expect(button).toHaveTextContent('Test');
     await userEvent.click(button);
-    expect(handleClickButton).toHaveBeenCalled();
+    expect(handleClickButton).toHaveBeenCalledWith(
+      expect.objectContaining({type: 'click'})
+    );
   });
 
   test('Disabled', async () => {
