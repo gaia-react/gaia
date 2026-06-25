@@ -51,7 +51,7 @@ const LinkButton: FC<LinkButtonProps> = ({
   const css = twMerge(
     'plain-link text-center whitespace-nowrap select-none',
     disabled ?
-      VARIANTS[variant].split('disabled:').join('')
+      VARIANTS[variant].replaceAll('disabled:', '')
     : VARIANTS[variant],
     SIZES[size],
     icon && ICON_SIZES[size],

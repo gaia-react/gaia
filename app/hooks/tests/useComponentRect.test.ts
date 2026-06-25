@@ -54,7 +54,7 @@ describe('useComponentRect', () => {
       vi.runAllTimers();
     });
 
-    expect(element.getBoundingClientRect).toHaveBeenCalled();
+    expect(element.getBoundingClientRect).toHaveBeenCalledWith();
     expect(result.current).toMatchObject({
       height: 50,
       width: 100,
