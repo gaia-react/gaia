@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-06-24
+updated: 2026-06-25
 tags: [decision, tooling, package-manager, security]
 ---
 
@@ -16,7 +16,7 @@ GAIA uses **pnpm** for installs and dependency resolution. The `packageManager` 
 
 - **Speed**: content-addressed store with hard-linking installs significantly faster than npm.
 - **Strict isolation**: flat `node_modules/` is gone. A package can only `require` what it declared. Phantom deps fail loud.
-- **Built-in supply-chain protection**: `pnpm-workspace.yaml` sets `minimumReleaseAge: 10080` (7 days), blocking installs of versions less than a week old, plus `trustPolicy: no-downgrade`, which fails the install when a package's trust level drops versus prior releases (possible takeover). The release-age delay catches the bulk of compromised-package incidents in the window between publish and detection. pnpm enforces both policies against the entire lockfile on every install, including `--frozen-lockfile` runs in CI, so a latent pre-provenance transitive surfaces at install time rather than only on re-resolution. `trustPolicyExclude` acknowledges the few old, pre-provenance final-major releases that trip `no-downgrade` because a newer major later added npm provenance; each entry is scoped to an exact version and names its requiring dependent.
+- **Built-in supply-chain protection**: `pnpm-workspace.yaml` sets `minimumReleaseAge: 10080` (7 days), blocking installs of versions less than a week old, plus `trustPolicy: no-downgrade`, which fails the install when a package's trust level drops versus prior releases (possible takeover). The release-age delay catches the bulk of compromised-package incidents in the window between publish and detection. pnpm enforces both policies against the entire lockfile on every install, including `--frozen-lockfile` runs in CI, so a latent pre-provenance transitive surfaces at install time rather than only on re-resolution. `trustPolicyExclude` acknowledges the few old, pre-provenance final-major releases that trip `no-downgrade` because a newer major later added npm provenance; each entry is scoped to an exact version and names its requiring dependent. `minimumReleaseAgeExclude` is the parallel escape hatch for the release-age delay: it exempts first-party packages whose third-party-vetting rationale does not apply, and is also how a third-party version ships before it clears the window. Because enforcement runs against the whole lockfile on every install (CI `--frozen-lockfile` included), such an entry stays committed until that version ages past the window; removing it earlier fails both local and CI installs with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, so it is not an add-install-then-revert step.
 - **Reproducible installs**: `pnpm-lock.yaml` + CI `--frozen-lockfile` guarantees the lockfile is the only source of truth.
 
 ## How

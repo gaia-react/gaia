@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-25 0624cab SKIP - docs(wiki): minimumReleaseAgeExclude lifecycle already noted directly in wiki/decisions/pnpm.md in-commit
+- 2026-06-25 167dac7 SKIP - wiki sync chain commit (state + gaia-lint.md already updated in-commit, no new source changes)
 - 2026-06-25 5c0afcf SKIP - wiki: maintenance chain commit (sync+lint run), not a source change
 - 2026-06-25 75ad7f3 SKIP - chore(release): release plumbing, no wiki-content change needed
 - 2026-06-25 c2c6d97 WORTHY - fix(checks): reconcile check definitions contradicting GAIA design → wiki pages updated in commit
