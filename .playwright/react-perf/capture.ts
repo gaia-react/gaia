@@ -12,10 +12,10 @@ import {nanoid} from 'nanoid';
 import type {Page} from '@playwright/test';
 import type {BippyMeta, RawDump, RawDumpMeta, RenderRecord} from './types';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, '..', '..');
+const CURRENT_MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(CURRENT_MODULE_DIR, '..', '..');
 const CACHE_ROOT = join(REPO_ROOT, '.gaia', 'local', 'cache');
-const HARNESS_ENTRY = join(HERE, 'harness-entry.ts');
+const HARNESS_ENTRY = join(CURRENT_MODULE_DIR, 'harness-entry.ts');
 
 export type CaptureResult = {
   rawPath: string; // absolute path to the written renders.json
@@ -47,7 +47,7 @@ const buildHarnessIife = async (): Promise<string> => {
 
 // Per-page capture options, set at install and read at collect so collect can
 // stamp meta.strictMode without re-reading page state.
-const captureOptions = new WeakMap<Page, {noStrict: boolean}>();
+const captureOptions = new WeakMap<Page, {isStrictModeDisabled: boolean}>();
 
 // Run dirs to remove on process exit (auto-delete unless the caller keeps them).
 const pendingCleanup = new Set<string>();
@@ -69,12 +69,12 @@ const scheduleCleanup = (dir: string): void => {
 
 export const installRenderCapture = async (
   page: Page,
-  opts: {noStrict?: boolean} = {}
+  options: {isStrictModeDisabled?: boolean} = {}
 ): Promise<void> => {
-  const noStrict = opts.noStrict ?? false;
-  captureOptions.set(page, {noStrict});
+  const isStrictModeDisabled = options.isStrictModeDisabled ?? false;
+  captureOptions.set(page, {isStrictModeDisabled});
 
-  if (noStrict) {
+  if (isStrictModeDisabled) {
     // Set before React hydrates so app/entry.client.tsx skips <StrictMode> and
     // timings are honest (not doubled). Default (undefined) keeps StrictMode on.
     await page.addInitScript(() => {
@@ -88,10 +88,10 @@ export const installRenderCapture = async (
 
 export const collectRenderDump = async (
   page: Page,
-  opts: {runId?: string; keep?: boolean} = {}
+  options: {runId?: string; keep?: boolean} = {}
 ): Promise<CaptureResult> => {
-  const runId = opts.runId ?? `${Date.now()}-${nanoid()}`;
-  const keep = opts.keep ?? false;
+  const runId = options.runId ?? `${Date.now()}-${nanoid()}`;
+  const keep = options.keep ?? false;
 
   // Mirror react-scan's ~5s "failed to load" active check: the harness must have
   // gone active, else injection lost the race with React (or the target is a
@@ -125,7 +125,7 @@ export const collectRenderDump = async (
 
   const browserMeta: BippyMeta = browser.meta;
   const renders: RenderRecord[] = browser.renders;
-  const noStrict = captureOptions.get(page)?.noStrict ?? false;
+  const isStrictModeDisabled = captureOptions.get(page)?.isStrictModeDisabled ?? false;
 
   const meta: RawDumpMeta = {
     bippyVersion: browserMeta.bippyVersion,
@@ -134,7 +134,7 @@ export const collectRenderDump = async (
     installed: browserMeta.installed,
     profilingAvailable: browserMeta.profilingAvailable,
     rendererVersion: browserMeta.rendererVersion,
-    strictMode: !noStrict,
+    strictMode: !isStrictModeDisabled,
   };
 
   const dump: RawDump = {all: renders, meta, total: renders.length};

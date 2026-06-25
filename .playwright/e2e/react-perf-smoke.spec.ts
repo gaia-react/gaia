@@ -15,7 +15,7 @@ const readDump = (rawPath: string): RawDump =>
   JSON.parse(readFileSync(rawPath, 'utf8')) as RawDump;
 
 const totalRenderTime = (dump: RawDump): number =>
-  dump.all.reduce((sum, r) => sum + r.totalTime, 0);
+  dump.all.reduce((sum, record) => sum + record.totalTime, 0);
 
 // Drive the canary micro-interaction: click the ThemeSwitch toggle in the
 // header. It is a submit button that flips the optimistic theme mode (a local
@@ -66,7 +66,7 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
   }
 
   // §6 #2 + #6: records carry phase + a numeric fiberId; update records exist.
-  const updates = dump.all.filter((r) => r.phase === 'update');
+  const updates = dump.all.filter((record) => record.phase === 'update');
   expect(updates.length).toBeGreaterThan(0);
   for (const record of dump.all) {
     expect(typeof record.phase).toBe('string');
@@ -90,22 +90,22 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
 
   // §6 #7 + #8: the canary resolves a real name, the expected memo flag, and a
   // non-zero subtree timing; the toggle drives it on an update render.
-  const canaryRecords = dump.all.filter((r) => r.componentName === CANARY);
+  const canaryRecords = dump.all.filter((record) => record.componentName === CANARY);
   expect(canaryRecords.length).toBeGreaterThan(0);
-  expect(canaryRecords.every((r) => r.componentName !== 'Unknown')).toBe(true);
-  expect(canaryRecords.every((r) => r.isMemo === false)).toBe(true);
-  expect(canaryRecords.some((r) => r.totalTime > 0)).toBe(true);
-  expect(canaryRecords.some((r) => r.phase === 'update')).toBe(true);
+  expect(canaryRecords.every((record) => record.componentName !== 'Unknown')).toBe(true);
+  expect(canaryRecords.every((record) => record.isMemo === false)).toBe(true);
+  expect(canaryRecords.some((record) => record.totalTime > 0)).toBe(true);
+  expect(canaryRecords.some((record) => record.phase === 'update')).toBe(true);
 });
 
 test('noStrict bypass disables StrictMode (render-time inflation collapses)', async ({
   browser,
   baseURL,
 }) => {
-  const load = async (noStrict: boolean) => {
+  const load = async (isStrictModeDisabled: boolean) => {
     const context = await browser.newContext({baseURL});
     const page = await context.newPage();
-    await installRenderCapture(page, {noStrict});
+    await installRenderCapture(page, {isStrictModeDisabled});
     await page.goto('/');
     await hydration(page);
     const result = await collectRenderDump(page);

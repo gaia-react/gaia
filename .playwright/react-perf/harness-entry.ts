@@ -50,13 +50,13 @@ const renders: RenderRecord[] = [];
 window.__bippyMeta = meta;
 window.__renders = renders;
 
-let seq = 0;
+let renderSequenceNumber = 0;
 
 const recordError = (error: unknown): void => {
   meta.errors.push(error instanceof Error ? error.message : String(error));
 };
 
-const typeLabel = (value: unknown): string => {
+const getTypeLabel = (value: unknown): string => {
   if (value === null) return 'null';
   if (value === undefined) return 'undefined';
   if (Array.isArray(value)) return `array(${value.length})`;
@@ -68,7 +68,7 @@ const typeLabel = (value: unknown): string => {
 const isRef = (value: unknown): boolean =>
   value !== null && (typeof value === 'object' || typeof value === 'function');
 
-const unstable = (prev: unknown, next: unknown): boolean =>
+const isUnstableReference = (prev: unknown, next: unknown): boolean =>
   isRef(prev) && isRef(next) && !Object.is(prev, next);
 
 // An effect hook's memoizedState is the effect record {create, deps, ...}; a
@@ -80,7 +80,7 @@ const isEffectState = (value: unknown): boolean =>
   'deps' in value;
 
 // Map fiber.tag to a human label via imported constants, never literal ints.
-const kindOf = (tag: number): string => {
+const getFiberKindLabel = (tag: number): string => {
   if (tag === SimpleMemoComponentTag || tag === MemoComponentTag) return 'Memo';
   if (tag === ForwardRefTag) return 'ForwardRef';
   if (tag === ClassComponentTag) return 'Class';
@@ -116,9 +116,9 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
         if (!Object.is(prev, next)) {
           propsChanged.push({
             name,
-            next: typeLabel(next),
-            prev: typeLabel(prev),
-            unstable: unstable(prev, next),
+            next: getTypeLabel(next),
+            prev: getTypeLabel(prev),
+            unstable: isUnstableReference(prev, next),
           });
         }
       });
@@ -130,9 +130,9 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
         if (!isEffectState(nextValue) && !Object.is(prevValue, nextValue)) {
           stateChanged.push({
             index: stateIndex,
-            next: typeLabel(nextValue),
-            prev: typeLabel(prevValue),
-            unstable: unstable(prevValue, nextValue),
+            next: getTypeLabel(nextValue),
+            prev: getTypeLabel(prevValue),
+            unstable: isUnstableReference(prevValue, nextValue),
           });
         }
         stateIndex += 1;
@@ -143,9 +143,9 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
         const prevValue = prev?.memoizedValue;
         if (!Object.is(prevValue, nextValue)) {
           contextChanged.push({
-            next: typeLabel(nextValue),
-            prev: typeLabel(prevValue),
-            unstable: unstable(prevValue, nextValue),
+            next: getTypeLabel(nextValue),
+            prev: getTypeLabel(prevValue),
+            unstable: isUnstableReference(prevValue, nextValue),
           });
         }
       });
@@ -160,11 +160,11 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
       didRender: didFiberRender(fiber),
       fiberId: getFiberId(fiber),
       isMemo,
-      kind: kindOf(tag),
+      kind: getFiberKindLabel(tag),
       phase,
       propsChanged,
       selfTime,
-      seq: seq++,
+      seq: renderSequenceNumber++,
       stateChanged,
       tag,
       totalTime,
