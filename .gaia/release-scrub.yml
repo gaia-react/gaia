@@ -272,14 +272,22 @@ transforms:
       # gaia:maintainer-only markers. This check defends the case where
       # the maintainer forgets to wrap a wikilink whose target is
       # release-excluded; the link survives the strip but resolves to
-      # nothing on the adopter side. The pattern enumerates the known
-      # excluded slugs; a new excluded page requires updating this list.
-      # wiki/meta/ holds ephemeral dated audit artifacts (consolidate-report-*,
-      # lint-report-*) whose full slugs are not individually enumerated;
-      # the meta-prefix alternative below covers them as a class.
+      # nothing on the adopter side.
+      #
+      # `derive: excluded-slugs` builds the excluded-slug set at scan time
+      # from `.gaia/release-exclude`, resolved against the source repo (that
+      # file excludes itself, so it never reaches the staging tree the other
+      # checks scan). Every `.md` exclude contributes its slug; every
+      # bare-directory exclude (wiki/entities, wiki/meta) contributes the
+      # directory slug plus the slug of each page beneath it, so entity pages
+      # and the dated audit artifacts under wiki/meta/ (consolidate-report-*,
+      # lint-report-*, staleness-audit-*) are covered without enumeration.
+      # Matching is case-insensitive and alias/anchor-aware. A newly excluded
+      # page is caught with no edit here; the set cannot drift from the
+      # manifest.
       - id: wikilink-to-excluded
         description: "Wikilinks pointing at release-excluded wiki slugs"
-        pattern: "\\[\\[(Release Workflow|Release-Notes|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta|CLI-Binary-Split|Forensics Triage Workflow|consolidate-report-[0-9-]+|lint-report-[0-9-]+)\\]\\]"
+        derive: excluded-slugs
         scope:
           - "wiki/**/*.md"
         path-allowlist:

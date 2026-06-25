@@ -35,6 +35,8 @@ import {load as parseYaml} from 'js-yaml';
 import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {extractWikilinks} from '../wiki/util/wikilinks.js';
+import {parseExcludeLines} from './manifest.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
 
@@ -57,6 +59,7 @@ const HELP_TEXT = `Usage: gaia-maintainer release scrub <staging-dir> [--config 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 const DEFAULT_CONFIG_PATH = '.gaia/release-scrub.yml';
+const RELEASE_EXCLUDE_PATH = '.gaia/release-exclude';
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -69,18 +72,31 @@ const MarkerStripSchema = z.object({
   type: z.literal('marker-strip'),
 });
 
+const leakCheckBaseShape = {
+  description: z.string().optional(),
+  id: z.string().min(1),
+  'line-allowlist': z.array(z.string()).optional(),
+  'path-allowlist': z.array(z.string()).optional(),
+  scope: z.array(z.string().min(1)).min(1),
+};
+
+// A static check runs a literal regex line-by-line. A derived check builds its
+// match set at scan time instead: `wikilink-to-excluded` derives the
+// release-excluded slug set from `.gaia/release-exclude` so it cannot drift
+// away from the manifest the way a hand-maintained alternation does.
+const StaticLeakCheckSchema = z.object({
+  ...leakCheckBaseShape,
+  pattern: z.string().min(1),
+});
+
+const DerivedLeakCheckSchema = z.object({
+  ...leakCheckBaseShape,
+  derive: z.literal('excluded-slugs'),
+});
+
 const LeakCheckSchema = z.object({
   checks: z
-    .array(
-      z.object({
-        description: z.string().optional(),
-        id: z.string().min(1),
-        'line-allowlist': z.array(z.string()).optional(),
-        'path-allowlist': z.array(z.string()).optional(),
-        pattern: z.string().min(1),
-        scope: z.array(z.string().min(1)).min(1),
-      })
-    )
+    .array(z.union([DerivedLeakCheckSchema, StaticLeakCheckSchema]))
     .min(1),
   type: z.literal('leak-check'),
 });
@@ -102,6 +118,8 @@ type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
 type JsonStripTransform = z.infer<typeof JsonStripSchema>;
 type LeakCheckTransform = z.infer<typeof LeakCheckSchema>;
 type LeakCheckEntry = LeakCheckTransform['checks'][number];
+type StaticLeakCheck = z.infer<typeof StaticLeakCheckSchema>;
+type DerivedLeakCheck = z.infer<typeof DerivedLeakCheckSchema>;
 
 // ---------------------------------------------------------------------------
 // Glob → regex
@@ -416,7 +434,7 @@ export type Leak = {
 const runLeakCheck = (
   stagingRoot: string,
   files: readonly string[],
-  check: LeakCheckEntry
+  check: StaticLeakCheck
 ): readonly Leak[] => {
   const pattern = new RegExp(check.pattern);
   const lineAllowlist = (check['line-allowlist'] ?? []).map(
@@ -445,6 +463,109 @@ const runLeakCheck = (
         line: index + 1,
         match: match[0],
       });
+    }
+  }
+
+  return leaks;
+};
+
+// ---------------------------------------------------------------------------
+// Derived wikilink-to-excluded check
+// ---------------------------------------------------------------------------
+
+const isDerivedCheck = (check: LeakCheckEntry): check is DerivedLeakCheck =>
+  'derive' in check;
+
+const slugFromPath = (filePath: string): string =>
+  path.basename(filePath, '.md');
+
+const isDirectory = (absolutePath: string): boolean => {
+  try {
+    return statSync(absolutePath).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Build the set of release-excluded wiki slugs from `.gaia/release-exclude`
+ * resolved against `cwd`, the source repo.
+ *
+ * Reading from `cwd` is load-bearing: `release-exclude` excludes itself, so it
+ * never reaches the staging tree the other checks scan. Deriving from staging
+ * would yield an empty set and pass silently, worse than the drift this fix
+ * removes.
+ *
+ * A `.md` exclude contributes its basename slug directly. A bare-directory
+ * exclude contributes the directory's own slug plus the slug of every `.md`
+ * page beneath it, the entity pages and dated audit artifacts that are never
+ * enumerated as their own exclude lines. Slugs are lowercased for the
+ * case-insensitive matching Obsidian uses to resolve wikilinks.
+ */
+const buildExcludedSlugSet = (cwd: string): Set<string> => {
+  const lines = parseExcludeLines(
+    readFileSync(path.join(cwd, RELEASE_EXCLUDE_PATH), 'utf8')
+  );
+  const slugs = new Set<string>();
+  const addSlug = (value: string): void => {
+    slugs.add(value.toLowerCase());
+  };
+
+  for (const line of lines) {
+    if (line !== 'wiki' && !line.startsWith('wiki/')) continue;
+
+    if (line.endsWith('.md')) {
+      addSlug(slugFromPath(line));
+      continue;
+    }
+
+    const absolute = path.join(cwd, line);
+
+    if (!isDirectory(absolute)) continue;
+
+    addSlug(path.basename(line));
+
+    for (const relative of walkFiles(absolute)) {
+      if (relative.endsWith('.md')) addSlug(slugFromPath(relative));
+    }
+  }
+
+  return slugs;
+};
+
+const runDerivedWikilinkCheck = (
+  stagingRoot: string,
+  files: readonly string[],
+  check: DerivedLeakCheck,
+  cwd: string
+): readonly Leak[] => {
+  const excludedSlugs = buildExcludedSlugSet(cwd);
+  const lineAllowlist = (check['line-allowlist'] ?? []).map(
+    (raw) => new RegExp(raw)
+  );
+  const pathAllowlist = check['path-allowlist'] ?? [];
+  const leaks: Leak[] = [];
+
+  for (const relativePath of files) {
+    if (!matchesAnyGlob(relativePath, check.scope)) continue;
+    if (matchesAnyGlob(relativePath, pathAllowlist)) continue;
+
+    const source = readFileSync(path.join(stagingRoot, relativePath), 'utf8');
+    const lines = source.split('\n');
+
+    for (const [index, line] of lines.entries()) {
+      if (lineAllowlist.some((rx) => rx.test(line))) continue;
+
+      for (const target of extractWikilinks(line)) {
+        if (!excludedSlugs.has(target.toLowerCase())) continue;
+
+        leaks.push({
+          check: check.id,
+          file: relativePath,
+          line: index + 1,
+          match: `[[${target}]]`,
+        });
+      }
     }
   }
 
@@ -694,8 +815,17 @@ export const run = (
       }
 
       // After marker-strip and json-strip land, leak-check sees the
-      // post-strip tree because we re-read each file fresh inside runLeakCheck.
+      // post-strip tree because we re-read each file fresh inside the check.
+      // Derived checks additionally read source inputs from cwd (see
+      // buildExcludedSlugSet) rather than the staging tree.
       for (const check of transform.checks) {
+        if (isDerivedCheck(check)) {
+          leaks.push(
+            ...runDerivedWikilinkCheck(stagingDir, stagedFiles, check, cwd)
+          );
+          continue;
+        }
+
         leaks.push(...runLeakCheck(stagingDir, stagedFiles, check));
       }
     }

@@ -35,6 +35,8 @@ Reads `.gaia/release-scrub.yml`. Three transform types, applied in order:
 
 **leak-check.** For each codified check (UAT-NNN narrative, concrete maintainer SPEC IDs, release-excluded path mentions, sibling-monorepo prefixes, absolute filesystem literals), runs the pattern over the post-strip staging tree. Each check has a scope (path globs that determine which files to scan), an optional path-allowlist (files exempt from this check by design, e.g. `wiki-style.md` itself names patterns to teach the rule), and an optional line-allowlist (regexes that exempt structural matches like filename literals or identifier fragments).
 
+One check, `wikilink-to-excluded`, derives its match set instead of carrying a literal pattern. It reads `.gaia/release-exclude` at scan time (resolved against the source repo, which still holds the excluded pages the staging tree drops) and flags any `[[…]]` in a shipped wiki page that resolves to a release-excluded slug. Every `.md` exclude contributes its slug, and every bare-directory exclude walks for the entity pages and dated audit artifacts beneath it, so the excluded-slug set tracks the manifest automatically and a newly excluded page is caught without editing the check.
+
 Non-empty match in any check fails the build with a structured leak report.
 
 ### `gaia-maintainer release runtime-deps --staging <dir>`
@@ -54,7 +56,6 @@ The markers are HTML comments to keep them invisible in rendered Markdown (Obsid
 The scrub is lexical. It does not understand semantics. Things outside its reach:
 
 - **Runtime dependency chains**: caught by `runtime-deps`, not scrub.
-- **Novel wikilink targets to release-excluded pages.** The `wikilink-to-excluded` check enumerates the known release-excluded slugs (`Release Workflow`, `Release-Notes`, `Bundle-time Scrub`, `GAIA`, `Steven Sacks`, `dashboard`, `Entities`, `Meta`, `CLI-Binary-Split`, `Forensics Triage Workflow`, plus the dated report-page classes `consolidate-report-*` and `lint-report-*`) and flags any unwrapped `[[…]]` in shipped wiki pages. A new release-excluded page added without updating the check's pattern would still slip through. `gaia wiki dead-paths` covers backticked filesystem paths; the wikilink check covers the named slugs.
 - **Behaviorally maintainer-only logic**: code that calls a release-excluded source path through dynamic require / variable string concatenation. The bundle architecture (esbuild bundles `.gaia/cli/src/` into the shipped binary; nothing else imports from `src/`) makes this unlikely in practice but is not prevented by the scrub.
 
 ## How to extend
