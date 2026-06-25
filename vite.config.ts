@@ -41,6 +41,6 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   server: {
-    open: true,
+    open: false,
   },
 });
