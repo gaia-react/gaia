@@ -11,14 +11,11 @@ status: developing
 
 ## #11: Wiki drift check
 
-ℹ 1 commits behind HEAD. Run /gaia-wiki sync at next opportunity.
+ℹ 1 commit behind HEAD. Run /gaia-wiki sync at next opportunity.
 
 ## #12: Dead repo-relative paths
 
-⚠ 2 dead path reference(s) in wiki/, files no longer exist on disk:
-
-- `wiki/concepts/GAIA Init Workflow.md:25` → `.gaia/automation.json`
-- `wiki/concepts/Wiki Sync.md:25` → `.gaia/automation.json`
+✓ No dead repo-relative paths detected in wiki body prose.
 
 ## #13: UAT/SPEC narrative-ref drift
 
