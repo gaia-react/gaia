@@ -222,79 +222,33 @@ If any step fails, surface the error verbatim and halt, do not silently continue
 
 ### Configure CI integrations
 
-Two GitHub Actions workflows ship with GAIA:
+GAIA CI has two parts: a pre-merge **audit gate** (the `code-review-audit` agent run against every PR) and four optional **maintenance jobs** on a smart cron (wiki sync, `/update-deps`, `pnpm audit`, stale-branch cleanup).
 
-- `.github/workflows/code-review-audit.yml`, pre-merge gate that runs the `code-review-audit` agent against every PR.
-- `.github/workflows/forensics-triage.yml`, autonomous triage for issues labeled `gaia-forensics`.
+**No `.github/workflows/` files ship in this project.** They are generated and installed on demand by `/setup-gaia-ci` after your first `git push origin main` (Phase B). This step (Phase A) is local-only: it records your CI intent so Step 9 can offer the right maintenance-tool modes, and it sets the local audit baseline. It does not create, move, or push any workflow file, and it touches nothing on GitHub.
 
-Both invoke Claude via `claude-code-action` and require the repo secret `CLAUDE_CODE_OAUTH_TOKEN`. If the project isn't pushed to GitHub yet, or the maintainer doesn't want CI Claude billing yet, opt out, the workflow files move to `.gaia/templates/workflows/`, and `/update-gaia` respects the deletion as adopter intent (per the file-class decision table on the Update Workflow concept page).
+(`forensics-triage.yml` is maintainer-only and never ships to or installs on an adopter project. The adopter-side `/gaia-forensics` command files reports to the upstream GAIA repo, which owns the `gaia-forensics` label; nothing about forensics needs configuring here.)
 
 Use AskUserQuestion (in the user's language; this configuration block stays in English):
 
-> Enable GAIA CI (GitHub Actions workflows) now?
+> Do you plan to run GAIA CI (GitHub Actions) for this project?
 >
-> - **Yes, enable now** (Recommended). I'll print the `gh` commands you run yourself with maintainer credentials, and ensure the `gaia-forensics` issue label exists.
-> - **Skip, disable for now.** I'll move both workflow files to `.gaia/templates/workflows/`. Copy them back to `.github/workflows/` whenever you decide to enable.
+> - **Yes, I'll enable CI after pushing** (Recommended). Records the intent; Step 9 then offers `ci` / `local` / `off` per maintenance tool. After your first push, run `/setup-gaia-ci` to install the audit gate and cron workflows, store the bot token, and register the `GAIA-Audit` required check.
+> - **No, local only.** GAIA's audit and maintenance tools run only when you invoke them on this machine. Step 9 offers `local` / `off` only.
 
-**On "Yes":**
+Record the answer as the **Configure-CI decision** (`enabled` or `declined`); Step 9 reads it. This is held as init-state only; it neither probes nor writes any workflow file.
 
-1. Verify gh CLI is authenticated:
-
-   ```bash
-   gh auth status
-   ```
-
-   If `gh auth status` exits non-zero, halt `/gaia-init` with: `GitHub CLI is not authenticated. Run 'gh auth login' and re-run /gaia-init.`
-
-2. Print the copy-pasteable enable recipe verbatim, the user runs these themselves on the maintainer's machine once the project is on GitHub:
-
-   ```bash
-   # 1. Mint an OAuth token from a Claude Code-authenticated machine, then store it as a repo secret.
-   claude setup-token
-   gh secret set CLAUDE_CODE_OAUTH_TOKEN
-
-   # 2. Make GAIA-Audit a required check on main (run after the workflow's first successful PR run).
-   #    The gate is the GAIA-Audit COMMIT STATUS, not the code-review-audit job name.
-   #    The job reaches a green terminal step on every path (including a local-mode
-   #    stand-down where no audit ran), so requiring the job name would let an unaudited
-   #    PR merge. Only the GAIA-Audit status (success == cleared for HEAD's tree) is the gate.
-   gh api -X PUT "repos/{owner}/{repo}/branches/main/protection/required_status_checks" \
-     -f strict=true -f 'contexts[]=GAIA-Audit'
-   ```
-
-3. Ensure the `gaia-forensics` label exists, but only if the project already has a GitHub remote that gh can read:
-
-   ```bash
-   if gh repo view &>/dev/null && ! gh label list --limit 100 --json name 2>/dev/null \
-       | jq -e '.[] | select(.name == "gaia-forensics")' >/dev/null; then
-     gh label create gaia-forensics --color D93F0B --description "Triggers autonomous forensics triage"
-   fi
-   ```
-
-   If `gh repo view` returns non-zero (no remote configured yet), skip the label creation and tell the user: `Create the gaia-forensics label after pushing the project to GitHub: gh label create gaia-forensics --color D93F0B --description "Triggers autonomous forensics triage"`.
-
-**On "Skip":**
-
-```bash
-mkdir -p .gaia/templates/workflows
-git mv .github/workflows/code-review-audit.yml .gaia/templates/workflows/code-review-audit.yml 2>/dev/null \
-  || mv .github/workflows/code-review-audit.yml .gaia/templates/workflows/code-review-audit.yml
-git mv .github/workflows/forensics-triage.yml .gaia/templates/workflows/forensics-triage.yml 2>/dev/null \
-  || mv .github/workflows/forensics-triage.yml .gaia/templates/workflows/forensics-triage.yml
-```
-
-Then set the audit `default_mode` to `local` in `.gaia/audit-ci.yml`. CI cannot produce the `GAIA-Audit` stamp once its workflow lives in `.gaia/templates/`, so the local audit agent is the only producer; the resolver must resolve to `local` for every author by default. Never set this to `off` or any other disabled value, the audit gate is non-negotiable and `local` is the only valid baseline when CI is declined.
+Then set the audit baseline in `.gaia/audit-ci.yml` regardless of the answer. Until `/setup-gaia-ci` wires CI, the local `code-review-audit` agent is the only producer of the `GAIA-Audit` stamp, so `local` is the only valid baseline. `/setup-gaia-ci`'s team audit-mode step sets `default_mode: ci` later if you choose CI-audits-every-PR. Never set this to `off` or any other disabled value, the audit gate is non-negotiable.
 
 ```bash
 # Idempotent: rewrite an existing default_mode line, or append the key if absent.
-if grep -qE '^default_mode:' .gaia/audit-ci.yml; then
+if [ -f .gaia/audit-ci.yml ] && grep -qE '^default_mode:' .gaia/audit-ci.yml; then
   sed -i.bak -E 's/^default_mode:.*/default_mode: local/' .gaia/audit-ci.yml && rm -f .gaia/audit-ci.yml.bak
 else
-  printf '\n# Team baseline audit mode. CI workflow is in .gaia/templates/, so the\n# local audit agent is the only GAIA-Audit producer; local is the only valid value here.\ndefault_mode: local\n' >> .gaia/audit-ci.yml
+  printf '\n# Team baseline audit mode. Until /setup-gaia-ci wires CI, the local audit\n# agent is the only GAIA-Audit producer; local is the only valid value here.\ndefault_mode: local\n' >> .gaia/audit-ci.yml
 fi
 ```
 
-To re-enable later: `cp .gaia/templates/workflows/*.yml .github/workflows/`, set `default_mode: ci` in `.gaia/audit-ci.yml`, then run the "Yes" recipe above. `/update-gaia` reads `.gaia/manifest.json` and treats deleted-from-adopter files as intentional, so the opt-out persists across updates.
+To enable CI later: push to GitHub, then run `/setup-gaia-ci`. It installs `.github/workflows/code-review-audit.yml` (the PR gate) plus any cron workflows, stores your bot token as a repo secret, registers the `GAIA-Audit` required check, and sets the team audit `default_mode`. `/update-gaia` keeps the installed audit workflow in sync with its template thereafter.
 
 ### Make the statusline executable
 
@@ -333,7 +287,7 @@ The same probe set applies when setting up from an existing clone, `/setup-clone
 
 GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/update-deps`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia-ci` to wire up tokens and activate CI (Phase B).
 
-**Carry the Configure-CI decision forward.** The Configure CI integrations block above already recorded whether the user enabled CI ("Yes") or declined it ("Skip"). Hold that decision as init-state for this step, do NOT re-probe the filesystem (e.g. by checking whether `code-review-audit.yml` moved). Step 9 branches on it: a CI decline means CI is not a valid target for any maintenance tool, so the contradictory "Enable all four in CI mode" recommendation is never shown.
+**Carry the Configure-CI decision forward.** The Configure CI integrations block above already recorded whether the user intends to enable CI (`enabled`) or run local only (`declined`). Hold that decision as init-state for this step, do NOT re-probe the filesystem (no workflow files exist at init time, so there is nothing to detect). Step 9 branches on it: a CI decline means CI is not a valid target for any maintenance tool, so the contradictory "Enable all four in CI mode" recommendation is never shown.
 
 **The unconditional terminal action of Step 9, on every exit path (the enumerated recommendation, a free-text answer, a CI decline, or a resumed run), is a single `gaia init configure-automation` call with all four tool modes set to valid values.** No branch may end Step 9 with a half-written or absent `.gaia/automation.json`. The CLI handler writes a complete, schema-valid config (`setup_complete: false`, `update_gaia.mode: local`, all four tool modes) in one atomic write; the prose's only job is to guarantee that call always runs with derived modes.
 
