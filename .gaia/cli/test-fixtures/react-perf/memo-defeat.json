@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "installed": true,
+    "commits": 2,
+    "errors": [],
+    "strictMode": false,
+    "rendererVersion": "19.2.7",
+    "profilingAvailable": true,
+    "bippyVersion": "0.5.42"
+  },
+  "total": 4,
+  "all": [
+    {
+      "seq": 0,
+      "fiberId": 1,
+      "componentName": "SpikePanel",
+      "phase": "update",
+      "kind": "Function",
+      "tag": 0,
+      "isMemo": false,
+      "selfTime": 0.6,
+      "totalTime": 1.2,
+      "didCommit": true,
+      "didRender": true,
+      "changedTotal": 1,
+      "propsChanged": [],
+      "stateChanged": [
+        {"index": 0, "prev": "number", "next": "number", "unstable": false}
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 1,
+      "fiberId": 2,
+      "componentName": "StatusBadge",
+      "phase": "update",
+      "kind": "Memo",
+      "tag": 14,
+      "isMemo": true,
+      "selfTime": 0.5,
+      "totalTime": 0.8,
+      "didCommit": true,
+      "didRender": true,
+      "changedTotal": 1,
+      "propsChanged": [
+        {"name": "status", "prev": "object", "next": "object", "unstable": true}
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 2,
+      "fiberId": 2,
+      "componentName": "StatusBadge",
+      "phase": "update",
+      "kind": "Memo",
+      "tag": 14,
+      "isMemo": true,
+      "selfTime": 0.5,
+      "totalTime": 0.8,
+      "didCommit": true,
+      "didRender": true,
+      "changedTotal": 1,
+      "propsChanged": [
+        {"name": "status", "prev": "object", "next": "object", "unstable": true}
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 3,
+      "fiberId": 1,
+      "componentName": "SpikePanel",
+      "phase": "update",
+      "kind": "Function",
+      "tag": 0,
+      "isMemo": false,
+      "selfTime": 0.6,
+      "totalTime": 1.2,
+      "didCommit": true,
+      "didRender": true,
+      "changedTotal": 1,
+      "propsChanged": [],
+      "stateChanged": [
+        {"index": 0, "prev": "number", "next": "number", "unstable": false}
+      ],
+      "contextChanged": []
+    }
+  ]
+}

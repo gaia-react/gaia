@@ -17,3 +17,5 @@ export * from './local-namespace.js';
 export * from './mentorship-config.js';
 
 export * from './mentorship-payloads.js';
+
+export * from './react-perf-summary.js';

@@ -38,7 +38,15 @@ import {describe, expect, it} from 'vitest';
 // Subcommands reachable only through their router with no external invoker,
 // allowed on purpose. Each entry needs a reason. Wiring or retiring a command
 // here makes the "no stale entries" test fail until the entry is removed.
-const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([]);
+const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([
+  [
+    'react-perf reduce',
+    'Pending the Phase-3 /gaia-react-perf skill, the invoker that will pass ' +
+      '`gaia react-perf reduce <raw.json>`. Phase 2 ships the reduce CLI ahead ' +
+      'of that skill; drop this entry when the skill lands (the stale-entry ' +
+      'test will then force its removal).',
+  ],
+]);
 
 // Directories under the repo root scanned for invocation strings. None of
 // these contain a router or a test file, so a command can never vouch for

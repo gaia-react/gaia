@@ -19,6 +19,7 @@ import {run as runHardenLedger} from './harden/ledger.js';
 import {run as runHardenTally} from './harden/tally.js';
 import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
+import {run as runReactPerf} from './react-perf/index.js';
 import {run as runScaffold} from './scaffold/index.js';
 import {run as runSetup} from './setup/index.js';
 import {run as runSetupCi} from './setup-ci/index.js';
@@ -35,6 +36,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   mentorship enable|disable|purge|status
   mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
+  react-perf reduce <raw.json> [--frame-budget-ms N]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
   fitness render-card [--cols N]
   harden-ledger list|record|is-suppressed|prune
@@ -70,6 +72,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   'harden-tally': runHardenTally,
   init: runInit,
   mentorship: runMentorship,
+  'react-perf': runReactPerf,
   scaffold: runScaffold,
   setup: runSetup,
   'setup-ci': runSetupCi,
