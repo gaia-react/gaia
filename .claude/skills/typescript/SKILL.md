@@ -70,6 +70,7 @@ export const formatDate = (date: Date): string => format(date, 'yyyy-MM-dd');
 - No TypeScript enums, use `as const` objects with derived types; enums compile to runtime objects with surprising behavior and don't tree-shake well
 - JSX boolean props: always explicit `={true}`, makes props grep-able and avoids confusion when a prop is later refactored to a non-boolean type
 - Max 3 function parameters, use an options object beyond that; call sites with 4+ positional args are hard to read and argument order mistakes are common
+- Inline boolean coercion uses `!!x`, never `Boolean(x)`; reserve `Boolean` for point-free use (e.g. `array.filter(Boolean)`), and coerce per operand in a nullable `||` chain (`!!a || !!b`), since `!!(a || b)` trips `@typescript-eslint/prefer-nullish-coalescing`
 
 ## Zod
 

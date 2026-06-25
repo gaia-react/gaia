@@ -31,10 +31,9 @@ const LinkButton: FC<LinkButtonProps> = ({
   ...props
 }) => {
   const Icon = icon;
-  const iconComponent =
-    Icon ?
-      <Icon className={twJoin(children && 'flex-none', classNameIcon)} />
-    : null;
+  const iconComponent = Icon && (
+    <Icon className={twJoin(children && 'flex-none', classNameIcon)} />
+  );
 
   const innerSpan = (
     <span

@@ -61,16 +61,15 @@ const Checkbox: FC<CheckboxProps> = ({
     />
   );
 
-  const status =
-    (description ?? error) ?
-      <FieldStatus
-        className={twMerge('mt-0', classNameDescription)}
-        description={description}
-        disabled={disabled}
-        error={error}
-        id={id}
-      />
-    : null;
+  const status = (description ?? error) && (
+    <FieldStatus
+      className={twMerge('mt-0', classNameDescription)}
+      description={description}
+      disabled={disabled}
+      error={error}
+      id={id}
+    />
+  );
 
   if (!label) {
     return (

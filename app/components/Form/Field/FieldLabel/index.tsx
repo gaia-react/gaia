@@ -40,13 +40,12 @@ const FieldLabel: FC<FieldLabelProps> = ({
     </SpanOrLegend>
   );
 
-  const requiredExtra =
-    required || extra ?
-      <div>
-        {required && <FieldRequiredText disabled={disabled} error={error} />}
-        {extra && <FieldExtra>{extra}</FieldExtra>}
-      </div>
-    : null;
+  const requiredExtra = (!!required || !!extra) && (
+    <div>
+      {required && <FieldRequiredText disabled={disabled} error={error} />}
+      {extra && <FieldExtra>{extra}</FieldExtra>}
+    </div>
+  );
 
   const outerClassName = twJoin(
     'mb-1 ml-px flex items-center justify-between',

@@ -59,33 +59,31 @@ const Field: FC<FieldProps> = ({
   name,
   required,
 }) => {
-  const status =
-    description || error || maxLength ?
-      <FieldStatus
-        className={classNameDescription}
-        description={description}
-        disabled={disabled}
-        error={error}
-        hideMaxLength={hideMaxLength}
-        id={id ?? name}
-        length={length}
-        maxLength={maxLength}
-      />
-    : null;
+  const status = (!!description || !!error || !!maxLength) && (
+    <FieldStatus
+      className={classNameDescription}
+      description={description}
+      disabled={disabled}
+      error={error}
+      hideMaxLength={hideMaxLength}
+      id={id ?? name}
+      length={length}
+      maxLength={maxLength}
+    />
+  );
 
-  const fieldLabel =
-    label ?
-      <FieldLabel
-        className={classNameLabel}
-        disabled={disabled}
-        error={error}
-        extra={extra}
-        htmlFor={name ? (id ?? name) : undefined}
-        required={required}
-      >
-        {label}
-      </FieldLabel>
-    : null;
+  const fieldLabel = label && (
+    <FieldLabel
+      className={classNameLabel}
+      disabled={disabled}
+      error={error}
+      extra={extra}
+      htmlFor={name ? (id ?? name) : undefined}
+      required={required}
+    >
+      {label}
+    </FieldLabel>
+  );
 
   return (
     <div className={className} role="presentation">
