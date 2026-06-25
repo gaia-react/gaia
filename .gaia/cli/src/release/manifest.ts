@@ -107,14 +107,25 @@ const escapeRegExp = (pattern: string): string =>
     .replaceAll('?', String.raw`\?`)
     .replaceAll('*', '[^/]*');
 
-export const parseExcludePatterns = (text: string): RegExp[] =>
+/**
+ * Trimmed, non-blank, non-comment lines from a `.gaia/release-exclude` body.
+ * The shared primitive behind both the exclude-pattern compiler here and the
+ * scrub `wikilink-to-excluded` slug derivation; one parser keeps the two from
+ * drifting on comment / blank-line handling.
+ */
+export const parseExcludeLines = (text: string): string[] =>
   text.split('\n').flatMap((line) => {
     const trimmed = line.trim();
 
     if (trimmed.length === 0 || trimmed.startsWith('#')) return [];
 
-    return [new RegExp(`^${escapeRegExp(trimmed)}(/|$)`)];
+    return [trimmed];
   });
+
+export const parseExcludePatterns = (text: string): RegExp[] =>
+  parseExcludeLines(text).map(
+    (line) => new RegExp(`^${escapeRegExp(line)}(/|$)`)
+  );
 
 export const classifyPath = (relativePath: string): ManifestClass | null => {
   if (ADOPTER_OWNED_SENTINELS.has(relativePath)) return null;

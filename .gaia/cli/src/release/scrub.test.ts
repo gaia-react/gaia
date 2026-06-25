@@ -28,6 +28,7 @@ type Sandbox = {
   configPath: string;
   rootDir: string;
   stagingDir: string;
+  writeSource: (relativePath: string, contents: string) => void;
   writeStaged: (relativePath: string, contents: string) => void;
 };
 
@@ -50,6 +51,11 @@ const setupSandbox = (options: SandboxOptions): Sandbox => {
     configPath,
     rootDir,
     stagingDir,
+    writeSource: (relativePath, contents) => {
+      const absolute = path.join(rootDir, relativePath);
+      mkdirSync(path.dirname(absolute), {recursive: true});
+      writeFileSync(absolute, contents, 'utf8');
+    },
     writeStaged: (relativePath, contents) => {
       const absolute = path.join(stagingDir, relativePath);
       mkdirSync(path.dirname(absolute), {recursive: true});
@@ -650,5 +656,213 @@ describe('parseKeyPath', () => {
 
   test('throws on an empty key string', () => {
     expect(() => parseKeyPath('')).toThrow('malformed key path');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Derived wikilink-to-excluded check
+// ---------------------------------------------------------------------------
+
+const WIKILINK_DERIVED_CONFIG = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: wikilink-to-excluded
+        derive: excluded-slugs
+        scope:
+          - "wiki/**/*.md"
+        path-allowlist:
+          - "wiki/hot.md"
+          - "wiki/log.md"
+`;
+
+// Representative `.gaia/release-exclude` body: a comment, blank lines, two
+// bare-directory excludes (entities, meta), two `.md` file excludes, and
+// non-wiki lines that the slug derivation must ignore.
+const EXCLUDE_FIXTURE = [
+  '# Paths excluded from the distribution tarball.',
+  '',
+  'wiki/entities',
+  'wiki/meta',
+  'wiki/concepts/Release Workflow.md',
+  'wiki/decisions/Bundle-time Scrub.md',
+  '.gaia/release-exclude',
+  '.claude/commands/gaia-release.md',
+].join('\n');
+
+// Lay down the source-tree inputs the derived check reads from cwd: the
+// release-exclude manifest plus real pages inside the excluded directories
+// (slugs that are NEVER enumerated as exclude lines).
+const seedExcludedSource = (sandbox: Sandbox): void => {
+  sandbox.writeSource('.gaia/release-exclude', EXCLUDE_FIXTURE);
+  sandbox.writeSource('wiki/entities/GAIA.md', '# GAIA\n');
+  sandbox.writeSource('wiki/entities/Steven Sacks.md', '# Steven Sacks\n');
+  sandbox.writeSource('wiki/meta/dashboard.md', '# Wiki Dashboard\n');
+  sandbox.writeSource(
+    'wiki/meta/lint-report-2026-06-25.md',
+    '# Lint Report: 2026-06-25\n'
+  );
+};
+
+describe('wikilink-to-excluded derived check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('derives the slug set from cwd release-exclude, not the staging tree', () => {
+    // The #1 trap: `.gaia/release-exclude` excludes itself, so it is absent
+    // from the staging tree every other check scans. An implementation that
+    // reads it from staging finds nothing and silently passes.
+    sandbox = setupSandbox({config: WIKILINK_DERIVED_CONFIG});
+    seedExcludedSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Foo.md',
+      '# Foo\n\nSee [[Bundle-time Scrub]] for the rationale.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('wikilink-to-excluded');
+    expect(out).toContain('Bundle-time Scrub');
+  });
+
+  test('flags a wikilink to a page inside a bare-directory exclude', () => {
+    sandbox = setupSandbox({config: WIKILINK_DERIVED_CONFIG});
+    seedExcludedSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Bar.md',
+      '# Bar\n\nBuilt on [[GAIA]] and [[Steven Sacks]].\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('GAIA');
+    expect(out).toContain('Steven Sacks');
+  });
+
+  test('flags a wikilink to a dated artifact inside an excluded directory', () => {
+    sandbox = setupSandbox({config: WIKILINK_DERIVED_CONFIG});
+    seedExcludedSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Baz.md',
+      '# Baz\n\nSee [[lint-report-2026-06-25]].\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('lint-report-2026-06-25');
+  });
+
+  test('flags a newly excluded page with no config change (drift-proof)', () => {
+    sandbox = setupSandbox({config: WIKILINK_DERIVED_CONFIG});
+    seedExcludedSource(sandbox);
+    // A slug that never appeared in the old hand-maintained alternation.
+    sandbox.writeSource(
+      '.gaia/release-exclude',
+      `${EXCLUDE_FIXTURE}\nwiki/decisions/Brand New Decision.md\n`
+    );
+    sandbox.writeStaged(
+      'wiki/concepts/Qux.md',
+      '# Qux\n\nSee [[Brand New Decision]].\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('Brand New Decision');
+  });
+
+  test('does not flag wikilinks to shipped (non-excluded) pages', () => {
+    sandbox = setupSandbox({config: WIKILINK_DERIVED_CONFIG});
+    seedExcludedSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Quux.md',
+      '# Quux\n\nSee [[Some Shipped Concept]] and [[Another Page]].\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('exempts allowlisted hot.md / log.md from the derived check', () => {
+    sandbox = setupSandbox({config: WIKILINK_DERIVED_CONFIG});
+    seedExcludedSource(sandbox);
+    sandbox.writeStaged('wiki/hot.md', '# Hot\n\n[[Bundle-time Scrub]]\n');
+    sandbox.writeStaged('wiki/log.md', '# Log\n\n[[GAIA]]\n');
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('flags an aliased or anchored wikilink to an excluded slug', () => {
+    // The old regex required `]]` immediately after the slug, so it missed
+    // `[[GAIA|alias]]` and `[[Bundle-time Scrub#anchor]]`. extractWikilinks
+    // normalizes both away before the Set test.
+    sandbox = setupSandbox({config: WIKILINK_DERIVED_CONFIG});
+    seedExcludedSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/Aliased.md',
+      '# Aliased\n\nSee [[Bundle-time Scrub|the scrub ADR]] and [[Release Workflow#Step 3]].\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('Bundle-time Scrub');
+    expect(out).toContain('Release Workflow');
+  });
+
+  test('flags a wikilink to an excluded directory name (case-insensitive)', () => {
+    sandbox = setupSandbox({config: WIKILINK_DERIVED_CONFIG});
+    seedExcludedSource(sandbox);
+    sandbox.writeStaged(
+      'wiki/concepts/DirLink.md',
+      '# DirLink\n\nSee [[Entities]] and [[meta]].\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+  });
+
+  test('runs a static check and the derived check in one config', () => {
+    const mixedConfig = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: uat-narrative
+        pattern: "UAT-[0-9]{3}"
+        scope:
+          - "wiki/**"
+      - id: wikilink-to-excluded
+        derive: excluded-slugs
+        scope:
+          - "wiki/**/*.md"
+        path-allowlist:
+          - "wiki/hot.md"
+`;
+    sandbox = setupSandbox({config: mixedConfig});
+    seedExcludedSource(sandbox);
+    sandbox.writeStaged('wiki/a.md', '# A\n\nUAT-007 reference.\n');
+    sandbox.writeStaged('wiki/b.md', '# B\n\n[[Bundle-time Scrub]]\n');
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('uat-narrative');
+    expect(out).toContain('wikilink-to-excluded');
   });
 });
