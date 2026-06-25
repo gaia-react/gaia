@@ -10,7 +10,7 @@ Closes a SPEC after its implementing PR has merged. Two responsibilities:
 1. **Drain a deferred wiki-promote**, if `/speckit-implement` saw the PR unmerged and cached a defer flag.
 2. **Prompt for SPEC artifact disposition**, archive, delete, or keep in place, once the wiki side is settled.
 
-Auto-triggered from `wiki-promote` Step 8 on the immediate-merge path. Also invokable manually as `/gaia-spec close [SPEC-NNN]` for the deferred path or for retroactive disposition.
+Auto-triggered from `wiki-promote` Step 8 on the immediate-merge path. Also invokable manually as `/speckit-gaia-spec-close [SPEC-NNN]` for the deferred path or for retroactive disposition.
 
 ## Step 1: Resolve target SPEC
 
@@ -56,7 +56,7 @@ Surface via `AskUserQuestion`:
 - Options:
   - `{ label: "Archive (Recommended)", description: "Move the SPEC folder to .gaia/local/specs/archived/ with status=archived. Preserves the SPEC artifact and its siblings for posterity. Wiki content was already promoted at implement time; no re-summarization." }`
   - `{ label: "Delete", description: "Remove the SPEC folder. Local-only (.gaia/local/ is gitignored), so the SPEC is not recoverable from git history." }`
-  - `{ label: "Keep in place", description: "Leave the folder at .gaia/local/specs/<spec_id>/ unchanged. Choose if undecided; re-run /gaia-spec close <spec_id> later to revisit." }`
+  - `{ label: "Keep in place", description: "Leave the folder at .gaia/local/specs/<spec_id>/ unchanged. Choose if undecided; re-run /speckit-gaia-spec-close <spec_id> later to revisit." }`
 
 ## Step 4: Apply disposition
 

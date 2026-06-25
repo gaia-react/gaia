@@ -60,7 +60,7 @@ If `$pr_json` is `[]` (no merged PR for this branch):
 
    (Cache directory creation: `mkdir -p .gaia/local/cache/wiki-promote/`. The `.gaia/local/` line in `.gitignore` covers this path.)
 
-2. Exit with: `wiki-promote: SPEC-NNN deferred, awaiting PR merge for branch <current_branch>. Drain via /gaia-spec close SPEC-NNN after merge.`
+2. Exit with: `wiki-promote: SPEC-NNN deferred, awaiting PR merge for branch <current_branch>. Drain via /speckit-gaia-spec-close SPEC-NNN after merge.`
 
 If `$pr_json` contains a merged PR:
 
@@ -314,7 +314,7 @@ Wiki promote complete for SPEC-NNN.
 
 If any pages were skipped due to hand-edit detection, include a one-line note:
 
-`Hand-edited skips can be resolved by re-running /gaia-spec close SPEC-NNN --force (TBD; for now resolve manually).`
+`Hand-edited skips can be resolved by re-running /speckit-gaia-spec-close SPEC-NNN --force (TBD; for now resolve manually).`
 
 ## Step 8 - Chain to spec-close (immediate-merge path only)
 
@@ -328,4 +328,4 @@ Otherwise, invoke `/speckit-gaia-spec-close` directly by calling the Skill tool 
 
 This presents the user with the archive / delete / keep prompt for the local SPEC artifact. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<spec_id>/`.
 
-If `/speckit-gaia-spec-close` fails or refuses, exit with the warning `wiki-promote: pages staged and committed; spec-close chain failed. Run /gaia-spec close <spec_id> manually to dispose of the SPEC artifact.` Do NOT retry the chain, the wiki side is already settled.
+If `/speckit-gaia-spec-close` fails or refuses, exit with the warning `wiki-promote: pages staged and committed; spec-close chain failed. Run /speckit-gaia-spec-close <spec_id> manually to dispose of the SPEC artifact.` Do NOT retry the chain, the wiki side is already settled.

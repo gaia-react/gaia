@@ -62,7 +62,7 @@ Archiving moves a SPEC folder to `.gaia/local/specs/archived/<id>/` and stamps `
 
 Two paths reach the archive:
 
-- **Explicit disposition.** `/gaia-spec close` prompts Archive / Delete / Keep in place once the implementing PR has merged (and after any deferred wiki-promote drain). Archive is the recommended default.
+- **Explicit disposition.** `/speckit-gaia-spec-close` prompts Archive / Delete / Keep in place once the implementing PR has merged (and after any deferred wiki-promote drain). Archive is the recommended default.
 - **Auto-sweep.** `lib/spec-archive-merged.sh` runs on every `/gaia-spec`, right after `spec-reconcile.sh`. It archives any folder whose ledger row reads `merged` and that has no pending wiki-promote drain cache at `.gaia/local/cache/wiki-promote/<id>.json` (a pending cache means the wiki content has not promoted yet, so the close flow still owns it). A merged row with no active folder is skipped, and an id that already has an `archived/` folder is left in place rather than overwritten. This is the safety net for a PR merged out-of-band (the GitHub button, another session) or a `Keep in place` disposition that left the folder active. The sweep is silent-but-logged: one stdout line (`Archived N merged SPEC(s): …`) and a `spec_closed` telemetry event (`disposition: archive`) per folder moved.
 
 `Keep in place` persists no marker, so the sweep cannot tell it apart from a SPEC that was never closed and will archive both. This is acceptable because archiving is reversible: move the folder back out of `archived/` to undo it.
