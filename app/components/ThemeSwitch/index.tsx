@@ -7,7 +7,7 @@ import type {action} from '~/routes/resources+/theme-switch';
 import type {Theme} from '~/utils/theme.server';
 
 export type ThemeSwitchProps = {
-  userPreference?: null | Theme;
+  userPreference?: Theme;
 };
 
 const NEXT_MODE: Record<

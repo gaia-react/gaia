@@ -71,6 +71,7 @@ export const formatDate = (date: Date): string => format(date, 'yyyy-MM-dd');
 - JSX boolean props: always explicit `={true}`, makes props grep-able and avoids confusion when a prop is later refactored to a non-boolean type
 - Max 3 function parameters, use an options object beyond that; call sites with 4+ positional args are hard to read and argument order mistakes are common
 - Inline boolean coercion uses `!!x`, never `Boolean(x)`; reserve `Boolean` for point-free use (e.g. `array.filter(Boolean)`), and coerce per operand in a nullable `||` chain (`!!a || !!b`), since `!!(a || b)` trips `@typescript-eslint/prefer-nullish-coalescing`
+- Prefer `undefined` over `null` for GAIA-controlled absence (state, optional fields, internal sentinels); reserve `null` for external contracts that require it: DOM `useRef(null)`, ref-callback params, React Router `data(null)`, Zod `.nullable()`, and platform/library APIs that return `null`
 
 ## Zod
 

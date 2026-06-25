@@ -44,7 +44,7 @@ Only use when the function is:
 
 If none apply, skip `useCallback`, it adds indirection without benefit.
 
-**`useState` type inference:** Omit explicit type when inferable from the default value. Only add types for `null` initial values, unions, or complex objects.
+**`useState` type inference:** Omit explicit type when inferable from the default value. Add types for unions or complex objects. For an absent initial value, prefer `undefined` over `null` (GAIA never-null): `useState<T>()` is already typed `T | undefined`.
 
 ### Gate 2: Form Element Check
 

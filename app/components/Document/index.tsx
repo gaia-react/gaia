@@ -30,7 +30,7 @@ const Document: FC<DocumentProps> = ({
   const nonce = useNonce();
   const theme = useOptionalTheme();
   const requestInfo = useOptionalRequestInfo();
-  const hasExplicitTheme = requestInfo?.userPrefs.theme != null;
+  const hasExplicitTheme = !!requestInfo?.userPrefs.theme;
 
   return (
     <html
