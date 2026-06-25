@@ -10,7 +10,7 @@ tags: [decision, routing, architecture]
 
 # Decision: Thin Routes, Fat Pages
 
-Route files (`app/routes/**`) contain only loader, action, meta, and a one-line render of a page component. All UI lives in `app/pages/{Group}/{PageName}/`.
+Route files (`app/routes/**`) contain only loader, action, meta, and a one-line render of a page component. All UI lives in `app/pages/{Group}/{PascalName}Page/`.
 
 ## Rationale
 

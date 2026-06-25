@@ -34,27 +34,29 @@ A scripted rubber-stamp, run `.gaia/scripts/red-ledger/extract-test-signals.mjs`
 over the changed files and append a `keep` for every emitted signal, mints every
 matching line at near-zero cost and is the cost-minimizing path through this
 gate. The judgement guarantee rests on the human PR rollup, not on the presence
-of a line, plus the D-8 cross-check below. The gate is a forgery floor against
-"no audit ran at all," not a proof that an honest audit ran.
+of a line. The gate is a forgery floor against "no audit ran at all," not a proof
+that an honest audit ran.
 
 The presence decision reads **presence and signal match only**; it never reads
 the keep/fix/delete verdict. That keeps the verdict advisory and avoids
 double-gating the emergent surface on a judgement call.
 
-## D-8 cross-check
+## Honesty lint is not re-checked here
 
-The one place a verdict is read is the D-8 cross-check. A `keep` ledger line on a
-file that still carries an unresolved D-8 static honesty error is a provable
-rubber-stamp: the honesty lint already flags the file, so a `keep` contradicts a
-machine-checkable signal.
+The gate reads no verdict and re-runs no lint. Static test-honesty (the
+`vi.mock`-internal, literal-tautology, call-through-only, and
+server/internals-import patterns) is owned, once, by its own gate: the
+[[Quality Gate]] at commit (`eslint --max-warnings=0`) and CI lint at PR. A file
+carrying a honesty-lint error cannot be committed or merged, so re-checking it at
+merge would double-gate an invariant another system already enforces. GAIA gates
+each invariant once, at its owning gate: this gate owns presence, lint owns
+honesty.
 
-The cross-check matches the frozen D-8 rule-id suffixes
-(`no-mock-internal`, `no-literal-tautology`, `no-call-through-only`,
-`no-server-import-from-consumer`; the namespace prefix is the lint maintainer's
-to set). When the rules are enforced and an in-scope file with a `keep` line
-reports one of those errors at error severity, the merge is denied. The
-cross-check degrades gracefully: when ESLint is absent, the rules are not
-installed, or no D-8 error exists, it is silent and the gate passes.
+The call-through-only and server/internals-import patterns ship as stock ESLint
+ids (`vitest/prefer-called-with`, `no-restricted-imports`). The same-module-mock
+and literal-tautology patterns have no stock-tool equivalent and are not
+currently enforced; if they become custom `gaia-test-honesty/*` rules, they too
+enforce at lint-time, not here.
 
 ## Per-verdict artifact
 
@@ -62,9 +64,9 @@ Each non-keep verdict carries a machine-checkable `artifact` on its ledger line
 (the cited sibling for a redundancy delete, the unreachable or missing assertion
 for a fix), enforced by the ledger writer
 `.gaia/scripts/audit-ledger/append-worthiness.mjs`. An all-keep run with no
-artifacts is therefore a detectable contradiction: a real audit that found
-nothing to fix or delete is plausible, but a run that records only `keep` while
-the D-8 lint flags the file is not.
+artifacts is therefore a shape the human PR rollup can scrutinize: a real audit
+that found nothing to fix or delete is plausible, but it is also what a scripted
+rubber-stamp produces, so the rollup, not this gate, makes that call.
 
 ## Scope
 
@@ -108,8 +110,7 @@ The gate enforces only where its tooling answers, matching the sibling hooks:
 - A changed emergent test file the signal helper cannot parse (a mid-edit syntax
   error): skip that file, never deny.
 - The deny path is fail-closed only for the clean case: a parseable in-scope
-  emergent test whose current signal has no matching ledger line, or a `keep`
-  line on a file with an unresolved D-8 error.
+  emergent test whose current signal has no matching ledger line.
 
 ## Relationship to the other merge gates
 

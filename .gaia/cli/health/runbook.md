@@ -162,7 +162,7 @@ rsync -a --files-from="$INCLUDE" . "$STAGING"/
 ./.gaia/cli/gaia-maintainer release scrub "$STAGING"
 ./.gaia/cli/gaia-maintainer release runtime-deps --staging "$STAGING"
 find "$STAGING" -name "*.md" -exec grep -l "gaia:maintainer-only" {} \;
-grep -rEn "\[\[(Release Workflow|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta)\]\]" "$STAGING/wiki/" || true
+grep -rEn "\[\[(Release Workflow|Release-Notes|Bundle-time Scrub|GAIA|Steven Sacks|dashboard|Entities|Meta|CLI-Binary-Split|Forensics Triage Workflow|consolidate-report-[0-9-]+|lint-report-[0-9-]+)\]\]" "$STAGING/wiki/" || true
 ```
 
 After the trap-protected block exits and cleanup fires (see note 3 above), run a one-line **post-cleanup verification** to observe the post-trap state:

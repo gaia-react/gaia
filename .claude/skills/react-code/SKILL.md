@@ -131,8 +131,8 @@ Thin shell only:
 ### Page components (`app/pages/`)
 
 ```
-app/pages/{Group}/{PageName}/index.tsx                    # most pages
-app/pages/{Group}/{Section}/{PageName}/index.tsx          # only when a section grouping is needed
+app/pages/{Group}/{PascalName}Page/index.tsx                    # most pages
+app/pages/{Group}/{Section}/{PascalName}Page/index.tsx          # only when a section grouping is needed
 ```
 
 For loader data: use `useLoaderData<typeof loader>()` (import the `loader` type from the route file) or `useLoaderData<LoaderData>()` (import `LoaderData` from a sibling `types.ts`). Never define the type inline in the page component file itself.

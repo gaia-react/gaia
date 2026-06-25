@@ -16,21 +16,16 @@
 # judgement: a scripted rubber-stamp (run extract-test-signals.mjs, append a
 # `keep` for every emitted signal) mints every matching line at near-zero cost
 # and is the cost-minimizing path through this gate. The judgement guarantee
-# rests on the human PR rollup and the D-8 cross-check below, NOT on the mere
-# presence of a line. The gate checks PRESENCE + signal match ONLY; it never
-# reads the keep/fix/delete verdict for the presence decision (that keeps the
-# verdict advisory).
+# rests on the human PR rollup, NOT on the mere presence of a line. The gate
+# checks PRESENCE + signal match ONLY; it never reads the keep/fix/delete verdict
+# at all (that keeps the verdict advisory).
 #
-# D-8 CROSS-CHECK (the one place a verdict is read). A `keep` ledger line on a
-# file that still carries an UNRESOLVED D-8 lint-honesty error is a PROVABLE
-# rubber-stamp: the static honesty lint already flags the file, so a `keep`
-# contradicts a machine-checkable signal. When the D-8 rules are enforced (they
-# ship in @gaia-react/lint under the `*/no-mock-internal`,
-# `*/no-literal-tautology`, `*/no-call-through-only`,
-# `*/no-server-import-from-consumer` rule ids) and an in-scope file with a `keep`
-# line reports one of those errors, the merge is denied. The cross-check degrades
-# gracefully: when ESLint is absent, the rules are not installed, or no D-8 error
-# exists, it is silent and the gate passes.
+# This gate does NOT re-check static test-honesty lint. That invariant is owned,
+# once, by its own gate: the Quality Gate at commit (eslint --max-warnings=0) and
+# CI lint at PR. A file carrying a honesty-lint error cannot be committed or
+# merged, so re-checking it here would double-gate an invariant another system
+# already enforces ruthlessly. The worthiness gate owns presence; lint owns
+# honesty.
 #
 # SCOPE. The gate scopes to the EMERGENT test files THIS PR changed (git diff
 # against the merge base with the default branch), not the whole repo's emergent
@@ -52,8 +47,7 @@
 #   - a changed emergent test file the signal helper cannot parse (mid-edit
 #     syntax error) -> that file is skipped, never denied. Fail-open.
 #   - the deny path is fail-closed ONLY for the clean case: a parseable in-scope
-#     emergent test whose CURRENT signal has no matching worthiness-ledger line
-#     (or a `keep` line on a file with an unresolved D-8 error).
+#     emergent test whose CURRENT signal has no matching worthiness-ledger line.
 #
 # Stale-signal lines (a line written before a later test edit) carry the old
 # signal and so never match the recomputed current signal -> rejected, exactly
@@ -120,10 +114,6 @@ classifier_script=".gaia/scripts/classifier/classify-determinism.mjs"
 # zero matches, which denies for the clean case below.
 ledger=".gaia/local/audit-ledger/worthiness.jsonl"
 
-# The frozen D-8 honesty rule-id suffixes. The namespace prefix is the lint
-# maintainer's to set, so match on the suffix after the slash.
-d8_rule_suffixes='no-mock-internal no-literal-tautology no-call-through-only no-server-import-from-consumer'
-
 # ---------------------------------------------------------------------------
 # Resolve the PR base, the default branch this work forks from. Prefer the
 # remote's advertised default; fall back to main. The merge base scopes the diff
@@ -157,13 +147,8 @@ classify_emergent() {
     | head -1
 }
 
-# Collect missing-line offenders as "file\tfullName" lines, and D-8 offenders as
-# "file\truleId" lines.
+# Collect missing-line offenders as "file\tfullName" lines.
 offenders=""
-d8_offenders=""
-
-# Track which in-scope files carry at least one keep line, for the D-8 cross-check.
-keep_files=""
 
 while IFS= read -r path; do
   [ -n "$path" ] || continue
@@ -199,8 +184,6 @@ while IFS= read -r path; do
   # scope for this file.
   [ -n "$current_ndjson" ] || continue
 
-  file_has_keep=0
-
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     full=$(printf '%s' "$line" | jq -r '.fullName // empty' 2>/dev/null || true)
@@ -210,88 +193,38 @@ while IFS= read -r path; do
     # Require >=1 ledger line with schema 1, this file, this fullName, and this
     # CURRENT signal. A matching line at a stale signal (the test was edited after
     # its verdict) does not count -> stale-signal rejection. A missing ledger file
-    # means zero matches -> deny. Capture the verdict only to drive the D-8
-    # cross-check; the presence decision never reads it.
-    matched_verdict=""
+    # means zero matches -> deny. Presence is the whole decision; the
+    # keep/fix/delete verdict stays advisory and is never read here.
+    matched=""
     if [ -f "$ledger" ]; then
-      matched_verdict=$(jq -r --arg f "$rel" --arg n "$full" --arg s "$sig" '
+      matched=$(jq -r --arg f "$rel" --arg n "$full" --arg s "$sig" '
         select((.schema // 0) == 1
           and (.file // "") == $f
           and (.fullName // "") == $n
           and (.signal // "") == $s)
-        | (.verdict // "")' "$ledger" 2>/dev/null \
+        | "1"' "$ledger" 2>/dev/null \
         | head -1 || true)
     fi
 
-    if [ -z "$matched_verdict" ]; then
+    if [ -z "$matched" ]; then
       offenders="${offenders}${rel}	${full}
 "
-    elif [ "$matched_verdict" = "keep" ]; then
-      file_has_keep=1
     fi
   done <<EOF
 $current_ndjson
 EOF
-
-  [ "$file_has_keep" -eq 1 ] && keep_files="${keep_files}${rel}
-"
 done <<EOF
 $changed
 EOF
 
 # ---------------------------------------------------------------------------
-# D-8 cross-check. For each in-scope file carrying at least one `keep` line, ask
-# ESLint (JSON output) whether the file still reports an unresolved D-8 honesty
-# error. A `keep` on a file the static honesty lint flags is a provable
-# rubber-stamp. Degrades gracefully: no ESLint, rules not installed, or no D-8
-# error -> silent.
+# Decision: allow when no offenders; otherwise deny.
 # ---------------------------------------------------------------------------
-if [ -n "$keep_files" ] && command -v pnpm >/dev/null 2>&1; then
-  while IFS= read -r kf; do
-    [ -n "$kf" ] || continue
-    # Run ESLint over the single file, JSON format. Any failure (no eslint, no
-    # config, the file outside the lint glob) yields no parseable output, so the
-    # cross-check stays silent for that file.
-    eslint_json=$(pnpm exec eslint --no-error-on-unmatched-pattern \
-      --format json "$kf" 2>/dev/null || true)
-    [ -n "$eslint_json" ] || continue
-
-    # Extract every error-severity (severity 2) ruleId whose suffix after the
-    # last slash is one of the frozen D-8 rule ids. A null ruleId (a parse crash)
-    # is ignored.
-    hit_rules=$(printf '%s' "$eslint_json" | jq -r '
-      .[].messages[]?
-      | select((.severity // 0) == 2)
-      | (.ruleId // "")
-      | select(. != "")' 2>/dev/null || true)
-    [ -n "$hit_rules" ] || continue
-
-    while IFS= read -r rid; do
-      [ -n "$rid" ] || continue
-      suffix="${rid##*/}"
-      for d8 in $d8_rule_suffixes; do
-        if [ "$suffix" = "$d8" ]; then
-          d8_offenders="${d8_offenders}${kf}	${rid}
-"
-          break
-        fi
-      done
-    done <<EOF
-$hit_rules
-EOF
-  done <<EOF
-$keep_files
-EOF
-fi
-
-# ---------------------------------------------------------------------------
-# Decision: allow when no offenders of either kind; otherwise deny.
-# ---------------------------------------------------------------------------
-if [ -z "$offenders" ] && [ -z "$d8_offenders" ]; then
+if [ -z "$offenders" ]; then
   exit 0
 fi
 
-reason="Worthiness presence gate: an emergent test this PR changed has no matching worthiness-ledger line at its current content (or a \`keep\` contradicts a static honesty error)."
+reason="Worthiness presence gate: an emergent test this PR changed has no matching worthiness-ledger line at its current content."
 
 if [ -n "$offenders" ]; then
   missing_list=$(printf '%s' "$offenders" \
@@ -308,28 +241,12 @@ ${missing_list}
 These emergent tests changed in this PR, but no worthiness verdict was recorded for their current content. The line proves only that the test-identity extractor ran over the current bytes, not that judgement was applied; the human PR rollup carries that. Editing a test after its verdict invalidates the line (the signal changes), so a fresh verdict must be recorded for the current body."
 fi
 
-if [ -n "$d8_offenders" ]; then
-  d8_list=$(printf '%s' "$d8_offenders" \
-    | while IFS=$'\t' read -r f r; do
-        [ -n "$f" ] || continue
-        printf '  \xe2\x80\xa2 %s (%s)\n' "$f" "$r"
-      done)
-  reason="${reason}
-
-A \`keep\` verdict contradicts an unresolved D-8 static honesty error on:
-
-${d8_list}
-
-A keep on a file the honesty lint flags is a provable rubber-stamp. Resolve the lint error, then re-record the verdict for the fixed content."
-fi
-
 reason="${reason}
 
 To unblock:
   1. Run the worthiness evaluator on the changed emergent tests (the tdd skill dispatches it), or invoke the ledger writer per judged test:
        node .gaia/scripts/audit-ledger/append-worthiness.mjs <file> <fullName> <verdict> [artifact]
-  2. Resolve any D-8 honesty errors named above, then re-record the verdict for the fixed content.
-  3. Retry gh pr merge.
+  2. Retry gh pr merge.
 
 See wiki/decisions/Worthiness Presence Gate.md for the full contract."
 

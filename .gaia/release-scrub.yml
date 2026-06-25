@@ -205,8 +205,8 @@ transforms:
       # signposting either the contract or the artifact location. Naming
       # the rule on any shared / adopter-shipped surface defeats it.
       # Tighter than the taxonomy's reference grep (`mentorship.*display`)
-      # to avoid the known false positive on
-      # `wiki/concepts/Telemetry.md:48` ("displayable aggregates").
+      # to avoid the known false positive on the "displayable aggregates"
+      # phrasing in `wiki/concepts/Telemetry.md`.
       - id: obscurity-rule-name
         description: "Obscurity contract: mentorship-display rule named in shipped surfaces"
         pattern: "mentorship[- ]display rule|raw mentorship|mentorship events?\\s+(file|path)|Claude must not display"
@@ -310,10 +310,10 @@ transforms:
         scope:
           - ".claude/hooks/**"
         line-allowlist:
-          # gaia-ci-defer.sh line 23: variable assignment; guarded on the next
-          # line by `[ -f "$config_path" ] || return 0`; adopters without
+          # In .claude/hooks/lib/gaia-ci-defer.sh: a variable assignment guarded
+          # by `[ -f "$config_path" ] || return 0`, so adopters without
           # .gaia/automation.json get a graceful no-op.
           - "local config_path=.*\\.gaia/automation\\.json"
-          # gaia-ci-defer.sh lines 3 and 8: shell comment lines documenting
+          # In .claude/hooks/lib/gaia-ci-defer.sh: shell comment lines documenting
           # the .gaia/automation.json config file in prose, not runtime refs.
           - "#.*\\.gaia/automation\\.json"

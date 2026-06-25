@@ -53,7 +53,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 
 - **N+1 patterns**: Sequential awaits inside loops that could be parallelized with `Promise.all`
 - **Unnecessary re-renders**: Missing memoization, unstable references in deps arrays, large objects passed as props, unnecessary `useCallback`/`useMemo` that adds indirection without benefit
-- **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports
+- **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports (the barrel-import false-positive caveat under "Merge findings" applies here too: GAIA's documented barrel modules, e.g. `app/services/gaia/*` and `test/mocks/*`, are the intended pattern, not defects)
 - **SSR performance**: Heavy computation in loaders that blocks response, missing caching for cacheable upstream responses
 - **Service-layer efficiency**: Over-fetching data, missing pagination/limits on list endpoints, redundant requests that could be coalesced
 - **Network waterfall**: Sequential fetches that could be parallel, missing prefetching opportunities
@@ -410,7 +410,7 @@ Prompt the subagent with these rules to check:
 - Exported functions must have explicit return types. Exceptions: route loaders/actions, FC-typed components
 - `z.literal()` not `z.enum()`, flag any `z.enum()` usage; `z.literal()` values should be sorted alphanumerically
 
-**From `.claude/rules/new-route.md`:**
+**From `.claude/rules/routes.md`:**
 
 - Route files (`app/routes/`) must be thin: only loader/action, meta (via loader), Zod schemas, and rendering the page component. No UI code, hooks, state, or sub-components.
 - Page components live at `app/pages/{Group}/{PascalName}Page/index.tsx`
