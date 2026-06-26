@@ -103,7 +103,26 @@ If the local agent declines to write the marker, its report names what remains u
 
 ### 4. Merge
 
+<!-- gaia:maintainer-only:start -->
+First clear the **CHANGELOG gate** below: decide whether this PR needs an `## [Unreleased]` entry and land it on the branch before merging.
+<!-- gaia:maintainer-only:end -->
+
 Once the marker exists for HEAD, run `gh pr merge`. The hook short-circuits to allow the call.
+
+<!-- gaia:maintainer-only:start -->
+## CHANGELOG gate (maintainer-only)
+
+The last decision before merge: does this PR's change belong in `CHANGELOG.md` under `## [Unreleased]`? Make the call **at merge time**, not authoring time. An entry promised in an earlier session is worthless if it never landed, and a fix that spanned sessions may have changed what's worth noting, so re-run this check on every merge, including a PR resumed days later. GAIA's `CHANGELOG.md` is release-excluded, so this gate and every entry it produces are GAIA-team-only and reach no adopter clone.
+
+**Worthy, add an entry.** Default to yes for anything that moves the GAIA product surface: a new or changed skill, command, hook, rule, agent, or wiki concept page; a behavior or default change; a bugfix in any shipped or maintainer surface; a dependency bump that crosses a security or compatibility floor; an adopter-action change (author it per the Adopter-action convention at the top of `CHANGELOG.md`). The changelog tracks the whole product, maintainer-only tooling included.
+
+**Not worthy, merge as-is.** Typo, formatting, or comment-only edits; a pure internal refactor with no behavior or surface change; test-only changes that alter no shipped behavior; and anything already covered by an existing `## [Unreleased]` line.
+
+When worthy:
+
+1. Add the entry to the right `### Added | Changed | Removed | Fixed` subsection under `## [Unreleased]`, present-tense, with the trailing `(#<PR>)` reference.
+2. Commit it onto the PR branch and push so it merges with the change. HEAD moves, so re-confirm step 3's audit marker still covers the new HEAD before merging. Cheapest path: decide changelog-worthiness back in step 2 while fixing audit findings, so a single audit pass covers both.
+<!-- gaia:maintainer-only:end -->
 
 ## Post-merge verification before cleanup
 
