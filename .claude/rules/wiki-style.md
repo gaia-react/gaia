@@ -23,6 +23,10 @@ Body prose and code comments describe **what is** in present tense. The historic
 - **Present tense only.** Do not write "was changed from X to Y", "previously did A, now does B", "moved from a to b". State the current behavior directly.
 - **No UAT or SPEC references in prose or comments.** `UAT-NNN` identifies entries inside SPECs; `SPEC-NNN` identifies the SPECs themselves. Both are working documents, they get superseded, renumbered, or deleted. A reader querying the wiki about a feature gets no value from "implements UAT-012" or "from SPEC-005". Drop the reference; describe what the feature does and why.
 - **No inline PR / commit / date-of-change references in body prose.** Don't write "added in PR #97", "commit abc123 introduced …", "as of 2026-05-07 …". The git log answers those questions and stays accurate when prose drifts.
+- **No unreleased or speculative roadmap as current behavior.** Body prose describes what ships today. Do not document a planned, deferred, or not-yet-built feature as if it already exists, a reader cannot tell aspiration from shipped fact. State current behavior; keep forward-looking notes out of the page, or label them plainly as deferred and not yet built.
+  <!-- gaia:maintainer-only:start -->
+  GAIA maintainers: roadmap or forward-looking content that must live in the source repo but not reach adopter scaffolds goes inside the HTML-comment maintainer-only markers, the same pair wrapping this note. The bundle-time scrub strips marker-delimited blocks from markdown under `wiki/`, `.claude/`, and `.specify/extensions/gaia/` before tar, so the source repo stays a superset of the adopter bundle; unbalanced markers fail the release build. See [[Bundle-time Scrub]].
+  <!-- gaia:maintainer-only:end -->
 
 ## Why
 
