@@ -157,6 +157,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Init Workflow]]: `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, configure-automation, finalize, resume.
 - [[Telemetry]]: three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.
 - [[Serena Integration]]: Serena handles live code; the wiki handles institutional memory.
+- [[React Perf Diagnostic]]: `/gaia-react-perf`: measure-only runtime render-performance diagnostic built on bippy; capture -> reduce CLI -> ranked `memoDefeated` findings with a structural-fix cross-reference.
 - [[Chromatic Opt-Out]]
 
 <!-- gaia:maintainer-only:start -->
