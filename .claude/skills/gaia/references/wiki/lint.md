@@ -14,9 +14,10 @@ Compute today's date from the shell clock first: no LLM has a clock, so the mode
 DATE=$(date +%F)
 ```
 
-**Regenerate the report from scratch every run.** A lint report is a point-in-time snapshot; a stale report from an earlier run must never be reused or renamed into today's slot. Remove any same-day report before writing the shell so a stale one cannot be picked up and patched in place:
+**Regenerate the report from scratch every run.** A lint report is a point-in-time snapshot; a stale report from an earlier run must never be reused or renamed into today's slot. `wiki/meta/` is release-excluded, so a freshly scaffolded adopter clone has no such directory yet; create it before any report write. Then remove any same-day report so a stale one cannot be picked up and patched in place:
 
 ```bash
+mkdir -p wiki/meta/
 rm -f wiki/meta/lint-report-$DATE.md
 ```
 
