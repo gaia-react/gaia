@@ -30,6 +30,14 @@ trustPolicyExclude:
 # community-vetting rationale does not apply.
 minimumReleaseAgeExclude:
   - '@gaia-react/lint'
+  # bippy@0.5.42: render-perf diagnostic primitive (.playwright/react-perf/),
+  # dev-only test harness, never shipped to users. This exact version was
+  # vetted end-to-end through a capture/fix-loop spike against React 19.2.7
+  # (installed:true, 0 errors), so the community-vetting rationale behind the
+  # release-age window is already satisfied for it. Scoped to the exact pinned
+  # version; the package.json pin (no caret) keeps the exception inert for any
+  # other release.
+  - 'bippy@0.5.42'
 
 # Resolution settings. pnpm 11 reads these from pnpm-workspace.yaml, not from
 # .npmrc (which it consults only for auth/registry). publicHoistPattern lifts

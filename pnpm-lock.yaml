@@ -192,9 +192,15 @@ importers:
       axe-core:
         specifier: 4.12.1
         version: 4.12.1
+      bippy:
+        specifier: 0.5.42
+        version: 0.5.42(react@19.2.7)
       chromatic:
         specifier: 17.4.1
         version: 17.4.1
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
       eslint:
         specifier: 9.39.4
         version: 9.39.4(jiti@2.7.0)
@@ -2567,6 +2573,11 @@ packages:
 
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
+
+  bippy@0.5.42:
+    resolution: {integrity: sha512-K3tpfO9uGQB2k/Vi5P6jgfrnXvO/FAQNUE2tqKjQmT0a93fJCysMGLgJmRKzYYfybAoOtwWwmKm0vw/uXE0hMw==}
+    peerDependencies:
+      react: '>=17.0.1'
 
   body-parser@1.20.5:
     resolution: {integrity: sha512-3grm+/2tUOvu2cjJkvsIxrv/wVpfXQW4PsQHYm7yk4vfpu7Ekl6nEsYBoJUL6qDwZUx8wUhQ8tR2qz+ad9c9OA==}
@@ -7698,6 +7709,10 @@ snapshots:
   bidi-js@1.0.3:
     dependencies:
       require-from-string: 2.0.2
+
+  bippy@0.5.42(react@19.2.7):
+    dependencies:
+      react: 19.2.7
 
   body-parser@1.20.5:
     dependencies:

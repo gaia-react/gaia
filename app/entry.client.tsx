@@ -38,13 +38,21 @@ const hydrate = async () => {
     });
 
   await prepareApp().then(() => {
+    // The react-perf capture harness sets this global (via addInitScript, before
+    // hydration) to opt out of StrictMode for honest, non-doubled render
+    // timings; everything else keeps StrictMode on.
+    // eslint-disable-next-line no-underscore-dangle -- global injected by the react-perf capture harness
+    const isStrictModeDisabled = window.__PERF_NO_STRICT;
     startTransition(() => {
       hydrateRoot(
         document,
         <I18nextProvider i18n={i18next}>
-          <StrictMode>
+          {isStrictModeDisabled ?
             <HydratedRouter />
-          </StrictMode>
+          : <StrictMode>
+              <HydratedRouter />
+            </StrictMode>
+          }
         </I18nextProvider>
       );
     });

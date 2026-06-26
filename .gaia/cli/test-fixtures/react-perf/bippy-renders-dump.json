@@ -1,0 +1,7795 @@
+{
+  "afterLoad": {
+    "meta": {
+      "installed": true,
+      "commits": 3,
+      "errors": []
+    },
+    "count": 116
+  },
+  "meta": {
+    "installed": true,
+    "commits": 7,
+    "errors": []
+  },
+  "total": 248,
+  "all": [
+    {
+      "seq": 0,
+      "componentName": "I18nextProvider",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 19.399999916553497,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 1,
+      "componentName": "HydratedRouter",
+      "phase": "mount",
+      "selfTime": 2.600000023841858,
+      "totalTime": 19.399999916553497,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 2,
+      "componentName": "RemixErrorBoundary",
+      "phase": "mount",
+      "selfTime": 0.5,
+      "totalTime": 16.79999989271164,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 3,
+      "componentName": "RouterProvider2",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 16.29999989271164,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 4,
+      "componentName": "RouterProvider",
+      "phase": "mount",
+      "selfTime": 0.5,
+      "totalTime": 16.29999989271164,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 5,
+      "componentName": "Router",
+      "phase": "mount",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 15.79999989271164,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 6,
+      "componentName": "DataRoutes2",
+      "phase": "mount",
+      "selfTime": 0.699999988079071,
+      "totalTime": 15.699999868869781,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 7,
+      "componentName": "RenderErrorBoundary",
+      "phase": "mount",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 14.99999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 8,
+      "componentName": "RenderedRoute",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 14.899999916553497,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 9,
+      "componentName": "WithComponentProps2",
+      "phase": "mount",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 14.899999916553497,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 10,
+      "componentName": "AppWithState",
+      "phase": "mount",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 14.699999868869781,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 11,
+      "componentName": "State",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 14.599999904632568,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 12,
+      "componentName": "App",
+      "phase": "mount",
+      "selfTime": 1,
+      "totalTime": 14.599999904632568,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 13,
+      "componentName": "Document",
+      "phase": "mount",
+      "selfTime": 0.5999999642372131,
+      "totalTime": 13.599999904632568,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 14,
+      "componentName": "MetaHydrated",
+      "phase": "mount",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 15,
+      "componentName": "Links",
+      "phase": "mount",
+      "selfTime": 0.30000001192092896,
+      "totalTime": 0.5999999642372131,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 16,
+      "componentName": "Outlet",
+      "phase": "mount",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 9.899999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 17,
+      "componentName": "RenderedRoute",
+      "phase": "mount",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 9.799999952316284,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 18,
+      "componentName": "WithComponentProps2",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 9.699999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 19,
+      "componentName": "PublicRoute",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 9.699999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 20,
+      "componentName": "Layout",
+      "phase": "mount",
+      "selfTime": 2.199999988079071,
+      "totalTime": 9.699999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 21,
+      "componentName": "Header",
+      "phase": "mount",
+      "selfTime": 1.2999999523162842,
+      "totalTime": 5.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 22,
+      "componentName": "Link",
+      "phase": "mount",
+      "selfTime": 0.7000000476837158,
+      "totalTime": 1.0000000596046448,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 23,
+      "componentName": "GaiaLogo",
+      "phase": "mount",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.30000001192092896,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 24,
+      "componentName": "LanguageSelect",
+      "phase": "mount",
+      "selfTime": 1.300000011920929,
+      "totalTime": 1.800000011920929,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 25,
+      "componentName": "fetcher.Form",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 0.5,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 26,
+      "componentName": "Form",
+      "phase": "mount",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.5,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 27,
+      "componentName": "ThemeSwitch",
+      "phase": "mount",
+      "selfTime": 0.30000001192092896,
+      "totalTime": 1,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 28,
+      "componentName": "fetcher.Form",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 0.699999988079071,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 29,
+      "componentName": "Form",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 0.699999988079071,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 30,
+      "componentName": "IoDesktopOutline",
+      "phase": "mount",
+      "selfTime": 0.40000003576278687,
+      "totalTime": 0.6000000238418579,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 31,
+      "componentName": "IconBase",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 0.19999998807907104,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 32,
+      "componentName": "Outlet",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 1.899999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 33,
+      "componentName": "RenderedRoute",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 1.899999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 34,
+      "componentName": "WithComponentProps2",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 1.899999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 35,
+      "componentName": "IndexRoute",
+      "phase": "mount",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 1.899999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 36,
+      "componentName": "IndexPage",
+      "phase": "mount",
+      "selfTime": 1.100000023841858,
+      "totalTime": 1.7999999523162842,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 37,
+      "componentName": "LinkButton",
+      "phase": "mount",
+      "selfTime": 0.40000003576278687,
+      "totalTime": 0.5,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 38,
+      "componentName": "FaGithub",
+      "phase": "mount",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 39,
+      "componentName": "IconBase",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 40,
+      "componentName": "Footer",
+      "phase": "mount",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.30000001192092896,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 41,
+      "componentName": "Toast",
+      "phase": "mount",
+      "selfTime": 0,
+      "totalTime": 0.3999999761581421,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 42,
+      "componentName": "Toaster",
+      "phase": "mount",
+      "selfTime": 0.3999999761581421,
+      "totalTime": 0.3999999761581421,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 43,
+      "componentName": "ScrollRestoration",
+      "phase": "mount",
+      "selfTime": 0.30000001192092896,
+      "totalTime": 0.30000001192092896,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 44,
+      "componentName": "Scripts",
+      "phase": "mount",
+      "selfTime": 0.3999999761581421,
+      "totalTime": 0.3999999761581421,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": null,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 45,
+      "componentName": "HydratedRouter",
+      "phase": "update",
+      "selfTime": 0.3999999761581421,
+      "totalTime": 4.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "object",
+          "next": "undefined",
+          "unstable": false
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 46,
+      "componentName": "RemixErrorBoundary",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 4,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 47,
+      "componentName": "RouterProvider2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.899999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 48,
+      "componentName": "RouterProvider",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 3.899999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 49,
+      "componentName": "Router",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 3.699999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 50,
+      "componentName": "App",
+      "phase": "update",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 3.600000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 7,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 12,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 51,
+      "componentName": "Document",
+      "phase": "update",
+      "selfTime": 0.2999999523162842,
+      "totalTime": 3.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(3)",
+          "next": "array(3)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [
+        {
+          "index": 1,
+          "prev": "undefined",
+          "next": "string",
+          "unstable": false
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 52,
+      "componentName": "MetaHydrated",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "boolean",
+          "next": "boolean",
+          "unstable": false
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 53,
+      "componentName": "Links",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 54,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 2.799999952316284,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 55,
+      "componentName": "Header",
+      "phase": "update",
+      "selfTime": 0.30000001192092896,
+      "totalTime": 1.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 7,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 12,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 56,
+      "componentName": "Link",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 57,
+      "componentName": "GaiaLogo",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 58,
+      "componentName": "LanguageSelect",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.40000003576278687,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 7,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 12,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 59,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 60,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 61,
+      "componentName": "ThemeSwitch",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.3999999761581421,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 7,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 12,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 62,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.30000001192092896,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 63,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.30000001192092896,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 64,
+      "componentName": "IoDesktopOutline",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 65,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(4)",
+          "next": "array(4)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 66,
+      "componentName": "IndexPage",
+      "phase": "update",
+      "selfTime": 0.8999999761581421,
+      "totalTime": 1.2999999523162842,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 7,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 12,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 67,
+      "componentName": "LinkButton",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 68,
+      "componentName": "FaGithub",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 69,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(1)",
+          "next": "array(1)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 70,
+      "componentName": "Footer",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 7,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 12,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 71,
+      "componentName": "Toast",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 72,
+      "componentName": "Toaster",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "toastOptions",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 73,
+      "componentName": "ScrollRestoration",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 74,
+      "componentName": "Scripts",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 75,
+      "componentName": "RouterProvider",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 4.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 1,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 76,
+      "componentName": "Router",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 4.199999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 77,
+      "componentName": "DataRoutes2",
+      "phase": "update",
+      "selfTime": 0.40000003576278687,
+      "totalTime": 4.199999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "routes",
+          "prev": "array(1)",
+          "next": "array(1)",
+          "unstable": true
+        },
+        {
+          "name": "state",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 78,
+      "componentName": "RenderErrorBoundary",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.799999952316284,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "boolean",
+          "next": "undefined",
+          "unstable": false
+        }
+      ]
+    },
+    {
+      "seq": 79,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 3.799999952316284,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 80,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 3.699999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 81,
+      "componentName": "AppWithState",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.599999964237213,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 82,
+      "componentName": "State",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.599999964237213,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 83,
+      "componentName": "App",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 3.599999964237213,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 84,
+      "componentName": "Document",
+      "phase": "update",
+      "selfTime": 0.30000001192092896,
+      "totalTime": 3.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(3)",
+          "next": "array(3)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 85,
+      "componentName": "MetaHydrated",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 86,
+      "componentName": "Links",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 87,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 3,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 88,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 2.900000035762787,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 89,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.800000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 90,
+      "componentName": "PublicRoute",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 2.800000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 91,
+      "componentName": "Layout",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.699999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 92,
+      "componentName": "Header",
+      "phase": "update",
+      "selfTime": 0.2999999523162842,
+      "totalTime": 1.199999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 93,
+      "componentName": "Link",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 9,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 94,
+      "componentName": "GaiaLogo",
+      "phase": "update",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 95,
+      "componentName": "LanguageSelect",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.2999999523162842,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 9,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 96,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 97,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 8,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 98,
+      "componentName": "ThemeSwitch",
+      "phase": "update",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 0.40000003576278687,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 11,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 99,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 100,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 101,
+      "componentName": "IoDesktopOutline",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 102,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(4)",
+          "next": "array(4)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 103,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 1.2000000476837158,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 104,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 1.2000000476837158,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 105,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 1.2000000476837158,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 106,
+      "componentName": "IndexRoute",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 1.2000000476837158,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 107,
+      "componentName": "IndexPage",
+      "phase": "update",
+      "selfTime": 0.800000011920929,
+      "totalTime": 1.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 108,
+      "componentName": "LinkButton",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 109,
+      "componentName": "FaGithub",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 110,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(1)",
+          "next": "array(1)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 111,
+      "componentName": "Footer",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 112,
+      "componentName": "Toast",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 113,
+      "componentName": "Toaster",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "toastOptions",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 114,
+      "componentName": "ScrollRestoration",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 8,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 115,
+      "componentName": "Scripts",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 116,
+      "componentName": "RouterProvider",
+      "phase": "update",
+      "selfTime": 0.2999999523162842,
+      "totalTime": 3.899999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 1,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 117,
+      "componentName": "Router",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.600000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 118,
+      "componentName": "DataRoutes2",
+      "phase": "update",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 3.600000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "state",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 119,
+      "componentName": "RenderErrorBoundary",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 120,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 121,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 3.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 122,
+      "componentName": "AppWithState",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 123,
+      "componentName": "State",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 124,
+      "componentName": "App",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 3.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 125,
+      "componentName": "Document",
+      "phase": "update",
+      "selfTime": 0.30000001192092896,
+      "totalTime": 3.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 8,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(3)",
+          "next": "array(3)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 126,
+      "componentName": "MetaHydrated",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 127,
+      "componentName": "Links",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 128,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 129,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 130,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 131,
+      "componentName": "PublicRoute",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 2.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 132,
+      "componentName": "Layout",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.200000047683716,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 133,
+      "componentName": "Header",
+      "phase": "update",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 1.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 134,
+      "componentName": "Link",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.2999999523162842,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 9,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 135,
+      "componentName": "GaiaLogo",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 136,
+      "componentName": "LanguageSelect",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 10,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 21,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 137,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 138,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 8,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 139,
+      "componentName": "ThemeSwitch",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.3999999761581421,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 22,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 140,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.30000001192092896,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 141,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.30000001192092896,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 142,
+      "componentName": "IoDesktopOutline",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 143,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(4)",
+          "next": "array(4)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 144,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 1,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 145,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.8999999761581421,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 146,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.8999999761581421,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 147,
+      "componentName": "IndexRoute",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.8999999761581421,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 148,
+      "componentName": "IndexPage",
+      "phase": "update",
+      "selfTime": 0.6000000238418579,
+      "totalTime": 0.800000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 149,
+      "componentName": "LinkButton",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 150,
+      "componentName": "FaGithub",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 151,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(1)",
+          "next": "array(1)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 152,
+      "componentName": "Footer",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 153,
+      "componentName": "Toast",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 154,
+      "componentName": "Toaster",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "toastOptions",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 155,
+      "componentName": "ScrollRestoration",
+      "phase": "update",
+      "selfTime": 0.30000001192092896,
+      "totalTime": 0.30000001192092896,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 8,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 156,
+      "componentName": "Scripts",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 157,
+      "componentName": "RouterProvider",
+      "phase": "update",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 3.900000035762787,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 1,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 158,
+      "componentName": "Router",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 3.699999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 159,
+      "componentName": "DataRoutes2",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 3.600000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "state",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 160,
+      "componentName": "RenderErrorBoundary",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 3.400000035762787,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 161,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 162,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 163,
+      "componentName": "AppWithState",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 164,
+      "componentName": "State",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 165,
+      "componentName": "App",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 3.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 166,
+      "componentName": "Document",
+      "phase": "update",
+      "selfTime": 0.40000003576278687,
+      "totalTime": 3.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 8,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(3)",
+          "next": "array(3)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 167,
+      "componentName": "MetaHydrated",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 168,
+      "componentName": "Links",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 169,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 2.400000035762787,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 170,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 171,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 172,
+      "componentName": "PublicRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 173,
+      "componentName": "Layout",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 2.300000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 174,
+      "componentName": "Header",
+      "phase": "update",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 1,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 175,
+      "componentName": "Link",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.2999999523162842,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 9,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 176,
+      "componentName": "GaiaLogo",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 177,
+      "componentName": "LanguageSelect",
+      "phase": "update",
+      "selfTime": 0.20000004768371582,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 10,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 21,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 178,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 179,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 8,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 180,
+      "componentName": "ThemeSwitch",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.2999999523162842,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 22,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 181,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 182,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 183,
+      "componentName": "IoDesktopOutline",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 184,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(4)",
+          "next": "array(4)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 185,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 1.1000000834465027,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 186,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 1.0000000596046448,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 187,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 1.0000000596046448,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 188,
+      "componentName": "IndexRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.9000000357627869,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 189,
+      "componentName": "IndexPage",
+      "phase": "update",
+      "selfTime": 0.6000000238418579,
+      "totalTime": 0.8000000715255737,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 190,
+      "componentName": "LinkButton",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 191,
+      "componentName": "FaGithub",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 192,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(1)",
+          "next": "array(1)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 193,
+      "componentName": "Footer",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 194,
+      "componentName": "Toast",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 195,
+      "componentName": "Toaster",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "toastOptions",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 196,
+      "componentName": "ScrollRestoration",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 10,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 2,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 4,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 197,
+      "componentName": "Scripts",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 198,
+      "componentName": "HydratedRouter",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.5999999642372131,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 3,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 199,
+      "componentName": "RemixErrorBoundary",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.4999999403953552,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "location",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 200,
+      "componentName": "RouterProvider2",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.3999999165534973,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 201,
+      "componentName": "RouterProvider",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.2999999523162842,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 202,
+      "componentName": "Router",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.19999992847442627,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 203,
+      "componentName": "Links",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 204,
+      "componentName": "Link",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 205,
+      "componentName": "ScrollRestoration",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 206,
+      "componentName": "Scripts",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 207,
+      "componentName": "RouterProvider",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 4,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "index": 1,
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 208,
+      "componentName": "Router",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 3.800000011920929,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 4,
+      "propsChanged": [
+        {
+          "name": "location",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "navigationType",
+          "prev": "string",
+          "next": "string",
+          "unstable": false
+        },
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [
+        {
+          "index": 1,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 209,
+      "componentName": "DataRoutes2",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 3.699999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [
+        {
+          "name": "state",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 210,
+      "componentName": "RenderErrorBoundary",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.5,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [
+        {
+          "name": "location",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 211,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.5,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 212,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 3.5,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 13,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 213,
+      "componentName": "AppWithState",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "loaderData",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "matches",
+          "prev": "array(3)",
+          "next": "array(3)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 214,
+      "componentName": "State",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 3.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 215,
+      "componentName": "App",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 3.399999976158142,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 216,
+      "componentName": "Document",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 3.199999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 8,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(3)",
+          "next": "array(3)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 217,
+      "componentName": "MetaHydrated",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 218,
+      "componentName": "Links",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 219,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.600000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 220,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.600000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 221,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.600000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 13,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 222,
+      "componentName": "PublicRoute",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 2.600000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "matches",
+          "prev": "array(3)",
+          "next": "array(3)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 223,
+      "componentName": "Layout",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 2.5,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 224,
+      "componentName": "Header",
+      "phase": "update",
+      "selfTime": 0.30000001192092896,
+      "totalTime": 1.199999988079071,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 5,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 225,
+      "componentName": "Link",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.2999999523162842,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 28,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [
+        {
+          "index": 10,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 226,
+      "componentName": "GaiaLogo",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 227,
+      "componentName": "LanguageSelect",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 14,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 21,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 228,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 229,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 16,
+      "propsChanged": [
+        {
+          "name": "onChange",
+          "prev": "function",
+          "next": "function",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 230,
+      "componentName": "ThemeSwitch",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.3999999761581421,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 12,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 22,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 231,
+      "componentName": "fetcher.Form",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.3999999761581421,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 232,
+      "componentName": "Form",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.30000001192092896,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 15,
+      "propsChanged": [
+        {
+          "name": "children",
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 233,
+      "componentName": "IoDesktopOutline",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 234,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(4)",
+          "next": "array(4)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 235,
+      "componentName": "Outlet",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 1.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 236,
+      "componentName": "RenderedRoute",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 1.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "match",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "routeContext",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 237,
+      "componentName": "WithComponentProps2",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 1.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 13,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 238,
+      "componentName": "IndexRoute",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 1.100000023841858,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 7,
+      "propsChanged": [
+        {
+          "name": "params",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "loaderData",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "matches",
+          "prev": "array(3)",
+          "next": "array(3)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 239,
+      "componentName": "IndexPage",
+      "phase": "update",
+      "selfTime": 0.7999999523162842,
+      "totalTime": 1,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 240,
+      "componentName": "LinkButton",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.20000004768371582,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 241,
+      "componentName": "FaGithub",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 242,
+      "componentName": "IconBase",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [
+        {
+          "name": "attr",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "name": "children",
+          "prev": "array(1)",
+          "next": "array(1)",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 243,
+      "componentName": "Footer",
+      "phase": "update",
+      "selfTime": 0.19999998807907104,
+      "totalTime": 0.19999998807907104,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 3,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 3,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 5,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": []
+    },
+    {
+      "seq": 244,
+      "componentName": "Toast",
+      "phase": "update",
+      "selfTime": 0.09999996423721313,
+      "totalTime": 0.09999996423721313,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": true,
+      "changedTotal": 0,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 245,
+      "componentName": "Toaster",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 1,
+      "propsChanged": [
+        {
+          "name": "toastOptions",
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ],
+      "stateChanged": [],
+      "contextChanged": []
+    },
+    {
+      "seq": 246,
+      "componentName": "ScrollRestoration",
+      "phase": "update",
+      "selfTime": 0.10000002384185791,
+      "totalTime": 0.10000002384185791,
+      "didCommit": true,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 20,
+      "propsChanged": [],
+      "stateChanged": [
+        {
+          "index": 0,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 1,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 2,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        },
+        {
+          "index": 4,
+          "prev": "array(2)",
+          "next": "array(2)",
+          "unstable": true
+        }
+      ],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    },
+    {
+      "seq": 247,
+      "componentName": "Scripts",
+      "phase": "update",
+      "selfTime": 0,
+      "totalTime": 0,
+      "didCommit": false,
+      "didRender": true,
+      "unnecessary": false,
+      "changedTotal": 2,
+      "propsChanged": [],
+      "stateChanged": [],
+      "contextChanged": [
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        },
+        {
+          "prev": "object",
+          "next": "object",
+          "unstable": true
+        }
+      ]
+    }
+  ]
+}

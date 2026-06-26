@@ -52,6 +52,13 @@ wiki/decisions/Forensics Triage Workflow.md
 .claude/rules/_internal
 .github/audit/tests
 .specify/extensions/gaia/test
+# react-perf-smoke.spec.ts is the bippy version-bump canary: it asserts GAIA's
+# capture harness still resolves a known GAIA component (ThemeSwitch) by name +
+# memo + timing, and that the StrictMode bypass fires. It guards GAIA's own
+# instrumentation against a bippy/React upgrade, not adopter app behavior, and
+# is coupled to a GAIA component an adopter may rename or remove. The capture
+# helper it exercises (.playwright/react-perf/) DOES ship; this canary does not.
+.playwright/e2e/react-perf-smoke.spec.ts
 
 # --- 4. CLI maintainer source + maintainer binary ---
 # Adopters receive only the bundled adopter binary at .gaia/cli/gaia (and
