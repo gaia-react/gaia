@@ -70,6 +70,8 @@
     ".claude/skills/eslint-fixes/SKILL.md": "owned",
     ".claude/skills/gaia-handoff/SKILL.md": "owned",
     ".claude/skills/gaia-pickup/SKILL.md": "owned",
+    ".claude/skills/gaia-react-perf/references/measure-only.md": "owned",
+    ".claude/skills/gaia-react-perf/SKILL.md": "owned",
     ".claude/skills/gaia-wiki/SKILL.md": "owned",
     ".claude/skills/gaia/references/audit.md": "owned",
     ".claude/skills/gaia/references/fitness.md": "owned",
@@ -193,6 +195,9 @@
     ".playwright/e2e/language-switch-a11y.spec.ts": "owned",
     ".playwright/fixtures.ts": "owned",
     ".playwright/global-setup.ts": "owned",
+    ".playwright/react-perf/capture.ts": "owned",
+    ".playwright/react-perf/harness-entry.ts": "owned",
+    ".playwright/react-perf/types.ts": "owned",
     ".playwright/utils.ts": "owned",
     ".prettierignore": "owned",
     ".specify/extensions/gaia/commands/constitution-check.md": "owned",
@@ -455,6 +460,7 @@
     "wiki/concepts/Policy-Memory Loop.md": "wiki-owned",
     "wiki/concepts/PR Merge Workflow.md": "wiki-owned",
     "wiki/concepts/Pre-commit Hooks.md": "wiki-owned",
+    "wiki/concepts/React Perf Diagnostic.md": "wiki-owned",
     "wiki/concepts/Serena Integration.md": "wiki-owned",
     "wiki/concepts/Task Orchestration.md": "wiki-owned",
     "wiki/concepts/Telemetry.md": "wiki-owned",
@@ -531,6 +537,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-25T01:28:45.406Z",
+  "generated": "2026-06-26T05:05:22.765Z",
   "version": "1.6.1"
 }
