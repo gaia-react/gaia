@@ -48,8 +48,10 @@ The skill carries a conservative trigger. It fires on explicit perf-investigatio
 
 v1 boundaries:
 
-- **Measure-only.** No autonomous fixing loop. The diagnosis is the unit a future surfacing flow consumes.
-- **The framework/app boundary is a name-denylist heuristic.** It drops React Router and Remix internals plus the react-icons pack by name. A name shared between framework and app code is a known limitation: the app's own `Form` component shares a name with React Router's `Form`, so its renders filter as framework noise. A path-based boundary is the deferred fix.
+- **Measure-only.** No autonomous fixing loop. The skill emits a diagnosis and the human or Claude applies the fix.
+- **The framework/app boundary is a name-denylist heuristic.** It drops React Router and Remix internals plus the react-icons pack by name. A name shared between framework and app code is a known limitation: the app's own `Form` component shares a name with React Router's `Form`, so its renders filter as framework noise.
+
+<!-- gaia:maintainer-only:start -->
 
 ## Phase 4 (deferred)
 
@@ -57,6 +59,8 @@ The surfacing and regression-gate work is reserved by the contracts but not buil
 
 - **Surfacing.** A [[react-doctor]] trip-wire that *offers* a scan when a post-feature static pass flags a render-class rule on touched code (it offers, never auto-runs), a local audit prompt, a non-blocking CI PR label (`perf:measure-locally`) that the [[PR Merge Workflow]] merge-gate surfaces to a human, and decline persistence so a dismissed offer does not nag.
 - **CI regression gate.** A native `<Profiler>`-based committed Playwright spec with a committed baseline and a deterministic threshold, opt-in, warn-not-fix. The native profiler gives timing but not which component or why, so it suits a zero-dependency regression catch rather than diagnosis.
+
+<!-- gaia:maintainer-only:end -->
 
 ## Pairs with
 
