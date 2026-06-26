@@ -64,6 +64,12 @@ For every candidate, check the canonical page's `consolidation_ack` frontmatter 
 
 This is the last step the detection subagent runs. After writing the report file and emitting the findings JSON per the router's contract, the subagent STOPS, it does NOT proceed to Steps 4–6.
 
+`wiki/meta/` is release-excluded, so a freshly scaffolded adopter clone has no such directory yet; create it before the report write:
+
+```bash
+mkdir -p wiki/meta/
+```
+
 Write to `wiki/meta/consolidate-report-<YYYY-MM-DD>.md`, where `<YYYY-MM-DD>` is `date +%F` (shell), derive it deterministically, never guess the current date. The same value fills the frontmatter `created`/`updated` and the H1. Overwrite if a same-day report exists.
 
 Frontmatter:
