@@ -62,8 +62,8 @@ Most setups treat Claude as a tool you hold: bolt a `CLAUDE.md` onto the root an
 
 - **Coding principles, enforced.** GAIA embeds [Karpathy's four coding principles](https://github.com/forrestchang/andrej-karpathy-skills/blob/main/CLAUDE.md) (Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution) plus two of GAIA's own: Always Use TDD and Always Verify Your Work.
 - **Best practices baked in, debt blocked at the source.** Rules encode the conventions directly instead of hoping Claude infers them from whatever's already in the repo, and block debt-accumulating patterns from being written at all: untyped exports, untested components, hardcoded strings, a11y gaps.
-- **Consistently clean code.** 1,314 lint rules, strict TypeScript, Prettier, and Knip enforce style, correctness, and dead-code detection on every file Claude touches. No negotiation, no drift.
-- **Bundled skills wired in for write-time quality.** `typescript`, `react-code`, `tailwind`, `tdd`, `playwright-cli`, `skeleton-loaders`, and `eslint-fixes` load on demand when Claude edits matching files. The `tdd` skill drives a red-green-refactor loop tailored for Vitest, React Testing Library, Storybook `composeStory`, and MSW.
+- **Consistently clean code.** 1,450 lint rules, strict TypeScript, Prettier, and Knip enforce style, correctness, and dead-code detection on every file Claude touches. No negotiation, no drift.
+- **Bundled skills wired in for write-time quality.** `typescript`, `react-code`, `tailwind`, `tdd`, `playwright-cli`, `skeleton-loaders`, `eslint-fixes`, and `a11y-fixes` load on demand when Claude edits matching files or a tool reports a fixable violation. The `tdd` skill drives a red-green-refactor loop tailored for Vitest, React Testing Library, Storybook `composeStory`, and MSW.
 - **Specs that turn into tests, automatically.** `/gaia-spec` authors an immutable SPEC artifact through Socratic discovery. Before any source code is written, the SPEC's UATs render as red-state Playwright e2e specs. The implementer's first job is turning red green. The PO writes acceptance criteria in plain English, and the test harness is generated.
 - **Code-review audit before every merge.** A manager agent scans the branch diff for security (XSS, SSRF, IDOR, secret exposure, timing attacks, dependency vulns), performance, architecture, code smells, and antipatterns. Three specialists (React Patterns & Accessibility, TypeScript & Architecture, Translation) run in parallel alongside `react-doctor` and `knip` (whose output is advisory and never blocks), with extension files in `.claude/agents/code-review-audit/` injecting library-specific rules at runtime. Findings are tiered **Critical**, **Important**, and **Suggestions**. The merge blocks until no Critical or Important issues remain. Runs locally by default, and in CI once you enable GAIA CI.
 - **Quality gate before commit.** Typecheck, lint, tests, and build must all pass. Not "mostly clean." Actually clean.
@@ -94,7 +94,7 @@ The quality gate keeps each commit clean and Knip keeps dead code out (see [Tech
 
 Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configured and wired into the Claude layer.
 
-- **1,314 lint rules** via ESLint, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/) that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS. [Knip](https://knip.dev/) detects unused files, exports, and dependencies.
+- **1,450 lint rules** via ESLint, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/) that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS. [Knip](https://knip.dev/) detects unused files, exports, and dependencies.
 - **Pre-commit hooks** ([Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged)): typecheck, lint, and test before CI.
 - **Testing** via [Vitest](https://vitest.dev) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for unit and integration, [Playwright](https://playwright.dev/docs/intro) for E2E, and [Chromatic](https://chromatic.com/) for visual regression, all sharing one [MSW](https://mswjs.io/) mock layer.
 - **[Storybook](https://storybook.js.org/)** with React Router + i18n + dark mode + [MSW](https://mswjs.io/) integration.
@@ -124,6 +124,8 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <tr><td><code>/gaia-wiki</code></td><td>Run the full wiki maintenance chain: sync new commits into wiki pages, consolidate redundant or superseded content, then lint for orphans, dead links, and drift</td></tr>
 <tr><td><code>/gaia-forensics</code></td><td>When a GAIA workflow misfires, capture a redacted, classified, filing-ready report in one run. Self-diagnoses user-config issues inline; probable bugs file to GAIA's GitHub with one prompt</td></tr>
 <tr><td><code>/gaia-fitness</code></td><td>Health-check and auto-heal the project's Claude integration: triage, heal, verify, then report an F-to-A+ grade</td></tr>
+<tr><td><code>/gaia-react-perf</code></td><td>Diagnose React render performance. Drives a micro-interaction, captures real renders, and surfaces memo-defeating reference instability, then recommends a structural fix. Measure-only: it reports a ranked diagnosis, it never auto-fixes</td></tr>
+<tr><td><code>/gaia-harden</code></td><td>Turn a recurring code-review-audit finding into the lowest-cost enforcement: a deterministic check, a skill, or a path-scoped rule. Human-gated, drafted into the working tree only on approval. Pass <code>list</code> to see candidates or <code>why &lt;finding_class&gt;</code> to explain one</td></tr>
 <tr><td><code>/update-deps</code></td><td>Autonomous Dependabot: discover every outdated package, audit version overrides, apply codemods and breaking-change migrations for major bumps, resolve conflicts between simultaneous upgrades, then run the quality gate. No prompts</td></tr>
 <tr><td><code>/update-gaia</code></td><td>Pull the latest GAIA release into the project without clobbering your work. Three-way merge per file (your version / release baseline / new release) governed by ownership classes in <code>.gaia/manifest.json</code>; prompts only where your changes and GAIA's collide</td></tr>
 </tbody>
@@ -133,7 +135,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 
 - **Path-scoped rules** cover TypeScript, React, Tailwind, testing, i18n, accessibility, and state management. They live in `.claude/rules/`; ask Claude about any of them.
 - **Hooks** guard the quality gate and keep the wiki fresh. They live in `.claude/hooks/`.
-- **Bundled skills** (`typescript`, `react-code`, `tailwind`, `tdd`, `playwright-cli`, `skeleton-loaders`, `eslint-fixes`) autoload for matching tasks. Scaffolding skills (`new-component`, `new-hook`, `new-route`, `new-service`) fire on natural-language asks.
+- **Bundled skills** (`typescript`, `react-code`, `tailwind`, `tdd`, `playwright-cli`, `skeleton-loaders`, `eslint-fixes`, `a11y-fixes`) autoload for matching tasks. Scaffolding skills (`new-component`, `new-hook`, `new-route`, `new-service`) fire on natural-language asks.
 - **MCP servers.** [Serena](https://github.com/oraios/serena) gives Claude LSP-backed code intelligence: symbol lookups, references, and types instead of grepping the codebase.
 
 ### Mentorship
