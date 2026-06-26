@@ -7,8 +7,8 @@
  * (handoff §5, fixloop-validation §2); a path-based boundary (`/node_modules/`
  * vs `app/`) is explicitly deferred and is a prerequisite for any future
  * auto-fix. The limitation: a hostile or unusual component name can slip
- * through, and an app component that happens to share a framework name (GAIA
- * ships an app-owned `app/components/Form`, for example) is filtered as noise.
+ * through, and an app component that happened to share a framework name would
+ * be filtered as noise. No app component currently collides with this cohort.
  *
  * The cohort below is the React Router v7 / Remix internal set plus the
  * react-icons base, drawn from the fixloop noisy-capture (`RenderedRoute`,
@@ -34,7 +34,7 @@ const FRAMEWORK_NAMES: ReadonlySet<string> = new Set([
   'Scripts',
   'ScrollRestoration',
   'WithComponentProps2',
-  // React Router form primitives (note: shadows an app-owned `Form` by name).
+  // React Router form primitives (no app component renders as `Form`).
   'Form',
   'fetcher.Form',
   // react-icons shared base wrapper.

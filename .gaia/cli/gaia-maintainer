@@ -18711,7 +18711,7 @@ var FRAMEWORK_NAMES = /* @__PURE__ */ new Set([
   "Scripts",
   "ScrollRestoration",
   "WithComponentProps2",
-  // React Router form primitives (note: shadows an app-owned `Form` by name).
+  // React Router form primitives (no app component renders as `Form`).
   "Form",
   "fetcher.Form",
   // react-icons shared base wrapper.
