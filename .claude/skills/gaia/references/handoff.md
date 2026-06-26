@@ -12,6 +12,10 @@ Write a self-contained handoff doc so the next session can pick up cold without 
 
 ## Steps
 
+### 0. Clear prior
+
+Delete any existing handoff before writing: `rm -f .gaia/local/handoff/HANDOFF-*.md`. Only one handoff exists at a time. A new handoff supersedes whatever came before, carrying forward anything still unfinished. Never archive.
+
 ### 1. Gather
 
 Run in parallel:
@@ -79,7 +83,15 @@ Use the template below. **Omit any section with no real content**, don't leave e
 
 ---
 
-**Resume:** `/pickup`
+**Resume:** `/gaia-pickup`
+
+## Teardown
+
+One-and-done. When the Next Actions above are complete and verified (committed or tests green), delete this file. Do not archive:
+
+`rm .gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
+
+If you were interrupted before finishing, leave it. The next `/gaia-pickup` resumes from here.
 ```
 
 ### 3. Confirm
@@ -93,3 +105,5 @@ Report in one line: saved path + count of accomplishments / decisions / gaps / n
 - Every "Gap" must name a file and a diagnostic, not just "look into X".
 - Skip empty sections entirely rather than writing "N/A".
 - Never fabricate commit hashes, file paths, or device IDs, if unsure, omit.
+- Only one handoff exists at a time. Step 0 deletes any prior handoff before writing. No archive, no second file.
+- The handoff owns its own cleanup. Its Teardown section tells the picking-up session to delete the file once the work is verified complete.
