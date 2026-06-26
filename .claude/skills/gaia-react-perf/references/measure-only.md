@@ -44,12 +44,11 @@ explain this and ask them to narrow to a micro-interaction.
 ## Step 2: Drive and capture
 
 Drive the target interaction in a short Playwright spec using the committed
-Phase-1 capture helper, `.playwright/react-perf/capture.ts`. The Phase-1 smoke
-spec `.playwright/e2e/react-perf-smoke.spec.ts` is the reference template for the
-shape (install the capture, `goto`, `hydration`, drive a button click, collect);
-the diagnosis run differs from it in two ways: it passes `{keep: true}` so the
-raw dump survives the Playwright process for the reduce step, and it logs the
-written `rawPath`.
+Phase-1 capture helper, `.playwright/react-perf/capture.ts`. The diagnosis spec
+installs the capture, `goto`s the target route, waits for `hydration`, drives the
+micro-interaction, then collects; it passes `{keep: true}` so the raw dump
+survives the Playwright process for the reduce step, and it logs the written
+`rawPath`. Use the template below.
 
 Write a temporary spec under `.playwright/e2e/` (the configured `testDir`), for
 example `.playwright/e2e/react-perf-drive.spec.ts`:
