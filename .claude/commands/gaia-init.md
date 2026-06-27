@@ -61,9 +61,13 @@ Use AskUserQuestion with this single question:
 > - English
 > - Other (you'll specify the ISO 639-1 code and English name in a follow-up free-text prompt)
 
-If the user picks "Other", follow up with a free-text question:
+If the user picks "Other", ask for the value as a plain chat message and wait for the user to type their reply in the prompt. Do **not** use AskUserQuestion here: its preset options can't capture free text, and a hand-added "Other" option is an inert button with no input field.
 
-> Enter the ISO 639-1 code (e.g. `pl`) and the English name (e.g. `Polish`).
+> What language? Type it however you like, a name or a code, in English or its own script (e.g. `Polish`, `pl`, or `polski`).
+
+Interpret the reply yourself: resolve it to an ISO 639-1 code plus English name. Only ask again if it's genuinely ambiguous or you can't identify the language.
+
+Then echo the resolved choice back as a plain chat message so the user can catch a misread before anything runs, e.g. `Primary language: French (fr). Look right?` Wait for confirmation (or apply their correction and echo again) before continuing.
 
 Hold the resolved choice as `{primary}` (ISO code + English name); the next batch interpolates it into its labels, which is why Q1 is asked first and alone.
 
@@ -71,18 +75,26 @@ Hold the resolved choice as `{primary}` (ISO code + English name); the next batc
 
 The primary is now known, so its name can appear in the labels below. Ask this as its own AskUserQuestion. It folds the old standalone "localize later?" decision into the no-additional-languages branch, so that decision never needs its own round-trip:
 
-> Any additional languages, on top of {primary}?
+> Primary language is {primary}. Any additional languages?
 >
-> - Keep i18n scaffolding (Recommended): no additional languages; translations stay {primary}-only for now, and the scaffolding stays wired up so you can localize later with no rework.
-> - Strip i18n out entirely: no additional languages, and remove i18n. Smaller bundle, less infrastructure. Two costs to weigh: stripping runs a long teardown step during init (more time and tokens now), and it's **hard to reverse**: re-adding i18n later is substantial manual work (there's no add-i18n runbook; you'd reconstruct the scaffolding and re-wrap every string by hand). Only pick this if you're confident the app stays single-language.
-> - To add languages, pick "Other" and enter a comma-separated list of ISO 639-1 codes (e.g. `es, de, ar`); don't repeat {primary}.
+> - {primary} only, keep i18n scaffolding (Recommended): no additional languages; scaffolding stays wired so you can localize later with no rework.
+> - Add more languages now: add locales on top of {primary} during init. You can also ask Claude to add languages later if you'd rather skip this for now.
+> - {primary} only, remove i18n entirely: no additional languages, remove i18n. Smaller bundle, less infra, but a long teardown now, and hard to reverse (you'd rebuild scaffolding and re-wrap every string by hand). Only do this if you're confident the app will remain single-language.
 
-Mark "Keep i18n scaffolding" as the recommended/default option.
+Mark "{primary} only, keep i18n scaffolding" as the recommended/default option.
+
+If the user picks "Add more languages now", ask for the languages as a plain chat message and wait for the user to type their reply in the prompt. Do **not** use AskUserQuestion here: its preset options can't capture free text, and a hand-added "Other" option is an inert button with no input field.
+
+> Which languages? List them however you like, names or codes, in English or their own script, separated by commas (e.g. `fr, german, 日本語`).
+
+Interpret the reply yourself: resolve each entry to an ISO 639-1 code, dedupe, and drop any that match {primary}. Only ask again about an entry you genuinely can't identify, don't make the user learn code syntax.
+
+Then echo the resolved list back as a plain chat message so the user can catch a misread before anything runs, e.g. `Adding: German (de), Japanese (ja), Spanish (es). Look right?` Wait for confirmation (or apply their corrections and echo again) before moving to Step 3.
 
 Resolve two values from the answer:
 
-- `LOCALES = unique({primary} code, any additional codes entered above)`. Either no-additional-languages option leaves `LOCALES` as just `[{primary}]`.
-- `STRIP_I18N = true` only when the user chose "Strip i18n out entirely"; otherwise `false`. Adding languages or keeping the scaffolding both leave it `false`.
+- `LOCALES = unique({primary} code, any additional codes entered above)`. Either {primary}-only option leaves `LOCALES` as just `[{primary}]`.
+- `STRIP_I18N = true` only when the user chose "{primary} only, remove i18n entirely"; otherwise `false`. Adding languages or keeping the scaffolding both leave it `false`.
 
 ### Q3–Q5, Project identity (one AskUserQuestion, three questions)
 
@@ -98,7 +110,7 @@ These three go together as a group. Ask them in a single AskUserQuestion call:
 
 The deterministic surface lives behind `gaia init`. Each subcommand is idempotent and records its own state in `.gaia/init-state.json`, so a failed step can be resumed via `gaia init resume`.
 
-`STRIP_I18N` and `LOCALES` were resolved in Step 2: `STRIP_I18N` is `true` only when the user chose "strip i18n out entirely", otherwise `false`.
+`STRIP_I18N` and `LOCALES` were resolved in Step 2: `STRIP_I18N` is `true` only when the user chose "remove i18n entirely", otherwise `false`.
 
 Run sequentially, stopping at the first non-zero exit:
 
@@ -166,6 +178,22 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
 
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
+
+  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds four things beyond the skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, and a pinned `react-doctor` devDependency. There is no skill-only install flag, so install (above) then remove them. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-review-audit` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA CI. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
+
+  ```bash
+  # 1. Drop the standalone workflow (GAIA CI is the only CI surface).
+  rm -f .github/workflows/react-doctor.yml
+  # 2. Uninstall the pinned dep + lockfile entry. --config.ignore-scripts=true skips the
+  #    prepare hook (avoids a redundant husky/playwright run); react-doctor runs at @latest on demand.
+  pnpm remove react-doctor --config.ignore-scripts=true 2>/dev/null || true
+  # 3. Delete the package script it added (named `doctor`, or `react-doctor` if `doctor` was taken).
+  pnpm pkg delete scripts.doctor scripts.react-doctor
+  # 4. Regenerate husky's hook stubs, wiping react-doctor's appended pre-commit block.
+  pnpm exec husky
+  ```
+
+  Each line is idempotent and no-ops when its artifact is absent (e.g. when React Doctor's dependency install was skipped by a trust policy). After this, `git status` shows no React Doctor workflow and `package.json` carries no `react-doctor` entry, only the skill remains. Do not report a lingering workflow or commit hook to the user; there is none.
 - [Playwright CLI](https://github.com/microsoft/playwright-cli) binary: `npm install -g @playwright/cli@latest`
   Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing. Used for E2E debugging and authoring Playwright specs with minimal token cost, each interaction is one shell call instead of a round-trip through an MCP session.
 - [Serena](https://github.com/oraios/serena) MCP server: semantic code-search and editing tools (find symbol, find references, replace symbol body) backed by language servers, pulls Claude away from grep-the-world toward symbol-aware operations. First, ensure `uv` is available, tell the user: "Checking for uv…" then run:
@@ -228,9 +256,11 @@ GAIA CI has two parts: a pre-merge **audit gate** (the `code-review-audit` agent
 
 (`forensics-triage.yml` is maintainer-only and never ships to or installs on an adopter project. The adopter-side `/gaia-forensics` command files reports to the upstream GAIA repo, which owns the `gaia-forensics` label; nothing about forensics needs configuring here.)
 
-Use AskUserQuestion (in the user's language; this configuration block stays in English):
+Use AskUserQuestion (in the user's language; this configuration block stays in English). Include the docs link in the question text so the user can Cmd/Ctrl+click to read what GAIA CI is before answering:
 
 > Do you plan to run GAIA CI (GitHub Actions) for this project?
+>
+> New to GAIA CI? Read https://docs.gaiareact.com/maintenance/gaia-ci/ before deciding (Cmd/Ctrl+click to open).
 >
 > - **Yes, I'll enable CI after pushing** (Recommended). Records the intent; Step 9 then offers `ci` / `local` / `off` per maintenance tool. After your first push, run `/setup-gaia-ci` to install the audit gate and cron workflows, store the bot token, and register the `GAIA-Audit` required check.
 > - **No, local only.** GAIA's audit and maintenance tools run only when you invoke them on this machine. Step 9 offers `local` / `off` only.
@@ -297,9 +327,11 @@ Tell the user (in their language; the table headers stay English):
 
 > Configure GAIA's automated maintenance jobs. Recommended: enable all four in CI mode so they run unattended. You can pick a different mode per tool.
 
-Use AskUserQuestion to confirm the recommendation OR open per-tool overrides:
+Use AskUserQuestion to confirm the recommendation OR open per-tool overrides. Include the run-mode docs link in the question text so the user can Cmd/Ctrl+click to read it before answering:
 
 > How should GAIA CI's tools run?
+>
+> Run-mode reference: https://docs.gaiareact.com/maintenance/gaia-ci/#run-modes (Cmd/Ctrl+click to open).
 >
 > - **Enable all four in CI mode (Recommended).** Sets `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches` to `ci`. Phase B (`/setup-gaia-ci`) activates them.
 > - **Customize per tool.** Show the table below and ask for each tool's mode.
@@ -319,9 +351,11 @@ Do NOT show the "Enable all four in CI mode" recommendation, CI is not a valid t
 
 > You declined GAIA CI, so the maintenance tools default to `local`, they run only when you invoke them on this machine. Set any tool to `off` if you don't want it at all.
 
-Use AskUserQuestion to confirm the all-`local` derivation OR open per-tool overrides between `local` and `off` only (never `ci`):
+Use AskUserQuestion to confirm the all-`local` derivation OR open per-tool overrides between `local` and `off` only (never `ci`). Include the run-mode docs link in the question text so the user can Cmd/Ctrl+click to read it before answering:
 
 > How should GAIA's maintenance tools run? (CI is unavailable.)
+>
+> Run-mode reference: https://docs.gaiareact.com/maintenance/gaia-ci/#run-modes (Cmd/Ctrl+click to open).
 >
 > - **All four `local` (Recommended).** Sets `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches` to `local`. Each runs only when you invoke it here.
 > - **Customize per tool.** Choose `local` or `off` for each of the four tools.
