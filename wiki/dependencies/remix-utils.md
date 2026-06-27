@@ -42,7 +42,7 @@ Where GAIA intentionally does not reach for remix-utils, with the reason:
 
 - **locale** → GAIA uses `remix-i18next` (full i18next: namespaces, SSR `Accept-Language`), more robust than remix-utils locales. See [[remix-i18next]].
 - **redirect** → GAIA uses a Zod `.refine()` `isLocalRedirect` guard (`app/utils/http.ts`). Validate-and-reject fits GAIA's Conform/Zod architecture better than safe-redirect's sanitize-and-fallback, and the safety is equivalent (both block `//` and `/\`).
-- **responses** → GAIA uses native React Router 7 `data()`, the modern idiom over remix-utils `responses`.
+- **responses** → GAIA uses native React Router `data()`, the modern idiom over remix-utils `responses`.
 - **cookie** → GAIA uses native `createCookie`; locale is a known string, so a typed-cookie wrapper is low value.
 - **value-debounce** → GAIA's `useDebounce` is a *value* debounce, which is **not** remix-utils' fetcher-debounce (`use-debounce-fetcher`). No overlap, so both coexist.
 

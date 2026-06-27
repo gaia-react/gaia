@@ -30,4 +30,4 @@ GAIA deliberately ships **no component library**; you choose what fits.
 
 GAIA is **not just a React template**; it is a complete workflow for building React sites with Claude. Calling it a "template" undersells the scope. Lead with "workflow" / "system" / "Claude-first" framing.
 
-GAIA is React-specific, built on [[React Router 7]]. There is no multi-framework roadmap.
+GAIA is React-specific, built on [[React Router]]. There is no multi-framework roadmap.

@@ -1,4 +1,4 @@
-import {createI18nextMiddleware} from 'remix-i18next/middleware';
+import {createI18nextMiddleware} from 'remix-i18next';
 import i18n from '~/i18n';
 import {languageCookie} from '~/sessions.server/language';
 

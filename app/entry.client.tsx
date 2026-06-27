@@ -4,8 +4,7 @@ import {I18nextProvider, initReactI18next} from 'react-i18next';
 import {HydratedRouter} from 'react-router/dom';
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
-import {getInitialNamespaces} from 'remix-i18next/client';
-import i18n from './i18n';
+import i18n, {DEFAULT_LOCALE} from './i18n';
 
 const prepareApp = async () => {
   if (
@@ -28,7 +27,7 @@ const hydrate = async () => {
         caches: [],
         order: ['htmlTag'],
       },
-      ns: getInitialNamespaces(),
+      ns: Object.keys(i18n.resources[DEFAULT_LOCALE]),
     });
 
   await prepareApp().then(() => {

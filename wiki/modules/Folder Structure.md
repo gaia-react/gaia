@@ -19,7 +19,7 @@ tags: [module, structure]
 | `components/`      | Shared UI components                       | [[Components]] |
 | `hooks/`           | Global custom hooks                        | [[Hooks]]      |
 | `languages/`       | TypeScript-based i18n strings              | [[i18n]]       |
-| `middleware/`      | React Router 7 middleware (i18next)        | [[Middleware]] |
+| `middleware/`      | React Router middleware (i18next)        | [[Middleware]] |
 | `pages/`           | Page-specific UI, organized by route group | [[Pages]]      |
 | `routes/`          | Thin route files (loader/action only)      | [[Routing]]    |
 | `services/`        | API wrapper + domain services              | [[Services]]   |
@@ -33,4 +33,4 @@ tags: [module, structure]
 
 - The `pages/` vs `components/` split is load-bearing; see [[Thin Routes]] and [[Pages]] for the rationale
 - `.server/` suffix excludes a folder from the client bundle (used by `sessions.server/`)
-- Top-level files (`entry.client.tsx`, `entry.server.tsx`, `root.tsx`, `i18n.ts`, `routes.ts`, `env.server.ts`) follow React Router 7's required entry-point names; query Serena to read them rather than mirroring their contents here.
+- Top-level files (`entry.client.tsx`, `entry.server.tsx`, `root.tsx`, `i18n.ts`, `routes.ts`, `env.server.ts`) follow React Router's required entry-point names; query Serena to read them rather than mirroring their contents here.

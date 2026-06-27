@@ -19,7 +19,7 @@ See [[GAIA Philosophy]] for the long version.
 
 ## Tech Stack at a Glance
 
-- **Framework**: [[React Router 7]] (SSR, file-based routing via [[remix-flat-routes]])
+- **Framework**: [[React Router]] (SSR, file-based routing via [[remix-flat-routes]])
 - **Forms**: [[Conform]] + [[Zod]], see [[Form Components]]
 - **Styling**: [[Tailwind]] v4 with `tailwind-merge`, plus [[react-icons]] icons
 - **i18n**: [[remix-i18next]] with TypeScript language files (not JSON)

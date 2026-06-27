@@ -11,10 +11,10 @@ tags: [dependency, routing]
 
 # remix-flat-routes
 
-File-based routing adapter that translates folder names like `_public+/{resource}+/$id.tsx` into React Router 7 routes. Used via `@react-router/remix-routes-option-adapter` in `app/routes.ts`.
+File-based routing adapter that translates folder names like `_public+/{resource}+/$id.tsx` into React Router routes. Used via `@react-router/remix-routes-option-adapter` in `app/routes.ts`.
 
 See [[Routing]] for folder syntax and GAIA's standard route groups.
 
 ## Alternative
 
-Switch to standard React Router 7 routing if you prefer explicit `routes.ts` definitions.
+Switch to standard React Router routing if you prefer explicit `routes.ts` definitions.

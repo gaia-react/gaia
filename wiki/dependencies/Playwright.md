@@ -21,7 +21,7 @@ Tests that mutate MSW in-memory state call `resetTestData()` from `test/mocks/da
 
 ## Hydration helper
 
-> [!key-insight] React Router 7 SSR + Playwright timing
+> [!key-insight] React Router SSR + Playwright timing
 > Pages are rendered server-side first; Playwright sees them before JS hydrates. The `hydration()` helper in `.playwright/utils.ts` waits for `<meta name="hydrated" content="true">` before any interaction proceeds.
 
 ```ts
