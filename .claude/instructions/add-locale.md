@@ -56,9 +56,9 @@ Edit `app/languages/index.ts`:
 
 Edit `app/components/LanguageSelect/index.tsx`:
 
-Append `{label: '{{LANGUAGE_NAME_NATIVE}}', value: '{{LOCALE_CODE}}'}` to the `OPTIONS` array.
+Add `{{LOCALE_CODE}}: '{{LANGUAGE_NAME_NATIVE}}'` to the `LANGUAGE_LABELS` record (keep `en: 'English'` first). Do **not** edit `OPTIONS`, it is derived automatically by mapping over the `LANGUAGES` array (registered in Step 2) and falls back to the bare locale code when a label is missing. Adding the `LANGUAGE_LABELS` entry is what gives the new option its native display name.
 
-Ordering rule: English (`en`) stays at the top of the array. All other options are sorted alphabetically by `label` after English.
+The dropdown's option order follows the `LANGUAGES` array order from Step 2, so there is no manual sorting to do here.
 
 ---
 
@@ -118,16 +118,18 @@ For RTL locales **outside** that standard four (e.g. a custom or less common cod
 
 Check whether `.playwright/e2e/language-switch.spec.ts` exists.
 
+**Pick a verification key that genuinely differs between English and `{{LOCALE_CODE}}`.** Do **not** assert against `meta.title`, top-level `title`, or `heroTitle`: `gaia init rename` rewrites all three to the project title, and the Step 1 translation rule copies a brand / proper-noun value verbatim, so they are identical in every locale and a switch assertion against them never changes. Use the seed's `cta` key instead (English `'View on GitHub'`), a normal UI string the index page renders as a visible link. Read the English value from `app/languages/en/pages/_index.ts` and the translated value from `app/languages/{{LOCALE_CODE}}/pages/_index.ts`. Before writing the assertion, confirm the two values actually differ; if `cta` is missing or was copied verbatim for this locale, pick any other body string whose English and `{{LOCALE_CODE}}` values differ.
+
 **If the file does not exist**, create it as a new spec. The spec must:
 
 - Import from `@playwright/test`.
 - Use a `test.describe` block named `'language switch, EN ↔ {{LOCALE_CODE}}'`.
 - Test the following flow:
   1. Navigate to `/`.
-  2. Assert that the page title (from `app/languages/en/pages/_index.ts` → `meta.title`) is visible in English.
+  2. Assert the English `cta` text (e.g. `'View on GitHub'`) is visible.
   3. Find the language select and switch to `{{LOCALE_CODE}}`.
-  4. Assert that the page title changes to the `{{LANGUAGE_NAME_EN}}` translation (from `app/languages/{{LOCALE_CODE}}/pages/_index.ts` → `meta.title`).
-  5. Switch back to English and assert the English title is restored.
+  4. Assert the `cta` text changes to the `{{LOCALE_CODE}}` translation from `app/languages/{{LOCALE_CODE}}/pages/_index.ts`.
+  5. Switch back to English and assert the English `cta` text is restored.
 
 **If the file already exists**, append a new `test.describe` block for the new locale following the same shape as the existing blocks. Do not modify existing blocks.
 

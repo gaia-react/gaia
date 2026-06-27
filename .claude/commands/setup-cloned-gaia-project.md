@@ -87,6 +87,17 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans for React-specific issues; auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
 
+  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into husky's generated `.husky/_/pre-commit` because GAIA sets `core.hooksPath=.husky/_`), a `doctor` package script, and a pinned `react-doctor` devDependency. GAIA triggers react-doctor via the skill (auto-run after edits) and the `code-review-audit` agent (at `@latest`), so remove the rest, keeping only the skill:
+
+  ```bash
+  rm -f .github/workflows/react-doctor.yml
+  pnpm remove react-doctor --config.ignore-scripts=true 2>/dev/null || true
+  pnpm pkg delete scripts.doctor scripts.react-doctor
+  pnpm exec husky
+  ```
+
+  Each line is idempotent and no-ops when its artifact is absent.
+
 - [Playwright CLI](https://github.com/microsoft/playwright-cli): `npm install -g @playwright/cli@latest`
   Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing.
 
