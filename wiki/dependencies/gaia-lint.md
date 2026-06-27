@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: '@gaia-react/lint'
-version: 1.6.0
+version: 1.7.0
 role: lint-config
 created: 2026-04-27
-updated: 2026-06-25
+updated: 2026-06-27
 tags: [dependency, lint, eslint]
 ---
 
@@ -63,7 +63,7 @@ export default defineConfig([
 | `base` | Standard TS/JS hygiene | — |
 | `react` | React-specific rules | — |
 | `testing` | D-8 test-honesty: `vitest/prefer-called-with`, `no-restricted-imports` (blocks `*.server` / internals from consumer tests) | Added in 1.6.0 |
-| `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife` custom plugins | — |
+| `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife` custom plugins; `gaia/no-restricted-syntax` selectors ban `cond ? <JSX/> : null` and `cond ? null : <JSX/>` (flag-only, no autofix) | — |
 | `styleHygiene` | `import-x/no-restricted-paths` with carve-outs: `resources+/` and `actions+/` routes are exempt for UI layers | Carve-out added in 1.6.0 |
 | `betterTailwind` | Tailwind class ordering and hygiene | — |
 | `prettier` | Formatting via Prettier as an ESLint rule | — |

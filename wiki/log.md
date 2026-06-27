@@ -11,6 +11,21 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-27 fbe229e WORTHY - wiki: note minimumReleaseAgeExclude lifecycle → wiki/decisions/pnpm.md updated + sync/lint committed in-commit
+- 2026-06-27 db582f6 SKIP - docs(changelog): backfill CHANGELOG entries only; no architecture change
+- 2026-06-27 d5ad285 WORTHY - docs(spec-close): correct spec-close manual handle → wiki/concepts/GAIA Spec.md updated in-commit
+- 2026-06-27 5cf87d3 SKIP - fix(gaia-init): CI configure block corrected to skill file only; wiki/concepts/GAIA Init Workflow.md subcommand abstractions remain accurate
+- 2026-06-27 69404a1 SKIP - docs(changelog): backfill CHANGELOG entries only; no architecture change
+- 2026-06-27 d7b1174 WORTHY - feat(react-code): React 19 idioms + @gaia-react/lint 1.7.0 (gaia/no-restricted-syntax) → wiki/dependencies/gaia-lint.md updated
+- 2026-06-27 a28d02e WORTHY - feat(react-perf): /gaia-react-perf diagnostic → wiki/concepts/React Perf Diagnostic.md created in-commit
+- 2026-06-27 5d93d2a SKIP - chore(release): release plumbing; manifest + wiki-style rule maintainer-only marker, no new wiki content
+- 2026-06-27 06e2532 SKIP - chore(entry): removes stale Remix scaffolding comments from entry files; no wiki surface needed
+- 2026-06-27 0c14af3 SKIP - docs(changelog): backfill CHANGELOG entries only; no architecture change
+- 2026-06-27 0a4af7b WORTHY - docs(pr-merge): CHANGELOG gate added to PR merge workflow → wiki/concepts/PR Merge Workflow.md updated in-commit
+- 2026-06-27 b213e19 SKIP - fix(gaia-wiki): adds mkdir -p wiki/meta/ to tooling scripts; no wiki content change
+- 2026-06-27 8ce8258 WORTHY - feat(handoff): delete-on-done lifecycle → wiki/concepts/GAIA Handoff.md + wiki/concepts/GAIA Pickup.md rewritten in-commit
+- 2026-06-27 97bb16d SKIP - docs(readme): README + CHANGELOG only; no wiki content change
+- 2026-06-27 d44678a WORTHY - chore(deps): upgrade to React Router 8; wiki/dependencies/React Router.md + 11 other wiki pages updated in-commit
 - 2026-06-25 0624cab SKIP - docs(wiki): minimumReleaseAgeExclude lifecycle already noted directly in wiki/decisions/pnpm.md in-commit
 - 2026-06-25 167dac7 SKIP - wiki sync chain commit (state + gaia-lint.md already updated in-commit, no new source changes)
 - 2026-06-25 5c0afcf SKIP - wiki: maintenance chain commit (sync+lint run), not a source change
