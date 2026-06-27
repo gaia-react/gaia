@@ -3,10 +3,10 @@ type: module
 path: app/routes/
 status: active
 language: typescript
-purpose: File-based routing using remix-flat-routes on top of React Router 7
+purpose: File-based routing using remix-flat-routes on top of React Router
 depends_on:
   - '[[remix-flat-routes]]'
-  - '[[React Router 7]]'
+  - '[[React Router]]'
 created: 2026-04-20
 updated: 2026-06-24
 tags: [module, routing]
@@ -14,7 +14,7 @@ tags: [module, routing]
 
 # Routing
 
-GAIA uses [[remix-flat-routes]] on top of [[React Router 7]] for file-based routing. The adapter lives in `app/routes.ts`. You can switch to standard React Router 7 routing if you prefer.
+GAIA uses [[remix-flat-routes]] on top of [[React Router]] for file-based routing. The adapter lives in `app/routes.ts`. You can switch to standard React Router routing if you prefer.
 
 ## Route group convention
 

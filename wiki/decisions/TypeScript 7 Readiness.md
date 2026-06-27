@@ -25,7 +25,7 @@ The lint stack is the only consumer of TypeScript's programmatic API, which its 
 
 ## resolveJsonModule
 
-Retained even though GAIA imports no JSON. GAIA is a foundation for [[React Router 7]] projects, JSON imports are a first-class Vite pattern, and the option is inert until an import exists. See [[TypeScript Language Files]].
+Retained even though GAIA imports no JSON. GAIA is a foundation for [[React Router]] projects, JSON imports are a first-class Vite pattern, and the option is inert until an import exists. See [[TypeScript Language Files]].
 
 ## allowJs
 

@@ -13,7 +13,7 @@ tags: [module, sessions, cookies]
 
 `app/sessions.server/` holds server-only cookie code that needs `SESSION_SECRET` for signing. The `.server` suffix excludes it from the client bundle; secrets never reach the browser.
 
-The shipped file, `language.ts`, defines a signed `lng` cookie via React Router 7's `createCookie` to persist the language preference. The secret comes from `env.SESSION_SECRET` (Zod-validated). For full session storage (auth, flash messages), swap in `createCookieSessionStorage`.
+The shipped file, `language.ts`, defines a signed `lng` cookie via React Router's `createCookie` to persist the language preference. The secret comes from `env.SESSION_SECRET` (Zod-validated). For full session storage (auth, flash messages), swap in `createCookieSessionStorage`.
 
 ## Theme cookie is **not** a session
 

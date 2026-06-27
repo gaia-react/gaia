@@ -66,7 +66,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 ## Dependencies
 
-- [[React Router 7]]
+- [[React Router]]
 - [[remix-flat-routes]]
 - [[remix-i18next]]
 - [[remix-toast]]

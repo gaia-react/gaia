@@ -3,7 +3,7 @@ type: module
 path: app/middleware/
 status: active
 language: typescript
-purpose: React Router 7 middleware
+purpose: React Router middleware
 created: 2026-04-20
 updated: 2026-05-04
 tags: [module, middleware]
@@ -11,7 +11,7 @@ tags: [module, middleware]
 
 # Middleware
 
-`app/middleware/` is for [React Router 7 middleware](https://reactrouter.com/how-to/middleware).
+`app/middleware/` is for [React Router middleware](https://reactrouter.com/how-to/middleware).
 
 ## Hook point, not a feature surface
 

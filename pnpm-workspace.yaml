@@ -38,6 +38,8 @@ minimumReleaseAgeExclude:
   # version; the package.json pin (no caret) keeps the exception inert for any
   # other release.
   - 'bippy@0.5.42'
+  # TEMP: remix-i18next@8.0.0 ships before it clears pnpm quarantine; remove after 2026-07-02 when it ages out
+  - 'remix-i18next'
 
 # Resolution settings. pnpm 11 reads these from pnpm-workspace.yaml, not from
 # .npmrc (which it consults only for auth/registry). publicHoistPattern lifts

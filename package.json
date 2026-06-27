@@ -34,9 +34,9 @@
     "@conform-to/react": "1.19.4",
     "@conform-to/zod": "1.19.4",
     "@epic-web/invariant": "1.0.0",
-    "@react-router/node": "7.18.0",
-    "@react-router/remix-routes-option-adapter": "7.18.0",
-    "@react-router/serve": "7.18.0",
+    "@react-router/node": "8.0.1",
+    "@react-router/remix-routes-option-adapter": "8.0.1",
+    "@react-router/serve": "8.0.1",
     "autosize": "6.0.1",
     "cookie": "1.1.1",
     "date-fns": "4.4.0",
@@ -53,10 +53,10 @@
     "react-dom": "19.2.7",
     "react-i18next": "17.0.8",
     "react-icons": "5.6.0",
-    "react-router": "7.18.0",
-    "remix-i18next": "7.5.0",
+    "react-router": "8.0.1",
+    "remix-i18next": "8.0.0",
     "remix-toast": "4.0.0",
-    "remix-utils": "9.3.1",
+    "remix-utils": "10.0.0",
     "sonner": "2.0.7",
     "spark-md5": "3.0.2",
     "tailwind-merge": "3.6.0",
@@ -69,8 +69,8 @@
     "@msw/data": "1.1.6",
     "@playwright-testing-library/test": "4.5.0",
     "@playwright/test": "1.61.0",
-    "@react-router/dev": "7.18.0",
-    "@react-router/fs-routes": "7.18.0",
+    "@react-router/dev": "8.0.1",
+    "@react-router/fs-routes": "8.0.1",
     "@storybook/addon-docs": "10.4.6",
     "@storybook/addon-links": "10.4.6",
     "@storybook/react-vite": "10.4.6",
@@ -120,7 +120,7 @@
     "workerDirectory": "public"
   },
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=22.22.0"
   },
   "packageManager": "pnpm@11.5.2+sha512.71c631e382066efc25625d5cf029075de07b61b37f6e27350fbd84b1bda5864c8c1967adc280776b45c30a715c0359a3be08fef42d5bb09e2b99029979692916"
 }

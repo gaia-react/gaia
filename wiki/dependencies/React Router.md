@@ -2,16 +2,16 @@
 type: dependency
 status: active
 package: react-router
-version: 7.18.0
+version: 8.0.1
 role: framework
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-06-27
 tags: [dependency, framework]
 ---
 
-# React Router 7
+# React Router
 
-The full-stack web framework GAIA is built on. Provides SSR, file-based routing, loaders, actions, middleware.
+The full-stack web framework GAIA is built on. Provides SSR, file-based routing, loaders, actions, middleware. Web routing primitives live in `react-router` directly; there is no separate `react-router-dom` package. Middleware, route-module splitting, and the Vite Environment API are built-in defaults with no future-flag opt-ins required.
 
 ## Companion packages (kept in version lockstep)
 
