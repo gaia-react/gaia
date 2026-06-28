@@ -20,36 +20,14 @@ type Sandbox = {
   root: string;
 };
 
-const HEADER_BEFORE = `import type {FC} from 'react';
-import {useTranslation} from 'react-i18next';
-import {Link} from 'react-router';
-import GaiaLogo from '~/components/GaiaLogo';
-
-const Header: FC = () => {
-  const {t} = useTranslation('common');
-
-  return (
-    <header>
-      <Link aria-label={t('meta.siteName')} to="/">
-        <GaiaLogo className="h-6 sm:h-7" />
-      </Link>
-    </header>
-  );
-};
-
-export default Header;
-`;
-
 const TEMPLATE_README =
   '# {{PROJECT_TITLE}}\n\nWelcome to {{PROJECT_TITLE}}!\n';
 
 const PREVIEW_BEFORE = `import type {Preview} from '@storybook/react-vite';
 import {themes} from 'storybook/theming';
-import brandImage from '~/assets/images/gaia-logo.svg';
 import '~/styles/tailwind.css';
 
 const BRAND = {
-  brandImage,
   brandTarget: '_blank',
   brandTitle: 'GAIA',
   brandUrl: 'https://gaiareact.com/docs/',
@@ -75,20 +53,6 @@ const setupSandbox = (): Sandbox => {
     'github: gaia\n',
     'utf8'
   );
-  mkdirSync(path.join(root, 'app', 'components', 'GaiaLogo'), {
-    recursive: true,
-  });
-  writeFileSync(
-    path.join(root, 'app', 'components', 'GaiaLogo', 'index.tsx'),
-    'export default () => null;\n',
-    'utf8'
-  );
-  mkdirSync(path.join(root, 'app', 'components', 'Header'), {recursive: true});
-  writeFileSync(
-    path.join(root, 'app', 'components', 'Header', 'index.tsx'),
-    HEADER_BEFORE,
-    'utf8'
-  );
   mkdirSync(path.join(root, '.gaia', 'templates'), {recursive: true});
   writeFileSync(
     path.join(root, '.gaia', 'templates', 'README.md'),
@@ -100,12 +64,6 @@ const setupSandbox = (): Sandbox => {
   writeFileSync(
     path.join(root, '.storybook', 'preview.ts'),
     PREVIEW_BEFORE,
-    'utf8'
-  );
-  mkdirSync(path.join(root, 'app', 'assets', 'images'), {recursive: true});
-  writeFileSync(
-    path.join(root, 'app', 'assets', 'images', 'gaia-logo.svg'),
-    '<svg></svg>\n',
     'utf8'
   );
 
@@ -163,7 +121,7 @@ describe('init strip-branding', () => {
     vi.restoreAllMocks();
   });
 
-  test('removes branding files, replaces README, edits Header, records state', () => {
+  test('removes FUNDING, replaces README, personalizes Storybook brand, records state', () => {
     sandbox = setupSandbox();
 
     const exit = run(['--title', 'Hello World'], {cwd: sandbox.root});
@@ -174,34 +132,14 @@ describe('init strip-branding', () => {
     expect(existsSync(path.join(sandbox.root, '.github', 'FUNDING.yml'))).toBe(
       false
     );
-    expect(
-      existsSync(path.join(sandbox.root, 'app', 'components', 'GaiaLogo'))
-    ).toBe(false);
 
     const readme = readFileSync(path.join(sandbox.root, 'README.md'), 'utf8');
     expect(readme).toBe('# Hello World\n\nWelcome to Hello World!\n');
-
-    const header = readFileSync(
-      path.join(sandbox.root, 'app', 'components', 'Header', 'index.tsx'),
-      'utf8'
-    );
-    expect(header).not.toContain('GaiaLogo');
-    expect(header).toContain(
-      '<span className="text-body text-xl font-bold">{t(\'meta.siteName\')}</span>'
-    );
-
-    expect(
-      existsSync(
-        path.join(sandbox.root, 'app', 'assets', 'images', 'gaia-logo.svg')
-      )
-    ).toBe(false);
 
     const preview = readFileSync(
       path.join(sandbox.root, '.storybook', 'preview.ts'),
       'utf8'
     );
-    expect(preview).not.toContain('gaia-logo.svg');
-    expect(preview).not.toContain('brandImage');
     expect(preview).not.toContain("brandTitle: 'GAIA'");
     expect(preview).not.toContain('gaiareact.com');
     expect(preview).toContain("brandTitle: 'Hello World'");
@@ -217,10 +155,6 @@ describe('init strip-branding', () => {
     const first = run(['--title', 'Hello World'], {cwd: sandbox.root});
     expect(first).toBe(0);
 
-    const headerAfter = readFileSync(
-      path.join(sandbox.root, 'app', 'components', 'Header', 'index.tsx'),
-      'utf8'
-    );
     const previewAfter = readFileSync(
       path.join(sandbox.root, '.storybook', 'preview.ts'),
       'utf8'
@@ -228,12 +162,6 @@ describe('init strip-branding', () => {
 
     const second = run(['--title', 'Hello World'], {cwd: sandbox.root});
     expect(second).toBe(0);
-
-    const headerSecond = readFileSync(
-      path.join(sandbox.root, 'app', 'components', 'Header', 'index.tsx'),
-      'utf8'
-    );
-    expect(headerSecond).toBe(headerAfter);
 
     const previewSecond = readFileSync(
       path.join(sandbox.root, '.storybook', 'preview.ts'),
@@ -246,37 +174,6 @@ describe('init strip-branding', () => {
       (step) => step === 'strip-branding'
     ).length;
     expect(stripCount).toBe(1);
-  });
-
-  test('replaces a paired <GaiaLogo>…</GaiaLogo> element', () => {
-    sandbox = setupSandbox();
-    const pairedHeader = `import GaiaLogo from '~/components/GaiaLogo';
-
-const Header = () => (
-  <header>
-    <GaiaLogo className="h-6 sm:h-7">brand</GaiaLogo>
-  </header>
-);
-
-export default Header;
-`;
-    writeFileSync(
-      path.join(sandbox.root, 'app', 'components', 'Header', 'index.tsx'),
-      pairedHeader,
-      'utf8'
-    );
-
-    const exit = run(['--title', 'Hello World'], {cwd: sandbox.root});
-    expect(exit).toBe(0);
-
-    const header = readFileSync(
-      path.join(sandbox.root, 'app', 'components', 'Header', 'index.tsx'),
-      'utf8'
-    );
-    expect(header).not.toContain('GaiaLogo');
-    expect(header).toContain(
-      '<span className="text-body text-xl font-bold">{t(\'meta.siteName\')}</span>'
-    );
   });
 
   test('exit 1 when --title missing', () => {

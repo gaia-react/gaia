@@ -94,7 +94,7 @@
     @apply checked:bg-accent-600 cursor-pointer;
     @apply group-active:border-accent-500 checked:border-accent-500 active:border-accent-500;
     @apply invalid:focus-visible:border-accent-600 invalid:focus-visible:ring-accent-400 invalid:border-red-500 invalid:ring invalid:ring-red-600 invalid:ring-offset-0;
-    @apply dark:checked:border-accent-500 dark:checked:bg-accent-600;
+    @apply dark:checked:border-accent-500 dark:checked:bg-accent-500;
     @apply dark:disabled:checked:bg-accent-600/30 dark:disabled:checked:border-gray-700;
     @apply dark:group-active:border-accent-600 dark:active:border-accent-600;
     @apply dark:invalid:focus-visible:border-accent-500 dark:invalid:focus-visible:ring-accent-600 dark:invalid:border-red-500 dark:invalid:ring-red-600;

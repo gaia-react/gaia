@@ -4,19 +4,15 @@
  * Codifies Step 3 of `/gaia-init`. Removes GAIA-specific branding from the
  * project so an adopter can start clean:
  *
- *   1. Delete `.github/FUNDING.yml`, `app/components/GaiaLogo/`, and the
- *      `app/assets/images/gaia-logo.svg` brand asset.
+ *   1. Delete `.github/FUNDING.yml`.
  *   2. Replace the root `README.md` with the project-agnostic template at
  *      `.gaia/templates/README.md`, substituting `{{PROJECT_TITLE}}`.
- *   3. Edit `app/components/Header/index.tsx` to drop the `GaiaLogo` import
- *      and replace the `<GaiaLogo … />` element with a text wordmark.
- *   4. De-brand the Storybook sidebar in `.storybook/preview.ts`: drop the
- *      GAIA logo import and rewrite the brand to the project title with no
- *      GAIA image or URL.
+ *   3. De-brand the Storybook sidebar in `.storybook/preview.ts`: rewrite
+ *      the brand to the project title with no GAIA image or URL.
  *
  * Idempotent: re-running is safe; files already removed stay removed,
- * the README replacement is unchanged once written, and the Header and
- * Storybook edits are no-ops once the wordmark / project title are in place.
+ * the README replacement is unchanged once written, and the Storybook
+ * edit is a no-op once the project title is in place.
  *
  * Stdout: nothing on success. Exit codes: 0 / 1 / 2.
  */
@@ -99,11 +95,8 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 };
 
 const FUNDING_PATH = '.github/FUNDING.yml';
-const GAIA_LOGO_DIR = 'app/components/GaiaLogo';
-const GAIA_LOGO_ASSET = 'app/assets/images/gaia-logo.svg';
 const README_TEMPLATE = '.gaia/templates/README.md';
 const README_TARGET = 'README.md';
-const HEADER_FILE = 'app/components/Header/index.tsx';
 const PREVIEW_FILE = '.storybook/preview.ts';
 const PLACEHOLDER = '{{PROJECT_TITLE}}';
 
@@ -133,37 +126,6 @@ const writeReadme = (cwd: string, title: string): void => {
   atomicWriteFileSync(target, rendered);
 };
 
-const WORDMARK_REPLACEMENT =
-  '<span className="text-body text-xl font-bold">{t(\'meta.siteName\')}</span>';
-
-const stripGaiaLogoFromHeader = (cwd: string): void => {
-  const target = path.join(cwd, HEADER_FILE);
-
-  if (!existsSync(target)) return; // header may already be customized
-  const original = readFileSync(target, 'utf8');
-  let next = original;
-
-  // Drop the import line; match common forms (`import GaiaLogo from
-  // '~/components/GaiaLogo';` with or without trailing newline / whitespace).
-  next = next.replaceAll(
-    /^import\s+GaiaLogo\s+from\s+['"]~\/components\/GaiaLogo['"];?\n/gmu,
-    ''
-  );
-
-  // Replace the JSX element. The runbook ships a specific instance:
-  //   <GaiaLogo className="h-6 sm:h-7" />
-  // Match the self-closing form AND a paired `<GaiaLogo …>…</GaiaLogo>`
-  // form, in case the wordmark was customized into a wrapping element.
-  next = next.replaceAll(
-    /<GaiaLogo\b[^>]*\/>|<GaiaLogo\b[^>]*>[\s\S]*?<\/GaiaLogo>/gu,
-    WORDMARK_REPLACEMENT
-  );
-
-  if (next !== original) {
-    atomicWriteFileSync(target, next);
-  }
-};
-
 const debrandStorybook = (cwd: string, title: string): void => {
   const target = path.join(cwd, PREVIEW_FILE);
 
@@ -171,13 +133,7 @@ const debrandStorybook = (cwd: string, title: string): void => {
   const original = readFileSync(target, 'utf8');
   let next = original;
 
-  // Drop the GAIA brand-image import.
-  next = next.replaceAll(
-    /^import\s+brandImage\s+from\s+['"]~\/assets\/images\/gaia-logo\.svg['"];?\n/gmu,
-    ''
-  );
-
-  // Rewrite the brand to the project wordmark: no GAIA image, title, or URL.
+  // Rewrite the brand to the project wordmark: no GAIA title or URL.
   // A function replacement avoids `$` in the title being read as a backref.
   const safeTitle = title.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
 
@@ -221,10 +177,7 @@ export const run = (
 
   try {
     removeIfPresent(cwd, FUNDING_PATH);
-    removeIfPresent(cwd, GAIA_LOGO_DIR);
-    removeIfPresent(cwd, GAIA_LOGO_ASSET);
     writeReadme(cwd, parsed.flags.title);
-    stripGaiaLogoFromHeader(cwd);
     debrandStorybook(cwd, parsed.flags.title);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
