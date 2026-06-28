@@ -6,11 +6,12 @@ import {useOptionalRequestInfo} from '~/utils/request-info';
 
 const IndexPage: FC = () => {
   const {t} = useTranslation('common');
+  const requestInfo = useOptionalRequestInfo();
 
   return (
     <div>
       <h1>{t('meta.siteName')}</h1>
-      <ThemeSwitch userPreference={useOptionalRequestInfo()?.userPrefs.theme} />
+      <ThemeSwitch userPreference={requestInfo?.userPrefs.theme} />
       <LanguageSelect />
     </div>
   );
