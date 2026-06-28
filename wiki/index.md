@@ -125,6 +125,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 - [[GAIA Philosophy]]
 - [[Coding Guidelines]]
+- [[Design System]]
 - [[Component Testing]]
 - [[API Service Pattern]]
 - [[Accessibility]]

@@ -33,8 +33,6 @@ For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`,
 
 The seeded list of files known to use `t()` (verify against the grep output, add any newcomers, drop any that have already been unwrapped):
 
-- `app/components/Header/index.tsx`
-- `app/components/Footer/index.tsx`
 - `app/routes/_legal+/terms.tsx`
 - `app/routes/_legal+/privacy.tsx`
 - `app/routes/_public+/_index.tsx`

@@ -10,11 +10,10 @@ export const getContentSecurityPolicy = (nonce: string): string =>
   [
     `default-src 'self'`,
     `script-src 'self' 'report-sample' 'nonce-${nonce}'`,
-    // 'unsafe-inline' is required by the Google Fonts stylesheet, which
-    // injects an inline <style> block that cannot carry a nonce. Accepted
-    // trade-off for the hosted font; self-hosting the font removes the need.
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
-    `font-src 'self' https://fonts.gstatic.com`,
+    // 'unsafe-inline' is retained for React inline style= attributes and
+    // framework-injected inline styles. Removing it is CSP hardening, out of scope here.
+    `style-src 'self' 'unsafe-inline'`,
+    `font-src 'self'`,
     `img-src 'self' data:`,
     `connect-src 'self'`,
     `object-src 'none'`,

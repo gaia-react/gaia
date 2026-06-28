@@ -31,7 +31,6 @@ export default {
     success: 'Success',
   },
   language: 'Language',
-  license: 'Released under MIT license',
   loading: 'Loading',
   meta: {
     siteName: 'GAIA Template',

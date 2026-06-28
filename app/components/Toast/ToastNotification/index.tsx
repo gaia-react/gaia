@@ -17,7 +17,7 @@ type ToastType = 'error' | 'info' | 'success' | 'warning';
 
 const COLOR: Record<ToastType, string> = {
   error: 'bg-red-700',
-  info: 'bg-blue-600',
+  info: 'bg-accent-600',
   success: 'bg-green-600',
   warning: 'bg-yellow-600',
 };
@@ -31,7 +31,7 @@ const ICON: Record<ToastType, IconType> = {
 
 const ICON_COLOR: Record<ToastType, string> = {
   error: 'text-red-300',
-  info: 'text-blue-300',
+  info: 'text-accent-200',
   success: 'text-green-400',
   warning: 'text-yellow-300',
 };

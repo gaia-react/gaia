@@ -49,9 +49,9 @@ export const VARIANTS: Record<Variant, string> = {
   destructive:
     'border border-red-400 bg-red-500 text-white hover:bg-red-600 disabled:hover:bg-red-500 dark:border-red-500 dark:bg-red-600 dark:hover:bg-red-700 dark:disabled:hover:bg-red-600',
   primary:
-    'border border-blue-400 bg-blue-500 text-white hover:bg-blue-600 disabled:hover:bg-blue-500 dark:border-blue-500 dark:bg-blue-600 dark:hover:bg-blue-700 dark:disabled:hover:bg-blue-600',
+    'border border-accent-400 bg-accent-600 text-white hover:bg-accent-700 disabled:hover:bg-accent-600 dark:border-accent-500 dark:bg-accent-600 dark:hover:bg-accent-700 dark:disabled:hover:bg-accent-600',
   secondary:
-    'border border-blue-500 bg-white text-blue-500 hover:bg-blue-50 disabled:hover:bg-white dark:border-blue-500 dark:bg-gray-900 dark:text-blue-100 dark:hover:bg-blue-900/15 dark:disabled:hover:bg-gray-900',
+    'border border-accent-500 bg-white text-accent-600 hover:bg-accent-50 disabled:hover:bg-white dark:border-accent-500 dark:bg-gray-900 dark:text-accent-100 dark:hover:bg-accent-900/15 dark:disabled:hover:bg-gray-900',
   tertiary:
     'border border-gray-500 bg-gray-600 text-white hover:bg-gray-700 disabled:hover:bg-gray-600',
 };

@@ -50,16 +50,6 @@ const Document: FC<DocumentProps> = ({
         <meta content="width=device-width,initial-scale=1" name="viewport" />
         <MetaHydrated />
         <Links />
-        <link href="https://fonts.googleapis.com" rel="preconnect" />
-        <link
-          crossOrigin="anonymous"
-          href="https://fonts.gstatic.com"
-          rel="preconnect"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
-          rel="stylesheet"
-        />
         {noIndex && <meta content="noindex" name="robots" />}
         {title && <title>{title}</title>}
       </head>

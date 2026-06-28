@@ -30,3 +30,4 @@ For TS/TSX symbol queries (definitions, references, types, module exports), pref
 - No hardcoded secrets or tokens in source; use environment variables
 - Prefer structured logs/errors over ad hoc console text
 - Keep files focused; split when a file exceeds ~400 lines
+- The current visual styling is a deliberate neutral baseline, not a chosen design system. Before designing or restyling, read `.claude/rules/design-baseline.md` and `wiki/concepts/Design System.md`.

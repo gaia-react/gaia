@@ -1,0 +1,32 @@
+---
+type: concept
+status: active
+established: false
+created: 2026-06-28
+updated: 2026-06-28
+tags: [concept, design, styling]
+---
+
+# Design System
+
+No design system is established. The current visual styling is a neutral baseline, not a decision about brand, palette, or typography.
+
+## Current state
+
+The token set in `app/styles/tailwind.css` (accent scale, font stacks, spacing, border-radius) is a deliberate blank slate. It carries no brand hue and no opinion the adopter must keep. Nothing in the current styling implies a chosen visual language.
+
+When an adopter establishes a real design system, they record their decisions here and flip `established` to `true` in this page's frontmatter. That sentinel is what `.claude/rules/design-baseline.md` keys its behavior off: while `established: false`, Claude treats every token as open for adopter direction rather than something to extend.
+
+## Page boundary
+
+- **`wiki/modules/Styles.md`** owns Tailwind mechanics and token plumbing: how `@theme`, `@layer`, `@utility`, and the CSS variable pipeline are wired up.
+- **This page** owns the adopter's chosen visual decisions: which palette, type scale, spacing system, and brand hue they select once they establish a design system.
+
+## How to establish a design system
+
+1. Decide on palette, typography, spacing, and any brand hue.
+2. Record the decisions here (replace this body with the design system documentation).
+3. Flip `established: true` in this page's frontmatter.
+4. Update `app/styles/tailwind.css` with the chosen token values.
+
+Once `established: true`, `.claude/rules/design-baseline.md` defers to this page for all styling guidance.

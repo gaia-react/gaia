@@ -13,16 +13,14 @@ describe('getContentSecurityPolicy', () => {
     expect(csp).toContain(`script-src 'self' 'report-sample'`);
   });
 
-  test('style-src allows unsafe-inline and Google Fonts', () => {
+  test('style-src allows unsafe-inline', () => {
     const csp = getContentSecurityPolicy(nonce);
-    expect(csp).toContain(
-      `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`
-    );
+    expect(csp).toContain(`style-src 'self' 'unsafe-inline'`);
   });
 
-  test('font-src allows Google Fonts static', () => {
+  test('font-src allows self only', () => {
     const csp = getContentSecurityPolicy(nonce);
-    expect(csp).toContain(`font-src 'self' https://fonts.gstatic.com`);
+    expect(csp).toContain(`font-src 'self'`);
   });
 
   test('includes upgrade-insecure-requests directive', () => {

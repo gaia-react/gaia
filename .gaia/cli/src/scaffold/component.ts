@@ -4,7 +4,7 @@
  * Replaces the prose-only `new-component` skill with deterministic file
  * emission. Produces three files (or two with `--no-story`) under
  * `app/components/<Name>/` matching the project's existing component
- * convention (`app/components/Button/`, `app/components/GaiaLogo/`, etc.).
+ * convention (`app/components/Button/`, etc.).
  *
  * Output shape (default invocation, `gaia scaffold component Foo`):
  *
