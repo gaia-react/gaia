@@ -16994,11 +16994,8 @@ var parseFlags5 = (argv) => {
   return { flags: { title }, ok: true };
 };
 var FUNDING_PATH = ".github/FUNDING.yml";
-var GAIA_LOGO_DIR = "app/components/GaiaLogo";
-var GAIA_LOGO_ASSET = "app/assets/images/gaia-logo.svg";
 var README_TEMPLATE = ".gaia/templates/README.md";
 var README_TARGET = "README.md";
-var HEADER_FILE = "app/components/Header/index.tsx";
 var PREVIEW_FILE = ".storybook/preview.ts";
 var PLACEHOLDER = "{{PROJECT_TITLE}}";
 var removeIfPresent2 = (cwd, relative) => {
@@ -17021,33 +17018,11 @@ var writeReadme = (cwd, title) => {
   }
   atomicWriteFileSync(target, rendered);
 };
-var WORDMARK_REPLACEMENT = `<span className="text-body text-xl font-bold">{t('meta.siteName')}</span>`;
-var stripGaiaLogoFromHeader = (cwd) => {
-  const target = path14.join(cwd, HEADER_FILE);
-  if (!existsSync11(target)) return;
-  const original = readFileSync11(target, "utf8");
-  let next = original;
-  next = next.replaceAll(
-    /^import\s+GaiaLogo\s+from\s+['"]~\/components\/GaiaLogo['"];?\n/gmu,
-    ""
-  );
-  next = next.replaceAll(
-    /<GaiaLogo\b[^>]*\/>|<GaiaLogo\b[^>]*>[\s\S]*?<\/GaiaLogo>/gu,
-    WORDMARK_REPLACEMENT
-  );
-  if (next !== original) {
-    atomicWriteFileSync(target, next);
-  }
-};
 var debrandStorybook = (cwd, title) => {
   const target = path14.join(cwd, PREVIEW_FILE);
   if (!existsSync11(target)) return;
   const original = readFileSync11(target, "utf8");
   let next = original;
-  next = next.replaceAll(
-    /^import\s+brandImage\s+from\s+['"]~\/assets\/images\/gaia-logo\.svg['"];?\n/gmu,
-    ""
-  );
   const safeTitle = title.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
   next = next.replaceAll(
     /const BRAND = \{[\s\S]*?\};/gu,
@@ -17077,10 +17052,7 @@ var run14 = (argv, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   try {
     removeIfPresent2(cwd, FUNDING_PATH);
-    removeIfPresent2(cwd, GAIA_LOGO_DIR);
-    removeIfPresent2(cwd, GAIA_LOGO_ASSET);
     writeReadme(cwd, parsed.flags.title);
-    stripGaiaLogoFromHeader(cwd);
     debrandStorybook(cwd, parsed.flags.title);
   } catch (error51) {
     const message = error51 instanceof Error ? error51.message : String(error51);

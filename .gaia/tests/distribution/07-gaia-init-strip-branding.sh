@@ -10,16 +10,13 @@
 # Why it exists: 06-claude-runs-staged.sh proves Claude can talk to
 # Anthropic from a Linux container, but does NOT prove the shipped CLI
 # works on a tree adopters receive. If release-exclude strips a file
-# strip-branding needs (e.g. .gaia/templates/README.md or
-# app/components/GaiaLogo/ or app/components/Header/index.tsx), Layers
-# 0+1+2 stay green and only this scenario fails.
+# strip-branding needs (e.g. .gaia/templates/README.md), Layers 0+1+2
+# stay green and only this scenario fails.
 #
 # Asserts (post-conditions of strip-branding --title "Test Project"):
 #   - Exit code 0, no stdout (per the subcommand contract).
 #   - README.md exists at scaffold root and contains "Test Project"
 #     (regenerated from .gaia/templates/README.md, which ships).
-#   - app/components/GaiaLogo/ is removed (it ships in the staged tree).
-#   - app/components/Header/index.tsx no longer imports GaiaLogo.
 #
 # Layer 0.5: runs on the host or runner, no Docker. Cheap (~1s after
 # build-staging); no pnpm install, just file-level transforms.
@@ -44,10 +41,6 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 # and strip-branding will fail downstream.
 [ -f "$SCAFFOLD/.gaia/templates/README.md" ] \
   || { fail "staged tree missing .gaia/templates/README.md (strip-branding template source)"; exit 1; }
-[ -d "$SCAFFOLD/app/components/GaiaLogo" ] \
-  || { fail "staged tree missing app/components/GaiaLogo/ (strip-branding deletion target)"; exit 1; }
-[ -f "$SCAFFOLD/app/components/Header/index.tsx" ] \
-  || { fail "staged tree missing app/components/Header/index.tsx (strip-branding edit target)"; exit 1; }
 if [ -f "$SCAFFOLD/README.md" ]; then
   log "warning: README.md already in scaffold; release-exclude category 11 may have drifted"
 fi
@@ -82,13 +75,5 @@ fi
 
 grep -q "$TITLE" "$SCAFFOLD/README.md" \
   || { fail "strip-branding did not substitute '$TITLE' into README.md"; exit 1; }
-
-[ ! -d "$SCAFFOLD/app/components/GaiaLogo" ] \
-  || { fail "strip-branding did not remove app/components/GaiaLogo/"; exit 1; }
-
-if grep -q "GaiaLogo" "$SCAFFOLD/app/components/Header/index.tsx"; then
-  fail "strip-branding left a GaiaLogo reference in Header/index.tsx"
-  exit 1
-fi
 
 pass "gaia init strip-branding produced expected post-conditions on staged tree"

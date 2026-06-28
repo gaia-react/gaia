@@ -17,11 +17,15 @@ const readDump = (rawPath: string): RawDump =>
 const totalRenderTime = (dump: RawDump): number =>
   dump.all.reduce((sum, record) => sum + record.totalTime, 0);
 
-// Drive the canary micro-interaction: click the ThemeSwitch toggle in the
-// header. It is a submit button that flips the optimistic theme mode (a local
-// subtree re-render), NOT a navigation, so ThemeSwitch re-renders on `update`.
+// Drive the canary micro-interaction: click the ThemeSwitch inlined on the
+// minimal index page. It is the sole button on that page and is located by
+// role + accessible name. It is a submit button that flips the optimistic
+// theme mode (a local subtree re-render), NOT a navigation, so ThemeSwitch
+// re-renders on `update`.
 const driveThemeToggle = async (page: Page): Promise<void> => {
-  const toggle = page.locator('header').getByRole('button');
+  const toggle = page.getByRole('button', {
+    name: /enable (dark|light) mode|use system theme/i,
+  });
   await expect(toggle).toBeVisible();
   const before = await toggle.getAttribute('aria-label');
   await toggle.click();
@@ -90,9 +94,13 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
 
   // §6 #7 + #8: the canary resolves a real name, the expected memo flag, and a
   // non-zero subtree timing; the toggle drives it on an update render.
-  const canaryRecords = dump.all.filter((record) => record.componentName === CANARY);
+  const canaryRecords = dump.all.filter(
+    (record) => record.componentName === CANARY
+  );
   expect(canaryRecords.length).toBeGreaterThan(0);
-  expect(canaryRecords.every((record) => record.componentName !== 'Unknown')).toBe(true);
+  expect(
+    canaryRecords.every((record) => record.componentName !== 'Unknown')
+  ).toBe(true);
   expect(canaryRecords.every((record) => record.isMemo === false)).toBe(true);
   expect(canaryRecords.some((record) => record.totalTime > 0)).toBe(true);
   expect(canaryRecords.some((record) => record.phase === 'update')).toBe(true);

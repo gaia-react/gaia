@@ -33,7 +33,7 @@
 #                   first H1 line == "# Test Project";
 #                   app/languages/en/common.ts has siteName: 'Test
 #                   Project'; app/languages/en/pages/_index.ts has
-#                   title/heroTitle: 'Test Project'.
+#                   title: 'Test Project'.
 #
 #   wire-statusline .claude/settings.json contains the canonical GAIA
 #                   statusline command. --mode project so the test never
@@ -76,8 +76,6 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 # standalone if 07 is skipped or rerun-after-edit).
 [ -f "$SCAFFOLD/.gaia/templates/README.md" ] \
   || { fail "staged tree missing .gaia/templates/README.md (strip-branding template source)"; exit 1; }
-[ -d "$SCAFFOLD/app/components/GaiaLogo" ] \
-  || { fail "staged tree missing app/components/GaiaLogo/ (strip-branding deletion target)"; exit 1; }
 
 # configure-i18n targets.
 [ -f "$SCAFFOLD/app/languages/index.ts" ] \
@@ -93,7 +91,7 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 [ -f "$SCAFFOLD/app/languages/en/common.ts" ] \
   || { fail "staged tree missing app/languages/en/common.ts (rename siteName target)"; exit 1; }
 [ -f "$SCAFFOLD/app/languages/en/pages/_index.ts" ] \
-  || { fail "staged tree missing app/languages/en/pages/_index.ts (rename heroTitle/title target)"; exit 1; }
+  || { fail "staged tree missing app/languages/en/pages/_index.ts (rename title target)"; exit 1; }
 
 # finalize targets; the staged tree must ship both the interceptor hook
 # script and the command file so finalize has something to delete, and
@@ -172,10 +170,8 @@ first_h1="$(grep -m1 '^# ' "$SCAFFOLD/CLAUDE.md" || true)"
 # common.ts siteName.
 grep -qE "siteName:\s*['\"]Test Project['\"]" "$SCAFFOLD/app/languages/en/common.ts" \
   || { fail "rename did not set siteName: 'Test Project' in en/common.ts"; exit 1; }
-# _index.ts heroTitle + title (both rewritten globally, including nested
-# meta.title; see rename.ts replaceStringPropertyAll).
-grep -qE "heroTitle:\s*['\"]Test Project['\"]" "$SCAFFOLD/app/languages/en/pages/_index.ts" \
-  || { fail "rename did not set heroTitle: 'Test Project' in en/pages/_index.ts"; exit 1; }
+# _index.ts title (rewritten globally, including nested meta.title; see
+# rename.ts replaceStringPropertyAll).
 grep -qE "title:\s*['\"]Test Project['\"]" "$SCAFFOLD/app/languages/en/pages/_index.ts" \
   || { fail "rename did not set title: 'Test Project' in en/pages/_index.ts"; exit 1; }
 

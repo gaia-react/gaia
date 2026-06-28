@@ -56,6 +56,13 @@
       "status": "merged",
       "intent": "In GAIA projects Claude hand-rolls solutions that the bundled remix-utils",
       "merged_at": "2026-06-24T17:09:24Z"
+    },
+    {
+      "id": "SPEC-008",
+      "allocated_at": "2026-06-27T16:53:09Z",
+      "source": "allocated",
+      "status": "specified",
+      "intent": "A fresh GAIA scaffold ships a neutral, brand-free visual baseline that does"
     }
   ]
 }
