@@ -237,6 +237,23 @@ Iterate keys of `.files`. For each `<path>, <class>` entry, apply the decision t
 
 Apply the decision table directly, there is no CLI for this step.
 
+**Design-system sentinel check (runs before the manifest walk):**
+
+Read the `established` field from the working-tree `wiki/concepts/Design System.md` frontmatter:
+
+```bash
+design_established=false
+if [ -f "wiki/concepts/Design System.md" ]; then
+  if grep -qE '^established:[[:space:]]*true' "wiki/concepts/Design System.md"; then
+    design_established=true
+  fi
+fi
+```
+
+If `design_established=true`, the adopter has committed their design system. Both `wiki/concepts/Design System.md` and `.claude/rules/design-baseline.md` are effectively adopter-owned from this point forward. Add both paths to `skip[]` and **exclude them from the manifest walk entirely** — no overwrite, no conflict patch, no backup. The adopter's content is the source of truth.
+
+If `design_established=false`, apply the normal decision table to both files as their manifest class dictates.
+
 **Setup:**
 
 ```bash

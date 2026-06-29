@@ -24,9 +24,15 @@ When an adopter establishes a real design system, they record their decisions he
 
 ## How to establish a design system
 
-1. Decide on palette, typography, spacing, and any brand hue.
-2. Record the decisions here (replace this body with the design system documentation).
-3. Flip `established: true` in this page's frontmatter.
-4. Update `app/styles/tailwind.css` with the chosen token values.
+The implementation path -- Claude, a skill, a designer, a Figma handoff, a design token file -- does not matter. What matters is that once real brand decisions are made, this page gets updated. That update is what tells Claude the baseline is no longer in effect.
+
+Required regardless of how the design was implemented:
+
+1. Replace this page's body with the design system documentation (palette, typography, spacing, brand hue, and any other adopted conventions).
+2. Flip `established: true` in this page's frontmatter.
+3. Update `updated` in this page's frontmatter to today's date.
+4. Ensure `app/styles/tailwind.css` reflects the chosen token values.
+
+If Claude is the one implementing the design, it performs these updates automatically as part of the task. If the design is being implemented by other means, perform these updates manually before or immediately after the implementation lands.
 
 Once `established: true`, `.claude/rules/design-baseline.md` defers to this page for all styling guidance.
