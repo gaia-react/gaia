@@ -1,8 +1,8 @@
 import {describe, expect, test} from 'vitest';
 // Runs in the project default (happy-dom) environment.
 // The node environment was considered but the project setupFiles import storybook
-// preview which accesses window.matchMedia at load time — that works in happy-dom
-// but crashes in node.  File reads and string parsing work fine in happy-dom.
+// preview which accesses window.matchMedia at load time; it works in happy-dom
+// but crashes in node. File reads and string parsing work fine in happy-dom.
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 
@@ -22,11 +22,11 @@ const declarations = [...css.matchAll(CSS_RE)].map(([, shade, value]) => ({
 
 const EXPECTED_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
-// Hoisted to module scope — reused in every test.each iteration.
+// Hoisted to module scope; reused in every test.each iteration.
 const OKLCH_INNER_RE = /oklch\(([^)]+)\)/i;
 
 describe('primary-token', () => {
-  test('exactly one primary scale — shades 50-950, 11 values, no duplicates', () => {
+  test('exactly one primary scale: shades 50-950, 11 values, no duplicates', () => {
     const shades = declarations.map((d) => d.shade).toSorted((a, b) => a - b);
     expect(shades).toEqual(EXPECTED_SHADES);
   });

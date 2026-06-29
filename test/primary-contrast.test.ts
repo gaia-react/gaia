@@ -1,7 +1,7 @@
 // Runs in the project default (happy-dom) environment.
 // The node environment was considered but the project setupFiles import storybook
-// preview which accesses window.matchMedia at load time — that works in happy-dom
-// but crashes in node.  Pure value-math works fine in happy-dom.
+// preview which accesses window.matchMedia at load time; it works in happy-dom
+// but crashes in node. Pure value-math works fine in happy-dom.
 import {describe, expect, test} from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ const contrastRatio = (lum1: number, lum2: number): number => {
 // ---------------------------------------------------------------------------
 // Primary-scale luminances
 //
-// C1 spec (README.md §C1) defines each shade as oklch(L% 0 0deg) — zero
+// C1 spec (README.md §C1) defines each shade as oklch(L% 0 0deg) - zero
 // chroma, neutral gray.  For oklch(L, 0, *) the XYZ Y channel = L³ (within
 // 0.1 % error), and for neutral grays WCAG relative luminance equals the
 // linear sRGB value which also equals L³.  All values verified below.
@@ -63,36 +63,36 @@ const LUM = {
 // Text contrast (≥ 4.5:1)
 // ---------------------------------------------------------------------------
 
-describe('primary-contrast — text (≥ 4.5:1)', () => {
-  test('white on primary-600 primary button fill — light + dark', () => {
+describe('primary-contrast - text (≥ 4.5:1)', () => {
+  test('white on primary-600 primary button fill - light + dark', () => {
     // primary-600 is the filled background; white is the button label
     const ratio = contrastRatio(LUM.white, LUM[600]);
     expect(ratio).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('primary-600 link hover vs white page background — light theme', () => {
+  test('primary-600 link hover vs white page background - light theme', () => {
     const ratio = contrastRatio(LUM[600], LUM.white);
     expect(ratio).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('primary-300 link hover vs gray-900 page background — dark theme', () => {
+  test('primary-300 link hover vs gray-900 page background - dark theme', () => {
     const ratio = contrastRatio(LUM[300], LUM.gray900);
     expect(ratio).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('white selection text vs primary-700 selection background — light theme', () => {
+  test('white selection text vs primary-700 selection background - light theme', () => {
     // selection:bg-primary-700 selection:text-white
     const ratio = contrastRatio(LUM.white, LUM[700]);
     expect(ratio).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('primary-950 selection text vs primary-300 selection background — dark theme', () => {
+  test('primary-950 selection text vs primary-300 selection background - dark theme', () => {
     // dark:selection:bg-primary-300 dark:selection:text-primary-950
     const ratio = contrastRatio(LUM[950], LUM[300]);
     expect(ratio).toBeGreaterThanOrEqual(4.5);
   });
 
-  test('primary-200 Toast info icon vs primary-600 Toast info fill — both themes', () => {
+  test('primary-200 Toast info icon vs primary-600 Toast info fill - both themes', () => {
     // Toast info: bg-primary-600, icon text-primary-200
     const ratio = contrastRatio(LUM[200], LUM[600]);
     expect(ratio).toBeGreaterThanOrEqual(4.5);
@@ -103,38 +103,38 @@ describe('primary-contrast — text (≥ 4.5:1)', () => {
 // Non-text contrast (≥ 3:1)
 // ---------------------------------------------------------------------------
 
-describe('primary-contrast — non-text (≥ 3:1)', () => {
+describe('primary-contrast - non-text (≥ 3:1)', () => {
   // Focus ring: focus-visible:border-primary-600 (light) / dark:focus-visible:border-primary-400 (dark)
-  test('focus border primary-600 vs white input background — light theme', () => {
+  test('focus border primary-600 vs white input background - light theme', () => {
     const ratio = contrastRatio(LUM[600], LUM.white);
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
-  test('focus border primary-400 vs gray-900 input background — dark theme', () => {
+  test('focus border primary-400 vs gray-900 input background - dark theme', () => {
     const ratio = contrastRatio(LUM[400], LUM.gray900);
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
   // Checked fill: checked:bg-primary-600 (light) / dark:checked:bg-primary-500 (dark)
-  test('checked fill primary-600 vs white page background — light theme', () => {
+  test('checked fill primary-600 vs white page background - light theme', () => {
     const ratio = contrastRatio(LUM[600], LUM.white);
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
-  test('checked fill primary-500 vs gray-900 page background — dark theme', () => {
+  test('checked fill primary-500 vs gray-900 page background - dark theme', () => {
     const ratio = contrastRatio(LUM[500], LUM.gray900);
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
-  // Checked border: checked:border-primary-500 — the component boundary that frames
+  // Checked border: checked:border-primary-500 - the component boundary that frames
   // the filled checkbox.  This passes in both themes, satisfying the boundary-contrast
   // clause of WCAG 1.4.11 independently of the fill-vs-background issue above.
-  test('checked border primary-500 vs white page background — light theme', () => {
+  test('checked border primary-500 vs white page background - light theme', () => {
     const ratio = contrastRatio(LUM[500], LUM.white);
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 
-  test('checked border primary-500 vs gray-900 page background — dark theme', () => {
+  test('checked border primary-500 vs gray-900 page background - dark theme', () => {
     const ratio = contrastRatio(LUM[500], LUM.gray900);
     expect(ratio).toBeGreaterThanOrEqual(3);
   });

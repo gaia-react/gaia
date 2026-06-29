@@ -248,7 +248,7 @@ if [ -f "wiki/concepts/Design System.md" ] && grep -qE '^established:[[:space:]]
 fi
 ```
 
-If `design_established=true`, the adopter has committed their design system. Both `wiki/concepts/Design System.md` and `.claude/rules/design-baseline.md` are effectively adopter-owned from this point forward. Add both paths to `skip[]` and **exclude them from the manifest walk entirely** — no overwrite, no conflict patch, no backup. The adopter's content is the source of truth.
+If `design_established=true`, the adopter has committed their design system. Both `wiki/concepts/Design System.md` and `.claude/rules/design-baseline.md` are effectively adopter-owned from this point forward. Add both paths to `skip[]` and **exclude them from the manifest walk entirely**: no overwrite, no conflict patch, no backup. The adopter's content is the source of truth.
 
 If `design_established=false`, apply the normal decision table to both files as their manifest class dictates.
 
