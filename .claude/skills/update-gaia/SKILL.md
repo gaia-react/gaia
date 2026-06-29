@@ -243,10 +243,8 @@ Read the `established` field from the working-tree `wiki/concepts/Design System.
 
 ```bash
 design_established=false
-if [ -f "wiki/concepts/Design System.md" ]; then
-  if grep -qE '^established:[[:space:]]*true' "wiki/concepts/Design System.md"; then
-    design_established=true
-  fi
+if [ -f "wiki/concepts/Design System.md" ] && grep -qE '^established:[[:space:]]*true' "wiki/concepts/Design System.md"; then
+  design_established=true
 fi
 ```
 

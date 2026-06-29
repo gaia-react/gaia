@@ -406,14 +406,14 @@
     "react-router.config.ts": "owned",
     "stylelint.config.mjs": "owned",
     "test/a11y.ts": "owned",
-    "test/accent-contrast.test.ts": "owned",
-    "test/accent-token.test.ts": "owned",
     "test/mocks/database.ts": "owned",
     "test/mocks/faker.ts": "owned",
     "test/mocks/index.ts": "owned",
     "test/mocks/ping.ts": "owned",
     "test/mocks/url.ts": "owned",
     "test/msw.server.ts": "owned",
+    "test/primary-contrast.test.ts": "owned",
+    "test/primary-token.test.ts": "owned",
     "test/rtl.tsx": "owned",
     "test/setup.ts": "owned",
     "test/stubs/index.ts": "owned",
@@ -538,6 +538,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-28T10:12:01.369Z",
+  "generated": "2026-06-29T10:05:39.067Z",
   "version": "1.6.1"
 }

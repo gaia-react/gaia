@@ -2,6 +2,7 @@ import type {FC} from 'react';
 import type {IconType} from 'react-icons';
 import {useTranslation} from 'react-i18next';
 import {
+  IoAlertCircle,
   IoCheckmarkCircle,
   IoClose,
   IoInformationCircle,
@@ -23,7 +24,7 @@ const COLOR: Record<ToastType, string> = {
 };
 
 const ICON: Record<ToastType, IconType> = {
-  error: IoWarning,
+  error: IoAlertCircle,
   info: IoInformationCircle,
   success: IoCheckmarkCircle,
   warning: IoWarning,
