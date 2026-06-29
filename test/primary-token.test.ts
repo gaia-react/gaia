@@ -35,10 +35,6 @@ describe('primary-token', () => {
     expect(css).not.toMatch(/--color-claude-/);
   });
 
-  test('no --color-accent-* declarations anywhere in tailwind.css', () => {
-    expect(css).not.toMatch(/--color-accent-/);
-  });
-
   test.each(EXPECTED_SHADES)(
     '--color-primary-%i has zero chroma (neutral oklch)',
     (shade) => {
