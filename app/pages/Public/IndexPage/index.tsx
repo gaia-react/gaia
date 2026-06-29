@@ -9,7 +9,7 @@ const IndexPage: FC = () => {
   const requestInfo = useOptionalRequestInfo();
 
   return (
-    <div>
+    <div className="flex h-full flex-col items-center justify-center gap-4">
       <h1>{t('meta.siteName')}</h1>
       <ThemeSwitch userPreference={requestInfo?.userPrefs.theme} />
       <LanguageSelect />

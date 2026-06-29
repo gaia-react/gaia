@@ -13,7 +13,7 @@ No design system is established. The current visual styling is a neutral baselin
 
 ## Current state
 
-The token set in `app/styles/tailwind.css` (accent scale, font stacks, spacing, border-radius) is a deliberate blank slate. It carries no brand hue and no opinion the adopter must keep. Nothing in the current styling implies a chosen visual language.
+The token set in `app/styles/tailwind.css` (primary scale, font stacks, spacing, border-radius) is a deliberate blank slate. It carries no brand hue and no opinion the adopter must keep. Nothing in the current styling implies a chosen visual language.
 
 When an adopter establishes a real design system, they record their decisions here and flip `established` to `true` in this page's frontmatter. That sentinel is what `.claude/rules/design-baseline.md` keys its behavior off: while `established: false`, Claude treats every token as open for adopter direction rather than something to extend.
 

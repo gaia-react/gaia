@@ -12,9 +12,9 @@ const css = readFileSync(
   'utf-8'
 );
 
-// Collect every --color-accent-N: value declaration.
+// Collect every --color-primary-N: value declaration.
 // Uses a specific oklch() value pattern to avoid open-ended backtracking.
-const CSS_RE = /--color-accent-(\d+):\s+(oklch\([^)]+\))/g;
+const CSS_RE = /--color-primary-(\d+):\s+(oklch\([^)]+\))/g;
 const declarations = [...css.matchAll(CSS_RE)].map(([, shade, value]) => ({
   shade: Number(shade),
   value: value.trim(),
@@ -22,8 +22,8 @@ const declarations = [...css.matchAll(CSS_RE)].map(([, shade, value]) => ({
 
 const EXPECTED_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
-describe('accent-token', () => {
-  test('exactly one accent scale — shades 50-950, 11 values, no duplicates', () => {
+describe('primary-token', () => {
+  test('exactly one primary scale — shades 50-950, 11 values, no duplicates', () => {
     const shades = declarations.map((d) => d.shade).toSorted((a, b) => a - b);
     expect(shades).toEqual(EXPECTED_SHADES);
   });
@@ -33,12 +33,12 @@ describe('accent-token', () => {
   });
 
   test.each(EXPECTED_SHADES)(
-    '--color-accent-%i has zero chroma (neutral oklch)',
+    '--color-primary-%i has zero chroma (neutral oklch)',
     (shade) => {
       const decl = declarations.find((d) => d.shade === shade);
       expect(
         decl,
-        `--color-accent-${shade} declaration not found`
+        `--color-primary-${shade} declaration not found`
       ).toBeDefined();
 
       const {value} = decl!;
@@ -46,7 +46,7 @@ describe('accent-token', () => {
       // Require oklch() form (C1 spec mandates oklch)
       expect(
         value,
-        `accent-${shade}: expected oklch() form, got "${value}"`
+        `primary-${shade}: expected oklch() form, got "${value}"`
       ).toMatch(/oklch\(/i);
 
       // Extract the inner content of oklch(...) and split on whitespace.
@@ -55,12 +55,12 @@ describe('accent-token', () => {
       const oklchInner = /oklch\(([^)]+)\)/i.exec(value);
       expect(
         oklchInner,
-        `accent-${shade}: could not parse oklch() inner args`
+        `primary-${shade}: could not parse oklch() inner args`
       ).not.toBeNull();
 
       const args = oklchInner![1].trim().split(/\s+/);
       const chroma = Number(args[1]);
-      expect(chroma, `accent-${shade} chroma must be 0, got "${args[1]}"`).toBe(
+      expect(chroma, `primary-${shade} chroma must be 0, got "${args[1]}"`).toBe(
         0
       );
     }
