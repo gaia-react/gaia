@@ -46,6 +46,12 @@ The seeded list of files known to use `t()` (verify against the grep output, add
 
 Resolve translation keys via the `app/languages/en/` files. Example: `t('meta.siteName')` → look up `meta.siteName` in `app/languages/en/common.ts` and inline the resolved string.
 
+`useTranslation`/`t()` is not the only i18n coupling on the index page: `app/pages/Public/IndexPage/index.tsx` also imports and renders `LanguageSelect`, which Section C deletes. In every file that references it, remove the `import LanguageSelect from '~/components/LanguageSelect';` line and the `<LanguageSelect />` element. Discover all such files:
+
+```bash
+grep -rln "components/LanguageSelect" app
+```
+
 After unwrapping all source files, re-run the grep. If any matches remain in `app/` or `test/` outside the deletion targets above, unwrap those too. Repeat until grep returns no app/test matches.
 
 ---

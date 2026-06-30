@@ -27,6 +27,11 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
   const fetcher = useFetcher();
   const location = useLocation();
 
+  // A single configured language offers nothing to switch, so render nothing.
+  // The switcher appears once a second locale is added (LANGUAGES grows via the
+  // add-locale runbook).
+  if (LANGUAGES.length <= 1) return undefined;
+
   const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
 
   const handleChangeLanguageForm = async (
