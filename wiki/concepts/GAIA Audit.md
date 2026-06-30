@@ -3,7 +3,7 @@ type: concept
 title: GAIA Audit
 status: active
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-07-01
 tags: [concept, claude, skill, knowledge, hygiene]
 ---
 
@@ -27,6 +27,12 @@ A clean audit (Stage 1 finds 0 actions) skips the gate and auto-applies: there i
 - **Apply**: spawn Stage 2 to execute the report now (the one-keystroke fast path).
 - **Discuss / refine**: talk it through, edit the report in place, then re-ask.
 - **Decline**: delete the report; nothing is applied.
+
+### Classification-verification round
+
+When Stage 1 proposes at least one action, a recommended-but-optional **classification-verification round** runs in the main conversation between the report and the decision gate. Low-overlap lenses verify Stage 1's single-pass classifications against ground truth: the cited fact actually lives in the wiki page it names, a STALE entry is genuinely gone rather than renamed, a CONFLICT is a real contradiction rather than a sanctioned path-scoped rule, and a memory delete's reason citation resolves. The round is biased toward dropping a delete it cannot confirm, because memory deletes are machine-local and have no git undo, so a wrongly-kept entry is cheap clutter while a wrongly-executed delete is permanent. A mis-classified action is dropped or corrected in the report directly; a whole miscalibrated lens re-spawns Stage 1 once with the findings as a correction directive.
+
+The hardened report carries an `audit_hardened` stamp that the decision gate and `--apply` inherit: `--apply` against a stamped report trusts the hardening, while an unstamped draft has the round run non-interactively before applying. The round is recommended (and recommended only when an irreversible or contradiction-risk action is present; a set of git-reversible shrinks may legitimately skip it), never blocks, and is skipped entirely on a clean 0-action report.
 
 | Invocation             | Path                              | When to use                                                                                                       |
 | ---------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |

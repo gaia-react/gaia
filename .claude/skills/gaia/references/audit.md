@@ -4,7 +4,7 @@
 
 **Do not execute the playbook yourself in the current conversation.** Dispatch the Stage 1 and Stage 2 subagents via the `Agent` tool. Each subagent runs in isolated context. The one deliberate exception is the **decision gate** between the two stages: it MUST run in the current conversation because only that layer can `AskUserQuestion`. Do not "fix" the gate back into a subagent.
 
-Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, the main conversation summarizes it and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions) skips the gate and auto-applies.** There is nothing to approve, and "applying" only finalizes the report's `status` and clears the statusline nudge; leaving a 0-action report parked at the gate is the exact path that strands a `draft` that then nudges indefinitely.
+Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, a recommended **classification-verification round** runs in the main conversation between Stage 1's return and the gate to harden Stage 1's classifications against ground truth, then the main conversation summarizes the hardened report and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions) skips both the round and the gate and auto-applies.** There is nothing to approve, and "applying" only finalizes the report's `status` and clears the statusline nudge; leaving a 0-action report parked at the gate is the exact path that strands a `draft` that then nudges indefinitely.
 
 ### Path resolution (portable, no hardcoding)
 
@@ -24,8 +24,9 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 
 1. Spawn the Stage 1 (Research) subagent below. Wait for it to return. Stage 1 writes the report with `status: draft`.
 2. If Stage 1 failed (no report path printed), do not gate or spawn Stage 2. Surface the error and stop.
-3. **If Stage 1 reported 0 actions** (a clean audit: its printed totals and the report's `Actions proposed: 0` Summary line both show none), skip the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no actions there is nothing to review or approve; Stage 2 only flips the report `status: draft → applied` and busts the statusline nudge. (Leaving a 0-action report at the gate is the exact path that strands a `draft` that then nudges indefinitely.)
-4. **Otherwise (Stage 1 reported ≥1 action)**, **in the main conversation** summarize the report's findings to the user, then ask via `AskUserQuestion`:
+3. **If Stage 1 reported 0 actions** (a clean audit: its printed totals and the report's `Actions proposed: 0` Summary line both show none), skip both the round and the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no actions there is nothing to verify, review, or approve; Stage 2 only flips the report `status: draft → applied` and busts the statusline nudge. (Leaving a 0-action report at the gate is the exact path that strands a `draft` that then nudges indefinitely.)
+4. **If Stage 1 reported ≥1 action**, run the **classification-verification round** in the main conversation before the decision gate (full procedure: `## Classification-verification round (recommended)`). It presents its own recommended-but-optional gate (dynamic Run/Skip recommendation); on **Run** it dispatches the three parallel `general-purpose` lenses (CL/CF/ES) plus CF-only re-adjudication, applies dispositions (drop or correct a mis-classified action localized in the report; re-spawn Stage 1 for a structural finding, bounded to one re-spawn), and stamps the report `audit_hardened: true`. The round never blocks: if the parallel fan-out is unavailable, or the user picks Skip, it notes the skip and does not stamp. Then proceed to the decision gate (next step).
+5. **Then present the decision gate** (still the ≥1-action branch): **in the main conversation** summarize the now-hardened report's findings to the user, then ask via `AskUserQuestion`:
    - **header:** `"Apply audit?"`
    - **question:** `"Stage 1 found {N} actions. Apply them?"`
    - **options (this exact order):**
@@ -40,7 +41,13 @@ This gate runs in the main conversation, not in a subagent (only the main conver
 
 **`/gaia-audit --apply`** → Stage 2 only, against the most recent `draft` (or `applied-partial` for retry).
 
-Skip Stage 1 and the gate. Spawn the Stage 2 (Apply) subagent below directly. Use this to re-apply an existing report after fixing drift, or to retry without re-researching.
+Skip Stage 1 and the decision gate, then check the target report's frontmatter for `audit_hardened: true`:
+
+- **Present** → the report is already hardened; spawn the Stage 2 (Apply) subagent below directly.
+- **Absent** (an un-hardened draft, e.g. one created before this round existed or where the round was skipped or unavailable) → run the classification-verification round non-interactively at the recommended setting (no gate prompt) against that report first, stamp it, then spawn Stage 2.
+- A 0-action report has nothing to harden; proceed straight to Stage 2.
+
+Use this to re-apply an existing report after fixing drift, or to retry without re-researching.
 
 ### Stage 1 subagent (Research)
 
@@ -214,11 +221,14 @@ Derive the timestamp from the shell, never guess the current date/time: `date '+
 
 ### Report template (strict schema, Stage 2 parses this)
 
+Stage 1 writes `audit_hardened: false`; the classification-verification round flips it to `true` after it hardens the report. A report with the field absent is treated as unhardened (see `## Classification-verification round (recommended)`).
+
 ````markdown
 ---
 generated: {YYYY-MM-DD HH:MM}
 generator: audit-knowledge stage-1 sonnet
 status: draft
+audit_hardened: false
 project_root: {resolved PROJECT_ROOT}
 memory_dir: {resolved MEMORY_DIR}
 agent_memory_dir: {resolved AGENT_MEMORY_DIR}
@@ -317,6 +327,98 @@ Apply runs immediately after this report (or at the decision gate). To re-apply 
 ```
 
 End the research run by printing: report path and total actions per category. (Stage 2 runs next automatically.)
+
+## Classification-verification round (recommended)
+
+An adversarial verification round that hardens Stage 1's classifications against ground truth in the MAIN CONVERSATION, between Stage 1 returning its draft report and the Apply / Discuss / Decline decision gate. Stage 1's DUPLICATE / STALE / CONFLICT / PROMOTE / shrink classifications are single-pass semantic judgments that nothing else verifies before they drive edits, and for memory entries those edits are IRREVERSIBLE (machine-local under `$HOME/.claude`, no git undo). The round verifies the checkable claim behind each action against the actual stores, wiki, and repo, then drops, corrects, or re-spawns to harden the report before any human approval or any apply path consumes it.
+
+It runs only when Stage 1 reported ≥1 action; a 0-action report has nothing to verify and skips both the round and the decision gate (the existing 0-action auto-apply path is unchanged). The round dispatches the skill's own parallel `general-purpose` Agent fan-out (the same primitive Stage 1 and Stage 2 use), so it is available in every context including headless and `--apply` runs.
+
+**Deliberate divergences from the canonical adversarial pattern (`.claude/skills/gaia/references/spec.md` step 7, `plan.md` step 4.6). Do not "fix" these back to the spec shape:**
+
+- **Asymmetric disposition, biased toward DROPPING flagged deletes.** Wrongly keeping an entry is trivial clutter; wrongly executing a memory delete is permanent. So when a lens flags a `delete` / `shrink` as mis-classified, the safe disposition is to DROP or correct that action, not to keep it. There is deliberately NO spec-style refuter that defaults to "refuted" and pushes surviving findings back toward executing the action: the spec round refutes findings to keep the SPEC as-authored, here the conservative default is the opposite.
+- **Refutation is CF-only and deep-tier.** Only judgment-heavy CONFLICT (CF) findings get a second-adjudication pass. CL and ES findings are checkable and binary (the cited fact resolves or it does not; the load-bearing content survives or it does not), so they route to disposition directly with no refuter, like the plan audit.
+- **Skip is a legitimate recommendation.** The gate's recommendation is dynamic, not the spec round's "Skip is never recommended": recommend **Run** when any irreversible or contradiction-risk action is present, but **Skip is eligible** when the actions are only git-reversible shrinks on in-repo files (the human decision gate plus git undo already cover that case).
+
+**The round is a choice, presented once.** When the round is reached (≥1 action) in an interactive context, gauge the report, then ask via `AskUserQuestion` exactly once whether to run it. The recommendation is dynamic:
+
+- **Recommend Run** when the report contains any memory `delete` / `delete-entry`, or any CONFLICT-driven `replace` — those actions are irreversible or carry contradiction risk.
+- **Skip is eligible** (a legitimate recommendation) when the actions are only git-reversible `shrink` / `replace` on in-repo (non-memory) files; the decision gate plus git undo already cover that case.
+
+Present the recommended option FIRST, carrying the `(Recommended)` tag:
+
+- question: `"Run the classification-verification round before the decision gate? It verifies Stage 1's classifications against ground truth and drops or corrects any action that would drive a wrong or destructive edit."`
+- header: `"Verify"`
+- options (recommended first):
+  - `{ label: "Run the round (Recommended)", description: "Three parallel lenses verify the classifications against ground truth; a mis-classified delete is dropped, others corrected. A few agents, a couple of minutes." }`
+  - `{ label: "Skip the round", description: "Proceed straight to the decision gate with the report as Stage 1 wrote it. Best when the actions are only git-reversible shrinks on in-repo files." }`
+
+On **Skip**, do not stamp `audit_hardened`; proceed to the decision gate. On **Run**, execute the sub-steps below, stamp `audit_hardened: true`, then proceed to the decision gate.
+
+**Non-interactive paths run the round WITHOUT prompting** at the recommended setting: `--apply` against an unhardened report, headless runs, and any context with no user to prompt. They never present the gate; they run the round, stamp, and continue.
+
+**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block: note the skip (`classification-verification unavailable, relying on the decision gate`), do NOT stamp `audit_hardened`, and proceed straight to the decision gate. The human Apply / Discuss / Decline gate is the safety net.
+
+### Dispatch the three lenses (parallel fan-out)
+
+Dispatch **one `general-purpose` Agent per lens, all in parallel** (one message, one Agent tool call per lens), each handed the shared preamble plus its lens line. Each agent reads the Stage 1 report at `<REPORT_PATH>` (resolved under `.gaia/local/audit/`), the cited stores, the wiki, and `node_modules` if relevant, and returns only the findings JSON below, no narrative.
+
+Shared preamble (interpolate `<REPORT_PATH>` = the Stage 1 report path the main conversation just received, `<repo_root>` = `$PWD`, `<MEMORY_DIR>` = the resolved memory dir from the report frontmatter):
+
+> You are an ADVERSARIAL verifier of a GAIA knowledge-audit report at `<REPORT_PATH>`. Repo root is `<repo_root>`; you may read any file under it. Read the report's actions first. Your job is to find MIS-CLASSIFICATIONS that would drive a wrong or destructive edit, not to praise the report.
+>
+> - Verify every checkable claim against ground truth; when an action cites a wiki page or a fact, open it and confirm.
+> - Cite evidence as `file:line`.
+> - Severity: `blocker` = the action will execute a wrong or destructive edit (e.g. a memory delete whose cited fact does not resolve in the wiki); `high` = the classification is likely wrong and the action needs dropping or correcting before apply; `medium` = should fix; `low` = nit.
+> - Give each finding a stable id prefixed with your lens code.
+> - Be concrete and falsifiable. A finding a verifier can confirm by reading one file is a good finding; vague "could be clearer" is not.
+> - Bias note: a wrongly-dropped delete is harmless (the entry stays); a wrongly-executed delete on a memory entry is PERMANENT (machine-local, no git undo), so when you cannot confirm a delete's basis from ground truth, flag it for dropping.
+
+The three lenses (build each agent's prompt from the shared preamble plus its `LENS:` line):
+
+- **CL, classification grounding (id prefix `CL`).** For each DUPLICATE-driven or STALE-driven `delete` / `shrink`, open the cited wiki `page:line` and confirm the fact TRULY lives there with the same nuance, not a superficially-similar sentence that drops a caveat the memory entry carries. For each STALE action, re-grep the repo with DIFFERENT search terms than Stage 1 used, to catch rename-not-removal (the file or feature still exists under a new name, so the entry is current, not stale). A delete whose cited fact does not resolve, or whose STALE basis is actually a rename, is a finding.
+- **CF, conflict adjudication (id prefix `CF`).** For each CONFLICT-driven action, INDEPENDENTLY re-pick the authoritative source and confirm a GENUINE contradiction exists, rather than: (a) sanctioned path-scoped-rule duplication (a live `paths:`-scoped `.claude/rules/*.md` rule, including a `gaia-harden:` provenance-marked rule, is allowed to duplicate wiki content and is never a CONFLICT); (b) a maintainer-only block; or (c) an out-of-scope wiki-page-vs-wiki-page case (those route to `/gaia-wiki consolidate`, not here). A CONFLICT that is actually one of these, or that picks the wrong authoritative source, is a finding.
+- **ES, edit safety / blast-radius (id prefix `ES`).** For each `promote` and `shrink` / `replace`, confirm the action PRESERVES all load-bearing content (a shrink-to-wikilink does not drop a nuance the inline text carried that the target page lacks; a promote carries the full content, not a truncation). For each memory `delete` / `delete-entry`, confirm the action's `reason` cites a canonical location that actually RESOLVES, the guardrail "never delete a memory entry unless the reason cites a canonical wiki location" is only as good as the citation resolving. A promote/shrink that loses content, or a delete whose reason citation does not resolve, is a finding.
+
+Findings schema (each agent returns exactly this object; `location` is the offending action id, e.g. `delete-003`, or the classification; `evidence` is the wiki `page:line` or memory `file` actually opened):
+
+    {
+      "dimension": "<lens name>",
+      "findings": [
+        {
+          "id": "<lens-prefix>-NNN",
+          "severity": "blocker" | "high" | "medium" | "low",
+          "title": "<short>",
+          "location": "<action id or classification>",
+          "issue": "<one sentence: what is wrong>",
+          "evidence": "<file:line or quote actually checked>",
+          "recommendation": "<one sentence: the fix>"
+        }
+      ]
+    }
+
+### CF-only refutation / second adjudication (deep-tier)
+
+Collect the CF findings ONLY. CL and ES findings are checkable and binary, so they route to disposition directly with no refuter. For each CF finding, dispatch ONE additional `general-purpose` Agent that independently re-adjudicates the conflict: re-pick the authoritative source from ground truth and decide whether a genuine contradiction exists.
+
+This is NOT the spec round's "default to refuted" refuter; it is a second opinion whose DISPOSITION is conservative in the safe direction:
+
+- A CONFLICT-driven `replace` / `delete` action **survives** only if the CF lens AND its re-adjudicator agree the conflict is genuine AND agree on the same authoritative source.
+- On any disagreement (the re-adjudicator finds the conflict spurious, or picks a different authoritative source), **drop or downgrade** the action: do not execute a `replace` / `delete` that could clobber a legitimately-distinct local statement when two adjudicators cannot agree it is wrong.
+
+This default (disagreement → drop the action) is the deliberate INVERSION of spec.md 7b's "disagreement → keep the finding refuted → SPEC unchanged", driven by the irreversibility asymmetry: there, keeping the SPEC as-authored is safe; here, the safe direction is to not execute the destructive edit.
+
+### Disposition routing and the stamp (mirror plan.md 4.6b)
+
+Route each surviving finding by scope:
+
+- **Localized finding** (one mis-classified action): drop or correct that action block directly in the report file. The main conversation edits the report; it lives under `.gaia/local/audit/`, which the main conversation may write. "Drop" removes the action block; "correct" fixes the cited target or `reason` when the lens supplies a correct one. Because the disposition is asymmetric, a `delete` / `shrink` a lens cannot confirm is DROPPED, not kept (the spec round keeps unrefuted findings to preserve the artifact; here the conservative default is to not execute the unconfirmed destructive edit).
+- **Structural finding** (a whole Stage-1 lens is miscalibrated, e.g. every STALE classification used the same flawed grep and they are all rename-not-removal): re-spawn the Stage 1 (Research) subagent (mirror plan.md 4.6b's re-spawn-the-planner) with the surviving findings appended as a correction directive. The re-spawn reuses the existing Stage 1 subagent definition, goes through the same report path, and overwrites the flawed report. Bound this to ONE re-spawn: after re-spawning, re-run the round once against the regenerated report, then proceed (do not loop indefinitely).
+
+**The stamp.** After the round completes (findings dispositioned, report edited), stamp the report frontmatter `audit_hardened: true`. This is the idempotency and inheritance signal:
+
+- The decision gate reads the now-hardened report.
+- The `--apply` re-run path checks the stamp: `audit_hardened: true` present → `--apply` trusts the hardened report and does NOT re-run the round; absent (an un-hardened draft, e.g. one created before this round existed or where it was skipped or unavailable) → `--apply` runs the round itself non-interactively at the recommended setting before applying.
 
 ## Step 5, Apply procedure (Stage 2, Sonnet)
 

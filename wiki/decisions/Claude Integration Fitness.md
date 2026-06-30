@@ -221,7 +221,7 @@ Default: **3 cycles** (tunable; adjust the cycle count in this page for your pro
 
 ### Verify phase
 
-After each heal cycle, re-run the affected category checks. Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean.
+After each heal cycle, re-run the affected category checks. Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean. The final verify cycle, the one whose recomputed grade is reported (on a clean A+ exit or at loop exhaustion), re-runs all seven categories rather than only the affected ones, so a fix in one lane that regresses a check in a zero-finding category is caught before the loop reports.
 
 ---
 
