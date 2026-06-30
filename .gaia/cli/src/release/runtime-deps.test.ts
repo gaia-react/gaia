@@ -287,6 +287,49 @@ describe('release runtime-deps CLI', () => {
     expect(exit).toBe(0);
   });
 
+  test('scans nested scripts under .github/actions', () => {
+    // The CI composite-action scripts live two directories deep
+    // (.github/actions/<action>/lib/*.sh); the walk must recurse to reach
+    // them. They ship (manifest "owned") and reference no maintainer paths,
+    // so a clean scan is the expected steady state.
+    sandbox.writeManifest({
+      '.github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh': 'owned',
+    });
+    sandbox.writeFile(
+      '.github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh',
+      ['#!/usr/bin/env bash', 'gh pr checks "$PR_NUMBER"', ''].join('\n')
+    );
+
+    const exit = run(['--json'], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.outputs.join('')) as {
+      leaks: readonly unknown[];
+      scanned_files: readonly string[];
+    };
+    expect(parsed.scanned_files).toContain(
+      '.github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh'
+    );
+    expect(parsed.leaks).toHaveLength(0);
+  });
+
+  test('flags a release-excluded reference in a nested .github/actions script', () => {
+    // Recursion-and-leak guard: a maintainer-only path referenced inside a
+    // deeply nested composite-action script must still flag, proving the new
+    // scan scope walks the tree rather than only its top level.
+    sandbox.writeManifest({});
+    sandbox.writeFile(
+      '.github/actions/gaia-ci-merge-and-watch/lib/render-issue.sh',
+      ['#!/usr/bin/env bash', 'bash .gaia/cli/src/release/scrub.ts', ''].join(
+        '\n'
+      )
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('.gaia/cli/src/release/scrub.ts');
+  });
+
   test('--json emits structured report', () => {
     sandbox.writeManifest({
       '.gaia/cli/gaia': 'owned',
