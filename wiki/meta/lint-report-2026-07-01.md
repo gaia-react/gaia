@@ -11,13 +11,11 @@ status: developing
 
 ## #11: Wiki drift check
 
-ℹ 2 commits behind HEAD. Run /gaia-wiki sync at next opportunity.
+ℹ 1 commit behind HEAD. Run /gaia-wiki sync at next opportunity.
 
 ## #12: Dead repo-relative paths
 
-⚠ 1 dead path reference(s) in wiki/, files no longer exist on disk:
-
-- `wiki/decisions/Dark Mode Modernization.md:30` → `app/components/Header/index.tsx`
+✓ No dead repo-relative paths detected in wiki body prose.
 
 ## #13: UAT/SPEC narrative-ref drift
 
