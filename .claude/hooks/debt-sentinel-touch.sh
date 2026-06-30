@@ -1,8 +1,8 @@
 #!/bin/bash
 # PostToolUse Bash hook: after a real `gh pr merge` for THIS repo, set the
-# debt-count staleness sentinel (FC-9) so the open `tech-debt` count recomputes
+# debt-count staleness sentinel so the open `tech-debt` count recomputes
 # on the next statusline tick instead of waiting on the refresher's own TTL.
-# This is the second of FC-9's two deterministic first-party sentinel-set events
+# This is the second of the two deterministic first-party sentinel-set events
 # (the first is the audit filing a `tech-debt` issue); a `/gaia-debt` PR usually
 # merges via the orchestrator/human after the skill has left the conversation,
 # so this hook is the reliable trigger rather than the skill's best-effort
@@ -13,7 +13,7 @@
 # touching the sentinel only schedules a recompute on the next tick, which is
 # cheap and always correct; over-touching is harmless.
 #
-# See wiki/concepts/Audit Disposition and Debt Drain.md for the FC-9 contract.
+# See wiki/concepts/Audit Disposition and Debt Drain.md for the debt-count sentinel contract.
 
 # -e is intentionally omitted; all error-prone commands are individually
 # guarded (|| true, 2>/dev/null) so this hook can never fail a merge.
@@ -50,7 +50,7 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
   exit 0
 fi
 
-# Create the parent dir first (FC-9: every sentinel writer owns its mkdir; on a
+# Create the parent dir first (every sentinel writer owns its mkdir; on a
 # fresh clone or in CI no statusline tick has run, so .gaia/local/debt/ may not
 # exist yet and a bare touch would fail silently), then touch the sentinel.
 mkdir -p .gaia/local/debt 2>/dev/null || true

@@ -3,8 +3,9 @@
 # for the current HEAD claims a disposition that does not hold. This is the
 # DETERMINISTIC backstop for the audit's forced-disposition guarantee: the
 # code-review-audit agent's own verify-after-file re-query is the primary
-# enforcer, but that is agent behavior, not code. This hook re-reads the FC-7
-# sidecar (.gaia/local/audit/<sha>.dispositions.json) and fails the merge by
+# enforcer, but that is agent behavior, not code. This hook re-reads the
+# disposition-ledger sidecar (.gaia/local/audit/<sha>.dispositions.json) and
+# fails the merge by
 # CODE when a marker's claimed dispositions do not check out.
 #
 # It sits ALONGSIDE pr-merge-audit-check.sh (the marker-existence gate) and
@@ -13,7 +14,7 @@
 # orthogonal check.
 #
 # DENY conditions (the only two):
-#   1. A `filed` sidecar entry whose FC-2 key has NO matching `tech-debt` issue
+#   1. A `filed` sidecar entry whose dedup key has NO matching `tech-debt` issue
 #      (open OR closed) on a REACHABLE backend (the marker claims a filing that
 #      does not exist). A CLOSED match means the disposition was filed and later
 #      drained/closed by /gaia-debt (a fully honored disposition) -> satisfied,
@@ -29,7 +30,7 @@
 # blocks ONLY on a confirmed present-backend inconsistency or a
 # pending(definitive) entry.
 #
-# Key relationship (FC-7): the sidecar `key` is the FC-2 INNER content
+# Key relationship: the sidecar `key` is the dedup-key INNER content
 # `v1 class=… path=… line=…` WITHOUT the `<!-- gaia-debt-key: … -->` wrapper;
 # the filed issue body carries the wrapped form. A match reconstructs the
 # WRAPPED form `<!-- gaia-debt-key: ${key} -->` and tests the issue body for it
@@ -124,7 +125,7 @@ fi
 # (b) filed entries: each key must resolve to a tech-debt issue, OPEN or
 # CLOSED. A filed entry whose tech-debt issue was later drained/closed by
 # /gaia-debt (a fully honored disposition) is absent from the OPEN set; the
-# dedup procedure (FC-2 step 2) is closed-aware, so this hook must be too, else
+# dedup procedure (its closed-issue step) is closed-aware, so this hook must be too, else
 # a satisfied disposition false-blocks the merge. Only query the backend when
 # there is at least one filed entry to verify.
 filed_keys=$(jq -r '
@@ -152,8 +153,9 @@ if [ -n "$filed_keys" ]; then
   if [ "$gh_ok" -eq 1 ]; then
     while IFS= read -r key; do
       [ -n "$key" ] || continue
-      # Match = some issue body (open OR closed) CONTAINS the WRAPPED FC-2 key
-      # `<!-- gaia-debt-key: ${key} -->` as a substring (FC-7 key relationship).
+      # Match = some issue body (open OR closed) CONTAINS the WRAPPED dedup key
+      # `<!-- gaia-debt-key: ${key} -->` as a substring (the sidecar-to-issue
+      # key relationship).
       # Reconstruct the wrapper here: matching the bare inner key would
       # false-match a sibling issue whose line number has this key's line as a
       # digit prefix (`line=4` is a substring of `line=42 -->`). A match on a

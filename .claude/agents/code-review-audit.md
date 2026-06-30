@@ -275,7 +275,7 @@ mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
 
 ### F. Disposition-ledger sidecar
 
-At marker-decision time, write `.gaia/local/audit/<HEAD-sha>.dispositions.json` (gitignored). Write `findings: []` when there are no out-of-scope findings, so the marker-backstop hook can distinguish "audit ran, none identified" from "no sidecar". Set `backend` to the probe outcome.
+The disposition **entries** (the per-finding content) are decided at the marker-decision point, but the sidecar **file** `.gaia/local/audit/<HEAD-sha>.dispositions.json` (gitignored) is written keyed to the **same HEAD as the marker**: the **post-stamp** HEAD when the marker is warranted (the `GAIA-Audit` trailer stamp moves HEAD, see the marker-write sequence under "Audit marker"), or the current HEAD when the marker is not warranted. The marker-backstop hook resolves `git rev-parse HEAD` at merge time, so a sidecar keyed to the pre-stamp HEAD would be orphaned, the hook would find no sidecar for the post-stamp HEAD and silently fail open. Write `findings: []` when there are no out-of-scope findings, so the marker-backstop hook can distinguish "audit ran, none identified" from "no sidecar". Set `backend` to the probe outcome.
 
 ```json
 {
@@ -667,7 +667,7 @@ After producing the report (which includes the adversarial verification of Criti
   4. **Every identified out-of-scope finding has a disposition** (the disposition gate, see Scope classification and out-of-scope disposition). Verify after filing: re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure) immediately before writing the marker, then apply the sidecar marker-write rule, write on `filed` / `diverted` / `waived` / `pending(transient)`; withhold **only** on `pending(definitive)`.
 - **Do NOT write the marker** when any in-scope Critical Issue exists, any in-scope Important Issue remains unaddressed, any in-scope Suggestion is either unaddressed or escalated, or any out-of-scope finding's disposition is `pending(definitive)`. Escalated in-scope suggestions block unconditionally, the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written. A `pending(definitive)` out-of-scope disposition (a present, writable backend with a genuinely-missing filing) blocks the same way; backend-absent (`waived`), transient (`pending(transient)`), and diverted findings fail open and never withhold the marker.
 
-Write the disposition-ledger sidecar (`.gaia/local/audit/<HEAD-sha>.dispositions.json`) at this marker-decision point regardless of the outcome, so the marker-backstop hook can verify the marker's claimed dispositions.
+Decide the disposition entries (section F) at this marker-decision point regardless of the outcome, but write the sidecar **file** (`.gaia/local/audit/<HEAD-sha>.dispositions.json`) keyed to the **same HEAD as the marker**, folded into the marker-write sequence below (post-stamp `$HEAD_SHA`, step 2a) when the marker is warranted, or keyed to the current (unmoved) HEAD when it is not, so the marker-backstop hook (which resolves `git rev-parse HEAD` at merge time) finds it and can verify the marker's claimed dispositions.
 
 Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
@@ -693,6 +693,15 @@ if [ ! -f "$marker" ]; then
     "$HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     > "$marker"
 fi
+
+# 2a. Write the disposition-ledger sidecar (section F) keyed to the SAME
+#     post-stamp HEAD as the marker. The marker-backstop hook resolves
+#     `git rev-parse HEAD` at merge time, so a sidecar keyed to the pre-stamp
+#     HEAD would be orphaned and the backstop would fail open. The JSON "sha"
+#     field is set to $HEAD_SHA to match the filename.
+sidecar=".gaia/local/audit/${HEAD_SHA}.dispositions.json"
+# Write the section-F dispositions JSON (decided at the marker-decision point,
+# with "sha":"$HEAD_SHA") to "$sidecar".
 
 # 2b. Post the GAIA-Audit success status on HEAD, gated on the marker
 #     existing first (the helper re-checks `[ -f "$marker" ]`). Best-effort:
@@ -759,6 +768,8 @@ The skipped form applies when `stamp_line` begins with `stamp: declined:`, the m
 If you do not write the marker, surface this instead:
 
 > Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
+
+Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to the **current** HEAD, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(git rev-parse HEAD).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same HEAD remains backstop-checkable against a real sidecar.
 
 Never write a marker for a SHA other than current `HEAD`. The agent-side guard above prevents accidental overwrite; the hook-side `[ -f "$marker" ]` check is what unblocks `gh pr merge` once the marker exists.
 
