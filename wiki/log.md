@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-30 15ddaf9 SKIP - wiki: self-referential
+- 2026-06-30 091904c SKIP - wiki: self-referential
+- 2026-06-30 c100ead SKIP - wiki/concepts/Audit Disposition and Debt Drain.md updated inline in commit; no additional wiki edits needed
 - 2026-06-30 76e516f SKIP - prior wiki maintenance chain commit; wiki state+log+meta updated in-commit, no source surface
 - 2026-06-30 4b7fa1f SKIP - wiki dead-path fix landed inline in commit; dep bump is routine patch, no new wiki surface
 - 2026-06-30 24aa0f6 SKIP - wiki change landed inline in commit (Storybook.md ceiling section); no new surface
