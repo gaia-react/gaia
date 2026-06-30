@@ -13,9 +13,11 @@
 # orthogonal check.
 #
 # DENY conditions (the only two):
-#   1. A `filed` sidecar entry whose FC-2 key has NO matching open `tech-debt`
-#      issue on a REACHABLE backend (the marker claims a filing that does not
-#      exist).
+#   1. A `filed` sidecar entry whose FC-2 key has NO matching `tech-debt` issue
+#      (open OR closed) on a REACHABLE backend (the marker claims a filing that
+#      does not exist). A CLOSED match means the disposition was filed and later
+#      drained/closed by /gaia-debt (a fully honored disposition) -> satisfied,
+#      so it is NOT an offender.
 #   2. A `pending` entry with pending_reason "definitive" (a present, writable
 #      backend with a genuinely-missing disposition; a marker should not exist,
 #      but defend against a hand-written one).
@@ -29,8 +31,12 @@
 #
 # Key relationship (FC-7): the sidecar `key` is the FC-2 INNER content
 # `v1 class=… path=… line=…` WITHOUT the `<!-- gaia-debt-key: … -->` wrapper;
-# the filed issue body carries the wrapped form. A match is therefore an issue
-# body that CONTAINS the sidecar key as a SUBSTRING, never whole-line equality.
+# the filed issue body carries the wrapped form. A match reconstructs the
+# WRAPPED form `<!-- gaia-debt-key: ${key} -->` and tests the issue body for it
+# as a SUBSTRING, never whole-line equality. The wrapped form is collision-safe:
+# the bare inner key ends in `line=<int>` with no boundary, so a `line=4` key
+# would substring-match a sibling `line=42 -->` issue; the trailing ` -->`
+# prevents that digit-prefix false match.
 #
 # See wiki/concepts/Audit Disposition and Debt Drain.md and
 # wiki/concepts/PR Merge Workflow.md for the full contract.
@@ -94,8 +100,8 @@ backend=$(jq -r '.backend // ""' "$sidecar" 2>/dev/null || true)
 # ---------------------------------------------------------------------------
 # Collect offenders from two independent sources:
 #   (a) pending(definitive) entries  -> deterministic deny, no backend needed.
-#   (b) filed entries whose key has no matching open tech-debt issue on a
-#       REACHABLE backend.
+#   (b) filed entries whose key has no matching tech-debt issue (open OR
+#       closed) on a REACHABLE backend.
 # diverted / waived / pending(transient) are skipped (fail-open by contract).
 # ---------------------------------------------------------------------------
 offenders=""
@@ -115,24 +121,28 @@ if [ -n "$pending_keys" ]; then
   done <<< "$pending_keys"
 fi
 
-# (b) filed entries: each key must resolve to an open tech-debt issue. Only
-# query the backend when there is at least one filed entry to verify.
+# (b) filed entries: each key must resolve to a tech-debt issue, OPEN or
+# CLOSED. A filed entry whose tech-debt issue was later drained/closed by
+# /gaia-debt (a fully honored disposition) is absent from the OPEN set; the
+# dedup procedure (FC-2 step 2) is closed-aware, so this hook must be too, else
+# a satisfied disposition false-blocks the merge. Only query the backend when
+# there is at least one filed entry to verify.
 filed_keys=$(jq -r '
   .findings[]?
   | select((.disposition // "") == "filed")
   | (.key // empty)' "$sidecar" 2>/dev/null || true)
 
 if [ -n "$filed_keys" ]; then
-  # Query open tech-debt issues ONCE. Capture output AND success: gh exits
-  # non-zero on any backend failure (no gh, unauthenticated, unresolved repo,
-  # Issues disabled, rate-limit, 5xx), in which case we FAIL OPEN and skip the
-  # filed checks entirely (never block on a transient/absent backend). A high
-  # --limit avoids a false deny when a real issue sits past the default
-  # 30-issue page.
+  # Query tech-debt issues (open AND closed, via --state all) ONCE. Capture
+  # output AND success: gh exits non-zero on any backend failure (no gh,
+  # unauthenticated, unresolved repo, Issues disabled, rate-limit, 5xx), in
+  # which case we FAIL OPEN and skip the filed checks entirely (never block on
+  # a transient/absent backend). A high --limit avoids a false deny when a real
+  # issue sits past the default 30-issue page.
   issues_json=""
   gh_ok=0
   if command -v gh >/dev/null 2>&1; then
-    if issues_json=$(gh issue list --label tech-debt --state open \
+    if issues_json=$(gh issue list --label tech-debt --state all \
         --json number,body --limit 1000 2>/dev/null) \
        && printf '%s' "$issues_json" | jq -e . >/dev/null 2>&1; then
       gh_ok=1
@@ -142,10 +152,16 @@ if [ -n "$filed_keys" ]; then
   if [ "$gh_ok" -eq 1 ]; then
     while IFS= read -r key; do
       [ -n "$key" ] || continue
-      # Match = some open issue body CONTAINS the sidecar key as a substring
-      # (FC-7 key relationship). Never whole-line equality.
+      # Match = some issue body (open OR closed) CONTAINS the WRAPPED FC-2 key
+      # `<!-- gaia-debt-key: ${key} -->` as a substring (FC-7 key relationship).
+      # Reconstruct the wrapper here: matching the bare inner key would
+      # false-match a sibling issue whose line number has this key's line as a
+      # digit prefix (`line=4` is a substring of `line=42 -->`). A match on a
+      # CLOSED issue means the disposition was filed (and likely drained) ->
+      # satisfied. Never whole-line equality.
+      needle="<!-- gaia-debt-key: ${key} -->"
       present=$(printf '%s' "$issues_json" \
-        | jq -r --arg k "$key" 'any(.[]?; (.body // "") | contains($k))' \
+        | jq -r --arg k "$needle" 'any(.[]?; (.body // "") | contains($k))' \
             2>/dev/null || true)
       if [ "$present" != "true" ]; then
         offenders="${offenders}filed-but-missing: ${key}
@@ -170,7 +186,7 @@ Offending finding key(s):
 ${offender_list}
 
 A marker for this HEAD asserts every out-of-scope finding has a real disposition, but:
-  - filed-but-missing: the sidecar marks the finding 'filed' yet no OPEN tech-debt issue carries its key on the reachable backend.
+  - filed-but-missing: the sidecar marks the finding 'filed' yet no OPEN or CLOSED tech-debt issue carries its key on the reachable backend.
   - pending(definitive): the finding has no disposition (a definitive filing failure on a present, writable backend).
 
 To unblock:

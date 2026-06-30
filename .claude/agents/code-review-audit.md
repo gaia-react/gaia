@@ -226,7 +226,7 @@ Use the seeded `finding_class`, or `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` from `.
 
 1. `gh issue list --label tech-debt --state open --json number,title,body` → exact substring match of the key line in `body`.
 2. Also `--state closed`: an exact key match on a closed issue carrying `wontfix` (or closed as not-planned) is a **declined** finding → do **not** re-file.
-3. Keyless human-filed fallback: scan open `tech-debt` issue bodies for the bare `<path>:<line>` substring; a hit suppresses the re-file even with no machine key present.
+3. Keyless human-filed fallback: scan open `tech-debt` issue bodies for the bare `<path>:<line>` substring, anchored so the matched `<line>` is followed by a non-digit (or end-of-string) — otherwise `foo.ts:4` false-matches a sibling `foo.ts:42`; a hit suppresses the re-file even with no machine key present.
 
 `gh issue list` body matching is exact-local only because GitHub full-text search tokenizes on `/ : @` and cannot reliably match the key.
 
@@ -295,7 +295,7 @@ At marker-decision time, write `.gaia/local/audit/<HEAD-sha>.dispositions.json` 
 }
 ```
 
-**Key relationship.** The sidecar `key` field holds the **inner content only** of the E.1 dedup key, `v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer>`, **without** the `<!-- gaia-debt-key: … -->` HTML-comment wrapper. The filed issue body carries the full **wrapped** form. Every reader (this agent's verify-after-file re-query and the marker-backstop hook) confirms a match by testing whether the issue body **contains the sidecar `key` as a substring** (equivalently, reconstructing `<!-- gaia-debt-key: ${key} -->` and substring-matching), never line-equality against a whole body line.
+**Key relationship.** The sidecar `key` field holds the **inner content only** of the E.1 dedup key, `v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer>`, **without** the `<!-- gaia-debt-key: … -->` HTML-comment wrapper. The filed issue body carries the full **wrapped** form. Every reader (this agent's verify-after-file re-query and the marker-backstop hook) confirms a match by **reconstructing the wrapped form `<!-- gaia-debt-key: ${key} -->`** and testing whether the issue body **contains that** as a substring, never line-equality against a whole body line. Match the **wrapped** form, not the bare inner key: the inner key ends in `line=<integer>` with no trailing boundary, so a `line=4` key is a substring of a sibling `line=42 -->` body (same finding_class, same path); only the wrapped form's trailing ` -->` makes the match collision-safe.
 
 Disposition semantics:
 
@@ -307,7 +307,7 @@ Disposition semantics:
 
 ### G. Disposition gate (the fourth marker precondition)
 
-Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the E.2 dedup procedure) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue carrying the key. Then apply the marker-write rule:
+Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the E.2 dedup procedure) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key, so a `line=4` key does not false-match a sibling `line=42 -->` issue). Then apply the marker-write rule:
 
 - **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
 - **Do NOT write the marker** when any entry is `pending(definitive)`, a present, writable backend with a genuinely-missing disposition. This is the **one intended block**; the operator must resolve the filing failure and re-invoke before the marker clears.

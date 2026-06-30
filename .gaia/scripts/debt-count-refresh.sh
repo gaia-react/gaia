@@ -79,7 +79,7 @@ mkdir -p "$DEBT_DIR" 2>/dev/null
 open_count="$prev_open_count"
 recompute_ok=false
 if command -v gh >/dev/null 2>&1; then
-  count_out=$(gh issue list --label tech-debt --state open --json number --jq 'length' 2>/dev/null)
+  count_out=$(gh issue list --label tech-debt --state open --json number --jq 'length' --limit 1000 2>/dev/null)
   case "$count_out" in
     ''|*[!0-9]*) ;;
     *) open_count="$count_out"; recompute_ok=true ;;
