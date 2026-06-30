@@ -1,6 +1,6 @@
 # GAIA React
 
-<img src="./app/assets/images/gaia-logo.svg" height="100" alt="GAIA"/>
+<img src="./docs/assets/gaia-logo.svg" height="100" alt="GAIA"/>
 
 [![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=fff)](https://claude.com/claude-code)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gaia-react/gaia/tests.yml?event=pull_request&label=tests)](https://github.com/gaia-react/gaia/actions/workflows/tests.yml)

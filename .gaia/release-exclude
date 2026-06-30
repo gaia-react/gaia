@@ -178,3 +178,11 @@ CONTRIBUTING.md
 LICENSE
 README.md
 SUPPORTERS.md
+
+# --- 12. Maintainer-only README assets ---
+# The root README.md (excluded above) is the sole consumer of these brand
+# images, and it is maintainer-facing: adopters get a fresh README regenerated
+# from `.gaia/templates/README.md`, so the GAIA logo it embeds has no business
+# on an adopter clone. The asset lives outside `app/` so it is never pulled
+# into the app build either.
+docs/assets
