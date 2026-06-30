@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-06-30
+updated: 2026-07-01
 tags: [concept, claude, review]
 ---
 
@@ -85,11 +85,11 @@ The disposition gate is the **fourth marker precondition**, alongside the three 
 
 The audit records its decision in a gitignored **disposition-ledger sidecar** at `.gaia/local/audit/<HEAD-sha>.dispositions.json` (`findings: []` when none were identified, so a reader can tell "audit ran, none identified" from "no sidecar"). Each entry carries the dedup key's inner content (the `v1 class=… path=… line=…` text without the `<!-- gaia-debt-key: … -->` wrapper), its severity, `security_class`, and a `disposition`:
 
-- `filed` — an open `tech-debt` issue carries the key (`issue_number` set).
-- `diverted` — security-class diverted; no public issue.
-- `waived` — backend definitively absent; the finding reverts to prose only.
-- `pending` with `pending_reason: "transient"` — a transient `gh` failure; the finding is surfaced and retained for the next idempotent run.
-- `pending` with `pending_reason: "definitive"` — a definitive filing failure on a present, writable backend; the disposition is genuinely missing.
+- `filed`: an open `tech-debt` issue carries the key (`issue_number` set).
+- `diverted`: security-class diverted; no public issue.
+- `waived`: backend definitively absent; the finding reverts to prose only.
+- `pending` with `pending_reason: "transient"`: a transient `gh` failure; the finding is surfaced and retained for the next idempotent run.
+- `pending` with `pending_reason: "definitive"`: a definitive filing failure on a present, writable backend; the disposition is genuinely missing.
 
 The marker writes when every entry is `filed`, `diverted`, `waived`, or `pending(transient)`. It is withheld **only** on `pending(definitive)`, the one intended block: the operator resolves the filing failure and re-invokes before the marker clears. Backend-absent, transient, and diversion-failure cases all fail open and never block the merge.
 
@@ -109,6 +109,10 @@ The audit's verify-after-file re-query is agent behavior, not code. `.claude/hoo
 2. a `pending(definitive)` entry.
 
 It fails open everywhere else: no sidecar, backend `absent`, every `filed` entry confirmed, all entries diverted/waived/pending(transient), or any `gh`/tooling failure. A match is an issue body that **contains** the sidecar key as a substring, never whole-line equality. The CI workflow grants the job `issues: write` and adds `Bash(gh:*)` to the agent's `--allowedTools` so the same filing path runs from CI.
+
+### Sibling: the re-run carry-forward ledger
+
+The local re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`) is a distinct artifact from this disposition-ledger sidecar, not an overlap. The sidecar holds **out-of-scope** findings keyed to HEAD and gates the merge through the backstop hook; the re-run ledger holds **in-scope** remaining work keyed to the incremental base and never gates anything. They do not overlap and do not read each other: `audit-disposition-check.sh` reads only the dispositions sidecar by exact path, so the re-run ledger is invisible to merge gating. See [[Code Review Audit Agent]] for the ledger's role in the local fix → re-audit loop.
 
 ## /gaia-debt: draining the backlog
 

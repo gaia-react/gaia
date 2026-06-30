@@ -72,6 +72,8 @@ Task(
 
 ### 2. Fix all issues
 
+The local fix loop reads the re-run carry-forward ledger (`.gaia/local/audit/<BASE_SHA>.rerun.json`) for a deterministic, lossless briefing rather than a main-thread-authored prompt summary: the fixer reads `remaining[]` for what to fix and `fixed_last_round[]` for what the previous round already cleared, and the next re-audit reads the same ledger. The filename keys on the incremental base, which is stable across fix rounds, so the path does not change as HEAD moves. Fail-open: when the ledger is absent, corrupt, or stale (a different branch or base), the loop falls back to the full report in the audit's return, which the agent emits whenever it could not write the ledger.
+
 - Fix every Critical Issue, every Important Issue, and every Suggestion the audit identifies.
 - If a Suggestion involves an architectural tradeoff, breaking change, or conflicting convention, the agent escalates it with documented rationale rather than auto-fixing; the operator must resolve the escalation before the marker is written.
 - Re-run linting and type checking after fixes.
@@ -102,6 +104,14 @@ A clean pass requires no Critical Issues, every Important Issue addressed, and e
 The deterministic backstop hook `.claude/hooks/audit-disposition-check.sh` gates `gh pr merge` alongside `pr-merge-audit-check.sh`: it re-reads the disposition-ledger sidecar for HEAD and denies only on a present-backend inconsistency (a `filed` entry whose key resolves to no open `tech-debt` issue, or a genuinely-missing disposition), failing open on an absent or transient backend (the never-block invariant). A `/gaia-debt` fix PR is an ordinary in-scope change that clears the normal gate.
 
 If the local agent declines to write the marker, its report names what remains unaddressed; resolve those, commit, push, re-spawn.
+
+#### Re-run carry-forward ledger
+
+On a non-clean pass (no marker written) the audit writes a carry-forward ledger keyed to the incremental base, `.gaia/local/audit/<BASE_SHA>.rerun.json`, where `<BASE_SHA>` is the fork point `git merge-base "$BASE_REF" HEAD` of the base [[Code Review Audit Agent]] resolves for scope. Keying on the base, not HEAD, keeps the filename stable across fix rounds, so remaining work survives the moving HEAD. On a clean pass (marker written) the audit removes the ledger.
+
+The ledger holds in-scope remaining work, the `remaining[]` open findings plus `fixed_last_round[]`, and is a sibling of the `<HEAD>.dispositions.json` sidecar, which holds out-of-scope findings and gates the merge. The two do not overlap and neither reads the other; the ledger never gates anything. `pr-merge-audit-check.sh` reads only `<sha>.ok` and `audit-disposition-check.sh` reads only `<sha>.dispositions.json`, so a `<base>.rerun.json` is invisible to both gates.
+
+The ledger is local-flow-only. In CI each audit runs in a fresh ephemeral job, so it carries cross-round state by git-native means, the `GAIA-Audit` trailer/status (read by `.github/audit/resolve-audit-base.sh`) and the PR-comment findings block, and skips the ledger entirely. See [[Audit Disposition and Debt Drain]].
 
 ### 4. Merge
 
