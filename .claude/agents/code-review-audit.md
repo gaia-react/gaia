@@ -185,7 +185,10 @@ A finding is **security-class** (fail-safe) if ANY of these hold, regardless of 
 - it carries no stable `finding_class`, OR
 - it is secret-shaped.
 
-The authoritative `finding_class` vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`); reference it, do not re-list the security members here. Exact-string matching on seeded security classes alone is **insufficient**: severity is demotable, several security dimensions have no seeded class, and a finding can be classless. When in doubt, treat it as security-class.
+<!-- gaia:maintainer-only:start -->
+The authoritative `finding_class` vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`); reference it, do not re-list the security members here.
+<!-- gaia:maintainer-only:end -->
+Exact-string matching on seeded security classes alone is **insufficient**: severity is demotable, several security dimensions have no seeded class, and a finding can be classless. When in doubt, treat it as security-class.
 
 Consequence: an out-of-scope **Critical** is security-class (the "any Critical" trigger) and a **classless** finding is security-class (the "no stable `finding_class`" trigger). Both therefore enter the security-divert path (section D), not the public-filing path (section C). On a PUBLIC or INTERNAL repo they **divert** and are **never** filed to a public/internal issue; they file as a `tech-debt` issue **only on a confirmed PRIVATE repo**. Either way the finding gets *a* disposition, so the marker can still write (the gate treats `filed` and `diverted` identically). Do **not** file a Critical or classless finding to a public/internal issue to satisfy a literal reading of a requirement, that would breach the never-public guarantee.
 
@@ -220,7 +223,7 @@ For each finding routed here, non-security on any repo, **or** a security-class 
 <!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->
 ```
 
-Use the seeded `finding_class`, or `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` from `.gaia/cli/src/schemas/finding-class.ts` (`holistic/unclassified`) when the finding maps to no seeded class. `v1` is the schema version (bump only on a breaking key change). `<path>` is a repo-relative POSIX path; `<line>` is an integer.
+Use the seeded `finding_class`, or `holistic/unclassified` (the out-of-scope fallback) when the finding maps to no seeded class. `v1` is the schema version (bump only on a breaking key change). `<path>` is a repo-relative POSIX path; `<line>` is an integer.
 
 **E.2. Dedup (never `gh` full-text search):**
 
@@ -398,7 +401,10 @@ Rules for the block:
 
 The schema enforces this convention: an entry whose `finding_class` is free text or an unseeded holistic/rule member is dropped before it reaches the tally, so a misclassified entry is silently lost rather than miscounted. When in doubt, omit the entry.
 
-The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `RULE_FINDING_CLASSES`, and the oracle prefixes); the lists above mirror it. That schema also defines `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`), the dedup-key fallback for a classless out-of-scope finding (see Scope classification and out-of-scope disposition). It is **not** a member of the closed vocabulary and is **never** emitted in `findings_json`, it builds a `tech-debt` dedup key, not a telemetry class.
+<!-- gaia:maintainer-only:start -->
+The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `RULE_FINDING_CLASSES`, and the oracle prefixes); the lists above mirror it. That schema also defines `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`), the dedup-key fallback for a classless out-of-scope finding (see Scope classification and out-of-scope disposition).
+<!-- gaia:maintainer-only:end -->
+`holistic/unclassified` is the out-of-scope fallback for a classless finding (see Scope classification and out-of-scope disposition). It is **not** a member of the closed vocabulary and is **never** emitted in `findings_json`, it builds a `tech-debt` dedup key, not a telemetry class.
 
 ## Progress breadcrumbs (CI observability)
 

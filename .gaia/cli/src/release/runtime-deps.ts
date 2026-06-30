@@ -8,8 +8,9 @@
  * tree and silently breaks on adopter clones if `.gaia/scripts/` is
  * release-excluded.
  *
- * Walks shipped shell scripts under `.gaia/statusline/` and
- * `.claude/hooks/`, extracts repo-relative path constants, and verifies
+ * Walks shipped shell scripts under `.gaia/statusline/`,
+ * `.claude/hooks/`, and `.github/actions/` (recursing into nested
+ * directories), extracts repo-relative path constants, and verifies
  * each is either:
  *
  *   - present in `.gaia/manifest.json` (a shipped file), or
@@ -56,7 +57,11 @@ const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>]
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
-const SCAN_GLOBS = ['.gaia/statusline', '.claude/hooks'] as const;
+const SCAN_GLOBS = [
+  '.gaia/statusline',
+  '.claude/hooks',
+  '.github/actions',
+] as const;
 
 /**
  * Sentinels that ship in the tarball but are intentionally absent from

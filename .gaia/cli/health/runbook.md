@@ -135,6 +135,7 @@ Triage rules (per match; apply in order; first hit wins):
 - Allowlisted by `.gaia/release-scrub.yml` path-allowlist or line-allowlist → skip.
 - Allowlisted by `.gaia/cli/health/taxonomy.md` → skip.
 - **Path is absent from `.gaia/manifest.json` → skip.** The manifest is the authoritative list of files that ship to adopters (built from `.gaia/release-exclude`). "Absent from manifest" is the operative test for "release-excluded"; do not attempt to glob-match `.gaia/release-exclude` patterns by hand.
+- **Maintainer-path match (Grep 1) inside a _balanced_ `<!-- gaia:maintainer-only:start -->` / `<!-- gaia:maintainer-only:end -->` block, in a marker-strip-scoped markdown file (`wiki/**/*.md`, `.claude/**/*.md`, `.specify/extensions/gaia/**/*.md` per `.gaia/release-scrub.yml`) → skip.** The bundle-time scrub's `marker-strip` transform deletes the whole block from the staging tree before the tarball is built, so the reference does not ship even though its containing file does. The match must sit between a start marker and a following end marker (start before end, both present); an orphaned or unbalanced marker does not strip, so it stays a candidate. Bucket C (bundle simulation) is the marker-aware authority that proves the strip end-to-end; this rule lets Bucket B's marker-unaware grep stop re-flagging correctly wrapped refs as genuine.
 - Gitignored (e.g. `.claude/settings.local.json`) → skip.
 - Otherwise → genuine finding.
 
