@@ -11,6 +11,10 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-30 76e516f SKIP - prior wiki maintenance chain commit; wiki state+log+meta updated in-commit, no source surface
+- 2026-06-30 4b7fa1f SKIP - wiki dead-path fix landed inline in commit; dep bump is routine patch, no new wiki surface
+- 2026-06-30 24aa0f6 SKIP - wiki change landed inline in commit (Storybook.md ceiling section); no new surface
+- 2026-06-30 152597a SKIP - wiki changes landed inline in commit (GAIA Audit.md + Claude Integration Fitness.md); no new surface
 - 2026-06-30 bda3db6 WORTHY - feat(hooks): SessionStart janitor GCs dead .gaia/local residue → wiki/concepts/Local Working State.md created in-commit
 - 2026-06-30 c73f8ad SKIP - docs(plan): literal path fix in plan instruction file; .claude/ change only, no wiki surface
 - 2026-06-30 ffff7da WORTHY - feat(audit): re-run carry-forward ledger + terse return → wiki/concepts/Audit Disposition and Debt Drain.md + PR Merge Workflow.md + Code Review Audit Agent.md updated in-commit
