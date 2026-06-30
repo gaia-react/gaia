@@ -31,6 +31,8 @@ GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
 CACHE_FILE="$GAIA_DIR/cache/update-check.json"
 CHECK_SCRIPT="$PROJECT_ROOT/.gaia/scripts/check-updates.sh"
+DEBT_CACHE="$PROJECT_ROOT/.gaia/local/debt/count.json"
+DEBT_REFRESH_SCRIPT="$PROJECT_ROOT/.gaia/scripts/debt-count-refresh.sh"
 
 # Read JSON input once.
 input=$(cat)
@@ -104,35 +106,51 @@ if [ "$is_worktree" -eq 0 ]; then
 
     if [ "$setup_complete" != "true" ]; then
       right="$(printf '\033[01;35mRun /setup-cloned-gaia-project (Required)\033[00m')"
-    elif [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
-      outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
-      gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
-      gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
-      harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
-      audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
-      audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
-
+    else
+      # Declare the segment array once for the whole setup-complete path. The
+      # update-check-derived segments stay gated on $CACHE_FILE; the debt
+      # segment is gated independently on $DEBT_CACHE, so it still renders when
+      # update-check.json is absent. The join runs once after both blocks.
       segments=()
-      COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
-      if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
-        segments+=("🧭")
+      if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
+        outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
+        gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
+        gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
+        harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+        audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
+        audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
+
+        COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
+        if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
+          segments+=("🧭")
+        fi
+        if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
+          segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
+        fi
+        if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
+          segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
+        fi
+        if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
+          harden_noun="recurring patterns"
+          [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
+          segments+=("$(printf '\033[01;35mRun /gaia-harden (%d %s)\033[00m' "$harden_count" "$harden_noun")")
+        fi
+        if [ "$audit_nudge" = "true" ]; then
+          if [ -n "$audit_reason" ]; then
+            segments+=("$(printf '\033[01;32mRun /gaia-audit (%s)\033[00m' "$audit_reason")")
+          else
+            segments+=("$(printf '\033[01;32mRun /gaia-audit\033[00m')")
+          fi
+        fi
       fi
-      if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
-        segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
-      fi
-      if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-        segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
-      fi
-      if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
-        harden_noun="recurring patterns"
-        [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
-        segments+=("$(printf '\033[01;35mRun /gaia-harden (%d %s)\033[00m' "$harden_count" "$harden_noun")")
-      fi
-      if [ "$audit_nudge" = "true" ]; then
-        if [ -n "$audit_reason" ]; then
-          segments+=("$(printf '\033[01;32mRun /gaia-audit (%s)\033[00m' "$audit_reason")")
-        else
-          segments+=("$(printf '\033[01;32mRun /gaia-audit\033[00m')")
+      # Debt-backlog nudge, read from the pinned debt cache. Independent of
+      # update-check.json so it renders whenever an open tech-debt count exists.
+      if [ -f "$DEBT_CACHE" ] && command -v jq >/dev/null 2>&1; then
+        debt_count=$(jq -r '.openCount // 0' "$DEBT_CACHE" 2>/dev/null)
+        if [ -n "$debt_count" ] && [ "$debt_count" -gt 0 ] 2>/dev/null; then
+          debt_noun="issues"
+          [ "$debt_count" -eq 1 ] && debt_noun="issue"
+          segments+=("$(printf '\033[01;34mRun /gaia-debt (%d %s)\033[00m' "$debt_count" "$debt_noun")")
         fi
       fi
       if [ "${#segments[@]}" -gt 0 ]; then
@@ -148,6 +166,12 @@ fi
 # Fire the background refresher; never block.
 if [ -x "$CHECK_SCRIPT" ]; then
   (cd "$PROJECT_ROOT" && nohup bash "$CHECK_SCRIPT" >/dev/null 2>&1 &) >/dev/null 2>&1
+fi
+
+# Fire the independent debt-count refresher; never block. Detached so the hot
+# path stays no-network (the count above is read from the pinned cache only).
+if [ -x "$DEBT_REFRESH_SCRIPT" ]; then
+  (cd "$PROJECT_ROOT" && nohup bash "$DEBT_REFRESH_SCRIPT" >/dev/null 2>&1 &) >/dev/null 2>&1
 fi
 
 # ---------- Compose with right-alignment ----------
