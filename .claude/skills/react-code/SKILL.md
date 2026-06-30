@@ -142,7 +142,7 @@ Metadata is the mirror case: GAIA renders `<title>`/`<meta>` as JSX (React 19 ho
 
 When you do reach for React Router's API, read it from the version-matched docs shipped at `node_modules/react-router/docs`, not the web.
 
-Rendering nothing from a `return` is enforced by `@gaia-react/lint`'s `no-null-render` rule (autofix); no manual rewrite needed.
+Rendering nothing from a `return` is enforced by `@gaia-react/lint`'s `no-null-render` rule (autofix); a `: null` ternary arm is caught by `no-restricted-syntax` (report-only). No manual rewrite needed.
 
 For `useEffectEvent` (the sanctioned replacement for stale-deps / latest-ref hacks) and ref-callback cleanup functions, see `references/hook-patterns.md`.
 
