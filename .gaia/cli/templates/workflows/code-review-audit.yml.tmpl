@@ -162,8 +162,7 @@ jobs:
           # .storybook configs, GitHub workflow files, and root-level
           # build/lint/test/typecheck configs. PRs whose UN-AUDITED DELTA
           # (<audit-base>...HEAD) only touches wiki/, .claude/, .specify/,
-          # prose docs, .gaia/ metadata, or .gaia/cli/src (maintainer-only
-          # CLI, tested by health-audit) are skipped; the agent has no rules
+          # prose docs, or .gaia/ metadata are skipped; the agent has no rules
           # that would meaningfully apply. The base is the last clean-audited
           # ancestor, so once a code commit is audited clean a later prose-only
           # commit reviews an empty auditable delta and skips. origin/main (no

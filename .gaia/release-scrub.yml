@@ -137,6 +137,10 @@ transforms:
           # occurrence: tests.yml body comment cited maintainer paths
           # (98f7a62).
           - ".github/workflows/**"
+          # Adopter-shipped workflow templates rendered by `gaia automation
+          # render-workflows`. Template comments must not reference
+          # maintainer-only paths (.gaia/cli/src/) absent on adopter machines.
+          - ".gaia/cli/templates/**"
           - ".specify/extensions/gaia/README.md"
           - ".specify/extensions/gaia/commands/**"
           - ".specify/extensions/gaia/lib/**"
@@ -179,6 +183,9 @@ transforms:
           - ".specify/extensions/gaia/rules/**"
           - ".specify/extensions/gaia/templates/**"
         path-allowlist:
+          # release-notes skill is release-excluded (category 1); its
+          # ../website/ references are maintainer-only and never ship.
+          - ".claude/skills/release-notes/SKILL.md"
           # Same hot/log carve-out as maintainer-paths; they get
           # release-baseline content via `gaia-maintainer release scrub-wiki`.
           - "wiki/hot.md"
