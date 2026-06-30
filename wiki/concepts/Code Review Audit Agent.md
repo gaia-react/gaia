@@ -26,6 +26,12 @@ Critical and Important holistic findings that survive the proof gate go to a sel
 
 Deterministic oracles (`react-doctor`, `knip`) are exempt from the proof gate and adversarial pass; they are not probabilistic judgments.
 
+## Scope classification and disposition
+
+Every finding that survives the proof gate and any adversarial verification gets a forced disposition before the marker clears, split by scope and bounded to the review radius. In-scope findings (inside the PR's changed line ranges) flow into the Critical/Important/Suggestions sections and gate the marker as before. Out-of-scope findings (debt the audit opens within its review radius but the PR did not change) route **out of** those gating sections into a separate disposition: a deduped, severity-labeled `tech-debt` issue, or a diverted security finding. The audit never opens an unrelated file to hunt for debt, and it never fixes an out-of-scope finding (it files, it does not edit the reviewed tree).
+
+The marker is gated on every out-of-scope finding carrying a disposition (the fourth marker precondition), withheld only on a genuinely-missing disposition on a present, writable backend and failing open otherwise. Security-class findings are classified fail-safe and never reach a public or enterprise-readable channel: on a PUBLIC or INTERNAL repo they divert to a redacted operator surface or a count-only PR signal rather than a public issue. See [[Audit Disposition and Debt Drain]] for the full contract, the dedup key, the backend probe, the disposition-ledger sidecar, and the `/gaia-debt` drain loop.
+
 ## Incremental scope
 
 The audit does not always review the full `origin/main...HEAD` diff. `.github/audit/resolve-audit-base.sh` resolves a review base, the most recent ancestor of HEAD that already passed a clean audit under the current `.gaia/VERSION`, proven by a GAIA-Audit commit trailer (local stamps) or a GAIA-Audit commit status (CI stamps; see [[PR Merge Workflow]] for the trailer/status handshake). The audit then reviews only `<base>...HEAD`.
