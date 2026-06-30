@@ -226,7 +226,7 @@ Use the seeded `finding_class`, or `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` from `.
 
 1. `gh issue list --label tech-debt --state open --json number,title,body` → exact substring match of the key line in `body`.
 2. Also `--state closed`: an exact key match on a closed issue carrying `wontfix` (or closed as not-planned) is a **declined** finding → do **not** re-file.
-3. Keyless human-filed fallback: scan open `tech-debt` issue bodies for the bare `<path>:<line>` substring, anchored so the matched `<line>` is followed by a non-digit (or end-of-string) — otherwise `foo.ts:4` false-matches a sibling `foo.ts:42`; a hit suppresses the re-file even with no machine key present.
+3. Keyless human-filed fallback: scan open `tech-debt` issue bodies for the bare `<path>:<line>` substring, anchored so the matched `<line>` is followed by a non-digit (or end-of-string), otherwise `foo.ts:4` false-matches a sibling `foo.ts:42`; a hit suppresses the re-file even with no machine key present.
 
 `gh issue list` body matching is exact-local only because GitHub full-text search tokenizes on `/ : @` and cannot reliably match the key.
 
@@ -347,6 +347,24 @@ Every suggestion must be resolved before the audit passes:
 
 Include only when there are specific, concrete patterns worth reinforcing. Skip the section entirely if there's nothing substantive, don't pad with generic praise.
 
+### Return contract (LOCAL terse return vs full report)
+
+The agent's **Task RETURN string**, its **PR comment + findings block**, and the **telemetry trailer** are three independent channels. This note governs only the LOCAL Task RETURN string; it does not touch the PR comment or the telemetry trailer.
+
+**When the re-run ledger write succeeded** (LOCAL run, non-empty `BASE_SHA`, successful write, see "Re-run carry-forward ledger"), the full per-finding detail lives in the ledger's `remaining[]`, so the RETURN goes terse: lead with the carry-forward block below, then the existing marker surface line, then the telemetry trailer (the final `---` block). The operator reads the ledger for full detail. This is what stops the main thread from absorbing ~10k-token reports across the loop.
+
+```
+Audit round <N> for base <short-base> -> HEAD <short-head>.
+Remaining in-scope: <C> Critical, <I> Important, <S> Suggestion (<E> escalated).
+Fixed this round: <F>.
+Out-of-scope dispositions: <D>.
+Ledger: .gaia/local/audit/<base-sha>.rerun.json  (removed on a clean pass)
+```
+
+**When the ledger write was skipped or failed** (empty `BASE_SHA`, a best-effort write failure, or any CI run, where the ledger never writes), do NOT emit the terse block: return the **full report** (the Summary / Critical / Important / Suggestions sections above) as today, so the per-finding detail is never lost. This is what makes the reader contract's "behave as today" achievable: detail is in the ledger on a successful write, in the RETURN otherwise.
+
+Either way the **telemetry trailer stays in the RETURN** (the PostToolUse Task hook parses it locally), and the full report sections remain the structure you author internally to populate the ledger (local) and the PR comment (CI). The terse form changes only what the RETURN string carries when the detail safely landed in the ledger. It never makes the CI PR comment terse, CI wants the comment FULL, and CI skips the ledger so its RETURN always carries the full report.
+
 ## Finding emission (telemetry trailer)
 
 After the human-readable report, append a machine-readable telemetry trailer as the **last** fenced `---` block of your Task return. The PostToolUse Task hook parses this block to record each finding for the recurring-finding policy-memory loop, which raises a `/gaia-harden` nudge when the same `finding_class` recurs across distinct PRs. The human report and this trailer are independent channels: a finding can appear in the prose report without appearing here.
@@ -410,6 +428,118 @@ A **diverted security-class finding** (see Scope classification and out-of-scope
 
 **Locally harmless:** when the agent runs locally the file is simply written to a gitignored path. No behavioral change, no secrets risk.
 
+## Re-run carry-forward ledger
+
+The re-run loop (audit, fix, re-audit) carries state across rounds. Locally that state lives in the main orchestrator thread's degrading memory: it hand-authors a cumulative briefing forward into each next round and absorbs every round's full ~10k-token report. That is lossy and rot-prone. The ledger replaces it with a deterministic, gitignored cache file that the next re-audit and the fixer read for a lossless briefing, and it lets the local Task return go terse so the main thread stops absorbing full reports (see "Return contract" under Output Format).
+
+The ledger is **LOCAL-FLOW-ONLY and NON-GATING.** It never gates the merge, no hook reads it, and it is skipped entirely in CI (see "CI gating" below). It is a sibling of the disposition-ledger sidecar that never overlaps it: the sidecar holds **out-of-scope** findings and gates the merge; the ledger holds **in-scope** remaining work and never gates. They never read each other.
+
+### Filename and keying
+
+```
+.gaia/local/audit/<BASE_SHA>.rerun.json
+```
+
+`<BASE_SHA>` is the incremental audit base resolved to a full 40-hex commit sha. `.gaia/local/audit/` is gitignored via `.gaia/local/` in `.gitignore`, so the ledger never reaches git.
+
+Key on the **base**, not HEAD. The marker (`<sha>.ok`) and the dispositions sidecar (`<sha>.dispositions.json`) key on HEAD because they certify the exact commit being merged, the endpoint, which moves on every fix commit. The ledger keys on the incremental **base**, the fixed anchor the review extends from, because it accumulates "what is still wrong relative to that cleared base" across the moving HEAD. The key is the **fork point** `git merge-base "$BASE_REF" HEAD`, stable across fix rounds in both base cases:
+
+- **Audited-ancestor base** (the common re-run case): the resolved base is already an ancestor of HEAD, so `merge-base` returns that ancestor; no clean marker lands until the loop ends, so the ancestor does not advance mid-loop.
+- **`origin/main` fallback** (first loop, no audited ancestor): the ref tip moves if `origin/main` advances on a benign mid-loop `git fetch`, but the fork point does not move unless the branch is rebased, and it matches the real base of the audit's `BASE_REF...HEAD` three-dot diff.
+
+A base-keyed filename therefore survives HEAD moves with no HEAD-chaining logic. The ledger's `base_sha` field == the filename key == `git merge-base` of the resolved base and HEAD. When the loop ends clean, the marker lands on the new HEAD, that HEAD becomes the next base, and the old base-keyed ledger is removed (cleanup, see "Writer behavior").
+
+### Path derivation (identical for every consumer)
+
+```bash
+# Resolve the incremental base the SAME way the audit already resolves scope,
+# then anchor the key to the fork point so it is stable across fix rounds.
+BASE_REF="$(.github/audit/resolve-audit-base.sh)"   # <sha> | origin/main | origin/<base-ref> | main
+BASE_SHA="$(git merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
+LEDGER=".gaia/local/audit/${BASE_SHA}.rerun.json"
+```
+
+If `BASE_SHA` is empty (resolution failed), skip the ledger entirely (fail-open; behave as today). In CI the agent prompt provides `<base>...HEAD`; use that same base when present, but the ledger is skipped in CI regardless (see "CI gating").
+
+### JSON shape (schema 1)
+
+```json
+{
+  "schema": 1,
+  "base_sha": "<40-hex base sha; equals the filename key>",
+  "branch": "<git branch --show-current, or empty if detached>",
+  "round": 2,
+  "head_sha": "<40-hex HEAD sha the latest round audited>",
+  "updated_at": "2026-07-01T12:00:00Z",
+  "remaining": [
+    {
+      "finding_class": "holistic/swallowed-error",
+      "severity": "critical",
+      "path": "app/services/foo.ts",
+      "line": 42,
+      "title": "<short>",
+      "failure_mode": "<input + state + bad outcome>",
+      "suggested_fix": "<concrete instruction>",
+      "source": "holistic",
+      "first_seen_round": 1,
+      "escalated": false
+    }
+  ],
+  "fixed_last_round": [
+    {
+      "finding_class": "holistic/non-null-assertion",
+      "path": "app/pages/Bar/index.tsx",
+      "line": 17,
+      "title": "<short>",
+      "fixed_in_sha": "<40-hex sha of the fix commit, or empty if uncommitted>"
+    }
+  ],
+  "notes": "<optional free text: escalation rationale, carry-forward context>"
+}
+```
+
+Field semantics (frozen):
+
+- `schema`: integer literal `1` (matches the dispositions sidecar convention).
+- `base_sha`: the cleared / incremental base sha; equals the filename key.
+- `branch`: provenance for stale detection (`git branch --show-current`, empty if detached).
+- `round`: integer round counter. Round 1 is the first non-clean audit; each re-audit that writes the ledger increments it.
+- `head_sha`: the HEAD the most recent round audited (provenance / debugging).
+- `updated_at`: ISO-8601 UTC, `date -u +%Y-%m-%dT%H:%M:%SZ`.
+- `remaining[]`: **in-scope open findings only** (Critical + unaddressed Important + unresolved/escalated Suggestions). Out-of-scope findings are NOT here; they live in `<HEAD>.dispositions.json` plus filed `tech-debt` issues. Per-finding fields: `finding_class` (seeded class or `holistic/unclassified`), `severity` (`critical|important|suggestion`), `path` (repo-relative POSIX), `line` (integer), `title`, `failure_mode` (input + state + bad outcome), `suggested_fix`, `source` (`holistic|rule|oracle`), `first_seen_round` (integer), `escalated` (boolean; an in-scope Suggestion escalated for a human tradeoff, which blocks the marker).
+- `fixed_last_round[]`: in-scope findings self-healed / fixed in the most recent round. Lighter shape: `finding_class`, `path`, `line`, `title`, `fixed_in_sha` (the fix commit's sha, or empty if uncommitted).
+- `notes`: optional free text.
+
+Per-finding identity for cross-round dedup / closure-confirmation = (`finding_class`, `path`, `line`). This accepts the same residual line-drift risk the `tech-debt` dedup already accepts. The ledger is a **briefing**, not an authority over the next round's fresh findings: each re-audit derives its own findings from scratch; the ledger tells the fixer what to act on and lets the re-audit confirm closure.
+
+### Reader contract (fail-open)
+
+- File absent → no prior briefing; behave as today (read the full report the audit emits in its return whenever it could not write the ledger, see "Return contract").
+- `jq -e . "$LEDGER"` fails (corrupt / partial write) → treat as absent.
+- Stale: recorded `.branch` != current `git branch --show-current`, OR recorded `.base_sha` != resolved `BASE_SHA` → treat as absent and overwrite fresh.
+- The ledger **never gates** anything.
+
+### Writer behavior (LOCAL only)
+
+- **Non-clean pass** (marker NOT written): write/update `LEDGER`. `round` = (valid same-branch same-base ledger's `round`) + 1, else 1. Carry `first_seen_round` for findings that persist across rounds. Set `remaining`, `fixed_last_round`, `head_sha` = current HEAD, `branch`, `updated_at`. Write atomically (temp file + `mv`) and best-effort: a write failure never aborts the audit, same philosophy as `progress.log`.
+- **Clean pass** (marker written): `rm -f "$LEDGER"` (best-effort). Cleanup runs on every clean pass, so a lingering ledger for this base is always removed when the loop ends.
+
+### CI gating (load-bearing)
+
+Gate the ledger READ, WRITE, and CLEANUP to LOCAL runs. Skip the ledger entirely in CI:
+
+```bash
+if [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${CI:-}" ]; then
+  : # CI run: do not read, write, or clean up the rerun ledger.
+fi
+```
+
+CI already carries cross-round state by git-native means that survive a fresh checkout: the incremental base via the `GAIA-Audit` commit trailer + status (read by `.github/audit/resolve-audit-base.sh`), and remaining findings via the PR-comment findings block plus `tech-debt` disposition issues. Each CI audit is a fresh ephemeral checkout with no artifact upload/download of `.gaia/local/audit/`, and that directory is gitignored, so a ledger written in one CI run is never read by the next, and there is no long-lived orchestrator threading a summary forward in CI for it to brief. Gating to local avoids leaving a misleading inert file in the CI workspace and guarantees the ledger never perturbs the trailer/status handshake `resolve-audit-base.sh` depends on. Do NOT wire the ledger into `.github/audit/resolve-audit-base.sh`, the dispositions sidecar, the marker, or the PR-comment findings block; those paths are unchanged.
+
+### Non-interference invariant
+
+`.claude/hooks/pr-merge-audit-check.sh` reads only `.gaia/local/audit/<sha>.ok` (exact path); `.claude/hooks/audit-disposition-check.sh` reads only `.gaia/local/audit/<sha>.dispositions.json` (exact path). Neither globs the audit directory, so a new `<base>.rerun.json` is invisible to both gates and cannot perturb merge gating.
+
 ## Methodology
 
 1. **Read the code carefully**: understand the intent before critiquing the implementation
@@ -435,6 +565,7 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 
 1. **Identify changed files** against the incremental base:
    - Resolve the base: if the invoking context provides one (CI passes `<base>...HEAD` in the agent prompt), use it; otherwise run `.github/audit/resolve-audit-base.sh`. It returns the most recent ancestor that already passed a clean audit under the current `.gaia/VERSION` (via a GAIA-Audit trailer or commit status), or `origin/main` when none exists.
+   - **Derive the re-run ledger path and read it (LOCAL only) as the prior-round briefing.** From the same resolved base, compute `BASE_SHA="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"` and `LEDGER=".gaia/local/audit/${BASE_SHA}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `BASE_SHA` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `BASE_SHA`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI.
    - List changed files: `git diff --name-only "$(.github/audit/resolve-audit-base.sh)" -- '*.ts' '*.tsx'`. The two-dot form (`<base>`, not `<base>...HEAD`) includes uncommitted working-tree changes, the right scope for a pre-commit/pre-merge review.
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
    - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
@@ -710,6 +841,16 @@ sidecar=".gaia/local/audit/${HEAD_SHA}.dispositions.json"
 #     a success status lands. The status POST never runs ahead of the marker.
 audit_status_line=$(.claude/hooks/post-audit-status.sh "$marker")
 
+# 2c. Clean-pass cleanup of the re-run ledger (LOCAL only): the marker is
+#     written, so the re-run loop ended clean for this base. Remove the
+#     base-keyed ledger best-effort. Skip in CI (the ledger is never written
+#     there). See "Re-run carry-forward ledger". This is an additional
+#     best-effort file op; it does not alter the marker / trailer / status /
+#     dispositions-sidecar writes.
+if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ] && [ -n "$BASE_SHA" ]; then
+  rm -f ".gaia/local/audit/${BASE_SHA}.rerun.json"
+fi
+
 # 3. Push the stamp commit only when the helper created an empty commit
 #    AND HEAD is on an attached tracking branch with an upstream. Amend
 #    paths add no new commit (the next operator push carries the
@@ -770,6 +911,8 @@ If you do not write the marker, surface this instead:
 > Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
 
 Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to the **current** HEAD, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(git rev-parse HEAD).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same HEAD remains backstop-checkable against a real sidecar.
+
+Also on a non-clean pass (marker NOT written), **write/update the re-run ledger** (LOCAL only, best-effort), the deterministic carry-forward briefing the next re-audit and the fixer read. Skip in CI (`GITHUB_ACTIONS`/`CI` set) and skip when `BASE_SHA` is empty. Set `round` to the prior valid same-branch same-base ledger's `round` + 1 (else 1), carrying `first_seen_round` for findings that persist across rounds; populate `remaining` (in-scope open findings: Critical + unaddressed Important + unresolved/escalated Suggestions), `fixed_last_round` (in-scope findings self-healed this round), `head_sha` = current HEAD, `branch`, `base_sha` = `BASE_SHA`, and `updated_at`. Write atomically (temp file + `mv`); a write failure never aborts the audit. This is an additional best-effort file write alongside the disposition sidecar above; it must NOT alter, replace, or reorder the marker / trailer / status / dispositions-sidecar writes. See "Re-run carry-forward ledger".
 
 Never write a marker for a SHA other than current `HEAD`. The agent-side guard above prevents accidental overwrite; the hook-side `[ -f "$marker" ]` check is what unblocks `gh pr merge` once the marker exists.
 
