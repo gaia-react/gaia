@@ -27,7 +27,6 @@ The old implementation had three real problems:
 - **Removed** `app/state/theme.tsx`, `app/sessions.server/theme.ts`, `app/routes/actions+/set-theme.ts`, `app/components/ThemeSwitcher/index.tsx`.
 - **Updated** `app/root.tsx` loader to return `requestInfo`. `<State>` no longer carries `theme`.
 - **Updated** `app/components/Document/index.tsx` to call `useOptionalTheme()` and, when no explicit cookie preference exists, render an inline pre-paint `<script>` (`THEME_SCRIPT`) in `<head>` that adds the `dark` class from `matchMedia`.
-- **Updated** `app/components/Header/index.tsx` to use the new `ThemeSwitch`.
 - **Updated** `app/components/Errors/RootErrorBoundary/index.tsx` to drop `getPreferredTheme()`.
 
 ## Trade-offs
