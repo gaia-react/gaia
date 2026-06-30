@@ -138,7 +138,7 @@ If `STRIP_I18N == true`, read `.claude/instructions/remove-i18n.md` and execute 
 
 ## Step 5: Create CODEOWNERS
 
-GAIA branding, the logo included, is stripped automatically by `gaia init strip-branding` in Step 3: FUNDING.yml, the `GaiaLogo` component, `app/assets/images/gaia-logo.svg`, and the Storybook brand are all removed or rewritten to the project title. There is no logo to supply during init.
+GAIA branding is stripped automatically by `gaia init strip-branding` in Step 3: FUNDING.yml is removed, the README is regenerated from the template with the project title, and the Storybook brand is rewritten to the project title. The template ships no GAIA logo, so there is nothing to supply during init.
 
 The GAIA template does not ship a `.github/CODEOWNERS`, so create one: a single line naming the user's GitHub username as the repo-wide code owner.
 
@@ -486,7 +486,7 @@ Append-only. New entries at the TOP.
 
 - Project name: <PROJECT_TITLE>
 - Languages: <LANGUAGES>
-- Removed: GAIA branding (FUNDING.yml, GaiaLogo component, README, Storybook brand, gaia-logo.svg)
+- Removed: GAIA branding (FUNDING.yml, README, Storybook brand)
 - Installed: React Doctor, TDD, Playwright CLI skills; typescript-lsp, claude-obsidian plugins
 ```
 
