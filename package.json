@@ -64,7 +64,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.11.3",
+    "@axe-core/playwright": "4.12.1",
     "@faker-js/faker": "10.5.0",
     "@gaia-react/lint": "1.8.0",
     "@msw/data": "1.1.6",
