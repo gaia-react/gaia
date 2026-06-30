@@ -34,4 +34,22 @@ describe('ToastNotification', () => {
     expect(screen.getByText(descriptionXss)).toBeInTheDocument();
     expect(screen.queryAllByRole('img')).toHaveLength(0);
   });
+
+  test('renders accessible type label when only description is present', () => {
+    render(
+      <ToastNotification
+        id="3"
+        payload={{description: 'Something happened'}}
+        type="error"
+      />
+    );
+
+    expect(screen.getByText('Error')).toHaveClass('sr-only');
+  });
+
+  test('type label is sr-only so screen readers announce the toast type', () => {
+    render(<ToastNotification id="4" payload="Test message" type="success" />);
+
+    expect(screen.getByText('Success')).toHaveClass('sr-only');
+  });
 });

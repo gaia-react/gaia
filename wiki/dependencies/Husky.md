@@ -11,7 +11,7 @@ tags: [dependency, ci]
 
 # Husky + lint-staged
 
-Pre-commit hooks. Configured by `pnpm prepare`: `is-ci` skips the `husky` setup in CI, then `prepare` runs `pnpm exec playwright install --with-deps` to provision Playwright browsers. The browser install runs in CI as well as locally, since `&&` follows the `is-ci || husky` group.
+Pre-commit hooks. Configured by `pnpm prepare`: `is-ci || husky`, so `is-ci` skips the `husky` setup in CI and installs the hooks locally. Playwright browser provisioning is a separate `pnpm install:browsers` script (`pnpm exec playwright install --with-deps`), run on demand by local developers; CI provisions browsers in its own dedicated workflow step rather than through `prepare`.
 
 `.lintstagedrc.json` runs `eslint --fix`, `prettier --write`, and `stylelint --fix` against staged files. The `.husky/pre-commit` hook orchestrates the full gate: it runs `pnpm typecheck`, then `pnpm exec lint-staged`, then `pnpm test:lint-staged` (`vitest --run --changed --passWithNoTests --bail 1`).
 

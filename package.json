@@ -9,7 +9,8 @@
     "gaia": "./.gaia/cli/gaia"
   },
   "scripts": {
-    "prepare": "is-ci || husky && pnpm exec playwright install --with-deps",
+    "prepare": "is-ci || husky",
+    "install:browsers": "pnpm exec playwright install --with-deps",
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",

@@ -118,6 +118,6 @@ When adding `@theme` tokens to `app/styles/tailwind.css`, name them by **role**,
 --color-muted: #999;
 ```
 
-Role vocabulary that survives the lint check: `canvas`, `surface`, `surface-raised`, `ink`, `muted`, `subtle`, `accent`, `brand-*`, `success`, `warning`, `danger`, palette-style names like `claude-500`. Avoid token names starting with `bg-`, `text-`, `border-`, `ring-`, `fill-`, `stroke-`, `from-`, `to-`, `outline-`, `shadow-`.
+Role vocabulary that survives the lint check: `canvas`, `surface`, `surface-raised`, `ink`, `muted`, `subtle`, `primary`, `brand-*`, `success`, `warning`, `danger`, palette-style names like `claude-500`. Avoid token names starting with `bg-`, `text-`, `border-`, `ring-`, `fill-`, `stroke-`, `from-`, `to-`, `outline-`, `shadow-`.
 
 For paired light/dark colors, prefer defining an `@utility` (like the existing `bg-body`, `text-body`) over a single `@theme` token, `@utility` binds two palette values together; a `@theme` token exposes one hex on every utility prefix.

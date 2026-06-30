@@ -58,12 +58,13 @@ When a project requires authentication, use a global setup file (`auth.setup.ts`
 ## Scripts
 
 ```
-pnpm pw        # headless run
-pnpm pw-ui     # interactive UI mode
+pnpm pw                # headless run
+pnpm pw-ui             # interactive UI mode
+pnpm install:browsers  # provision browsers + OS deps (run once locally)
 ```
 
 ## Companion packages
 
 - `@playwright-testing-library/test`
 - Playwright lint rules come from `eslint-plugin-playwright`, supplied transitively by the shared `@gaia-react/lint` config (spread as `...lint.playwright` in `eslint.config.mjs`) rather than declared directly here.
-- `playwright install --with-deps` runs in `pnpm prepare` (Husky)
+- `pnpm install:browsers` runs `playwright install --with-deps` to provision browsers; local developers run it on demand and CI runs it in a dedicated workflow step

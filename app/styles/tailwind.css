@@ -10,17 +10,17 @@
   --font-mono:
     ui-monospace, sfmono-regular, menlo, monaco, consolas, 'Liberation Mono',
     'Courier New', monospace;
-  --color-accent-50: oklch(98.5% 0 0deg);
-  --color-accent-100: oklch(97% 0 0deg);
-  --color-accent-200: oklch(92.2% 0 0deg);
-  --color-accent-300: oklch(87% 0 0deg);
-  --color-accent-400: oklch(70.8% 0 0deg);
-  --color-accent-500: oklch(55.6% 0 0deg);
-  --color-accent-600: oklch(43.9% 0 0deg);
-  --color-accent-700: oklch(37.1% 0 0deg);
-  --color-accent-800: oklch(26.9% 0 0deg);
-  --color-accent-900: oklch(20.5% 0 0deg);
-  --color-accent-950: oklch(14.5% 0 0deg);
+  --color-primary-50: oklch(98.5% 0 0deg);
+  --color-primary-100: oklch(97% 0 0deg);
+  --color-primary-200: oklch(92.2% 0 0deg);
+  --color-primary-300: oklch(87% 0 0deg);
+  --color-primary-400: oklch(70.8% 0 0deg);
+  --color-primary-500: oklch(55.6% 0 0deg);
+  --color-primary-600: oklch(43.9% 0 0deg);
+  --color-primary-700: oklch(37.1% 0 0deg);
+  --color-primary-800: oklch(26.9% 0 0deg);
+  --color-primary-900: oklch(20.5% 0 0deg);
+  --color-primary-950: oklch(14.5% 0 0deg);
 }
 
 @layer base {
@@ -31,7 +31,7 @@
 
   body {
     @apply bg-white text-gray-900 dark:bg-gray-900 dark:text-white;
-    @apply selection:bg-accent-700 dark:selection:bg-accent-300 dark:selection:text-accent-950 selection:text-white;
+    @apply selection:bg-primary-700 dark:selection:bg-primary-300 dark:selection:text-primary-950 selection:text-white;
     @apply h-dvh;
   }
 
@@ -45,7 +45,7 @@
 
   a {
     &:not(.plain-link) {
-      @apply hover:text-accent-600 dark:hover:text-accent-300 no-underline hover:underline;
+      @apply hover:text-primary-600 dark:hover:text-primary-300 no-underline hover:underline;
     }
   }
 
@@ -82,26 +82,26 @@
   [type='time'],
   [type='week'] {
     @apply border-normal bg-body;
-    @apply focus-visible:border-accent-600 focus-visible:ring-accent-400 focus:ring-0 focus-visible:ring focus-visible:ring-offset-0;
+    @apply focus-visible:border-primary-600 focus-visible:ring-primary-400 focus:ring-0 focus-visible:ring focus-visible:ring-offset-0;
     @apply disabled:border-light disabled:text-disabled disabled:cursor-not-allowed disabled:opacity-100 disabled:group-active:border-gray-200 disabled:active:border-gray-200;
-    @apply disabled:checked:bg-accent-500/50 disabled:checked:border-gray-200;
+    @apply disabled:checked:bg-primary-500/50 disabled:checked:border-gray-200;
     @apply dark:disabled:border-gray-700 dark:disabled:group-active:border-gray-700 dark:disabled:checked:bg-gray-800 dark:disabled:active:border-gray-700;
-    @apply dark:focus-visible:border-accent-400 dark:focus-visible:ring-accent-600;
+    @apply dark:focus-visible:border-primary-400 dark:focus-visible:ring-primary-600;
   }
 
   [type='checkbox'],
   [type='radio'] {
-    @apply checked:bg-accent-600 cursor-pointer;
-    @apply group-active:border-accent-500 checked:border-accent-500 active:border-accent-500;
-    @apply invalid:focus-visible:border-accent-600 invalid:focus-visible:ring-accent-400 invalid:border-red-500 invalid:ring invalid:ring-red-600 invalid:ring-offset-0;
-    @apply dark:checked:border-accent-500 dark:checked:bg-accent-500;
-    @apply dark:disabled:checked:bg-accent-600/30 dark:disabled:checked:border-gray-700;
-    @apply dark:group-active:border-accent-600 dark:active:border-accent-600;
-    @apply dark:invalid:focus-visible:border-accent-500 dark:invalid:focus-visible:ring-accent-600 dark:invalid:border-red-500 dark:invalid:ring-red-600;
+    @apply checked:bg-primary-600 cursor-pointer;
+    @apply group-active:border-primary-500 checked:border-primary-500 active:border-primary-500;
+    @apply invalid:focus-visible:border-primary-600 invalid:focus-visible:ring-primary-400 invalid:border-red-500 invalid:ring invalid:ring-red-600 invalid:ring-offset-0;
+    @apply dark:checked:border-primary-500 dark:checked:bg-primary-500;
+    @apply dark:disabled:checked:bg-primary-600/30 dark:disabled:checked:border-gray-700;
+    @apply dark:group-active:border-primary-600 dark:active:border-primary-600;
+    @apply dark:invalid:focus-visible:border-primary-500 dark:invalid:focus-visible:ring-primary-600 dark:invalid:border-red-500 dark:invalid:ring-red-600;
 
     &[aria-required='true'] {
-      @apply focus-visible:border-accent-600 focus-visible:ring-accent-400 border-red-400 ring ring-offset-0 invalid:ring-red-600;
-      @apply dark:focus-visible:border-accent-500 dark:focus-visible:ring-accent-600 dark:border-red-500 dark:ring-red-600;
+      @apply focus-visible:border-primary-600 focus-visible:ring-primary-400 border-red-400 ring ring-offset-0 invalid:ring-red-600;
+      @apply dark:focus-visible:border-primary-500 dark:focus-visible:ring-primary-600 dark:border-red-500 dark:ring-red-600;
     }
   }
 
