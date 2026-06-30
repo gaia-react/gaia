@@ -73,7 +73,7 @@ fi
 mkdir -p "$DEBT_DIR" 2>/dev/null
 
 # ---------- Recompute openCount ----------
-# Count open issues carrying the FC-1 `tech-debt` label via gh. Guarded on gh
+# Count open issues carrying the `tech-debt` label via gh. Guarded on gh
 # presence + auth + network; on ANY failure keep the previous cached count
 # (never blank it).
 open_count="$prev_open_count"
@@ -89,7 +89,7 @@ fi
 # Backend absent / unauthenticated / network failure with a prior cache: leave
 # the cache untouched and keep the sentinel so the next tick retries. Only when
 # there is NO prior cache do we seed a definite openCount 0, so the statusline
-# reads 0 and renders nothing rather than inventing a count (UAT-020).
+# reads 0 and renders nothing rather than inventing a count.
 if [ "$recompute_ok" != "true" ] && [ "$have_prev_cache" = "true" ]; then
   exit 0
 fi
