@@ -48,7 +48,7 @@ export const getHooks = (
 export const appendSearchParams = (
   uri: string,
   options?: {
-    arrayFormat?: StringifyOptions['arrayFormat'];
+    arrayFormat?: NonNullable<StringifyOptions['arrayFormat']>;
     searchParams?: Record<string, unknown>;
     useSnakeCase?: boolean;
   }
@@ -93,7 +93,7 @@ export const getUri = (
     pathParams,
     ...options
   }: {
-    arrayFormat?: StringifyOptions['arrayFormat'];
+    arrayFormat?: NonNullable<StringifyOptions['arrayFormat']>;
     pathParams?: Record<string, number | string>;
     searchParams?: Record<string, unknown>;
     useSnakeCase?: boolean;

@@ -4,7 +4,7 @@ import type {StringifyOptions} from 'query-string';
 import {buildRequestHeaders, getBaseUrl, getHooks, getUri} from './utils';
 
 type CreateOptions = Options & {
-  arrayFormat?: StringifyOptions['arrayFormat'];
+  arrayFormat?: NonNullable<StringifyOptions['arrayFormat']>;
   useSnakeCase?: boolean;
 };
 
