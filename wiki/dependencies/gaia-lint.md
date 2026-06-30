@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: '@gaia-react/lint'
-version: 1.7.0
+version: 1.8.0
 role: lint-config
 created: 2026-04-27
-updated: 2026-06-27
+updated: 2026-07-01
 tags: [dependency, lint, eslint]
 ---
 
@@ -61,9 +61,9 @@ export default defineConfig([
 | Group | Key rules | Notes |
 |---|---|---|
 | `base` | Standard TS/JS hygiene | — |
-| `react` | React-specific rules | — |
+| `react` | React-specific rules including `no-null-render` (autofix: converts `return null` in render context to `return undefined`; does not touch loaders, actions, or utilities) | `no-null-render` added in 1.8.0 |
 | `testing` | D-8 test-honesty: `vitest/prefer-called-with`, `no-restricted-imports` (blocks `*.server` / internals from consumer tests) | Added in 1.6.0 |
-| `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife` custom plugins; `gaia/no-restricted-syntax` selectors ban `cond ? <JSX/> : null` and `cond ? null : <JSX/>` (flag-only, no autofix) | — |
+| `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife` custom plugins; `gaia/no-restricted-syntax` selectors ban `cond ? <JSX/> : null` and `cond ? null : <JSX/>` (flag-only, no autofix) and flag `.length && <JSX/>` numeric-0 leaks (report-only) | `.length` selector added in 1.8.0 |
 | `styleHygiene` | `import-x/no-restricted-paths` with carve-outs: `resources+/` and `actions+/` routes are exempt for UI layers | Carve-out added in 1.6.0 |
 | `betterTailwind` | Tailwind class ordering and hygiene | — |
 | `prettier` | Formatting via Prettier as an ESLint rule | — |

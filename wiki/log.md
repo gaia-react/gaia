@@ -11,6 +11,23 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-06-30 bda3db6 WORTHY - feat(hooks): SessionStart janitor GCs dead .gaia/local residue → wiki/concepts/Local Working State.md created in-commit
+- 2026-06-30 c73f8ad SKIP - docs(plan): literal path fix in plan instruction file; .claude/ change only, no wiki surface
+- 2026-06-30 ffff7da WORTHY - feat(audit): re-run carry-forward ledger + terse return → wiki/concepts/Audit Disposition and Debt Drain.md + PR Merge Workflow.md + Code Review Audit Agent.md updated in-commit
+- 2026-06-30 016c2e2 WORTHY - feat(audit): forced disposition + drain loop → wiki/concepts/Audit Disposition and Debt Drain.md created, PR Merge Workflow.md + Code Review Audit Agent.md updated in-commit
+- 2026-06-30 081f7f2 SKIP - chore(deps): routine minor/patch refresh; no wiki surface
+- 2026-06-30 a777958 SKIP - docs(react-code): react-code skill update; .claude/ change only, no wiki surface
+- 2026-06-30 c27ccfe WORTHY - feat(lint): @gaia-react/lint 1.7.0 → 1.8.0 no-null-render + .length selector → wiki/dependencies/gaia-lint.md updated
+- 2026-06-30 824e4d1 SKIP - chore(instructions): .claude/ alignment only; no wiki surface
+- 2026-06-30 e738cd4 SKIP - CHANGELOG line only; no wiki surface
+- 2026-06-30 28e3d2e SKIP - docs/assets only; README logo restore, no wiki surface
+- 2026-06-30 cea9a44 SKIP - fix(template): LanguageSelect single-locale guard; component UX fix, no wiki surface
+- 2026-06-30 3b312bf WORTHY - feat(template): rename accent token to primary → wiki/concepts/Design System.md updated in-commit
+- 2026-06-30 576c672 WORTHY - feat(template): un-design visual baseline → wiki/concepts/Design System.md created in-commit
+- 2026-06-30 dc9f594 SKIP - gaia-init i18n prompt + react-doctor install cleanups; skill/instruction changes only, no wiki surface
+- 2026-06-30 8cc66a1 SKIP - chore(deps): .gaia/cli tsx bump to clear esbuild CVE; no wiki surface
+- 2026-06-30 27bc5e8 SKIP - chore(deps): @types/node 26 + minor/patch dep refresh; no wiki surface
+- 2026-06-30 53b6bb2 SKIP - previous wiki sync commit; wiki state+log updated in-commit, no source change to document
 - 2026-06-27 fbe229e WORTHY - wiki: note minimumReleaseAgeExclude lifecycle → wiki/decisions/pnpm.md updated + sync/lint committed in-commit
 - 2026-06-27 db582f6 SKIP - docs(changelog): backfill CHANGELOG entries only; no architecture change
 - 2026-06-27 d5ad285 WORTHY - docs(spec-close): correct spec-close manual handle → wiki/concepts/GAIA Spec.md updated in-commit
