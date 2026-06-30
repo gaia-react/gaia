@@ -228,12 +228,17 @@ Before returning, delete `{PLAN_DIR}/.work/` if you created it. Use a relative p
 
 ### 4.5. Verify the planner's output
 
-After the planner returns, run defensive cleanup and confirm the required artifacts exist:
+After the planner returns, confirm the required artifacts exist (and warn on any surviving scratch):
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
 PLAN_REL="${PLAN_DIR#"$ROOT/"}"
-[ -d "$PLAN_REL/.work" ] && rm -rf "$PLAN_REL/.work"
+# The planner deletes its own .work/ before returning; this is a verify-only
+# backstop. If scratch survived (e.g. the planner crashed mid-run), warn instead
+# of force-deleting: .gaia/local/plans/ is gitignored so leftover scratch is
+# harmless clutter, and a verify-only step needs no rm-permission prompt on
+# every run. Remove it by hand if the warning fires.
+[ -d "$PLAN_REL/.work" ] && echo "WARNING: planner scratch survived at $PLAN_REL/.work; remove it manually if unneeded."
 test -f "$PLAN_DIR/README.md" \
   && test -f "$PLAN_DIR/ORCHESTRATOR.md" \
   && test -f "$PLAN_DIR/KICKOFF.md" \
