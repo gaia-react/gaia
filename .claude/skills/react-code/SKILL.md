@@ -109,7 +109,7 @@ const InputText: FC<Props> = ({ref, ...rest}) => <input ref={ref} {...rest} />;
 
 The ref _type_ (`Ref<T>`, or `ComponentProps<'input'>` already carrying `ref`) is the typescript skill's domain.
 
-**Before writing `&&` in JSX, make the left operand a real boolean.** `&&` returns its left operand when falsy. `false`/`null`/`undefined` render nothing, but a numeric **`0`** is a renderable value and leaks the literal "0" into the DOM. This is the most common React rendering bug. **Lint catches the `.length && <JSX/>` form** (via `no-restricted-syntax`), but the general `count && <X/>` case still slips through, so make the left operand a real boolean yourself.
+**Before writing `&&` in JSX, make the left operand a real boolean.** `&&` returns its left operand when falsy. `false`/`null`/`undefined` render nothing, but a numeric **`0`** is a renderable value and leaks the literal "0" into the DOM. This is the most common React rendering bug, so coercing a numeric operand is mandatory, not a stylistic option. **Lint catches the `.length && <JSX/>` form in real time** (via `no-restricted-syntax`); the general `count && <X/>` case is caught at pre-merge audit by react-doctor's type-aware `rendering-conditional-render` rule, which reports any numeric operand as a Bug. Coerce as you write rather than waiting for the audit: `count > 0`, `count !== 0`, or `!!count`.
 
 ```tsx
 // BAD, renders "0" when the list is empty
