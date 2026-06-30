@@ -1,6 +1,7 @@
 import {composeStory} from '@storybook/react-vite';
 import {describe, expect, test} from 'vitest';
 import {render, screen} from 'test/rtl';
+import {LANGUAGES} from '~/languages';
 import common from '~/languages/en/common';
 import Meta, {Default} from './index.stories';
 
@@ -30,13 +31,33 @@ describe('IndexPage', () => {
     ).toBeInTheDocument();
   });
 
-  test('renders a labeled language-select combobox', () => {
-    render(<IndexPageStory />);
-    // LanguageSelect renders a <select aria-label={t('language')}> = "Language"
-    expect(
-      screen.getByRole('combobox', {name: /language/i})
-    ).toBeInTheDocument();
-  });
+  // ------------------------------------------------------------------
+  // Conditional: language select tracks LANGUAGES (LanguageSelect guard)
+  // ------------------------------------------------------------------
+
+  // LanguageSelect renders nothing with a single configured language and the
+  // <select> only once a second locale is added (add-locale grows LANGUAGES).
+  // Branch at declaration so the suite stays green in both modes without a
+  // conditional expect.
+  test.runIf(LANGUAGES.length <= 1)(
+    'renders no language select for a single configured language',
+    () => {
+      render(<IndexPageStory />);
+      expect(
+        screen.queryByRole('combobox', {name: /language/i})
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  test.runIf(LANGUAGES.length > 1)(
+    'renders a language select when multiple languages are configured',
+    () => {
+      render(<IndexPageStory />);
+      expect(
+        screen.getByRole('combobox', {name: /language/i})
+      ).toBeInTheDocument();
+    }
+  );
 
   // ------------------------------------------------------------------
   // Absent: removed brand surface (C5)
