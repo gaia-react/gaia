@@ -4,6 +4,7 @@ import {
   FindingClassSchema,
   HOLISTIC_FINDING_CLASSES,
   isValidFindingClass,
+  OUT_OF_SCOPE_FALLBACK_FINDING_CLASS,
   RULE_FINDING_CLASSES,
 } from '../finding-class.js';
 
@@ -71,6 +72,21 @@ describe('schemas/finding-class', () => {
       expect(new Set(FINDING_CLASS_PREFIXES)).toEqual(
         new Set(['axe', 'cve', 'holistic', 'knip', 'react-doctor', 'rule'])
       );
+    });
+  });
+
+  describe('out-of-scope dedup-key fallback', () => {
+    it('has the expected value', () => {
+      expect(OUT_OF_SCOPE_FALLBACK_FINDING_CLASS).toBe('holistic/unclassified');
+    });
+
+    it('is NOT a valid telemetry finding_class (dedup-key fallback only)', () => {
+      expect(isValidFindingClass(OUT_OF_SCOPE_FALLBACK_FINDING_CLASS)).toBe(
+        false
+      );
+      expect(
+        FindingClassSchema.safeParse(OUT_OF_SCOPE_FALLBACK_FINDING_CLASS).success
+      ).toBe(false);
     });
   });
 });

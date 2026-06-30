@@ -64,6 +64,12 @@ jobs:
       # already-audited tree without re-running this workflow.
       actions: write
       checks: write
+      # `issues: write` lets the agent file out-of-scope findings as
+      # deduped, severity-labeled `tech-debt` disposition issues (and
+      # create the `tech-debt`/`severity:*`/`wontfix` labels) from CI.
+      # The top-level `permissions: {}` stays default-deny; this grant
+      # is job-scoped, matching the existing pattern.
+      issues: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -365,6 +371,32 @@ jobs:
             zero findings, still emit the block with `"findings":[]`, an explicit
             empty block is parseable, a missing one is ambiguous.
 
+            DISPOSITION (out-of-scope findings): the agent files out-of-scope
+            findings as deduped, severity-labeled `tech-debt` issues per its own
+            definition (.claude/agents/code-review-audit.md). Three CI-mode
+            invariants are load-bearing because this run is `--verbose` and posts
+            to a PUBLIC channel, so they are restated here (the CI prompt is the
+            load-bearing copy for the CI run):
+            1. BODY VIA FILE: pass every `gh issue` / advisory body via
+               `--body-file <path>` or stdin, NEVER a `--body` argv string.
+               `--verbose` echoes command lines into the public Actions log, so a
+               `--body` argv would leak finding detail. This mirrors the
+               agent-definition rule.
+            2. SECURITY DIVERT (count-only): a security-class finding on a
+               PUBLIC/INTERNAL repo NEVER becomes a public or internal issue. The
+               default GITHUB_TOKEN cannot POST a repository security advisory, and
+               the privileged-credential mechanism is DEFERRED -- do NOT wire one
+               in v1. Instead surface a redacted COUNT-ONLY signal to the public
+               PR comment (e.g. "N security-class findings diverted; maintainer
+               must review") with no file:line, no finding text, no finding_class.
+               The marker still writes -- never a public issue, never a marker
+               deadlock. Durable tracking of diverted PUBLIC/INTERNAL security
+               findings is deferred.
+            3. PUBLIC COMMENT CARRIES COUNTS ONLY: the disposition feature adds
+               only COUNTS to the public PR comment -- no out-of-scope finding
+               detail, no security detail, no file:line. The FINDINGS BLOCK above
+               is unchanged (it carries only finding_class / severity / area_tags).
+
             SELF-HEAL CONSTRAINTS: read before making any edits:
             1. Run `git diff --name-only origin/main...HEAD` first. Self-heal edits
                are ONLY permitted on files that appear in this list. Never edit a
@@ -381,7 +413,7 @@ jobs:
                refuses any self-heal that touches them.
           claude_args: |
             --max-turns ${{ steps.config.outputs.max_turns }}
-            --allowedTools Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*)
+            --allowedTools Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*),Bash(gh:*)
             --verbose
 
       - name: Print audit progress breadcrumbs

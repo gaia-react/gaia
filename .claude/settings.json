@@ -147,6 +147,11 @@
             "type": "command",
             "command": ".claude/hooks/worthiness-presence-check.sh",
             "statusMessage": "Checking worthiness presence gate…"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/audit-disposition-check.sh",
+            "statusMessage": "Checking audit disposition ledger…"
           }
         ]
       }
@@ -162,6 +167,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/capture-red-observations.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/debt-sentinel-touch.sh"
           }
         ]
       },

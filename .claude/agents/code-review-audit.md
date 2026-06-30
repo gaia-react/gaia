@@ -157,9 +157,166 @@ Do not refute on intuition. If you cannot cite counter-evidence, the verdict is 
 
 **Zero findings is valid, but only as a gate outcome, not a finding-stage shortcut.** The gate is allowed to empty the report: if you collected candidates and none survived the four checks or the adversarial pass, report no findings, that is a clean result. What is _not_ valid is reaching zero by never generating candidates, or by self-censoring uncertain ones before the gate sees them. "Do not manufacture findings" means do not invent a defect you have no evidence for; it does not mean "when uncertain, stay silent". An uncertain-but-evidenced candidate should be surfaced and tagged low-confidence so the gate can rule on it. A fabricated finding erodes trust; so does a silently withheld real bug.
 
+## Scope classification and out-of-scope disposition
+
+Every finding that survives the Finding Proof Gate (and any adversarial verification) gets a forced **disposition** before the marker can clear. The split is by scope, bounded to the review radius. In-scope findings keep their existing handling and gate the marker; out-of-scope findings are routed out of the gating sections into the disposition pipeline below.
+
+### A. Scope classification
+
+Tag each surviving finding against the audit base's changed line ranges (the diff against the resolved audit base):
+
+- **in-scope**: the finding's `file:line` falls **inside** the PR's changed line ranges.
+- **out-of-scope**: the defective line is **outside** those ranges, but the audit **already opened** the file within its review radius, a caller, a test, an upstream guard, or a changed-export importer (the same files the incremental-scope importer recheck already opens).
+
+**Hard bound:** the audit **never opens an unrelated file to hunt for debt.** Out-of-scope filing is a byproduct of reviewing the diff and its review radius only, never a whole-file or whole-repo sweep. If a file was not already opened to review the diff, its debt is out of bounds and is not filed.
+
+In-scope findings flow into the Critical / Important / Suggestions sections and gate the marker exactly as before. Out-of-scope findings are routed **out of** those gating sections and into the disposition pipeline, so an out-of-scope Critical or an unfixed out-of-scope Suggestion no longer blocks the marker through the old gates, it blocks (or not) only through the disposition gate below.
+
+The disposition flow **never edits the reviewed PR's working tree** for an out-of-scope finding, it files, it does not fix. Auto-fixing out-of-scope debt would violate surgical-changes.
+
+### B. Order of operations: classify security FIRST
+
+For each out-of-scope finding, run **security classification before routing it to any filing path.** This ordering is load-bearing.
+
+A finding is **security-class** (fail-safe) if ANY of these hold, regardless of its `finding_class` tag:
+
+- it came from the security review dimension, OR
+- its severity is Critical, OR
+- it carries no stable `finding_class`, OR
+- it is secret-shaped.
+
+The authoritative `finding_class` vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`); reference it, do not re-list the security members here. Exact-string matching on seeded security classes alone is **insufficient**: severity is demotable, several security dimensions have no seeded class, and a finding can be classless. When in doubt, treat it as security-class.
+
+Consequence: an out-of-scope **Critical** is security-class (the "any Critical" trigger) and a **classless** finding is security-class (the "no stable `finding_class`" trigger). Both therefore enter the security-divert path (section D), not the public-filing path (section C). On a PUBLIC or INTERNAL repo they **divert** and are **never** filed to a public/internal issue; they file as a `tech-debt` issue **only on a confirmed PRIVATE repo**. Either way the finding gets *a* disposition, so the marker can still write (the gate treats `filed` and `diverted` identically). Do **not** file a Critical or classless finding to a public/internal issue to satisfy a literal reading of a requirement, that would breach the never-public guarantee.
+
+### C. Backend probe (three outcomes)
+
+Probe the issue backend once at the start of the disposition flow:
+
+- **Definitive-absent** → waive: file nothing, the disposition gate waives, out-of-scope findings revert to prose only, the marker writes. Record `backend: "absent"`. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (detected by `gh repo view --json hasIssuesEnabled` false **or** a structurally-failing issue-list probe, **never** `gh repo view` resolution alone), or the viewer lacks write permission.
+- **Transient/ambiguous** → do not waive, do not drop: timeout, rate-limit, 5xx. Record `backend: "transient"`; surface the finding and retain it for the next run (dedup makes the retry safe). Never block the merge.
+- **Present** → proceed with dedup / filing / divert. Record `backend: "present"`.
+
+### D. Security-class divert (fail-safe)
+
+`gh repo view --json visibility` returns `PUBLIC | PRIVATE | INTERNAL`. **Re-read it immediately before each security-relevant write** (TOCTOU); treat any non-confirmed-`PRIVATE` state as divert.
+
+- security-class on **PUBLIC or INTERNAL** → **divert**, never a public/internal issue:
+  - **local run**: write a redacted operator surface to `.gaia/local/audit/security/<HEAD-sha>.md` (gitignored) and surface a redacted pointer, **count only, no detail**, in the report. Surface to the operator and wait; never auto-draft an advisory, never auto-disclose. Record disposition `diverted`.
+  - **CI run**: a private advisory needs a privileged credential the default `GITHUB_TOKEN` lacks (mechanism deferred). For now emit a redacted **count-only** signal to the public PR comment (`N security-class findings diverted; maintainer must review`), never the detail. The marker still writes. Record `diverted`.
+- security-class on **confirmed PRIVATE** → file as a normal private `tech-debt` issue through the non-security pipeline (section E), fully dedupable/drainable. Record `filed`.
+- A **divert failure** (missing advisory credential or API error) reverts the finding to a redacted operator/maintainer surface, never a public issue, and the marker still writes. Record `diverted`.
+- A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, the Actions log, or `.gaia/local/audit/progress.log`. A diverted security finding contributes only to counts on those surfaces.
+
+Even when a classless finding diverts on PUBLIC/INTERNAL, build its dedup key with `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (section E.1) so the redacted operator surface and any future dedup are well-formed.
+
+### E. Non-security disposition pipeline
+
+For each finding routed here, non-security on any repo, **or** a security-class finding on a confirmed PRIVATE repo (section D), on a **present** backend:
+
+**E.1. Build the dedup key.** A single HTML-comment line, present verbatim in the issue body:
+
+```
+<!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->
+```
+
+Use the seeded `finding_class`, or `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` from `.gaia/cli/src/schemas/finding-class.ts` (`holistic/unclassified`) when the finding maps to no seeded class. `v1` is the schema version (bump only on a breaking key change). `<path>` is a repo-relative POSIX path; `<line>` is an integer.
+
+**E.2. Dedup (never `gh` full-text search):**
+
+1. `gh issue list --label tech-debt --state open --json number,title,body` → exact substring match of the key line in `body`.
+2. Also `--state closed`: an exact key match on a closed issue carrying `wontfix` (or closed as not-planned) is a **declined** finding → do **not** re-file.
+3. Keyless human-filed fallback: scan open `tech-debt` issue bodies for the bare `<path>:<line>` substring, anchored so the matched `<line>` is followed by a non-digit (or end-of-string) — otherwise `foo.ts:4` false-matches a sibling `foo.ts:42`; a hit suppresses the re-file even with no machine key present.
+
+`gh issue list` body matching is exact-local only because GitHub full-text search tokenizes on `/ : @` and cannot reliably match the key.
+
+**E.3.** If a matching open or declined-closed issue exists → **do not re-file** (idempotent).
+
+**E.4. Otherwise file.** Create the labels idempotently **first** (E.6), build the body in a gitignored body-file (E.5), **re-check the dedup immediately before create** (shrinks the TOCTOU window for a concurrent CI-plus-local run; prefer search-or-update under the key over blind create), then:
+
+```bash
+gh issue create --label tech-debt --label severity:<tier> --body-file <path>
+```
+
+**Never** pass `--body <argv>`, the CI workflow runs `--verbose` and would echo argv into the public Actions log. Use `--body-file` (or stdin) so the body never reaches argv.
+
+**E.5. Issue body** (self-contained, built in a gitignored body-file, e.g. `.gaia/local/audit/issue-body.md`):
+
+- the E.1 dedup-key comment line,
+- `file:line` (the cited location must resolve to a real line in the named file),
+- a non-empty concrete failure mode (input + state + bad outcome),
+- a suggested fix,
+- a handler-class line, exactly `Handler: prompt` or `Handler: plan` (never `gaia-spec`):
+  - `prompt`, the fix is a single logical unit confined to one file, no public-contract change, no cross-module ripple.
+  - `plan`, anything else.
+  - Advisory; `/gaia-debt` may override after reading the code.
+
+**E.6. Labels** (created idempotently **before** the first filing, a pre-existing label is not an error):
+
+- Every out-of-scope non-security issue carries `tech-debt` **plus exactly one** severity label.
+- Report-tier → severity-label: `Critical → severity:critical`, `Important → severity:important`, `Suggestion → severity:suggestion`.
+- A deliberately-closed finding carries the GitHub `wontfix` label so it is not re-filed.
+
+```bash
+for label in tech-debt severity:critical severity:important severity:suggestion wontfix; do
+  gh label create "$label" --color <hex> 2>/dev/null || true
+done
+```
+
+**E.7. Record `filed` with `issue_number`** in the disposition-ledger sidecar (section F).
+
+**E.8. Touch the debt-count staleness sentinel** so the statusline recomputes on the next tick:
+
+```bash
+mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
+```
+
+**Create the parent dir first.** On a fresh clone or in CI no statusline tick has run, so `.gaia/local/debt/` may not exist and a bare `touch` would fail silently and leave the sentinel unset, every sentinel toucher is responsible for its own `mkdir -p`. Best-effort; never blocking.
+
+### F. Disposition-ledger sidecar
+
+The disposition **entries** (the per-finding content) are decided at the marker-decision point, but the sidecar **file** `.gaia/local/audit/<HEAD-sha>.dispositions.json` (gitignored) is written keyed to the **same HEAD as the marker**: the **post-stamp** HEAD when the marker is warranted (the `GAIA-Audit` trailer stamp moves HEAD, see the marker-write sequence under "Audit marker"), or the current HEAD when the marker is not warranted. The marker-backstop hook resolves `git rev-parse HEAD` at merge time, so a sidecar keyed to the pre-stamp HEAD would be orphaned, the hook would find no sidecar for the post-stamp HEAD and silently fail open. Write `findings: []` when there are no out-of-scope findings, so the marker-backstop hook can distinguish "audit ran, none identified" from "no sidecar". Set `backend` to the probe outcome.
+
+```json
+{
+  "schema": 1,
+  "sha": "<HEAD-sha>",
+  "backend": "present|absent|transient",
+  "findings": [
+    {
+      "key": "v1 class=holistic/swallowed-error path=app/services/foo.ts line=42",
+      "severity": "critical|important|suggestion",
+      "security_class": false,
+      "disposition": "filed|diverted|waived|pending",
+      "pending_reason": "transient|definitive",
+      "issue_number": 123
+    }
+  ]
+}
+```
+
+**Key relationship.** The sidecar `key` field holds the **inner content only** of the E.1 dedup key, `v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer>`, **without** the `<!-- gaia-debt-key: … -->` HTML-comment wrapper. The filed issue body carries the full **wrapped** form. Every reader (this agent's verify-after-file re-query and the marker-backstop hook) confirms a match by **reconstructing the wrapped form `<!-- gaia-debt-key: ${key} -->`** and testing whether the issue body **contains that** as a substring, never line-equality against a whole body line. Match the **wrapped** form, not the bare inner key: the inner key ends in `line=<integer>` with no trailing boundary, so a `line=4` key is a substring of a sibling `line=42 -->` body (same finding_class, same path); only the wrapped form's trailing ` -->` makes the match collision-safe.
+
+Disposition semantics:
+
+- `filed`, an open `tech-debt` issue carries the key (`issue_number` set). Verified by re-querying open issues for the key before the marker is written.
+- `diverted`, security-class diverted per section D (no public issue).
+- `waived`, backend definitively absent (section C); the finding reverts to prose only.
+- `pending` + `pending_reason:"transient"`, a transient `gh` failure; the finding is surfaced and retained for the next idempotent run.
+- `pending` + `pending_reason:"definitive"`, a definitive filing failure on a **present, writable** backend; the disposition is genuinely missing.
+
+### G. Disposition gate (the fourth marker precondition)
+
+Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the E.2 dedup procedure) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key, so a `line=4` key does not false-match a sibling `line=42 -->` issue). Then apply the marker-write rule:
+
+- **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
+- **Do NOT write the marker** when any entry is `pending(definitive)`, a present, writable backend with a genuinely-missing disposition. This is the **one intended block**; the operator must resolve the filing failure and re-invoke before the marker clears.
+
+`pending(definitive)` is the only disposition that withholds the marker. Backend-absent (`waived`), transient (`pending(transient)`), and diversion-failure (`diverted`) all fail open and never block the merge.
+
 ## Output Format
 
-Structure your review as follows:
+Structure your review as follows. The Critical / Important / Suggestions sections below carry **in-scope** findings only (those inside the PR's changed line ranges). Out-of-scope findings encountered within the review radius are routed to the disposition pipeline (see Scope classification and out-of-scope disposition), not to these gating sections.
 
 ### Summary
 
@@ -223,6 +380,8 @@ Rules for the block:
 
 The schema enforces this convention: an entry whose `finding_class` is free text or an unseeded holistic/rule member is dropped before it reaches the tally, so a misclassified entry is silently lost rather than miscounted. When in doubt, omit the entry.
 
+The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `RULE_FINDING_CLASSES`, and the oracle prefixes); the lists above mirror it. That schema also defines `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`), the dedup-key fallback for a classless out-of-scope finding (see Scope classification and out-of-scope disposition). It is **not** a member of the closed vocabulary and is **never** emitted in `findings_json`, it builds a `tech-debt` dedup key, not a telemetry class.
+
 ## Progress breadcrumbs (CI observability)
 
 The agent runs in CI with `show_full_output: false` (a deliberate public-repo safety choice). To give the CI step summary a post-hoc phase timeline, write ONE curated line per review phase to a fixed gitignored file using the `Write` or `Edit` tool (both are in the CI `allowedTools`).
@@ -230,6 +389,8 @@ The agent runs in CI with `show_full_output: false` (a deliberate public-repo sa
 **File path (fixed, never sha-keyed):** `.gaia/local/audit/progress.log`
 
 **Line format:** `<phase label>, <counts>` -- phase label and integer counts only. Never include file contents, code, raw tool output, file paths beyond coarse counts, or anything secret-shaped. This is the public-safety crux: the workflow print step exposes this file in the GitHub Actions step summary.
+
+A **diverted security-class finding** (see Scope classification and out-of-scope disposition) contributes **only to counts** here, never its detail, location, or the nature of the exposure. The progress log is exposed in the public Actions step summary, so a security finding's detail must never reach it, exactly as it must never reach a public/internal issue, the PR comment, or the Actions log.
 
 **Five phases, in run order:**
 
@@ -260,7 +421,11 @@ The agent runs in CI with `show_full_output: false` (a deliberate public-repo sa
 7. **Respect existing patterns**: if the codebase has an established way of doing something, don't suggest alternatives unless there's a concrete benefit
 8. **Dispatch in parallel**: once you have the file scope, spawn the rule-based subagents AND kick off `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` from a single tool-call message so they run concurrently with your own review. When the parallel dispatch returns: (a) emit the `oracles done` breadcrumb with per-oracle finding counts; (b) after you have produced your own holistic candidate findings from the cross-cutting review dimensions, emit the `holistic review done` breadcrumb with the count of candidate Critical/Important holistic findings. Both breadcrumbs are emitted before the adversarial pass (see Progress breadcrumbs).
 9. **Verify Critical/Important survivors adversarially**: after your own review produces candidate findings and before finalizing the report, run each surviving holistic Critical/Important finding through a fresh-context refuter per the Finding Proof Gate, then drop, demote, or keep it on the refuter's verdict. The report is not produced until this pass completes. When the adversarial pass is complete, emit the `adversarial verify done` breadcrumb (see Progress breadcrumbs).
-10. **Resolve suggestions before writing the marker**: after the report is produced and before deciding on the marker, attempt to auto-fix every item in the Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale, escalated suggestions unconditionally block the marker. Never proceed to the marker with any suggestion that is neither fixed in the working tree nor explicitly escalated. When the marker decision is made and recorded, emit the `report stamped` breadcrumb (see Progress breadcrumbs).
+10. **Classify scope, dispose out-of-scope findings, and resolve in-scope suggestions before writing the marker**: after the report is produced and before deciding on the marker:
+    - **Classify scope** for every surviving finding, in-scope vs out-of-scope, bounded to the review radius (see Scope classification and out-of-scope disposition). Route out-of-scope findings out of the gating Critical/Important/Suggestions sections.
+    - **Dispose every out-of-scope finding**: probe the backend, classify security-class **first**, then file (non-security on any repo, or security-class on a confirmed PRIVATE repo) or divert (security-class on PUBLIC/INTERNAL). Write the disposition-ledger sidecar (`findings: []` when none).
+    - **Resolve in-scope suggestions**: attempt to auto-fix every item in the (in-scope) Suggestions section. For each: if the fix is surgical (touches `app/` source only, ≤10 files, no convention surface), apply it in a self-heal commit and set `AUDIT_SELF_HEALED="true"`. If a suggestion requires a human tradeoff (architectural restructuring, breaking change, conflicting convention), mark it **Escalated** with explicit rationale, escalated in-scope suggestions unconditionally block the marker. Never proceed to the marker with any in-scope suggestion that is neither fixed in the working tree nor explicitly escalated.
+    When the marker decision is made and recorded, emit the `report stamped` breadcrumb (see Progress breadcrumbs).
 
 ## Rules-Based Audit (Specialist Subagents + react-doctor + knip + pnpm audit)
 
@@ -493,13 +658,16 @@ Both variables travel forward to the marker-write step below.
 
 `.claude/hooks/pr-merge-audit-check.sh` blocks `gh pr merge` until a marker file at `.gaia/local/audit/<HEAD-sha>.ok` exists. The marker proves the audit ran against the exact commit being merged. **You** are responsible for writing the marker, only when the audit is genuinely clean.
 
-After producing the report (which includes the adversarial verification of Critical/Important survivors), decide whether to write the marker:
+After producing the report (which includes the adversarial verification of Critical/Important survivors), decide whether to write the marker. The preconditions are scoped to **in-scope** findings; out-of-scope findings gate through the disposition gate (precondition 4), not the Critical/Important/Suggestions sections.
 
 - **Write the marker** when all of the following are true:
-  1. The Critical Issues section is empty.
-  2. The Important Issues section is empty, OR every item is already fixed in the working tree (verify by re-reading the relevant file; do not trust prior chat claims).
-  3. The Suggestions section is empty, OR every suggestion is auto-fixed in the working tree (verify by re-reading the relevant file). **Escalated suggestions do not satisfy this condition**, an escalation is not a resolution.
-- **Do NOT write the marker** when any Critical Issue exists, any Important Issue remains unaddressed, or any Suggestion is either unaddressed or escalated. Escalated suggestions block unconditionally, the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written.
+  1. No **in-scope** Critical Issue exists.
+  2. The **in-scope** Important Issues are empty, OR every in-scope item is already fixed in the working tree (verify by re-reading the relevant file; do not trust prior chat claims).
+  3. The **in-scope** Suggestions are empty, OR every in-scope suggestion is auto-fixed in the working tree (verify by re-reading the relevant file). **Escalated suggestions do not satisfy this condition**, an escalation is not a resolution.
+  4. **Every identified out-of-scope finding has a disposition** (the disposition gate, see Scope classification and out-of-scope disposition). Verify after filing: re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure) immediately before writing the marker, then apply the sidecar marker-write rule, write on `filed` / `diverted` / `waived` / `pending(transient)`; withhold **only** on `pending(definitive)`.
+- **Do NOT write the marker** when any in-scope Critical Issue exists, any in-scope Important Issue remains unaddressed, any in-scope Suggestion is either unaddressed or escalated, or any out-of-scope finding's disposition is `pending(definitive)`. Escalated in-scope suggestions block unconditionally, the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written. A `pending(definitive)` out-of-scope disposition (a present, writable backend with a genuinely-missing filing) blocks the same way; backend-absent (`waived`), transient (`pending(transient)`), and diverted findings fail open and never withhold the marker.
+
+Decide the disposition entries (section F) at this marker-decision point regardless of the outcome, but write the sidecar **file** (`.gaia/local/audit/<HEAD-sha>.dispositions.json`) keyed to the **same HEAD as the marker**, folded into the marker-write sequence below (post-stamp `$HEAD_SHA`, step 2a) when the marker is warranted, or keyed to the current (unmoved) HEAD when it is not, so the marker-backstop hook (which resolves `git rev-parse HEAD` at merge time) finds it and can verify the marker's claimed dispositions.
 
 Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
@@ -525,6 +693,15 @@ if [ ! -f "$marker" ]; then
     "$HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     > "$marker"
 fi
+
+# 2a. Write the disposition-ledger sidecar (section F) keyed to the SAME
+#     post-stamp HEAD as the marker. The marker-backstop hook resolves
+#     `git rev-parse HEAD` at merge time, so a sidecar keyed to the pre-stamp
+#     HEAD would be orphaned and the backstop would fail open. The JSON "sha"
+#     field is set to $HEAD_SHA to match the filename.
+sidecar=".gaia/local/audit/${HEAD_SHA}.dispositions.json"
+# Write the section-F dispositions JSON (decided at the marker-decision point,
+# with "sha":"$HEAD_SHA") to "$sidecar".
 
 # 2b. Post the GAIA-Audit success status on HEAD, gated on the marker
 #     existing first (the helper re-checks `[ -f "$marker" ]`). Best-effort:
@@ -591,6 +768,8 @@ The skipped form applies when `stamp_line` begins with `stamp: declined:`, the m
 If you do not write the marker, surface this instead:
 
 > Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
+
+Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to the **current** HEAD, which has not moved because the stamp sequence above did not run: `sidecar=".gaia/local/audit/$(git rev-parse HEAD).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same HEAD remains backstop-checkable against a real sidecar.
 
 Never write a marker for a SHA other than current `HEAD`. The agent-side guard above prevents accidental overwrite; the hook-side `[ -f "$marker" ]` check is what unblocks `gh pr merge` once the marker exists.
 

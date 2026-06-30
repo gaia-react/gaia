@@ -58,6 +58,9 @@ export const HOLISTIC_FINDING_CLASSES = [
 
 export type HolisticFindingClass = (typeof HOLISTIC_FINDING_CLASSES)[number];
 
+/** Dedup-key fallback for an out-of-scope finding that maps to no seeded finding_class. */
+export const OUT_OF_SCOPE_FALLBACK_FINDING_CLASS = 'holistic/unclassified';
+
 /**
  * Closed-vocabulary members for the rule bucket. Seeded from the line-level
  * rule surfaces the specialist subagents enforce (react-code skill, typescript

@@ -61,8 +61,16 @@
       "id": "SPEC-008",
       "allocated_at": "2026-06-27T16:53:09Z",
       "source": "allocated",
+      "status": "merged",
+      "intent": "A fresh GAIA scaffold ships a neutral, brand-free visual baseline that does",
+      "merged_at": "2026-06-28T11:04:11Z"
+    },
+    {
+      "id": "SPEC-009",
+      "allocated_at": "2026-06-30T11:55:20Z",
+      "source": "allocated",
       "status": "specified",
-      "intent": "A fresh GAIA scaffold ships a neutral, brand-free visual baseline that does"
+      "intent": "Every finding the code-review-audit agent surfaces gets a forced disposition"
     }
   ]
 }
