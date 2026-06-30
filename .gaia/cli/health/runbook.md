@@ -26,8 +26,15 @@ For cycle in 1..3:
   Orchestrator spawns the Audit buckets (A–E) as parallel leaf subagents → each writes artifacts, returns summary + path
   Orchestrator spawns a fresh Adjudicator leaf → it reads the c<N> bucket artifacts, classifies, writes c<N>/findings.json → reports
   if clean (no open findings, Bucket D verdict A+ readiness, effective shared-fitness grade = A+; see §Termination):
-    Orchestrator removes .gaia/local/audit/c* (whitelisted; top-level dir kept as marker)
-    report the honest overall grade (A+ when no findings of any kind, else the floor that non-blocking residuals may cap at A), exit
+    if the challenger has not run yet this run (at-most-once flag, see §False-clean challenger):
+      Orchestrator spawns the false-clean challenger lenses as parallel leaf subagents; mark the challenger as run
+      if any lens returns a substantiated finding (clean verdict REVOKED):
+        Orchestrator injects it into c<N>/findings.json (action: real-fix, bucket: challenger, lane, fingerprint)
+        if cycle == 3: escalate with reason false-clean-refuted (preserve all c*/ dirs, surface paths), exit   # no next cycle to fix-and-reverify
+        else: skip the clean exit; fall through to the oscillation check + Fixer dispatch below (the injected real-fix lands next cycle)
+    if still clean (challenger cleared, or already ran this run):
+      Orchestrator removes .gaia/local/audit/c* (whitelisted; top-level dir kept as marker)
+      report the honest overall grade (A+ when no findings of any kind, else the floor that non-blocking residuals may cap at A), exit
   Orchestrator checks open-finding fingerprints vs prior cycle (mechanical diff via jq; non-blocking residuals excluded, see §Termination) → if oscillation: escalate (Orchestrator preserves all c*/ dirs, surfaces paths in escalation report)
   Orchestrator spawns parallel Fixers (lane-aware leaf subagents)
   Fixers complete and report post-fix state to Orchestrator
@@ -41,9 +48,10 @@ After cycle 3 without clean: escalate (max loops hit; Orchestrator preserves all
 
 **Effective shared-fitness grade.** For the clean-exit gate _only_, a Bucket E category that sits below A+ _solely_ because of non-blocking residual `info` findings counts as A+. The reported `shared_fitness_grade` stays honest: it may be A. A category held below A+ by any `warning`/`error`, or by `info` not on a "Decided / not findings" list, is **not** exempt.
 
-- **Clean**: no open findings remain AND Bucket D returns "A+ readiness" AND the _effective_ shared-fitness grade = A+. Orchestrator computes the reported overall grade as the F-to-A+ floor of: Bucket D verdict (A+/A/A−), the open-findings-count signal (zero open findings → A+; else degrade per wiki page rubric applied to open maintainer findings), and Bucket E's honest `shared_fitness_grade`. A clean run is **not necessarily A+**: it is the honest floor with no open work left, and non-blocking residual `info` findings legitimately cap it at A. Exit with the overall grade and the Bucket E sub-grade in the report.
+- **Clean**: no open findings remain AND Bucket D returns "A+ readiness" AND the _effective_ shared-fitness grade = A+. A clean Adjudicator report is necessary but no longer sufficient on its own: the terminal (first) clean cycle's verdict must also survive the false-clean challenger (see §False-clean challenger) before the clean exit fires. Orchestrator computes the reported overall grade as the F-to-A+ floor of: Bucket D verdict (A+/A/A−), the open-findings-count signal (zero open findings → A+; else degrade per wiki page rubric applied to open maintainer findings), and Bucket E's honest `shared_fitness_grade`. A clean run is **not necessarily A+**: it is the honest floor with no open work left, and non-blocking residual `info` findings legitimately cap it at A. Exit with the overall grade and the Bucket E sub-grade in the report.
 - **Max loops**: three cycles without a clean report. Orchestrator escalates with the outstanding open findings list and the overall grade.
 - **Oscillation**: same _open_-finding fingerprint appears in `c<N>/findings.json` AND `c<N-1>/findings.json`. Detection is mechanical: `comm -12 <(jq -r '.findings[] | select(.action=="real-fix") | .fingerprint' c<N-1>/findings.json | sort) <(jq -r '.findings[] | select(.action=="real-fix") | .fingerprint' c<N>/findings.json | sort)`. A non-empty intersection means an open finding survived a Fixer dispatch. Escalate immediately; don't burn the third cycle. Non-blocking residuals (`decided-not-finding`) recur by design and are excluded from the guard so they never trigger a false escalation.
+- **False-clean refuted**: the false-clean challenger substantiates a finding on the terminal clean cycle (see §False-clean challenger). On a non-cycle-3 clean cycle the finding is injected as `action: real-fix` and the loop continues (fix + next-cycle reverify), so it is not an escalation. On cycle 3 there is no next cycle to fix-and-reverify, so the Orchestrator escalates with reason `false-clean-refuted` and preserves all `c*/` dirs.
 
 **Verdict widening note.** The overall verdict is F-to-A+, computed as the floor of all buckets. It is never higher than Bucket E's `shared_fitness_grade`. Both the overall grade and the shared-fitness sub-grade appear in all report templates (clean exit and escalation).
 
@@ -60,6 +68,8 @@ A Fixer dispatch pauses for human-confirm if the proposed fix:
 
 Human refuses → escalate.
 
+**No challenger-specific breaker.** A false-clean-challenger finding is injected as a normal `action: real-fix` and dispatched through the existing Fixer lanes, so it is gated by exactly the breakers above; the challenger introduces no new breaker. A reader should not expect one.
+
 ## Model selection
 
 | Role                                                                                                              | Model  |
@@ -72,6 +82,10 @@ Human refuses → escalate.
 | Bucket D (cross-class walk)                                                                                       | Sonnet |
 | Bucket E: Auditor (mechanical: hook integrity, settings hygiene, GAIA-install fitness, wiki fitness)              | Haiku  |
 | Bucket E: Auditor (judgment: skill/command/agent frontmatter, rule hygiene, `CLAUDE.md` hygiene, grade synthesis) | Sonnet |
+| Challenger lens: BS (blind-spot)                                                                                  | Sonnet |
+| Challenger lens: MC (misclassification)                                                                           | Sonnet |
+| Challenger lens: GH (grade-honesty)                                                                               | Sonnet |
+| Challenger lens: FV (fix-verification, deep/optional)                                                             | Sonnet |
 | Fixer: config-yaml-md                                                                                             | Sonnet |
 | Fixer: source-ts                                                                                                  | Sonnet |
 | Fixer: wiki-content                                                                                               | Sonnet |
@@ -80,6 +94,8 @@ Human refuses → escalate.
 Promote a role to Opus only on Adjudicator flag for high-complexity fixes (cross-module refactor, tricky type inference, > 300-line change): the Adjudicator records the flag in `findings.json` and the Orchestrator spawns that Fixer with `model: opus`.
 
 Bucket E model assignments follow the wiki page's spec: mechanical category checks (file-exists, JSON parse, hash-diff, `gaia wiki` invocations) on Haiku; judgment-bearing checks (frontmatter substantiveness, content-vs-glob coherence, size evaluation) and grade synthesis on Sonnet. See `wiki/decisions/Claude Integration Fitness.md` §Triage phase for the per-category model table.
+
+The four challenger lenses (BS/MC/GH/FV) are judgment-bearing adversarial passes, so they pin to Sonnet, mirroring the judgment-bearing buckets and the Adjudicator.
 
 ## Bucket A: Static checks
 
@@ -276,6 +292,49 @@ The Adjudicator assigns each finding one action and records it in `findings.json
 - **false-positive** → the Orchestrator dispatches a config-yaml-md Fixer to tighten the pattern or extend the allowlist with a written justification.
 - **decided-not-finding** → the finding matches a "Decided / not findings" entry (in `.gaia/cli/health/taxonomy.md` or the fitness spec). **If the entry already exists**, the Adjudicator records the match and moves on (no edit, no circuit breaker); it becomes a non-blocking residual (see §Termination), retained in `findings.json` but excluded from the clean gate and the oscillation guard. **If it is a new not-a-finding class**, the Adjudicator records the proposed entry in `findings.json` rather than writing it (a leaf subagent cannot pause for human-confirm). The Orchestrator gates it on the circuit breaker, gets human-confirm, and writes the entry, after which it is likewise a non-blocking residual.
 
+## False-clean challenger
+
+The cycle loop is adversarial against the product (five buckets, a fresh per-cycle Adjudicator, cross-cycle oscillation detection), but nothing challenges its own terminal CLEAN verdict. A false-clean (a blind spot shared by every bucket, the Adjudicator dismissing a real finding as a `decided-not-finding`, or an over-graded category) exits A+ and then deletes the per-cycle `c*/` evidence, and oscillation cannot catch it: a clean exit has zero open findings and no next cycle to intersect against.
+
+The challenger is a single adversarial pass the Orchestrator spawns at the clean-exit boundary, AFTER a cycle produces a clean `findings.json` but BEFORE the `c*/` deletion and the A+ report. A substantiated finding from any lens REVOKES the clean exit.
+
+**Intentional divergences from the canonical adversarial-audit pattern** (`.claude/skills/gaia/references/spec.md` step 7, `.claude/skills/gaia/references/plan.md` step 4.6); these are deliberate, do not "fix" them back toward that shape:
+
+1. **No interactive gate.** The loop is autonomous, so the challenger runs UNCONDITIONALLY on the terminal clean cycle. There is no recommended-but-optional prompt.
+2. **No refutation pass.** Challenger findings are binary and checkable (a defect exists at a file + pattern or it does not; a near-match matches a Decided entry or it does not), exactly like the plan-decomposition audit, so there is no severity-debate refutation round.
+3. **Revokes the clean exit** rather than folding a fix into an editable artifact: a substantiated finding is injected into `findings.json` as `action: real-fix` and the run continues into the normal Fixer → next-cycle machinery.
+
+**At most once per run.** The Orchestrator tracks a per-run boolean (the challenger has run). The challenger fires on the FIRST cycle that meets the clean gate and sets the flag. If it clears, the genuine clean exit proceeds. If it revokes the exit and budget remains, the run continues; a LATER clean exit then proceeds WITHOUT re-challenging. The backstop for a miss the single shot does not catch is the fresh Adjudicator plus the fact that a true miss resurfaces on the next `/health-audit` run.
+
+**Depth-1.** Only the Orchestrator (main thread) spawns leaves; the challenger lenses are Orchestrator-spawned `general-purpose` leaf subagents, consistent with the buckets, the Adjudicator, and the Fixers. No leaf spawns the challenger.
+
+### Lenses
+
+Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: the terminal cycle's bucket artifacts (`.gaia/local/audit/c<N>/bucket-a.txt`, `bucket-b/`, `bucket-c.txt`, `bucket-d.md`, `bucket-e/`), `.gaia/local/audit/c<N>/findings.json`, and BOTH "Decided / not findings" lists (`.gaia/cli/health/taxonomy.md` § Decided / not findings and `wiki/decisions/Claude Integration Fitness.md` § Decided / not findings) so it does not re-surface settled items. Each returns only the findings JSON (the canonical schema, see §Audit artifacts), no narrative.
+
+- **Blind-spot (id prefix `BS`).** Always runs. Assume a real defect exists that EVERY bucket missed. Attack the UNION of the five bucket scopes (static checks, source greps, bundle simulation, cross-class enforcement walk, the seven fitness categories) and produce the concrete file + pattern that no bucket grep covers. A concrete uncovered file + pattern is a finding.
+- **Misclassification (id prefix `MC`).** Always runs. For each `decided-not-finding` and `false-positive` in `findings.json`, verify it TRULY matches a taxonomy or fitness "Decided" entry, not a stretched near-match; cite the matched entry's line. A `decided-not-finding` that does not actually match its claimed Decided entry (a real finding dismissed as settled) is a finding.
+- **Grade-honesty (id prefix `GH`).** Always runs. Re-verify Bucket D's "A+ readiness" against each enforcing primitive (scrub check id, runtime-deps, manifest `--check`), and verify the effective-shared-fitness-A+ promotion legitimately applies the residual carve-out (a Bucket E category below A+ SOLELY because of non-blocking residual `info` on a Decided list) rather than masking a `warning`/`error` or an `info` NOT on a Decided list. A grade promoted on a false premise is a finding.
+- **Fix-verification (id prefix `FV`, deep/optional).** Independently re-run the prior cycles' fixed-finding detection against the working tree instead of trusting Fixer self-reports. A prior finding a Fixer reported fixed but that still reproduces is a finding. **Deterministic gate:** include FV in the fan-out only when any prior cycle in this run dispatched a Fixer (there are applied fixes to verify); skip it on a run that reached clean with zero fixes applied (nothing to verify). FV is the lens that covers a failed fix, including a failed fix of an earlier challenger-injected finding.
+
+**Shared preamble** (mirrors the canonical adversarial preamble; interpolate `<C_DIR>` = `.gaia/local/audit/c<N>` and `<repo_root>` = `$PWD`):
+
+> You are an ADVERSARIAL challenger of a GAIA health-audit's TERMINAL CLEAN verdict. The cycle artifacts are in `<C_DIR>`; repo root is `<repo_root>`. Read the bucket artifacts and `findings.json` first, and read the two "Decided / not findings" lists so you do not re-surface settled items. The loop is about to report A+ and delete the evidence. Your job is to find the reason that verdict is FALSE, not to confirm it. Cite evidence as `file:line`. Be concrete and falsifiable: a defect a fixer can act on by reading one file is a good finding, a vague "could be cleaner" is not.
+>
+> - Severity: `blocker` = the clean verdict is factually wrong (a real defect ships); `high` = a real finding the buckets or Adjudicator missed or misclassified; `medium` = should fix; `low` = nit.
+> - Give each finding a stable id prefixed with your lens code (`BS`, `MC`, `GH`, or `FV`).
+
+### Routing: a substantiated finding revokes the clean exit
+
+A substantiated finding (any lens) revokes the clean exit. The Orchestrator injects it into `c<N>/findings.json` as a finding with `action: "real-fix"`, `bucket: "challenger"`, a `lane` chosen from the file it targets, and a `fingerprint` in the `<check-id>:<file>:<line>:<first-40-chars>` format. Then:
+
+- **Clean cycle is NOT cycle 3** (budget remains): continue into the normal Fixer → next-cycle machinery. The Orchestrator dispatches Fixers for the injected finding and starts the next cycle. The injected finding participates in the standard oscillation guard (which keys on `action == "real-fix"` fingerprints, bucket-agnostic). A Fixer that reports unable to fix triggers the existing `fixer-unable-to-fix` escalation.
+- **Clean cycle IS cycle 3** (no next cycle to fix-and-reverify): do NOT inject-and-continue (there is nowhere for the fix to land). Escalate with reason `false-clean-refuted` and PRESERVE all `c*/` dirs (skip the clean-exit `rm -rf .gaia/local/audit/c*`).
+
+**Oscillation coverage (design note).** A `BS` blind-spot finding is by definition NOT re-detected by the buckets on the next cycle, so the bucket-sourced oscillation guard does not cover a failed fix of a `BS` finding. The concrete protections for a failed challenger fix are: the `fixer-unable-to-fix` escalation (immediate, when a Fixer reports it cannot fix), the cycle-3 `false-clean-refuted` escalation (the terminal backstop), the optional deep `FV` lens (re-detects failed fixes directly), and resurfacing on the next `/health-audit` run. The general oscillation guard covers only the subset of findings the buckets can re-detect; it does not on its own protect a blind-spot finding.
+
+**Never-block fallback.** The Orchestrator spawns the challenger, so the fan-out exists by construction. If it is nonetheless unavailable (a restricted context that cannot spawn leaves), SKIP the challenger, note the skip in the report, and rely on the fresh Adjudicator plus next-run resurfacing. NEVER block the clean exit on the challenger's unavailability.
+
 ## Escalation
 
 Orchestrator escalates to human (returns control with structured report) on:
@@ -285,6 +344,7 @@ Orchestrator escalates to human (returns control with structured report) on:
 - Any circuit-breaker trip the human declines.
 - Adjudicator can't classify a finding (not in taxonomy, not allowlist, not structural).
 - Fixer reports unable to fix (e.g. test failure that requires a product decision).
+- False-clean challenger substantiates a finding on the cycle-3 clean cycle (reason `false-clean-refuted`; see §False-clean challenger). On a non-cycle-3 clean cycle the same finding is injected as `real-fix` and the loop continues instead of escalating.
 
 ## Audit artifacts
 
@@ -317,7 +377,7 @@ Per-cycle artifacts are stored under `.gaia/local/audit/c<N>/` (`.gaia/local/` i
   "findings": [
     {
       "id": "c1-f001",
-      "bucket": "B | E",
+      "bucket": "B | E | challenger",
       "fingerprint": "<check-id>:<file>:<line>:<first-40-chars>",
       "lane": "wiki-content | claude-surface | source-ts | config-yaml-md | settings | gitignore | manifest",
       "action": "real-fix | taxonomy-update | false-positive | decided-not-finding"
@@ -326,7 +386,7 @@ Per-cycle artifacts are stored under `.gaia/local/audit/c<N>/` (`.gaia/local/` i
 }
 ```
 
-The `verdict` field stores Bucket D's verdict verbatim. It is _not_ a synthesized cycle grade. It reports enforcement-primitive completeness independent of `findings.length` (see §Bucket D). The `shared_fitness_grade` field stores Bucket E's honest grade (the floor of the seven category grades, F-to-A+). The `overall_grade` field is the F-to-A+ floor of: the `verdict` mapped to the same scale ("A+ readiness"→A+, "A"→A, "A−"→A−), the open-findings-count signal (zero open maintainer findings → A+; else degrade per wiki page rubric), and `shared_fitness_grade`. The Orchestrator's clean-exit signal is `(no unresolved findings with action === "real-fix") AND verdict === "A+ readiness" AND effective shared_fitness_grade === "A+"` per §Termination: non-blocking residuals (`decided-not-finding`) do not count, and a category capped solely by residual `info` is treated as A+ for the effective grade. The `overall_grade` on a clean exit is the honest floor: A+ when there are no findings of any kind, otherwise the floor (residual `info` may cap it at A).
+The `verdict` field stores Bucket D's verdict verbatim. It is _not_ a synthesized cycle grade. It reports enforcement-primitive completeness independent of `findings.length` (see §Bucket D). The `shared_fitness_grade` field stores Bucket E's honest grade (the floor of the seven category grades, F-to-A+). The `overall_grade` field is the F-to-A+ floor of: the `verdict` mapped to the same scale ("A+ readiness"→A+, "A"→A, "A−"→A−), the open-findings-count signal (zero open maintainer findings → A+; else degrade per wiki page rubric), and `shared_fitness_grade`. A challenger-injected finding (see §False-clean challenger) carries `action: "real-fix"`, `bucket: "challenger"`, a `lane`, and a `fingerprint`, and participates in the oscillation guard exactly like any other `real-fix`. The Orchestrator's clean-exit signal is `(no unresolved findings with action === "real-fix") AND verdict === "A+ readiness" AND effective shared_fitness_grade === "A+"` per §Termination: non-blocking residuals (`decided-not-finding`) do not count, and a category capped solely by residual `info` is treated as A+ for the effective grade. The `overall_grade` on a clean exit is the honest floor: A+ when there are no findings of any kind, otherwise the floor (residual `info` may cap it at A).
 
 Lifecycle:
 
@@ -335,12 +395,12 @@ Lifecycle:
 - **Auditors**: write raw outputs to their per-cycle paths; return summary + file path in their report (not the full content).
 - **Adjudicator**: reads bucket files, classifies, writes `c<N>/findings.json`.
 - **Orchestrator (oscillation detection)**: mechanical diff via `jq -r '.findings[].fingerprint' .gaia/local/audit/c<N>/findings.json | sort` against the prior cycle's same. Non-empty intersection → oscillation, escalate.
-- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an _effective_ shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker.
+- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an _effective_ shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker. The `rm -rf .gaia/local/audit/c*` runs only AFTER the false-clean challenger clears the terminal clean cycle (see §False-clean challenger); a challenger that revokes the exit either continues the loop (non-cycle-3) or escalates `false-clean-refuted` and preserves `c*/` (cycle 3).
 - **Escalation**: Orchestrator preserves all `c*/` dirs and surfaces their paths in the escalation report for human review.
 
 ## State
 
-Cycle artifacts persist in `.gaia/local/audit/c<N>/` for the duration of the audit. On a clean exit, the Orchestrator removes all `c*/` dirs (`rm -rf .gaia/local/audit/c*`; whitelisted; top-level dir kept as run marker). On escalation, all `c*/` dirs are preserved and surfaced in the escalation report for human review.
+Cycle artifacts persist in `.gaia/local/audit/c<N>/` for the duration of the audit. On a clean exit (which the terminal cycle reaches only after the false-clean challenger clears, see §False-clean challenger), the Orchestrator removes all `c*/` dirs (`rm -rf .gaia/local/audit/c*`; whitelisted; top-level dir kept as run marker). On escalation, all `c*/` dirs are preserved and surfaced in the escalation report for human review; a cycle-3 `false-clean-refuted` escalation preserves them the same way.
 
 The audit does not write to `wiki/log.md` or `wiki/hot.md`.
 

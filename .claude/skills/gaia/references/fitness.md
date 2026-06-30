@@ -153,7 +153,7 @@ Run inside the bounded heal loop. The cap and stop conditions below mirror `wiki
 
 ## Step 5, Verify
 
-After each heal cycle, re-dispatch the affected category checks as fresh subagents (the Auditors for the categories that had at least one finding addressed in that cycle; subagents are required here per Step 3, the orchestrator already holds findings). Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean.
+After each heal cycle, re-dispatch the affected category checks as fresh subagents (the Auditors for the categories that had at least one finding addressed in that cycle; subagents are required here per Step 3, the orchestrator already holds findings). Recompute the affected category grades and the overall grade. If the overall grade reaches A+, the loop exits clean. On the **final** verify cycle, the one whose recomputed grade `/gaia-fitness` reports (the cycle that reaches A+ and exits, or the last cycle before loop-exhaustion reporting), re-dispatch **all seven** categories as fresh subagents, not just the affected ones: a fix in one lane can regress a check in a zero-finding category (a `claude-surface` edit pushing `CLAUDE.md` past its size budget, a `settings` edit breaking `settings.json` JSON validity), and an all-seven re-run catches that before the loop reports A+ instead of letting it escape.
 
 ---
 
