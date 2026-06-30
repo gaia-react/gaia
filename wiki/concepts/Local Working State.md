@@ -1,0 +1,50 @@
+---
+type: concept
+status: active
+created: 2026-07-01
+updated: 2026-07-01
+tags: [concept, claude, hooks]
+---
+
+# Local Working State
+
+`.gaia/local/` holds machine-local working state for GAIA's subsystems. It is gitignored in full, carries no tracked files, and is absent from `.gaia/manifest.json`, so nothing under it is committed or shipped to adopters. Each developer's copy is private to their machine, and subsystems create the subdirectories they need on demand (`mkdir -p`).
+
+Because the folder is invisible to git, residue a subsystem leaves behind never surfaces in a diff and accumulates silently. A SessionStart janitor sweeps the residue whose death is provable; everything else is catalogued here so a reader can tell live state from leftovers.
+
+## Layout
+
+| Path | Owner | Kind | Retention |
+|---|---|---|---|
+| `.project-id`, `setup-state.json` | setup / identity | live | permanent identity |
+| `mentorship.json`, `declined-updates.json` | mentorship / `/update-deps` | live | permanent preference |
+| `.patched-statusline.sh`, `maintainer-statusline.sh` | statusline | live | regenerated |
+| `audit/<sha>.ok`, `audit/<sha>.dispositions.json` | [[Code Review Audit Agent]] merge gate | ephemeral | spent once orphaned |
+| `audit/progress.log` | audit gate | live | overwritten each run |
+| `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
+| `audit-ledger/worthiness.jsonl` | worthiness check | live | append-only |
+| `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
+| `debt/` | debt sentinel | live | recomputed |
+| `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | per-spec, orphaned on archive |
+| `specs/`, `specs/archived/` | [[GAIA Spec]] | live | spec store |
+| `plans/<slug>/` | [[GAIA Plan]] | ephemeral | self-deleted on merge |
+| `handoff/`, `forensics/` | [[GAIA Handoff]] / [[Forensics]] | live | drop zones |
+| `telemetry/` | [[Telemetry]] | live | append-only logs |
+
+A **live** entry is load-bearing state that tooling reads. An **ephemeral** entry is consumed once and then orphaned; its owner is meant to prune it, and the janitor backstops what the owner misses.
+
+## The session-start janitor
+
+`.claude/hooks/local-janitor.sh` runs from the SessionStart hook (`wiki-session-start.sh`) on `startup` and `resume`. It is the side-effect form of a SessionStart hook: it deletes files and injects nothing into context. It is a backstop, not an owner, so each subsystem still prunes its own residue at its next run. The janitor removes only residue whose death is provable, which makes it safe to run unconditionally every session. It sweeps three things:
+
+- **Orphaned audit markers.** An `audit/<sha>.ok` or `<sha>.dispositions.json` gates `gh pr merge` only while its `<sha>` equals HEAD. Once a PR squash-merges to a new sha, the audited branch tip is no longer HEAD and is unreachable from any local branch, so the marker is spent. The janitor keeps a marker only when its `<sha>` is HEAD or reachable from a local branch; everything else, including a `<sha>` that is not a valid commit, is removed.
+- **Completed-but-unswept plan dirs.** A `plans/<slug>/` whose `RUNNING` sentinel names a branch that no longer exists and is not marked `DEFERRED`/`PAUSED`/`PARKED` is a plan that merged but whose self-cleanup never ran (an interrupted session). The janitor removes the directory. A parked plan is always kept.
+- **Stray empty dirs.** Empty directories under `.gaia/local/` are removed with `rmdir`, except the structural drop zones tooling expects to find (`audit`, `cache`, `plans`, `forensics`, `handoff`, `specs`, `telemetry`, and the other roots). `rmdir` cannot remove a non-empty directory, so a content-bearing dir is never at risk.
+
+The sweep is fail-safe: any inability to prove a thing is dead (no git, an unreadable HEAD, an unparseable sentinel) skips that thing, and the hook always exits 0 so it can never block a session from starting.
+
+## Deciding by hand
+
+Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for an archived spec. The append-only ledgers (`red-ledger`, `audit-ledger`, `telemetry`) and the identity files (`.project-id`, `setup-state.json`, `mentorship.json`) are the load-bearing exceptions; deleting those resets real state.
+
+See [[Claude Hooks]] for the hook surface and [[Audit Disposition and Debt Drain]] for the marker lifecycle.

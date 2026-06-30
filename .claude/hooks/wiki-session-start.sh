@@ -17,4 +17,9 @@ if [ -x .gaia/cli/gaia ]; then
   .gaia/cli/gaia mentorship _internal-assert-memory-rules >/dev/null 2>&1 || true
 fi
 
+# Bounded GC of .gaia/local working-state residue (orphaned audit markers,
+# completed-but-unswept plan dirs, stray empty dirs). Side-effect only; never
+# blocks the session. See local-janitor.sh for the provable-death contract.
+[ -f .claude/hooks/local-janitor.sh ] && bash .claude/hooks/local-janitor.sh || true
+
 exit 0
