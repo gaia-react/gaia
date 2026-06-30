@@ -64,7 +64,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.11.3",
+    "@axe-core/playwright": "4.12.1",
     "@faker-js/faker": "10.5.0",
     "@gaia-react/lint": "1.8.0",
     "@msw/data": "1.1.6",
@@ -114,7 +114,7 @@
     "tailwindcss": "4.3.1",
     "tsx": "4.22.4",
     "typescript": "6.0.3",
-    "vite": "8.0.16",
+    "vite": "8.1.0",
     "vitest": "4.1.9"
   },
   "msw": {
