@@ -109,7 +109,7 @@ const InputText: FC<Props> = ({ref, ...rest}) => <input ref={ref} {...rest} />;
 
 The ref _type_ (`Ref<T>`, or `ComponentProps<'input'>` already carrying `ref`) is the typescript skill's domain.
 
-**Before writing `&&` in JSX, make the left operand a real boolean.** `&&` returns its left operand when falsy. `false`/`null`/`undefined` render nothing, but a numeric **`0`** is a renderable value and leaks the literal "0" into the DOM. This is the most common React rendering bug, and **lint does not catch it.**
+**Before writing `&&` in JSX, make the left operand a real boolean.** `&&` returns its left operand when falsy. `false`/`null`/`undefined` render nothing, but a numeric **`0`** is a renderable value and leaks the literal "0" into the DOM. This is the most common React rendering bug. **Lint catches the `.length && <JSX/>` form** (via `no-restricted-syntax`), but the general `count && <X/>` case still slips through, so make the left operand a real boolean yourself.
 
 ```tsx
 // BAD, renders "0" when the list is empty
@@ -142,7 +142,7 @@ Metadata is the mirror case: GAIA renders `<title>`/`<meta>` as JSX (React 19 ho
 
 When you do reach for React Router's API, read it from the version-matched docs shipped at `node_modules/react-router/docs`, not the web.
 
-**Render nothing with `undefined` or `false`, never `null`.** The pre-18 "a component must `return null`" rule is gone. A guard clause falls through to an implicit `undefined`, and `return false` / `return undefined` render nothing. GAIA never uses `null` to render nothing; rewrite every `return null` and `: null` render arm to the `undefined` / `false` / `&&` form, existing code included.
+Rendering nothing from a `return` is enforced by `@gaia-react/lint`'s `no-null-render` rule (autofix); a `: null` ternary arm is caught by `no-restricted-syntax` (report-only). No manual rewrite needed.
 
 For `useEffectEvent` (the sanctioned replacement for stale-deps / latest-ref hacks) and ref-callback cleanup functions, see `references/hook-patterns.md`.
 

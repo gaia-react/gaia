@@ -41,8 +41,8 @@ describe('object utils', () => {
   });
 
   test('deepRemoveNil', () => {
-    expect(deepRemoveNil(undefined)).toEqual(undefined);
-    expect(deepRemoveNil(null)).toEqual(undefined);
+    expect(deepRemoveNil(undefined)).toBeUndefined();
+    expect(deepRemoveNil(null)).toBeUndefined();
     expect(deepRemoveNil({a: 1, b: undefined, c: 3, d: null})).toEqual({
       a: 1,
       c: 3,
