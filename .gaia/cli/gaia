@@ -17375,7 +17375,16 @@ var windowClasses = (prs) => {
 // src/harden/covered-classes.ts
 import { readdirSync, readFileSync as readFileSync9 } from "node:fs";
 import path11 from "node:path";
-var MARKER_RE = /gaia-harden: promoted from recurring finding_class\s+(\S+?)\s*(?:;|-->)/g;
+
+// src/harden/marker.ts
+var MARKER_PREFIX = "gaia-harden: promoted from recurring finding_class";
+
+// src/harden/covered-classes.ts
+var escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var MARKER_RE = new RegExp(
+  `${escapeRegExp(MARKER_PREFIX)}\\s+(\\S+?)\\s*(?:;|-->)`,
+  "g"
+);
 var coveredClassesFromRules = (rulesDir) => {
   const covered = /* @__PURE__ */ new Set();
   let entries;
@@ -17432,7 +17441,9 @@ var makeLedgerSuppressionPredicate = ({
     ],
     cwd
   );
-  return result.exitCode === 0;
+  if (result.exitCode === EXIT_CODES.OK) return true;
+  if (result.exitCode === EXIT_CODES.UNKNOWN_SUBCOMMAND) return false;
+  return true;
 };
 var pruneLedger = ({
   cwd,
@@ -17541,14 +17552,14 @@ var fetchWindowPrs = (cwd, now) => {
     ],
     { cwd }
   );
-  if (ghResult.exitCode !== 0) return [];
+  if (ghResult.exitCode !== 0) return { ghOk: false, prs: [] };
   let parsed;
   try {
     parsed = JSON.parse(ghResult.stdout);
   } catch {
-    return [];
+    return { ghOk: false, prs: [] };
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) return { ghOk: false, prs: [] };
   const records = [];
   for (const value of parsed) {
     const pr = parseGhPr(value);
@@ -17562,7 +17573,7 @@ var fetchWindowPrs = (cwd, now) => {
       records.push({ findings, pr_number: pr.number });
     }
   }
-  return records;
+  return { ghOk: true, prs: records };
 };
 var run13 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS11.has(argv[0])) {
@@ -17572,7 +17583,7 @@ var run13 = (argv, options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   const runLedger = options.runLedger ?? defaultLedgerRunner;
   const now = /* @__PURE__ */ new Date();
-  const prs = fetchWindowPrs(cwd, now);
+  const { ghOk, prs } = fetchWindowPrs(cwd, now);
   const covered = coveredClassesFromRules(
     path12.join(cwd, ".claude", "rules")
   );
@@ -17583,7 +17594,8 @@ var run13 = (argv, options = {}) => {
     windowDays: WINDOW_DAYS
   });
   pruneLedger({ cwd, runLedger, windowClasses: windowClasses(prs) });
-  process.stdout.write(`${JSON.stringify(tallyResult)}
+  const emitted = { ...tallyResult, gh_ok: ghOk };
+  process.stdout.write(`${JSON.stringify(emitted)}
 `);
   return EXIT_CODES.OK;
 };
@@ -28679,17 +28691,18 @@ var targetsEqual = (a, b) => {
   }
   return true;
 };
-var isSuppressed = (group, currentTargets, declines, now) => {
+var findActiveDecline = (group, currentTargets, declines, now) => {
   for (const record2 of declines) {
     if (record2.group !== group) continue;
     if (!targetsEqual(record2.targets, currentTargets)) continue;
     const declinedAtMs = Date.parse(record2.declined_at);
     if (!Number.isFinite(declinedAtMs)) continue;
     if (now.getTime() - declinedAtMs >= MAX_SNOOZE_MS) continue;
-    return true;
+    return record2;
   }
-  return false;
+  return void 0;
 };
+var isSuppressed = (group, currentTargets, declines, now) => findActiveDecline(group, currentTargets, declines, now) !== void 0;
 var collectOutstandingGroups = (payload) => {
   const map2 = /* @__PURE__ */ new Map();
   const record2 = (group, name, current, latest) => {
@@ -28725,6 +28738,23 @@ var computeActionableCount = (payload, declines, now) => {
     count += Object.keys(targets).length;
   }
   return count;
+};
+var collectSnoozedGroups = (payload, declines, now) => {
+  const out = [];
+  for (const [group, targets] of collectOutstandingGroups(payload)) {
+    const record2 = findActiveDecline(group, targets, declines, now);
+    if (record2 === void 0) continue;
+    const resurfacesAtMs = Date.parse(record2.declined_at) + MAX_SNOOZE_MS;
+    out.push({
+      group,
+      resurfaces_at: new Date(resurfacesAtMs).toISOString(),
+      snoozed_at: record2.declined_at,
+      targets
+    });
+  }
+  return out.toSorted(
+    (a, b) => a.group < b.group ? -1 : a.group > b.group ? 1 : 0
+  );
 };
 
 // src/update-deps/groups.ts
@@ -29091,6 +29121,17 @@ var readPackageJson = (cwd) => {
   const raw = readFileSync35(path45.join(cwd, "package.json"), "utf8");
   return JSON.parse(raw);
 };
+var readUpdateDepsHolds = (pkg) => {
+  const raw = pkg.gaia?.updateDepsHold;
+  if (raw === null || typeof raw !== "object") return {};
+  const out = {};
+  for (const [name, ceiling] of Object.entries(raw)) {
+    if (typeof ceiling === "string" && ceiling.trim().length > 0) {
+      out[name] = ceiling.trim();
+    }
+  }
+  return out;
+};
 var readInstalledVersion = (cwd, name) => {
   try {
     const raw = readFileSync35(
@@ -29140,20 +29181,8 @@ var parseOutdated = (stdout) => {
     (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0
   );
 };
-var ESLINT_CAPPED = /* @__PURE__ */ new Set(["eslint", "@eslint/js"]);
-var findHighest9x = (versions) => {
-  let best;
-  for (const candidate of versions) {
-    const segments = parseSegments(candidate);
-    if (segments[0] !== 9) continue;
-    if (best === void 0 || compareSegments(segments, best.segments) > 0) {
-      best = { raw: candidate, segments };
-    }
-  }
-  return best?.raw;
-};
-var fetchEslintVersions = (cwd, pnpmRunner) => {
-  const result = pnpmRunner(["view", "eslint", "versions", "--json"], { cwd });
+var fetchPackageVersions = (name, cwd, pnpmRunner) => {
+  const result = pnpmRunner(["view", name, "versions", "--json"], { cwd });
   if (result.status !== 0) return [];
   const trimmed = result.stdout.trim();
   if (trimmed.length === 0) return [];
@@ -29166,14 +29195,23 @@ var fetchEslintVersions = (cwd, pnpmRunner) => {
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((value) => typeof value === "string");
 };
-var applyEslintCap = (entry, pnpmRunner, cwd, cache) => {
+var ESLINT_CAPPED = /* @__PURE__ */ new Set(["eslint", "@eslint/js"]);
+var findHighest9x = (versions) => {
+  let best;
+  for (const candidate of versions) {
+    const segments = parseSegments(candidate);
+    if (segments[0] !== 9) continue;
+    if (best === void 0 || compareSegments(segments, best.segments) > 0) {
+      best = { raw: candidate, segments };
+    }
+  }
+  return best?.raw;
+};
+var applyEslintCap = (entry, getVersions) => {
   if (!ESLINT_CAPPED.has(entry.name)) return { kind: "pass" };
   const latestSegments = parseSegments(entry.latest);
   if ((latestSegments[0] ?? 0) < 10) return { kind: "pass" };
-  if (cache.versions === void 0) {
-    cache.versions = fetchEslintVersions(cwd, pnpmRunner);
-  }
-  const highest9x = findHighest9x(cache.versions);
+  const highest9x = findHighest9x(getVersions("eslint"));
   if (highest9x === void 0) {
     return { kind: "drop" };
   }
@@ -29182,6 +29220,40 @@ var applyEslintCap = (entry, pnpmRunner, cwd, cache) => {
     return { kind: "drop" };
   }
   return { kind: "rewrite", latest: highest9x };
+};
+var matchesCeilingPrefix = (version2, ceiling) => {
+  const ceilingParts = stripRange(ceiling).split(/[+-]/u)[0]?.split(".").filter((part) => part.length > 0) ?? [];
+  if (ceilingParts.length === 0) return false;
+  const versionSegments = parseSegments(version2);
+  for (let index = 0; index < ceilingParts.length; index += 1) {
+    const pinned = Number.parseInt(ceilingParts[index] ?? "", 10);
+    if (!Number.isFinite(pinned)) return false;
+    if ((versionSegments[index] ?? 0) !== pinned) return false;
+  }
+  return true;
+};
+var findHighestUnderCeiling = (versions, ceiling) => {
+  let best;
+  for (const candidate of versions) {
+    if (candidate.includes("-")) continue;
+    if (!matchesCeilingPrefix(candidate, ceiling)) continue;
+    const segments = parseSegments(candidate);
+    if (best === void 0 || compareSegments(segments, best.segments) > 0) {
+      best = { raw: candidate, segments };
+    }
+  }
+  return best?.raw;
+};
+var applyHoldCap = (params, holds, getVersions) => {
+  const ceiling = holds[params.name];
+  if (ceiling === void 0) return { kind: "pass" };
+  if (matchesCeilingPrefix(params.latest, ceiling)) return { kind: "pass" };
+  const capped = findHighestUnderCeiling(getVersions(params.name), ceiling);
+  if (capped === void 0) return { kind: "drop" };
+  if (compareSegments(parseSegments(capped), parseSegments(params.current)) <= 0) {
+    return { kind: "drop" };
+  }
+  return { kind: "rewrite", latest: capped };
 };
 var fetchLatestVersion = (name, cwd, pnpmRunner) => {
   const result = pnpmRunner(["view", name, "version"], { cwd });
@@ -29277,18 +29349,36 @@ var computeUpdates = (options) => {
     return capped === void 0 ? { kind: "cooldown" } : { kind: "ok", latest: capped };
   };
   const clampWanted = (wanted, latest) => compareSegments(parseSegments(wanted), parseSegments(latest)) > 0 ? latest : wanted;
-  const eslintCache = {};
+  const versionCache = /* @__PURE__ */ new Map();
+  const getVersions = (name) => {
+    const cached2 = versionCache.get(name);
+    if (cached2 !== void 0) return cached2;
+    const fetched = fetchPackageVersions(name, options.cwd, pnpmRunner);
+    versionCache.set(name, fetched);
+    return fetched;
+  };
+  const holds = readUpdateDepsHolds(pkg);
   const adjusted = [];
   const skipped = [];
   for (const entry of raw) {
-    const decision = applyEslintCap(
-      entry,
-      pnpmRunner,
-      options.cwd,
-      eslintCache
+    const eslintDecision = applyEslintCap(entry, getVersions);
+    if (eslintDecision.kind === "drop") continue;
+    const eslintLatest = eslintDecision.kind === "rewrite" ? eslintDecision.latest : entry.latest;
+    const holdDecision = applyHoldCap(
+      { current: entry.current, latest: eslintLatest, name: entry.name },
+      holds,
+      getVersions
     );
-    if (decision.kind === "drop") continue;
-    const effectiveLatest = decision.kind === "rewrite" ? decision.latest : entry.latest;
+    if (holdDecision.kind === "drop") {
+      skipped.push({
+        current: entry.current,
+        latest: eslintLatest,
+        name: entry.name,
+        reason: "held"
+      });
+      continue;
+    }
+    const effectiveLatest = holdDecision.kind === "rewrite" ? holdDecision.latest : eslintLatest;
     const cooled = applyCooldown(entry.name, entry.current, effectiveLatest);
     if (cooled.kind !== "ok") {
       skipped.push({
@@ -29344,11 +29434,21 @@ var computeUpdates = (options) => {
         });
         continue;
       }
-      const cooled = applyCooldown(siblingName, current, latest);
+      const holdDecision = applyHoldCap(
+        { current, latest, name: siblingName },
+        holds,
+        getVersions
+      );
+      if (holdDecision.kind === "drop") {
+        skipped.push({ current, latest, name: siblingName, reason: "held" });
+        continue;
+      }
+      const heldLatest = holdDecision.kind === "rewrite" ? holdDecision.latest : latest;
+      const cooled = applyCooldown(siblingName, current, heldLatest);
       if (cooled.kind !== "ok") {
         skipped.push({
           current,
-          latest,
+          latest: heldLatest,
           name: siblingName,
           reason: cooled.kind === "cooldown" ? "release-age-cooldown" : "release-age-unresolved"
         });
@@ -29416,6 +29516,7 @@ var computeUpdates = (options) => {
     generated_at: now.toISOString(),
     schema_version: 1,
     skipped,
+    snoozed: collectSnoozedGroups(countable, declines, now),
     total_count: totalCount(countable),
     wave_a: waveA,
     wave_b: waveB

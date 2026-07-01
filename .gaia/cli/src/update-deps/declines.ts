@@ -61,6 +61,23 @@ export type CountablePayload = {
   }[];
 };
 
+/**
+ * A currently-active snooze, surfaced in the emitted updates payload so the
+ * interactive preview can mark the group and default-skip it. Distinct from the
+ * payload's `skipped` list (policy-filtered *this run*): a `SnoozedGroup` is a
+ * group the human deferred earlier that is still within its snooze window.
+ */
+export type SnoozedGroup = {
+  /** Companion group id, or `singleton:<name>`. */
+  group: string;
+  /** ISO-8601 stamp when the snooze lapses (`declined_at` + `MAX_SNOOZE_MS`). */
+  resurfaces_at: string;
+  /** ISO-8601 stamp when the group was snoozed. */
+  snoozed_at: string;
+  /** The snoozed target versions (`name -> version`), matching the current offer. */
+  targets: Readonly<Record<string, string>>;
+};
+
 export const declinedLedgerPath = (cwd: string): string =>
   path.join(cwd, LEDGER_RELATIVE_PATH);
 
@@ -152,17 +169,18 @@ const targetsEqual = (
 };
 
 /**
- * Whether a group's current target versions are currently snoozed. A record
- * matches when its group and target snapshot equal the current ones AND it is
- * younger than `MAX_SNOOZE_MS`. Any target moving, a sibling joining/leaving
- * the group (target-key set changes), or the cap elapsing breaks the match.
+ * The active snooze record for a group's current target versions, or
+ * `undefined` when none applies. A record matches when its group and target
+ * snapshot equal the current ones AND it is younger than `MAX_SNOOZE_MS`. Any
+ * target moving, a sibling joining/leaving the group (target-key set changes),
+ * or the cap elapsing breaks the match, so a stale record never matches.
  */
-export const isSuppressed = (
+export const findActiveDecline = (
   group: string,
   currentTargets: Readonly<Record<string, string>>,
   declines: readonly DeclinedRecord[],
   now: Date
-): boolean => {
+): DeclinedRecord | undefined => {
   for (const record of declines) {
     if (record.group !== group) continue;
     if (!targetsEqual(record.targets, currentTargets)) continue;
@@ -172,11 +190,23 @@ export const isSuppressed = (
     if (!Number.isFinite(declinedAtMs)) continue;
     if (now.getTime() - declinedAtMs >= MAX_SNOOZE_MS) continue;
 
-    return true;
+    return record;
   }
 
-  return false;
+  return undefined;
 };
+
+/**
+ * Whether a group's current target versions are currently snoozed. Thin
+ * boolean wrapper over {@link findActiveDecline}.
+ */
+export const isSuppressed = (
+  group: string,
+  currentTargets: Readonly<Record<string, string>>,
+  declines: readonly DeclinedRecord[],
+  now: Date
+): boolean =>
+  findActiveDecline(group, currentTargets, declines, now) !== undefined;
 
 /**
  * Aggregate the payload into `group -> {name: latest}`, counting only genuine
@@ -253,4 +283,41 @@ export const computeActionableCount = (
   }
 
   return count;
+};
+
+/**
+ * Every outstanding group whose current target versions are actively snoozed,
+ * with the snooze metadata the preview needs to annotate and default-skip it.
+ * A group appears only when it has a genuine upgrade AND an active decline for
+ * exactly its current targets; the same match `computeActionableCount` uses to
+ * suppress it from the count. Sorted by group id for a deterministic payload.
+ */
+export const collectSnoozedGroups = (
+  payload: CountablePayload,
+  declines: readonly DeclinedRecord[],
+  now: Date
+): readonly SnoozedGroup[] => {
+  const out: SnoozedGroup[] = [];
+
+  for (const [group, targets] of collectOutstandingGroups(payload)) {
+    const record = findActiveDecline(group, targets, declines, now);
+
+    if (record === undefined) continue;
+
+    // `declined_at` parsed finite already; findActiveDecline filtered NaN.
+    const resurfacesAtMs = Date.parse(record.declined_at) + MAX_SNOOZE_MS;
+
+    out.push({
+      group,
+      resurfaces_at: new Date(resurfacesAtMs).toISOString(),
+      snoozed_at: record.declined_at,
+      targets,
+    });
+  }
+
+  return out.toSorted((a, b) =>
+    a.group < b.group ? -1
+    : a.group > b.group ? 1
+    : 0
+  );
 };

@@ -104,7 +104,8 @@ const makePnpmRunner = (
   fakeOutdated: FakeOutdated,
   eslintVersions?: readonly string[],
   fakeViewVersions?: FakeViewVersions,
-  fakeViewTimes?: FakeViewTimes
+  fakeViewTimes?: FakeViewTimes,
+  fakeVersionLists?: Record<string, readonly string[]>
 ): PnpmRunner => {
   return (args) => {
     if (args[0] === 'outdated' && args.includes('--json')) {
@@ -116,12 +117,16 @@ const makePnpmRunner = (
       };
     }
 
-    if (args[0] === 'view' && args[1] === 'eslint' && args[2] === 'versions') {
-      return {
-        status: 0,
-        stderr: '',
-        stdout: JSON.stringify(eslintVersions ?? []),
-      };
+    // pnpm view <name> versions --json; used by the ESLint cap and the config
+    // version-hold cap. `eslint` falls back to the `eslintVersions` arg.
+    if (args[0] === 'view' && args[2] === 'versions') {
+      const pkgName = args[1] as string;
+      const list =
+        fakeVersionLists?.[pkgName] ??
+        (pkgName === 'eslint' ? eslintVersions : undefined) ??
+        [];
+
+      return {status: 0, stderr: '', stdout: JSON.stringify(list)};
     }
 
     // pnpm view <name> time --json; used by the release-age cooldown.
@@ -407,6 +412,156 @@ describe('update-deps run: computeUpdates', () => {
     expect(result.wave_a).toEqual([]);
     expect(result.wave_b).toEqual([]);
     expect(result.skipped).toEqual([]);
+  });
+
+  test('config hold: held package with no in-ceiling upgrade is dropped as held', () => {
+    // vite is held at the 8.0 line; latest 8.1.0 is above it and the highest
+    // 8.0.x (8.0.16) equals the installed version → dropped, held at current.
+    sandbox.writePackageJson({
+      dependencies: {vite: '8.0.16'},
+      gaia: {updateDepsHold: {vite: '8.0'}},
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {vite: {current: '8.0.16', latest: '8.1.0', wanted: '8.1.0'}},
+        undefined,
+        undefined,
+        undefined,
+        {vite: ['8.0.15', '8.0.16', '8.1.0', '8.1.2']}
+      ),
+    });
+
+    expect(result.wave_a).toEqual([]);
+    expect(result.wave_b).toEqual([]);
+    expect(result.total_count).toBe(0);
+    expect(result.skipped).toEqual([
+      {current: '8.0.16', latest: '8.1.0', name: 'vite', reason: 'held'},
+    ]);
+  });
+
+  test('config hold: an in-ceiling patch above current is offered, capped', () => {
+    // Held at 8.0; an 8.0.17 patch exists above the installed 8.0.16 → offered
+    // at 8.0.17, never the 8.1.x line.
+    sandbox.writePackageJson({
+      dependencies: {vite: '8.0.16'},
+      gaia: {updateDepsHold: {vite: '8.0'}},
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {vite: {current: '8.0.16', latest: '8.1.0', wanted: '8.1.0'}},
+        undefined,
+        undefined,
+        undefined,
+        {vite: ['8.0.16', '8.0.17', '8.1.0']}
+      ),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.wave_a).toHaveLength(1);
+    expect(result.wave_a[0]?.name).toBe('vite');
+    expect(result.wave_a[0]?.latest).toBe('8.0.17');
+    expect(result.wave_a[0]?.kind).toBe('patch');
+  });
+
+  test('config hold: latest already on the ceiling line passes through', () => {
+    // Held at 8.0 but latest is 8.0.17 (already on-line) → offered normally,
+    // no version-list lookup needed.
+    sandbox.writePackageJson({
+      dependencies: {vite: '8.0.16'},
+      gaia: {updateDepsHold: {vite: '8.0'}},
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner({
+        vite: {current: '8.0.16', latest: '8.0.17', wanted: '8.0.17'},
+      }),
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.wave_a).toHaveLength(1);
+    expect(result.wave_a[0]?.latest).toBe('8.0.17');
+  });
+
+  test('config hold: an exact-version ceiling freezes the package', () => {
+    // Ceiling "8.0.16" pins all three segments → nothing above 8.0.16 matches,
+    // so the package is frozen (dropped as held) even against an 8.0.17 patch.
+    sandbox.writePackageJson({
+      dependencies: {vite: '8.0.16'},
+      gaia: {updateDepsHold: {vite: '8.0.16'}},
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {vite: {current: '8.0.16', latest: '8.0.17', wanted: '8.0.17'}},
+        undefined,
+        undefined,
+        undefined,
+        {vite: ['8.0.16', '8.0.17']}
+      ),
+    });
+
+    expect(result.wave_a).toEqual([]);
+    expect(result.skipped).toEqual([
+      {current: '8.0.16', latest: '8.0.17', name: 'vite', reason: 'held'},
+    ]);
+  });
+
+  test('config hold: an unsatisfiable ceiling fails closed (held, not bumped)', () => {
+    // Ceiling "7" matches no published version → drop rather than let vite jump
+    // above the ceiling to 8.1.0.
+    sandbox.writePackageJson({
+      dependencies: {vite: '8.0.16'},
+      gaia: {updateDepsHold: {vite: '7'}},
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {vite: {current: '8.0.16', latest: '8.1.0', wanted: '8.1.0'}},
+        undefined,
+        undefined,
+        undefined,
+        {vite: ['8.0.16', '8.1.0']}
+      ),
+    });
+
+    expect(result.wave_a).toEqual([]);
+    expect(result.skipped).toEqual([
+      {current: '8.0.16', latest: '8.1.0', name: 'vite', reason: 'held'},
+    ]);
+  });
+
+  test('config hold: an unheld package is untouched', () => {
+    sandbox.writePackageJson({
+      dependencies: {foo: '^1.2.3', vite: '8.0.16'},
+      gaia: {updateDepsHold: {vite: '8.0'}},
+    });
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      pnpmRunner: makePnpmRunner(
+        {
+          foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+          vite: {current: '8.0.16', latest: '8.1.0', wanted: '8.1.0'},
+        },
+        undefined,
+        undefined,
+        undefined,
+        {vite: ['8.0.16', '8.1.0']}
+      ),
+    });
+
+    // foo flows through; vite is held out.
+    expect(result.wave_a.map((entry) => entry.name)).toEqual(['foo']);
+    expect(result.skipped).toEqual([
+      {current: '8.0.16', latest: '8.1.0', name: 'vite', reason: 'held'},
+    ]);
   });
 
   test('emits an empty payload when nothing is outdated', () => {
@@ -741,6 +896,7 @@ describe('update-deps run: CLI', () => {
       generated_at: string;
       schema_version: number;
       skipped: unknown[];
+      snoozed: unknown[];
       wave_a: {group: string; kind: string; name: string}[];
       wave_b: unknown[];
     };
@@ -751,6 +907,7 @@ describe('update-deps run: CLI', () => {
     expect(parsed.wave_a[0]?.kind).toBe('minor');
     expect(parsed.wave_b).toEqual([]);
     expect(parsed.skipped).toEqual([]);
+    expect(parsed.snoozed).toEqual([]);
   });
 
   test('--emit-updates creates parent directories on demand', () => {
@@ -1132,5 +1289,30 @@ describe('update-deps run: preview payload fields', () => {
     // leaves only foo actionable.
     expect(result.total_count).toBe(3);
     expect(result.actionable_count).toBe(1);
+    // The snoozed group is surfaced per-group for the preview to default-skip.
+    expect(result.snoozed).toEqual([
+      {
+        group: 'react-router',
+        resurfaces_at: new Date(
+          NOW().getTime() + 14 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+        snoozed_at: NOW().toISOString(),
+        targets: {'@react-router/serve': '7.2.0', 'react-router': '7.2.0'},
+      },
+    ]);
+  });
+
+  test('snoozed is empty when the ledger has no matching active decline', () => {
+    sandbox.writePackageJson({dependencies: {foo: '^1.2.3'}});
+
+    const result = computeUpdates({
+      cwd: sandbox.root,
+      now: NOW,
+      pnpmRunner: makePnpmRunner({
+        foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+      }),
+    });
+
+    expect(result.snoozed).toEqual([]);
   });
 });

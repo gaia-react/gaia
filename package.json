@@ -5,6 +5,11 @@
   "author": "Steven Sacks <stevensacks@gmail.com>",
   "sideEffects": false,
   "type": "module",
+  "gaia": {
+    "updateDepsHold": {
+      "vite": "8.0"
+    }
+  },
   "bin": {
     "gaia": "./.gaia/cli/gaia"
   },

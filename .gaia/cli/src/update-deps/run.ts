@@ -7,7 +7,10 @@
  *
  * Phase 1: Discover via `pnpm outdated --json`. ESLint 9.x cap rewrites
  *          a `latest >= 10.x` to the highest available `9.x`; if already
- *          on the highest 9.x, the entry is dropped silently. A release-age
+ *          on the highest 9.x, the entry is dropped silently. A config version
+ *          hold (`gaia.updateDepsHold` in package.json) then caps each held
+ *          package to its ceiling line, dropping it (`reason: held`) when
+ *          nothing on that line beats the installed version. A release-age
  *          cooldown then caps each target to the newest version that has
  *          cleared `minimumReleaseAge` (from `pnpm-workspace.yaml`); a target
  *          with no aged upgrade is recorded as `skipped`.
@@ -27,9 +30,11 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {
+  collectSnoozedGroups,
   computeActionableCount,
   loadDeclines,
   totalCount,
+  type SnoozedGroup,
 } from './declines.js';
 import {resolveGroup, resolveGroupMembers} from './groups.js';
 
@@ -97,6 +102,12 @@ export type UpdatesPayload = {
   generated_at: string;
   schema_version: 1;
   skipped: readonly SkippedEntry[];
+  /**
+   * Outstanding groups the human snoozed earlier that are still within their
+   * snooze window and match the currently-offered targets. The interactive
+   * preview marks these and default-skips them; empty in CI (no local ledger).
+   */
+  snoozed: readonly SnoozedGroup[];
   /** Outstanding package count across both waves, pre-snooze. */
   total_count: number;
   wave_a: readonly WaveAEntry[];
@@ -226,6 +237,7 @@ const compareSegments = (
 type PackageJsonShape = {
   dependencies?: Readonly<Record<string, string>>;
   devDependencies?: Readonly<Record<string, string>>;
+  gaia?: {updateDepsHold?: Readonly<Record<string, unknown>>};
   optionalDependencies?: Readonly<Record<string, string>>;
   peerDependencies?: Readonly<Record<string, string>>;
 };
@@ -234,6 +246,32 @@ const readPackageJson = (cwd: string): PackageJsonShape => {
   const raw = readFileSync(path.join(cwd, 'package.json'), 'utf8');
 
   return JSON.parse(raw) as PackageJsonShape;
+};
+
+/**
+ * The committed `gaia.updateDepsHold` map (`name -> version ceiling`) from
+ * package.json. A ceiling is a version prefix: `"8.0"` caps the package to the
+ * highest `8.0.x`, `"8.0.16"` freezes it exactly. Unlike the local snooze
+ * ledger this is committed, so it holds a package in interactive AND CI runs
+ * alike, until the maintainer lifts it. Non-string values are dropped;
+ * a missing map yields no holds.
+ */
+const readUpdateDepsHolds = (
+  pkg: PackageJsonShape
+): Readonly<Record<string, string>> => {
+  const raw = pkg.gaia?.updateDepsHold;
+
+  if (raw === null || typeof raw !== 'object') return {};
+
+  const out: Record<string, string> = {};
+
+  for (const [name, ceiling] of Object.entries(raw)) {
+    if (typeof ceiling === 'string' && ceiling.trim().length > 0) {
+      out[name] = ceiling.trim();
+    }
+  }
+
+  return out;
 };
 
 /**
@@ -340,31 +378,19 @@ const parseOutdated = (stdout: string): readonly OutdatedEntry[] => {
   );
 };
 
-// ---------- ESLint 9.x cap ----------
+// ---------- published-version fetch ----------
 
-const ESLINT_CAPPED = new Set(['eslint', '@eslint/js']);
-
-const findHighest9x = (versions: readonly string[]): string | undefined => {
-  let best: {raw: string; segments: readonly number[]} | undefined;
-
-  for (const candidate of versions) {
-    const segments = parseSegments(candidate);
-
-    if (segments[0] !== 9) continue;
-
-    if (best === undefined || compareSegments(segments, best.segments) > 0) {
-      best = {raw: candidate, segments};
-    }
-  }
-
-  return best?.raw;
-};
-
-const fetchEslintVersions = (
+/**
+ * Fetch a package's full published version list via `pnpm view <name> versions
+ * --json`. Returns [] on any failure. Shared by the ESLint 9.x cap and the
+ * config version-hold cap; results are memoized per run by the caller's cache.
+ */
+const fetchPackageVersions = (
+  name: string,
   cwd: string,
   pnpmRunner: PnpmRunner
 ): readonly string[] => {
-  const result = pnpmRunner(['view', 'eslint', 'versions', '--json'], {cwd});
+  const result = pnpmRunner(['view', name, 'versions', '--json'], {cwd});
 
   if (result.status !== 0) return [];
 
@@ -385,16 +411,36 @@ const fetchEslintVersions = (
   return parsed.filter((value): value is string => typeof value === 'string');
 };
 
+type VersionFetcher = (name: string) => readonly string[];
+
 type CappedDecision =
   | {kind: 'drop'}
   | {kind: 'pass'}
   | {kind: 'rewrite'; latest: string};
 
+// ---------- ESLint 9.x cap ----------
+
+const ESLINT_CAPPED = new Set(['eslint', '@eslint/js']);
+
+const findHighest9x = (versions: readonly string[]): string | undefined => {
+  let best: {raw: string; segments: readonly number[]} | undefined;
+
+  for (const candidate of versions) {
+    const segments = parseSegments(candidate);
+
+    if (segments[0] !== 9) continue;
+
+    if (best === undefined || compareSegments(segments, best.segments) > 0) {
+      best = {raw: candidate, segments};
+    }
+  }
+
+  return best?.raw;
+};
+
 const applyEslintCap = (
   entry: OutdatedEntry,
-  pnpmRunner: PnpmRunner,
-  cwd: string,
-  cache: {versions?: readonly string[]}
+  getVersions: VersionFetcher
 ): CappedDecision => {
   if (!ESLINT_CAPPED.has(entry.name)) return {kind: 'pass'};
 
@@ -402,11 +448,7 @@ const applyEslintCap = (
 
   if ((latestSegments[0] ?? 0) < 10) return {kind: 'pass'};
 
-  if (cache.versions === undefined) {
-    cache.versions = fetchEslintVersions(cwd, pnpmRunner);
-  }
-
-  const highest9x = findHighest9x(cache.versions);
+  const highest9x = findHighest9x(getVersions('eslint'));
 
   if (highest9x === undefined) {
     // Cap requested but no 9.x line exists upstream; drop the entry to
@@ -421,6 +463,89 @@ const applyEslintCap = (
   }
 
   return {kind: 'rewrite', latest: highest9x};
+};
+
+// ---------- config version-hold cap ----------
+
+/**
+ * Whether `version`'s leading segments equal the ceiling's. The ceiling pins as
+ * many leading segments as it lists: `"8.0"` (two segments) matches any
+ * `8.0.x`, `"8.0.16"` matches only `8.0.16`, `"8"` matches any `8.x`.
+ */
+const matchesCeilingPrefix = (version: string, ceiling: string): boolean => {
+  const ceilingParts =
+    stripRange(ceiling)
+      .split(/[+-]/u)[0]
+      ?.split('.')
+      .filter((part) => part.length > 0) ?? [];
+
+  if (ceilingParts.length === 0) return false;
+
+  const versionSegments = parseSegments(version);
+
+  for (let index = 0; index < ceilingParts.length; index += 1) {
+    const pinned = Number.parseInt(ceilingParts[index] ?? '', 10);
+
+    if (!Number.isFinite(pinned)) return false;
+    if ((versionSegments[index] ?? 0) !== pinned) return false;
+  }
+
+  return true;
+};
+
+/**
+ * Highest STABLE published version on the ceiling line, i.e. the newest version
+ * whose leading segments match `ceiling`. Prereleases are skipped.
+ */
+const findHighestUnderCeiling = (
+  versions: readonly string[],
+  ceiling: string
+): string | undefined => {
+  let best: {raw: string; segments: readonly number[]} | undefined;
+
+  for (const candidate of versions) {
+    if (candidate.includes('-')) continue; // prerelease
+    if (!matchesCeilingPrefix(candidate, ceiling)) continue;
+
+    const segments = parseSegments(candidate);
+
+    if (best === undefined || compareSegments(segments, best.segments) > 0) {
+      best = {raw: candidate, segments};
+    }
+  }
+
+  return best?.raw;
+};
+
+/**
+ * Apply a config version hold. A held package is capped to its ceiling line:
+ * `pass` when `latest` already sits on it (offer normally); `rewrite` to an
+ * in-ceiling upgrade over `current` (e.g. a patch on the held line); or `drop`
+ * when nothing on the ceiling line beats `current` (held at the installed
+ * version), or the ceiling matches no published version (fail-closed, never let
+ * a held package jump above its ceiling).
+ */
+const applyHoldCap = (
+  params: {current: string; latest: string; name: string},
+  holds: Readonly<Record<string, string>>,
+  getVersions: VersionFetcher
+): CappedDecision => {
+  const ceiling = holds[params.name];
+
+  if (ceiling === undefined) return {kind: 'pass'};
+  if (matchesCeilingPrefix(params.latest, ceiling)) return {kind: 'pass'};
+
+  const capped = findHighestUnderCeiling(getVersions(params.name), ceiling);
+
+  if (capped === undefined) return {kind: 'drop'};
+
+  if (
+    compareSegments(parseSegments(capped), parseSegments(params.current)) <= 0
+  ) {
+    return {kind: 'drop'};
+  }
+
+  return {kind: 'rewrite', latest: capped};
 };
 
 // ---------- sibling version fetch ----------
@@ -647,22 +772,54 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     compareSegments(parseSegments(wanted), parseSegments(latest)) > 0 ? latest
     : wanted;
 
-  const eslintCache: {versions?: readonly string[]} = {};
+  // Memoize `pnpm view <name> versions` across the ESLint cap and every hold
+  // cap in this run; both may consult the same package.
+  const versionCache = new Map<string, readonly string[]>();
+  const getVersions: VersionFetcher = (name) => {
+    const cached = versionCache.get(name);
+
+    if (cached !== undefined) return cached;
+
+    const fetched = fetchPackageVersions(name, options.cwd, pnpmRunner);
+
+    versionCache.set(name, fetched);
+
+    return fetched;
+  };
+
+  const holds = readUpdateDepsHolds(pkg);
   const adjusted: Adjusted[] = [];
   const skipped: SkippedEntry[] = [];
 
   for (const entry of raw) {
-    const decision = applyEslintCap(
-      entry,
-      pnpmRunner,
-      options.cwd,
-      eslintCache
+    const eslintDecision = applyEslintCap(entry, getVersions);
+
+    if (eslintDecision.kind === 'drop') continue;
+
+    const eslintLatest =
+      eslintDecision.kind === 'rewrite' ? eslintDecision.latest : entry.latest;
+
+    // Config version hold, applied after the ESLint cap so a held eslint is
+    // capped by both. A held package that has nothing left to offer is dropped
+    // and surfaced as `reason: held` so the maintainer sees the active hold.
+    const holdDecision = applyHoldCap(
+      {current: entry.current, latest: eslintLatest, name: entry.name},
+      holds,
+      getVersions
     );
 
-    if (decision.kind === 'drop') continue;
+    if (holdDecision.kind === 'drop') {
+      skipped.push({
+        current: entry.current,
+        latest: eslintLatest,
+        name: entry.name,
+        reason: 'held',
+      });
+      continue;
+    }
 
     const effectiveLatest =
-      decision.kind === 'rewrite' ? decision.latest : entry.latest;
+      holdDecision.kind === 'rewrite' ? holdDecision.latest : eslintLatest;
 
     const cooled = applyCooldown(entry.name, entry.current, effectiveLatest);
 
@@ -758,12 +915,28 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
         continue;
       }
 
-      const cooled = applyCooldown(siblingName, current, latest);
+      // A held sibling is capped too, so group expansion never drags it above
+      // its ceiling. A drop holds it at `current` (the group moves without it).
+      const holdDecision = applyHoldCap(
+        {current, latest, name: siblingName},
+        holds,
+        getVersions
+      );
+
+      if (holdDecision.kind === 'drop') {
+        skipped.push({current, latest, name: siblingName, reason: 'held'});
+        continue;
+      }
+
+      const heldLatest =
+        holdDecision.kind === 'rewrite' ? holdDecision.latest : latest;
+
+      const cooled = applyCooldown(siblingName, current, heldLatest);
 
       if (cooled.kind !== 'ok') {
         skipped.push({
           current,
-          latest,
+          latest: heldLatest,
           name: siblingName,
           reason:
             cooled.kind === 'cooldown' ?
@@ -849,10 +1022,13 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     : 0
   );
 
-  // Snooze suppression affects the count ONLY. The waves still carry every
-  // outstanding package so the interactive preview shows snoozed groups as
-  // updatable; the ledger is absent in CI, so `actionable_count` equals
-  // `total_count` there.
+  // The waves always carry every outstanding package: nothing here gates the
+  // apply set, so CI installs everything and the interactive preview can still
+  // refresh a snoozed group on "update all". Snooze state is surfaced two ways
+  // off the same ledger read: `actionable_count` subtracts snoozed groups for
+  // the statusline, and `snoozed` names them per-group so the preview can mark
+  // and default-skip them. The ledger is absent in CI, so `actionable_count`
+  // equals `total_count` and `snoozed` is empty there.
   const countable = {wave_a: waveA, wave_b: waveB};
   const declines = loadDeclines(options.cwd);
 
@@ -861,6 +1037,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     generated_at: now.toISOString(),
     schema_version: 1,
     skipped,
+    snoozed: collectSnoozedGroups(countable, declines, now),
     total_count: totalCount(countable),
     wave_a: waveA,
     wave_b: waveB,

@@ -5,8 +5,10 @@ import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {
   MAX_SNOOZE_MS,
   collectOutstandingGroups,
+  collectSnoozedGroups,
   computeActionableCount,
   declinedLedgerPath,
+  findActiveDecline,
   isSuppressed,
   loadDeclines,
   saveDeclines,
@@ -151,6 +153,90 @@ describe('isSuppressed', () => {
     expect(
       isSuppressed('react-router', reactRouterTargets, [declineRecord()], later)
     ).toBe(false);
+  });
+});
+
+describe('findActiveDecline', () => {
+  test('returns the matching record inside the window', () => {
+    const record = declineRecord();
+    expect(
+      findActiveDecline('react-router', reactRouterTargets, [record], now)
+    ).toBe(record);
+  });
+
+  test('returns undefined when nothing matches', () => {
+    const moved = {...reactRouterTargets, 'react-router': '7.3.0'};
+    expect(
+      findActiveDecline('react-router', moved, [declineRecord()], now)
+    ).toBeUndefined();
+  });
+
+  test('returns undefined once the cap elapses', () => {
+    const later = new Date(now.getTime() + MAX_SNOOZE_MS);
+    expect(
+      findActiveDecline(
+        'react-router',
+        reactRouterTargets,
+        [declineRecord()],
+        later
+      )
+    ).toBeUndefined();
+  });
+});
+
+describe('collectSnoozedGroups', () => {
+  test('surfaces an actively-snoozed group with resurface metadata', () => {
+    expect(collectSnoozedGroups(payload, [declineRecord()], now)).toEqual([
+      {
+        group: 'react-router',
+        resurfaces_at: new Date(now.getTime() + MAX_SNOOZE_MS).toISOString(),
+        snoozed_at: now.toISOString(),
+        targets: reactRouterTargets,
+      },
+    ]);
+  });
+
+  test('omits a group whose decline aged out of the window', () => {
+    const later = new Date(now.getTime() + MAX_SNOOZE_MS);
+    expect(collectSnoozedGroups(payload, [declineRecord()], later)).toEqual([]);
+  });
+
+  test('omits a group whose targets no longer match the offer', () => {
+    const moved = declineRecord({
+      targets: {...reactRouterTargets, 'react-router': '7.3.0'},
+    });
+    expect(collectSnoozedGroups(payload, [moved], now)).toEqual([]);
+  });
+
+  test('returns empty when the ledger is empty', () => {
+    expect(collectSnoozedGroups(payload, [], now)).toEqual([]);
+  });
+
+  test('sorts multiple snoozed groups by group id', () => {
+    const multi: CountablePayload = {
+      wave_a: [
+        {
+          current: '1.3.0',
+          group: 'singleton:left-pad',
+          latest: '1.4.0',
+          name: 'left-pad',
+        },
+      ],
+      wave_b: payload.wave_b,
+    };
+    const leftPad = declineRecord({
+      group: 'singleton:left-pad',
+      targets: {'left-pad': '1.4.0'},
+    });
+    const result = collectSnoozedGroups(
+      multi,
+      [declineRecord(), leftPad],
+      now
+    );
+    expect(result.map((entry) => entry.group)).toEqual([
+      'react-router',
+      'singleton:left-pad',
+    ]);
   });
 });
 
