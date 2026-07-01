@@ -25,6 +25,18 @@
 
 TTL=21600
 
+# GitHub's issue-list index is eventually consistent: right after a /gaia-debt PR
+# merges and its `Closes #N` fires, `gh issue list --state open` can keep counting
+# the just-closed issue for a few seconds (observed: still 1 several seconds past
+# the issue's closedAt). A sentinel-triggered recompute in that window caches a
+# stale (too-high) count and, by clearing the sentinel, freezes it until the TTL,
+# so the `Run /gaia-debt` nudge lingers for hours after the backlog is empty. A
+# recompute fired by a sentinel younger than this settle grace therefore writes
+# the fresh count but keeps the sentinel armed, forcing a later tick to re-read
+# the now-consistent count before the sentinel clears. TTL/missing-cache
+# recomputes are not racing a merge and clear normally.
+SENTINEL_SETTLE_GRACE=120
+
 # Resolve project root (parent of .gaia/) so the script works regardless of cwd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -54,8 +66,19 @@ fi
 # Decide whether to recompute. The sentinel ALWAYS forces a recompute,
 # regardless of the TTL (this is the SPEC's prompt-invalidation bypass).
 should_recompute=false
+sentinel_settled=true
 if [ -e "$SENTINEL" ]; then
   should_recompute=true
+  # Portable mtime (BSD/macOS `-f %m`, GNU/Linux `-c %Y`). An unreadable mtime
+  # falls back to 0, which reads as "aged past the grace" so a stat failure can
+  # never wedge the sentinel armed forever (it reverts to clear-on-recompute).
+  sentinel_mtime=$(stat -f %m "$SENTINEL" 2>/dev/null || stat -c %Y "$SENTINEL" 2>/dev/null || echo 0)
+  case "$sentinel_mtime" in
+    ''|*[!0-9]*) sentinel_mtime=0 ;;
+  esac
+  if [ "$((now - sentinel_mtime))" -lt "$SENTINEL_SETTLE_GRACE" ]; then
+    sentinel_settled=false
+  fi
 elif [ ! -f "$CACHE_FILE" ]; then
   should_recompute=true
 else
@@ -119,10 +142,14 @@ else
   rm -f "$tmp_file" 2>/dev/null
 fi
 
-# Clear the sentinel only after a genuine recompute (not the zero-seed
-# fallback): a backend-absent zero-seed keeps the sentinel so the next tick
-# retries once gh becomes available again.
-if [ "$recompute_ok" = "true" ]; then
+# Clear the sentinel after a genuine recompute (not the zero-seed fallback: a
+# backend-absent zero-seed keeps the sentinel so the next tick retries once gh
+# is back). But hold a freshly-set sentinel armed through the settle grace so a
+# later tick re-reads GitHub's now-consistent count before the sentinel clears;
+# otherwise a recompute that raced the merge's `Closes #N` would freeze a stale
+# count until the TTL. `sentinel_settled` is true when no sentinel exists (the
+# rm is then a harmless no-op) or when it has aged past the grace.
+if [ "$recompute_ok" = "true" ] && [ "$sentinel_settled" = "true" ]; then
   rm -f "$SENTINEL" 2>/dev/null
 fi
 

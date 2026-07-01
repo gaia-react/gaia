@@ -1,0 +1,118 @@
+#!/usr/bin/env bats
+# Tests for `.gaia/scripts/debt-count-refresh.sh`, focused on the sentinel
+# settle-grace re-arm.
+#
+# GitHub's issue-list index is eventually consistent, so a recompute fired the
+# instant a /gaia-debt PR merges can still count the just-closed issue. If that
+# stale read cleared the sentinel, the `Run /gaia-debt` nudge would freeze at the
+# pre-merge count until the 6h TTL. The fix keeps a sentinel younger than the
+# settle grace armed so a later tick re-reads the now-consistent count first.
+#
+# The script writes under `$PROJECT_ROOT/.gaia/local/debt/`, where PROJECT_ROOT
+# derives from the script's own path. Each test runs a COPY inside an isolated
+# sandbox so it never touches the real repo cache, with a stub `gh` on PATH.
+
+setup() {
+  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SRC_SCRIPT="$THIS_DIR/../debt-count-refresh.sh"
+  [ -f "$SRC_SCRIPT" ] || skip "debt-count-refresh.sh missing"
+  command -v jq >/dev/null 2>&1 || skip "jq required"
+
+  SANDBOX="$BATS_TEST_TMPDIR/sandbox"
+  mkdir -p "$SANDBOX/.gaia/scripts" "$SANDBOX/.gaia/local/debt" "$SANDBOX/bin"
+  cp "$SRC_SCRIPT" "$SANDBOX/.gaia/scripts/debt-count-refresh.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/debt-count-refresh.sh"
+  SCRIPT="$SANDBOX/.gaia/scripts/debt-count-refresh.sh"
+  DEBT_DIR="$SANDBOX/.gaia/local/debt"
+  SENTINEL="$DEBT_DIR/refresh-requested"
+  CACHE="$DEBT_DIR/count.json"
+}
+
+# stub_gh <count>: a fake `gh` whose `issue list` reports <count> open issues.
+stub_gh() {
+  cat > "$SANDBOX/bin/gh" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
+  printf '%s\n' "$1"
+fi
+exit 0
+STUB
+  chmod +x "$SANDBOX/bin/gh"
+}
+
+# stub_gh_fail: a fake `gh` whose `issue list` prints nothing (a network/auth
+# failure). The refresher then treats the read as failed (recompute_ok=false).
+stub_gh_fail() {
+  cat > "$SANDBOX/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+  chmod +x "$SANDBOX/bin/gh"
+}
+
+# Prepend the stub dir so our `gh` wins over any host `gh`; keep the rest of PATH
+# so the real `jq` still resolves.
+run_refresh() {
+  ( cd "$SANDBOX" && PATH="$SANDBOX/bin:$PATH" "$SCRIPT" )
+}
+
+# past_ts <seconds>: a `touch -t` stamp for (now - seconds), portable across
+# BSD/macOS `date -r <epoch>` and GNU `date -d @<epoch>`.
+past_ts() {
+  local epoch=$(( $(date +%s) - $1 ))
+  date -r "$epoch" +%Y%m%d%H%M.%S 2>/dev/null || date -d "@$epoch" +%Y%m%d%H%M.%S
+}
+
+open_count() { jq -r '.openCount' "$CACHE"; }
+
+# --- 1. Young sentinel + stale (still-high) read: count written, sentinel KEPT -
+# The exact race that stuck the nudge: the merge fired the sentinel, the index
+# still reports the just-closed issue, so the recompute reads a stale 1. It must
+# write that read but keep the sentinel armed so a later tick can correct it.
+@test "young sentinel + stale read: writes count but keeps the sentinel armed" {
+  stub_gh 1
+  : > "$SENTINEL"            # fresh: mtime = now, inside the grace
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "1" ]
+  [ -e "$SENTINEL" ]         # NOT cleared: next tick re-reads the settled count
+}
+
+# --- 2. Young sentinel + already-correct read: still KEPT (grace is time-based) -
+# The grace never inspects the value; it waits out the index-consistency window
+# regardless, so even a correct 0 keeps the sentinel until it ages out.
+@test "young sentinel + correct read: still keeps the sentinel (time-based grace)" {
+  stub_gh 0
+  : > "$SENTINEL"
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "0" ]
+  [ -e "$SENTINEL" ]
+}
+
+# --- 3. Aged sentinel + successful read: count written, sentinel CLEARED --------
+# Past the grace the index has settled, so the recompute is trusted and the
+# sentinel clears (otherwise it would recompute every tick forever).
+@test "aged sentinel past grace: writes count and clears the sentinel" {
+  stub_gh 0
+  : > "$SENTINEL"
+  touch -t "$(past_ts 300)" "$SENTINEL"   # 300s old > 120s grace
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "0" ]
+  [ ! -e "$SENTINEL" ]
+}
+
+# --- 4. Failed read, no prior cache: zero-seed written, sentinel KEPT -----------
+# Guards the untouched backend-absent path: a failed recompute (recompute_ok
+# false) seeds openCount 0 but must keep the sentinel so the next tick retries,
+# even when the sentinel has already aged past the grace.
+@test "failed read with no prior cache: zero-seeds and keeps the sentinel" {
+  stub_gh_fail
+  : > "$SENTINEL"
+  touch -t "$(past_ts 300)" "$SENTINEL"
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "0" ]
+  [ -e "$SENTINEL" ]
+}
