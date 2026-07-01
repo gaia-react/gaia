@@ -58,6 +58,8 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Removed
 
+- the orphaned `setup-ci set-secret` CLI verb, superseded by #478's out-of-band token provisioning: with `/setup-gaia-ci` Step 7 no longer shelling out to it, the verb was dead-but-advertised surface (listed in `--help` and the top-level verb list with no caller) and a latent paste-reintroduction vector, invoking it required an agent to hold the CI bot token on stdin, the exact exposure #478 eliminated. Deleted outright (handler, tests, dispatch, and help entries); the shared `gh` wrapper stays since `check-admin` / `enable-delete-branch` / `verify-run` still use it, and the `gaia` bundle is rebuilt (the `gaia-maintainer` bundle omits the `setup-ci` router, so it is byte-identical). Maintainer CLI surface, so release-excluded (#479)
+
 - `app/components/Header/`, `app/components/Footer/`, `app/components/GaiaLogo/`, and `app/assets/images/gaia-logo.svg` from the template: these GAIA-branded surfaces are owned by the manifest and removed from the scaffold directly rather than shipped and stripped at init. Adopters who customized any of these owned files will be offered a migration note by `/update-gaia`; the change is intentional and the neutral index + Layout ship in their place (#455)
 
 - the vestigial `react-router-dom` dependency, a v6/v7 re-export shim that React Router 8 drops entirely; GAIA runs framework mode and imports everything from `react-router` (`HydratedRouter` comes from `react-router/dom`), so it was already dead weight on v7. `/update-gaia` leaves an existing `react-router-dom` in your `package.json` by design (adopter-owned dependencies are never auto-removed); `pnpm knip` also flags it as unused after this release (#419)

@@ -2,10 +2,11 @@
  * Thin wrapper around `gh` invocations used by `gaia setup-ci`.
  *
  * Spawns child processes via `child_process.spawn` (NOT `execSync`) so
- * stdin can be piped into `gh secret set`. Returns a discriminated
- * `{ ok: true, stdout }` / `{ ok: false, exitCode, stderr }` shape.
+ * stdin can be piped into `gh` when a caller needs it. Returns a
+ * discriminated `{ ok: true, stdout }` / `{ ok: false, exitCode, stderr }`
+ * shape.
  *
- * Critical security contract for `set-secret`:
+ * Security contract for any stdin-carrying invocation:
  *
  * - The wrapper NEVER appends `stdin` content to `args`.
  * - The wrapper NEVER logs or echoes `stdin` content.
