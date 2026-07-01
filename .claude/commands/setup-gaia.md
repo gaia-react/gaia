@@ -370,14 +370,16 @@ When `admin: true` and `auth_status == "ok"`:
 gh api -X PUT "repos/<owner>/<repo>/branches/<default-branch>/protection" --input - <<'JSON'
 {
   "required_status_checks": {"strict": true, "contexts": []},
-  "enforce_admins": true,
-  "required_pull_request_reviews": {"required_approving_review_count": 1},
+  "enforce_admins": false,
+  "required_pull_request_reviews": {"required_approving_review_count": 0},
   "restrictions": null
 }
 JSON
 ```
 
 `required_status_checks.contexts` starts empty here; Phase 4 unions `GAIA-Audit` (and any sibling contexts) into it.
+
+`required_approving_review_count` is `0` and `enforce_admins` is `false` on purpose. GAIA's merge gate is the `GAIA-Audit` required status check (plus any sibling checks), not a human approval, so a review requirement would wedge a solo adopter: nobody can approve their own PR, and `enforce_admins: true` would block the admin override, leaving them unable to merge anything to the default branch. `enforce_admins: false` also lets the admin runner land the Phase 4 finalize commit directly. Do not tighten these to require approvals or enforce admins without a merge path that a solo repo can actually satisfy.
 
 **delete_branch_on_merge.** Read the current setting:
 
