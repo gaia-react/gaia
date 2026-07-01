@@ -2,13 +2,17 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-06-24
+updated: 2026-07-02
 tags: [concept, ci, audit, claude]
 ---
 
 # Code Review Audit CI
 
-A GitHub Actions pre-merge gate that runs the [[Code Review Audit Agent]] against every PR in repos where it is installed. The workflow installs on demand via `/setup-gaia` (alongside the cron workflows); it is not shipped by default, so adopters who have not enabled GAIA CI do not carry `.github/workflows/code-review-audit.yml`. Its presence in a repo signals that CI is configured to audit. The maintainer repo keeps it in-tree as the live gate. Once installed, the workflow exposes a stable check named `code-review-audit` that branch protection on `main` requires before merge.
+A GitHub Actions pre-merge gate that runs the [[Code Review Audit Agent]] against every PR in repos where it is installed. The workflow installs on demand via `/setup-gaia` (alongside the cron workflows); it is not shipped by default, so adopters who have not enabled GAIA CI do not carry `.github/workflows/code-review-audit.yml`. Its presence in a repo signals that CI is configured to audit. Once installed, the workflow exposes a stable check named `code-review-audit` that branch protection on `main` requires before merge.
+
+<!-- gaia:maintainer-only:start -->
+The maintainer repo keeps it in-tree as the live gate.
+<!-- gaia:maintainer-only:end -->
 
 The workflow authenticates via whichever single repo-scoped secret `/setup-gaia` configured: it wires both `claude_code_oauth_token` and `anthropic_api_key`, so a repo using `ANTHROPIC_API_KEY` instead of `CLAUDE_CODE_OAUTH_TOKEN` (or vice versa) authenticates without any extra configuration.
 
@@ -114,6 +118,14 @@ When an author resolves to `local` mode with no override label and the change is
 
 The resolver fail-closes to `ci` when it cannot confirm `GAIA-Audit` is a registered required check on the default branch (network failure, unauthenticated, no repo slug): an unverifiable gate must not silently disable the audit.
 
+### Ruleset-protected repos: `local` mode is unreachable
+
+The fail-close above is not only a network guard; it makes `local` mode unreachable on any repo that protects its default branch with a **repository ruleset** rather than classic branch protection. The confirmation helper (`required_check_confirmed` in the resolver) queries the classic API `repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks` and looks for a `GAIA-Audit` context. A ruleset-protected branch carries no classic protection, so that endpoint returns `404 Branch not protected`, the confirmation fails, and a would-be `local` resolution is forced back to `ci` (with a stderr warning). The resolver reads only the classic-protection API; it does not consult the rulesets API. To run the audit locally on such a repo, do not flip the mode knob; use the trailer handshake, which stands CI down per-branch regardless of resolved mode (see [[#How to skip an audit run locally]]).
+
+<!-- gaia:maintainer-only:start -->
+The maintainer repo is exactly this case: `main` is protected by a ruleset, so `local` mode never takes effect. Setting `default_mode: local` or adding an `audit_authors` `login=local` pair is silently coerced to `ci`, and CI runs the audit as normal. Two facts compound: the classic endpoint is absent, and the ruleset's required context is the job name `code-review-audit`, not the `GAIA-Audit` status the helper greps for. Running the audit locally therefore always goes through the trailer handshake.
+<!-- gaia:maintainer-only:end -->
+
 ## Self-heal staging guards
 
 The `Commit and push self-heal` step decides what, if anything, the audit commits back to the PR branch. It stages tracked modifications only (`git add -u`, never `git add -A`, so runner artifacts such as `.claude-pr/` never enter a commit), and refuses the entire self-heal when the staged diff touches an instruction/convention surface (`.claude/`, `.specify/`, `wiki/`) or exceeds ten files: both indicate the agent undoing intentional work rather than fixing a defect.
@@ -148,7 +160,7 @@ After the workflow lands on `main`, the maintainer (or an adopter applying the s
 
 ## How to skip an audit run locally
 
-A clean local run of the [[Code Review Audit Agent]] stamps the trailer automatically; the next push carries it, and CI's skip logic short-circuits. The end-to-end recipe:
+This trailer handshake is also the way to run the audit locally on a ruleset-protected repo, where `local` mode is unreachable (see [[#Ruleset-protected repos: `local` mode is unreachable]]). A clean local run of the [[Code Review Audit Agent]] stamps the trailer automatically; the next push carries it, and CI's skip logic short-circuits, so `code-review-audit` reports green in seconds without spending CI audit tokens. The end-to-end recipe:
 
 1. Spawn the audit agent on the PR branch (per [[PR Merge Workflow]]).
 2. Address every Critical and Important finding; re-run until the agent reports `Audit marker written for HEAD ... GAIA-Audit trailer ...; gh pr merge is unblocked.`
