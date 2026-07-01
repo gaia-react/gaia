@@ -19,6 +19,7 @@ import {EXIT_CODES} from '../exit.js';
 import {
   computeTally,
   type TallyPrRecord,
+  type TallyResult,
   windowClasses,
 } from './compute-tally.js';
 import {coveredClassesFromRules} from './covered-classes.js';
@@ -47,6 +48,20 @@ type RunOptions = {
   cwd?: string;
   runLedger?: LedgerRunner;
 };
+
+/**
+ * The window read plus a success flag. `ghOk` is `true` when the merged-PR
+ * window was read successfully (including a genuinely empty window) and `false`
+ * when the `gh` read failed, so a network outage is distinguishable from an
+ * all-clear at the emit boundary.
+ */
+type WindowPrs = {
+  ghOk: boolean;
+  prs: TallyPrRecord[];
+};
+
+/** The emitted tally JSON: the pure result plus the window-read success flag. */
+type EmittedTally = TallyResult & {gh_ok: boolean};
 
 const windowStartDate = (now: Date): string => {
   const start = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -84,10 +99,13 @@ const parseGhPr = (value: unknown): GhPr | null => {
 /**
  * Reads the merged-PR window via gh. Returns one record per PR that carries a
  * parseable findings block (the latest such comment wins so a re-run audit
- * supersedes an earlier one). Returns an empty array on any gh failure so the
- * refresher never blocks.
+ * supersedes an earlier one), alongside `ghOk`. `ghOk` is `false` on any gh
+ * failure (non-zero exit, unparseable JSON, or a well-formed-but-non-array
+ * response, all read failures rather than empty windows) and `true` otherwise,
+ * including a genuinely empty window. The refresher never blocks: an empty `prs`
+ * list is returned in every failure case.
  */
-const fetchWindowPrs = (cwd: string, now: Date): TallyPrRecord[] => {
+const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
   const search = `merged:>=${windowStartDate(now)}`;
   const ghResult: ProcessResult = runGh(
     [
@@ -105,17 +123,17 @@ const fetchWindowPrs = (cwd: string, now: Date): TallyPrRecord[] => {
     {cwd}
   );
 
-  if (ghResult.exitCode !== 0) return [];
+  if (ghResult.exitCode !== 0) return {ghOk: false, prs: []};
 
   let parsed: unknown;
 
   try {
     parsed = JSON.parse(ghResult.stdout);
   } catch {
-    return [];
+    return {ghOk: false, prs: []};
   }
 
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) return {ghOk: false, prs: []};
 
   const records: TallyPrRecord[] = [];
 
@@ -139,7 +157,7 @@ const fetchWindowPrs = (cwd: string, now: Date): TallyPrRecord[] => {
     }
   }
 
-  return records;
+  return {ghOk: true, prs: records};
 };
 
 export const run = (argv: readonly string[], options: RunOptions = {}): number => {
@@ -153,7 +171,7 @@ export const run = (argv: readonly string[], options: RunOptions = {}): number =
   const runLedger = options.runLedger ?? defaultLedgerRunner;
   const now = new Date();
 
-  const prs = fetchWindowPrs(cwd, now);
+  const {ghOk, prs} = fetchWindowPrs(cwd, now);
   const covered = coveredClassesFromRules(
     path.join(cwd, '.claude', 'rules')
   );
@@ -168,7 +186,13 @@ export const run = (argv: readonly string[], options: RunOptions = {}): number =
   // Self-clean the ledger: drop declines whose class no longer recurs.
   pruneLedger({cwd, runLedger, windowClasses: windowClasses(prs)});
 
-  process.stdout.write(`${JSON.stringify(tallyResult)}\n`);
+  // Emit `gh_ok` at the I/O boundary so a gh outage is distinguishable from an
+  // all-clear. It stays off the pure `TallyResult`: the tally core cannot know
+  // whether the window read succeeded. The read is non-fatal, so run() still
+  // exits 0 in every case.
+  const emitted: EmittedTally = {...tallyResult, gh_ok: ghOk};
+
+  process.stdout.write(`${JSON.stringify(emitted)}\n`);
 
   return EXIT_CODES.OK;
 };

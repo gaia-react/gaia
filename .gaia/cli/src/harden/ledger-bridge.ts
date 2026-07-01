@@ -16,6 +16,7 @@
  */
 import {spawnSync} from 'node:child_process';
 import type {ProcessResult} from '../ci/util/run-process.js';
+import {EXIT_CODES} from '../exit.js';
 
 export type LedgerRunner = (
   argv: readonly string[],
@@ -66,7 +67,19 @@ export const makeLedgerSuppressionPredicate = ({
       cwd
     );
 
-    return result.exitCode === 0;
+    // Exit-code discrimination. OK (0) → suppressed. The legitimate
+    // not-suppressed code (1, returned for both no_decline_entry and
+    // threshold_reached) → not suppressed; mapping 1 → not-suppressed is safe
+    // only because the bridge always supplies well-formed --finding-class /
+    // --current-pr-count args, so is-suppressed's arg-error path (which also
+    // exits 1) is unreachable here. Any OTHER non-zero code (CONFIG_INVALID 30
+    // for a corrupt/version-skewed ledger, STORAGE_INACCESSIBLE 20, ...) is a
+    // read error: fail closed → stay suppressed, so a corrupt ledger never
+    // silently re-surfaces a declined candidate.
+    if (result.exitCode === EXIT_CODES.OK) return true;
+    if (result.exitCode === EXIT_CODES.UNKNOWN_SUBCOMMAND) return false;
+
+    return true;
   };
 
 type PruneOptions = BridgeOptions & {

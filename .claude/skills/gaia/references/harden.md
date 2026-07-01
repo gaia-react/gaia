@@ -34,6 +34,7 @@ It prints JSON to stdout:
 {
   "candidate_count": 2,
   "window_days": 90,
+  "gh_ok": true,
   "candidates": [
     {
       "finding_class": "rule/use-effect-derived-state",
@@ -46,7 +47,7 @@ It prints JSON to stdout:
 }
 ```
 
-Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_numbers`, `area_tags`, `severity_max`. The tally already drops classes a promoted rule covers and classes the decline ledger suppresses, so every entry it returns is an open candidate. Coverage detection is class-level and scope-blind in v1: a promoted rule suppresses its `finding_class` regardless of the rule's `paths:` glob, because coverage keys only on the provenance marker's `finding_class`, not on scope. `harden-tally` is network-dependent and non-fatal: a `gh` failure yields an empty candidate list rather than an error. If `candidate_count` is `0`, report "no recurring findings crossed the threshold in the last 90 days" and stop.
+Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_numbers`, `area_tags`, `severity_max`. The tally already drops classes a promoted rule covers and classes the decline ledger suppresses, so every entry it returns is an open candidate. Coverage detection is class-level and scope-blind in v1: a promoted rule suppresses its `finding_class` regardless of the rule's `paths:` glob, because coverage keys only on the provenance marker's `finding_class`, not on scope. `harden-tally` is network-dependent and non-fatal: a `gh` failure yields an empty candidate list rather than an error, and it always exits 0. The emitted JSON carries a `gh_ok` boolean that separates a real all-clear from a failed window read. When `gh_ok` is `false`, the merged-PR window could not be read (a `gh`/network outage), which is NOT an all-clear: report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claim no findings. When `gh_ok` is `true` and `candidate_count` is `0`, report "no recurring findings crossed the threshold in the last 90 days" and stop.
 
 ## Judge-the-form logic (the heart of the command)
 
@@ -127,6 +128,8 @@ Record one bounded entry to the machine-local ledger, passing the candidate's cu
 .gaia/cli/gaia harden-ledger record --finding-class "<finding_class>" --pr-count <distinct_pr_count>
 ```
 
+Check the `harden-ledger record` exit code before reporting the outcome. On exit `0` the entry is written: report the machine-local decline as described below. On any non-zero exit (notably `CONFIG_INVALID` 30 for a corrupt or version-skewed ledger, or `STORAGE_INACCESSIBLE` 20) the entry was NOT recorded: tell the engineer the decline did not persist and why, and do not claim success. Because nothing was suppressed, the candidate re-surfaces on the next tally.
+
 State that the decline is machine-local only (the ledger is gitignored) and never shared: a teammate still sees the nudge and can approve. The decline re-surfaces on evidence, the ledger handles that: the candidate returns when the window's distinct-PR count for the class rises to at least 3 above its count at the time of decline. That count is a snapshot of the rolling 90-day window, not a monotonic tally of PRs merged since the decline, so window churn (old PRs aging out) can lower it and thereby delay or indefinitely prevent re-surface. A mis-decline is reversible: re-record with a corrected count, or let `.gaia/cli/gaia harden-ledger prune` drop the entry once the class leaves the window, the undo and hygiene path for the ledger.
 
 ### defer
@@ -171,7 +174,7 @@ The marker is this exact line, with `<class>` substituted:
 <!-- gaia-harden: promoted from recurring finding_class <class>; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
 ```
 
-`/gaia-audit` recognizes this marker only to apply its existing obsolescence / redundancy / supersession / duplication signals without a policy-memory exemption, and to explicitly NOT treat non-recurrence as a prune signal. The marker grants no special lifecycle. Do not alter its wording: `/gaia-audit` binds to this string.
+`/gaia-audit` recognizes this marker only to apply its existing obsolescence / redundancy / supersession / duplication signals without a policy-memory exemption, and to explicitly NOT treat non-recurrence as a prune signal. The marker grants no special lifecycle. Do not alter its wording: three binders key on it. The `covered-classes.ts` `MARKER_RE` matches its prefix (`gaia-harden: promoted from recurring finding_class`) and is deliberately tail-agnostic; `/gaia-audit` (`.claude/skills/gaia/references/audit.md`) keys on the full text; and the `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)` from `.gaia/cli/src/harden/marker.ts` byte for byte. A wording change that misses any copy silently breaks one binder or the other, so the marker text lives once in `marker.ts` and every copy tracks it.
 
 ## list subcommand
 
