@@ -67,7 +67,13 @@ Also check whether the quality gate (`wiki/decisions/Quality Gate.md`) already l
 
 Inspect the `finding_class` prefix and the pattern's nature:
 
-- **Oracle-class finding** (the `finding_class` is a tool id: it starts with `react-doctor/`, `axe/`, `knip/`, or `cve/`). This prefix list mirrors `ORACLE_PREFIXES` in `.gaia/cli/src/schemas/finding-class.ts`; keep the two in sync, a prefix added to the code but not here is misclassified as holistic/rule and mis-routed. A deterministic check already exists for it. Recommend making that check BLOCKING or adding it to the quality gate, an enforcement edit, NOT a new prose rule. Point at `wiki/decisions/Quality Gate.md` and the tool's wiring (`.claude/rules/knip.md`, `.claude/rules/dep-audit.md`, the `code-review-audit` agent, or the relevant CI workflow). A `knip/*` class is the exception to the quality-gate route: the developer Quality Gate intentionally omits knip (see `.claude/rules/knip.md`), so route knip enforcement to the `code-review-audit` agent or CI (`.github/forensics/run-quality-gate.sh`), never the dev gate. Never draft prose for an oracle class.
+- **Oracle-class finding** (the `finding_class` is a tool id: it starts with `react-doctor/`, `axe/`, `knip/`, or `cve/`).
+
+  <!-- gaia:maintainer-only:start -->
+  This prefix list mirrors `ORACLE_PREFIXES` in `.gaia/cli/src/schemas/finding-class.ts`; keep the two in sync, a prefix added to the code but not here is misclassified as holistic/rule and mis-routed.
+  <!-- gaia:maintainer-only:end -->
+
+  A deterministic check already exists for it. Recommend making that check BLOCKING or adding it to the quality gate, an enforcement edit, NOT a new prose rule. Point at `wiki/decisions/Quality Gate.md` and the tool's wiring (`.claude/rules/knip.md`, `.claude/rules/dep-audit.md`, the `code-review-audit` agent, or the relevant CI workflow). A `knip/*` class is the exception to the quality-gate route: the developer Quality Gate intentionally omits knip (see `.claude/rules/knip.md`), so route knip enforcement to the `code-review-audit` agent or CI (`.github/forensics/run-quality-gate.sh`), never the dev gate. Never draft prose for an oracle class.
 
 - **Mechanizable holistic/rule pattern** (the pattern can be caught by a lint rule, a hook, or a test). Recommend a DETERMINISTIC CHECK. v1 produces a hook+script SKETCH only; it activates nothing, writes no `.claude/rules/` file for it, and claims no prune lifecycle over it.
 
@@ -174,7 +180,11 @@ The marker is this exact line, with `<class>` substituted:
 <!-- gaia-harden: promoted from recurring finding_class <class>; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
 ```
 
-`/gaia-audit` recognizes this marker only to apply its existing obsolescence / redundancy / supersession / duplication signals without a policy-memory exemption, and to explicitly NOT treat non-recurrence as a prune signal. The marker grants no special lifecycle. Do not alter its wording: three binders key on it. The `covered-classes.ts` `MARKER_RE` matches its prefix (`gaia-harden: promoted from recurring finding_class`) and is deliberately tail-agnostic; `/gaia-audit` (`.claude/skills/gaia/references/audit.md`) keys on the full text; and the `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)` from `.gaia/cli/src/harden/marker.ts` byte for byte. A wording change that misses any copy silently breaks one binder or the other, so the marker text lives once in `marker.ts` and every copy tracks it.
+`/gaia-audit` recognizes this marker only to apply its existing obsolescence / redundancy / supersession / duplication signals without a policy-memory exemption, and to explicitly NOT treat non-recurrence as a prune signal. The marker grants no special lifecycle. Do not alter its wording: multiple binders key on it. The `covered-classes.ts` `MARKER_RE` matches its prefix (`gaia-harden: promoted from recurring finding_class`) and is deliberately tail-agnostic. `/gaia-audit` (`.claude/skills/gaia/references/audit.md`) keys on the full text.
+
+<!-- gaia:maintainer-only:start -->
+The `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)` from `.gaia/cli/src/harden/marker.ts` byte for byte. A wording change that misses any copy silently breaks one binder or the other, so the marker text lives once in `marker.ts` and every copy tracks it.
+<!-- gaia:maintainer-only:end -->
 
 ## list subcommand
 

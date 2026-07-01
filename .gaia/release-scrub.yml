@@ -153,6 +153,10 @@ transforms:
           # Self-referential: the lint playbook's documentation describes
           # the same audit greps and target paths.
           - ".claude/skills/gaia/references/wiki/lint.md"
+          # Policy-documenting rule: its own body and Audit git-grep commands
+          # cite the maintainer-only .gaia/tests/forensics/ path as the
+          # sanctioned exception it governs; same rationale as wiki-style.md.
+          - ".claude/rules/repo-relative-paths.md"
           # Documents the smoke-harness convention split between
           # `.specify/extensions/gaia/test/` (UAT runbooks) and
           # `.gaia/tests/smoke/` (release-gate harnesses); literal paths
@@ -205,6 +209,11 @@ transforms:
           # algorithm input the skill executes against. Removing the literal
           # would break the documentation's correspondence to the regex.
           - ".claude/skills/gaia/references/forensics/redaction.md"
+          # Policy-documenting rule: contains sanctioned generic placeholders
+          # (/Users/you, /Users/username) and forensics-fixture paths
+          # (/Users/testuser, /Users/alice) as the examples it governs; same
+          # rationale as wiki-style.md.
+          - ".claude/rules/repo-relative-paths.md"
 
       # ---- Obscurity-rule contract: rule-name leakage ----
       # The mentorship-display rule is projected into per-machine user
