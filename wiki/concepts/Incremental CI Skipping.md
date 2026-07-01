@@ -17,11 +17,14 @@ suite on a tree it has already cleared.
 
 ## Scope
 
+<!-- gaia:maintainer-only:start -->
 `main`'s ruleset requires three checks: `Run Chromatic`, `Vitest and
-Playwright`, and `code-review-audit`. All three are **job-level** checks; the
-required context equals the job `name:`. A job that runs but gates its
-expensive steps off still completes and posts a green check under that name, so
-the ruleset stays satisfied with no external check stamping.
+Playwright`, and `code-review-audit`.
+<!-- gaia:maintainer-only:end -->
+GAIA's expensive required checks are **job-level**: the required context equals
+the job `name:`. A job that runs but gates its expensive steps off still
+completes and posts a green check under that name, so a required-check rule
+stays satisfied with no external check stamping.
 
 Incremental skipping applies to the two expensive checks:
 

@@ -73,7 +73,7 @@ This is the audit's instance of the cross-workflow mechanism in [[Incremental CI
 
 ## Progress breadcrumbs
 
-The agent's own SDK output is not surfaced in the public Actions log: `claude-code-action` does not echo tool results unless explicitly enabled, and the workflow leaves that off (it passes only `--max-turns`, `--allowedTools`, and `--verbose` in `claude_args`). This is deliberate: `gaia-react/gaia` is a public repo and full output would expose tool results that may contain secrets.
+The agent's own SDK output is not surfaced in the public Actions log: `claude-code-action` does not echo tool results unless explicitly enabled, and the workflow leaves that off (it passes only `--max-turns`, `--allowedTools`, and `--verbose` in `claude_args`). This is deliberate: on a public repo the Actions log is world-readable, so echoing tool results that may contain secrets is unsafe.
 
 To provide a public-safe, post-hoc view of audit progress, the agent writes a curated per-phase breadcrumb line to `.gaia/local/audit/progress.log` (runner-local, gitignored; the same directory as the `<sha>.ok` clean marker) via its `Write`/`Edit` tool. Each line is a phase label plus integer counts only: no code, no file contents, no raw tool output, no secrets. These writes are best-effort: a write failure never blocks or fails the audit.
 
