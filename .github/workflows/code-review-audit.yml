@@ -663,8 +663,7 @@ jobs:
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success' &&
           steps.push-fixes.outputs.pushed != 'true' &&
-          steps.push-fixes.outputs.marker_only != 'true' &&
-          steps.push-fixes.outputs.refused != 'true'
+          steps.push-fixes.outputs.marker_only != 'true'
         run: |
           set -eu
           # Genuinely-clean-but-no-commit path. A clean audit that makes no
@@ -677,6 +676,15 @@ jobs:
           # HEAD-moving workaround the design avoids. Close that gap by stamping
           # the GAIA-Audit status DIRECTLY on the current PR HEAD: no empty
           # commit, nothing to advance (HEAD is detached at the PR head sha).
+          #
+          # This path also covers a REFUSED self-heal: when the audit is clean
+          # but its only tree delta is off-limits to auto-fix -- an
+          # instruction/convention surface (.claude/**, .specify/**, wiki/**) or
+          # a >10-file sprawl -- push-fixes sets refused=true and pushes nothing.
+          # `refused` means the self-heal was off-limits, NOT that the audit
+          # failed or the tree is dirty, so it must not gate this stamp; the
+          # .ok-marker guard below is the sole proven-clean check for every
+          # no-push case (clean-no-commit and refused alike).
           #
           # Proven-clean guard (must never false-pass): the audit agent writes
           # the local marker file .gaia/local/audit/<HEAD>.ok ONLY when the
