@@ -1,6 +1,6 @@
 ---
 name: gaia-spec
-description: Author an immutable SPEC artifact through Socratic discovery (spec-kit wrapper), then chain into /gaia-plan. Pass `auto <description>` for non-interactive mode that answers its own questions and mirrors to a GitHub issue.
+description: Author an immutable SPEC artifact through Socratic discovery (spec-kit wrapper), then hand off to /gaia-plan. Pass `auto <description>` for non-interactive mode that answers its own questions.
 argument-hint: [auto] [description]
 ---
 

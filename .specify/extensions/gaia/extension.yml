@@ -4,7 +4,7 @@ extension:
   id: "gaia"
   name: "GAIA Socratic Discovery"
   version: "0.1.0"
-  description: "Socratic-loop wrapper for spec-kit: coach-tone Q&A, immutable UATs, two-gate ceremony, lint pass, chain into /gaia-plan."
+  description: "Socratic-loop wrapper for spec-kit: coach-tone Q&A, immutable UATs, two-gate ceremony, lint pass, handoff to /gaia-plan."
   author: "GAIA"
   repository: "https://github.com/gaia-react/gaia"
   license: "MIT"

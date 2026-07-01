@@ -35,7 +35,7 @@ GAIA orchestration is a depth-1 star: the main thread is the only agent that spa
 
 - **`/gaia-plan`** runs its thin orchestration on the invoking thread and spawns one planner leaf for the deep synthesis. The planner investigates with parallel tool calls and writes the plan files; it does not spawn sub-agents.
 - **The execution orchestrator** (a fresh session started from `KICKOFF.md`) is itself a main thread, so it dispatches the per-phase implementation sub-agents as leaves and runs the pre-merge `code-review-audit`.
-- **`/gaia-spec`** chains into `/gaia-plan` by following it inline on the spec thread, not by spawning a wrapper sub-agent. A wrapper could neither spawn the planner nor run the model prompt, so the planner stays the single spawned leaf.
+- **`/gaia-spec`** ends by printing a `/gaia-plan` handoff prompt and stops; it spawns nothing downstream. The human runs `/gaia-plan` in a fresh session, where the planner is the single spawned leaf.
 
 Models pin at spawn, so the main thread, even on Sonnet, puts the synthesis on Opus by spawning the planner with `model: opus`. Interactive steps stay on the main thread because only it can prompt.
 

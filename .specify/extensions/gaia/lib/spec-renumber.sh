@@ -144,11 +144,4 @@ if [ -n "$current_branch" ] && [[ "$current_branch" =~ spec-0*${old_num}(-|$) ]]
   echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
 fi
 
-# GH issue title, flag if the SPEC frontmatter has a stamped issue url.
-issue_url="$(awk '/^---[[:space:]]*$/{c++; if(c==2)exit} /^gh_issue_url:/{sub(/^gh_issue_url:[[:space:]]*/,""); print}' "$new_spec" || true)"
-if [ -n "$issue_url" ]; then
-  echo "  - GH issue $issue_url was titled with $old_id."
-  echo "    Update:   gh issue edit <number> --title '$new_id: <intent>'"
-fi
-
 echo "  - Commit-message history is immutable; past commits keep $old_id refs."

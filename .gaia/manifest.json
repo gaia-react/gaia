@@ -215,7 +215,6 @@
     ".specify/extensions/gaia/commands/uat-write.md": "owned",
     ".specify/extensions/gaia/commands/wiki-promote.md": "owned",
     ".specify/extensions/gaia/extension.yml": "owned",
-    ".specify/extensions/gaia/lib/gh-mirror.sh": "owned",
     ".specify/extensions/gaia/lib/ledger-update.sh": "owned",
     ".specify/extensions/gaia/lib/lint.sh": "owned",
     ".specify/extensions/gaia/lib/spec-allocator.sh": "owned",

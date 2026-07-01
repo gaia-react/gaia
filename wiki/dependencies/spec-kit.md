@@ -11,7 +11,7 @@ tags: [dependency, spec-kit, claude]
 
 # spec-kit
 
-[GitHub spec-kit](https://github.com/github/spec-kit) is the SPEC-authoring engine that backs GAIA's `/gaia-spec` workflow. GAIA wraps it with a Socratic discovery loop, GAIA-shaped frontmatter, and an inline chain-trigger to `/gaia-plan`.
+[GitHub spec-kit](https://github.com/github/spec-kit) is the SPEC-authoring engine that backs GAIA's `/gaia-spec` workflow. GAIA wraps it with a Socratic discovery loop, GAIA-shaped frontmatter, and a `/gaia-plan` handoff.
 
 ## Pin
 
@@ -47,7 +47,7 @@ Full contract details: [[spec-kit Extension Strategy]].
 
 ## Limits
 
-- Hook events cover `before_specify`, `after_clarify`, `after_specify`, `before_implement`, and `after_implement`. There is no `on_save`, so the spec-to-plan chain-trigger lives inline in the wrapper rather than in a hook.
+- Hook events cover `before_specify`, `after_clarify`, `after_specify`, `before_implement`, and `after_implement`. There is no `on_save`, so the spec-to-plan handoff lives inline in the wrapper rather than in a hook.
 - Hooks fire as slash commands (`EXECUTE_COMMAND` directive), not shell scripts. Hook bodies are markdown skill files.
 - Default `strategy: replace` silently leaves `{CORE_TEMPLATE}` unsubstituted in command preset replacements. Use `strategy: wrap` when replacing a command preset.
 
