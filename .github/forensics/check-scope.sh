@@ -46,6 +46,8 @@ dir|deny|.specify/memory/
 dir|deny|.gaia/local/specs/
 dir|deny|.specify/extensions/gaia/templates/
 dir|deny|.github/workflows/
+dir|deny|.github/forensics/
+dir|deny|.github/
 "
 
 # classify_path <path>
@@ -161,6 +163,21 @@ repr_path() {
   fi
 }
 
+# has_dotdot_segment <path>
+# Returns 0 when the path contains a `..` PATH SEGMENT, i.e. `..` bounded by
+# `/` or a string end (`^\.\.$`, `^\.\./`, `/\.\.$`, `/\.\./`); returns 1
+# otherwise. A bare `..` substring inside a filename (e.g. `foo..bar`) is NOT
+# a segment and returns 1. No normalization is attempted, the primitive
+# rejects rather than resolves: classify_path does pure prefix matching, so a
+# traversal segment like `.claude/skills/../../.github/workflows/x.yml` would
+# match the allowlist prefix and escape the sandbox.
+has_dotdot_segment() {
+  case $1 in
+    ..|../*|*/..|*/../*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 if [ "$#" -eq 0 ]; then
   printf '{"ok":true,"allowed":[],"denied":[]}\n'
   exit 0
@@ -178,6 +195,19 @@ for path in "$@"; do
     repr_esc=$(json_escape "$repr")
     printf '{"ok":false,"allowed":[],"denied":[{"path":"%s","reason":"control-byte:0x%s-at-position-%d"}]}\n' \
       "$repr_esc" "$hex" "$pos"
+    exit 0
+  fi
+done
+
+# RT-05: short-circuit on the first path bearing a `..` segment. Runs AFTER
+# the control-byte loop, so any path reaching here is control-byte-free and
+# safe to embed via json_escape. First offending path wins and denies the
+# whole invocation, matching the control-byte and mixed-allow+deny posture.
+for path in "$@"; do
+  if has_dotdot_segment "$path"; then
+    esc=$(json_escape "$path")
+    printf '{"ok":false,"allowed":[],"denied":[{"path":"%s","reason":"path-traversal:contains-..-segment"}]}\n' \
+      "$esc"
     exit 0
   fi
 done

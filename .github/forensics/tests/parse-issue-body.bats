@@ -102,12 +102,30 @@ setup() {
   [[ "$output" == *'"class":"other"'* ]]
 }
 
-@test "malformed section header returns malformed-section-header" {
-  run "$PARSER" "$FIX/malformed-section-header.md"
+# RT-02: a non-canonical `## ` line (inside a fenced block or in a
+# section body) is retained as section content, never flagged malformed.
+# Only the four exact canonical headers start a section.
+@test "non-canonical ## line is retained as content (RT-02)" {
+  run "$PARSER" "$FIX/noncanonical-header.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"valid":true'* ]]
+  # Inside a fenced block: the pasted `## Error output` line survives.
+  [[ "$output" == *'## Error output'* ]]
+  [[ "$output" == *'Traceback (most recent call last):'* ]]
+  # Outside a fence, in a section body: `## Notes from the report` is
+  # content of `## Reproduction context`, not a malformed header.
+  [[ "$output" == *'## Notes from the report'* ]]
+  [[ "$output" == *'.claude/hooks/x.sh'* ]]
+}
+
+# RT-03: the same canonical header appearing twice is a duplicate. The
+# parser rejects loudly rather than silently corrupting the body.
+@test "duplicate canonical header returns duplicate-section-header (RT-03)" {
+  run "$PARSER" "$FIX/duplicate-section-header.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":false'* ]]
-  [[ "$output" == *'"error":"malformed-section-header"'* ]]
-  [[ "$output" == *'"Bogus Header"'* ]]
+  [[ "$output" == *'"error":"duplicate-section-header"'* ]]
+  [[ "$output" == *'"Capture"'* ]]
 }
 
 @test "frontmatter without closing delimiter returns malformed-frontmatter" {

@@ -9,7 +9,7 @@
 # Usage:
 #   handle-needs-human.sh <issue-num> <reasoning-file> <reason-code>
 #
-# <reason-code> ∈ { out-of-scope, ambiguous-verdict, malformed-body, gate-failure, deviation, internal-error }
+# <reason-code> ∈ { out-of-scope, ambiguous-verdict, malformed-body, gate-failure, deviation, internal-error, fix-abort, no-change }
 #
 # Exit code: 0 on success. Non-zero on bad usage, missing file, or unknown
 # reason-code. gh-level failures propagate.
@@ -20,7 +20,7 @@ MAINTAINER="@stevensacks"
 
 usage() {
   echo "usage: handle-needs-human.sh <issue-num> <reasoning-file> <reason-code>" >&2
-  echo "  <reason-code> ∈ {out-of-scope, ambiguous-verdict, malformed-body, gate-failure, deviation, internal-error}" >&2
+  echo "  <reason-code> ∈ {out-of-scope, ambiguous-verdict, malformed-body, gate-failure, deviation, internal-error, fix-abort, no-change}" >&2
   exit 2
 }
 
@@ -51,6 +51,12 @@ case "$reason_code" in
     ;;
   internal-error)
     summary="a forensics primitive emitted internal-error JSON; the workflow could not proceed deterministically."
+    ;;
+  fix-abort)
+    summary="the auto-fix model aborted via \`GAIA-FIX-ABORT\` (it could not fix the defect within scope without breaking the Quality Gate)."
+    ;;
+  no-change)
+    summary="the auto-fix model produced no diff; there was nothing to apply."
     ;;
   *)
     echo "handle-needs-human.sh: unknown reason-code: $reason_code" >&2

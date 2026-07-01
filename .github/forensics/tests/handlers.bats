@@ -267,6 +267,30 @@ first_captured_body() {
   grep -qF 'deviates from the classifier' "$body_path"
 }
 
+@test "needs-human: comment names the reason-code fix-abort (CMP-3)" {
+  reasoning="$BATS_TEST_TMPDIR/r.md"
+  printf 'fix-abort detail\n' > "$reasoning"
+  run "$HANDLERS/handle-needs-human.sh" 42 "$reasoning" fix-abort
+  [ "$status" -eq 0 ]
+  body_path="$(first_captured_body)"
+  grep -qF 'reason: `fix-abort`' "$body_path"
+  grep -qF 'GAIA-FIX-ABORT' "$body_path"
+  # Must NOT be mislabeled as a scope violation (the pre-CMP-3 bug).
+  ! grep -qF 'outside the auto-fix allowlist' "$body_path"
+}
+
+@test "needs-human: comment names the reason-code no-change (CMP-3)" {
+  reasoning="$BATS_TEST_TMPDIR/r.md"
+  printf 'no-change detail\n' > "$reasoning"
+  run "$HANDLERS/handle-needs-human.sh" 42 "$reasoning" no-change
+  [ "$status" -eq 0 ]
+  body_path="$(first_captured_body)"
+  grep -qF 'reason: `no-change`' "$body_path"
+  grep -qF 'produced no diff' "$body_path"
+  # Must NOT be mislabeled as a scope violation (the pre-CMP-3 bug).
+  ! grep -qF 'outside the auto-fix allowlist' "$body_path"
+}
+
 @test "needs-human: gaia-triaged is the LAST mutation" {
   reasoning="$BATS_TEST_TMPDIR/r.md"
   printf 'x\n' > "$reasoning"
