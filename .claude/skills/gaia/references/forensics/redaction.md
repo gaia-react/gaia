@@ -2,7 +2,11 @@
 
 Lazy-loaded by the forensics runbook at the redact step. Apply this algorithm verbatim to the assembled report body before writing or filing. No external lookups, this fragment is self-contained.
 
-This fragment is the authoritative redaction contract for `/gaia-forensics`. The shell mirror at `.gaia/tests/forensics/lib/redact.sh` must track it exactly; any divergence is a defect in the mirror.
+This fragment is the authoritative redaction contract for `/gaia-forensics`.
+
+<!-- gaia:maintainer-only:start -->
+The shell mirror at `.gaia/tests/forensics/lib/redact.sh` must track it exactly; any divergence is a defect in the mirror.
+<!-- gaia:maintainer-only:end -->
 
 ---
 
@@ -151,7 +155,11 @@ This pattern is the most likely false-positive source. It fires only on values 4
 
 ## Boundary anchors (shell mirror)
 
-The regexes above use `\b` word boundaries. The shell mirror at `.gaia/tests/forensics/lib/redact.sh` runs on BSD sed (macOS) and GNU sed (CI); BSD sed does not support `\b`. The mirror drops `\b` and relies instead on each pattern's distinctive literal prefix (`gho_`, `github_pat_`, `sk-ant-`, `sk-`, `glpat-`, `xox`, `xapp-`, `eyJ`, `Bearer `, `://`) as the leading boundary, and on the greedy quantifier consuming to the first out-of-class character as the trailing boundary. For every prefixed pattern this is exactly equivalent to the `\b`-anchored form here.
+The regexes above use `\b` word boundaries.
+
+<!-- gaia:maintainer-only:start -->
+The shell mirror at `.gaia/tests/forensics/lib/redact.sh` runs on BSD sed (macOS) and GNU sed (CI); BSD sed does not support `\b`. The mirror drops `\b` and relies instead on each pattern's distinctive literal prefix (`gho_`, `github_pat_`, `sk-ant-`, `sk-`, `glpat-`, `xox`, `xapp-`, `eyJ`, `Bearer `, `://`) as the leading boundary, and on the greedy quantifier consuming to the first out-of-class character as the trailing boundary. For every prefixed pattern this is exactly equivalent to the `\b`-anchored form here.
+<!-- gaia:maintainer-only:end -->
 
 The one pattern with no literal prefix is the AWS access key ID (`[A-Z]{4}[0-9A-Z]{16}`). Here the mirror and this fragment diverge **by design**: a 20-character uppercase run embedded inside a longer mixed-case token is left intact by the `\b`-anchored form here, but is redacted by the mirror, which has no boundary to stop it. This divergence is accepted because it fails safe: the mirror only ever redacts *more*, never less, so it cannot leak. No other pattern diverges. The bare `/root` collapse in Rule B has the same fail-safe property: lacking a `<name>` component it has no trailing boundary, so it may over-collapse a path like `/rootfs`, never under-collapse.
 

@@ -108,6 +108,8 @@ Things audits keep re-discovering that are not findings:
 
 **A `WorktreeCreate` hook entry.** Not an unknown-event finding; `WorktreeCreate` is in the canonical event list under [Hook integrity](#1-hook-integrity); projects wire it to a worktree-link script. (If worktree symlink-handoff is demonstrably broken, that is a separate concern, not a fitness finding.)
 
+**A skill directory with no `SKILL.md` that is a shared-reference bucket.** Not a frontmatter finding. The frontmatter category checks `*/SKILL.md` under `.claude/skills/`, but a directory whose files are individually tracked in `.gaia/manifest.json` and Read by path from command surfaces (rather than invoked by name) is a deliberate reference bucket, not a discoverable skill; a `SKILL.md` would be redundant. Surface a missing one as, at most, `info`, and do not escalate to a blocking finding. (`.claude/skills/gaia/` is the canonical case: its `references/` files are dispatched directly by the gaia-* commands.)
+
 ---
 
 ## Grading Rubric
