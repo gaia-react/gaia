@@ -11,7 +11,7 @@ The flow:
 - Warn if Dependabot or Renovate is configured (GAIA Sharpen overlaps).
 - Ask: enable now / not now / opt out for the team.
 - If admin: offer to enable `delete_branch_on_merge` (makes stale-branch cleanup redundant).
-- Accept your bot token (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) via stdin and pipe it directly to `gh secret set`. The same token authenticates the cron workflows and the `code-review-audit.yml` PR gate, the audit honors either token type.
+- Provision the bot-token secret (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`) **out of band**: you set it yourself via `gh secret set` or the GitHub web UI, and GAIA only verifies it exists by name. The token value never enters the chat. The same secret authenticates the cron workflows and the `code-review-audit.yml` PR gate, the audit honors either token type.
 - Generate `.github/workflows/gaia-ci-*.yml` from `.gaia/automation.json` and install `.github/workflows/code-review-audit.yml`.
 - Trigger one `workflow_dispatch` run to verify the workflow boots.
 - On success, commit the workflow files plus a flip of `setup_complete: true` in a single commit.
@@ -240,7 +240,7 @@ Cache the chosen mode (`ci` or `local`), then write both keys to `.gaia/audit-ci
 
 The file is committed alongside the workflow files in Step 10's existing commit; do NOT auto-commit it here.
 
-## Step 7: Token type selection and entry
+## Step 7: Token type selection and out-of-band secret provisioning
 
 `AskUserQuestion`:
 
@@ -260,31 +260,67 @@ Open https://gaiareact.com/setup-gaia-ci to read the token-type section, then re
 
 Exit cleanly.
 
-On a token choice, prompt for the value:
+On a token choice, provision the secret **out of band**. GAIA never handles the token value.
+
+**Non-negotiable safety rule.** The token value MUST NOT enter this conversation or the agent's process at all. Do NOT ask the user to paste it, do NOT read it from a chat message, and do NOT route it into any sink. This includes, but is not limited to, Bash command strings, `Edit` / `Write` / `NotebookEdit`, `AskUserQuestion`, commit messages, memory or scratchpad files, subagent prompts, scheduled tasks, and outbound network or MCP calls. The rule is simpler than any list: the value must never leave the user's own terminal. Anything typed into the chat is recorded in the transcript, sent to the model API, and may be persisted by the harness, piping it to `gh` afterward does not undo that exposure. If the user pastes a secret anyway, STOP: treat the pasted value as compromised, do not use or store it, tell them it is now exposed in the transcript and must be rotated, and continue with the out-of-band steps below.
+
+**The agent prints these commands for the user to run in their own terminal; it never executes `gh secret set` (or `.gaia/cli/gaia setup-ci set-secret`) itself.** Both require the token value on stdin or the command line, which the agent must never hold.
+
+**Admin pre-gate.** Managing GitHub Actions secrets requires repo-admin permission. If the `admin` flag cached in Step 5 is not `true` (or `auth_status != "ok"`), do not print the set instructions. Print:
 
 ```
-Paste your <NAME> value below. The token is piped directly to `gh secret set <NAME>` and is never echoed, never logged, and never appears in the terminal scrollback.
-
-The agent reads your message and immediately invokes `gaia setup-ci set-secret <NAME>` with the token on stdin. Do not include any other text in your message, the agent will trim trailing whitespace defensively, but extra prose may corrupt the token.
+Setting the <NAME> secret requires repo-admin permission and an authenticated gh (yours: admin=<admin>, auth_status=<auth_status>). Ask a repo admin to set it and finish /setup-gaia-ci, or gain admin access (and run `gh auth login` if needed), then re-run /setup-gaia-ci.
 ```
 
-When the user replies with their token, IMMEDIATELY invoke:
+Exit cleanly.
+
+If `RECONFIGURE` is set, skip the fresh-setup block and go straight to **Reconfigure (rotation)** below.
+
+**Fresh setup.** Substitute the chosen secret name for `<NAME>` and the cached `owner` / `repo` (Step 3) before printing, do not print literal angle brackets. Print these instructions and wait for the user to confirm:
+
+```
+Set the <NAME> secret yourself, in your OWN terminal (not here, not through me), so its value never touches this chat. Pick one:
+
+  - Terminal (value stays hidden):
+      gh secret set <NAME> --repo <owner>/<repo>
+    gh prompts for the value with input hidden, type or paste it THERE, never in this chat. Nothing is echoed or logged. If gh reports an auth error, run `gh auth login` first.
+
+  - GitHub web UI:
+      <owner>/<repo> -> Settings -> Secrets and variables -> Actions ->
+      New repository secret -> Name: <NAME> -> paste the value in the Secret field -> Add secret.
+
+Tell me once it's set and I'll verify (I only read the secret's NAME, never its value).
+```
+
+When the user confirms, run **Verify presence** below.
+
+**Verify presence.** Check that the secret exists by **name only**, matching the name **exactly** (a substring match would wrongly accept a leftover like `<NAME>_OLD`):
 
 ```bash
-TOKEN='<paste-token-here>' && printf '%s' "$TOKEN" | .gaia/cli/gaia setup-ci set-secret <NAME> && unset TOKEN
+gh secret list --repo <owner>/<repo> --json name --jq '.[] | select(.name == "<NAME>") | .name'
 ```
 
-(Construct the Bash tool call so the `$TOKEN` interpolation happens in the same shell as the `printf`+`gaia` pipeline. The Bash tool string contains the literal token; this is the unavoidable narrow window where the token is in the agent's process memory.)
+`gh secret list` returns names, never values, so this is safe.
 
-**Token-handling rules (non-negotiable):**
+- Non-empty output (exact name match), print `Verified: <NAME> is set. Its value never entered this session.` and fall through to Step 8.
+- Empty output (secret absent), `AskUserQuestion`:
 
-- The agent MUST NOT write the token to ANY file (no scratch file, no cache, no log).
-- The agent MUST NOT echo the token in chat.
-- The agent MUST NOT include the token in any subsequent AskUserQuestion, Edit, or Write tool call.
-- The agent MUST NOT include the token in the final commit message.
-- The agent MUST scrub the token from working memory after `set-secret` returns (the `unset TOKEN` in the same Bash call is the scrub).
+  > `<NAME>` is not set on `<owner>/<repo>` yet.
+  >
+  > - **Retry verification** (I've set it, check again)
+  > - **Abandon** (exit; re-run /setup-gaia-ci later)
 
-If `set-secret` exits non-zero, print the structured error and exit cleanly. The user re-runs `/setup-gaia-ci` to retry.
+  On "Retry verification", re-run the presence check. On "Abandon", exit cleanly, `setup_complete` stays `false`.
+- If `gh secret list` errors (e.g. HTTP 403), surface the error verbatim, note that managing Actions secrets requires repo-admin permission, and exit cleanly.
+
+**Reconfigure (rotation).** Reached only when `RECONFIGURE` is set. The secret already exists, so the goal is to overwrite it. Print the `gh secret set <NAME> --repo <owner>/<repo>` command from **Fresh setup**, framed as a rotation (running it again overwrites the value silently, and the value still never enters this chat), then `AskUserQuestion`:
+
+> Rotate the <NAME> secret now?
+>
+> - **I've rotated it** (verify and continue)
+> - **Keep the existing token** (no rotation)
+
+On either answer, run **Verify presence** for `<NAME>`, both paths require the chosen secret to exist (this matters when the token type changed during this reconfigure). Then fall through to Step 8.
 
 ## Step 8: Generate workflow YAML
 
@@ -409,7 +445,7 @@ When `RECONFIGURE` is set, the short-circuit at Step 2 is skipped and the flow r
   On "Re-prompt", `AskUserQuestion` for each of `wiki`, `update-deps`, `pnpm-audit`, `stale-branches` with mode options `ci` / `local` / `off`. Apply each via `.gaia/cli/gaia setup-ci write-tool-mode <tool> <mode>`.
 
 - **Step 6.5** re-offers the team audit-mode policy question (CI-every-PR vs local-first) and rewrites `default_mode` / `override_label` in `.gaia/audit-ci.yml` from the answer. The audit-policy file is already in Step 10's `git add` set, so a changed default lands in the reconfigure commit.
-- **Step 7** always asks for a fresh token (never reads the existing secret, `gh secret set` overwrites silently).
+- **Step 7** runs its reconfigure (rotation) path: it asks the user to overwrite the secret out of band (`gh secret set` overwrites silently), never reading the existing or new value, then verifies presence by name.
 - **Step 10's** commit message changes to:
 
   ```
