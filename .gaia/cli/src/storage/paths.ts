@@ -55,8 +55,8 @@ const resolveRepoRoot = (): string => {
  * Claude project-slug derivation.
  *
  * Convention: replace `/` with `-` (the leading `/` becomes a leading `-`).
- *   /Users/stevensacks/Development/gaia-react/gaia
- *     -> -Users-stevensacks-Development-gaia-react-gaia
+ *   /Users/you/projects/my-app
+ *     -> -Users-you-projects-my-app
  */
 export const deriveClaudeSlug = (repoRoot: string): string =>
   repoRoot.replaceAll('/', '-');

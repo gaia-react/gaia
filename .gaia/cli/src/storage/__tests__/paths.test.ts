@@ -41,9 +41,9 @@ describe('resolveStorageRoots', () => {
   });
 
   test('deriveClaudeSlug matches the observed Claude convention', () => {
-    expect(
-      deriveClaudeSlug('/Users/stevensacks/Development/gaia-react/gaia')
-    ).toBe('-Users-stevensacks-Development-gaia-react-gaia');
+    expect(deriveClaudeSlug('/Users/you/projects/my-app')).toBe(
+      '-Users-you-projects-my-app'
+    );
   });
 });
 

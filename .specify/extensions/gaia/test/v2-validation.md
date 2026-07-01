@@ -7,6 +7,10 @@ Test target: `.specify/extensions/gaia/` (extension) + `.specify/presets/gaia/` 
 ## Sandbox setup
 
 ```bash
+# Run these blocks from your gaia checkout; GAIA_ROOT is reused below and
+# inherited by the subshells that cd into /tmp.
+export GAIA_ROOT="$(git rev-parse --show-toplevel)"
+
 mkdir -p /tmp/specify-validate-001
 (cd /tmp/specify-validate-001 && uvx --from git+https://github.com/github/spec-kit.git@v0.8.5 specify init --here --ai claude --force)
 ```
@@ -16,7 +20,7 @@ Result: clean spec-kit project with `.specify/`, `.claude/skills/speckit-*/`, bu
 ## Extension install
 
 ```bash
-(cd /tmp/specify-validate-001 && uvx --from git+https://github.com/github/spec-kit.git@v0.8.5 specify extension add --dev /Users/stevensacks/Development/gaia-react/gaia/.specify/extensions/gaia)
+(cd /tmp/specify-validate-001 && uvx --from git+https://github.com/github/spec-kit.git@v0.8.5 specify extension add --dev "$GAIA_ROOT/.specify/extensions/gaia")
 ```
 
 ```
@@ -61,7 +65,7 @@ speckit-gaia-spec/SKILL.md
 ## Preset install
 
 ```bash
-(cd /tmp/specify-validate-001 && uvx --from git+https://github.com/github/spec-kit.git@v0.8.5 specify preset add --dev /Users/stevensacks/Development/gaia-react/gaia/.specify/presets/gaia)
+(cd /tmp/specify-validate-001 && uvx --from git+https://github.com/github/spec-kit.git@v0.8.5 specify preset add --dev "$GAIA_ROOT/.specify/presets/gaia")
 ```
 
 ```
@@ -196,10 +200,10 @@ Both helpers run pure CLI args; no stdin payload:
 $ bash .specify/extensions/gaia/lib/lint.sh .gaia/local/specs/SPEC-001/SPEC.md
 {"ok":true,"findings":[]}
 
-$ bash .specify/extensions/gaia/lib/spec-allocator.sh next /Users/stevensacks/Development/gaia-react/gaia
+$ bash .specify/extensions/gaia/lib/spec-allocator.sh next "$GAIA_ROOT"
 SPEC-003
 
-$ bash .specify/extensions/gaia/lib/version-check.sh /Users/stevensacks/Development/gaia-react/gaia
+$ bash .specify/extensions/gaia/lib/version-check.sh "$GAIA_ROOT"
 spec-kit version check failed: could not determine installed version.
   Pinned:    >=0.8.5,<0.10.0 (from .../extension.yml)
   Installed: <unresolved>
