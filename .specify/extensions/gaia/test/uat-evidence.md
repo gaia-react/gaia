@@ -1,6 +1,6 @@
 # UAT evidence, v2
 
-Maps each of SPEC-001's UAT-001..UAT-018 to the v2 implementation. Every UAT is cross-referenced to the artifact (manifest, command body, helper script, or sandbox transcript) that satisfies it.
+Maps SPEC-001's UAT-001..UAT-018 to the v2 implementation. UAT-012 (the optional GitHub Issue mirror) is removed and no longer evidenced; the remaining 17 UATs are each cross-referenced to the artifact (manifest, command body, helper script, or sandbox transcript) that satisfies it.
 
 Source SPEC: `.gaia/local/specs/SPEC-001/SPEC.md` (frozen).
 Revised contracts: `.gaia/local/specs/SPEC-001/REVISED-CONTRACTS.md`.
@@ -115,15 +115,15 @@ Evidence:
 - `.specify/extensions/gaia/templates/system-prompt.md` Behavioral contract item 8, same rule from the system prompt side.
 - Personal preferences (tone, formatting) remain allowed; project decisions land in the SPEC artifact, the wiki, or `.claude/rules/`.
 
-## UAT-010: inline chain-trigger to /gaia-plan
+## UAT-010: /gaia-plan handoff
 
 **Given** a SPEC has just been saved.
 **When** the save step completes.
-**Then** the wrapper prompts `"SPEC-NNN saved. Trigger /gaia-plan now?"` via `AskUserQuestion`. The chain only fires on explicit confirmation; the human can defer.
+**Then** the wrapper prints a copy-pasteable `/gaia-plan` handoff prompt naming the `SPEC.md` path (and the sibling `AUDIT.md` when it exists) and stops; the human runs `/gaia-plan` in a fresh session.
 
-Evidence (v2 reshape, inline `AskUserQuestion`, not `on_save`):
+Evidence (the handoff lives in the wrapper, not in an `on_save` hook):
 
-- `.claude/skills/gaia/references/spec.md` Step 12, inline `AskUserQuestion` with normative phrasing and the two options (Yes Recommended / No defer). The `on_save` hook does not exist in spec-kit; the chain-trigger lives in the wrapper command body.
+- `.claude/skills/gaia/references/spec.md` Step 11, prints the fenced `/gaia-plan` handoff prompt with the repo-absolute `SPEC.md` path (and the `AUDIT.md` path when the sibling exists), then stops. The `on_save` hook does not exist in spec-kit; the handoff lives in the wrapper command body.
 - Sandbox transcript: `on_save` event renders `(no hooks)`, confirms the lifecycle does not include this event and the inline placement is the correct location.
 
 ## UAT-011: immutability + reopen ceremony
@@ -136,18 +136,6 @@ Evidence:
 
 - `lib/lint.sh` reopen-ceremony branch: when `status: reopened`, body must contain `## Reopen rationale` and `## UAT diff` sections; missing → lint fail with `reopen_missing_rationale` / `reopen_missing_diff` finding codes.
 - `commands/lint.md` documents the reopen-ceremony enforcement. The wrapper (`references/spec.md` Step 10) honors the lint failure for reopens.
-
-## UAT-012: optional GitHub Issue mirror
-
-**Given** a project with optional GitHub integration.
-**When** the mirror step runs.
-**Then** GH Issue is created iff `gh auth status` succeeds AND `repos/{owner}/{repo}.has_issues` is true AND viewer has admin/write permission. Otherwise no mirror, no error, no degradation.
-
-Evidence:
-
-- `lib/gh-mirror.sh`: three guard conditions (`gh auth`, `has_issues`, `permission ∈ {admin,write}`). On any failure: telemetry record to `.gaia/local/telemetry/gh-mirror.jsonl`, exit 0, no SPEC mutation.
-- `references/spec.md` Step 11, invocation pattern `bash .specify/extensions/gaia/lib/gh-mirror.sh "$PWD" "<spec-id>" "<spec-rel-path>"`. CLI args (no stdin payload, the v1 stdin-payload contract was fictional).
-- On success: stamps `gh_issue_url` into the SPEC frontmatter idempotently via in-place awk rewrite.
 
 ## UAT-013: resume vs start-new for unfinalized draft SPECs
 
@@ -222,12 +210,12 @@ Evidence (v2 reshape, manifest `requires.speckit_version` + runtime drift detect
 
 ## Summary
 
-All 18 UATs map to artifacts on this branch. Three UATs changed shape vs. PR #84:
+17 of SPEC-001's 18 UATs map to artifacts on this branch; UAT-012 (the GitHub Issue mirror) is removed and no longer evidenced. Three of the remaining UATs changed shape vs. PR #84:
 
 | UAT     | PR #84 satisfier                                                                                     | v2 satisfier                                                                                                 |
 | ------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | UAT-008 | `hooks/after_specify.sh` shell script                                                                | `commands/lint.md` slash-command + `lib/lint.sh` helper, fired via `after_specify` hook                      |
-| UAT-010 | `on_save` hook (fictional event)                                                                     | Inline `AskUserQuestion` at Step 12 of `references/spec.md`                                                  |
+| UAT-010 | `on_save` hook (fictional event)                                                                     | Fenced `/gaia-plan` handoff prompt at Step 11 of `references/spec.md`                                        |
 | UAT-018 | `requires.speckit_version: "==X.Y.Z"` + `requires.speckit_invocation` (both fictional schema fields) | `requires.speckit_version: ">=0.8.5,<0.10.0"` (real schema) + `lib/version-check.sh` runtime drift detection |
 
 The v2 model has no fictional events, no fictional manifest fields, and no shell-script hooks. Hooks are slash commands; `EXECUTE_COMMAND` directives are rendered by spec-kit's `HookExecutor` and the agent invokes them as Claude skills.

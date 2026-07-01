@@ -116,7 +116,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <table>
 <thead><tr><th nowrap>Command</th><th>What it does</th></tr></thead>
 <tbody>
-<tr><td><code>/gaia-spec</code></td><td>Author an immutable SPEC through Socratic discovery: two-gate ceremony, self-review pass, Playwright UATs auto-generated before implementation begins. Chains into <code>/gaia-plan</code></td></tr>
+<tr><td><code>/gaia-spec</code></td><td>Author an immutable SPEC through Socratic discovery: two-gate ceremony, self-review pass, Playwright UATs auto-generated before implementation begins. Hands off to <code>/gaia-plan</code></td></tr>
 <tr><td><code>/gaia-plan</code></td><td>Plan a complex feature. Claude structures the work, you approve, then an orchestrator drives focused subagents through execution</td></tr>
 <tr><td><code>/gaia-handoff</code></td><td>Generate a comprehensive session handoff document so you can clear context with confidence that nothing gets lost</td></tr>
 <tr><td><code>/gaia-pickup</code></td><td>Restore context from a handoff and continue work</td></tr>

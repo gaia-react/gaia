@@ -10,7 +10,7 @@ This command exists because spec-kit's extension manifest schema requires `provi
 
 Read `.claude/skills/gaia/references/spec.md` and follow it, treating `$ARGUMENTS` as the feature description.
 
-That reference is the single source of truth for the orchestration: pre-flight, `/speckit-specify`, gate 1, `/speckit-clarify`, the `after_clarify` self-review, gate 2, the `after_specify` lint, save, optional GitHub mirror, and the inline chain-trigger prompt to `/gaia-plan`.
+That reference is the single source of truth for the orchestration: pre-flight, `/speckit-specify`, gate 1, `/speckit-clarify`, the `after_clarify` self-review, gate 2, the `after_specify` lint, save, and the `/gaia-plan` handoff prompt.
 
 ## Why this is one line
 

@@ -7,7 +7,6 @@ This runbook walks the full `/gaia-spec` lifecycle and maps every step to the UA
 - spec-kit installed at the version pinned in `.specify/extensions/gaia/extension.yml`.
 - GAIA spec-kit extension loaded.
 - `.specify/memory/constitution.md` populated (no placeholder text).
-- `gh` CLI installed and authenticated (only required for UAT-012 confirmation).
 - Working tree clean enough to spot accidental writes outside the allowlist.
 
 ## Pre-flight snapshot
@@ -200,48 +199,20 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 14: GitHub Issue mirror (conditional)
+## Step 14: `/gaia-plan` handoff prompt
 
-**Action.** With all three conditions met (gh auth ok, repo Issues enabled, viewer write permission), the wrapper invokes `lib/gh-mirror.sh`.
-
-**Expected outcome, happy path.**
-
-- A new GitHub Issue is created titled `"<spec-id>: <intent first line>"` with the SPEC body as the issue body.
-- The SPEC frontmatter gains a `gh_issue_url: <url>` field.
-- A telemetry record `{status:"mirrored", detail:"<url>"}` is appended to `.gaia/local/telemetry/gh-mirror.jsonl`.
-
-**Action, failure paths.** Repeat the smoke after each of the following individually:
-
-1. `gh auth logout` (auth fails)
-2. Disable Issues on the GitHub repo (has_issues=false)
-3. Run as a user without write permission (read-only collaborator)
-
-**Expected outcome, each failure path.**
-
-- `gh-mirror.sh` exits 0 (no error to lifecycle).
-- A telemetry record `{status:"skipped", event:"<gh_auth_failed|issues_disabled|no_write_permission>"}` is appended.
-- The SPEC is unchanged; no `gh_issue_url` field is stamped.
-- The wrapper continues to the inline chain-trigger prompt without warning.
-
-**UATs covered.** UAT-012.
-
----
-
-## Step 15: Inline chain-trigger prompt
-
-**Action.** After save (and any optional GH mirror), the `/gaia-spec` wrapper executes Step 12 of `.claude/skills/gaia/references/spec.md`, an inline `AskUserQuestion`. There is no `on_save` hook in spec-kit v0.8.5; the chain trigger lives in the wrapper itself.
+**Action.** After save, the `/gaia-spec` wrapper executes Step 11 of `.claude/skills/gaia/references/spec.md`. There is no `on_save` hook in spec-kit v0.8.5; the handoff lives in the wrapper itself.
 
 **Expected outcome.**
 
-- The wrapper surfaces an `AskUserQuestion` (header `"Chain"`, two options: Yes (Recommended), No) prompting `"SPEC-NNN saved. Trigger /gaia-plan now?"`.
-- On `Yes`: `/gaia-plan` dispatches with the SPEC path as input.
-- On `No`: the wrapper stops and prints the final confirmation line; no chain fires.
+- The wrapper prints a copy-pasteable, fenced `/gaia-plan` handoff prompt naming the `SPEC.md` path (and the sibling `AUDIT.md` when present), then stops.
+- The human runs `/gaia-plan` in a fresh session; `/gaia-spec` never dispatches it.
 
 **UATs covered.** UAT-010.
 
 ---
 
-## Step 16: Immutable UAT enforcement (post-save mutation attempt)
+## Step 15: Immutable UAT enforcement (post-save mutation attempt)
 
 **Action.** Manually edit `.gaia/local/specs/SPEC-NNN/SPEC.md` to change a UAT body. Re-invoke `/gaia-spec` so the lint hook re-evaluates the saved artifact.
 
@@ -255,7 +226,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 17: No-machine-local-memory rule
+## Step 16: No-machine-local-memory rule
 
 **Action.** Snapshot machine-local memory after the smoke pass: `find ~/.claude/projects/$(pwd | sed 's|/|-|g')/memory -type f 2>/dev/null > /tmp/gaia-smoke-memory-after.txt`. Diff against the pre-flight snapshot.
 
@@ -268,7 +239,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 18: Write-surface audit
+## Step 17: Write-surface audit
 
 **Action.** After the full smoke run, capture the post-run tree state and diff.
 
@@ -293,13 +264,12 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 | UAT-006 | Steps 8, 11 (gate 1 + gate 2)           |
 | UAT-007 | Step 2                                  |
 | UAT-008 | Step 12                                 |
-| UAT-009 | Step 17                                 |
-| UAT-010 | Step 15                                 |
-| UAT-011 | Step 16                                 |
-| UAT-012 | Step 14 (happy path + 3 failure paths)  |
+| UAT-009 | Step 16                                 |
+| UAT-010 | Step 14                                 |
+| UAT-011 | Step 15                                 |
 | UAT-013 | Step 3                                  |
 | UAT-014 | Step 7                                  |
-| UAT-015 | Steps 12 + 18                           |
+| UAT-015 | Steps 12 + 17                           |
 | UAT-016 | Step 9                                  |
 | UAT-017 | Step 10                                 |
 | UAT-018 | Step 1 (version pin) + drift simulation |
