@@ -315,11 +315,17 @@ transforms:
       # top-level path added to the repo silently passes the filter and
       # the workflow runs (or skips) when it shouldn't. Allowlists fail
       # loud (skip when expected to run) and are the only safe shape.
+      # The three alternations catch the three physical layouts of a
+      # denylist entry: a `paths-ignore:` key, a block-list inverted item
+      # (`- "!*.md"`), and an inverted entry smuggled into an inline flow
+      # array (`paths: ["src/**", "!*.md"]`). The inline alternation is
+      # quote-anchored (`[...'"!`) so a stray `[!` in a run-step string
+      # does not false-positive.
       # Prior occurrences: chromatic.yml + tests.yml denylists missed
       # `.gaia/`, `.specify/`, `studio/` (a8a4b75, c6eeecc).
       - id: workflow-denylist
         description: "Workflow paths-ignore or inverted !pattern entries: denylists fail quiet"
-        pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!"
+        pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!|\\[[^\\]]*['\"]!"
         scope:
           - ".github/workflows/**"
 
