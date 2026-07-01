@@ -1,4 +1,5 @@
 import {describe, expect, it, vi} from 'vitest';
+import {EXIT_CODES} from '../../exit.js';
 import {
   type LedgerRunner,
   makeLedgerSuppressionPredicate,
@@ -36,13 +37,41 @@ describe('makeLedgerSuppressionPredicate', () => {
     expect(args[countIdx + 1]).toBe('5');
   });
 
-  it('treats a non-zero exit as not suppressed (re-surface)', () => {
+  it('treats exit 1 (the legitimate not-suppressed code) as not suppressed', () => {
     const predicate = makeLedgerSuppressionPredicate({
       cwd: '/repo',
       runLedger: notSuppressed,
     });
 
     expect(predicate('axe/color-contrast', 5)).toBe(false);
+  });
+
+  it('fails closed on CONFIG_INVALID (a corrupt / version-skewed ledger)', () => {
+    const predicate = makeLedgerSuppressionPredicate({
+      cwd: '/repo',
+      runLedger: () => ({
+        exitCode: EXIT_CODES.CONFIG_INVALID,
+        stderr: '',
+        stdout: '',
+      }),
+    });
+
+    // Fail-closed: an error exit stays suppressed so a corrupt ledger never
+    // silently re-surfaces a declined candidate.
+    expect(predicate('axe/color-contrast', 5)).toBe(true);
+  });
+
+  it('fails closed on STORAGE_INACCESSIBLE', () => {
+    const predicate = makeLedgerSuppressionPredicate({
+      cwd: '/repo',
+      runLedger: () => ({
+        exitCode: EXIT_CODES.STORAGE_INACCESSIBLE,
+        stderr: '',
+        stdout: '',
+      }),
+    });
+
+    expect(predicate('axe/color-contrast', 5)).toBe(true);
   });
 });
 

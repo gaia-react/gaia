@@ -3,6 +3,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import * as runProcess from '../../ci/util/run-process.js';
+import {markerComment} from '../marker.js';
 import {run} from '../tally.js';
 import type {ProcessResult} from '../../ci/util/run-process.js';
 
@@ -260,7 +261,7 @@ describe('harden-tally run', () => {
     mkdirSync(sandbox.rulesDir, {recursive: true});
     writeFileSync(
       path.join(sandbox.rulesDir, 'switch.md'),
-      '<!-- gaia-harden: promoted from recurring finding_class rule/switch-statement; never for non-recurrence -->'
+      markerComment('rule/switch-statement')
     );
 
     vi.spyOn(runProcess, 'runGh').mockReturnValue(
@@ -358,7 +359,7 @@ describe('harden-tally run', () => {
     expect((pruneCall ?? [])[idx + 1]).toBe('axe/color-contrast');
   });
 
-  it('falls back to candidate_count 0 when gh fails (non-fatal)', () => {
+  it('falls back to candidate_count 0 and gh_ok false when gh fails (non-fatal)', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue({
       exitCode: 4,
       stderr: 'gh: not authenticated',
@@ -370,7 +371,25 @@ describe('harden-tally run', () => {
       runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
     });
     expect(exit).toBe(0);
-    expect(parseStdout(stdout.out).candidate_count).toBe(0);
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.candidate_count).toBe(0);
+    expect(printed.candidates).toEqual([]);
+    expect(printed.gh_ok).toBe(false);
+  });
+
+  it('sets gh_ok true on a successful read of a genuinely empty window', () => {
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(stubGh([]));
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+    expect(exit).toBe(0);
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.gh_ok).toBe(true);
+    expect(printed.candidate_count).toBe(0);
   });
 
   it('queries the 90-day merged-PR window via gh', () => {

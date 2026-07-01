@@ -3,6 +3,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {coveredClassesFromRules} from '../covered-classes.js';
+import {markerComment} from '../marker.js';
 
 describe('coveredClassesFromRules', () => {
   let dir: string;
@@ -22,7 +23,7 @@ describe('coveredClassesFromRules', () => {
         '---',
         'paths: app/**/*.ts',
         '---',
-        '<!-- gaia-harden: promoted from recurring finding_class rule/switch-statement; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->',
+        markerComment('rule/switch-statement'),
         '',
         '# Rule body',
       ].join('\n')
@@ -41,14 +42,15 @@ describe('coveredClassesFromRules', () => {
   });
 
   it('collects markers across multiple rule files', () => {
+    // Deliberate abbreviated tail: the binder is prefix-bound / tail-agnostic,
+    // so a copy that keeps the frozen prefix but shortens the tail still binds.
+    // This is the ONE fixture that proves tail-agnosticism on purpose; every
+    // other fixture uses markerComment(...) so it cannot silently drift.
     writeFileSync(
       path.join(dir, 'a.md'),
       '<!-- gaia-harden: promoted from recurring finding_class axe/color-contrast; never for non-recurrence -->'
     );
-    writeFileSync(
-      path.join(dir, 'b.md'),
-      '<!-- gaia-harden: promoted from recurring finding_class knip/exports; never for non-recurrence -->'
-    );
+    writeFileSync(path.join(dir, 'b.md'), markerComment('knip/exports'));
 
     const covered = coveredClassesFromRules(dir);
     expect(covered.has('axe/color-contrast')).toBe(true);

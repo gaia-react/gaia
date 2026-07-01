@@ -4,8 +4,11 @@
  * The machine-local decline ledger CLI. When an engineer declines a hardening
  * candidate the decline is recorded only on their machine (gitignored), so it
  * never vetoes the rule for a teammate. Re-surfacing is evidence-based, not a
- * timer: a declined class stays suppressed for that engineer until at least 3
- * distinct PRs carrying the class merge after the decline.
+ * timer: a declined class stays suppressed for that engineer until the window's
+ * distinct-PR count for the class rises at least 3 above its snapshot at the
+ * decline. That is a delta between two rolling-window snapshots, not a monotonic
+ * count of PRs merged since the decline, so window churn (old PRs aging out) can
+ * lower the current count and thereby delay or indefinitely prevent re-surface.
  *
  * The tally refresher READS this surface (`is-suppressed`, `prune`); the
  * `/gaia-harden` command WRITES to it (`record`) on decline. Both bind to the
@@ -46,8 +49,11 @@ const HELP_TEXT = `Usage: gaia harden-ledger <subcommand> [args]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-// Re-surface threshold: a declined class stays suppressed until at least this
-// many distinct PRs carrying the class merge after the decline.
+// Re-surface threshold: a declined class stays suppressed until the window's
+// distinct-PR count for the class rises at least this far above its snapshot at
+// the decline. The comparison is a window-snapshot delta, not a monotonic count
+// of PRs merged since the decline, so window churn can delay or prevent
+// re-surface.
 const RESURFACE_THRESHOLD = 3;
 
 type RunOptions = {
@@ -361,8 +367,11 @@ const handleIsSuppressed = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  // Evidence-based, not a timer: compare distinct PRs merged after the decline
-  // against the re-surface threshold.
+  // Evidence-based, not a timer: subtract the decline-time window snapshot from
+  // the current window snapshot and compare the delta against the re-surface
+  // threshold. This is a window-snapshot delta, not a monotonic count of PRs
+  // merged since the decline, so window churn can lower the current count and
+  // delay or prevent re-surface.
   const mergedSinceDecline = currentPrCount - entry.declined_at_pr_count;
   const suppressed = mergedSinceDecline < RESURFACE_THRESHOLD;
 
