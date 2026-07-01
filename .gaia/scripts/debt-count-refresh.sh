@@ -69,10 +69,18 @@ should_recompute=false
 sentinel_settled=true
 if [ -e "$SENTINEL" ]; then
   should_recompute=true
-  # Portable mtime (BSD/macOS `-f %m`, GNU/Linux `-c %Y`). An unreadable mtime
-  # falls back to 0, which reads as "aged past the grace" so a stat failure can
-  # never wedge the sentinel armed forever (it reverts to clear-on-recompute).
-  sentinel_mtime=$(stat -f %m "$SENTINEL" 2>/dev/null || stat -c %Y "$SENTINEL" 2>/dev/null || echo 0)
+  # Portable mtime. Try GNU `-c %Y` first, then BSD/macOS `-f %m`, validating the
+  # result is numeric BETWEEN the two attempts rather than chaining on exit code:
+  # GNU `stat -f %m` does NOT fail on an unknown filesystem directive, it exits 0
+  # printing `?`, so a `-f %m || -c %Y` chain silently wins with garbage on Linux
+  # and the grace never engages. The numeric re-check defeats that. A mtime that
+  # stays unreadable falls back to 0, which reads as "aged past the grace" so a
+  # stat failure reverts to clear-on-recompute rather than wedging the sentinel
+  # armed forever.
+  sentinel_mtime=$(stat -c %Y "$SENTINEL" 2>/dev/null)
+  case "$sentinel_mtime" in
+    ''|*[!0-9]*) sentinel_mtime=$(stat -f %m "$SENTINEL" 2>/dev/null) ;;
+  esac
   case "$sentinel_mtime" in
     ''|*[!0-9]*) sentinel_mtime=0 ;;
   esac
