@@ -20,11 +20,15 @@ evidence: stack trace points at the init skill's name-substitution step in
 
 ```
 gaia_version: 1.4.2
-node_version: v22.19.0
-pnpm_version: 10.33.0
-git_branch: main
-git_dirty: false
-prompt_value: <redacted>
+node: v22.19.0
+pnpm: 10.33.0
+claude_code: 1.0.0
+branch: main
+dirty: false
+class_state_files:
+  - .gaia/manifest.json: present, version 1.4.2
+  - .gaia/local/setup-state.json: present, lastStep "rename"
+  - package.json: present, name "gaia" (rename incomplete)
 ```
 
 ## Reproduction context

@@ -1,17 +1,21 @@
 # `.github/forensics/`
 
-Supporting scripts for the SPEC-002 forensics triage workflow
+Supporting scripts for the forensics triage workflow
 (`.github/workflows/forensics-triage.yml`). The workflow itself is on the
 canonical denylist and never self-modifies; the helpers here are pure-shell,
 unit-testable primitives the workflow shells out to.
 
 ## Scripts
 
-| Script                                                                                                  | Purpose                                                                                                                                                     |
-| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bootstrap-labels.sh`                                                                                   | Maintainer-run, idempotent. Asserts the SPEC-002 phase-2 label vocabulary on the upstream repo; creates any missing labels with frozen colors/descriptions. |
-| `check-scope.sh`                                                                                        | Default-deny path-policy primitive. Classifies candidate paths against the SPEC-002 allowlist/denylist. JSON to stdout.                                     |
-| _additional helpers ship with later SPEC-002 phases (body-parser, classifier prompt, action handlers)._ |
+| Script                 | Purpose                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bootstrap-labels.sh`  | Maintainer-run, idempotent. Asserts the forensics triage label vocabulary on the upstream repo; creates any missing labels with frozen colors/descriptions. |
+| `check-scope.sh`       | Default-deny path-policy primitive. Classifies candidate paths against the forensics allowlist/denylist. JSON to stdout.                          |
+| `parse-issue-body.sh`  | Deterministic issue-body parser. JSON to stdout.                                                                                                  |
+| `parse-verdict.sh`     | Extracts the classifier verdict + proposed paths. JSON to stdout.                                                                                 |
+| `render-prompt.sh`     | Literal single-pass prompt-template renderer.                                                                                                     |
+| `run-quality-gate.sh`  | Runs the Quality Gate on the auto-fix branch; JSON summary.                                                                                       |
+| `handlers/`            | Per-verdict action handlers (non-issue, needs-human, auto-fixable, malformed-body, already-triaged).                                              |
 
 ## Run-once: bootstrap labels
 

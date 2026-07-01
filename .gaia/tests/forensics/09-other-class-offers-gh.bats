@@ -1,6 +1,10 @@
 #!/usr/bin/env bats
 # UAT-011: 'other' class is treated as a probable bug (offers gh issue),
 #          does NOT print user-config remediation.
+#
+# DETECTOR/SURROGATE TEST (not the shipped skill): exercises an inline surrogate
+# of the runbook branch and, where used, the `lib/*.sh` mirrors, never the shipped
+# skill body. Real end-to-end guard: integration.md "Local skill end-to-end" diff.
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 LIB="$HERE/lib"
@@ -104,14 +108,14 @@ other_class_surrogate() {
   PATH="$stub_dir:$PATH" gh issue create \
     --repo "gaia-react/gaia" \
     --label "gaia-forensics" \
-    --title "forensics: other — unknown failure outside taxonomy" \
+    --title "forensics: other, unknown failure outside taxonomy" \
     --body-file "$body_file"
 
   rm -rf "$stub_dir"
 
   grep -xF -- 'gaia-react/gaia' "$CAPTURE_FILE"
   grep -xF -- 'gaia-forensics' "$CAPTURE_FILE"
-  grep -qF 'forensics: other —' "$CAPTURE_FILE"
+  grep -qF 'forensics: other,' "$CAPTURE_FILE"
 }
 
 @test "UAT-011: other-class report body matches golden file schema" {

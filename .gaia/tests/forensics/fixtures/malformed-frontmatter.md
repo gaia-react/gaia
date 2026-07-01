@@ -1,3 +1,7 @@
+---
+class: other
+gaia_version: 1.4.2
+--
 ## Symptom
 
 The triage workflow never fires on issues opened from the mobile app.

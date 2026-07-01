@@ -1,6 +1,10 @@
 #!/usr/bin/env bats
 # UAT-009: classification decision + evidence cite shape
 # UAT-011: other class evidence cite
+#
+# DETECTOR/SURROGATE TEST (not the shipped skill): exercises an inline surrogate
+# of the runbook branch and, where used, the `lib/*.sh` mirrors, never the shipped
+# skill body. Real end-to-end guard: integration.md "Local skill end-to-end" diff.
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 LIB="$HERE/lib"

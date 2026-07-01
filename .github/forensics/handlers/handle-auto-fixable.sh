@@ -16,9 +16,8 @@
 # Exit code: 0 on success. 1 if `<fix-branch>` is missing on origin
 # (sanity check). gh-level failures propagate.
 #
-# Contract: SPEC-002 UAT-004 / UAT-008 (PR is draft) / UAT-015
-# (passthrough). Acceptance criterion in the task spec mandates the
-# `--draft` flag is present on `gh pr create`.
+# Contract: UAT-004 / UAT-008 (PR is draft) / UAT-015 (passthrough). The
+# contract requires the `--draft` flag on `gh pr create`.
 
 set -euo pipefail
 

@@ -69,9 +69,9 @@ Read `.claude/skills/gaia/references/forensics/redaction.md` and apply it now.
 Assemble the full report body (everything from `## Symptom` through `## Reproduction context`). Run the redaction algorithm once over this assembled body in declared order:
 
 1. Path conversion, Rule A (project-root strip), then Rule B (machine-leak fallback).
-2. Token regex set, patterns 1–7 in declared order.
+2. Token regex set, patterns 1–10 in declared order.
 3. Env-var value scrub.
-4. Sanity recheck, re-run patterns 1–6; if any credential-shaped string survives, halt and report rather than emitting a partially-redacted body.
+4. Sanity recheck, re-run patterns 1–9; if any credential-shaped string survives, halt and report rather than emitting a partially-redacted body.
 
 Do not pass frontmatter through redaction. Frontmatter is written after the body is clean.
 
@@ -92,16 +92,13 @@ gh_issue_url?: <url>
 ---
 
 ## Symptom
-
 <one-paragraph user description, redacted>
 
 ## Classification
-
 class: <tag>
 evidence: <verbatim user phrase> + <named state file>
 
 ## Capture
-
 gaia_version: <semver>
 node: <version>
 pnpm: <version>
@@ -109,11 +106,9 @@ claude_code: <version>
 branch: <name>
 dirty: <true|false>
 class_state_files:
-
-- <repo-relative path>: <one-line summary>
+  - <repo-relative path>: <one-line summary>
 
 ## Reproduction context
-
 <plain prose: what the user was doing, what they expected, what happened>
 ```
 
@@ -168,10 +163,17 @@ command -v gh
     ```
 
     Use `--body-file` so multiline bodies survive shell escaping intact. At this point, before `gh_issue_url` is added back to the local frontmatter, the GH-issue body must be byte-identical to the local file body (frontmatter included) so the deterministic parser at `.github/forensics/parse-issue-body.sh` extracts the same `class` from either input.
-    - On success: capture the issue URL printed by `gh`. Record it in the frontmatter `gh_issue_url` field of the already-saved local file (update the file in place). Continue to step 9.
+    - On success: capture the issue URL printed by `gh`. Record it in the frontmatter `gh_issue_url` field of the already-saved local file (update the file in place). Then verify the `gaia-forensics` label actually attached (GitHub silently drops labels when the issue author lacks triage access on `gaia-react/gaia`, the common case for an adopter filing upstream):
+
+      ```bash
+      gh issue view <issue-url> --repo gaia-react/gaia --json labels --jq '[.labels[].name]'
+      ```
+
+      - `gaia-forensics` present: the report is filed and label-gated triage will fire. Continue to step 9 unchanged.
+      - `gaia-forensics` absent (silently dropped): keep the issue and the back-filled `gh_issue_url`, the report is filed. Do NOT attempt to add the label yourself (an adopter without triage access cannot) and do NOT fail the run. Continue to step 9, which prints the label-dropped warning.
     - On non-zero `gh` exit: surface `gh`'s stderr verbatim. Leave the local report in place. Exit non-zero. Do not retry or partially file.
 
-    Do NOT pre-check `gh auth status`. Do NOT pre-check label existence. Rely on `gh`'s native error for both conditions.
+    Do NOT pre-check `gh auth status`. Do NOT pre-check label existence before create. Rely on `gh`'s native error for both conditions. The label verification above runs only *after* a successful create, on the issue that now exists.
 
 ### 9. Confirm
 
@@ -179,6 +181,12 @@ On any successful exit, print a single confirmation line:
 
 - If GH issue was filed: `Report: .gaia/local/forensics/<timestamp>-<class>.md | Issue: <issue URL>`
 - If locally saved only: `Report: .gaia/local/forensics/<timestamp>-<class>.md`
+
+If the GH issue was filed but step 8's label verification found `gaia-forensics` absent (silently dropped), print the confirmation line above and then this warning:
+
+> Warning: the `gaia-forensics` label did not attach to the issue. GitHub drops labels for authors without triage access on `gaia-react/gaia`, so the label-gated autonomous triage will not run. Ask a maintainer to add the `gaia-forensics` label to <issue URL> to trigger triage.
+
+Exit zero regardless, the report is saved and the issue exists.
 
 Exit read-only. No git operations, no cleanup beyond the temp file.
 
@@ -195,16 +203,13 @@ gh_issue_url?: <url>
 ---
 
 ## Symptom
-
 <one-paragraph user description, redacted>
 
 ## Classification
-
 class: <tag>
 evidence: <verbatim user phrase> + <named state file>
 
 ## Capture
-
 gaia_version: <semver>
 node: <version>
 pnpm: <version>
@@ -212,11 +217,9 @@ claude_code: <version>
 branch: <name>
 dirty: <true|false>
 class_state_files:
-
-- <repo-relative path>: <one-line summary>
+  - <repo-relative path>: <one-line summary>
 
 ## Reproduction context
-
 <plain prose: what the user was doing, what they expected, what happened>
 ```
 

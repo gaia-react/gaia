@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bootstrap-labels.sh: assert SPEC-002 phase-2 label vocabulary on the upstream
+# bootstrap-labels.sh: assert the forensics triage label vocabulary on the upstream
 # repo. Idempotent. Operator-wins on existing labels (color/description drift is
 # logged, never overwritten). Run-once by the maintainer before the triage
 # workflow ships; not invoked by CI.
@@ -9,8 +9,8 @@
 #
 # Prerequisites: `gh` authenticated against the target repo with `repo` scope.
 #
-# Frozen contract: SPEC-002 phase-2 labels (5) plus the SPEC-001 trigger
-# label `gaia-forensics`.
+# Frozen contract: the forensics triage labels (5) plus the `gaia-forensics`
+# trigger label.
 
 set -euo pipefail
 
@@ -42,7 +42,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Frozen label contract, name|color|description (per SPEC-002 task spec).
+# Frozen label contract, name|color|description.
 LABELS=(
   "gaia-forensics|5319e7|End-user bug report routed via /gaia-forensics. Triggers autonomous triage."
   "gaia-triaged|0e8a16|Forensics triage workflow has processed this issue. Idempotency key; re-firing is a no-op."

@@ -16,7 +16,7 @@
 # script error (bad usage, missing file, gh failure not related to
 # already-applied state).
 #
-# Contract: SPEC-002 UAT-002 / UAT-006 / UAT-015 (passthrough).
+# Contract: UAT-002 / UAT-006 / UAT-015 (passthrough).
 # Idempotency: gh issue edit --add-label re-applying an existing label is
 # a no-op; gh issue close on an already-closed issue is a no-op for our
 # purposes. The final --add-label gaia-triaged is the durable idempotency

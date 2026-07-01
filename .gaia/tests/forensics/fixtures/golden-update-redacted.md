@@ -1,5 +1,5 @@
 ## Symptom
-update conflict in .claude/hooks/wiki-session-stop.sh — the three-way merge failed after running /update-gaia. The conflicting file has both GAIA upstream changes and local customizations that overlap.
+update conflict in .claude/hooks/wiki-session-stop.sh, the three-way merge failed after running /update-gaia. The conflicting file has both GAIA upstream changes and local customizations that overlap.
 
 ## Classification
 class: update

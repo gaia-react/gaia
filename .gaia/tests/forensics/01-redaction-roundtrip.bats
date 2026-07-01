@@ -2,6 +2,9 @@
 # UAT-003: absolute paths converted to repo-relative, token-shaped values replaced with <redacted>
 # UAT-010: body post-redaction is byte-identical for local save and GH issue surfaces
 
+# TST-03's recheck-halt test uses `run --separate-stderr` (bats >= 1.5.0).
+bats_require_minimum_version 1.5.0
+
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 LIB="$HERE/lib"
 FIXTURES="$HERE/fixtures"
@@ -111,6 +114,116 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
+# SEC-1: fine-grained GitHub PAT (github_pat_...)
+# Synthetic body is lowercase, so no other pattern (AWS, generic) catches it
+# pre-fix; this test is red until pattern 1 gains the github_pat_ pass.
+# ---------------------------------------------------------------------------
+
+@test "SEC-1: github_pat_ fine-grained PAT is redacted" {
+  local fake_token="github_pat_$(python3 -c 'print("a"*30)' 2>/dev/null || printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
+  local input="Found in shell environment: $fake_token was present"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" != *"$fake_token"* ]]
+  [[ "$result" == *"<redacted>"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# SEC-3: JWT, Bearer, Slack xapp-, connection-string credentials
+# Each is placed mid-line with no token|key|secret keyword nearby, so the
+# generic fallback cannot mask a missing dedicated pass; each is red pre-fix.
+# ---------------------------------------------------------------------------
+
+@test "SEC-3: JWT triple-segment token is redacted" {
+  local jwt="eyJhbGci.eyJzdW0iOne.abcdefghij0123"
+  local input="Session JWT was $jwt in the log"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" != *"$jwt"* ]]
+  [[ "$result" == *"<redacted>"* ]]
+}
+
+@test "SEC-3: Bearer token value is redacted, label preserved" {
+  local tok
+  tok="$(python3 -c 'print("a"*24)' 2>/dev/null || printf 'aaaaaaaaaaaaaaaaaaaaaaaa')"
+  local input="Authorization: Bearer $tok"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" != *"Bearer $tok"* ]]
+  [[ "$result" == *"Bearer <redacted>"* ]]
+}
+
+@test "SEC-3: xapp- Slack app-level token is redacted" {
+  local fake_token="xapp-$(python3 -c 'print("1-" + "G"*12)' 2>/dev/null || printf '1-GGGGGGGGGGGG')"
+  local input="Slack app credential $fake_token present"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" != *"$fake_token"* ]]
+  [[ "$result" == *"<redacted>"* ]]
+}
+
+@test "SEC-3: connection-string credentials are redacted, scheme and host preserved" {
+  local input="DB at postgres://dbuser:s3cr3tpass@db.example.com:5432/mydb"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" != *"dbuser:s3cr3tpass"* ]]
+  [[ "$result" == *"postgres://<redacted>@db.example.com"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# SEC-4: bare home dir (/Users/<name>, /home/<name>, /root) collapses to <home>
+# ---------------------------------------------------------------------------
+
+@test "SEC-4: bare /Users/<name> home dir collapses to <home>" {
+  local input="User home is /Users/alice and nothing else"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" != *"/Users/alice"* ]]
+  [[ "$result" == *"<home>"* ]]
+}
+
+@test "SEC-4: bare /home/<name> home dir collapses to <home>" {
+  local input="The account lives at /home/bob today"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" != *"/home/bob"* ]]
+  [[ "$result" == *"<home>"* ]]
+}
+
+@test "SEC-4: /root path with trailing component collapses (no /root survives)" {
+  local input="Running as root from /root/.ssh/id_rsa"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" == *"id_rsa"* ]]
+  # Discriminating assertion last (bats keys off the final command's status):
+  # /root must not survive after SEC-4's /root trailing collapse.
+  [[ "$result" == "Running as root from id_rsa" ]]
+}
+
+@test "SEC-4: bare /root collapses to <home>" {
+  local input="Home directory: /root end"
+  local result
+  result="$(redact_body "$FAKE_ROOT" "$input")"
+  [[ "$result" != *"/root"* ]]
+  [[ "$result" == *"<home>"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# TST-03: sanity-recheck halt path (survivor -> non-zero exit, empty stdout)
+# Override sed with cat so the forward passes no-op and a raw token reaches
+# the recheck untouched; the recheck greps still fire and must halt.
+# ---------------------------------------------------------------------------
+
+@test "TST-03: recheck halts with no partial body when a token survives the forward passes" {
+  sed() { cat; }
+  local fake_token="gho_$(python3 -c 'print("Z"*24)' 2>/dev/null || printf 'ZZZZZZZZZZZZZZZZZZZZZZZZ')"
+  run --separate-stderr redact_body "$FAKE_ROOT" "leaked credential: $fake_token"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"REDACTION BUG"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # Env-var value scrub (step 3)
 # ---------------------------------------------------------------------------
 
@@ -143,6 +256,11 @@ setup() {
   local second_pass
   second_pass="$(redact_body "$FAKE_ROOT" "$first_pass")"
   [[ "$first_pass" == "$second_pass" ]]
+  # TST-04: the mid-line HOME=/Users/testuser must not survive (env-scrub is
+  # line-anchored and misses it; SEC-4's bare-home collapse catches it).
+  # Discriminating assertion last (bats keys off the final command's status).
+  [[ "$first_pass" != *"/home/"* ]]
+  [[ "$first_pass" != *"/Users/"* ]]
 }
 
 # ---------------------------------------------------------------------------

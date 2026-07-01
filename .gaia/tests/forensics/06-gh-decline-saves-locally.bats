@@ -1,6 +1,10 @@
 #!/usr/bin/env bats
 # UAT-005: declining GH issue creation still saves the report locally;
 #          no gh invocation occurs.
+#
+# DETECTOR/SURROGATE TEST (not the shipped skill): exercises an inline surrogate
+# of the runbook branch and, where used, the `lib/*.sh` mirrors, never the shipped
+# skill body. Real end-to-end guard: integration.md "Local skill end-to-end" diff.
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
 LIB="$HERE/lib"

@@ -1,7 +1,20 @@
 #!/usr/bin/env bats
 # UAT-008: no writes occur outside .gaia/local/forensics/ and .gaia/local/telemetry/
+#
+# DETECTOR/SURROGATE TEST (not the shipped skill): exercises an inline surrogate
+# of the runbook branch and, where used, the `lib/*.sh` mirrors, never the shipped
+# skill body. Real end-to-end guard: integration.md "Local skill end-to-end" diff.
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
+
+setup() {
+  # The temp repos below run `git commit`. CI runners have no ambient git
+  # identity (`user.name`/`user.email`) and cannot derive one, so the commit
+  # fails with an empty-ident error. Provide a deterministic identity via the
+  # environment so the commit succeeds regardless of the runner's git config.
+  export GIT_AUTHOR_NAME="Forensics Test" GIT_AUTHOR_EMAIL="forensics-test@example.com"
+  export GIT_COMMITTER_NAME="Forensics Test" GIT_COMMITTER_EMAIL="forensics-test@example.com"
+}
 
 # ---------------------------------------------------------------------------
 # Write-surface allowlist: shell harness that re-implements the runbook's

@@ -29,7 +29,7 @@ classify_description() {
     return 0
   fi
 
-  if printf '%s' "$desc" | grep -qE 'wiki-sync|wiki sync|sync|wiki commit'; then
+  if printf '%s' "$desc" | grep -qE 'wiki-sync|sync|wiki commit'; then
     printf 'wiki-sync'
     return 0
   fi
@@ -82,7 +82,7 @@ classify_evidence() {
       done
       ;;
     wiki-sync)
-      for phrase in 'wiki-sync' 'wiki sync' 'sync' 'wiki commit'; do
+      for phrase in 'wiki-sync' 'sync' 'wiki commit'; do
         if printf '%s' "$desc" | grep -q "$phrase"; then
           printf '"%s"' "$phrase"
           return 0

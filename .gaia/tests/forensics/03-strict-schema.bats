@@ -147,6 +147,74 @@ EOF
   printf '%s' "$cap_section" | grep -q '^gaia_version: '
   printf '%s' "$cap_section" | grep -q '^node: '
   printf '%s' "$cap_section" | grep -q '^pnpm: '
+  # COV-7: claude_code is part of the canonical envelope and must be asserted.
+  printf '%s' "$cap_section" | grep -q '^claude_code: '
   printf '%s' "$cap_section" | grep -q '^branch: '
   printf '%s' "$cap_section" | grep -q '^dirty: '
+}
+
+# ---------------------------------------------------------------------------
+# TST-02: canonical Capture rendering is byte-identical everywhere.
+#
+# Header-presence checks (above) never caught the whitespace/indentation drift
+# between the three renderings (forensics.md, capture.md, the goldens). These
+# two tests pin the canonical form byte-for-byte: no blank line after a `## `
+# header, `class_state_files:` immediately followed by two-space-indented list
+# items, and the seven canonical envelope keys in declared order.
+# ---------------------------------------------------------------------------
+
+@test "TST-02: golden-init Capture block matches the canonical rendering byte-for-byte" {
+  local golden="$FIXTURES/golden-init-redacted.md"
+  [[ -f "$golden" ]] || skip "golden-init-redacted.md not found"
+
+  local body cap_section
+  body="$(cat "$golden")"
+  cap_section="$(printf '%s' "$body" | awk '/^## Capture/{found=1} found && /^## / && !/^## Capture/{exit} found{print}')"
+
+  local expected
+  expected="$(cat <<'EOF'
+## Capture
+gaia_version: 1.2.0
+node: v20.11.0
+pnpm: 8.15.4
+claude_code: 1.0.0
+branch: main
+dirty: false
+class_state_files:
+  - .gaia/manifest.json: present, version 1.2.0
+  - .gaia/local/setup-state.json: present, lastStep "rename"
+  - package.json: present, name "gaia" (rename incomplete)
+EOF
+)"
+  [[ "$cap_section" == "$expected" ]]
+}
+
+@test "TST-02: golden-other-class is byte-identical to the canonical empty-list rendering" {
+  local golden="$FIXTURES/golden-other-class.md"
+  [[ -f "$golden" ]] || skip "golden-other-class.md not found"
+
+  local actual expected
+  actual="$(cat "$golden")"
+  expected="$(cat <<'EOF'
+## Symptom
+Something went wrong when I ran GAIA but I am not sure which workflow caused it. The output was unexpected and the tool did not complete its task.
+
+## Classification
+class: other
+evidence: no taxonomy class matched
+
+## Capture
+gaia_version: 1.2.0
+node: v20.11.0
+pnpm: 8.15.4
+claude_code: 1.0.0
+branch: main
+dirty: false
+class_state_files: []
+
+## Reproduction context
+The user ran a GAIA workflow but the description does not match any known failure taxonomy class. The failure is treated as a probable GAIA bug. The GH issue offer is made without user-config remediation steps.
+EOF
+)"
+  [[ "$actual" == "$expected" ]]
 }

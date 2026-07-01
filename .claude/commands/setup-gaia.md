@@ -52,7 +52,7 @@ elif ! gh auth status &>/dev/null; then
 elif [ -f .github/workflows/forensics-triage.yml ] && gh repo view &>/dev/null; then
   if ! gh label list --limit 100 --json name 2>/dev/null \
       | jq -e '.[] | select(.name == "gaia-forensics")' >/dev/null; then
-    echo "Warning: forensics-triage.yml is enabled but the 'gaia-forensics' label is missing on this repo. Ask a maintainer: gh label create gaia-forensics --color D93F0B --description 'Triggers autonomous forensics triage'" >&2
+    echo "Warning: forensics-triage.yml is enabled but the 'gaia-forensics' label is missing on this repo. Ask a maintainer to run .github/forensics/bootstrap-labels.sh, which creates the 'gaia-forensics' label with the canonical color and description." >&2
   fi
 fi
 ```

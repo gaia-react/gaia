@@ -192,9 +192,29 @@ jobs:
           - `.specify/specs/`, `.specify/memory/`
           - `.gaia/local/specs/`
           - `.specify/extensions/gaia/templates/`
-          - `.github/workflows/`'
+          - `.github/workflows/`, `.github/forensics/`, `.github/`'
 
           rendered_file="${RUNNER_TEMP}/forensics/classifier-prompt.md"
+
+          # SEC-2: neutralize the untrusted issue sections before they are
+          # substituted into the prompt. `neutralize-untrusted.sh` collapses
+          # backtick runs (no fence breakout) and defangs any injected
+          # `GAIA-VERDICT:` / `GAIA-FIX-ABORT:` marker, so attacker text
+          # cannot masquerade as the model's own machine-readable output.
+          # Applied ONLY to the four untrusted sections; the allow/deny
+          # lists (legitimate backticks) and the template's own control
+          # markers are left intact.
+          symptom="$("$FORENSICS_DIR/neutralize-untrusted.sh" "$symptom")"
+          classification="$("$FORENSICS_DIR/neutralize-untrusted.sh" "$classification")"
+          capture="$("$FORENSICS_DIR/neutralize-untrusted.sh" "$capture")"
+          repro="$("$FORENSICS_DIR/neutralize-untrusted.sh" "$repro")"
+
+          # SEC-2: per-run random sentinel. Each untrusted section in the
+          # template is wrapped between a pair of identical sentinel marker
+          # lines the model is told are data, not instructions. The value is
+          # unknowable to an attacker before the run, so injected text cannot
+          # forge or close a marker.
+          SENTINEL="UNTRUSTED_$(openssl rand -hex 12)"
 
           # Render via the standalone helper (SPEC-003 UAT-004). Bash
           # parameter-expansion-based substitution sidesteps both the
@@ -202,6 +222,7 @@ jobs:
           # corruption that the previous inline awk shipped with.
           "$FORENSICS_DIR/render-prompt.sh" "$FORENSICS_DIR/prompt.md" \
             "ISSUE_NUMBER=$ISSUE_NUMBER" \
+            "SENTINEL=$SENTINEL" \
             "SYMPTOM=$symptom" \
             "CLASSIFICATION=$classification" \
             "CAPTURE=$capture" \
@@ -257,10 +278,21 @@ jobs:
           # text file for parse-verdict.
           verdict_text="${RUNNER_TEMP}/forensics/verdict-text.md"
           if [ -z "${EXEC_FILE:-}" ] || [ ! -f "$EXEC_FILE" ]; then
-            echo "::error::classifier execution_file missing or unreadable: ${EXEC_FILE:-<empty>}"
-            exit 1
+            # CMP-1: the `Classify` step is `continue-on-error: true`, so an
+            # SDK / API / max-turns failure leaves execution_file empty. Do
+            # NOT hard-exit here: exiting would run no verdict handler, yet
+            # the always-run fail-forward step still stamps `gaia-triaged`,
+            # stranding the issue as triaged-but-unhandled (and idempotency
+            # blocks any retry). Instead write an empty verdict so
+            # parse-verdict.sh yields `ambiguous`, routing to the
+            # `Handle ambiguous verdict` step → handle-needs-human.sh with
+            # reason-code `ambiguous-verdict`. `gaia-triaged` is then applied
+            # BY that handler, and the issue is genuinely handled.
+            echo "::warning::classifier execution_file missing or unreadable (${EXEC_FILE:-<empty>}); treating as ambiguous -> needs-human"
+            : > "$verdict_text"
+          else
+            jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
           fi
-          jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
           if [ ! -s "$verdict_text" ]; then
             echo "::warning::classifier produced no result text, treating as ambiguous"
           fi
@@ -456,10 +488,20 @@ jobs:
           # block; content is read-back-into-position via a single gsub).
           paths_block="$(jq -r '.proposed_paths[]' "$VERDICT_FILE")"
 
+          # SEC-2: neutralize the untrusted issue sections (backtick runs +
+          # injected GAIA-FIX-ABORT/GAIA-VERDICT markers) before substitution.
+          symptom="$("$FORENSICS_DIR/neutralize-untrusted.sh" "$symptom")"
+          capture="$("$FORENSICS_DIR/neutralize-untrusted.sh" "$capture")"
+          repro="$("$FORENSICS_DIR/neutralize-untrusted.sh" "$repro")"
+
+          # SEC-2: per-run random sentinel wrapping each untrusted section.
+          SENTINEL="UNTRUSTED_$(openssl rand -hex 12)"
+
           rendered_file="${RUNNER_TEMP}/forensics/apply-fix-prompt.md"
 
           "$FORENSICS_DIR/render-prompt.sh" "$FORENSICS_DIR/apply-fix-prompt.md" \
             "ISSUE_NUMBER=$ISSUE_NUMBER" \
+            "SENTINEL=$SENTINEL" \
             "PROPOSED_PATHS=$paths_block" \
             "CLASSIFIER_REASONING=$reasoning" \
             "SYMPTOM=$symptom" \
@@ -498,7 +540,7 @@ jobs:
           # quality-gate backstops contain runaway behavior.
           claude_args: |
             --max-turns 60
-            --allowedTools Edit,Write
+            --allowedTools Edit,Write,Read
             --disallowedTools Bash,WebFetch,WebSearch
 
       - name: Verify diff against proposed paths
@@ -622,14 +664,22 @@ jobs:
           # pushed, but resetting keeps the runner's working tree clean
           # in case any always-run step inspects it.
           git reset --hard HEAD
-          # UAT-010: `diff-not-in-proposed` is a deviation (the model
-          # touched in-allowlist paths it did not declare upfront), not a
-          # scope violation. Other abort reasons remain `out-of-scope`.
-          if [ "$ABORT_REASON" = "diff-not-in-proposed" ]; then
-            reason_code="deviation"
-          else
-            reason_code="out-of-scope"
-          fi
+          # CMP-3: map each `abort_reason` (set in `Verify diff`) to the
+          # reason-code whose handle-needs-human.sh summary actually
+          # describes it. Previously `fix-abort` and `empty-diff` both
+          # collapsed to `out-of-scope`, printing a false "touches paths
+          # outside the allowlist" summary for a self-abort or a no-op.
+          #   fix-abort            -> fix-abort    (model emitted GAIA-FIX-ABORT)
+          #   empty-diff           -> no-change    (model produced no diff)
+          #   diff-out-of-scope    -> out-of-scope (genuine scope violation)
+          #   diff-not-in-proposed -> deviation    (in-allowlist, undeclared)
+          case "$ABORT_REASON" in
+            fix-abort)            reason_code="fix-abort" ;;
+            empty-diff)           reason_code="no-change" ;;
+            diff-out-of-scope)    reason_code="out-of-scope" ;;
+            diff-not-in-proposed) reason_code="deviation" ;;
+            *)                    reason_code="out-of-scope" ;;
+          esac
           "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
             "$ISSUE_NUMBER" \
             "$reason_file" \

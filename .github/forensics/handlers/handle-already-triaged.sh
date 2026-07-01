@@ -9,7 +9,7 @@
 # Usage:
 #   handle-already-triaged.sh <issue-num>
 #
-# Contract: SPEC-002 UAT-006.
+# Contract: UAT-006.
 
 set -euo pipefail
 

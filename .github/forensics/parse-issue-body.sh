@@ -11,16 +11,21 @@
 #   - Four `##` section headers, in any order, exactly matching:
 #     `## Symptom`, `## Classification`, `## Capture`, `## Reproduction context`.
 #   - Each section non-empty.
-#   - The `## Classification` section content includes a `class: <tag>` line
-#     whose value is one of the eight forensics taxonomy classes
+#   - The `## Classification` section content includes a `class: <tag>` line.
+#     The parser checks this `class` value is present and non-empty (deriving
+#     it from `## Classification` when frontmatter is absent); it does NOT
+#     enforce membership in the eight forensics taxonomy classes
 #     (`init|update|wiki-sync|quality-gate|hook|scaffold|dev-server|other`).
+#     The workflow's fix-branch slug sanitization bounds the value downstream.
 #
-# The body may optionally lead with a YAML frontmatter block (`---` …
-# `---`). When present it supplies `class`, `gaia_version`, `created`,
-# and `gh_issue_url`. When absent, the shape `gh issue create` posts -
-# `class` is derived from the `## Classification` section content, and
-# the parser still emits the same JSON shape with empty / null values
-# for any frontmatter-only field.
+# The body leads with a YAML frontmatter block (`---` … `---`) that
+# supplies `class`, `gaia_version`, `created`, and (after back-fill)
+# `gh_issue_url`. The GitHub-issue body is byte-identical to the local
+# file body, so it ships WITH this frontmatter. As defense-in-depth the
+# parser stays tolerant of an absent block: when frontmatter is missing
+# it derives `class` from the `## Classification` section content and
+# still emits the same JSON shape with empty / null values for any
+# frontmatter-only field.
 
 set -uo pipefail
 
@@ -30,7 +35,7 @@ usage() {
 }
 
 # emit_internal_error <stage> <exit-code>
-# Emits the SPEC-003 internal-error JSON envelope on stdout. Used by the
+# Emits the internal-error JSON envelope on stdout. Used by the
 # per-awk exit-code checks: when an awk pipeline returns non-zero, the
 # consumer needs a deterministic signal distinguishing "infrastructure
 # failure" from "valid:false / verdict:ambiguous". The script's overall
@@ -54,9 +59,10 @@ work_dir=$(mktemp -d 2>/dev/null) || { echo "parse-issue-body.sh: mktemp failed"
 trap 'rm -rf "$work_dir"' EXIT
 
 # ---------------------------------------------------------------------------
-# Step 1: opportunistically extract a YAML frontmatter block. Frontmatter
-# is optional, the GitHub-issue body shape ships without one, and the
-# parser derives `class` from `## Classification` later. The local file
+# Step 1: opportunistically extract a YAML frontmatter block. The issue
+# body ships WITH frontmatter (byte-identical to the local file body).
+# As defense-in-depth the parser stays tolerant of an absent block,
+# deriving `class` from `## Classification` when missing. The local file
 # shape (saved at `.gaia/local/forensics/<timestamp>-<class>.md`) keeps
 # the frontmatter, so the parser still picks up its values when present.
 # ---------------------------------------------------------------------------
@@ -112,18 +118,33 @@ if [ "$first_line" = "---" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2: split the body into per-section files. Detect malformed `## `
-# headers (anything not in the canonical four).
+# Step 2: split the body into per-section files. The parser is
+# fence-aware and matches ONLY the four exact canonical headers.
 # ---------------------------------------------------------------------------
 
-# Single awk pass: route lines into per-section files; record the first
-# malformed header (if any) into a sentinel file.
+# Single awk pass, routing lines into per-section files.
 #
-# A section starts at `^## (Symptom|Classification|Capture|Reproduction context)$`
-# and ends at the next `^## ` line or EOF. Lines BEFORE the first valid
-# `## ` header are dropped (the schema places the four sections
-# back-to-back; nothing precedes them). Lines under a malformed header
-# are also dropped, the malformed header itself is reported.
+# Fence-awareness: a line beginning with ``` toggles fenced-code state.
+# Inside a fence every line - including a `## ` line - is section
+# content, never a header (the fence line itself is content too). This
+# keeps pasted stack traces, compiler output, or quoted markdown from
+# hijacking the section split (RT-02).
+#
+# Header semantics (outside a fence):
+#   - A line that EXACTLY equals one of the four canonical headers
+#     (`## Symptom`, `## Classification`, `## Capture`,
+#     `## Reproduction context`) starts that section.
+#   - The same canonical header seen a second time is a DUPLICATE: it is
+#     recorded to a sentinel file and rejected downstream (RT-03) rather
+#     than silently re-dispatching and corrupting the body.
+#   - ANY other `## ` line is treated as content of the current section,
+#     NEVER as a malformed header. There is deliberately no
+#     malformed-section-header path: a non-canonical `## ` line is always
+#     content, so legitimate reports quoting `## Foo` parse (RT-02).
+#
+# A section ends at the next canonical header or EOF. Lines before the
+# first canonical header are dropped (the schema places the four
+# sections back-to-back; nothing precedes them).
 awk -v start="$body_start" -v out_dir="$work_dir" '
   function flush() {
     if (cur != "" && out_path != "") {
@@ -134,41 +155,62 @@ awk -v start="$body_start" -v out_dir="$work_dir" '
     buf = ""
     out_path = ""
   }
+  function buffer(line) {
+    if (cur != "") {
+      if (buf == "") buf = line
+      else buf = buf "\n" line
+    }
+  }
   BEGIN {
     cur = ""
     buf = ""
     out_path = ""
+    in_fence = 0
+    seen_symptom = 0
+    seen_classification = 0
+    seen_capture = 0
+    seen_reproduction = 0
   }
   NR < start { next }
-  /^## / {
+  # Fenced-code toggle. The fence line is content of the current section.
+  /^```/ {
+    in_fence = !in_fence
+    buffer($0)
+    next
+  }
+  # Exact canonical headers (outside a fence) drive the section split.
+  !in_fence && /^## / {
     name = substr($0, 4)
-    flush()
-    if (name == "Symptom") {
-      cur = name; out_path = out_dir "/sec-symptom.txt"
-    } else if (name == "Classification") {
-      cur = name; out_path = out_dir "/sec-classification.txt"
-    } else if (name == "Capture") {
-      cur = name; out_path = out_dir "/sec-capture.txt"
-    } else if (name == "Reproduction context") {
-      cur = name; out_path = out_dir "/sec-reproduction.txt"
-    } else {
-      # Record first malformed header (subsequent ones ignored).
-      bad_path = out_dir "/malformed-header.txt"
-      cmd = "test -f \"" bad_path "\""
-      if (system(cmd) != 0) {
-        print name > bad_path
-        close(bad_path)
+    if (name == "Symptom" || name == "Classification" || name == "Capture" || name == "Reproduction context") {
+      is_dup = 0
+      if (name == "Symptom")                   { if (seen_symptom)        is_dup = 1; else seen_symptom = 1 }
+      else if (name == "Classification")       { if (seen_classification) is_dup = 1; else seen_classification = 1 }
+      else if (name == "Capture")              { if (seen_capture)        is_dup = 1; else seen_capture = 1 }
+      else if (name == "Reproduction context") { if (seen_reproduction)   is_dup = 1; else seen_reproduction = 1 }
+      if (is_dup) {
+        # Record the first duplicate canonical header (later ones
+        # ignored). Do not start a new section; the body is rejected.
+        dup_path = out_dir "/duplicate-header.txt"
+        cmd = "test -f \"" dup_path "\""
+        if (system(cmd) != 0) {
+          print name > dup_path
+          close(dup_path)
+        }
+        next
       }
-      cur = ""
-      out_path = ""
+      flush()
+      if (name == "Symptom")                   { cur = name; out_path = out_dir "/sec-symptom.txt" }
+      else if (name == "Classification")       { cur = name; out_path = out_dir "/sec-classification.txt" }
+      else if (name == "Capture")              { cur = name; out_path = out_dir "/sec-capture.txt" }
+      else                                     { cur = name; out_path = out_dir "/sec-reproduction.txt" }
+      next
     }
+    # Non-canonical `## ` line: content, not a header (RT-02).
+    buffer($0)
     next
   }
   {
-    if (cur != "") {
-      if (buf == "") buf = $0
-      else buf = buf "\n" $0
-    }
+    buffer($0)
   }
   END {
     flush()
@@ -179,14 +221,14 @@ awk_status=$?
 
 # ---------------------------------------------------------------------------
 # Step 3: failure-mode resolution. Order:
-#   1. malformed-section-header
+#   1. duplicate-section-header
 #   2. missing-section
 #   3. empty-section
 # ---------------------------------------------------------------------------
 
-if [ -f "$work_dir/malformed-header.txt" ]; then
-  bad_header=$(cat "$work_dir/malformed-header.txt")
-  esc_header=$(printf '%s' "$bad_header" | awk '
+if [ -f "$work_dir/duplicate-header.txt" ]; then
+  dup_header=$(cat "$work_dir/duplicate-header.txt")
+  esc_header=$(printf '%s' "$dup_header" | awk '
     {
       gsub(/\\/, "\\\\")
       gsub(/"/, "\\\"")
@@ -194,7 +236,7 @@ if [ -f "$work_dir/malformed-header.txt" ]; then
       printf "%s", $0
     }
   ')
-  printf '{"valid":false,"error":"malformed-section-header","missing":[],"malformed":["%s"]}\n' "$esc_header"
+  printf '{"valid":false,"error":"duplicate-section-header","missing":[],"malformed":["%s"]}\n' "$esc_header"
   exit 0
 fi
 

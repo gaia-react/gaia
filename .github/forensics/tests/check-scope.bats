@@ -123,9 +123,9 @@ setup() {
   [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":"eslint.config.ts","reason":"default-deny-unenumerated"}]}' ]
 }
 
-@test "default-deny: .github/CODEOWNERS (unenumerated .github/ subpath)" {
+@test "denylist: .github/CODEOWNERS (explicit .github/ tree deny, RT-06)" {
   run "$SCRIPT" .github/CODEOWNERS
-  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/CODEOWNERS","reason":"default-deny-unenumerated"}]}' ]
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/CODEOWNERS","reason":"denylist"}]}' ]
 }
 
 @test "default-deny: sibling of an allowlist prefix does not match" {
@@ -249,4 +249,85 @@ setup() {
   run "$SCRIPT" "$path"
   [ "$status" -eq 0 ]
   printf '%s' "$output" | jq . >/dev/null
+}
+
+# --- path-traversal rejection (RT-05) --------------------------------------
+#
+# classify_path does pure prefix matching, so an unnormalized `..` segment
+# lets a path start under an allowlist prefix yet resolve outside the
+# sandbox. Any candidate carrying a `..` PATH SEGMENT is rejected before
+# classification, mirroring the control-byte short-circuit: first offending
+# path wins and denies the whole invocation. A `..` substring that is not a
+# path segment (e.g. `foo..bar`) is NOT a traversal and must classify
+# normally.
+
+@test "traversal: .. segment escapes allowlist prefix → reject" {
+  run "$SCRIPT" '.claude/skills/../../.github/workflows/x.yml'
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".claude/skills/../../.github/workflows/x.yml","reason":"path-traversal:contains-..-segment"}]}' ]
+}
+
+@test "traversal: .. segment mid-path → reject" {
+  run "$SCRIPT" '.gaia/cli/../manifest.json'
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".gaia/cli/../manifest.json","reason":"path-traversal:contains-..-segment"}]}' ]
+}
+
+@test "traversal: leading ../ → reject" {
+  run "$SCRIPT" '../etc/passwd'
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":"../etc/passwd","reason":"path-traversal:contains-..-segment"}]}' ]
+}
+
+@test "traversal: trailing /.. → reject" {
+  run "$SCRIPT" '.gaia/cli/..'
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".gaia/cli/..","reason":"path-traversal:contains-..-segment"}]}' ]
+}
+
+@test "traversal: dotted filename without .. segment is unaffected" {
+  # `.gaia/cli/foo.d.ts` has dots but no `..` path segment; classifies as allow.
+  run "$SCRIPT" '.gaia/cli/foo.d.ts'
+  [ "$output" = '{"ok":true,"allowed":[".gaia/cli/foo.d.ts"],"denied":[]}' ]
+}
+
+@test "traversal: .. substring that is not a path segment is unaffected" {
+  # `foo..bar.ts` contains the `..` substring but not as a bounded segment;
+  # the guard must not false-positive on it.
+  run "$SCRIPT" '.gaia/cli/foo..bar.ts'
+  [ "$output" = '{"ok":true,"allowed":[".gaia/cli/foo..bar.ts"],"denied":[]}' ]
+}
+
+@test "traversal: first offending path denies the whole invocation" {
+  run "$SCRIPT" '.gaia/cli/../x' .gaia/cli/foo.sh app/bar.ts
+  [ "$status" -eq 0 ]
+  case $output in
+    *'.gaia/cli/foo.sh'*) printf 'allowlisted path leaked: %s\n' "$output" >&2; return 1 ;;
+    *'app/bar.ts'*) printf 'denylisted path leaked: %s\n' "$output" >&2; return 1 ;;
+    *'"reason":"path-traversal:contains-..-segment"'*) ;;
+    *) printf 'unexpected output: %s\n' "$output" >&2; return 1 ;;
+  esac
+}
+
+# --- explicit .github denylist (RT-06) -------------------------------------
+#
+# The workflow header and wiki claim `.github/forensics/` is denylisted, but
+# the RULES set previously only enumerated `.github/workflows/`. Explicit
+# `.github/forensics/` and `.github/` deny rules make the CODE match the
+# claim: these paths report `reason:"denylist"`, not
+# `default-deny-unenumerated`.
+
+@test "denylist: .github/forensics/ (explicit, not default-deny)" {
+  run "$SCRIPT" .github/forensics/check-scope.sh
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/forensics/check-scope.sh","reason":"denylist"}]}' ]
+}
+
+@test "denylist: .github/ tree, e.g. dependabot.yml" {
+  run "$SCRIPT" .github/dependabot.yml
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/dependabot.yml","reason":"denylist"}]}' ]
+}
+
+@test "denylist: .github/workflows/ still denied after explicit .github/ rules" {
+  run "$SCRIPT" .github/workflows/forensics-triage.yml
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/workflows/forensics-triage.yml","reason":"denylist"}]}' ]
 }
