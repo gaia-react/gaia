@@ -32,7 +32,7 @@ GAIA workflows are split between slash commands under `.claude/commands/` (`/gai
 
 ## Rules: auto-attached
 
-Rules activate automatically based on file paths; no need to invoke them. Each rule scopes itself to a glob in `.claude/rules/{name}.md` frontmatter. The set covers code conventions ([[Coding Guidelines]], [[State]], [[Routing]], [[i18n]], [[Tailwind]], [[API Service Pattern]], [[Storybook Stories]], [[Playwright]]), workflow ([[Git Workflow]], [[Quality Gate]], [[PR Merge Workflow]], [[Task Orchestration]]), and harness discipline (`shell-cwd.md`, `instruction-files.md`, `code-search.md`).
+Rules activate automatically based on file paths; no need to invoke them. Each rule scopes itself to a glob in `.claude/rules/{name}.md` frontmatter. The set covers code conventions ([[Coding Guidelines]], [[State]], [[Routing]], [[i18n]], [[Tailwind]], [[API Service Pattern]], [[Storybook Stories]], [[Playwright]]), workflow ([[Git Workflow]], [[Quality Gate]], [[PR Merge Workflow]], [[Task Orchestration]]), and harness discipline (`shell-cwd.md`, `instruction-files.md`, `code-search.md`, `repo-relative-paths.md`).
 
 For the current full rule list, query Serena or list `.claude/rules/`.
 
