@@ -7,6 +7,8 @@ paths:
 
 Files under `.claude/instructions/`, `.claude/commands/`, `.claude/skills/`, `.claude/agents/`, and `.claude/rules/` ship inside the GAIA template and get installed onto end-user machines via the scaffold. Any path baked into them must be portable.
 
+This rule governs `.claude/`-distributed files specifically. The same repo-relative requirement applies **repo-wide** (source, tests, docs, runbooks, `.gaia/`, `.specify/`, …); that standing policy and its two legitimate exceptions live in [`repo-relative-paths.md`](repo-relative-paths.md).
+
 ## Rule
 
 **All paths in template-distributed Claude files must be repo-relative.** Use `app/i18n.ts`, not `/Users/<name>/.../app/i18n.ts`. The executing agent's working directory is always the project root, so repo-relative paths resolve correctly on every machine.
