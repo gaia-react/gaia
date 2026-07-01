@@ -2,8 +2,8 @@
  * `gaia setup-ci warn-existing-tools [--json]` handler.
  *
  * Detects pre-existing dependency-bot configurations that would
- * collide with GAIA Sharpen. Read-only by design; never auto-disables
- * either tool. The `/setup-gaia-ci` slash command surfaces the warning
+ * collide with `/update-deps`. Read-only by design; never auto-disables
+ * either tool. The `/setup-gaia` slash command surfaces the warning
  * text and asks the user to confirm before continuing.
  *
  * Detected files:

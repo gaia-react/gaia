@@ -100,7 +100,7 @@ The refresh is a **3-way text classify** (the audit template is static, so there
 | `clean`    | `A == L_old`: stale but un-customized               | Overwrite with `L_new`, commit, and push into the update PR.  |
 | `conflict` | `A` matches neither, or baseline unavailable        | Write `.gaia-merge/code-review-audit.yml.patch`; never write. |
 
-The audit workflow is **adopter-tunable**: `conflict` never clobbers adopter edits (self-hosted runners, extra secrets wiring, concurrency, extra steps), it emits a sidecar patch and defers to a manual `/setup-gaia-ci` refresh, mirroring the `shared` drift rule. The scheduled `gaia-ci-*` workflows stay disposable (regenerated wholesale on `/setup-gaia-ci --reconfigure`); only the audit workflow gets the 3-way.
+The audit workflow is **adopter-tunable**: `conflict` never clobbers adopter edits (self-hosted runners, extra secrets wiring, concurrency, extra steps), it emits a sidecar patch and defers to a manual `/setup-gaia` refresh, mirroring the `shared` drift rule. The scheduled `gaia-ci-*` workflows stay disposable (regenerated wholesale on `/setup-gaia --reconfigure`); only the audit workflow gets the 3-way.
 
 Re-rendering the workflow makes the update PR self-modifying, so [[Code Review Audit CI]]'s `claude-code-action` refuses to audit it and the run self-mod-skips. This is a UX/ordering cleanup: it replaces a wasted full audit under the stale workflow plus a manual refresh step with one expected skip. It does **not** earn a clean CI `GAIA-Audit` stamp; the merge proceeds on a local audit marker / trailer or the out-of-scope bypass (see [[PR Merge Workflow]]).
 

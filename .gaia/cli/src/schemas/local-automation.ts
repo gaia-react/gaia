@@ -3,7 +3,7 @@
  * gitignored personal nudge state.
  *
  * Slice 1 only reads this file; the dismissal write lands in
- * `/setup-gaia-ci` (a later slice). The path constant + read helper
+ * `/setup-gaia` (a later slice). The path constant + read helper
  * exist now so all later slices share one canonical source.
  */
 import {existsSync, readFileSync} from 'node:fs';

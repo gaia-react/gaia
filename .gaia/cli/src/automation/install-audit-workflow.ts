@@ -6,7 +6,7 @@
  * variables (it reads `.gaia/audit-ci.yml` at runtime), so it installs as a
  * static copy rather than a rendered template.
  *
- * `/setup-gaia-ci` Step 8 calls this with `--out-dir .github/workflows`.
+ * `/setup-gaia` Step 8 calls this with `--out-dir .github/workflows`.
  */
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';

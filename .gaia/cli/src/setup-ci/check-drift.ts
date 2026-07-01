@@ -3,7 +3,7 @@
  *
  * Compares the rendered `.github/workflows/gaia-ci-<tool>.yml` files
  * against a fresh in-memory render of the current templates and
- * `.gaia/automation.json`. The `/setup-gaia-ci` slash command calls
+ * `.gaia/automation.json`. The `/setup-gaia` slash command calls
  * this between the `status` probe and the idempotent short-circuit
  * to decide whether to offer the adopter a re-render path.
  *

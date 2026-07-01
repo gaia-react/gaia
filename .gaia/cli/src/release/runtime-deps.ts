@@ -135,7 +135,7 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     the same hook's `check_self_mod_only_update_pr()` bypass. It is compared
  *     against the PR's changed-file list and against the bundled template's
  *     git blob; it is never sourced or executed. The file is release-excluded
- *     (installed on demand by `/setup-gaia-ci`), and when absent on an adopter
+ *     (installed on demand by `/setup-gaia`), and when absent on an adopter
  *     clone the path simply never appears in the diff, so the bypass returns
  *     the normal deny. A path constant, not a runtime dependency.
  */

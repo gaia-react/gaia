@@ -3,7 +3,7 @@
  *
  * Codifies the Phase A scaffold step of `/gaia-init`. Writes
  * `.gaia/automation.json` with the user's tool-mode selections and
- * `setup_complete: false`. Phase B (`/setup-gaia-ci`) flips
+ * `setup_complete: false`. Phase B (`/setup-gaia`) flips
  * `setup_complete` to `true` after the user creates the GitHub repo
  * and pushes.
  *

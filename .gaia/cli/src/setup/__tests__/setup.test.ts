@@ -98,12 +98,12 @@ describe('gaia setup status', () => {
     expect(out.pending_steps).toEqual([...SETUP_STEPS]);
   });
 
-  test('human format mentions /setup-cloned-gaia-project for incomplete state', () => {
+  test('human format mentions /setup-gaia for incomplete state', () => {
     const exit = runStatus([], {cwd: sandbox.root});
     expect(exit).toBe(0);
     const out = stdio.outputs.join('');
     expect(out).toContain('Setup is incomplete');
-    expect(out).toContain('/setup-cloned-gaia-project');
+    expect(out).toContain('/setup-gaia');
   });
 
   test('rejects unknown flags', () => {

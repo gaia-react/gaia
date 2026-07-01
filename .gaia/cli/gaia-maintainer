@@ -25660,7 +25660,7 @@ var printHuman3 = (output) => {
     lines.push(`  Completed: ${output.completed_steps.join(", ")}`);
   }
   lines.push(`  Pending: ${output.pending_steps.join(", ")}`);
-  lines.push("  Run /setup-cloned-gaia-project to finish.");
+  lines.push("  Run /setup-gaia to finish.");
   process.stdout.write(`${lines.join("\n")}
 `);
 };

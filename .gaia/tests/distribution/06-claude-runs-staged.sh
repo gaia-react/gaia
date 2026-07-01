@@ -13,7 +13,7 @@
 #   - The staged tree is reachable as the container's working directory.
 #
 # What this does NOT test:
-#   - Adopter flows like /gaia-init or /setup-cloned-gaia-project. Those exercise interactive
+#   - Adopter flows like /gaia-init or /setup-gaia. Those exercise interactive
 #     skills and live in follow-up scenarios; this is the harness smoke.
 #   - Token-attribution to subscription vs. API. That is the diagnostic
 #     runbook's job; see `diagnostic/claude-auth-in-docker.md` for the

@@ -2,7 +2,7 @@
  * `gaia setup-ci status [--json]` handler.
  *
  * Reads `.gaia/automation.json` and `.gaia/local/automation.json` and
- * prints a Phase-B-readiness summary. The `/setup-gaia-ci` slash
+ * prints a Phase-B-readiness summary. The `/setup-gaia` slash
  * command's first step is `status --json`; it bails when
  * `configured: false` (Phase A has not run).
  *

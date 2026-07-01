@@ -7,7 +7,7 @@
  *
  * Refuses if any required step is still pending, unless `--force` is
  * supplied (escape hatch for maintainers who initialized manually before
- * `/setup-cloned-gaia-project` existed).
+ * `/setup-gaia` existed).
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';

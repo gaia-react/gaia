@@ -3,7 +3,7 @@
  *
  * Reads `.gaia/automation.json`, renders one workflow YAML per CI-mode
  * tool via the Phase 1 engine + Phase 2 templates, and writes the files
- * to the caller-supplied `--out-dir`. Slice 4's `/setup-gaia-ci` calls
+ * to the caller-supplied `--out-dir`. Slice 4's `/setup-gaia` calls
  * this with `--out-dir .github/workflows`.
  */
 import {mkdirSync, writeFileSync} from 'node:fs';

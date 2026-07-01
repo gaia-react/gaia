@@ -12,7 +12,7 @@
 #     and the resolver agree on exactly what the current value is.
 #   - Appends `<login>=<mode>`. If the login already has an entry (case-
 #     insensitive on the login side), that entry is replaced in place rather
-#     than duplicated, so a developer re-running `/setup-cloned-gaia-project`
+#     than duplicated, so a developer re-running `/setup-gaia`
 #     flips their own mode instead of stacking a second pair. Other
 #     developers' entries are preserved verbatim, in order.
 #   - Writes the result back as a flat single-line `audit_authors: "<value>"`

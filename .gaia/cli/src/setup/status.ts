@@ -2,7 +2,7 @@
  * `gaia setup status [--json]` handler.
  *
  * Reports whether the per-machine setup recorded by `.gaia/local/setup-state.json`
- * is complete. The statusline indicator and `/setup-cloned-gaia-project` slash command both
+ * is complete. The statusline indicator and `/setup-gaia` slash command both
  * read this output to decide whether the indicator should appear and what
  * remains to do.
  *
@@ -65,7 +65,7 @@ const printHuman = (output: StatusOutput): void => {
     lines.push(`  Completed: ${output.completed_steps.join(', ')}`);
   }
   lines.push(`  Pending: ${output.pending_steps.join(', ')}`);
-  lines.push('  Run /setup-cloned-gaia-project to finish.');
+  lines.push('  Run /setup-gaia to finish.');
   process.stdout.write(`${lines.join('\n')}\n`);
 };
 
