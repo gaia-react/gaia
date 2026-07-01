@@ -11,6 +11,12 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-01 c20b4441 WORTHY - health-audit remediations already carry their own wiki/decisions/Claude Integration Fitness.md edit (shared-reference SKILL.md exemption) in the commit; no further sync edit needed
+- 2026-07-01 da32c76d WORTHY - sentinel mtime probe now GNU-first with numeric validation so the settle grace works on Linux → same edit as 757f51c2, wiki/concepts/Audit Disposition and Debt Drain.md
+- 2026-07-01 757f51c2 WORTHY - debt sentinel holds armed through a 120s settle grace so the /gaia-debt nudge clears cleanly after merge → wiki/concepts/Audit Disposition and Debt Drain.md
+- 2026-07-01 3a30099f WORTHY - statusline consumer honors gh_ok so a gh outage keeps the /gaia-harden nudge → wiki/concepts/Policy-Memory Loop.md
+- 2026-07-01 fbcc3d76 WORTHY - harden-tally now emits gh_ok distinguishing a gh outage from all-clear (with marker/ledger internal hardening) → wiki/concepts/Policy-Memory Loop.md
+- 2026-07-01 bf9478cd SKIP - self-referential prior wiki sync/lint maintenance commit, no code change to reflect
 - 2026-07-01 9b5668d1 WORTHY - new repo-relative-paths.md rule added to harness-discipline rule enumeration → wiki/modules/Claude Integration.md
 - 2026-07-01 c58bd0e4 SKIP - wiki changes landed inline in commit (README.md, Code Review Audit CI.md, Incremental CI Skipping.md); no new surface
 - 2026-07-01 da922476 SKIP - wiki change landed inline in commit (Code Review Audit CI.md); no new surface
