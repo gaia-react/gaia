@@ -85,8 +85,16 @@
       "id": "SPEC-011",
       "allocated_at": "2026-07-01T09:53:22Z",
       "source": "allocated",
+      "status": "merged",
+      "intent": "Keep the /gaia-spec main thread's context growth flat with respect to the BODY",
+      "merged_at": "2026-07-01T11:56:17Z"
+    },
+    {
+      "id": "SPEC-012",
+      "allocated_at": "2026-07-01T12:00:54Z",
+      "source": "allocated",
       "status": "specified",
-      "intent": "Keep the /gaia-spec main thread's context growth flat with respect to the BODY"
+      "intent": "Remove two features from /gaia-spec so it produces the immutable SPEC artifact"
     }
   ]
 }

@@ -63,7 +63,7 @@ while ! mkdir "$PLAN_DIR" 2>/dev/null; do
 done
 ```
 
-Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia-plan` invocations (including multiple slices dispatched from one `/gaia-spec`) coexist without overwriting each other.
+Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia-plan` invocations coexist without overwriting each other.
 
 ### 4. Spawn planning agent
 
