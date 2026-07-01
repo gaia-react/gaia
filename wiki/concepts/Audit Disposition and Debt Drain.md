@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-01
+updated: 2026-07-02
 tags: [concept, claude, review]
 ---
 
@@ -129,6 +129,8 @@ A statusline segment, `Run /gaia-debt (N issues)` (`issue` singular at N==1), su
 `.gaia/scripts/debt-count-refresh.sh` runs detached in the background each tick. It recomputes `openCount` via `gh issue list --label tech-debt --state open` and rewrites the cache when a staleness sentinel (`.gaia/local/debt/refresh-requested`, an empty marker file) is present or the cache is older than its own TTL, independent of the aggregate update-check TTL. On any `gh` failure it preserves the previous count rather than blanking it; a backend-absent run with no prior cache seeds `openCount` 0 so no segment renders.
 
 Two first-party events set the sentinel deterministically: the audit filing a `tech-debt` issue, and a `/gaia-debt` PR merging. The merge event is a `gh pr merge` PostToolUse hook (`.claude/hooks/debt-sentinel-touch.sh`) that touches the sentinel after a successful merge, since the merge usually lands via the orchestrator or human after the skill has left the conversation; the skill's own in-conversation touch is best-effort belt-and-suspenders. Every sentinel or cache writer runs `mkdir -p .gaia/local/debt` first, because the directory is not assumed to pre-exist on a fresh clone or in CI. External (web-UI or teammate) mutations are best-effort and surface by the next TTL or session refresh.
+
+GitHub's issue-list index is eventually consistent, so a recompute fired immediately after a merge can still count the just-closed issue for a few seconds. The refresher holds the sentinel armed through a 120-second settle grace after each recompute, writing the fresh count but not yet clearing the sentinel, so a later tick re-reads the now-consistent count before the nudge clears; a sentinel older than the grace clears normally on the next genuine recompute. Sentinel age is read via a portable mtime probe, GNU `stat -c %Y` first, falling back to BSD/macOS `stat -f %m`, with a numeric check between the two attempts (GNU's `-f` variant exits 0 with a non-numeric result instead of failing, so the check rejects rather than accepts that garbage); an unreadable mtime reads as already past the grace so a stat failure never wedges the sentinel armed indefinitely.
 
 ## Relationship to the Policy-Memory Loop
 
