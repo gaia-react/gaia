@@ -264,7 +264,7 @@ On a token choice, provision the secret **out of band**. GAIA never handles the 
 
 **Non-negotiable safety rule.** The token value MUST NOT enter this conversation or the agent's process at all. Do NOT ask the user to paste it, do NOT read it from a chat message, and do NOT route it into any sink. This includes, but is not limited to, Bash command strings, `Edit` / `Write` / `NotebookEdit`, `AskUserQuestion`, commit messages, memory or scratchpad files, subagent prompts, scheduled tasks, and outbound network or MCP calls. The rule is simpler than any list: the value must never leave the user's own terminal. Anything typed into the chat is recorded in the transcript, sent to the model API, and may be persisted by the harness, piping it to `gh` afterward does not undo that exposure. If the user pastes a secret anyway, STOP: treat the pasted value as compromised, do not use or store it, tell them it is now exposed in the transcript and must be rotated, and continue with the out-of-band steps below.
 
-**The agent prints these commands for the user to run in their own terminal; it never executes `gh secret set` (or `.gaia/cli/gaia setup-ci set-secret`) itself.** Both require the token value on stdin or the command line, which the agent must never hold.
+**The agent prints these commands for the user to run in their own terminal; it never executes `gh secret set` itself.** It requires the token value on stdin or the command line, which the agent must never hold.
 
 **Admin pre-gate.** Managing GitHub Actions secrets requires repo-admin permission. If the `admin` flag cached in Step 5 is not `true` (or `auth_status != "ok"`), do not print the set instructions. Print:
 
