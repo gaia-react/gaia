@@ -34,7 +34,7 @@ If no SPEC reference is detected, `SPEC_SLUG_SEED` and `SPEC_PATH` are unset; st
 The deep synthesis runs in the planner spawned at step 4, and the planner's model is pinned at spawn time, so it can be Opus even when this orchestration runs on Sonnet. Decide the planner's model:
 
 - If you are on Opus, the planner inherits Opus; skip to step 3.
-- If you are running non-interactively (no user to prompt, e.g. dispatched by `/gaia-spec auto`), default the planner to Opus: spawn it with `model: opus` at step 4. Skip to step 3.
+- If you are running non-interactively (a headless or automation context with no interactive user to prompt), default the planner to Opus: spawn it with `model: opus` at step 4. Skip to step 3.
 - Otherwise call `AskUserQuestion` with:
   - question: `"You're on [model name]. Use Opus for planning?"`
   - header: `"Model"`
@@ -269,7 +269,7 @@ Present (recommended option FIRST, carrying the `(Recommended)` tag):
 
 `Skip` is never the recommended option for a non-trivial plan. On **Skip**, proceed to step 4.7.
 
-**Auto-mode.** No prompt fires. When `/gaia-plan` runs non-interactively (dispatched by `/gaia-spec auto`), gauge the plan, run the audit if it is non-trivial, and apply its dispositions non-interactively.
+**Auto-mode.** No prompt fires. When `/gaia-plan` runs non-interactively (a headless or automation context with no interactive user), gauge the plan, run the audit if it is non-trivial, and apply its dispositions non-interactively.
 
 **Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block the handoff: note the skip (`decomposition audit unavailable`) and proceed to step 4.7. The orchestrator's per-phase quality gates and the non-skippable pre-merge `code-review-audit` remain the safety net.
 
