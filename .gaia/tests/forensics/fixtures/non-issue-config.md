@@ -21,11 +21,14 @@ a missing-prerequisite, not a GAIA defect.
 
 ```
 gaia_version: 1.4.2
-node_version: v22.19.0
-pnpm_version: 10.33.0
-git_branch: main
-git_dirty: false
-env_file_present: false
+node: v22.19.0
+pnpm: 10.33.0
+claude_code: 1.0.0
+branch: main
+dirty: false
+class_state_files:
+  - vite.config.ts: present
+  - package.json: scripts.dev "vite"
 ```
 
 ## Reproduction context

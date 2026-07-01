@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-quality-gate.sh: Quality Gate runner for the SPEC-002 forensics
+# run-quality-gate.sh: Quality Gate runner for the forensics
 # triage workflow. Executes each gate step in order, halts on the first
 # failure, and writes a JSON summary the workflow YAML feeds into the
 # `handle-needs-human.sh` reason-code `gate-failure` path (UAT-005).

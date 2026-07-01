@@ -21,11 +21,14 @@ restoring it from git history fixes boot. The fix necessarily lives inside
 
 ```
 gaia_version: 1.4.2
-node_version: v22.19.0
-pnpm_version: 10.33.0
-git_branch: main
-git_dirty: true
-missing_path: app/routes/_session+/dashboard.tsx
+node: v22.19.0
+pnpm: 10.33.0
+claude_code: 1.0.0
+branch: main
+dirty: true
+class_state_files:
+  - .gaia/manifest.json: present, version 1.4.2
+  - app/routes/_session+/dashboard.tsx: absent (dropped by merge)
 ```
 
 ## Reproduction context

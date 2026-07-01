@@ -92,16 +92,13 @@ gh_issue_url?: <url>
 ---
 
 ## Symptom
-
 <one-paragraph user description, redacted>
 
 ## Classification
-
 class: <tag>
 evidence: <verbatim user phrase> + <named state file>
 
 ## Capture
-
 gaia_version: <semver>
 node: <version>
 pnpm: <version>
@@ -109,11 +106,9 @@ claude_code: <version>
 branch: <name>
 dirty: <true|false>
 class_state_files:
-
-- <repo-relative path>: <one-line summary>
+  - <repo-relative path>: <one-line summary>
 
 ## Reproduction context
-
 <plain prose: what the user was doing, what they expected, what happened>
 ```
 
@@ -208,16 +203,13 @@ gh_issue_url?: <url>
 ---
 
 ## Symptom
-
 <one-paragraph user description, redacted>
 
 ## Classification
-
 class: <tag>
 evidence: <verbatim user phrase> + <named state file>
 
 ## Capture
-
 gaia_version: <semver>
 node: <version>
 pnpm: <version>
@@ -225,11 +217,9 @@ claude_code: <version>
 branch: <name>
 dirty: <true|false>
 class_state_files:
-
-- <repo-relative path>: <one-line summary>
+  - <repo-relative path>: <one-line summary>
 
 ## Reproduction context
-
 <plain prose: what the user was doing, what they expected, what happened>
 ```
 

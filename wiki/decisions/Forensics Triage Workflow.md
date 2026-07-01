@@ -59,15 +59,19 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 | ------------------------------------- | ----------------------------------------------------------------------- |
 | `app/`                                | Application source.                                                     |
 | `wiki/`                               | Knowledge base; human-curated.                                          |
+| `studio/`                             | Private strategy vault; human-curated.                                  |
+| `website/`                            | Marketing/docs site; human-curated.                                     |
 | `.specify/specs/`                     | spec-kit specs.                                                         |
 | `.specify/memory/`                    | spec-kit memory.                                                        |
 | `.gaia/local/specs/`                  | GAIA spec artifacts.                                                    |
 | `.specify/extensions/gaia/templates/` | Template literals; mutating these affects every adopter.                |
 | `.github/workflows/`                  | Workflow files; covers self-modification of the triage workflow itself. |
+| `.github/forensics/`                  | Triage workflow scripts; runs cannot rewrite their own harness.         |
+| `.github/`                            | All other CI/automation config; catch-all deny.                         |
 
 ## Label vocabulary
 
-All five labels must pre-exist on the upstream repo. `bootstrap-labels.sh` asserts the inventory and creates missing entries with the canonical color and description; existing labels with drifted color or description log a notice and stay untouched (operator wins).
+All six labels in the vocabulary must pre-exist on the upstream repo: the five in the table below plus the `gaia-forensics` trigger label. `bootstrap-labels.sh` asserts the whole inventory and creates missing entries with the canonical color and description; existing labels with drifted color or description log a notice and stay untouched (operator wins).
 
 | Label                | Color             | Meaning                                                                                                                                   |
 | -------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |

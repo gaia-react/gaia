@@ -35,7 +35,7 @@ usage() {
 }
 
 # emit_internal_error <stage> <exit-code>
-# Emits the SPEC-003 internal-error JSON envelope on stdout. Used by the
+# Emits the internal-error JSON envelope on stdout. Used by the
 # per-awk exit-code checks: when an awk pipeline returns non-zero, the
 # consumer needs a deterministic signal distinguishing "infrastructure
 # failure" from "valid:false / verdict:ambiguous". The script's overall

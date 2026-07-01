@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# render-prompt.sh: SPEC-003 prompt-template renderer.
+# render-prompt.sh: the forensics prompt-template renderer.
 #
 # Usage:
 #   render-prompt.sh <template-file> <key=value>...

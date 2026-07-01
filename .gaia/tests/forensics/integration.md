@@ -202,6 +202,73 @@ This is the hardest UAT to fixture without artificial latency. There are two pra
 
 ---
 
+## Local skill end-to-end; read-only + write-allowlist filesystem diff
+
+Distinct from the SPEC-002 CI checks above: this exercises the **local
+`/gaia-forensics` skill**, which the numbered bats detectors
+(`02`/`04`/`06`/`07`/`08`/`09`-`*.bats`) only reach through inline surrogates.
+Those detectors prove the branch *logic*; this proves the **shipped skill body**
+honors the same write-surface + read-only contract. It stays a manual check
+because the skill's diagnosis runs through the Claude Code LLM and cannot execute
+inside a bats unit (do not fabricate an LLM-driven bats test for it).
+
+The two write sinks are the only paths the skill may create or modify:
+`.gaia/local/forensics/` and `.gaia/local/telemetry/`. Everything else -
+`app/`, `wiki/`, `.claude/`, and any git-tracked source - must be untouched.
+
+- **Setup**: from a clean tree (`git status --porcelain` empty), drop a marker
+  and snapshot tracked state.
+  ```bash
+  ROOT="$(git rev-parse --show-toplevel)"
+  MARKER="$ROOT/.forensics-e2e-marker"
+  touch "$MARKER"
+  git -C "$ROOT" status --porcelain > /tmp/forensics-pre.txt
+  ```
+- **Run**: invoke the skill with a fixed description and let it save locally
+  (decline the GH-issue offer so the run stays on-disk and offline).
+  ```
+  /gaia-forensics the wiki-sync push failed with a merge conflict
+  ```
+- **Diff (a); nothing written outside the two sinks.** Any file newer than the
+  marker, excluding the sinks / `.git/` / the marker itself, is a violation.
+  ```bash
+  find "$ROOT" -type f -newer "$MARKER" \
+    -not -path "$ROOT/.git/*" \
+    -not -path "$ROOT/.gaia/local/forensics/*" \
+    -not -path "$ROOT/.gaia/local/telemetry/*" \
+    -not -path "$MARKER" \
+    && echo 'FAIL: write outside allowlist' || echo 'pass: writes confined to sinks'
+  ```
+- **Diff (b); no tracked source changed.** No modification to `app/`, `wiki/`,
+  or anything git tracks (`.gaia/local/` is gitignored, so a clean porcelain
+  proves the report landed only in the ignored sink).
+  ```bash
+  git -C "$ROOT" status --porcelain > /tmp/forensics-post.txt
+  diff /tmp/forensics-pre.txt /tmp/forensics-post.txt \
+    && echo 'pass: no tracked-source writes' || echo 'FAIL: tracked source changed'
+  ```
+- **Diff (c); no secret-shaped strings in the saved report** (cross-ref
+  UAT-010 above).
+  ```bash
+  grep -rEl 'sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' \
+    "$ROOT/.gaia/local/forensics/" \
+    && echo 'FAIL: secret in saved report' || echo 'pass: no secrets in report'
+  rm -f "$MARKER"
+  ```
+- **Pass criterion**: the `find` in (a) returns no lines; `git status` in (b) is
+  unchanged from the pre-snapshot; the `grep` in (c) returns no lines. Any FAIL
+  branch reached means the shipped skill violated the write-surface or redaction
+  contract that `04-write-surface.bats` and the redaction fixtures only assert on
+  surrogates.
+
+> These commands are the deterministic, non-LLM half of the check: the only step
+> that needs the LLM is the `/gaia-forensics` invocation itself. A future
+> deterministic harness could feed a fixed description straight through the
+> `capture -> redact.sh -> classify.sh -> render` pipeline and run diffs (a)-(c)
+> with no LLM in the loop; the bats detectors above stop short of that.
+
+---
+
 ## Coverage map (full SPEC-002 UAT roster)
 
 | UAT     | Layer | Where verified                                                                                                                                 |

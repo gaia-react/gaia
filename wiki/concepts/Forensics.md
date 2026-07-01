@@ -48,7 +48,7 @@ The skill's write-surface allowlist is exactly two directories: `.gaia/local/for
 
 The local file carries a small YAML frontmatter block (`class`, `gaia_version`, `created`, and optionally `gh_issue_url`). The report body that follows has four fixed sections: `## Symptom`, `## Classification`, `## Capture`, and `## Reproduction context`, in that order. The body schema is load-bearing: downstream tooling parses it without LLM fallback, so section names and order never drift.
 
-If the failure classifies as a probable bug and `gh` is installed, the skill offers to file a GitHub issue against the upstream GAIA repository. The user confirms before any network call is made; on confirmation the issue body is the post-frontmatter portion of the local report, byte-identical to the local file body. If `gh` is not installed, the skill saves the report locally and exits cleanly with a one-line note. In either case the local file is always saved first, so the report survives regardless of network availability or `gh` authentication state.
+If the failure classifies as a probable bug and `gh` is installed, the skill offers to file a GitHub issue against the upstream GAIA repository. The user confirms before any network call is made; on confirmation the issue body is the full local report including its YAML frontmatter, byte-identical to the local file before `gh_issue_url` is back-filled to the local file only. If `gh` is not installed, the skill saves the report locally and exits cleanly with a one-line note. In either case the local file is always saved first, so the report survives regardless of network availability or `gh` authentication state.
 
 ## What it doesn't do
 

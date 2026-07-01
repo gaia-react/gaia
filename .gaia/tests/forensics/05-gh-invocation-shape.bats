@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # UAT-012: gh issue create uses --repo gaia-react/gaia, --label gaia-forensics,
-#          and the title format "forensics: <class> — <one-line user description>"
+#          and the title format "forensics: <class>, <one-line user description>"
 # UAT-006: on gh failure (auth error / label-not-found), the skill surfaces gh's
 #          native error verbatim, leaves the local report in place, exits non-zero.
 
@@ -33,7 +33,7 @@ invoke_gh_surrogate() {
   PATH="$stub_dir:$PATH" gh issue create \
     --repo "gaia-react/gaia" \
     --label "gaia-forensics" \
-    --title "forensics: $class — $one_line" \
+    --title "forensics: $class, $one_line" \
     --body-file "$body_file"
 
   rm -rf "$stub_dir"
@@ -66,12 +66,12 @@ teardown() {
   grep -xF -- 'gaia-forensics' "$CAPTURE_FILE"
 }
 
-@test "UAT-012: gh title format is forensics: <class> — <one-line>" {
+@test "UAT-012: gh title format is forensics: <class>, <one-line>" {
   local class="wiki-sync"
   local one_line="sync failed to push"
   invoke_gh_surrogate "$CAPTURE_FILE" "$class" "$one_line" "$BODY_FILE"
   grep -xF -- '--title' "$CAPTURE_FILE"
-  grep -xF -- "forensics: $class — $one_line" "$CAPTURE_FILE"
+  grep -xF -- "forensics: $class, $one_line" "$CAPTURE_FILE"
 }
 
 @test "UAT-012: gh is invoked with --body-file (not --body)" {
@@ -94,7 +94,7 @@ teardown() {
   local class="other"
   local one_line="unknown failure outside taxonomy"
   invoke_gh_surrogate "$CAPTURE_FILE" "$class" "$one_line" "$BODY_FILE"
-  grep -xF -- "forensics: $class — $one_line" "$CAPTURE_FILE"
+  grep -xF -- "forensics: $class, $one_line" "$CAPTURE_FILE"
 }
 
 @test "UAT-012: stub gh exits zero on a successful invocation" {
@@ -130,7 +130,7 @@ invoke_gh_failing_surrogate() {
   gh_stderr="$(PATH="$stub_dir:$PATH" gh issue create \
     --repo "gaia-react/gaia" \
     --label "gaia-forensics" \
-    --title "forensics: $class — test failure" \
+    --title "forensics: $class, test failure" \
     --body-file "$report_path" 2>&1)" || gh_exit=$?
 
   rm -rf "$stub_dir"
@@ -174,7 +174,7 @@ invoke_gh_failing_surrogate() {
   PATH="$stub_dir:$PATH" gh issue create \
     --repo "gaia-react/gaia" \
     --label "gaia-forensics" \
-    --title "forensics: update — test" \
+    --title "forensics: update, test" \
     --body-file "$body_file" 2>/dev/null || true
 
   rm -rf "$stub_dir"

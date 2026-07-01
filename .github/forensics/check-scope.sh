@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# check-scope.sh: SPEC-002 path-policy primitive (default-deny).
+# check-scope.sh: the forensics path-policy primitive (default-deny).
 #
 # Usage:
 #   check-scope.sh <path1> [<path2> ...]
 #
-# Verifies every candidate path against the SPEC-002 allowlist / denylist.
+# Verifies every candidate path against the forensics allowlist / denylist.
 # Writes a JSON report to stdout. Exit code is always 0; the consumer reads
 # the `ok` field in the JSON.
 #
@@ -126,7 +126,7 @@ json_escape() {
 # zero-indexed offset. Echoes empty string when no control byte is
 # present.
 #
-# UAT-009 (SPEC-003): JSON requires control bytes be escaped or rejected.
+# UAT-009: JSON requires control bytes be escaped or rejected.
 # check-scope.sh's contract is path-policy enforcement; receiving a path
 # with a control byte signals upstream corruption, so we reject rather
 # than silently escape.
