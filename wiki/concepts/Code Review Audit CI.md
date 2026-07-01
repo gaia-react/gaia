@@ -169,6 +169,22 @@ This trailer handshake is also the way to run the audit locally on a ruleset-pro
 
 Editing HEAD between the local stamp and `gh pr merge` invalidates the trailer (tree mismatch); CI then runs a fresh audit.
 
+<!-- gaia:maintainer-only:start -->
+
+## Template sync (three tracked copies)
+
+In the maintainer repo the audit workflow lives in three byte-identical tracked copies:
+
+1. `.github/workflows/code-review-audit.yml` — the live gate that runs on every PR.
+2. `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl` — the build artifact `gaia automation install-audit-workflow` installs from, sitting next to the bundled binary.
+3. `.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl` — the source of truth.
+
+`.gaia/cli`'s `pnpm bundle` regenerates copy #2 from copy #3 (its `bundle:adopter` step copies `src/automation/templates/workflows/` into `templates/workflows/`). The `audit-template-dogfood` test (`.gaia/cli/src/automation/__tests__/audit-template-dogfood.test.ts`) reads copy #3 through `workflowAuditTemplatePath()` and asserts the live workflow (#1) is byte-identical to it, so a mismatch flags the live gate and the source template out of sync.
+
+A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, and syncs copy #1 to match, all up front in the same PR. The drift-guard is a backstop, not the sync mechanism, and it compares only #1 against #3: a stale #2 slips past it, so propagate the edit deliberately across all three rather than pushing one copy and trusting the test to catch the miss.
+
+<!-- gaia:maintainer-only:end -->
+
 ## Source-of-truth links
 
 - Agent definition: `.claude/agents/code-review-audit.md`
