@@ -6,7 +6,7 @@
  *
  * **2-way (default).** Byte-compares the installed
  * `.github/workflows/code-review-audit.yml` against the canonical bundled
- * template. The `/setup-gaia-ci` slash command's Step 2 drift probe calls
+ * template. The `/setup-gaia` slash command's Step 2 drift probe calls
  * this alongside `check-drift` to detect whether the audit workflow is
  * present and up-to-date.
  *

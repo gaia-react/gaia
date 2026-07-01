@@ -96,7 +96,7 @@ wiki/decisions/Forensics Triage Workflow.md
 .gaia/release-scrub.yml
 
 # --- 6. Maintainer dev-tool configs ---
-# Per-machine tool configs initialized by `setup-cloned-gaia-project` on the adopter's
+# Per-machine tool configs initialized by `/setup-gaia` on the adopter's
 # side; the template's copies aren't portable. Keep these out of the
 # manifest so /update-gaia never tries to merge them.
 .serena
@@ -139,7 +139,7 @@ wiki/decisions/Forensics Triage Workflow.md
 # `gaia-react/gaia` repo; the workflow's helpers under `.github/forensics/`
 # include scope checks, classifier prompts, fixtures, and bats tests that
 # only matter on the maintainer's clone. `code-review-audit.yml` installs
-# on demand via `/setup-gaia-ci` (like the cron workflows) rather than
+# on demand via `/setup-gaia` (like the cron workflows) rather than
 # shipping by default, so adopters who have not enabled GAIA CI never carry
 # a credential-less audit that blocks every merge. All would be silent
 # passengers at best and confusing CI failures at worst on adopter clones.

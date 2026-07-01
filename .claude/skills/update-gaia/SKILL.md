@@ -447,7 +447,7 @@ The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 
 
 ### Step 7c: Field-aware `.gaia/audit-ci.yml` merge
 
-`.gaia/audit-ci.yml` is classed `shared`, but it is a **mixed** file like `pnpm-workspace.yaml`. It carries GAIA-authored scalar knobs (`gate_label`, `budget_seconds`, `max_turns`, `push_fixes`, `default_mode`, `override_label`, the `retrigger_workflows` list) **and** the adopter-extensible `audit_authors` string, a space-separated `login=mode` list each developer appends their own pair to via `/setup-cloned-gaia-project`. A whole-file three-way merge emits a full-file conflict patch the moment one developer commits an entry, so merge it at YAML-key / per-author-entry granularity instead, acting only on the genuine upstream delta `B → L`.
+`.gaia/audit-ci.yml` is classed `shared`, but it is a **mixed** file like `pnpm-workspace.yaml`. It carries GAIA-authored scalar knobs (`gate_label`, `budget_seconds`, `max_turns`, `push_fixes`, `default_mode`, `override_label`, the `retrigger_workflows` list) **and** the adopter-extensible `audit_authors` string, a space-separated `login=mode` list each developer appends their own pair to via `/setup-gaia`. A whole-file three-way merge emits a full-file conflict patch the moment one developer commits an entry, so merge it at YAML-key / per-author-entry granularity instead, acting only on the genuine upstream delta `B → L`.
 
 Let `A` = working-tree `.gaia/audit-ci.yml`, `B` = `$BASELINE_DIR/.gaia/audit-ci.yml`, `L` = `$LATEST_DIR/.gaia/audit-ci.yml`.
 
@@ -623,7 +623,7 @@ Tell the user:
 
 **Opt-in nudge (only when `had_default_mode_before_merge` is `false`).** Show this line only when the pre-Step-7 snapshot found no `default_mode` key in the installed `.gaia/audit-ci.yml`, i.e. the adopter's config predates the per-author audit mode. Gate on the snapshot, NOT the post-merge file state: the Step 7c merge may have just added the key, and gating on the current file would pre-silence the nudge on the very run that should surface it. Once the adopter's own config carries `default_mode` (a later run's snapshot finds it), the nudge no longer fires.
 
-> **New: per-author audit mode.** The code-review-audit can now run locally at merge time for developers who prefer it, falling back to CI per-author over a team default. Behavior is unchanged until you opt in. Run `/setup-gaia-ci` to set the team policy; each developer runs `/setup-cloned-gaia-project` for their own preference.
+> **New: per-author audit mode.** The code-review-audit can now run locally at merge time for developers who prefer it, falling back to CI per-author over a team default. Behavior is unchanged until you opt in. Run `/setup-gaia` to set the team policy; each developer's `/setup-gaia` run records their own preference.
 
 Do **not** auto-commit on behalf of the user, they need to review the changes first.
 
@@ -666,7 +666,7 @@ If `gh` is unavailable or errors, tell the user to open the PR manually: `$branc
 
 ### Step 12: Refresh a stale CI audit workflow
 
-`.github/workflows/code-review-audit.yml` is **not** synced by the manifest walk (Steps 6-7); the audit workflow installs and updates through its own template, not a manifest class. A project that enabled GAIA CI on an older release therefore keeps whatever audit workflow shipped then, frozen, even after this update pulls a newer template. That stale copy is the root of an ordering trap: if this update's payload makes `has_source=true` (a dependency or config bump), CI runs a **full** audit under the **stale** workflow on the PR just opened, which cannot earn a clean `GAIA-Audit` stamp, and the operator then has to run `/setup-gaia-ci` by hand to refresh it (a second commit that self-mod-skips). Refreshing the workflow **inside this update PR** collapses that into a single, expected self-mod-skip.
+`.github/workflows/code-review-audit.yml` is **not** synced by the manifest walk (Steps 6-7); the audit workflow installs and updates through its own template, not a manifest class. A project that enabled GAIA CI on an older release therefore keeps whatever audit workflow shipped then, frozen, even after this update pulls a newer template. That stale copy is the root of an ordering trap: if this update's payload makes `has_source=true` (a dependency or config bump), CI runs a **full** audit under the **stale** workflow on the PR just opened, which cannot earn a clean `GAIA-Audit` stamp, and the operator then has to run `/setup-gaia` by hand to refresh it (a second commit that self-mod-skips). Refreshing the workflow **inside this update PR** collapses that into a single, expected self-mod-skip.
 
 The audit workflow is **adopter-tunable**: an adopter may have customized it (self-hosted runners, extra secrets wiring, concurrency, extra steps), so it is refreshed via a 3-way classify that never clobbers real edits. The audit template is static (no render), so the three inputs are files already on disk:
 
@@ -703,7 +703,7 @@ case "$audit_state" in
       echo "Refreshed $audit_wf from the $LATEST_TAG template; commit and push it to the update PR manually."
     fi
     cat <<EOF
-Expectation: re-rendering $audit_wf makes this update PR self-modifying, so claude-code-action's workflow-validation guardrail refuses to run the audit on it. CI self-mod-skips the audit, one expected skip instead of a wasted full audit under the stale workflow plus a manual /setup-gaia-ci step. This does NOT earn a clean CI GAIA-Audit stamp; the merge still relies on a local audit marker / trailer or the out-of-scope bypass (see PR Merge Workflow). This is a UX/ordering cleanup, not a path to a clean stamp.
+Expectation: re-rendering $audit_wf makes this update PR self-modifying, so claude-code-action's workflow-validation guardrail refuses to run the audit on it. CI self-mod-skips the audit, one expected skip instead of a wasted full audit under the stale workflow plus a manual /setup-gaia step. This does NOT earn a clean CI GAIA-Audit stamp; the merge still relies on a local audit marker / trailer or the out-of-scope bypass (see PR Merge Workflow). This is a UX/ordering cleanup, not a path to a clean stamp.
 EOF
     ;;
   conflict)
@@ -713,7 +713,7 @@ EOF
     mkdir -p .gaia-merge
     diff -u "$audit_wf" "$LATEST_DIR/$audit_tmpl" \
       > ".gaia-merge/code-review-audit.yml.patch" || true
-    echo "Heads up: $audit_wf has local customizations, so the $LATEST_TAG template was NOT applied. Review .gaia-merge/code-review-audit.yml.patch, reconcile, then run /setup-gaia-ci to refresh it. The merge gate's out-of-scope bypass / local audit keeps this update PR mergeable in the meantime."
+    echo "Heads up: $audit_wf has local customizations, so the $LATEST_TAG template was NOT applied. Review .gaia-merge/code-review-audit.yml.patch, reconcile, then run /setup-gaia to refresh it. The merge gate's out-of-scope bypass / local audit keeps this update PR mergeable in the meantime."
     ;;
   missing | in_sync)
     : # missing → GAIA CI not installed (opt-in), stay silent. in_sync → nothing to do.
@@ -721,9 +721,9 @@ EOF
   *)
     # Unknown verdict (e.g. a CLI predating 3-way support, or a probe error):
     # fall back to the manual nudge so there is zero regression.
-    echo "Heads up: $audit_wf may be out of date vs the $LATEST_TAG template. Run /setup-gaia-ci to refresh it so the CI audit stamps the GAIA-Audit status correctly. The merge gate's out-of-scope bypass keeps this update PR mergeable in the meantime."
+    echo "Heads up: $audit_wf may be out of date vs the $LATEST_TAG template. Run /setup-gaia to refresh it so the CI audit stamps the GAIA-Audit status correctly. The merge gate's out-of-scope bypass keeps this update PR mergeable in the meantime."
     ;;
 esac
 ```
 
-Only `clean` auto-refreshes; `conflict` and any unknown verdict defer to the manual `/setup-gaia-ci` nudge, and `missing` / `in_sync` do nothing.
+Only `clean` auto-refreshes; `conflict` and any unknown verdict defer to the manual `/setup-gaia` nudge, and `missing` / `in_sync` do nothing.

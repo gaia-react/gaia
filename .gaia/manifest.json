@@ -15,8 +15,7 @@
     ".claude/commands/gaia-init.md": "owned",
     ".claude/commands/gaia-plan.md": "owned",
     ".claude/commands/gaia-spec.md": "owned",
-    ".claude/commands/setup-cloned-gaia-project.md": "owned",
-    ".claude/commands/setup-gaia-ci.md": "owned",
+    ".claude/commands/setup-gaia.md": "owned",
     ".claude/hooks/audit-disposition-check.sh": "owned",
     ".claude/hooks/audit-stamp-trailer.sh": "owned",
     ".claude/hooks/block-bare-test.sh": "owned",
@@ -546,6 +545,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-06-30T19:51:57.527Z",
+  "generated": "2026-07-01T09:07:04.334Z",
   "version": "1.6.1"
 }

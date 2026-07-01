@@ -3,7 +3,7 @@
  *
  * Every clone needs to run a one-shot per-machine setup (install React
  * Doctor, Playwright CLI, Serena MCP, plugins, init spec-kit, chmod the
- * statusline, opt into mentorship). The slash command `/setup-cloned-gaia-project`
+ * statusline, opt into mentorship). The slash command `/setup-gaia`
  * orchestrates the steps; this state file records progress so a partial
  * run can resume idempotently.
  *

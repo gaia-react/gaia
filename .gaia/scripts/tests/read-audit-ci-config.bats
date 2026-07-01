@@ -657,8 +657,8 @@ audit_authors: \"stevensacks=local\""
 
 # ===========================================================================
 # Write-side round-trip: prove the reader parses exactly what the setup
-# prompts write (default_mode/override_label via /setup-gaia-ci; audit_authors
-# via /setup-cloned-gaia-project through the append-audit-author.sh helper).
+# prompts write (default_mode/override_label via /setup-gaia; audit_authors
+# via /setup-gaia through the append-audit-author.sh helper).
 # ===========================================================================
 
 # Install the append helper alongside the reader inside the sandbox's
@@ -705,7 +705,7 @@ append_in_sandbox() {
 # --- 37. default_mode local + override_label run-audit round-trip -----------
 
 @test "default_mode local + override_label run-audit round-trip" {
-  # /setup-gaia-ci's team-policy prompt writes both keys; the argument-less
+  # /setup-gaia's team-policy prompt writes both keys; the argument-less
   # emit must read them back verbatim.
   write_config "default_mode: local
 override_label: run-audit"
@@ -755,7 +755,7 @@ YAML
 # --- 40. Append replaces a developer's own prior entry in place -------------
 
 @test "audit_authors append replaces a re-running developer's own entry" {
-  # A developer who re-runs /setup-cloned-gaia-project flips their own mode
+  # A developer who re-runs /setup-gaia flips their own mode
   # rather than stacking a second pair; teammates' entries are preserved.
   install_append_helper >/dev/null
   append_in_sandbox stevensacks local

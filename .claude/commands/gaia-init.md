@@ -252,7 +252,7 @@ If any step fails, surface the error verbatim and halt, do not silently continue
 
 GAIA CI has two parts: a pre-merge **audit gate** (the `code-review-audit` agent run against every PR) and four optional **maintenance jobs** on a smart cron (wiki sync, `/update-deps`, `pnpm audit`, stale-branch cleanup).
 
-**No `.github/workflows/` files ship in this project.** They are generated and installed on demand by `/setup-gaia-ci` after your first `git push origin main` (Phase B). This step (Phase A) is local-only: it records your CI intent so Step 9 can offer the right maintenance-tool modes, and it sets the local audit baseline. It does not create, move, or push any workflow file, and it touches nothing on GitHub.
+**No `.github/workflows/` files ship in this project.** They are generated and installed on demand by `/setup-gaia` after your first `git push origin main` (Phase B). This step (Phase A) is local-only: it records your CI intent so Step 9 can offer the right maintenance-tool modes, and it sets the local audit baseline. It does not create, move, or push any workflow file, and it touches nothing on GitHub.
 
 (`forensics-triage.yml` is maintainer-only and never ships to or installs on an adopter project. The adopter-side `/gaia-forensics` command files reports to the upstream GAIA repo, which owns the `gaia-forensics` label; nothing about forensics needs configuring here.)
 
@@ -262,23 +262,23 @@ Use AskUserQuestion (in the user's language; this configuration block stays in E
 >
 > New to GAIA CI? Read https://docs.gaiareact.com/maintenance/gaia-ci/ before deciding (Cmd/Ctrl+click to open).
 >
-> - **Yes, I'll enable CI after pushing** (Recommended). Records the intent; Step 9 then offers `ci` / `local` / `off` per maintenance tool. After your first push, run `/setup-gaia-ci` to install the audit gate and cron workflows, store the bot token, and register the `GAIA-Audit` required check.
+> - **Yes, I'll enable CI after pushing** (Recommended). Records the intent; Step 9 then offers `ci` / `local` / `off` per maintenance tool. After your first push, run `/setup-gaia` to install the audit gate and cron workflows, store the bot token, and register the `GAIA-Audit` required check.
 > - **No, local only.** GAIA's audit and maintenance tools run only when you invoke them on this machine. Step 9 offers `local` / `off` only.
 
 Record the answer as the **Configure-CI decision** (`enabled` or `declined`); Step 9 reads it. This is held as init-state only; it neither probes nor writes any workflow file.
 
-Then set the audit baseline in `.gaia/audit-ci.yml` regardless of the answer. Until `/setup-gaia-ci` wires CI, the local `code-review-audit` agent is the only producer of the `GAIA-Audit` stamp, so `local` is the only valid baseline. `/setup-gaia-ci`'s team audit-mode step sets `default_mode: ci` later if you choose CI-audits-every-PR. Never set this to `off` or any other disabled value, the audit gate is non-negotiable.
+Then set the audit baseline in `.gaia/audit-ci.yml` regardless of the answer. Until `/setup-gaia` wires CI, the local `code-review-audit` agent is the only producer of the `GAIA-Audit` stamp, so `local` is the only valid baseline. `/setup-gaia`'s team audit-mode step sets `default_mode: ci` later if you choose CI-audits-every-PR. Never set this to `off` or any other disabled value, the audit gate is non-negotiable.
 
 ```bash
 # Idempotent: rewrite an existing default_mode line, or append the key if absent.
 if [ -f .gaia/audit-ci.yml ] && grep -qE '^default_mode:' .gaia/audit-ci.yml; then
   sed -i.bak -E 's/^default_mode:.*/default_mode: local/' .gaia/audit-ci.yml && rm -f .gaia/audit-ci.yml.bak
 else
-  printf '\n# Team baseline audit mode. Until /setup-gaia-ci wires CI, the local audit\n# agent is the only GAIA-Audit producer; local is the only valid value here.\ndefault_mode: local\n' >> .gaia/audit-ci.yml
+  printf '\n# Team baseline audit mode. Until /setup-gaia wires CI, the local audit\n# agent is the only GAIA-Audit producer; local is the only valid value here.\ndefault_mode: local\n' >> .gaia/audit-ci.yml
 fi
 ```
 
-To enable CI later: push to GitHub, then run `/setup-gaia-ci`. It installs `.github/workflows/code-review-audit.yml` (the PR gate) plus any cron workflows, stores your bot token as a repo secret, registers the `GAIA-Audit` required check, and sets the team audit `default_mode`. `/update-gaia` keeps the installed audit workflow in sync with its template thereafter.
+To enable CI later: push to GitHub, then run `/setup-gaia`. It installs `.github/workflows/code-review-audit.yml` (the PR gate) plus any cron workflows, stores your bot token as a repo secret, registers the `GAIA-Audit` required check, and sets the team audit `default_mode`. `/update-gaia` keeps the installed audit workflow in sync with its template thereafter.
 
 ### Make the statusline executable
 
@@ -311,11 +311,11 @@ After all probes run: if any component shows `[FAIL]`, print the full table, the
 
 If all probes pass, print the full table and continue to Step 9.
 
-The same probe set applies when setting up from an existing clone, `/setup-cloned-gaia-project` runs it after registering external tools.
+The same probe set applies when setting up from an existing clone, `/setup-gaia` runs it after registering external tools.
 
 ## Step 9: Configure GAIA CI (Phase A)
 
-GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/update-deps`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia-ci` to wire up tokens and activate CI (Phase B).
+GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/update-deps`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia` to wire up tokens and activate CI (Phase B).
 
 **Carry the Configure-CI decision forward.** The Configure CI integrations block above already recorded whether the user intends to enable CI (`enabled`) or run local only (`declined`). Hold that decision as init-state for this step, do NOT re-probe the filesystem (no workflow files exist at init time, so there is nothing to detect). Step 9 branches on it: a CI decline means CI is not a valid target for any maintenance tool, so the contradictory "Enable all four in CI mode" recommendation is never shown.
 
@@ -333,7 +333,7 @@ Use AskUserQuestion to confirm the recommendation OR open per-tool overrides. In
 >
 > Run-mode reference: https://docs.gaiareact.com/maintenance/gaia-ci/#run-modes (Cmd/Ctrl+click to open).
 >
-> - **Enable all four in CI mode (Recommended).** Sets `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches` to `ci`. Phase B (`/setup-gaia-ci`) activates them.
+> - **Enable all four in CI mode (Recommended).** Sets `wiki`, `update_deps`, `pnpm_audit`, and `stale_branches` to `ci`. Phase B (`/setup-gaia`) activates them.
 > - **Customize per tool.** Show the table below and ask for each tool's mode.
 
 If the user picks "Customize per tool", show this table and use AskUserQuestion once per row (or one combined free-text prompt; the prose is the contract, the prompt shape is at the assistant's discretion):
@@ -492,7 +492,7 @@ Append-only. New entries at the TOP.
 
 ## Step 12: Finalize
 
-Mark per-machine setup as complete so the statusline does not show "Run /setup-cloned-gaia-project (Required)". `/gaia-init` performs all the same per-machine work as `/setup-cloned-gaia-project` (tools, plugins, spec-kit, statusline chmod, .env, mentorship), but it does not call `gaia setup mark-step` as it goes, so stamp the state file with `--force` now that everything is done:
+Mark per-machine setup as complete so the statusline does not show "Run /setup-gaia (Required)". `/gaia-init` performs all the same per-machine work as `/setup-gaia` (tools, plugins, spec-kit, statusline chmod, .env, mentorship), but it does not call `gaia setup mark-step` as it goes, so stamp the state file with `--force` now that everything is done:
 
 ```bash
 .gaia/cli/gaia setup finalize --force
@@ -514,7 +514,7 @@ Then output the message below verbatim. Output the `cd` line exactly as written,
 >
 > Then start Claude again.
 >
-> After you create your GitHub repo and push, run `/setup-gaia-ci` to wire up tokens and enable CI.
+> After you create your GitHub repo and push, run `/setup-gaia` to wire up tokens and enable CI.
 
 ## On failure: resume
 
