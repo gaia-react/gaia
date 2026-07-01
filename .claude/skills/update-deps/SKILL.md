@@ -116,7 +116,8 @@ Packages not matched form singleton groups.
 ## Phase 1: Discover, preview, decide (orchestrator)
 
 Discover deterministically via the CLI primitive, the single source of truth for
-grouping, the ESLint 9.x cap, and the release-age cooldown (all already applied):
+grouping, the ESLint 9.x cap, the `gaia.updateDepsHold` config hold, and the
+release-age cooldown (all already applied):
 
 ```bash
 updates_json="$(mktemp)"
@@ -129,6 +130,19 @@ carries `bucket` (`patch` | `minor` | `major` | `nonsemver`), `current`, `latest
 `group`, `is_pinned`, and `kind`. `total_count` is the genuine-upgrade count;
 `actionable_count` is for the statusline only (it already subtracts local
 snoozes), ignore it here.
+
+`snoozed[]` lists the groups the human deferred earlier that still match the
+currently-offered targets. Each entry carries `group`, `targets`, `snoozed_at`,
+and `resurfaces_at` (ISO stamp when the snooze lapses). Build `snoozedGroups`,
+the set of their `group` ids, this is what you mark and default-skip below. It
+is empty in CI and whenever no active snooze matches the current offer.
+
+`skipped[]` entries with `reason: "held"` are packages capped by the committed
+`gaia.updateDepsHold` map in package.json (a durable version ceiling, distinct
+from a snooze: it holds in CI too and never lapses until the maintainer lifts
+it). They are already excluded from both waves, never installed, so nothing to
+apply. Surface them once (see Preview) so the maintainer remembers a hold is
+active.
 
 **In CI (`CI=true`) or with `--scope <group>`, skip the preview and decision
 entirely.** The apply set is the full payload (CI) or the named group
@@ -143,12 +157,33 @@ Group the entries for display into four sections in this order: **Major**,
 (severity major > nonsemver > minor > patch) and is a single choice that updates
 together. Render each row as `name  current → next`; for a companion group, list
 its members under one labelled block (e.g. "react-router group, updates
-together"). Default is to update everything.
+together").
+
+Mark every group in `snoozedGroups` with a trailing `[snoozed until <date>]`
+(the entry's `resurfaces_at`, rendered as a plain date). Snoozed groups are
+**default-skipped**: they are excluded from the default apply set, so a group the
+human already deferred is not silently re-applied each run. The human can still
+choose to refresh them.
+
+If `skipped[]` has any `reason: "held"` entries, print one line above the
+sections listing them, e.g. `Held by config (not offered): vite (current
+8.0.16, ceiling 8.0)`. This is informational, held packages are never part of
+any apply set; the line just keeps the active holds visible.
 
 If `update_deps.mode` in `.gaia/automation.json` is `ci`, first print one line:
 `CI owns updates; snoozing here only quiets your local statusline.`
 
-Then ask with `AskUserQuestion` (single-select, options in this order):
+Then ask with `AskUserQuestion` (single-select). **When `snoozedGroups` is
+non-empty**, offer these options in this order:
+
+- **Update the rest** (default, first option): apply every group EXCEPT the
+  snoozed ones; leave the snoozes intact.
+- **Choose what to skip**: the human names further package or group names to
+  skip; the snoozed groups stay skipped too.
+- **Update everything incl. snoozed**: apply every group AND clear the snoozes.
+- **Cancel**: exit now, no branch, no changes, no ledger write.
+
+**When `snoozedGroups` is empty**, offer the original three:
 
 - **Update all** (default, first option): apply every group.
 - **Choose what to skip**: the human names the package or group names to skip;
@@ -157,27 +192,41 @@ Then ask with `AskUserQuestion` (single-select, options in this order):
 
 ### Decision
 
-- **Update all** → clear any prior snoozes, apply everything:
+The **skip set** is `snoozedGroups` plus whatever the human names; the **apply
+set** is every remaining group. The ledger is full-replace, so any `decline
+--skip` call must name every group that should stay snoozed (the pre-existing
+snoozes AND any newly named), or the omitted ones are dropped from the ledger.
+
+- **Update the rest** (snoozed groups present) → apply set = payload minus
+  `snoozedGroups`. Leave the ledger untouched (the snoozes already match the
+  current targets), no `decline` call. **If the apply set is empty** (every
+  outstanding group is snoozed), print
+  `Snoozed N group(s); nothing else to update.` and exit (no branch).
+- **Update all** (no snoozed groups) → clear any prior snoozes, apply
+  everything:
   ```bash
   .gaia/cli/gaia update-deps decline --clear
   ```
   Apply set = the full payload.
-- **Choose what to skip** → collect the names, then record the snooze:
+- **Update everything incl. snoozed** → same action as Update all: clear the
+  snoozes (`decline --clear`) and apply the full payload.
+- **Choose what to skip** → collect the names, union with `snoozedGroups`, then
+  record the whole skip set:
   ```bash
-  .gaia/cli/gaia update-deps decline --source "$updates_json" --skip "<n1,n2,...>"
+  .gaia/cli/gaia update-deps decline --source "$updates_json" --skip "<snoozed…,named…>"
   ```
   Each name expands to its whole companion group (a partial group cannot be
   skipped); an unknown name errors so you can re-ask. Apply set = the payload
-  minus the skipped groups. Echo the resulting apply set back for confirmation.
-  **If the apply set is now empty** (everything was skipped), print
-  `Snoozed N group(s); nothing to update now.` and exit (no branch).
+  minus the skip set. Echo the resulting apply set back for confirmation.
+  **If the apply set is now empty** (everything is skipped), print
+  `Snoozed N group(s); nothing else to update.` and exit (no branch).
 - **Cancel** → stop here.
 
 The snooze ledger (`.gaia/local/declined-updates.json`) is local-only and
-gitignored: it suppresses the statusline nudge until a newer version ships or 14
-days pass. It never gates a run, a snoozed group still appears (and is updatable)
-in every future preview, and CI ignores it entirely (CI is the freshness
-backstop and keeps opening PRs).
+gitignored: it suppresses the statusline nudge and default-skips the group in
+this preview until a newer version ships or 14 days pass. It never HARD-gates a
+run, the human can always choose to refresh a snoozed group, and CI ignores it
+entirely (CI is the freshness backstop and keeps opening PRs).
 
 Carry the **apply set** (filtered `wave_a` and `wave_b`) into the phases below.
 
