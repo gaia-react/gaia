@@ -11,6 +11,20 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-01 9b5668d1 WORTHY - new repo-relative-paths.md rule added to harness-discipline rule enumeration → wiki/modules/Claude Integration.md
+- 2026-07-01 c58bd0e4 SKIP - wiki changes landed inline in commit (README.md, Code Review Audit CI.md, Incremental CI Skipping.md); no new surface
+- 2026-07-01 da922476 SKIP - wiki change landed inline in commit (Code Review Audit CI.md); no new surface
+- 2026-07-01 c07b8845 SKIP - wiki changes landed inline in commit (Forensics.md, Forensics Triage Workflow.md); no new surface
+- 2026-07-01 ffa5543e SKIP - wiki change landed inline in commit (Claude Integration Fitness.md); no new surface
+- 2026-07-01 88807d56 WORTHY - stale /gaia-spec auto dispatch reference re-tensed to headless/automation-context phrasing after SPEC-012 removed the chain → wiki/concepts/GAIA Plan.md
+- 2026-07-01 8e7fabf7 SKIP - wiki changes landed inline in commit (5 pages: SPEC-012 handoff rewrite); no new surface
+- 2026-07-01 026dd450 SKIP - internal context-management refactor (SPEC-011), no observable behavior change; mechanics documented in skill reference, not wiki abstraction level
+- 2026-07-01 2de8b02e SKIP - wiki change landed inline in commit (Storybook.md); no new surface
+- 2026-07-01 836fe4fc SKIP - wiki changes landed inline in commit (5 pages: /setup-gaia-ci to /setup-gaia slug rename); no new surface
+- 2026-07-01 3028e2ed SKIP - internal CLI verb removal (set-secret); no wiki reference
+- 2026-07-01 41ce4497 SKIP - command-level security fix (setup-gaia-ci token flow); no wiki reference to token-provisioning mechanics, command retired by #480 anyway
+- 2026-07-01 cd7bc0fe SKIP - chore(deps): version bump only
+- 2026-07-01 fa3f9ff9 SKIP - wiki: self-referential (maintenance chain commit)
 - 2026-06-30 15ddaf9 SKIP - wiki: self-referential
 - 2026-06-30 091904c SKIP - wiki: self-referential
 - 2026-06-30 c100ead SKIP - wiki/concepts/Audit Disposition and Debt Drain.md updated inline in commit; no additional wiki edits needed
