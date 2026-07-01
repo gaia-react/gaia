@@ -31,7 +31,7 @@ Hard rules in auto mode:
 12. **Chain-trigger to `/gaia-plan` is automatic.** Step 12's `AskUserQuestion` is skipped, auto mode always picks "Yes, trigger /gaia-plan". Multi-plan loop (12b) is also skipped, author exactly one plan covering the full SPEC. Multi-slice planning is a human-judgment call; auto mode produces one plan.
 13. **`Save partial and resume later` escapes are unreachable.** No prompt fires that would offer them. The session always proceeds to step 9 unless the agent itself decides to abort (e.g. missing description, hard tool failure).
 14. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, `spec_saved`, and (when the audit runs) `audit_dispatched`/`audit_findings`/`audit_disposition` event in an auto session includes `"auto": true` in its JSON record. The `time_to_resolved_spec` mentorship emit at step 9 includes `--agent-type auto` instead of `--agent-type human`. Telemetry-derived metrics should be partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
-15. **Adversarial audit runs at the recommended intensity, non-interactively.** Auto mode does not prompt for the step-7 audit decision; per rule 5 it takes the Recommended option, which is always an intensity (never Skip). Gauge the draft's complexity, run the audit at the recommended tier (Standard or Deep), and apply its dispositions without prompting: auto-apply plan-time directives into `AUDIT.md`, auto-apply unambiguous SPEC-contract-defect fixes into the draft pre-save (no reopen ceremony, the draft is unsaved), and for any contract defect with more than one defensible repair, record it in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` rather than guessing. Never block save; never revert intentional clarify-loop evolution. If the Agent fan-out is unavailable, take step 7's fallback (note the skip, rely on the step-6 self-review) and continue.
+15. **Adversarial audit runs at the recommended intensity, non-interactively.** Auto mode does not prompt for the step-7 audit decision; per rule 5 it takes the Recommended option, which is always an intensity (never Skip). Gauge the draft's complexity, run the audit at the recommended tier (Standard or Deep), and apply its dispositions without prompting: auto-apply plan-time directives into `AUDIT.md`, auto-apply unambiguous SPEC-contract-defect fixes into the draft pre-save (no reopen ceremony, the draft is unsaved), and for any contract defect with more than one defensible repair, record it in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` rather than guessing. Never block save; never revert intentional clarify-loop evolution. Throughout the audit and fold phase auto mode reads **no finding body** (a finding's `issue`/`evidence`/`recommendation`, or a self-review finding's `suggested_fix`/`excerpt`); the transcript carries only ids, severities, titles, verdicts, and dispositions. The two bounded exceptions where a finding body reaches main (6b high self-review findings, 7c material spec-defect survivors) are interactive-only; auto mode surfaces neither. If the Agent fan-out is unavailable, take step 7's fallback (note the skip, rely on the step-6 self-review) and continue.
 
 The rest of the skill, write-surface allowlist, no-machine-local-memory rule, working-draft cache primitives, hooks firing, immutable SPEC shape, `gh-mirror.sh` invocation, applies identically in auto mode.
 
@@ -132,11 +132,43 @@ Schema (one record per line, ISO-8601 UTC timestamps):
 
 After each clarify fold (step 5), each gate confirmation (steps 4 + 8), each research-result fold (step 5e), each self-review apply (step 6), and each audit-finding apply (step 7), persist the current in-flight draft to `.gaia/local/cache/draft-<spec_id>.md`. Step 9's canonical save deletes this cache as its final action.
 
-**Single-`Write` rule.** Compose the full updated draft in working memory, then emit ONE `Write` tool call that overwrites the cache file. Never use a sequence of `Edit` calls for a single fold. The Q&A loop runs many turns per session and each `Edit` renders a full diff in the user's chat, multiple per-turn diffs are visual noise the user has flagged as unwanted. The per-turn budget is exactly: one `Write` for the fold, one `Bash` for telemetry. Nothing else.
+**Single-`Write` rule.** Compose the full updated draft in working memory, then emit ONE `Write` tool call that overwrites the cache file. Never use a sequence of `Edit` calls for a single fold. The Q&A loop runs many turns per session and each `Edit` renders a full diff in the user's chat, multiple per-turn diffs are visual noise the user has flagged as unwanted.
+
+The single-Write-per-fold discipline holds, but the writer depends on the checkpoint. For a **clarify-loop fold** (a step-5 Q&A turn, a gate confirmation), the per-turn budget is exactly: one `Write` for the fold from the main thread, one `Bash` for telemetry, nothing else. For a **delegated fold checkpoint** (an approved self-review high at 6b, the audit spec-defect fold at 7c, a gate-2 revision), the single Write is **owned by the applier subagent** (see "Audit cache + delegated fold" below), and the main thread's per-turn action at that checkpoint is the **applier dispatch** (an Agent call), not a `Write`. Do not emit a main-thread draft `Write` at a delegated fold checkpoint.
 
 **Per-turn fold contents.** When folding a Q&A turn (closed-set selection, `Other` text, open-ended answer, or Discuss-this settlement): add to `clarifications.answered[]` as `{ q, a }`, remove the topic from `clarifications.pending[]`, and update any statusline fields the answer touches, all in the same `Write`.
 
 This makes interrupted sessions resumable: step 2 reads the cache if it is newer than the canonical artifact.
+
+### Audit cache + delegated fold
+
+The self-review (step 6) and adversarial audit (step 7) route their finding, verdict, and draft bodies through a per-spec **audit cache** on disk and a **delegated-fold applier** subagent, so the main thread holds only thin lines (id, severity, title, verdict, disposition) plus a few applier summaries. Finding bodies, verdict bodies, refuter bodies, and full-draft folds do not flow back through main during a fold, with exactly two bounded interactive carve-outs (6b high self-review findings, 7c material spec-defect survivors).
+
+**Audit cache directory** `.gaia/local/cache/audit-<spec_id>/`. Every file the self-review and audit produce lands here:
+
+- `findings/<LENS>.json` — one per dispatched lens, written even when the findings array is empty (so the file count equals the dispatched-lens count deterministically).
+- `findings/self-review.json` — the step-6 self-review (6a schema).
+- `findings/completeness.json` — the Deep completeness critic (7a findings schema).
+- `verdicts/<finding-id>.json` — a Standard single-refuter verdict.
+- `verdicts/<finding-id>-<refuter-lens>.json` — a Deep verdict, one per refuter lens. The refuter lens is **slugified**: `correctness` stays `correctness`, `security/safety` maps to `security-safety`, `reproduces-as-described` stays as is. The completeness critic's single-refuter verdicts use the same naming.
+
+Per-lens and per-finding-plus-lens filenames avoid write collisions in the parallel fan-out: each agent owns exactly one path, so many agents write the cache concurrently without contending.
+
+**Delegated fold.** At a delegated fold checkpoint the fold is performed by a single-writer subagent, not by main; it replaces an in-main fold at that checkpoint. Main dispatches a `general-purpose` Agent (the **applier**) with three inputs: the draft path (`.gaia/local/cache/draft-<spec_id>.md`), the audit-cache directory (`.gaia/local/cache/audit-<spec_id>/`), and the thin **decision list**:
+
+    [ { "id": "<finding-id>", "action": "apply"|"keep"|"revise", "revision": "<free text, optional>" } ]
+
+An **id-less** entry carries its `revision` text inline (free-text revision mode); the applier applies it directly with no findings-file lookup (gate-2 free-form edits route this way).
+
+The applier **reads every findings and verdict file in the cache** (not just the decision-list ids). For each id-carrying `apply`/`revise` entry it looks the fix up **by id in the findings files** — main never holds the recommendation text. For each id-less entry it applies the inline `revision` (free-text mode, no findings-file lookup). It folds every applicable fix into the draft cache in **one Write** and returns a one-line summary:
+
+    { "folded": [<ids>], "directives": [<ids>]?, "revised": [<ids>]?, "counts": { "folded": <int>, "directives": <int>, "revised": <int> } }
+
+`directives` is optional (absent for pure draft folds); it lists finding ids routed to `AUDIT.md` as plan-time directives. The `counts` object is the pinned **fold-outcome** schema that the applier's own reporting and the per-finding `audit_disposition` join read; it is **not** the source for `audit_findings` (whose `raised`/per-severity/`confirmed`/`refuted` come from the 7a thin digests plus the thin verdict lines, see 7b/7c).
+
+Reading the full cache (rather than only the listed ids) is what lets the applier both author `AUDIT.md` from the complete on-disk record (see 7d) and fold the **low-severity spec-defect fixes main never surfaced** — the decision list carries only the interactively-gated material survivors, and low spec-defects are folded silently by the applier from the on-disk findings files, preserving the current flow. When the fold routes any finding to a plan-time directive, the applier also writes `AUDIT.md`.
+
+**Fallback.** If subagent dispatch is unavailable, the main thread folds inline exactly as today.
 
 ### Escape option (used in step 5 AskUserQuestion sets)
 
@@ -234,6 +266,12 @@ First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC 
 ```bash
 bash .specify/extensions/gaia/lib/spec-reconcile.sh "$PWD" 2>/dev/null || true
 bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" 2>/dev/null || true
+# Best-effort sweep of stale audit caches left by "Start new" or abandoned exits.
+# An audit-<id>/ cache is short-lived (created at 6a, deleted at step 7 skip, step 9
+# save, or the step-2 discard); one untouched for over a day is orphaned. Fail-open,
+# never blocks; the mtime guard cannot touch a dir an active session just wrote.
+find .gaia/local/cache -maxdepth 1 -type d -name 'audit-*' -mtime +1 \
+  -exec rm -rf {} + 2>/dev/null || true
 ```
 
 Then run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an unfinalized **draft** SPEC already exists, a prior authoring session that never reached the canonical save (step 9). The allocator reports only drafts; a finalized SPEC (`specified`/`merged`) is never surfaced here, because you resume a draft, not a frozen artifact.
@@ -274,7 +312,7 @@ Honor the user's choice. Never silently overwrite, never silently start new.
   - Never re-snapshot the gate-1 cache; its purpose is immutable drift detection.
   - **GH-mirror opt-in on resume.** Inspect the loaded draft's frontmatter. If `gh_issue_url` is set, treat `gh_mirror_optin = true` (a prior session already mirrored). Otherwise, ask the GH-mirror `AskUserQuestion` from step 1 once now, `gh_mirror_optin` does not persist across resumes and silently defaulting it to `false` would lose the user's earlier intent.
 - **Start new:** continue with a fresh allocation (Step 3 onward). The draft SPEC remains untouched. Append `spec_started` telemetry with `resumed: false`, then initialize the session-shape cache per the operational primitive once the new `spec_id` is known (step 3).
-- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json`, then continue with a fresh allocation. Note: this deletes only the draft cache; the SPEC's ledger row stays `status: draft`, so the allocator keeps flagging SPEC-NNN for resume until that row reaches a finalized status (out of scope for this step).
+- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json` and, separately (an `rm -f` cannot delete a directory), `rm -rf .gaia/local/cache/audit-${SPEC_ID}/`, then continue with a fresh allocation. Note: this deletes only the draft cache; the SPEC's ledger row stays `status: draft`, so the allocator keeps flagging SPEC-NNN for resume until that row reaches a finalized status (out of scope for this step).
 
 ### 3. /speckit-specify (initial draft)
 
@@ -395,27 +433,36 @@ Spec-kit fires this hook automatically after `/speckit-clarify` completes. The a
 
 #### 6a. Dispatch the self-review agent
 
+First, create the audit cache's findings directory if absent, so `self-review.json` is never orphaned. The cache is created here, before the step-7 audit is even chosen:
+
+```bash
+mkdir -p .gaia/local/cache/audit-${SPEC_ID}/findings || true
+```
+
 Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and `<spec_id>`):
 
 > Run the self-review audit defined in `.specify/extensions/gaia/commands/self-review.md` over the draft at `<DRAFT_PATH>` against the gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json`.
 >
-> Return a structured JSON payload, no narrative, no draft excerpts beyond what each finding's `excerpt` field needs:
+> **Write** your full findings to `.gaia/local/cache/audit-<spec_id>/findings/self-review.json` (the fully-qualified path — never a bare `findings/self-review.json`, which from the repo-root cwd would resolve outside the cache and be orphaned, off the `.gaia/local/cache/**` allowlist). Each finding is one object under this schema, and every finding carries an `id` of the form `SR-NNN`, which you assign sequentially as you record each one:
 >
 >     {
->       "findings": [
->         {
->           "severity": "low" | "medium" | "high",
->           "kind": "placeholder" | "ambiguity" | "inconsistency" | "drift" | "scope_change" | "missing_uat" | "other",
->           "location": "<section heading or UAT-NNN>",
->           "excerpt": "<short verbatim excerpt, keep under 200 chars>",
->           "issue": "<one sentence, what is wrong>",
->           "suggested_fix": "<one sentence, what to change to resolve>"
->         }
->       ],
->       "pending_clarifications": [
->         { "topic": "<topic>", "question": "<verbatim>" }
->       ]
+>       "id": "SR-NNN",
+>       "severity": "low" | "medium" | "high",
+>       "kind": "placeholder" | "ambiguity" | "inconsistency" | "drift" | "scope_change" | "missing_uat" | "other",
+>       "location": "<section heading or UAT-NNN>",
+>       "excerpt": "<short verbatim excerpt, keep under 200 chars>",
+>       "issue": "<one sentence, what is wrong>",
+>       "suggested_fix": "<one sentence, what to change to resolve>"
 >     }
+>
+> **Apply** every `low` and `medium` `suggested_fix` yourself to the draft at `<DRAFT_PATH>` in a single `Write` (you have already read the whole draft). Do NOT apply the `high` findings; the wrapper gates those.
+>
+> **Return** only this thin digest, no finding bodies beyond the `high_findings` fields below:
+>
+>     { "counts": { "low": <int>, "medium": <int>, "high": <int> },
+>       "applied": [<ids>],
+>       "high_findings": [ { "id": "SR-NNN", "kind": "...", "location": "...", "issue": "...", "excerpt": "...", "suggested_fix": "..." } ],
+>       "pending_clarifications": [ { "topic": "...", "question": "..." } ] }
 >
 > Severity guidance:
 >
@@ -423,11 +470,16 @@ Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and
 > - **medium**, internal inconsistency, ambiguous UAT phrasing
 > - **high**, drift from gate-1 snapshot, scope change, removed UAT, added UAT not present at gate 1
 
-Append a `self_review_findings` telemetry event with the counts (`low`, `medium`, `high`) once the agent returns.
+The digest is thin: the explicit `counts` object keeps the `self_review_findings` low/medium/high split without a body read; `applied` lists the ids the agent already folded; each `high_findings` entry carries `kind` (a thin field, not a body) so 6b's auto-branch and auto-mode rule 9 can gate on `kind: "drift"/"scope_change"` without re-reading the draft; `excerpt` lets main render the 6b prompt without re-opening the draft. The high-finding fix field is named `suggested_fix`, aligned with the 6a schema.
+
+Append a `self_review_findings` telemetry event, sourced from the digest's `counts` (`low`, `medium`, `high`), once the agent returns.
+
+**Fallback.** When subagent dispatch is unavailable, the main thread runs the self-review inline (parity with the step-7 audit fallback): it reads the draft, records the same findings, applies every `low` and `medium` `suggested_fix` itself in a single Write, and gates the highs at 6b.
 
 #### 6b. Apply findings (severity-gated)
 
-- **low + medium findings:** apply ALL `suggested_fix`es to the draft in working memory, then persist via a single `Write` per the operational primitive, never one Write per finding.
+The self-review agent already applied every `low` and `medium` `suggested_fix` (6a); main gates only the **high** findings, rendered from the digest's `high_findings` entries (`issue`, `excerpt`, `suggested_fix`). This is one of the two bounded interactive carve-outs where a finding body legitimately reaches main; keep it, do not extend it.
+
 - **high findings:** surface to the user before applying. Never silently revert intentional clarify-loop evolution. **Auto-mode exception per rule 9:** apply the `suggested_fix` and append a one-line note to `clarifications.deferred[]` recording the finding (kind, location, issue) so a reviewer can audit. If the finding is `kind: "drift"` or `"scope_change"` and the change came from a clarify answer the agent itself just made in step 5, prefer keeping the clarify answer over reverting, append the note but skip the fix. Use a plain prompt per finding:
 
   > Self-review flagged a scope-level concern in `<location>`:
@@ -440,7 +492,7 @@ Append a `self_review_findings` telemetry event with the counts (`low`, `medium`
   >
   > Apply the fix, keep the current draft, or revise differently?
 
-  Wait for user direction. Apply or skip per the answer; if `revise differently`, fold the user's revision and re-cache.
+  Wait for user direction. An **approved** high fix folds through the **delegated fold** (see "Audit cache + delegated fold"), keyed by its `SR-NNN` id in the decision list; do not emit a main-thread draft `Write` for the fold. On `revise differently`, route the user's revision through the same delegated fold. On `keep`, fold nothing.
 
 #### 6c. Pending clarifications block-or-defer
 
@@ -481,11 +533,11 @@ Then present (recommended tier FIRST and carrying the `(Recommended)` tag; both 
 
 Tier descriptions to fill in: **Standard** = `"The selected lenses verify every checkable claim against ground truth; one refuter per material finding keeps severity honest. Roughly a dozen agents, a few minutes."`; **Deep** = `"Adds perspective-diverse refuters (correctness, security, reproducibility) per material finding plus a completeness critic. More agents and tokens; for high-stakes or wide-scope specs."`
 
-`Skip` is never the recommended option. Record the chosen tier as `audit_intensity` (`standard` | `deep`) and the selected lens set. On **Skip**, append an `audit_dispatched` event with `skipped: true`, then proceed to gate 2 (step 8).
+`Skip` is never the recommended option. Record the chosen tier as `audit_intensity` (`standard` | `deep`) and the selected lens set. On **Skip**, append an `audit_dispatched` event with `skipped: true`, remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/` (so the step-6 `self-review.json` written at 6a is not orphaned), then proceed to gate 2 (step 8).
 
-**Auto-mode.** No prompt fires. Per Auto-mode rule 15 (which applies rule 5's "pick the Recommended option"), auto mode gauges the draft, runs the audit at the recommended tier with the gauge-selected lenses, and applies its dispositions non-interactively. Auto mode never skips the audit.
+**Auto-mode.** No prompt fires. Per Auto-mode rule 15 (which applies rule 5's "pick the Recommended option"), auto mode gauges the draft, runs the audit at the recommended tier with the gauge-selected lenses, and applies its dispositions non-interactively. It reads **no finding body** during the audit and fold phase; the transcript carries only ids, severities, titles, verdicts, and dispositions. Auto mode never skips the audit.
 
-**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block save: note the skip (`adversarial audit unavailable, relying on step-6 self-review`), append an `audit_dispatched` event with `skipped: true`, and proceed to gate 2. The step-6 self-review already ran and is the safety net.
+**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block save: note the skip (`adversarial audit unavailable, relying on step-6 self-review`), append an `audit_dispatched` event with `skipped: true`, remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/` (so the step-6 `self-review.json` is not orphaned), and proceed to gate 2. The step-6 self-review already ran and is the safety net.
 
 #### 7a. Dispatch the lens auditors (parallel fan-out)
 
@@ -493,9 +545,9 @@ Announce once, verbatim:
 
 > Dispatching adversarial SPEC-audit (<audit_intensity>): lenses <selected lens ids>, then refutation (typically a dozen-plus agents, several minutes).
 
-Append an `audit_dispatched` telemetry event with `intensity: <audit_intensity>` and `lenses` set to the dispatched lens-id list. Then spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review draft, NOT the step-3 canonical file) and returns only the findings JSON below, no narrative.
+Append an `audit_dispatched` telemetry event with `intensity: <audit_intensity>` and `lenses` set to the dispatched lens-id list. Then spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review draft, NOT the step-3 canonical file), **writes its findings JSON to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json`** (writing the file even when its findings array is empty), then returns only the thin digest below, no finding bodies.
 
-Shared preamble (interpolate `<DRAFT_PATH>` = the working-draft cache, `<spec_id>`, and `<repo_root>` = `$PWD`):
+Shared preamble (interpolate `<DRAFT_PATH>` = the working-draft cache, `<spec_id>`, `<repo_root>` = `$PWD`, and `<LENS>` = the agent's lens id prefix):
 
 > You are an ADVERSARIAL auditor of a GAIA SPEC draft at `<DRAFT_PATH>` (spec `<spec_id>`). Repo root is `<repo_root>`; you may read any file under it, including `node_modules`. Read the full draft first. Your job is to find DEFECTS that would cause a flawed plan or implementation downstream, not to praise it.
 >
@@ -504,6 +556,11 @@ Shared preamble (interpolate `<DRAFT_PATH>` = the working-draft cache, `<spec_id
 > - Severity: `blocker` = the SPEC is factually wrong or will produce broken/misleading work; `high` = a significant gap or ambiguity a planner is forced to guess on; `medium` = should fix; `low` = nit.
 > - Give each finding a stable id prefixed with your lens code.
 > - Be concrete and falsifiable. A finding a verifier can refute by reading one file is a good finding; vague "could be clearer" is not.
+> - **Write** your full findings to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` (the fully-qualified path) under the file schema below; write the file even if your findings array is empty.
+> - **Return** only the thin digest, no finding bodies. It lists EVERY finding (material and low) as `{ id, severity, title }`, so the wrapper holds ids, severities, and titles for all of them while the full body stays on disk:
+>
+>     { "dimension": "<lens>", "counts": { "blocker": <int>, "high": <int>, "medium": <int>, "low": <int> },
+>       "findings": [ { "id": "<lens>-NNN", "severity": "...", "title": "..." } ] }
 
 The four core lenses (always dispatched; the set is chosen for low overlap, each reliably finds defects the others miss):
 
@@ -522,7 +579,7 @@ The four core lenses (always dispatched; the set is chosen for low overlap, each
 | `DOC` | wiki or docs deliverables, "points to X" pointer UATs, README or section-title citations | duplication of an authoritative source, rot-resistance, dead cross-references, pointer UATs satisfiable by a bare path drop |
 | `PERF` | data volume, loops over collections, network fan-out, caching, render or hydration paths | speculative-versus-real cost, N+1, unbounded growth, flaky warm/cold performance gates |
 
-Findings schema (each agent returns exactly this object):
+Findings **file** schema (what each agent writes to `findings/<LENS>.json`; NOT a return contract, the thin digest above is what flows back to main):
 
     {
       "dimension": "<lens name>",
@@ -541,24 +598,22 @@ Findings schema (each agent returns exactly this object):
 
 #### 7b. Refutation pass (severity discipline)
 
-Collect every **material** finding (severity ≠ `low`) across all selected lenses; low-severity findings skip refutation and carry forward unchanged. Each refuter defaults to "refuted" unless it can substantiate the defect from ground truth, so this pass is severity discipline as much as false-positive killing (in the pilot it refuted none outright but correctly downgraded every `high` to `medium`). The refuter count scales with `audit_intensity`:
+From the 7a thin digests, main selects every **material** finding id (severity ≠ `low`) across all selected lenses; low-severity findings skip refutation and carry forward unchanged. Each refuter defaults to "refuted" unless it can substantiate the defect from ground truth, so this pass is severity discipline as much as false-positive killing (in the pilot it refuted none outright but correctly downgraded every `high` to `medium`). The refuter count scales with `audit_intensity`:
 
 - **Standard:** one refuter per material finding, all in parallel.
 - **Deep:** three refuters per material finding, all in parallel, each given a distinct verification lens, prepend one of `correctness`, `security/safety`, or `reproduces-as-described` to the refuter prompt below. A finding is refuted only on a ≥2-of-3 majority; its corrected severity is the median of the non-refuting refuters.
 
-Refuter prompt (interpolate the finding fields, `<DRAFT_PATH>`, `<repo_root>`):
+Main dispatches each refuter keyed by `{ finding_id, findings_file, refuter_lens? }` — **no finding fields interpolated** — where `findings_file` is the lens's `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` and `verdict_file` is the refuter's output path (`verdicts/<finding-id>.json` for Standard, `verdicts/<finding-id>-<slug-lens>.json` for Deep, slug per the frozen mapping). The refuter reads the finding body from the file itself.
 
-> An adversarial auditor raised this finding against the SPEC draft at `<DRAFT_PATH>` (repo root `<repo_root>`):
->
->     [<severity>] <id> <title>
->     Location: <location>
->     Issue: <issue>
->     Evidence claimed: <evidence>
->     Recommendation: <recommendation>
->
-> Independently verify it. Try to REFUTE it: did the auditor misread the SPEC or the code, or overstate severity? Open the cited SPEC section and any cited file yourself. For a finding you do NOT refute, also classify its DISPOSITION: is the SPEC's binding contract (its UATs + intent) already correct and only the implementation needs steering (`plan_directive`), or is a UAT or the intent itself wrong, gameable, or missing (`spec_defect`)? Default to `refuted` if you cannot substantiate the finding from ground truth.
+Refuter prompt (interpolate `<finding_id>`, `<findings_file>`, `<verdict_file>`, `<DRAFT_PATH>`, `<repo_root>` — no finding fields inline):
 
-Verdict schema (`disposition` is consulted only for surviving findings):
+> Verify finding `<finding_id>`, recorded in `<findings_file>`, against the SPEC draft at `<DRAFT_PATH>` (repo root `<repo_root>`). Read the finding there; its severity, location, issue, evidence, and recommendation all live in that file.
+>
+> Open the cited SPEC section and any cited file yourself and try to REFUTE it: did the auditor misread the SPEC or the code, or overstate severity? For a finding you do NOT refute, also classify its DISPOSITION: is the SPEC's binding contract (its UATs + intent) already correct and only the implementation needs steering (`plan_directive`), or is a UAT or the intent itself wrong, gameable, or missing (`spec_defect`)? Default to `refuted` if you cannot substantiate the finding from ground truth.
+>
+> **Write** your verdict to `<verdict_file>` under the verdict schema below, then **return** only the thin verdict line `{ "id": "<finding_id>", "verdict": "confirmed"|"partial"|"refuted", "corrected_severity": "...", "disposition": "plan_directive"|"spec_defect" }`.
+
+Verdict schema — the **file** the refuter writes to `verdicts/<finding-id>.json` (Standard) or `verdicts/<finding-id>-<slug-lens>.json` (Deep). `disposition` is consulted only for surviving findings:
 
     {
       "verdict": "confirmed" | "partial" | "refuted",
@@ -568,24 +623,30 @@ Verdict schema (`disposition` is consulted only for surviving findings):
       "evidence": "<file:line or SPEC quote actually checked>"
     }
 
-Surviving findings = the low-severity findings (carried forward) plus every material finding not refuted (Standard: a single `refuted` verdict kills it; Deep: a ≥2-of-3 majority kills it), each stamped with its `corrected_severity` and `disposition`.
+Main computes the Deep ≥2/3 majority and the median severity **from the returned thin verdict lines only** and **never opens the per-refuter verdict files**, so verdict reasoning bodies never reach main. Surviving findings = the low-severity findings (carried forward) plus every material finding not refuted (Standard: a single `refuted` verdict kills it; Deep: a ≥2-of-3 majority kills it), each stamped with its `corrected_severity` and `disposition`.
 
-**Deep only, completeness critic.** After the refutation pass, dispatch one more `general-purpose` Agent over the draft plus the list of surviving findings, and ask what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` with no covering UAT, a consumer or blast-radius site the SPEC overlooked. Run any fresh findings it raises through a single-refuter refutation round and merge the survivors.
+**Deep only, completeness critic.** After the refutation pass, dispatch one more `general-purpose` Agent over the draft plus the surviving findings, and ask what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` with no covering UAT, a consumer or blast-radius site the SPEC overlooked. It **writes its fresh findings to `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`** (7a findings schema) and returns a thin digest; run any fresh findings through a single-refuter round under the same thin-digest and verdict-naming contracts (its verdicts write to `verdicts/<finding-id>.json`), and merge the survivors. Its bodies never flow into main.
 
-Append an `audit_findings` telemetry event with the counts: `raised`, `confirmed`, `refuted`, and per-severity `blocker`/`high`/`medium`/`low` over the survivors.
+Append an `audit_findings` telemetry event with the counts `raised`, `confirmed`, `refuted`, and per-severity `blocker`/`high`/`medium`/`low`. Source it from the **7a thin digests** (`raised` = total findings across all digests including lows; the per-severity `blocker`/`high`/`medium`/`low` from the digests' `counts`) plus the **thin verdict lines** (`confirmed`/`refuted`). Do NOT source it from the applier summary's `{ folded, directives, revised }` counts — those are fold-outcome counts (a disjoint set) and cannot produce `raised` or the per-severity split.
 
 #### 7c. Disposition routing + apply
 
-Route each surviving finding by its disposition; append an `audit_disposition` telemetry event per finding (`finding_id`, `disposition`, `severity`).
+Route each surviving finding by its `disposition`, read from the **thin verdict lines** (main never opens the verdict files):
 
-- **Plan-time directive** (the SPEC's contract is already satisfied; the fix is an implementation instruction). Do NOT change the draft. Record it in `AUDIT.md` (step 7d) under "Plan-time directives" so `/gaia-plan` and the implementer honor it.
-- **SPEC contract defect** (a UAT or the intent is itself wrong, gameable, or missing). The draft is not yet saved, so fold the fix straight into the draft cache with NO reopen ceremony. **Interactive:** surface each material (non-`low`) contract defect to the user before folding, mirroring step 6b's high-finding prompt (issue, evidence, recommendation; apply / keep / revise); apply `low` contract-defect fixes silently. **Auto-mode per rule 15:** auto-apply an unambiguous contract-defect fix and record it in `AUDIT.md`; if the repair is ambiguous (more than one defensible fix), record the finding in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` and leave the draft unchanged. Never revert intentional clarify-loop evolution.
+- **Plan-time directive** (the SPEC's contract is already satisfied; the fix is an implementation instruction). No change folds into the draft — it stays byte-identical — but the finding gains a plan-time-directive entry in `AUDIT.md` (7d) so `/gaia-plan` and the implementer honor it.
+- **SPEC contract defect** (a UAT or the intent is itself wrong, gameable, or missing). The draft is not yet saved, so the fix folds straight into the draft cache with NO reopen ceremony.
 
-Apply all draft folds in a single `Write` per the working-draft checkpoint primitive (never one `Write` per finding).
+**Interactive.** Main reads only the handful of **material** (severity ≠ `low`) spec-defect survivors from the findings files to surface them to the user, mirroring step 6b's high-finding prompt (issue, evidence, recommendation; apply / keep / revise). No numeric cap or paging. This is the second bounded interactive carve-out where a finding body legitimately reaches main. Collect the user's apply/keep/revise decisions into the delegated-fold decision list. **Low** spec-defect fixes are never read into main; the applier folds them directly from the on-disk findings files (it reads the full cache), and refuter verdict text is never read into main. (Low findings skip refutation and carry no verdict line, so the sourcing of a low finding's `disposition` is a pre-existing question the audit's logic leaves unchanged here; the applier only folds the low spec-defects the current flow would have folded.)
+
+**Auto-mode per rule 15.** No reads; **no finding body reaches main**. The transcript carries ids, severities, titles, verdicts, and dispositions only. Unambiguous spec-defect ids apply (added to the decision list as `apply`); a defect with more than one defensible repair becomes a deferred-clarification note in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` and is not applied. Never revert intentional clarify-loop evolution.
+
+**Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the draft path, the audit-cache directory, and the decision list. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today.
+
+Emit `audit_findings` from the **7a thin digests plus the thin verdict lines** (per 7b — not the applier's fold-outcome counts), and **one `audit_disposition` per surviving finding** (`finding_id`, `disposition`, `severity`) by joining the applier summary's `folded`/`directives` ids with the thin verdict lines' `{ id, verdict, corrected_severity, disposition }`. Low survivors keep per-finding disposition parity because the 7a digest carries every finding's `{ id, severity, title }` (severity from the digest; the low-finding `disposition` sourcing is the same pre-existing question noted above, preserved not resolved). The 7a thin digests plus the thin verdict lines are the authoritative source for `audit_findings`; the applier summary counts back only the `audit_disposition` join.
 
 #### 7d. Persist AUDIT.md
 
-Write a sibling report to `.gaia/local/specs/<spec_id>/AUDIT.md`. The SPEC folder already exists from step 3, and `.gaia/local/specs/**` is on the write-surface allowlist. Keep it lean:
+The **applier** writes a sibling report to `.gaia/local/specs/<spec_id>/AUDIT.md` from the on-disk findings and verdicts (it already holds the complete record, so main never loads a finding body to produce it). The SPEC folder already exists from step 3, and `.gaia/local/specs/**` is on the write-surface allowlist. Keep it lean:
 
 ```markdown
 # <spec_id> Adversarial Audit
@@ -629,10 +690,9 @@ Use a plain prompt, not `AskUserQuestion`. Suggested phrasing:
 
 If the user revises:
 
-1. Fold revisions into the draft.
+1. Route the revision through the **delegated fold** (see "Audit cache + delegated fold") in **free-text revision mode**: the decision-list entry is id-less and carries the revision text inline; the applier applies it directly with no findings-file lookup, writes the draft cache in one Write, and returns its one-line summary. Main emits no draft-body `Write` for the gate-2 fold. This completes "no full-draft Write in the main thread at a fold checkpoint." **Fallback:** when subagent dispatch is unavailable, main folds the revision inline as today.
 2. Increment `gate2_revisions`.
-3. Write the draft cache (operational primitive).
-4. Re-present until they confirm. Do not re-quote raw clarify Q&A in revision prompts, reference the draft's `clarifications.answered[]` and `clarifications.deferred[]` arrays as canonical.
+3. Re-present until they confirm. Do not re-quote raw clarify Q&A in revision prompts, reference the draft's `clarifications.answered[]` and `clarifications.deferred[]` arrays as canonical.
 
 On confirmation:
 
@@ -655,7 +715,7 @@ Update the frontmatter `updated` field to today's date.
 
 After the canonical write succeeds:
 
-1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md`. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
+1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md`, and remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/`. The applier has already read the audit cache to derive `AUDIT.md` (which survives under `.gaia/local/specs/<spec_id>/`), so deleting it here is safe. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
 2. **Update the ledger row:** flip the row in `.gaia/specs.json` from `status: draft` to `status: specified` and stamp the intent (first prose line of the SPEC's `intent` field) for at-a-glance scanning. This is the finalize transition: the SPEC artifact is now frozen, so the authoring session is done and the allocator stops reporting it for resume-vs-start-new. Downstream (plan → implement → merge) owns the feature from here; the ledger's `merged` transition is reconciled from git by `spec-reconcile.sh`, not set here. Failure is non-blocking, log to stderr and continue. The ledger is a fast index over git; the SPEC artifact and git history remain authoritative.
 
 ```bash
