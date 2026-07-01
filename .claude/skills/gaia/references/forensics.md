@@ -69,9 +69,9 @@ Read `.claude/skills/gaia/references/forensics/redaction.md` and apply it now.
 Assemble the full report body (everything from `## Symptom` through `## Reproduction context`). Run the redaction algorithm once over this assembled body in declared order:
 
 1. Path conversion, Rule A (project-root strip), then Rule B (machine-leak fallback).
-2. Token regex set, patterns 1–7 in declared order.
+2. Token regex set, patterns 1–10 in declared order.
 3. Env-var value scrub.
-4. Sanity recheck, re-run patterns 1–6; if any credential-shaped string survives, halt and report rather than emitting a partially-redacted body.
+4. Sanity recheck, re-run patterns 1–9; if any credential-shaped string survives, halt and report rather than emitting a partially-redacted body.
 
 Do not pass frontmatter through redaction. Frontmatter is written after the body is clean.
 
