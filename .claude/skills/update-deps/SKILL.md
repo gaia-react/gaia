@@ -144,6 +144,12 @@ it). They are already excluded from both waves, never installed, so nothing to
 apply. Surface them once (see Preview) so the maintainer remembers a hold is
 active.
 
+A hold caps only the package it names; a coupled sibling in the same companion
+group (e.g. `@vitejs/plugin-react` beside a held `vite`) still updates on its own
+line. If a sibling release's peer range demands a version above the ceiling, hold
+the sibling too by adding it to the map. The quality gate catches a peer conflict
+before merge regardless.
+
 **In CI (`CI=true`) or with `--scope <group>`, skip the preview and decision
 entirely.** The apply set is the full payload (CI) or the named group
 (`--scope`); jump straight to the apply phases with an empty skip set and no
