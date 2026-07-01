@@ -192,7 +192,7 @@ jobs:
           - `.specify/specs/`, `.specify/memory/`
           - `.gaia/local/specs/`
           - `.specify/extensions/gaia/templates/`
-          - `.github/workflows/`'
+          - `.github/workflows/`, `.github/forensics/`, `.github/`'
 
           rendered_file="${RUNNER_TEMP}/forensics/classifier-prompt.md"
 
