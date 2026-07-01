@@ -13,7 +13,7 @@ Fired automatically by spec-kit on the `after_clarify` event (mandatory hook). R
 
 ## Audit checklist
 
-Read the draft and the gate-1 snapshot. Surface findings under each heading; do not fix in place, the wrapper folds fixes back in.
+Read the draft and the gate-1 snapshot. Record every finding under the headings below (the spec.md 6a dispatch prompt is the authoritative return/apply contract): write them to `.gaia/local/cache/audit-<spec_id>/findings/self-review.json`, apply the low and medium `suggested_fix`es to the draft yourself in a single write, and surface the high findings to the wrapper for gating.
 
 ### 1. Placeholder text
 
@@ -64,6 +64,8 @@ Save remains blocked while any pending item is unresolved (neither answered nor 
 
 ## Output
 
+When run as the dispatched 6a self-review agent, return the JSON digest defined by the spec.md 6a dispatch prompt (that prompt is authoritative); the plaintext shape below is the fallback for a non-dispatched read.
+
 Emit a structured report the wrapper can fold back in:
 
 ```
@@ -82,5 +84,5 @@ If every section is clean:
 ## Notes
 
 - This hook is the last automated gate before the human-facing gate 2. Surface every candidate finding in each section, including borderline and low-confidence ones; do not pre-filter for importance or confidence. Gate 2 (the human) triages. Suppressing a borderline finding here is the failure mode this gate exists to catch.
-- Self-review never edits the draft; the wrapper does. This skill produces a report; the wrapper consumes it.
+- Self-review applies the low and medium fixes to the draft itself and returns a thin digest; the wrapper gates only the high findings. The authoritative return/apply contract is the spec.md 6a dispatch prompt.
 - The pending-clarifications gate is itself a required behavior. The wrapper is responsible for honoring the user's choice and looping until pending is resolved.

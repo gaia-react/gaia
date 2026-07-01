@@ -77,8 +77,16 @@
       "id": "SPEC-010",
       "allocated_at": "2026-07-01T07:27:45Z",
       "source": "allocated",
+      "status": "merged",
+      "intent": "Adopters onboard a GAIA project through one command, /setup-gaia, instead of",
+      "merged_at": "2026-07-01T09:37:07Z"
+    },
+    {
+      "id": "SPEC-011",
+      "allocated_at": "2026-07-01T09:53:22Z",
+      "source": "allocated",
       "status": "specified",
-      "intent": "Adopters onboard a GAIA project through one command, /setup-gaia, instead of"
+      "intent": "Keep the /gaia-spec main thread's context growth flat with respect to the BODY"
     }
   ]
 }
