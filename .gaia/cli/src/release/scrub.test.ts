@@ -141,6 +141,20 @@ transforms:
           - "wiki/**"
 `;
 
+// Mirrors the shipped `workflow-denylist` check in .gaia/release-scrub.yml. The
+// leak-check tests are hermetic (they do not load the real config), so the
+// pattern is copied verbatim; the FP-guard case below is what proves the inline
+// alternation stays quote-anchored if either side drifts.
+const WORKFLOW_DENYLIST_CONFIG = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: workflow-denylist
+        pattern: "^\\\\s*paths-ignore\\\\s*:|^\\\\s*-\\\\s*['\\"]?!|\\\\[[^\\\\]]*['\\"]!"
+        scope:
+          - ".github/workflows/**"
+`;
+
 describe('globToRegex', () => {
   test('matches single-segment files', () => {
     expect(globToRegex('CLAUDE.md').test('CLAUDE.md')).toBe(true);
@@ -390,6 +404,68 @@ describe('release scrub CLI', () => {
     const exit = run([sandbox.stagingDir, '--bogus'], {cwd: sandbox.rootDir});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
+  });
+});
+
+describe('workflow-denylist leak-check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+  });
+
+  test('flags an inverted entry in an inline flow array', () => {
+    sandbox = setupSandbox({config: WORKFLOW_DENYLIST_CONFIG});
+    sandbox.writeStaged(
+      '.github/workflows/tests.yml',
+      ['on:', '  push:', '    paths: ["src/**", "!*.md"]', ''].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('workflow-denylist');
+    expect(out).toContain('.github/workflows/tests.yml');
+  });
+
+  test('flags a block-list inverted entry and a paths-ignore key', () => {
+    sandbox = setupSandbox({config: WORKFLOW_DENYLIST_CONFIG});
+    sandbox.writeStaged(
+      '.github/workflows/chromatic.yml',
+      ['on:', '  push:', '    paths-ignore:', '      - "!*.md"', ''].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('workflow-denylist');
+  });
+
+  test('does not flag a pure allowlist inline array (quote-anchored FP guard)', () => {
+    sandbox = setupSandbox({config: WORKFLOW_DENYLIST_CONFIG});
+    sandbox.writeStaged(
+      '.github/workflows/tests.yml',
+      [
+        'on:',
+        '  push:',
+        '    paths: ["src/**", "app/**"]',
+        'jobs:',
+        '  build:',
+        '    steps:',
+        '      - run: echo "[!warn] no bang leak here"',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('leaks: none');
   });
 });
 

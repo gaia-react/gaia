@@ -128,7 +128,7 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 **Denylist filters rotting silently.** `paths-filter` denylists (`!**/*.md`, `!wiki/**`, `!.claude/**`) miss new top-level paths added to the repo. Allowlists fail loud (skip when expected to run); denylists fail quiet (run when expected to skip).
 
 - Detection: read all `.github/workflows/*.yml` `paths-ignore` and inverted `paths` patterns; flag any using denylist syntax
-- Codified in: `.gaia/release-scrub.yml` `workflow-denylist` check. Pattern matches `paths-ignore:` keys and list entries beginning with `!` across `.github/workflows/**`. Line-based, so an inline-array form (`paths: ["src/**", "!*.md"]`) would slip past; current workflows use block-list form so this is sufficient; revisit if a workflow adopts inline arrays.
+- Codified in: `.gaia/release-scrub.yml` `workflow-denylist` check. Pattern matches `paths-ignore:` keys, block-list entries beginning with `!`, and the inline flow-array form (`paths: ["src/**", "!*.md"]`) across `.github/workflows/**`. The inline alternation is quote-anchored so a stray `[!` inside a run-step string does not false-positive. Line-based matching still cannot see an inverted entry split across the lines of a multi-line flow array (`paths: [\n  "!*.md"\n]`), a layout no workflow uses; the common single-line inline and block forms are both covered.
 - Prior: `chromatic.yml` and `tests.yml` denylists missed `.gaia/`, `.specify/`, `studio/` (a8a4b75, c6eeecc)
 
 ### CI workflows
