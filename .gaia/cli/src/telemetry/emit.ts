@@ -68,6 +68,7 @@ type ParsedFlags = {
   areaTags?: string[];
   attempts?: number;
   auditorType?: string;
+  auto?: boolean;
   classification?: string;
   contextRequestClass?: string;
   durationSeconds?: number;
@@ -96,6 +97,7 @@ const FLAG_DEFINITIONS: Readonly<Partial<Record<string, FlagDefinition>>> = {
   '--area-tags': {kind: 'list', target: 'areaTags'},
   '--attempts': {kind: 'number', target: 'attempts'},
   '--auditor-type': {kind: 'string', target: 'auditorType'},
+  '--auto': {kind: 'boolean', target: 'auto'},
   '--classification': {kind: 'string', target: 'classification'},
   '--context-request-class': {kind: 'string', target: 'contextRequestClass'},
   '--duration-seconds': {kind: 'number', target: 'durationSeconds'},
@@ -247,6 +249,7 @@ const flagsToPayload = (
   assign('question_count', flags.questionCount);
   assign('duration_seconds', flags.durationSeconds);
   assign('abandoned', flags.abandoned);
+  assign('auto', flags.auto);
   assign('pr_number', flags.prNumber);
   assign('finding_class', flags.findingClass);
   assign('severity', flags.severity);

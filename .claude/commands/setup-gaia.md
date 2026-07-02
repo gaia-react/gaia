@@ -95,7 +95,16 @@ The classification only routes the phases below; each phase re-checks its own co
 
 ## Phase 2 — Per-machine setup (skip if setup-state finalized)
 
-If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–6 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
+If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops **except for the mentorship-decision reconciliation below** (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–6 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
+
+**Mentorship-decision reconciliation (runs even when `completed_at` is non-null).** `/gaia-init` finalizes per-machine setup with `gaia setup finalize --force`, but its Step 10 opt-in is a soft step: an interrupted or skipped prompt leaves no `mentorship.json`, and `finalize` does not verify one exists. Because the short-circuit above otherwise skips all of Phase 2, that dropped decision would be unrecoverable and mentorship silently stays at the pre-decision default (`enabled: null`, treated as off). So before falling through to Phase 3, always evaluate this:
+
+```bash
+DECIDED="null"
+[ -f .gaia/local/mentorship.json ] && DECIDED="$(jq -r '.enabled // "null"' .gaia/local/mentorship.json 2>/dev/null)"
+```
+
+If `DECIDED` is `null` (file absent, or `enabled: null`), run **Step 6's opt-in body** now, regardless of `completed_at` or whether `mentorship-decision` is already in `completed_steps` — `mentorship.json` is the source of truth here. If `DECIDED` is `true` or `false`, the decision stands and this is a no-op. (When `completed_at` is null, Step 6 runs in its normal Phase 2 sequence and this clause is redundant.)
 
 ### Step 1: install-tools
 

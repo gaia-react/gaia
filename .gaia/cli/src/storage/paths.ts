@@ -142,32 +142,28 @@ const ensureOffProjectDirectoryCreatedTight = async (
 };
 
 /**
- * Ensures the mentorship subtree exists with mode 700.
- * Creates the parent Claude project slug directory at mode 700 if absent.
+ * Ensures the GAIA-owned mentorship subtree exists with mode 700.
  * Only called when mentorship.enabled === true.
  * Idempotent.
  */
 export const ensureMentorshipDirs = async (
   roots: StorageRoots
 ): Promise<void> => {
-  // Walk parents top-down so each newly-created segment gets 0o700 explicitly.
   // Path shape: <home>/.claude/projects/<slug>/gaia/telemetry/mentorship
-  // We tighten only the segments under <slug>/; `~/.claude/projects` is owned by Claude.
   const {mentorshipDir} = roots;
-  // mentorshipDir = <home>/.claude/projects/<slug>/gaia/telemetry/mentorship
   const telemetryDirectory = path.dirname(mentorshipDir); // .../gaia/telemetry
   const gaiaDirectory = path.dirname(telemetryDirectory); //  .../gaia
-  const slugDirectory = path.dirname(gaiaDirectory); //       .../<slug>
 
+  // Tighten only the GAIA-owned segments (`gaia/` and below). The parent
+  // `<slug>` directory (`~/.claude/projects/<slug>`) is Claude Code's, created
+  // at 0755; GAIA never re-modes it. Excluding it avoids a spurious
+  // `mentorship_dir_mode_unexpected` warning on every enable, since 0755 never
+  // matches GAIA's 0700 expectation. `mkdir recursive` still materializes
+  // `<slug>` if absent, but leaves its mode alone.
+  //
   // Sequential by design: each segment must exist (and be tightened) before
   // the next is created so chmod-on-create lands on each new directory.
-
-  for (const directory of [
-    slugDirectory,
-    gaiaDirectory,
-    telemetryDirectory,
-    mentorshipDir,
-  ]) {
+  for (const directory of [gaiaDirectory, telemetryDirectory, mentorshipDir]) {
     // eslint-disable-next-line no-await-in-loop -- intentional sequential creation
     await ensureOffProjectDirectoryCreatedTight(directory);
   }
