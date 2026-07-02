@@ -143,6 +143,48 @@ describe('graduateChangelog', () => {
     );
     expect(outcome.kind).toBe('no-unreleased');
   });
+
+  test('maintains the reference-link block when one is present', () => {
+    const withLinks = `${TEMPLATE}
+[Unreleased]: https://github.com/gaia-react/gaia/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/gaia-react/gaia/releases/tag/v1.0.0
+`;
+    const outcome = graduateChangelog(
+      withLinks,
+      '1.1.0',
+      '### Added\n\n- new thing\n',
+      '2026-05-07'
+    );
+    expect(outcome.kind).toBe('ok');
+
+    if (outcome.kind !== 'ok') return;
+    // [Unreleased] compare link repointed at the just-released version.
+    expect(outcome.updated).toContain(
+      '[Unreleased]: https://github.com/gaia-react/gaia/compare/v1.1.0...HEAD'
+    );
+    expect(outcome.updated).not.toContain('compare/v1.0.0...HEAD');
+    // New release-tag definition inserted; prior definitions preserved.
+    expect(outcome.updated).toContain(
+      '[1.1.0]: https://github.com/gaia-react/gaia/releases/tag/v1.1.0'
+    );
+    expect(outcome.updated).toContain(
+      '[1.0.0]: https://github.com/gaia-react/gaia/releases/tag/v1.0.0'
+    );
+  });
+
+  test('leaves the output link-free when the file has no link block', () => {
+    const outcome = graduateChangelog(
+      TEMPLATE,
+      '1.1.0',
+      '### Added\n\n- new thing\n',
+      '2026-05-07'
+    );
+    expect(outcome.kind).toBe('ok');
+
+    if (outcome.kind !== 'ok') return;
+    expect(outcome.updated).not.toContain('releases/tag/');
+    expect(outcome.updated).not.toContain('[Unreleased]:');
+  });
 });
 
 type Sandbox = {

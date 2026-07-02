@@ -8,9 +8,12 @@
  * after human edit). Without `--draft`, the rendered block is graduated
  * into `CHANGELOG.md`:
  *
- *   1. Find `## [Unreleased]`. Replace with `## [vX.Y.Z] - YYYY-MM-DD`.
+ *   1. Find `## [Unreleased]`. Replace with `## [X.Y.Z] - YYYY-MM-DD`.
  *   2. Insert a fresh empty `## [Unreleased]` section above.
  *   3. Place the rendered block under the new dated heading.
+ *   4. Maintain the Keep-a-Changelog reference-link block: repoint the
+ *      `[Unreleased]` compare link at the new version and add a `[X.Y.Z]`
+ *      release-tag definition. Skipped when the file has no link block.
  *
  * Idempotent: re-running with the same `--version` is a no-op once the
  * version block already exists.
@@ -256,6 +259,46 @@ type GraduateOutcome =
   | {kind: 'no-unreleased'}
   | {kind: 'ok'; updated: string};
 
+const UNRELEASED_REF_PREFIX = '[Unreleased]:';
+
+/**
+ * Maintain the Keep-a-Changelog reference-link block on graduation: repoint the
+ * `[Unreleased]` compare link at the just-released version and insert a
+ * `[X.Y.Z]` release-tag definition beneath it. The repo base URL is derived
+ * from the existing `[Unreleased]:` target, never hardcoded; a CHANGELOG with
+ * no link block (or an unrecognized `[Unreleased]` target) is left untouched.
+ */
+const updateLinkReferences = (body: string, newVersion: string): string => {
+  const lines = body.split('\n');
+  const refIndex = lines.findIndex((line) =>
+    line.startsWith(UNRELEASED_REF_PREFIX)
+  );
+
+  if (refIndex === -1) {
+    return body;
+  }
+
+  const target = (lines[refIndex] ?? '')
+    .slice(UNRELEASED_REF_PREFIX.length)
+    .trim();
+  const compareIndex = target.indexOf('/compare/');
+
+  if (compareIndex === -1) {
+    return body;
+  }
+
+  const baseUrl = target.slice(0, compareIndex);
+
+  lines.splice(
+    refIndex,
+    1,
+    `${UNRELEASED_REF_PREFIX} ${baseUrl}/compare/v${newVersion}...HEAD`,
+    `[${newVersion}]: ${baseUrl}/releases/tag/v${newVersion}`
+  );
+
+  return lines.join('\n');
+};
+
 export const graduateChangelog = (
   current: string,
   newVersion: string,
@@ -313,7 +356,8 @@ export const graduateChangelog = (
     tail.shift();
   }
 
-  const updated = [...head, ...newSection, ...tail].join('\n');
+  const graduated = [...head, ...newSection, ...tail].join('\n');
+  const updated = updateLinkReferences(graduated, newVersion);
 
   return {kind: 'ok', updated};
 };

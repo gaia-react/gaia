@@ -338,23 +338,29 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds four things beyond the skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, and a pinned `react-doctor` devDependency. There is no skill-only install flag, so install (above) then remove them. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-review-audit` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA CI. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
+  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (GitHub Copilot, Warp). There is no skill-only install flag, so install (above) then remove them. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-review-audit` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA CI. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
 
   ```bash
   # 1. Drop the standalone workflow (GAIA CI is the only CI surface).
   rm -f .github/workflows/react-doctor.yml
-  # 2. Uninstall the pinned dep + lockfile entry. --config.ignore-scripts=true skips the
+  # 2. Remove the non-Claude skill copy. The installer writes .agents/skills/react-doctor/ for
+  #    any other agents it detects (Copilot, Warp); GAIA drives react-doctor through the Claude
+  #    Code skill only, so this copy is redundant. rmdir the now-empty parents but leave any
+  #    unrelated .agents/ content untouched (rmdir refuses a non-empty dir).
+  rm -rf .agents/skills/react-doctor
+  rmdir .agents/skills .agents 2>/dev/null || true
+  # 3. Uninstall the pinned dep + lockfile entry. --config.ignore-scripts=true skips the
   #    prepare hook (avoids a redundant husky/playwright run); react-doctor runs at @latest on demand.
   pnpm remove react-doctor --config.ignore-scripts=true 2>/dev/null || true
-  # 3. Delete the package script it added (named `doctor`, or `react-doctor` if `doctor` was taken).
+  # 4. Delete the package script it added (named `doctor`, or `react-doctor` if `doctor` was taken).
   #    The hyphenated key needs bracket+quote form; a bare `scripts.react-doctor` throws
   #    ERR_PNPM_UNEXPECTED_TOKEN_IN_PROPERTY_PATH and aborts the whole command, leaving `doctor` behind too.
   pnpm pkg delete scripts.doctor 'scripts["react-doctor"]'
-  # 4. Regenerate husky's hook stubs, wiping react-doctor's appended pre-commit block.
+  # 5. Regenerate husky's hook stubs, wiping react-doctor's appended pre-commit block.
   pnpm exec husky
   ```
 
-  Each line is idempotent and no-ops when its artifact is absent (e.g. when React Doctor's dependency install was skipped by a trust policy). After this, `git status` shows no React Doctor workflow and `package.json` carries no `react-doctor` entry, only the skill remains. Do not report a lingering workflow or commit hook to the user; there is none.
+  Each line is idempotent and no-ops when its artifact is absent (e.g. when React Doctor's dependency install was skipped by a trust policy, or when no non-Claude agent was detected so no `.agents/` copy was written). After this, `git status` shows no React Doctor workflow and no `.agents/` skill copy, and `package.json` carries no `react-doctor` entry; only the Claude Code skill remains. Do not report a lingering workflow, `.agents/` copy, or commit hook to the user; there is none.
 - [Playwright CLI](https://github.com/microsoft/playwright-cli) binary: `npm install -g @playwright/cli@latest`
   Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing. Used for E2E debugging and authoring Playwright specs with minimal token cost, each interaction is one shell call instead of a round-trip through an MCP session.
 - [Serena](https://github.com/oraios/serena) MCP server: semantic code-search and editing tools (find symbol, find references, replace symbol body) backed by language servers, pulls Claude away from grep-the-world toward symbol-aware operations. First, ensure `uv` is available, tell the user: "Checking for uv…" then run:
@@ -459,7 +465,7 @@ After all installs and plugin registrations above, run a probe-after pass to con
 
 | Component       | Probe                                                                                                                                                   |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| React Doctor    | `[ -d ~/.claude/skills/react-doctor ]`                                                                                                                  |
+| React Doctor    | `[ -d .claude/skills/react-doctor ]` (installed project-local; gitignored, kept per-machine)                                                            |
 | Playwright CLI  | `command -v playwright-cli && playwright-cli --version >/dev/null 2>&1`                                                                                 |
 | Serena          | `claude mcp list 2>/dev/null \| grep -q '^serena:'`                                                                                                     |
 | typescript-lsp  | `claude plugin list 2>/dev/null \| grep -q 'typescript-lsp'`                                                                                            |

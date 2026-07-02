@@ -132,7 +132,7 @@ The last decision before merge: does this PR's change belong in `CHANGELOG.md` u
 
 When worthy:
 
-1. Add the entry to the right `### Added | Changed | Removed | Fixed` subsection under `## [Unreleased]`, present-tense, with the trailing `(#<PR>)` reference.
+1. Add the entry to the right `### Added | Changed | Removed | Fixed` subsection under `## [Unreleased]`, present tense with the trailing `(#<PR>)` reference. Write it at Keep a Changelog altitude: 1-3 sentences on what changed and why it matters, not implementation mechanics (no file/function/flag-internals narration). Preserve any **Action required:** marker and its literal command, breaking/migration substance plus a pointer to the steps, behavior-changing flag names, adopter-relevant version/engine bumps, and a truthful who/why clause; deep detail belongs in the PR and commit.
 2. Commit it onto the PR branch and push so it merges with the change. HEAD moves, so re-confirm step 3's audit marker still covers the new HEAD before merging. Cheapest path: decide changelog-worthiness back in step 2 while fixing audit findings, so a single audit pass covers both.
 <!-- gaia:maintainer-only:end -->
 

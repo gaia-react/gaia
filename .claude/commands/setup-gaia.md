@@ -106,16 +106,22 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans for React-specific issues; auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into husky's generated `.husky/_/pre-commit` because GAIA sets `core.hooksPath=.husky/_`), a `doctor` package script, and a pinned `react-doctor` devDependency. GAIA triggers react-doctor via the skill (auto-run after edits) and the `code-review-audit` agent (at `@latest`), so remove the rest, keeping only the skill:
+  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into husky's generated `.husky/_/pre-commit` because GAIA sets `core.hooksPath=.husky/_`), a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Copilot, Warp). GAIA triggers react-doctor via the Claude Code skill (auto-run after edits) and the `code-review-audit` agent (at `@latest`), so remove the rest, keeping only the Claude Code skill:
 
   ```bash
   rm -f .github/workflows/react-doctor.yml
+  # Remove the non-Claude skill copy (Copilot/Warp); rmdir the now-empty parents but leave
+  # any unrelated .agents/ content untouched.
+  rm -rf .agents/skills/react-doctor
+  rmdir .agents/skills .agents 2>/dev/null || true
   pnpm remove react-doctor --config.ignore-scripts=true 2>/dev/null || true
-  pnpm pkg delete scripts.doctor scripts.react-doctor
+  # Hyphenated key needs bracket+quote form; a bare scripts.react-doctor throws
+  # ERR_PNPM_UNEXPECTED_TOKEN_IN_PROPERTY_PATH and aborts, leaving `doctor` behind too.
+  pnpm pkg delete scripts.doctor 'scripts["react-doctor"]'
   pnpm exec husky
   ```
 
-  Each line is idempotent and no-ops when its artifact is absent.
+  Each line is idempotent and no-ops when its artifact is absent (including when no non-Claude agent was detected, so no `.agents/` copy was written).
 
 - [Playwright CLI](https://github.com/microsoft/playwright-cli): `npm install -g @playwright/cli@latest`
   Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing.
@@ -514,6 +520,29 @@ AskUserQuestion:
 Write the chosen `default_mode` (`ci` or `local`) and `override_label: run-audit` into `.gaia/audit-ci.yml`, adding each key if absent and rewriting it in place if present (do not duplicate). Leave `audit_authors` untouched. The file is committed alongside the workflow files in the finalize commit; do NOT auto-commit it here.
 
 ### Token type selection and out-of-band secret provisioning
+
+**First, detect an existing usable token, and skip all provisioning when one is found.** GAIA CI needs only that a secret named `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` is reachable by this repo's workflows. The rendered workflows wire **both** env vars unconditionally (`${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` and `${{ secrets.ANTHROPIC_API_KEY }}`), and an org-level secret whose visibility includes this repo is exposed to its workflows automatically, so no repo-level copy is required. This is the common case for a repo inside an org that sets the token org-wide.
+
+List the secret **names** reachable by this repo, both scopes. This reads names only, never values, so it fully respects the safety rule below. `gh secret list --repo` returns only **repo**-level secrets, so query the API directly to also see org secrets the repo can use:
+
+```bash
+# Repo-level secret names (empty on error).
+repo_secrets=$(gh api "repos/<owner>/<repo>/actions/secrets" --jq '.secrets[].name' 2>/dev/null)
+# Org-level secret names available to THIS repo (respects the org secret's repo visibility).
+# Empty for a user-owned repo (the endpoint 404s) or on any error.
+org_secrets=$(gh api "repos/<owner>/<repo>/actions/organization-secrets" --jq '.secrets[].name' 2>/dev/null)
+existing=$(printf '%s\n%s\n' "$repo_secrets" "$org_secrets" | grep -v '^$' | sort -u)
+```
+
+Resolve `<NAME>` with **`CLAUDE_CODE_OAUTH_TOKEN` taking precedence** over `ANTHROPIC_API_KEY`, and note whether it was found at repo or org scope (`org` when it appears in `org_secrets` but not `repo_secrets`):
+
+- If `existing` contains `CLAUDE_CODE_OAUTH_TOKEN` → `<NAME> = CLAUDE_CODE_OAUTH_TOKEN`.
+- Else if it contains `ANTHROPIC_API_KEY` → `<NAME> = ANTHROPIC_API_KEY`.
+- Else no usable token exists → run the **token-type selection** and **provisioning** flow below.
+
+**When a token is detected**, print `Detected <NAME> already set at the <repo|org> level; GAIA CI will use it. Skipping token setup.` and skip straight to **Generate workflow YAML**: do NOT ask the token-type question and do NOT print any `gh secret set` instructions. Under `--reconfigure`, an org-level detection is not repo-rotatable, so print `<NAME> is managed at the org level; rotate it there, then re-run. Skipping repo-secret rotation.` and skip to **Generate workflow YAML**; a repo-level detection instead runs the **Reconfigure (rotation)** path below.
+
+**When no token is detected**, ask the token type and provision out of band.
 
 AskUserQuestion:
 
