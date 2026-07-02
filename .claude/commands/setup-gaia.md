@@ -422,7 +422,7 @@ JSON
 
 `required_status_checks.contexts` starts empty here; Phase 4 unions `GAIA-Audit` (and any sibling contexts) into it.
 
-`required_approving_review_count` is `0` and `enforce_admins` is `false` on purpose. GAIA's merge gate is the `GAIA-Audit` required status check (plus any sibling checks), not a human approval, so a review requirement would wedge a solo adopter: nobody can approve their own PR, and `enforce_admins: true` would block the admin override, leaving them unable to merge anything to the default branch. `enforce_admins: false` also lets the admin runner land the Phase 4 finalize commit directly. Do not tighten these to require approvals or enforce admins without a merge path that a solo repo can actually satisfy.
+`required_approving_review_count` is `0` and `enforce_admins` is `false` on purpose. GAIA's merge gate is the `GAIA-Audit` required status check (plus any sibling checks), not a human approval, so a review requirement would wedge a solo adopter: nobody can approve their own PR, and `enforce_admins: true` would block the admin override, leaving them unable to merge anything to the default branch. `enforce_admins: false` also lets the admin push GAIA's own finalize commit **directly onto the default branch** during setup, past this protection: that commit is a known-safe CI install with nothing to audit, so setup-gaia lands it straight to main rather than through a PR + audit (it suspends the local `block-main-destructive-git.sh` hook for the single commit+push via a `.gaia/local/setup-in-progress` sentinel, see Phase 4's Finalize step). Do not tighten these to require approvals or enforce admins without a merge path that a solo repo can actually satisfy.
 
 **delete_branch_on_merge.** Read the current setting:
 
@@ -531,7 +531,7 @@ If `RECONFIGURE` is set, skip this question and use the reconfigure flow. Otherw
 
 Branches:
 
-- **Enable now:** fall through to **Team audit-mode policy**.
+- **Enable now:** fall through to **Audit-mode policy (solo or team)**.
 - **Not now:**
 
   ```bash
@@ -543,18 +543,46 @@ Branches:
   - If `admin: false` (or `auth_status != "ok"`): print `"Don't ask the team again" requires repo admin permission (yours: admin=<admin>, auth_status=<auth_status>). Falling back to personal dismissal.`, then AskUserQuestion "Apply personal dismissal instead?" (Yes → `.gaia/cli/gaia setup-ci dismiss-personal`; No → cancel). Fall through to Phase 5.
   - If `admin: true`: shell `.gaia/cli/gaia setup-ci opt-out-team`, print `Team opt-out recorded in .gaia/automation.json (setup_opted_out=true). Commit and push to apply for the team.` (do NOT auto-commit), and fall through to Phase 5.
 
-### Team audit-mode policy
+### Audit-mode policy (solo or team)
 
-Reached on "Enable now" or in the reconfigure flow. This sets the team baseline for how `code-review-audit` runs at merge time. It writes two keys to the committed `.gaia/audit-ci.yml`: `default_mode` (the team fallback) and `override_label` (the sticky label that forces a CI run regardless of author).
+Reached on "Enable now" or in the reconfigure flow. This sets how `code-review-audit` runs at merge time, writing to the committed `.gaia/audit-ci.yml`: `default_mode` (the fallback), `override_label` (the sticky label that forces a CI run regardless of author), and, for a solo repo, the setup author's own `audit_authors` entry.
 
-AskUserQuestion:
+First print the docs link so the reader can read up on the modes before choosing:
+
+```
+Audit-gate modes (local vs CI): https://docs.gaiareact.com/maintenance/gaia-ci/#the-audit-gate
+```
+
+Then AskUserQuestion:
+
+> Is this repo just for you, or for a team?
+>
+> - **Solo engineer.** One-person repo. Your audit runs locally at merge time (streaming, incremental), the better DX. No further audit questions.
+> - **A team.** Multiple contributors. You'll pick how the team's audit runs next.
+
+**Solo engineer.** Do NOT ask a second question. Write `default_mode: local` and `override_label: run-audit` into `.gaia/audit-ci.yml` (adding each key if absent, rewriting in place if present, no duplicates). Then record the setup author's own per-author entry so Phase 5's per-developer prompt stays silent for them (Phase 5 skips only when your login already appears in `audit_authors`):
+
+```bash
+login=$(gh api user --jq .login)
+.gaia/scripts/append-audit-author.sh "$login" "local"
+```
+
+Print:
+
+```
+Solo setup: your code-review-audit runs locally at merge time. CI stays installed as a failsafe, run /setup-gaia --reconfigure to switch to CI audits if you add collaborators.
+```
+
+**A team.** AskUserQuestion with these two options in this exact order:
 
 > How should the code-review-audit run for your team?
 >
-> - **CI audits every PR (Recommended).** Sets `default_mode: ci`. Every PR's audit runs on CI.
-> - **Local-first.** Sets `default_mode: local`. Developers who run GAIA locally have the audit run at merge time; CI stands down for them. Each developer still opts in per-person in Phase 5; the team default is the fallback. Local-first relies on the GAIA-Audit required check being registered on the default branch (this same flow registers it). If that check is ever unconfirmable, the resolver fails closed to `ci`, so a local stand-down can never leave the branch unguarded.
+> - **Local (Recommended).** Each developer's audit runs on their machine at merge time (streaming, incremental) and CI stands down for them, the best day-to-day DX. The GAIA-Audit required check still guards the branch, and if a developer's local mode can't be confirmed the resolver fails closed to `ci`, so the branch is never left unguarded. Sets `default_mode: local`; each teammate confirms their own mode in the per-developer step.
+> - **CI.** Every PR's audit runs on CI as a shared failsafe; contributors wait for the GAIA-Audit check. Simplest to reason about for larger teams. Sets `default_mode: ci`.
 
-Write the chosen `default_mode` (`ci` or `local`) and `override_label: run-audit` into `.gaia/audit-ci.yml`, adding each key if absent and rewriting it in place if present (do not duplicate). Leave `audit_authors` untouched. The file is committed alongside the workflow files in the finalize commit; do NOT auto-commit it here.
+Write the chosen `default_mode` (`local` or `ci`) and `override_label: run-audit` into `.gaia/audit-ci.yml`, adding each key if absent and rewriting it in place if present (do not duplicate). Leave `audit_authors` untouched (each teammate, including you, sets their own entry in Phase 5).
+
+Both paths: the file is committed alongside the workflow files in the finalize commit; do NOT auto-commit it here.
 
 ### Token type selection and out-of-band secret provisioning
 
@@ -713,33 +741,48 @@ If `verified: false`, surface the URL and AskUserQuestion "Retry verification" /
 .gaia/cli/gaia setup-ci finalize
 ```
 
-Stage the generated workflow files plus `.gaia/automation.json` and the audit-policy `.gaia/audit-ci.yml`:
+The finalize commit is GAIA's own known-safe CI install: it adds the workflows and flips `setup_complete`, with nothing to audit. It lands **directly on the default branch**, no PR and no code-review-audit, so greenfield setup never waits on an audit run. This is the greenfield happy path; if the adopter pre-created a repo and applied branch protection before `/setup-gaia`, the finalize commit still goes through and the audit simply runs on it, that edge case is accepted.
+
+Right after `gh repo create --push`, HEAD is on the default branch. When that branch is `main` or `master`, the `block-main-destructive-git.sh` PreToolUse hook denies every `git commit` and `git push` there (Git Workflow policy), so the standdown below is load-bearing only in that case: the hook does not recognize a custom default-branch name, so it never blocks one and the sentinel is inert (but harmless) there. Suspend that hook for this one commit+push with a machine-local sentinel. It **must be created in a separate, earlier Bash call** than the commit/push, the hook reads it *before* the command runs, so a `touch` bundled into the same call as `git commit` would not yet exist when the hook checks. The sentinel lives in `.gaia/local/` (gitignored), so it never reaches a teammate's clone:
+
+```bash
+mkdir -p .gaia/local
+touch .gaia/local/setup-in-progress
+```
+
+Stage the generated workflow files plus `.gaia/automation.json` and the audit-policy `.gaia/audit-ci.yml`, commit, and push to the default branch. The admin push clears **classic** branch protection (`enforce_admins: false`, `restrictions: null`), so no reorder is needed. A **repository ruleset** is a separate enforcement layer these settings do not govern: if the org or repo protects the default branch with a ruleset that requires a PR (or restricts direct pushes) and does not list the pushing admin as a bypass actor, the push is rejected (`GH006`) even for an admin. Do not assume the push lands, branch on its result below:
 
 ```bash
 git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml .gaia/automation.json .gaia/audit-ci.yml
-```
-
-Commit with this message (when verified):
-
-```
-chore(gaia-ci): finalize CI setup, verified workflow_dispatch run
+git commit -m "chore(gaia-ci): finalize CI setup, verified workflow_dispatch run
 
 Adds .github/workflows/gaia-ci-*.yml, installs
 .github/workflows/code-review-audit.yml PR gate, and flips
-.gaia/automation.json:setup_complete to true.
+.gaia/automation.json:setup_complete to true."
+git push origin <default-branch>
 ```
 
-When the commit-without-verification flag is set, append `(unverified)` to the title and add the body line `Verification run did not succeed; user opted to commit anyway.` Push:
+When the commit-without-verification flag is set, append `(unverified)` to the commit title and add the body line `Verification run did not succeed; user opted to commit anyway.`
+
+Clear the sentinel immediately, in its own Bash call, **even if the commit or push failed** (a lingering sentinel keeps main-branch protection suspended on this machine; the hook also self-heals a stale one after 10 minutes). Phase 6 clears it defensively too:
 
 ```bash
-git push origin <current-branch>
+rm -f .gaia/local/setup-in-progress
 ```
 
-Print:
+**Branch on the push result.** `gaia setup-ci finalize` already flipped `setup_complete` on disk and the commit captured it, so a false "done" here wedges a re-run: Phase 4's `already configured` short-circuit reads that local flag and never retries the push.
 
-```
-GAIA CI is configured. Workflows: <list>. Status: setup_complete=true. The first scheduled cron will fire at the times encoded in .github/workflows/gaia-ci-*.yml; run any workflow on demand via the Actions tab's "Run workflow" button or `gh workflow run <file>`.
-```
+- **Push succeeded.** Print:
+
+  ```
+  GAIA CI is active on <default-branch>. Workflows: <list>. The first scheduled cron fires at the times encoded in .github/workflows/gaia-ci-*.yml; run any workflow on demand via the Actions tab's "Run workflow" button or `gh workflow run <file>`.
+  ```
+
+- **Push rejected** (non-zero exit, e.g. `GH006`, `protected branch`, `pre-receive`). Do NOT print the success line. The finalize commit is on local `<default-branch>` but not on the remote. Surface the error verbatim and print:
+
+  ```
+  The finalize commit is built locally but the push to <default-branch> was rejected: <error>. This is typically a repository ruleset (separate from classic branch protection) that requires a PR or blocks direct pushes. To finish setup: add yourself as a bypass actor on the ruleset (or temporarily disable it), then run `git push origin <default-branch>` yourself, from your own terminal. A plain /setup-gaia re-run will NOT retry the push, setup_complete is already set locally, so it short-circuits as "already configured". (To re-drive it through /setup-gaia instead, first `git reset --hard HEAD~1` to drop the local finalize commit, then re-run once the ruleset allows the push.)
+  ```
 
 Fall through to Phase 5.
 
@@ -756,7 +799,7 @@ When `RECONFIGURE` is set, the short-circuit above is skipped and the CI flow re
 
   On "Re-prompt", AskUserQuestion for each of `wiki`, `update-deps`, `pnpm-audit`, `stale-branches` with mode options `ci` / `local` / `off`, applying each via `.gaia/cli/gaia setup-ci write-tool-mode <tool> <mode>`.
 
-- **Team audit-mode policy** re-offers the CI-every-PR vs local-first question and rewrites `default_mode` / `override_label` in `.gaia/audit-ci.yml`.
+- **Audit-mode policy** re-offers the solo/team gate (and, for a team, the Local vs CI question) and rewrites `default_mode` / `override_label` in `.gaia/audit-ci.yml`.
 - **Token provisioning** runs its **Reconfigure (rotation)** path: it asks the user to overwrite the secret out of band (`gh secret set` overwrites silently), never reading the existing or new value, then verifies presence by name.
 - **Finalize and commit** uses this message instead:
 
@@ -788,7 +831,7 @@ Print the PR URL. Do NOT auto-merge; the adopter reviews and merges in their nor
 
 ## Phase 5 — Per-developer audit-mode (needs `audit-ci.yml`)
 
-This step chooses who runs **your** `code-review-audit` at merge time, CI (the default) or your local machine. It only applies once the project has CI wired up. The `audit-mode-decision` step is recorded in **every** branch below (absent-file, gh-unauthenticated, already-recorded, and post-choice); recording it unconditionally is load-bearing, a teammate clone that skips it reaches Phase 6 at 6/7 steps and `gaia setup finalize` hard-errors.
+This step chooses who runs **your** `code-review-audit` at merge time, on CI or your local machine. It only applies once the project has CI wired up. The `audit-mode-decision` step is recorded in **every** branch below (absent-file, gh-unauthenticated, already-recorded, and post-choice); recording it unconditionally is load-bearing, a teammate clone that skips it reaches Phase 6 at 6/7 steps and `gaia setup finalize` hard-errors.
 
 - If `.gaia/audit-ci.yml` does not exist (CI not configured yet), skip the choice silently and record the step:
 
@@ -815,12 +858,18 @@ Otherwise resolve your GitHub login and read the team's `audit_authors` for cont
 gh api user --jq .login
 ```
 
-The interactive choice is **owed only when your login is absent from `audit_authors`** in `.gaia/audit-ci.yml`. If your `<login>` already has an entry, the decision is already recorded: print `Audit mode already recorded for <login>.`, mark the step, and continue to Phase 6 (this is what keeps a plain re-run silent). When your login is absent, AskUserQuestion with these two options in this exact order:
+The interactive choice is **owed only when your login is absent from `audit_authors`** in `.gaia/audit-ci.yml`. If your `<login>` already has an entry, the decision is already recorded: print `Audit mode already recorded for <login>.`, mark the step, and continue to Phase 6 (this is what keeps a plain re-run silent, and what keeps a solo setup from re-asking). When your login is absent, first print the docs link (a teammate cloning later never saw Phase 4's audit-mode policy):
+
+```
+Audit-gate modes (local vs CI): https://docs.gaiareact.com/maintenance/gaia-ci/#the-audit-gate
+```
+
+Then AskUserQuestion with these two options in this exact order:
 
 > Who runs your code-review-audit at merge time?
 >
-> - **CI (default).** CI audits your PRs; you wait for the GAIA-Audit check. Today's behavior.
-> - **Locally.** Your audit runs at merge time when you ask Claude to merge, streaming, faster, incremental. CI stands down for you.
+> - **Local (Recommended).** Your audit runs at merge time when you ask Claude to merge, streaming and incremental. CI stands down for you.
+> - **CI.** CI audits your PRs; you wait for the GAIA-Audit check.
 
 On a choice, append your `<login>=<mode>` pair to `audit_authors` via the append helper (it reads the existing value, drops any prior entry for your own login, and rewrites the line in place, so it never clobbers a teammate's entry):
 
@@ -853,6 +902,12 @@ After the chosen branch executes (or a gated skip):
 ## Phase 6 — Finalize
 
 Stamp per-machine setup-state as complete, then report. `setup finalize` refuses to finalize while any step is pending (it returns non-zero without stamping `completed_at`), and a first adopter reaches here with `completed_steps: []` (their `/gaia-init` already set `completed_at` via `gaia setup finalize --force`), so this phase must both **short-circuit when already finalized** and **pass `--force` when any step is still pending**.
+
+First, defensively clear the setup sentinel, unconditionally and before the short-circuit below, so a Phase 4 finalize that aborted between creating and removing it cannot leave main-branch protection suspended on this machine:
+
+```bash
+rm -f .gaia/local/setup-in-progress
+```
 
 Read `setup status --json`:
 

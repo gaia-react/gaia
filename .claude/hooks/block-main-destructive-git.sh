@@ -28,6 +28,26 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
   exit 0
 fi
 
+# Setup standdown: while /setup-gaia provisions a greenfield repo it lands
+# GAIA's own known-safe CI-install commit directly on main (main is not yet a
+# collaboration surface and the commit has nothing to audit). setup-gaia
+# creates this machine-local sentinel around that single commit+push and
+# removes it right after, suspending the PR-only policy only for that window.
+# The sentinel lives in .gaia/local/ (gitignored), so it never rides along in a
+# teammate's clone: a fresh checkout always has this hook fully enforcing. The
+# resting state is ON; this is the one explicit, temporary exception.
+#
+# Self-healing freshness bound: the sentinel is honored only while its mtime is
+# within the last 10 minutes. The finalize commit+push completes in seconds, so
+# a live setup is always inside that window; a sentinel a crashed or killed
+# setup left behind goes stale on its own and enforcement resumes WITHOUT
+# waiting for a /setup-gaia re-run to remove it. `find` returning empty (stale,
+# missing, or unreadable) falls through to full enforcement, fail-closed.
+if [ -f .gaia/local/setup-in-progress ] \
+   && [ -n "$(find .gaia/local/setup-in-progress -mmin -10 2>/dev/null)" ]; then
+  exit 0
+fi
+
 deny() {
   jq -n --arg r "$1" '{
     hookSpecificOutput: {
