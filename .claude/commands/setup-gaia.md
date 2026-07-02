@@ -721,7 +721,43 @@ Could not register the GAIA-Audit required check (admin permission and a branch-
 Until GAIA-Audit is a required check, the merge gate falls back to ci mode for every author (the resolver fails closed).
 ```
 
-Do not halt on a registration failure; the workflow install already succeeded. Continue to **Verification run**.
+Do not halt on a registration failure; the workflow install already succeeded. Continue to the **Claude GitHub App install** gate below.
+
+### Claude GitHub App install (prerequisite for the verification run)
+
+Every GAIA CI workflow (all four) invokes the Claude Code Action, which mints a short-lived **repo installation token** at runtime. The `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` secret authenticates the Anthropic API, but the action **also** needs the **Claude GitHub App** installed on the repo to exchange for that GitHub token. Without it, any workflow that reaches the action step fails with `App token exchange failed: 401 Unauthorized` (surfaced in logs as `Claude Code is not installed on this repository`) even though the Quality Gate and earlier steps pass. Gate the app install **before** the verification run, out of band exactly like the token secret, rather than letting the run fail and asking afterward. The agent cannot install the app (it is an interactive GitHub authorization); only the repo admin / org owner can.
+
+**Best-effort detection (skip the prompt when already installed).** No user-token endpoint reveals a repo's app installations directly: `repos/<owner>/<repo>/installation` needs a GitHub App JWT (401 under a user token) and `/user/installations` needs an app-authorized token (403). The one probe that works under a plain `gh` login is the org installations list, and only for an org-owned repo where you're an org owner. A 403/404 (personal repo, or a repo admin who is not an org owner) means "not confirmed", never treat it as "absent":
+
+```bash
+gh api "/orgs/<owner>/installations" --jq '.installations[].app_slug' 2>/dev/null | grep -qx claude
+```
+
+If this exits 0 (the exact slug `claude` is present), print `Claude GitHub App already installed on <owner>. Skipping the install prompt.` and fall through to **Verification run**. On any other result (non-zero exit, empty output, or slug absent), do not assume absence, run the instruct-and-wait gate below.
+
+**Instruct and wait.** Substitute the cached `<owner>` / `<repo>` (do not print literal angle brackets), print these instructions, and wait for the user to confirm:
+
+```
+GAIA CI's workflows run as the Claude GitHub App, so it must be installed on this repo before the verification run, otherwise the run fails with a 401 at the Claude step:
+
+  1. Open https://github.com/apps/claude
+  2. Click Install (or Configure, if it's already installed on your account/org).
+  3. Grant it access to <owner>/<repo> (or "All repositories").
+
+If <owner> is an organization and you are not an owner, an org owner must approve or complete the install.
+
+Tell me once it's installed and I'll run the verification.
+```
+
+When the user responds, AskUserQuestion:
+
+> Is the Claude GitHub App installed on <owner>/<repo>?
+>
+> - **I've installed it (Recommended).** Run the verification now.
+> - **Skip verification for now.** Install the workflows without a verified run; I'll finish setup, and you can trigger a run from the Actions tab once the app is installed.
+
+- **I've installed it** → fall through to **Verification run**.
+- **Skip verification for now** → skip the Verification run entirely, set the same commit-without-verification flag used below (it appends `(unverified)` to the finalize commit), and fall through to **Finalize and commit**. Print `Skipping the verification run. The workflows are installed but unverified, run gaia-ci-wiki from the Actions tab (or 'gh workflow run gaia-ci-wiki.yml') once the Claude GitHub App is installed.`
 
 ### Verification run
 
@@ -734,6 +770,8 @@ Pick the FIRST workflow file from the generated list (typically `.github/workflo
 If `verified: true`, print `Verification run succeeded. Conclusion: success. URL: <url>.` and fall through to **Finalize and commit**.
 
 If `verified: false`, surface the URL and AskUserQuestion "Retry verification" / "Abandon" / "Commit without verification". On Retry, re-shell `verify-run` (one retry permitted). On Abandon, delete every file in the generated paths list and fall through to Phase 5; `setup_complete` stays `false`. On Commit without verification, fall through with a flag that adds `(unverified)` to the commit message.
+
+Because the **Claude GitHub App install** is gated just above, a run that fails at the Claude step with `App token exchange failed: 401 Unauthorized` means the app install did not complete or does not grant this repo access. Tell the user to re-check the install at https://github.com/apps/claude (confirm `<owner>/<repo>` is in scope) before choosing Retry.
 
 ### Finalize and commit
 
