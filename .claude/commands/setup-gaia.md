@@ -422,7 +422,7 @@ JSON
 
 `required_status_checks.contexts` starts empty here; Phase 4 unions `GAIA-Audit` (and any sibling contexts) into it.
 
-`required_approving_review_count` is `0` and `enforce_admins` is `false` on purpose. GAIA's merge gate is the `GAIA-Audit` required status check (plus any sibling checks), not a human approval, so a review requirement would wedge a solo adopter: nobody can approve their own PR, and `enforce_admins: true` would block the admin override, leaving them unable to merge anything to the default branch. `enforce_admins: false` also lets the admin runner land the Phase 4 finalize commit directly. Do not tighten these to require approvals or enforce admins without a merge path that a solo repo can actually satisfy.
+`required_approving_review_count` is `0` and `enforce_admins` is `false` on purpose. GAIA's merge gate is the `GAIA-Audit` required status check (plus any sibling checks), not a human approval, so a review requirement would wedge a solo adopter: nobody can approve their own PR, and `enforce_admins: true` would block the admin override, leaving them unable to merge anything to the default branch. `enforce_admins: false` also lets the admin push GAIA's own finalize commit **directly onto the default branch** during setup, past this protection: that commit is a known-safe CI install with nothing to audit, so setup-gaia lands it straight to main rather than through a PR + audit (it suspends the local `block-main-destructive-git.sh` hook for the single commit+push via a `.gaia/local/setup-in-progress` sentinel, see Phase 4's Finalize step). Do not tighten these to require approvals or enforce admins without a merge path that a solo repo can actually satisfy.
 
 **delete_branch_on_merge.** Read the current setting:
 
@@ -713,32 +713,39 @@ If `verified: false`, surface the URL and AskUserQuestion "Retry verification" /
 .gaia/cli/gaia setup-ci finalize
 ```
 
-Stage the generated workflow files plus `.gaia/automation.json` and the audit-policy `.gaia/audit-ci.yml`:
+The finalize commit is GAIA's own known-safe CI install: it adds the workflows and flips `setup_complete`, with nothing to audit. It lands **directly on the default branch**, no PR and no code-review-audit, so greenfield setup never waits on an audit run. This is the greenfield happy path; if the adopter pre-created a repo and applied branch protection before `/setup-gaia`, the finalize commit still goes through and the audit simply runs on it, that edge case is accepted.
+
+Right after `gh repo create --push`, HEAD is on `main`, where the `block-main-destructive-git.sh` PreToolUse hook normally denies every `git commit` and `git push` (Git Workflow policy). Suspend that hook for this one commit+push with a machine-local sentinel. It **must be created in a separate, earlier Bash call** than the commit/push, the hook reads it *before* the command runs, so a `touch` bundled into the same call as `git commit` would not yet exist when the hook checks. The sentinel lives in `.gaia/local/` (gitignored), so it never reaches a teammate's clone:
+
+```bash
+mkdir -p .gaia/local
+touch .gaia/local/setup-in-progress
+```
+
+Stage the generated workflow files plus `.gaia/automation.json` and the audit-policy `.gaia/audit-ci.yml`, commit, and push to the default branch. The admin push clears GitHub's side too (`enforce_admins: false`, `restrictions: null`), so no reorder of branch protection is needed:
 
 ```bash
 git add .github/workflows/gaia-ci-*.yml .github/workflows/code-review-audit.yml .gaia/automation.json .gaia/audit-ci.yml
-```
-
-Commit with this message (when verified):
-
-```
-chore(gaia-ci): finalize CI setup, verified workflow_dispatch run
+git commit -m "chore(gaia-ci): finalize CI setup, verified workflow_dispatch run
 
 Adds .github/workflows/gaia-ci-*.yml, installs
 .github/workflows/code-review-audit.yml PR gate, and flips
-.gaia/automation.json:setup_complete to true.
+.gaia/automation.json:setup_complete to true."
+git push origin <default-branch>
 ```
 
-When the commit-without-verification flag is set, append `(unverified)` to the title and add the body line `Verification run did not succeed; user opted to commit anyway.` Push:
+When the commit-without-verification flag is set, append `(unverified)` to the commit title and add the body line `Verification run did not succeed; user opted to commit anyway.`
+
+Clear the sentinel immediately, in its own Bash call, **even if the commit or push failed** (a lingering sentinel keeps main-branch protection suspended on this machine). Phase 6 also clears it defensively:
 
 ```bash
-git push origin <current-branch>
+rm -f .gaia/local/setup-in-progress
 ```
 
 Print:
 
 ```
-GAIA CI is configured. Workflows: <list>. Status: setup_complete=true. The first scheduled cron will fire at the times encoded in .github/workflows/gaia-ci-*.yml; run any workflow on demand via the Actions tab's "Run workflow" button or `gh workflow run <file>`.
+GAIA CI is active on <default-branch>. Workflows: <list>. The first scheduled cron fires at the times encoded in .github/workflows/gaia-ci-*.yml; run any workflow on demand via the Actions tab's "Run workflow" button or `gh workflow run <file>`.
 ```
 
 Fall through to Phase 5.
@@ -853,6 +860,12 @@ After the chosen branch executes (or a gated skip):
 ## Phase 6 — Finalize
 
 Stamp per-machine setup-state as complete, then report. `setup finalize` refuses to finalize while any step is pending (it returns non-zero without stamping `completed_at`), and a first adopter reaches here with `completed_steps: []` (their `/gaia-init` already set `completed_at` via `gaia setup finalize --force`), so this phase must both **short-circuit when already finalized** and **pass `--force` when any step is still pending**.
+
+First, defensively clear the setup sentinel, unconditionally and before the short-circuit below, so a Phase 4 finalize that aborted between creating and removing it cannot leave main-branch protection suspended on this machine:
+
+```bash
+rm -f .gaia/local/setup-in-progress
+```
 
 Read `setup status --json`:
 
