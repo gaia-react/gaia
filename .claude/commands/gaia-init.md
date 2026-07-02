@@ -49,7 +49,7 @@ Every gate is one of two tiers. The tier is fixed here, do not reclassify by jud
 | pnpm upgrade consent | Step 0c |
 | Primary app language (+ "Other" free-text) | Step 2, Q1 |
 | Additional languages / i18n teardown, `STRIP_I18N` (+ free-text) | Step 2, Q2 |
-| CODEOWNERS GitHub handle | Step 2, Q3 |
+| CODEOWNERS GitHub handle (HARD-BLOCK only when `gh` can't detect it) | Step 2, Q3 |
 | Project title | Step 2, Q4 |
 | kebab-case slug | Step 2, Q5 |
 | CI intent (Configure-CI decision) | Step 8, Configure CI integrations |
@@ -65,12 +65,24 @@ Every gate is one of two tiers. The tier is fixed here, do not reclassify by jud
 
 The CODEOWNERS GitHub handle, and any similar free-text identity field, must come from the user. A guessed handle is a silent correctness bug: a wrong owner ships in `.github/CODEOWNERS`. Never write a plausible-looking guess.
 
-- Interactive, non-response: HARD-BLOCK. Re-ask; do not reach Step 5 without a real handle.
-- Automatic: write a loud placeholder that fails visibly, never a guess. Use `REPLACE-WITH-YOUR-GITHUB-HANDLE`, GitHub flags it as an unknown owner so the gap is obvious, and surface it in the Step 12 summary as a required follow-up.
+**Detecting the handle is not fabricating it.** The GitHub CLI, when installed and authenticated, reports the user's *own* authenticated login. That is the user's real identity, not a guess, so using it never violates this rule. There is one authoritative detection method, used everywhere `/gaia-init` needs the handle:
+
+```bash
+handle=""
+if command -v gh >/dev/null 2>&1; then
+  handle="$(gh api user --jq .login 2>/dev/null)"
+fi
+# $handle is the authenticated login, or empty on any failure
+```
+
+`gh api user` is the most reliable method: a single call both verifies auth and returns the login. Treat detection as **failed** if `gh` is absent, unauthenticated, or the call returns empty. Do **not** fall back to `git config user.name` (a display name, not a handle) or remote-URL parsing (there is no remote at init time). What stays never-fabricated is any handle that is neither user-typed nor gh-detected: never invent a plausible-looking one.
+
+- Interactive: offer the gh-detected handle as the recommended default; the user can override it. HARD-BLOCK applies only when detection failed (no default to fall back to): re-ask, do not reach Step 5 without a real handle.
+- Automatic: use the gh-detected handle when available. Only when detection also fails, write a loud placeholder that fails visibly, never a guess. Use `REPLACE-WITH-YOUR-GITHUB-HANDLE`, GitHub flags it as an unknown owner so the gap is obvious, and surface it in the Step 12 summary as a required follow-up.
 
 ### Automatic defaults, per gate
 
-When the user chose Automatic, first detect the project folder name (`basename "$(git rev-parse --show-toplevel)"`) and use the already-detected primary language, then show the user this table (substitute the bracketed values, leave everything else verbatim) so they can catch anything before init proceeds:
+When the user chose Automatic, first detect the project folder name (`basename "$(git rev-parse --show-toplevel)"`), run the GitHub-handle detection from "Free-text identity values are never fabricated" above, and use the already-detected primary language, then show the user this table (substitute the bracketed values, leave everything else verbatim) so they can catch anything before init proceeds:
 
 > **Automatic mode. Applying these defaults:**
 >
@@ -80,19 +92,19 @@ When the user chose Automatic, first detect the project folder name (`basename "
 > | Additional languages | None, i18n scaffolding kept | Yes, fully |
 > | Project title | {title-cased folder name} | Yes, re-run rename |
 > | Slug | {folder name} | Yes, re-run rename |
-> | CODEOWNERS handle | `REPLACE-WITH-YOUR-GITHUB-HANDLE` (placeholder, edit before push) | One-line edit, required |
+> | CODEOWNERS handle | {gh-detected handle when available, else `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder} | Placeholder: one-line edit required. Detected handle: none |
 > | GAIA CI intent | Enabled, activate later via /setup-gaia | Yes, /setup-gaia --reconfigure |
 > | Maintenance tools | All four in `ci` mode | Yes, reconfigure |
 > | Mentorship | Not now, mentorship + analytics off | Yes, enable later |
 
-Exactly one row per setting. **Never** duplicate the Mentorship row: that single row covers both `mentorship.enabled` and `analytics.enabled`. **Never** put a real or inferred GitHub handle in the CODEOWNERS row: Automatic mode always shows the placeholder, because the handle cannot be known without asking.
+Exactly one row per setting. **Never** duplicate the Mentorship row: that single row covers both `mentorship.enabled` and `analytics.enabled`. For the CODEOWNERS row, show the gh-detected handle when detection succeeds (it is the user's own authenticated identity, not a guess), otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder. **Never** put a guessed or git-config-derived handle there: the only non-placeholder value allowed is the gh-detected login.
 
 Then apply the defaults and proceed without stopping (the user chose Automatic; do not block, they can interrupt if they want to change something):
 
 - pnpm upgrade (0c): upgrade (Yes), it is required to continue.
 - Primary language (Q1): the detected user language.
 - Additional languages / i18n (Q2): primary-only, keep i18n scaffolding (`STRIP_I18N=false`). The teardown is never auto-selected.
-- CODEOWNERS (Q3): the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder, flagged as a required Step 12 follow-up. Never a guessed or git-derived handle.
+- CODEOWNERS (Q3): the gh-detected handle when available; otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder, flagged as a required Step 12 follow-up. Never a guessed or git-derived handle.
 - Project title (Q4): title-cased folder name.
 - kebab slug (Q5): folder name.
 - CI intent (Step 8): "Yes, I'll enable CI after pushing" (records intent only).
@@ -239,11 +251,11 @@ Resolve two values from the answer:
 
 ### Q3–Q5, Project identity (one AskUserQuestion, three questions)
 
-_Non-response: HARD-BLOCK for all three. Re-ask; never guess. Automatic mode: title-cased folder name (title), folder name (slug), and the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder (CODEOWNERS), flagged as a required Step 12 follow-up._
+_Non-response: title and slug are HARD-BLOCK, re-ask, never guess. CODEOWNERS: offer the gh-detected handle as the recommended default; HARD-BLOCK only when detection failed (no default to fall back to), re-ask, never guess. Automatic mode: title-cased folder name (title), folder name (slug), and the gh-detected handle (CODEOWNERS) when available, else the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder flagged as a required Step 12 follow-up._
 
 These three go together as a group. Ask them in a single AskUserQuestion call:
 
-**GitHub username for CODEOWNERS** (suggest @username format). This is a free-text identity value, it must come from the user and is **never fabricated**. If it is unknown (interactive non-response), HARD-BLOCK and re-ask rather than guessing; in automatic mode, use the loud placeholder so a wrong owner never ships.
+**GitHub username for CODEOWNERS.** First run the GitHub-handle detection from "Free-text identity values are never fabricated" above (reuse the automatic-mode result if it already ran). If it yields a handle, offer it as the recommended default (first option); a gh-detected handle is the user's own authenticated identity, not a guess, so it is safe to default to. The user can still override it with a different handle via free text. If detection fails there is no default, so this stays a free-text identity value that is **never fabricated**: on interactive non-response, HARD-BLOCK and re-ask rather than guessing; in automatic mode, use the loud placeholder so a wrong owner never ships. Suggest `@username` format; store the bare handle.
 
 **Project title** (default: title-cased folder name from above)
 
@@ -291,7 +303,9 @@ printf '* @%s\n' "<github-username>" > .github/CODEOWNERS
 
 `<github-username>` is the bare handle (no leading `@`); the `* @` prefix makes that user the default owner for every path.
 
-If Q3 could not obtain a real handle (automatic mode), `<github-username>` is the placeholder `REPLACE-WITH-YOUR-GITHUB-HANDLE`. Write it anyway, GitHub flags the unknown owner in its CODEOWNERS validation, so the gap is visible. Add a required follow-up to the Step 12 summary: "Edit `.github/CODEOWNERS`, it holds a placeholder owner, set your real GitHub handle." Never substitute a guessed handle.
+`<github-username>` is the handle Q3 resolved: the user's typed handle, or the gh-detected login when the user accepted (or automatic mode used) that default. Any of these is a real handle, write `* @<handle>` and emit **no** Step 12 follow-up warning.
+
+Only when Q3 obtained no real handle (automatic mode where gh detection also failed) is `<github-username>` the placeholder `REPLACE-WITH-YOUR-GITHUB-HANDLE`. Write it anyway, GitHub flags the unknown owner in its CODEOWNERS validation, so the gap is visible. Add a required follow-up to the Step 12 summary: "Edit `.github/CODEOWNERS`, it holds a placeholder owner, set your real GitHub handle." Never substitute a guessed handle.
 
 ## Step 6: Check `.env`
 
@@ -659,7 +673,7 @@ Then run the CLI's init finalize step, it removes the `/init` interceptor hook, 
 
 Then output the message below verbatim. Output the `cd` line exactly as written, even though Claude is currently running inside the project folder: when the user exits Claude back to the terminal, their shell returns to the directory they launched from (the parent), not the project folder. Do not tell the user they are "already inside" the folder or that they can skip the `cd`.
 
-**If `.github/CODEOWNERS` holds the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder** (automatic mode, or any run where a real handle was never obtained), prepend this required follow-up to the message: "⚠ Required: `.github/CODEOWNERS` has a placeholder owner. Edit it to set your real GitHub handle before you push."
+**If `.github/CODEOWNERS` holds the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder** (automatic mode where gh detection also failed, or any run where a real handle was never obtained), prepend this required follow-up to the message: "⚠ Required: `.github/CODEOWNERS` has a placeholder owner. Edit it to set your real GitHub handle before you push." A gh-detected or user-typed handle writes a real owner, so this warning does not appear.
 
 > <Project Title> is ready for development. To pick up the new plugin and skill state, exit Claude, then from your terminal:
 >
