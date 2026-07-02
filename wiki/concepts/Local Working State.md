@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-01
-updated: 2026-07-01
+updated: 2026-07-02
 tags: [concept, claude, hooks]
 ---
 
@@ -35,8 +35,9 @@ A **live** entry is load-bearing state that tooling reads. An **ephemeral** entr
 
 ## The session-start janitor
 
-`.claude/hooks/local-janitor.sh` runs from the SessionStart hook (`wiki-session-start.sh`) on `startup` and `resume`. It is the side-effect form of a SessionStart hook: it deletes files and injects nothing into context. It is a backstop, not an owner, so each subsystem still prunes its own residue at its next run. The janitor removes only residue whose death is provable, which makes it safe to run unconditionally every session. It sweeps three things:
+`.claude/hooks/local-janitor.sh` runs from the SessionStart hook (`wiki-session-start.sh`) on `startup` and `resume`. It is the side-effect form of a SessionStart hook: it deletes files and injects nothing into context. It is a backstop, not an owner, so each subsystem still prunes its own residue at its next run. The janitor removes only residue whose death is provable, which makes it safe to run unconditionally every session. It sweeps four things:
 
+- **Merged-and-gone `wiki-sync/*` branches.** The wiki landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway `wiki-sync/<date>-<sha>` branch and enables auto-merge with `gh pr merge --auto`, a call that returns before the merge lands, so the local branch is never deleted inline. Once the PR squash-merges and a later `git fetch --prune` drops the tracking ref, the branch's upstream shows `[gone]`, the provable-death signal; the janitor hard-deletes (`git branch -D`, since a squash merge leaves the tip unmerged by ancestry) any `wiki-sync/*` branch in that state. This sweep is git-scoped, independent of `.gaia/local/`, so it runs before the guard below (a fresh clone can carry an orphaned branch before that directory exists).
 - **Orphaned audit markers.** An `audit/<sha>.ok` or `<sha>.dispositions.json` gates `gh pr merge` only while its `<sha>` equals HEAD. Once a PR squash-merges to a new sha, the audited branch tip is no longer HEAD and is unreachable from any local branch, so the marker is spent. The janitor keeps a marker only when its `<sha>` is HEAD or reachable from a local branch; everything else, including a `<sha>` that is not a valid commit, is removed.
 - **Completed-but-unswept plan dirs.** A `plans/<slug>/` whose `RUNNING` sentinel names a branch that no longer exists and is not marked `DEFERRED`/`PAUSED`/`PARKED` is a plan that merged but whose self-cleanup never ran (an interrupted session). The janitor removes the directory. A parked plan is always kept.
 - **Stray empty dirs.** Empty directories under `.gaia/local/` are removed with `rmdir`, except the structural drop zones tooling expects to find (`audit`, `cache`, `plans`, `forensics`, `handoff`, `specs`, `telemetry`, and the other roots). `rmdir` cannot remove a non-empty directory, so a content-bearing dir is never at risk.
