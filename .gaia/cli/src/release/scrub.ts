@@ -28,7 +28,7 @@
  *       staging dir, malformed config flags)
  *   2: unexpected (config parse error, filesystem IO failure)
  */
-import {readdirSync, readFileSync, statSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {load as parseYaml} from 'js-yaml';
@@ -60,6 +60,8 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 const DEFAULT_CONFIG_PATH = '.gaia/release-scrub.yml';
 const RELEASE_EXCLUDE_PATH = '.gaia/release-exclude';
+const WORKFLOWS_DIR = '.github/workflows';
+const SHIPPED_WORKFLOW_TEMPLATES_DIR = '.gaia/cli/templates/workflows';
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -81,9 +83,12 @@ const leakCheckBaseShape = {
 };
 
 // A static check runs a literal regex line-by-line. A derived check builds its
-// match set at scan time instead: `wikilink-to-excluded` derives the
-// release-excluded slug set from `.gaia/release-exclude` so it cannot drift
-// away from the manifest the way a hand-maintained alternation does.
+// match set at scan time instead, from `.gaia/release-exclude`, so it cannot
+// drift away from the manifest the way a hand-maintained alternation does:
+//   - `excluded-slugs`: the release-excluded wiki-slug set (wikilink-to-excluded).
+//   - `excluded-workflows`: release-excluded `.github/workflows/*.yml` that never
+//     reach an adopter (no on-demand render template), whose curated-regex gap is
+//     what the `maintainer-paths` check structurally cannot close.
 const StaticLeakCheckSchema = z.object({
   ...leakCheckBaseShape,
   pattern: z.string().min(1),
@@ -91,7 +96,7 @@ const StaticLeakCheckSchema = z.object({
 
 const DerivedLeakCheckSchema = z.object({
   ...leakCheckBaseShape,
-  derive: z.literal('excluded-slugs'),
+  derive: z.enum(['excluded-slugs', 'excluded-workflows']),
 });
 
 const LeakCheckSchema = z.object({
@@ -573,6 +578,97 @@ const runDerivedWikilinkCheck = (
 };
 
 // ---------------------------------------------------------------------------
+// Derived excluded-workflow check
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the set of release-excluded `.github/workflows/*.yml` paths that never
+ * reach an adopter machine, derived from `.gaia/release-exclude` resolved
+ * against `cwd` (the source repo).
+ *
+ * `.github/workflows/` is the one distribution-boundary directory where some
+ * files ship and some do not, so the curated `maintainer-paths` alternation
+ * cannot blanket it (most workflows ship) and cannot enumerate every excluded
+ * one without drifting. This set is derived instead: an excluded workflow whose
+ * on-demand render template is absent from `.gaia/cli/templates/workflows/` is
+ * never installable on an adopter, so a shipped-surface reference to it is a
+ * dangling pointer. `code-review-audit.yml` is excluded from the tarball yet
+ * DOES have a `.tmpl` (installed on demand by `/setup-gaia`), so references to
+ * it are legitimate and it is intentionally kept out of this set.
+ *
+ * Reading the exclude list from `cwd` mirrors `buildExcludedSlugSet`: the file
+ * excludes itself, so it never reaches the staging tree the other checks scan.
+ */
+const buildNeverPresentWorkflowSet = (cwd: string): Set<string> => {
+  const lines = parseExcludeLines(
+    readFileSync(path.join(cwd, RELEASE_EXCLUDE_PATH), 'utf8')
+  );
+  const paths = new Set<string>();
+
+  for (const line of lines) {
+    if (!line.startsWith(`${WORKFLOWS_DIR}/`) || !line.endsWith('.yml')) {
+      continue;
+    }
+
+    const templatePath = path.join(
+      cwd,
+      SHIPPED_WORKFLOW_TEMPLATES_DIR,
+      `${path.basename(line)}.tmpl`
+    );
+
+    // A shipped `.tmpl` means the workflow is rendered onto adopters on demand,
+    // so a reference to it is not a boundary leak; keep it out of the set.
+    if (existsSync(templatePath)) continue;
+
+    paths.add(line);
+  }
+
+  return paths;
+};
+
+const runDerivedWorkflowCheck = (
+  stagingRoot: string,
+  files: readonly string[],
+  check: DerivedLeakCheck,
+  cwd: string
+): readonly Leak[] => {
+  const neverPresent = buildNeverPresentWorkflowSet(cwd);
+
+  if (neverPresent.size === 0) return [];
+
+  const lineAllowlist = (check['line-allowlist'] ?? []).map(
+    (raw) => new RegExp(raw)
+  );
+  const pathAllowlist = check['path-allowlist'] ?? [];
+  const leaks: Leak[] = [];
+
+  for (const relativePath of files) {
+    if (!matchesAnyGlob(relativePath, check.scope)) continue;
+    if (matchesAnyGlob(relativePath, pathAllowlist)) continue;
+
+    const source = readFileSync(path.join(stagingRoot, relativePath), 'utf8');
+    const lines = source.split('\n');
+
+    for (const [index, line] of lines.entries()) {
+      if (lineAllowlist.some((rx) => rx.test(line))) continue;
+
+      for (const excludedPath of neverPresent) {
+        if (!line.includes(excludedPath)) continue;
+
+        leaks.push({
+          check: check.id,
+          file: relativePath,
+          line: index + 1,
+          match: excludedPath,
+        });
+      }
+    }
+  }
+
+  return leaks;
+};
+
+// ---------------------------------------------------------------------------
 // Config loading
 // ---------------------------------------------------------------------------
 
@@ -820,9 +916,11 @@ export const run = (
       // buildExcludedSlugSet) rather than the staging tree.
       for (const check of transform.checks) {
         if (isDerivedCheck(check)) {
-          leaks.push(
-            ...runDerivedWikilinkCheck(stagingDir, stagedFiles, check, cwd)
-          );
+          const runDerived =
+            check.derive === 'excluded-workflows' ?
+              runDerivedWorkflowCheck
+            : runDerivedWikilinkCheck;
+          leaks.push(...runDerived(stagingDir, stagedFiles, check, cwd));
           continue;
         }
 

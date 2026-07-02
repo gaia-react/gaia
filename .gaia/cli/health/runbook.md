@@ -116,19 +116,19 @@ Crash-safety: read-only commands; no scratch state. Phase 2 redirection to `buck
 
 ## Bucket B: Source-tree audit greps
 
-Detects distribution-boundary leaks in adopter-shipped files. Greps 1–5 (UAT/SPEC refs, historical phrasing) and the `/Users|/home` literal check (formerly grep 8) have moved to Bucket E, which runs the shared fitness protocol including the `CLAUDE.md` hygiene and wiki-fitness categories that codify those checks. Only the distribution-boundary greps remain here.
+Detects distribution-boundary leaks in adopter-shipped files via the two path/monorepo greps below. The former greps 1–5 no longer run as Bucket B greps, and they did not all land in one place: the `/Users|/home` absolute-path literal check (formerly grep 8) moved to Bucket E's `CLAUDE.md` hygiene category (its dead-path + absolute-path grep); the UAT-NNN and concrete-SPEC-ID leak checks for shipped instruction surfaces are codified in the bundle-time scrub (`uat-narrative`, `spec-concrete-ids` in `.gaia/release-scrub.yml`) and proven by Bucket C's scrub simulation; and the historical-phrasing / UAT-SPEC narrative-prose checks live in `.claude/rules/wiki-style.md`, enforced by `gaia wiki lint` (lint check #13), which no mandatory audit bucket invokes. Only the two distribution-boundary path greps remain here.
 
 Reads (in order):
 
 1. `.gaia/cli/health/taxonomy.md` § Distribution boundary (allowlist lines)
 2. `.gaia/release-scrub.yml` (path-allowlist + line-allowlist)
 
-Greps (run both from repo root, pipe each through `head -50`):
+Greps (run both from repo root with `git grep`, no line cap): `git grep` searches tracked files only, so gitignored paths (`.claude/worktrees/`, `.gaia/local/`, and other per-machine scratch) are excluded by construction, and every match is examined. Do **not** pipe through `head` or any other truncating filter: a capped sample can exhaust its budget on one noisy tree and leave shipped surfaces unread, which is precisely the blind spot a distribution-boundary audit cannot afford.
 
-1. `grep -rEn "\.gaia/cli/src/|\.gaia/cli/test-fixtures/|\.gaia/cli/__tests__/|\.gaia/cli/health/|\.specify/extensions/gaia/test/|\.specify/specs/|\.gaia/tests/|\.gaia/scripts/tests/|\.github/audit/tests/|\.claude/rules/_internal/" CLAUDE.md .claude/ wiki/ .gaia/statusline/ .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ .specify/extensions/gaia/templates/ --include="*.md" --include="*.sh" --include="*.yml"`
-2. `grep -rEn "(studio|website)/|\bgaia/\." .claude/ wiki/ CLAUDE.md`
+1. `git grep -nE "\.gaia/cli/src/|\.gaia/cli/test-fixtures/|\.gaia/cli/__tests__/|\.gaia/cli/health/|\.specify/extensions/gaia/test/|\.specify/specs/|\.gaia/tests/|\.gaia/scripts/tests/|\.github/audit/tests/|\.claude/rules/_internal/" -- CLAUDE.md .claude/ wiki/ .gaia/statusline/ .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ .specify/extensions/gaia/templates/`
+2. `git grep -nE "(studio|website)/|\bgaia/\." -- .claude/ wiki/ CLAUDE.md`
 
-**Formatting note for Grep 1**: directory targets carry a trailing `/` (e.g. `.specify/extensions/gaia/commands/`) so `--include` filters apply consistently across `grep` implementations. Do not strip the trailing slash when copy-pasting.
+**Formatting note for Grep 1**: directory targets carry a trailing `/` (e.g. `.specify/extensions/gaia/commands/`) so each pathspec resolves to everything beneath that directory. Do not strip the trailing slash when copy-pasting. `git grep` skips binary files automatically, so no `--include` extension filter is needed; the trade is that it scans every tracked text file under a target (not only `*.md|*.sh|*.yml`), which strictly widens leak coverage.
 
 Triage rules (per match; apply in order; first hit wins):
 

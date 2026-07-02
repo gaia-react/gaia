@@ -172,6 +172,40 @@ transforms:
           - "wiki/hot.md"
           - "wiki/log.md"
 
+      # ---- Never-present-on-adopter workflows referenced in shipped surfaces ----
+      # `.github/workflows/` is the one distribution-boundary directory where
+      # some files ship (tests.yml, chromatic.yml) and some do not, so the
+      # `maintainer-paths` alternation above cannot blanket it, and enumerating
+      # each excluded workflow by hand drifts. This derived check reads
+      # `.gaia/release-exclude` at scan time and flags references to any excluded
+      # `.github/workflows/*.yml` that has NO render template under
+      # `.gaia/cli/templates/workflows/`, i.e. is never installable on an adopter
+      # (unlike `code-review-audit.yml`, which `/setup-gaia` renders from its
+      # `.tmpl`, so references to it are legitimate). A newly excluded maintainer
+      # workflow is covered with no edit here; the set cannot drift from the
+      # exclude list. Mirrors `wikilink-to-excluded`. Prior occurrence: a shipped
+      # workflow-template comment cross-referenced `forensics-triage.yml`.
+      - id: excluded-workflow-ref
+        description: "References to release-excluded, never-installed workflows in shipped surfaces"
+        derive: excluded-workflows
+        scope:
+          - "CLAUDE.md"
+          - ".claude/**"
+          - "wiki/**"
+          - ".gaia/statusline/**"
+          - ".github/workflows/**"
+          - ".gaia/cli/templates/**"
+          - ".specify/extensions/gaia/README.md"
+          - ".specify/extensions/gaia/commands/**"
+          - ".specify/extensions/gaia/lib/**"
+          - ".specify/extensions/gaia/rules/**"
+          - ".specify/extensions/gaia/templates/**"
+        line-allowlist:
+          # setup-gaia's forensics detection uses a `[ -f ... ]` existence guard;
+          # on an adopter the file is absent so the branch is a graceful no-op,
+          # the same runtime-optional class as the `runtime-deps` check's guards.
+          - "\\[ -f \\.github/workflows/forensics-triage\\.yml \\]"
+
       # ---- Sibling-monorepo path prefixes ----
       - id: monorepo-prefix
         description: "Maintainer monorepo siblings (studio/, website/) in shipped surfaces"

@@ -9,9 +9,9 @@
  * release-excluded.
  *
  * Walks shipped shell scripts under `.gaia/statusline/`,
- * `.claude/hooks/`, and `.github/actions/` (recursing into nested
- * directories), extracts repo-relative path constants, and verifies
- * each is either:
+ * `.gaia/cli/templates/`, `.claude/hooks/`, and `.github/actions/`
+ * (recursing into nested directories), extracts repo-relative path
+ * constants, and verifies each is either:
  *
  *   - present in `.gaia/manifest.json` (a shipped file), or
  *   - an adopter-owned sentinel (`wiki/hot.md`, `wiki/log.md`,
@@ -57,8 +57,15 @@ const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>]
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
+// `walkSh` below collects `*.sh` only. `.gaia/cli/templates` currently has
+// zero `.sh` files (only `*.tmpl`); this entry future-proofs any future
+// `.sh` landing under templates. Template CONTENT leaks (`.tmpl`, any
+// extension) are a separate concern owned by the scrub `maintainer-paths`
+// check in `.gaia/release-scrub.yml`, whose scope includes
+// `.gaia/cli/templates/**` and scans file content regardless of extension.
 const SCAN_GLOBS = [
   '.gaia/statusline',
+  '.gaia/cli/templates',
   '.claude/hooks',
   '.github/actions',
 ] as const;
