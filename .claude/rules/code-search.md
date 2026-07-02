@@ -18,6 +18,10 @@ For symbol-level queries on TS/TSX files, prefer [Serena](https://github.com/ora
 
 Prose / comments / string literals, files outside `app/**` and `test/**`, generated / gitignored files (not indexed), cross-language searches.
 
+## Enforcement
+
+A PreToolUse guard (`.claude/hooks/serena-code-search-guard.sh`) blocks a `Grep` whose pattern is a bare identifier (>= 3 chars, no spaces or regex metacharacters) scoped to `app/**` or `test/**` TS/TSX, and points it at Serena's symbol tools. Re-running the identical grep passes, for the rare string-literal or comment search that is identifier-shaped. The guard no-ops unless Serena is a registered MCP server and the repo has a `tsconfig.json`, so adopters without Serena are unaffected.
+
 ## Limits
 
 Cold-start tsserver warm-up. Files outside `tsconfig` `include` invisible. Generated files not indexed.
