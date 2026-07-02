@@ -103,6 +103,13 @@
       "source": "allocated",
       "status": "specified",
       "intent": "GAIA's structured actions give the user no visibility into what they cost."
+    },
+    {
+      "id": "SPEC-014",
+      "allocated_at": "2026-07-02T15:53:09Z",
+      "source": "allocated",
+      "status": "specified",
+      "intent": "GAIA's per-machine `setup finalize` command stamps setup as complete without"
     }
   ]
 }
