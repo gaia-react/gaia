@@ -29526,7 +29526,10 @@ var finish = (argv, options) => {
       args: ["pr", "create", "--title", prTitle, "--body", prBody],
       command: "gh"
     },
-    { args: ["pr", "merge", "--squash", "--auto"], command: "gh" }
+    {
+      args: ["pr", "merge", "--squash", "--auto", "--delete-branch"],
+      command: "gh"
+    }
   ];
   for (const step of remoteSequence) {
     const result = runner(step.command, step.args, { cwd: repoRoot });
@@ -31281,7 +31284,10 @@ var protectedBranchLanding = (ctx, options) => {
       args: ["pr", "create", "--title", prTitle, "--body", prBody],
       command: "gh"
     },
-    { args: ["pr", "merge", "--squash", "--auto"], command: "gh" }
+    {
+      args: ["pr", "merge", "--squash", "--auto", "--delete-branch"],
+      command: "gh"
+    }
   ];
   let onSyncBranch = false;
   for (const step of localSequence) {
@@ -31296,6 +31302,11 @@ var protectedBranchLanding = (ctx, options) => {
     const result = runStep(ctx.runner, step, ctx.cwd);
     if (!stepSucceeded2(result)) return passthroughFailure4(result, step);
   }
+  runStep(
+    ctx.runner,
+    { args: ["checkout", ctx.originalBranch], command: "git" },
+    ctx.cwd
+  );
   process.stdout.write(
     `sync-land: landed via branch-and-PR commit ${ctx.shortHead}
 `
