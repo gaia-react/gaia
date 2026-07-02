@@ -47,4 +47,5 @@ python3 .gaia/tests/observability/serena/usage_scan.py --per-session
 ## Related
 
 - `.claude/rules/code-search.md`; the routing rule the scan measures.
+- `.claude/hooks/serena-code-search-guard.sh`; the PreToolUse guard that enforces the routing rule by blocking bare-identifier greps on TS/TSX when Serena is registered.
 - `wiki/concepts/Serena Integration.md`; the wiki page on Serena's role and division of labor with the wiki.

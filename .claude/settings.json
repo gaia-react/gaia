@@ -154,6 +154,16 @@
             "statusMessage": "Checking audit disposition ledger…"
           }
         ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/serena-code-search-guard.sh",
+            "statusMessage": "Checking Serena code-search routing…"
+          }
+        ]
       }
     ],
     "PostToolUse": [
