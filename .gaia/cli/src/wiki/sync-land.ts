@@ -35,6 +35,7 @@ import {resolveRepoRoot, shortSha} from './util/git.js';
 import {
   UNEXPECTED_EXIT,
   commandSucceeded,
+  finalizeMerge,
   passthroughFailure as passthroughFailureWithPrefix,
   refuse,
   todayUtc,
@@ -43,7 +44,8 @@ import {
 const HELP_TEXT = `Usage: gaia wiki sync land [--branch-aware]
 
   Land staged wiki changes via the correct branch strategy:
-    - on main/master: refuses unless --branch-aware (then branch + PR + auto-merge)
+    - on main/master: refuses unless --branch-aware (then branch + PR + auto-merge,
+                      then wait for the merge and clean up locally)
     - elsewhere:      in-place commit on the current branch
 
   Exit codes:
@@ -187,7 +189,11 @@ const rollbackLocalLanding = (
 
 const protectedBranchLanding = (
   ctx: LandingContext,
-  options: {today: string}
+  options: {
+    mergePollAttempts?: number;
+    sleep?: (ms: number) => void;
+    today: string;
+  }
 ): number => {
   const branchName = `wiki-sync/${options.today}-${ctx.shortHead}`;
   const message = `wiki: sync through ${ctx.shortHead}`;
@@ -238,23 +244,17 @@ const protectedBranchLanding = (
     if (!stepSucceeded(result)) return passthroughFailure(result, step);
   }
 
-  // Best-effort return to the protected branch we started on (mirrors
-  // `chain finish`). The sync commit landed on the sync branch, so the tree is
-  // clean and the checkout cannot strand uncommitted work; a failure here does
-  // not undo the queued auto-merge. Leaving the sync branch checked out would
-  // also block the session-start janitor from pruning it once the PR merges,
-  // since it never deletes the current branch.
-  runStep(
+  // Land like any other PR: `--auto` waits for the gate to go green server side,
+  // then finalizeMerge polls for the merge and cleans up locally (or defers to
+  // the session-start janitor on timeout). Mirrors `chain finish`.
+  return finalizeMerge(
     ctx.runner,
-    {args: ['checkout', ctx.originalBranch], command: 'git'},
-    ctx.cwd
+    ctx.cwd,
+    branchName,
+    ctx.originalBranch,
+    'sync-land',
+    {attempts: options.mergePollAttempts, sleep: options.sleep}
   );
-
-  process.stdout.write(
-    `sync-land: landed via branch-and-PR commit ${ctx.shortHead}\n`
-  );
-
-  return EXIT_CODES.OK;
 };
 
 type RunOptions = {
@@ -262,6 +262,10 @@ type RunOptions = {
   runner?: CommandRunner;
   /** Override "today" for deterministic tests. ISO-8601 date string. */
   today?: string;
+  /** Override the merge-poll attempt count on the protected-branch path. */
+  mergePollAttempts?: number;
+  /** Override the inter-poll sleep on the protected-branch path (test no-op). */
+  sleep?: (ms: number) => void;
 };
 
 export const run = (
@@ -352,7 +356,11 @@ export const run = (
   };
 
   if (isProtectedBranch(branch)) {
-    return protectedBranchLanding(ctx, {today: options.today ?? todayUtc()});
+    return protectedBranchLanding(ctx, {
+      mergePollAttempts: options.mergePollAttempts,
+      sleep: options.sleep,
+      today: options.today ?? todayUtc(),
+    });
   }
 
   return inPlaceLanding(ctx);

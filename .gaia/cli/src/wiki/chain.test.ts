@@ -373,7 +373,7 @@ describe('wiki chain', () => {
       expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
     });
 
-    test('on a chain branch with commits: push + PR + auto-merge + checkout base', () => {
+    test('on a chain branch, PR merges: push + PR + auto-merge, then wait + local cleanup', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -394,6 +394,18 @@ describe('wiki chain', () => {
             argv: ['rev-parse', 'HEAD'],
             result: okResult('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'),
           },
+          {
+            argv: [
+              'pr',
+              'view',
+              'wiki-sync/2026-05-07-bbbbbbb',
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ],
+            result: okResult('MERGED\n'),
+          },
         ],
         recorded
       );
@@ -401,9 +413,12 @@ describe('wiki chain', () => {
       const exit = run(['finish', '--branch-aware'], {
         cwd: sandbox.root,
         runner,
+        sleep: () => undefined,
       });
       expect(exit).toBe(0);
-      expect(stdio.outputs.join('')).toContain('opened PR for wiki-sync/2026-05-07-bbbbbbb');
+      expect(stdio.outputs.join('')).toContain(
+        'merged PR for wiki-sync/2026-05-07-bbbbbbb and cleaned up locally'
+      );
 
       const ordered = recorded.map((c) => [c.command, ...c.args].join(' '));
       const pushIndex = ordered.findIndex((c) =>
@@ -413,11 +428,89 @@ describe('wiki chain', () => {
       const prMergeIndex = ordered.findIndex(
         (c) => c === 'gh pr merge --squash --auto --delete-branch'
       );
+      const pollIndex = ordered.findIndex((c) =>
+        c.startsWith('gh pr view wiki-sync/2026-05-07-bbbbbbb')
+      );
       const checkoutBaseIndex = ordered.findIndex((c) => c === 'git checkout main');
+      const pullIndex = ordered.findIndex(
+        (c) => c === 'git pull --ff-only origin main'
+      );
+      const branchDeleteIndex = ordered.findIndex(
+        (c) => c === 'git branch -D wiki-sync/2026-05-07-bbbbbbb'
+      );
+      const pruneIndex = ordered.findIndex(
+        (c) => c === 'git fetch --prune origin'
+      );
       expect(pushIndex).toBeGreaterThanOrEqual(0);
       expect(prCreateIndex).toBeGreaterThan(pushIndex);
       expect(prMergeIndex).toBeGreaterThan(prCreateIndex);
-      expect(checkoutBaseIndex).toBeGreaterThan(prMergeIndex);
+      expect(pollIndex).toBeGreaterThan(prMergeIndex);
+      expect(checkoutBaseIndex).toBeGreaterThan(pollIndex);
+      expect(pullIndex).toBeGreaterThan(checkoutBaseIndex);
+      expect(branchDeleteIndex).toBeGreaterThan(pullIndex);
+      expect(pruneIndex).toBeGreaterThan(branchDeleteIndex);
+    });
+
+    test('on a chain branch, merge does not land: auto-merge stays queued, cleanup deferred', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki-sync/2026-05-07-fffffff\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('2\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('ffffffffffffffffffffffffffffffffffffffff\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'view',
+              'wiki-sync/2026-05-07-fffffff',
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ],
+            result: okResult('OPEN\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish', '--branch-aware'], {
+        cwd: sandbox.root,
+        runner,
+        mergePollAttempts: 3,
+        sleep: () => undefined,
+      });
+      expect(exit).toBe(0);
+      expect(stdio.outputs.join('')).toContain(
+        'auto-merge queued but not yet merged, local cleanup deferred'
+      );
+
+      // Polled the budget, then returned to base but deferred the local cleanup.
+      const pollCalls = ghCalls(recorded).filter(
+        (c) => c.args[0] === 'pr' && c.args[1] === 'view'
+      );
+      expect(pollCalls).toHaveLength(3);
+      expect(gitCalls(recorded)).toContainEqual({
+        args: ['checkout', 'main'],
+        command: 'git',
+      });
+      expect(recorded.find((c) => c.args[0] === 'branch')).toBeUndefined();
+      expect(recorded.find((c) => c.args[0] === 'pull')).toBeUndefined();
+      expect(recorded.find((c) => c.args[0] === 'fetch')).toBeUndefined();
     });
 
     test('on a chain branch with no commits ahead: drop empty branch, no PR', () => {

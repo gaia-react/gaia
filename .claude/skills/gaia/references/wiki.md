@@ -77,7 +77,7 @@ When the subagent returns, relay its final summary verbatim. Do not redo the wor
 
 If invoked as `/gaia-wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint, that's only the no-arg form's job. The sub-arg form `/gaia-wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
 
-Standalone, sync's Step 7 lands on its own: from `main` it cuts a `wiki-sync/<date>-<sha>` branch and opens its own PR; from a feature branch it commits in place. In the no-arg full chain the parent pre-cuts the branch via `chain begin`, so the same Step 7 commits in place on the chain branch and the chain opens a single PR at the end (see "Full chain").
+Standalone, sync's Step 7 lands on its own: from `main` it cuts a `wiki-sync/<date>-<sha>` branch, opens its own PR, then waits for the merge and cleans up locally (same as `chain finish`); from a feature branch it commits in place. In the no-arg full chain the parent pre-cuts the branch via `chain begin`, so the same Step 7 commits in place on the chain branch and the chain opens a single PR at the end (see "Full chain").
 
 ## Consolidate
 
@@ -154,6 +154,6 @@ The whole chain lands on **one branch and one PR**, not one PR per stage. The pa
 
 5. **Lint.** Run the "Lint" section above. Lint runs after consolidate because consolidate may move, rename, or archive pages and lint's orphan/dead-link/drift checks need the true post-state. After the lint subagent returns, commit its report: `.gaia/cli/gaia wiki chain commit --label "wiki: lint through <head-sha>"`.
 
-6. **Finish the chain.** Run `.gaia/cli/gaia wiki chain finish --branch-aware`. On the chain branch it pushes, opens ONE PR carrying every stage's commit, enables auto-merge, and returns to the base branch (deleting the branch if no stage produced a commit). On a feature-branch (in-place) run it is a no-op and the commits remain on the current branch. Relay its summary / the resulting PR to the user.
+6. **Finish the chain.** Run `.gaia/cli/gaia wiki chain finish --branch-aware`. On the chain branch it pushes, opens ONE PR carrying every stage's commit, enables auto-merge, then **waits for the gate to go green and the merge to land, then cleans up locally** (returns to base, pulls the merged base, deletes the local branch, prunes). It blocks while polling for the merge, so allow a generous Bash timeout (the merge waits on the PR's checks). If the merge does not land within the wait, auto-merge stays queued (GitHub completes it once checks pass) and the local pull/delete is deferred to the session-start janitor. If no stage produced a commit it drops the empty branch and returns to base. On a feature-branch (in-place) run it is a no-op and the commits remain on the current branch. Relay its summary to the user.
 
 Each stage still dispatches its own subagent; never run their playbooks yourself in this conversation.

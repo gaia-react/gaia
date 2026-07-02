@@ -176,7 +176,7 @@ Exit codes:
 
 Do NOT inline branch logic, manual `gh pr` calls, or any push narrative. The CLI is authoritative.
 
-The command is branch-aware: on `main`/`master` it cuts a branch and opens its own PR; on any feature branch it commits in place. The no-arg `/gaia-wiki` full chain pre-cuts a `wiki-sync/<date>-<sha>` branch before sync runs, so this same step commits in place there and the chain opens one PR for all stages at the end. No change to this step is needed for either path.
+The command is branch-aware: on `main`/`master` it cuts a branch, opens its own PR, then waits for the merge to land and cleans up locally (returns to base, pulls, deletes the branch, prunes); on any feature branch it commits in place. It blocks while polling for the merge on the protected-branch path, so allow a generous Bash timeout. The no-arg `/gaia-wiki` full chain pre-cuts a `wiki-sync/<date>-<sha>` branch before sync runs, so this same step commits in place there and the chain opens one PR for all stages at the end. No change to this step is needed for either path.
 
 ## Step 8: Report
 
