@@ -11,6 +11,16 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-02 a3240691 SKIP - command-file (gaia-init.md) CODEOWNERS auto-detect gate logic, no wiki-page surface; pnpm-workspace.yaml quarantine-allowlist aging already covered generically by wiki/decisions/pnpm.md
+- 2026-07-02 1c572b51 WORTHY - local-janitor gains a wiki-sync/* branch-pruning sweep + sync land returns to base branch → wiki/concepts/Local Working State.md, wiki/concepts/Wiki Sync.md
+- 2026-07-02 2565e7d0 SKIP - chore(deps): major bump with call-site update, no architectural change
+- 2026-07-02 96ecc305 SKIP - command-file (gaia-init.md) interactive-gate hardening; author-declared no wiki-page surface, already narrated in wiki/log.md by the commit itself
+- 2026-07-02 e771b316 SKIP - chore(deps): version bump only
+- 2026-07-02 761e39cb SKIP - wiki change landed inline in commit (Code Review Audit CI.md three-copy section); no new surface
+- 2026-07-02 6d8549e8 WORTHY - clean-audit-no-push stamp now also covers a refused self-heal → wiki/concepts/Code Review Audit CI.md
+- 2026-07-02 095005f8 WORTHY - durable gaia.updateDepsHold config generalizes the vite 8.0 pin → wiki/dependencies/Storybook.md notes the config-backed enforcement
+- 2026-07-02 e30fdf8b SKIP - internal regex hardening of an existing workflow-denylist leak-check pattern; already self-documented in .gaia/cli/health/taxonomy.md and CHANGELOG, no new wiki fact
+- 2026-07-02 49fad99b SKIP - self-referential prior wiki-sync commit (wiki: sync through c20b444); no code change to reflect
 - 2026-07-02 gaia-init: interactive-gate non-response hardening. Adds a run-mode question (Interactive, recommended, vs Automatic) as the first gate, a fixed HARD-BLOCK vs SAFE-DEFAULT gate taxonomy, a no-cascade rule that overrides the harness away-from-keyboard note, and a never-fabricate guard for the CODEOWNERS handle (loud `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder in Automatic mode). Automatic mode prints a corrected defaults table (single Mentorship row covering mentorship + analytics; CODEOWNERS shows the placeholder, never a git-inferred handle). Command-file change (.claude/commands/gaia-init.md); no wiki-page surface.
 - 2026-07-01 c20b4441 WORTHY - health-audit remediations already carry their own wiki/decisions/Claude Integration Fitness.md edit (shared-reference SKILL.md exemption) in the commit; no further sync edit needed
 - 2026-07-01 da32c76d WORTHY - sentinel mtime probe now GNU-first with numeric validation so the settle grace works on Linux → same edit as 757f51c2, wiki/concepts/Audit Disposition and Debt Drain.md

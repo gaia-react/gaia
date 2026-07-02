@@ -65,9 +65,9 @@ This is a UX/ordering cleanup, not a clean-stamp path. The self-mod-skip stamps 
 
 ## Clean audit, no push
 
-A genuinely-clean audit that produces no self-heal commits and no empty trailer commit leaves the `push-fixes` step with neither `pushed` nor `marker_only` set. Without intervention, HEAD carries no `GAIA-Audit` status and the merge hook blocks the merge even though the audit passed.
+A genuinely-clean audit that produces no self-heal commits and no empty trailer commit leaves the `push-fixes` step with neither `pushed` nor `marker_only` set. Without intervention, HEAD carries no `GAIA-Audit` status and the merge hook blocks the merge even though the audit passed. The same gap opens when the audit is clean but its only tree delta is a **refused** self-heal (see [[#Self-heal staging guards]]): the staged diff landed on an off-limits surface (`.claude/**`, `.specify/**`, `wiki/**`) or exceeded ten files. `refused` means the fix was off-limits to auto-apply, not that the audit failed or the tree is dirty, so it does not gate this stamp either.
 
-The `Write GAIA-Audit commit status (clean, no push)` step closes this gap: it stamps the `GAIA-Audit` commit status directly on the current PR HEAD with no empty commit. A proven-clean guard prevents false passes: the audit agent writes `.gaia/local/audit/<HEAD>.ok` only on a clean pass (no Critical Issues, all Important Issues addressed, all Suggestions resolved). The step checks for this marker before stamping; a dirty audit that pushed nothing has no marker and receives no status, keeping the merge blocked until the audit clears.
+The `Write GAIA-Audit commit status (clean, no push)` step closes this gap: it stamps the `GAIA-Audit` commit status directly on the current PR HEAD with no empty commit, covering both the no-delta case and the refused-self-heal case. A proven-clean guard prevents false passes: the audit agent writes `.gaia/local/audit/<HEAD>.ok` only on a clean pass (no Critical Issues, all Important Issues addressed, all Suggestions resolved). The step checks for this marker before stamping; a dirty audit that pushed nothing has no marker and receives no status, keeping the merge blocked until the audit clears.
 
 This is the audit's instance of the cross-workflow mechanism in [[Incremental CI Skipping]].
 
