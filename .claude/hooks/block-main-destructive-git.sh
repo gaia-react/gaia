@@ -36,7 +36,15 @@ fi
 # The sentinel lives in .gaia/local/ (gitignored), so it never rides along in a
 # teammate's clone: a fresh checkout always has this hook fully enforcing. The
 # resting state is ON; this is the one explicit, temporary exception.
-if [ -f .gaia/local/setup-in-progress ]; then
+#
+# Self-healing freshness bound: the sentinel is honored only while its mtime is
+# within the last 10 minutes. The finalize commit+push completes in seconds, so
+# a live setup is always inside that window; a sentinel a crashed or killed
+# setup left behind goes stale on its own and enforcement resumes WITHOUT
+# waiting for a /setup-gaia re-run to remove it. `find` returning empty (stale,
+# missing, or unreadable) falls through to full enforcement, fail-closed.
+if [ -f .gaia/local/setup-in-progress ] \
+   && [ -n "$(find .gaia/local/setup-in-progress -mmin -10 2>/dev/null)" ]; then
   exit 0
 fi
 

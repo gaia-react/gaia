@@ -160,6 +160,25 @@ assert_allowed() {
   assert_denied
 }
 
+@test "setup sentinel is a total standdown: force-push to main is allowed" {
+  on_main
+  mkdir -p "$REPO/.gaia/local"
+  touch "$REPO/.gaia/local/setup-in-progress"
+  run_hook 'git push --force origin main'
+  assert_allowed
+}
+
+@test "a stale setup sentinel self-heals: enforcement resumes without removal" {
+  on_main
+  mkdir -p "$REPO/.gaia/local"
+  touch "$REPO/.gaia/local/setup-in-progress"
+  # Age the sentinel past the freshness window. A leftover from a setup that
+  # crashed before cleanup must NOT keep main-branch protection suspended.
+  touch -t 200001010000 "$REPO/.gaia/local/setup-in-progress"
+  run_hook 'git commit -m "x"'
+  assert_denied
+}
+
 # --- command-position anchoring: the words appear, but git is not the program ---
 
 @test "grep for the text 'git commit' is allowed on main" {
