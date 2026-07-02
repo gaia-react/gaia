@@ -365,7 +365,10 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
       args: ['pr', 'create', '--title', prTitle, '--body', prBody],
       command: 'gh',
     },
-    {args: ['pr', 'merge', '--squash', '--auto'], command: 'gh'},
+    {
+      args: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
+      command: 'gh',
+    },
   ];
 
   for (const step of remoteSequence) {

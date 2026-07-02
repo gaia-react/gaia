@@ -267,7 +267,8 @@ describe('wiki sync land', () => {
       ['git', 'commit', '-m', 'wiki: sync through bbbbbbb'],
       ['git', 'push', '-u', 'origin', 'wiki-sync/2026-05-07-bbbbbbb'],
       ['gh', 'pr', 'create'],
-      ['gh', 'pr', 'merge', '--squash', '--auto'],
+      ['gh', 'pr', 'merge', '--squash', '--auto', '--delete-branch'],
+      ['git', 'checkout', 'main'],
     ] as const;
 
     for (const [index, prefix] of expected.entries()) {

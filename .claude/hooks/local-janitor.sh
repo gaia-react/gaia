@@ -10,17 +10,28 @@
 # This is the BACKSTOP, not the owner. Each subsystem still owns its own
 # lifecycle (audit.md prunes its KNOWLEDGE reports; plan.md self-cleans on
 # merge). The janitor only removes residue whose death is PROVABLE, so it is
-# safe to run unconditionally every session. It sweeps exactly three things:
+# safe to run unconditionally every session. It sweeps exactly four things:
 #
-#   1. audit/<sha>.ok and audit/<sha>.dispositions.json whose <sha> is neither
+#   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
+#      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
+#      branch, pushes it, and enables auto-merge with `gh pr merge --auto`, a
+#      call that returns BEFORE the merge lands, so the local branch can never be
+#      deleted inline and nothing else reconciles it. Once the PR squash-merges,
+#      GitHub deletes the remote head branch and a later `git fetch --prune`
+#      drops the tracking ref, leaving the local branch upstream marked [gone].
+#      That [gone] marker on a machine-generated, disposable wiki-sync/* branch
+#      is the provable-death signal (the normal per-branch PR-merge cleanup runs
+#      no `git branch -D` here because the landing is fire-and-forget). This
+#      sweep is git-scoped, so it runs before the .gaia/local guard below.
+#   2. audit/<sha>.ok and audit/<sha>.dispositions.json whose <sha> is neither
 #      HEAD nor reachable from any local branch. A marker gates `gh pr merge`
 #      only when its <sha> == HEAD; once the PR squash-merges to a new sha the
 #      audited branch tip is orphaned (reflog-only) and the marker is spent.
 #      A <sha> that is not a valid commit (bogus/garbage) is treated as dead.
-#   2. plans/<slug>/ whose RUNNING sentinel names a branch that no longer
+#   3. plans/<slug>/ whose RUNNING sentinel names a branch that no longer
 #      exists AND is not marked DEFERRED/PAUSED/PARKED. Branch-gone + not-parked
 #      means the plan merged and its self-cleanup never ran (interrupted run).
-#   3. empty leftover dirs under .gaia/local, EXCEPT the structural drop-zones
+#   4. empty leftover dirs under .gaia/local, EXCEPT the structural drop-zones
 #      tooling expects to find. Pruned with `rmdir`, so a non-empty dir can
 #      never be removed even if the logic is wrong.
 #
@@ -31,10 +42,38 @@ set -uo pipefail
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$root" ] || exit 0
+
+# --- 1. Merged-and-gone wiki-sync branches ---------------------------------
+# Git-scoped: independent of .gaia/local, so it runs before that guard (a fresh
+# clone can carry an orphaned wiki-sync branch before any .gaia/local exists).
+# List every local branch with its upstream-track state, filter to the
+# disposable wiki-sync/* class whose upstream is [gone], and hard-delete it.
+# `git branch -D` (not -d): a squash merge leaves the branch tip un-merged by
+# ancestry, so `-d` would refuse. Fail-safe: the current branch is never a
+# delete candidate (checkout-protected by git anyway), an empty/[]/[ahead]/
+# [behind] track is skipped (remote head still present), and any git failure
+# leaves the branch untouched.
+current=$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+branch_tracks=$(git -C "$root" for-each-ref \
+  --format='%(refname:short) %(upstream:track)' refs/heads/ 2>/dev/null || true)
+if [ -n "$branch_tracks" ]; then
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ref=${line%% *}                        # branch name (no spaces in a ref)
+    track=${line#"$ref"}; track=${track# }  # remainder: [gone]/[ahead N]/... token
+    case "$ref" in wiki-sync/*) ;; *) continue ;; esac
+    [ "$ref" = "$current" ] && continue
+    [ "$track" = "[gone]" ] || continue
+    git -C "$root" branch -D "$ref" >/dev/null 2>&1 || true
+  done <<EOF
+$branch_tracks
+EOF
+fi
+
 local_dir="$root/.gaia/local"
 [ -d "$local_dir" ] || exit 0
 
-# --- 1. Orphaned audit markers ---------------------------------------------
+# --- 2. Orphaned audit markers ---------------------------------------------
 head_sha=$(git -C "$root" rev-parse HEAD 2>/dev/null || true)
 audit_dir="$local_dir/audit"
 if [ -d "$audit_dir" ]; then
@@ -57,7 +96,7 @@ if [ -d "$audit_dir" ]; then
   done
 fi
 
-# --- 2. Completed-but-unswept plan dirs ------------------------------------
+# --- 3. Completed-but-unswept plan dirs ------------------------------------
 plans_dir="$local_dir/plans"
 if [ -d "$plans_dir" ]; then
   for running in "$plans_dir"/*/RUNNING; do
@@ -76,7 +115,7 @@ if [ -d "$plans_dir" ]; then
   done
 fi
 
-# --- 3. Stray empty dirs (keep the structural drop-zones) ------------------
+# --- 4. Stray empty dirs (keep the structural drop-zones) ------------------
 is_drop_zone() {
   case "$1" in
     audit | audit-ledger | cache | debt | forensics | handoff | plans \

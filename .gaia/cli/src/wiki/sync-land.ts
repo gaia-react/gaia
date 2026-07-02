@@ -212,7 +212,10 @@ const protectedBranchLanding = (
       args: ['pr', 'create', '--title', prTitle, '--body', prBody],
       command: 'gh',
     },
-    {args: ['pr', 'merge', '--squash', '--auto'], command: 'gh'},
+    {
+      args: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
+      command: 'gh',
+    },
   ];
 
   let onSyncBranch = false;
@@ -234,6 +237,18 @@ const protectedBranchLanding = (
 
     if (!stepSucceeded(result)) return passthroughFailure(result, step);
   }
+
+  // Best-effort return to the protected branch we started on (mirrors
+  // `chain finish`). The sync commit landed on the sync branch, so the tree is
+  // clean and the checkout cannot strand uncommitted work; a failure here does
+  // not undo the queued auto-merge. Leaving the sync branch checked out would
+  // also block the session-start janitor from pruning it once the PR merges,
+  // since it never deletes the current branch.
+  runStep(
+    ctx.runner,
+    {args: ['checkout', ctx.originalBranch], command: 'git'},
+    ctx.cwd
+  );
 
   process.stdout.write(
     `sync-land: landed via branch-and-PR commit ${ctx.shortHead}\n`

@@ -410,8 +410,8 @@ describe('wiki chain', () => {
         c.startsWith('git push -u origin wiki-sync/2026-05-07-bbbbbbb')
       );
       const prCreateIndex = ordered.findIndex((c) => c.startsWith('gh pr create'));
-      const prMergeIndex = ordered.findIndex((c) =>
-        c.startsWith('gh pr merge --squash --auto')
+      const prMergeIndex = ordered.findIndex(
+        (c) => c === 'gh pr merge --squash --auto --delete-branch'
       );
       const checkoutBaseIndex = ordered.findIndex((c) => c === 'git checkout main');
       expect(pushIndex).toBeGreaterThanOrEqual(0);
