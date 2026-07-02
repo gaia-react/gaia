@@ -5,7 +5,7 @@
 [![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=fff)](https://claude.com/claude-code)
 [![Tests](https://img.shields.io/github/actions/workflow/status/gaia-react/gaia/tests.yml?event=pull_request&label=tests)](https://github.com/gaia-react/gaia/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/github/license/gaia-react/gaia)](./LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-brightgreen)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.22.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 **Claude is raw power. [GAIA](https://gaiareact.com/) is order and focus.**
@@ -32,7 +32,7 @@ One command. GAIA handles the rest, then `/gaia-init` finishes the last-mile set
 > [!NOTE]
 > Start projects with `npx create-gaia@latest my-app` rather than cloning or forking. The CLI sets up your project for you, strips the GAIA branding and release tooling, etc. A clone leaves all of that in place and pointed at the wrong repo.
 
-**Requirements:** [Node.js](https://nodejs.org/) >= 22.19.0 ([nvm](https://github.com/nvm-sh/nvm) recommended). macOS or Linux; on Windows, run inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) (the hooks and CLI need bash and POSIX file paths, and native Windows isn't exercised in CI). [uv](https://astral.sh/uv) is required for the Serena MCP server; GAIA installs it during setup if you don't already have it.
+**Requirements:** [Node.js](https://nodejs.org/) >= 22.22.0 ([nvm](https://github.com/nvm-sh/nvm) recommended). macOS or Linux; on Windows, run inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) (the hooks and CLI need bash and POSIX file paths, and native Windows isn't exercised in CI). [uv](https://astral.sh/uv) is required for the Serena MCP server; GAIA installs it during setup if you don't already have it.
 
 [Learn more about GAIA →](https://gaiareact.com/)
 
@@ -88,6 +88,7 @@ The quality gate keeps each commit clean and Knip keeps dead code out (see [Tech
 
 - **`/update-deps`.** An autonomous Dependabot: discovers every outdated package, audits version overrides, applies codemods and breaking-change migrations for major bumps, resolves conflicts between simultaneous upgrades, then runs the quality gate before reporting done. No prompts.
 - **`/update-gaia`.** Pulls the latest GAIA release into the project without clobbering your work: a three-way merge per file (your version, the release baseline, the new release) governed by ownership classes in `.gaia/manifest.json`, prompting only where your changes and GAIA's collide. Both updates surface as passive statusline indicators at session start.
+- **`/gaia-debt`.** The pre-merge audit may discover tech-debt outside the scope of what it's reviewing. Rather than let it slip, GAIA logs it as a tracked issue, and `/gaia-debt` works through that backlog one item at a time, most important first. A statusline indicator shows how much is waiting.
 - **GAIA CI**, opt-in, set up by `/setup-gaia`. A GitHub Actions bot that runs maintenance against your Claude Code Pro/Max subscription or Anthropic API key, capped at $5 per run. Patch and minor dependency bumps get an auto-PR that auto-merges on green CI; major bumps and high or critical `pnpm audit` findings route to review-required PRs; app-code changes open a labeled wiki-sync PR (a run that rewrites more than 25% of the wiki holds for review); stale branches get cleaned up. If post-merge CI fails, the bot opens one revert PR. A second failure escalates to a priority issue and the bot stops.
 
 ## Tech Stack
@@ -103,7 +104,7 @@ Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configur
 - **Dark mode end-to-end.** Context, session, CSS, and Storybook all in sync.
 - **API mocking** with [Mock Service Worker](https://mswjs.io/) and [msw/data](https://github.com/mswjs/data): working handlers for tests and Storybook.
 - **Toast notifications** with [remix-toast](https://remix.run/resources/remix-toast) and [Sonner](https://sonner.emilkowal.ski/).
-- Built with [React Router 7](https://reactrouter.com/), [Tailwind](https://tailwindcss.com/), and [react-icons](https://react-icons.github.io/react-icons/).
+- Built with [React Router 8](https://reactrouter.com/), [Tailwind](https://tailwindcss.com/), and [react-icons](https://react-icons.github.io/react-icons/).
 
 GAIA also wires agentic-design patterns into the project structure rather than the prompt, so they run the same way every session and every model variant: stop hooks, a blocking pre-merge audit, multi-agent review, spec-driven development, a committed knowledge base, a filesystem deny list, and more. The [features page](https://gaiareact.com/features/#agentic-design) walks through all twelve, grouped as workflow control, context engineering, and tooling and safety.
 
@@ -126,6 +127,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <tr><td><code>/gaia-fitness</code></td><td>Health-check and auto-heal the project's Claude integration: triage, heal, verify, then report an F-to-A+ grade</td></tr>
 <tr><td><code>/gaia-react-perf</code></td><td>Diagnose React render performance. Drives a micro-interaction, captures real renders, and surfaces memo-defeating reference instability, then recommends a structural fix. Measure-only: it reports a ranked diagnosis, it never auto-fixes</td></tr>
 <tr><td><code>/gaia-harden</code></td><td>Turn a recurring code-review-audit finding into the lowest-cost enforcement: a deterministic check, a skill, or a path-scoped rule. Human-gated, drafted into the working tree only on approval. Pass <code>list</code> to see candidates or <code>why &lt;finding_class&gt;</code> to explain one</td></tr>
+<tr><td><code>/gaia-debt</code></td><td>Work through the tech-debt backlog one item at a time, most important first. Tech-debt discovered by the pre-merge audit outside the scope of the change is tracked here rather than lost. Pass <code>list</code> to see what's queued or <code>why &lt;issue-number&gt;</code> to explain the pick</td></tr>
 <tr><td><code>/update-deps</code></td><td>Autonomous Dependabot: discover every outdated package, audit version overrides, apply codemods and breaking-change migrations for major bumps, resolve conflicts between simultaneous upgrades, then run the quality gate. No prompts</td></tr>
 <tr><td><code>/update-gaia</code></td><td>Pull the latest GAIA release into the project without clobbering your work. Three-way merge per file (your version / release baseline / new release) governed by ownership classes in <code>.gaia/manifest.json</code>; prompts only where your changes and GAIA's collide</td></tr>
 </tbody>
