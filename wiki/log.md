@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-02 gaia-init: interactive-gate non-response hardening. Adds a run-mode question (Interactive, recommended, vs Automatic) as the first gate, a fixed HARD-BLOCK vs SAFE-DEFAULT gate taxonomy, a no-cascade rule that overrides the harness away-from-keyboard note, and a never-fabricate guard for the CODEOWNERS handle (loud `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder in Automatic mode). Automatic mode prints a corrected defaults table (single Mentorship row covering mentorship + analytics; CODEOWNERS shows the placeholder, never a git-inferred handle). Command-file change (.claude/commands/gaia-init.md); no wiki-page surface.
 - 2026-07-01 c20b4441 WORTHY - health-audit remediations already carry their own wiki/decisions/Claude Integration Fitness.md edit (shared-reference SKILL.md exemption) in the commit; no further sync edit needed
 - 2026-07-01 da32c76d WORTHY - sentinel mtime probe now GNU-first with numeric validation so the settle grace works on Linux → same edit as 757f51c2, wiki/concepts/Audit Disposition and Debt Drain.md
 - 2026-07-01 757f51c2 WORTHY - debt sentinel holds armed through a 120s settle grace so the /gaia-debt nudge clears cleanly after merge → wiki/concepts/Audit Disposition and Debt Drain.md

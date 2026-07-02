@@ -7,19 +7,156 @@ Initialize a new project from the GAIA React template. The template already ship
 
 **Language meta-instruction:** Conduct this entire conversation in the language the user has been typing in. Detect it from prior context, no explicit detection step needed. Do not translate source files, rules, skills, or wiki entries, those stay English regardless. Only translate the prompts you show the user.
 
-## Step 0: Ensure pnpm is available
+## Interactive gates: run mode and non-response policy
 
-Tell the user: "Checking for pnpm…" then run:
+`/gaia-init` asks the user a series of questions ("gates"). This section governs how **every** gate behaves and overrides any harness default. Read it before the first gate and apply it to each one.
+
+### Harness timeout note, override
+
+After a gate sits unanswered for a while, the harness injects a stock note like "the user may be away from keyboard, proceed using your best judgment, you can re-ask later." That note is generic, it does not describe this command, and it keeps firing on gate after gate. **Do not act on it literally.** Inside `/gaia-init` it means only "apply the non-response policy below", never "the user is gone, auto-answer everything."
+
+### No cascade
+
+Evaluate each gate independently. A non-response on one gate is **never** evidence the user is away for any other gate. A timeout on the language question tells you nothing about the title, the CODEOWNERS handle, or the CI question. Never carry an "away" inference forward, re-ask the next gate normally.
+
+### Tone
+
+Never narrate "since you're away" or otherwise assert the user is absent. Non-response is not proof of absence, the user may be reading, thinking, or opening a docs link. State what you are doing plainly, without diagnosing why the user paused.
+
+### Run mode, the first gate
+
+Before Step 0's pnpm check, ask this as the **very first** AskUserQuestion (in the user's language):
+
+> How do you want to handle the setup questions?
+>
+> - **Interactive** (Recommended). GAIA asks about language, project name, CODEOWNERS, CI, and mentorship one at a time and waits for your answer on the consequential ones.
+> - **Automatic.** GAIA selects the recommended default for every question for you, without stopping to ask. It shows you the full list of chosen defaults first, and you can change anything afterward.
+
+List **Interactive** first (the recommended option) and **Automatic** second. This gate is itself HARD-BLOCK: on non-response, re-ask, never assume a mode.
+
+- **Interactive**: apply the per-tier non-response rules below to every later gate.
+- **Automatic**: the user has pre-consented to defaults. First show the Automatic defaults table (see "Automatic defaults, per gate" below), then apply each gate's recommended default and continue without asking. One exception, free-text identity values are still never fabricated: CODEOWNERS gets the loud placeholder, never a guess.
+
+### Gate tiers
+
+Every gate is one of two tiers. The tier is fixed here, do not reclassify by judgment.
+
+**HARD-BLOCK** (consequential / irreversible / identity). On non-response in interactive mode: re-ask and wait for an explicit answer. Never apply a default and move on, never guess.
+
+| Gate | Where |
+|---|---|
+| Run mode (this section) | before Step 0 |
+| pnpm upgrade consent | Step 0c |
+| Primary app language (+ "Other" free-text) | Step 2, Q1 |
+| Additional languages / i18n teardown, `STRIP_I18N` (+ free-text) | Step 2, Q2 |
+| CODEOWNERS GitHub handle | Step 2, Q3 |
+| Project title | Step 2, Q4 |
+| kebab-case slug | Step 2, Q5 |
+| CI intent (Configure-CI decision) | Step 8, Configure CI integrations |
+
+**SAFE-DEFAULT** (reversible, the recommended default is the safe outcome). On non-response in interactive mode: re-ask once; if still no answer, apply the stated default, name it plainly ("Defaulting mentorship to off, you can enable it later"), and continue. Do not claim the user is absent.
+
+| Gate | Default on non-response | Where |
+|---|---|---|
+| Maintenance-tool run modes | all `ci` (CI enabled) or all `local` (CI declined) | Step 9 |
+| Mentorship opt-in | Not now, mentorship + analytics stay off | Step 10 |
+
+### Free-text identity values are never fabricated
+
+The CODEOWNERS GitHub handle, and any similar free-text identity field, must come from the user. A guessed handle is a silent correctness bug: a wrong owner ships in `.github/CODEOWNERS`. Never write a plausible-looking guess.
+
+- Interactive, non-response: HARD-BLOCK. Re-ask; do not reach Step 5 without a real handle.
+- Automatic: write a loud placeholder that fails visibly, never a guess. Use `REPLACE-WITH-YOUR-GITHUB-HANDLE`, GitHub flags it as an unknown owner so the gap is obvious, and surface it in the Step 12 summary as a required follow-up.
+
+### Automatic defaults, per gate
+
+When the user chose Automatic, first detect the project folder name (`basename "$(git rev-parse --show-toplevel)"`) and use the already-detected primary language, then show the user this table (substitute the bracketed values, leave everything else verbatim) so they can catch anything before init proceeds:
+
+> **Automatic mode. Applying these defaults:**
+>
+> | Setting | Value | Reversible? |
+> |---|---|---|
+> | Primary language | {detected language, e.g. English (en)} | Costly, re-run i18n |
+> | Additional languages | None, i18n scaffolding kept | Yes, fully |
+> | Project title | {title-cased folder name} | Yes, re-run rename |
+> | Slug | {folder name} | Yes, re-run rename |
+> | CODEOWNERS handle | `REPLACE-WITH-YOUR-GITHUB-HANDLE` (placeholder, edit before push) | One-line edit, required |
+> | GAIA CI intent | Enabled, activate later via /setup-gaia | Yes, /setup-gaia --reconfigure |
+> | Maintenance tools | All four in `ci` mode | Yes, reconfigure |
+> | Mentorship | Not now, mentorship + analytics off | Yes, enable later |
+
+Exactly one row per setting. **Never** duplicate the Mentorship row: that single row covers both `mentorship.enabled` and `analytics.enabled`. **Never** put a real or inferred GitHub handle in the CODEOWNERS row: Automatic mode always shows the placeholder, because the handle cannot be known without asking.
+
+Then apply the defaults and proceed without stopping (the user chose Automatic; do not block, they can interrupt if they want to change something):
+
+- pnpm upgrade (0c): upgrade (Yes), it is required to continue.
+- Primary language (Q1): the detected user language.
+- Additional languages / i18n (Q2): primary-only, keep i18n scaffolding (`STRIP_I18N=false`). The teardown is never auto-selected.
+- CODEOWNERS (Q3): the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder, flagged as a required Step 12 follow-up. Never a guessed or git-derived handle.
+- Project title (Q4): title-cased folder name.
+- kebab slug (Q5): folder name.
+- CI intent (Step 8): "Yes, I'll enable CI after pushing" (records intent only).
+- Maintenance tools (Step 9): all `ci`.
+- Mentorship (Step 10): Not now (mentorship + analytics off).
+
+## Step 0: Ensure pnpm is available (and new enough)
+
+**First, ask the run-mode gate** from "Interactive gates: run mode and non-response policy" above, it is the very first thing `/gaia-init` asks. Hold the answer (interactive or automatic) for every later gate. Then continue with the pnpm check.
+
+GAIA needs pnpm 11+. Tell the user: "Checking for pnpm…" then read the currently-resolved version **from the project root** (so corepack's `packageManager` pin applies when it's active):
+
+```bash
+pnpm --version 2>/dev/null || echo "absent"
+```
+
+Branch on the result:
+
+**a) `absent` (no pnpm on PATH):** auto-install. Prefer corepack (it activates the version pinned in `package.json` `packageManager`, currently `pnpm@11.9.0`); fall back to the latest global when corepack is missing.
 
 ```bash
 if command -v corepack &>/dev/null; then
   corepack enable pnpm
 else
-  npm install -g pnpm
+  npm install -g pnpm@latest
 fi
 ```
 
-If this fails, stop and report the error. `corepack enable pnpm` installs the pnpm version pinned in the `packageManager` field of `package.json`. If corepack is unavailable, fall back to a global npm install.
+If this fails, stop and report the error. Then proceed to Step 1.
+
+**b) Major version ≥ 11:** good, proceed to Step 1.
+
+**c) Major version < 11 (a stale pnpm, e.g. 10.x):** do **not** silently proceed. Use the **AskUserQuestion** tool to get consent before touching the user's toolchain, with exactly these two options:
+
+_Non-response: HARD-BLOCK. Re-ask; never auto-upgrade or auto-exit on a timeout. Automatic mode: upgrade (Yes)._
+
+- **Yes (Required)**: "Upgrade pnpm to a supported version (11+). Required to continue with /gaia-init."
+- **No**: "Keep the current pnpm and stop /gaia-init. Nothing has been installed or renamed yet, so it's safe to exit and re-run later."
+
+On **No** (or anything that is not an explicit Yes): stop `/gaia-init` immediately with a one-line message. Step 0 runs before any file is installed or renamed, so exiting here leaves the clone untouched.
+
+On **Yes**: upgrade by enabling corepack (its `packageManager` pin makes the in-project version 11.9.0 regardless of any stray global pnpm); fall back to a latest global install when corepack is missing.
+
+```bash
+if command -v corepack &>/dev/null; then
+  corepack enable pnpm
+else
+  npm install -g pnpm@latest
+fi
+```
+
+Then **re-verify from the project root**:
+
+```bash
+pnpm --version
+```
+
+If the major version is still < 11, a non-corepack pnpm (Homebrew, the standalone installer) is shadowing the upgrade earlier on `PATH`. Do **not** loop or silently continue. Show which binary wins and halt so the user can resolve it:
+
+```bash
+command -v pnpm   # e.g. /opt/homebrew/bin/pnpm, the shadowing install
+```
+
+Halt with: "pnpm <version> at <path> is older than the required 11+ and takes precedence on your PATH. Upgrade or remove it (e.g. `brew upgrade pnpm`, `pnpm self-update`) so corepack's pinned version wins, then re-run /gaia-init."
 
 ## Step 1: Install dependencies
 
@@ -53,6 +190,8 @@ Ask the two language questions one at a time (Q2 interpolates Q1's answer), then
 
 ### Q1, Primary app language (asked alone)
 
+_Non-response: HARD-BLOCK. Re-ask; never auto-pick. Automatic mode: the detected user language._
+
 Use AskUserQuestion with this single question:
 
 > What should be the primary language for this app's UI?
@@ -72,6 +211,8 @@ Then echo the resolved choice back as a plain chat message so the user can catch
 Hold the resolved choice as `{primary}` (ISO code + English name); the next batch interpolates it into its labels, which is why Q1 is asked first and alone.
 
 ### Q2, Additional languages + i18n scaffolding (asked alone)
+
+_Non-response: HARD-BLOCK. Re-ask; the i18n teardown (`STRIP_I18N=true`) is never auto-selected. Automatic mode: primary-only, keep scaffolding (`STRIP_I18N=false`)._
 
 The primary is now known, so its name can appear in the labels below. Ask this as its own AskUserQuestion. It folds the old standalone "localize later?" decision into the no-additional-languages branch, so that decision never needs its own round-trip:
 
@@ -98,9 +239,11 @@ Resolve two values from the answer:
 
 ### Q3–Q5, Project identity (one AskUserQuestion, three questions)
 
+_Non-response: HARD-BLOCK for all three. Re-ask; never guess. Automatic mode: title-cased folder name (title), folder name (slug), and the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder (CODEOWNERS), flagged as a required Step 12 follow-up._
+
 These three go together as a group. Ask them in a single AskUserQuestion call:
 
-**GitHub username for CODEOWNERS** (suggest @username format)
+**GitHub username for CODEOWNERS** (suggest @username format). This is a free-text identity value, it must come from the user and is **never fabricated**. If it is unknown (interactive non-response), HARD-BLOCK and re-ask rather than guessing; in automatic mode, use the loud placeholder so a wrong owner never ships.
 
 **Project title** (default: title-cased folder name from above)
 
@@ -148,6 +291,8 @@ printf '* @%s\n' "<github-username>" > .github/CODEOWNERS
 
 `<github-username>` is the bare handle (no leading `@`); the `* @` prefix makes that user the default owner for every path.
 
+If Q3 could not obtain a real handle (automatic mode), `<github-username>` is the placeholder `REPLACE-WITH-YOUR-GITHUB-HANDLE`. Write it anyway, GitHub flags the unknown owner in its CODEOWNERS validation, so the gap is visible. Add a required follow-up to the Step 12 summary: "Edit `.github/CODEOWNERS`, it holds a placeholder owner, set your real GitHub handle." Never substitute a guessed handle.
+
 ## Step 6: Check `.env`
 
 Run the CLI, it copies `.env.example` to `.env` when `.env` is absent, no-op otherwise. Routing through the CLI subprocess bypasses the project's `Write(.env)` deny rule, which guards against Claude writing secrets, not against init seeding from the example file.
@@ -188,7 +333,9 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
   #    prepare hook (avoids a redundant husky/playwright run); react-doctor runs at @latest on demand.
   pnpm remove react-doctor --config.ignore-scripts=true 2>/dev/null || true
   # 3. Delete the package script it added (named `doctor`, or `react-doctor` if `doctor` was taken).
-  pnpm pkg delete scripts.doctor scripts.react-doctor
+  #    The hyphenated key needs bracket+quote form; a bare `scripts.react-doctor` throws
+  #    ERR_PNPM_UNEXPECTED_TOKEN_IN_PROPERTY_PATH and aborts the whole command, leaving `doctor` behind too.
+  pnpm pkg delete scripts.doctor 'scripts["react-doctor"]'
   # 4. Regenerate husky's hook stubs, wiping react-doctor's appended pre-commit block.
   pnpm exec husky
   ```
@@ -256,6 +403,8 @@ GAIA CI has two parts: a pre-merge **audit gate** (the `code-review-audit` agent
 
 (`forensics-triage.yml` is maintainer-only and never ships to or installs on an adopter project. The adopter-side `/gaia-forensics` command files reports to the upstream GAIA repo, which owns the `gaia-forensics` label; nothing about forensics needs configuring here.)
 
+_Non-response: HARD-BLOCK. Re-ask; never auto-decide CI intent on a timeout. Automatic mode: "Yes, I'll enable CI after pushing" (records intent only)._
+
 Use AskUserQuestion (in the user's language; this configuration block stays in English). Include the docs link in the question text so the user can Cmd/Ctrl+click to read what GAIA CI is before answering:
 
 > Do you plan to run GAIA CI (GitHub Actions) for this project?
@@ -316,6 +465,8 @@ The same probe set applies when setting up from an existing clone, `/setup-gaia`
 ## Step 9: Configure GAIA CI (Phase A)
 
 GAIA CI is an optional automated maintenance system that runs four jobs on a smart schedule (wiki sync, dep refresh via `/update-deps`, `pnpm audit`, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia` to wire up tokens and activate CI (Phase B).
+
+_Non-response (the run-mode question in Branch A or B): SAFE-DEFAULT. Re-ask once, then apply the recommended default (all `ci` when CI was enabled, all `local` when CI was declined), name it plainly, and continue to the terminal `configure-automation` write. Automatic mode: same defaults, no re-ask. This never claims the user is absent, and it never skips the mandatory terminal write._
 
 **Carry the Configure-CI decision forward.** The Configure CI integrations block above already recorded whether the user intends to enable CI (`enabled`) or run local only (`declined`). Hold that decision as init-state for this step, do NOT re-probe the filesystem (no workflow files exist at init time, so there is nothing to detect). Step 9 branches on it: a CI decline means CI is not a valid target for any maintenance tool, so the contradictory "Enable all four in CI mode" recommendation is never shown.
 
@@ -387,6 +538,8 @@ If the CLI exits non-zero, surface the structured-error JSON verbatim and stop. 
 End of Step 9.
 
 ## Step 10: Mentorship opt-in
+
+_Non-response: SAFE-DEFAULT. Re-ask once, then default to "Not now" (`mentorship.enabled = false`, `analytics.enabled = false`), say so plainly, and proceed. Automatic mode: same. Never assert the user is absent._
 
 Tell the user (in their language): "GAIA includes an optional mentorship layer that learns how you work and adapts in-session, fully on your machine, never sent off it. Let's set the default."
 
@@ -505,6 +658,8 @@ Then run the CLI's init finalize step, it removes the `/init` interceptor hook, 
 ```
 
 Then output the message below verbatim. Output the `cd` line exactly as written, even though Claude is currently running inside the project folder: when the user exits Claude back to the terminal, their shell returns to the directory they launched from (the parent), not the project folder. Do not tell the user they are "already inside" the folder or that they can skip the `cd`.
+
+**If `.github/CODEOWNERS` holds the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder** (automatic mode, or any run where a real handle was never obtained), prepend this required follow-up to the message: "⚠ Required: `.github/CODEOWNERS` has a placeholder owner. Edit it to set your real GitHub handle before you push."
 
 > <Project Title> is ready for development. To pick up the new plugin and skill state, exit Claude, then from your terminal:
 >
