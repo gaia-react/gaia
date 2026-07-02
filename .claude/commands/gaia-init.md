@@ -681,15 +681,13 @@ Then output the message below verbatim. Output the `cd` line exactly as written,
 
 **If `.github/CODEOWNERS` holds the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder** (automatic mode where gh detection also failed, or any run where a real handle was never obtained), prepend this required follow-up to the message: "⚠ Required: `.github/CODEOWNERS` has a placeholder owner. Edit it to set your real GitHub handle before you push." A gh-detected or user-typed handle writes a real owner, so this warning does not appear.
 
-> <Project Title> is ready for development. To pick up the new plugin and skill state, exit Claude, then from your terminal:
+> <Project Title> is ready for development. Exit Claude, then from your terminal:
 >
 > ```
 > cd <project-folder-name>
 > ```
 >
-> Then start Claude again.
->
-> After you create your GitHub repo and push, run `/setup-gaia` to wire up tokens and enable CI.
+> Then start Claude again, and run `/setup-gaia`.
 
 ## On failure: resume
 
