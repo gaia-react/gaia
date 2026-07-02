@@ -21936,7 +21936,7 @@ import {
 import path31 from "node:path";
 var HELP_TEXT29 = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the three worktree shared-state symlinks pointing at
+  Idempotently create the four worktree shared-state symlinks pointing at
   the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
   No-op on a main checkout (not a linked worktree); exits 0 with a
   one-line "not a linked worktree" message.
@@ -21947,6 +21947,7 @@ var HELP_TEXT29 = `Usage: gaia setup link-worktree [--json]
 var HELP_TOKENS27 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SHARED_PATHS = [
   { ensureTargetDir: false, relativePath: ".gaia/local/setup-state.json" },
+  { ensureTargetDir: false, relativePath: ".gaia/local/mentorship.json" },
   { ensureTargetDir: true, relativePath: ".gaia/cache" },
   { ensureTargetDir: true, relativePath: ".gaia/local/audit" }
 ];

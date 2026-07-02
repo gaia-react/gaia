@@ -39,6 +39,7 @@
     ".claude/hooks/post-audit-status.sh": "owned",
     ".claude/hooks/pr-merge-audit-check.sh": "owned",
     ".claude/hooks/red-verify-commit-check.sh": "owned",
+    ".claude/hooks/serena-code-search-guard.sh": "owned",
     ".claude/hooks/telemetry-task-postuse.sh": "owned",
     ".claude/hooks/wiki-commit-nudge.sh": "owned",
     ".claude/hooks/wiki-drift-check.sh": "owned",
@@ -545,6 +546,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-01T19:33:42.386Z",
+  "generated": "2026-07-02T19:43:07.013Z",
   "version": "1.6.1"
 }

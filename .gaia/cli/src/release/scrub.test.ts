@@ -942,3 +942,147 @@ transforms:
     expect(out).toContain('wikilink-to-excluded');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Derived excluded-workflow-ref check
+// ---------------------------------------------------------------------------
+
+const WORKFLOW_DERIVED_CONFIG = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: excluded-workflow-ref
+        derive: excluded-workflows
+        scope:
+          - ".claude/**"
+          - ".github/workflows/**"
+          - ".gaia/cli/templates/**"
+        line-allowlist:
+          - "\\\\[ -f \\\\.github/workflows/forensics-triage\\\\.yml \\\\]"
+`;
+
+// Representative `.gaia/release-exclude`: three excluded workflows, one of
+// which (code-review-audit.yml) is installed on demand from a shipped template,
+// plus non-workflow lines the workflow derivation must ignore.
+const WORKFLOW_EXCLUDE_FIXTURE = [
+  '# Paths excluded from the distribution tarball.',
+  '',
+  '.github/workflows/release.yml',
+  '.github/workflows/forensics-triage.yml',
+  '.github/workflows/code-review-audit.yml',
+  '.gaia/release-exclude',
+  'wiki/entities',
+].join('\n');
+
+// code-review-audit.yml is excluded from the tarball yet installed on demand
+// by /setup-gaia, so its render template ships; that `.tmpl` is what keeps it
+// out of the never-present set.
+const seedWorkflowSource = (sandbox: Sandbox): void => {
+  sandbox.writeSource('.gaia/release-exclude', WORKFLOW_EXCLUDE_FIXTURE);
+  sandbox.writeSource(
+    '.gaia/cli/templates/workflows/code-review-audit.yml.tmpl',
+    'name: Code Review Audit\n'
+  );
+};
+
+describe('excluded-workflow-ref derived check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('flags a reference to a never-present excluded workflow', () => {
+    sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
+    seedWorkflowSource(sandbox);
+    sandbox.writeStaged(
+      '.gaia/cli/templates/workflows/audit.yml.tmpl',
+      '# Pinned SHAs match `.github/workflows/forensics-triage.yml`:\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('excluded-workflow-ref');
+    expect(out).toContain('.github/workflows/forensics-triage.yml');
+  });
+
+  test('does not flag an excluded workflow that ships a render template', () => {
+    // code-review-audit.yml is release-excluded but installed on demand, so a
+    // reference to it is legitimate and must not trip the check.
+    sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
+    seedWorkflowSource(sandbox);
+    sandbox.writeStaged(
+      '.claude/commands/setup-gaia.md',
+      'It installs `.github/workflows/code-review-audit.yml` (the PR gate).\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('exempts a `[ -f ]` existence guard via the line-allowlist', () => {
+    sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
+    seedWorkflowSource(sandbox);
+    sandbox.writeStaged(
+      '.claude/commands/setup-gaia.md',
+      'elif [ -f .github/workflows/forensics-triage.yml ] && gh repo view; then\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('flags a newly excluded workflow with no config change (drift-proof)', () => {
+    sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
+    seedWorkflowSource(sandbox);
+    // A workflow that never appeared in any hand-maintained alternation.
+    sandbox.writeSource(
+      '.gaia/release-exclude',
+      `${WORKFLOW_EXCLUDE_FIXTURE}\n.github/workflows/brand-new-maintainer.yml\n`
+    );
+    sandbox.writeStaged(
+      '.claude/agents/foo.md',
+      'Pinned SHAs match .github/workflows/brand-new-maintainer.yml.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('brand-new-maintainer.yml');
+  });
+
+  test('does not flag a shipped (non-excluded) workflow reference', () => {
+    sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
+    seedWorkflowSource(sandbox);
+    sandbox.writeStaged(
+      '.claude/agents/foo.md',
+      'All gating mirrors .github/workflows/tests.yml at the step level.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('derives the workflow set from cwd release-exclude, not staging', () => {
+    // `.gaia/release-exclude` excludes itself, so it never reaches staging. An
+    // implementation reading it from the staging tree finds nothing and passes.
+    sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
+    seedWorkflowSource(sandbox);
+    sandbox.writeStaged(
+      '.claude/agents/bar.md',
+      'See .github/workflows/release.yml for the tag trigger.\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('.github/workflows/release.yml');
+  });
+});
