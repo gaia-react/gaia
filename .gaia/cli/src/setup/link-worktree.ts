@@ -1,10 +1,11 @@
 /**
  * `gaia setup link-worktree [--json]` handler.
  *
- * Idempotently creates the three SPEC-005 shared-state symlinks from the
+ * Idempotently creates the four SPEC-005 shared-state symlinks from the
  * current linked worktree into the main checkout:
  *
  *   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
+ *   <worktree>/.gaia/local/mentorship.json  -> <main>/.gaia/local/mentorship.json
  *   <worktree>/.gaia/cache/                  -> <main>/.gaia/cache/
  *   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
  *
@@ -33,7 +34,7 @@ import {resolveMainWorktreeRoot} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the three worktree shared-state symlinks pointing at
+  Idempotently create the four worktree shared-state symlinks pointing at
   the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
   No-op on a main checkout (not a linked worktree); exits 0 with a
   one-line "not a linked worktree" message.
@@ -85,11 +86,18 @@ type SharedPathSpec = {
 };
 
 /**
- * Frozen path set; three entries, in this order, always present in the
+ * Frozen path set; four entries, in this order, always present in the
  * output `actions` array regardless of result. See SPEC-005 plan README.
+ *
+ * `mentorship.json` is a per-machine file entry alongside `setup-state.json`
+ * (ensureTargetDir: false, dangles until first write). Sharing it keeps the
+ * finalize gate, which resolves from the main-worktree root, and the
+ * mentorship write/read path, which resolves from the linked root, pointing
+ * at one file so a decision made in a linked worktree satisfies the gate.
  */
 const SHARED_PATHS: readonly SharedPathSpec[] = [
   {ensureTargetDir: false, relativePath: '.gaia/local/setup-state.json'},
+  {ensureTargetDir: false, relativePath: '.gaia/local/mentorship.json'},
   {ensureTargetDir: true, relativePath: '.gaia/cache'},
   {ensureTargetDir: true, relativePath: '.gaia/local/audit'},
 ];
