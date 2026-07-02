@@ -43,6 +43,8 @@ coverage
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
+# React Doctor installs its Claude Code skill project-local; kept per-machine, never committed.
+.claude/skills/react-doctor/
 # claude-code-action runtime working area (mirrors .claude/ for sandboxed execution)
 .claude-pr/
 
