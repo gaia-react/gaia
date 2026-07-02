@@ -6,7 +6,8 @@
  * The router (`references/wiki.md`) calls:
  *   begin   once, before sync         → cut `wiki-sync/<date>-<sha>` on main
  *   commit  after consolidate & lint   → in-place commit of that stage's edits
- *   finish  once, after lint           → push + PR + auto-merge, return to base
+ *   finish  once, after lint           → push + PR + auto-merge, then wait for
+ *                                        the merge and clean up locally
  *
  * `begin` runs BEFORE sync on purpose: sync's own Step 7 (`gaia wiki sync land
  * --branch-aware`) then sees a feature branch and commits in place rather than
@@ -33,6 +34,7 @@ import {resolveRepoRoot, shortSha} from './util/git.js';
 import {
   UNEXPECTED_EXIT,
   commandSucceeded,
+  finalizeMerge,
   passthroughFailure as passthroughFailureWithPrefix,
   refuse,
   todayUtc,
@@ -58,8 +60,12 @@ const HELP_TEXT = `Usage: gaia wiki chain <begin|commit|finish> [args]
   commit --label "<subject>"   In-place commit of this stage's wiki/ changes.
                                No-op when nothing changed; refuses non-wiki changes.
   finish [--branch-aware]      Push the chain branch, open one PR, enable
-                               auto-merge, return to the base branch. Removes an
-                               empty chain branch; no-op for in-place runs.
+                               auto-merge, then wait for the PR to merge and
+                               clean up locally (return to base, pull, delete the
+                               branch, prune). If the merge does not land within
+                               the wait, auto-merge stays queued and local
+                               cleanup is deferred. Removes an empty chain branch;
+                               no-op for in-place runs.
 
   Exit codes:
     0  success
@@ -72,6 +78,10 @@ type RunOptions = {
   runner?: CommandRunner;
   /** Override "today" for deterministic tests. ISO-8601 date string. */
   today?: string;
+  /** Override the merge-poll attempt count in `finish` (tests pass a small n). */
+  mergePollAttempts?: number;
+  /** Override the inter-poll sleep in `finish` (tests pass a no-op). */
+  sleep?: (ms: number) => void;
 };
 
 const resolveRoot = (cwdOption: string, action: string): string | null => {
@@ -377,15 +387,13 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
     if (!stepOk(result)) return passthroughFailure(result, step.command, step.args);
   }
 
-  // Best-effort return to base. The tree is clean (every stage committed), so
-  // the checkout cannot strand uncommitted work; a failure here does not undo
-  // the queued merge.
-  runner('git', ['checkout', base], {cwd: repoRoot});
-  process.stdout.write(
-    `chain finish: opened PR for ${branch} and enabled auto-merge\n`
-  );
-
-  return EXIT_CODES.OK;
+  // Land like any other PR: `--auto` waits for the gate to go green server side,
+  // then finalizeMerge polls for the merge and cleans up locally (or defers to
+  // the session-start janitor on timeout).
+  return finalizeMerge(runner, repoRoot, branch, base, 'chain finish', {
+    attempts: options.mergePollAttempts,
+    sleep: options.sleep,
+  });
 };
 
 const ACTIONS: Readonly<

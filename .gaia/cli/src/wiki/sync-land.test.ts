@@ -224,7 +224,7 @@ describe('wiki sync land', () => {
     expect(recorded.find((c) => c.command === 'gh')).toBeUndefined();
   });
 
-  test('on main with --branch-aware: branch + commit + push + PR + auto-merge', () => {
+  test('on main with --branch-aware, PR merges: branch + commit + push + PR + auto-merge, then wait + cleanup', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
@@ -241,6 +241,18 @@ describe('wiki sync land', () => {
           argv: ['rev-parse', 'HEAD'],
           result: okResult('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'),
         },
+        {
+          argv: [
+            'pr',
+            'view',
+            'wiki-sync/2026-05-07-bbbbbbb',
+            '--json',
+            'state',
+            '--jq',
+            '.state',
+          ],
+          result: okResult('MERGED\n'),
+        },
       ],
       recorded
     );
@@ -249,10 +261,11 @@ describe('wiki sync land', () => {
       cwd: sandbox.root,
       runner,
       today: '2026-05-07',
+      sleep: () => undefined,
     });
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain(
-      'sync-land: landed via branch-and-PR commit'
+      'sync-land: merged PR for wiki-sync/2026-05-07-bbbbbbb and cleaned up locally'
     );
 
     // Locate the call sequence and verify each verb in order.
@@ -268,7 +281,11 @@ describe('wiki sync land', () => {
       ['git', 'push', '-u', 'origin', 'wiki-sync/2026-05-07-bbbbbbb'],
       ['gh', 'pr', 'create'],
       ['gh', 'pr', 'merge', '--squash', '--auto', '--delete-branch'],
+      ['gh', 'pr', 'view', 'wiki-sync/2026-05-07-bbbbbbb'],
       ['git', 'checkout', 'main'],
+      ['git', 'pull', '--ff-only', 'origin', 'main'],
+      ['git', 'branch', '-D', 'wiki-sync/2026-05-07-bbbbbbb'],
+      ['git', 'fetch', '--prune', 'origin'],
     ] as const;
 
     for (const [index, prefix] of expected.entries()) {
@@ -278,6 +295,66 @@ describe('wiki sync land', () => {
       const slice = observed.slice(0, prefix.length);
       expect(slice).toEqual([...prefix]);
     }
+  });
+
+  test('on main with --branch-aware, merge does not land: auto-merge stays queued, cleanup deferred', () => {
+    sandbox = setupSandbox();
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {
+          argv: ['status', '--porcelain=v1', '-uall'],
+          result: okResult(' M wiki/log.md\n'),
+        },
+        {
+          argv: ['rev-parse', 'HEAD'],
+          result: okResult('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'),
+        },
+        {
+          argv: [
+            'pr',
+            'view',
+            'wiki-sync/2026-05-07-bbbbbbb',
+            '--json',
+            'state',
+            '--jq',
+            '.state',
+          ],
+          result: okResult('OPEN\n'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run(['--branch-aware'], {
+      cwd: sandbox.root,
+      runner,
+      today: '2026-05-07',
+      mergePollAttempts: 3,
+      sleep: () => undefined,
+    });
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain(
+      'auto-merge queued but not yet merged, local cleanup deferred'
+    );
+
+    // Polled the budget, then returned to base but deferred the local cleanup.
+    const pollCalls = recorded.filter(
+      (c) => c.command === 'gh' && c.args[0] === 'pr' && c.args[1] === 'view'
+    );
+    expect(pollCalls).toHaveLength(3);
+    const gitCalls = recorded.filter((c) => c.command === 'git');
+    expect(gitCalls).toContainEqual({
+      args: ['checkout', 'main'],
+      command: 'git',
+    });
+    expect(recorded.find((c) => c.args[0] === 'branch')).toBeUndefined();
+    expect(recorded.find((c) => c.args[0] === 'pull')).toBeUndefined();
+    expect(recorded.find((c) => c.args[0] === 'fetch')).toBeUndefined();
   });
 
   test('protected-branch flow short-circuits on first failing step', () => {

@@ -29321,6 +29321,45 @@ var passthroughFailure2 = (prefix, result, command, args) => {
 `);
   return UNEXPECTED_EXIT17;
 };
+var MERGE_POLL_ATTEMPTS = 10;
+var MERGE_POLL_INTERVAL_MS = 3e4;
+var sleepSync = (ms) => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+};
+var waitForMerge = (runner, cwd, branch, options) => {
+  const attempts = options.attempts ?? MERGE_POLL_ATTEMPTS;
+  const sleep = options.sleep ?? sleepSync;
+  const args = ["pr", "view", branch, "--json", "state", "--jq", ".state"];
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const result = runner("gh", args, { cwd });
+    if (commandSucceeded(result) && (result.stdout ?? "").trim() === "MERGED")
+      return true;
+    if (attempt < attempts - 1) sleep(MERGE_POLL_INTERVAL_MS);
+  }
+  return false;
+};
+var cleanupAfterMerge = (runner, cwd, branch, base) => {
+  runner("git", ["checkout", base], { cwd });
+  runner("git", ["pull", "--ff-only", "origin", base], { cwd });
+  runner("git", ["branch", "-D", branch], { cwd });
+  runner("git", ["fetch", "--prune", "origin"], { cwd });
+};
+var finalizeMerge = (runner, cwd, branch, base, prefix, options) => {
+  if (waitForMerge(runner, cwd, branch, options)) {
+    cleanupAfterMerge(runner, cwd, branch, base);
+    process.stdout.write(
+      `${prefix}: merged PR for ${branch} and cleaned up locally
+`
+    );
+    return EXIT_CODES.OK;
+  }
+  runner("git", ["checkout", base], { cwd });
+  process.stdout.write(
+    `${prefix}: opened PR for ${branch}; auto-merge queued but not yet merged, local cleanup deferred
+`
+  );
+  return EXIT_CODES.OK;
+};
 
 // src/wiki/chain.ts
 var WIKI_CHAIN_BRANCH_PREFIX = "wiki-sync/";
@@ -29335,8 +29374,12 @@ var HELP_TEXT46 = `Usage: gaia wiki chain <begin|commit|finish> [args]
   commit --label "<subject>"   In-place commit of this stage's wiki/ changes.
                                No-op when nothing changed; refuses non-wiki changes.
   finish [--branch-aware]      Push the chain branch, open one PR, enable
-                               auto-merge, return to the base branch. Removes an
-                               empty chain branch; no-op for in-place runs.
+                               auto-merge, then wait for the PR to merge and
+                               clean up locally (return to base, pull, delete the
+                               branch, prune). If the merge does not land within
+                               the wait, auto-merge stays queued and local
+                               cleanup is deferred. Removes an empty chain branch;
+                               no-op for in-place runs.
 
   Exit codes:
     0  success
@@ -29559,12 +29602,10 @@ var finish = (argv, options) => {
     const result = runner(step.command, step.args, { cwd: repoRoot });
     if (!stepOk(result)) return passthroughFailure3(result, step.command, step.args);
   }
-  runner("git", ["checkout", base], { cwd: repoRoot });
-  process.stdout.write(
-    `chain finish: opened PR for ${branch} and enabled auto-merge
-`
-  );
-  return EXIT_CODES.OK;
+  return finalizeMerge(runner, repoRoot, branch, base, "chain finish", {
+    attempts: options.mergePollAttempts,
+    sleep: options.sleep
+  });
 };
 var ACTIONS = {
   begin,
@@ -31220,7 +31261,8 @@ var run69 = (argv, options = {}) => {
 var HELP_TEXT58 = `Usage: gaia wiki sync land [--branch-aware]
 
   Land staged wiki changes via the correct branch strategy:
-    - on main/master: refuses unless --branch-aware (then branch + PR + auto-merge)
+    - on main/master: refuses unless --branch-aware (then branch + PR + auto-merge,
+                      then wait for the merge and clean up locally)
     - elsewhere:      in-place commit on the current branch
 
   Exit codes:
@@ -31326,16 +31368,14 @@ var protectedBranchLanding = (ctx, options) => {
     const result = runStep(ctx.runner, step, ctx.cwd);
     if (!stepSucceeded2(result)) return passthroughFailure4(result, step);
   }
-  runStep(
+  return finalizeMerge(
     ctx.runner,
-    { args: ["checkout", ctx.originalBranch], command: "git" },
-    ctx.cwd
+    ctx.cwd,
+    branchName,
+    ctx.originalBranch,
+    "sync-land",
+    { attempts: options.mergePollAttempts, sleep: options.sleep }
   );
-  process.stdout.write(
-    `sync-land: landed via branch-and-PR commit ${ctx.shortHead}
-`
-  );
-  return EXIT_CODES.OK;
 };
 var run70 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS56.has(argv[0])) {
@@ -31405,7 +31445,11 @@ var run70 = (argv, options = {}) => {
     shortHead
   };
   if (isProtectedBranch(branch)) {
-    return protectedBranchLanding(ctx, { today: options.today ?? todayUtc3() });
+    return protectedBranchLanding(ctx, {
+      mergePollAttempts: options.mergePollAttempts,
+      sleep: options.sleep,
+      today: options.today ?? todayUtc3()
+    });
   }
   return inPlaceLanding(ctx);
 };
