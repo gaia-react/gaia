@@ -4,8 +4,15 @@
    tests exercise path-construction logic with `/tmp/fake-...` synthetic
    prefixes; nothing is written. The runtime tests use mkdtempSync(tmpdir())
    which is the recommended sandboxing pattern. */
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
-import {existsSync, mkdtempSync, rmSync, statSync} from 'node:fs';
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
@@ -97,7 +104,7 @@ describe('ensureMentorshipDirs', () => {
     rmSync(homeDirectory, {force: true, recursive: true});
   });
 
-  test('creates the slug -> gaia -> telemetry -> mentorship chain at mode 700', async () => {
+  test('creates the gaia -> telemetry -> mentorship chain at mode 700', async () => {
     const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
 
     await ensureMentorshipDirectories(roots);
@@ -105,9 +112,39 @@ describe('ensureMentorshipDirs', () => {
     expect(existsSync(roots.mentorshipDir)).toBe(true);
     const telemetryDirectory = path.dirname(roots.mentorshipDir);
     const gaiaDirectory = path.dirname(telemetryDirectory);
+
+    expect(statSync(gaiaDirectory).mode & 0o777).toBe(0o700);
+    expect(statSync(telemetryDirectory).mode & 0o777).toBe(0o700);
+    expect(statSync(roots.mentorshipDir).mode & 0o777).toBe(0o700);
+  });
+
+  test('leaves a pre-existing Claude-owned slug dir (0755) untouched and emits no mode warning', async () => {
+    const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
+    const telemetryDirectory = path.dirname(roots.mentorshipDir);
+    const gaiaDirectory = path.dirname(telemetryDirectory);
     const slugDirectory = path.dirname(gaiaDirectory);
 
-    expect(statSync(slugDirectory).mode & 0o777).toBe(0o700);
+    // Simulate Claude Code having already created ~/.claude/projects/<slug>
+    // at 0755 (it owns that directory; it also holds transcripts + memory/).
+    mkdirSync(slugDirectory, {recursive: true});
+    chmodSync(slugDirectory, 0o755);
+
+    const stderrSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    await ensureMentorshipDirectories(roots);
+
+    const stderrOutput = stderrSpy.mock.calls
+      .map(([chunk]) => String(chunk))
+      .join('');
+    stderrSpy.mockRestore();
+
+    // No mentorship_dir_mode_unexpected warning for the Claude-owned parent.
+    expect(stderrOutput).not.toContain('mentorship_dir_mode_unexpected');
+    // The Claude-owned slug dir is left exactly as-is.
+    expect(statSync(slugDirectory).mode & 0o777).toBe(0o755);
+    // GAIA-owned segments are tightened to 0700.
     expect(statSync(gaiaDirectory).mode & 0o777).toBe(0o700);
     expect(statSync(telemetryDirectory).mode & 0o777).toBe(0o700);
     expect(statSync(roots.mentorshipDir).mode & 0o777).toBe(0o700);

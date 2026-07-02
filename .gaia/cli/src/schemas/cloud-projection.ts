@@ -84,6 +84,9 @@ export type PlanRevisedCloudPayload = z.infer<typeof PlanRevisedCloudPayload>;
 export const TimeToResolvedSpecCloudPayload = z.strictObject({
   abandoned: z.boolean(),
   area_tags: z.array(z.string()),
+  // Optional auto-mode partition marker; see TimeToResolvedSpecPayload. Not
+  // identity-bearing, so it is safe to project to the cloud stream.
+  auto: z.boolean().optional(),
   duration_seconds: z.number().int(),
   question_count: z.number().int(),
   spec_id: z.string(),

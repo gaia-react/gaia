@@ -92,6 +92,11 @@ export type PlanRevisedPayload = z.infer<typeof PlanRevisedPayload>;
 export const TimeToResolvedSpecPayload = z.object({
   abandoned: z.boolean(),
   area_tags: AreaTagsSchema,
+  // Optional partition marker: true when an auto-mode `/gaia-spec` run (the
+  // agent answered its own Socratic questions) produced this SPEC. Absent
+  // means a human-driven run. Consumers partition on it so auto-mode pacing
+  // does not pollute the human baseline.
+  auto: z.boolean().optional(),
   duration_seconds: z.number().int().min(0),
   question_count: z.number().int().min(0),
   spec_id: z.string().regex(SPEC_ID_REGEX),

@@ -14780,6 +14780,11 @@ var PlanRevisedPayload = external_exports.object({
 var TimeToResolvedSpecPayload = external_exports.object({
   abandoned: external_exports.boolean(),
   area_tags: AreaTagsSchema,
+  // Optional partition marker: true when an auto-mode `/gaia-spec` run (the
+  // agent answered its own Socratic questions) produced this SPEC. Absent
+  // means a human-driven run. Consumers partition on it so auto-mode pacing
+  // does not pollute the human baseline.
+  auto: external_exports.boolean().optional(),
   duration_seconds: external_exports.number().int().min(0),
   question_count: external_exports.number().int().min(0),
   spec_id: external_exports.string().regex(SPEC_ID_REGEX)
@@ -14941,13 +14946,7 @@ var ensureMentorshipDirs = async (roots) => {
   const { mentorshipDir } = roots;
   const telemetryDirectory = path2.dirname(mentorshipDir);
   const gaiaDirectory = path2.dirname(telemetryDirectory);
-  const slugDirectory = path2.dirname(gaiaDirectory);
-  for (const directory of [
-    slugDirectory,
-    gaiaDirectory,
-    telemetryDirectory,
-    mentorshipDir
-  ]) {
+  for (const directory of [gaiaDirectory, telemetryDirectory, mentorshipDir]) {
     await ensureOffProjectDirectoryCreatedTight(directory);
   }
 };
@@ -24926,6 +24925,9 @@ var PlanRevisedCloudPayload = external_exports.strictObject({
 var TimeToResolvedSpecCloudPayload = external_exports.strictObject({
   abandoned: external_exports.boolean(),
   area_tags: external_exports.array(external_exports.string()),
+  // Optional auto-mode partition marker; see TimeToResolvedSpecPayload. Not
+  // identity-bearing, so it is safe to project to the cloud stream.
+  auto: external_exports.boolean().optional(),
   duration_seconds: external_exports.number().int(),
   question_count: external_exports.number().int(),
   spec_id: external_exports.string()
@@ -25073,6 +25075,7 @@ var FLAG_DEFINITIONS = {
   "--area-tags": { kind: "list", target: "areaTags" },
   "--attempts": { kind: "number", target: "attempts" },
   "--auditor-type": { kind: "string", target: "auditorType" },
+  "--auto": { kind: "boolean", target: "auto" },
   "--classification": { kind: "string", target: "classification" },
   "--context-request-class": { kind: "string", target: "contextRequestClass" },
   "--duration-seconds": { kind: "number", target: "durationSeconds" },
@@ -25190,6 +25193,7 @@ var flagsToPayload = (eventType, flags) => {
   assign("question_count", flags.questionCount);
   assign("duration_seconds", flags.durationSeconds);
   assign("abandoned", flags.abandoned);
+  assign("auto", flags.auto);
   assign("pr_number", flags.prNumber);
   assign("finding_class", flags.findingClass);
   assign("severity", flags.severity);

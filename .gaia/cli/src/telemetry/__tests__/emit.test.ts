@@ -184,6 +184,41 @@ describe('handleEmit', () => {
     expect(cloudLine.payload?.abandoned).toBe(true);
   });
 
+  test('--auto true lands in both mentorship + cloud payloads (no drift)', async () => {
+    await enableMentorship(sandbox.roots);
+
+    const exit = await handleEmit(
+      [...timeToResolvedArgv('false'), '--auto', 'true'],
+      {roots: sandbox.roots}
+    );
+
+    expect(exit).toBe(EXIT_CODES.OK);
+
+    const cloudLine = JSON.parse(
+      readLines(todayJsonl(sandbox.roots.cloudDir))[0] ?? '{}'
+    ) as {payload?: Record<string, unknown>};
+    const mentorshipLine = JSON.parse(
+      readLines(todayJsonl(sandbox.roots.mentorshipDir))[0] ?? '{}'
+    ) as {payload?: Record<string, unknown>};
+
+    expect(cloudLine.payload?.auto).toBe(true);
+    expect(mentorshipLine.payload?.auto).toBe(true);
+  });
+
+  test('omitting --auto leaves the field absent (human-mode default)', async () => {
+    await enableMentorship(sandbox.roots);
+
+    const exit = await handleEmit(timeToResolvedArgv('false'), {
+      roots: sandbox.roots,
+    });
+
+    expect(exit).toBe(EXIT_CODES.OK);
+    const cloudLine = JSON.parse(
+      readLines(todayJsonl(sandbox.roots.cloudDir))[0] ?? '{}'
+    ) as {payload?: Record<string, unknown>};
+    expect(cloudLine.payload).not.toHaveProperty('auto');
+  });
+
   test('--abandoned rejects a non-boolean value, no writes', async () => {
     await enableMentorship(sandbox.roots);
 
