@@ -5,7 +5,7 @@ package: react-doctor
 version: latest (npx, not a project dependency)
 role: react-quality-scanner
 created: 2026-06-23
-updated: 2026-06-23
+updated: 2026-07-02
 tags: [dependency, quality, ci]
 ---
 
@@ -17,6 +17,7 @@ Deterministic scanner for React security, performance, correctness, and accessib
 
 - Config: `doctor.config.ts` (repo root). Exactly one config file exists (see Single config below).
 - Run: `npx react-doctor@latest .`. react-doctor is not a project dependency; it is always invoked at latest via `npx`. The config therefore stays a plain `export default` and does not import react-doctor's config type.
+- Install (`/gaia-init`, `/setup-gaia`): `npx -y react-doctor@latest install --yes` installs the skill for every agent it detects. The Claude Code skill lands project-local at `.claude/skills/react-doctor/` (gitignored, kept per-machine, never committed). For any non-Claude agent it detects (Copilot, Warp) it also writes a `.agents/skills/react-doctor/` copy; GAIA strips that copy along with the installer's standalone GitHub Actions workflow, commit-hook block, `doctor` package script, and pinned `react-doctor` devDependency, so the Claude Code skill remains the sole trigger point.
 - Runs automatically pre-merge inside the [[Code Review Audit Agent]] (alongside [[knip]] and [[pnpm-audit]]). Findings are advisory and never block the audit marker.
 - Not part of the [[Quality Gate]] (pre-commit).
 

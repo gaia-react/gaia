@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-06-24
+updated: 2026-07-02
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -41,7 +41,7 @@ Run `/gaia-release` on a clean `main`. The command is a 15-step orchestrator:
 4. Run the [[Quality Gate]]. Stop on failure.
 5. Create `release/vX.Y.Z` branch.
 6. Bump `package.json` + `.gaia/VERSION`.
-7. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [X.Y.Z] - YYYY-MM-DD` (no `v` prefix; `release.yml` extracts the section by the bare version) and seed a new empty `## [Unreleased]`.
+7. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [X.Y.Z] - YYYY-MM-DD` (no `v` prefix; `release.yml` extracts the section by the bare version) and seed a new empty `## [Unreleased]`. The graduator also keeps the Keep-a-Changelog reference-link block current: it repoints the `[Unreleased]` compare link at the new version and inserts a `[X.Y.Z]` release-tag definition, deriving the repo base URL from the existing `[Unreleased]` link.
 8. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
 9. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
 10. Regenerate `.gaia/manifest.json` via `gaia-maintainer release manifest`.

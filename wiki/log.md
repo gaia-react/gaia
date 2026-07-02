@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-02 c3c67aea WORTHY - react-doctor v0.5.8 install-layout fix + setup-gaia token reuse + CHANGELOG graduator link-block fix → wiki/dependencies/react-doctor.md, wiki/concepts/Code Review Audit CI.md, wiki/concepts/Release Workflow.md
+- 2026-07-02 2e1a5c2d SKIP - prior wiki-sync's own commit (state/log/page edits only), nothing new to evaluate
 - 2026-07-02 a3240691 SKIP - command-file (gaia-init.md) CODEOWNERS auto-detect gate logic, no wiki-page surface; pnpm-workspace.yaml quarantine-allowlist aging already covered generically by wiki/decisions/pnpm.md
 - 2026-07-02 1c572b51 WORTHY - local-janitor gains a wiki-sync/* branch-pruning sweep + sync land returns to base branch → wiki/concepts/Local Working State.md, wiki/concepts/Wiki Sync.md
 - 2026-07-02 2565e7d0 SKIP - chore(deps): major bump with call-site update, no architectural change

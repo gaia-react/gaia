@@ -14,7 +14,7 @@ A GitHub Actions pre-merge gate that runs the [[Code Review Audit Agent]] agains
 The maintainer repo keeps it in-tree as the live gate.
 <!-- gaia:maintainer-only:end -->
 
-The workflow authenticates via whichever single repo-scoped secret `/setup-gaia` configured: it wires both `claude_code_oauth_token` and `anthropic_api_key`, so a repo using `ANTHROPIC_API_KEY` instead of `CLAUDE_CODE_OAUTH_TOKEN` (or vice versa) authenticates without any extra configuration.
+The workflow authenticates via whichever secret `/setup-gaia` wires: it always wires both `claude_code_oauth_token` and `anthropic_api_key`, so a repo using `ANTHROPIC_API_KEY` instead of `CLAUDE_CODE_OAUTH_TOKEN` (or vice versa) authenticates without any extra configuration. Before asking which token type to provision, `/setup-gaia` checks whether a `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` secret is already reachable by the repo, at repo scope or via an org-wide secret, and reuses it instead of provisioning a new one, so a repo inside an org that sets the token org-wide never needs a repo-level copy.
 
 The gate has two complementary signals: the existing local marker file at `.gaia/local/audit/<sha>.ok` (gates `gh pr merge` on the contributor's machine, see [[PR Merge Workflow]]) and the `GAIA-Audit:` commit trailer (travels with the commit so CI can recognize an already-audited tree and skip its own run).
 
