@@ -19366,6 +19366,29 @@ var readVersion = (cwd, override) => {
   return parsed.version;
 };
 var UNRELEASED_HEADING = "## [Unreleased]";
+var UNRELEASED_REF_PREFIX = "[Unreleased]:";
+var updateLinkReferences = (body, newVersion) => {
+  const lines = body.split("\n");
+  const refIndex = lines.findIndex(
+    (line) => line.startsWith(UNRELEASED_REF_PREFIX)
+  );
+  if (refIndex === -1) {
+    return body;
+  }
+  const target = (lines[refIndex] ?? "").slice(UNRELEASED_REF_PREFIX.length).trim();
+  const compareIndex = target.indexOf("/compare/");
+  if (compareIndex === -1) {
+    return body;
+  }
+  const baseUrl = target.slice(0, compareIndex);
+  lines.splice(
+    refIndex,
+    1,
+    `${UNRELEASED_REF_PREFIX} ${baseUrl}/compare/v${newVersion}...HEAD`,
+    `[${newVersion}]: ${baseUrl}/releases/tag/v${newVersion}`
+  );
+  return lines.join("\n");
+};
 var graduateChangelog = (current, newVersion, block, today) => {
   const versionHeading = `## [${newVersion}] - ${today}`;
   if (current.includes(`## [${newVersion}]`)) {
@@ -19398,7 +19421,8 @@ var graduateChangelog = (current, newVersion, block, today) => {
   while (tail.length > 0 && (tail[0] ?? "").trim() === "") {
     tail.shift();
   }
-  const updated = [...head, ...newSection, ...tail].join("\n");
+  const graduated = [...head, ...newSection, ...tail].join("\n");
+  const updated = updateLinkReferences(graduated, newVersion);
   return { kind: "ok", updated };
 };
 var run32 = (argv, options = {}) => {
