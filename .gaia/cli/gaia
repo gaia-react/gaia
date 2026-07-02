@@ -14608,6 +14608,7 @@ var MentorshipConfigSchema = external_exports.object({
 // src/mentorship/config.ts
 var CONFIG_FILENAME = "mentorship.json";
 var resolveConfigPath = (roots) => path.join(path.dirname(roots.projectIdPath), CONFIG_FILENAME);
+var mentorshipConfigExists = (roots) => existsSync(resolveConfigPath(roots));
 var PRE_DECISION_DEFAULT = {
   analytics: { enabled: false },
   decided_at: null,
@@ -21889,6 +21890,15 @@ var run41 = (argv, options = {}) => {
       code: "setup_steps_pending",
       message: `cannot finalize: ${pending.length} step(s) pending`,
       pending,
+      subcommand: "setup finalize"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const roots = resolveStorageRoots({ repoRoot });
+  if (!mentorshipConfigExists(roots)) {
+    structuredError({
+      code: "mentorship_decision_missing",
+      message: "cannot finalize: .gaia/local/mentorship.json is absent (the mentorship decision was never persisted)",
       subcommand: "setup finalize"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
