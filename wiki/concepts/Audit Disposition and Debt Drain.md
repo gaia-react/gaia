@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-02
+updated: 2026-07-03
 tags: [concept, claude, review]
 ---
 
@@ -116,7 +116,7 @@ The local re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`
 
 ## /gaia-debt: draining the backlog
 
-`/gaia-debt` (`.claude/commands/gaia-debt.md`, playbook at `.claude/skills/gaia/references/debt.md`) drains the `tech-debt` backlog the audit files. It resolves **exactly one** issue per invocation, never a batch, on a fresh branch through the same `code-review-audit` marker gate every feature PR passes, with `Closes #N` in the PR body so the merge closes the issue natively. The skill opens the fix PR and stops; it never runs `gh pr merge`.
+`/gaia-debt` (`.claude/commands/gaia-debt.md`, playbook at `.claude/skills/gaia/references/debt.md`) drains the `tech-debt` backlog the audit files. It resolves **exactly one** issue per invocation, never a batch, on a fresh branch through the same `code-review-audit` marker gate every feature PR passes, with `Closes #N` in the PR body so the merge closes the issue natively. After opening the fix PR, it confirms intent (open-only or drive to merge, defaulting to merge) and, on merge, resolves the PR to completion through the same [[PR Merge Workflow]] every standard merge follows: resolve the audit mode, earn a real `code-review-audit` marker for HEAD, clear the maintainer-only CHANGELOG gate, merge with `--auto` under branch protection (never `--admin`), then verify the PR reports `MERGED` before cleanup. It never bypasses, fakes, or pre-empts the marker gate, and never substitutes a bare `gh pr merge` for the workflow's handshake.
 
 The ordering is a pure, source-checkable sort, never an LLM evaluator: severity descending (`severity:critical → 3`, `severity:important → 2`, `severity:suggestion → 1`, a label-less issue falls to the suggestion band), then `createdAt` ascending within a band (oldest first, FIFO). `list` prints the ordered backlog; `why <issue-number>` explains where one issue sits and its recommended handler class; bare or `drain` runs the interactive, human-gated flow.
 

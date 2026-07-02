@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-07-02
+updated: 2026-07-03
 tags: [concept, ci, audit, claude]
 ---
 
@@ -105,6 +105,8 @@ The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the f
 | `default_mode`        | `ci`                 | Per-author fallback audit mode when no `audit_authors` pair matches (see [[#Per-author audit mode]]). `ci` runs the audit in CI; `local` stands CI down and defers to the local merge path.                                                                                                                  |
 | `override_label`      | `run-audit`          | PR label that forces CI to run the audit regardless of the author's resolved mode. Present on the PR ⇒ `ci`.                                                                                                                                                                                                |
 | `audit_authors`       | `""` (empty)         | `login=mode` pairs (case-insensitive login) overriding `default_mode` per author. First matching login wins; an unmatched author falls back to `default_mode`.                                                                                                                                              |
+
+`/setup-gaia` seeds `default_mode` and `audit_authors` during onboarding rather than leaving the adopter to hand-edit the file. It opens with a solo-or-team gate: a solo engineer is set to local audits automatically (better day-to-day feedback loop, with CI kept as a failsafe) and their own `audit_authors` entry is pre-recorded, so no further prompt appears. A team instead gets a single Local-recommended-or-CI choice per developer, with the fail-closed guarantee (see [[#Ruleset-protected repos: `local` mode is unreachable]]) spelled out before they choose.
 
 ## Per-author audit mode
 

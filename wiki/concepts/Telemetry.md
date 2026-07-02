@@ -3,7 +3,7 @@ type: concept
 title: Telemetry
 status: active
 created: 2026-05-07
-updated: 2026-06-24
+updated: 2026-07-03
 tags: [concept, cli, telemetry, mentorship]
 ---
 
@@ -52,7 +52,9 @@ Every emit writes an `Envelope` (Zod `EnvelopeSchema` in `src/schemas/envelope.t
 
 ## Mentorship opt-in
 
-`gaia-init` Step 10 presents a verbatim privacy explainer and a three-option `AskUserQuestion`. Opt-in state is machine-local. Mentorship is disabled by default; emits that target the mentorship stream short-circuit when `enabled === false`.
+`gaia-init` Step 10 presents a verbatim privacy explainer and a three-option `AskUserQuestion`, writing the decision to the machine-local `.gaia/local/mentorship.json`. Opt-in state is machine-local. Mentorship is disabled by default; emits that target the mentorship stream short-circuit when `enabled === false`.
+
+`setup finalize` gates on that file's existence, not its content: it refuses to stamp `completed_at` while `mentorship.json` is absent, independent of `--force`, emitting a stable `mentorship_decision_missing` error code. A legitimate `enabled: null` file still passes; only a missing file blocks. `/setup-gaia` Phase 2 re-surfaces Step 10's opt-in prompt whenever the file is absent or `enabled` is `null`, so a decision dropped by an earlier interrupted or automated run self-heals instead of leaving mentorship stuck at the pre-decision default forever; `gaia-init` Step 12 carries a bounded, code-specific self-heal for the same gate on the automated init path. `mentorship.json` is part of the worktree shared-state set, so a decision recorded in a linked worktree is visible from the main worktree root the finalize gate reads, and vice versa.
 
 ## Profile computation
 

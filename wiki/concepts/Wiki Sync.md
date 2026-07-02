@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-03
-updated: 2026-07-02
+updated: 2026-07-03
 tags: [concept, claude, workflow, wiki]
 ---
 
@@ -75,7 +75,7 @@ For each commit since `last_evaluated_sha`:
 3. **Log every decision** (worthy and skipped) to `wiki/log.md` with a one-line reason.
    3b. **Fabrication guard.** Before advancing state, asserts every WORTHY edit was actually written to disk: a per-path porcelain check confirms each claimed page shows as changed or created, and a broader content-change check confirms at least one wiki content file is modified when the WORTHY set is non-empty. Any failure aborts the run before state advances, leaving `last_evaluated_sha` unchanged so the next sync re-evaluates the same range.
 4. **Advance state** to current HEAD.
-5. **Commit** the wiki changes as `wiki: sync through <short_sha> (N updated, N skipped)`. The landing strategy is branch-aware: on `main` (push-protected), it creates `wiki-sync/<date>-<short_sha>`, pushes, and enables auto-merge (`gh pr merge --squash --auto --delete-branch`), which removes the remote head branch on merge regardless of the repo's auto-delete-head-branches setting; it then returns to the base branch so the local `wiki-sync/*` branch is left behind for [[Local Working State|the session-start janitor]] to prune once its upstream shows `[gone]`. On any other branch (feature/fix/release/worktree), it commits in place so the maintainer's working state isn't fragmented.
+5. **Commit** the wiki changes as `wiki: sync through <short_sha> (N updated, N skipped)`. The landing strategy is branch-aware: on `main` (push-protected), it creates `wiki-sync/<date>-<short_sha>`, pushes, and enables auto-merge (`gh pr merge --squash --auto --delete-branch`), which removes the remote head branch on merge regardless of the repo's auto-delete-head-branches setting; it then polls the PR (bounded attempts) until it merges and cleans up locally itself, returning to the base branch, pulling, deleting the local `wiki-sync/*` branch, and pruning. If the merge does not land within the poll window, auto-merge stays queued and cleanup is deferred to [[Local Working State|the session-start janitor]], which prunes the branch once its upstream shows `[gone]`. On any other branch (feature/fix/release/worktree), it commits in place so the maintainer's working state isn't fragmented.
 
 When invoked as part of the no-arg `/gaia-wiki` full chain, `gaia wiki chain begin` pre-cuts the branch before sync runs, so this same step commits in place rather than opening its own PR. `gaia wiki chain finish` opens one PR covering all stage commits (sync, consolidate, lint) at the end of the chain. Standalone `/gaia-wiki sync` is unaffected: it still self-lands via `sync land --branch-aware`.
 

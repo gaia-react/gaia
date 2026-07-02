@@ -11,6 +11,18 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-02 d023c5b4 SKIP - chore(deps): version bump only
+- 2026-07-02 6e150f73 WORTHY - gaia-debt now drives the fix PR through the standard merge workflow to completion → wiki/concepts/Audit Disposition and Debt Drain.md
+- 2026-07-02 39891876 WORTHY - mentorship.json added to worktree shared-state set → wiki/concepts/Telemetry.md
+- 2026-07-02 a611c0fc WORTHY - setup finalize gates on mentorship decision artifact (mentorship_decision_missing) → wiki/concepts/Telemetry.md
+- 2026-07-02 1743e078 SKIP - command-file (spec.md) handoff output formatting fix, no new wiki fact
+- 2026-07-02 e5d8275e WORTHY - mentorship init opt-in reconciliation self-heal → wiki/concepts/Telemetry.md
+- 2026-07-02 5ee8a846 SKIP - docs(readme) catch-up only, facts already accurate/covered elsewhere in wiki
+- 2026-07-02 0b9bbec0 SKIP - command-file (setup-gaia.md) Claude GitHub App install gate, no wiki-page surface at this granularity
+- 2026-07-02 f0d8bd39 SKIP - chore: generic chore
+- 2026-07-02 20535395 WORTHY - setup-gaia solo/team audit-mode onboarding gate seeds default_mode/audit_authors (standdown sentinel already documented inline by the commit) → wiki/concepts/Code Review Audit CI.md
+- 2026-07-02 9d177203 WORTHY - gaia-wiki chain finish / sync land now wait for the merge and clean up locally (janitor is now a deferred fallback) → wiki/concepts/Wiki Sync.md, wiki/concepts/Local Working State.md
+- 2026-07-02 a14224fe SKIP - prior wiki-sync's own commit (state/log/page edits only), nothing new to evaluate
 - 2026-07-02 4d98123c SKIP - command-file (setup-gaia.md org-aware repo creation, gaia-init.md closing message) refinement; wiki/concepts/GAIA Init Workflow.md abstraction level remains accurate, no new tracked concept
 - 2026-07-02 bceaf564 WORTHY - Serena PreToolUse Grep guard closes the exploration-time routing gap → wiki/concepts/Claude Hooks.md, wiki/modules/Claude Integration.md, wiki/concepts/Serena Integration.md
 - 2026-07-02 0022fdac SKIP - self-referential wiki-sync commit (through c3c67ae), no further wiki action
