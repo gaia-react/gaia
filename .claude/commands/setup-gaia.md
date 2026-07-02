@@ -309,10 +309,47 @@ Creating a GitHub repo needs an authenticated gh with repo-creation rights. Run 
 
 Exit the repo phase without mutating GitHub.
 
-**Create private by default.** Non-interactive `gh repo create` requires one of `--public` / `--private` / `--internal`; default to `--private`:
+**Choose the owner (personal account or organization).** Before creating, decide *where* the repo lives. Resolve the personal login and enumerate the orgs the user belongs to (the `gh api user` login lookup mirrors Phase 5, line 778):
 
 ```bash
+gh api user --jq .login                       # personal login
+gh api --paginate /user/orgs --jq '.[].login' # org memberships (best-effort; may need the read:org scope)
+```
+
+Org enumeration is best-effort: `/user/orgs` only returns orgs the active token can see. A missing org is not fatal — the free-text path below covers it.
+
+**If the user belongs to no orgs, skip the owner question entirely** and create under the personal account (the default create command below).
+
+Otherwise, rank the orgs by the user's own recent commit activity so the most-likely target is offered first. The contributions graph is the precise "committed to" signal (last-year window), one call:
+
+```bash
+gh api graphql -f query='
+{ viewer { contributionsCollection { commitContributionsByRepository(maxRepositories: 100) {
+  repository { owner { login } } contributions { totalCount } } } } }' --jq '
+  [.data.viewer.contributionsCollection.commitContributionsByRepository[]
+   | {owner: .repository.owner.login, n: .contributions.totalCount}]
+  | group_by(.owner) | map({owner: .[0].owner, n: (map(.n) | add)})
+  | sort_by(-.n) | .[].owner'
+```
+
+Order the org set by this ranking; orgs the ranker omits fall to the end in membership order. If the GraphQL call fails or returns nothing (older gh, missing scope, no recent activity), fall back to plain `/user/orgs` order. Ranking is cosmetic — it only decides which orgs appear as buttons; the final choice is always correct.
+
+Then AskUserQuestion with these options **in this exact order**:
+
+> Where should this repository live?
+>
+> - **Personal account (@<login>)** (Recommended) — create it under your own GitHub account.
+> - **<org>** — create it in this organization. (one option per org, ranked; **at most 3**)
+
+If the user belongs to **more than three** orgs, print the full ranked list first, offer the personal account plus the **top 3** ranked orgs as buttons, and add to the question: "If the org you want isn't a button, choose Other and type its exact login from the list above." (AskUserQuestion supplies the free-text Other option automatically.) Record the chosen owner for the create command below.
+
+**Create private by default.** Non-interactive `gh repo create` requires one of `--public` / `--private` / `--internal`; default to `--private`. Create under the owner chosen above — omit the positional for the personal account, or pass `<owner>/<name>` for an org (deriving `<name>` from the project directory):
+
+```bash
+# Personal account:
 gh repo create --source=. --push --private
+# Organization <owner>:
+gh repo create "<owner>/$(basename "$PWD")" --source=. --push --private
 ```
 
 Because the repo is created `--private`, the pushed history lands in a private repo and is never publicly exposed by this push. A **public or internal** repo is created **only** after a separate, explicit confirmation:
