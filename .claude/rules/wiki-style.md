@@ -38,7 +38,10 @@ Wiki readers (maintainers, adopters) need to understand the system as it is now.
 - **`wiki/hot.md`**: auto-loaded recent-context cache. Body is by design a recap of recent commits / threads; historical phrasing is the point. The cache is overwritten by `/gaia-wiki sync`, not edited by hand.
 - **`wiki/meta/`**: audit artifacts (lint reports, consolidate reports). Their purpose is referencing specific commits / SHAs / dates, so the no-inline-refs rule does not apply.
 - **Frontmatter (`created`, `updated`, `status`, etc.)**: metadata, not prose.
-- **Structural UAT/SPEC references in `.claude/`, `.specify/`, `.gaia/tests/`**: narrowly exempt: template format examples (`> - UAT-NNN, Given … when … then …` showing the SPEC artifact shape), fixture data (CLI args like `--uat-id UAT-007`, JS/Python/YAML literals like `uat_id: 'UAT-099'`, regex targets that match SPEC YAML structure), filename literals (`uat-001.spec.ts`), and identifier fragments inside variable names (`uat_id`, `uats_block`, `seen_uat_files`). Narrative references, section-header parentheticals (`#### 5b. Discuss-this escape (UAT-004)`), inline narrative parentheticals, comments naming specific working-doc IDs, and pass/fail label prefixes, are NOT exempt and must be scrubbed.
+- **Structural UAT/SPEC references in `.claude/`, `.specify/extensions/gaia/`**: narrowly exempt: template format examples (`> - UAT-NNN, Given … when … then …` showing the SPEC artifact shape), fixture data (CLI args like `--uat-id UAT-007`, JS/Python/YAML literals like `uat_id: 'UAT-099'`, regex targets that match SPEC YAML structure), filename literals (`uat-001.spec.ts`), and identifier fragments inside variable names (`uat_id`, `uats_block`, `seen_uat_files`). Narrative references, section-header parentheticals (`#### 5b. Discuss-this escape (UAT-004)`), inline narrative parentheticals, comments naming specific working-doc IDs, and pass/fail label prefixes, are NOT exempt and must be scrubbed.
+<!-- gaia:maintainer-only:start -->
+- **`.gaia/tests/` is out of scope entirely.** It is release-excluded maintainer-only test infrastructure that never reaches an adopter, so a UAT/SPEC reference there is never shipped-surface drift. Its suites use `UAT-NNN` / `SEC-N` / `TST-NN` test-name prefixes, header comments, and section headers as deliberate SPEC-conformance traceability; those stay. Both audit greps below omit `.gaia/tests/` for this reason, matching the release boundary. Do not re-add `.gaia/tests/` to either grep.
+<!-- gaia:maintainer-only:end -->
 - **Concrete maintainer SPEC IDs.** Adopter-shipped surfaces must not reference specific maintainer SPECs by ID (`SPEC-001`, `SPEC-003`, etc.) as if they were system-wide constants. On adopter clones those IDs identify whatever the adopter authored first, not the maintainer artifact. Rephrase to generic placeholders (`the SPEC's <field>`, `## Composition with` heading prefix match) or drop the reference. Generic placeholder forms (`SPEC-NNN`, `SPEC-NNN.md`, illustrative `(e.g. SPEC-002)` examples in usage docs) are fine.
 - **Targeted archival labels**: e.g. the `## Historical context (from <older-title>)` heading `/gaia-wiki consolidate` writes when merging a superseded page is a deliberate label that identifies lifted content; not the prose pattern this rule bans.
 
@@ -60,8 +63,7 @@ grep -rEn "UAT-[0-9]{3}" \
   .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
   .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
   .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
-  .specify/extensions/gaia/templates/ \
-  .gaia/tests/
+  .specify/extensions/gaia/templates/
 
 # Concrete maintainer SPEC IDs in instruction files and shipped extension surfaces
 grep -rEn "\bSPEC-00[1-9]\b" \
@@ -74,4 +76,4 @@ grep -rEn "\bSPEC-00[1-9]\b" \
 grep -rEn "\bchanged from|was changed|previously (did|was|stated|had|used|set)|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"
 ```
 
-Any non-empty match outside this rule's prose is a candidate for rewrite. The narrative-vs-structural triage for the `.claude/`/`.specify/`/`.gaia/tests/` greps is a human read, the regex flags candidates; the Exceptions section above codifies what stays.
+Any non-empty match outside this rule's prose is a candidate for rewrite. The narrative-vs-structural triage for the `.claude/` / `.specify/` greps is a human read, the regex flags candidates; the Exceptions section above codifies what stays.

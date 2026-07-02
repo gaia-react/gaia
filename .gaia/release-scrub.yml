@@ -147,15 +147,14 @@ transforms:
           - ".specify/extensions/gaia/rules/**"
           - ".specify/extensions/gaia/templates/**"
         path-allowlist:
-          # Self-referential: the rule's body cites the audit greps it
-          # codifies, including the maintainer-only `.gaia/tests/` scope.
-          - ".claude/rules/wiki-style.md"
-          # Self-referential: the lint playbook's documentation describes
-          # the same audit greps and target paths.
-          - ".claude/skills/gaia/references/wiki/lint.md"
           # Policy-documenting rule: its own body and Audit git-grep commands
           # cite the maintainer-only .gaia/tests/forensics/ path as the
-          # sanctioned exception it governs; same rationale as wiki-style.md.
+          # sanctioned exception it governs; the exclusion globs are
+          # load-bearing and kept unwrapped, so the file stays allowlisted.
+          # (wiki-style.md and the wiki-lint playbook formerly sat here too;
+          # they now wrap their `.gaia/tests/` rationale in maintainer-only
+          # markers, so the strip removes it and the leak-check now actively
+          # guards them against an unwrapped re-add.)
           - ".claude/rules/repo-relative-paths.md"
           # Documents the smoke-harness convention split between
           # `.specify/extensions/gaia/test/` (UAT runbooks) and
