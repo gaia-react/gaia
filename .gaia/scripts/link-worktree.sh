@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # GAIA worktree shared-state symlink hook (SPEC-005).
 #
-# Creates three symlinks from the current linked worktree into the main
-# checkout so gitignored shared state (setup-state.json, cache/, audit/)
-# does not diverge per-worktree:
+# Creates four symlinks from the current linked worktree into the main
+# checkout so gitignored shared state (setup-state.json, mentorship.json,
+# cache/, audit/) does not diverge per-worktree:
 #
 #   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
+#   <worktree>/.gaia/local/mentorship.json  -> <main>/.gaia/local/mentorship.json
 #   <worktree>/.gaia/cache/                  -> <main>/.gaia/cache/
 #   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
 #
@@ -64,10 +65,10 @@ ts="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$main_root/.gaia/local" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/audit" 2>/dev/null
 mkdir -p "$main_root/.gaia/cache" 2>/dev/null
-# `setup-state.json` is a file: do NOT pre-create it. If it doesn't exist on
-# main, the symlink will dangle until the main checkout writes it via the
-# normal setup flow; that's fine. Readers gracefully treat missing as
-# "no setup state yet".
+# `setup-state.json` and `mentorship.json` are files: do NOT pre-create them.
+# If one doesn't exist on main, the symlink will dangle until the main checkout
+# writes it via the normal setup flow; that's fine. Readers gracefully treat
+# missing as "no setup state / no mentorship decision yet".
 
 # ---------- helper: link one path ----------
 # $1 - relative path (e.g. ".gaia/local/setup-state.json")
@@ -127,6 +128,7 @@ link_one() {
 }
 
 link_one ".gaia/local/setup-state.json" ".gaia/local"
+link_one ".gaia/local/mentorship.json"  ".gaia/local"
 link_one ".gaia/cache"                  ".gaia"
 link_one ".gaia/local/audit"            ".gaia/local"
 
