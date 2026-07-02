@@ -819,12 +819,12 @@ where:
 - `<SPEC_ABS>` is the runtime-derived repo-absolute path to the saved SPEC artifact.
 - If a sibling `AUDIT.md` exists (step 7 ran), append `, with adversarial audit at <AUDIT_ABS>`. `plan.md` reads only the referenced `SPEC.md`, so naming the `AUDIT.md` path makes its plan-time directives discoverable but does not by itself cause `/gaia-plan` to auto-read them.
 
-Print the prompt to the user inside a fenced code block so it is copy-pasteable, then tell them to run `/gaia-plan` in a fresh session and stop:
+Print the handoff to the user as one cohesive block and stop: the status line, a `/clear`-and-paste instruction, then a single fenced code block whose contents are the full `/gaia-plan` invocation (command prefix included). Prepending `/gaia-plan ` makes the block a runnable command, not a bare argument, so the user copies exactly one thing:
 
-> SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN/SPEC.md`. To plan it, run `/gaia-plan` in a fresh session with this prompt:
+> SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN/SPEC.md`. To plan it, /clear and paste this:
 >
 > ```
-> SPEC-NNN: <intent first line>, see <SPEC_ABS>[, with adversarial audit at <AUDIT_ABS>]
+> /gaia-plan SPEC-NNN: <intent first line>, see <SPEC_ABS>[, with adversarial audit at <AUDIT_ABS>]
 > ```
 
 The handoff emits no telemetry event. This is the end of the `/gaia-spec` flow.
