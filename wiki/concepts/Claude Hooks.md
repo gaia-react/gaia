@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-07-02
 tags: [concept, claude, hooks]
 ---
 
@@ -47,6 +47,10 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 - **`capture-red-observations.sh`** (PostToolUse, Bash): on a one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the agent's target, records each genuinely-failing per-test result to the RED-observation ledger (`.gaia/local/red-ledger/`). Records file, full test name, content signal, and failure kind. Collection/compile errors are excluded. Observe-only; always exits 0. See [[TDD RED Verification]].
 - **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before each `git commit`, checks every new-at-HEAD test file against the RED-observation ledger. Requires a ledger RED whose content signal still matches the current test body; no matching entry denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files. See [[TDD RED Verification]].
 - **`worthiness-presence-check.sh`** (PreToolUse, Bash deny): before each `gh pr merge`, scopes to the emergent test files the PR changed and denies the merge when a changed emergent test has no worthiness-ledger line matching its current content signal. Sits alongside `pr-merge-audit-check.sh` as an independent deny on the same event. Checks presence plus signal match only, never the verdict. No-op when zero emergent tests changed; fail-open on missing tooling or unparseable files. See [[Worthiness Presence Gate]].
+
+### Code-search safeguard (Grep)
+
+- **`serena-code-search-guard.sh`** (PreToolUse, Grep deny): blocks a `Grep` call whose pattern is a bare identifier (≥ 3 chars, no spaces or regex metacharacters) scoped to `app/**` or `test/**` TS/TSX, and points it at Serena's `find_symbol` / `find_referencing_symbols` / `get_symbols_overview` instead. Re-running the identical grep within 2 minutes passes (block-once escape), for the rare string-literal or comment search that happens to be identifier-shaped. No-ops unless Serena is a registered MCP server and the repo has a `tsconfig.json`, so adopters without Serena never see it. Closes the gap left by `.claude/rules/code-search.md` being path-scoped to `app/**`/`test/**` *edits*: the rule is absent from context during exploration, which is when the grep-vs-Serena decision actually gets made. See [[Serena Integration]].
 
 ### Advisory (Bash)
 

@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-02 4d98123c SKIP - command-file (setup-gaia.md org-aware repo creation, gaia-init.md closing message) refinement; wiki/concepts/GAIA Init Workflow.md abstraction level remains accurate, no new tracked concept
+- 2026-07-02 bceaf564 WORTHY - Serena PreToolUse Grep guard closes the exploration-time routing gap → wiki/concepts/Claude Hooks.md, wiki/modules/Claude Integration.md, wiki/concepts/Serena Integration.md
+- 2026-07-02 0022fdac SKIP - self-referential wiki-sync commit (through c3c67ae), no further wiki action
 - 2026-07-02 c3c67aea WORTHY - react-doctor v0.5.8 install-layout fix + setup-gaia token reuse + CHANGELOG graduator link-block fix → wiki/dependencies/react-doctor.md, wiki/concepts/Code Review Audit CI.md, wiki/concepts/Release Workflow.md
 - 2026-07-02 2e1a5c2d SKIP - prior wiki-sync's own commit (state/log/page edits only), nothing new to evaluate
 - 2026-07-02 a3240691 SKIP - command-file (gaia-init.md) CODEOWNERS auto-detect gate logic, no wiki-page surface; pnpm-workspace.yaml quarantine-allowlist aging already covered generically by wiki/decisions/pnpm.md

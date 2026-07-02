@@ -4,7 +4,7 @@ path: .claude/
 status: active
 purpose: Claude Code integration, commands, rules, hooks, agents, skills
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-07-02
 tags: [module, claude, hooks]
 ---
 
@@ -55,6 +55,7 @@ These are the load-bearing safety net. They block the action outright and return
 - `block-rm-rf.sh`: denies `rm -rf` of `/`, `~`, `.git`, and other root-level / repo-critical paths.
 - `red-verify-commit-check.sh`: denies `git commit` when a new-at-HEAD test that now passes has no recorded failing (RED) run matching its current content. The sibling `capture-red-observations.sh` (PostToolUse) records REDs at test-run time; this enforces them at commit, the mechanical-TDD RED-before-GREEN gate.
 - `worthiness-presence-check.sh`: denies `gh pr merge` when an emergent test the PR changed has no worthiness-ledger line matching its current content (see the worthiness-evaluator agent below).
+- `serena-code-search-guard.sh`: denies a `Grep` call whose pattern is a bare identifier scoped to `app/**`/`test/**` TS/TSX, routing it to Serena's symbol tools instead; re-running the identical grep passes. No-ops without a registered Serena MCP server and a `tsconfig.json`. See [[Serena Integration]].
 
 ### Advisory hooks (nudge, don't block)
 
@@ -98,7 +99,7 @@ The workflow and scaffolder skills are user-invoked. Context-triggered skills ac
 
 ## settings.json
 
-Registers PreToolUse hooks on `Edit|Write|MultiEdit` and `Bash` matchers; PostToolUse hooks on `Bash` (`wiki-commit-nudge.sh`, `capture-red-observations.sh`) and `Task` (`telemetry-task-postuse.sh`); the `intercept-init.sh` UserPromptExpansion hook; UserPromptSubmit, PostCompact (`wiki-recompact-sentinel.sh`), SessionStart / Stop wiki-coherence hooks, and a WorktreeCreate hook (`.gaia/scripts/create-worktree.sh`). Sets `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` and a `statusLine` command, and enables the `typescript-lsp@claude-plugins-official` plugin. Serena MCP is registered user-globally (`claude mcp add serena -s user`), not in this file (see [[Serena Integration]]).
+Registers PreToolUse hooks on `Edit|Write|MultiEdit`, `Bash`, and `Grep` matchers; PostToolUse hooks on `Bash` (`wiki-commit-nudge.sh`, `capture-red-observations.sh`) and `Task` (`telemetry-task-postuse.sh`); the `intercept-init.sh` UserPromptExpansion hook; UserPromptSubmit, PostCompact (`wiki-recompact-sentinel.sh`), SessionStart / Stop wiki-coherence hooks, and a WorktreeCreate hook (`.gaia/scripts/create-worktree.sh`). Sets `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` and a `statusLine` command, and enables the `typescript-lsp@claude-plugins-official` plugin. Serena MCP is registered user-globally (`claude mcp add serena -s user`), not in this file (see [[Serena Integration]]).
 
 `permissions.allow` covers routine git / gh / pnpm operations plus scoped edits for `.claude/**`, `.gaia/**`, `wiki/**`, and `CHANGELOG.md`. `permissions.deny` covers `.env` writes, `pnpm-lock.yaml` writes, `.husky/_/**` internals, force-push variants on `main`/`master`, and `git reset --hard HEAD~*`. Both lists are alphabetized; path globs are repo-relative (no leading `/`).
 
