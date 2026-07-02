@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-04
-updated: 2026-05-04
+updated: 2026-07-02
 tags: [concept, claude, code-search, mcp]
 ---
 
@@ -33,6 +33,10 @@ tags: [concept, claude, code-search, mcp]
 - "Why is the form folder co-located like this?" → wiki (`wiki/modules/Components.md`).
 
 See `.claude/rules/code-search.md` for the routing rule.
+
+## Enforcement
+
+The rule alone is path-scoped to `app/**`/`test/**` *edits*, so it's absent from context during exploration, exactly when the grep-vs-Serena decision gets made. A PreToolUse guard (`.claude/hooks/serena-code-search-guard.sh`) closes that gap: it fires at the `Grep` call itself and blocks a bare identifier (≥ 3 chars, no spaces or regex metacharacters) scoped to `app/**`/`test/**` TS/TSX, pointing it at `find_symbol` / `find_referencing_symbols` / `get_symbols_overview`. Re-running the identical grep passes, for the rare string-literal or comment search that's identifier-shaped. It no-ops unless Serena is a registered MCP server and the repo has a `tsconfig.json`, so adopters without Serena never see it. See [[Claude Hooks]].
 
 ## Quirks
 
