@@ -101,10 +101,14 @@ If `setup status --json` reports a non-null `completed_at`, this whole phase no-
 
 ```bash
 DECIDED="null"
-[ -f .gaia/local/mentorship.json ] && DECIDED="$(jq -r '.enabled // "null"' .gaia/local/mentorship.json 2>/dev/null)"
+if [ -f .gaia/local/mentorship.json ]; then
+  DECIDED="$(jq -r 'if .enabled == null then "null" else (.enabled | tostring) end' .gaia/local/mentorship.json 2>/dev/null)"
+  # An unreadable/corrupt config yields empty; treat that as undecided so the opt-in re-runs and rewrites a clean file.
+  [ -z "$DECIDED" ] && DECIDED="null"
+fi
 ```
 
-If `DECIDED` is `null` (file absent, or `enabled: null`), run **Step 6's opt-in body** now, regardless of `completed_at` or whether `mentorship-decision` is already in `completed_steps` — `mentorship.json` is the source of truth here. If `DECIDED` is `true` or `false`, the decision stands and this is a no-op. (When `completed_at` is null, Step 6 runs in its normal Phase 2 sequence and this clause is redundant.)
+If `DECIDED` is `null` (file absent, `enabled: null`, or an unreadable config), run **Step 6's opt-in body** now, the prompt-through-write sub-block: the privacy explainer, the AskUserQuestion, the chosen `_internal-write-config` branch, and its `mark-step mentorship-decision` (Step 6's lines starting at the user-facing prompt, not its up-front skip guard), regardless of `completed_at` or whether `mentorship-decision` is already in `completed_steps`; `mentorship.json` is the source of truth here. If `DECIDED` is `true` or `false`, the decision stands and this is a no-op. (When `completed_at` is null, this clause fires first; Step 6's own guard then short-circuits its in-sequence run.)
 
 ### Step 1: install-tools
 
@@ -243,7 +247,7 @@ Skip if `mentorship-decision` is in `completed_steps`.
 If `.gaia/local/mentorship.json` already exists with a non-null `enabled` field, the decision was already made (e.g. via `/gaia-init` or `gaia mentorship enable`/`disable`). Just record the step and move on:
 
 ```bash
-if [ -f .gaia/local/mentorship.json ] && [ "$(jq -r '.enabled // "null"' .gaia/local/mentorship.json 2>/dev/null)" != "null" ]; then
+if [ -f .gaia/local/mentorship.json ] && [ "$(jq -r 'if .enabled == null then "null" else (.enabled | tostring) end' .gaia/local/mentorship.json 2>/dev/null)" != "null" ]; then
   .gaia/cli/gaia setup mark-step mentorship-decision
   # Continue to Phase 3.
 fi

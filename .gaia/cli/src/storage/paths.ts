@@ -158,8 +158,10 @@ export const ensureMentorshipDirs = async (
   // `<slug>` directory (`~/.claude/projects/<slug>`) is Claude Code's, created
   // at 0755; GAIA never re-modes it. Excluding it avoids a spurious
   // `mentorship_dir_mode_unexpected` warning on every enable, since 0755 never
-  // matches GAIA's 0700 expectation. `mkdir recursive` still materializes
-  // `<slug>` if absent, but leaves its mode alone.
+  // matches GAIA's 0700 expectation. In practice `<slug>` always pre-exists
+  // (Claude Code owns it), so GAIA never stats or re-modes it here; if it were
+  // absent, `mkdir recursive` for `gaia/` would materialize it at 0700, like
+  // the other intermediates.
   //
   // Sequential by design: each segment must exist (and be tightened) before
   // the next is created so chmod-on-create lands on each new directory.
