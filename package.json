@@ -44,7 +44,7 @@
     "@react-router/remix-routes-option-adapter": "8.0.1",
     "@react-router/serve": "8.0.1",
     "autosize": "6.0.1",
-    "cookie": "1.1.1",
+    "cookie": "2.0.0",
     "date-fns": "4.4.0",
     "dotenv": "17.4.2",
     "i18next": "26.3.2",
