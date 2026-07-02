@@ -671,6 +671,11 @@ Mark per-machine setup as complete so the statusline does not show "Run /setup-g
 .gaia/cli/gaia setup finalize --force
 ```
 
+`finalize` refuses to stamp completion while `.gaia/local/mentorship.json` is absent, the mentorship decision must have persisted an artifact first, and that refusal holds even under `--force`. In the normal path Step 10 already wrote the file (its "Not now" default persists `enabled:false` on non-response, and "Yes, enable" persists the file too), so finalize passes. If Step 10 was skipped entirely, finalize exits non-zero with a structured error whose `code` field is `mentorship_decision_missing`. Read that JSON line on stderr and branch on `code` specifically:
+
+- **`mentorship_decision_missing`**: the mentorship decision was dropped, so re-apply Step 10's "Not now" write (the same `.gaia/cli/gaia mentorship _internal-write-config --enabled false --analytics false --decided-via gaia-init` invocation Step 10 documents), then `.gaia/cli/gaia setup mark-step mentorship-decision`, then retry `.gaia/cli/gaia setup finalize --force` **once**. If that safe-default write itself fails, surface its error verbatim and stop, no retry. If the single retry still exits non-zero (whether it re-emits `mentorship_decision_missing` or any other code), surface that error verbatim and stop. Do not heal again, do not loop.
+- **any other `code`** (e.g. `not_a_git_repo`, `state_malformed`, `setup_steps_pending`): surface it verbatim and stop. The self-heal fires only for the dropped-mentorship case, it never masks an unrelated finalize failure.
+
 Then run the CLI's init finalize step, it removes the `/init` interceptor hook, prunes the matching entry from `.claude/settings.json`, and deletes this command file:
 
 ```bash
