@@ -93,8 +93,16 @@
       "id": "SPEC-012",
       "allocated_at": "2026-07-01T12:00:54Z",
       "source": "allocated",
+      "status": "merged",
+      "intent": "Remove two features from /gaia-spec so it produces the immutable SPEC artifact",
+      "merged_at": "2026-07-01T13:40:18Z"
+    },
+    {
+      "id": "SPEC-013",
+      "allocated_at": "2026-07-02T10:34:09Z",
+      "source": "allocated",
       "status": "specified",
-      "intent": "Remove two features from /gaia-spec so it produces the immutable SPEC artifact"
+      "intent": "GAIA's structured actions give the user no visibility into what they cost."
     }
   ]
 }
