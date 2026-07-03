@@ -38,7 +38,7 @@ const ALL_ENDPOINTS_SET: ReadonlySet<string> = new Set(ALL_ENDPOINTS);
 type SchemaField = {
   /** field name in camelCase (client-side schema) */
   name: string;
-  /** Zod expression for client schema (e.g. `z.string()`, `z.enum(['a','b'])`) */
+  /** Zod expression for client schema (e.g. `z.string()`, `z.literal(['a','b'])`) */
   zodExpression: string;
 };
 
@@ -148,7 +148,7 @@ const buildZodExpression = (typeToken: string): string | null => {
 
     if (variants.length === 0) return null;
     const quoted = variants.map((value) => `'${value}'`).join(', ');
-    expression = `z.enum([${quoted}])`;
+    expression = `z.literal([${quoted}])`;
   } else {
     const builder = ZOD_TYPE_BUILDERS[base];
 

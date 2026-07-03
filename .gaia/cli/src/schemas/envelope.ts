@@ -4,16 +4,16 @@ import {
   type MentorshipEventType,
 } from './mentorship-payloads.js';
 
-export const AgentTypeSchema = z.enum([
-  'PO',
-  'Senior',
-  'Junior',
-  'Lead',
-  'Reviewer',
+export const AgentTypeSchema = z.literal([
   'Curator',
-  'Steward',
   'Custodian',
   'human',
+  'Junior',
+  'Lead',
+  'PO',
+  'Reviewer',
+  'Senior',
+  'Steward',
 ]);
 
 export type AgentType = z.infer<typeof AgentTypeSchema>;

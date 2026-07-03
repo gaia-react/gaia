@@ -17,24 +17,24 @@ export const UatPassPayload = z.object({
 export type UatPassPayload = z.infer<typeof UatPassPayload>;
 
 export const UatFailPayload = UatPassPayload.extend({
-  failure_class: z.enum([
+  failure_class: z.literal([
     'assertion',
     'exception',
-    'timeout',
-    'setup',
     'flake_suspected',
+    'setup',
+    'timeout',
   ]),
 });
 
 export type UatFailPayload = z.infer<typeof UatFailPayload>;
 
 export const NeedsContextReturnedPayload = z.object({
-  agent_type: z.enum(['PO', 'Senior', 'Junior', 'Lead']),
+  agent_type: z.literal(['Junior', 'Lead', 'PO', 'Senior']),
   area_tags: AreaTagsSchema,
-  context_request_class: z.enum([
-    'unclear_acceptance_criteria',
-    'missing_codebase_knowledge',
+  context_request_class: z.literal([
     'ambiguous_boundary',
+    'missing_codebase_knowledge',
+    'unclear_acceptance_criteria',
     'unclear_business_intent',
   ]),
   spec_id: z.string().regex(SPEC_ID_REGEX),
@@ -46,9 +46,9 @@ export type NeedsContextReturnedPayload = z.infer<
 >;
 
 export const BlockedReturnedPayload = z.object({
-  agent_type: z.enum(['PO', 'Senior', 'Junior', 'Lead']),
+  agent_type: z.literal(['Junior', 'Lead', 'PO', 'Senior']),
   area_tags: AreaTagsSchema,
-  classification: z.enum(['intent', 'spec', 'code']),
+  classification: z.literal(['code', 'intent', 'spec']),
   spec_id: z.string().regex(SPEC_ID_REGEX),
   task_id: z.string(),
 });
@@ -59,12 +59,12 @@ export const SpecAmendedPayload = z.object({
   amendment_reason: z.string().min(1),
   fields_changed: z
     .array(
-      z.enum([
+      z.literal([
+        'clarifications',
         'intent',
+        'scope_boundaries',
         'success_criteria',
         'uats',
-        'scope_boundaries',
-        'clarifications',
       ])
     )
     .min(1),
@@ -78,11 +78,11 @@ export const PlanRevisedPayload = z.object({
   items_added: z.number().int().min(0),
   items_removed: z.number().int().min(0),
   plan_id: z.string(),
-  revision_class: z.enum([
+  revision_class: z.literal([
+    'bug_fix_added',
+    'dispatch_artifact_refinement',
     'scope_change',
     'sequencing_change',
-    'dispatch_artifact_refinement',
-    'bug_fix_added',
   ]),
   spec_id: z.string().regex(SPEC_ID_REGEX),
 });
@@ -111,7 +111,7 @@ export const CodeReviewAuditFindingPayload = z.object({
   auditor_type: z.string(),
   finding_class: FindingClassSchema,
   pr_number: z.number().int().min(1),
-  severity: z.enum(['error', 'warning', 'suggestion']),
+  severity: z.literal(['error', 'suggestion', 'warning']),
   spec_id: z.string().regex(SPEC_ID_REGEX).optional(),
 });
 

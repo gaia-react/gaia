@@ -39,7 +39,7 @@ const ReportSchema = z.object({
         file: z.string(),
         grade: z.string(),
         remediation: z.string(),
-        severity: z.enum(['error', 'warning', 'info']),
+        severity: z.literal(['error', 'info', 'warning']),
       })
     )
     .default([]),
