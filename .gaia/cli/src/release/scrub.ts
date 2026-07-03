@@ -185,11 +185,11 @@ const walkFiles = (root: string, current: string = root): string[] => {
 export type MarkerStripResult = {
   blocksStripped: number;
   filesTouched: readonly string[];
-  unbalanced: ReadonlyArray<{
+  unbalanced: readonly {
     file: string;
     line: number;
     reason: 'start_without_end' | 'end_without_start';
-  }>;
+  }[];
 };
 
 const stripMarkerBlocks = (
@@ -199,17 +199,17 @@ const stripMarkerBlocks = (
 ): {
   blocks: number;
   output: string;
-  unbalanced: Array<{
+  unbalanced: {
     line: number;
     reason: 'end_without_start' | 'start_without_end';
-  }>;
+  }[];
 } => {
   const lines = source.split('\n');
   const out: string[] = [];
-  const unbalanced: Array<{
+  const unbalanced: {
     line: number;
     reason: 'end_without_start' | 'start_without_end';
-  }> = [];
+  }[] = [];
   let inBlock = false;
   let blockStartLine = 0;
   let blocks = 0;
@@ -259,11 +259,11 @@ const applyMarkerStrip = (
   transform: MarkerStripTransform
 ): MarkerStripResult => {
   const filesTouched: string[] = [];
-  const unbalanced: Array<{
+  const unbalanced: {
     file: string;
     line: number;
     reason: 'end_without_start' | 'start_without_end';
-  }> = [];
+  }[] = [];
   let blocksStripped = 0;
 
   for (const relativePath of files) {
@@ -756,11 +756,11 @@ type Report = {
     blocks_stripped: number;
     files_touched: readonly string[];
   };
-  unbalanced_markers: ReadonlyArray<{
+  unbalanced_markers: readonly {
     file: string;
     line: number;
     reason: string;
-  }>;
+  }[];
 };
 
 type RunOptions = {
@@ -887,7 +887,7 @@ export const run = (
 
   let stripBlocks = 0;
   const stripFiles: string[] = [];
-  const unbalanced: Array<{file: string; line: number; reason: string}> = [];
+  const unbalanced: {file: string; line: number; reason: string}[] = [];
   let jsonStripKeysRemoved = 0;
   const jsonStripFiles: string[] = [];
   const leaks: Leak[] = [];
