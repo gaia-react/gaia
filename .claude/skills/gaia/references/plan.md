@@ -363,7 +363,7 @@ if [[ "$PLAN_BASENAME" =~ -([0-9]+)$ ]]; then
       ITEMS_ADDED=0
       ITEMS_REMOVED=$((-DIFF))
     fi
-    SPEC_ID="$(basename "$SPEC_PATH" .md)"
+    SPEC_ID="$(basename "$(dirname "$SPEC_PATH")")"   # -> SPEC-NNN (SPEC folder name)
     .gaia/cli/gaia telemetry emit plan_revised \
       --plan-id "$PLAN_BASENAME" \
       --spec-id "$SPEC_ID" \
