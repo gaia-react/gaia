@@ -42,9 +42,13 @@ Auto-generated Playwright specs (written by the `before_implement` hook via `lib
 - **Cosmetic divergence** (selector text, button labels, copy, URL slugs, layout assertions): editable by the implementer without reopening the SPEC.
 - **Logical divergence** (user flow, success criteria, error branches, preconditions, post-state): forbidden. Implementer must raise the divergence; the SPEC is reopened and the UAT rewritten before re-running `/speckit-implement`.
 
+## SPEC number allocation
+
+SPEC numbers are reserved as immutable `spec/NNN` git tags pushed to the remote, pointed at git's empty-tree object so they pin no history and carry no commit alive; each is annotated once, at reservation, with the spec's one-line subject, readable via `git tag -n`. The registry survives a fresh clone; an existing clone syncs new reservations with `git fetch --tags`. The next number is max+1 over the union of those tags and the machine's local signals (the ledger, `spec-NNN-*` branches, `.gaia/local/specs/` folders). Cross-team collision-avoidance reads the remote `spec/*` tag namespace live, not locally-fetched tags, so it never depends on a stale local mirror. The ledger is one union input, holding draft status, intent, and timestamps per machine: load-bearing local state, not scratch.
+
 ## Ledger status vocabulary
 
-`.gaia/specs.json` is a fast index over git; the `status` field on each row is exactly one of four canonical values:
+The ledger lives at `.gaia/local/specs/ledger.json`, a local, gitignored per-machine cache; the `status` field on each row is exactly one of four canonical values:
 
 - `draft`: allocated, still being authored. The only status `lib/spec-allocator.sh in_progress` surfaces for the resume-vs-start prompt.
 - `specified`: artifact finalized and frozen. Downstream plan → implement → merge owns the feature from here.

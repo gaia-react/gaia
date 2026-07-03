@@ -139,14 +139,14 @@ Evidence:
 
 ## UAT-013: resume vs start-new for unfinalized draft SPECs
 
-**Given** an unfinalized draft SPEC (its `.gaia/specs.json` ledger row at `status: draft`).
+**Given** an unfinalized draft SPEC (its `.gaia/local/specs/ledger.json` row at `status: draft`).
 **When** user invokes `/gaia-spec` without a force-new flag.
 **Then** the wrapper asks `"Resume SPEC-NNN, or start new (leaves SPEC-NNN open)?"` via `AskUserQuestion`; user choice honored.
 
 Evidence:
 
 - `.claude/skills/gaia/references/spec.md` Step 2, pre-flight `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"` returns the first unfinalized draft SPEC id (or `none`); on hit, prompt with the normative phrasing and two options.
-- `lib/spec-allocator.sh in_progress <root>`: returns the first `.gaia/specs.json` ledger row with `status: draft`. A finalized SPEC (`specified`/`merged`/`archived`) is never returned; its merged transition is reconciled from git ground truth by `spec-reconcile.sh`.
+- `lib/spec-allocator.sh in_progress <root>`: returns the first `.gaia/local/specs/ledger.json` row with `status: draft`. A finalized SPEC (`specified`/`merged`/`archived`) is never returned; its merged transition is reconciled from git ground truth by `spec-reconcile.sh`.
 
 ## UAT-014: research subagent dispatch with announce
 

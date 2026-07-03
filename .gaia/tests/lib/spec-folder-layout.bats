@@ -170,7 +170,7 @@ _snapshot() {
   [ "$output" = "SPEC-005" ]
   # `next` only appends a ledger row; it must NOT create the folder.
   [ ! -e "$REPO/.gaia/local/specs/SPEC-005" ]
-  [ "$(jq -r '.specs[-1].id' "$REPO/.gaia/specs.json")" = "SPEC-005" ]
+  [ "$(jq -r '.specs[-1].id' "$REPO/.gaia/local/specs/ledger.json")" = "SPEC-005" ]
 }
 
 @test "7b: in_progress sources the ledger; a foldered artifact is not a fallback" {

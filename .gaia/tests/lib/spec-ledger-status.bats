@@ -12,7 +12,7 @@
 #      unrecognized status untouched (logging it). This repairs the hand-edit /
 #      backfill vector the guard cannot see (raw edits bypass the chokepoint),
 #      and it also ships to adopters (runs on every /gaia-spec).
-#   3. Data integrity: the real project .gaia/specs.json carries no
+#   3. Data integrity: the real project .gaia/local/specs/ledger.json carries no
 #      off-vocabulary status row.
 #
 # Canonical vocabulary is documented in wiki/concepts/GAIA Spec.md
@@ -51,8 +51,8 @@ _plant_status() {
   tmp="$(mktemp)"
   jq --arg id "$id" --arg s "$status" \
     '.specs |= map(if .id == $id then .status = $s else . end)' \
-    "$REPO/.gaia/specs.json" > "$tmp"
-  mv "$tmp" "$REPO/.gaia/specs.json"
+    "$REPO/.gaia/local/specs/ledger.json" > "$tmp"
+  mv "$tmp" "$REPO/.gaia/local/specs/ledger.json"
 }
 
 @test "1: non-canonical status is rejected with exit 6" {
@@ -64,10 +64,10 @@ _plant_status() {
 
 @test "2: a rejected patch leaves the ledger byte-for-byte unchanged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
-  before="$(cat "$REPO/.gaia/specs.json")"
+  before="$(cat "$REPO/.gaia/local/specs/ledger.json")"
   run _ledger_update "$REPO" SPEC-001 '{"status":"shipped"}'
   [ "$status" -eq 6 ]
-  [ "$(cat "$REPO/.gaia/specs.json")" = "$before" ]
+  [ "$(cat "$REPO/.gaia/local/specs/ledger.json")" = "$before" ]
 }
 
 @test "3: every writable status (canonical + legacy in-progress) is accepted" {
@@ -75,7 +75,7 @@ _plant_status() {
   for s in $WRITABLE; do
     run _ledger_update "$REPO" SPEC-001 "{\"status\":\"$s\"}"
     [ "$status" -eq 0 ]
-    [ "$(jq -r '.specs[0].status' "$REPO/.gaia/specs.json")" = "$s" ]
+    [ "$(jq -r '.specs[0].status' "$REPO/.gaia/local/specs/ledger.json")" = "$s" ]
   done
 }
 
@@ -83,8 +83,8 @@ _plant_status() {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   run _ledger_update "$REPO" SPEC-001 '{"merged_at":"2026-01-02T00:00:00Z"}'
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.specs[0].merged_at' "$REPO/.gaia/specs.json")" = "2026-01-02T00:00:00Z" ]
-  [ "$(jq -r '.specs[0].status' "$REPO/.gaia/specs.json")" = "draft" ]
+  [ "$(jq -r '.specs[0].merged_at' "$REPO/.gaia/local/specs/ledger.json")" = "2026-01-02T00:00:00Z" ]
+  [ "$(jq -r '.specs[0].status' "$REPO/.gaia/local/specs/ledger.json")" = "draft" ]
 }
 
 @test "5: spec-reconcile renames a planted 'shipped' row to 'merged'" {
@@ -93,7 +93,7 @@ _plant_status() {
   run _reconcile "$REPO"
   [ "$status" -eq 0 ]
   [[ "$output" == *"normalized SPEC-001: shipped -> merged"* ]]
-  [ "$(jq -r '.specs[0].status' "$REPO/.gaia/specs.json")" = "merged" ]
+  [ "$(jq -r '.specs[0].status' "$REPO/.gaia/local/specs/ledger.json")" = "merged" ]
 }
 
 @test "6: spec-reconcile leaves an unrecognized status untouched and warns" {
@@ -102,12 +102,13 @@ _plant_status() {
   run _reconcile "$REPO"
   [ "$status" -eq 0 ]
   [[ "$output" == *"unrecognized status bogus-status"* ]]
-  [ "$(jq -r '.specs[0].status' "$REPO/.gaia/specs.json")" = "bogus-status" ]
+  [ "$(jq -r '.specs[0].status' "$REPO/.gaia/local/specs/ledger.json")" = "bogus-status" ]
 }
 
 @test "7: the real project ledger carries only writable statuses" {
   root="$(git -C "$BATS_TEST_DIRNAME" rev-parse --show-toplevel)"
-  ledger="$root/.gaia/specs.json"
+  ledger="$root/.gaia/local/specs/ledger.json"
+  [ -f "$ledger" ] || ledger="$root/.gaia/specs.json"   # legacy fallback until cutover
   [ -f "$ledger" ] || skip "no project ledger at $ledger"
   bad="$(jq -r --arg writable "$WRITABLE" '
     ($writable | split(" ")) as $ok

@@ -40,6 +40,30 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Changed
 
+- SPEC-number allocation moves from the tracked `.gaia/specs.json` ledger to immutable `spec/NNN` git tags on the remote (SPEC-021): the next number is max+1 over the union of the remote's `spec/*` tags and local signals, and a non-force tag push is the cross-machine collision lock, so a shared team no longer depends on everyone committing, pushing, and pulling a working-tree file in time. The ledger survives only as a local, gitignored per-machine cache at `.gaia/local/specs/ledger.json`. No `/update-gaia` migration ships and no lib dual-reads the old tracked ledger. **Action required:** the maintainer and existing adopters with a populated `.gaia/specs.json` run the following one-time, idempotent, safe-to-re-run cutover once per existing clone (a clone without a populated `.gaia/specs.json`, i.e. a fresh scaffold, needs to do nothing: the allocator creates the local ledger on the first `/gaia-spec`, and the first online allocation seeds the remote tag namespace):
+
+  ```bash
+  # One-time, run once per existing clone that has a populated .gaia/specs.json.
+  # Relocates the WORKING-TREE ledger (all rows, incl. uncommitted pending specs)
+  # and seeds one high-water-mark tag; safe to re-run.
+  set -e
+  ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
+  if [ -f .gaia/specs.json ]; then
+    mkdir -p .gaia/local/specs
+    cp .gaia/specs.json .gaia/local/specs/ledger.json      # preserve working-tree rows
+    git rm --cached -q .gaia/specs.json 2>/dev/null || true # untrack; no lib re-creates it (NOT re-added to .gitignore)
+    rm -f .gaia/specs.json
+  fi
+  MAX="$(bash .specify/extensions/gaia/lib/spec-allocator.sh highest "$ROOT")"  # e.g. SPEC-021
+  if [ "$MAX" != "none" ]; then
+    N="${MAX#SPEC-}"
+    git tag -a "spec/$N" 4b825dc642cb6eb9a060e54bf8d69288fbee4904 \
+      -m "seed: SPEC number high-water mark at cutover" 2>/dev/null || true
+    git push origin "refs/tags/spec/$N" || \
+      echo "seed tag spec/$N already present on origin (another clone seeded it) - OK"
+  fi
+  ```
+
 - a completed plan-execution folder is now archived instead of deleted on merge: the orchestrator prunes it to `SUMMARY.md` + `tokens.md` (preserving the phase-findings ledger and the token tally) and moves a spec-less plan into `.gaia/local/plans/archived/`, mirroring how merged SPEC folders sweep into `specs/archived/`. A plan derived from a SPEC is now colocated inside its SPEC folder at `.gaia/local/specs/<SPEC-ID>/plan/` (`plan-2`, `plan-3` for a revision) instead of living under `.gaia/local/plans/`, so plan-to-SPEC discovery is structural and the plan rides into `specs/archived/` when its SPEC is later archived. Applies to plans generated or merged after this lands; existing on-disk plan folders are not migrated (#544)
 - adopt `@gaia-react/lint` 1.9.0 (from 1.8.0), which adds the `no-zod-enum` guardrail: `z.enum(...)` is now an ESLint error, use `z.literal([...])` for string unions (sorted alphanumerically). This makes the Zod convention a deterministic lint failure instead of a discretionary review note. **Action required:** convert any existing `z.enum([...])` schemas in your app to `z.literal([...])` to keep `pnpm lint` green (#540)
 - plan-execution token and wall-clock accounting now records execute cost from the orchestrator's own git commits and pushes through a `PreToolUse` hook instead of a manual, instruction-driven tally, so no phase is double-counted; it aggregates the whole execution across every session and dedups re-invocation rows on read. A new merge-time `PostToolUse` hook renders a full-cycle spec / plan / execute / total cost breakdown at `gh pr merge` (the spec line omitted for a spec-less plan), and a new `.gaia/scripts/token-rollup.sh` reader surfaces the same roll-up on demand (#539)

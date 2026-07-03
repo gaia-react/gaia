@@ -5,7 +5,7 @@ Maintainer-only bats suite for the SPEC ledger machinery:
 shared `with-ledger-lock.sh` mutex. Excluded from the release bundle via
 `.gaia/release-exclude` (category `.gaia/tests/`). Every test is hermetic
 each spins up its own tmp git repo via `helpers/tmp-spec-repo.sh` and tears it
-down; no reliance on the real project `.gaia/specs.json`.
+down; no reliance on the real project `.gaia/local/specs/ledger.json`.
 
 ## Coverage
 

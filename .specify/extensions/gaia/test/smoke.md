@@ -48,7 +48,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 3: Resume-vs-start-new prompt
 
-**Action.** With an unfinalized draft SPEC already allocated (its `.gaia/specs.json` ledger row at `status: draft`, canonical save not yet reached), invoke `/gaia-spec "another feature"` without a force-new flag.
+**Action.** With an unfinalized draft SPEC already allocated (its `.gaia/local/specs/ledger.json` row at `status: draft`, canonical save not yet reached), invoke `/gaia-spec "another feature"` without a force-new flag.
 
 **Expected outcome.**
 

@@ -200,7 +200,7 @@ Both helpers run pure CLI args; no stdin payload:
 $ bash .specify/extensions/gaia/lib/lint.sh .gaia/local/specs/SPEC-001/SPEC.md
 {"ok":true,"findings":[]}
 
-$ bash .specify/extensions/gaia/lib/spec-allocator.sh next "$GAIA_ROOT"
+$ bash .specify/extensions/gaia/lib/spec-allocator.sh next "$GAIA_ROOT" "Example subject"
 SPEC-003
 
 $ bash .specify/extensions/gaia/lib/version-check.sh "$GAIA_ROOT"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ledger-update.sh: Merge a JSON object into the .gaia/specs.json row matching
-# spec_id. Existing fields are overwritten; absent fields are preserved.
+# ledger-update.sh: Merge a JSON object into the .gaia/local/specs/ledger.json row
+# matching spec_id. Existing fields are overwritten; absent fields are preserved.
 #
 # Usage:
 #   ledger-update.sh <repo_root> <spec_id> '<json-object>'
@@ -9,8 +9,8 @@
 #
 # The jq…>tmp; mv critical section runs inside the shared ledger mutex
 # (with-ledger-lock.sh) so it serializes against spec-allocator.sh's row
-# append on the same .gaia/specs.json. See with-ledger-lock.sh for the lock
-# env knobs (GAIA_LEDGER_LOCK_*).
+# append on the same .gaia/local/specs/ledger.json. See with-ledger-lock.sh for
+# the lock env knobs (GAIA_LEDGER_LOCK_*).
 #
 # Exit codes: 0 ok, 2 usage, 4 ledger or row missing OR lock-acquisition
 # timeout (could not safely apply the ledger write), 5 invalid patch JSON,
@@ -25,7 +25,7 @@ fi
 repo_root="$1"
 spec_id="$2"
 patch="$3"
-ledger_path="${repo_root%/}/.gaia/specs.json"
+ledger_path="${repo_root%/}/.gaia/local/specs/ledger.json"
 
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null

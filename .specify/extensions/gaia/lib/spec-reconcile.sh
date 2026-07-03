@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # spec-reconcile.sh: Reconcile finalized-but-open SPEC ledger rows against git
-# ground truth. For every .gaia/specs.json row whose status is "specified" (the
-# finalize state) or the legacy "in-progress", check whether a merged PR exists
-# whose head branch matches spec-NNN-* ; if so, flip the row to status "merged"
-# and stamp merged_at with that PR's mergedAt.
+# ground truth. For every .gaia/local/specs/ledger.json row whose status is
+# "specified" (the finalize state) or the legacy "in-progress", check whether a
+# merged PR exists whose head branch matches spec-NNN-* ; if so, flip the row to
+# status "merged" and stamp merged_at with that PR's mergedAt.
 #
 # Why this exists: the allocator's in_progress signal is draft-only and is set
 # at both ends by the authoring session, so it never goes stale. But the merged
@@ -30,7 +30,7 @@ if [ "$#" -lt 1 ]; then
 fi
 
 repo_root="$1"
-ledger_path="${repo_root%/}/.gaia/specs.json"
+ledger_path="${repo_root%/}/.gaia/local/specs/ledger.json"
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # No ledger, no jq, or not a git tree → nothing to do.
