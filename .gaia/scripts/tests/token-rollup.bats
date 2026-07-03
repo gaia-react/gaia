@@ -99,25 +99,25 @@ setup() {
 @test "dedup-lower: later partial row with a lower total cannot lower the winner; missing partial key can win" {
   run bash "$SCRIPT" --spec-id SPEC-201 --ledger "$FIX/dedup-lower.jsonl"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"execute:    1400000   (elapsed 11m40s)"* ]]
-  [[ "$output" == *"Total:      1400000   (elapsed 11m40s)"* ]]
-  [[ "$output" != *"900000"* ]]
+  [[ "$output" == *"execute:   1,400,000   (elapsed 11m40s)"* ]]
+  [[ "$output" == *"Total:     1,400,000   (elapsed 11m40s)"* ]]
+  [[ "$output" != *"900,000"* ]]
 }
 
 # ---------- 2. UAT-004 (inflate direction) ----------
 @test "dedup-inflate: a partial row with the HIGHEST total cannot inflate the winner" {
   run bash "$SCRIPT" --spec-id SPEC-202 --ledger "$FIX/dedup-inflate.jsonl"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"execute:     700000   (elapsed 6m40s)"* ]]
-  [[ "$output" == *"Total:       700000   (elapsed 6m40s)"* ]]
-  [[ "$output" != *"1200000"* ]]
+  [[ "$output" == *"execute:   700,000   (elapsed 6m40s)"* ]]
+  [[ "$output" == *"Total:     700,000   (elapsed 6m40s)"* ]]
+  [[ "$output" != *"1,200,000"* ]]
 }
 
 # ---------- 3. Tiebreak: equal totals, latest ended_at wins ----------
 @test "dedup-tiebreak: equal-total non-partial rows break on latest ended_at" {
   run bash "$SCRIPT" --spec-id SPEC-203 --ledger "$FIX/dedup-tiebreak.jsonl"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"execute:     500000   (elapsed 3m20s)"* ]]
+  [[ "$output" == *"execute:   500,000   (elapsed 3m20s)"* ]]
   [[ "$output" != *"1m40s"* ]]
 }
 
@@ -125,7 +125,7 @@ setup() {
 @test "dedup-all-partial: a session with only partial rows falls back to max-total and flags partial" {
   run bash "$SCRIPT" --spec-id SPEC-204 --ledger "$FIX/dedup-all-partial.jsonl"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"execute:     500000   (elapsed 4m10s)"* ]]
+  [[ "$output" == *"execute:   500,000   (elapsed 4m10s)"* ]]
   [[ "$output" == *"(partial: some ledger input was unreadable or lacked timing"* ]]
 }
 
@@ -133,8 +133,8 @@ setup() {
 @test "cross-session: execute total sums deduped contributions from two sessions, including the halted one" {
   run bash "$SCRIPT" --spec-id SPEC-210 --ledger "$FIX/cross-session.jsonl"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"execute:    4100000   (elapsed 45m0s)"* ]]
-  [[ "$output" == *"Total:      4100000   (elapsed 45m0s)"* ]]
+  [[ "$output" == *"execute:   4,100,000   (elapsed 45m0s)"* ]]
+  [[ "$output" == *"Total:     4,100,000   (elapsed 45m0s)"* ]]
   # regression trap: must NOT be the naive idle-gap-inclusive span (UAT-008)
   [[ "$output" != *"16500"* ]]
   [[ "$output" != *"4h35m"* ]]
@@ -152,16 +152,16 @@ setup() {
 @test "full-cycle: renders spec/plan/execute/Total with correct grand buckets, unrelated feature excluded" {
   run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIX/full-cycle.jsonl"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"spec:         37000   (elapsed 10m0s)"* ]]
-  [[ "$output" == *"plan:         38300   (elapsed 11m40s)"* ]]
-  [[ "$output" == *"execute:      39600   (elapsed 13m20s)"* ]]
-  [[ "$output" == *"Total:       114900   (elapsed 35m0s)"* ]]
-  [[ "$output" == *"Fresh input:  3300"* ]]
-  [[ "$output" == *"Cache write:  6300"* ]]
-  [[ "$output" == *"Cache read:   93000"* ]]
-  [[ "$output" == *"Output:       12300"* ]]
+  [[ "$output" == *"spec:       37,000   (elapsed 10m0s)"* ]]
+  [[ "$output" == *"plan:       38,300   (elapsed 11m40s)"* ]]
+  [[ "$output" == *"execute:    39,600   (elapsed 13m20s)"* ]]
+  [[ "$output" == *"Total:     114,900   (elapsed 35m0s)"* ]]
+  [[ "$output" == *"Fresh input:   3,300"* ]]
+  [[ "$output" == *"Cache write:   6,300"* ]]
+  [[ "$output" == *"Cache read:   93,000"* ]]
+  [[ "$output" == *"Output:       12,300"* ]]
   # the unrelated SPEC-999 noise row must never leak into this feature's roll-up
-  [[ "$output" != *"39999996"* ]]
+  [[ "$output" != *"39,999,996"* ]]
 }
 
 # ---------- 8. UAT-007 spec-less plan omits the spec line ----------
@@ -169,18 +169,18 @@ setup() {
   run bash "$SCRIPT" --spec-id spec-less-slug-example --ledger "$FIX/spec-less.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" != *$'\n  spec:'* ]]
-  [[ "$output" == *"plan:           370   (elapsed 1m0s)"* ]]
-  [[ "$output" == *"execute:        407   (elapsed 1m30s)"* ]]
-  [[ "$output" == *"Total:          777   (elapsed 2m30s)"* ]]
+  [[ "$output" == *"plan:      370   (elapsed 1m0s)"* ]]
+  [[ "$output" == *"execute:   407   (elapsed 1m30s)"* ]]
+  [[ "$output" == *"Total:     777   (elapsed 2m30s)"* ]]
 }
 
 # ---------- 9. UAT-010 corrupt line tolerated ----------
 @test "corrupt: one unparseable line among good rows is skipped, not fatal; good rows still sum" {
   run bash "$SCRIPT" --spec-id SPEC-230 --ledger "$FIX/corrupt.jsonl"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"spec:          5000   (elapsed 1m0s)"* ]]
-  [[ "$output" == *"plan:          6000   (elapsed 1m30s)"* ]]
-  [[ "$output" == *"Total:        11000   (elapsed 2m30s)"* ]]
+  [[ "$output" == *"spec:       5,000   (elapsed 1m0s)"* ]]
+  [[ "$output" == *"plan:       6,000   (elapsed 1m30s)"* ]]
+  [[ "$output" == *"Total:     11,000   (elapsed 2m30s)"* ]]
   [[ "$output" == *"(partial: some ledger input was unreadable or lacked timing"* ]]
 }
 
@@ -221,7 +221,7 @@ setup() {
   [ "$status" -eq 0 ]
   # if the reader mis-resolved to the worktree (which has no ledger at all),
   # this would read "no ledger records found" instead of the real total.
-  [[ "$output" == *"execute:    1400000   (elapsed 11m40s)"* ]]
+  [[ "$output" == *"execute:   1,400,000   (elapsed 11m40s)"* ]]
 
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
 }
@@ -242,12 +242,12 @@ setup() {
 @test "unavailable-elapsed: real totals render but elapsed shows 'unavailable', never a fabricated 0s" {
   run bash "$SCRIPT" --spec-id SPEC-250 --ledger "$FIX/unavailable-elapsed.jsonl"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"execute:       8000   (elapsed unavailable)"* ]]
-  [[ "$output" == *"Total:         8000   (elapsed unavailable)"* ]]
+  [[ "$output" == *"execute:   8,000   (elapsed unavailable)"* ]]
+  [[ "$output" == *"Total:     8,000   (elapsed unavailable)"* ]]
   [[ "$output" != *"elapsed 0s"* ]]
-  [[ "$output" == *"Fresh input:  1000"* ]]
-  [[ "$output" == *"Cache write:  2000"* ]]
-  [[ "$output" == *"Cache read:   4000"* ]]
-  [[ "$output" == *"Output:       1000"* ]]
+  [[ "$output" == *"Fresh input:  1,000"* ]]
+  [[ "$output" == *"Cache write:  2,000"* ]]
+  [[ "$output" == *"Cache read:   4,000"* ]]
+  [[ "$output" == *"Output:       1,000"* ]]
   [[ "$output" == *"(partial: some ledger input was unreadable or lacked timing"* ]]
 }

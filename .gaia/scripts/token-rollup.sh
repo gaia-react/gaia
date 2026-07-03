@@ -59,6 +59,19 @@ human_duration() {
   fi
 }
 
+# Group a non-negative integer with thousands separators for DISPLAY ONLY; the
+# stored ledger values and all internal arithmetic stay raw. A non-numeric
+# input echoes back unchanged.
+commify() {
+  local n="$1" out=""
+  is_uint "$n" || { printf '%s' "$n"; return 0; }
+  while (( ${#n} > 3 )); do
+    out=",${n: -3}${out}"
+    n="${n:0:${#n}-3}"
+  done
+  printf '%s%s' "$n" "$out"
+}
+
 # ---------- argument parsing (never crash on a bad/missing flag) ----------
 FEATURE_KEY=""
 LEDGER_OVERRIDE=""
@@ -215,6 +228,11 @@ is_uint "$out" || out=0
 
 printf 'Cycle cost (%s):\n' "$FEATURE_KEY"
 
+# Totals share one right-aligned column; the grand total is >= every action
+# total, so its commified width is the column width for the action + Total lines.
+grand_total_c="$(commify "$grand_total")"
+tw=${#grand_total_c}
+
 while IFS=$'\t' read -r a_action a_total a_elapsed a_avail; do
   is_uint "$a_total" || a_total=0
   is_uint "$a_elapsed" || a_elapsed=0
@@ -223,7 +241,7 @@ while IFS=$'\t' read -r a_action a_total a_elapsed a_avail; do
   else
     a_elapsed_str="unavailable"
   fi
-  printf '  %-11s%8d   (elapsed %s)\n' "$a_action:" "$a_total" "$a_elapsed_str"
+  printf '  %-11s%*s   (elapsed %s)\n' "$a_action:" "$tw" "$(commify "$a_total")" "$a_elapsed_str"
 done < <(jq -r '.actions[] | [.action, .total, .elapsed, .elapsed_available] | @tsv' <<<"$summary")
 
 if [[ "$grand_elapsed_available" == "true" ]]; then
@@ -231,11 +249,19 @@ if [[ "$grand_elapsed_available" == "true" ]]; then
 else
   total_elapsed_str="unavailable"
 fi
-printf '  %-11s%8d   (elapsed %s)\n' "Total:" "$grand_total" "$total_elapsed_str"
-printf '    Fresh input:  %s\n' "$fresh"
-printf '    Cache write:  %s\n' "$cwrite"
-printf '    Cache read:   %s\n' "$cread"
-printf '    Output:       %s\n' "$out"
+printf '  %-11s%*s   (elapsed %s)\n' "Total:" "$tw" "$grand_total_c" "$total_elapsed_str"
+
+# Buckets share their own right-aligned column, widened to the largest of the four.
+fresh_c="$(commify "$fresh")"; cwrite_c="$(commify "$cwrite")"
+cread_c="$(commify "$cread")"; out_c="$(commify "$out")"
+bw=${#fresh_c}
+(( ${#cwrite_c} > bw )) && bw=${#cwrite_c}
+(( ${#cread_c}  > bw )) && bw=${#cread_c}
+(( ${#out_c}    > bw )) && bw=${#out_c}
+printf '    %-14s%*s\n' "Fresh input:" "$bw" "$fresh_c"
+printf '    %-14s%*s\n' "Cache write:" "$bw" "$cwrite_c"
+printf '    %-14s%*s\n' "Cache read:"  "$bw" "$cread_c"
+printf '    %-14s%*s\n' "Output:"      "$bw" "$out_c"
 
 if (( corrupt == 1 )) || [[ "$grand_elapsed_partial" == "true" ]] || [[ "$grand_session_partial" == "true" ]]; then
   printf '  (partial: some ledger input was unreadable or lacked timing; figures are a lower bound)\n'
