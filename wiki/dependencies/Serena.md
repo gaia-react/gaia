@@ -11,7 +11,7 @@ tags: [dependency, mcp, code-search]
 
 # Serena
 
-LSP-backed MCP server. Gives Claude live, always-fresh access to symbol definitions, references, types, and module structure across the project's TS/TSX files.
+LSP-backed MCP server. Gives Claude live, always-fresh access to symbol definitions, references, types, and module structure across the project's source files, in any language the project configures a language server for.
 
 ## Pin
 
@@ -28,7 +28,7 @@ The `claude-code` context exposes Serena's LSP-backed symbol tools and its memor
 
 ## When to use
 
-Symbol-level queries on TS/TSX:
+Symbol-level queries in any language Serena indexes for the project:
 
 - Definitions: "where is `X`?"
 - References: "what calls `Y`?"
@@ -36,10 +36,12 @@ Symbol-level queries on TS/TSX:
 
 For prose / string / cross-language search, fall back to Read+grep. Routing rule: `.claude/rules/code-search.md`.
 
+The advisory routing rule is language-agnostic: it activates on a broad multi-language source glob and nudges toward Serena's symbol tools for any language Serena indexes, not TypeScript or `app/`/`test/` alone. The enforcement guard (`.claude/hooks/serena-code-search-guard.sh`) is deliberately narrower, TypeScript-conservative and tsconfig-gated, so a hard block never lands on a non-TS search. See [[Serena Integration]] for the guard detail.
+
 ## Limits
 
-- Cold-start cost on first invocation per session (tsserver warm-up).
-- Indexes only files reachable from `tsconfig.json`.
+- Cold-start cost on first invocation per session (language-server warm-up).
+- Indexes only files reachable from the language server's project config (`tsconfig.json` for TypeScript).
 - Doesn't see gitignored or generated files.
 
 See [[Serena Integration]].

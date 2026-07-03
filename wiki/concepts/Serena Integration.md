@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-04
-updated: 2026-07-02
+updated: 2026-07-03
 tags: [concept, claude, code-search, mcp]
 ---
 
@@ -36,7 +36,7 @@ See `.claude/rules/code-search.md` for the routing rule.
 
 ## Enforcement
 
-The rule alone is path-scoped to `app/**`/`test/**` *edits*, so it's absent from context during exploration, exactly when the grep-vs-Serena decision gets made. A PreToolUse guard (`.claude/hooks/serena-code-search-guard.sh`) closes that gap. It fires at the search call itself on both the `Grep` tool and a single `grep`/`rg`/`ag` issued through `Bash`, and blocks a bare identifier (≥ 3 chars, no spaces or regex metacharacters) scoped to `app/**`/`test/**` TS/TSX, pointing it at `find_symbol` / `find_referencing_symbols` / `get_symbols_overview`. The Bash path stays conservative and favors false negatives: a pipeline, a compound or sequenced command, a command substitution, a redirection, a quoted or regex pattern, multiple patterns, or any grep not carrying an explicit `app/**`/`test/**` TS/TSX path passes through untouched, so ordinary shell work is never blocked. Re-running the identical search passes, for the rare string-literal or comment search that's identifier-shaped. It no-ops unless Serena is a registered MCP server and the repo has a `tsconfig.json`, so adopters without Serena never see it. See [[Claude Hooks]].
+The routing rule is advisory and language-agnostic: it activates on a broad multi-language source glob and prefers Serena's symbol tools for any language Serena indexes for the project, not TypeScript or `app/`/`test/` alone. A rule is still absent from context during pure exploration (no edit in flight), exactly when the grep-vs-Serena decision gets made, so a PreToolUse guard (`.claude/hooks/serena-code-search-guard.sh`) closes that gap. The guard is deliberately narrower than the rule: it stays TypeScript-conservative and tsconfig-gated, so a hard block never lands on a non-TS search. It fires at the search call itself on both the `Grep` tool and a single `grep`/`rg`/`ag` issued through `Bash`, and blocks a bare identifier (≥ 3 chars, no spaces or regex metacharacters) scoped to `app/**`/`test/**` TS/TSX, pointing it at `find_symbol` / `find_referencing_symbols` / `get_symbols_overview`. The Bash path stays conservative and favors false negatives: a pipeline, a compound or sequenced command, a command substitution, a redirection, a quoted or regex pattern, multiple patterns, or any grep not carrying an explicit `app/**`/`test/**` TS/TSX path passes through untouched, so ordinary shell work is never blocked. Re-running the identical search passes, for the rare string-literal or comment search that's identifier-shaped. It no-ops unless Serena is a registered MCP server and the repo has a `tsconfig.json`, so adopters without Serena never see it. The split is deliberate: the advisory rule nudges broadly across languages at zero false-block risk, while the guard blocks only where a wrong block is impossible. See [[Claude Hooks]].
 
 ## Quirks
 
