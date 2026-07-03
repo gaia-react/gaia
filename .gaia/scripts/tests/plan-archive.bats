@@ -162,3 +162,68 @@ assert_pruned_only() {
   [ -f "$OUTSIDE/plan/SUMMARY.md" ]
   [[ "$output" == *"refusing"* ]]
 }
+
+# --- 11. Refuse "." slug (would resolve to plans/ itself, mass-deleting siblings) --
+
+@test "refuses .gaia/local/plans/. (mass-delete guard)" {
+  seed_plan ".gaia/local/plans/foo"
+  mkdir -p "$SANDBOX/.gaia/local/plans/bar"
+  : > "$SANDBOX/.gaia/local/plans/bar/marker"
+  run run_in_sandbox ".gaia/local/plans/."
+  [ "$status" -eq 0 ]
+  # Untouched: sibling plan folders inside plans/ survive.
+  [ -f "$SANDBOX/.gaia/local/plans/foo/KICKOFF.md" ]
+  [ -f "$SANDBOX/.gaia/local/plans/foo/.work/x" ]
+  [ -f "$SANDBOX/.gaia/local/plans/bar/marker" ]
+  [[ "$output" == *"refusing"* ]]
+}
+
+# --- 12. Refuse ".." slug (would resolve to .gaia/local, mass-deleting plans+specs) -
+
+@test "refuses .gaia/local/plans/.. (mass-delete guard)" {
+  seed_plan ".gaia/local/plans/foo"
+  seed_plan ".gaia/local/specs/SPEC-005/plan"
+  run run_in_sandbox ".gaia/local/plans/.."
+  [ "$status" -eq 0 ]
+  # Untouched: sibling trees under .gaia/local survive.
+  [ -f "$SANDBOX/.gaia/local/plans/foo/KICKOFF.md" ]
+  [ -f "$SANDBOX/.gaia/local/specs/SPEC-005/plan/KICKOFF.md" ]
+  [[ "$output" == *"refusing"* ]]
+}
+
+# --- 13. Refuse doubled trailing slash (empty slug, same mass-delete guard) --------
+
+@test "refuses .gaia/local/plans// (doubled trailing slash / empty slug)" {
+  seed_plan ".gaia/local/plans/foo"
+  mkdir -p "$SANDBOX/.gaia/local/plans/bar"
+  : > "$SANDBOX/.gaia/local/plans/bar/marker"
+  run run_in_sandbox ".gaia/local/plans//"
+  [ "$status" -eq 0 ]
+  [ -f "$SANDBOX/.gaia/local/plans/foo/KICKOFF.md" ]
+  [ -f "$SANDBOX/.gaia/local/plans/bar/marker" ]
+  [[ "$output" == *"refusing"* ]]
+}
+
+# --- 14. Well-formed slug with a single trailing slash still archives --------------
+
+@test "trailing slash on a well-formed slug still archives correctly" {
+  seed_plan ".gaia/local/plans/foo"
+  run run_in_sandbox ".gaia/local/plans/foo/"
+  [ "$status" -eq 0 ]
+  [ ! -e "$SANDBOX/.gaia/local/plans/foo" ]
+  assert_pruned_only "$SANDBOX/.gaia/local/plans/archived/foo"
+  [[ "$output" == *"Archived plan: moved .gaia/local/plans/foo -> .gaia/local/plans/archived/foo"* ]]
+}
+
+# --- 15. Refuse specs-arm path escape via ".." spec segment ------------------------
+
+@test "refuses .gaia/local/specs/../plan (spec-part path escape)" {
+  seed_plan ".gaia/local/specs/SPEC-005/plan"
+  mkdir -p "$SANDBOX/.gaia/local/plan"
+  : > "$SANDBOX/.gaia/local/plan/escaped-marker"
+  run run_in_sandbox ".gaia/local/specs/../plan"
+  [ "$status" -eq 0 ]
+  [ -f "$SANDBOX/.gaia/local/specs/SPEC-005/plan/KICKOFF.md" ]
+  [ -f "$SANDBOX/.gaia/local/plan/escaped-marker" ]
+  [[ "$output" == *"refusing"* ]]
+}

@@ -90,7 +90,7 @@ case "$rel" in
   .gaia/local/plans/*)
     slug="${rel#.gaia/local/plans/}"
     case "$slug" in
-      */*|archived)
+      ""|.|..|*/*|archived)
         echo "plan-archive: refusing $rel (nested path or already-archived)" >&2
         exit 0
         ;;
@@ -103,7 +103,7 @@ case "$rel" in
       */plan|*/plan-[0-9]*)
         spec_part="${remainder%/*}"
         case "$spec_part" in
-          */*)
+          ""|.|..|*/*)
             echo "plan-archive: refusing $rel (not a colocated plan folder)" >&2
             exit 0
             ;;
