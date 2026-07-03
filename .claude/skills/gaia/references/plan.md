@@ -24,10 +24,12 @@ Match either pattern:
 If matched:
 
 1. Read the referenced SPEC file. Its full content is the source-of-truth feature description; the short string passed via `$ARGUMENTS` is just the dispatch summary.
-2. Extract the SPEC id (e.g. `SPEC-005`). Cache the lowercased form (`spec-005`) as `SPEC_SLUG_SEED` for use in step 3.
+2. Extract the SPEC id (e.g. `SPEC-005`). Cache the lowercased form (`spec-005`) as `SPEC_SLUG_SEED` for use in step 4's branch-naming policy.
 3. Cache the absolute SPEC path as `SPEC_PATH` for use in the planner prompt (step 4), the planner will reference it in `README.md`.
 
 If no SPEC reference is detected, `SPEC_SLUG_SEED` and `SPEC_PATH` are unset; step 3 falls back to deriving a slug from the description directly.
+
+Colocated plans no longer use `SPEC_SLUG_SEED` to prefix a `plans/` slug, the plan lives inside the SPEC folder, so plan→SPEC discovery is structural. It is retained for the branch-name marker (step 4's branch policy) and human-facing labels. `SPEC_PATH` additionally seeds `SPEC_DIR` (its parent directory) for plan-directory resolution in step 3.
 
 ### 2. Check model
 
@@ -48,21 +50,33 @@ This decision governs the **planner** only. The plan's **execution** sub-agents 
 
 ### 3. Resolve plan directory
 
-Derive a short kebab-case slug from the feature description (e.g. "auth rework" → `auth-rework`).
+Derive a short kebab-case slug from the feature description (e.g. "auth rework" → `auth-rework`); used only for spec-less plans.
 
-**If `SPEC_SLUG_SEED` was set in step 1a, the slug MUST start with it** (e.g. `spec-005-cards-layout`, not `cards-layout`). This makes plan→SPEC discovery a one-line `ls .gaia/local/plans/ | grep ^spec-005-` and groups all plans for a given SPEC together.
+**Spec-derived plans colocate inside their SPEC folder**, at `<SPEC_DIR>/plan[-N]` where `SPEC_DIR` is the SPEC's parent directory (`.gaia/local/specs/<SPEC-ID>`); the plan basename is `plan`, not a slug. Plan→SPEC discovery is structural, the plan IS inside `specs/<SPEC-ID>/`, no slug prefix needed. **Spec-less plans keep living under `plans/<slug>`.**
 
 Resolve the absolute plan directory, suffixing with `-2`, `-3`, … if one already exists, then create it:
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-SLUG="<kebab-slug, prefixed with $SPEC_SLUG_SEED if set>"
-PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}"
-n=2
-while ! mkdir "$PLAN_DIR" 2>/dev/null; do
-  PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}-${n}"
-  n=$((n+1))
-done
+if [[ -n "${SPEC_PATH:-}" ]]; then
+  # Spec-derived: colocate the plan inside its SPEC folder.
+  SPEC_DIR="$(dirname "$SPEC_PATH")"          # .../.gaia/local/specs/SPEC-NNN
+  PLAN_DIR="${SPEC_DIR}/plan"
+  n=2
+  while ! mkdir "$PLAN_DIR" 2>/dev/null; do
+    PLAN_DIR="${SPEC_DIR}/plan-${n}"
+    n=$((n+1))
+  done
+else
+  # Spec-less one-off: lives under plans/.
+  SLUG="<kebab-slug from description>"
+  PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}"
+  n=2
+  while ! mkdir "$PLAN_DIR" 2>/dev/null; do
+    PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}-${n}"
+    n=$((n+1))
+  done
+fi
 ```
 
 Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia-plan` invocations coexist without overwriting each other.
@@ -109,7 +123,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
       started: <current UTC time, ISO 8601, e.g. 2026-05-19T14:32:00Z>
       ```
 
-      This file is deleted automatically when the plan directory is removed during final self-cleanup. Its purpose: a concurrently starting orchestrator for the same branch can detect this run is in-flight.
+      This file is deleted automatically when the plan directory is archived during final self-cleanup (RUNNING is not one of the two files the archive keeps, `SUMMARY.md` and `tokens.md`). Its purpose: a concurrently starting orchestrator for the same branch can detect this run is in-flight.
 
     - **Pre-flight branch policy.** Check the current branch.
 
@@ -122,15 +136,18 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       Do not silently default; the prompt fires every time HEAD is `main`/`master`. If the user picks "Other" with custom text, treat it as a request for an alternative isolation mode and surface a clarifying question rather than guessing, feature-branch and worktree are the two supported modes.
 
+      **Branch naming (FC-5).** Whichever isolation mode is chosen, when this plan is spec-derived (`SPEC_PATH` was set in step 1a) the branch name MUST begin with `${SPEC_SLUG_SEED}-` (e.g. `spec-005-cards-layout`), so `spec-reconcile.sh` flips the SPEC's ledger row to `merged` after the PR merges. A colocated plan's folder basename (`plan`) no longer carries that marker, so the branch name is now the only place it survives. For a spec-less plan, name the branch from the plan slug as today.
+
       **If HEAD is on any other branch:** Scan for a live concurrent orchestrator before proceeding. Run:
 
       ```bash
       BRANCH="$(git branch --show-current)"
-      PLAN_SLUG="$(basename "{PLAN_DIR}")"
+      ROOT="$(git rev-parse --show-toplevel)"
+      SELF_PLAN_DIR="${PLAN_DIR#"$ROOT/"}"   # absolute {PLAN_DIR} -> repo-relative, matches the glob output
       CONCURRENT_LIVE=""
-      for running_file in .gaia/local/plans/*/RUNNING; do
+      for running_file in .gaia/local/plans/*/RUNNING .gaia/local/specs/*/plan/RUNNING .gaia/local/specs/*/plan-*/RUNNING; do
         [[ -f "$running_file" ]] || continue
-        [[ "$(basename "$(dirname "$running_file")")" == "$PLAN_SLUG" ]] && continue
+        [[ "$(dirname "$running_file")" == "$SELF_PLAN_DIR" ]] && continue
         file_branch="$(grep "^branch:" "$running_file" | cut -d' ' -f2)"
         [[ "$file_branch" != "$BRANCH" ]] && continue
 
@@ -155,6 +172,8 @@ Then write the following files directly to `{PLAN_DIR}/`:
         break
       done
       ```
+
+      The scan iterates the union of three globs: colocated plans hide their `RUNNING` sentinel inside the SPEC folder, invisible to the old `plans/*/RUNNING` glob alone. Because the glob output is repo-relative but the cached `{PLAN_DIR}` is absolute, `SELF_PLAN_DIR` strips the repo root first so the self-skip compares two repo-relative paths; comparing `dirname "$running_file"` directly against the absolute `{PLAN_DIR}` would never match, and the orchestrator would flag its own freshly-written sentinel as a live concurrent run. The self-skip also compares the full plan-dir path rather than just the basename, since two different SPECs can both have a `plan` basename.
 
       If `CONCURRENT_LIVE` is non-empty, a live concurrent orchestrator is running on this branch. Ask the user via `AskUserQuestion`:
       - question: `"A plan orchestrator is already running on branch '{branch}'. How should this plan proceed?"`
@@ -192,7 +211,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       **Token tally (execute-time).** Execute-phase token tallies are recorded automatically: a `PreToolUse` hook on the orchestrator's per-phase git commit/push records this session's execute tally to the durable ledger, keyed to the feature (the SPEC id resolved from the active plan folder, or the plan slug when spec-less). Resumed, halted, and worktree sessions are all captured. The orchestrator does not run a manual execute tally, doing so would double-count the phase.
 
-      After the pre-merge `code-review-audit`'s clean-pass marker is written and before the Final self-cleanup phase deletes the plan folder, the orchestrator reports the full-cycle cost by running the roll-up reader and surfacing its spec / plan / execute / total breakdown plus wall-clock elapsed to the user. Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC):
+      After the pre-merge `code-review-audit`'s clean-pass marker is written and before the Final self-cleanup phase archives the plan folder, the orchestrator reports the full-cycle cost by running the roll-up reader and surfacing its spec / plan / execute / total breakdown plus wall-clock elapsed to the user. Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC, the spec-less case):
 
       ```bash
       if [ -x .gaia/scripts/token-rollup.sh ]; then
@@ -202,7 +221,21 @@ Then write the following files directly to `{PLAN_DIR}/`:
       ```
 
       A `PostToolUse` hook on `gh pr merge` renders the same roll-up at the merge boundary, so the readout also appears when the merge runs from a fresh top-level session. The reader never blocks and never fabricates a number: the `-x` guard and trailing `|| true` mean a missing or failing helper degrades silently, and an unreadable ledger degrades to a partial or absent figure with a marker.
-    - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder so scaffolding does not persist locally. Delete it by its literal repo-relative path: `rm -rf .gaia/local/plans/<slug>` (substitute the plan's slug). The literal path matches the project's `rm -rf .gaia/local/plans/*` permission and the `block-rm-rf.sh` whitelist, so it clears without a prompt; do not reconstruct an absolute path from variables (`"$ROOT/$PLAN_REL"`), which both misses that permission match and trips the empty-variable rm guard. This removes `SUMMARY.md` along with everything else, by this point its content has already been surfaced in the Final summary. Then check `git check-ignore .gaia/local/plans/`, if it is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
+
+    - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user confirms the PR is ready to merge, the orchestrator **archives** its own plan folder instead of deleting it, preserving `SUMMARY.md` and `tokens.md`. Run:
+
+      ```bash
+      bash .gaia/scripts/plan-archive.sh {PLAN_DIR}
+      ```
+
+      The argument is the plan dir. Pass the cached `{PLAN_DIR}` (absolute) directly, the helper normalizes an absolute-under-repo path to repo-relative. A repo-relative literal (`.gaia/local/specs/<SPEC-ID>/plan[-N]` or `.gaia/local/plans/<slug>[-N]`) is equally valid. Unlike the old literal-`rm` self-cleanup, the argument shape does NOT affect the permission match here: the allow entry `Bash(bash .gaia/scripts/plan-archive.sh:*)` uses a `:*` wildcard that matches any argument.
+
+      This prunes everything except `SUMMARY.md` and `tokens.md`, then: for a spec-less plan under `.gaia/local/plans/<slug>/` moves the pruned folder to `.gaia/local/plans/archived/<slug>/`; for a spec-colocated plan under `.gaia/local/specs/<SPEC-ID>/plan/` prunes in place (the SPEC folder is the archival unit, it rides into `specs/archived/` when the SPEC is later archived). The helper always exits 0.
+
+      Then check `git check-ignore .gaia/local/plans/` (and, for a colocated plan, `git check-ignore .gaia/local/specs/`): both are gitignored under the GAIA default, so the prune+move is invisible to git, skip the commit and report "plan folder archived locally; gitignored, no commit needed." If a path is tracked, commit and push the move as the final commit on the PR. If the user explicitly asks to keep the plan folder un-archived, skip and report.
+
+      The `SUMMARY.md`/`tokens.md` content was already surfaced in the Final summary, and now additionally persists on disk.
+
     - **Post-merge worktree cleanup (worktree-mode runs only).** When the orchestrator's pre-flight chose worktree mode (or the run was dispatched into a worktree by upstream tooling), the post-merge phase runs the cleanup procedure below AFTER the user confirms the PR is merged. The procedure detects the squash-merge state and discards the worktree without prompting (the SPEC clarifications.answered confirms pre-consent: the orchestrator told the user "after merge, the worktree will be discarded" before opening the PR; the user merging the PR is the consent).
       1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
       2. **Isolation-context check (see next bullet).** If the orchestrator is running inside an isolated subagent context, emit a continuation prompt and STOP, do NOT call `ExitWorktree`.
@@ -227,7 +260,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
 4.  **`{PLAN_DIR}/KICKOFF.md`**: the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt, no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline. The kickoff also includes a one-line reference to the pre-merge `code-review-audit` obligation (e.g. "Before any `gh pr merge`, run the `code-review-audit` agent, see ORCHESTRATOR.md's Pre-merge code-review-audit section.") and a one-line default-execution-model statement (e.g. "Dispatch each task sub-agent as `general-purpose` with `model: \"sonnet\"` unless ORCHESTRATOR.md's phase list escalates that phase to Opus."). Both lines ensure a cold-started orchestrator reads the requirement before doing any work, surviving any context compression that drops the ORCHESTRATOR.md content from the first read.
 
-Before returning, delete `{PLAN_DIR}/.work/` if you created it. Use the literal repo-relative path so the project's `rm -rf .gaia/local/plans/*` permission auto-approves it without a prompt: `rm -rf .gaia/local/plans/<slug>/.work`. Do not reconstruct an absolute path from variables, which misses that match and trips the empty-variable rm guard.
+Before returning, delete `{PLAN_DIR}/.work/` if you created it. Use the literal repo-relative path so the project's `rm -rf .gaia/local/plans/*` permission (spec-less plans) or `rm -rf .gaia/local/specs/*` permission (colocated plans) auto-approves it without a prompt: `rm -rf <repo-relative PLAN_DIR>/.work`, e.g. `rm -rf .gaia/local/plans/<slug>/.work` or `rm -rf .gaia/local/specs/<SPEC-ID>/plan/.work`. Do not reconstruct an absolute path from variables, which misses that match and trips the empty-variable rm guard.
 
 **Return format (required).** Return only a small structured payload, no file contents, no recap of what's inside the files. The parent reads the files itself if it needs to.
 
@@ -336,23 +369,24 @@ Collect findings across all lenses. The plan is editable and unsaved-to-handoff,
 
 ### 4.7. Telemetry: revision detection
 
-If the slug-collision suffix from step 3 is greater than 1 (i.e. `PLAN_DIR` ends with `-2`, `-3`, …) AND `SPEC_PATH` was set in step 1a, this plan is a revision of a prior plan. Emit a `plan_revised` mentorship event so the over-time pattern detector sees it.
+If the directory-collision suffix from step 3 is greater than 1 (i.e. `PLAN_DIR` ends with `-2`, `-3`, …) AND `SPEC_PATH` was set in step 1a, this plan is a revision of a prior plan. Emit a `plan_revised` mentorship event so the over-time pattern detector sees it.
 
 Derive the prior plan directory and item counts, then emit. Failure to emit must NEVER block the user's flow, wrap in `|| true`:
 
 ```bash
 # Re-derive the suffix from PLAN_DIR (the same suffix used in step 3).
 PLAN_BASENAME="$(basename "$PLAN_DIR")"
-# PLAN_BASENAME is `${SLUG}-N` for N>=2 collisions; ${SLUG} for the first.
+# This block only fires when SPEC_PATH is set, so PLAN_BASENAME is always the
+# colocated form: `plan-N` for N>=2 collisions, `plan` for the first.
 if [[ "$PLAN_BASENAME" =~ -([0-9]+)$ ]]; then
   SUFFIX="${BASH_REMATCH[1]}"
   if [[ "$SUFFIX" -gt 1 && -n "${SPEC_PATH:-}" ]]; then
-    BASE_SLUG="${PLAN_BASENAME%-${SUFFIX}}"
+    SPEC_DIR="$(dirname "$SPEC_PATH")"
     PRIOR_SUFFIX=$((SUFFIX - 1))
     if [[ "$PRIOR_SUFFIX" -eq 1 ]]; then
-      PRIOR_DIR="${ROOT}/.gaia/local/plans/${BASE_SLUG}"
+      PRIOR_DIR="${SPEC_DIR}/plan"
     else
-      PRIOR_DIR="${ROOT}/.gaia/local/plans/${BASE_SLUG}-${PRIOR_SUFFIX}"
+      PRIOR_DIR="${SPEC_DIR}/plan-${PRIOR_SUFFIX}"
     fi
     NEW_TASKS=$(ls "$PLAN_DIR"/task-*.md 2>/dev/null | wc -l | tr -d ' ')
     PRIOR_TASKS=$(ls "$PRIOR_DIR"/task-*.md 2>/dev/null | wc -l | tr -d ' ')
@@ -364,7 +398,7 @@ if [[ "$PLAN_BASENAME" =~ -([0-9]+)$ ]]; then
       ITEMS_ADDED=0
       ITEMS_REMOVED=$((-DIFF))
     fi
-    SPEC_ID="$(basename "$(dirname "$SPEC_PATH")")"   # -> SPEC-NNN (SPEC folder name)
+    SPEC_ID="$(basename "$SPEC_DIR")"   # -> SPEC-NNN (SPEC folder name)
     .gaia/cli/gaia telemetry emit plan_revised \
       --plan-id "$PLAN_BASENAME" \
       --spec-id "$SPEC_ID" \
@@ -388,7 +422,7 @@ The plan folder is written and verified, so every planner/auditor sub-agent this
 flushed its sidecar to disk. Tally the `/gaia-plan` session's ground-truth token cost before the
 handoff. The call sums `message.usage` across the main transcript AND every sub-agent sidecar
 (deduped by message id, so it equals what the API billed), appends one record keyed to the plan slug
-to the durable ledger resolved to the main checkout (so it survives deletion of the plan folder and
+to the durable ledger resolved to the main checkout (so it survives archival of the plan folder and
 a linked worktree), writes `tokens.md` into the plan folder, and prints the four billing buckets
 plus a total and the wall-clock elapsed. Derive the ledger key from the SPEC folder name (the parent
 dir of `SPEC_PATH`), falling back to the plan slug for a SPEC-less plan:
@@ -419,10 +453,10 @@ Output a short summary of what's in `$PLAN_DIR/` (including the token tally prin
 The prompt is a single line, exactly:
 
 ```
-Read <absolute-path-to>/.gaia/local/plans/{slug}/KICKOFF.md and execute it.
+Read <absolute-path-to-PLAN_DIR>/KICKOFF.md and execute it.
 ```
 
-Use `$PLAN_DIR/KICKOFF.md` (the absolute path resolved in step 3). The path MUST be absolute so the cold Claude session has no working-directory ambiguity. Do not include any other instruction, the orchestrator's behavior lives in `KICKOFF.md`.
+For example `.../.gaia/local/specs/SPEC-005/plan/KICKOFF.md` for a spec-derived plan, or `.../.gaia/local/plans/{slug}/KICKOFF.md` for a spec-less plan. Use `$PLAN_DIR/KICKOFF.md` (the absolute path resolved in step 3). The path MUST be absolute so the cold Claude session has no working-directory ambiguity. Do not include any other instruction, the orchestrator's behavior lives in `KICKOFF.md`.
 
 **Print the prompt as a fenced code block** so the user can select and copy it manually.
 

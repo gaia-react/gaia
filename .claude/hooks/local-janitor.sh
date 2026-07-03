@@ -28,9 +28,11 @@
 #      only when its <sha> == HEAD; once the PR squash-merges to a new sha the
 #      audited branch tip is orphaned (reflog-only) and the marker is spent.
 #      A <sha> that is not a valid commit (bogus/garbage) is treated as dead.
-#   3. plans/<slug>/ whose RUNNING sentinel names a branch that no longer
-#      exists AND is not marked DEFERRED/PAUSED/PARKED. Branch-gone + not-parked
-#      means the plan merged and its self-cleanup never ran (interrupted run).
+#   3. plans/<slug>/ and colocated specs/<SPEC-ID>/plan[-N]/ dirs whose RUNNING
+#      sentinel names a branch that no longer exists AND is not marked
+#      DEFERRED/PAUSED/PARKED. Branch-gone + not-parked means the plan merged
+#      and its self-cleanup never ran (interrupted run). Archived, not deleted,
+#      via plan-archive.sh, so SUMMARY.md/tokens.md survive the sweep.
 #   4. empty leftover dirs under .gaia/local, EXCEPT the structural drop-zones
 #      tooling expects to find. Pruned with `rmdir`, so a non-empty dir can
 #      never be removed even if the logic is wrong.
@@ -98,28 +100,34 @@ fi
 
 # --- 3. Completed-but-unswept plan dirs ------------------------------------
 plans_dir="$local_dir/plans"
-if [ -d "$plans_dir" ]; then
-  for running in "$plans_dir"/*/RUNNING; do
-    [ -f "$running" ] || continue
-    plan_dir=${running%/RUNNING}
-    # Defensive: only ever act on a proper child of plans/.
-    case "$plan_dir" in "$plans_dir"/?*) ;; *) continue ;; esac
-    # Never sweep an intentionally parked plan.
-    grep -qiE 'status:[[:space:]]*(DEFERRED|PAUSED|PARKED)' "$running" 2>/dev/null && continue
-    # Branch token: first whitespace-delimited word after 'branch:'.
-    branch=$(sed -nE 's/^branch:[[:space:]]*([^[:space:]]+).*/\1/p' "$running" 2>/dev/null | head -1)
-    [ -n "$branch" ] || continue          # unparseable sentinel -> skip
-    # Branch still exists -> plan may be in-flight -> keep.
-    git -C "$root" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null 2>&1 && continue
-    rm -rf -- "$plan_dir"
-  done
-fi
+specs_dir="$local_dir/specs"
+for running in "$root/.gaia/local/plans"/*/RUNNING "$root/.gaia/local/specs"/*/plan/RUNNING \
+  "$root/.gaia/local/specs"/*/plan-*/RUNNING; do
+  [ -f "$running" ] || continue
+  plan_dir=${running%/RUNNING}
+  # Defensive: only ever act on a proper child of plans/, or a colocated
+  # specs/<SPEC-ID>/plan[-N] dir.
+  case "$plan_dir" in
+    "$plans_dir"/?* | "$specs_dir"/*/plan | "$specs_dir"/*/plan-*) ;;
+    *) continue ;;
+  esac
+  # Never sweep an intentionally parked plan.
+  grep -qiE 'status:[[:space:]]*(DEFERRED|PAUSED|PARKED)' "$running" 2>/dev/null && continue
+  # Branch token: first whitespace-delimited word after 'branch:'.
+  branch=$(sed -nE 's/^branch:[[:space:]]*([^[:space:]]+).*/\1/p' "$running" 2>/dev/null | head -1)
+  [ -n "$branch" ] || continue          # unparseable sentinel -> skip
+  # Branch still exists -> plan may be in-flight -> keep.
+  git -C "$root" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null 2>&1 && continue
+  # Death proven: archive (not delete) so SUMMARY.md/tokens.md survive.
+  plan_rel="${plan_dir#"$root"/}"
+  bash "$root/.gaia/scripts/plan-archive.sh" "$plan_rel" >/dev/null 2>&1 || true
+done
 
 # --- 4. Stray empty dirs (keep the structural drop-zones) ------------------
 is_drop_zone() {
   case "$1" in
     audit | audit-ledger | cache | debt | forensics | handoff | plans \
-      | red-ledger | red-ledger/.tmp | specs | specs/archived \
+      | plans/archived | red-ledger | red-ledger/.tmp | specs | specs/archived \
       | telemetry | telemetry/cloud) return 0 ;;
     *) return 1 ;;
   esac

@@ -25,7 +25,7 @@ resolve_active_plan_dir() {
 
   best_dir=""
   best_started=""
-  for running_file in .gaia/local/plans/*/RUNNING; do
+  for running_file in .gaia/local/plans/*/RUNNING .gaia/local/specs/*/plan/RUNNING .gaia/local/specs/*/plan-*/RUNNING; do
     [ -f "$running_file" ] || continue
 
     file_branch="$(grep '^branch:' "$running_file" 2>/dev/null | cut -d' ' -f2)" || true

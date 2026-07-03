@@ -35,11 +35,11 @@ else
   exit 0
 fi
 
-# Cheap negative gate: no plan folder at all, skip before sourcing the
-# resolver lib or paying for token-tally.sh's transcript parse.
+# Cheap negative gate: no live plan RUNNING sentinel at all, skip before
+# sourcing the resolver lib or paying for token-tally.sh's transcript parse.
 has_plan=0
-for d in .gaia/local/plans/*/; do
-  [ -d "$d" ] || continue
+for rf in .gaia/local/plans/*/RUNNING .gaia/local/specs/*/plan/RUNNING .gaia/local/specs/*/plan-*/RUNNING; do
+  [ -f "$rf" ] || continue
   has_plan=1
   break
 done

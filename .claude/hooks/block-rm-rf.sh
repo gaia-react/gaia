@@ -12,6 +12,7 @@
 #
 # Allowed (whitelist of safe scratch paths):
 #   - .gaia/local/plans/*
+#   - .gaia/local/specs/*
 #   - .gaia/local/audit/*
 #   - .gaia/local/handoff/*
 #   - .gaia/cache/*
@@ -85,6 +86,9 @@ for tok in "${tokens[@]}"; do
       ;;
     .gaia/local/plans/*|./.gaia/local/plans/*)
       : # whitelisted
+      ;;
+    .gaia/local/specs/*|./.gaia/local/specs/*)
+      : # whitelisted (colocated plan scratch under specs/<SPEC-ID>/plan)
       ;;
     .gaia/local/audit/*|./.gaia/local/audit/*)
       : # whitelisted
