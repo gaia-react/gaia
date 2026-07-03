@@ -103,16 +103,14 @@ wiki/decisions/Forensics Triage Workflow.md
 
 # --- 7. Scratch + transient ---
 # Local working directories: scratchpad ingestion, CLI build cache,
-# per-machine state, update-merge stage area, init backup. `.gaia/specs.json`
-# is the SPEC-id ledger over `.gaia/local/specs/`, runtime-generated per
-# clone (`.specify/extensions/gaia/lib/spec-allocator.sh` recreates it empty
-# on the first `/gaia-spec`), not template content; adopters must start their
-# own SPEC numbering from zero rather than inherit the GAIA template's
-# allocations.
+# per-machine state, update-merge stage area, init backup. Per-machine SPEC
+# state (the ledger at `.gaia/local/specs/ledger.json` plus the SPEC
+# folders) lives under `.gaia/local/`, already excluded by the line below;
+# a fresh adopter starts SPEC numbering from an empty local ledger and an
+# unseeded remote `spec/*` tag namespace.
 .raw
 .gaia/cache
 .gaia/local
-.gaia/specs.json
 .gaia-backup
 .gaia-merge
 

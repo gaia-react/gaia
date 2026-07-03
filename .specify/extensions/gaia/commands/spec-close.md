@@ -77,7 +77,7 @@ Surface via `AskUserQuestion`:
 
 ## Step 5: Flip ledger status
 
-Update the `.gaia/specs.json` row for `<spec_id>` to record the merge: set `status: merged` and stamp `merged_at` with the current UTC timestamp. Disposition lives on the artifact (and in telemetry); the ledger tracks SPEC lifecycle independently of artifact location.
+Update the `.gaia/local/specs/ledger.json` row for `<spec_id>` to record the merge: set `status: merged` and stamp `merged_at` with the current UTC timestamp. Disposition lives on the artifact (and in telemetry); the ledger tracks SPEC lifecycle independently of artifact location.
 
 Run using the Bash tool:
 
@@ -88,7 +88,7 @@ bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
   || echo "ledger-update skipped (row missing), non-blocking" >&2
 ```
 
-Failure is non-blocking. Pre-ledger SPECs (allocated before `.gaia/specs.json` existed) will not have a row and exit 4, log and continue.
+Failure is non-blocking. Pre-ledger SPECs (allocated before `.gaia/local/specs/ledger.json` existed) will not have a row and exit 4, log and continue.
 
 ## Step 6: Telemetry
 
