@@ -6,7 +6,7 @@
 # Inside the tmp repo:
 #   - git init (main), test identity, commit.gpgsign false
 #   - .gaia/local/specs, .gaia/local/cache, .specify/extensions/gaia/lib dirs
-#   - a minimal valid ledger .gaia/specs.json: { "version": 1, "specs": [] }
+#   - a minimal valid ledger .gaia/local/specs/ledger.json: { "version": 1, "specs": [] }
 #   - copies (NOT symlinks) of the three scripts under test from the real
 #     repo so ${BASH_SOURCE[0]}-relative sourcing inside the scripts resolves
 #     to the tmp lib dir and finds the sibling with-ledger-lock.sh
@@ -58,7 +58,7 @@ git config commit.gpgsign false
 
 mkdir -p .gaia/local/specs .gaia/local/cache .specify/extensions/gaia/lib
 
-printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/specs.json
+printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 
 # Copy (not symlink) so the scripts' ${BASH_SOURCE[0]}-relative source of
 # with-ledger-lock.sh resolves to this tmp lib dir.
@@ -78,16 +78,16 @@ while [[ $# -gt 0 ]]; do
       tmp="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "draft"}]' \
-        .gaia/specs.json > "$tmp"
-      mv "$tmp" .gaia/specs.json
+        .gaia/local/specs/ledger.json > "$tmp"
+      mv "$tmp" .gaia/local/specs/ledger.json
       ;;
     --seed-inprogress)
       id="$2"; shift 2
       tmp="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "in-progress"}]' \
-        .gaia/specs.json > "$tmp"
-      mv "$tmp" .gaia/specs.json
+        .gaia/local/specs/ledger.json > "$tmp"
+      mv "$tmp" .gaia/local/specs/ledger.json
       ;;
     --seed-file)
       id="$2"; shift 2
@@ -149,16 +149,16 @@ EOF
       tmp="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
-        .gaia/specs.json > "$tmp"
-      mv "$tmp" .gaia/specs.json
+        .gaia/local/specs/ledger.json > "$tmp"
+      mv "$tmp" .gaia/local/specs/ledger.json
       ;;
     --seed-merged-folder)
       id="$2"; shift 2
       tmp="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
-        .gaia/specs.json > "$tmp"
-      mv "$tmp" .gaia/specs.json
+        .gaia/local/specs/ledger.json > "$tmp"
+      mv "$tmp" .gaia/local/specs/ledger.json
       mkdir -p ".gaia/local/specs/${id}"
       cat > ".gaia/local/specs/${id}/SPEC.md" <<EOF
 ---

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # spec-renumber.sh: Renumber a SPEC. Renames the local SPEC folder, updates the
-# inner SPEC.md frontmatter, and rewrites the .gaia/specs.json ledger row. The
-# inner SPEC.md keeps its name; any sibling artifacts in the folder move with it.
+# inner SPEC.md frontmatter, and rewrites the .gaia/local/specs/ledger.json ledger
+# row. The inner SPEC.md keeps its name; any sibling artifacts in the folder move
+# with it.
 # Does NOT touch external state (branch names, GH issue titles, commit-message
 # history), those are reported as next steps for the caller to handle consciously.
 #
@@ -24,7 +25,7 @@ repo_root="$1"
 old_id="$2"
 new_id="$3"
 specs_dir="${repo_root%/}/.gaia/local/specs"
-ledger_path="${repo_root%/}/.gaia/specs.json"
+ledger_path="${repo_root%/}/.gaia/local/specs/ledger.json"
 allocator="${repo_root%/}/.specify/extensions/gaia/lib/spec-allocator.sh"
 
 if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then

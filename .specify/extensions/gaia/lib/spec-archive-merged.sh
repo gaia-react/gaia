@@ -11,7 +11,7 @@
 # reconcile advances specified -> merged from git first, then this pass moves
 # the now-merged folders into archived/.
 #
-# Sweep criteria, per SPEC: a .gaia/specs.json row is archived when ALL hold:
+# Sweep criteria, per SPEC: a .gaia/local/specs/ledger.json row is archived when ALL hold:
 #   - row status == "merged"
 #   - an active artifact folder exists at .gaia/local/specs/<id>/ (the folder
 #     is the archival unit; siblings move with it)
@@ -46,7 +46,7 @@ if [ "$#" -lt 1 ]; then
 fi
 
 repo_root="${1%/}"
-ledger_path="${repo_root}/.gaia/specs.json"
+ledger_path="${repo_root}/.gaia/local/specs/ledger.json"
 specs_dir="${repo_root}/.gaia/local/specs"
 cache_dir="${repo_root}/.gaia/local/cache/wiki-promote"
 telemetry_path="${repo_root}/.gaia/local/telemetry/spec-pacing.jsonl"

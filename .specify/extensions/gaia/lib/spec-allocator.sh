@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# spec-allocator.sh: Allocate SPEC-NNN ids using the .gaia/specs.json ledger,
-# self-healed against deterministic markers in git (spec-NNN-* branches) and the
-# working-tree SPEC files. The repo must be a git working tree.
+# spec-allocator.sh: Allocate SPEC-NNN ids using the .gaia/local/specs/ledger.json
+# ledger, self-healed against deterministic markers in git (spec-NNN-* branches) and
+# the working-tree SPEC files. The repo must be a git working tree.
 #
 # Usage:
 #   spec-allocator.sh next <repo_root>      # prints next SPEC-NNN id, writes ledger row
 #   spec-allocator.sh highest <repo_root>   # prints highest known SPEC-NNN, or "none"
 #   spec-allocator.sh in_progress <repo_root>  # prints first unfinalized (draft) SPEC id, or "none"
 #
-# Authority: git is the truth, .gaia/specs.json is a fast index. `next` performs a
-# self-heal pass before allocating, any SPEC id found in a branch name (the
-# deterministic marker that GAIA tooling creates) is treated as burned even if
-# missing from the ledger. A skipped slot is strictly cheaper than a duplicate id.
-# Commit messages are NOT scanned; they pick up free-text references (test
-# fixtures, regression notes) that would inflate the highest id incorrectly.
+# Authority: the remote's spec/* tag namespace is the cross-team allocation
+# authority; the local, gitignored .gaia/local/specs/ledger.json is a per-machine
+# cache of draft status, intent, and timestamps, and one input to the union `next`
+# reads. `next` performs a self-heal pass before allocating, any SPEC id found in a
+# branch name (the deterministic marker that GAIA tooling creates) is treated as
+# burned even if missing from the ledger. A skipped slot is strictly cheaper than a
+# duplicate id. Commit messages are NOT scanned; they pick up free-text references
+# (test fixtures, regression notes) that would inflate the highest id incorrectly.
 #
 # Concurrency: the `next` read-modify-write critical section runs under the
 # shared ledger mutex from with-ledger-lock.sh (flock when present, atomic-mkdir
@@ -33,7 +35,7 @@ fi
 mode="$1"
 repo_root="$2"
 specs_dir="${repo_root%/}/.gaia/local/specs"
-ledger_path="${repo_root%/}/.gaia/specs.json"
+ledger_path="${repo_root%/}/.gaia/local/specs/ledger.json"
 
 # Source the shared ledger mutex from this script's own directory so it
 # resolves identically from the speckit preset and from test copies of the
@@ -51,7 +53,7 @@ require_git() {
 
 # Emit one bare integer per known SPEC number, one per line, unsorted.
 # Sources (all deterministic markers; no free-text scanning):
-#   1. .gaia/specs.json ledger
+#   1. .gaia/local/specs/ledger.json ledger
 #   2. Local + remote branches matching ^spec-NNN-
 #   3. Working-tree folders .gaia/local/specs/<spec_id>/SPEC.md
 known_spec_numbers() {
@@ -124,7 +126,7 @@ append_ledger_row() {
 # resume, so it is deliberately not reported here. The merged transition is
 # reconciled from git ground truth by spec-reconcile.sh, out of this read path.
 #
-# Source: the .gaia/specs.json ledger only. The prior SPEC-file frontmatter
+# Source: the .gaia/local/specs/ledger.json ledger only. The prior SPEC-file frontmatter
 # fallback is intentionally gone: every SPEC gets a ledger row at allocation, so
 # a draft always has one, and scanning frozen SPEC files re-flagged finalized
 # work as in-flight forever (the staleness this design removes).

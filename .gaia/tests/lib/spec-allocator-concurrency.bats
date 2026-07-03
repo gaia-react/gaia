@@ -53,7 +53,7 @@ _run_parallel_next() {
   [ "$(printf '%s\n' "$printed" | grep -c '^SPEC-[0-9]\{3\}$')" -eq "$N" ]
   [ "$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')" -eq "$N" ]
 
-  rows="$(jq -r '.specs[].id' "$REPO/.gaia/specs.json")"
+  rows="$(jq -r '.specs[].id' "$REPO/.gaia/local/specs/ledger.json")"
   [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -eq "$N" ]
   # No duplicate ids in the ledger.
   [ "$(printf '%s\n' "$rows" | sort | uniq -d | wc -l | tr -d ' ')" -eq 0 ]
@@ -74,7 +74,7 @@ _run_parallel_next() {
   [ "$(printf '%s\n' "$printed" | grep -c '^SPEC-[0-9]\{3\}$')" -eq "$N" ]
   [ "$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')" -eq "$N" ]
 
-  rows="$(jq -r '.specs[].id' "$REPO/.gaia/specs.json")"
+  rows="$(jq -r '.specs[].id' "$REPO/.gaia/local/specs/ledger.json")"
   [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -eq "$N" ]
   [ "$(printf '%s\n' "$rows" | sort | uniq -d | wc -l | tr -d ' ')" -eq 0 ]
   while IFS= read -r id; do
@@ -92,7 +92,7 @@ _run_parallel_next() {
   run bash -c "GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_STALE_SECS=1 bash '$REPO/$ALLOC' next '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-002" ]
-  [ "$(jq -r '[.specs[].id] | length' "$REPO/.gaia/specs.json")" -eq 2 ]
+  [ "$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")" -eq 2 ]
 }
 
 # --- Test 10–12: in_progress contract ----------------------------------------
@@ -175,7 +175,7 @@ EOF
   run bash -c "PATH='$stubdir:$PATH' bash '$REPO/$ALLOC' next '$REPO'"
   [ "$status" -eq 4 ]
   # Ledger left unchanged; no row appended on the failed write.
-  [ "$(jq -r '[.specs[].id] | length' "$REPO/.gaia/specs.json")" -eq 0 ]
+  [ "$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")" -eq 0 ]
 }
 
 @test "14c: lock timeout; next exits 4, ledger unchanged (75 maps to 4)" {
@@ -185,7 +185,7 @@ EOF
   # path propagates THROUGH the lock as a non-zero exit, not a swallowed 0.
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   cd "$REPO"
-  before="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/specs.json")"
+  before="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")"
   run bash -c "
     export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
     . '$REPO/.specify/extensions/gaia/lib/with-ledger-lock.sh'
@@ -201,7 +201,7 @@ EOF
     exit \"\$rc\"
   "
   [ "$status" -eq 4 ]
-  after="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/specs.json")"
+  after="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")"
   [ "$before" -eq "$after" ]
 }
 
@@ -243,14 +243,14 @@ EOF
   wait
 
   # Ledger is still valid JSON.
-  run jq -e . "$REPO/.gaia/specs.json"
+  run jq -e . "$REPO/.gaia/local/specs/ledger.json"
   [ "$status" -eq 0 ]
   # Seeded row flipped to in-progress.
-  [ "$(jq -r '.specs[] | select(.id=="SPEC-001") | .status' "$REPO/.gaia/specs.json")" = "in-progress" ]
+  [ "$(jq -r '.specs[] | select(.id=="SPEC-001") | .status' "$REPO/.gaia/local/specs/ledger.json")" = "in-progress" ]
   # SPEC-001 + N freshly allocated rows, all present, no row lost.
-  total="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/specs.json")"
+  total="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")"
   [ "$total" -eq "$((N + 1))" ]
   # No duplicate ids.
-  dupes="$(jq -r '.specs[].id' "$REPO/.gaia/specs.json" | sort | uniq -d | wc -l | tr -d ' ')"
+  dupes="$(jq -r '.specs[].id' "$REPO/.gaia/local/specs/ledger.json" | sort | uniq -d | wc -l | tr -d ' ')"
   [ "$dupes" -eq 0 ]
 }

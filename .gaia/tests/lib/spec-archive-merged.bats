@@ -68,7 +68,7 @@ _snapshot() {
   [ "$(grep -c '^status:' "$archived")" -eq 1 ]
 
   # Ledger row is untouched: still merged (disposition lives on the artifact).
-  [ "$(jq -r '.specs[0].status' "$REPO/.gaia/specs.json")" = "merged" ]
+  [ "$(jq -r '.specs[0].status' "$REPO/.gaia/local/specs/ledger.json")" = "merged" ]
 }
 
 # --- 2: skip when a drain cache is pending -----------------------------------
