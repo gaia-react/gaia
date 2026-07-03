@@ -145,6 +145,11 @@
           },
           {
             "type": "command",
+            "command": ".claude/hooks/token-tally-git-op.sh",
+            "statusMessage": "Recording execute-phase token tally…"
+          },
+          {
+            "type": "command",
             "command": ".claude/hooks/worthiness-presence-check.sh",
             "statusMessage": "Checking worthiness presence gate…"
           },
@@ -178,6 +183,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/wiki-commit-nudge.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/token-rollup-merge.sh"
           },
           {
             "type": "command",

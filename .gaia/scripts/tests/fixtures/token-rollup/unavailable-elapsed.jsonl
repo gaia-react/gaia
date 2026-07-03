@@ -1,0 +1,1 @@
+{"action":"execute","spec_id":"SPEC-250","plan_slug":"spec-250-slug","session_id":"ex1","buckets":{"fresh_input":1000,"cache_write":2000,"cache_read":4000,"output":1000},"total":8000,"partial":false,"started_at":null,"ended_at":null,"duration_seconds":null,"duration_available":false,"ts":"2026-05-04T09:00:00Z"}
