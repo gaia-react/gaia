@@ -38,6 +38,10 @@ coverage
 # Optional eslint cache
 .eslintcache
 
+# Python bytecode (observability test infra under .gaia/tests/)
+__pycache__/
+*.pyc
+
 # Claude files
 .claude/agent-memory/
 .claude/worktrees/

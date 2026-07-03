@@ -21,7 +21,7 @@ tags: [concept, claude, skill, orchestration]
 
 ## Orchestrator contract
 
-`ORCHESTRATOR.md` mandates a brief **final summary** before awaiting merge confirmation: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, and quality-gate status. A few lines, not a recap of every change. The final self-cleanup phase (deleting `.gaia/local/plans/{slug}/`) only runs after the user confirms the PR is ready to merge; see [[Task Orchestration]] for the gitignored-vs-tracked branching.
+`ORCHESTRATOR.md` pins each task sub-agent to `model: sonnet` by default, decoupling execution from the orchestrator's own session model, since the spec and plan audits resolve the complexity upstream so execution runs on the cheaper model. The planner escalates a specific phase to Opus only when it names a genuinely deep-synthesis reason. `ORCHESTRATOR.md` also mandates a brief **final summary** before awaiting merge confirmation: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, and quality-gate status. A few lines, not a recap of every change. The final self-cleanup phase (deleting `.gaia/local/plans/{slug}/`) only runs after the user confirms the PR is ready to merge; see [[Task Orchestration]] for the gitignored-vs-tracked branching.
 
 ## Pairs with
 
