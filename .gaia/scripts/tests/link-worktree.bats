@@ -47,22 +47,25 @@ run_in() {
 }
 
 # ---------- 1. Fresh worktree, no pre-existing files ----------
-@test "fresh worktree: creates all three symlinks" {
+@test "fresh worktree: creates all shared symlinks" {
   run run_in "$LINKED"
   [ "$status" -eq 0 ]
   [ -L "$LINKED/.gaia/local/setup-state.json" ]
   [ -L "$LINKED/.gaia/cache" ]
   [ -L "$LINKED/.gaia/local/audit" ]
+  [ -L "$LINKED/.gaia/local/telemetry" ]
 
   # Targets are absolute paths into MAIN.
   [ "$(readlink "$LINKED/.gaia/local/setup-state.json")" = "$MAIN/.gaia/local/setup-state.json" ]
   [ "$(readlink "$LINKED/.gaia/cache")" = "$MAIN/.gaia/cache" ]
   [ "$(readlink "$LINKED/.gaia/local/audit")" = "$MAIN/.gaia/local/audit" ]
+  [ "$(readlink "$LINKED/.gaia/local/telemetry")" = "$MAIN/.gaia/local/telemetry" ]
 
   # Each "linked:" log appears once on stderr.
   [[ "$output" == *"linked: $LINKED/.gaia/local/setup-state.json"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/cache"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/local/audit"* ]]
+  [[ "$output" == *"linked: $LINKED/.gaia/local/telemetry"* ]]
 }
 
 # ---------- 2. Already-linked worktree (idempotent) ----------
@@ -71,20 +74,22 @@ run_in() {
   run run_in "$LINKED"
   [ "$status" -eq 0 ]
 
-  # All three symlinks still present.
+  # All shared symlinks still present.
   [ -L "$LINKED/.gaia/local/setup-state.json" ]
   [ -L "$LINKED/.gaia/cache" ]
   [ -L "$LINKED/.gaia/local/audit" ]
+  [ -L "$LINKED/.gaia/local/telemetry" ]
 
   # No backup files anywhere.
   run bash -c "find '$LINKED' -name '*.bak.*' -print"
   [ -z "$output" ]
 
-  # All three logged "already-linked".
+  # All shared paths logged "already-linked".
   run run_in "$LINKED"
   [[ "$output" == *"already-linked: $LINKED/.gaia/local/setup-state.json"* ]]
   [[ "$output" == *"already-linked: $LINKED/.gaia/cache"* ]]
   [[ "$output" == *"already-linked: $LINKED/.gaia/local/audit"* ]]
+  [[ "$output" == *"already-linked: $LINKED/.gaia/local/telemetry"* ]]
 }
 
 # ---------- 3. Worktree with pre-existing plain files ----------
@@ -101,13 +106,18 @@ run_in() {
   mkdir -p "$LINKED/.gaia/local/audit"
   printf 'plain-audit-content' > "$LINKED/.gaia/local/audit/marker.txt"
 
+  # Create a plain telemetry/ directory with content.
+  mkdir -p "$LINKED/.gaia/local/telemetry"
+  printf 'plain-telemetry-content' > "$LINKED/.gaia/local/telemetry/marker.txt"
+
   run run_in "$LINKED"
   [ "$status" -eq 0 ]
 
-  # All three are now symlinks.
+  # All are now symlinks.
   [ -L "$LINKED/.gaia/local/setup-state.json" ]
   [ -L "$LINKED/.gaia/cache" ]
   [ -L "$LINKED/.gaia/local/audit" ]
+  [ -L "$LINKED/.gaia/local/telemetry" ]
 
   # Backups exist with the original content preserved.
   setup_bak="$(ls "$LINKED/.gaia/local/" | grep '^setup-state\.json\.bak\.')"
@@ -122,10 +132,15 @@ run_in() {
   [ -n "$audit_bak" ]
   [ "$(cat "$LINKED/.gaia/local/$audit_bak/marker.txt")" = "plain-audit-content" ]
 
-  # All three logged "linked-after-backup".
+  telemetry_bak="$(ls "$LINKED/.gaia/local/" | grep '^telemetry\.bak\.')"
+  [ -n "$telemetry_bak" ]
+  [ "$(cat "$LINKED/.gaia/local/$telemetry_bak/marker.txt")" = "plain-telemetry-content" ]
+
+  # All logged "linked-after-backup".
   [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local/setup-state.json"* ]]
   [[ "$output" == *"linked-after-backup: $LINKED/.gaia/cache"* ]]
   [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local/audit"* ]]
+  [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local/telemetry"* ]]
 }
 
 # ---------- 4. Worktree with broken symlink (target does not exist) ----------
@@ -173,6 +188,7 @@ run_in() {
   # Main-side targets now exist.
   [ -d "$MAIN/.gaia/local" ]
   [ -d "$MAIN/.gaia/local/audit" ]
+  [ -d "$MAIN/.gaia/local/telemetry" ]
   [ -d "$MAIN/.gaia/cache" ]
 
   # Symlinks resolve (no dangling).
@@ -180,6 +196,8 @@ run_in() {
   [ -d "$LINKED/.gaia/cache" ] # follows symlink: dir exists.
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -d "$LINKED/.gaia/local/audit" ]
+  [ -L "$LINKED/.gaia/local/telemetry" ]
+  [ -d "$LINKED/.gaia/local/telemetry" ]
 }
 
 # ---------- 7. Symlink-permission failure (simulated) ----------
@@ -215,4 +233,20 @@ FAKE
   run run_in "$nogit"
   [ "$status" -eq 0 ]
   [[ "$output" == *"not a git repo"* ]]
+}
+
+# ---------- 9. Telemetry ledger durability (write-through to main) ----------
+@test "telemetry: a ledger write on the worktree side lands in the main checkout" {
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+
+  # The telemetry dir is a symlink into MAIN.
+  [ -L "$LINKED/.gaia/local/telemetry" ]
+  [ "$(readlink "$LINKED/.gaia/local/telemetry")" = "$MAIN/.gaia/local/telemetry" ]
+
+  # A ledger append on the worktree side is visible in the main checkout, so a
+  # worktree KICKOFF run records to the surviving main ledger (SPEC-013 UAT-008).
+  printf '%s\n' '{"action":"execute","total":42}' >> "$LINKED/.gaia/local/telemetry/tokens.jsonl"
+  [ -f "$MAIN/.gaia/local/telemetry/tokens.jsonl" ]
+  [ "$(cat "$MAIN/.gaia/local/telemetry/tokens.jsonl")" = '{"action":"execute","total":42}' ]
 }

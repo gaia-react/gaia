@@ -108,8 +108,24 @@
       "id": "SPEC-014",
       "allocated_at": "2026-07-02T15:53:09Z",
       "source": "allocated",
+      "status": "merged",
+      "intent": "GAIA's per-machine `setup finalize` command stamps setup as complete without",
+      "merged_at": "2026-07-02T17:54:47Z"
+    },
+    {
+      "id": "SPEC-015",
+      "allocated_at": "2026-07-03T02:42:11Z",
+      "source": "allocated",
+      "status": "merged",
+      "intent": "GAIA registers the Serena MCP server for Claude Code with the wrong",
+      "merged_at": "2026-07-03T04:10:52Z"
+    },
+    {
+      "id": "SPEC-016",
+      "allocated_at": "2026-07-03T06:55:33Z",
+      "source": "allocated",
       "status": "specified",
-      "intent": "GAIA's per-machine `setup finalize` command stamps setup as complete without"
+      "intent": "GAIA adopters who run Serena for code intelligence get symbol-level help"
     }
   ]
 }

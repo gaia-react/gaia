@@ -1,0 +1,6 @@
+{"type":"user","uuid":"u-user-0","timestamp":"2026-07-02T16:59:30.000Z","message":{"role":"user","content":"kickoff prompt (decoy: precedes the first billed model turn)"}}
+{"type":"assistant","uuid":"u-m1-a","timestamp":"2026-07-02T17:00:00.000Z","message":{"id":"m1","role":"assistant","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":1}}}
+{"type":"assistant","uuid":"u-m1-b","timestamp":"2026-07-02T17:00:00.500Z","message":{"id":"m1","role":"assistant","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":1}}}
+{"type":"assistant","uuid":"u-m1-c","timestamp":"2026-07-02T17:00:01.000Z","message":{"id":"m1","role":"assistant","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":1}}}
+{"type":"assistant","uuid":"u-m2-a","timestamp":"2026-07-02T17:00:30.000Z","message":{"id":"m2","role":"assistant","usage":{"input_tokens":20,"cache_creation_input_tokens":200,"cache_read_input_tokens":2000,"output_tokens":2}}}
+{"type":"pr-link","uuid":"u-prlink-0","timestamp":"2026-07-02T17:10:00.000Z","prUrl":"https://example.com/pr/1"}
