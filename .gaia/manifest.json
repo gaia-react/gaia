@@ -173,6 +173,7 @@
     ".gaia/scripts/read-audit-ci-config.sh": "owned",
     ".gaia/scripts/red-ledger/extract-test-signals.mjs": "owned",
     ".gaia/scripts/red-ledger/README.md": "owned",
+    ".gaia/scripts/token-tally.sh": "owned",
     ".gaia/statusline/gaia-statusline.sh": "owned",
     ".gaia/templates/ci-issues/priority-critical-revert-failed.md": "owned",
     ".gaia/templates/ci-issues/priority-high-revert-opened.md": "owned",

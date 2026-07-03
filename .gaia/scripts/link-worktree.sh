@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # GAIA worktree shared-state symlink hook (SPEC-005).
 #
-# Creates four symlinks from the current linked worktree into the main
+# Creates five symlinks from the current linked worktree into the main
 # checkout so gitignored shared state (setup-state.json, mentorship.json,
-# cache/, audit/) does not diverge per-worktree:
+# cache/, audit/, telemetry/) does not diverge per-worktree:
 #
 #   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
 #   <worktree>/.gaia/local/mentorship.json  -> <main>/.gaia/local/mentorship.json
 #   <worktree>/.gaia/cache/                  -> <main>/.gaia/cache/
 #   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
+#   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
 #
 # Behavior:
 #   - Idempotent: re-running on an already-linked worktree is a no-op.
@@ -64,6 +65,7 @@ ts="$(date +%Y%m%d-%H%M%S)"
 # ---------- ensure main-side targets exist (so symlinks don't dangle) ----------
 mkdir -p "$main_root/.gaia/local" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/audit" 2>/dev/null
+mkdir -p "$main_root/.gaia/local/telemetry" 2>/dev/null
 mkdir -p "$main_root/.gaia/cache" 2>/dev/null
 # `setup-state.json` and `mentorship.json` are files: do NOT pre-create them.
 # If one doesn't exist on main, the symlink will dangle until the main checkout
@@ -131,5 +133,6 @@ link_one ".gaia/local/setup-state.json" ".gaia/local"
 link_one ".gaia/local/mentorship.json"  ".gaia/local"
 link_one ".gaia/cache"                  ".gaia"
 link_one ".gaia/local/audit"            ".gaia/local"
+link_one ".gaia/local/telemetry"        ".gaia/local"
 
 exit 0
