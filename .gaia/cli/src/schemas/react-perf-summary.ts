@@ -81,9 +81,9 @@ export type RawDump = z.infer<typeof RawDumpSchema>;
 
 // --- Contract B: reduced summary (output) ---
 
-export const ReactDoctorRuleSchema = z.enum([
-  'jsx-no-new-object-as-prop',
+export const ReactDoctorRuleSchema = z.literal([
   'jsx-no-constructed-context-values',
+  'jsx-no-new-object-as-prop',
   'no-unstable-nested-components',
 ]);
 export type ReactDoctorRule = z.infer<typeof ReactDoctorRuleSchema>;

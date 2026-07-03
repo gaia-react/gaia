@@ -20,10 +20,10 @@ export const TOOL_IDS = [
 ] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
 
-export const ToolModeSchema = z.enum(['ci', 'local', 'off']);
+export const ToolModeSchema = z.literal(['ci', 'local', 'off']);
 export type ToolMode = z.infer<typeof ToolModeSchema>;
 
-export const ScheduleSchema = z.enum(['daily', 'weekly', 'monthly']);
+export const ScheduleSchema = z.literal(['daily', 'monthly', 'weekly']);
 export type Schedule = z.infer<typeof ScheduleSchema>;
 
 export const ToolConfigSchema = z.object({

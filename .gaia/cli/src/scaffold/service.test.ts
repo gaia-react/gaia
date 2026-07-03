@@ -169,7 +169,7 @@ describe('gaia scaffold service', () => {
     expect(barrel).toContain('const handlers = [...get];');
   });
 
-  test('--schema with enum produces z.enum + TS union', () => {
+  test('--schema with enum produces z.literal + TS union', () => {
     const code = run(
       [
         'projects',
@@ -193,7 +193,7 @@ describe('gaia scaffold service', () => {
         'parsers.ts'
       )
     );
-    expect(parsers).toContain("status: z.enum(['active', 'archived'])");
+    expect(parsers).toContain("status: z.literal(['active', 'archived'])");
 
     const types = read(
       path.join(sandbox.dir, 'app', 'services', 'gaia', 'projects', 'types.ts')

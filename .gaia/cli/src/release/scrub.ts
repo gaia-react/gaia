@@ -96,7 +96,7 @@ const StaticLeakCheckSchema = z.object({
 
 const DerivedLeakCheckSchema = z.object({
   ...leakCheckBaseShape,
-  derive: z.enum(['excluded-slugs', 'excluded-workflows']),
+  derive: z.literal(['excluded-slugs', 'excluded-workflows']),
 });
 
 const LeakCheckSchema = z.object({
