@@ -664,18 +664,34 @@ jobs:
           steps.audit.outcome == 'success' &&
           steps.push-fixes.outputs.pushed != 'true' &&
           steps.push-fixes.outputs.marker_only != 'true'
+        env:
+          # The PUSHED PR head sha, straight from the event payload. This is the
+          # only commit GitHub is guaranteed to have; `git rev-parse HEAD` in the
+          # runner can point at a local, never-pushed commit the audit created
+          # during the run (an empty trailer marker, or a refused self-heal), and
+          # POSTing a status to a sha GitHub does not have returns HTTP 422.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
           # Genuinely-clean-but-no-commit path. A clean audit that makes no
           # self-heal commits AND no empty trailer commit leaves push-fixes
           # with neither `pushed` nor `marker_only` set, so the stamp step
-          # above is skipped and HEAD carries no GAIA-Audit status. The merge
-          # hook (.claude/hooks/pr-merge-audit-check.sh) then finds no signal
-          # and blocks the merge even though the audit passed; the only escape
-          # used to be a local agent pushing an empty trailer commit, the very
-          # HEAD-moving workaround the design avoids. Close that gap by stamping
-          # the GAIA-Audit status DIRECTLY on the current PR HEAD: no empty
-          # commit, nothing to advance (HEAD is detached at the PR head sha).
+          # above is skipped and the PR head carries no GAIA-Audit status. The
+          # merge hook (.claude/hooks/pr-merge-audit-check.sh) then finds no
+          # signal and blocks the merge even though the audit passed; the only
+          # escape used to be a local agent pushing an empty trailer commit, the
+          # very HEAD-moving workaround the design avoids. Close that gap by
+          # stamping the GAIA-Audit status DIRECTLY on the pushed PR head.
+          #
+          # Target the pushed head from the event ($HEAD_SHA), NOT `git rev-parse
+          # HEAD`. The runner's HEAD is not always the pushed head by this step:
+          # the audit runs with Bash(git:*) and may leave a local commit (an
+          # empty marker, or a refused self-heal edit) that was intentionally not
+          # pushed, so `git rev-parse HEAD` can resolve to a commit GitHub never
+          # received. Stamping that sha 422s ("No commit found for SHA") and,
+          # under set -eu, reds an otherwise-clean audit. The pushed head is also
+          # the tree that will actually merge (nothing was pushed), so its tree
+          # is exactly what we vouch for.
           #
           # This path also covers a REFUSED self-heal: when the audit is clean
           # but its only tree delta is off-limits to auto-fix -- an
@@ -690,14 +706,14 @@ jobs:
           # the local marker file .gaia/local/audit/<HEAD>.ok ONLY when the
           # review is clean (no Critical, every Important addressed, every
           # Suggestion fixed or none). It is NEVER written while findings
-          # remain. A dirty audit also reaches this step (it pushed nothing),
-          # but its marker is absent, so no status is stamped and the merge
-          # stays blocked until a local audit clears it. This is the same
-          # artifact the merge hook trusts as its first accepted signal. The
-          # marker lives under .gaia/local/ (gitignored), so it exists only in
-          # this runner's workspace and only for this run.
-          head_sha="$(git rev-parse HEAD)"
-          marker=".gaia/local/audit/${head_sha}.ok"
+          # remain. In the clean-no-commit case HEAD == the pushed head, so the
+          # marker is named for $HEAD_SHA. A dirty audit also reaches this step
+          # (it pushed nothing), but its marker is absent, so no status is
+          # stamped and the merge stays blocked until a local audit clears it.
+          # This is the same artifact the merge hook trusts as its first accepted
+          # signal. The marker lives under .gaia/local/ (gitignored), so it
+          # exists only in this runner's workspace and only for this run.
+          marker=".gaia/local/audit/${HEAD_SHA}.ok"
           if [ ! -f "$marker" ]; then
             echo "code-review-audit: clean marker ${marker} absent; audit not proven clean, not stamping." >&2
             exit 0
@@ -709,12 +725,19 @@ jobs:
             echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
             exit 0
           fi
-          tree_sha="$(git rev-parse "HEAD^{tree}")"
-          gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-            --method POST \
-            --field state=success \
-            --field context=GAIA-Audit \
-            --field description="${version} ${tree_sha}"
+          tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"
+          # Non-fatal POST: a failed status side-effect must never red a clean
+          # audit. The gate is the GAIA-Audit status itself -- if this POST
+          # fails, the status simply does not land and the local merge path
+          # re-stamps it; the check stays green either way. `if !` keeps set -eu
+          # from aborting on a non-zero exit.
+          if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+              --method POST \
+              --field state=success \
+              --field context=GAIA-Audit \
+              --field description="${version} ${tree_sha}"; then
+            echo "code-review-audit: GAIA-Audit status POST to ${HEAD_SHA} failed (non-fatal); local merge path will re-stamp." >&2
+          fi
 
       - name: Stand down (local-mode, no override)
         if: |

@@ -21,6 +21,13 @@ setup() {
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia"
   ( cd "$SANDBOX" && git init --quiet )
+
+  # The resolver skips the required-check confirmation under GitHub Actions,
+  # so neutralize the ambient value: this suite runs IN CI, and every test
+  # below asserts the local merge-path behavior (confirmation active) unless it
+  # sets GITHUB_ACTIONS itself. The CI-context test sets it explicitly
+  # per-invocation.
+  unset GITHUB_ACTIONS
 }
 
 # Run the script with cwd inside the sandbox so its
@@ -632,6 +639,33 @@ audit_authors: \"stevensacks=local\""
   [[ "$output" == *"should_run=true"$'\n'* ]]
   [[ "$output" == *"GAIA-Audit required check not confirmed"* ]]
   [[ "$output" == *"forcing ci (fail-closed)"* ]]
+}
+
+# --- 34b. CI context: local honored without the branch-protection re-check --
+
+@test "resolve-author: CI context honors local without the required-check re-check" {
+  # Under GitHub Actions the confirmation's branch-protection read is
+  # un-runnable (GITHUB_TOKEN lacks admin; ruleset repos 404), so it is
+  # skipped and the resolved local mode is honored -- otherwise every
+  # local-mode author eats a redundant CI audit that duplicates the local run.
+  # Mirrors convene's config (stevensacks pinned local). A recording stub
+  # proves the branch-protection API is never hit.
+  stub_gh_recording
+  GH_LOG="$SANDBOX/gh.log"
+  : > "$GH_LOG"
+  write_config "default_mode: local
+audit_authors: \"stevensacks=local\""
+  run env GITHUB_ACTIONS=true GH_LOG="$GH_LOG" bash -c '
+    cd "$1" && PATH="$1/bin:/usr/bin:/bin" "$2" --resolve-author stevensacks
+  ' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"resolved_mode=local"$'\n'* ]]
+  [[ "$output" == *"should_run=false"$'\n'* ]]
+  [[ "$output" != *"fail-closed"* ]]
+  [[ "$output" == *"CI context"* ]]
+  # The branch-protection API was never called.
+  run grep -F 'api repos/' "$GH_LOG"
+  [ "$status" -ne 0 ]
 }
 
 # --- 35. ci resolution does not invoke branch-protection API ---------------
