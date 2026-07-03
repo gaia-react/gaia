@@ -211,6 +211,7 @@
   },
   "permissions": {
     "allow": [
+      "Bash(bash .gaia/scripts/plan-archive.sh:*)",
       "Bash(corepack enable pnpm)",
       "Bash(gh pr checks:*)",
       "Bash(gh pr list:*)",
@@ -249,6 +250,7 @@
       "Bash(rm -f .gaia/cache/*)",
       "Bash(rm -f .gaia/local/handoff/HANDOFF-*.md)",
       "Bash(rm -rf .gaia/local/plans/*)",
+      "Bash(rm -rf .gaia/local/specs/*)",
       "Bash(rm .gaia/local/handoff/HANDOFF-*.md)",
       "Edit(.claude/agents/**)",
       "Edit(.claude/commands/**)",
@@ -266,7 +268,8 @@
       "WebFetch(domain:context7.com)",
       "Write(.gaia/local/audit/**)",
       "Write(.gaia/local/handoff/**)",
-      "Write(.gaia/local/plans/**)"
+      "Write(.gaia/local/plans/**)",
+      "Write(.gaia/local/specs/**)"
     ],
     "deny": [
       "Bash(git push --force-with-lease *main*)",
