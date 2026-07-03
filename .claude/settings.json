@@ -152,6 +152,11 @@
             "type": "command",
             "command": ".claude/hooks/audit-disposition-check.sh",
             "statusMessage": "Checking audit disposition ledger…"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/serena-code-search-guard.sh",
+            "statusMessage": "Checking Serena code-search routing…"
           }
         ]
       },

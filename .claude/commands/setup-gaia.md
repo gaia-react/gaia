@@ -152,10 +152,18 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
   Then register Serena globally:
 
   ```bash
-  claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.2.0 serena start-mcp-server --open-web-dashboard false
+  claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.2.0 serena start-mcp-server --context claude-code --project-from-cwd --open-web-dashboard false
   ```
 
   If the registration already exists (`claude mcp add` exits non-zero with a "name already exists" error), treat as success and continue.
+
+  Serena's tools only win over Opus's built-in Read/Grep/Edit when Claude Code loads Serena's system-prompt override; Opus otherwise defaults to its own tools, a strong built-in-tool bias the Serena maintainers prescribe this override to counter. Tell the user the recommended way to start Claude Code sessions in this project:
+
+  ```bash
+  claude --append-system-prompt="$(serena prompts print-cc-system-prompt-override)"
+  ```
+
+  This is optional but recommended and adopter-safe: a plainly-launched `claude` still works, and the always-loaded `.claude/rules/serena-cc-override.md` is the durable fallback. Use the append form, never `--system-prompt`, which replaces Claude Code's base prompt.
 
 After all three tools install successfully:
 
