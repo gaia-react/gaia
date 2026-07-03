@@ -3,7 +3,7 @@ name: update-deps
 description: Autonomous Dependabot, auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /update-deps` indicator or asks "update dependencies", "bump deps", "run dependabot".
 ---
 
-Superpowered Dependabot. Auto-discover all outdated packages, preview them grouped by severity so you can snooze any you are not ready for, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. In CI it runs unattended (no preview); interactively it shows the preview first.
+Superpowered Dependabot. Auto-discover all outdated packages, preview them grouped by severity so you can snooze any you are not ready for, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. In CI it runs unattended (no preview); interactively it shows the preview first. On a `main`/`master` run it opens the PR and merges it once checks are green, then cleans up locally; on any other branch it pushes and leaves the PR to you.
 
 ## Pre-flight: Worktree check
 
@@ -446,22 +446,52 @@ Print the report. Do not commit.
 
 **If nothing was updated** (all packages were already up to date or all were skipped), skip this phase entirely.
 
-**If a new branch was created** (you were on `main`/`master` at pre-flight and branched off):
+**Commit the update.** Stage and commit the applied changes on the current branch. Write the message to a temp file first, then commit from it:
+
+```bash
+git add -A
+git commit -F <commit-message-file>
+```
+
+The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR is turnkey-mergeable without a code-review-audit marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate, so nothing else is owed before committing.
+
+Then branch on where the run started.
+
+**If a new branch was created** (interactive run, you were on `main`/`master` at pre-flight and branched off):
 
 1. Push the branch:
    ```bash
    git push -u origin <branch-name>
    ```
-2. Open a PR against `main`. Title: the commit message from the update commit. Body: the migration report rendered as markdown. Use `--body-file` with a temp file to avoid shell-hook false positives on package manager keywords in the body.
+2. Open a PR against `main`. Title: the commit subject. Body: the migration report rendered as markdown, via `--body-file` on a temp file (same false-positive reason). Capture the PR number `<N>` and its URL.
+3. **Merge when green, then clean up locally.** This step runs only on a `main`/`master` run, it is what "completes the flow." Merge per `wiki/concepts/PR Merge Workflow.md` (the `chore(deps)` title clears its audit-marker gate via the dep-bump bypass):
+   ```bash
+   gh pr merge <N> --squash --delete-branch --auto
+   ```
+   `--auto` queues the merge so GitHub lands it once the required checks pass (or immediately if they are already green). If the repo has auto-merge disabled and `gh` rejects `--auto`, wait for the required checks to pass (`gh pr checks <N>`), then re-run the merge without `--auto`.
 
-**If you were already on a non-main branch** at pre-flight (no new branch was created):
+   `gh pr merge` can exit success while the merge is still queued, so verify the terminal state before touching the local checkout:
+   ```bash
+   for i in 1 2 3 4 5; do
+     state=$(gh pr view <N> --json state -q .state)
+     [ "$state" = "MERGED" ] && break
+     sleep 30
+   done
+   ```
+   - **`state == MERGED`** → clean up locally, then print the merged PR URL:
+     ```bash
+     git checkout main && git pull origin main
+     git branch -D <branch-name>
+     git fetch --prune origin
+     ```
+   - **still not `MERGED`** (auto-merge queued, checks not yet green) → print the PR URL and note that auto-merge is queued and will land when the checks pass. **Do not** delete the local branch or switch off it, the PR is still open.
+
+**If you were already on a non-main branch** at pre-flight, or running in CI (no new branch was created):
 
 1. Push the branch:
    ```bash
    git push
    ```
-2. Do not open a PR, the user owns the branch context.
+2. Do not open a PR and do not merge, the branch owner (the user, or the CI workflow) drives it from here.
 
-In both cases, print the resulting PR URL (if created) or confirm the push completed.
-
-If any `git push` or `gh pr create` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or failed PR creation is the user's call to resolve (usually a manual rebase or a remote-side block).
+If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push, failed PR creation, or blocked merge is the user's call to resolve (usually a manual rebase, a remote-side block, or a failing check).
