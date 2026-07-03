@@ -117,6 +117,55 @@ run_hook() {
   [ "$(jq -r '.action' "$LEDGER")" = "execute" ]
 }
 
+# ---------- 2b. Colocated spec-plan layout: specs/<SPEC-ID>/plan[-N] ----------
+# Spec-derived plans no longer live under plans/<slug>; they colocate inside
+# their SPEC folder at specs/<SPEC-ID>/plan[-N]. The hook's cheap has_plan gate
+# and the shared resolver both scan the union of the three RUNNING globs. These
+# cases prove the colocated location is keyed and tallied exactly like a
+# spec-less plan: the feature key still resolves to the SPEC id, tokens.md lands
+# inside the colocated plan dir, and the plan_slug degrades to the folder
+# basename (`plan` / `plan-2`) with no effect on the spec-keyed ledger row.
+@test "colocated spec plan (specs/<id>/plan) records a spec-keyed execute record" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/specs/SPEC-021/plan"
+  # README Source SPEC points at the sibling SPEC.md, as a real colocated plan does.
+  write_readme_with_spec "$plan_dir" ".gaia/local/specs/SPEC-021/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+
+  run_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  LEDGER="$REPO/.gaia/local/telemetry/tokens.jsonl"
+  [ -f "$LEDGER" ]
+  [ "$(jq -r '.action' "$LEDGER")" = "execute" ]
+  [ "$(jq -r '.spec_id' "$LEDGER")" = "SPEC-021" ]
+  [ "$(jq -r '.plan_slug' "$LEDGER")" = "plan" ]
+  [ "$(jq -r '.total' "$LEDGER")" -eq 11110 ]
+  [ "$(jq -r '.partial' "$LEDGER")" = "false" ]
+  # tokens.md lands inside the colocated plan dir, not under plans/.
+  [ -f "$plan_dir/tokens.md" ]
+}
+
+@test "colocated re-planned folder (specs/<id>/plan-2) is discovered and keyed" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/specs/SPEC-021/plan-2"
+  write_readme_with_spec "$plan_dir" ".gaia/local/specs/SPEC-021/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+
+  run_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+
+  LEDGER="$REPO/.gaia/local/telemetry/tokens.jsonl"
+  [ -f "$LEDGER" ]
+  [ "$(jq -r '.spec_id' "$LEDGER")" = "SPEC-021" ]
+  [ "$(jq -r '.plan_slug' "$LEDGER")" = "plan-2" ]
+}
+
 # ---------- 3. Negative gate: no plan folder -> no record (UAT-002) ----------
 @test "no plan folder at all: no record written" {
   build_repo

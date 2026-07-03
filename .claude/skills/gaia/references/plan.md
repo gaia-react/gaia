@@ -423,9 +423,12 @@ flushed its sidecar to disk. Tally the `/gaia-plan` session's ground-truth token
 handoff. The call sums `message.usage` across the main transcript AND every sub-agent sidecar
 (deduped by message id, so it equals what the API billed), appends one record keyed to the plan slug
 to the durable ledger resolved to the main checkout (so it survives archival of the plan folder and
-a linked worktree), writes `tokens.md` into the plan folder, and prints the four billing buckets
-plus a total and the wall-clock elapsed. Derive the ledger key from the SPEC folder name (the parent
-dir of `SPEC_PATH`), falling back to the plan slug for a SPEC-less plan:
+a linked worktree), writes the **Planning** section of the plan folder's `tokens.md`, and prints the
+four billing buckets plus a total and the wall-clock elapsed. The KICKOFF execution phase later adds
+an independent **Execution** section to the same `tokens.md` (via the git-op hook, on each commit);
+the two sections are tracked separately and never overwrite or sum each other. Derive the ledger key
+from the SPEC folder name (the parent dir of `SPEC_PATH`), falling back to the plan slug for a
+SPEC-less plan:
 
 ```bash
 PLAN_SLUG="$(basename "$PLAN_DIR")"
