@@ -122,7 +122,7 @@ transforms:
       # ---- Release-excluded paths leaked into shipped surfaces ----
       - id: maintainer-paths
         description: "Release-excluded paths referenced in shipped surfaces"
-        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.gaia/tests/|\\.gaia/scripts/tests/|\\.github/audit/tests/|\\.github/forensics/|\\.claude/rules/_internal/"
+        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.gaia/cli/gaia-maintainer\\b|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.gaia/tests/|\\.gaia/scripts/tests/|\\.github/audit/tests/|\\.github/forensics/|\\.claude/rules/_internal/"
         scope:
           - "CLAUDE.md"
           - ".claude/**"
@@ -162,8 +162,9 @@ transforms:
           # are the rule's classification table, not stray references.
           - ".specify/extensions/gaia/rules/smoke.md"
           # Telemetry concept page describes maintainer architecture
-          # (`.gaia/cli/src/`) by design; the framing line caveats it.
-          # Allowlisted by the audit taxonomy.
+          # (`.gaia/cli/src/` and the `.gaia/cli/gaia-maintainer` binary) by
+          # design; the framing line caveats it. Allowlisted by the audit
+          # taxonomy.
           - "wiki/concepts/Telemetry.md"
           # Adopter-owned sentinels that ship in the tarball but contain
           # release-baseline content after `gaia-maintainer release scrub-wiki`
