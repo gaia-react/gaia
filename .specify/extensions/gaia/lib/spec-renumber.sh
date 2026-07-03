@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # spec-renumber.sh: Renumber a SPEC. Renames the local SPEC folder, updates the
-# inner SPEC.md frontmatter, and rewrites the .gaia/local/specs/ledger.json ledger
-# row. The inner SPEC.md keeps its name; any sibling artifacts in the folder move
-# with it.
+# inner SPEC.md frontmatter, rewrites the .gaia/local/specs/ledger.json ledger
+# row, and best-effort re-keys the draft/session/audit caches under
+# .gaia/local/cache/. The inner SPEC.md keeps its name; any sibling artifacts in
+# the folder move with it.
 # Does NOT touch external state (branch names, GH issue titles, commit-message
 # history), those are reported as next steps for the caller to handle consciously.
 #
@@ -130,6 +131,45 @@ if [ -f "$ledger_path" ]; then
       mv "$new_path" "$old_path"
     fi
     exit 5
+  fi
+fi
+
+# 4. Best-effort re-key of the id-bearing per-spec caches under
+#    .gaia/local/cache/ (draft checkpoint, session-shape cache, audit-findings
+#    directory). A missing cache is a normal no-op. A cache-move failure is
+#    logged to stderr and does not revert the folder/ledger move above; that
+#    move already succeeded and remains the source of truth.
+cache_dir="${repo_root%/}/.gaia/local/cache"
+
+old_draft="${cache_dir}/draft-${old_id}.md"
+new_draft="${cache_dir}/draft-${new_id}.md"
+if [ -e "$old_draft" ]; then
+  if ! mv "$old_draft" "$new_draft" 2>/dev/null; then
+    echo "spec-renumber: failed to re-key draft cache $old_draft" >&2
+  fi
+fi
+
+old_session="${cache_dir}/spec-session-${old_id}.json"
+new_session="${cache_dir}/spec-session-${new_id}.json"
+if [ -e "$old_session" ]; then
+  if mv "$old_session" "$new_session" 2>/dev/null; then
+    tmp_session="$(mktemp)"
+    if jq --arg id "$new_id" '.spec_id = $id' "$new_session" > "$tmp_session" 2>/dev/null; then
+      mv "$tmp_session" "$new_session"
+    else
+      rm -f "$tmp_session"
+      echo "spec-renumber: failed to rewrite spec_id in $new_session" >&2
+    fi
+  else
+    echo "spec-renumber: failed to re-key session cache $old_session" >&2
+  fi
+fi
+
+old_audit="${cache_dir}/audit-${old_id}"
+new_audit="${cache_dir}/audit-${new_id}"
+if [ -e "$old_audit" ]; then
+  if ! mv "$old_audit" "$new_audit" 2>/dev/null; then
+    echo "spec-renumber: failed to re-key audit cache $old_audit" >&2
   fi
 fi
 

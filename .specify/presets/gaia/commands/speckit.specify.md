@@ -24,13 +24,13 @@ If the hook blocks, the agent halts here and surfaces the block message. Do not 
 After core has written its artifact (typically at `specs/<NNN>-<slug>/spec.md`):
 
 1. Resolve the just-written core artifact path. Prefer `.specify/feature.json` (`feature_dir`) or, lacking that, the most recently modified `specs/*/spec.md`.
-2. Allocate the next GAIA SPEC id:
+2. Allocate the next GAIA SPEC id, passing the feature description as the subject so it becomes the `spec/NNN` reservation-tag annotation:
 
    ```bash
-   bash .specify/extensions/gaia/lib/spec-allocator.sh next "$PWD"
+   bash .specify/extensions/gaia/lib/spec-allocator.sh next "$PWD" "$ARGUMENTS"
    ```
 
-   Capture the printed `SPEC-NNN` token.
+   Capture the printed `SPEC-NNN` token. The third argument (`$ARGUMENTS`, the feature description the user typed) is stored verbatim as the immutable one-line annotation on the reserved `spec/NNN` git tag. If `$ARGUMENTS` is empty (a fully-interactive spec run), derive the subject from the just-written artifact's first `# ` title heading and pass that instead; do not leave the argument unset.
 
 3. Create the SPEC folder (`mkdir -p .gaia/local/specs/<SPEC-NNN>`). Copy the core artifact to `.gaia/local/specs/<SPEC-NNN>/SPEC.md`.
 4. Stamp GAIA frontmatter at the top of the relocated file. If the core artifact has no frontmatter (spec-kit's bundled `spec-template.md` does not), prepend a frontmatter block with these required fields:
