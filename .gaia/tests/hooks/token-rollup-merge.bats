@@ -108,6 +108,33 @@ run_hook() {
   [[ "$output" == *"600"* ]]
 }
 
+# ---------- 1b. Colocated spec-plan layout resolves the merge readout key ----------
+# Spec-derived plans colocate at specs/<SPEC-ID>/plan[-N] rather than
+# plans/<slug>. The merge-readout hook's PRIMARY path resolves the feature key
+# from the active plan folder via the shared resolver, whose union globs cover
+# the colocated location. This proves the readout keys off the colocated plan
+# folder itself (not the ledger fallback) and renders the full cycle.
+@test "colocated spec plan (specs/<id>/plan) resolves the merge readout key" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/specs/SPEC-042/plan"
+  write_readme_with_spec "$plan_dir" ".gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+
+  write_record spec SPEC-042 sess-spec 100 "2026-06-01T00:00:00Z"
+  write_record plan SPEC-042 sess-plan 200 "2026-06-02T00:00:00Z"
+  write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
+
+  run_hook "gh pr merge 7 --squash"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[cycle cost at merge]"* ]]
+  [[ "$output" == *"Cycle cost (SPEC-042)"* ]]
+  # Resolved via the colocated active plan folder, NOT the ledger fallback.
+  [[ "$output" != *"resolved from the ledger"* ]]
+  [[ "$output" == *"600"* ]]
+}
+
 # ---------- 2. Spec-less plan omits the spec line (UAT-007) ----------
 @test "spec-less plan omits the spec line" {
   build_repo

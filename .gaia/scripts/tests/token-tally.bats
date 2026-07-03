@@ -162,6 +162,65 @@ led() { jq -r "$1" "$LEDGER"; }
   grep -q "11110" "$OUTDIR/tokens.md"
 }
 
+# ---------- 5b. Planning + Execution sections coexist in one tokens.md ----------
+# /gaia-plan and the KICKOFF git-op hook both write the plan folder's tokens.md.
+# The plan-authoring and plan-execution costs must live in independent sections
+# of the SAME file: never overwriting each other, never summed. Planning uses the
+# single-line fixture (total 562); Execution uses the anchor (total 11110), so a
+# clobbered-vs-preserved or a summed regression is unambiguous.
+@test "plan then execute: tokens.md keeps independent Planning + Execution sections (no overwrite, no sum)" {
+  run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
+    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
+    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/l-plan.jsonl"
+  [ "$status" -eq 0 ]
+  grep -q "^## Planning$" "$OUTDIR/tokens.md"
+  grep -q "| \*\*Total\*\* | 562 |" "$OUTDIR/tokens.md"
+
+  # Execution tally into the SAME out-dir must add a section, not replace the file.
+  run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug my-plan \
+    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/l-exec.jsonl"
+  [ "$status" -eq 0 ]
+
+  # Both sections present, Planning before Execution.
+  grep -q "^## Planning$" "$OUTDIR/tokens.md"
+  grep -q "^## Execution$" "$OUTDIR/tokens.md"
+  pln="$(grep -n '^## Planning$' "$OUTDIR/tokens.md" | cut -d: -f1)"
+  exn="$(grep -n '^## Execution$' "$OUTDIR/tokens.md" | cut -d: -f1)"
+  [ "$pln" -lt "$exn" ]
+
+  # Planning total intact at 562 (NOT overwritten); Execution total is 11110.
+  plan_slice="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$OUTDIR/tokens.md")"
+  exec_slice="$(awk '/^## Execution$/{e=1;next} e' "$OUTDIR/tokens.md")"
+  [[ "$plan_slice" == *"| **Total** | 562 |"* ]]
+  [[ "$exec_slice" == *"| **Total** | 11110 |"* ]]
+
+  # No summed figure anywhere (562 + 11110 = 11672 must never appear).
+  ! grep -q "11672" "$OUTDIR/tokens.md"
+}
+
+# The git-op hook re-runs the execute tally on every orchestrator commit, so the
+# Execution section is rewritten repeatedly; that must not duplicate headings or
+# disturb the Planning section written once upstream.
+@test "repeated execute writes preserve the Planning section and never duplicate headings" {
+  run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
+    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
+    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/lp.jsonl"
+  [ "$status" -eq 0 ]
+
+  for n in 1 2 3; do
+    run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug my-plan \
+      --out-dir "$OUTDIR" --session-id "$SESSION" \
+      --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/le.jsonl"
+    [ "$status" -eq 0 ]
+  done
+
+  [ "$(grep -c '^## Planning$' "$OUTDIR/tokens.md")" -eq 1 ]
+  [ "$(grep -c '^## Execution$' "$OUTDIR/tokens.md")" -eq 1 ]
+  grep -q "| \*\*Total\*\* | 562 |" "$OUTDIR/tokens.md"
+  grep -q "| \*\*Total\*\* | 11110 |" "$OUTDIR/tokens.md"
+}
+
 # ---------- 6. Ledger keyed + durable (UAT-005) ----------
 @test "ledger record is valid JSON, keyed, and survives out-dir (plan folder) deletion" {
   run bash "$SCRIPT" \
