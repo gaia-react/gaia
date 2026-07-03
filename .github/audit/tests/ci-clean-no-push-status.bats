@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 # Regression guard for the "Write GAIA-Audit commit status (clean, no push)"
-# step in .github/workflows/code-review-audit.yml (issue #532).
+# step in .github/workflows/code-review-audit.yml.
 #
 # The step used to stamp `git rev-parse HEAD`. By the time it runs, the runner's
 # HEAD can be a local, never-pushed commit the audit created during the run (an

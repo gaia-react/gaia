@@ -110,7 +110,7 @@ The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the f
 
 ## Per-author audit mode
 
-The `Resolve audit decision` step computes whether CI itself runs the audit (`should_run`) by delegating to `.gaia/scripts/read-audit-ci-config.sh --resolve-author <login>`. The same resolver feeds the local merge path, so CI and local can never disagree on an author's mode. Resolution precedence:
+The `Resolve audit decision` step computes whether CI itself runs the audit (`should_run`) by delegating to `.gaia/scripts/read-audit-ci-config.sh --resolve-author <login>`. The same resolver feeds the local merge path, so both derive an author's mode from one source with identical precedence. Resolution precedence:
 
 1. `override_label` present on the PR ⇒ `ci`.
 2. else the first matching `audit_authors` `login=mode` pair (case-insensitive).
@@ -118,14 +118,16 @@ The `Resolve audit decision` step computes whether CI itself runs the audit (`sh
 
 When an author resolves to `local` mode with no override label and the change is in audit scope, CI stands down: every expensive step is gated on `should_run == 'true'`, so the audit spends no tokens. The `Stand down (local-mode, no override)` step posts a `pending` `GAIA-Audit` commit status on HEAD with a fixed non-cleared description, so the required check keeps the merge button blocked until the local audit clears it.
 
-The resolver fail-closes to `ci` when it cannot confirm `GAIA-Audit` is a registered required check on the default branch (network failure, unauthenticated, no repo slug): an unverifiable gate must not silently disable the audit.
+On the local merge path the resolver fail-closes to `ci` when it cannot confirm `GAIA-Audit` is a registered required check on the default branch (network failure, unauthenticated, no repo slug): an unverifiable gate must not silently disable the audit.
 
-### Ruleset-protected repos: `local` mode is unreachable
+Under GitHub Actions the confirmation is skipped entirely. The branch-protection read it performs needs repository-admin rights the Actions `GITHUB_TOKEN` does not carry (and returns `404` on a ruleset-protected branch), so in CI it can never succeed; left unguarded it forces every local-mode author into a redundant full CI audit that duplicates the authoritative local run. CI therefore honors the resolved `local` mode directly and stands down. The gate the confirmation guards still holds: a registered `GAIA-Audit` required check keeps a button-merge blocked behind the `pending` status the stand-down posts, and `/setup-gaia` registers that check when an author opts into local mode.
 
-The fail-close above is not only a network guard; it makes `local` mode unreachable on any repo that protects its default branch with a **repository ruleset** rather than classic branch protection. The confirmation helper (`required_check_confirmed` in the resolver) queries the classic API `repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks` and looks for a `GAIA-Audit` context. A ruleset-protected branch carries no classic protection, so that endpoint returns `404 Branch not protected`, the confirmation fails, and a would-be `local` resolution is forced back to `ci` (with a stderr warning). The resolver reads only the classic-protection API; it does not consult the rulesets API. To run the audit locally on such a repo, do not flip the mode knob; use the trailer handshake, which stands CI down per-branch regardless of resolved mode (see [[#How to skip an audit run locally]]).
+### Ruleset-protected repos: prefer the trailer handshake over `local` mode
+
+The confirmation helper (`required_check_confirmed` in the resolver) queries only the classic API `repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks` for a `GAIA-Audit` context; it does not consult the rulesets API. A branch protected by a **repository ruleset** rather than classic branch protection carries no classic protection, so that endpoint returns `404 Branch not protected` and the confirmation fails. On such a repo CI honors a `local` pin and stands down (its confirmation is skipped), but the local merge path fails closed to `ci` and waits for a CI `GAIA-Audit` success the stand-down never posts, so each producer defers to the other and the audit lands from neither. Do not pin `local` on a ruleset-protected repo; use the trailer handshake, which stands CI down per-branch regardless of resolved mode (see [[#How to skip an audit run locally]]).
 
 <!-- gaia:maintainer-only:start -->
-The maintainer repo is exactly this case: `main` is protected by a ruleset, so `local` mode never takes effect. Setting `default_mode: local` or adding an `audit_authors` `login=local` pair is silently coerced to `ci`, and CI runs the audit as normal. Two facts compound: the classic endpoint is absent, and the ruleset's required context is the job name `code-review-audit`, not the `GAIA-Audit` status the helper greps for. Running the audit locally therefore always goes through the trailer handshake.
+The maintainer repo is exactly this case: `main` is protected by a ruleset, and the ruleset's required context is the job name `code-review-audit`, not the `GAIA-Audit` status the confirmation greps for. Pinning `local` here strands the audit, CI stands down while the local path fails closed on the absent classic endpoint, so `default_mode` stays `ci` and the audit runs locally through the trailer handshake.
 <!-- gaia:maintainer-only:end -->
 
 ## Self-heal staging guards

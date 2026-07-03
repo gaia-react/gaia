@@ -86,6 +86,13 @@
 #   unauthenticated, no repo slug) → fail closed: force resolved_mode=ci and
 #   warn on stderr. A `ci` resolution never pays this API cost.
 #
+#   Exception (GitHub Actions): the confirmation's branch-protection read
+#   needs admin the Actions GITHUB_TOKEN lacks (and 404s on ruleset repos),
+#   so it is un-runnable in CI. Under GITHUB_ACTIONS=true a `local` resolution
+#   is honored WITHOUT the re-check (unguarded it would force every local-mode
+#   author into a redundant CI audit that duplicates the local run). The guard
+#   stays authoritative on the local merge path, where the caller has admin.
+#
 # Off-coercion (argument-less emit): an invalid/`off` `default_mode` coerces
 # to a valid non-off mode by workflow presence (`.github/workflows/
 # code-review-audit.yml` present → ci, absent → local) with a stderr warning.
@@ -563,8 +570,20 @@ if [ "$RESOLVE_AUTHOR" -eq 1 ]; then
 
   # Required-check verification: only a would-be `local` resolution pays the
   # branch-protection API cost. Fail closed to `ci` when unconfirmable.
+  #
+  # Skipped under GitHub Actions: the confirmation reads branch protection,
+  # which needs admin the Actions GITHUB_TOKEN never carries (and
+  # 404s on ruleset-protected repos), so it can NEVER succeed in CI. Left
+  # unguarded it forces every local-mode author into a redundant full CI audit
+  # that duplicates the authoritative local run. In CI we trust the resolved
+  # mode and stand down; a registered GAIA-Audit still blocks a button-merge
+  # via the pending status the stand-down posts, and setup owns registering
+  # that gate. The guard stays authoritative on the local merge path (the
+  # other --resolve-author caller), where the invoking user has admin.
   if [ "$resolved_mode" = "local" ]; then
-    if ! required_check_confirmed; then
+    if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+      echo "read-audit-ci-config: CI context; honoring resolved local mode without the branch-protection re-check" >&2
+    elif ! required_check_confirmed; then
       default_branch_for_warn=""
       if [ -n "${repo_root:-}" ]; then
         default_branch_for_warn=$(git -C "$repo_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's#^refs/remotes/origin/##') || true
