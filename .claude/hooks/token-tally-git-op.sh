@@ -19,10 +19,12 @@ tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
 # Match `git commit` or `git push` as a real shell invocation, at command
-# start or right after a shell separator (&&, ;, ||, |, newline), never
-# inside a heredoc body or a quoted string (e.g. a commit message that
-# mentions the command in prose). Bash `=~` gives whole-string semantics;
-# `grep` is line-oriented and would match heredoc body lines too.
+# start or right after a shell separator (&&, ;, ||, |, newline), not when
+# mentioned mid-line in prose or a quoted string (e.g. a commit message).
+# Bash `=~` gives whole-string semantics; `grep` is line-oriented and would
+# match every heredoc body line. The newline separator here still matches a
+# heredoc body line that begins with the command; that edge is benign (one
+# extra tally row the per-session dedup collapses) and accepted.
 start_re='^[[:space:]]*git[[:space:]]+(commit|push)([[:space:]]|$)'
 sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*git[[:space:]]+(commit|push)([[:space:]]|$)'
 if [[ "$cmd" =~ $start_re ]]; then

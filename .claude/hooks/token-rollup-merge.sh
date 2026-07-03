@@ -18,8 +18,10 @@ tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
 # Match `gh pr merge` as a real shell invocation, at command start or right
-# after a shell separator (&&, ;, ||, |, newline), never inside a heredoc
-# body or a quoted string (e.g. a commit message mentioning it in prose).
+# after a shell separator (&&, ;, ||, |, newline), not when mentioned mid-line
+# in prose or a quoted string (e.g. a commit message). The newline separator
+# does match a heredoc body line that begins with the command; that edge is
+# benign (a spurious readout with no merge) and accepted.
 # Mirrors pr-merge-audit-check.sh's command match.
 start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
 sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
