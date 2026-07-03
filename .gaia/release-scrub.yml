@@ -122,7 +122,7 @@ transforms:
       # ---- Release-excluded paths leaked into shipped surfaces ----
       - id: maintainer-paths
         description: "Release-excluded paths referenced in shipped surfaces"
-        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.gaia/tests/|\\.gaia/scripts/tests/|\\.github/audit/tests/|\\.claude/rules/_internal/"
+        pattern: "\\.gaia/cli/src/|\\.gaia/cli/test-fixtures/|\\.gaia/cli/__tests__/|\\.gaia/cli/health/|\\.specify/extensions/gaia/test/|\\.specify/specs/|\\.gaia/tests/|\\.gaia/scripts/tests/|\\.github/audit/tests/|\\.github/forensics/|\\.claude/rules/_internal/"
         scope:
           - "CLAUDE.md"
           - ".claude/**"
@@ -171,6 +171,27 @@ transforms:
           # mid-development hot/log content would otherwise false-positive.
           - "wiki/hot.md"
           - "wiki/log.md"
+        # The three shipped surfaces below each name one `.github/forensics/`
+        # helper by path. That directory is release-excluded wholesale
+        # (category 9), so the pattern above flags any reference; these are the
+        # sanctioned exceptions. Line-allowlisted, not path-allowlisted, so each
+        # file stays scanned for every OTHER maintainer path and for any
+        # UNlisted forensics script, keeping the pattern a loud tripwire.
+        line-allowlist:
+          # .claude/skills/gaia/references/forensics.md documents the upstream
+          # byte-identical contract: the deterministic issue-body parser an
+          # adopter's filed report is read by. The script is maintainer-only;
+          # the contract it enforces is adopter-relevant.
+          - "\\.github/forensics/parse-issue-body\\.sh"
+          # wiki/decisions/Quality Gate.md describes the Forensics Triage
+          # Workflow's own CI gate (install → typecheck → lint → test → knip)
+          # by its script path; descriptive prose, not a rendered pointer.
+          - "\\.github/forensics/run-quality-gate\\.sh"
+          # .claude/commands/setup-gaia.md names the label-bootstrap script
+          # inside a `[ -f .github/workflows/forensics-triage.yml ]` guard; on an
+          # adopter the guard is false and the echo is a graceful no-op, the same
+          # runtime-optional class the `excluded-workflow-ref` guard covers.
+          - "\\.github/forensics/bootstrap-labels\\.sh"
 
       # ---- Never-present-on-adopter workflows referenced in shipped surfaces ----
       # `.github/workflows/` is the one distribution-boundary directory where
