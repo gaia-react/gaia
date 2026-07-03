@@ -187,6 +187,20 @@ Then write the following files directly to `{PLAN_DIR}/`:
     - **Phase findings ledger (`{PLAN_DIR}/SUMMARY.md`).** Append-only file the orchestrator maintains across the run, so sub-agent observations survive context compression. After each phase, the orchestrator appends a `## Phase N, <title>` block containing the phase's commit short-SHA and the merged `Notes for orchestrator` content from every sub-agent in that phase. If a phase produced no notes (all sub-agents reported only routine status), append the phase heading with `_No notes._` so the ledger reflects the full run. Sub-agents do not write to this file directly; the orchestrator owns it.
     - **Stop conditions.** On any sub-agent failure or quality-gate failure: STOP and surface to the user. Do not "fix and continue", do not commit, do not push. Before stopping, append the failure context (which phase, which sub-agent, error) to `SUMMARY.md` under a `## Phase N, <title> (HALTED)` block so the user and any follow-up session see the same record.
     - **Final summary.** After all implementation phases pass and the final commit is pushed, before awaiting merge confirmation, **read `{PLAN_DIR}/SUMMARY.md`** and print a brief summary to the user: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, quality-gate status, and the highest-signal findings/deviations/follow-ups drawn from `SUMMARY.md` so nothing is lost to context compression. Keep it tight, a few lines plus the surfaced notes, not a recap of every change.
+
+      **Token tally (execute-time).** After the pre-merge `code-review-audit`'s clean-pass marker is written and before the Final self-cleanup phase deletes the plan folder, the orchestrator runs the token tally for this KICKOFF execution and reports the printed four-bucket total and wall-clock elapsed to the user, so the run's dominant sub-agent fan-outs (including the pre-merge audit) are all counted, and the `--out-dir` still exists (the ledger itself lives in the main checkout and survives cleanup). Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC), the real plan slug, and the absolute plan directory:
+
+      ```bash
+      if [ -x .gaia/scripts/token-tally.sh ]; then
+        bash .gaia/scripts/token-tally.sh \
+          --action execute \
+          --spec-id "<SPEC-NNN from README's Source SPEC, or the plan slug if none>" \
+          --plan-slug "<plan slug = basename of the plan dir>" \
+          --out-dir "<absolute plan dir>" || true
+      fi
+      ```
+
+      This attributes the whole execution session (main transcript plus every phase sub-agent sidecar, deduped to ground truth) to the plan, appends a durable ledger record keyed to the plan, and reports the tally to the user. It never blocks: the `-x` guard and trailing `|| true` mean a missing or failing helper degrades silently. Because the tally runs after the audit's sub-agent fan-out and counts every sidecar, the reported total is at least the sidecar-only sum.
     - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user has reviewed the PR and confirmed it is ready to merge, the orchestrator deletes its own plan folder so scaffolding does not persist locally. Delete it by its literal repo-relative path: `rm -rf .gaia/local/plans/<slug>` (substitute the plan's slug). The literal path matches the project's `rm -rf .gaia/local/plans/*` permission and the `block-rm-rf.sh` whitelist, so it clears without a prompt; do not reconstruct an absolute path from variables (`"$ROOT/$PLAN_REL"`), which both misses that permission match and trips the empty-variable rm guard. This removes `SUMMARY.md` along with everything else, by this point its content has already been surfaced in the Final summary. Then check `git check-ignore .gaia/local/plans/`, if it is gitignored (the GAIA default), the deletion is invisible to git: skip the commit and report "plan folder removed locally; gitignored, no commit needed." If the path is tracked, commit and push the deletion as the final commit on the PR. If the user explicitly asks to keep the plan folder for archival, the orchestrator skips the deletion and reports.
     - **Post-merge worktree cleanup (worktree-mode runs only).** When the orchestrator's pre-flight chose worktree mode (or the run was dispatched into a worktree by upstream tooling), the post-merge phase runs the cleanup procedure below AFTER the user confirms the PR is merged. The procedure detects the squash-merge state and discards the worktree without prompting (the SPEC clarifications.answered confirms pre-consent: the orchestrator told the user "after merge, the worktree will be discarded" before opening the PR; the user merging the PR is the consent).
       1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
@@ -367,9 +381,39 @@ Notes:
 - The emit fires only when `SPEC_PATH` is set, because `plan_revised` requires `--spec-id`. Plans authored without a SPEC reference do not currently emit revision events; that surface lands when consumer-driven cloud event payloads ship.
 - The emit is not gated on mentorship opt-in here; the CLI itself short-circuits for mentorship-disabled state and always emits the cloud projection.
 
+### 4.8. Token tally
+
+The plan folder is written and verified, so every planner/auditor sub-agent this action spawned has
+flushed its sidecar to disk. Tally the `/gaia-plan` session's ground-truth token cost before the
+handoff. The call sums `message.usage` across the main transcript AND every sub-agent sidecar
+(deduped by message id, so it equals what the API billed), appends one record keyed to the plan slug
+to the durable ledger resolved to the main checkout (so it survives deletion of the plan folder and
+a linked worktree), writes `tokens.md` into the plan folder, and prints the four billing buckets
+plus a total and the wall-clock elapsed. Derive the ledger key from the SPEC folder name (the parent
+dir of `SPEC_PATH`), falling back to the plan slug for a SPEC-less plan:
+
+```bash
+PLAN_SLUG="$(basename "$PLAN_DIR")"
+if [[ -n "${SPEC_PATH:-}" ]]; then
+  TALLY_SPEC_ID="$(basename "$(dirname "$SPEC_PATH")")"   # -> SPEC-NNN
+else
+  TALLY_SPEC_ID="$PLAN_SLUG"                              # SPEC-less plan: key by slug
+fi
+bash .gaia/scripts/token-tally.sh \
+  --action plan \
+  --spec-id "$TALLY_SPEC_ID" \
+  --plan-slug "$PLAN_SLUG" \
+  --out-dir "$PLAN_DIR" || true
+```
+
+The helper always exits 0, and the trailing `|| true` is defense-in-depth: this **never blocks the
+handoff**, and unreadable input degrades to a partial figure with a marker rather than a fabricated
+number. It is a mechanical helper call, not a prompt, so it runs identically in interactive and auto
+(`AskUserQuestion`-less) mode. Surface the printed tally in the step-5 report to the user.
+
 ### 5. Report to user
 
-Output a short summary of what's in `$PLAN_DIR/`, then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
+Output a short summary of what's in `$PLAN_DIR/` (including the token tally printed in step 4.8), then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
 
 The prompt is a single line, exactly:
 

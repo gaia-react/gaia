@@ -773,6 +773,19 @@ rm -f "$CACHE"
 
 The emit is the strongest signal for the intent-clarity-gap pattern; the `|| true` guard ensures emit failures never block the save. The cache file is deleted unconditionally after the emit attempt so a re-saved SPEC starts a fresh session window.
 
+5. **Token tally (never blocks):** tally the session's ground-truth token cost and record it. `${SPEC_ID}`'s folder already exists from the canonical save, so `tokens.md` lands beside `SPEC.md`. This call never blocks or fails the save; on unreadable input it degrades to a partial figure with a marker, never a fabricated number.
+
+```bash
+bash .gaia/scripts/token-tally.sh \
+  --action spec \
+  --spec-id "$SPEC_ID" \
+  --out-dir ".gaia/local/specs/${SPEC_ID}" || true
+```
+
+The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/tokens.jsonl`, resolved to the main checkout so a worktree run still records there), writes `tokens.md` into the SPEC folder, and prints the four-bucket tally, total, and wall-clock elapsed. Surface the helper's printed tally to the user as part of the save confirmation, so the readout is reported when the action finishes.
+
+**Auto-mode:** the tally fires identically in interactive and auto mode; it is a mechanical helper call, not a user prompt, so no auto-mode branch is needed. In auto mode the printed tally simply lands in the transcript, nothing to prompt.
+
 ### 10. after_specify hook (immutability lint)
 
 Spec-kit fires this hook automatically after the spec is written. The agent receives an `EXECUTE_COMMAND: speckit.gaia.lint` directive and invokes `/speckit-gaia-lint`, which runs `bash .specify/extensions/gaia/lib/lint.sh <spec-path>` and surfaces findings.
@@ -821,7 +834,9 @@ where:
 
 Print the handoff to the user as one cohesive block and stop: the status line, a `/clear`-and-paste instruction, then a single fenced code block whose contents are the full `/gaia-plan` invocation (command prefix included). Prepending `/gaia-plan ` makes the block a runnable command, not a bare argument, so the user copies exactly one thing:
 
-> SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN/SPEC.md`. To plan it, /clear and paste this:
+> SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN/SPEC.md`. 
+>
+> To plan it, /clear and paste this:
 >
 > ```
 > /gaia-plan SPEC-NNN: <intent first line>, see <SPEC_ABS>[, with adversarial audit at <AUDIT_ABS>]
