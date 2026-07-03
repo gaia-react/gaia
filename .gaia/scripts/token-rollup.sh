@@ -134,12 +134,17 @@ fi
 [[ -z "$LEDGER" || ! -f "$LEDGER" ]] && no_records
 
 # ---------- corrupt-line-tolerant parse + feature filter ----------
-# A line that fails to parse as JSON is skipped and bumps `bad`; it never
-# aborts the read, and a single bad line never drops the good ones (UAT-010).
+# A line that is not a well-formed JSON object -- unparseable, or valid JSON
+# that is not an object (a bare scalar or array) -- is skipped and bumps `bad`;
+# it never aborts the read, and a single bad line never drops the good ones
+# (UAT-010). The non-object coercion matters because `try fromjson` only rescues
+# parse failures: a bare `42` survives it, then indexing `.spec_id` on a number
+# throws and aborts the whole filter, silently dropping every good row.
 corrupt=0
 parsed="$(jq -R -s --arg fk "$FEATURE_KEY" '
   split("\n") | map(select(length > 0))
   | map(try fromjson catch "__BAD__")
+  | map(if type == "object" then . else "__BAD__" end)
   | {
       bad: (map(select(. == "__BAD__")) | length),
       recs: (map(select(. != "__BAD__")) | map(select(.spec_id == $fk)))

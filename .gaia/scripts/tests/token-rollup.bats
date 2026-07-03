@@ -77,6 +77,15 @@ bats_require_minimum_version 1.5.0
 #     skipped, not fatal; the good rows still roll up exactly; a corrupt
 #     marker is appended; exit 0.
 #
+#   corrupt-nonobject.jsonl (SPEC-231: one spec row, a bare `42` line, one plan
+#   row, an array `[1, 2]` line)
+#     spec total=3000 dur=60 (1m0s); plan total=4000 dur=120 (2m0s)
+#     grand total = 7000; elapsed = 180s = 3m0s. The two non-object lines are
+#     valid JSON that `try fromjson` does not catch; without a type guard,
+#     indexing `.spec_id` on them throws and drops every good row. They are
+#     treated like an unparseable line: skipped, bad-count bumped, partial
+#     marker appended; exit 0.
+#
 #   unavailable-elapsed.jsonl (SPEC-250: one execute row, duration_available
 #   false / duration_seconds null, but a REAL total)
 #     total=8000, buckets 1000/2000/4000/1000 (sums to 8000). Both the
@@ -181,6 +190,16 @@ setup() {
   [[ "$output" == *"spec:       5,000   (elapsed 1m0s)"* ]]
   [[ "$output" == *"plan:       6,000   (elapsed 1m30s)"* ]]
   [[ "$output" == *"Total:     11,000   (elapsed 2m30s)"* ]]
+  [[ "$output" == *"(partial: some ledger input was unreadable or lacked timing"* ]]
+}
+
+# ---------- 9b. Valid-JSON non-object line tolerated (guards the .spec_id throw) ----------
+@test "corrupt-nonobject: a valid-JSON non-object line (bare scalar / array) is skipped, not fatal; good rows still sum" {
+  run bash "$SCRIPT" --spec-id SPEC-231 --ledger "$FIX/corrupt-nonobject.jsonl"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"spec:      3,000   (elapsed 1m0s)"* ]]
+  [[ "$output" == *"plan:      4,000   (elapsed 2m0s)"* ]]
+  [[ "$output" == *"Total:     7,000   (elapsed 3m0s)"* ]]
   [[ "$output" == *"(partial: some ledger input was unreadable or lacked timing"* ]]
 }
 
