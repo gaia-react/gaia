@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-08
 created: 2026-05-08
-updated: 2026-06-24
+updated: 2026-07-03
 tags: [decision, release, maintainer, distribution-boundary]
 ---
 
@@ -35,7 +35,7 @@ Reads `.gaia/release-scrub.yml`. Three transform types, applied in order:
 
 **leak-check.** For each codified check (UAT-NNN narrative, concrete maintainer SPEC IDs, release-excluded path mentions, sibling-monorepo prefixes, absolute filesystem literals), runs the pattern over the post-strip staging tree. Each check has a scope (path globs that determine which files to scan), an optional path-allowlist (files exempt from this check by design, e.g. `wiki-style.md` itself names patterns to teach the rule), and an optional line-allowlist (regexes that exempt structural matches like filename literals or identifier fragments).
 
-One check, `wikilink-to-excluded`, derives its match set instead of carrying a literal pattern. It reads `.gaia/release-exclude` at scan time (resolved against the source repo, which still holds the excluded pages the staging tree drops) and flags any `[[…]]` in a shipped wiki page that resolves to a release-excluded slug. Every `.md` exclude contributes its slug, and every bare-directory exclude walks for the entity pages and dated audit artifacts beneath it, so the excluded-slug set tracks the manifest automatically and a newly excluded page is caught without editing the check.
+Two checks derive their match set instead of carrying a literal pattern. `wikilink-to-excluded` reads `.gaia/release-exclude` at scan time (resolved against the source repo, which still holds the excluded pages the staging tree drops) and flags any `[[…]]` in a shipped wiki page that resolves to a release-excluded slug. Every `.md` exclude contributes its slug, and every bare-directory exclude walks for the entity pages and dated audit artifacts beneath it, so the excluded-slug set tracks the manifest automatically and a newly excluded page is caught without editing the check. `excluded-workflow-ref` covers the same class for `.github/workflows/`, a directory the literal `maintainer-paths` pattern cannot blanket because some workflows ship and some do not. It reads `.gaia/release-exclude` and flags references in shipped surfaces to any excluded `.github/workflows/*.yml` that has no render template under `.gaia/cli/templates/workflows/` (i.e. is never installable on an adopter, unlike a workflow `/setup-gaia` renders from a `.tmpl`). A newly excluded maintainer-only workflow is covered with no config edit.
 
 Non-empty match in any check fails the build with a structured leak report.
 

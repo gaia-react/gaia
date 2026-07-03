@@ -11,6 +11,11 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-03 8f0b4c04 SKIP - adds gaia-maintainer binary path to existing maintainer-paths scrub pattern, no new mechanism
+- 2026-07-03 8aaccf93 SKIP - adds .github/forensics/ path to existing maintainer-paths scrub pattern, no new mechanism beyond what Bundle-time Scrub.md already documents
+- 2026-07-03 437531c5 WORTHY - new excluded-workflow-ref derived scrub check (mirrors wikilink-to-excluded) for .github/workflows/ → wiki/decisions/Bundle-time Scrub.md
+- 2026-07-03 232a7726 SKIP - wiki-lint UAT grep narrowed to shipped surfaces, already covered generically by wiki-style.md and Bundle-time Scrub's how-to-extend, no new architecture
+- 2026-07-03 ea4a5844 SKIP - prior wiki maintenance chain commit (sync+lint through d023c5b), nothing new to evaluate
 - 2026-07-02 d023c5b4 SKIP - chore(deps): version bump only
 - 2026-07-02 6e150f73 WORTHY - gaia-debt now drives the fix PR through the standard merge workflow to completion → wiki/concepts/Audit Disposition and Debt Drain.md
 - 2026-07-02 39891876 WORTHY - mentorship.json added to worktree shared-state set → wiki/concepts/Telemetry.md
