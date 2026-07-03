@@ -374,10 +374,18 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
   After install, source the shell rc the installer modifies (or add `~/.local/bin` to `PATH` for this session) and verify with `uv --version`. If the verification fails, halt `/gaia-init` with: `uv is required for GAIA. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh, then re-run /gaia-init.` Once `uv` is confirmed present, register Serena with:
 
   ```bash
-  claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.2.0 serena start-mcp-server --open-web-dashboard false
+  claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.2.0 serena start-mcp-server --context claude-code --project-from-cwd --open-web-dashboard false
   ```
 
-  `-s user` registers Serena globally for the user's Claude Code; `--open-web-dashboard false` keeps it headless. The pinned ref keeps every GAIA install on the same Serena baseline. If the `claude mcp add` invocation itself fails (network, registry change, etc.), surface the error verbatim and halt `/gaia-init` so the user can retry the command manually after addressing the cause.
+  `-s user` registers Serena globally for the user's Claude Code; `--context claude-code` selects Serena's Claude-Code tool context instead of the default desktop-app one; `--project-from-cwd` makes Serena auto-activate the project rooted at the launch directory, so no per-project re-registration is needed; `--open-web-dashboard false` keeps it headless. The pinned ref keeps every GAIA install on the same Serena baseline. If the `claude mcp add` invocation itself fails (network, registry change, etc.), surface the error verbatim and halt `/gaia-init` so the user can retry the command manually after addressing the cause.
+
+  Serena's tools only win over Opus's built-in Read/Grep/Edit when Claude Code loads Serena's system-prompt override; Opus otherwise defaults to its own tools, a strong built-in-tool bias the Serena maintainers prescribe this override to counter. Tell the user the recommended way to start Claude Code sessions in this project:
+
+  ```bash
+  claude --append-system-prompt="$(serena prompts print-cc-system-prompt-override)"
+  ```
+
+  This is optional but recommended and adopter-safe: a plainly-launched `claude` still works, and the always-loaded `.claude/rules/serena-cc-override.md` is the durable fallback. Use the append form, never `--system-prompt`, which replaces Claude Code's base prompt.
 
 ### Install plugins
 

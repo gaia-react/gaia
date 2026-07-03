@@ -11,6 +11,7 @@ Usage:
 """
 import argparse
 import json
+import re
 import sys
 import time
 from collections import Counter
@@ -21,6 +22,27 @@ TRANSCRIPT_DIR = Path.home() / ".claude/projects/-Users-stevensacks-Development-
 
 SEARCH_TOOLS = {"Grep", "Glob", "Read"}
 SERENA_PREFIX = "mcp__serena__"
+
+# Shell grep/rg/ag issued through the Bash tool. The structured Grep tool is
+# counted directly; this catches the same search intent when it goes out as a
+# shell command instead. Heuristic (measurement, not enforcement): match
+# grep/rg/ag as a word at the start of the command or immediately after a shell
+# separator (| || && ; a newline, or a subshell / command-substitution opener
+# ( ` $( ). It deliberately counts searches inside pipelines such as
+# `git diff | grep foo` that the routing guard skips, because the scan wants
+# total shell-search volume so the serena/grep denominator is honest. Known,
+# accepted misses (kept identical so the convene port's numbers stay
+# comparable): `git grep` (git subcommand, not a command-position grep/rg/ag),
+# grep variants outside the family (egrep/fgrep/zgrep), and greps hidden behind
+# aliases or xargs. It can also over-count a literal "grep" that happens to sit
+# at a command position; both directions are rare and acceptable for a
+# denominator.
+SHELL_GREP_RE = re.compile(r"(?:^|[|;&(`\n]|\$\()\s*(?:grep|rg|ag)\b")
+
+
+def count_shell_greps(command):
+    """Number of shell grep/rg/ag invocations at a command position in a string."""
+    return len(SHELL_GREP_RE.findall(command))
 
 
 def parse_args():
@@ -38,7 +60,12 @@ def cutoff_ts(args):
 
 
 def iter_tool_uses(path):
-    """Yield (tool_name, session_id) for every tool_use in a transcript."""
+    """Yield (tool_name, session_id, command) for every tool_use in a transcript.
+
+    command is the Bash tool's `input.command` string when tool_name == "Bash"
+    (the transcript field is `input`, not `tool_input`), otherwise None. It lets
+    the counting pass detect shell grep/rg/ag searches issued through Bash.
+    """
     sid = path.stem
     with open(path) as f:
         for line in f:
@@ -57,7 +84,13 @@ def iter_tool_uses(path):
                 continue
             for b in msg.get("content") or []:
                 if isinstance(b, dict) and b.get("type") == "tool_use":
-                    yield b.get("name", "unknown"), sid
+                    name = b.get("name", "unknown")
+                    command = None
+                    if name == "Bash":
+                        inp = b.get("input")
+                        if isinstance(inp, dict) and isinstance(inp.get("command"), str):
+                            command = inp["command"]
+                    yield name, sid, command
 
 
 def main():
@@ -78,19 +111,23 @@ def main():
     overall = Counter()
     serena_by_tool = Counter()
     by_session = {}
+    shell_grep_total = 0
 
     for p in files:
         sid = p.stem
         local = Counter()
-        for tool, _ in iter_tool_uses(p):
+        for tool, _, command in iter_tool_uses(p):
             overall[tool] += 1
             local[tool] += 1
             if tool.startswith(SERENA_PREFIX):
                 serena_by_tool[tool[len(SERENA_PREFIX):]] += 1
+            if command:
+                shell_grep_total += count_shell_greps(command)
         by_session[sid] = (local, p.stat().st_mtime)
 
     serena_total = sum(v for k, v in overall.items() if k.startswith(SERENA_PREFIX))
     grep_total = overall.get("Grep", 0)
+    combined_grep_total = grep_total + shell_grep_total
     glob_total = overall.get("Glob", 0)
     read_total = overall.get("Read", 0)
     all_tools = sum(overall.values())
@@ -101,11 +138,13 @@ def main():
     print()
     print(f"  total tool calls : {all_tools}")
     print(f"  serena calls     : {serena_total}  ({100*serena_total/all_tools:.1f}% of all)" if all_tools else "")
-    print(f"  Grep             : {grep_total}")
+    print(f"  Grep (tool)      : {grep_total}")
+    print(f"  shell grep/rg (Bash) : {shell_grep_total}")
+    print(f"  grep (Grep + shell)  : {combined_grep_total}")
     print(f"  Glob             : {glob_total}")
     print(f"  Read             : {read_total}")
-    if grep_total:
-        print(f"  serena/grep ratio: {serena_total/grep_total:.2f}")
+    if combined_grep_total:
+        print(f"  serena/grep ratio: {serena_total/combined_grep_total:.2f}  (vs Grep tool + shell grep)")
     print()
 
     if serena_by_tool:
