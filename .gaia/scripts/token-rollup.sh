@@ -16,7 +16,7 @@
 # "").
 #
 # Grand elapsed is the SUM of every winning row's own duration_seconds (each
-# session's own first-to-last-billed-turn span) — it deliberately excludes
+# session's own first-to-last-billed-turn span); it deliberately excludes
 # idle gaps between sessions, so it is NOT max(ended_at) - min(started_at)
 # across all rows.
 #
