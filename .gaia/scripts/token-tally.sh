@@ -23,6 +23,13 @@
 # (`date -j -f` ignores the Z and halves a span across a DST boundary, and
 # `date -j` is macOS-only, which breaks the Linux CI bats run).
 #
+# The ledger stores the raw UTC endpoints (C2, the durable machine record); the
+# HUMAN surfaces (stdout, tokens.md) render those two endpoints in the machine's
+# LOCAL zone (jq for the clock, `date +%Z` for the zone label — jq's own %z/%Z
+# misreport the offset across a DST boundary on some builds, while `date +%Z`
+# reads the effective system zone, is identical on macOS and Linux, and parses
+# no timestamp, so it is outside the epoch-parsing ban above).
+#
 # Behavior / contract (README C1-C5):
 #   - Exit code is ALWAYS 0. The helper never blocks or fails its caller.
 #     Every failure mode degrades to a partial/absent figure with a marker;
@@ -67,6 +74,23 @@ human_duration() {
     printf '%dm%ds' "$m" "$s"
   else
     printf '%ds' "$s"
+  fi
+}
+
+# Render a raw UTC transcript timestamp (…Z) in the machine's LOCAL zone, for the
+# human surfaces only. jq renders the local clock (DST-correct for H:M:S); the
+# zone LABEL is $ZONE_LABEL (resolved once via `date +%Z`). Falls back to the raw
+# input if jq cannot parse it (never fabricates, never blocks).
+ZONE_LABEL=""
+to_local() {
+  local iso="$1" clock
+  clock="$(jq -rn --arg t "$iso" '
+    $t | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 | strflocaltime("%Y-%m-%d %H:%M:%S")
+  ' 2>/dev/null || true)"
+  if [[ -n "$clock" ]]; then
+    printf '%s%s' "$clock" "${ZONE_LABEL:+ $ZONE_LABEL}"
+  else
+    printf '%s' "$iso"
   fi
 }
 
@@ -208,8 +232,17 @@ if [[ -n "$TMIN" && -n "$TMAX" ]]; then
   fi
 fi
 
+# Human-facing duration + LOCAL-zone endpoint strings (the ledger keeps raw UTC).
+# Resolve the zone label once; both endpoints share it.
 HUMAN=""
-[[ "$DUR_AVAIL" == "true" ]] && HUMAN="$(human_duration "$DUR_SECONDS")"
+LOCAL_START=""
+LOCAL_END=""
+if [[ "$DUR_AVAIL" == "true" ]]; then
+  HUMAN="$(human_duration "$DUR_SECONDS")"
+  ZONE_LABEL="$(date +%Z 2>/dev/null || true)"
+  LOCAL_START="$(to_local "$TMIN")"
+  LOCAL_END="$(to_local "$TMAX")"
+fi
 
 # ---------- shared generation stamp (date -u here is fine; the ban is only on
 #            parsing transcript timestamps to epoch, which stays jq-only) ----------
@@ -304,7 +337,7 @@ if [[ -n "$OUT_DIR" ]]; then
     printf '| Output | %s |\n' "$OUT"
     printf '| **Total** | %s |\n\n' "$TOTAL"
     if [[ "$DUR_AVAIL" == "true" ]]; then
-      printf '**Elapsed (first to last model turn):** %s (%s to %s)\n' "$HUMAN" "$TMIN" "$TMAX"
+      printf '**Elapsed (first to last model turn):** %s (%s to %s)\n' "$HUMAN" "$LOCAL_START" "$LOCAL_END"
     else
       printf '_Elapsed: unavailable (no readable turn timestamps)._\n'
     fi
@@ -325,7 +358,7 @@ printf '  Cache read:   %s\n' "$CREAD"
 printf '  Output:       %s\n' "$OUT"
 printf '  Total:        %s\n' "$TOTAL"
 if [[ "$DUR_AVAIL" == "true" ]]; then
-  printf '  Elapsed:      %s  (first to last model turn: %s to %s)\n' "$HUMAN" "$TMIN" "$TMAX"
+  printf '  Elapsed:      %s  (first to last model turn: %s to %s)\n' "$HUMAN" "$LOCAL_START" "$LOCAL_END"
 else
   printf '  Elapsed:      unavailable (no readable turn timestamps)\n'
 fi

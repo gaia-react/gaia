@@ -28,6 +28,9 @@
 #   duration_seconds 125   duration_available true   human "2m5s"
 #   decoys excluded: user line 16:59:30 (before min), pr-link 17:10:00 (after max)
 #   regression traps: all-lines->630s, main-only->30s, deduped-min->124s
+#   the ledger records the raw UTC endpoints; the human surfaces (stdout,
+#     tokens.md) render them in the machine's LOCAL zone (proven below under a
+#     pinned TZ=UTC baseline and a TZ=JST-9 non-UTC conversion)
 #
 # Degradation fixtures (isolated trees):
 #   single/    -> one usage line, valid ts       -> duration 0, available true
@@ -254,22 +257,53 @@ led() { jq -r "$1" "$LEDGER"; }
 }
 
 # ---------- 10. Elapsed exact span (PL-001) ----------
-@test "anchor: elapsed span is 125s / 2m5s with ISO endpoints on all three surfaces" {
-  run_anchor
+# The ledger records the raw UTC endpoints (timezone-independent); the human
+# surfaces render them in the machine's LOCAL zone. Pinned to TZ=UTC here so the
+# local display is deterministic (UTC clock, labelled UTC); the conversion to a
+# non-UTC zone is proven in the next test.
+@test "anchor: elapsed span 125s/2m5s, ledger raw UTC, human surfaces local (TZ=UTC)" {
+  run env TZ=UTC bash "$SCRIPT" \
+    --action execute --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
+    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --projects-root "$ANCHOR" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
-  # ledger
+  # ledger: raw UTC endpoints (durable machine record)
   [ "$(led '.duration_seconds')" -eq 125 ]
   [ "$(led '.duration_available')" = "true" ]
   [ "$(led '.started_at')" = "2026-07-02T17:00:00.000Z" ]
   [ "$(led '.ended_at')" = "2026-07-02T17:02:05.000Z" ]
 
-  # stdout pinned human format + window (kills 0, ms=125000, all-lines=630s,
-  # main-only=30s, deduped-min=124s)
-  [[ "$output" == *"Elapsed:      2m5s  (first to last model turn: 2026-07-02T17:00:00.000Z to 2026-07-02T17:02:05.000Z)"* ]]
+  # stdout pinned human format + LOCAL window (kills 0, ms=125000, all-lines=630s,
+  # main-only=30s, deduped-min=124s). TZ=UTC -> local clock == UTC, labelled UTC.
+  [[ "$output" == *"Elapsed:      2m5s  (first to last model turn: 2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)"* ]]
 
   # tokens.md elapsed line (below the total row, not a table row)
-  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-02T17:00:00.000Z to 2026-07-02T17:02:05.000Z)$" "$OUTDIR/tokens.md"
+  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)$" "$OUTDIR/tokens.md"
+}
+
+# ---------- 10b. Endpoints render in the machine's LOCAL zone (owner request) ----------
+# Under a fixed non-UTC, non-DST zone (JST = UTC+9, POSIX "JST-9" so no tzdata is
+# required), the human surfaces show the endpoints converted to local time,
+# crossing midnight (17:00Z -> next-day 02:00 JST), while the ledger still stores
+# the raw UTC. Proves the display applies the system zone rather than hardcoding
+# UTC, and that the span (125s) is timezone-independent.
+@test "human surfaces render endpoints in the local zone; ledger stays UTC (TZ=JST-9)" {
+  run env TZ=JST-9 bash "$SCRIPT" \
+    --action execute --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
+    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --projects-root "$ANCHOR" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+
+  # ledger unchanged: raw UTC, span unchanged
+  [ "$(led '.started_at')" = "2026-07-02T17:00:00.000Z" ]
+  [ "$(led '.ended_at')" = "2026-07-02T17:02:05.000Z" ]
+  [ "$(led '.duration_seconds')" -eq 125 ]
+
+  # human surfaces: +0900 local, crossing midnight into 2026-07-03
+  [[ "$output" == *"first to last model turn: 2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST"* ]]
+  [[ "$output" == *"Elapsed:      2m5s"* ]]
+  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST)$" "$OUTDIR/tokens.md"
 }
 
 # ---------- 11. Max in a sidecar (documents sidecar inclusion) ----------
