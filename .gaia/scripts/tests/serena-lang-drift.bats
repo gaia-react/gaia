@@ -198,6 +198,20 @@ diff_removed() { diff "$1" "$2" | grep -c '^< '; }
   [ "$output" = '[]' ]
 }
 
+@test "regression: a full-line comment inside the languages: block does not hide later items" {
+  local r; r="$(new_repo repo_comment)"
+  writef "$r/go.mod" 'module x\n'
+  # `go` is listed AFTER a mid-list comment. A YAML comment does not end a
+  # block sequence, so `go` IS configured and must not drift. If the reader
+  # treated the comment as terminating the list, go would be invisible and
+  # drift would false-positive with ["go"].
+  writef "$r/.serena/project.yml" 'languages:\n- typescript\n# go for the worker service\n- go\n'
+  git -C "$r" add -A
+  run env HOME="$HOME_YES" bash "$LIB" drift "$r"
+  [ "$status" -eq 0 ]
+  [ "$output" = '[]' ]
+}
+
 @test "UAT-008 drift: legacy singular language: go read as a one-element set -> no go drift" {
   local r; r="$(new_repo repo008)"
   writef "$r/go.mod" 'module x\n'

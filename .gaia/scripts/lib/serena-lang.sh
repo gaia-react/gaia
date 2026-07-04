@@ -94,8 +94,10 @@ _serena_raw_tokens() {
   awk '
     {
       line = $0
-      # Full-line comment: ignore, and it terminates an open block list.
-      if (line ~ /^[[:space:]]*#/) { inblock = 0; next }
+      # Full-line comment: ignore. A YAML comment does NOT end a block
+      # sequence, so keep inblock set; a later non-item line still ends it
+      # below. (Clearing inblock here would hide every item after the comment.)
+      if (line ~ /^[[:space:]]*#/) { next }
       if (inblock) {
         if (line ~ /^[[:space:]]*-[[:space:]]*[^[:space:]]/) {
           item = line
