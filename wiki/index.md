@@ -159,6 +159,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Wiki Consolidate]]: `/gaia-wiki consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
 - [[GAIA Init Workflow]]: `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, configure-automation, finalize, resume.
 - [[Telemetry]]: three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.
+- [[Token Cost Readout]]: per-action token-to-dollar pricing; the `by_model` ledger field, the committed `token-rates.json` rate table (per-model/per-bucket, effective-dated intro pricing), and the roll-up's dollar block with its unavailable / lower-bound degrade markers.
 - [[Serena Integration]]: Serena handles live code; the wiki handles institutional memory.
 - [[React Perf Diagnostic]]: `/gaia-react-perf`: measure-only runtime render-performance diagnostic built on bippy; capture -> reduce CLI -> ranked `memoDefeated` findings with a structural-fix cross-reference.
 - [[Chromatic Opt-Out]]
