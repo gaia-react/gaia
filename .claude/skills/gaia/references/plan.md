@@ -103,6 +103,8 @@ You are planning a feature using task orchestration. Do not implement anything. 
 
 First, read `wiki/concepts/Task Orchestration.md`.
 
+**Never author a manifest-registration task.** `.gaia/manifest.json` is release-generated and lists only files GAIA ships; adopter feature work never adds to it, and a file's absence from the manifest is not `/update-gaia` drift (a path absent from the manifest is adopter-owned and invisible to the update). See `.claude/rules/manifest.md`.
+
 Then write the following files directly to `{PLAN_DIR}/`:
 
 1.  **One task doc per parallel workstream**: `{PLAN_DIR}/task-{name}.md`. Each must be fully self-contained for a fresh-context sub-agent and include:
@@ -337,7 +339,7 @@ Shared preamble (interpolate `<PLAN_DIR>` = the resolved plan directory, `<repo_
 
 The lenses:
 
-- **Decomposition & dependency soundness (id prefix `DP`).** The highest-value lens, with no analog upstream or downstream. Attack the task graph: tasks placed in the same phase as "parallel" that actually share state, edit the same files, or consume each other's outputs; phase order that does not respect a real data or interface dependency; a frozen interface contract that two tasks interpret inconsistently; acceptance criteria that are not independently verifiable. Construct the concrete scenario where every per-task acceptance criterion passes yet the integrated result is broken.
+- **Decomposition & dependency soundness (id prefix `DP`).** The highest-value lens, with no analog upstream or downstream. Attack the task graph: tasks placed in the same phase as "parallel" that actually share state, edit the same files, or consume each other's outputs; phase order that does not respect a real data or interface dependency; a frozen interface contract that two tasks interpret inconsistently; acceptance criteria that are not independently verifiable. Construct the concrete scenario where every per-task acceptance criterion passes yet the integrated result is broken. Flag as `blocker` any task that registers net-new files into `.gaia/manifest.json`, or that treats a file's absence from the manifest as `/update-gaia` drift: the manifest is release-generated only (see `.claude/rules/manifest.md`).
 - **Contract grounding (id prefix `CG`).** Treat every file path, export subpath, type name, and function signature named in a task's interface contract or files-to-touch list as a factual claim, and verify each resolves against the real repo and `node_modules`. A contract that names a non-existent export, a wrong signature, or a hallucinated module is at least `high`, likely `blocker`: the orchestrator will build against it and fail at integration.
 - **SPEC coverage (id prefix `COV`, dispatched only when `SPEC_PATH` is set).** Build the matrix SPEC `UATs` + `success_criteria` ↔ task acceptance criteria. Find the holes: a UAT or success criterion no task covers; a task that drifts from or contradicts the SPEC's binding contract; scope the SPEC declared out-of-bounds that a task re-introduces. Read `<SPEC_PATH>` (interpolated) as the source of truth.
 

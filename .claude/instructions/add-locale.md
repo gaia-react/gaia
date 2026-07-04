@@ -135,22 +135,9 @@ Check whether `.playwright/e2e/language-switch.spec.ts` exists.
 
 ---
 
-## Step 7, Manifest
+## Step 7, Manifest (no change needed)
 
-Edit `.gaia/manifest.json`:
-
-Add the following six entries into the `"files"` object in alphabetical order (mirroring how the `en/` entries are listed):
-
-```json
-"app/languages/{{LOCALE_CODE}}/common.ts": "owned",
-"app/languages/{{LOCALE_CODE}}/errors.ts": "owned",
-"app/languages/{{LOCALE_CODE}}/index.ts": "owned",
-"app/languages/{{LOCALE_CODE}}/pages/_index.ts": "owned",
-"app/languages/{{LOCALE_CODE}}/pages/index.ts": "owned",
-"app/languages/{{LOCALE_CODE}}/pages/legal.ts": "owned",
-```
-
-Insert these entries so the overall `"files"` object remains sorted alphabetically by key.
+`.gaia/manifest.json` is release-generated and lists only files GAIA ships. New-locale files are adopter-owned, so **do not add them to the manifest**, a path absent from the manifest is adopter-owned and invisible to `/update-gaia`. No manifest edit is needed here. See `.claude/rules/manifest.md`.
 
 ---
 

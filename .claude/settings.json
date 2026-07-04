@@ -108,6 +108,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/check-story-exists.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-manifest-write.sh"
           }
         ]
       },
@@ -162,6 +166,11 @@
             "type": "command",
             "command": ".claude/hooks/serena-code-search-guard.sh",
             "statusMessage": "Checking Serena code-search routing…"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-manifest-write.sh",
+            "statusMessage": "Checking manifest-write guard…"
           }
         ]
       },
