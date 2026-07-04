@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # spec-renumber.sh: Renumber a SPEC. Renames the local SPEC folder, updates the
 # inner SPEC.md frontmatter, rewrites the .gaia/local/specs/ledger.json ledger
-# row, and best-effort re-keys the draft/session/audit caches under
+# row, and best-effort re-keys the gate1/draft/session/audit caches under
 # .gaia/local/cache/. The inner SPEC.md keeps its name; any sibling artifacts in
 # the folder move with it.
 # Does NOT touch external state (branch names, GH issue titles, commit-message
@@ -140,6 +140,14 @@ fi
 #    logged to stderr and does not revert the folder/ledger move above; that
 #    move already succeeded and remains the source of truth.
 cache_dir="${repo_root%/}/.gaia/local/cache"
+
+old_gate1="${cache_dir}/gate1-${old_id}.json"
+new_gate1="${cache_dir}/gate1-${new_id}.json"
+if [ -e "$old_gate1" ]; then
+  if ! mv "$old_gate1" "$new_gate1" 2>/dev/null; then
+    echo "spec-renumber: failed to re-key gate1 cache $old_gate1" >&2
+  fi
+fi
 
 old_draft="${cache_dir}/draft-${old_id}.md"
 new_draft="${cache_dir}/draft-${new_id}.md"
