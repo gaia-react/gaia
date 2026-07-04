@@ -322,7 +322,7 @@ Phase 1 already exited if nothing was outstanding or the human cancelled or
 skipped everything, so reaching here means the apply set is non-empty. After the
 Haiku agent returns:
 
-- Updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes. Use the Write tool to overwrite `.gaia/cache/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, and `gaiaHasUpdate` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If the cache file does not exist, skip this step. (Snoozed groups are already excluded by the ledger on the next real check.)
+- Updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes. Use the Write tool to overwrite `.gaia/cache/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, `gaiaHasUpdate`, and `serenaLangDrift` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If `serenaLangDrift` is absent from the existing cache, omit it (the next refresher recomputes it). If the cache file does not exist, skip this step. (Snoozed groups are already excluded by the ledger on the next real check.)
 
 - If `SHOULD_CREATE_BRANCH=true`, create the branch now and **remember that you created it** (this determines publish behavior in Phase 8):
 

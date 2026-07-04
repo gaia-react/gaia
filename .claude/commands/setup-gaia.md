@@ -165,6 +165,8 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
 
   This is optional but recommended and adopter-safe: a plainly-launched `claude` still works, and the always-loaded `.claude/rules/serena-cc-override.md` is the durable fallback. Use the append form, never `--system-prompt`, which replaces Claude Code's base prompt.
 
+  Serena picks a single language at first startup and freezes it into `.serena/project.yml`. If the project later grows another language, Serena will not index it until the `languages:` list in `.serena/project.yml` is updated and Serena restarts. To fix this manually, edit the `languages:` list in `.serena/project.yml` directly and restart Serena; `/gaia-serena-sync` automates the same edit on explicit consent.
+
 After all three tools install successfully:
 
 ```bash
