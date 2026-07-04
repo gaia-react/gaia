@@ -302,3 +302,37 @@ setup() {
   [[ "$output" == *'execute:   $1.30'* ]]
   [[ "$output" == *'Total:     $1.30'* ]]
 }
+
+# ---------- 17. Directive 5: rate table resolves from inside a linked worktree ----------
+# The positive counterpart to test 13's ledger-resolution case. resolve_rate_table()
+# (no --rate-table override) locates the table at `git rev-parse --show-toplevel`/
+# .gaia/scripts/token-rates.json. Inside a LINKED worktree, --show-toplevel returns
+# the WORKTREE's own root (not the main checkout), and a real worktree carries the
+# committed table because git checks it out. Test 13's synthetic worktree carries no
+# committed table, so it only ever exercised the "rate table unreadable" degrade;
+# this seeds the real shipped rates into a committed table, so the worktree checkout
+# resolves it and prices the same $1.30 as the committed-rate-smoke case above.
+@test "worktree-rate-table: resolves the committed token-rates.json via --show-toplevel from a linked worktree" {
+  MAIN="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/main"
+  WT="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/wt"
+  mkdir -p "$MAIN/.gaia/scripts"
+  git -C "$MAIN" init -q
+  # Commit the real shipped rate table so the worktree checkout carries it, exactly
+  # as a real linked worktree of this repo would.
+  cp "$SCRIPT_DIR/token-rates.json" "$MAIN/.gaia/scripts/token-rates.json"
+  git -C "$MAIN" add .gaia/scripts/token-rates.json
+  git -C "$MAIN" commit -q -m "seed committed rate table"
+  git -C "$MAIN" worktree add -q "$WT" -b "feature/kickoff"
+
+  # No --rate-table override: the rate table must resolve to the WORKTREE's own
+  # <toplevel>/.gaia/scripts/token-rates.json. --ledger is explicit so this isolates
+  # rate-table resolution (test 13 covers ledger resolution). Same seed rates as
+  # committed-rate-smoke -> $1.30, and NOT the "rate table unreadable" degrade.
+  run bash -c "cd '$WT' && bash '$SCRIPT' --spec-id SPEC-260 --ledger '$FIX/committed-rate-smoke.jsonl'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'execute:   $1.30'* ]]
+  [[ "$output" == *'Total:     $1.30'* ]]
+  [[ "$output" != *'unavailable (rate table unreadable)'* ]]
+
+  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+}
