@@ -16,6 +16,7 @@ setup() {
   HOOK_ABS="$REPO_ROOT/.claude/hooks/token-rollup-merge.sh"
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
   ROLLUP_SRC="$REPO_ROOT/.gaia/scripts/token-rollup.sh"
+  LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -38,6 +39,7 @@ build_repo() {
   chmod +x "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
   cp "$ROLLUP_SRC" "$REPO/.gaia/scripts/token-rollup.sh"
   chmod +x "$REPO/.gaia/scripts/token-rollup.sh"
+  cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
 }
 
 write_running() {
