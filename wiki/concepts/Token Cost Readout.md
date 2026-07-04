@@ -9,13 +9,13 @@ tags: [concept, telemetry, cost, token-accounting]
 
 # Token Cost Readout
 
-GAIA prices the ground-truth token usage of each workflow action (`/gaia-spec`, `/gaia-plan`, and KICKOFF plan execution) into a dollar estimate. Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and also prices a generation-time cost line into each `tokens.md` section it writes (the write half), and `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
+GAIA prices the ground-truth token usage of each workflow action (`/gaia-spec`, `/gaia-plan`, and KICKOFF plan execution) into a dollar estimate. Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and also prices a generation-time cost line into each `cost.md` section it writes (the write half), and `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
 
 The write half is documented alongside the rest of the tally in [[Telemetry]]'s storage model; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the committed rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-section cost line.
 
 ## The `by_model` ledger field
 
-Each ledger record (appended to the machine-local, gitignored `.gaia/local/telemetry/tokens.jsonl`, resolved to the main checkout so it survives a linked worktree) carries the aggregate token buckets used by the token readout, and, when attribution succeeds, a `by_model` object used for pricing:
+Each ledger record (appended to the machine-local, gitignored `.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout so it survives a linked worktree) carries the aggregate token buckets used by the token readout, and, when attribution succeeds, a `by_model` object used for pricing. The record's other fields, the sibling `by_agent_type` attribution, `dollars`, `rate_table_id`, `git_branch`, `project`, `seq`, and `final`, are documented in full in [[Cost Data Contract]]; this page covers only the pricing-relevant surfaces.
 
 ```json
 "by_model": {
@@ -84,7 +84,7 @@ Like the token readout, the dollar block runs under a strict never-block contrac
 
 ## The tally-time cost line
 
-Each `tokens.md` section `token-tally.sh` writes, the plan's `## Planning` section, its `## Execution` section, and the single-section spec doc, carries its own estimated USD cost line, priced from that section's own in-process `by_model`. The line renders after the token block (after the elapsed line and any token partial marker) and before the session/generated footer, and never begins with `## `, so it never becomes its own heading. On the clean, fully-priced path it reads:
+Each `cost.md` section `token-tally.sh` writes, the plan's `## Planning` section, its `## Execution` section, and the single-section spec doc, carries its own estimated USD cost line, priced from that section's own in-process `by_model`. The line renders after the token block (after the elapsed line and any token partial marker) and before the session/generated footer, and never begins with `## `, so it never becomes its own heading. On the clean, fully-priced path it reads:
 
 ```
 **Est. cost (USD):** $0.88
@@ -96,7 +96,7 @@ a single section total, no per-model split. The line is additive: every existing
 
 The tally's cost line is a generation-time snapshot: it is frozen at the rate whose effective window covers the session's run-time anchor at the moment the section is written. The `## Execution` section refreshes on every orchestrator commit that rewrites it, so its snapshot moves forward each time; the `## Planning` section and the spec doc are each written once and stay fixed after that.
 
-The roll-up's dollar block is a read-time reprice: it recomputes from the ledger every time it runs, against whatever rate table is committed at that moment. Both surfaces select a rate the same way, effective-dating on the run-time anchor through the shared lib's `rate_window` logic, so the two figures agree for a session most of the time. They can still diverge for one session: the rate table can be edited between the tally's write and a later merge-time roll-up, or the roll-up's ledger dedup can select a different underlying row than the one the tally priced. The roll-up is the authoritative live figure; `tokens.md` is a per-phase snapshot of what pricing looked like when that phase's section was written.
+The roll-up's dollar block is a read-time reprice: it recomputes from the ledger every time it runs, against whatever rate table is committed at that moment. Both surfaces select a rate the same way, effective-dating on the run-time anchor through the shared lib's `rate_window` logic, so the two figures agree for a session most of the time. They can still diverge for one session: the rate table can be edited between the tally's write and a later merge-time roll-up, or the roll-up's ledger dedup can select a different underlying row than the one the tally priced. The roll-up is the authoritative live figure; `cost.md` is a per-phase snapshot of what pricing looked like when that phase's section was written.
 
 ## Tally-time degrade markers
 
@@ -113,6 +113,7 @@ The roll-up's multi-row markers, mixed provenance, a corrupt ledger line, a cros
 
 ## Pairs with
 
+- [[Cost Data Contract]]: the full `cost.jsonl` record schema, the execute aggregation rule, and both archived folder shapes.
 - [[Telemetry]]: the token tally's storage model and the `.gaia/local/telemetry/` streams the ledger lives beside.
 - [[PR Merge Workflow]]: the merge-time `PostToolUse` hook that renders the full-cycle roll-up.
 - [[Task Orchestration]]: KICKOFF plan execution, whose per-commit cost the ledger accumulates.
