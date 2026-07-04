@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-04
-updated: 2026-07-03
+updated: 2026-07-04
 tags: [concept, claude, code-search, mcp]
 ---
 
@@ -41,6 +41,8 @@ The routing rule is advisory and language-agnostic: it activates on a broad mult
 ## Language drift
 
 Serena freezes its language list at first startup and does not re-detect, so a project that grows a new language gets no symbol intelligence for it until Serena's configuration catches up. `/gaia-serena-sync` reconciles that drift: a passive statusline nudge appears when a project grows a language Serena is not indexing, and on explicit consent the command adds the language to Serena's configuration and prompts a restart. See [[Serena]] for how the freeze works and what the command edits.
+
+The nudge renders from a `serenaLangDrift` field in `.gaia/cache/update-check.json`, which `check-updates.sh` recomputes on every session start. When `/update-deps` and `/update-gaia` finish they rewrite that cache to clear the post-update state, and each preserves `serenaLangDrift` so a pending nudge survives the update. That preservation is a step the skill performs, not shell code, so no automated test exercises it: the drift computation is unit-tested, but its survival across a cache-bust rests on the skill's prose. This is an accepted, self-correcting residual risk. The next session-start refresh recomputes `serenaLangDrift` from source, so a dropped value costs at most one session's missing nudge before it returns.
 
 ## Quirks
 
