@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# Bats suite for the dollar-cost line SPEC-022 adds to every tokens.md section
+# Bats suite for the dollar-cost line SPEC-022 adds to every cost.md section
 # token-tally.sh renders (`## Planning`, `## Execution`, the single spec doc).
 # Every fixture below is either REUSED from an existing suite (never re-derived
 # here) or a HAND-AUTHORED oracle: expected dollar figures are computed by hand
@@ -103,7 +103,7 @@ setup() {
     fi
     [ "$status" -eq 0 ]
 
-    md="$out/tokens.md"
+    md="$out/cost.md"
     assert_file_has '**Est. cost (USD):** $0.88' "$md"
     refute_file_has '$0.76' "$md"
     refute_file_has '$0.12' "$md"
@@ -122,7 +122,7 @@ setup() {
     --projects-root "$MULTIMODEL" --ledger "$LEDGER" --rate-table "$RATES_MISSING_SONNET"
   [ "$status" -eq 0 ]
 
-  md="$OUTDIR/tokens.md"
+  md="$OUTDIR/cost.md"
   assert_file_has '**Est. cost (USD):** $0.76' "$md"
   assert_file_has '_Lower bound: unpriced model(s) claude-sonnet-4-6._' "$md"
   refute_file_has 'synthetic' "$md"
@@ -135,7 +135,7 @@ setup() {
     --projects-root "$LEGACY" --ledger "$LEDGER" --rate-table "$RATES_E2E"
   [ "$status" -eq 0 ]
 
-  md="$OUTDIR/tokens.md"
+  md="$OUTDIR/cost.md"
   assert_file_has '_Est. cost (USD): unavailable (per-model attribution unavailable)._' "$md"
   assert_file_has '| **Total** | 11110 |' "$md"
   assert_file_has '**Elapsed (first to last model turn):**' "$md"
@@ -149,7 +149,7 @@ setup() {
     --rate-table "$BATS_TEST_TMPDIR/does-not-exist.json"
   [ "$status" -eq 0 ]
 
-  md="$OUTDIR/tokens.md"
+  md="$OUTDIR/cost.md"
   assert_file_has '_Est. cost (USD): unavailable (rate table unreadable)._' "$md"
   assert_file_has '| **Total** | 6793 |' "$md"
 }
@@ -161,19 +161,19 @@ setup() {
     --projects-root "$MULTIMODEL" --ledger "$BATS_TEST_TMPDIR/ledger-intro.jsonl" \
     --rate-table "$RATES_INTRO"
   [ "$status" -eq 0 ]
-  assert_file_has '**Est. cost (USD):** $1.76' "$BATS_TEST_TMPDIR/out-intro/tokens.md"
+  assert_file_has '**Est. cost (USD):** $1.76' "$BATS_TEST_TMPDIR/out-intro/cost.md"
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-022 --plan-slug spec-022-dollar-cost \
     --out-dir "$BATS_TEST_TMPDIR/out-sticker" --session-id fixturemultimodel0001 \
     --projects-root "$MULTIMODEL" --ledger "$BATS_TEST_TMPDIR/ledger-sticker.jsonl" \
     --rate-table "$RATES_STICKER"
   [ "$status" -eq 0 ]
-  assert_file_has '**Est. cost (USD):** $0.88' "$BATS_TEST_TMPDIR/out-sticker/tokens.md"
+  assert_file_has '**Est. cost (USD):** $0.88' "$BATS_TEST_TMPDIR/out-sticker/cost.md"
 
   # Neither figure leaks into the other table's render (proves genuine
   # effective-dated selection, not two independently-different tables).
-  refute_file_has '$1.76' "$BATS_TEST_TMPDIR/out-sticker/tokens.md"
-  refute_file_has '$0.88' "$BATS_TEST_TMPDIR/out-intro/tokens.md"
+  refute_file_has '$1.76' "$BATS_TEST_TMPDIR/out-sticker/cost.md"
+  refute_file_has '$0.88' "$BATS_TEST_TMPDIR/out-intro/cost.md"
 }
 
 # ---------- 6. UAT-009: sibling section copied byte-for-byte ----------
@@ -183,7 +183,7 @@ setup() {
   # (bucket table + elapsed line + footer, nothing else).
   out1="$BATS_TEST_TMPDIR/out-legacy-sibling"
   mkdir -p "$out1"
-  cat > "$out1/tokens.md" <<'EOF'
+  cat > "$out1/cost.md" <<'EOF'
 # Token cost: SPEC-022 / spec-022-dollar-cost
 
 ## Planning
@@ -200,7 +200,7 @@ _Elapsed: unavailable (no readable turn timestamps)._
 
 Session `legacysession0001` · generated 2020-01-01T00:00:00Z
 EOF
-  plan_slice_before="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$out1/tokens.md")"
+  plan_slice_before="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$out1/cost.md")"
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-022 --plan-slug spec-022-dollar-cost \
     --out-dir "$out1" --session-id fixturemultimodel0001 \
@@ -208,14 +208,14 @@ EOF
     --rate-table "$RATES_E2E"
   [ "$status" -eq 0 ]
 
-  plan_slice_after="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$out1/tokens.md")"
+  plan_slice_after="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$out1/cost.md")"
   [ "$plan_slice_before" = "$plan_slice_after" ]
 
-  exec_slice="$(awk '/^## Execution$/{p=1;next} p' "$out1/tokens.md")"
+  exec_slice="$(awk '/^## Execution$/{p=1;next} p' "$out1/cost.md")"
   printf '%s\n' "$exec_slice" | grep -qF '**Est. cost (USD):** $0.88'
 
-  pln="$(grep -n '^## Planning$' "$out1/tokens.md" | cut -d: -f1)"
-  exn="$(grep -n '^## Execution$' "$out1/tokens.md" | cut -d: -f1)"
+  pln="$(grep -n '^## Planning$' "$out1/cost.md" | cut -d: -f1)"
+  exn="$(grep -n '^## Execution$' "$out1/cost.md" | cut -d: -f1)"
   [ "$pln" -lt "$exn" ]
 
   # Arm 2: a FEATURE-ERA Planning sibling (written by the current script, so
@@ -227,7 +227,7 @@ EOF
     --projects-root "$MULTIMODEL" --ledger "$BATS_TEST_TMPDIR/ledger-feature-sibling-plan.jsonl" \
     --rate-table "$RATES_E2E"
   [ "$status" -eq 0 ]
-  plan2_before="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$out2/tokens.md")"
+  plan2_before="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$out2/cost.md")"
   printf '%s\n' "$plan2_before" | grep -qF '**Est. cost (USD):** $0.88'
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-022 --plan-slug spec-022-dollar-cost \
@@ -235,7 +235,7 @@ EOF
     --projects-root "$MULTIMODEL" --ledger "$BATS_TEST_TMPDIR/ledger-feature-sibling-exec.jsonl" \
     --rate-table "$RATES_E2E"
   [ "$status" -eq 0 ]
-  plan2_after="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$out2/tokens.md")"
+  plan2_after="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$out2/cost.md")"
   [ "$plan2_before" = "$plan2_after" ]
 }
 
@@ -251,7 +251,7 @@ EOF
     --projects-root "$BATS_TEST_TMPDIR/mmcopy" --ledger "$LEDGER" --rate-table "$RATES_E2E"
   [ "$status" -eq 0 ]
 
-  md="$OUTDIR/tokens.md"
+  md="$OUTDIR/cost.md"
   assert_file_has '_Partial: one or more transcript inputs were missing or unparseable; figures are a lower bound._' "$md"
   assert_file_has '**Est. cost (USD):** $0.88' "$md"
   assert_file_has '_Lower bound: some transcript inputs were unreadable; cost is a floor._' "$md"
@@ -273,7 +273,7 @@ EOF
     --projects-root "$LEGACY" --ledger "$LEDGER" --rate-table "$RATES_E2E"
   [ "$status" -eq 0 ]
 
-  actual="$(cat "$OUTDIR/tokens.md")"
+  actual="$(cat "$OUTDIR/cost.md")"
 
   # The generation stamp is inherently non-deterministic (real `date -u` at
   # run time); capture the REAL footer line as rendered and reuse it verbatim
@@ -285,10 +285,11 @@ EOF
     *) echo "unexpected footer line: $footer_line" >&2; return 1 ;;
   esac
 
-  # Hand-computed pre-feature render (token-tally.bats's anchor fixture
-  # derivation: buckets 100/1000/10000/10, total 11110, elapsed 125s/2m5s,
-  # TZ=UTC endpoints, partial false -- no partial marker, no cost block).
-  golden=$'# Token cost: spec SPEC-013\n\n| Bucket | Tokens |\n| --- | --- |\n| Fresh input | 100 |\n| Cache write | 1000 |\n| Cache read | 10000 |\n| Output | 10 |\n| **Total** | 11110 |\n\n**Elapsed (first to last model turn):** 2m5s (2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)\n\n'"$footer_line"
+  # Hand-computed golden render of the sectioned spec doc (token-tally.bats's
+  # anchor fixture derivation: `# Cost: <id>` + `## SPEC` heading, buckets
+  # 100/1000/10000/10, total 11110, elapsed 125s/2m5s, TZ=UTC endpoints, partial
+  # false -- no partial marker, no cost block).
+  golden=$'# Cost: SPEC-013\n\n## SPEC\n\n| Bucket | Tokens |\n| --- | --- |\n| Fresh input | 100 |\n| Cache write | 1000 |\n| Cache read | 10000 |\n| Output | 10 |\n| **Total** | 11110 |\n\n**Elapsed (first to last model turn):** 2m5s (2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)\n\n'"$footer_line"
 
   # Strip the additive cost block (the degrade marker line plus its own
   # trailing blank line) to recover what the pre-feature render would have
