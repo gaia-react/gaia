@@ -232,6 +232,7 @@
   "permissions": {
     "allow": [
       "Bash(bash .gaia/scripts/plan-archive.sh:*)",
+      "Bash(bash .specify/extensions/gaia/lib/plan-allocator.sh:*)",
       "Bash(corepack enable pnpm)",
       "Bash(gh pr checks:*)",
       "Bash(gh pr list:*)",
