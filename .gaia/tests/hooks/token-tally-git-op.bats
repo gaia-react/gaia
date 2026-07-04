@@ -20,6 +20,7 @@ setup() {
   HOOK_ABS="$REPO_ROOT/.claude/hooks/token-tally-git-op.sh"
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
   TALLY_SRC="$REPO_ROOT/.gaia/scripts/token-tally.sh"
+  LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
   ANCHOR="$REPO_ROOT/.gaia/scripts/tests/fixtures/token-tally/projects"
   SESSION="fixturesession0001"
 
@@ -46,6 +47,7 @@ build_repo() {
   chmod +x "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
   cp "$TALLY_SRC" "$REPO/.gaia/scripts/token-tally.sh"
   chmod +x "$REPO/.gaia/scripts/token-tally.sh"
+  cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
 }
 
 write_running() {
@@ -318,6 +320,7 @@ run_hook() {
   chmod +x "$WT/.claude/hooks/lib/gaia-active-plan.sh"
   cp "$TALLY_SRC" "$WT/.gaia/scripts/token-tally.sh"
   chmod +x "$WT/.gaia/scripts/token-tally.sh"
+  cp "$LIB_PRICING_SRC" "$WT/.gaia/scripts/token-pricing-lib.sh"
 
   plan_dir="$WT/.gaia/local/plans/my-plan"
   write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"

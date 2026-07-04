@@ -56,6 +56,9 @@
 # DO NOT add `set -e`; each step is guarded independently so one failure cannot
 # abort the never-block guarantee.
 
+# shellcheck source=.gaia/scripts/token-pricing-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/token-pricing-lib.sh" 2>/dev/null || true
+
 log() {
   printf '%s\n' "$*" >&2
 }
@@ -108,11 +111,12 @@ OUT_DIR=""
 SESSION_ID_ARG=""
 PROJECTS_ROOT_ARG=""
 LEDGER_OVERRIDE=""
+RATE_TABLE_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   key="$1"
   case "$key" in
-    --action|--spec-id|--plan-slug|--out-dir|--session-id|--projects-root|--ledger)
+    --action|--spec-id|--plan-slug|--out-dir|--session-id|--projects-root|--ledger|--rate-table)
       val="${2:-}"
       case "$key" in
         --action)        ACTION="$val" ;;
@@ -122,6 +126,7 @@ while [[ $# -gt 0 ]]; do
         --session-id)    SESSION_ID_ARG="$val" ;;
         --projects-root) PROJECTS_ROOT_ARG="$val" ;;
         --ledger)        LEDGER_OVERRIDE="$val" ;;
+        --rate-table)    RATE_TABLE_OVERRIDE="$val" ;;
       esac
       # `shift 2` fails (and does NOT shift) when a flag is the final arg with no
       # value, which would spin this loop forever; fall back to a single shift.
@@ -284,6 +289,51 @@ fi
 #            parsing transcript timestamps to epoch, which stays jq-only) ----------
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+# ---------- dollar pricing of this section's own by_model (SPEC-022) ----------
+# Each tokens.md section prices its OWN in-process BY_MODEL at the rate whose
+# effective window covers TS (this run's generation stamp) -- a frozen
+# snapshot, deliberately distinct from token-rollup.sh's read-time reprice.
+# Never guesses, never blocks: empty attribution or an unreadable rate table
+# degrade to a marked "unavailable" line rather than a fabricated figure.
+COST_STATE="no_attribution"   # one of: priced | no_attribution | rate_unreadable
+COST_DOLLARS_FMT=""
+COST_UNPRICED=""
+
+if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
+  cost_rates="null"
+  cost_ok=false
+  if cost_rt="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" && [[ -n "$cost_rt" ]]; then
+    if cost_rates="$(gaia_load_rate_table "$cost_rt")"; then
+      cost_ok=true
+    else
+      log "token-tally: rate table unreadable: $cost_rt"
+    fi
+  else
+    log "token-tally: could not resolve rate table path"
+  fi
+
+  if [[ "$cost_ok" == "true" ]]; then
+    priced="$(jq -cn --argjson rates "$cost_rates" --arg ts "$TS" --argjson bm "$BY_MODEL" \
+      "$GAIA_PRICING_JQ_DEFS"'
+        priced_row({ts: $ts, by_model: $bm})
+      ' 2>/dev/null || true)"
+    if [[ -n "$priced" ]] && jq -e 'type=="object"' >/dev/null 2>&1 <<<"$priced"; then
+      dollars="$(jq -r '.dollars' <<<"$priced" 2>/dev/null)"
+      COST_DOLLARS_FMT="$(printf '$%.2f' "$dollars" 2>/dev/null)"
+      # Literal fallback string, not a command sub.
+      # shellcheck disable=SC2016
+      [[ -z "$COST_DOLLARS_FMT" ]] && COST_DOLLARS_FMT='$0.00'
+      COST_UNPRICED="$(jq -r '.unpriced | join(", ")' <<<"$priced" 2>/dev/null)"
+      COST_STATE="priced"
+    else
+      # pricing failed unexpectedly -> treat as unreadable, never fabricate
+      COST_STATE="rate_unreadable"
+    fi
+  else
+    COST_STATE="rate_unreadable"
+  fi
+fi
+
 # Display titles: stdout uses `<spec_id>/<slug>`, tokens.md uses `<spec_id> / <slug>`.
 if [[ "$ACTION" == "spec" ]]; then
   out_title="$ACTION $SPEC_ID"
@@ -384,6 +434,20 @@ render_tally_body() {
   if [[ "$partial" -ne 0 ]]; then
     printf '\n_Partial: one or more transcript inputs were missing or unparseable; figures are a lower bound._\n'
   fi
+  # ---------- estimated dollar cost (SPEC-022; additive, never begins with "## ") ----------
+  case "$COST_STATE" in
+    rate_unreadable)
+      printf '\n_Est. cost (USD): unavailable (rate table unreadable)._\n'
+      ;;
+    no_attribution)
+      printf '\n_Est. cost (USD): unavailable (per-model attribution unavailable)._\n'
+      ;;
+    priced)
+      printf '\n**Est. cost (USD):** %s\n' "$COST_DOLLARS_FMT"
+      [[ -n "$COST_UNPRICED" ]] && printf '_Lower bound: unpriced model(s) %s._\n' "$COST_UNPRICED"
+      [[ "$partial" -ne 0 ]] && printf '_Lower bound: some transcript inputs were unreadable; cost is a floor._\n'
+      ;;
+  esac
   # Backticks below are literal markdown (inline-code the session id), not a command sub.
   # shellcheck disable=SC2016
   printf '\nSession `%s` · generated %s\n' "$SESSION_ID" "$TS"
