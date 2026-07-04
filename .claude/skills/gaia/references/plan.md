@@ -122,7 +122,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
       started: <current UTC time, ISO 8601, e.g. 2026-05-19T14:32:00Z>
       ```
 
-      This file is deleted automatically when the plan directory is archived during final self-cleanup (RUNNING is not one of the two files the archive keeps, `SUMMARY.md` and `tokens.md`). Its purpose: a concurrently starting orchestrator for the same branch can detect this run is in-flight.
+      This file is deleted automatically when the plan directory is archived during final self-cleanup (RUNNING is not one of the two files the archive keeps, `SUMMARY.md` and `tokens.md`). Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature.
 
     - **Pre-flight branch policy.** Check the current branch.
 
@@ -131,64 +131,21 @@ Then write the following files directly to `{PLAN_DIR}/`:
       - header: `"Branch mode"`
       - options (in this exact order):
         1. `{ label: "Create a feature branch in place (Recommended)", description: "Default. Branch is cut from HEAD and the orchestrator works in the current checkout. Simple, predictable, safe." }`
-        2. `{ label: "Create a git worktree (Experimental, use with care)", description: "Cuts a linked worktree under .claude/worktrees/. Lets you keep main's checkout untouched, but the worktree lifecycle has known rough edges (post-merge cleanup, isolation-context detection, shared-state symlink hand-off). Only choose if you understand the trade-offs." }`
+        2. `{ label: "Create a git worktree", description: "Gives this plan its own separate working copy, cut from main under .claude/worktrees/. You can keep working on your current branch, or run another plan, at the same time without the two colliding." }`
 
       Do not silently default; the prompt fires every time HEAD is `main`/`master`. If the user picks "Other" with custom text, treat it as a request for an alternative isolation mode and surface a clarifying question rather than guessing, feature-branch and worktree are the two supported modes.
 
-      **Branch naming (FC-5).** Whichever isolation mode is chosen, when this plan is spec-derived (`SPEC_PATH` was set in step 1a) the branch name MUST begin with `${SPEC_SLUG_SEED}-` (e.g. `spec-005-cards-layout`), so `spec-reconcile.sh` flips the SPEC's ledger row to `merged` after the PR merges. A colocated plan's folder basename (`plan`) no longer carries that marker, so the branch name is now the only place it survives. For a spec-less plan, name the branch from the plan slug as today.
+      **Branch naming (FC-5).** Whichever isolation mode runs, including the forced worktree on the not-on-main path, when this plan is spec-derived (`SPEC_PATH` was set in step 1a) the branch name MUST begin with `${SPEC_SLUG_SEED}-` (e.g. `spec-005-cards-layout`), so `spec-reconcile.sh` flips the SPEC's ledger row to `merged` after the PR merges. A colocated plan's folder basename (`plan`) no longer carries that marker, so the branch name is now the only place it survives. For a spec-less plan, name the branch from the plan slug as today.
 
-      **If HEAD is on any other branch:** Scan for a live concurrent orchestrator before proceeding. Run:
+      **If HEAD is on any other branch:** Do not offer the feature-branch-in-place mode. Because you are already on a branch, this plan's work goes into its own git worktree cut from main, so it does not get tangled with your current branch's work. State that to the user in one line, then proceed straight into **Worktree creation** below (the same path as choosing worktree from main). No `AskUserQuestion` fires here, worktree-off-main is the only isolation mode when starting from a branch.
 
-      ```bash
-      BRANCH="$(git branch --show-current)"
-      ROOT="$(git rev-parse --show-toplevel)"
-      SELF_PLAN_DIR="${PLAN_DIR#"$ROOT/"}"   # absolute {PLAN_DIR} -> repo-relative, matches the glob output
-      CONCURRENT_LIVE=""
-      for running_file in .gaia/local/plans/*/RUNNING .gaia/local/specs/*/plan/RUNNING .gaia/local/specs/*/plan-*/RUNNING; do
-        [[ -f "$running_file" ]] || continue
-        [[ "$(dirname "$running_file")" == "$SELF_PLAN_DIR" ]] && continue
-        file_branch="$(grep "^branch:" "$running_file" | cut -d' ' -f2)"
-        [[ "$file_branch" != "$BRANCH" ]] && continue
+    - **Worktree creation (worktree-mode runs only).** When the pre-flight selects worktree mode, chosen from `main` or forced on the not-on-main path, create the worktree with the runtime tool, passing the FC-5 branch name as the worktree name:
 
-        # Signal 1: branch must still exist
-        git show-ref --verify --quiet "refs/heads/$BRANCH" || continue
+          EnterWorktree({name: "<branch-name>"})
 
-        # Signal 2: PR state (graceful fallback if gh unavailable)
-        pr_state="$(gh pr list --head "$BRANCH" --json state --jq -r '.[0].state // empty' 2>/dev/null || true)"
-        [[ "$pr_state" == "MERGED" || "$pr_state" == "CLOSED" ]] && continue
+      The `WorktreeCreate` hook (`.gaia/scripts/create-worktree.sh`) owns creation: it cuts a new branch of that name fresh from the remote default branch (`main`), else local HEAD, lands it under `.claude/worktrees/<branch-name>/`, and switches the session into that worktree. The branch is already cut, so the orchestrator runs no manual `git checkout -b`. Every later step, task sub-agent edits, per-phase commits, `gh pr create`, and the pre-merge `code-review-audit`, runs from inside the worktree.
 
-        # Signal 3: age fallback when no PR exists yet (> 4 h with no PR = stale)
-        if [[ -z "$pr_state" ]]; then
-          started="$(grep "^started:" "$running_file" | cut -d' ' -f2)"
-          epoch_started="$(date -d "$started" +%s 2>/dev/null \
-            || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$started" +%s 2>/dev/null \
-            || echo 0)"
-          age_secs=$(( $(date +%s) - epoch_started ))
-          [[ "$age_secs" -ge 14400 ]] && continue
-        fi
-
-        CONCURRENT_LIVE="$running_file"
-        break
-      done
-      ```
-
-      The scan iterates the union of three globs: colocated plans hide their `RUNNING` sentinel inside the SPEC folder, invisible to the old `plans/*/RUNNING` glob alone. Because the glob output is repo-relative but the cached `{PLAN_DIR}` is absolute, `SELF_PLAN_DIR` strips the repo root first so the self-skip compares two repo-relative paths; comparing `dirname "$running_file"` directly against the absolute `{PLAN_DIR}` would never match, and the orchestrator would flag its own freshly-written sentinel as a live concurrent run. The self-skip also compares the full plan-dir path rather than just the basename, since two different SPECs can both have a `plan` basename.
-
-      If `CONCURRENT_LIVE` is non-empty, a live concurrent orchestrator is running on this branch. Ask the user via `AskUserQuestion`:
-      - question: `"A plan orchestrator is already running on branch '{branch}'. How should this plan proceed?"`
-      - header: `"Concurrent plan"`
-      - options (in this exact order):
-        1. `{ label: "Create a worktree (Recommended)", description: "Cut a linked worktree off main for this plan's work. Full isolation, the two orchestrators edit separate working trees and cannot conflict." }`
-        2. `{ label: "Continue on this branch", description: "Proceed on the same branch. Safe only if this plan's file edits do not overlap with the running orchestrator's. You accept the risk of concurrent edit conflicts." }`
-        3. `{ label: "Defer, cancel for now", description: "Do not proceed. Come back once the current orchestrator has finished and the branch is clean." }`
-
-      Act on the answer:
-      - **"Create a worktree"**: follow the worktree creation and operation procedure in this file's worktree sections (same path as if the user had chosen worktree from main).
-      - **"Continue on this branch"**: proceed. No further warning.
-      - **"Defer, cancel for now"**: stop immediately. Emit: `"Deferred. Re-run the kickoff once the current orchestrator has finished and you are back on main or on an uncontested branch."` Do not commit, push, or modify any files.
-      - **"Other"**: treat as a request for an alternative mode and ask a clarifying question rather than guessing.
-
-      If `CONCURRENT_LIVE` is empty (no live concurrent detected): proceed without prompting.
+      **The plan folder stays in the main checkout.** The worktree shares only a fixed set of gitignored state with the main checkout by symlink (`.gaia/cache/`, `.gaia/local/audit/`, `.gaia/local/telemetry/`, `setup-state.json`, `mentorship.json`); the plan folder is not among them, so `{PLAN_DIR}` exists only in the main checkout. Read the task docs and `README.md` from `{PLAN_DIR}` (its main-checkout absolute path) and write `SUMMARY.md` there, while each task edits the worktree's own copy of the tracked files it touches. Dispatch each task sub-agent with both: the worktree's absolute path for the file to edit, and `{PLAN_DIR}` for the docs to read. Run `plan-archive.sh {PLAN_DIR}` only after `ExitWorktree` returns the session to the main checkout, so the helper's repo-root guard resolves the main checkout rather than the worktree.
 
     - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`). Name each phase's execution model in the outline (Sonnet by default; see the Sub-agent invocation bullet), so a cold orchestrator sees the model alongside the phase.
     - **Pre-merge `code-review-audit` (non-skippable).** Before any `gh pr merge` call, the orchestrator spawns the `code-review-audit` agent on the current branch. The agent's clean pass writes `.gaia/local/audit/<HEAD-sha>.ok`, which the deny-hook (`.claude/hooks/pr-merge-audit-check.sh`) gates `gh pr merge` on. The orchestrator does NOT wait for the deny-hook to fire and learn from it, that round-trip is friction. Spawn the agent proactively. Contract: `wiki/concepts/PR Merge Workflow.md`. Verbatim agent-spawn template:
