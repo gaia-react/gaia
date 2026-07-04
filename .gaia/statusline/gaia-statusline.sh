@@ -119,6 +119,7 @@ if [ "$is_worktree" -eq 0 ]; then
         harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
         audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
         audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
+        serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
 
         COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
         if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
@@ -141,6 +142,9 @@ if [ "$is_worktree" -eq 0 ]; then
           else
             segments+=("$(printf '\033[01;32mRun /gaia-audit\033[00m')")
           fi
+        fi
+        if [ -n "$serena_drift" ]; then
+          segments+=("$(printf '\033[01;31mRun /gaia-serena-sync (Serena missing: %s)\033[00m' "$serena_drift")")
         fi
       fi
       # Debt-backlog nudge, read from the pinned debt cache. Independent of

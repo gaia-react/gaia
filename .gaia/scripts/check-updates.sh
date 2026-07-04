@@ -43,6 +43,11 @@ CACHE_DIR="$GAIA_DIR/cache"
 CACHE_FILE="$CACHE_DIR/update-check.json"
 VERSION_FILE="$GAIA_DIR/VERSION"
 
+# Source the Serena language-drift library (Phase 1). Guarded so a missing
+# library never breaks the refresher.
+SERENA_LIB="$GAIA_DIR/scripts/lib/serena-lang.sh"
+[ -f "$SERENA_LIB" ] && . "$SERENA_LIB"
+
 now=$(date +%s)
 
 # Read previous cache values (used as fallbacks on partial failure).
@@ -276,6 +281,20 @@ case "$audit_memory_baseline" in
   ''|*[!0-9]*) audit_memory_baseline=0 ;;
 esac
 
+# ---------- serenaLangDrift ----------
+# Serena language-drift tokens: git-tracked high-signal manifests present but
+# absent from Serena's effective configured languages. Computed by the shared
+# lib (bash + jq + POSIX text tools; no yq). Empty array when Serena is not
+# registered, .serena/project.yml is absent, or there is no drift. The no-jq
+# write branch below hardcodes [] since the lib requires jq.
+serena_lang_drift_json="[]"
+if command -v jq >/dev/null 2>&1 && command -v serena_lang_drift >/dev/null 2>&1; then
+  computed="$(serena_lang_drift "$PROJECT_ROOT" 2>/dev/null)"
+  case "$computed" in
+    '['*']') serena_lang_drift_json="$computed" ;;
+  esac
+fi
+
 # ---------- gaiaCurrent ----------
 gaia_current=""
 if [ -f "$VERSION_FILE" ]; then
@@ -333,11 +352,12 @@ if command -v jq >/dev/null 2>&1; then
     --argjson auditLastAppliedAt "$audit_last_applied_at" \
     --argjson auditMemoryCount "$audit_memory_count" \
     --argjson auditMemoryBaseline "$audit_memory_baseline" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline}' \
+    --argjson serenaLangDrift "$serena_lang_drift_json" \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift}' \
     > "$tmp_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s}\n' \
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[]}\n' \
     "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$tmp_file" 2>/dev/null
 fi

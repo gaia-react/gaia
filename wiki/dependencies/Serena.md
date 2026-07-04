@@ -38,6 +38,12 @@ For prose / string / cross-language search, fall back to Read+grep. Routing rule
 
 The advisory routing rule is language-agnostic: it activates on a broad multi-language source glob and nudges toward Serena's symbol tools for any language Serena indexes, not TypeScript or `app/`/`test/` alone. The enforcement guard (`.claude/hooks/serena-code-search-guard.sh`) is deliberately narrower, TypeScript-conservative and tsconfig-gated, so a hard block never lands on a non-TS search. See [[Serena Integration]] for the guard detail.
 
+## Language configuration
+
+Serena decides which language servers to start from the `languages:` list in `.serena/project.yml`. Under GAIA's non-interactive registration (`--project-from-cwd`), Serena autogenerates that file at first startup and enables only the single most prominent language it detects; from then on it reads `.serena/project.yml` verbatim and never re-detects. A project that begins as TypeScript-only and later grows a Go or Python module keeps getting single-language symbol intelligence, because the new language is absent from the frozen `languages:` list and nothing signals that it is invisible to symbol search.
+
+`/gaia-serena-sync` closes that gap for languages GAIA recognizes from a high-signal manifest: it detects the drift and, on explicit consent, additively appends the missing language(s) to the `languages:` list in place, then prompts a restart so the new language is indexed.
+
 ## Limits
 
 - Cold-start cost on first invocation per session (language-server warm-up).
