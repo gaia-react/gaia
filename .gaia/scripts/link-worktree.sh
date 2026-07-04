@@ -7,7 +7,7 @@
 #
 #   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
 #   <worktree>/.gaia/local/mentorship.json  -> <main>/.gaia/local/mentorship.json
-#   <worktree>/.gaia/cache/                  -> <main>/.gaia/cache/
+#   <worktree>/.gaia/local/cache/shared/      -> <main>/.gaia/local/cache/shared/
 #   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
 #   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
 #
@@ -66,7 +66,7 @@ ts="$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$main_root/.gaia/local" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/audit" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/telemetry" 2>/dev/null
-mkdir -p "$main_root/.gaia/cache" 2>/dev/null
+mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null
 # `setup-state.json` and `mentorship.json` are files: do NOT pre-create them.
 # If one doesn't exist on main, the symlink will dangle until the main checkout
 # writes it via the normal setup flow; that's fine. Readers gracefully treat
@@ -131,7 +131,7 @@ link_one() {
 
 link_one ".gaia/local/setup-state.json" ".gaia/local"
 link_one ".gaia/local/mentorship.json"  ".gaia/local"
-link_one ".gaia/cache"                  ".gaia"
+link_one ".gaia/local/cache/shared"     ".gaia/local/cache"
 link_one ".gaia/local/audit"            ".gaia/local"
 link_one ".gaia/local/telemetry"        ".gaia/local"
 

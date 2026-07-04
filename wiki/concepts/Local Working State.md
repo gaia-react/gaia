@@ -25,7 +25,8 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `audit/worthiness.jsonl` | worthiness check | live | append-only |
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
 | `debt/` | debt sentinel | live | recomputed |
-| `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | per-spec, orphaned on archive |
+| `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | reaped on SPEC merge/close; stale entries age-swept |
+| `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`, coaching) | live | symlinked to the main worktree's copy so every linked worktree shares one copy; self-pruned by its owners (tarball prune on update, coaching marker cleared each session) |
 | `specs/`, `specs/archived/` | [[GAIA Spec]] | live | spec store |
 | `specs/ledger.json` | [[GAIA Spec]] | live | per-machine number cache |
 | `plans/PLAN-NNN/` | [[GAIA Plan]] | ephemeral | self-deleted on merge |

@@ -16,7 +16,7 @@
 # linked worktree the right side is empty; the worktree is detected via
 # `dirname(git rev-parse --git-common-dir) != PROJECT_ROOT`. The background
 # refresher still fires from worktrees so the canonical cache (which the
-# worktree's `.gaia/cache/` symlinks to) keeps updating.
+# worktree's `.gaia/local/cache/shared/` symlinks to) keeps updating.
 #
 # The hot path stays fast (target <50ms): no network calls, no `pnpm` calls.
 # The worktree-detection adds at most one `git rev-parse` fork.
@@ -29,7 +29,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
-CACHE_FILE="$GAIA_DIR/cache/update-check.json"
+CACHE_FILE="$GAIA_DIR/local/cache/shared/update-check.json"
 CHECK_SCRIPT="$PROJECT_ROOT/.gaia/scripts/check-updates.sh"
 DEBT_CACHE="$PROJECT_ROOT/.gaia/local/debt/count.json"
 DEBT_REFRESH_SCRIPT="$PROJECT_ROOT/.gaia/scripts/debt-count-refresh.sh"
@@ -121,7 +121,7 @@ if [ "$is_worktree" -eq 0 ]; then
         audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
         serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
 
-        COACHING_FILE="$GAIA_DIR/cache/coaching-active.txt"
+        COACHING_FILE="$GAIA_DIR/local/cache/shared/coaching-active.txt"
         if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
           segments+=("🧭")
         fi

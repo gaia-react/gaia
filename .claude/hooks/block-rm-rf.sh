@@ -15,7 +15,7 @@
 #   - .gaia/local/specs/*
 #   - .gaia/local/audit/*
 #   - .gaia/local/handoff/*
-#   - .gaia/cache/*
+#   - .gaia/local/cache/*
 #   - dist/*
 #   - build/*
 #
@@ -96,7 +96,7 @@ for tok in "${tokens[@]}"; do
     .gaia/local/handoff/*|./.gaia/local/handoff/*)
       : # whitelisted
       ;;
-    .gaia/cache/*|./.gaia/cache/*)
+    .gaia/local/cache/*|./.gaia/local/cache/*)
       : # whitelisted
       ;;
     dist|dist/*|./dist|./dist/*)

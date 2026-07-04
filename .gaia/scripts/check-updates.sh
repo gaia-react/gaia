@@ -1,7 +1,7 @@
 #!/bin/bash
 # GAIA SessionStart update checker.
 #
-# Writes .gaia/cache/update-check.json with:
+# Writes .gaia/local/cache/shared/update-check.json with:
 #   - outdatedCount  (actionable updates from `gaia update-deps run`, which
 #                     applies the ESLint 9.x cap and the minimumReleaseAge
 #                     cooldown, so it never counts updates the skill skips)
@@ -39,7 +39,7 @@ AUDIT_RULE_BUDGET=200
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
-CACHE_DIR="$GAIA_DIR/cache"
+CACHE_DIR="$GAIA_DIR/local/cache/shared"
 CACHE_FILE="$CACHE_DIR/update-check.json"
 VERSION_FILE="$GAIA_DIR/VERSION"
 

@@ -29,7 +29,7 @@ if [ -n "$common_dir" ]; then
   current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$main_root" ] && [ -n "$current_root" ] && [ "$main_root" != "$current_root" ]; then
     cached_line="Cached state unavailable on main; symlinks may be broken, run \`.gaia/cli/gaia setup link-worktree\` to repair."
-    cache_file="$main_root/.gaia/cache/update-check.json"
+    cache_file="$main_root/.gaia/local/cache/shared/update-check.json"
     if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then
       gaia_current="$(jq -r '.gaiaCurrent // ""' "$cache_file" 2>/dev/null)"
       gaia_latest="$(jq -r '.gaiaLatest // ""' "$cache_file" 2>/dev/null)"
@@ -150,7 +150,7 @@ Otherwise stay on the current branch.
 
 ## Step 4b: Prune prior-run artifacts
 
-Three gitignored directories accumulate across updates: `.gaia-backup/`, `.gaia/cache/`, and `.gaia-merge/`. Prune the prior runs' leftovers here, at the start of a confirmed update and **before this run creates any of its own artifacts** (Step 5 populates the cache, Step 7 creates `$BACKUP_DIR`), so the current run's fresh safety net is never touched. This runs only after the Step 4 `Proceed`, so an abort, an already-up-to-date exit, and the interrupted-prior-run case Step 3 surfaces (whose backups and patches are still in flight) never reach it.
+Three gitignored directories accumulate across updates: `.gaia-backup/`, `.gaia/local/cache/shared/update-gaia/`, and `.gaia-merge/`. Prune the prior runs' leftovers here, at the start of a confirmed update and **before this run creates any of its own artifacts** (Step 5 populates the cache, Step 7 creates `$BACKUP_DIR`), so the current run's fresh safety net is never touched. This runs only after the Step 4 `Proceed`, so an abort, an already-up-to-date exit, and the interrupted-prior-run case Step 3 surfaces (whose backups and patches are still in flight) never reach it.
 
 ```bash
 # .gaia-backup/: prior runs' pre-overwrite copies. Once an update is committed,
@@ -158,11 +158,13 @@ Three gitignored directories accumulate across updates: `.gaia-backup/`, `.gaia/
 # creates its own $BACKUP_DIR in Step 7.
 rm -rf .gaia-backup
 
-# .gaia/cache/: keep the baseline tarball (v$BASELINE is this run's baseline,
-# reused by Step 5 instead of re-downloading) and update-check.json (the
-# SessionStart hook reads it). Delete every other cached tag dir.
-if [ -d .gaia/cache ]; then
-  for d in .gaia/cache/*/; do
+# .gaia/local/cache/shared/update-gaia/: keep the baseline tarball (v$BASELINE
+# is this run's baseline, reused by Step 5 instead of re-downloading). Delete
+# every other cached tag dir. The loop only ever touches tag dirs here,
+# update-check.json, coaching-active.txt, and serena-guard/ live one level up
+# at shared/, structurally outside this glob.
+if [ -d .gaia/local/cache/shared/update-gaia ]; then
+  for d in .gaia/local/cache/shared/update-gaia/*/; do
     [ -d "$d" ] || continue
     [ "$(basename "$d")" = "v$BASELINE" ] && continue
     rm -rf "$d"
@@ -199,12 +201,12 @@ Spawn the agent for Steps 5–10, passing `BASELINE`, `LATEST`, and `LATEST_TAG`
 
 ### Step 5: Fetch baseline and latest tarballs
 
-Cache under `.gaia/cache/` (gitignored) so repeated runs don't redownload:
+Cache under `.gaia/local/cache/shared/update-gaia/` (gitignored) so repeated runs don't redownload:
 
 ```bash
-mkdir -p .gaia/cache
+mkdir -p .gaia/local/cache/shared/update-gaia
 for tag in "v$BASELINE" "$LATEST_TAG"; do
-  dir=".gaia/cache/$tag"
+  dir=".gaia/local/cache/shared/update-gaia/$tag"
   [ -d "$dir" ] && continue
   mkdir -p "$dir"
   if ! gh release download "$tag" \
@@ -218,7 +220,7 @@ for tag in "v$BASELINE" "$LATEST_TAG"; do
 done
 ```
 
-`BASELINE_DIR=".gaia/cache/v$BASELINE"`, `LATEST_DIR=".gaia/cache/$LATEST_TAG"`.
+`BASELINE_DIR=".gaia/local/cache/shared/update-gaia/v$BASELINE"`, `LATEST_DIR=".gaia/local/cache/shared/update-gaia/$LATEST_TAG"`.
 
 The block prints `FETCH_FAILED <tag>` for any tag whose download or extraction did not complete, and removes the partial cache dir so a re-run retries cleanly. On any `FETCH_FAILED`, **stop, do not proceed to Step 6**:
 
@@ -608,7 +610,7 @@ The manifest copy carries the `GAIA_MANIFEST_WRITE=` marker, a bare edit is bloc
 
 Deferring the bump to this point (rather than before the walk) keeps an interrupted run resumable: any abort during the walk (user cancels, disk error) leaves `.gaia/VERSION` at `BASELINE`, and because the merge is idempotent (already-merged files match latest and skip), a re-run picks up cleanly. Overwritten files are safe, their prior state is in `.gaia-backup/`. Step 3 catches the remaining window where the bump landed but the user has not yet committed.
 
-Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session. Use the Write tool to overwrite `.gaia/cache/update-check.json` with `gaiaCurrent` set to `$LATEST`, `gaiaLatest` set to `$LATEST`, `gaiaHasUpdate` set to `false`, `outdatedCount` set to `0`, and `checkedAt` set to the current Unix timestamp. Preserve `serenaLangDrift` from the existing cache (read it first); if it is absent, omit it (the next refresher recomputes it). If the cache file does not exist, skip this step.
+Then bust the update-check cache so the SessionStart prompt reflects the post-update state on the next session. Use the Write tool to overwrite `.gaia/local/cache/shared/update-check.json` with `gaiaCurrent` set to `$LATEST`, `gaiaLatest` set to `$LATEST`, `gaiaHasUpdate` set to `false`, `outdatedCount` set to `0`, and `checkedAt` set to the current Unix timestamp. Preserve `serenaLangDrift` from the existing cache (read it first); if it is absent, omit it (the next refresher recomputes it). If the cache file does not exist, skip this step.
 
 The next SessionStart hook fires the background refresher; the session after that sees no GAIA update available.
 
@@ -680,8 +682,8 @@ The audit workflow is **adopter-tunable**: an adopter may have customized it (se
 ```bash
 # $BASELINE (pre-update version) and $LATEST_TAG carry from the run, as in
 # Step 11. The release tarball cache from Step 5 still holds both templates.
-BASELINE_DIR=".gaia/cache/v$BASELINE"
-LATEST_DIR=".gaia/cache/$LATEST_TAG"
+BASELINE_DIR=".gaia/local/cache/shared/update-gaia/v$BASELINE"
+LATEST_DIR=".gaia/local/cache/shared/update-gaia/$LATEST_TAG"
 audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
 audit_wf=".github/workflows/code-review-audit.yml"
 

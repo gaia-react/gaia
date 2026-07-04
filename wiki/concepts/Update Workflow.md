@@ -17,7 +17,7 @@ How `/update-gaia` pulls a newer GAIA release into an initialized project withou
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `.gaia/VERSION`       | Adopter's current baseline: which GAIA version `my-app/` was scaffolded from (or last `/update-gaia`d to).          |
 | `.gaia/manifest.json` | Ships with every release. Maps each file in the release to a class.                                                 |
-| `.gaia/cache/`        | Gitignored. Holds downloaded baseline + latest tarballs for the 3-way comparison. Pruned to the baseline tarball (plus `update-check.json`) at the start of each confirmed update; other cached tag dirs are removed. |
+| `.gaia/local/cache/shared/update-gaia/` | Gitignored, shared across worktrees. Holds downloaded baseline + latest tarballs for the 3-way comparison. Pruned to the baseline tarball (plus `update-check.json`, which lives one level up at `.gaia/local/cache/shared/`) at the start of each confirmed update; other cached tag dirs are removed. |
 | `.gaia-merge/`        | Gitignored. Sidecar `.patch` files emitted for files the update can't safely auto-merge. Adopter resolves manually. Removed at the start of an update only when empty; a populated dir is kept and its leftover patches flagged. |
 | `.gaia-backup/`       | Gitignored. Per-timestamp backups of any file the adopter agreed to overwrite. Prior runs' backups are pruned at the start of each confirmed update; once an update is committed git history is the durable recovery. |
 
@@ -40,7 +40,7 @@ Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.m
 2. Resolve latest release via `gh release list --repo gaia-react/gaia` (or GitHub API fallback).
 3. Compare to baseline. Same or older → exit, unless `.gaia/VERSION` has been bumped but not committed (an interrupted prior run), in which case surface the residual state so the adopter can commit or discard. Never downgrade.
 4. Show the adopter the **full baseline-to-latest CHANGELOG range** (every versioned section newer than `$BASELINE`, fetched no-auth from the release tarball) and **confirm** before touching anything. An adopter several versions behind sees every intervening entry, not just the latest tag's body. Step 9 cross-references the Step 7a removal no-op and deletion sweep against `**Action required:**`-anchored entries in the displayed range and surfaces a documented, opt-in cleanup suggestion for any convention-marked entry the merge walk left in place. Never auto-removes a dependency or deletes a file. If on `main`/`master`, create the feature branch only after this confirmation, not before, so an early exit leaves no orphan branch.
-5. Prune prior runs' leftover artifacts before this run creates its own: drop stale `.gaia-backup/` copies and stale `.gaia/cache/` tag dirs (keeping the baseline tarball), and remove `.gaia-merge/` only when empty. Then download baseline + latest tarballs to `.gaia/cache/`. Stop on any download or extraction failure; do not proceed with a partial cache.
+5. Prune prior runs' leftover artifacts before this run creates its own: drop stale `.gaia-backup/` copies and stale `.gaia/local/cache/shared/update-gaia/` tag dirs (keeping the baseline tarball), and remove `.gaia-merge/` only when empty. Then download baseline + latest tarballs to `.gaia/local/cache/shared/update-gaia/`. Stop on any download or extraction failure; do not proceed with a partial cache.
 6. Walk the latest manifest. For each file, apply the decision table below.
 7. Report summary: overwritten / added / removed / skipped / conflicts / deleted / backed up.
 8. Bump `.gaia/VERSION` and replace `.gaia/manifest.json` with the latest version's copy. This happens after the summary prints so that if the walk was aborted mid-way the version stays at baseline and a re-run resumes cleanly.
@@ -91,7 +91,7 @@ The load-bearing guarantee: a dependency the adopter removed is **never re-added
 
 `.github/workflows/code-review-audit.yml` is not a manifest-class file, so the merge walk never touches it; it tracks its own template at `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`. After the PR opens, `/update-gaia` refreshes a stale copy in place so the update PR carries the current workflow instead of auditing itself under a frozen one.
 
-The refresh is a **3-way text classify** (the audit template is static, so there is no render): installed `A`, the baseline release's template `L_old`, and the latest release's template `L_new`, both pulled from the `.gaia/cache/` tarballs. `gaia setup-ci check-audit-drift --baseline <L_old> --latest <L_new>` returns the verdict:
+The refresh is a **3-way text classify** (the audit template is static, so there is no render): installed `A`, the baseline release's template `L_old`, and the latest release's template `L_new`, both pulled from the `.gaia/local/cache/shared/update-gaia/` tarballs. `gaia setup-ci check-audit-drift --baseline <L_old> --latest <L_new>` returns the verdict:
 
 | Verdict    | Meaning                                             | Action                                                        |
 | ---------- | --------------------------------------------------- | ------------------------------------------------------------- |
@@ -144,6 +144,6 @@ After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cad
 
 ## Communications Guidance (User-Facing Docs)
 
-The update flow is **fully automatic from the adopter's perspective**: the GAIA statusline (`.gaia/statusline/gaia-statusline.sh`) runs `.gaia/scripts/check-updates.sh` as a background refresher and renders a `Run /update-gaia (GAIA <version> available)` indicator from `.gaia/cache/update-check.json` when a newer release exists. **Do not mention `/update-gaia`, the `update-gaia` skill, or any manual update step in user-facing release notes, README, CHANGELOG, or marketing docs.** Surfacing a manual command implies adopters need to remember to run it, which is wrong.
+The update flow is **fully automatic from the adopter's perspective**: the GAIA statusline (`.gaia/statusline/gaia-statusline.sh`) runs `.gaia/scripts/check-updates.sh` as a background refresher and renders a `Run /update-gaia (GAIA <version> available)` indicator from `.gaia/local/cache/shared/update-check.json` when a newer release exists. **Do not mention `/update-gaia`, the `update-gaia` skill, or any manual update step in user-facing release notes, README, CHANGELOG, or marketing docs.** Surfacing a manual command implies adopters need to remember to run it, which is wrong.
 
 The skill and command files in `.claude/skills/update-gaia/` exist as the implementation but must not be promoted as a user-invoked workflow in external-facing copy.

@@ -22,7 +22,7 @@ if [ -n "$common_dir" ]; then
   current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$main_root" ] && [ -n "$current_root" ] && [ "$main_root" != "$current_root" ]; then
     cached_line="Cached state unavailable on main; symlinks may be broken, run \`.gaia/cli/gaia setup link-worktree\` to repair."
-    cache_file="$main_root/.gaia/cache/update-check.json"
+    cache_file="$main_root/.gaia/local/cache/shared/update-check.json"
     if [ -f "$cache_file" ] && command -v jq >/dev/null 2>&1; then
       outdated_count="$(jq -r '.outdatedCount // 0' "$cache_file" 2>/dev/null)"
       checked_at="$(jq -r '.checkedAt // 0' "$cache_file" 2>/dev/null)"
@@ -322,7 +322,7 @@ Phase 1 already exited if nothing was outstanding or the human cancelled or
 skipped everything, so reaching here means the apply set is non-empty. After the
 Haiku agent returns:
 
-- Updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes. Use the Write tool to overwrite `.gaia/cache/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, `gaiaHasUpdate`, and `serenaLangDrift` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If `serenaLangDrift` is absent from the existing cache, omit it (the next refresher recomputes it). If the cache file does not exist, skip this step. (Snoozed groups are already excluded by the ledger on the next real check.)
+- Updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes. Use the Write tool to overwrite `.gaia/local/cache/shared/update-check.json`, preserving `gaiaCurrent`, `gaiaLatest`, `gaiaHasUpdate`, and `serenaLangDrift` from the existing cache (read it first), but setting `outdatedCount` to `0` and `checkedAt` to the current Unix timestamp. If `serenaLangDrift` is absent from the existing cache, omit it (the next refresher recomputes it). If the cache file does not exist, skip this step. (Snoozed groups are already excluded by the ledger on the next real check.)
 
 - If `SHOULD_CREATE_BRANCH=true`, create the branch now and **remember that you created it** (this determines publish behavior in Phase 8):
 

@@ -66,10 +66,10 @@ teardown() {
 }
 
 # scaffold_root <root> : drop a copy of the statusline script under the root's
-# .gaia/statusline/ and create the .gaia/cache and .gaia/local dirs.
+# .gaia/statusline/ and create the .gaia/local/cache/shared and .gaia/local dirs.
 scaffold_root() {
   local r="$1"
-  mkdir -p "$r/.gaia/statusline" "$r/.gaia/cache" "$r/.gaia/local"
+  mkdir -p "$r/.gaia/statusline" "$r/.gaia/local/cache/shared" "$r/.gaia/local"
   cp "$STATUSLINE_SRC" "$r/.gaia/statusline/gaia-statusline.sh"
 }
 
@@ -77,10 +77,10 @@ scaffold_root() {
 write_cache() {
   local r="$1" drift="$2"
   if [ "$drift" = "ABSENT" ]; then
-    printf '{"outdatedCount":0,"gaiaHasUpdate":false}\n' > "$r/.gaia/cache/update-check.json"
+    printf '{"outdatedCount":0,"gaiaHasUpdate":false}\n' > "$r/.gaia/local/cache/shared/update-check.json"
   else
     printf '{"outdatedCount":0,"gaiaHasUpdate":false,"serenaLangDrift":%s}\n' "$drift" \
-      > "$r/.gaia/cache/update-check.json"
+      > "$r/.gaia/local/cache/shared/update-check.json"
   fi
 }
 

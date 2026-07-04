@@ -1,13 +1,14 @@
 /**
  * `gaia setup link-worktree [--json]` handler.
  *
- * Idempotently creates the four SPEC-005 shared-state symlinks from the
+ * Idempotently creates the five SPEC-005 shared-state symlinks from the
  * current linked worktree into the main checkout:
  *
  *   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
  *   <worktree>/.gaia/local/mentorship.json  -> <main>/.gaia/local/mentorship.json
- *   <worktree>/.gaia/cache/                  -> <main>/.gaia/cache/
+ *   <worktree>/.gaia/local/cache/shared/     -> <main>/.gaia/local/cache/shared/
  *   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
+ *   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
  *
  * No-op on a main checkout (not a linked worktree). Pre-existing plain
  * files / dirs are moved to <path>.bak.<timestamp> before the symlink is
@@ -34,7 +35,7 @@ import {resolveMainWorktreeRoot} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the four worktree shared-state symlinks pointing at
+  Idempotently create the five worktree shared-state symlinks pointing at
   the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
   No-op on a main checkout (not a linked worktree); exits 0 with a
   one-line "not a linked worktree" message.
@@ -86,7 +87,7 @@ type SharedPathSpec = {
 };
 
 /**
- * Frozen path set; four entries, in this order, always present in the
+ * Frozen path set; five entries, in this order, always present in the
  * output `actions` array regardless of result. See SPEC-005 plan README.
  *
  * `mentorship.json` is a per-machine file entry alongside `setup-state.json`
@@ -98,8 +99,9 @@ type SharedPathSpec = {
 const SHARED_PATHS: readonly SharedPathSpec[] = [
   {ensureTargetDir: false, relativePath: '.gaia/local/setup-state.json'},
   {ensureTargetDir: false, relativePath: '.gaia/local/mentorship.json'},
-  {ensureTargetDir: true, relativePath: '.gaia/cache'},
+  {ensureTargetDir: true, relativePath: '.gaia/local/cache/shared'},
   {ensureTargetDir: true, relativePath: '.gaia/local/audit'},
+  {ensureTargetDir: true, relativePath: '.gaia/local/telemetry'},
 ];
 
 const formatTimestamp = (date: Date): string => {

@@ -252,7 +252,7 @@ describe('release runtime-deps CLI', () => {
     expect(exit).toBe(0);
   });
 
-  test('allowlists runtime-allocated prefixes (.gaia/local, .gaia/cache)', () => {
+  test('allowlists runtime-allocated prefixes (.gaia/local)', () => {
     sandbox.writeManifest({
       '.gaia/cli/gaia': 'owned',
     });
@@ -260,7 +260,7 @@ describe('release runtime-deps CLI', () => {
       '.claude/hooks/wiki-session-start.sh',
       [
         '#!/usr/bin/env bash',
-        'rm -f .gaia/cache/coaching-active.txt',
+        'rm -f .gaia/local/cache/shared/coaching-active.txt',
         'STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"',
         '',
       ].join('\n')
