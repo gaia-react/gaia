@@ -218,7 +218,7 @@ rm -rf \
   app/routes/actions+/set-language.ts \
   app/components/LanguageSelect \
   .storybook/i18next.ts \
-  .playwright/e2e/language-switch.spec.ts \
+  .playwright/e2e/language-switch-a11y.spec.ts \
   .claude/rules/i18n.md \
   .claude/agents/code-review-audit/react-i18next.md \
   .claude/skills/react-code/references/translation-patterns.md \
@@ -397,7 +397,7 @@ Remove every key whose path matches any of:
 - `.claude/skills/react-code/references/translation-patterns.md`
 - `.claude/hooks/check-i18n-strings.sh`
 - `.storybook/i18next.ts`
-- `.playwright/e2e/language-switch.spec.ts`
+- `.playwright/e2e/language-switch-a11y.spec.ts`
 - `wiki/modules/i18n.md`
 - `wiki/flows/Language Flow.md`
 - `wiki/dependencies/i18next.md`
@@ -409,7 +409,7 @@ A bare edit is blocked by `.claude/hooks/block-manifest-write.sh`, so the remova
 GAIA_MANIFEST_WRITE=remove-i18n jq '
   .files |= with_entries(
     select(.key
-      | test("^app/languages/|^app/i18n\\.ts$|^app/middleware/i18next\\.ts$|^app/types/i18n/|^app/sessions\\.server/language\\.ts$|^app/routes/actions\\+/set-language\\.ts$|^app/components/LanguageSelect/|^\\.claude/rules/i18n\\.md$|^\\.claude/agents/code-review-audit/react-i18next\\.md$|^\\.claude/skills/react-code/references/translation-patterns\\.md$|^\\.claude/hooks/check-i18n-strings\\.sh$|^\\.storybook/i18next\\.ts$|^\\.playwright/e2e/language-switch\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
+      | test("^app/languages/|^app/i18n\\.ts$|^app/middleware/i18next\\.ts$|^app/types/i18n/|^app/sessions\\.server/language\\.ts$|^app/routes/actions\\+/set-language\\.ts$|^app/components/LanguageSelect/|^\\.claude/rules/i18n\\.md$|^\\.claude/agents/code-review-audit/react-i18next\\.md$|^\\.claude/skills/react-code/references/translation-patterns\\.md$|^\\.claude/hooks/check-i18n-strings\\.sh$|^\\.storybook/i18next\\.ts$|^\\.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
       | not))
 ' .gaia/manifest.json > .gaia/manifest.json.tmp \
   && GAIA_MANIFEST_WRITE=remove-i18n mv .gaia/manifest.json.tmp .gaia/manifest.json
@@ -418,7 +418,7 @@ GAIA_MANIFEST_WRITE=remove-i18n jq '
 Discovery sweep, confirm no leftover entries:
 
 ```bash
-grep -nE "i18n|languages/|LanguageSelect|set-language|check-i18n|react-i18next|translation-patterns|Language Flow" .gaia/manifest.json
+grep -nE "i18n|languages/|LanguageSelect|set-language|language-switch-a11y|check-i18n|react-i18next|translation-patterns|Language Flow" .gaia/manifest.json
 ```
 
 The only expected match is this runbook's own entry, `.claude/instructions/remove-i18n.md`, it matches the sweep's broad `i18n` substring but is not an i18n content file and is not pruned here (the runbook self-deletes at the end of this process). Every i18n content key from the pattern list above is gone; that entry alone surviving is a pass.
