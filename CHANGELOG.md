@@ -44,6 +44,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Changed
 
+- `/gaia-debt` drain now presents the candidate choice through a structured `AskUserQuestion` prompt rather than a free-text override: it offers the top three backlog candidates (recommended one first) plus the built-in Other entry for a lower-ranked issue number, and skips the prompt entirely when only one `tech-debt` issue is open. The deterministic severity-then-age ordering, one-issue-per-invocation limit, drain-time security screen, and merge handshake are unchanged (#564)
 - SPEC-number allocation moves from the tracked `.gaia/specs.json` ledger to immutable `spec/NNN` git tags on the remote (SPEC-021): the next number is max+1 over the union of the remote's `spec/*` tags and local signals, and a non-force tag push is the cross-machine collision lock, so a shared team no longer depends on everyone committing, pushing, and pulling a working-tree file in time. The ledger survives only as a local, gitignored per-machine cache at `.gaia/local/specs/ledger.json`. No `/update-gaia` migration ships and no lib dual-reads the old tracked ledger. **Action required:** the maintainer and existing adopters with a populated `.gaia/specs.json` run the following one-time, idempotent, safe-to-re-run cutover once per existing clone (a clone without a populated `.gaia/specs.json`, i.e. a fresh scaffold, needs to do nothing: the allocator creates the local ledger on the first `/gaia-spec`, and the first online allocation seeds the remote tag namespace):
 
   ```bash
