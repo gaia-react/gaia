@@ -56,7 +56,12 @@ The entire ordering is this one `--jq` expression over fields GitHub returns. Th
 
 ## Recommend and present (drain)
 
-Recommend the top candidate (first in the sorted list). Print the ordered backlog so the human can override: per issue, the number, title, severity band, and age (derived from `createdAt`). The human picks the candidate to drain; if they pick a different one, honor it. The skill never auto-advances past the human's choice.
+The top candidate is the first in the sorted list. How you present it depends on backlog size:
+
+- **Exactly one open issue** → do not prompt. State the issue (number, title, severity band, age derived from `createdAt`) and drain it directly.
+- **Two or more open issues** → offer the choice with a single `AskUserQuestion` prompt (header `Debt item`, single-select). Present the top **three** candidates as options, or both when only two exist, top candidate first and its label suffixed `(Recommended)`. Each option's label is the issue number and a short title; its description carries the severity band and age. The tool's built-in **Other** entry lets the human type a different issue number when the target sits below the top three. When the backlog has more than three issues, first print the full ordered backlog (per issue: number, title, severity band, age) so the human can see the numbers beyond the top three before choosing.
+
+Honor whatever the human picks or types into **Other**. If a typed value is not an open `tech-debt` issue number in the backlog, say so and re-prompt; do not drain an off-list issue. The skill never auto-advances past the human's choice.
 
 ## Drain-time security screen
 
