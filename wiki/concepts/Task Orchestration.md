@@ -47,4 +47,4 @@ Models pin at spawn, so the main thread, even on Sonnet, puts the synthesis on O
 - Individual tasks are resumable / re-runnable.
 - The orchestrator owning git means commit history reflects phase boundaries cleanly, and broken state never reaches the remote.
 
-See [[GAIA Plan]], [[Quality Gate]], [[PR Merge Workflow]].
+See [[GAIA Plan]], [[Quality Gate]], [[PR Merge Workflow]], [[Token Cost Readout]].
