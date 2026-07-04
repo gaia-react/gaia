@@ -17,7 +17,7 @@
 #
 # Hermeticity: every fixture lives under a per-test mktemp -d with a fake $HOME.
 # Nothing touches the real repo's .serena/project.yml, ~/.claude.json, or
-# .gaia/cache/. The library function/subcommand is invoked directly for the
+# .gaia/local/cache/shared/. The library function/subcommand is invoked directly for the
 # unit cases; only UAT-011/012 run check-updates.sh, and those neuter its
 # gh/curl/gaia side effects (stubbed gh/curl, absent GAIA_BIN).
 #
@@ -251,7 +251,7 @@ diff_removed() { diff "$1" "$2" | grep -c '^< '; }
 build_refresher_sandbox() {
   [ -f "$CHECK_SRC" ] || skip "check-updates.sh missing"
   local s="$TMPROOT/$1"
-  mkdir -p "$s/.gaia/scripts/lib" "$s/.gaia/cache" "$s/.serena"
+  mkdir -p "$s/.gaia/scripts/lib" "$s/.gaia/local/cache/shared" "$s/.serena"
   cp "$CHECK_SRC" "$s/.gaia/scripts/check-updates.sh"
   cp "$LIB" "$s/.gaia/scripts/lib/serena-lang.sh"
   chmod +x "$s/.gaia/scripts/check-updates.sh"
@@ -262,7 +262,7 @@ build_refresher_sandbox() {
   git -C "$s" add -A
   # A full, current-schema cache, checkedAt far in the past so the TTL gate
   # does not early-exit.
-  cat > "$s/.gaia/cache/update-check.json" <<'JSON'
+  cat > "$s/.gaia/local/cache/shared/update-check.json" <<'JSON'
 {"checkedAt":1000000000,"outdatedCount":7,"gaiaCurrent":"1.2.3","gaiaLatest":"1.2.3","gaiaHasUpdate":false,"hardenCandidateCount":2,"auditNudge":false,"auditNudgeReason":"","auditLastAppliedAt":0,"auditMemoryCount":0,"auditMemoryBaseline":0,"serenaLangDrift":[]}
 JSON
   printf '%s' "$s"
@@ -270,7 +270,7 @@ JSON
 
 @test "UAT-011 refresher: aged full cache in a drifting project keeps every field and sets serenaLangDrift" {
   local s; s="$(build_refresher_sandbox refresh011)"
-  local cache="$s/.gaia/cache/update-check.json"
+  local cache="$s/.gaia/local/cache/shared/update-check.json"
   # Stub gh + curl so the network fields resolve without hitting the network;
   # GAIA_BIN ($GAIA_DIR/cli/gaia) is absent so no gaia/harden shell-outs fire.
   local stub="$TMPROOT/stub011"; mkdir -p "$stub"
@@ -299,7 +299,7 @@ JSON
 
 @test "UAT-012 refresher: no jq on PATH -> valid JSON with serenaLangDrift []" {
   local s; s="$(build_refresher_sandbox refresh012)"
-  local cache="$s/.gaia/cache/update-check.json"
+  local cache="$s/.gaia/local/cache/shared/update-check.json"
   # A symlink farm of the tools the refresher needs, deliberately WITHOUT jq,
   # so `command -v jq` fails and the printf write branch runs.
   local farm="$TMPROOT/nojq012"; mkdir -p "$farm"

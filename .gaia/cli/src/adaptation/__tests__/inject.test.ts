@@ -35,7 +35,14 @@ const setupSandbox = (): Sandbox => {
   mkdirSync(path.dirname(roots.profilePath), {mode: 0o755, recursive: true});
 
   return {
-    cachePath: path.join(repoRoot, '.gaia', 'cache', 'coaching-active.txt'),
+    cachePath: path.join(
+      repoRoot,
+      '.gaia',
+      'local',
+      'cache',
+      'shared',
+      'coaching-active.txt'
+    ),
     cleanup: () => {
       rmSync(repoRoot, {force: true, recursive: true});
       rmSync(homeDirectory, {force: true, recursive: true});

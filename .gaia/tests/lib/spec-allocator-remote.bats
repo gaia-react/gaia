@@ -223,8 +223,9 @@ _tag_subject() {
     --seed-remote-tag spec/005 "taken by another machine while offline")"
   ORIGIN="${REPO}.git"
 
-  # Draft/session/audit caches the renumber must re-key alongside the
+  # Gate1/draft/session/audit caches the renumber must re-key alongside the
   # folder + ledger row.
+  printf '{"spec_id":"SPEC-005","intent_hash":"abc123"}\n' > "$REPO/.gaia/local/cache/gate1-SPEC-005.json"
   mkdir -p "$REPO/.gaia/local/cache/audit-SPEC-005"
   echo "draft body" > "$REPO/.gaia/local/cache/draft-SPEC-005.md"
   printf '{"spec_id":"SPEC-005","phase":"discover"}\n' > "$REPO/.gaia/local/cache/spec-session-SPEC-005.json"
@@ -246,6 +247,9 @@ _tag_subject() {
   grep -q "^spec_id: SPEC-006$" "$REPO/.gaia/local/specs/SPEC-006/SPEC.md"
 
   # Caches re-keyed.
+  [ ! -e "$REPO/.gaia/local/cache/gate1-SPEC-005.json" ]
+  [ -f "$REPO/.gaia/local/cache/gate1-SPEC-006.json" ]
+  [ "$(jq -r '.spec_id' "$REPO/.gaia/local/cache/gate1-SPEC-006.json")" = "SPEC-005" ]
   [ ! -e "$REPO/.gaia/local/cache/draft-SPEC-005.md" ]
   [ -f "$REPO/.gaia/local/cache/draft-SPEC-006.md" ]
   [ ! -e "$REPO/.gaia/local/cache/spec-session-SPEC-005.json" ]

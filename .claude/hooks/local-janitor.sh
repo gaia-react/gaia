@@ -10,7 +10,7 @@
 # This is the BACKSTOP, not the owner. Each subsystem still owns its own
 # lifecycle (audit.md prunes its KNOWLEDGE reports; plan.md self-cleans on
 # merge). The janitor only removes residue whose death is PROVABLE, so it is
-# safe to run unconditionally every session. It sweeps exactly four things:
+# safe to run unconditionally every session. It sweeps exactly five things:
 #
 #   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
 #      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
@@ -36,6 +36,12 @@
 #   4. empty leftover dirs under .gaia/local, EXCEPT the structural drop-zones
 #      tooling expects to find. Pruned with `rmdir`, so a non-empty dir can
 #      never be removed even if the logic is wrong.
+#   5. stale SPEC-workflow cache artifacts (gate1-*.json, draft-*.md,
+#      spec-session-*.json, audit-*/) and react-perf run dirs (<run>/renders.json)
+#      at the root of .gaia/local/cache, once older than 14 days. Age-gated
+#      rather than reference-checked: a generous window survives a paused
+#      multi-day authoring session while still reaping abandoned drafts and
+#      forgotten profiling dumps that no other owner ever cleans up.
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -142,6 +148,24 @@ if [ -n "$empties" ]; then
   done <<EOF
 $empties
 EOF
+fi
+
+# --- 5. Stale cache artifacts (age-gated; generous window so paused authoring survives) ---
+# cache/ is a drop-zone (kept alive above), but its contents are still fair
+# game once provably stale: 14 days is generous enough that a paused
+# multi-day authoring session's live gate1/draft never gets reaped mid-flight.
+cache_dir="$local_dir/cache"
+if [ -d "$cache_dir" ]; then
+  find "$cache_dir" -maxdepth 1 \( \
+      -name 'gate1-*.json' -o -name 'draft-*.md' -o -name 'spec-session-*.json' \
+    \) -type f -mtime +14 -delete 2>/dev/null
+  find "$cache_dir" -maxdepth 1 -type d -name 'audit-*' -mtime +14 -exec rm -rf {} + 2>/dev/null
+  # react-perf run dumps: a dir at cache root containing renders.json. `dirname`
+  # over a `while read` loop instead of `find -printf` for BSD/macOS find portability.
+  find "$cache_dir" -maxdepth 2 -name 'renders.json' -mtime +14 -print 2>/dev/null | \
+    while IFS= read -r hit; do
+      rm -rf -- "$(dirname "$hit")"
+    done
 fi
 
 exit 0

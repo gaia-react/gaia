@@ -37,7 +37,7 @@ Top-level subcommands:
 - `telemetry compute-profile`: regenerates `profile.md` from mentorship events via three pattern detectors
 - `mentorship enable|disable|purge|status`: opt-in lifecycle; state machine in `src/mentorship/config.ts`
 - `mentorship analytics enable|disable|dry-run`: analytics stream opt-in
-- `_internal-fetch-coaching`: reads `profile.md`, writes `.gaia/cache/coaching-active.txt` if active adaptations match; consumed by `/gaia-spec` at session start
+- `_internal-fetch-coaching`: reads `profile.md`, writes `.gaia/local/cache/shared/coaching-active.txt` if active adaptations match; consumed by `/gaia-spec` at session start
 
 ## Universal envelope
 
@@ -80,7 +80,7 @@ Detectors are wired-but-inert at v1.0.0: production behavior requires N ≥ 10 e
 | `/gaia-plan` revision detection                                                      | `plan_revised`                                                                                         |
 | `spec-close` Step 5                                                                  | chains `compute-profile` after pacing append                                                           |
 
-Statusline shows a compass segment when mentorship is enabled (wired in `.gaia/statusline/gaia-statusline.sh`). Session-start clears `.gaia/cache/coaching-active.txt` so stale injections never persist.
+Statusline shows a compass segment when mentorship is enabled (wired in `.gaia/statusline/gaia-statusline.sh`). Session-start clears `.gaia/local/cache/shared/coaching-active.txt` so stale injections never persist.
 
 ## Pairs with
 

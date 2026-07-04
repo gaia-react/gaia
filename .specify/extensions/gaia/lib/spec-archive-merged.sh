@@ -97,6 +97,15 @@ while IFS= read -r spec_id; do
   # owns their drain + disposition.
   [ -f "${cache_dir}/${spec_id}.json" ] && continue
 
+  # Reap the merged SPEC's cache keyset (gate1/draft/session/audit). Best-effort
+  # and fail-open, matching the rest of this script's contract; never purges
+  # wiki-promote/<id>.json (guarded above).
+  local_cache="${repo_root}/.gaia/local/cache"
+  rm -f "${local_cache}/gate1-${spec_id}.json" \
+        "${local_cache}/draft-${spec_id}.md" \
+        "${local_cache}/spec-session-${spec_id}.json" 2>/dev/null
+  rm -rf "${local_cache}/audit-${spec_id}" 2>/dev/null
+
   target="${archived_dir}/${spec_id}"
   if [ -e "$target" ]; then
     # Both an active and an archived folder exist for the same id: never clobber.

@@ -102,14 +102,14 @@ wiki/decisions/Forensics Triage Workflow.md
 .serena
 
 # --- 7. Scratch + transient ---
-# Local working directories: scratchpad ingestion, CLI build cache,
-# per-machine state, update-merge stage area, init backup. Per-machine SPEC
-# state (the ledger at `.gaia/local/specs/ledger.json` plus the SPEC
-# folders) lives under `.gaia/local/`, already excluded by the line below;
-# a fresh adopter starts SPEC numbering from an empty local ledger and an
-# unseeded remote `spec/*` tag namespace.
+# Local working directories: scratchpad ingestion, per-machine state
+# (including the shared update-tarball cache at `.gaia/local/cache/shared/`),
+# update-merge stage area, init backup. Per-machine SPEC state (the ledger at
+# `.gaia/local/specs/ledger.json` plus the SPEC folders) lives under
+# `.gaia/local/`, already excluded by the line below; a fresh adopter starts
+# SPEC numbering from an empty local ledger and an unseeded remote `spec/*`
+# tag namespace.
 .raw
-.gaia/cache
 .gaia/local
 .gaia-backup
 .gaia-merge

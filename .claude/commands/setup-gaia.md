@@ -24,7 +24,7 @@ These run on every invocation and record no setup-state step. They sit outside t
 
 ### 0a. Self-heal worktree symlinks
 
-If this clone is being set up from a linked worktree (e.g. one created via `git worktree add` outside the Claude Code harness), the shared-state symlinks (`setup-state.json`, `.gaia/cache/`, `.gaia/local/audit/`) may not exist yet. Run the self-heal:
+If this clone is being set up from a linked worktree (e.g. one created via `git worktree add` outside the Claude Code harness), the shared-state symlinks (`setup-state.json`, `.gaia/local/cache/shared/`, `.gaia/local/audit/`) may not exist yet. Run the self-heal:
 
 ```bash
 .gaia/cli/gaia setup link-worktree

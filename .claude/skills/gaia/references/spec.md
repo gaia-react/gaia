@@ -41,7 +41,7 @@ Before composing the system prompt for this skill's agent context, fetch any act
 COACHING=$(.gaia/cli/gaia _internal-fetch-coaching --agent-type human --area-tags spec)
 ```
 
-If `$COACHING` is non-empty, prepend its contents to the system prompt as the first section. If empty (the v1.0.0 default, pattern detection ships wired-but-inert), the prompt is byte-identical to the non-mentorship path. The fetcher always exits 0 on a valid `--agent-type`, never blocks the flow, and writes `.gaia/cache/coaching-active.txt` only when a coaching block is actually returned (lights up the 🧭 statusline indicator).
+If `$COACHING` is non-empty, prepend its contents to the system prompt as the first section. If empty (the v1.0.0 default, pattern detection ships wired-but-inert), the prompt is byte-identical to the non-mentorship path. The fetcher always exits 0 on a valid `--agent-type`, never blocks the flow, and writes `.gaia/local/cache/shared/coaching-active.txt` only when a coaching block is actually returned (lights up the 🧭 statusline indicator).
 
 `--area-tags` is `spec` for the pre-Gate-2 phase; once the SPEC's UAT clusters are known, downstream callers can re-fetch with the richer tag set. v1 wires only this `/gaia-spec` PO path; Lead → Senior/Junior dispatch wiring lands with Sequel features.
 
@@ -298,7 +298,7 @@ Honor the user's choice. Never silently overwrite, never silently start new.
   - Step 3 (initial draft) is always skipped on resume.
   - Never re-snapshot the gate-1 cache; its purpose is immutable drift detection.
 - **Start new:** continue with a fresh allocation (Step 3 onward). The draft SPEC remains untouched. Append `spec_started` telemetry with `resumed: false`, then initialize the session-shape cache per the operational primitive once the new `spec_id` is known (step 3).
-- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json` and, separately (an `rm -f` cannot delete a directory), `rm -rf .gaia/local/cache/audit-${SPEC_ID}/`, then continue with a fresh allocation. Note: this deletes only the draft cache; the SPEC's ledger row stays `status: draft`, so the allocator keeps flagging SPEC-NNN for resume until that row reaches a finalized status (out of scope for this step).
+- **Discard SPEC-NNN draft cache:** confirm via a follow-up `AskUserQuestion` (`"Delete the draft cache for SPEC-NNN? (The canonical artifact remains.)"` with options `Yes, delete` / `Cancel`). On confirm, `rm -f "$DRAFT_PATH" .gaia/local/cache/spec-session-${SPEC_ID}.json .gaia/local/cache/gate1-${SPEC_ID}.json` and, separately (an `rm -f` cannot delete a directory), `rm -rf .gaia/local/cache/audit-${SPEC_ID}/`, then continue with a fresh allocation. Note: this deletes only the draft cache; the SPEC's ledger row stays `status: draft`, so the allocator keeps flagging SPEC-NNN for resume until that row reaches a finalized status (out of scope for this step).
 
 ### 3. /speckit-specify (initial draft)
 
@@ -701,7 +701,7 @@ Update the frontmatter `updated` field to today's date.
 
 After the canonical write succeeds:
 
-1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md`, and remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/`. The applier has already read the audit cache to derive `AUDIT.md` (which survives under `.gaia/local/specs/<spec_id>/`), so deleting it here is safe. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
+1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md .gaia/local/cache/gate1-<spec_id>.json`, and remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/`. The applier has already read the audit cache to derive `AUDIT.md` (which survives under `.gaia/local/specs/<spec_id>/`), so deleting it here is safe. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
 2. **Update the ledger row:** flip the row in `.gaia/local/specs/ledger.json` from `status: draft` to `status: specified` and stamp the intent (first prose line of the SPEC's `intent` field) for at-a-glance scanning. This is the finalize transition: the SPEC artifact is now frozen, so the authoring session is done and the allocator stops reporting it for resume-vs-start-new. Downstream (plan → implement → merge) owns the feature from here; the ledger's `merged` transition is reconciled from git by `spec-reconcile.sh`, not set here. Failure is non-blocking, log to stderr and continue. The remote `spec/*` tags are the cross-team allocation authority; `.gaia/local/specs/ledger.json` is a per-machine local cache; the SPEC artifact and git history remain authoritative.
 
 ```bash

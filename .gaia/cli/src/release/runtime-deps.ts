@@ -17,7 +17,7 @@
  *   - an adopter-owned sentinel (`wiki/hot.md`, `wiki/log.md`,
  *     `.gaia/VERSION`, `.gaia/manifest.json`), or
  *   - a runtime-allocated path on adopter machines (under
- *     `.gaia/local/`, `.gaia/cache/`, `.claude/handoff/`,
+ *     `.gaia/local/`, `.claude/handoff/`,
  *     `.claude/worktrees/`, `.claude/agent-memory/`, `.claude/audit/`,
  *     or one of the per-session marker files).
  *
@@ -89,12 +89,11 @@ const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
  * Path prefixes that are runtime-allocated on the adopter side. Files
  * created at runtime under these directories are valid call targets even
  * though they aren't tracked in the manifest. Listed without trailing
- * slashes so that bare directory references (e.g. `.gaia/cache/*` glob
- * matches that decay to `.gaia/cache` after extraction) also pass.
+ * slashes so that bare directory references (e.g. `.gaia/local/*` glob
+ * matches that decay to `.gaia/local` after extraction) also pass.
  */
 const RUNTIME_PREFIXES: readonly string[] = [
   '.gaia/local',
-  '.gaia/cache',
   '.claude/handoff',
   '.claude/worktrees',
   '.claude/agent-memory',

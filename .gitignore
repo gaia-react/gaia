@@ -59,8 +59,6 @@ __pycache__/
 .claude/wiki-recompact-pending
 
 # GAIA release/update working directories
-.gaia/cache
-.gaia/cache.bak.*
 .gaia/local/
 .gaia/statusline/.use-vendored-base
 .gaia-backup/

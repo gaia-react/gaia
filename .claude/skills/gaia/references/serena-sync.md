@@ -81,10 +81,10 @@ bash .gaia/scripts/lib/serena-lang.sh append .serena/project.yml <tok1> [tok2 ..
 
 - **If it exits 0:** confirm the append and **instruct the adopter to restart Serena** (or restart their Claude session) so the newly added language is indexed. Serena reads `.serena/project.yml` once at startup and never re-detects, so the language is not indexed until a restart.
 
-  **Then clear the stale statusline nudge (loop closure).** The statusline reads `serenaLangDrift` from the TTL-cached `.gaia/cache/update-check.json`, which does not recompute on the 6h TTL early-exit. Without this step the nudge persists for up to 6h after the adopter has already synced. Recompute drift and rewrite just that one field, preserving every other cache field, when the cache file exists:
+  **Then clear the stale statusline nudge (loop closure).** The statusline reads `serenaLangDrift` from the TTL-cached `.gaia/local/cache/shared/update-check.json`, which does not recompute on the 6h TTL early-exit. Without this step the nudge persists for up to 6h after the adopter has already synced. Recompute drift and rewrite just that one field, preserving every other cache field, when the cache file exists:
 
   ```bash
-  CACHE=".gaia/cache/update-check.json"
+  CACHE=".gaia/local/cache/shared/update-check.json"
   if [ -f "$CACHE" ] && command -v jq >/dev/null 2>&1; then
     NEW_DRIFT="$(bash .gaia/scripts/lib/serena-lang.sh drift "$ROOT")"   # now [] (or any remaining set)
     TMP="$(mktemp)"

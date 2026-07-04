@@ -14594,12 +14594,12 @@ config(en_default());
 var MentorshipConfigSchema = external_exports.object({
   analytics: external_exports.object({ enabled: external_exports.boolean() }),
   decided_at: external_exports.iso.datetime().nullable(),
-  decided_via: external_exports.enum([
+  decided_via: external_exports.literal([
     "gaia-init",
-    "mentorship-enable",
-    "mentorship-disable",
+    "mentorship-analytics-disable",
     "mentorship-analytics-enable",
-    "mentorship-analytics-disable"
+    "mentorship-disable",
+    "mentorship-enable"
   ]).nullable(),
   // null = pre-decision (gaia-init not yet run).
   enabled: external_exports.boolean().nullable()
@@ -14725,42 +14725,42 @@ var UatPassPayload = external_exports.object({
   uat_id: external_exports.string().regex(UAT_ID_REGEX)
 });
 var UatFailPayload = UatPassPayload.extend({
-  failure_class: external_exports.enum([
+  failure_class: external_exports.literal([
     "assertion",
     "exception",
-    "timeout",
+    "flake_suspected",
     "setup",
-    "flake_suspected"
+    "timeout"
   ])
 });
 var NeedsContextReturnedPayload = external_exports.object({
-  agent_type: external_exports.enum(["PO", "Senior", "Junior", "Lead"]),
+  agent_type: external_exports.literal(["Junior", "Lead", "PO", "Senior"]),
   area_tags: AreaTagsSchema,
-  context_request_class: external_exports.enum([
-    "unclear_acceptance_criteria",
-    "missing_codebase_knowledge",
+  context_request_class: external_exports.literal([
     "ambiguous_boundary",
+    "missing_codebase_knowledge",
+    "unclear_acceptance_criteria",
     "unclear_business_intent"
   ]),
   spec_id: external_exports.string().regex(SPEC_ID_REGEX),
   task_id: external_exports.string()
 });
 var BlockedReturnedPayload = external_exports.object({
-  agent_type: external_exports.enum(["PO", "Senior", "Junior", "Lead"]),
+  agent_type: external_exports.literal(["Junior", "Lead", "PO", "Senior"]),
   area_tags: AreaTagsSchema,
-  classification: external_exports.enum(["intent", "spec", "code"]),
+  classification: external_exports.literal(["code", "intent", "spec"]),
   spec_id: external_exports.string().regex(SPEC_ID_REGEX),
   task_id: external_exports.string()
 });
 var SpecAmendedPayload = external_exports.object({
   amendment_reason: external_exports.string().min(1),
   fields_changed: external_exports.array(
-    external_exports.enum([
+    external_exports.literal([
+      "clarifications",
       "intent",
-      "success_criteria",
-      "uats",
       "scope_boundaries",
-      "clarifications"
+      "success_criteria",
+      "uats"
     ])
   ).min(1),
   spec_id: external_exports.string().regex(SPEC_ID_REGEX),
@@ -14770,11 +14770,11 @@ var PlanRevisedPayload = external_exports.object({
   items_added: external_exports.number().int().min(0),
   items_removed: external_exports.number().int().min(0),
   plan_id: external_exports.string(),
-  revision_class: external_exports.enum([
-    "scope_change",
-    "sequencing_change",
+  revision_class: external_exports.literal([
+    "bug_fix_added",
     "dispatch_artifact_refinement",
-    "bug_fix_added"
+    "scope_change",
+    "sequencing_change"
   ]),
   spec_id: external_exports.string().regex(SPEC_ID_REGEX)
 });
@@ -14795,7 +14795,7 @@ var CodeReviewAuditFindingPayload = external_exports.object({
   auditor_type: external_exports.string(),
   finding_class: FindingClassSchema,
   pr_number: external_exports.number().int().min(1),
-  severity: external_exports.enum(["error", "warning", "suggestion"]),
+  severity: external_exports.literal(["error", "suggestion", "warning"]),
   spec_id: external_exports.string().regex(SPEC_ID_REGEX).optional()
 });
 var MentorshipPayloadByType = {
@@ -14813,16 +14813,16 @@ var MENTORSHIP_EVENT_TYPES = Object.keys(
 );
 
 // src/schemas/envelope.ts
-var AgentTypeSchema = external_exports.enum([
-  "PO",
-  "Senior",
+var AgentTypeSchema = external_exports.literal([
+  "Curator",
+  "Custodian",
+  "human",
   "Junior",
   "Lead",
+  "PO",
   "Reviewer",
-  "Curator",
-  "Steward",
-  "Custodian",
-  "human"
+  "Senior",
+  "Steward"
 ]);
 var ULID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 var ISO8601_UTC_MS_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -15015,7 +15015,14 @@ var resolveCachePath = (deps) => {
   const repoRoot = path3.dirname(
     path3.dirname(path3.dirname(roots.projectIdPath))
   );
-  return path3.join(repoRoot, ".gaia", "cache", "coaching-active.txt");
+  return path3.join(
+    repoRoot,
+    ".gaia",
+    "local",
+    "cache",
+    "shared",
+    "coaching-active.txt"
+  );
 };
 var markCoachingActive = (cachePath) => {
   const parent = path3.dirname(cachePath);
@@ -15116,8 +15123,8 @@ var TOOL_IDS = [
   "pnpm-audit",
   "stale-branches"
 ];
-var ToolModeSchema = external_exports.enum(["ci", "local", "off"]);
-var ScheduleSchema = external_exports.enum(["daily", "weekly", "monthly"]);
+var ToolModeSchema = external_exports.literal(["ci", "local", "off"]);
+var ScheduleSchema = external_exports.literal(["daily", "monthly", "weekly"]);
 var ToolConfigSchema = external_exports.object({
   mode: ToolModeSchema,
   schedule: ScheduleSchema.optional()
@@ -15968,7 +15975,7 @@ var ReportSchema = external_exports.object({
       file: external_exports.string(),
       grade: external_exports.string(),
       remediation: external_exports.string(),
-      severity: external_exports.enum(["error", "warning", "info"])
+      severity: external_exports.literal(["error", "info", "warning"])
     })
   ).default([]),
   overall: external_exports.string()
@@ -18628,9 +18635,9 @@ var RawDumpSchema = external_exports.object({
   total: external_exports.number().optional(),
   all: external_exports.array(RenderRecordSchema)
 });
-var ReactDoctorRuleSchema = external_exports.enum([
-  "jsx-no-new-object-as-prop",
+var ReactDoctorRuleSchema = external_exports.literal([
   "jsx-no-constructed-context-values",
+  "jsx-no-new-object-as-prop",
   "no-unstable-nested-components"
 ]);
 var ReducedFindingSchema = external_exports.strictObject({
@@ -20531,7 +20538,6 @@ var ADOPTER_OWNED_SENTINELS2 = /* @__PURE__ */ new Set([
 ]);
 var RUNTIME_PREFIXES = [
   ".gaia/local",
-  ".gaia/cache",
   ".claude/handoff",
   ".claude/worktrees",
   ".claude/agent-memory",
@@ -23194,7 +23200,7 @@ var StaticLeakCheckSchema = external_exports.object({
 });
 var DerivedLeakCheckSchema = external_exports.object({
   ...leakCheckBaseShape,
-  derive: external_exports.enum(["excluded-slugs", "excluded-workflows"])
+  derive: external_exports.literal(["excluded-slugs", "excluded-workflows"])
 });
 var LeakCheckSchema = external_exports.object({
   checks: external_exports.array(external_exports.union([DerivedLeakCheckSchema, StaticLeakCheckSchema])).min(1),
@@ -24815,7 +24821,7 @@ var buildZodExpression = (typeToken) => {
     });
     if (variants.length === 0) return null;
     const quoted = variants.map((value) => `'${value}'`).join(", ");
-    expression = `z.enum([${quoted}])`;
+    expression = `z.literal([${quoted}])`;
   } else {
     const builder = ZOD_TYPE_BUILDERS[base];
     expression = builder === void 0 ? null : builder();
@@ -25414,7 +25420,7 @@ import {
 import path34 from "node:path";
 var HELP_TEXT35 = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the four worktree shared-state symlinks pointing at
+  Idempotently create the five worktree shared-state symlinks pointing at
   the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
   No-op on a main checkout (not a linked worktree); exits 0 with a
   one-line "not a linked worktree" message.
@@ -25426,8 +25432,9 @@ var HELP_TOKENS33 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var SHARED_PATHS = [
   { ensureTargetDir: false, relativePath: ".gaia/local/setup-state.json" },
   { ensureTargetDir: false, relativePath: ".gaia/local/mentorship.json" },
-  { ensureTargetDir: true, relativePath: ".gaia/cache" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/audit" }
+  { ensureTargetDir: true, relativePath: ".gaia/local/cache/shared" },
+  { ensureTargetDir: true, relativePath: ".gaia/local/audit" },
+  { ensureTargetDir: true, relativePath: ".gaia/local/telemetry" }
 ];
 var formatTimestamp = (date5) => {
   const pad = (value) => String(value).padStart(2, "0");
@@ -29953,7 +29960,7 @@ var SKIP_PATH_FRAGMENTS = [
   "wiki/meta/",
   "wiki/.state.json"
 ];
-var RUNTIME_PREFIXES2 = [".gaia/local/", ".gaia/cache/"];
+var RUNTIME_PREFIXES2 = [".gaia/local/"];
 var PATH_TOKEN_PATTERN = /`([^`\n]+?)`/g;
 var PLACEHOLDER_PATTERN = /[<>*${}]|N{3,}|X{3,}/;
 var HISTORICAL_BULLET_PATTERN = /^\s*-\s+\*\*(Removed|Deleted|Renamed|Migrated|Replaced)\*\*/i;

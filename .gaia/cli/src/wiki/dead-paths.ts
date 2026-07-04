@@ -55,7 +55,7 @@ const SKIP_PATH_FRAGMENTS = [
  * Repo-relative prefixes that resolve to gitignored runtime artifacts. Wiki
  * references to these paths describe shapes, not files we expect to exist.
  */
-const RUNTIME_PREFIXES = ['.gaia/local/', '.gaia/cache/'] as const;
+const RUNTIME_PREFIXES = ['.gaia/local/'] as const;
 
 const PATH_TOKEN_PATTERN = /`([^`\n]+?)`/g;
 

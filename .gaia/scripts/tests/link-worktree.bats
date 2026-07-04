@@ -51,19 +51,19 @@ run_in() {
   run run_in "$LINKED"
   [ "$status" -eq 0 ]
   [ -L "$LINKED/.gaia/local/setup-state.json" ]
-  [ -L "$LINKED/.gaia/cache" ]
+  [ -L "$LINKED/.gaia/local/cache/shared" ]
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
 
   # Targets are absolute paths into MAIN.
   [ "$(readlink "$LINKED/.gaia/local/setup-state.json")" = "$MAIN/.gaia/local/setup-state.json" ]
-  [ "$(readlink "$LINKED/.gaia/cache")" = "$MAIN/.gaia/cache" ]
+  [ "$(readlink "$LINKED/.gaia/local/cache/shared")" = "$MAIN/.gaia/local/cache/shared" ]
   [ "$(readlink "$LINKED/.gaia/local/audit")" = "$MAIN/.gaia/local/audit" ]
   [ "$(readlink "$LINKED/.gaia/local/telemetry")" = "$MAIN/.gaia/local/telemetry" ]
 
   # Each "linked:" log appears once on stderr.
   [[ "$output" == *"linked: $LINKED/.gaia/local/setup-state.json"* ]]
-  [[ "$output" == *"linked: $LINKED/.gaia/cache"* ]]
+  [[ "$output" == *"linked: $LINKED/.gaia/local/cache/shared"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/local/audit"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/local/telemetry"* ]]
 }
@@ -76,7 +76,7 @@ run_in() {
 
   # All shared symlinks still present.
   [ -L "$LINKED/.gaia/local/setup-state.json" ]
-  [ -L "$LINKED/.gaia/cache" ]
+  [ -L "$LINKED/.gaia/local/cache/shared" ]
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
 
@@ -87,7 +87,7 @@ run_in() {
   # All shared paths logged "already-linked".
   run run_in "$LINKED"
   [[ "$output" == *"already-linked: $LINKED/.gaia/local/setup-state.json"* ]]
-  [[ "$output" == *"already-linked: $LINKED/.gaia/cache"* ]]
+  [[ "$output" == *"already-linked: $LINKED/.gaia/local/cache/shared"* ]]
   [[ "$output" == *"already-linked: $LINKED/.gaia/local/audit"* ]]
   [[ "$output" == *"already-linked: $LINKED/.gaia/local/telemetry"* ]]
 }
@@ -99,8 +99,8 @@ run_in() {
   printf '{"plain":"file"}' > "$LINKED/.gaia/local/setup-state.json"
 
   # Create a plain cache/ directory with content.
-  mkdir -p "$LINKED/.gaia/cache"
-  printf 'plain-cache-content' > "$LINKED/.gaia/cache/marker.txt"
+  mkdir -p "$LINKED/.gaia/local/cache/shared"
+  printf 'plain-cache-content' > "$LINKED/.gaia/local/cache/shared/marker.txt"
 
   # Create a plain audit/ directory with content.
   mkdir -p "$LINKED/.gaia/local/audit"
@@ -115,7 +115,7 @@ run_in() {
 
   # All are now symlinks.
   [ -L "$LINKED/.gaia/local/setup-state.json" ]
-  [ -L "$LINKED/.gaia/cache" ]
+  [ -L "$LINKED/.gaia/local/cache/shared" ]
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
 
@@ -124,9 +124,9 @@ run_in() {
   [ -n "$setup_bak" ]
   [ "$(cat "$LINKED/.gaia/local/$setup_bak")" = '{"plain":"file"}' ]
 
-  cache_bak="$(ls "$LINKED/.gaia/" | grep '^cache\.bak\.')"
+  cache_bak="$(ls "$LINKED/.gaia/local/cache/" | grep '^shared\.bak\.')"
   [ -n "$cache_bak" ]
-  [ "$(cat "$LINKED/.gaia/$cache_bak/marker.txt")" = "plain-cache-content" ]
+  [ "$(cat "$LINKED/.gaia/local/cache/$cache_bak/marker.txt")" = "plain-cache-content" ]
 
   audit_bak="$(ls "$LINKED/.gaia/local/" | grep '^audit\.bak\.')"
   [ -n "$audit_bak" ]
@@ -138,7 +138,7 @@ run_in() {
 
   # All logged "linked-after-backup".
   [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local/setup-state.json"* ]]
-  [[ "$output" == *"linked-after-backup: $LINKED/.gaia/cache"* ]]
+  [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local/cache/shared"* ]]
   [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local/audit"* ]]
   [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local/telemetry"* ]]
 }
@@ -173,7 +173,7 @@ run_in() {
 
   # No symlinks created in main.
   [ ! -L "$MAIN/.gaia/local/setup-state.json" ]
-  [ ! -L "$MAIN/.gaia/cache" ]
+  [ ! -L "$MAIN/.gaia/local/cache/shared" ]
   [ ! -L "$MAIN/.gaia/local/audit" ]
 }
 
@@ -189,11 +189,11 @@ run_in() {
   [ -d "$MAIN/.gaia/local" ]
   [ -d "$MAIN/.gaia/local/audit" ]
   [ -d "$MAIN/.gaia/local/telemetry" ]
-  [ -d "$MAIN/.gaia/cache" ]
+  [ -d "$MAIN/.gaia/local/cache/shared" ]
 
   # Symlinks resolve (no dangling).
-  [ -L "$LINKED/.gaia/cache" ]
-  [ -d "$LINKED/.gaia/cache" ] # follows symlink: dir exists.
+  [ -L "$LINKED/.gaia/local/cache/shared" ]
+  [ -d "$LINKED/.gaia/local/cache/shared" ] # follows symlink: dir exists.
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -d "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
@@ -216,12 +216,12 @@ FAKE
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"failed: $LINKED/.gaia/local/setup-state.json"* ]]
-  [[ "$output" == *"failed: $LINKED/.gaia/cache"* ]]
+  [[ "$output" == *"failed: $LINKED/.gaia/local/cache/shared"* ]]
   [[ "$output" == *"failed: $LINKED/.gaia/local/audit"* ]]
 
   # Symlinks were NOT created (since ln was sabotaged).
   [ ! -L "$LINKED/.gaia/local/setup-state.json" ]
-  [ ! -L "$LINKED/.gaia/cache" ]
+  [ ! -L "$LINKED/.gaia/local/cache/shared" ]
   [ ! -L "$LINKED/.gaia/local/audit" ]
 }
 

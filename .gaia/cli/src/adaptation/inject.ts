@@ -15,7 +15,7 @@
  * system prompt is byte-identical to the non-mentorship path.
  *
  * When an adaptation matches, the cache file
- * `.gaia/cache/coaching-active.txt` is written with content `1` so the
+ * `.gaia/local/cache/shared/coaching-active.txt` is written with content `1` so the
  * statusline 🧭 segment lights up. Cleared by `wiki-session-start.sh` at
  * session boundary.
  *
@@ -45,7 +45,7 @@ export type InjectionContext = {
 
 type InjectionDeps = {
   /**
-   * Override for tests so we don't write to a real `.gaia/cache/`.
+   * Override for tests so we don't write to a real `.gaia/local/cache/shared/`.
    * In production callers always omit this; the helper resolves the
    * cache path from the repo root inferred via `git rev-parse`.
    */
@@ -83,7 +83,7 @@ const renderCoachingBlock = (adaptation: ActiveAdaptation): string => {
 
 const resolveCachePath = (deps: InjectionDeps): string => {
   if (deps.cachePath !== undefined) return deps.cachePath;
-  // The cache lives in-project at `<repoRoot>/.gaia/cache/coaching-active.txt`.
+  // The cache lives in-project at `<repoRoot>/.gaia/local/cache/shared/coaching-active.txt`.
   // `roots.projectIdPath` is `<repoRoot>/.gaia/local/.project-id`, so the
   // repo root is two parent directories up from there.
   const roots = deps.roots ?? resolveStorageRoots();
@@ -91,7 +91,14 @@ const resolveCachePath = (deps: InjectionDeps): string => {
     path.dirname(path.dirname(roots.projectIdPath))
   );
 
-  return path.join(repoRoot, '.gaia', 'cache', 'coaching-active.txt');
+  return path.join(
+    repoRoot,
+    '.gaia',
+    'local',
+    'cache',
+    'shared',
+    'coaching-active.txt'
+  );
 };
 
 /**
@@ -111,7 +118,7 @@ const markCoachingActive = (cachePath: string): void => {
 /**
  * Returns the coaching block text to inject, or "" when no relevant
  * adaptation is active. Side-effect on non-empty: writes
- * `.gaia/cache/coaching-active.txt` so the statusline 🧭 lights up.
+ * `.gaia/local/cache/shared/coaching-active.txt` so the statusline 🧭 lights up.
  */
 export const maybeInjectCoaching = async (
   ctx: InjectionContext,

@@ -230,7 +230,7 @@ serena_registered() {
 serena_registered || exit 0
 
 # --- Block-once escape ------------------------------------------------------
-STATE_DIR="$ROOT/.gaia/cache/serena-guard"
+STATE_DIR="$ROOT/.gaia/local/cache/shared/serena-guard"
 
 # Prune stale markers (> 10 min) so the cache never grows unbounded.
 [ -d "$STATE_DIR" ] && find "$STATE_DIR" -type f -mmin +10 -delete 2>/dev/null

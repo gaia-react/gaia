@@ -180,8 +180,8 @@ Pattern-detection clusters explicitly note "wired-but-inert; assertion is agains
 
 **Expected.**
 
-- **UAT-037.** With at least one active adaptation in `profile.md`, render the statusline. `🧭` appears on the right side of the statusline (before any `Run /update-deps` or `Run /update-gaia` segments). Verify by populating `.gaia/cache/coaching-active.txt` with a single byte `1` and triggering a session refresh.
-- **UAT-038.** With zero active adaptations, render the statusline. No `🧭` appears; the right side is unchanged from the pre-telemetry baseline. Verify with `.gaia/cache/coaching-active.txt` absent or containing `0`. **Maintainer judgment.** The "unchanged from baseline" assertion is by-eye comparison.
+- **UAT-037.** With at least one active adaptation in `profile.md`, render the statusline. `🧭` appears on the right side of the statusline (before any `Run /update-deps` or `Run /update-gaia` segments). Verify by populating `.gaia/local/cache/shared/coaching-active.txt` with a single byte `1` and triggering a session refresh.
+- **UAT-038.** With zero active adaptations, render the statusline. No `🧭` appears; the right side is unchanged from the pre-telemetry baseline. Verify with `.gaia/local/cache/shared/coaching-active.txt` absent or containing `0`. **Maintainer judgment.** The "unchanged from baseline" assertion is by-eye comparison.
 
 **Harness fast-path.** None, visual rendering is maintainer-judgment.
 

@@ -9,7 +9,7 @@ GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
 git rev-parse HEAD > "$GIT_DIR/claude-session-start" 2>/dev/null || true
 
 # Clear stale per-session caches so state from a prior session doesn't carry over.
-rm -f .gaia/cache/coaching-active.txt 2>/dev/null
+rm -f .gaia/local/cache/shared/coaching-active.txt 2>/dev/null
 
 # Idempotent best-effort re-assertion of per-machine memory contracts.
 # Always exits 0; guarded with `|| true` for defense in depth.

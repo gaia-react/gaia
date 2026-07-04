@@ -130,7 +130,7 @@ Excluding the source prevents adopters from accidentally rebuilding the binary o
 ### 7. Scratch and transient
 
 - `.raw/`: scratchpad ingestion drop zone.
-- `.gaia/cache/`, `.gaia/local/`: CLI build cache, per-machine state, telemetry analytics.
+- `.gaia/local/`: per-machine state, CLI build cache (`.gaia/local/cache/`), telemetry analytics.
 - `.gaia-backup/`, `.gaia-merge/`: `/gaia-init` backup and `/update-gaia` stage areas.
 
 ### 8. Per-machine Claude state
