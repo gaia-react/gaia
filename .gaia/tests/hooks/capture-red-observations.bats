@@ -25,6 +25,10 @@
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
+  # The hook recomputes RED signals via the Node helper, which resolves
+  # `typescript` from node_modules; skip where deps aren't installed (e.g. the
+  # lean audit-ci-tests CI box) so `bats .gaia/tests/hooks/` stays green there.
+  [ -d "$REPO_ROOT/node_modules/typescript" ] || skip "typescript not installed (node-dependent RED suite)"
   HOOK="$REPO_ROOT/.claude/hooks/capture-red-observations.sh"
   FIX_REL=".gaia/tests/hooks/fixtures/red-ledger"
   JSON_REL="$FIX_REL/json"
