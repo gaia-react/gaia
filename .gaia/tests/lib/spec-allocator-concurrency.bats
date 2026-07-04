@@ -87,7 +87,7 @@ _run_parallel_next() {
 @test "9: stale-lock recovery in next; reclaims stale dir, allocates next id" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   cd "$REPO"
-  mkdir -p "$REPO/.gaia/specs.lock.d"
+  mkdir -p "$REPO/.gaia/local/specs/specs.lock.d"
   sleep 2  # age past GAIA_LEDGER_LOCK_STALE_SECS=1
   run bash -c "GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_STALE_SECS=1 bash '$REPO/$ALLOC' next '$REPO'"
   [ "$status" -eq 0 ]
@@ -134,8 +134,8 @@ _run_parallel_next() {
   [ "$status" -eq 0 ]
   run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/specs.lock" ]
-  [ ! -e "$REPO/.gaia/specs.lock.d" ]
+  [ ! -e "$REPO/.gaia/local/specs/specs.lock" ]
+  [ ! -e "$REPO/.gaia/local/specs/specs.lock.d" ]
 }
 
 # --- Test 14: exit-code preservation -----------------------------------------
@@ -189,10 +189,10 @@ EOF
   run bash -c "
     export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
     . '$REPO/.specify/extensions/gaia/lib/with-ledger-lock.sh'
-    ( with_ledger_lock '$REPO/.gaia' sleep 4 ) &
+    ( with_ledger_lock '$REPO/.gaia/local/specs' sleep 4 ) &
     holder=\$!
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-      [ -d '$REPO/.gaia/specs.lock.d' ] && break
+      [ -d '$REPO/.gaia/local/specs/specs.lock.d' ] && break
       sleep 0.1
     done
     GAIA_LEDGER_LOCK_TIMEOUT_SECS=1 bash '$REPO/$ALLOC' next '$REPO'
