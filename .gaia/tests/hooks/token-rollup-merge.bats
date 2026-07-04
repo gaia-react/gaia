@@ -6,8 +6,8 @@
 # root: the hook sources gaia-active-plan.sh and shells out to
 # token-rollup.sh via repo-relative paths, and the reader resolves the ledger
 # via `git rev-parse --git-common-dir`. Running from the real repo would read
-# the live .gaia/local/telemetry/tokens.jsonl. Each tmp repo gets its own copy
-# of the built lib + the real token-rollup.sh at their repo-relative paths
+# the live .gaia/local/telemetry/cost.jsonl. Each tmp repo gets its own copy
+# of the built libs + the real token-rollup.sh at their repo-relative paths
 # (build_repo below), matching what a real checkout has.
 
 setup() {
@@ -17,6 +17,7 @@ setup() {
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
   ROLLUP_SRC="$REPO_ROOT/.gaia/scripts/token-rollup.sh"
   LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
+  LIB_LEDGER_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -29,7 +30,7 @@ teardown() {
   return 0
 }
 
-# Scaffolds a tmp git repo with the built lib + the real token-rollup.sh
+# Scaffolds a tmp git repo with the built libs + the real token-rollup.sh
 # copied in at their repo-relative paths, preserving the executable bit.
 # Sets $REPO.
 build_repo() {
@@ -40,6 +41,7 @@ build_repo() {
   cp "$ROLLUP_SRC" "$REPO/.gaia/scripts/token-rollup.sh"
   chmod +x "$REPO/.gaia/scripts/token-rollup.sh"
   cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
+  cp "$LIB_LEDGER_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
 }
 
 write_running() {
@@ -64,16 +66,16 @@ write_readme_spec_less() {
 }
 
 ledger_path() {
-  printf '%s/.gaia/local/telemetry/tokens.jsonl' "$REPO"
+  printf '%s/.gaia/local/telemetry/cost.jsonl' "$REPO"
 }
 
 # write_record <action> <spec_id> <session_id> <total> <ts> [<ended_at>]
 write_record() {
   local action="$1" spec_id="$2" sid="$3" total="$4" ts="$5" ended="${6:-$ts}"
   mkdir -p "$(dirname "$(ledger_path)")"
-  jq -nc --arg action "$action" --arg spec_id "$spec_id" --arg sid "$sid" \
+  jq -nc --arg kind "$action" --arg spec_id "$spec_id" --arg sid "$sid" \
     --argjson total "$total" --arg ts "$ts" --arg ended "$ended" \
-    '{action:$action, spec_id:$spec_id, plan_slug:"my-plan", session_id:$sid,
+    '{kind:$kind, spec_id:$spec_id, plan_slug:"my-plan", session_id:$sid,
       buckets:{fresh_input:$total, cache_write:0, cache_read:0, output:0},
       total:$total, partial:false, started_at:$ended, ended_at:$ended,
       duration_seconds:10, duration_available:true, ts:$ts}' >> "$(ledger_path)"

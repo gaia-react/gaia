@@ -114,6 +114,13 @@ while IFS= read -r spec_id; do
     continue
   fi
 
+  # Consolidate the SPEC's scattered cost.md sections (SPEC/Planning/
+  # Execution) into one dollars-led cost.md and flatten plan[-N]/ before the
+  # move. This is the exact same routine spec-close.md Step 4 invokes, so
+  # both archive paths reach the identical flat shape. Best-effort: never
+  # blocks the sweep.
+  bash "$(dirname "${BASH_SOURCE[0]}")/cost-consolidate.sh" spec "$repo_root" "$spec_id" >/dev/null 2>&1 || true
+
   spec_md="${folder}/SPEC.md"
   if [ -f "$spec_md" ]; then
     tmp="$(mktemp)"

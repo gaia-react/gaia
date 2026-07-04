@@ -56,26 +56,20 @@ fi
 # is not guaranteed to be the merging feature (an interleaved prior feature's
 # execute row could be newer), so it is labeled at render time.
 if [ -z "$feature_key" ]; then
-  common_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
-  if [ -n "$common_dir" ]; then
-    case "$common_dir" in
-      /*) abs="$common_dir" ;;
-      *) abs="$PWD/$common_dir" ;;
-    esac
-    main_root=$(cd "$(dirname "$abs")" 2>/dev/null && pwd || true)
-    if [ -n "$main_root" ]; then
-      ledger="$main_root/.gaia/local/telemetry/tokens.jsonl"
-      if [ -f "$ledger" ]; then
-        feature_key=$(jq -R -s -r '
-          split("\n") | map(select(length > 0))
-          | map(try fromjson catch empty)
-          | map(select(type == "object" and .action == "execute" and (.spec_id // "") != ""))
-          | sort_by(.ts // "")
-          | last
-          | .spec_id // empty
-        ' "$ledger" 2>/dev/null || true)
-        [ -n "$feature_key" ] && fallback=1
-      fi
+  if [ -f .gaia/scripts/ledger-path-lib.sh ]; then
+    . .gaia/scripts/ledger-path-lib.sh
+    ledger="$(gaia_resolve_ledger_path 2>/dev/null || true)"
+    if [ -n "$ledger" ] && [ -f "$ledger" ]; then
+      feature_key=$(jq -R -s -r '
+        split("\n") | map(select(length > 0))
+        | map(try fromjson catch empty)
+        | map(select(type == "object" and .kind == "execute"
+              and (((.spec_id // "") != "") or ((.plan_id // "") != ""))))
+        | sort_by(.ts // "")
+        | last
+        | (.spec_id // .plan_id // empty)
+      ' "$ledger" 2>/dev/null || true)
+      [ -n "$feature_key" ] && fallback=1
     fi
   fi
 fi

@@ -248,11 +248,12 @@ Otherwise, ask: **"What do you want to spec?"** and wait for the response before
 
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
-First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row). Then sweep any merged-but-unarchived SPEC folder into `archived/`, the safety net for a PR that merged out-of-band or a `Keep in place` disposition that left the folder active. Both passes are best-effort and fail-open; the archive sweep runs second so it acts on the rows reconcile just advanced to `merged`:
+First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row). Then sweep any merged-but-unarchived SPEC folder into `archived/`, the safety net for a PR that merged out-of-band or a `Keep in place` disposition that left the folder active. Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. All three passes are best-effort and fail-open; the archive sweep runs second so it acts on the rows reconcile just advanced to `merged`:
 
 ```bash
 bash .specify/extensions/gaia/lib/spec-reconcile.sh "$PWD" 2>/dev/null || true
 bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" 2>/dev/null || true
+bash .specify/extensions/gaia/lib/spec-abandon-empty.sh "$PWD" 2>/dev/null || true
 # Best-effort sweep of stale audit caches left by "Start new" or abandoned exits.
 # An audit-<id>/ cache is short-lived (created at 6a, deleted at step 7 skip, step 9
 # save, or the step-2 discard); one untouched for over a day is orphaned. Fail-open,
@@ -773,7 +774,7 @@ rm -f "$CACHE"
 
 The emit is the strongest signal for the intent-clarity-gap pattern; the `|| true` guard ensures emit failures never block the save. The cache file is deleted unconditionally after the emit attempt so a re-saved SPEC starts a fresh session window.
 
-5. **Token tally (never blocks):** tally the session's ground-truth token cost and record it. `${SPEC_ID}`'s folder already exists from the canonical save, so `tokens.md` lands beside `SPEC.md`. This call never blocks or fails the save; on unreadable input it degrades to a partial figure with a marker, never a fabricated number.
+5. **Token tally (never blocks):** tally the session's ground-truth token cost and record it. `${SPEC_ID}`'s folder already exists from the canonical save, so `cost.md` lands beside `SPEC.md`. This call never blocks or fails the save; on unreadable input it degrades to a partial figure with a marker, never a fabricated number.
 
 ```bash
 bash .gaia/scripts/token-tally.sh \
@@ -782,7 +783,7 @@ bash .gaia/scripts/token-tally.sh \
   --out-dir ".gaia/local/specs/${SPEC_ID}" || true
 ```
 
-The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/tokens.jsonl`, resolved to the main checkout so a worktree run still records there), writes `tokens.md` into the SPEC folder, and prints the four-bucket tally, total, and wall-clock elapsed. Surface the helper's printed tally to the user as part of the save confirmation, so the readout is reported when the action finishes.
+The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout so a worktree run still records there), writes `cost.md` into the SPEC folder, and prints the four-bucket tally, total, and wall-clock elapsed. Surface the helper's printed tally to the user as part of the save confirmation, so the readout is reported when the action finishes.
 
 **Auto-mode:** the tally fires identically in interactive and auto mode; it is a mechanical helper call, not a user prompt, so no auto-mode branch is needed. In auto mode the printed tally simply lands in the transcript, nothing to prompt.
 

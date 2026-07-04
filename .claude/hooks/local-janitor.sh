@@ -32,7 +32,7 @@
 #      sentinel names a branch that no longer exists AND is not marked
 #      DEFERRED/PAUSED/PARKED. Branch-gone + not-parked means the plan merged
 #      and its self-cleanup never ran (interrupted run). Archived, not deleted,
-#      via plan-archive.sh, so SUMMARY.md/tokens.md survive the sweep.
+#      via plan-archive.sh, so SUMMARY.md/cost.md survive the sweep.
 #   4. empty leftover dirs under .gaia/local, EXCEPT the structural drop-zones
 #      tooling expects to find. Pruned with `rmdir`, so a non-empty dir can
 #      never be removed even if the logic is wrong.
@@ -124,7 +124,7 @@ for running in "$root/.gaia/local/plans"/*/RUNNING "$root/.gaia/local/specs"/*/p
   [ -n "$branch" ] || continue          # unparseable sentinel -> skip
   # Branch still exists -> plan may be in-flight -> keep.
   git -C "$root" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null 2>&1 && continue
-  # Death proven: archive (not delete) so SUMMARY.md/tokens.md survive.
+  # Death proven: archive (not delete) so SUMMARY.md/cost.md survive.
   plan_rel="${plan_dir#"$root"/}"
   bash "$root/.gaia/scripts/plan-archive.sh" "$plan_rel" >/dev/null 2>&1 || true
 done

@@ -9,6 +9,7 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../plan-archive.sh"
   [ -x "$SCRIPT" ] || skip "plan-archive.sh not executable"
+  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
 
   # Canonicalize via `pwd -P`: macOS resolves /tmp -> /private/tmp inside
   # `git rev-parse`, and the script derives its repo root the same way.
@@ -16,6 +17,13 @@ setup() {
   SANDBOX_RAW="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
   git -C "$SANDBOX" init --quiet
+
+  # The spec-less arm shells out to cost-consolidate.sh at this fixed
+  # repo-relative path; mirror it inside the sandbox so that call resolves
+  # exactly like it does in a real checkout instead of silently no-op'ing.
+  mkdir -p "$SANDBOX/.specify/extensions/gaia/lib"
+  cp "$REPO_ROOT/.specify/extensions/gaia/lib/cost-consolidate.sh" \
+    "$SANDBOX/.specify/extensions/gaia/lib/cost-consolidate.sh"
 }
 
 # Run the script with cwd inside the sandbox. Args pass through.
@@ -24,24 +32,24 @@ run_in_sandbox() {
 }
 
 # seed_plan <rel_dir>: creates a plan folder (relative to $SANDBOX) with the
-# canonical fixture set: SUMMARY.md, tokens.md, KICKOFF.md, RUNNING, .work/x.
+# canonical fixture set: SUMMARY.md, cost.md, KICKOFF.md, RUNNING, .work/x.
 seed_plan() {
   local dir="$SANDBOX/$1"
   mkdir -p "$dir/.work"
   echo "summary" > "$dir/SUMMARY.md"
-  echo "tokens" > "$dir/tokens.md"
+  echo "tokens" > "$dir/cost.md"
   echo "kickoff" > "$dir/KICKOFF.md"
   : > "$dir/RUNNING"
   echo "scratch" > "$dir/.work/x"
 }
 
 # assert_pruned_only <abs_dir>: the dir exists and contains exactly
-# SUMMARY.md + tokens.md (nothing else, including dotfiles).
+# SUMMARY.md + cost.md (nothing else, including dotfiles).
 assert_pruned_only() {
   local dir="$1" count
   [ -d "$dir" ]
   [ -f "$dir/SUMMARY.md" ]
-  [ -f "$dir/tokens.md" ]
+  [ -f "$dir/cost.md" ]
   count="$(find "$dir" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
   [ "$count" -eq 2 ]
 }
@@ -77,9 +85,9 @@ assert_pruned_only() {
   [[ "$output" == *"Pruned colocated plan in place: .gaia/local/specs/SPEC-005/plan-2"* ]]
 }
 
-# --- 4. Missing SUMMARY.md / tokens.md tolerated ----------------------------
+# --- 4. Missing SUMMARY.md / cost.md tolerated ----------------------------
 
-@test "plan with neither SUMMARY.md nor tokens.md prunes to empty" {
+@test "plan with neither SUMMARY.md nor cost.md prunes to empty" {
   mkdir -p "$SANDBOX/.gaia/local/plans/bare/.work"
   echo "kickoff" > "$SANDBOX/.gaia/local/plans/bare/KICKOFF.md"
   : > "$SANDBOX/.gaia/local/plans/bare/RUNNING"
@@ -226,4 +234,47 @@ assert_pruned_only() {
   [ -f "$SANDBOX/.gaia/local/specs/SPEC-005/plan/KICKOFF.md" ]
   [ -f "$SANDBOX/.gaia/local/plan/escaped-marker" ]
   [[ "$output" == *"refusing"* ]]
+}
+
+# --- 16. Spec-less archive gains a grand total, no SPEC section ------------------
+
+@test "spec-less plan: archived cost.md gains a Total with no SPEC section" {
+  local dir="$SANDBOX/.gaia/local/plans/bar"
+  mkdir -p "$dir"
+  echo "summary" > "$dir/SUMMARY.md"
+  cat > "$dir/cost.md" <<'EOF'
+# Cost: PLAN-009 / bar-slug
+
+## Planning
+
+| Bucket | Tokens |
+| --- | --- |
+| Fresh input | 10 |
+| Cache write | 1 |
+| Cache read | 1 |
+| Output | 2 |
+| **Total** | 14 |
+
+**Est. cost (USD):** $0.10
+
+## Execution
+
+| Bucket | Tokens |
+| --- | --- |
+| Fresh input | 20 |
+| Cache write | 2 |
+| Cache read | 2 |
+| Output | 4 |
+| **Total** | 28 |
+
+**Est. cost (USD):** $0.20
+EOF
+
+  run run_in_sandbox ".gaia/local/plans/bar"
+  [ "$status" -eq 0 ]
+  archived="$SANDBOX/.gaia/local/plans/archived/bar/cost.md"
+  [ -f "$archived" ]
+  grep -qx '## Total' "$archived"
+  grep -qF '**Est. cost (USD):** $0.30' "$archived"
+  ! grep -qx '## SPEC' "$archived"
 }

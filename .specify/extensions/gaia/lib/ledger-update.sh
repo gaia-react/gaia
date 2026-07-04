@@ -41,9 +41,10 @@ if ! jq -e --arg id "$spec_id" '.specs[] | select(.id == $id)' "$ledger_path" >/
   exit 4
 fi
 
-# Canonical status vocabulary guard. The ledger's status is one of the four
-# canonical values draft|specified|merged|archived, plus the tolerated legacy
-# value in-progress (wiki/concepts/GAIA Spec.md, "Ledger status vocabulary").
+# Canonical status vocabulary guard. The ledger's status is one of the five
+# canonical values draft|specified|merged|archived|abandoned, plus the
+# tolerated legacy value in-progress (wiki/concepts/GAIA Spec.md, "Ledger
+# status vocabulary").
 # This is the single chokepoint for ledger writes, so rejecting an
 # off-vocabulary status here keeps every tool path (allocator finalize,
 # spec-reconcile, spec-close) from persisting a stray label. A patch that does
@@ -54,9 +55,9 @@ fi
 patch_status="$(jq -r 'if type == "object" and has("status") then (.status | tostring) else empty end' <<<"$patch" 2>/dev/null || true)"
 if [ -n "$patch_status" ]; then
   case "$patch_status" in
-    draft | specified | merged | archived | in-progress) ;;
+    draft | specified | merged | archived | abandoned | in-progress) ;;
     *)
-      echo "ledger-update: non-canonical status '$patch_status' (allowed: draft, specified, merged, archived)" >&2
+      echo "ledger-update: non-canonical status '$patch_status' (allowed: draft, specified, merged, archived, abandoned)" >&2
       exit 6
       ;;
   esac

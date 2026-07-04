@@ -246,7 +246,7 @@ FAKE
 
   # A ledger append on the worktree side is visible in the main checkout, so a
   # worktree KICKOFF run records to the surviving main ledger (SPEC-013 UAT-008).
-  printf '%s\n' '{"action":"execute","total":42}' >> "$LINKED/.gaia/local/telemetry/tokens.jsonl"
-  [ -f "$MAIN/.gaia/local/telemetry/tokens.jsonl" ]
-  [ "$(cat "$MAIN/.gaia/local/telemetry/tokens.jsonl")" = '{"action":"execute","total":42}' ]
+  printf '%s\n' '{"action":"execute","total":42}' >> "$LINKED/.gaia/local/telemetry/cost.jsonl"
+  [ -f "$MAIN/.gaia/local/telemetry/cost.jsonl" ]
+  [ "$(cat "$MAIN/.gaia/local/telemetry/cost.jsonl")" = '{"action":"execute","total":42}' ]
 }

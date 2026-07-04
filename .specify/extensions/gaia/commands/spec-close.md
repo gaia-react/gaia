@@ -65,8 +65,9 @@ Surface via `AskUserQuestion`:
 1. `mkdir -p .gaia/local/specs/archived/`.
 2. If `.gaia/local/specs/archived/<spec_id>/` already exists, the SPEC is already archived, report `<spec_id> already archived at .gaia/local/specs/archived/<spec_id>/.`, set `disposition = "archive"`, and skip the remaining sub-steps.
 3. Edit `.gaia/local/specs/<spec_id>/SPEC.md` frontmatter in place: set `status: archived`; set `archived_at: <ISO 8601 UTC>`. Preserve all other fields verbatim.
-4. Move the whole folder: `mv .gaia/local/specs/<spec_id> .gaia/local/specs/archived/<spec_id>`. Sibling artifacts move with it.
-5. Purge the SPEC's cache artifacts: `rm -f .gaia/local/cache/gate1-<spec_id>.json .gaia/local/cache/draft-<spec_id>.md .gaia/local/cache/spec-session-<spec_id>.json` and `rm -rf .gaia/local/cache/audit-<spec_id>/`. Never delete `.gaia/local/cache/wiki-promote/<spec_id>.json`, its presence signals wiki content not yet promoted and it is drained by its own owner (Step 2).
+4. Consolidate the SPEC's cost artifacts before the move: `bash .specify/extensions/gaia/lib/cost-consolidate.sh spec "$PWD" "$SPEC_ID" || true` (fail-open, non-blocking). Splices the SPEC-root and plan-folder `cost.md` sections into one dollars-led `cost.md` with a grand total, moves the plan folder's `SUMMARY.md` up beside `SPEC.md`, and removes the `plan[-N]/` subfolder, so the folder that moves next is already flat.
+5. Move the whole folder: `mv .gaia/local/specs/<spec_id> .gaia/local/specs/archived/<spec_id>`. Sibling artifacts move with it.
+6. Purge the SPEC's cache artifacts: `rm -f .gaia/local/cache/gate1-<spec_id>.json .gaia/local/cache/draft-<spec_id>.md .gaia/local/cache/spec-session-<spec_id>.json` and `rm -rf .gaia/local/cache/audit-<spec_id>/`. Never delete `.gaia/local/cache/wiki-promote/<spec_id>.json`, its presence signals wiki content not yet promoted and it is drained by its own owner (Step 2).
 
 **On `Delete`:**
 

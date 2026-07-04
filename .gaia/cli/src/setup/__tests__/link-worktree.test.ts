@@ -261,7 +261,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
         '.gaia',
         'local',
         'telemetry',
-        'tokens.jsonl'
+        'cost.jsonl'
       ),
       '{}',
       'utf8'
