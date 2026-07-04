@@ -28,6 +28,10 @@
 
 setup() {
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
+  # Both hooks recompute RED signals via the Node helper, which resolves
+  # `typescript` from node_modules; skip where deps aren't installed (e.g. the
+  # lean audit-ci-tests CI box) so `bats .gaia/tests/hooks/` stays green there.
+  [ -d "$HOME_ROOT/node_modules/typescript" ] || skip "typescript not installed (node-dependent RED suite)"
   CAPTURE_HOOK="$HOME_ROOT/.claude/hooks/capture-red-observations.sh"
   CHECK_HOOK="$HOME_ROOT/.claude/hooks/red-verify-commit-check.sh"
   BARE_TEST_HOOK="$HOME_ROOT/.claude/hooks/block-bare-test.sh"

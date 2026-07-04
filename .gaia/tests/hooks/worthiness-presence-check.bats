@@ -29,6 +29,11 @@
 
 setup() {
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
+  # The hook (and this suite's seed helpers) recompute signals via the Node
+  # helper, which resolves `typescript` from node_modules; skip where deps
+  # aren't installed (e.g. the lean audit-ci-tests CI box) so
+  # `bats .gaia/tests/hooks/` stays green there.
+  [ -d "$HOME_ROOT/node_modules/typescript" ] || skip "typescript not installed (node-dependent RED suite)"
   HOOK_ABS="$HOME_ROOT/.claude/hooks/worthiness-presence-check.sh"
   HELPER="$HOME_ROOT/.gaia/scripts/red-ledger/extract-test-signals.mjs"
 

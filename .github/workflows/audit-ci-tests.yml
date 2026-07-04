@@ -39,11 +39,14 @@ jobs:
             code:
               - '.github/audit/**'
               - '.github/workflows/audit-ci-tests.yml'
-              - '.claude/hooks/lib/repo-scope.sh'
-              - '.claude/hooks/pr-merge-audit-check.sh'
-              - '.claude/hooks/post-audit-status.sh'
+              # '.claude/hooks/**' is the superset of the specific hooks this
+              # suite used to filter on (repo-scope.sh, pr-merge-audit-check.sh,
+              # post-audit-status.sh); it now also covers every hook exercised
+              # by the .gaia/tests/hooks/ suites below.
+              - '.claude/hooks/**'
               - '.gaia/scripts/**'
               - '.gaia/tests/forensics/**'
+              - '.gaia/tests/hooks/**'
               - '.claude/skills/gaia/references/forensics*'
               - '.github/forensics/**'
       - if: steps.filter.outputs.code == 'true'
@@ -58,3 +61,13 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         name: Run .gaia/tests/forensics bats suites
         run: bash .gaia/tests/forensics/run-all.sh
+      # The hook suites are authored/run locally on macOS bash 3.2.57, where a
+      # false mid-test `[[ ... ]]` does NOT fail the test (bash 3.2 skips it
+      # under set -e), so a broken assertion can green locally. Ubuntu bats runs
+      # under bash 5, which enforces `[[ ]]`, making this the authoritative gate
+      # for token-tally-git-op.bats, token-rollup-merge.bats, and siblings. The
+      # four node-dependent RED-verify suites self-skip here (no node_modules on
+      # this lean box); see their setup() guards.
+      - if: steps.filter.outputs.code == 'true'
+        name: Run .gaia/tests/hooks bats suites
+        run: bats .gaia/tests/hooks/
