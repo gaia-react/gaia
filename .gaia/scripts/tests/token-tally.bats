@@ -36,6 +36,24 @@
 #   single/    -> one usage line, valid ts       -> duration 0, available true
 #   zero/      -> one timestamped non-usage line -> available false, null, buckets 0, partial false
 #   malformed/ -> one usage line, unparseable ts -> available false, buckets 11/22/33/44, partial false
+#
+# Multi-model attribution (FC-1, SPEC-019 by_model): HAND-COMPUTED oracle,
+# never derived by running the helper.
+#   multimodel/ (session fixturemultimodel0001):
+#     a1 claude-opus-4-8   fresh=100 cwrite=100(5m=40 /1h=60)  cread=1000 out=10
+#     a2 claude-opus-4-8   fresh=200 cwrite=300(5m=0  /1h=300) cread=2000 out=20
+#     a3 claude-sonnet-4-6 fresh=30  cwrite=30 (5m=10 /1h=20)  cread=3000 out=3
+#     s1 <synthetic>       all zero -> excluded from by_model
+#     a1 is streamed across 2 lines with an identical message.id (decoy proving
+#     dedup runs BEFORE grouping-by-model).
+#     by_model["claude-opus-4-8"]   = {fresh_input:300, cache_write_5m:40, cache_write_1h:360, cache_read:3000, output:30}
+#     by_model["claude-sonnet-4-6"] = {fresh_input:30,  cache_write_5m:10, cache_write_1h:20,  cache_read:3000, output:3}
+#     aggregate buckets = {fresh_input:330, cache_write:430, cache_read:6000, output:33}  total:6793
+#   multimodel/splitless/ (session fixturemultimodelsplitless0001): one usage
+#     line lacking the nested cache_creation object but a non-zero
+#     cache_creation_input_tokens (500), proving the 1h fallback:
+#     by_model["claude-sonnet-4-6"] = {cache_write_5m:0, cache_write_1h:500, ...},
+#     reconciling to aggregate cache_write:500.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
@@ -44,6 +62,8 @@ setup() {
 
   ANCHOR="$FIX/projects"
   SESSION="fixturesession0001"
+  MULTIMODEL="$FIX/multimodel/projects"
+  MULTIMODEL_SPLITLESS="$FIX/multimodel/splitless/projects"
 
   OUTDIR="$BATS_TEST_TMPDIR/out"
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
@@ -423,4 +443,73 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(led '.buckets.cache_write')" -eq 22 ]
   [ "$(led '.buckets.cache_read')" -eq 33 ]
   [ "$(led '.buckets.output')" -eq 44 ]
+}
+
+# ---------- 14. Multi-model attribution (FC-1, SPEC-019) ----------
+@test "multimodel: by_model attributes each model, sentinel excluded" {
+  run bash "$SCRIPT" --action execute --spec-id SPEC-019 --plan-slug spec-019-dollar-cost \
+    --out-dir "$OUTDIR" --session-id "fixturemultimodel0001" \
+    --projects-root "$MULTIMODEL" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+
+  [ "$(led '.by_model | keys | join(",")')" = "claude-opus-4-8,claude-sonnet-4-6" ]
+  [ "$(led '.by_model["<synthetic>"]')" = "null" ]
+
+  [ "$(led '.by_model["claude-opus-4-8"].fresh_input')" -eq 300 ]
+  [ "$(led '.by_model["claude-opus-4-8"].cache_write_5m')" -eq 40 ]
+  [ "$(led '.by_model["claude-opus-4-8"].cache_write_1h')" -eq 360 ]
+  [ "$(led '.by_model["claude-opus-4-8"].cache_read')" -eq 3000 ]
+  [ "$(led '.by_model["claude-opus-4-8"].output')" -eq 30 ]
+
+  [ "$(led '.by_model["claude-sonnet-4-6"].fresh_input')" -eq 30 ]
+  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 10 ]
+  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 20 ]
+  [ "$(led '.by_model["claude-sonnet-4-6"].cache_read')" -eq 3000 ]
+  [ "$(led '.by_model["claude-sonnet-4-6"].output')" -eq 3 ]
+}
+
+@test "multimodel: per-model buckets reconcile to the aggregate" {
+  run bash "$SCRIPT" --action execute --spec-id SPEC-019 --plan-slug spec-019-dollar-cost \
+    --out-dir "$OUTDIR" --session-id "fixturemultimodel0001" \
+    --projects-root "$MULTIMODEL" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+
+  # Reconciliation invariant (FC-1): Σ per-model == aggregate buckets.
+  [ "$(led '([.by_model[].fresh_input] | add) == .buckets.fresh_input')" = "true" ]
+  [ "$(led '([.by_model[] | (.cache_write_5m + .cache_write_1h)] | add) == .buckets.cache_write')" = "true" ]
+  [ "$(led '([.by_model[].cache_read] | add) == .buckets.cache_read')" = "true" ]
+  [ "$(led '([.by_model[].output] | add) == .buckets.output')" = "true" ]
+}
+
+@test "multimodel: cache-write TTL split captured per model" {
+  run bash "$SCRIPT" --action execute --spec-id SPEC-019 --plan-slug spec-019-dollar-cost \
+    --out-dir "$OUTDIR" --session-id "fixturemultimodel0001" \
+    --projects-root "$MULTIMODEL" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+
+  [ "$(led '.by_model["claude-opus-4-8"].cache_write_5m')" -eq 40 ]
+  [ "$(led '.by_model["claude-opus-4-8"].cache_write_1h')" -eq 360 ]
+  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 10 ]
+  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 20 ]
+
+  # 5m + 1h summed across models equals the aggregate cache_write bucket.
+  [ "$(led '(([.by_model[].cache_write_5m] | add) + ([.by_model[].cache_write_1h] | add)) == .buckets.cache_write')" = "true" ]
+}
+
+@test "split-less usage falls back to 1h and still reconciles" {
+  run bash "$SCRIPT" --action execute --spec-id SPEC-019 --plan-slug spec-019-dollar-cost \
+    --out-dir "$OUTDIR" --session-id "fixturemultimodelsplitless0001" \
+    --projects-root "$MULTIMODEL_SPLITLESS" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+
+  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 0 ]
+  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 500 ]
+  [ "$(led '.buckets.cache_write')" -eq 500 ]
+}
+
+@test "legacy-shaped (model-less) session omits by_model" {
+  run_anchor
+  [ "$status" -eq 0 ]
+  [ "$(led '.by_model')" = "null" ]
+  [ "$(led '.total')" -eq 11110 ]
 }

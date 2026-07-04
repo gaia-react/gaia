@@ -92,6 +92,12 @@ bats_require_minimum_version 1.5.0
 #     execute line and the Total line must render "unavailable" for elapsed,
 #     never a fabricated "0s"; the buckets still show the real numbers; the
 #     partial marker is appended (elapsed unavailable is a lower-bound signal).
+#
+#   committed-rate-smoke.jsonl (SPEC-260, SPEC-019 DP-003: one execute row,
+#   by_model claude-opus-4-8 fresh_input=200,000 + claude-sonnet-4-6
+#   fresh_input=100,000) -- the ONE test that resolves the LIVE committed
+#   .gaia/scripts/token-rates.json (no --rate-table override), pricing
+#   against the shipped seed rates: opus $1.00 + sonnet $0.30 = $1.30.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
@@ -159,7 +165,13 @@ setup() {
 
 # ---------- 7. UAT-006 full render: spec + plan + execute + Total + buckets ----------
 @test "full-cycle: renders spec/plan/execute/Total with correct grand buckets, unrelated feature excluded" {
-  run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIX/full-cycle.jsonl"
+  # --rate-table pins a hermetic (valid) table (CG-003): without it, the reader
+  # falls back to the LIVE committed .gaia/scripts/token-rates.json via
+  # --show-toplevel to decide rate_table_ok FIRST, so an absent/invalid
+  # committed table would flip this fixture's dollar line to "unavailable
+  # (rate table unreadable)" instead of the "records predate" line this test
+  # asserts. These fixture rows have no by_model either way (SPEC-019).
+  run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIX/full-cycle.jsonl" --rate-table .gaia/scripts/tests/fixtures/token-price/rates.json
   [ "$status" -eq 0 ]
   [[ "$output" == *"spec:       37,000   (elapsed 10m0s)"* ]]
   [[ "$output" == *"plan:       38,300   (elapsed 11m40s)"* ]]
@@ -171,6 +183,9 @@ setup() {
   [[ "$output" == *"Output:       12,300"* ]]
   # the unrelated SPEC-999 noise row must never leak into this feature's roll-up
   [[ "$output" != *"39,999,996"* ]]
+  # SPEC-019: these rows are legacy (no by_model) -- the dollar figure degrades
+  # to a marked unavailable line, never a guessed number.
+  [[ "$output" == *"Est. cost (USD): unavailable (records predate per-model attribution)"* ]]
 }
 
 # ---------- 8. UAT-007 spec-less plan omits the spec line ----------
@@ -269,4 +284,21 @@ setup() {
   [[ "$output" == *"Cache read:   4,000"* ]]
   [[ "$output" == *"Output:       1,000"* ]]
   [[ "$output" == *"(partial: some ledger input was unreadable or lacked timing"* ]]
+}
+
+# ---------- 16. DP-003: committed rate table smoke case (SPEC-019) ----------
+# The ONLY test that resolves the LIVE committed .gaia/scripts/token-rates.json
+# (no --rate-table override), so a wrong number in the shipped seed rates is
+# caught here. Every other dollar assertion in the suite injects a hermetic
+# fixture table instead. claude-opus-4-8 seed rate: input $5/MTok; claude-
+# sonnet-4-6 seed rate: input $3/MTok (see token-rates.json).
+#   opus:   200,000 * 5 / 1e6 = $1.00
+#   sonnet: 100,000 * 3 / 1e6 = $0.30
+#   Total = $1.30
+# Keep this expected value in sync if the committed seed rates ever change.
+@test "committed-rate-smoke: resolves the real token-rates.json and prices the committed seed rates" {
+  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIX/committed-rate-smoke.jsonl"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'execute:   $1.30'* ]]
+  [[ "$output" == *'Total:     $1.30'* ]]
 }

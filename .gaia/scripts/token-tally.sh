@@ -151,10 +151,13 @@ fi
 [[ -z "$SESSION_ID" ]] && { log "token-tally: no session id (--session-id or CLAUDE_CODE_SESSION_ID)"; partial=1; }
 
 # ---------- single-pass tally over main transcript + sidecars ----------
-# Per file, ONE streaming read emits {usage:[{id,u}], tmin, tmax} where usage is
+# Per file, ONE streaming read emits {usage:[{id,u,m}], tmin, tmax} where usage is
 # deduped within the file (last-wins) and tmin/tmax range over EVERY usage line
-# (not the deduped survivors). A file that fails to parse flips `partial` and
-# contributes nothing, but never aborts the run or the other files.
+# (not the deduped survivors). `m` carries `.message.model` (null when absent),
+# threaded through alongside the usage object so the aggregate step can attribute
+# buckets per model AFTER the same dedup (see FC-1 in the SPEC-019 plan). A file
+# that fails to parse flips `partial` and contributes nothing, but never aborts
+# the run or the other files.
 tmp="$(mktemp 2>/dev/null)" || tmp=""
 [[ -z "$tmp" ]] && { log "token-tally: mktemp failed; degrading to partial"; partial=1; }
 
@@ -163,13 +166,13 @@ emit_file() {
     reduce inputs as $x (
       {usage:{}, tmin:null, tmax:null};
       if $x.message.usage != null
-      then .usage[($x.message.id // $x.uuid)] = $x.message.usage
+      then .usage[($x.message.id // $x.uuid)] = {u: $x.message.usage, m: ($x.message.model // null)}
          | (if ($x.timestamp | type) == "string"
             then .tmin = (if .tmin == null or $x.timestamp < .tmin then $x.timestamp else .tmin end)
                | .tmax = (if .tmax == null or $x.timestamp > .tmax then $x.timestamp else .tmax end)
             else . end)
       else . end)
-    | {usage: (.usage | to_entries | map({id: .key, u: .value})), tmin, tmax}
+    | {usage: (.usage | to_entries | map({id: .key, u: .value.u, m: .value.m})), tmin, tmax}
   ' "$1" >>"$tmp" 2>/dev/null || partial=1
 }
 
@@ -199,19 +202,46 @@ CREAD=0
 OUT=0
 TMIN=""
 TMAX=""
+BY_MODEL='{}'
 if [[ -n "$tmp" && -s "$tmp" ]]; then
   IFS=$'\t' read -r FRESH CWRITE CREAD OUT TMIN TMAX < <(
     jq -rs '
-      ((map(.usage) | add // []) | reduce .[] as $x ({}; .[$x.id] = $x.u) | [.[]]) as $u
-      | [ ($u | map(.input_tokens // 0)                | add // 0),
-          ($u | map(.cache_creation_input_tokens // 0) | add // 0),
-          ($u | map(.cache_read_input_tokens // 0)     | add // 0),
-          ($u | map(.output_tokens // 0)               | add // 0),
+      ((map(.usage) | add // []) | reduce .[] as $x ({}; .[$x.id] = {u: $x.u, m: $x.m}) | [.[]]) as $u
+      | [ ($u | map(.u.input_tokens // 0)                | add // 0),
+          ($u | map(.u.cache_creation_input_tokens // 0) | add // 0),
+          ($u | map(.u.cache_read_input_tokens // 0)     | add // 0),
+          ($u | map(.u.output_tokens // 0)               | add // 0),
           (map(.tmin) | map(select(. != null)) | min // ""),
           (map(.tmax) | map(select(. != null)) | max // "") ]
       | @tsv
     ' "$tmp" 2>/dev/null || printf '0\t0\t0\t0\t\t\n'
   )
+
+  # ---------- per-model attribution (FC-1): same dedup-by-id, grouped by model ----------
+  # Reuses the identical global dedup so per-model sums reconcile exactly to the
+  # aggregate above (AUDIT directive 3: dedup THEN group). A model key is dropped
+  # when `.m` is null/empty (line not attributable) or its five-bucket sum is
+  # zero (drops `<synthetic>` and other zero-usage sentinels). Never blocks: any
+  # failure here degrades BY_MODEL to `{}`, so `by_model` is simply omitted below.
+  BY_MODEL="$(jq -cs '
+    ((map(.usage) | add // []) | reduce .[] as $x ({}; .[$x.id] = {u: $x.u, m: $x.m}) | [.[]]) as $u
+    | ($u | map(select(.m != null and .m != "")))
+    | group_by(.m)
+    | map({
+        key: .[0].m,
+        value: (reduce .[] as $r (
+          {fresh_input: 0, cache_write_5m: 0, cache_write_1h: 0, cache_read: 0, output: 0};
+          .fresh_input      += ($r.u.input_tokens // 0)
+          | .cache_write_5m += ($r.u.cache_creation.ephemeral_5m_input_tokens // 0)
+          | .cache_write_1h += ($r.u.cache_creation.ephemeral_1h_input_tokens // ($r.u.cache_creation_input_tokens // 0))
+          | .cache_read     += ($r.u.cache_read_input_tokens // 0)
+          | .output         += ($r.u.output_tokens // 0)
+        ))
+      })
+    | map(select(([.value[]] | add) > 0))
+    | from_entries
+  ' "$tmp" 2>/dev/null)"
+  jq -e 'type == "object"' >/dev/null 2>&1 <<<"$BY_MODEL" || BY_MODEL='{}'
 fi
 [[ -n "$tmp" ]] && rm -f "$tmp" 2>/dev/null
 
@@ -303,6 +333,7 @@ rec="$(jq -nc \
   --argjson dur "${DUR_SECONDS:-null}" \
   --argjson avail "$DUR_AVAIL" \
   --arg ts "$TS" \
+  --argjson by_model "$BY_MODEL" \
   '
     {action: $action, spec_id: $spec_id}
     + (if $action == "spec" then {} else {plan_slug: $plan_slug} end)
@@ -317,6 +348,7 @@ rec="$(jq -nc \
         duration_available: $avail,
         ts: $ts
       }
+    + (if ($by_model | type) == "object" and ($by_model | length) > 0 then {by_model: $by_model} else {} end)
   ' 2>/dev/null || true)"
 
 if [[ -n "$rec" ]]; then
