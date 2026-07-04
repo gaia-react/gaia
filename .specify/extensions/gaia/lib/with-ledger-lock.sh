@@ -8,7 +8,7 @@
 #   with_ledger_lock <lock_dir> <command> [args...]
 #
 # <lock_dir> is an already-existing directory (callers mkdir -p the ledger
-# parent before calling, typically "${repo_root%/}/.gaia"). <command> [args...]
+# parent before calling, typically "${repo_root%/}/.gaia/local/specs"). <command> [args...]
 # runs inside the held mutex; its exit code passes through unchanged.
 #
 # Lock primitive selection, in order:

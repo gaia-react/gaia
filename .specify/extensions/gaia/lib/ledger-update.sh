@@ -76,7 +76,7 @@ apply_patch() {
 }
 
 rc=0
-with_ledger_lock "${repo_root%/}/.gaia" apply_patch || rc=$?
+with_ledger_lock "${repo_root%/}/.gaia/local/specs" apply_patch || rc=$?
 if [ "$rc" -ne 0 ]; then
   if [ "$rc" -eq 75 ]; then
     echo "ledger-update: could not acquire ledger lock; patch not applied" >&2

@@ -557,12 +557,12 @@ case "$mode" in
     # C1 lock-dir precondition: the dir must exist before with_ledger_lock.
     # ensure_ledger already mkdir -p's it via the ledger parent, but make the
     # precondition explicit and independent of ledger-init ordering.
-    mkdir -p "${repo_root%/}/.gaia"
+    mkdir -p "${repo_root%/}/.gaia/local/specs"
     # Capture rc directly, NOT `if ! with_ledger_lock …; then rc=$?`: after a
     # `!`-negated command, $? is the negation's status (0), masking the real
     # rc. `|| rc=$?` preserves the helper's actual exit code under set -e.
     rc=0
-    with_ledger_lock "${repo_root%/}/.gaia" allocate_next "$subject_arg" || rc=$?
+    with_ledger_lock "${repo_root%/}/.gaia/local/specs" allocate_next "$subject_arg" || rc=$?
     if [ "$rc" -ne 0 ]; then
       if [ "$rc" -eq 75 ]; then
         echo "spec-allocator: could not acquire ledger lock; refuse to allocate (would risk duplicate SPEC ids)" >&2
@@ -574,10 +574,10 @@ case "$mode" in
   reserve_pending)
     require_git
     ensure_ledger
-    mkdir -p "${repo_root%/}/.gaia"
+    mkdir -p "${repo_root%/}/.gaia/local/specs"
     # Fail-open: process deferred reservations under the mutex, but always exit 0
     # (a lock timeout or reconcile snag must never fail a caller's /gaia-spec).
-    with_ledger_lock "${repo_root%/}/.gaia" _reserve_pending_locked || true
+    with_ledger_lock "${repo_root%/}/.gaia/local/specs" _reserve_pending_locked || true
     exit 0
     ;;
   highest)
