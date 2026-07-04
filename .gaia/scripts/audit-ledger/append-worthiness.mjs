@@ -26,7 +26,7 @@
 // so the signal byte-matches what the RED ledger and the presence-gate
 // recompute produce. It does NOT reinvent the identity primitive.
 //
-// Ledger path: .gaia/local/audit-ledger/worthiness.jsonl (append-only,
+// Ledger path: .gaia/local/audit/worthiness.jsonl (append-only,
 // gitignored, grows-forever, sibling to the RED ledger). Override with
 // WORTHINESS_LEDGER_PATH (the test seam; production leaves it unset).
 //
@@ -48,7 +48,7 @@ const SIGNAL_HELPER = path.join(
   'extract-test-signals.mjs',
 );
 
-const DEFAULT_LEDGER = '.gaia/local/audit-ledger/worthiness.jsonl';
+const DEFAULT_LEDGER = '.gaia/local/audit/worthiness.jsonl';
 const VERDICTS = new Set(['keep', 'fix', 'delete']);
 
 const fail = (message, code) => {

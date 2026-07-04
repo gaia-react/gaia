@@ -4,7 +4,7 @@
 # the worthiness audit.
 #
 # The hook denies `gh pr merge` when an emergent test the PR changed has no
-# worthiness-ledger line (.gaia/local/audit-ledger/worthiness.jsonl) matching its
+# worthiness-ledger line (.gaia/local/audit/worthiness.jsonl) matching its
 # current content. It scopes to the emergent test files this PR changed (the diff
 # against the merge base with the default branch), decides emergent membership via
 # the determinism classifier, recomputes each test's signal via the shared RED
@@ -83,15 +83,15 @@ signals_for() {
 # Append a worthiness-ledger line. Args: file fullName signal verdict [artifact].
 seed_ledger() {
   local file="$1" full="$2" sig="$3" verdict="${4:-keep}" artifact="${5:-}"
-  mkdir -p "$REPO/.gaia/local/audit-ledger"
+  mkdir -p "$REPO/.gaia/local/audit"
   if [ -n "$artifact" ]; then
     jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg v "$verdict" --arg a "$artifact" \
       '{schema:1, file:$f, fullName:$n, signal:$s, verdict:$v, auditedAt:"2026-06-23T00:00:00Z", artifact:$a}' \
-      >> "$REPO/.gaia/local/audit-ledger/worthiness.jsonl"
+      >> "$REPO/.gaia/local/audit/worthiness.jsonl"
   else
     jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg v "$verdict" \
       '{schema:1, file:$f, fullName:$n, signal:$s, verdict:$v, auditedAt:"2026-06-23T00:00:00Z"}' \
-      >> "$REPO/.gaia/local/audit-ledger/worthiness.jsonl"
+      >> "$REPO/.gaia/local/audit/worthiness.jsonl"
   fi
 }
 

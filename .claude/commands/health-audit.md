@@ -16,8 +16,11 @@ Read `.gaia/cli/health/runbook.md` end-to-end before doing anything else. The ru
 Execute the cycle loop from the runbook (max N=3):
 
 ```
-if .gaia/local/audit/ exists: mv it to .gaia/local/audit.prev-$(date +%s)/
 mkdir -p .gaia/local/audit
+if leftover c1/c2/c3 cycle dirs exist from an interrupted prior run:
+  archive only those into .gaia/local/audit/archived/$(date +%s)/
+  (merge-gate markers, KNOWLEDGE-*.md reports, worthiness.jsonl, and archived/ stay put)
+prune .gaia/local/audit/archived/ to the 3 most recent runs (delete older, by epoch)
 
 For cycle in 1..3:
   you create c<N>/ and bucket sub-dirs
@@ -38,7 +41,7 @@ For cycle in 1..3:
   start the next cycle
 After cycle 3 without clean: escalate (max loops hit)
 
-On clean exit: rm -rf .gaia/local/audit/c* (whitelisted)
+On clean exit: rm -rf .gaia/local/audit/c[0-9] (whitelisted)
 On escalation: preserve all c*/ dirs; surface paths in escalation report
 ```
 
@@ -76,7 +79,7 @@ Shared-fitness grade: <honest floor of seven category grades>
 Cycles: <N>
 Findings closed: <count> (per cycle: <breakdown>)
 Non-blocking residuals: <count> (e.g. wiki/.state.json post-sync drift, recorded not blocking)
-Artifacts: cleaned (.gaia/local/audit/c* removed)
+Artifacts: cleaned (.gaia/local/audit/c[0-9] removed)
 ```
 
 On escalation:
@@ -100,6 +103,6 @@ The overall grade is F-to-A+ and is never higher than the shared-fitness grade. 
 - Do not commit. Fixers leave the working tree dirty; the human commits.
 - Do not write to `wiki/log.md` or `wiki/hot.md`.
 - Do not edit the runbook mid-loop. If the runbook needs changing, escalate first.
-- Do not delete `.gaia/local/audit/c*/` on escalation. Preserve everything for human review.
+- Do not delete `.gaia/local/audit/c[0-9]/` on escalation. Preserve everything for human review.
 
 Begin by reading `.gaia/cli/health/runbook.md`.

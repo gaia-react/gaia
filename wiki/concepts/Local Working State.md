@@ -22,7 +22,7 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `audit/<sha>.ok`, `audit/<sha>.dispositions.json` | [[Code Review Audit Agent]] merge gate | ephemeral | spent once orphaned |
 | `audit/progress.log` | audit gate | live | overwritten each run |
 | `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
-| `audit-ledger/worthiness.jsonl` | worthiness check | live | append-only |
+| `audit/worthiness.jsonl` | worthiness check | live | append-only |
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
 | `debt/` | debt sentinel | live | recomputed |
 | `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | per-spec, orphaned on archive |
@@ -47,6 +47,6 @@ The sweep is fail-safe: any inability to prove a thing is dead (no git, an unrea
 
 ## Deciding by hand
 
-Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for an archived spec. The append-only ledgers (`red-ledger`, `audit-ledger`, `telemetry`), the identity files (`.project-id`, `setup-state.json`, `mentorship.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
+Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for an archived spec. The append-only ledgers (`red-ledger/observations.jsonl`, `audit/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`, `mentorship.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
 
 See [[Claude Hooks]] for the hook surface and [[Audit Disposition and Debt Drain]] for the marker lifecycle.

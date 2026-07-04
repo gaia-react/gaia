@@ -126,7 +126,7 @@ done
 # --- 4. Stray empty dirs (keep the structural drop-zones) ------------------
 is_drop_zone() {
   case "$1" in
-    audit | audit-ledger | cache | debt | forensics | handoff | plans \
+    audit | audit/archived | cache | debt | forensics | handoff | plans \
       | plans/archived | red-ledger | red-ledger/.tmp | specs | specs/archived \
       | telemetry | telemetry/cloud) return 0 ;;
     *) return 1 ;;

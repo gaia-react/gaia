@@ -33,7 +33,7 @@ For cycle in 1..3:
         if cycle == 3: escalate with reason false-clean-refuted (preserve all c*/ dirs, surface paths), exit   # no next cycle to fix-and-reverify
         else: skip the clean exit; fall through to the oscillation check + Fixer dispatch below (the injected real-fix lands next cycle)
     if still clean (challenger cleared, or already ran this run):
-      Orchestrator removes .gaia/local/audit/c* (whitelisted; top-level dir kept as marker)
+      Orchestrator removes .gaia/local/audit/c[0-9] (whitelisted; top-level dir kept as marker)
       report the honest overall grade (A+ when no findings of any kind, else the floor that non-blocking residuals may cap at A), exit
   Orchestrator checks open-finding fingerprints vs prior cycle (mechanical diff via jq; non-blocking residuals excluded, see §Termination) → if oscillation: escalate (Orchestrator preserves all c*/ dirs, surfaces paths in escalation report)
   Orchestrator spawns parallel Fixers (lane-aware leaf subagents)
@@ -330,7 +330,7 @@ Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: 
 A substantiated finding (any lens) revokes the clean exit. The Orchestrator injects it into `c<N>/findings.json` as a finding with `action: "real-fix"`, `bucket: "challenger"`, a `lane` chosen from the file it targets, and a `fingerprint` in the `<check-id>:<file>:<line>:<first-40-chars>` format. Then:
 
 - **Clean cycle is NOT cycle 3** (budget remains): continue into the normal Fixer → next-cycle machinery. The Orchestrator dispatches Fixers for the injected finding and starts the next cycle. The injected finding participates in the standard oscillation guard (which keys on `action == "real-fix"` fingerprints, bucket-agnostic). A Fixer that reports unable to fix triggers the existing `fixer-unable-to-fix` escalation.
-- **Clean cycle IS cycle 3** (no next cycle to fix-and-reverify): do NOT inject-and-continue (there is nowhere for the fix to land). Escalate with reason `false-clean-refuted` and PRESERVE all `c*/` dirs (skip the clean-exit `rm -rf .gaia/local/audit/c*`).
+- **Clean cycle IS cycle 3** (no next cycle to fix-and-reverify): do NOT inject-and-continue (there is nowhere for the fix to land). Escalate with reason `false-clean-refuted` and PRESERVE all `c*/` dirs (skip the clean-exit `rm -rf .gaia/local/audit/c[0-9]`).
 
 **Oscillation coverage (design note).** A `BS` blind-spot finding is by definition NOT re-detected by the buckets on the next cycle, so the bucket-sourced oscillation guard does not cover a failed fix of a `BS` finding. The concrete protections for a failed challenger fix are: the `fixer-unable-to-fix` escalation (immediate, when a Fixer reports it cannot fix), the cycle-3 `false-clean-refuted` escalation (the terminal backstop), the optional deep `FV` lens (re-detects failed fixes directly), and resurfacing on the next `/health-audit` run. The general oscillation guard covers only the subset of findings the buckets can re-detect; it does not on its own protect a blind-spot finding.
 
@@ -391,17 +391,17 @@ The `verdict` field stores Bucket D's verdict verbatim. It is _not_ a synthesize
 
 Lifecycle:
 
-- **At `/health-audit` start**: Orchestrator runs `[ -d .gaia/local/audit ] && mv .gaia/local/audit .gaia/local/audit.prev-$(date +%s) ; mkdir -p .gaia/local/audit`. Archives stale dirs from prior interrupted runs.
+- **At `/health-audit` start**: Orchestrator runs `mkdir -p .gaia/local/audit; if ls -d .gaia/local/audit/c[0-9] >/dev/null 2>&1; then TS=$(date +%s); mkdir -p ".gaia/local/audit/archived/$TS"; mv .gaia/local/audit/c[0-9] ".gaia/local/audit/archived/$TS/"; fi; find .gaia/local/audit/archived -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -r | tail -n +4 | while IFS= read -r d; do rm -rf "$d"; done`. Archives only leftover cycle dirs from a prior interrupted run into `archived/<epoch>/`, then prunes `archived/` to the 3 most recent runs (older snapshots are deleted; the epoch in each folder name is the numeric sort key). The merge-gate markers, `KNOWLEDGE-*.md` reports, `worthiness.jsonl`, and `archived/` itself stay in place.
 - **At cycle start**: Orchestrator creates `c<N>/` and bucket sub-dirs.
 - **Auditors**: write raw outputs to their per-cycle paths; return summary + file path in their report (not the full content).
 - **Adjudicator**: reads bucket files, classifies, writes `c<N>/findings.json`.
 - **Orchestrator (oscillation detection)**: mechanical diff via `jq -r '.findings[].fingerprint' .gaia/local/audit/c<N>/findings.json | sort` against the prior cycle's same. Non-empty intersection → oscillation, escalate.
-- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an _effective_ shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf .gaia/local/audit/c*` (whitelisted; safe). Top-level dir kept as run marker. The `rm -rf .gaia/local/audit/c*` runs only AFTER the false-clean challenger clears the terminal clean cycle (see §False-clean challenger); a challenger that revokes the exit either continues the loop (non-cycle-3) or escalates `false-clean-refuted` and preserves `c*/` (cycle 3).
+- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an _effective_ shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf .gaia/local/audit/c[0-9]` (whitelisted; safe). Top-level dir kept as run marker. The `rm -rf .gaia/local/audit/c[0-9]` runs only AFTER the false-clean challenger clears the terminal clean cycle (see §False-clean challenger); a challenger that revokes the exit either continues the loop (non-cycle-3) or escalates `false-clean-refuted` and preserves `c*/` (cycle 3).
 - **Escalation**: Orchestrator preserves all `c*/` dirs and surfaces their paths in the escalation report for human review.
 
 ## State
 
-Cycle artifacts persist in `.gaia/local/audit/c<N>/` for the duration of the audit. On a clean exit (which the terminal cycle reaches only after the false-clean challenger clears, see §False-clean challenger), the Orchestrator removes all `c*/` dirs (`rm -rf .gaia/local/audit/c*`; whitelisted; top-level dir kept as run marker). On escalation, all `c*/` dirs are preserved and surfaced in the escalation report for human review; a cycle-3 `false-clean-refuted` escalation preserves them the same way.
+Cycle artifacts persist in `.gaia/local/audit/c<N>/` for the duration of the audit. On a clean exit (which the terminal cycle reaches only after the false-clean challenger clears, see §False-clean challenger), the Orchestrator removes all `c*/` dirs (`rm -rf .gaia/local/audit/c[0-9]`; whitelisted; top-level dir kept as run marker). On escalation, all `c*/` dirs are preserved and surfaced in the escalation report for human review; a cycle-3 `false-clean-refuted` escalation preserves them the same way.
 
 The audit does not write to `wiki/log.md` or `wiki/hot.md`.
 
