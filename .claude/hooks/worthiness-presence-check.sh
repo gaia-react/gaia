@@ -112,7 +112,7 @@ classifier_script=".gaia/scripts/classifier/classify-determinism.mjs"
 
 # Worthiness ledger location (sibling to the RED ledger). A missing ledger means
 # zero matches, which denies for the clean case below.
-ledger=".gaia/local/audit-ledger/worthiness.jsonl"
+ledger=".gaia/local/audit/worthiness.jsonl"
 
 # ---------------------------------------------------------------------------
 # Resolve the PR base, the default branch this work forks from. Prefer the

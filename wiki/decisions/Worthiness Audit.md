@@ -109,7 +109,7 @@ ledger:
 {"schema": 1, "file": "<repo-rel>", "fullName": "<vitest fullName>", "signal": "sha256:...", "verdict": "keep"|"fix"|"delete", "auditedAt": "<iso>", "artifact": "<...>"}
 ```
 
-- Path: `.gaia/local/audit-ledger/worthiness.jsonl` (append-only, gitignored,
+- Path: `.gaia/local/audit/worthiness.jsonl` (append-only, gitignored,
   grows-forever, sibling to `.gaia/local/red-ledger/observations.jsonl`).
 - `signal` is the SAME `sha256`-of-normalized-test-call the RED ledger computes
   via `.gaia/scripts/red-ledger/extract-test-signals.mjs`. The writer reuses
