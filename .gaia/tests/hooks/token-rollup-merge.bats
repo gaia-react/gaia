@@ -106,6 +106,13 @@ run_hook() {
   [[ "$output" == *"execute:"* ]]
   [[ "$output" == *"Total:"* ]]
   [[ "$output" == *"600"* ]]
+  # SPEC-019: this synthetic repo carries no committed token-rates.json (see
+  # build_repo above), so --show-toplevel resolves to a rate table that
+  # doesn't exist here and rate_table_ok=false wins FC-4 precedence -- the
+  # dollar block renders "unavailable (rate table unreadable)", not "records
+  # predate per-model attribution" (unreachable in this scaffold). Assert only
+  # the header substring: marker-agnostic, robust to either degrade form.
+  [[ "$output" == *"Est. cost (USD):"* ]]
 }
 
 # ---------- 1b. Colocated spec-plan layout resolves the merge readout key ----------

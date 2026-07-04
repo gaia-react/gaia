@@ -75,15 +75,17 @@ commify() {
 # ---------- argument parsing (never crash on a bad/missing flag) ----------
 FEATURE_KEY=""
 LEDGER_OVERRIDE=""
+RATE_TABLE_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   key="$1"
   case "$key" in
-    --spec-id|--ledger)
+    --spec-id|--ledger|--rate-table)
       val="${2:-}"
       case "$key" in
-        --spec-id) FEATURE_KEY="$val" ;;
-        --ledger)  LEDGER_OVERRIDE="$val" ;;
+        --spec-id)    FEATURE_KEY="$val" ;;
+        --ledger)     LEDGER_OVERRIDE="$val" ;;
+        --rate-table) RATE_TABLE_OVERRIDE="$val" ;;
       esac
       # `shift 2` fails (and does NOT shift) when a flag is the final arg with
       # no value, which would spin this loop forever; fall back to a single shift.
@@ -130,6 +132,23 @@ if ledger_path="$(resolve_ledger)" && [[ -n "$ledger_path" ]]; then
 else
   log "token-rollup: could not resolve ledger path"
 fi
+
+# ---------- rate-table resolution (SPEC-019) ----------
+# The rate table is committed (public Claude pricing, shared across
+# developers), unlike the ledger which is machine-local. Resolve via
+# --show-toplevel (the current checkout, worktree or main -- both carry the
+# committed file) rather than --git-common-dir. --rate-table overrides (test
+# seam).
+resolve_rate_table() {
+  if [[ -n "$RATE_TABLE_OVERRIDE" ]]; then
+    printf '%s' "$RATE_TABLE_OVERRIDE"
+    return 0
+  fi
+  local toplevel
+  toplevel="$(git rev-parse --show-toplevel 2>/dev/null)"
+  [[ -z "$toplevel" ]] && return 1
+  printf '%s' "$toplevel/.gaia/scripts/token-rates.json"
+}
 
 [[ -z "$LEDGER" || ! -f "$LEDGER" ]] && no_records
 
@@ -219,6 +238,108 @@ actions_len="$(jq -r '.actions | length' <<<"$summary" 2>/dev/null)"
 is_uint "$actions_len" || actions_len=0
 (( actions_len == 0 )) && no_records
 
+# ---------- dollar pricing (SPEC-019) ----------
+# Prices each winning row's by_model breakdown against the rate table:
+# cache_read at input*0.1, cache_write_5m at input*1.25, cache_write_1h at
+# input*2.0 (see token-rates.json's cache_multipliers). Degrades to a marked
+# lower bound or an "unavailable" line on any unreadable table, unknown
+# model, missing run-time anchor, or corrupt ledger line -- never guesses,
+# never blocks.
+rate_table_ok=true
+RATE_TABLE=""
+if rt_path="$(resolve_rate_table)" && [[ -n "$rt_path" ]]; then
+  RATE_TABLE="$rt_path"
+else
+  log "token-rollup: could not resolve rate table path"
+  rate_table_ok=false
+fi
+
+rates_json="null"
+if [[ "$rate_table_ok" == "true" ]]; then
+  rt_contents="$(cat "$RATE_TABLE" 2>/dev/null)"
+  if [[ -n "$rt_contents" ]] && jq -e 'type=="object" and has("models")' >/dev/null 2>&1 <<<"$rt_contents"; then
+    rates_json="$rt_contents"
+  else
+    log "token-rollup: rate table unreadable: $RATE_TABLE"
+    rate_table_ok=false
+  fi
+fi
+
+cost_attributed_present=false
+cost_pre_attribution_present=false
+cost_missing_anchor=false
+cost_unpriced_models=""
+cost_grand_dollars="0"
+cost_summary=""
+
+if [[ "$rate_table_ok" == "true" ]]; then
+  cost_summary="$(jq -c --argjson rates "$rates_json" '
+    def rate_window($model; $date):
+      ($rates.models[$model] // [])
+      | map(select(.effective_through == null or ($date != "" and $date <= .effective_through)))
+      | first;
+
+    # Prices one winning row. A null/empty ts short-circuits BEFORE window
+    # selection (DP-004): the whole row contributes zero and is flagged
+    # missing_anchor, never falling through to the sticker window.
+    def priced_row($row):
+      ($row.ts // "")[0:10] as $date
+      | ($row.by_model // {} | to_entries | map(select(.key | test("^claude-")))) as $entries
+      | if $date == "" then
+          { dollars: 0, missing_anchor: true, unpriced: [] }
+        else
+          ( $entries | map(
+              . as $e
+              | rate_window($e.key; $date) as $w
+              | { model: $e.key, w: $w, b: $e.value }
+            )
+          ) as $priced
+          | {
+              dollars: ( $priced | map(
+                  if .w == null then 0
+                  else
+                    ( (.b.fresh_input // 0) * .w.input
+                    + (.b.cache_write_5m // 0) * .w.input * $rates.cache_multipliers.write_5m
+                    + (.b.cache_write_1h // 0) * .w.input * $rates.cache_multipliers.write_1h
+                    + (.b.cache_read // 0) * .w.input * $rates.cache_multipliers.read
+                    + (.b.output // 0) * .w.output
+                    ) / 1000000
+                  end
+                ) | add // 0 ),
+              missing_anchor: false,
+              unpriced: ( $priced | map(select(.w == null) | .model) )
+            }
+        end;
+
+    .actions as $actions
+    | ( $actions | map(
+          . as $a
+          | ($a.winners | map(select(.by_model != null and (.by_model | length) > 0))) as $attributed_winners
+          | ($attributed_winners | map(priced_row(.))) as $priced_rows
+          | { action: $a.action, dollars: ($priced_rows | map(.dollars) | add // 0), _rows: $priced_rows }
+        )
+      ) as $cost_actions
+    | {
+        actions: ( $cost_actions | map({action, dollars}) ),
+        grand_dollars: ( $cost_actions | map(.dollars) | add // 0 ),
+        attributed_present: ( $actions | map(.winners[] | (.by_model != null and (.by_model | length) > 0)) | any ),
+        pre_attribution_present: ( $actions | map(.winners[] | (.by_model == null or (.by_model | length) == 0)) | any ),
+        missing_anchor: ( $cost_actions | map(._rows[].missing_anchor) | any ),
+        unpriced_models: ( $cost_actions | map(._rows[].unpriced) | flatten | unique )
+      }
+  ' <<<"$summary" 2>/dev/null)"
+
+  if [[ -z "$cost_summary" ]]; then
+    log "token-rollup: dollar pricing computation failed"
+  fi
+fi
+
+if [[ -n "$cost_summary" ]]; then
+  IFS=$'\t' read -r cost_grand_dollars cost_attributed_present cost_pre_attribution_present cost_missing_anchor cost_unpriced_models < <(
+    jq -r '[.grand_dollars, .attributed_present, .pre_attribution_present, .missing_anchor, (.unpriced_models | join(", "))] | @tsv' <<<"$cost_summary"
+  )
+fi
+
 # ---------- render (stdout = payload only) ----------
 IFS=$'\t' read -r grand_total grand_elapsed grand_elapsed_available grand_elapsed_partial grand_session_partial fresh cwrite cread out < <(
   jq -r '[.grand_total, .grand_elapsed, .grand_elapsed_available, .grand_elapsed_partial, .grand_session_partial,
@@ -270,6 +391,50 @@ printf '    %-14s%*s\n' "Output:"      "$bw" "$out_c"
 
 if (( corrupt == 1 )) || [[ "$grand_elapsed_partial" == "true" ]] || [[ "$grand_session_partial" == "true" ]]; then
   printf '  (partial: some ledger input was unreadable or lacked timing; figures are a lower bound)\n'
+fi
+
+# ---------- dollar cost render (SPEC-019) ----------
+# Additive: appended after EVERYTHING the token block prints above,
+# including its own trailing "(partial: ...)" marker, so the existing
+# output stays an exact prefix.
+cost_corrupt_present=false
+if (( corrupt == 1 )) || [[ "$grand_elapsed_partial" == "true" ]] || [[ "$grand_session_partial" == "true" ]]; then
+  cost_corrupt_present=true
+fi
+
+if [[ "$rate_table_ok" != "true" ]]; then
+  printf '  Est. cost (USD): unavailable (rate table unreadable)\n'
+elif [[ "$cost_attributed_present" != "true" ]]; then
+  printf '  Est. cost (USD): unavailable (records predate per-model attribution)\n'
+else
+  printf '  Est. cost (USD):\n'
+
+  grand_dollars_fmt="$(printf '$%.2f' "$cost_grand_dollars" 2>/dev/null)"
+  # Literal fallback string, not a command sub.
+  # shellcheck disable=SC2016
+  [[ -z "$grand_dollars_fmt" ]] && grand_dollars_fmt='$0.00'
+  dw=${#grand_dollars_fmt}
+
+  cost_action_labels=()
+  cost_action_fmts=()
+  while IFS=$'\t' read -r c_action c_dollars; do
+    c_fmt="$(printf '$%.2f' "$c_dollars" 2>/dev/null)"
+    # shellcheck disable=SC2016
+    [[ -z "$c_fmt" ]] && c_fmt='$0.00'
+    cost_action_labels+=("$c_action")
+    cost_action_fmts+=("$c_fmt")
+    (( ${#c_fmt} > dw )) && dw=${#c_fmt}
+  done < <(jq -r '.actions[] | [.action, .dollars] | @tsv' <<<"$cost_summary")
+
+  for i in "${!cost_action_labels[@]}"; do
+    printf '    %-11s%*s\n' "${cost_action_labels[$i]}:" "$dw" "${cost_action_fmts[$i]}"
+  done
+  printf '    %-11s%*s\n' "Total:" "$dw" "$grand_dollars_fmt"
+
+  [[ "$cost_pre_attribution_present" == "true" ]] && printf '    (partial lower bound: some records predate per-model attribution)\n'
+  [[ "$cost_corrupt_present" == "true" ]] && printf '    (partial lower bound: the ledger had a corrupt record)\n'
+  [[ -n "$cost_unpriced_models" ]] && printf '    (lower bound: unpriced model(s) %s)\n' "$cost_unpriced_models"
+  [[ "$cost_missing_anchor" == "true" ]] && printf '    (lower bound: a session lacked a run-time anchor)\n'
 fi
 
 exit 0
