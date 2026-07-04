@@ -157,7 +157,7 @@ setup() {
   [[ "$output" == *'(partial lower bound: some records predate per-model attribution)'* ]]
   [[ "$output" != *'unpriced model'* ]]
   [[ "$output" != *'run-time anchor'* ]]
-  [[ "$output" != *'corrupt record'* ]]
+  [[ "$output" != *'unreadable, corrupt, or lacked timing'* ]]
 }
 
 # ---------- 8. UAT-009 arm 1: rate table unreadable ----------
@@ -176,7 +176,7 @@ setup() {
   [[ "$output" == *'(partial: some ledger input was unreadable or lacked timing; figures are a lower bound)'* ]]
   [[ "$output" == *'execute:   $1.00'* ]]
   [[ "$output" == *'Total:     $1.00'* ]]
-  [[ "$output" == *'(partial lower bound: the ledger had a corrupt record)'* ]]
+  [[ "$output" == *'(partial lower bound: some ledger input was unreadable, corrupt, or lacked timing)'* ]]
 }
 
 # ---------- 10. UAT-008, DP-002: byte-unchanged token render, exact prefix ----------

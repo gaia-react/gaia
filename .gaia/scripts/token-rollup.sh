@@ -432,7 +432,7 @@ else
   printf '    %-11s%*s\n' "Total:" "$dw" "$grand_dollars_fmt"
 
   [[ "$cost_pre_attribution_present" == "true" ]] && printf '    (partial lower bound: some records predate per-model attribution)\n'
-  [[ "$cost_corrupt_present" == "true" ]] && printf '    (partial lower bound: the ledger had a corrupt record)\n'
+  [[ "$cost_corrupt_present" == "true" ]] && printf '    (partial lower bound: some ledger input was unreadable, corrupt, or lacked timing)\n'
   [[ -n "$cost_unpriced_models" ]] && printf '    (lower bound: unpriced model(s) %s)\n' "$cost_unpriced_models"
   [[ "$cost_missing_anchor" == "true" ]] && printf '    (lower bound: a session lacked a run-time anchor)\n'
 fi
