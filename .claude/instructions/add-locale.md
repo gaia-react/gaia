@@ -116,7 +116,7 @@ For RTL locales **outside** that standard four (e.g. a custom or less common cod
 
 ## Step 6, Playwright spec
 
-Check whether `.playwright/e2e/language-switch.spec.ts` exists.
+Check whether `.playwright/e2e/language-switch-a11y.spec.ts` exists.
 
 **Pick a verification key that genuinely differs between English and `{{LOCALE_CODE}}`.** Do **not** assert against `meta.title`, top-level `title`, or `heroTitle`: `gaia init rename` rewrites all three to the project title, and the Step 1 translation rule copies a brand / proper-noun value verbatim, so they are identical in every locale and a switch assertion against them never changes. Use the seed's `cta` key instead (English `'View on GitHub'`), a normal UI string the index page renders as a visible link. Read the English value from `app/languages/en/pages/_index.ts` and the translated value from `app/languages/{{LOCALE_CODE}}/pages/_index.ts`. Before writing the assertion, confirm the two values actually differ; if `cta` is missing or was copied verbatim for this locale, pick any other body string whose English and `{{LOCALE_CODE}}` values differ.
 
