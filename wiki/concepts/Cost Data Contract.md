@@ -1,0 +1,67 @@
+---
+type: concept
+title: Cost Data Contract
+status: active
+created: 2026-07-05
+updated: 2026-07-05
+tags: [concept, telemetry, cost, data-contract]
+---
+
+# Cost Data Contract
+
+`.gaia/local/telemetry/cost.jsonl` is a versioned, self-describing cost ledger: one JSON record per `/gaia-spec`, `/gaia-plan`, or KICKOFF-execution run, durable enough for an external dashboard to read directly. `.gaia/scripts/token-tally.sh` is the single source of truth for the emitted schema, this page documents what it builds, not the other way around; when the two disagree, the script wins.
+
+The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout (never a linked worktree's own `.gaia/local/`) by `.gaia/scripts/ledger-path-lib.sh`'s `gaia_resolve_ledger_path`, so a worktree-run tally still appends to the one ledger the rest of the project's history lives in. It is gitignored, machine-local, and append-only.
+
+## Record fields (schema_version 1)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schema_version` | `int` (literal `1`) | Identifies the record shape. See the evolution rule below. |
+| `kind` | `"spec" \| "plan" \| "execute"` | Which action produced the row. |
+| `spec_id` | `"SPEC-NNN" \| null` | Set only when the feature carries a SPEC identity. |
+| `plan_id` | `"PLAN-NNN" \| null` | Set only for a spec-less plan/execute. `spec_id` and `plan_id` are never both set; a spec identity wins the tiebreak when both are somehow supplied. An unclassifiable or absent feature key degrades to a partial row with **both** null, never a mistyped id. |
+| `plan_slug` | `string \| null` | The plan folder's human-facing slug, used for `cost.md` titles. |
+| `session_id` | `string` | The Claude Code session that produced the tally. |
+| `buckets` | `object` | `{ fresh_input, cache_write, cache_read, output }`, four `int`s: the session's deduped token totals. |
+| `total` | `int` | Sum of the four `buckets`. |
+| `by_model` | `object`, omitted when empty | Model id → five-bucket object: `{ fresh_input, cache_write_5m, cache_write_1h, cache_read, output }` (all `int`). The `cache_write_5m`/`cache_write_1h` split is what `buckets.cache_write` collapses; a record whose attribution failed omits the key entirely rather than writing `{}`. |
+| `by_agent_type` | `object`, omitted when empty | Bucket key → the same five-bucket shape as `by_model`. Keys: `main` (the main transcript), a sub-agent's own `agentType` (e.g. `general-purpose`), `auto-compaction` (a compaction-summary line, regardless of which transcript it came from), and `unknown` (a sidecar whose sibling `.meta.json` is missing, unreadable, or lacks `.agentType`). Reconciles by equality: collapsing every bucket's `cache_write_5m` + `cache_write_1h` and summing across buckets reproduces the top-level `buckets`/`total` exactly. |
+| `dollars` | `number \| null` | The session's estimated USD cost, priced from `by_model` at generation time. `null` when pricing was unavailable (empty `by_model`, unreadable rate table). |
+| `rate_table_id` | `"sha256:<16-hex>" \| null` | Identity of the committed rate table that priced `dollars`, so a downstream reader can re-price the raw `by_model` under a different card. `null` off the priced path. |
+| `partial` | `bool` | `true` when the session id was empty, the main transcript matched no file, or any matched file failed to parse. An empty sidecar set alone does NOT set this. |
+| `started_at` | `iso \| null` | Earliest usage-bearing transcript timestamp, raw UTC. `null` when `duration_available` is `false`. |
+| `ended_at` | `iso \| null` | Latest usage-bearing transcript timestamp, raw UTC. Same null condition as `started_at`. |
+| `duration_seconds` | `int \| null` | `ended_at` minus `started_at`. `null` when unavailable. |
+| `duration_available` | `bool` | Independent of `partial`: tokens can be complete while duration is unavailable (an unparseable extremal timestamp), and the reverse. |
+| `git_branch` | `string \| null` | Current branch at tally time, or `null` when it could not be resolved. |
+| `project` | `"sha256:<16-hex>" \| "path:<16-hex>" \| null` | Repo identity: a hash of the normalized `origin` remote URL when one exists (so an `https` and `ssh` clone of the same repo collide), else a hash of the main checkout's absolute path, else `null`. |
+| `seq` | `int` | `0` for `spec`/`plan` rows (one row per session). For `execute`, the count of prior same-`(feature, session_id)` execute rows already on the ledger; monotonic per feature per session. |
+| `final` | `bool` | `true` on every newly appended row. For `execute`, a best-effort rewrite flips every prior same-`(feature, session_id)` row's `final` to `false` after append, so at most one row per feature per session stays `true`. |
+| `ts` | `iso` | Generation stamp: when this record was written. |
+
+## Execute aggregation rule
+
+An `execute` action appends one cumulative row per commit, `seq` incrementing per `(feature, session_id)`. A reader takes the row with `final: true` for a given `session_id` (falling back to the row with the max `seq` when none is marked final, the ledger-write rewrite is best-effort and can fail open) as the session's true cumulative cost. That row is counted once: no per-commit overcount, and no cross-row total comparison is needed, the terminal row already carries the full cumulative figure.
+
+## schema_version evolution rule
+
+Additive-only by default: a new field does not bump `schema_version`. A breaking change, removing or repurposing an existing field, bumps `schema_version` and is confirmed first, an external consumer depends on this contract holding still. The ledger holds only `schema_version` 1-or-later records; a prior, differently-shaped ledger is moved aside to a backup file the contract never reads, so there is no absent-`schema_version` legacy branch to handle downstream.
+
+## Archived folder shapes
+
+A feature's cost artifacts consolidate at archive time into exactly one of two shapes, depending on whether the feature carried a SPEC identity.
+
+**Spec-derived** — `.gaia/local/specs/archived/<SPEC-ID>/` contains `AUDIT.md`, `SPEC.md`, `SUMMARY.md`, `cost.md` (no `plan/` subfolder; it is flattened up). `cost.md` carries `## SPEC` + `## Planning` + `## Execution` + `## Total`.
+
+**Spec-less** — `.gaia/local/plans/archived/PLAN-NNN/` contains `SUMMARY.md`, `cost.md`. `cost.md` carries `## Planning` + `## Execution` + `## Total`, with no `## SPEC` section, a spec-less plan never had one.
+
+Every section renders from the same uniform `## <heading>` block shape `token-tally.sh` writes, which is what lets archive-time consolidation splice them together and append a grand `## Total`.
+
+**Pre-existing archived folders keep their vintage shape.** Archival is never retroactive: a folder archived under an earlier shape is not migrated to match this one. The archived shape is versioned by vintage, not by when a reader happens to look at it.
+
+## Pairs with
+
+- [[Token Cost Readout]]: the `by_model` pricing surfaces (rate table, shared pricing lib, tally-time vs roll-up-time dollar figures) built on top of this ledger.
+- [[Telemetry]]: the ledger's place among GAIA's other telemetry streams.
+- [[Task Orchestration]]: the plan-lifecycle archival step that produces the spec-less archived shape above.

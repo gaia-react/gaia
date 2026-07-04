@@ -87,7 +87,7 @@ setup() {
 
 @test "e2e: real token-tally.sh -> real token-rollup.sh chain agrees on FC-1 and prices a multi-model session" {
   # Step 1: write half. Produce a real ledger row against an ISOLATED ledger
-  # (never the machine's real .gaia/local/telemetry/tokens.jsonl).
+  # (never the machine's real .gaia/local/telemetry/cost.jsonl).
   run bash "$TALLY" --action execute --spec-id SPEC-E2E --plan-slug spec-019-dollar-cost \
     --out-dir "$OUTDIR" --session-id fixturemultimodel0001 \
     --projects-root "$MULTIMODEL" --ledger "$LEDGER"

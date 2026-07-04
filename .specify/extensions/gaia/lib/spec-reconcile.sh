@@ -55,7 +55,7 @@ canon_for_status() {
 offvocab_ids="$(jq -r '
   .specs[]
   | select((.status // "") as $s
-      | ["draft","specified","merged","archived","in-progress"] | index($s) | not)
+      | ["draft","specified","merged","archived","abandoned","in-progress"] | index($s) | not)
   | .id
 ' "$ledger_path" 2>/dev/null || true)"
 

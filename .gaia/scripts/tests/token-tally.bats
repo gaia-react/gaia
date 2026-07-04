@@ -29,7 +29,7 @@
 #   decoys excluded: user line 16:59:30 (before min), pr-link 17:10:00 (after max)
 #   regression traps: all-lines->630s, main-only->30s, deduped-min->124s
 #   the ledger records the raw UTC endpoints; the human surfaces (stdout,
-#     tokens.md) render them in the machine's LOCAL zone (proven below under a
+#     cost.md) render them in the machine's LOCAL zone (proven below under a
 #     pinned TZ=UTC baseline and a TZ=JST-9 non-UTC conversion)
 #
 # Degradation fixtures (isolated trees):
@@ -64,6 +64,7 @@ setup() {
   SESSION="fixturesession0001"
   MULTIMODEL="$FIX/multimodel/projects"
   MULTIMODEL_SPLITLESS="$FIX/multimodel/splitless/projects"
+  BYAGENT="$FIX/byagent/projects"
 
   OUTDIR="$BATS_TEST_TMPDIR/out"
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
@@ -76,7 +77,7 @@ setup() {
 }
 
 # Run the helper against the anchor fixture with an ISOLATED ledger (never the
-# machine's real .gaia/local/telemetry/tokens.jsonl).
+# machine's real .gaia/local/telemetry/cost.jsonl).
 run_anchor() {
   run bash "$SCRIPT" \
     --action execute --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
@@ -105,12 +106,12 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(led '.buckets.output')" -eq 10 ]
   [ "$(led '.total')" -eq 11110 ]
 
-  # tokens.md carries the same five figures.
-  grep -q "| Fresh input | 100 |" "$OUTDIR/tokens.md"
-  grep -q "| Cache write | 1000 |" "$OUTDIR/tokens.md"
-  grep -q "| Cache read | 10000 |" "$OUTDIR/tokens.md"
-  grep -q "| Output | 10 |" "$OUTDIR/tokens.md"
-  grep -q "| \*\*Total\*\* | 11110 |" "$OUTDIR/tokens.md"
+  # cost.md carries the same five figures.
+  grep -q "| Fresh input | 100 |" "$OUTDIR/cost.md"
+  grep -q "| Cache write | 1000 |" "$OUTDIR/cost.md"
+  grep -q "| Cache read | 10000 |" "$OUTDIR/cost.md"
+  grep -q "| Output | 10 |" "$OUTDIR/cost.md"
+  grep -q "| \*\*Total\*\* | 11110 |" "$OUTDIR/cost.md"
 
   # UAT-004: every bucket non-zero and mutually distinct (kills hardcoded-zero,
   # single-collapsed-input, and wrong-field-mapping helpers).
@@ -168,33 +169,33 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$after" -eq "$before" ]
 }
 
-# ---------- 5. tokens.md content (UAT-001) ----------
-@test "tokens.md exists in --out-dir with all five figures (not empty/placeholder)" {
+# ---------- 5. cost.md content (UAT-001) ----------
+@test "cost.md exists in --out-dir with all five figures (not empty/placeholder)" {
   run_anchor
   [ "$status" -eq 0 ]
-  [ -f "$OUTDIR/tokens.md" ]
-  [ -s "$OUTDIR/tokens.md" ]
+  [ -f "$OUTDIR/cost.md" ]
+  [ -s "$OUTDIR/cost.md" ]
   # all five figures present
-  grep -q "100" "$OUTDIR/tokens.md"
-  grep -q "1000" "$OUTDIR/tokens.md"
-  grep -q "10000" "$OUTDIR/tokens.md"
-  grep -q " 10 " "$OUTDIR/tokens.md"
-  grep -q "11110" "$OUTDIR/tokens.md"
+  grep -q "100" "$OUTDIR/cost.md"
+  grep -q "1000" "$OUTDIR/cost.md"
+  grep -q "10000" "$OUTDIR/cost.md"
+  grep -q " 10 " "$OUTDIR/cost.md"
+  grep -q "11110" "$OUTDIR/cost.md"
 }
 
-# ---------- 5b. Planning + Execution sections coexist in one tokens.md ----------
-# /gaia-plan and the KICKOFF git-op hook both write the plan folder's tokens.md.
+# ---------- 5b. Planning + Execution sections coexist in one cost.md ----------
+# /gaia-plan and the KICKOFF git-op hook both write the plan folder's cost.md.
 # The plan-authoring and plan-execution costs must live in independent sections
 # of the SAME file: never overwriting each other, never summed. Planning uses the
 # single-line fixture (total 562); Execution uses the anchor (total 11110), so a
 # clobbered-vs-preserved or a summed regression is unambiguous.
-@test "plan then execute: tokens.md keeps independent Planning + Execution sections (no overwrite, no sum)" {
+@test "plan then execute: cost.md keeps independent Planning + Execution sections (no overwrite, no sum)" {
   run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
     --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/l-plan.jsonl"
   [ "$status" -eq 0 ]
-  grep -q "^## Planning$" "$OUTDIR/tokens.md"
-  grep -q "| \*\*Total\*\* | 562 |" "$OUTDIR/tokens.md"
+  grep -q "^## Planning$" "$OUTDIR/cost.md"
+  grep -q "| \*\*Total\*\* | 562 |" "$OUTDIR/cost.md"
 
   # Execution tally into the SAME out-dir must add a section, not replace the file.
   run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug my-plan \
@@ -203,20 +204,20 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$status" -eq 0 ]
 
   # Both sections present, Planning before Execution.
-  grep -q "^## Planning$" "$OUTDIR/tokens.md"
-  grep -q "^## Execution$" "$OUTDIR/tokens.md"
-  pln="$(grep -n '^## Planning$' "$OUTDIR/tokens.md" | cut -d: -f1)"
-  exn="$(grep -n '^## Execution$' "$OUTDIR/tokens.md" | cut -d: -f1)"
+  grep -q "^## Planning$" "$OUTDIR/cost.md"
+  grep -q "^## Execution$" "$OUTDIR/cost.md"
+  pln="$(grep -n '^## Planning$' "$OUTDIR/cost.md" | cut -d: -f1)"
+  exn="$(grep -n '^## Execution$' "$OUTDIR/cost.md" | cut -d: -f1)"
   [ "$pln" -lt "$exn" ]
 
   # Planning total intact at 562 (NOT overwritten); Execution total is 11110.
-  plan_slice="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$OUTDIR/tokens.md")"
-  exec_slice="$(awk '/^## Execution$/{e=1;next} e' "$OUTDIR/tokens.md")"
+  plan_slice="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$OUTDIR/cost.md")"
+  exec_slice="$(awk '/^## Execution$/{e=1;next} e' "$OUTDIR/cost.md")"
   [[ "$plan_slice" == *"| **Total** | 562 |"* ]]
   [[ "$exec_slice" == *"| **Total** | 11110 |"* ]]
 
   # No summed figure anywhere (562 + 11110 = 11672 must never appear).
-  ! grep -q "11672" "$OUTDIR/tokens.md"
+  ! grep -q "11672" "$OUTDIR/cost.md"
 }
 
 # The git-op hook re-runs the execute tally on every orchestrator commit, so the
@@ -235,10 +236,10 @@ led() { jq -r "$1" "$LEDGER"; }
     [ "$status" -eq 0 ]
   done
 
-  [ "$(grep -c '^## Planning$' "$OUTDIR/tokens.md")" -eq 1 ]
-  [ "$(grep -c '^## Execution$' "$OUTDIR/tokens.md")" -eq 1 ]
-  grep -q "| \*\*Total\*\* | 562 |" "$OUTDIR/tokens.md"
-  grep -q "| \*\*Total\*\* | 11110 |" "$OUTDIR/tokens.md"
+  [ "$(grep -c '^## Planning$' "$OUTDIR/cost.md")" -eq 1 ]
+  [ "$(grep -c '^## Execution$' "$OUTDIR/cost.md")" -eq 1 ]
+  grep -q "| \*\*Total\*\* | 562 |" "$OUTDIR/cost.md"
+  grep -q "| \*\*Total\*\* | 11110 |" "$OUTDIR/cost.md"
 }
 
 # ---------- 6. Ledger keyed + durable (UAT-005) ----------
@@ -253,8 +254,9 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(wc -l < "$BATS_TEST_TMPDIR/durable.jsonl")" -eq 1 ]
   run jq -e . "$BATS_TEST_TMPDIR/durable.jsonl"
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.action' "$BATS_TEST_TMPDIR/durable.jsonl")" = "plan" ]
+  [ "$(jq -r '.kind' "$BATS_TEST_TMPDIR/durable.jsonl")" = "plan" ]
   [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/durable.jsonl")" = "SPEC-013" ]
+  [ "$(jq -r '.plan_id' "$BATS_TEST_TMPDIR/durable.jsonl")" = "null" ]
   [ "$(jq -r '.plan_slug' "$BATS_TEST_TMPDIR/durable.jsonl")" = "spec-013-token-accounting" ]
   [ "$(jq -r '.total' "$BATS_TEST_TMPDIR/durable.jsonl")" -eq 11110 ]
 
@@ -281,14 +283,14 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$status" -eq 0 ]
 
   # Ledger landed in the MAIN checkout ...
-  [ -f "$MAIN/.gaia/local/telemetry/tokens.jsonl" ]
-  [ "$(jq -r '.total' "$MAIN/.gaia/local/telemetry/tokens.jsonl")" -eq 11110 ]
+  [ -f "$MAIN/.gaia/local/telemetry/cost.jsonl" ]
+  [ "$(jq -r '.total' "$MAIN/.gaia/local/telemetry/cost.jsonl")" -eq 11110 ]
   # ... and NOT under the worktree.
-  [ ! -f "$WT/.gaia/local/telemetry/tokens.jsonl" ]
+  [ ! -f "$WT/.gaia/local/telemetry/cost.jsonl" ]
 
   # Ledger survives worktree removal (UAT-008 durability).
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
-  [ -f "$MAIN/.gaia/local/telemetry/tokens.jsonl" ]
+  [ -f "$MAIN/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 # ---------- 8. Graceful degradation (UAT-007) ----------
@@ -307,8 +309,8 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(led '.partial')" = "true" ]
   [ "$(led '.total')" -eq 0 ]
 
-  # tokens.md marker present
-  grep -q "_Partial:" "$OUTDIR/tokens.md"
+  # cost.md marker present
+  grep -q "_Partial:" "$OUTDIR/cost.md"
 }
 
 @test "malformed sidecar line: exit 0, partial, still tallies the readable files" {
@@ -357,8 +359,8 @@ led() { jq -r "$1" "$LEDGER"; }
   # main-only=30s, deduped-min=124s). TZ=UTC -> local clock == UTC, labelled UTC.
   [[ "$output" == *"Elapsed:      2m5s  (first to last model turn: 2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)"* ]]
 
-  # tokens.md elapsed line (below the total row, not a table row)
-  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)$" "$OUTDIR/tokens.md"
+  # cost.md elapsed line (below the total row, not a table row)
+  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)$" "$OUTDIR/cost.md"
 }
 
 # ---------- 10b. Endpoints render in the machine's LOCAL zone (owner request) ----------
@@ -382,7 +384,7 @@ led() { jq -r "$1" "$LEDGER"; }
   # human surfaces: +0900 local, crossing midnight into 2026-07-03
   [[ "$output" == *"first to last model turn: 2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST"* ]]
   [[ "$output" == *"Elapsed:      2m5s"* ]]
-  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST)$" "$OUTDIR/tokens.md"
+  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST)$" "$OUTDIR/cost.md"
 }
 
 # ---------- 11. Max in a sidecar (documents sidecar inclusion) ----------
@@ -512,4 +514,216 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$status" -eq 0 ]
   [ "$(led '.by_model')" = "null" ]
   [ "$(led '.total')" -eq 11110 ]
+}
+
+# ---------- 15. Shared ledger-path lib (FC-1) ----------
+@test "ledger-path-lib: resolves cost.jsonl, honors override, fails without git; token-tally sources it" {
+  LIB="$SCRIPT_DIR/ledger-path-lib.sh"
+  [ -f "$LIB" ]
+
+  # override is echoed verbatim
+  got="$(bash -c '. "$1"; gaia_resolve_ledger_path "/x/y/cost.jsonl"' _ "$LIB")"
+  [ "$got" = "/x/y/cost.jsonl" ]
+
+  # inside a real git repo -> a main-checkout cost.jsonl path
+  repo="$BATS_TEST_TMPDIR/librepo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  got2="$(bash -c 'cd "$1" && . "$2"; gaia_resolve_ledger_path ""' _ "$repo" "$LIB")"
+  case "$got2" in
+    */.gaia/local/telemetry/cost.jsonl) : ;;
+    *) echo "unexpected ledger path: $got2" >&2; return 1 ;;
+  esac
+
+  # outside any git repo -> non-zero, no output
+  nongit="$BATS_TEST_TMPDIR/nongit"
+  mkdir -p "$nongit"
+  run bash -c 'cd "$1" && . "$2"; gaia_resolve_ledger_path ""' _ "$nongit" "$LIB"
+  [ "$status" -ne 0 ]
+
+  # token-tally.sh sources the lib rather than inlining the derivation
+  grep -qF 'ledger-path-lib.sh' "$SCRIPT"
+  if grep -qF 'telemetry/cost.jsonl' "$SCRIPT"; then
+    echo "token-tally.sh still inlines the ledger derivation" >&2
+    return 1
+  fi
+}
+
+# ---------- 16. spec doc: schema_version, ## SPEC section, no legacy md (AC2) ----------
+@test "spec: schema_version 1, kind spec, seq 0/final, cost.md ## SPEC section, only cost.md written" {
+  run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
+    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --projects-root "$ANCHOR" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+
+  [ "$(led '.schema_version')" -eq 1 ]
+  [ "$(led '.kind')" = "spec" ]
+  [ "$(led '.spec_id')" = "SPEC-013" ]
+  [ "$(led '.plan_id')" = "null" ]
+  [ "$(led '.seq')" -eq 0 ]
+  [ "$(led '.final')" = "true" ]
+
+  grep -qF '# Cost: SPEC-013' "$OUTDIR/cost.md"
+  grep -qF '## SPEC' "$OUTDIR/cost.md"
+  grep -qF '| **Total** | 11110 |' "$OUTDIR/cost.md"
+
+  # cost.md is the ONLY markdown written (no legacy-named sibling remains)
+  [ -f "$OUTDIR/cost.md" ]
+  [ "$(ls "$OUTDIR"/*.md | wc -l | tr -d ' ')" -eq 1 ]
+}
+
+# ---------- 17. spec_id XOR plan_id -- the single source-of-truth gate (AC3) ----------
+# Both the plan.md step-4.8 caller edit (DOCS) and the execute-hook routing
+# (WRITE-HOOKS) rely on this CLI behavior, so it is asserted explicitly across
+# BOTH the plan and execute kinds: a SPEC-* key -> spec_id, a PLAN-* key ->
+# plan_id, never both.
+@test "spec_id XOR plan_id across plan and execute kinds; no record carries both" {
+  # spec-derived plan: --spec-id SPEC-* -> spec_id set, plan_id null
+  run bash "$SCRIPT" --action plan --spec-id SPEC-023 --plan-slug p \
+    --out-dir "$OUTDIR/sd-plan" --session-id fixturesingle0001 \
+    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/sd-plan.jsonl"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.kind' "$BATS_TEST_TMPDIR/sd-plan.jsonl")" = "plan" ]
+  [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/sd-plan.jsonl")" = "SPEC-023" ]
+  [ "$(jq -r '.plan_id' "$BATS_TEST_TMPDIR/sd-plan.jsonl")" = "null" ]
+
+  # spec-less plan: --plan-id PLAN-* -> plan_id set, spec_id null
+  run bash "$SCRIPT" --action plan --plan-id PLAN-007 --plan-slug p \
+    --out-dir "$OUTDIR/sl-plan" --session-id fixturesingle0001 \
+    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/sl-plan.jsonl"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.kind' "$BATS_TEST_TMPDIR/sl-plan.jsonl")" = "plan" ]
+  [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/sl-plan.jsonl")" = "null" ]
+  [ "$(jq -r '.plan_id' "$BATS_TEST_TMPDIR/sl-plan.jsonl")" = "PLAN-007" ]
+
+  # spec-derived execute
+  run bash "$SCRIPT" --action execute --spec-id SPEC-023 --plan-slug p \
+    --out-dir "$OUTDIR/sd-exec" --session-id "$SESSION" \
+    --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/sd-exec.jsonl"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/sd-exec.jsonl")" = "SPEC-023" ]
+  [ "$(jq -r '.plan_id' "$BATS_TEST_TMPDIR/sd-exec.jsonl")" = "null" ]
+
+  # spec-less execute
+  run bash "$SCRIPT" --action execute --plan-id PLAN-007 --plan-slug p \
+    --out-dir "$OUTDIR/sl-exec" --session-id "$SESSION" \
+    --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/sl-exec.jsonl"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/sl-exec.jsonl")" = "null" ]
+  [ "$(jq -r '.plan_id' "$BATS_TEST_TMPDIR/sl-exec.jsonl")" = "PLAN-007" ]
+
+  # invariant: never both ids set on any of the four records
+  for f in sd-plan sl-plan sd-exec sl-exec; do
+    both="$(jq -r 'select(.spec_id != null and .plan_id != null) | "BOTH"' "$BATS_TEST_TMPDIR/$f.jsonl")"
+    [ -z "$both" ]
+  done
+}
+
+# ---------- 18. by_agent_type sidecar attribution + reconcile-by-equality (AC5) ----------
+# The byagent fixture (session fixturebyagent0001) is a HAND-COMPUTED oracle:
+#   main transcript mMain   fresh=10 cwrite=100 cread=1000 out=1
+#   sidecar researcher mA   fresh=20 cwrite=200 cread=2000 out=2  (agent-0001.meta.json agentType=researcher)
+#   sidecar planner    mB   fresh=40 cwrite=400 cread=4000 out=4  (agent-0002.meta.json agentType=planner)
+#   aggregate buckets       fresh=70 cwrite=700 cread=7000 out=7  total=7777
+@test "by_agent_type: each sidecar's agentType is a bucket; collapsed sum reconciles to buckets" {
+  run bash "$SCRIPT" --action execute --spec-id SPEC-023 --plan-slug ba \
+    --out-dir "$OUTDIR" --session-id fixturebyagent0001 \
+    --projects-root "$BYAGENT" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+
+  # one bucket per sidecar agentType, plus the main-transcript bucket
+  [ "$(led '.by_agent_type | keys | join(",")')" = "main,planner,researcher" ]
+  [ "$(led '.by_agent_type.researcher.fresh_input')" -eq 20 ]
+  [ "$(led '.by_agent_type.planner.fresh_input')" -eq 40 ]
+  [ "$(led '.by_agent_type.main.fresh_input')" -eq 10 ]
+
+  # reconcile-by-equality: collapse 5m+1h -> cache_write; Sigma buckets == aggregate.
+  [ "$(led '([.by_agent_type[].fresh_input] | add) == .buckets.fresh_input')" = "true" ]
+  [ "$(led '([.by_agent_type[] | (.cache_write_5m + .cache_write_1h)] | add) == .buckets.cache_write')" = "true" ]
+  [ "$(led '([.by_agent_type[].cache_read] | add) == .buckets.cache_read')" = "true" ]
+  [ "$(led '([.by_agent_type[].output] | add) == .buckets.output')" = "true" ]
+}
+
+# ---------- 19. git_branch + project identity (AC6) ----------
+# Real default resolution inside throwaway git repos, so `project` reflects each
+# repo's own origin remote. The https and ssh forms of ONE repo normalize to the
+# same id; a different repo (different owner) differs.
+@test "every record carries git_branch + project; same remote shares id, distinct remotes differ" {
+  mkrepo() {
+    git -C "$1" init -q
+    git -C "$1" remote add origin "$2"
+    git -C "$1" commit --allow-empty -q -m init
+  }
+  runproj() {
+    ( cd "$1" && bash "$SCRIPT" --action spec --spec-id SPEC-013 \
+        --out-dir "$1/out" --session-id fixturesingle0001 \
+        --projects-root "$FIX/single/projects" --ledger "$1/cost.jsonl" >/dev/null 2>&1 )
+    jq -r '.project' "$1/cost.jsonl"
+  }
+  mkdir -p "$BATS_TEST_TMPDIR/rhttps" "$BATS_TEST_TMPDIR/rssh" "$BATS_TEST_TMPDIR/rother"
+  mkrepo "$BATS_TEST_TMPDIR/rhttps" "https://github.com/acme/widgets.git"
+  mkrepo "$BATS_TEST_TMPDIR/rssh"   "git@github.com:acme/widgets.git"
+  mkrepo "$BATS_TEST_TMPDIR/rother" "https://github.com/other/widgets.git"
+
+  A="$(runproj "$BATS_TEST_TMPDIR/rhttps")"
+  B="$(runproj "$BATS_TEST_TMPDIR/rssh")"
+  C="$(runproj "$BATS_TEST_TMPDIR/rother")"
+
+  case "$A" in sha256:*) : ;; *) echo "bad project id: $A" >&2; return 1 ;; esac
+  [ "$A" = "$B" ]     # https and ssh forms of one repo -> one id
+  [ "$A" != "$C" ]    # a different repo -> a different id
+
+  # git_branch recorded (the repo's committed default branch)
+  br="$(jq -r '.git_branch' "$BATS_TEST_TMPDIR/rhttps/cost.jsonl")"
+  [ -n "$br" ]
+  [ "$br" != "null" ]
+}
+
+# ---------- 20. seq/final over repeated execute writes (AC7) ----------
+@test "three execute writes: seq 0,1,2, only the last final:true, final row is cumulative" {
+  L="$BATS_TEST_TMPDIR/seq.jsonl"
+  for n in 1 2 3; do
+    run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug s \
+      --out-dir "$OUTDIR" --session-id "$SESSION" \
+      --projects-root "$ANCHOR" --ledger "$L"
+    [ "$status" -eq 0 ]
+  done
+
+  [ "$(wc -l < "$L" | tr -d ' ')" -eq 3 ]
+  [ "$(jq -r '.seq' "$L" | tr '\n' ',')" = "0,1,2," ]
+  [ "$(jq -c 'select(.final == true)' "$L" | wc -l | tr -d ' ')" -eq 1 ]
+  [ "$(jq -r 'select(.final == true).seq' "$L")" -eq 2 ]
+  # the final:true row is the true cumulative total (no per-commit overcount)
+  [ "$(jq -r 'select(.final == true).total' "$L")" -eq 11110 ]
+}
+
+# ---------- 21. cutover: fresh cost.jsonl, old ledger moved aside (AC8) ----------
+@test "cutover: first cost.jsonl append moves tokens.jsonl aside; second run does not re-trigger" {
+  dir="$BATS_TEST_TMPDIR/cut"
+  mkdir -p "$dir"
+  printf '%s\n' '{"schema_version":0,"legacy":"row"}' > "$dir/tokens.jsonl"
+
+  run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
+    --out-dir "$dir/out" --session-id fixturesingle0001 \
+    --projects-root "$FIX/single/projects" --ledger "$dir/cost.jsonl"
+  [ "$status" -eq 0 ]
+
+  # old ledger moved to .bak (never read, never deleted); fresh cost.jsonl holds
+  # ONLY the new schema_version-1 row, no mixed-vintage legacy row
+  [ -f "$dir/tokens.jsonl.bak" ]
+  [ "$(jq -r '.legacy' "$dir/tokens.jsonl.bak")" = "row" ]
+  [ ! -f "$dir/tokens.jsonl" ]
+  [ "$(wc -l < "$dir/cost.jsonl" | tr -d ' ')" -eq 1 ]
+  [ "$(jq -r '.schema_version' "$dir/cost.jsonl")" -eq 1 ]
+  [ "$(jq -r '.legacy // "absent"' "$dir/cost.jsonl")" = "absent" ]
+
+  # second run must NOT re-trigger the rename (idempotent once cost.jsonl exists)
+  printf '%s\n' '{"stray":"do-not-move"}' > "$dir/tokens.jsonl"
+  run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
+    --out-dir "$dir/out" --session-id fixturesingle0001 \
+    --projects-root "$FIX/single/projects" --ledger "$dir/cost.jsonl"
+  [ "$status" -eq 0 ]
+  [ -f "$dir/tokens.jsonl" ]
+  [ "$(jq -r '.stray' "$dir/tokens.jsonl")" = "do-not-move" ]
+  [ "$(wc -l < "$dir/cost.jsonl" | tr -d ' ')" -eq 2 ]
 }

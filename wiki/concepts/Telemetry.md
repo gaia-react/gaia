@@ -25,7 +25,7 @@ Mentorship data stays off-project. Cloud + analytics live in `.gaia/local/teleme
 
 ## Token ledger
 
-A fourth, independent stream lives alongside the three above: `.gaia/local/telemetry/tokens.jsonl`, the per-action token-cost ledger `.gaia/scripts/token-tally.sh` appends to at the end of each `/gaia-spec`, `/gaia-plan`, and KICKOFF execution run. It is resolved to the main checkout (not a linked worktree's own `.gaia/local/`), so a worktree-run execution's tally consolidates with the rest of the project's history. This stream is cost accounting, not mentorship or analytics; it carries no user text or identity, only token-bucket counts and timing. See [[Token Cost Readout]] for the ledger schema, the pricing surfaces built on top of it, and the hooks that read and write it.
+A fourth, independent stream lives alongside the three above: `.gaia/local/telemetry/cost.jsonl`, the per-action token-cost ledger `.gaia/scripts/token-tally.sh` appends to at the end of each `/gaia-spec`, `/gaia-plan`, and KICKOFF execution run. It is resolved to the main checkout (not a linked worktree's own `.gaia/local/`), so a worktree-run execution's tally consolidates with the rest of the project's history. This stream is cost accounting, not mentorship or analytics; it carries no user text or identity, only token-bucket counts and timing. It is a versioned data contract, not just an internal log, see [[Cost Data Contract]] for the full record schema and [[Token Cost Readout]] for the pricing surfaces and hooks built on top of it.
 
 ## CLI workspace
 
@@ -88,3 +88,4 @@ Statusline shows a compass segment when mentorship is enabled (wired in `.gaia/s
 - [[GAIA Plan]]: emits plan_revised on slug collision
 - [[Claude Hooks]]: PostToolUse Task hook backstops engineer-return signals (uat-pass, needs-context, blocked-return) and code-review-audit-finding events
 - [[Token Cost Readout]]: prices the token ledger's `by_model` field into a dollar estimate
+- [[Cost Data Contract]]: the token ledger's full record schema

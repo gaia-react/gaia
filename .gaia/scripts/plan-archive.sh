@@ -3,17 +3,20 @@
 #
 # On PR merge, an executed gaia-plan's orchestrator self-cleanup used to
 # delete the whole plan folder outright, destroying SUMMARY.md (the
-# phase-findings ledger) and tokens.md (the token tally) along with the
+# phase-findings ledger) and cost.md (the cost tally) along with the
 # scratch material. This helper prunes the folder down to those two files
 # and then, depending on where the plan lives, either archives it or leaves
 # it in place:
 #
 #   - Spec-less plan at .gaia/local/plans/<slug>/: pruned, then moved to
-#     .gaia/local/plans/archived/<slug>/.
+#     .gaia/local/plans/archived/<slug>/. Its cost.md gains a grand-total
+#     `## Total` section on the way (cost-consolidate.sh plan-total).
 #   - Spec-colocated plan at .gaia/local/specs/<SPEC-ID>/plan[-N]/: pruned
 #     in place, no move. The SPEC folder is the archival unit; when the
 #     SPEC itself is later archived (spec-archive-merged.sh), the pruned
-#     plan/ subfolder rides along automatically.
+#     plan/ subfolder rides along automatically. Its cost.md is spliced
+#     into the SPEC-root cost.md later by cost-consolidate.sh's spec mode,
+#     not here.
 #
 # Encapsulating the prune+move in a subprocess keeps the destructive rm/mv
 # out of the caller's own tool-call stream, so the block-rm-rf.sh
@@ -130,14 +133,14 @@ if [ ! -e "$source_abs" ]; then
   exit 0
 fi
 
-# ---------- prune: keep only SUMMARY.md and tokens.md ----------
+# ---------- prune: keep only SUMMARY.md and cost.md ----------
 # Three glob arms cover dotfiles too (.work/ is dot-prefixed; RUNNING is
 # not). The existence guard skips a literal unmatched glob token.
 for entry in "$source_abs"/* "$source_abs"/.[!.]* "$source_abs"/..?*; do
   [ -e "$entry" ] || [ -L "$entry" ] || continue
   name="${entry##*/}"
   case "$name" in
-    SUMMARY.md|tokens.md) continue ;;
+    SUMMARY.md|cost.md) continue ;;
   esac
   rm -rf -- "$entry"
 done
@@ -152,18 +155,22 @@ if [ "$kind" = "plans" ]; then
 
   if [ -e "$target_abs" ]; then
     echo "plan-archive: $archived_rel already exists; left $rel pruned in place" >&2
-    printf 'Pruned plan in place (archive target exists): %s (kept SUMMARY.md, tokens.md)\n' "$rel"
+    printf 'Pruned plan in place (archive target exists): %s (kept SUMMARY.md, cost.md)\n' "$rel"
     exit 0
   fi
 
   if mv "$source_abs" "$target_abs" 2>/dev/null; then
-    printf 'Archived plan: moved %s -> %s (kept SUMMARY.md, tokens.md)\n' "$rel" "$archived_rel"
+    # Best-effort: a spec-less plan has no SPEC-root to consolidate into, so
+    # its own cost.md gets its grand total here instead of at spec-archive
+    # time. Never blocks the archive on failure.
+    bash "$root/.specify/extensions/gaia/lib/cost-consolidate.sh" plan-total "$target_abs/cost.md" >/dev/null 2>&1 || true
+    printf 'Archived plan: moved %s -> %s (kept SUMMARY.md, cost.md)\n' "$rel" "$archived_rel"
   else
     echo "plan-archive: mv failed for $rel -> $archived_rel; left pruned folder in place" >&2
-    printf 'Pruned plan in place (move failed): %s (kept SUMMARY.md, tokens.md)\n' "$rel"
+    printf 'Pruned plan in place (move failed): %s (kept SUMMARY.md, cost.md)\n' "$rel"
   fi
 else
-  printf 'Pruned colocated plan in place: %s (kept SUMMARY.md, tokens.md)\n' "$rel"
+  printf 'Pruned colocated plan in place: %s (kept SUMMARY.md, cost.md)\n' "$rel"
 fi
 
 exit 0

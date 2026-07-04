@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # GAIA token roll-up reader (SPEC-017).
 #
-# Reads the durable ledger token-tally.sh (SPEC-013) appends to
-# (.gaia/local/telemetry/tokens.jsonl) and renders a full-cycle cost readout
+# Reads the durable ledger token-tally.sh appends to
+# (.gaia/local/telemetry/cost.jsonl) and renders a full-cycle cost readout
 # for one feature: spec / plan / execute token totals and elapsed spans,
 # summed across every session the feature took (halted, resumed, worktree-
 # split). It reads the ledger ONLY, never a transcript.
 #
-# Dedup (frozen, see the plan's README.md FC-1): within an action, group
-# ledger rows by session_id; a session's winning row is the max-`.total` row
-# among its NON-partial rows (a missing `partial` field counts as non-partial
-# / final); only when EVERY row for that session is partial does the pool
-# fall back to all of the session's rows (and the session is flagged
-# partial). Ties break on the latest `.ended_at` (string compare, null ->
-# "").
+# Dedup (frozen, see the plan's README.md FC-3): within a kind, group ledger
+# rows by session_id.
+#   - execute: the winning row is the one with `final: true`; if a session
+#     carries none or several `final` rows (a degraded ledger), fall back to
+#     the row with the maximum `seq` among its NON-partial rows. Ties break
+#     on the latest `.ended_at` (string compare, null -> "").
+#   - spec/plan: a single row per session, so the existing max-`.total`
+#     selection among non-partial rows still applies (a missing `partial`
+#     field counts as non-partial / final); only when EVERY row for that
+#     session is partial does the pool fall back to all of the session's
+#     rows (and the session is flagged partial).
 #
 # Grand elapsed is the SUM of every winning row's own duration_seconds (each
 # session's own first-to-last-billed-turn span); it deliberately excludes
@@ -34,6 +38,8 @@
 
 # shellcheck source=.gaia/scripts/token-pricing-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/token-pricing-lib.sh" 2>/dev/null || true
+# shellcheck source=.gaia/scripts/ledger-path-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/ledger-path-lib.sh" 2>/dev/null || true
 
 log() {
   printf '%s\n' "$*" >&2
@@ -108,25 +114,12 @@ no_records() {
   exit 0
 }
 
-# ---------- ledger resolution, same as token-tally.sh's resolve_ledger ----------
+# ---------- ledger resolution (shared with token-tally.sh) ----------
 # main_root = dirname(absolute(git rev-parse --git-common-dir)), so a run
 # inside a linked worktree reads the surviving main ledger, not a worktree
 # copy that was never written. --ledger overrides (test seam).
 resolve_ledger() {
-  if [[ -n "$LEDGER_OVERRIDE" ]]; then
-    printf '%s' "$LEDGER_OVERRIDE"
-    return 0
-  fi
-  local common_dir abs main_root
-  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-  [[ -z "$common_dir" ]] && return 1
-  case "$common_dir" in
-    /*) abs="$common_dir" ;;
-    *)  abs="$PWD/$common_dir" ;;
-  esac
-  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)"
-  [[ -z "$main_root" ]] && return 1
-  printf '%s' "$main_root/.gaia/local/telemetry/tokens.jsonl"
+  gaia_resolve_ledger_path "$LEDGER_OVERRIDE"
 }
 
 LEDGER=""
@@ -152,7 +145,7 @@ parsed="$(jq -R -s --arg fk "$FEATURE_KEY" '
   | map(if type == "object" then . else "__BAD__" end)
   | {
       bad: (map(select(. == "__BAD__")) | length),
-      recs: (map(select(. != "__BAD__")) | map(select(.spec_id == $fk)))
+      recs: (map(select(. != "__BAD__")) | map(select(.spec_id == $fk or .plan_id == $fk)))
     }
 ' "$LEDGER" 2>/dev/null)"
 
@@ -171,23 +164,41 @@ recs_count="$(jq -r 'length' <<<"$recs" 2>/dev/null)"
 is_uint "$recs_count" || recs_count=0
 (( recs_count == 0 )) && no_records
 
-# ---------- dedup + aggregate (frozen algorithm) ----------
+# ---------- dedup + aggregate (frozen algorithm, FC-3) ----------
 summary="$(jq -c '
-  def winner_of($pool):
+  # spec/plan: one row per session; the winner is the max-`.total` row among
+  # non-partial rows (tie on latest `.ended_at`), falling back to the whole
+  # session pool only when every row is partial.
+  def winner_of_general($pool):
     $pool | map(. + {_ended: (.ended_at // "")}) | sort_by([(.total // 0), ._ended]) | last;
 
-  def dedup_session($sess):
+  def dedup_session_general($sess):
     ($sess | map(select(.partial != true))) as $nonpartial
     | (if ($nonpartial | length) > 0 then $nonpartial else $sess end) as $pool
-    | { winner: winner_of($pool), session_partial: (($nonpartial | length) == 0) };
+    | { winner: winner_of_general($pool), session_partial: (($nonpartial | length) == 0) };
+
+  # execute: one cumulative row per commit. The winner is the row with
+  # `final: true`; a degraded ledger (none or several `final` rows) falls
+  # back to the max-`seq` row (tie on latest `.ended_at`), NOT max-`total`.
+  def winner_of_execute($pool):
+    ($pool | map(select(.final == true))) as $finals
+    | if ($finals | length) == 1 then $finals[0]
+      else ($pool | map(. + {_ended: (.ended_at // "")}) | sort_by([(.seq // 0), ._ended]) | last)
+      end;
+
+  def dedup_session_execute($sess):
+    ($sess | map(select(.partial != true))) as $nonpartial
+    | (if ($nonpartial | length) > 0 then $nonpartial else $sess end) as $pool
+    | { winner: winner_of_execute($pool), session_partial: (($nonpartial | length) == 0) };
 
   . as $recs
   | ( ["spec", "plan", "execute"]
       | map(
           . as $action
-          | ($recs | map(select(.action == $action))) as $actRecs
+          | ($recs | map(select(.kind == $action))) as $actRecs
           | select(($actRecs | length) > 0)
-          | ($actRecs | group_by(.session_id) | map(dedup_session(.))) as $sr
+          | ($actRecs | group_by(.session_id)
+             | map(if $action == "execute" then dedup_session_execute(.) else dedup_session_general(.) end)) as $sr
           | {
               action: $action,
               total: ([$sr[].winner.total] | add // 0),

@@ -53,12 +53,22 @@ feature_key="$(resolve_feature_key "$plan_dir")"
 slug="$(basename "$plan_dir")"
 sid=$(jq -r '.session_id // ""' <<<"$payload")
 
+# Route the feature key to the flag matching its shape. An unclassifiable key
+# (neither SPEC- nor PLAN-, e.g. a bare `plan`/`plan-2` basename from a failed
+# `## Source SPEC` parse) gets no id flag at all, so token-tally marks the row
+# partial instead of binding a mistyped value into plan_id.
+case "$feature_key" in
+  SPEC-*) id_flag=(--spec-id "$feature_key") ;;
+  PLAN-*) id_flag=(--plan-id "$feature_key") ;;
+  *)      id_flag=() ;;
+esac
+
 # GAIA_TALLY_PROJECTS_ROOT is a documented test seam: unset in production
 # (token-tally.sh falls back to its $HOME/.claude/projects default), set by
 # bats to point at a fixture so no test run ever touches a real session's
 # transcript search path.
 bash .gaia/scripts/token-tally.sh \
-  --action execute --spec-id "$feature_key" --plan-slug "$slug" \
+  --action execute "${id_flag[@]}" --plan-slug "$slug" \
   --out-dir "$plan_dir" --session-id "$sid" \
   ${GAIA_TALLY_PROJECTS_ROOT:+--projects-root "$GAIA_TALLY_PROJECTS_ROOT"} >/dev/null 2>&1 || true
 

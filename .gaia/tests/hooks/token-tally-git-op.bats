@@ -1,12 +1,12 @@
 #!/usr/bin/env bats
 #
-# Bats suite for .claude/hooks/token-tally-git-op.sh (UAT-001/UAT-002/UAT-009)
-# and its shared resolver lib .claude/hooks/lib/gaia-active-plan.sh.
+# Bats suite for .claude/hooks/token-tally-git-op.sh and its shared resolver
+# lib .claude/hooks/lib/gaia-active-plan.sh.
 #
 # Every test runs the hook with cwd = a tmp git repo, never the real repo
 # root: token-tally.sh's ledger resolution walks up from cwd via
 # `git rev-parse --git-common-dir`, so running from the real repo would
-# append test rows to the real .gaia/local/telemetry/tokens.jsonl. Each tmp
+# append test rows to the real .gaia/local/telemetry/cost.jsonl. Each tmp
 # repo gets its own copy of the built lib + the real token-tally.sh at their
 # repo-relative paths (build_repo below), matching what a real checkout has.
 #
@@ -21,6 +21,7 @@ setup() {
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
   TALLY_SRC="$REPO_ROOT/.gaia/scripts/token-tally.sh"
   LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
+  LIB_LEDGER_PATH_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
   ANCHOR="$REPO_ROOT/.gaia/scripts/tests/fixtures/token-tally/projects"
   SESSION="fixturesession0001"
 
@@ -48,6 +49,7 @@ build_repo() {
   cp "$TALLY_SRC" "$REPO/.gaia/scripts/token-tally.sh"
   chmod +x "$REPO/.gaia/scripts/token-tally.sh"
   cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
+  cp "$LIB_LEDGER_PATH_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
 }
 
 write_running() {
@@ -92,10 +94,11 @@ run_hook() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  LEDGER="$REPO/.gaia/local/telemetry/tokens.jsonl"
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
   [ -f "$LEDGER" ]
-  [ "$(jq -r '.action' "$LEDGER")" = "execute" ]
+  [ "$(jq -r '.kind' "$LEDGER")" = "execute" ]
   [ "$(jq -r '.spec_id' "$LEDGER")" = "SPEC-013" ]
+  [ "$(jq -r '.plan_id' "$LEDGER")" = "null" ]
   [ "$(jq -r '.plan_slug' "$LEDGER")" = "my-plan" ]
   [ "$(jq -r '.total' "$LEDGER")" -eq 11110 ]
   [ "$(jq -r '.partial' "$LEDGER")" = "false" ]
@@ -114,9 +117,9 @@ run_hook() {
   run_hook "git push"
   [ "$status" -eq 0 ]
 
-  LEDGER="$REPO/.gaia/local/telemetry/tokens.jsonl"
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
   [ -f "$LEDGER" ]
-  [ "$(jq -r '.action' "$LEDGER")" = "execute" ]
+  [ "$(jq -r '.kind' "$LEDGER")" = "execute" ]
 }
 
 # ---------- 2b. Colocated spec-plan layout: specs/<SPEC-ID>/plan[-N] ----------
@@ -124,7 +127,7 @@ run_hook() {
 # their SPEC folder at specs/<SPEC-ID>/plan[-N]. The hook's cheap has_plan gate
 # and the shared resolver both scan the union of the three RUNNING globs. These
 # cases prove the colocated location is keyed and tallied exactly like a
-# spec-less plan: the feature key still resolves to the SPEC id, tokens.md lands
+# spec-less plan: the feature key still resolves to the SPEC id, cost.md lands
 # inside the colocated plan dir, and the plan_slug degrades to the folder
 # basename (`plan` / `plan-2`) with no effect on the spec-keyed ledger row.
 @test "colocated spec plan (specs/<id>/plan) records a spec-keyed execute record" {
@@ -140,15 +143,15 @@ run_hook() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  LEDGER="$REPO/.gaia/local/telemetry/tokens.jsonl"
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
   [ -f "$LEDGER" ]
-  [ "$(jq -r '.action' "$LEDGER")" = "execute" ]
+  [ "$(jq -r '.kind' "$LEDGER")" = "execute" ]
   [ "$(jq -r '.spec_id' "$LEDGER")" = "SPEC-021" ]
   [ "$(jq -r '.plan_slug' "$LEDGER")" = "plan" ]
   [ "$(jq -r '.total' "$LEDGER")" -eq 11110 ]
   [ "$(jq -r '.partial' "$LEDGER")" = "false" ]
-  # tokens.md lands inside the colocated plan dir, not under plans/.
-  [ -f "$plan_dir/tokens.md" ]
+  # cost.md lands inside the colocated plan dir, not under plans/.
+  [ -f "$plan_dir/cost.md" ]
 }
 
 @test "colocated re-planned folder (specs/<id>/plan-2) is discovered and keyed" {
@@ -162,7 +165,7 @@ run_hook() {
   run_hook "git commit -m x"
   [ "$status" -eq 0 ]
 
-  LEDGER="$REPO/.gaia/local/telemetry/tokens.jsonl"
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
   [ -f "$LEDGER" ]
   [ "$(jq -r '.spec_id' "$LEDGER")" = "SPEC-021" ]
   [ "$(jq -r '.plan_slug' "$LEDGER")" = "plan-2" ]
@@ -175,7 +178,7 @@ run_hook() {
 
   run_hook "git commit -m x"
   [ "$status" -eq 0 ]
-  [ ! -f "$REPO/.gaia/local/telemetry/tokens.jsonl" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 # ---------- 4. Negative gate: plan folder exists but branch does not match ----------
@@ -188,7 +191,7 @@ run_hook() {
 
   run_hook "git commit -m x"
   [ "$status" -eq 0 ]
-  [ ! -f "$REPO/.gaia/local/telemetry/tokens.jsonl" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 # ---------- 5. Non-git command / git status: no record, no transcript parse ----------
@@ -201,7 +204,7 @@ run_hook() {
 
   run_hook "ls -la"
   [ "$status" -eq 0 ]
-  [ ! -f "$REPO/.gaia/local/telemetry/tokens.jsonl" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 @test "git status: no record (commit/push-only matching)" {
@@ -213,7 +216,7 @@ run_hook() {
 
   run_hook "git status"
   [ "$status" -eq 0 ]
-  [ ! -f "$REPO/.gaia/local/telemetry/tokens.jsonl" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 # ---------- 6. Feature-key resolution matches step 4.8 ----------
@@ -226,19 +229,41 @@ run_hook() {
 
   run_hook "git commit -m x"
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.spec_id' "$REPO/.gaia/local/telemetry/tokens.jsonl")" = "SPEC-042" ]
+  [ "$(jq -r '.spec_id' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "SPEC-042" ]
 }
 
-@test "spec-less plan README: feature key falls back to the plan slug" {
+@test "spec-less plan (PLAN-NNN dir, no SPEC) routes to --plan-id" {
   build_repo
   cd "$REPO"
-  plan_dir="$REPO/.gaia/local/plans/spec-less-slug"
+  plan_dir="$REPO/.gaia/local/plans/PLAN-003"
   write_readme_spec_less "$plan_dir"
   write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
 
   run_hook "git commit -m x"
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.spec_id' "$REPO/.gaia/local/telemetry/tokens.jsonl")" = "spec-less-slug" ]
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
+  [ "$(jq -r '.plan_id' "$LEDGER")" = "PLAN-003" ]
+  [ "$(jq -r '.spec_id' "$LEDGER")" = "null" ]
+}
+
+# ---------- 6b. Unclassifiable key: degrades to a partial row, never a mistyped plan_id ----------
+@test "unclassifiable feature key (bare 'plan' basename): partial row, both ids null" {
+  build_repo
+  cd "$REPO"
+  # A colocated plan dir named `plan` whose README has no parseable Source SPEC
+  # section: resolve_feature_key's fallback returns the bare basename `plan`,
+  # matching neither the SPEC- nor PLAN- prefix.
+  plan_dir="$REPO/.gaia/local/specs/SPEC-099/plan"
+  write_readme_spec_less "$plan_dir"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  run_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
+  [ -f "$LEDGER" ]
+  [ "$(jq -r '.partial' "$LEDGER")" = "true" ]
+  [ "$(jq -r '.spec_id' "$LEDGER")" = "null" ]
+  [ "$(jq -r '.plan_id' "$LEDGER")" = "null" ]
 }
 
 # ---------- 7. Disambiguation by latest started ----------
@@ -257,7 +282,7 @@ run_hook() {
 
   run_hook "git commit -m x"
   [ "$status" -eq 0 ]
-  LEDGER="$REPO/.gaia/local/telemetry/tokens.jsonl"
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
   [ "$(jq -r '.spec_id' "$LEDGER")" = "SPEC-002" ]
   [ "$(jq -r '.plan_slug' "$LEDGER")" = "new-plan" ]
 }
@@ -272,7 +297,7 @@ run_hook() {
 
   run_hook 'echo "remember to git commit later"'
   [ "$status" -eq 0 ]
-  [ ! -f "$REPO/.gaia/local/telemetry/tokens.jsonl" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 @test "git commit mentioned in heredoc body prose is not matched" {
@@ -285,7 +310,7 @@ run_hook() {
   heredoc_cmd=$'cat <<EOF\nPlease remember to git commit your work.\nEOF'
   run_hook "$heredoc_cmd"
   [ "$status" -eq 0 ]
-  [ ! -f "$REPO/.gaia/local/telemetry/tokens.jsonl" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 # ---------- 9. Never blocks: degraded projects-root still appends a partial record ----------
@@ -298,7 +323,7 @@ run_hook() {
 
   run_hook "git commit -m x" "$REPO/no-such-projects-root"
   [ "$status" -eq 0 ]
-  LEDGER="$REPO/.gaia/local/telemetry/tokens.jsonl"
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
   [ -f "$LEDGER" ]
   [ "$(jq -r '.partial' "$LEDGER")" = "true" ]
 }
@@ -321,6 +346,7 @@ run_hook() {
   cp "$TALLY_SRC" "$WT/.gaia/scripts/token-tally.sh"
   chmod +x "$WT/.gaia/scripts/token-tally.sh"
   cp "$LIB_PRICING_SRC" "$WT/.gaia/scripts/token-pricing-lib.sh"
+  cp "$LIB_LEDGER_PATH_SRC" "$WT/.gaia/scripts/ledger-path-lib.sh"
 
   plan_dir="$WT/.gaia/local/plans/my-plan"
   write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
@@ -330,11 +356,11 @@ run_hook() {
   run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "cd '$WT' && echo '$input' | '$HOOK_ABS'"
   [ "$status" -eq 0 ]
 
-  MAIN_LEDGER="$MAIN/.gaia/local/telemetry/tokens.jsonl"
+  MAIN_LEDGER="$MAIN/.gaia/local/telemetry/cost.jsonl"
   [ -f "$MAIN_LEDGER" ]
   [ "$(jq -r '.spec_id' "$MAIN_LEDGER")" = "SPEC-013" ]
   [ "$(jq -r '.total' "$MAIN_LEDGER")" -eq 11110 ]
-  [ ! -f "$WT/.gaia/local/telemetry/tokens.jsonl" ]
+  [ ! -f "$WT/.gaia/local/telemetry/cost.jsonl" ]
 
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
   [ -f "$MAIN_LEDGER" ]

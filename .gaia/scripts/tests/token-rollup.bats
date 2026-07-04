@@ -39,6 +39,15 @@ bats_require_minimum_version 1.5.0
 #   partial). Winner = max total = 500000 (dur 250, 4m10s); partial marker
 #   must appear.
 #
+#   dedup-final-seq.jsonl (SPEC-205, one session "sess1", 3 execute rows,
+#   seq 0/1/2, ONLY seq 2 carries final:true) -- FC-3's primary execute
+#   selection: r1 total=500000 seq=0 final=false, r2 total=900000 seq=1
+#   final=false, r3 total=1400000 seq=2 final=true. The exactly-one-final
+#   row wins outright (not the max-seq fallback, though here they agree):
+#   winner = r3 (1400000, dur 900 = 15m0s). Proves the session's cumulative
+#   execute cost is counted once (the final row), never summed across seq
+#   0+1+2 (which would wrongly total 2800000).
+#
 #   cross-session.jsonl (SPEC-210, execute only, two sessions)
 #     sess-s1 (halted): r1 total=1000000 dur=600, r2 total=1500000 dur=1200
 #       (last pre-halt row, no `partial` key on either row) -> dedup = r2.
@@ -69,6 +78,12 @@ bats_require_minimum_version 1.5.0
 #     plan total=370 dur=60 (1m0s); execute total=407 dur=90 (1m30s)
 #     grand total=777; elapsed=150s=2m30s; buckets 21/42/630/84 (sum 777).
 #     UAT-007: no spec line renders, exit 0, no error.
+#
+#   plan-id-filter.jsonl (spec_id null throughout, plan_id "PLAN-007"; plan +
+#   execute rows, no spec row) -- proves the reader's OR-filter matches on
+#   `plan_id` too, not only `spec_id`.
+#     plan total=370 dur=60 (1m0s); execute total=407 dur=90 (1m30s)
+#     grand total=777; elapsed=150s=2m30s.
 #
 #   corrupt.jsonl (SPEC-230: one spec row, one PLAIN-TEXT bad line, one plan
 #   row; no execute row)
@@ -144,6 +159,26 @@ setup() {
   [[ "$output" == *"(partial: some ledger input was unreadable or lacked timing"* ]]
 }
 
+# ---------- 4b. FC-3 execute dedup: the final:true row wins, no per-commit overcount ----------
+@test "dedup-final-seq: the final:true row wins the session, not a sum across seq 0/1/2" {
+  run bash "$SCRIPT" --spec-id SPEC-205 --ledger "$FIX/dedup-final-seq.jsonl"
+  [ "$status" -eq 0 ]
+  grep -qF -- "execute:   1,400,000   (elapsed 15m0s)" <<<"$output"
+  grep -qF -- "Total:     1,400,000   (elapsed 15m0s)" <<<"$output"
+  if grep -qF -- "2,800,000" <<<"$output"; then
+    echo "unexpected overcount: seq 0+1+2 summed instead of the final row winning" >&2
+    return 1
+  fi
+  if grep -qF -- "500,000" <<<"$output"; then
+    echo "unexpected leak: seq 0's per-commit total should not appear" >&2
+    return 1
+  fi
+  if grep -qF -- "900,000" <<<"$output"; then
+    echo "unexpected leak: seq 1's per-commit total should not appear" >&2
+    return 1
+  fi
+}
+
 # ---------- 5. UAT-003 cross-session sum + UAT-005 halted-session inclusion ----------
 @test "cross-session: execute total sums deduped contributions from two sessions, including the halted one" {
   run bash "$SCRIPT" --spec-id SPEC-210 --ledger "$FIX/cross-session.jsonl"
@@ -198,6 +233,15 @@ setup() {
   [[ "$output" == *"Total:     777   (elapsed 2m30s)"* ]]
 }
 
+# ---------- 8b. OR-filter: --spec-id value matches a record's plan_id ----------
+@test "plan-id-filter: a PLAN-NNN feature key matches records via plan_id, not just spec_id" {
+  run bash "$SCRIPT" --spec-id PLAN-007 --ledger "$FIX/plan-id-filter.jsonl"
+  [ "$status" -eq 0 ]
+  grep -qF -- "plan:      370   (elapsed 1m0s)" <<<"$output"
+  grep -qF -- "execute:   407   (elapsed 1m30s)" <<<"$output"
+  grep -qF -- "Total:     777   (elapsed 2m30s)" <<<"$output"
+}
+
 # ---------- 9. UAT-010 corrupt line tolerated ----------
 @test "corrupt: one unparseable line among good rows is skipped, not fatal; good rows still sum" {
   run bash "$SCRIPT" --spec-id SPEC-230 --ledger "$FIX/corrupt.jsonl"
@@ -249,7 +293,7 @@ setup() {
   git -C "$MAIN" worktree add -q "$WT" -b "feature/kickoff"
 
   mkdir -p "$MAIN/.gaia/local/telemetry"
-  cp "$FIX/dedup-lower.jsonl" "$MAIN/.gaia/local/telemetry/tokens.jsonl"
+  cp "$FIX/dedup-lower.jsonl" "$MAIN/.gaia/local/telemetry/cost.jsonl"
 
   run bash -c "cd '$WT' && bash '$SCRIPT' --spec-id SPEC-201"
   [ "$status" -eq 0 ]

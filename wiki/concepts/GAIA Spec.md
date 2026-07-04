@@ -24,7 +24,7 @@ The wrapper is implemented as a spec-kit extension plus preset; the architectura
 ## Steps
 
 1. **Get description.** Use `$ARGUMENTS` if non-empty; otherwise ask "What do you want to spec?" and wait.
-2. **Resume-vs-start prompt.** `lib/spec-allocator.sh in_progress` reports an unfinalized draft SPEC (one still being authored, ledger `status: draft`); user picks Resume or Start new. A finalized SPEC is not surfaced: you resume a draft, not a frozen artifact. Two best-effort housekeeping passes run first: `lib/spec-reconcile.sh` flips any finalized SPEC whose PR has merged to `merged` from git ground truth, then `lib/spec-archive-merged.sh` sweeps any merged-but-unarchived SPEC folder into `archived/` (see [[#When a SPEC is archived]]). Both fail-open and never block. No silent overwrite, no silent fresh allocation.
+2. **Resume-vs-start prompt.** `lib/spec-allocator.sh in_progress` reports an unfinalized draft SPEC (one still being authored, ledger `status: draft`); user picks Resume or Start new. A finalized SPEC is not surfaced: you resume a draft, not a frozen artifact. Three best-effort housekeeping passes run first: `lib/spec-reconcile.sh` flips any finalized SPEC whose PR has merged to `merged` from git ground truth, `lib/spec-archive-merged.sh` sweeps any merged-but-unarchived SPEC folder into `archived/` (see [[#When a SPEC is archived]]), and `lib/spec-abandon-empty.sh` retires any never-authored draft to `abandoned` (see [[#Ledger status vocabulary]]). All three fail-open and never block. No silent overwrite, no silent fresh allocation.
 3. **`/speckit-specify`.** Spec-kit fires the `before_specify` hook (constitution-check + version-pin drift detection) automatically, then runs core. The GAIA preset replaces the core template under `strategy: wrap` so the artifact is GAIA-shaped (frontmatter, immutable flag, frozen `SPEC-NNN` id) and lands at `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 4. **Gate 1: shape confirmation.** Present `intent` + UATs in plain English. On confirmation, cache the gate-1 snapshot to `.gaia/local/cache/gate1-<spec_id>.json` (the `after_clarify` hook reads this to detect scope drift in gate 2).
 5. **`/speckit-clarify` (Socratic loop).** Sequential coverage-based questioning. Closed-set goes through `AskUserQuestion`; open-ended uses plain prompts; `Discuss this` drops into plain Q&A and records the settled outcome. Per-topic exhaustion checkpoint forbids silent topic advance. Research questions dispatch a `general-purpose` Agent; never punt to the human.
@@ -48,14 +48,15 @@ SPEC numbers are reserved as immutable `spec/NNN` git tags pushed to the remote,
 
 ## Ledger status vocabulary
 
-The ledger lives at `.gaia/local/specs/ledger.json`, a local, gitignored per-machine cache; the `status` field on each row is exactly one of four canonical values:
+The ledger lives at `.gaia/local/specs/ledger.json`, a local, gitignored per-machine cache; the `status` field on each row is exactly one of five canonical values:
 
 - `draft`: allocated, still being authored. The only status `lib/spec-allocator.sh in_progress` surfaces for the resume-vs-start prompt.
 - `specified`: artifact finalized and frozen. Downstream plan → implement → merge owns the feature from here.
 - `merged`: the implementing PR has landed; `merged_at` records when. `lib/spec-reconcile.sh` sets this from git ground truth.
 - `archived`: a finalized SPEC retired to `.gaia/local/specs/archived/`. The archive disposition is carried on the SPEC artifact frontmatter (`status: archived`, `archived_at`); the ledger row tracks lifecycle and reads `merged` for a SPEC that both merged and was archived.
+- `abandoned`: a draft allocated but never authored, retired terminally. `lib/spec-abandon-empty.sh` sets this on every `/gaia-spec` preflight for a draft row that is BOTH empty (no SPEC.md, no draft cache, no gate-1 snapshot) AND older than the guard age (~1 day); `abandoned_at` records when. `lib/spec-allocator.sh in_progress` does not surface it, so it stops re-appearing on the resume-vs-start prompt.
 
-No other value is valid. `lib/ledger-update.sh` is the single chokepoint for ledger writes; it accepts the four canonical values plus the tolerated legacy `in-progress`, and rejects anything else (exit 6), so a stray label cannot reach the ledger through a tool path. `in-progress` is a deprecated legacy value that `spec-reconcile.sh` advances toward `merged` from git; new flows use `draft → specified`.
+No other value is valid. `lib/ledger-update.sh` is the single chokepoint for ledger writes; it accepts the five canonical values plus the tolerated legacy `in-progress`, and rejects anything else (exit 6), so a stray label cannot reach the ledger through a tool path. `in-progress` is a deprecated legacy value that `spec-reconcile.sh` advances toward `merged` from git; new flows use `draft → specified`.
 
 A ledger that predates the chokepoint can still hold a misnamed status (a hand-edited or backfilled `shipped`, say). These self-heal: `spec-reconcile.sh` runs on every `/gaia-spec` and renames known aliases (`shipped → merged`) to canonical through the guarded chokepoint, logging any unrecognized status rather than guessing its lifecycle position.
 

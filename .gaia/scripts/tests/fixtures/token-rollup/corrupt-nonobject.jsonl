@@ -1,4 +1,4 @@
-{"action":"spec","spec_id":"SPEC-231","session_id":"sp1","buckets":{"fresh_input":300,"cache_write":600,"cache_read":1800,"output":300},"total":3000,"partial":false,"started_at":"2026-05-04T09:00:00.000Z","ended_at":"2026-05-04T09:01:00.000Z","duration_seconds":60,"duration_available":true,"ts":"2026-05-04T09:01:00Z"}
+{"kind":"spec","spec_id":"SPEC-231","session_id":"sp1","buckets":{"fresh_input":300,"cache_write":600,"cache_read":1800,"output":300},"total":3000,"partial":false,"started_at":"2026-05-04T09:00:00.000Z","ended_at":"2026-05-04T09:01:00.000Z","duration_seconds":60,"duration_available":true,"ts":"2026-05-04T09:01:00Z"}
 42
-{"action":"plan","spec_id":"SPEC-231","plan_slug":"spec-231-slug","session_id":"pl1","buckets":{"fresh_input":400,"cache_write":800,"cache_read":2400,"output":400},"total":4000,"partial":false,"started_at":"2026-05-04T09:05:00.000Z","ended_at":"2026-05-04T09:07:00.000Z","duration_seconds":120,"duration_available":true,"ts":"2026-05-04T09:07:00Z"}
+{"kind":"plan","spec_id":"SPEC-231","plan_slug":"spec-231-slug","session_id":"pl1","buckets":{"fresh_input":400,"cache_write":800,"cache_read":2400,"output":400},"total":4000,"partial":false,"started_at":"2026-05-04T09:05:00.000Z","ended_at":"2026-05-04T09:07:00.000Z","duration_seconds":120,"duration_available":true,"ts":"2026-05-04T09:07:00Z"}
 [1, 2]

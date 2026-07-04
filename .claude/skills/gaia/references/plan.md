@@ -122,7 +122,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
       started: <current UTC time, ISO 8601, e.g. 2026-05-19T14:32:00Z>
       ```
 
-      This file is deleted automatically when the plan directory is archived during final self-cleanup (RUNNING is not one of the two files the archive keeps, `SUMMARY.md` and `tokens.md`). Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature.
+      This file is deleted automatically when the plan directory is archived during final self-cleanup (RUNNING is not one of the two files the archive keeps, `SUMMARY.md` and `cost.md`). Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature.
 
     - **Pre-flight branch policy.** Check the current branch.
 
@@ -178,7 +178,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       A `PostToolUse` hook on `gh pr merge` renders the same roll-up at the merge boundary, so the readout also appears when the merge runs from a fresh top-level session. The reader never blocks and never fabricates a number: the `-x` guard and trailing `|| true` mean a missing or failing helper degrades silently, and an unreadable ledger degrades to a partial or absent figure with a marker.
 
-    - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user confirms the PR is ready to merge, the orchestrator **archives** its own plan folder instead of deleting it, preserving `SUMMARY.md` and `tokens.md`. Run:
+    - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user confirms the PR is ready to merge, the orchestrator **archives** its own plan folder instead of deleting it, preserving `SUMMARY.md` and `cost.md`. Run:
 
       ```bash
       bash .gaia/scripts/plan-archive.sh {PLAN_DIR}
@@ -186,11 +186,11 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       The argument is the plan dir. Pass the cached `{PLAN_DIR}` (absolute) directly, the helper normalizes an absolute-under-repo path to repo-relative. A repo-relative literal (`.gaia/local/specs/<SPEC-ID>/plan[-N]` or `.gaia/local/plans/<slug>[-N]`) is equally valid. Unlike the old literal-`rm` self-cleanup, the argument shape does NOT affect the permission match here: the allow entry `Bash(bash .gaia/scripts/plan-archive.sh:*)` uses a `:*` wildcard that matches any argument.
 
-      This prunes everything except `SUMMARY.md` and `tokens.md`, then: for a spec-less plan under `.gaia/local/plans/<slug>/` moves the pruned folder to `.gaia/local/plans/archived/<slug>/`; for a spec-colocated plan under `.gaia/local/specs/<SPEC-ID>/plan/` prunes in place (the SPEC folder is the archival unit, it rides into `specs/archived/` when the SPEC is later archived). The helper always exits 0.
+      This prunes everything except `SUMMARY.md` and `cost.md`, then: for a spec-less plan under `.gaia/local/plans/<slug>/` moves the pruned folder to `.gaia/local/plans/archived/<slug>/`, with a `## Total` appended to `cost.md`; for a spec-colocated plan under `.gaia/local/specs/<SPEC-ID>/plan/` prunes in place (the SPEC folder is the archival unit). When the SPEC folder is later archived, a shared routine consolidates and flattens: it folds the SPEC-root `cost.md`'s `## SPEC` section together with the plan's `## Planning` + `## Execution` into one `## SPEC` + `## Planning` + `## Execution` + `## Total` document at the SPEC root, moves `SUMMARY.md` up beside it, and removes the now-empty `plan/` subfolder, so the archived SPEC folder never nests a `plan/`. The helper always exits 0.
 
       Then check `git check-ignore .gaia/local/plans/` (and, for a colocated plan, `git check-ignore .gaia/local/specs/`): both are gitignored under the GAIA default, so the prune+move is invisible to git, skip the commit and report "plan folder archived locally; gitignored, no commit needed." If a path is tracked, commit and push the move as the final commit on the PR. If the user explicitly asks to keep the plan folder un-archived, skip and report.
 
-      The `SUMMARY.md`/`tokens.md` content was already surfaced in the Final summary, and now additionally persists on disk.
+      The `SUMMARY.md`/`cost.md` content was already surfaced in the Final summary, and now additionally persists on disk.
 
     - **Post-merge worktree cleanup (worktree-mode runs only).** When the orchestrator's pre-flight chose worktree mode (or the run was dispatched into a worktree by upstream tooling), the post-merge phase runs the cleanup procedure below AFTER the user confirms the PR is merged. The procedure detects the squash-merge state and discards the worktree without prompting (the SPEC clarifications.answered confirms pre-consent: the orchestrator told the user "after merge, the worktree will be discarded" before opening the PR; the user merging the PR is the consent).
       1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
@@ -377,27 +377,34 @@ Notes:
 The plan folder is written and verified, so every planner/auditor sub-agent this action spawned has
 flushed its sidecar to disk. Tally the `/gaia-plan` session's ground-truth token cost before the
 handoff. The call sums `message.usage` across the main transcript AND every sub-agent sidecar
-(deduped by message id, so it equals what the API billed), appends one record keyed to the plan slug
-to the durable ledger resolved to the main checkout (so it survives archival of the plan folder and
-a linked worktree), writes the **Planning** section of the plan folder's `tokens.md`, and prints the
-four billing buckets plus a total and the wall-clock elapsed. The KICKOFF execution phase later adds
-an independent **Execution** section to the same `tokens.md` (via the git-op hook, on each commit);
-the two sections are tracked separately and never overwrite or sum each other. Derive the ledger key
-from the SPEC folder name (the parent dir of `SPEC_PATH`), falling back to the plan slug for a
-SPEC-less plan:
+(deduped by message id, so it equals what the API billed), appends one record keyed to the feature
+identity to the durable ledger resolved to the main checkout (so it survives archival of the plan
+folder and a linked worktree), writes the **Planning** section of the plan folder's `cost.md`, and
+prints the four billing buckets plus a total and the wall-clock elapsed. The KICKOFF execution phase
+later adds an independent **Execution** section to the same `cost.md` (via the git-op hook, on each
+commit); the two sections are tracked separately and never overwrite or sum each other. A spec-derived
+plan passes its SPEC id via `--spec-id`; a SPEC-less plan passes its `PLAN-NNN` id via `--plan-id`
+instead, exactly one of the two flags, never both, matching the ledger's `spec_id`-XOR-`plan_id`
+contract:
 
 ```bash
 PLAN_SLUG="$(basename "$PLAN_DIR")"
 if [[ -n "${SPEC_PATH:-}" ]]; then
   TALLY_SPEC_ID="$(basename "$(dirname "$SPEC_PATH")")"   # -> SPEC-NNN
+  bash .gaia/scripts/token-tally.sh \
+    --action plan \
+    --spec-id "$TALLY_SPEC_ID" \
+    --plan-slug "$PLAN_SLUG" \
+    --out-dir "$PLAN_DIR" || true
 else
-  TALLY_SPEC_ID="$PLAN_SLUG"                              # SPEC-less plan: key by slug
+  # SPEC-less plan: PLAN_SLUG is the PLAN-NNN id allocated in step 3, so it
+  # doubles as both the feature identity and the cost.md title slug.
+  bash .gaia/scripts/token-tally.sh \
+    --action plan \
+    --plan-id "$PLAN_SLUG" \
+    --plan-slug "$PLAN_SLUG" \
+    --out-dir "$PLAN_DIR" || true
 fi
-bash .gaia/scripts/token-tally.sh \
-  --action plan \
-  --spec-id "$TALLY_SPEC_ID" \
-  --plan-slug "$PLAN_SLUG" \
-  --out-dir "$PLAN_DIR" || true
 ```
 
 The helper always exits 0, and the trailing `|| true` is defense-in-depth: this **never blocks the
