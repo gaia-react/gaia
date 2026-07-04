@@ -32,6 +32,9 @@
 # DO NOT add `set -e`; every step degrades to a partial/empty readout rather
 # than aborting.
 
+# shellcheck source=.gaia/scripts/token-pricing-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/token-pricing-lib.sh" 2>/dev/null || true
+
 log() {
   printf '%s\n' "$*" >&2
 }
@@ -133,23 +136,6 @@ else
   log "token-rollup: could not resolve ledger path"
 fi
 
-# ---------- rate-table resolution (SPEC-019) ----------
-# The rate table is committed (public Claude pricing, shared across
-# developers), unlike the ledger which is machine-local. Resolve via
-# --show-toplevel (the current checkout, worktree or main -- both carry the
-# committed file) rather than --git-common-dir. --rate-table overrides (test
-# seam).
-resolve_rate_table() {
-  if [[ -n "$RATE_TABLE_OVERRIDE" ]]; then
-    printf '%s' "$RATE_TABLE_OVERRIDE"
-    return 0
-  fi
-  local toplevel
-  toplevel="$(git rev-parse --show-toplevel 2>/dev/null)"
-  [[ -z "$toplevel" ]] && return 1
-  printf '%s' "$toplevel/.gaia/scripts/token-rates.json"
-}
-
 [[ -z "$LEDGER" || ! -f "$LEDGER" ]] && no_records
 
 # ---------- corrupt-line-tolerant parse + feature filter ----------
@@ -245,9 +231,16 @@ is_uint "$actions_len" || actions_len=0
 # lower bound or an "unavailable" line on any unreadable table, unknown
 # model, missing run-time anchor, or corrupt ledger line -- never guesses,
 # never blocks.
+#
+# The rate table is committed (public Claude pricing, shared across
+# developers), unlike the ledger which is machine-local. Resolve via
+# --show-toplevel (the current checkout, worktree or main -- both carry the
+# committed file) rather than --git-common-dir. --rate-table overrides (test
+# seam). Resolution + load are shared with token-tally.sh via
+# token-pricing-lib.sh (sourced above).
 rate_table_ok=true
 RATE_TABLE=""
-if rt_path="$(resolve_rate_table)" && [[ -n "$rt_path" ]]; then
+if rt_path="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" && [[ -n "$rt_path" ]]; then
   RATE_TABLE="$rt_path"
 else
   log "token-rollup: could not resolve rate table path"
@@ -256,8 +249,7 @@ fi
 
 rates_json="null"
 if [[ "$rate_table_ok" == "true" ]]; then
-  rt_contents="$(cat "$RATE_TABLE" 2>/dev/null)"
-  if [[ -n "$rt_contents" ]] && jq -e 'type=="object" and has("models")' >/dev/null 2>&1 <<<"$rt_contents"; then
+  if rt_contents="$(gaia_load_rate_table "$RATE_TABLE")"; then
     rates_json="$rt_contents"
   else
     log "token-rollup: rate table unreadable: $RATE_TABLE"
@@ -273,44 +265,7 @@ cost_grand_dollars="0"
 cost_summary=""
 
 if [[ "$rate_table_ok" == "true" ]]; then
-  cost_summary="$(jq -c --argjson rates "$rates_json" '
-    def rate_window($model; $date):
-      ($rates.models[$model] // [])
-      | map(select(.effective_through == null or ($date != "" and $date <= .effective_through)))
-      | first;
-
-    # Prices one winning row. A null/empty ts short-circuits BEFORE window
-    # selection (DP-004): the whole row contributes zero and is flagged
-    # missing_anchor, never falling through to the sticker window.
-    def priced_row($row):
-      ($row.ts // "")[0:10] as $date
-      | ($row.by_model // {} | to_entries | map(select(.key | test("^claude-")))) as $entries
-      | if $date == "" then
-          { dollars: 0, missing_anchor: true, unpriced: [] }
-        else
-          ( $entries | map(
-              . as $e
-              | rate_window($e.key; $date) as $w
-              | { model: $e.key, w: $w, b: $e.value }
-            )
-          ) as $priced
-          | {
-              dollars: ( $priced | map(
-                  if .w == null then 0
-                  else
-                    ( (.b.fresh_input // 0) * .w.input
-                    + (.b.cache_write_5m // 0) * .w.input * $rates.cache_multipliers.write_5m
-                    + (.b.cache_write_1h // 0) * .w.input * $rates.cache_multipliers.write_1h
-                    + (.b.cache_read // 0) * .w.input * $rates.cache_multipliers.read
-                    + (.b.output // 0) * .w.output
-                    ) / 1000000
-                  end
-                ) | add // 0 ),
-              missing_anchor: false,
-              unpriced: ( $priced | map(select(.w == null) | .model) )
-            }
-        end;
-
+  cost_summary="$(jq -c --argjson rates "$rates_json" "$GAIA_PRICING_JQ_DEFS"'
     .actions as $actions
     | ( $actions | map(
           . as $a
