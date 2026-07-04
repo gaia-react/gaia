@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# WorktreeCreate hook: creates a git worktree and sets up GAIA shared-state
-# symlinks. Claude Code fires this hook and waits for the worktree path on
-# stdout before the agent starts.
+# WorktreeCreate hook: creates a git worktree under .claude/worktrees/ and sets
+# up GAIA shared-state symlinks. Claude Code fires this hook and waits for the
+# worktree path on stdout before the agent starts. A registered WorktreeCreate
+# hook replaces the harness's default `git worktree` logic entirely.
 #
-# Input:  JSON on stdin: worktree_name, base_ref, cwd (plus common fields).
+# Input:  JSON on stdin. The harness sends the worktree name under `.name`
+#         (legacy/HTTP variants used `.worktree_name`); no base ref or target
+#         path is included, so this hook derives both. Common fields
+#         (session_id, cwd, hook_event_name, ...) are present but unused.
 # Output: absolute worktree path on stdout.
-# Exit:   0 on success with path; non-zero aborts the caller.
+# Exit:   0 on success with path; non-zero aborts worktree creation.
 
 set -euo pipefail
 
 input="$(cat)"
-worktree_name="$(printf '%s' "$input" | jq -r '.worktree_name // ""')"
-base_ref="$(printf '%s' "$input" | jq -r '.base_ref // "main"')"
+# The harness sends the worktree name under `.name`; older/HTTP hook variants
+# used `.worktree_name`. Read tolerantly so the hook survives payload drift.
+worktree_name="$(printf '%s' "$input" | jq -r '.name // .worktree_name // ""')"
 
 if [ -z "$worktree_name" ]; then
   printf 'create-worktree: missing worktree_name\n' >&2
@@ -20,21 +25,33 @@ fi
 
 # Defense-in-depth: worktree_name lands in a filesystem path and a branch
 # name. Reject `..` and absolute paths so the worktree can't escape the
-# sibling worktrees/ directory even if the stdin payload is influenced by
-# untrusted content. Internal slashes (e.g. `fix/foo`) stay allowed.
+# worktrees/ directory even if the stdin payload is influenced by untrusted
+# content. Internal slashes (e.g. `fix/foo`) stay allowed.
 if [[ "$worktree_name" == *..* || "$worktree_name" == /* ]]; then
   printf 'create-worktree: worktree_name must not contain ".." or start with "/"\n' >&2
   exit 1
 fi
 
 project_root="$(git rev-parse --show-toplevel)"
-worktree_path="$(dirname "$project_root")/worktrees/$worktree_name"
+
+# No base ref is carried in the WorktreeCreate payload, so derive one: honor a
+# ref if a future harness version supplies it, else branch fresh from the remote
+# default branch (matching the harness default), else fall back to local HEAD.
+base_ref="$(printf '%s' "$input" | jq -r '.base_ref // .source_ref // ""')"
+if [ -z "$base_ref" ]; then
+  base_ref="$(git -C "$project_root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || echo HEAD)"
+fi
+
+# Create under .claude/worktrees/ to match the harness default and gitignore.
+worktree_path="$project_root/.claude/worktrees/$worktree_name"
 
 mkdir -p "$(dirname "$worktree_path")"
 
 # Try new branch first; if name already exists, check out the existing one.
-if ! git -C "$project_root" worktree add "$worktree_path" -b "$worktree_name" "${base_ref:-main}" 2>/dev/null; then
-  if ! git -C "$project_root" worktree add "$worktree_path" "$worktree_name" 2>/dev/null; then
+# Silence git entirely (stdout too): "HEAD is now at ..." is written to stdout,
+# and the hook's stdout must carry only the worktree path for the harness.
+if ! git -C "$project_root" worktree add "$worktree_path" -b "$worktree_name" "$base_ref" >/dev/null 2>&1; then
+  if ! git -C "$project_root" worktree add "$worktree_path" "$worktree_name" >/dev/null 2>&1; then
     printf 'create-worktree: git worktree add failed for %s\n' "$worktree_path" >&2
     # `git worktree remove --force` clears both the directory and the stale
     # .git/worktrees/ registration; rm -rf is the fallback if git itself
