@@ -18,7 +18,7 @@ The slash command name intentionally does NOT start with `gaia-` so it does not 
 
 Parse `$ARGUMENTS` for the `--reconfigure` flag. Cache the boolean as `RECONFIGURE`.
 
-## Phase 0 — Prerequisites (every invocation, never skipped)
+## Phase 0: Prerequisites (every invocation, never skipped)
 
 These run on every invocation and record no setup-state step. They sit outside the per-machine skip gate.
 
@@ -59,7 +59,7 @@ fi
 
 Surface every warning verbatim, then continue.
 
-## Phase 1 — Detect situation
+## Phase 1: Detect situation
 
 Classify the clone by reading state, gating on **file existence, not key presence**. Every input is optional; a missing file is a signal, not an error.
 
@@ -70,7 +70,7 @@ Classify the clone by reading state, gating on **file existence, not key presenc
 
 - `.gaia/local/setup-state.json` (per-machine, gitignored). From `setup status --json`, cache `completed_at` and `completed_steps`.
 - `.gaia/automation.json` (committed when present). From `setup-ci status --json`, cache `configured`, `setup_complete`, `setup_opted_out`, `nudge_dismissed`, `tools_enabled`.
-- `.gaia/audit-ci.yml` (committed when present) — gates Phase 5.
+- `.gaia/audit-ci.yml` (committed when present): gates Phase 5.
 
 Then read the **repo / branch / push / required-check** state, not merely whether an `origin` remote exists:
 
@@ -93,7 +93,7 @@ Classify into one of: **fresh clone**, **first adopter**, **partial re-run**, **
 
 The classification only routes the phases below; each phase re-checks its own completion and no-ops when already done, so misclassification cannot corrupt state.
 
-## Phase 2 — Per-machine setup (skip if setup-state finalized)
+## Phase 2: Per-machine setup (skip if setup-state finalized)
 
 If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops **except for the mentorship-decision reconciliation below** (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–6 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
 
@@ -304,7 +304,7 @@ After the chosen branch executes:
 .gaia/cli/gaia setup mark-step mentorship-decision
 ```
 
-## Phase 3 — GitHub repository (skip if provisioning already complete)
+## Phase 3: GitHub repository (skip if provisioning already complete)
 
 Judge this phase from the **repo/branch/push state cached in Phase 1**, not merely `origin` presence. If the repo exists, the default branch is pushed, and no repo mutation is owed, print `GitHub repository already provisioned.` and fall through to Phase 4 without touching GitHub.
 
@@ -312,11 +312,11 @@ Otherwise, this is the **first user-facing interaction for a first adopter**. As
 
 > How do you want to connect this project to GitHub?
 >
-> - **Create the repo on GitHub** (Recommended) — I'll create it private, push your default branch, and set the recommended defaults.
-> - **Adopt an existing repo** — you already have a github `origin`; I'll skip creation and apply the recommended defaults.
-> - **Set one up manually** — I'll print guidance and leave GitHub untouched.
+> - **Create the repo on GitHub** (Recommended): I'll create it private, push your default branch, and set the recommended defaults.
+> - **Adopt an existing repo**: you already have a github `origin`; I'll skip creation and apply the recommended defaults.
+> - **Set one up manually**: I'll print guidance and leave GitHub untouched.
 
-### Option 1 — Create the repo on GitHub
+### Option 1: Create the repo on GitHub
 
 **Pre-creation authz check (distinct from the existing-repo admin probe).** `check-admin` needs a repo that already exists, so it cannot gate creation. Confirm an **authenticated gh with repo-creation rights** first:
 
@@ -339,7 +339,7 @@ gh api user --jq .login                       # personal login
 gh api --paginate /user/orgs --jq '.[].login' # org memberships (best-effort; may need the read:org scope)
 ```
 
-Org enumeration is best-effort: `/user/orgs` only returns orgs the active token can see. A missing org is not fatal — the free-text path below covers it.
+Org enumeration is best-effort: `/user/orgs` only returns orgs the active token can see. A missing org is not fatal; the free-text path below covers it.
 
 **If the user belongs to no orgs, skip the owner question entirely** and create under the personal account (the default create command below).
 
@@ -355,18 +355,18 @@ gh api graphql -f query='
   | sort_by(-.n) | .[].owner'
 ```
 
-Order the org set by this ranking; orgs the ranker omits fall to the end in membership order. If the GraphQL call fails or returns nothing (older gh, missing scope, no recent activity), fall back to plain `/user/orgs` order. Ranking is cosmetic — it only decides which orgs appear as buttons; the final choice is always correct.
+Order the org set by this ranking; orgs the ranker omits fall to the end in membership order. If the GraphQL call fails or returns nothing (older gh, missing scope, no recent activity), fall back to plain `/user/orgs` order. Ranking is cosmetic: it only decides which orgs appear as buttons; the final choice is always correct.
 
 Then AskUserQuestion with these options **in this exact order**:
 
 > Where should this repository live?
 >
-> - **Personal account (@<login>)** (Recommended) — create it under your own GitHub account.
-> - **<org>** — create it in this organization. (one option per org, ranked; **at most 3**)
+> - **Personal account (@<login>)** (Recommended): create it under your own GitHub account.
+> - **<org>**: create it in this organization. (one option per org, ranked; **at most 3**)
 
 If the user belongs to **more than three** orgs, print the full ranked list first, offer the personal account plus the **top 3** ranked orgs as buttons, and add to the question: "If the org you want isn't a button, choose Other and type its exact login from the list above." (AskUserQuestion supplies the free-text Other option automatically.) Record the chosen owner for the create command below.
 
-**Create private by default.** Non-interactive `gh repo create` requires one of `--public` / `--private` / `--internal`; default to `--private`. Create under the owner chosen above — omit the positional for the personal account, or pass `<owner>/<name>` for an org (deriving `<name>` from the project directory):
+**Create private by default.** Non-interactive `gh repo create` requires one of `--public` / `--private` / `--internal`; default to `--private`. Create under the owner chosen above: omit the positional for the personal account, or pass `<owner>/<name>` for an org (deriving `<name>` from the project directory):
 
 ```bash
 # Personal account:
@@ -397,11 +397,11 @@ If this is unavailable on the plan (e.g. a private repo without GitHub Advanced 
 
 After creation, cache `owner`/`repo` from the new remote and fall through to **Recommended defaults**.
 
-### Option 2 — Adopt an existing repo
+### Option 2: Adopt an existing repo
 
 The user already has a github `origin` (cached in Phase 1). Skip creation and fall through to **Recommended defaults**.
 
-### Option 3 — Set one up manually
+### Option 3: Set one up manually
 
 Print:
 
@@ -498,7 +498,7 @@ Assert `automated-security-fixes` is `false`, and write **no** `.github/dependab
 
 All Phase-3 GitHub mutations (create, protection, vuln-alerts, delete-branch) are net-new, admin-gated, security-sensitive calls. A non-admin runner degrades gracefully: skip the mutation, print the admin-note above, and continue to Phase 4.
 
-## Phase 4 — CI wiring (admin-gated; skip if `setup_complete`)
+## Phase 4: CI wiring (admin-gated; skip if `setup_complete`)
 
 CI wiring installs the audit gate and cron workflows, provisions the bot-token secret out of band, and registers the `GAIA-Audit` required check. This flow **registers the GAIA-Audit required check** as a branch-protection status.
 
@@ -532,9 +532,9 @@ Do not modify any file; fall through to Phase 5. Otherwise (drift or missing cro
 > Cron workflows, Drifted: <drifted-list-or-(none)> | Missing: <missing-list-or-(none)>
 > Audit workflow, <in_sync|drifted|missing>
 >
-> - **Re-render workflows** (Recommended) — regenerate only the drifted/missing cron files and re-install the audit workflow from the current templates, then commit on a branch and open a PR. Keeps tool selection and token unchanged.
-> - **Skip** — leave the workflows as-is.
-> - **Run full reconfigure instead** — re-prompt for tool modes and rotate the bot token.
+> - **Re-render workflows** (Recommended): regenerate only the drifted/missing cron files and re-install the audit workflow from the current templates, then commit on a branch and open a PR. Keeps tool selection and token unchanged.
+> - **Skip**: leave the workflows as-is.
+> - **Run full reconfigure instead**: re-prompt for tool modes and rotate the bot token.
 
 On "Re-render workflows" → run the **Drift-fix path** below. On "Skip" → fall through to Phase 5 with no changes. On "Run full reconfigure instead" → set `RECONFIGURE = true` and run the **`--reconfigure` flow**.
 
@@ -721,7 +721,7 @@ No cron tools are configured for CI mode in .gaia/automation.json. The code-revi
 
 The audit gate is the `GAIA-Audit` COMMIT STATUS, not the `code-review-audit` job name. The audit job reaches a green terminal step on every path (including a local-mode stand-down where no audit ran), so requiring the job name would let an unaudited PR merge through the github.com button. Only the `GAIA-Audit` status is the gate, and the resolver honors `default_mode: local` only when this registration is confirmed present.
 
-Register **after** the default-branch protection rule exists (Phase 3), so the `required_status_checks` PUT returns 2xx, not 404. **GET the current contexts, union `GAIA-Audit` into them, then PUT the union** — a static PUT REPLACES the array and would drop sibling contexts (e.g. `Tests`, `Chromatic`), letting unaudited code merge:
+Register **after** the default-branch protection rule exists (Phase 3), so the `required_status_checks` PUT returns 2xx, not 404. **GET the current contexts, union `GAIA-Audit` into them, then PUT the union**. A static PUT REPLACES the array and would drop sibling contexts (e.g. `Tests`, `Chromatic`), letting unaudited code merge:
 
 ```bash
 # GET the current required_status_checks contexts (empty on a fresh protection rule,
@@ -890,7 +890,7 @@ gh pr create --base <default-branch> --head chore/gaia-ci-rerender \
 
 Print the PR URL. Do NOT auto-merge; the adopter reviews and merges in their normal flow. `setup_complete` is NOT touched. If either render step fails, surface the structured error and exit; the branch is abandoned (the adopter can delete it and re-run `/setup-gaia` after fixing the cause). Fall through to Phase 5.
 
-## Phase 5 — Per-developer audit-mode (needs `audit-ci.yml`)
+## Phase 5: Per-developer audit-mode (needs `audit-ci.yml`)
 
 This step chooses who runs **your** `code-review-audit` at merge time, on CI or your local machine. It only applies once the project has CI wired up. The `audit-mode-decision` step is recorded in **every** branch below (absent-file, gh-unauthenticated, already-recorded, and post-choice); recording it unconditionally is load-bearing, a teammate clone that skips it reaches Phase 6 at 6/7 steps and `gaia setup finalize` hard-errors.
 
@@ -960,7 +960,7 @@ After the chosen branch executes (or a gated skip):
 .gaia/cli/gaia setup mark-step audit-mode-decision
 ```
 
-## Phase 6 — Finalize
+## Phase 6: Finalize
 
 Stamp per-machine setup-state as complete, then report. `setup finalize` refuses to finalize while any step is pending (it returns non-zero without stamping `completed_at`), and a first adopter reaches here with `completed_steps: []` (their `/gaia-init` already set `completed_at` via `gaia setup finalize --force`), so this phase must both **short-circuit when already finalized** and **pass `--force` when any step is still pending**.
 
