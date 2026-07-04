@@ -41,7 +41,7 @@ Prefer ARIA roles and accessible names; fall back to `page.locator()` with text/
 
 ## Locale and language tests
 
-Set locale and `Accept-Language` per `test.describe` block, not globally. See `.claude/rules/playwright.md` and `language-switch.spec.ts` for the canonical pattern.
+Set locale and `Accept-Language` per `test.describe` block, not globally. See `.claude/rules/playwright.md` and `language-switch-a11y.spec.ts` for the canonical pattern.
 
 ## Auth / session setup
 
