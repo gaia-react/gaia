@@ -506,8 +506,13 @@ compute_project_id() {
 # left as-is (prior finals stay set) -- the reader's documented fallback is
 # max-seq, so a failed rewrite never loses correctness. Never aborts the run.
 clear_prior_finals() {
-  local ledger="$1" sid="$2" spec="$3" plan="$4" newseq="$5" tmpl
-  tmpl="$(mktemp 2>/dev/null)" || { log "token-tally: mktemp failed; leaving prior finals as-is"; return 0; }
+  local ledger="$1" sid="$2" spec="$3" plan="$4" newseq="$5" tmpl ledger_dir
+  # mktemp into the ledger's own directory so the `mv` below is a same-filesystem
+  # rename(2) (atomic), never a cross-fs copy+unlink that could expose a
+  # partially written ledger. Fail-open is unchanged: an unwritable dir degrades
+  # to leaving prior finals as-is (the reader's max-seq fallback stays correct).
+  ledger_dir="$(dirname "$ledger")"
+  tmpl="$(mktemp "$ledger_dir/.cost.jsonl.XXXXXX" 2>/dev/null)" || { log "token-tally: mktemp failed; leaving prior finals as-is"; return 0; }
   if jq -R -r -n --arg sid "$sid" --arg spec "$spec" --arg plan "$plan" --argjson newseq "$newseq" '
         inputs as $line
         | ($line | try fromjson catch null) as $o

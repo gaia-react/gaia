@@ -47,6 +47,15 @@ jobs:
               - '.gaia/scripts/**'
               - '.gaia/tests/forensics/**'
               - '.gaia/tests/hooks/**'
+              - '.gaia/tests/lib/**'
+              # The .gaia/tests/lib/ suites exercise the SPEC-ledger lib scripts
+              # under .specify/extensions/gaia/lib/ (spec-archive-merged.sh and
+              # its shared cost-consolidate.sh, the allocators, ledger-update,
+              # etc.), so trigger on that source dir too. A source-only edit then
+              # runs the suite, matching the test-dir + source-dir pairing the
+              # filters above already use (.gaia/tests/hooks/** + .claude/hooks/**;
+              # .gaia/tests/forensics/** + .github/forensics/**).
+              - '.specify/extensions/gaia/lib/**'
               - '.claude/skills/gaia/references/forensics*'
               - '.github/forensics/**'
       - if: steps.filter.outputs.code == 'true'
@@ -71,3 +80,14 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         name: Run .gaia/tests/hooks bats suites
         run: bats .gaia/tests/hooks/
+      # The SPEC-ledger lib suites (.specify/extensions/gaia/lib/ scripts):
+      # spec-archive-merged.sh + the shared cost-consolidate.sh routine, the
+      # spec/plan allocators, folderize, renumber, reconcile, ledger-update,
+      # with-ledger-lock. Same bash-5 rationale as the hooks step above. On this
+      # lean box flock is present (the mkdir-fallback test's flock branch runs
+      # instead of self-skipping) and the real project ledger is absent
+      # (.gaia/local/ is gitignored), so spec-ledger-status's project-ledger
+      # test self-skips; both are green outcomes.
+      - if: steps.filter.outputs.code == 'true'
+        name: Run .gaia/tests/lib bats suites
+        run: bats .gaia/tests/lib/
