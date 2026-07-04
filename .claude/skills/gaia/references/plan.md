@@ -27,7 +27,7 @@ If matched:
 2. Extract the SPEC id (e.g. `SPEC-005`). Cache the lowercased form (`spec-005`) as `SPEC_SLUG_SEED` for use in step 4's branch-naming policy.
 3. Cache the absolute SPEC path as `SPEC_PATH` for use in the planner prompt (step 4), the planner will reference it in `README.md`.
 
-If no SPEC reference is detected, `SPEC_SLUG_SEED` and `SPEC_PATH` are unset; step 3 falls back to deriving a slug from the description directly.
+If no SPEC reference is detected, `SPEC_SLUG_SEED` and `SPEC_PATH` are unset; step 3 allocates a `PLAN-NNN` id from the local ledger for the spec-less plan.
 
 Colocated plans no longer use `SPEC_SLUG_SEED` to prefix a `plans/` slug, the plan lives inside the SPEC folder, so plan→SPEC discovery is structural. It is retained for the branch-name marker (step 4's branch policy) and human-facing labels. `SPEC_PATH` additionally seeds `SPEC_DIR` (its parent directory) for plan-directory resolution in step 3.
 
@@ -50,11 +50,9 @@ This decision governs the **planner** only. The plan's **execution** sub-agents 
 
 ### 3. Resolve plan directory
 
-Derive a short kebab-case slug from the feature description (e.g. "auth rework" → `auth-rework`); used only for spec-less plans.
+**Spec-derived plans colocate inside their SPEC folder**, at `<SPEC_DIR>/plan[-N]` where `SPEC_DIR` is the SPEC's parent directory (`.gaia/local/specs/<SPEC-ID>`); the plan basename is `plan`, not a slug. Plan→SPEC discovery is structural, the plan IS inside `specs/<SPEC-ID>/`, no slug prefix needed. **Spec-less plans live under `plans/PLAN-NNN`, where `PLAN-NNN` is a monotonic id allocated from the local `plans/ledger.json` ledger** (the same treatment SPECs get). The description lives in the ledger `subject`, not the folder name.
 
-**Spec-derived plans colocate inside their SPEC folder**, at `<SPEC_DIR>/plan[-N]` where `SPEC_DIR` is the SPEC's parent directory (`.gaia/local/specs/<SPEC-ID>`); the plan basename is `plan`, not a slug. Plan→SPEC discovery is structural, the plan IS inside `specs/<SPEC-ID>/`, no slug prefix needed. **Spec-less plans keep living under `plans/<slug>`.**
-
-Resolve the absolute plan directory, suffixing with `-2`, `-3`, … if one already exists, then create it:
+Resolve the absolute plan directory, then create it. The spec-derived arm suffixes `-2`, `-3`, … if a colocated plan folder already exists; the spec-less arm allocates a fresh `PLAN-NNN`, so it never collides:
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
@@ -68,18 +66,17 @@ if [[ -n "${SPEC_PATH:-}" ]]; then
     n=$((n+1))
   done
 else
-  # Spec-less one-off: lives under plans/.
-  SLUG="<kebab-slug from description>"
-  PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}"
-  n=2
-  while ! mkdir "$PLAN_DIR" 2>/dev/null; do
-    PLAN_DIR="${ROOT}/.gaia/local/plans/${SLUG}-${n}"
-    n=$((n+1))
-  done
+  # Spec-less one-off: allocate a monotonic PLAN-NNN from the local ledger.
+  # The allocator's union counts existing folders, so it always returns a fresh
+  # number; no collision-suffix loop needed.
+  DESCRIPTION="<feature description from step 1>"
+  PLAN_ID="$(bash .specify/extensions/gaia/lib/plan-allocator.sh next "$ROOT" "$DESCRIPTION")"
+  PLAN_DIR="${ROOT}/.gaia/local/plans/${PLAN_ID}"
+  mkdir -p "$PLAN_DIR"
 fi
 ```
 
-Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia-plan` invocations coexist without overwriting each other.
+Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt below and the kickoff prompt in step 5. The collision suffix lets parallel `/gaia-plan` invocations coexist on the spec-derived arm without overwriting each other; the spec-less arm no longer collides, the allocator serializes concurrent callers under a mutex.
 
 ### 4. Spawn planning agent
 
