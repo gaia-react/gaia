@@ -3,7 +3,7 @@ type: concept
 title: Telemetry
 status: active
 created: 2026-05-07
-updated: 2026-07-03
+updated: 2026-07-04
 tags: [concept, cli, telemetry, mentorship]
 ---
 
@@ -22,6 +22,10 @@ Events flow into one of three independent streams:
 | **Analytics**        | `.gaia/local/telemetry/analytics/` | `755/644`   | Daily aggregate reports; auto-attested (audit-attest.ts throws on drift). |
 
 Mentorship data stays off-project. Cloud + analytics live in `.gaia/local/telemetry/` (gitignored). The displayable aggregate is `profile.md`.
+
+## Token ledger
+
+A fourth, independent stream lives alongside the three above: `.gaia/local/telemetry/tokens.jsonl`, the per-action token-cost ledger `.gaia/scripts/token-tally.sh` appends to at the end of each `/gaia-spec`, `/gaia-plan`, and KICKOFF execution run. It is resolved to the main checkout (not a linked worktree's own `.gaia/local/`), so a worktree-run execution's tally consolidates with the rest of the project's history. This stream is cost accounting, not mentorship or analytics; it carries no user text or identity, only token-bucket counts and timing. See [[Token Cost Readout]] for the ledger schema, the pricing surfaces built on top of it, and the hooks that read and write it.
 
 ## CLI workspace
 
@@ -83,3 +87,4 @@ Statusline shows a compass segment when mentorship is enabled (wired in `.gaia/s
 - [[GAIA Spec]]: emits time_to_resolved_spec; receives coaching injection via `_internal-fetch-coaching`
 - [[GAIA Plan]]: emits plan_revised on slug collision
 - [[Claude Hooks]]: PostToolUse Task hook backstops engineer-return signals (uat-pass, needs-context, blocked-return) and code-review-audit-finding events
+- [[Token Cost Readout]]: prices the token ledger's `by_model` field into a dollar estimate

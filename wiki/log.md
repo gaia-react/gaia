@@ -11,6 +11,35 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-04 1fbb2c12 WORTHY - SC3 residual-risk note on serenaLangDrift preservation across cache-busts → wiki/concepts/Serena Integration.md (edited in-commit)
+- 2026-07-04 bad80946 WORTHY - adds /gaia-serena-sync language-drift sync command + statusline nudge → wiki/concepts/Serena Integration.md, wiki/dependencies/Serena.md (edited in-commit)
+- 2026-07-04 c0d0d1c7 WORTHY - SPEC-022 shared token-pricing-lib + per-section dollar-cost line in tokens.md → wiki/concepts/Token Cost Readout.md (edited in-commit)
+- 2026-07-04 93ccd892 WORTHY - repairs worktree plan-execution hooks (create + self-cleaning remove) → wiki/modules/Claude Integration.md (edited in-commit)
+- 2026-07-04 d016d0c3 WORTHY - consolidates .gaia/local audit-data storage under audit/ → wiki/concepts/Local Working State.md, wiki/decisions/Worthiness Audit.md (edited in-commit)
+- 2026-07-04 917722dd5 WORTHY - corrects stale language-switch Playwright spec name across runbooks and wiki → wiki/dependencies/Playwright.md (edited in-commit)
+- 2026-07-04 ab80ee9ee WORTHY - SPEC-018 manifest-write guard hook + rule → wiki/concepts/Claude Hooks.md
+- 2026-07-04 7f12fac7 SKIP - CHANGELOG backfill only, no wiki fact
+- 2026-07-04 974ba2e8e WORTHY - documents the token-to-dollar cost readout surface → wiki/concepts/Token Cost Readout.md (new page, edited in-commit)
+- 2026-07-04 37ee89c70 SKIP - dollar partial-marker wording fix, already reflected in wiki/concepts/Token Cost Readout.md's marker table
+- 2026-07-04 8d1a7d81b SKIP - test-only coverage addition (linked-worktree rate-table resolution), no new fact
+- 2026-07-04 b696d8ec8 SKIP - adds .claude/rules bats-assertion-hygiene coding rule, not a wiki-tracked fact
+- 2026-07-04 f5515c744 SKIP - CI infra: run existing bats hook suites under bash 5, no new architectural fact
+- 2026-07-04 9a32f8e8f WORTHY - SPEC-019 per-model token attribution + dollar-cost roll-up → documented in wiki/concepts/Token Cost Readout.md (created by #552)
+- 2026-07-04 feb46128c WORTHY - tokens.md splits into independent Planning/Execution sections → documented in wiki/concepts/Token Cost Readout.md
+- 2026-07-04 b8295349 WORTHY - SPEC-021 git-tag SPEC-number allocation with a local per-machine ledger → wiki/concepts/GAIA Spec.md, wiki/concepts/Local Working State.md (edited in-commit)
+- 2026-07-04 a6aeb4689 WORTHY - archive-not-delete plan lifecycle + spec-colocated plan folders → wiki/concepts/Claude Hooks.md, wiki/concepts/GAIA Plan.md, wiki/concepts/Task Orchestration.md (edited in-commit)
+- 2026-07-04 22f9f9523 SKIP - internal T[] array-type lint-conformance refactor, no behavior or architecture change
+- 2026-07-04 a74c46611 SKIP - chore(deps): version bump only
+- 2026-07-04 9485383cd WORTHY - SPEC-017 cycle-aware plan-execution cost accounting adds token-rollup.sh + token-tally-git-op.sh/token-rollup-merge.sh hooks → wiki/concepts/Claude Hooks.md
+- 2026-07-04 ca844355b WORTHY - @gaia-react/lint 1.9.0 adds no-zod-enum guardrail → wiki/dependencies/gaia-lint.md
+- 2026-07-04 25c37720b WORTHY - plan-execution task sub-agents default to Sonnet → wiki/concepts/GAIA Plan.md, wiki/concepts/Task Orchestration.md (edited in-commit)
+- 2026-07-04 b09749eef SKIP - narrow bug fix: plan_revised telemetry spec-id derivation, no wiki-page-level fact
+- 2026-07-04 99faa390f WORTHY - SPEC-013 per-action token + wall-clock cost readout (token-tally.sh, tokens.jsonl ledger) → wiki/concepts/Telemetry.md
+- 2026-07-04 b87dbd870 WORTHY - CI per-author audit resolver honors local-mode stand-down without the admin-gated confirmation → wiki/concepts/Code Review Audit CI.md (edited in-commit)
+- 2026-07-04 65aeeb51a WORTHY - update-deps merges its own PR to completion on a main-branch run → wiki/concepts/PR Merge Workflow.md
+- 2026-07-04 95fb9b594 WORTHY - code-search routing made language-agnostic while the enforcement guard stays TS-conservative → wiki/concepts/Serena Integration.md, wiki/dependencies/Serena.md (edited in-commit)
+- 2026-07-04 65ab8e735 WORTHY - Serena registered in claude-code context + code-search guard extended to Bash → wiki/concepts/Serena Integration.md, wiki/dependencies/Serena.md, wiki/modules/Claude Integration.md (edited in-commit)
+- 2026-07-04 c16d7adc4 SKIP - prior wiki maintenance chain commit (sync+lint through 8f0b4c0), nothing new to evaluate
 - 2026-07-03 8f0b4c04 SKIP - adds gaia-maintainer binary path to existing maintainer-paths scrub pattern, no new mechanism
 - 2026-07-03 8aaccf93 SKIP - adds .github/forensics/ path to existing maintainer-paths scrub pattern, no new mechanism beyond what Bundle-time Scrub.md already documents
 - 2026-07-03 437531c5 WORTHY - new excluded-workflow-ref derived scrub check (mirrors wikilink-to-excluded) for .github/workflows/ → wiki/decisions/Bundle-time Scrub.md

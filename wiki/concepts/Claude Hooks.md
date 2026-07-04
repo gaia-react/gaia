@@ -25,6 +25,7 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 - **`block-eslint-config-edit.sh`**: refuses edits to `eslint.config.mjs`. Reason: lint errors should be fixed in source code, not silenced in config.
 - **`block-vitest-globals-tsconfig.sh`**: refuses adding `vitest/globals` to `tsconfig.json`. Reason: explicit imports (`import {describe, expect, test} from 'vitest'`) are clearer and per-file.
 - **`block-lockfile-edit.sh`**: refuses direct edits to `pnpm-lock.yaml`. Lockfile changes must come from `pnpm install` / `pnpm add` / `pnpm remove`; manual edits routinely produce broken lockfiles. See [[pnpm]].
+- **`block-manifest-write.sh`**: refuses writes to `.gaia/manifest.json` through `Edit`/`Write`/`MultiEdit` (no exemption) and through common Bash vectors (redirect, `tee`, `sed -i`, `sponge`, a `cp`/`mv` destination), honoring a `GAIA_MANIFEST_WRITE=` exemption marker on Bash commands. Registered under both the `Edit|Write|MultiEdit` and `Bash` matchers. The manifest is generated bookkeeping; see `.claude/rules/manifest.md` for the prohibition and rationale.
 
 ### Secrets safeguards (Edit|Write|MultiEdit)
 
@@ -55,6 +56,11 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 ### Advisory (Bash)
 
 - **`pr-merge-audit-check.sh`**: reminds to spawn `code-review-audit`, fix issues, and push fixes before merging. See [[PR Merge Workflow]].
+
+### Cost accounting (Bash)
+
+- **`token-tally-git-op.sh`** (PreToolUse, Bash): fires on the orchestrator's per-phase `git commit`/`push` during plan execution; gated on an active plan folder (resolved via the shared `.claude/hooks/lib/gaia-active-plan.sh`), it records the execution session's ground-truth token tally keyed to the feature. See [[Token Cost Readout]].
+- **`token-rollup-merge.sh`** (PostToolUse, Bash): fires on `gh pr merge`; resolves the feature key from the active plan folder (or the ledger's most recent `execute` row as a labeled fallback) and renders the full spec/plan/execute/total cost roll-up into the merging session. See [[Token Cost Readout]].
 
 ### Wiki coherence (multiple events)
 
