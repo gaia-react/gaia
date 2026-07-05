@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-21
-updated: 2026-07-04
+updated: 2026-07-05
 tags: [concept, claude, workflow]
 ---
 
@@ -23,7 +23,7 @@ Invoked via `/gaia-plan [description]`; see [[GAIA Plan]] for the skill surface.
 
 When the user pastes the resume prompt, the orchestrator runs through:
 
-1. **Pre-flight.** Clean working tree check. Branch policy: if HEAD is on `main`/`master`, the orchestrator asks the user whether to create a feature branch or a git worktree. Otherwise, it assumes the current branch is the work branch.
+1. **Pre-flight.** Clean working tree check. Branch policy: if HEAD is on `main`/`master`, the orchestrator asks the user whether to create a feature branch in place or a git worktree. If HEAD is on any other branch, no prompt fires: worktree is the only isolation mode, the plan's work is cut into its own worktree from main rather than continuing on the current branch. Worktree creation runs through the runtime's `EnterWorktree` call; the `WorktreeCreate` hook cuts the branch fresh from main under `.claude/worktrees/` and switches the session into it, no manual `git checkout -b`. The plan folder itself is not among the gitignored state the worktree symlinks back to the main checkout, so it stays in the main checkout for the run's duration while task sub-agents edit the worktree's own copy of the tracked files they touch.
 2. **Phase loop.** For each phase: dispatch sub-agents in parallel (Sonnet by default; sub-agents only edit files, they do NOT commit or push), wait for all to report, run the per-phase quality gate (`pnpm typecheck && pnpm lint`), then the orchestrator stages, commits with a meaningful message, and pushes. The PR is opened (via `gh pr create`) once the first phase's commit lands on the remote, and updated with subsequent commits. After committing, the orchestrator appends a `## Phase N - <title>` block to `SUMMARY.md` containing the phase commit SHA and the merged `Notes for orchestrator` content from every sub-agent in the phase (findings, deviations from plan, follow-ups). Sub-agents emit those notes as a structured section at the end of their return; the orchestrator merges and writes; sub-agents do not write to `SUMMARY.md` directly. This append-only ledger is the durable record that survives context compression across long runs.
 3. **Stop conditions.** Any sub-agent failure or quality-gate failure halts the run; the orchestrator surfaces the error to the user, appends a `## Phase N - <title> (HALTED)` block to `SUMMARY.md` with the failure context, and does NOT commit, push, or "fix and continue."
 4. **Final summary.** After the last commit lands and before awaiting merge confirmation, the orchestrator reads `SUMMARY.md` and prints a brief summary: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, quality-gate status, and the highest-signal findings/deviations/follow-ups drawn from the ledger so nothing is lost to compression. A few lines plus the surfaced notes, not a recap of every change.

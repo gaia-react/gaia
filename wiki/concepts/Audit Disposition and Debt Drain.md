@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-03
+updated: 2026-07-05
 tags: [concept, claude, review]
 ---
 
@@ -119,6 +119,8 @@ The local re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`
 `/gaia-debt` (`.claude/commands/gaia-debt.md`, playbook at `.claude/skills/gaia/references/debt.md`) drains the `tech-debt` backlog the audit files. It resolves **exactly one** issue per invocation, never a batch, on a fresh branch through the same `code-review-audit` marker gate every feature PR passes, with `Closes #N` in the PR body so the merge closes the issue natively. After opening the fix PR, it confirms intent (open-only or drive to merge, defaulting to merge) and, on merge, resolves the PR to completion through the same [[PR Merge Workflow]] every standard merge follows: resolve the audit mode, earn a real `code-review-audit` marker for HEAD, clear the maintainer-only CHANGELOG gate, merge with `--auto` under branch protection (never `--admin`), then verify the PR reports `MERGED` before cleanup. It never bypasses, fakes, or pre-empts the marker gate, and never substitutes a bare `gh pr merge` for the workflow's handshake.
 
 The ordering is a pure, source-checkable sort, never an LLM evaluator: severity descending (`severity:critical → 3`, `severity:important → 2`, `severity:suggestion → 1`, a label-less issue falls to the suggestion band), then `createdAt` ascending within a band (oldest first, FIFO). `list` prints the ordered backlog; `why <issue-number>` explains where one issue sits and its recommended handler class; bare or `drain` runs the interactive, human-gated flow.
+
+With exactly one open issue, the skill states it (number, title, severity band, age) and drains it directly, no prompt. With two or more, it presents the choice through a single `AskUserQuestion` (header `Debt item`, single-select): the top three candidates as options, top one first and labeled `(Recommended)`, each carrying the severity band and age; the tool's built-in **Other** entry lets the human type a lower-ranked issue number, and a backlog deeper than three first prints the full ordered list so those numbers are visible before choosing. A typed value that isn't an open `tech-debt` issue number triggers a re-prompt rather than draining an off-list issue.
 
 Before opening any fix PR, the skill re-applies the fail-safe security screen to the selected issue and re-reads visibility. A security-class issue on a PUBLIC or INTERNAL repo diverts to the redacted operator surface and stops, opening a public `Closes #N` PR for a security issue would complete a disclosure failure the screen exists to prevent; only a confirmed-PRIVATE repo drains it as a normal fix PR. A `/gaia-debt` fix PR is otherwise an ordinary in-scope change that passes the normal gate.
 

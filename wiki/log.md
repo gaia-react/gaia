@@ -11,6 +11,16 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-05 b680034d WORTHY - health-audit remediations add WorktreeRemove to canonical hook list + clarify no-snapshot fitness case → wiki/decisions/Claude Integration Fitness.md (edited in-commit)
+- 2026-07-05 92b7f424 WORTHY - CI runs .gaia/tests/lib bats + token-tally atomic same-fs rename → wiki/concepts/PR Merge Workflow.md (edited in-commit)
+- 2026-07-05 dd2ff78c WORTHY - SPEC-023 consolidates cost artifacts (tokens.md/jsonl → cost.md/jsonl) → wiki/concepts/Cost Data Contract.md (new), GAIA Plan.md, GAIA Spec.md, Task Orchestration.md, Telemetry.md, Token Cost Readout.md (edited in-commit)
+- 2026-07-05 bcfccb34 WORTHY - .gaia/cache consolidated onto .gaia/local/cache/shared → wiki/concepts/Claude Hooks.md, Claude Skills.md, Local Working State.md, Release Workflow.md, Serena Integration.md, Telemetry.md, Update Workflow.md, wiki/decisions/Bundle-time Scrub.md, wiki/modules/Claude Integration.md (edited in-commit)
+- 2026-07-05 b58610bd WORTHY - spells out EnterWorktree/WorktreeCreate mechanics + plan-folder-stays-in-main-checkout → wiki/concepts/Task Orchestration.md
+- 2026-07-05 1d1f1fce WORTHY - /gaia-plan worktree reframed as non-experimental + sole isolation mode off-main, concurrent-run scan dropped → wiki/concepts/Task Orchestration.md
+- 2026-07-05 15f2ec6f WORTHY - PLAN-NNN allocator replaces slug naming for spec-less plans → wiki/concepts/GAIA Plan.md, wiki/concepts/Local Working State.md, wiki/concepts/Task Orchestration.md (edited in-commit)
+- 2026-07-05 e378c093 WORTHY - /gaia-debt drain selection moves to AskUserQuestion (top-3 + Other) → wiki/concepts/Audit Disposition and Debt Drain.md
+- 2026-07-05 c95fec5d SKIP - internal lock-file path fix (specs.lock relocated), ledger location already correctly documented
+- 2026-07-05 16a0c47f SKIP - wiki maintenance chain commit (prior sync+lint), not a source change
 - 2026-07-04 1fbb2c12 WORTHY - SC3 residual-risk note on serenaLangDrift preservation across cache-busts → wiki/concepts/Serena Integration.md (edited in-commit)
 - 2026-07-04 bad80946 WORTHY - adds /gaia-serena-sync language-drift sync command + statusline nudge → wiki/concepts/Serena Integration.md, wiki/dependencies/Serena.md (edited in-commit)
 - 2026-07-04 c0d0d1c7 WORTHY - SPEC-022 shared token-pricing-lib + per-section dollar-cost line in tokens.md → wiki/concepts/Token Cost Readout.md (edited in-commit)
