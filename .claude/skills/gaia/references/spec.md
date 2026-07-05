@@ -909,33 +909,16 @@ Reset `lint_cycle = 0` on user choice. Step-back-to-gate-2 returns to step 8 wit
 
 There is no `on_save` hook in spec-kit, so the handoff lives here, inline, after the canonical save (step 9) and the immutability lint (step 10). `/gaia-spec` does not run `/gaia-plan` itself; it prints a copy-pasteable prompt and stops. Interactive and auto mode end identically, neither runs plan.
 
-Derive the repo-absolute paths at runtime (never bake a literal path into this skill):
-
-```bash
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
-SPEC_ABS="${ROOT}/.gaia/local/specs/${SPEC_ID}/SPEC.md"
-AUDIT_ABS="${ROOT}/.gaia/local/specs/${SPEC_ID}/AUDIT.md"
-```
-
-Construct the handoff prompt in this exact form (literal interpolation, no quotes around the result):
-
-    SPEC-NNN: <intent first line>, see <SPEC_ABS>
-
-where:
-
-- `SPEC-NNN` is the allocated SPEC id.
-- `<intent first line>` is the first sentence of the SPEC's `intent` paragraph (truncated at the first period or newline).
-- `<SPEC_ABS>` is the runtime-derived repo-absolute path to the saved SPEC artifact.
-- If a sibling `AUDIT.md` exists (step 7 ran), append `, with adversarial audit at <AUDIT_ABS>`. `plan.md` reads only the referenced `SPEC.md`, so naming the `AUDIT.md` path makes its plan-time directives discoverable but does not by itself cause `/gaia-plan` to auto-read them.
+The handoff prompt is just the SPEC id, `plan.md`'s step 1a resolves `SPEC-NNN` to `.gaia/local/specs/SPEC-NNN/SPEC.md` (and a sibling `AUDIT.md`, if step 7 ran) itself, so no path or intent text needs to travel in the copy-paste.
 
 Print the handoff to the user as one cohesive block and stop: the status line, a `/clear`-and-paste instruction, then a single fenced code block whose contents are the full `/gaia-plan` invocation (command prefix included). Prepending `/gaia-plan ` makes the block a runnable command, not a bare argument, so the user copies exactly one thing:
 
-> SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN/SPEC.md`. 
+> SPEC-NNN saved to `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 >
 > To plan it, /clear and paste this:
 >
 > ```
-> /gaia-plan SPEC-NNN: <intent first line>, see <SPEC_ABS>[, with adversarial audit at <AUDIT_ABS>]
+> /gaia-plan SPEC-NNN
 > ```
 
 The handoff emits no telemetry event. This is the end of the `/gaia-spec` flow.
