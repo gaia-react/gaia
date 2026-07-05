@@ -28,7 +28,7 @@ Hard rules in auto mode:
 9. **Pending clarifications auto-defer.** Step 6c's per-item prompt always picks "Defer with rationale". The rationale is: `"Auto-mode session, defer for human review."` This unblocks save without forcing the agent to fabricate answers it does not have evidence for.
 10. **Lint thrash escalates to defer, not step-back.** Step 10's cycle-3 prompt auto-picks "Defer remaining findings" so the SPEC saves with the deferred-clarifications block populated. Step-back-to-gate-2 in auto mode would loop indefinitely.
 11. **`Save partial and resume later` escapes are unreachable.** No prompt fires that would offer them. The session always proceeds to step 9 unless the agent itself decides to abort (e.g. missing description, hard tool failure).
-12. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, `spec_saved`, and (when the audit runs) `audit_dispatched`/`audit_findings`/`audit_disposition` event in an auto session includes `"auto": true` in its JSON record. The `time_to_resolved_spec` mentorship emit at step 9 keeps `--agent-type human` and adds `--auto true`: `AgentTypeSchema` has no `auto` role (`--agent-type auto` is rejected with `arg_parse_error`), so auto-mode is carried by the dedicated `--auto` flag, which lands as `auto: true` in the payload. Telemetry-derived metrics should be partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
+12. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, `spec_saved`, and (when the audit runs) `audit_dispatched`/`audit_findings`/`audit_disposition`/`audit_coverage` event in an auto session includes `"auto": true` in its JSON record. The `time_to_resolved_spec` mentorship emit at step 9 keeps `--agent-type human` and adds `--auto true`: `AgentTypeSchema` has no `auto` role (`--agent-type auto` is rejected with `arg_parse_error`), so auto-mode is carried by the dedicated `--auto` flag, which lands as `auto: true` in the payload. Telemetry-derived metrics should be partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
 13. **Adversarial audit runs at the recommended intensity, non-interactively.** Auto mode does not prompt for the step-7 audit decision; per rule 4 it takes the Recommended option, which is always an intensity (never Skip). Gauge the draft's complexity, run the audit at the recommended tier (Standard or Deep), and apply its dispositions without prompting: auto-apply plan-time directives into `AUDIT.md`, auto-apply unambiguous SPEC-contract-defect fixes into the draft pre-save (no reopen ceremony, the draft is unsaved), and for any contract defect with more than one defensible repair, record it in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` rather than guessing. Never block save; never revert intentional clarify-loop evolution. Throughout the audit and fold phase auto mode reads **no finding body** (a finding's `issue`/`evidence`/`recommendation`, or a self-review finding's `suggested_fix`/`excerpt`); the transcript carries only ids, severities, titles, verdicts, and dispositions. The two bounded exceptions where a finding body reaches main (6b high self-review findings, 7c material spec-defect survivors) are interactive-only; auto mode surfaces neither. If the Agent fan-out is unavailable, take step 7's fallback (note the skip, rely on the step-6 self-review) and continue.
 
 The rest of the skill, write-surface allowlist, no-machine-local-memory rule, working-draft cache primitives, hooks firing, immutable SPEC shape, applies identically in auto mode.
@@ -120,10 +120,13 @@ Schema (one record per line, ISO-8601 UTC timestamps):
     { "event": "audit_dispatched", "spec_id": "SPEC-NNN", "intensity": "standard|deep", "lenses": ["FG", "TST", "COV", "RT", "<0+ specialist ids: SEC|MIG|A11Y|DOC|PERF>"], "skipped": <bool>, "ts": "..." }
     { "event": "audit_findings", "spec_id": "SPEC-NNN", "raised": <int>, "confirmed": <int>, "refuted": <int>, "blocker": <int>, "high": <int>, "medium": <int>, "low": <int>, "ts": "..." }
     { "event": "audit_disposition", "spec_id": "SPEC-NNN", "finding_id": "<id>", "disposition": "plan_directive|spec_defect", "severity": "<sev>", "ts": "..." }
+    { "event": "audit_coverage", "spec_id": "SPEC-NNN", "phase": "self_review"|"lens"|"refuter"|"completeness"|"applier", "lens": "<id or name>", "disposition": "first_pass"|"retried_recovered"|"inline_fallback", "auto": <bool>, "ts": "..." }
     { "event": "gate2_confirmed", "spec_id": "SPEC-NNN", "revisions": <int>, "ts": "..." }
     { "event": "spec_saved", "spec_id": "SPEC-NNN", "ts": "..." }
     { "event": "lint_attempt", "spec_id": "SPEC-NNN", "outcome": "pass|fail", "cycle": <int>, "ts": "..." }
     { "event": "session_paused", "spec_id": "SPEC-NNN", "step": "<step-id>", "ts": "..." }
+
+Maintainer telemetry queries must filter spec-pacing by `event` so `audit_coverage` rows do not skew existing metrics (they carry a different field set than the other events); no data migration is needed for the older rows already on disk.
 
 ### Working-draft checkpoint (`draft-<spec_id>.md`)
 
@@ -166,6 +169,22 @@ The applier **reads every findings and verdict file in the cache** (not just the
 Reading the full cache (rather than only the listed ids) is what lets the applier both author `AUDIT.md` from the complete on-disk record (see 7d) and fold the **low-severity spec-defect fixes main never surfaced** — the decision list carries only the interactively-gated material survivors, and low spec-defects are folded silently by the applier from the on-disk findings files, preserving the current flow. When the fold routes any finding to a plan-time directive, the applier also writes `AUDIT.md`.
 
 **Fallback.** If subagent dispatch is unavailable, the main thread folds inline exactly as today.
+
+### No-op guard (detection, retry, inline fallback)
+
+Every in-scope self-review/audit dispatch below (6a self-review, 7a lens fan-out, 7b-i refuter, 7b-ii completeness critic, 7b-iii completeness-critic refuter, 7c applier) is followed by this guard, so a dispatched agent that no-ops (a harness-reminder-echo, an output-style fragment, or an empty return, zero tool uses) never silently counts as "found nothing" or "clean":
+
+1. **Detect.** Classify the dispatch with `bash .gaia/scripts/audit-noop-detect.sh --shape <SHAPE> --path <PATH>` (exit 0 = a real result, exit 1 = a no-op, exit 2 = usage error). The helper reads only the file or captured return already on disk, so no finding/verdict/draft body enters main's reasoning context from this check. File-backed shapes pre-clear `<PATH>` (`rm -f`) before the dispatch and again before any retry, so its presence afterward is a fresh-write signal.
+2. **Retry (best-effort, exactly one).** On a no-op, re-dispatch the same unit **exactly one** time, prepending this hardened prefix to the original prompt (`<target>` = the concrete artifact that dispatch reads):
+
+       RETRY (hardened, one attempt only): Your very first action MUST be a Read of <target>. Emit no prose before that Read. Produce your structured output (the findings or verdict file this prompt names, or your returned digest if it names none) before any returned prose. Then perform the original task below exactly as written.
+
+   Never a third dispatch.
+3. **Inline fallback (guaranteed).** If the retry also no-ops, do not re-dispatch again: run the unit inline instead (main performs the task itself), record its disposition as `inline_fallback`, and route any recovered findings into the same on-disk path a dispatched agent would have used, so they re-enter the normal pipeline rather than vanishing. A dispatch that was scope-gated and never issued (e.g. a specialist lens the gauge did not select) is recorded `not_applicable` and is never treated as a no-op.
+
+Each in-scope dispatch appends one `audit_coverage` telemetry event (schema in "Pacing telemetry" above) and one thin coverage record `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }` to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` as main resolves it (7d renders `## Coverage` in `AUDIT.md` from this file; distinct from the `audit_coverage` telemetry event above, which is append-only and never read during the live session).
+
+**Mutating units** (6a self-review, 7c applier) detect on their **output artifact**, not on their return alone, so a unit that actually wrote is a real result even if its return was malformed. Because `.gaia/local/cache/draft-<spec_id>.md` is the single live working draft these units mutate in place (it is NOT itself a checkpoint), main **snapshots** it before dispatch to `.gaia/local/cache/draft-<spec_id>.pre-<site>.md` (`.pre-6a.md` / `.pre-7c.md`); a retry **restores the live draft from that snapshot first**, then re-dispatches, so the retry is a clean redo against pristine pre-dispatch state and can never double-apply. The snapshot is deleted once the unit resolves.
 
 ### Escape option (used in step 5 AskUserQuestion sets)
 
@@ -443,9 +462,18 @@ First, create the audit cache's findings directory if absent, so `self-review.js
 mkdir -p .gaia/local/cache/audit-${SPEC_ID}/findings || true
 ```
 
+This is a **mutating unit** (the self-review agent applies low/medium fixes directly to the live draft), so before dispatching, pre-clear the findings path and snapshot the live draft to a pre-dispatch checkpoint (see "No-op guard" in Operational primitives):
+
+```bash
+rm -f .gaia/local/cache/audit-${SPEC_ID}/findings/self-review.json
+cp .gaia/local/cache/draft-${SPEC_ID}.md .gaia/local/cache/draft-${SPEC_ID}.pre-6a.md
+```
+
 Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and `<spec_id>`):
 
 > Run the self-review audit defined in `.specify/extensions/gaia/commands/self-review.md` over the draft at `<DRAFT_PATH>` against the gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json`.
+>
+> Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose. Read `<DRAFT_PATH>` first, before any other action.
 >
 > **Write** your full findings to `.gaia/local/cache/audit-<spec_id>/findings/self-review.json` (the fully-qualified path — never a bare `findings/self-review.json`, which from the repo-root cwd would resolve outside the cache and be orphaned, off the `.gaia/local/cache/**` allowlist). Each finding is one object under this schema, and every finding carries an `id` of the form `SR-NNN`, which you assign sequentially as you record each one:
 >
@@ -478,7 +506,9 @@ The digest is thin: the explicit `counts` object keeps the `self_review_findings
 
 Append a `self_review_findings` telemetry event, sourced from the digest's `counts` (`low`, `medium`, `high`), once the agent returns.
 
-**Fallback.** When subagent dispatch is unavailable, the main thread runs the self-review inline (parity with the step-7 audit fallback): it reads the draft, records the same findings, applies every `low` and `medium` `suggested_fix` itself in a single Write, and gates the highs at 6b.
+**No-op guard (site #1).** Classify the return with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-selfreview-file --path .gaia/local/cache/audit-<spec_id>/findings/self-review.json` (exit 0 = real, exit 1 = no-op; see "No-op guard" in Operational primitives). On a no-op: restore the live draft from `.gaia/local/cache/draft-<spec_id>.pre-6a.md` first, re-clear the findings path, then re-dispatch the same unit **exactly one** time, prepending the hardened retry prefix with `<target>` = `<DRAFT_PATH>`. A second consecutive no-op does not re-dispatch a third time; instead run the self-review inline as the **inline fallback** below (the same terminal action the fan-out-unavailable case takes), and record the unit as degraded rather than clean or empty. Delete `draft-<spec_id>.pre-6a.md` once the unit resolves (recovered, retried, or fallen back). Append one `audit_coverage` event (`phase: "self_review"`, `disposition: "first_pass"|"retried_recovered"|"inline_fallback"`) and one `coverage.jsonl` record to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`.
+
+**Fallback.** When subagent dispatch is unavailable, the main thread runs the self-review inline (parity with the step-7 audit fallback): it reads the draft, records the same findings, applies every `low` and `medium` `suggested_fix` itself in a single Write, and gates the highs at 6b. This is also the terminal **inline fallback** action for a double no-op above.
 
 #### 6b. Apply findings (severity-gated)
 
@@ -555,6 +585,8 @@ Shared preamble (interpolate `<DRAFT_PATH>` = the working-draft cache, `<spec_id
 
 > You are an ADVERSARIAL auditor of a GAIA SPEC draft at `<DRAFT_PATH>` (spec `<spec_id>`). Repo root is `<repo_root>`; you may read any file under it, including `node_modules`. Read the full draft first. Your job is to find DEFECTS that would cause a flawed plan or implementation downstream, not to praise it.
 >
+> Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose. Read `<DRAFT_PATH>` before anything else.
+>
 > - Verify EVERY checkable claim against the actual repository and `node_modules`. Do not take the draft's assertions on faith; when a claim is about code, open the file and confirm.
 > - Cite evidence: SPEC section / UAT id, and `file:line` for any ground-truth check.
 > - Severity: `blocker` = the SPEC is factually wrong or will produce broken/misleading work; `high` = a significant gap or ambiguity a planner is forced to guess on; `medium` = should fix; `low` = nit.
@@ -600,18 +632,26 @@ Findings **file** schema (what each agent writes to `findings/<LENS>.json`; NOT 
       ]
     }
 
+**No-op guard (site #2).** Before dispatching the fan-out, pre-clear each `findings/<LENS>.json` (`rm -f`) for every lens about to be dispatched, and re-clear before any retry, so presence afterward is a fresh-write signal. After the fan-out returns, classify each lens with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-findings-file --path .gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` (an empty `findings: []` is still real). On a no-op, re-dispatch that one lens **exactly one** time with the hardened retry prefix (`<target>` = `<DRAFT_PATH>`); a second no-op runs the **inline fallback**: main runs that lens's audit inline and writes to the SAME `findings/<LENS>.json` so the recovered findings re-enter 7b/7c exactly like a dispatched lens's, recorded degraded rather than clean or empty. A specialist lens the gauge did not select for this dispatch is never issued and is recorded `not_applicable`, never treated as a no-op. Append one `audit_coverage` event (`phase: "lens"`, `lens: "<LENS>"`, `disposition: "..."`) and one `coverage.jsonl` record per in-scope lens.
+
 #### 7b. Refutation pass (severity discipline)
+
+This heading covers three distinct dispatch sites, delimited below by their own `#####` sub-headings: the refuter (7b-i), the Deep-only completeness critic (7b-ii), and the completeness critic's own refuter (7b-iii).
+
+##### 7b-i. Refutation
 
 From the 7a thin digests, main selects every **material** finding id (severity ≠ `low`) across all selected lenses; low-severity findings skip refutation and carry forward unchanged. Each refuter defaults to "refuted" unless it can substantiate the defect from ground truth, so this pass is severity discipline as much as false-positive killing (in the pilot it refuted none outright but correctly downgraded every `high` to `medium`). The refuter count scales with `audit_intensity`:
 
 - **Standard:** one refuter per material finding, all in parallel.
 - **Deep:** three refuters per material finding, all in parallel, each given a distinct verification lens, prepend one of `correctness`, `security/safety`, or `reproduces-as-described` to the refuter prompt below. A finding is refuted only on a ≥2-of-3 majority; its corrected severity is the median of the non-refuting refuters.
 
-Main dispatches each refuter keyed by `{ finding_id, findings_file, refuter_lens? }` — **no finding fields interpolated** — where `findings_file` is the lens's `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` and `verdict_file` is the refuter's output path (`verdicts/<finding-id>.json` for Standard, `verdicts/<finding-id>-<slug-lens>.json` for Deep, slug per the frozen mapping). The refuter reads the finding body from the file itself.
+Main dispatches each refuter keyed by `{ finding_id, findings_file, refuter_lens? }` — **no finding fields interpolated** — where `findings_file` is the lens's `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` and `verdict_file` is the refuter's output path (`verdicts/<finding-id>.json` for Standard, `verdicts/<finding-id>-<slug-lens>.json` for Deep, slug per the frozen mapping). The refuter reads the finding body from the file itself. Before dispatch, and again before any retry, pre-clear `<verdict_file>` (`rm -f`) so its presence is a fresh-write signal.
 
 Refuter prompt (interpolate `<finding_id>`, `<findings_file>`, `<verdict_file>`, `<DRAFT_PATH>`, `<repo_root>` — no finding fields inline):
 
 > Verify finding `<finding_id>`, recorded in `<findings_file>`, against the SPEC draft at `<DRAFT_PATH>` (repo root `<repo_root>`). Read the finding there; its severity, location, issue, evidence, and recommendation all live in that file.
+>
+> Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose. Read `<findings_file>` first.
 >
 > Open the cited SPEC section and any cited file yourself and try to REFUTE it: did the auditor misread the SPEC or the code, or overstate severity? For a finding you do NOT refute, also classify its DISPOSITION: is the SPEC's binding contract (its UATs + intent) already correct and only the implementation needs steering (`plan_directive`), or is a UAT or the intent itself wrong, gameable, or missing (`spec_defect`)? Default to `refuted` if you cannot substantiate the finding from ground truth.
 >
@@ -629,7 +669,33 @@ Verdict schema — the **file** the refuter writes to `verdicts/<finding-id>.jso
 
 Main computes the Deep ≥2/3 majority and the median severity **from the returned thin verdict lines only** and **never opens the per-refuter verdict files**, so verdict reasoning bodies never reach main. Surviving findings = the low-severity findings (carried forward) plus every material finding not refuted (Standard: a single `refuted` verdict kills it; Deep: a ≥2-of-3 majority kills it), each stamped with its `corrected_severity` and `disposition`.
 
-**Deep only, completeness critic.** After the refutation pass, dispatch one more `general-purpose` Agent over the draft plus the surviving findings, and ask what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` with no covering UAT, a consumer or blast-radius site the SPEC overlooked. It **writes its fresh findings to `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`** (7a findings schema) and returns a thin digest; run any fresh findings through a single-refuter round under the same thin-digest and verdict-naming contracts (its verdicts write to `verdicts/<finding-id>.json`), and merge the survivors. Its bodies never flow into main.
+**No-op guard (site #3).** This shape is file-backed (not a captured return): after each refuter returns, classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-verdict-file --path <verdict_file>` (it re-reads the same `<verdict_file>` the refuter wrote; exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch that one refuter **exactly one** time with the hardened retry prefix (`<target>` = `<findings_file>`); a second no-op runs the **inline fallback**: main refutes that one finding inline (reads `<findings_file>` and `<DRAFT_PATH>` itself, writes `<verdict_file>` with its own verdict), recorded degraded. Append one `audit_coverage` event (`phase: "refuter"`, `disposition: "..."`) and one `coverage.jsonl` record per material finding refuted.
+
+##### 7b-ii. Completeness critic
+
+**Deep only.** After the refutation pass, dispatch one more `general-purpose` Agent over the draft plus the surviving findings, and ask what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` with no covering UAT, a consumer or blast-radius site the SPEC overlooked. Before dispatch, and again before any retry, pre-clear `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`.
+
+Dispatch prompt (interpolate `<DRAFT_PATH>`, `<spec_id>`, `<surviving_findings>` = the 7b-i survivor ids/severities/titles, no bodies):
+
+> You are the completeness critic for a GAIA SPEC draft at `<DRAFT_PATH>` (spec `<spec_id>`). The surviving findings so far are `<surviving_findings>`; do not re-raise them. Hunt for what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` entry with no covering UAT, a consumer or blast-radius site the SPEC overlooked.
+>
+> Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose. Read `<DRAFT_PATH>` first.
+>
+> **Write** your fresh findings to `.gaia/local/cache/audit-<spec_id>/findings/completeness.json` under the 7a findings-file schema (`{ "dimension": "completeness", "findings": [...] }`), writing the file even if your findings array is empty.
+>
+> **Return** only the thin digest, no finding bodies: `{ "dimension": "completeness", "counts": { "blocker": <int>, "high": <int>, "medium": <int>, "low": <int> }, "findings": [ { "id": "CPL-NNN", "severity": "...", "title": "..." } ] }`.
+
+It **writes its fresh findings to `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`** (7a findings schema) and returns the thin digest above; its bodies never flow into main.
+
+**No-op guard (site #4).** After the agent returns, classify with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-findings-file --path .gaia/local/cache/audit-<spec_id>/findings/completeness.json` (exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch **exactly one** time with the hardened retry prefix (`<target>` = `<DRAFT_PATH>`); a second no-op runs the **inline fallback**: main runs the completeness critic inline (reads the draft and surviving findings itself, writes `findings/completeness.json`), recorded degraded. Append one `audit_coverage` event (`phase: "completeness"`, `disposition: "..."`) and one `coverage.jsonl` record.
+
+##### 7b-iii. Completeness-critic refuter
+
+Any fresh findings from 7b-ii run through a single-refuter round under the **same** refuter prompt, verdict schema, and naming contracts as 7b-i (its verdicts write to `verdicts/<finding-id>.json`); merge the survivors. This refuter is **file-backed** like 7b-i, not a distinct return-conformance shape: pre-clear `verdicts/<finding-id>.json` before dispatch and before any retry.
+
+**No-op guard (site #5).** Classify with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-verdict-file --path .gaia/local/cache/audit-<spec_id>/verdicts/<finding-id>.json` (exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch that one refuter **exactly one** time with the hardened retry prefix (`<target>` = `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`); a second no-op runs the **inline fallback**: main refutes that fresh finding inline and writes its verdict file itself, recorded degraded. Append one `audit_coverage` event (`phase: "refuter"`, `disposition: "..."`) and one `coverage.jsonl` record.
+
+Its bodies never flow into main.
 
 Append an `audit_findings` telemetry event with the counts `raised`, `confirmed`, `refuted`, and per-severity `blocker`/`high`/`medium`/`low`. Source it from the **7a thin digests** (`raised` = total findings across all digests including lows; the per-severity `blocker`/`high`/`medium`/`low` from the digests' `counts`) plus the **thin verdict lines** (`confirmed`/`refuted`). Do NOT source it from the applier summary's `{ folded, directives, revised }` counts — those are fold-outcome counts (a disjoint set) and cannot produce `raised` or the per-severity split.
 
@@ -645,6 +711,8 @@ Route each surviving finding by its `disposition`, read from the **thin verdict 
 **Auto-mode per rule 13.** No reads; **no finding body reaches main**. The transcript carries ids, severities, titles, verdicts, and dispositions only. Unambiguous spec-defect ids apply (added to the decision list as `apply`); a defect with more than one defensible repair becomes a deferred-clarification note in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` and is not applied. Never revert intentional clarify-loop evolution.
 
 **Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the draft path, the audit-cache directory, and the decision list. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today.
+
+**No-op guard (site #6).** This is a **mutating unit**: the applier's draft-cache write pre-exists, so a no-op is judged on its returned summary's shape, not on file-absence. Before dispatching, snapshot the live draft to `.gaia/local/cache/draft-<spec_id>.pre-7c.md`, and finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` — one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the `audit_coverage` telemetry event is append-only and never read live, and the findings/verdict files cannot encode a disposition). Capture the applier's returned summary to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape applier-summary --path <summary_file>` (add `--audit-md .gaia/local/specs/<spec_id>/AUDIT.md` at the 7c-with-directives dispatch, when the fold routes any finding to a plan-time directive, so AUDIT.md presence is also required; exit 0 = real, exit 1 = no-op). On a no-op: restore the live draft from `draft-<spec_id>.pre-7c.md` first, then re-dispatch the applier **exactly one** time with the hardened retry prefix (`<target>` = the audit-cache directory). A second no-op runs the **inline fallback**, which reuses the pre-existing applier inline-fold above (main folds inline as today), recorded degraded. Delete `draft-<spec_id>.pre-7c.md` once the unit resolves. Append one `audit_coverage` event (`phase: "applier"`, `disposition: "..."`).
 
 Emit `audit_findings` from the **7a thin digests plus the thin verdict lines** (per 7b — not the applier's fold-outcome counts), and **one `audit_disposition` per surviving finding** (`finding_id`, `disposition`, `severity`) by joining the applier summary's `folded`/`directives` ids with the thin verdict lines' `{ id, verdict, corrected_severity, disposition }`. Low survivors keep per-finding disposition parity because the 7a digest carries every finding's `{ id, severity, title }` (severity from the digest; the low-finding `disposition` sourcing is the same pre-existing question noted above, preserved not resolved). The 7a thin digests plus the thin verdict lines are the authoritative source for `audit_findings`; the applier summary counts back only the `audit_disposition` join.
 
@@ -674,7 +742,15 @@ These satisfy the SPEC's binding contracts; the plan and implementation must hon
 ## Refuted / downgraded (for the record)
 
 - <finding id>: <verdict + corrected severity + one-line reason>
+
+## Coverage
+
+<one line per in-scope dispatch (self-review, each lens, each refuter, the completeness critic on Deep, the applier)>
+
+- **<phase>** (`<lens>`): `<disposition>`
 ```
+
+The `## Coverage` section is sourced from `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` (the thin phase/lens/disposition record main appends per dispatch, see "No-op guard" in Operational primitives), not from the `audit_coverage` telemetry event (append-only, never read live) or the findings/verdict files (which cannot encode a disposition). The applier already reads the whole cache directory, so rendering this section adds no additional finding body to its own read. Each line's `<disposition>` is one of `first_pass` / `retried_recovered` / `inline_fallback` / `not_applicable`, so a reader can distinguish a clean unit from a degraded one at a glance.
 
 When a sibling `AUDIT.md` exists, the step-11 `/gaia-plan` handoff names it so its plan-time directives are discoverable. After the report is written and any folds are cached, proceed to gate 2 (step 8), which renders the hardened draft.
 
