@@ -44,27 +44,53 @@ _alloc() {
   [ "$(jq -r '.plans[1].id' "$ledger")" = "PLAN-002" ]
   [ "$(jq -r '.plans[1].source' "$ledger")" = "allocated" ]
   [ "$(jq -r '.plans[1].subject' "$ledger")" = "my subject" ]
-  [ "$(jq -c '.plans[1] | keys_unsorted' "$ledger")" = '["id","allocated_at","source","subject"]' ]
+  # status (lifecycle) and source (provenance) both read "allocated" but are
+  # distinct fields.
+  [ "$(jq -r '.plans[1].status' "$ledger")" = "allocated" ]
+  [ "$(jq -c '.plans[1] | keys_unsorted' "$ledger")" = '["id","allocated_at","source","subject","status"]' ]
 
   # 2-space indent, trailing newline (jq's default output).
   grep -qF '  "version"' "$ledger"
   [ "$(tail -c1 "$ledger" | wc -l)" -eq 1 ]
 }
 
-@test "3a: multiline subject stores only the first line" {
+@test "3a: no-terminator multiline subject collapses to one line" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   run _alloc next "$REPO" "$(printf 'first line\nsecond line')"
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.plans[0].subject' "$REPO/.gaia/local/plans/ledger.json")" = "first line" ]
+  [ "$(jq -r '.plans[0].subject' "$REPO/.gaia/local/plans/ledger.json")" = "first line second line" ]
 }
 
-@test "3b: a >100-char subject is stored truncated to exactly 100 chars" {
+@test "3b: an over-bound multi-word subject is stored as a word-safe bounded prefix + ..." {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  long="$(printf 'a%.0s' $(seq 1 150))"
+  long="$(printf 'alphabet%.0s ' $(seq 1 20))"
   run _alloc next "$REPO" "$long"
   [ "$status" -eq 0 ]
   stored="$(jq -r '.plans[0].subject' "$REPO/.gaia/local/plans/ledger.json")"
-  [ "${#stored}" -eq 100 ]
+
+  case "$stored" in
+    *...) ;;
+    *) return 1 ;;
+  esac
+
+  pre="${stored%...}"
+  [ "${#pre}" -le 120 ]
+  [ "${pre: -1}" != " " ]
+
+  # word-safe: the bounded prefix ends on a complete "alphabet" token, never
+  # a mid-word fragment (e.g. "...alp").
+  case "$pre" in
+    *alphabet) ;;
+    *) return 1 ;;
+  esac
+
+  # single-token (no interior space) over-bound subject hard-cuts to exactly
+  # 120 chars + "...".
+  single_long="$(printf 'a%.0s' $(seq 1 150))"
+  run _alloc next "$REPO" "$single_long"
+  [ "$status" -eq 0 ]
+  single_stored="$(jq -r '.plans[1].subject' "$REPO/.gaia/local/plans/ledger.json")"
+  [ "$single_stored" = "$(printf 'a%.0s' $(seq 1 120))..." ]
 }
 
 @test "3c: empty/absent subject falls back to the allocated id" {

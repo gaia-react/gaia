@@ -10,7 +10,11 @@
 #
 #   - Spec-less plan at .gaia/local/plans/<slug>/: pruned, then moved to
 #     .gaia/local/plans/archived/<slug>/. Its cost.md gains a grand-total
-#     `## Total` section on the way (cost-consolidate.sh plan-total).
+#     `## Total` section on the way (cost-consolidate.sh plan-total). When
+#     <slug> matches PLAN-<digits> (a plans-ledger-tracked plan, not a
+#     legacy free-form slug), archiving also best-effort advances that
+#     plan's plans-ledger row to status "completed" with a completed_at
+#     timestamp, through plan-ledger-update.sh.
 #   - Spec-colocated plan at .gaia/local/specs/<SPEC-ID>/plan[-N]/: pruned
 #     in place, no move. The SPEC folder is the archival unit; when the
 #     SPEC itself is later archived (spec-archive-merged.sh), the pruned
@@ -39,6 +43,9 @@
 #
 # Guarantees:
 #   - Exit code is ALWAYS 0 (advisory / fail-open); never blocks a caller.
+#   - The PLAN-NNN plans-ledger completion stamp (see above) is best-effort:
+#     a missing ledger, missing row, or lock timeout is swallowed and never
+#     blocks or fails archival.
 #   - stdout carries at most one human summary line describing what
 #     happened; diagnostics and refusals go to stderr only.
 #   - Idempotent: a missing plan_dir, an already-archived folder, or a
@@ -152,6 +159,26 @@ if [ "$kind" = "plans" ]; then
   target_abs="$archived_dir_abs/$slug"
 
   mkdir -p "$archived_dir_abs" 2>/dev/null
+
+  # ---- best-effort plans-ledger completion stamp (PLAN-NNN slugs only) ----
+  # Legacy free-form slugs (e.g. cache-consolidation) have no plans-ledger
+  # row, so this never matches and the stamp is skipped. Runs once per
+  # archival regardless of what the placement step below does with the
+  # folder (moved, pruned-in-place on no-clobber, or mv failure).
+  case "$slug" in
+    PLAN-*)
+      plan_num="${slug#PLAN-}"
+      case "$plan_num" in
+        ''|*[!0-9]*) ;;
+        *)
+          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          patch="$(jq -nc --arg ts "$now" '{status: "completed", completed_at: $ts}')"
+          bash "$root/.specify/extensions/gaia/lib/plan-ledger-update.sh" "$root" "$slug" "$patch" \
+            >/dev/null 2>&1 || true
+          ;;
+      esac
+      ;;
+  esac
 
   if [ -e "$target_abs" ]; then
     echo "plan-archive: $archived_rel already exists; left $rel pruned in place" >&2

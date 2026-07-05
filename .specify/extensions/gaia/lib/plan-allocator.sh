@@ -9,8 +9,10 @@
 # Usage:
 #   plan-allocator.sh next <repo_root> [<subject>]  # print next PLAN-NNN, append ledger row
 #
-# Ledger rows are minimal and immutable: {id, allocated_at, source, subject}.
-# No status field, no mutation path. Numbers are never reused.
+# Ledger rows are {id, allocated_at, source, subject, status}. status is
+# written "allocated" inline here at row creation; every later transition
+# goes through the guarded plan-ledger-update.sh chokepoint. Numbers are
+# never reused.
 #
 # Concurrency: the read-union-allocate-write critical section runs under the
 # shared ledger mutex from with-ledger-lock.sh (flock when present, atomic-
@@ -37,6 +39,8 @@ ledger_path="${plans_dir}/ledger.json"
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 . "${_lib_dir}/with-ledger-lock.sh"
+# shellcheck source=/dev/null
+. "${_lib_dir}/title-normalize.sh"
 
 # Emit one bare integer per known PLAN number, one per line, unsorted.
 # Sources: the ledger's plan ids, and on-disk PLAN-* basenames under
@@ -73,14 +77,8 @@ ensure_ledger() {
   fi
 }
 
-# First line of the subject arg, trimmed, truncated to <=100 chars. May be
-# empty (the caller falls back to the allocated id).
 normalize_subject() {
-  local raw="$1" line
-  line="$(printf '%s' "$raw" | sed -n '1p')"
-  line="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-  line="$(printf '%s' "$line" | cut -c1-100)"
-  printf '%s' "$line"
+  gaia_normalize_title "$1"
 }
 
 # Append a new row to the ledger atomically. A jq write failure returns
@@ -93,7 +91,7 @@ append_ledger_row() {
   ensure_ledger
   tmp="$(mktemp)"
   if ! jq --arg id "$id" --arg now "$now" --arg subject "$subject" \
-    '.plans += [{id: $id, allocated_at: $now, source: "allocated", subject: $subject}]' \
+    '.plans += [{id: $id, allocated_at: $now, source: "allocated", subject: $subject, status: "allocated"}]' \
     "$ledger_path" > "$tmp"; then
     rm -f "$tmp"
     echo "plan-allocator: failed to update ledger at $ledger_path" >&2
