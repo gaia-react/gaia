@@ -3,7 +3,7 @@ type: concept
 title: Token Cost Readout
 status: active
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-07-05
 tags: [concept, telemetry, cost, token-accounting]
 ---
 
@@ -34,6 +34,8 @@ A record whose attribution fails omits `by_model` entirely rather than writing a
 
 Rates live in a **committed** table at `.gaia/scripts/token-rates.json`, so they ship to adopters and version with the code. Both scripts locate it the same way, via `git rev-parse --show-toplevel`, which resolves the table from inside a linked worktree as well as the main checkout (no override needed; a `--rate-table` flag on either script's CLI substitutes a path directly, for tests).
 
+This file is a **public read contract**: any reader pricing token usage, GAIA's own scripts or an external re-implementation, parses this exact shape rather than reverse-engineering shell internals.
+
 ```json
 {
   "cache_multipliers": { "read": 0.1, "write_5m": 1.25, "write_1h": 2.0 },
@@ -47,9 +49,11 @@ Rates live in a **committed** table at `.gaia/scripts/token-rates.json`, so they
 }
 ```
 
-- **Per-model, per-MTok rates.** Each model id maps to a list of rate entries carrying an `input` and `output` price per million tokens.
-- **Cache multipliers scale the input rate.** `fresh_input` prices at `input`; `cache_read` at `input × 0.1`; `cache_write_5m` at `input × 1.25`; `cache_write_1h` at `input × 2.0`; `output` at `output`. Every bucket is summed and divided by 1e6.
-- **Effective-dated intro pricing.** A model with introductory pricing lists the intro entry first with an `effective_through` date, then the sticker entry with none. Each script selects the entry whose window covers its own run-time anchor (the roll-up's per-record timestamp, the tally's own generation stamp), treating `effective_through` as an inclusive upper bound; the final entry with no `effective_through` is the open-ended sticker rate.
+- **Table shape.** `models` maps each model id to a list of rate entries, each carrying an `input` and `output` price per million tokens and an optional `effective_through`. `cache_multipliers` is a sibling top-level object carrying the four bucket multipliers. A reader parses exactly these two top-level keys.
+- **Cache multipliers scale the input rate, value-coupled to the committed file.** `fresh_input` prices at `input`; `cache_read` at `input × cache_multipliers.read`; `cache_write_5m` at `input × cache_multipliers.write_5m`; `cache_write_1h` at `input × cache_multipliers.write_1h`; `output` at `output`. Every bucket is summed and divided by 1e6. The committed `.gaia/scripts/token-rates.json` file, not this description, is the source of truth for the multiplier values: as committed, they read `read: 0.1`, `write_5m: 1.25`, `write_1h: 2.0`, and a reader always takes the live values from the file, so the contract holds even after those values change.
+- **Effective-dated intro pricing.** A model with introductory pricing lists the intro entry first with an `effective_through` date, then the sticker entry with none. Each script selects the entry whose window covers its own run-time anchor (the roll-up's per-record timestamp, the tally's own generation stamp), comparing at **day granularity**: the anchor's date (its `[0:10]` slice) against `effective_through`. `effective_through` is an **inclusive** upper bound, an entry is a candidate whenever the anchor's date is less than or equal to it, and the final entry with no `effective_through` is the open-ended sticker rate that wins once no earlier entry's window covers the anchor.
+- **The `rate_table_id` recipe.** `sha256` of the committed `token-rates.json` file's raw bytes, truncated to the first 16 hex characters, prefixed `sha256:` (e.g. `sha256:1a2b3c4d5e6f7890`). `token-tally.sh`'s `hash16` and `rate_table_id` helpers are the implementation anchor for this recipe. This is the exact identity a downstream reader uses to re-price a stored `by_model` under a known rate card.
+- **Implementation source of truth for selection semantics.** `.gaia/scripts/token-pricing-lib.sh`'s `rate_window` and `priced_row` jq definitions (detailed in the next section) are the authoritative implementation of window selection and per-bucket arithmetic; this section is the contract they satisfy, not a parallel spec that can drift from them.
 
 ## Shared pricing lib
 
