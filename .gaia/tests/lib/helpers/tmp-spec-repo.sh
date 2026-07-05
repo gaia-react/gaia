@@ -99,7 +99,7 @@ printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 # with-ledger-lock.sh resolves to this tmp lib dir.
 for s in spec-allocator.sh plan-allocator.sh ledger-update.sh with-ledger-lock.sh \
          spec-folderize.sh spec-renumber.sh spec-reconcile.sh \
-         spec-archive-merged.sh; do
+         spec-archive-merged.sh title-normalize.sh; do
   cp "${real_lib}/${s}" ".specify/extensions/gaia/lib/${s}"
   chmod +x ".specify/extensions/gaia/lib/${s}"
 done
