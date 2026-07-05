@@ -6,9 +6,9 @@ The ordering is a pure, source-checkable sort over the issues' severity labels a
 
 ## Execution model, READ FIRST
 
-Execute the playbook yourself in the current conversation. This is an interactive, human-gated flow: the human picks or confirms the candidate, the skill does not auto-advance to the next issue. Resolve **exactly one** issue per invocation; there is no batch drain.
+Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the candidate is chosen the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There is **one** interactive decision, the up-front candidate pick, and only when the backlog holds two or more issues. After that the flow does not pause for confirmation. Pause only when input is genuinely needed (that candidate pick) or something unexpected blocks the path (a security-class diversion, a rejected push, a gate that will not go green). Resolve **exactly one** issue per invocation; there is no batch drain and the skill never auto-advances to the next issue.
 
-The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). After the PR is up it confirms intent, defaulting to merge, and on **merge** resolves the PR to completion the standard way: the same `code-review-audit` marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
+The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same `code-review-audit` marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
 
 ## Argument parsing
 
@@ -84,7 +84,7 @@ For the selected (non-diverted) issue:
 4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) before committing, then commit and push.
 5. **Open the PR** with `gh pr create`. The PR body includes `Closes #N` (GitHub's auto-close keyword) so the merge closes the issue natively.
 
-The PR is an ordinary in-scope source change: it passes the **same** `code-review-audit` marker gate as any feature PR. Let the normal gate produce a real marker; do not bypass, fake, or pre-empt it. Getting that marker and completing the merge are covered under *Confirm intent, then drive the PR to merge* below.
+The PR is an ordinary in-scope source change: it passes the **same** `code-review-audit` marker gate as any feature PR. Let the normal gate produce a real marker; do not bypass, fake, or pre-empt it. Getting that marker and completing the merge are covered under *Drive the PR to merge* below.
 
 ## Touch the debt-count sentinel
 
@@ -96,11 +96,11 @@ mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
 
 **Create the parent dir first.** On a fresh clone or in CI no statusline tick has run, so `.gaia/local/debt/` may not exist and a bare `touch` would fail silently and leave the sentinel unset. The deterministic merge-event sentinel-set is owned by the `gh pr merge` PostToolUse hook; when the skill drives the merge that hook fires in-session, and on an open-PR-only run or a queued `--auto` merge the merge lands later, so this in-conversation touch is best-effort belt-and-suspenders.
 
-## Confirm intent, then drive the PR to merge
+## Drive the PR to merge
 
-After the PR is up, ask the human whether to **open the PR only** or **open and merge**. Default to **merge** on empty input: the candidate was already chosen, so this is a light checkpoint, not a second selection. On **open only**, stop here; the PR clears the gate and a human merges it later.
+Once the PR is up, drive it straight to merge with no confirmation prompt: the candidate was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, or a `--auto` merge still queued when the poll window closes; those are reported, not worked around.
 
-On **merge**, resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read it, don't merge from memory. Follow its marker handshake; do **not** substitute a bare `gh pr merge`:
+Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read it, don't merge from memory. Follow its marker handshake; do **not** substitute a bare `gh pr merge`:
 
 - **Resolve the audit mode** for the PR author with the workflow's portable helper (`.gaia/scripts/read-audit-ci-config.sh --resolve-author <login>`). This reads the project's own `.gaia/audit-ci.yml` (team `default_mode` plus per-author overrides), so the flow obeys an adopter's config instead of assuming the maintainer's CI.
 - **Get a real marker for HEAD.** In `ci` mode, wait for CI's `GAIA-Audit` success status (a `pending` status is not a marker, and `--auto` cannot skip this: the local merge hook denies `gh pr merge` until the marker exists). In `local` mode, or when the audit workflow is absent, run the `code-review-audit` agent as the producer; on a clean pass it writes the marker and posts the success status. If the whole diff is out of audit scope, the workflow's out-of-scope bypass clears the merge with no marker. Never hand-write, fake, or pre-empt the marker, an in-scope debt fix earns its marker the same way every feature PR does.
@@ -124,6 +124,6 @@ Run the ordering command, find the issue whose number matches the argument. Expl
 - **Exactly one issue per invocation.** No batch draining.
 - **Deterministic ordering, never an LLM evaluator.** The order is the `--jq` sort above over severity labels and `createdAt`; no model ranks the backlog.
 - **Within-band FIFO, severity-first.** Highest severity first, oldest first within a band. Cross-band fairness / anti-starvation is out of scope.
-- **The skill drives the merge, never the gate.** After a default-merge confirmation it resolves the fix PR to completion through the standard PR Merge Workflow's marker handshake, running `gh pr merge` only once a real marker exists for HEAD. Never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's gate.
+- **The skill drives the merge, never the gate.** The happy path runs start to finish with no merge-time confirmation: it resolves the fix PR to completion through the standard PR Merge Workflow's marker handshake, running `gh pr merge` only once a real marker exists for HEAD. Never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's gate.
 - **Security screen before any public PR.** A security-class selected issue diverts via the visibility gate on PUBLIC/INTERNAL; only a confirmed-PRIVATE repo drains it as a normal fix PR.
 - Use repo-relative paths only.
