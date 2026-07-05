@@ -11,6 +11,8 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-05 5792046 SKIP - Fable top-tier model gate feature already updated GAIA Plan/GAIA Spec/Task Orchestration in-commit
+- 2026-07-05 4e70ade1 SKIP - previous wiki maintenance chain PR (sync+consolidate+lint), self-contained, nothing further to sync
 - 2026-07-05 b680034d WORTHY - health-audit remediations add WorktreeRemove to canonical hook list + clarify no-snapshot fitness case → wiki/decisions/Claude Integration Fitness.md (edited in-commit)
 - 2026-07-05 92b7f424 WORTHY - CI runs .gaia/tests/lib bats + token-tally atomic same-fs rename → wiki/concepts/PR Merge Workflow.md (edited in-commit)
 - 2026-07-05 dd2ff78c WORTHY - SPEC-023 consolidates cost artifacts (tokens.md/jsonl → cost.md/jsonl) → wiki/concepts/Cost Data Contract.md (new), GAIA Plan.md, GAIA Spec.md, Task Orchestration.md, Telemetry.md, Token Cost Readout.md (edited in-commit)
