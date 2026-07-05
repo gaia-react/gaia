@@ -130,6 +130,14 @@ Act on the verdict:
 - Counter-evidence shows it occurs but with a smaller blast radius than claimed → **demote** to the tier the evidence supports.
 - No concrete counter-evidence → the finding **stands** at its tier. "Seems unlikely" or "probably fine" is not a refutation; absence of a refutation defaults to keeping the finding.
 
+**No-op detection and retry for each refuter.** After each refuter returns, write its returned verdict text to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape cra-refuter --path <tempfile>` (exit 0 = real, exit 1 = no-op). A return carrying a standalone `REFUTED`, `DOWNGRADE`, or `STANDS` token is a real result, never a no-op; only a harness-reminder-echo carrying none of those tokens is a no-op. On a no-op, re-dispatch that refuter **exactly one** time with the hardened retry prefix below, naming the flagged finding's `file:line` as the concrete target. A second consecutive no-op does not re-dispatch a third time; instead refute that one finding yourself inline (the **inline fallback**), apply the resulting verdict exactly as if the refuter had returned it, and record the degraded unit in the report and as a count on the `adversarial verify done` progress breadcrumb.
+
+Hardened retry prefix (prepend verbatim to the original refuter prompt on the single retry, substituting the concrete target for `<target>`):
+
+```
+RETRY (hardened, one attempt only): Your very first action MUST be a Read of <target>. Emit no prose before that Read. Produce your structured output (the findings or verdict file this prompt names, or your returned digest if it names none) before any returned prose. Then perform the original task below exactly as written.
+```
+
 Spawn each refuter with this prompt:
 
 ```
@@ -142,7 +150,7 @@ Finding:
 
 Changed files in scope: [list from git diff]
 
-Read the flagged line, its callers, and the tests that exercise it. You may overturn this finding ONLY by citing concrete counter-evidence:
+Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose. Read the flagged line, its callers, and the tests that exercise it. You may overturn this finding ONLY by citing concrete counter-evidence:
 - a specific guard (`file:line`) that prevents the claimed input/state from reaching the defect, or
 - a test that already asserts the correct behavior, or
 - a demonstration that the failure path is unreachable.
@@ -323,7 +331,7 @@ Structure your review as follows. The Critical / Important / Suggestions section
 
 ### Summary
 
-A brief overview of the code reviewed, overall quality assessment, and the most important findings.
+A brief overview of the code reviewed, overall quality assessment, and the most important findings. If a specialist subagent or adversarial refuter no-op'd twice and fell back to inline review (see the no-op detection under "Finding Proof Gate" and "Rules-Based Audit"), name which one here so a reader distinguishes a clean dispatch from a degraded one. This detail is subject to the same security-class redaction rules as any other finding, a diverted security finding recovered inline still names only its count, never its detail.
 
 ### Critical Issues (Must Fix)
 
@@ -421,10 +429,12 @@ A **diverted security-class finding** (see Scope classification and out-of-scope
 | # | Label | Counts |
 |---|-------|--------|
 | 1 | `scope resolved` | number of changed files in scope |
-| 2 | `oracles done` | per-oracle counts: `react-doctor N, knip N, audit N` |
+| 2 | `oracles done` | per-oracle counts: `react-doctor N, knip N, audit N`, plus a count of specialist subagents that fell back to inline review this run: `specialists inline N` |
 | 3 | `holistic review done` | count of candidate Critical/Important holistic findings |
-| 4 | `adversarial verify done` | count that STAND (survived refutation) |
+| 4 | `adversarial verify done` | count that STAND (survived refutation), plus a count of refuters that fell back to inline refutation this run: `refuters inline N` |
 | 5 | `report stamped` | marker state + self-heal state, e.g. `marker written, self-heal none` |
+
+A specialist or refuter that no-op'd twice and fell back to inline review/refutation (see the no-op detection under "Finding Proof Gate" and "Rules-Based Audit") contributes **only a count** to its existing breadcrumb, `specialists inline N` on `oracles done`, `refuters inline N` on `adversarial verify done`, never detail, matching the counts-only, public-safety constraint above. There is no separate breadcrumb for this, it hangs on the existing five.
 
 **Truncate-on-first-write:** the first breadcrumb (`scope resolved`) overwrites the file using `Write` so a stale prior run's breadcrumbs never appear. Breadcrumbs 2-5 append using `Edit` (insert after the last line) so each phase accumulates in order.
 
@@ -584,7 +594,8 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
    - 1 × `Bash` call for `npx -y react-doctor@latest . --verbose --diff` (also foreground, runs alongside)
    - 1 × `Bash` call for `pnpm knip --reporter json` (also foreground, runs alongside), pre-merge is post-task by design, so the noise concern from `.claude/rules/knip.md` doesn't apply here
    - 1 × `Bash` call for `pnpm audit --json || true` (also foreground, runs alongside). This is the deterministic CVE oracle: read-only, advisory. It is NOT the blocking CI `pnpm audit` (that lives in GAIA CI automation and opens security PRs); this local run only reads + reports. See "Dependency-CVE advisory" below for the extraction, the high/critical threshold, and the baseline filter.
-4. **Merge findings** into your report under Critical/Important/Suggestions. Deduplicate against your own findings, keeping the more detailed version. Many react-doctor barrel-import and multiple-useState warnings are false positives in this codebase, cross-reference against project conventions before including them.
+4. **Classify each specialist's return for no-op before merging.** Write each specialist's returned text to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape cra-specialist --path <tempfile>` (exit 0 = real, exit 1 = no-op). A clean `No violations found.` reply, or a reply carrying a finding block with a backticked `` `path:line` `` token (per the specialist template's `Location` field below), is a real result, never a no-op; only a harness-reminder-echo carrying neither is a no-op. A specialist gated off by file scope in step 2 was never dispatched and is not-applicable, never a no-op. On a no-op, re-dispatch that specialist **exactly one** time with the hardened retry prefix ("No-op detection and retry for each refuter" above), naming the changed-file list it was given as the concrete target. A second consecutive no-op does not re-dispatch a third time; instead review that specialist's files yourself inline (the **inline fallback**), merge the result into the report exactly as if the specialist had returned it, and record the degraded unit in the report and as a count on the `oracles done` progress breadcrumb.
+5. **Merge findings** into your report under Critical/Important/Suggestions. Deduplicate against your own findings, keeping the more detailed version. Many react-doctor barrel-import and multiple-useState warnings are false positives in this codebase, cross-reference against project conventions before including them.
 
 ### Knip findings
 
@@ -746,6 +757,8 @@ Each subagent prompt should follow this structure:
 You are a specialist code reviewer. Review the changed files for violations of the rules below.
 
 Files to review: [list from git diff]
+
+Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose. Read each file in the list above before reporting.
 
 Rules: [paste the relevant rules from above]
 

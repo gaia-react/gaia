@@ -1,0 +1,6 @@
+{
+  "dimension": "DP",
+  "findings": [
+    { "id": "DP-1", "summary": "a real lens finding" }
+  ]
+}

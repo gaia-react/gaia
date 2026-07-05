@@ -45,6 +45,14 @@ jobs:
               # by the .gaia/tests/hooks/ suites below.
               - '.claude/hooks/**'
               - '.gaia/scripts/**'
+              # The audit-guard-structural suite (.gaia/scripts/tests/) greps the
+              # prose of these three instruction files for the no-op-guard wiring
+              # (SPEC-025 plan DP-005). An instruction-only edit touches none of
+              # the source dirs above, so without these three paths the suite
+              # would not re-trigger on drift of the surfaces it guards.
+              - '.claude/skills/gaia/references/spec.md'
+              - '.claude/skills/gaia/references/plan.md'
+              - '.claude/agents/code-review-audit.md'
               - '.gaia/tests/forensics/**'
               - '.gaia/tests/hooks/**'
               - '.gaia/tests/lib/**'
