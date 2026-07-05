@@ -745,7 +745,7 @@ These satisfy the SPEC's binding contracts; the plan and implementation must hon
 
 ## Coverage
 
-<one line per in-scope dispatch (self-review, each lens, each refuter, the completeness critic on Deep, the applier)>
+<one line per in-scope dispatch (self-review, each lens, each refuter, the completeness critic on Deep)>
 
 - **<phase>** (`<lens>`): `<disposition>`
 ```
