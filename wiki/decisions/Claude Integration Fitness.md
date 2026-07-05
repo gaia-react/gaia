@@ -28,7 +28,7 @@ Checks `.claude/settings.json` and `.claude/settings.local.json` hook entries:
 - Hook command paths resolve under GAIA's execution model. Bash runs from the repo root (the never-cd convention in `.claude/rules/shell-cwd.md`), so repo-root-relative paths (e.g. `.claude/hooks/wiki-session-start.sh`) are the correct, intended form. Flag a path only when it resolves under neither an absolute form nor the mandated repo-root cwd.
 - Every hook event name is a valid Claude Code hook event.
 
-The valid Claude Code hook events (the canonical list the auditor checks against, so it does not re-derive an incomplete set from memory) are: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `UserPromptExpansion`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionStart`, `SessionEnd`, `WorktreeCreate`, plus any project-specific events the repo registers (a project that wires its own event names extends this list; an unfamiliar name is a finding only when it is neither in the list above nor registered by the project's own tooling).
+The valid Claude Code hook events (the canonical list the auditor checks against, so it does not re-derive an incomplete set from memory) are: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `UserPromptExpansion`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, `PostCompact`, `SessionStart`, `SessionEnd`, `WorktreeCreate`, `WorktreeRemove`, plus any project-specific events the repo registers (a project that wires its own event names extends this list; an unfamiliar name is a finding only when it is neither in the list above nor registered by the project's own tooling).
 
 Findings here are typically `error` severity.
 
@@ -79,8 +79,8 @@ Permission-glob semantics: the rule the auditor applies for the strict-subset ch
 
 Checks the GAIA installation:
 
-- Per-file drift between the current contents of files tracked by `.gaia/manifest.json` and the contents the installed GAIA version shipped. Each drifted file is one `warning` finding. This check needs a reference snapshot of the installed version's shipped contents; when none is present (a fresh clone or after a cache clear), the per-file diff is N/A and version-currency plus `gaia-maintainer release manifest --check` carry installation freshness instead.
-- Installed GAIA version vs. latest release: if behind, one `info` finding recommending `/update-gaia`.
+- Per-file drift between the current contents of files tracked by `.gaia/manifest.json` and the contents the installed GAIA version shipped. When a reference snapshot of the installed version's shipped contents is present, each drifted file is one `warning` finding. This check needs that snapshot; when none is present (a fresh clone or after a cache clear), the per-file diff is skipped rather than treated as drift, and version-currency plus `gaia-maintainer release manifest --check` carry installation freshness instead. Provided both of those pass, the no-snapshot case records no finding at all for this bullet, not even `info`; it is a pass, not an unresolved question.
+- Installed GAIA version vs. latest release: if behind, one `info` finding recommending `/update-gaia`. This is the only `info` this category emits; a version-current install with no snapshot present still records no finding.
 
 ### 7. Wiki fitness
 
@@ -106,7 +106,7 @@ Things audits keep re-discovering that are not findings:
 
 **A bare `Bash(cmd)` permission entry alongside `Bash(cmd:*)`.** Not a shadowed-permission finding; they match different invocations (no-args vs. with-args). See the permission-glob semantics note under [Settings hygiene](#5-settings-hygiene) for the strict-subset rule that governs this check.
 
-**A `WorktreeCreate` hook entry.** Not an unknown-event finding; `WorktreeCreate` is in the canonical event list under [Hook integrity](#1-hook-integrity); projects wire it to a worktree-link script. (If worktree symlink-handoff is demonstrably broken, that is a separate concern, not a fitness finding.)
+**A `WorktreeCreate` hook entry.** Not an unknown-event finding; `WorktreeCreate` is in the canonical event list under [Hook integrity](#1-hook-integrity); projects wire it to a worktree-link script. `WorktreeRemove` is its registered teardown pair, also in the canonical list, wired to replace the harness's native worktree removal. (If worktree symlink-handoff is demonstrably broken, that is a separate concern, not a fitness finding.)
 
 **A skill directory with no `SKILL.md` that is a shared-reference bucket.** Not a frontmatter finding. The frontmatter category checks `*/SKILL.md` under `.claude/skills/`, but a directory whose files are individually tracked in `.gaia/manifest.json` and Read by path from command surfaces (rather than invoked by name) is a deliberate reference bucket, not a discoverable skill; a `SKILL.md` would be redundant. Surface a missing one as, at most, `info`, and do not escalate to a blocking finding. (`.claude/skills/gaia/` is the canonical case: its `references/` files are dispatched directly by the gaia-* commands.)
 
