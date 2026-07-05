@@ -240,6 +240,23 @@ Read `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.
 
 ## Steps
 
+### Model gate (pre-flight)
+
+Runs on entry, before step 1, before any SPEC id is allocated or any file is written, so a "switch" outcome stops cleanly with nothing to clean up. **Auto-mode exception:** skip this section entirely. Auto mode is non-interactive; it neither prompts nor stops, it proceeds on whatever model the automation runs.
+
+SPEC synthesis, the two-gate ceremony, the Socratic clarify loop, and the gate confirmations, runs on the **main thread**, so it uses your current session model. Unlike `/gaia-plan`, this skill cannot pin a subagent to a better model: its `AskUserQuestion` and plain-prompt steps do not work inside dispatched subagents, so there is no spec-writer subagent to spawn on Opus. The only way to synthesize on a top-tier model is to run the session itself on one. Opus and Fable are both top-tier.
+
+- If you are on Opus or Fable, proceed to step 1 (no prompt).
+- Otherwise (you are on Sonnet, Haiku, or another lesser model) call `AskUserQuestion` with:
+  - question: `"You're on [model name]. SPEC synthesis runs on your session model. Switch to a top-tier model first?"`
+  - header: `"Model"`
+  - options:
+    - `{ label: "Switch to Opus (Recommended)", description: "Highest-quality specs. Stops here so you can switch, then re-run /gaia-spec." }`
+    - `{ label: "Switch to Fable", description: "Also a top-tier planning model. Stops here so you can switch, then re-run /gaia-spec." }`
+    - `{ label: "Stay on [model name]", description: "Author the SPEC on the current model without switching." }`
+  - If the user picks Opus or Fable: do **not** start the workflow. Print exactly one instruction and STOP: `"Switch with /model (pick <chosen model>), then re-run /gaia-spec <description>."` Interpolate `<chosen model>`; if a feature description was supplied as an argument, echo it in place of `<description>` so the re-run is a single paste, otherwise drop the `<description>` placeholder. Allocate no SPEC id, write no files, author nothing.
+  - If the user picks "Stay": proceed to step 1 on the current model.
+
 ### 1. Get description
 
 If `$ARGUMENTS` (the args after `spec`, with `auto` already stripped if present, see Argument parsing) is non-empty, use it as the feature description.

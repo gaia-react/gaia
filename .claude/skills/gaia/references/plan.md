@@ -33,18 +33,20 @@ Colocated plans no longer use `SPEC_SLUG_SEED` to prefix a `plans/` slug, the pl
 
 ### 2. Check model
 
-The deep synthesis runs in the planner spawned at step 4, and the planner's model is pinned at spawn time, so it can be Opus even when this orchestration runs on Sonnet. Decide the planner's model:
+The deep synthesis runs in the planner spawned at step 4, and the planner's model is pinned at spawn time, so it can be a top-tier model even when this orchestration runs on Sonnet. Opus and Fable are both top-tier planning models. Decide the planner's model:
 
-- If you are on Opus, the planner inherits Opus; skip to step 3.
+- If you are on Opus or Fable, the planner inherits your current model; skip to step 3.
 - If you are running non-interactively (a headless or automation context with no interactive user to prompt), default the planner to Opus: spawn it with `model: opus` at step 4. Skip to step 3.
-- Otherwise call `AskUserQuestion` with:
-  - question: `"You're on [model name]. Use Opus for planning?"`
+- Otherwise (you are on Sonnet, Haiku, or another lesser model) call `AskUserQuestion` with:
+  - question: `"You're on [model name]. Which model should plan?"`
   - header: `"Model"`
   - options:
     - `{ label: "Use Opus (Recommended)", description: "Spawn the planning agent on Opus for higher-quality plans." }`
+    - `{ label: "Use Fable", description: "Spawn the planning agent on Fable, also a top-tier planning model." }`
     - `{ label: "Use [model name]", description: "Keep the current model." }`
-  - If the user picks option 1: spawn the agent with `model: opus`.
-  - If the user picks option 2: spawn without a model override (inherit current).
+  - If the user picks Opus: spawn the agent with `model: opus`.
+  - If the user picks Fable: spawn the agent with `model: fable`.
+  - If the user picks the current model: spawn without a model override (inherit current).
 
 This decision governs the **planner** only. The plan's **execution** sub-agents are a separate decision: they default to Sonnet, pinned in the `ORCHESTRATOR.md`/`KICKOFF.md` the planner writes (see step 4's Sub-agent invocation bullet). Do not conflate the two.
 
