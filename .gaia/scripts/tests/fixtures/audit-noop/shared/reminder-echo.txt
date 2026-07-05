@@ -1,0 +1,4 @@
+<system-reminder>
+As you answer, remember to follow the project's output style and formatting
+conventions. This is a harness reminder echo, not a structured audit result.
+</system-reminder>

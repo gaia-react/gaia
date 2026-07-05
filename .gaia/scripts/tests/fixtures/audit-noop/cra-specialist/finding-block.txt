@@ -1,0 +1,3 @@
+- **Category**: correctness
+- **Location**: `path/to/file.tsx:42`
+- **Issue**: a real finding, not a no-op.
