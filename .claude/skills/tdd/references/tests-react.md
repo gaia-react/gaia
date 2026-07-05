@@ -55,6 +55,57 @@ describe('PriceTag', () => {
 
 The tracer bullet for any component: `composeStory(Default, Meta)` renders without throwing. Use ARIA roles and accessible names as selectors, `getByRole('button', {name: 'Save'})`, `getByText('$49.99')`, not class selectors or test ids.
 
+### Overriding a prop (callback spies)
+
+When a test overrides a prop on a composed story, especially a callback it spies on, the story must accept `(args)` and spread `{...args}` **last**, after any hardcoded default, so the override wins. Storybook's own guidance says the render function "spreads `args` onto the component" (https://storybook.js.org/docs/writing-stories), and `composeStory` says render-time props "override the values passed in the story's args" (https://storybook.js.org/docs/api/portable-stories/portable-stories-vitest#composestory). `args` only reaches the real component through that spread, so a story that hardcodes the callback, or spreads `{...args}` before it, silently drops the override.
+
+Storybook's own examples spread every prop from `args`, so there's nothing to order against. This repo's stories hardcode structural/demo props inline (labels, names, options) and spread `{...args}` only for the controllable knobs, see `app/components/Form/RadioButtons/tests/index.stories.tsx`, so ordering is load-bearing: `{...args}` must come after the hardcoded props for an override to win.
+
+```tsx
+// app/components/Toggle/tests/index.stories.tsx
+// GOOD - accepts args and spreads {...args} LAST, so a test can override onChange
+const Template: StoryFn = (args) => (
+  <Toggle label="Notifications" onChange={() => {}} {...args} />
+);
+
+export const Default = Template.bind({});
+Default.args = {checked: false};
+```
+
+```tsx
+// app/components/Toggle/tests/index.test.tsx
+// GOOD - the override reaches the real component, so the spy assertion is real
+test('emits onChange when toggled', async () => {
+  const onChange = vi.fn();
+  render(<Toggle onChange={onChange} />);
+  await userEvent.click(screen.getByRole('switch', {name: 'Notifications'}));
+  expect(onChange).toHaveBeenCalledWith(true);
+});
+```
+
+(`Toggle` here is `composeStory(Default, Meta)` in the test, mirroring the `const DefaultTag = composeStory(Default, Meta)` idiom above.)
+
+```tsx
+// BAD: hardcodes onChange (or never accepts args), so a render-time override is dropped
+const Template: StoryFn = (args) => (
+  <Toggle label="Notifications" {...args} onChange={() => {}} />
+);
+// equally broken: a story that never accepts (args):
+// export const Default: StoryFn = () => <Toggle label="Notifications" onChange={() => {}} />;
+```
+
+```tsx
+// BAD: the spy is never wired, so this assertion passes vacuously
+test('does not emit onChange while disabled', async () => {
+  const onChange = vi.fn();
+  render(<Toggle disabled onChange={onChange} />); // override silently dropped
+  await userEvent.click(screen.getByRole('switch', {name: 'Notifications'}));
+  expect(onChange).not.toHaveBeenCalled(); // green even if the disabled guard is broken
+});
+```
+
+Why bad: the story hardcodes `onChange`, so the composed story ignores the render-time override and hands the component its own `() => {}`. The spy is never wired, so `not.toHaveBeenCalled()` passes no matter what the component does; it would stay green even if the disabled guard were removed. (A positive `toHaveBeenCalledWith` on the same broken story fails loudly instead, which tempts a raw-render "fix" that bypasses the story's stubs; the real fix is to make the story spread `{...args}` last.)
+
 ## Hook Tests via `renderHook`
 
 ```tsx
