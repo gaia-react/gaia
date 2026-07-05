@@ -18,11 +18,11 @@ Check the description for a SPEC reference. Three forms are recognized:
 2. **Path form**: a path matching `.gaia/local/specs/SPEC-\d+/SPEC\.md` appears anywhere in the description.
 3. **Prefix form** (the older, verbose handoff shape, still accepted for pasted history): a `SPEC-\d+:` prefix at the start of the description.
 
-If any form matched, extract the `SPEC-\d+` id from wherever it appeared (the bare token, the path segment, or the text before the colon), then resolve it against the actual filesystem, self-healing a zero-padding mismatch (a bare `SPEC-26` still finds a `SPEC-026` folder):
+If any form matched, extract the `SPEC-\d+` id from wherever it appeared (the bare token, the path segment, or the text before the colon), then resolve it against the actual filesystem, self-healing a zero-padding mismatch (e.g. `SPEC-026` also resolves from the bare `SPEC-26`):
 
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
-RAW="<the SPEC-\d+ id extracted above, e.g. SPEC-26 or SPEC-026>"
+RAW="<the SPEC-\d+ id extracted above, e.g. SPEC-026 or SPEC-26>"
 NUM="${RAW#SPEC-}"
 PADDED="SPEC-$(printf '%03d' "$((10#$NUM))")"
 SPEC_ID=""
