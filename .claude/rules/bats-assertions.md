@@ -17,12 +17,16 @@ For any assertion that is not the test's final command, use a form that fails un
 - **Equality / numeric / empty / file:** POSIX `[ ... ]` fails correctly: `[ "$status" -eq 0 ]`, `[ "$a" = "$b" ]`, `[ -z "$output" ]`.
 - **Keep a `[[ ]]` matcher when you need one:** append `|| return 1` -> `[[ "$output" == *needle* ]] || return 1`.
 - **Custom checks:** end the failing branch with an explicit `return 1`.
+<!-- gaia:maintainer-only:start -->
 
 Reference pattern: `.gaia/scripts/tests/token-cost-e2e.bats` -- its `assert_contains` / `refute_contains` / `assert_prefix` helper trio and the assertion-style note at the top.
+<!-- gaia:maintainer-only:end -->
 
 ## Backstops, not substitutes
 
+<!-- gaia:maintainer-only:start -->
 - CI (`.github/workflows/audit-ci-tests.yml`) runs the `.gaia/scripts/tests/`, `.gaia/tests/forensics/`, and `.gaia/tests/hooks/` suites on ubuntu (bash 5), which **does** enforce `[[ ]]`. That is the authoritative gate, but it only catches a hollow assertion after push.
+<!-- gaia:maintainer-only:end -->
 - Run bats under bash 5 locally so local matches CI: `brew install bash` installs `/opt/homebrew/bin/bash`, and bats picks it up via `env bash` when that dir precedes `/bin` on `PATH`. A false mid-test `[[ ]]` then fails locally too.
 
 ## Scope

@@ -95,7 +95,7 @@ transforms:
       # ---- Concrete maintainer SPEC IDs ----
       - id: spec-concrete-ids
         description: "Concrete maintainer SPEC IDs in shipped instruction surfaces"
-        pattern: "\\bSPEC-00[1-9]\\b"
+        pattern: "\\bSPEC-[0-9]{3,}\\b"
         scope:
           - ".claude/skills/**"
           - ".claude/commands/**"
@@ -117,7 +117,7 @@ transforms:
         line-allowlist:
           # Illustrative usage in CLI/SPEC docs: `(e.g. SPEC-002)` or
           # `(e.g. \`SPEC-002\`)` (with optional backticks around the ID).
-          - "e\\.g\\.\\s*`?SPEC-00[1-9]"
+          - "e\\.g\\.\\s*`?SPEC-[0-9]{3,}"
 
       # ---- Release-excluded paths leaked into shipped surfaces ----
       - id: maintainer-paths

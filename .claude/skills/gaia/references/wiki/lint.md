@@ -165,7 +165,7 @@ grep -rEn "UAT-[0-9]{3}" \
   .specify/extensions/gaia/templates/
 
 # Concrete maintainer SPEC IDs
-grep -rEn "\bSPEC-00[1-9]\b" \
+grep -rEn "\bSPEC-[0-9]{3,}\b" \
   .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
   .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
   .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
