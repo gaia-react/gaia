@@ -21,9 +21,16 @@ setup() {
   # The spec-less arm shells out to cost-consolidate.sh at this fixed
   # repo-relative path; mirror it inside the sandbox so that call resolves
   # exactly like it does in a real checkout instead of silently no-op'ing.
+  # The PLAN-NNN completion stamp likewise shells out to plan-ledger-update.sh,
+  # which sources with-ledger-lock.sh from its own dir; both are copied here
+  # so a PLAN-<digits> slug's stamp resolves instead of silently failing.
   mkdir -p "$SANDBOX/.specify/extensions/gaia/lib"
   cp "$REPO_ROOT/.specify/extensions/gaia/lib/cost-consolidate.sh" \
     "$SANDBOX/.specify/extensions/gaia/lib/cost-consolidate.sh"
+  cp "$REPO_ROOT/.specify/extensions/gaia/lib/plan-ledger-update.sh" \
+    "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh"
+  cp "$REPO_ROOT/.specify/extensions/gaia/lib/with-ledger-lock.sh" \
+    "$SANDBOX/.specify/extensions/gaia/lib/with-ledger-lock.sh"
 }
 
 # Run the script with cwd inside the sandbox. Args pass through.
@@ -52,6 +59,30 @@ assert_pruned_only() {
   [ -f "$dir/cost.md" ]
   count="$(find "$dir" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
   [ "$count" -eq 2 ]
+}
+
+# seed_plans_ledger <plan-row-json>: writes a one-row plans ledger at the
+# sandbox's canonical .gaia/local/plans/ledger.json path.
+seed_plans_ledger() {
+  local row_json="$1"
+  mkdir -p "$SANDBOX/.gaia/local/plans"
+  cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<EOF
+{
+  "version": 1,
+  "plans": [
+    $row_json
+  ]
+}
+EOF
+}
+
+# plan_row_field <field>: reads a field off the PLAN-005 row in the sandbox's
+# plans ledger ("null" if absent).
+plan_row_field() {
+  local field="$1"
+  jq -r --arg id "PLAN-005" --arg f "$field" \
+    '.plans[] | select(.id == $id) | .[$f] // "null"' \
+    "$SANDBOX/.gaia/local/plans/ledger.json"
 }
 
 # --- 1. Spec-less prune + move ----------------------------------------------
@@ -277,4 +308,51 @@ EOF
   grep -qx '## Total' "$archived"
   grep -qF '**Est. cost (USD):** $0.30' "$archived"
   ! grep -qx '## SPEC' "$archived"
+}
+
+# --- 17. PLAN-NNN slug: archiving stamps the plans-ledger row completed (U3) -------
+
+@test "PLAN-NNN slug: archiving stamps plans-ledger row to completed with completed_at" {
+  seed_plan ".gaia/local/plans/PLAN-005"
+  seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
+  run run_in_sandbox ".gaia/local/plans/PLAN-005"
+  [ "$status" -eq 0 ]
+  assert_pruned_only "$SANDBOX/.gaia/local/plans/archived/PLAN-005"
+  [ "$(plan_row_field status)" = "completed" ]
+  [ "$(plan_row_field completed_at)" != "null" ]
+  [ -n "$(plan_row_field completed_at)" ]
+}
+
+# --- 18. Legacy slug: archiving does not attempt a ledger stamp --------------------
+
+@test "legacy slug (not PLAN-NNN): archiving does not attempt a ledger stamp" {
+  seed_plan ".gaia/local/plans/cache-consolidation"
+  seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
+  run run_in_sandbox ".gaia/local/plans/cache-consolidation"
+  [ "$status" -eq 0 ]
+  assert_pruned_only "$SANDBOX/.gaia/local/plans/archived/cache-consolidation"
+  # Unrelated PLAN-005 row is untouched, proving no stray stamp fired.
+  [ "$(plan_row_field status)" = "allocated" ]
+}
+
+# --- 19. Spec-colocated plan: archiving does not stamp any plans-ledger row --------
+
+@test "spec-colocated plan: archiving does not stamp any plans-ledger row" {
+  seed_plan ".gaia/local/specs/SPEC-005/plan"
+  seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
+  ledger_before="$(cat "$SANDBOX/.gaia/local/plans/ledger.json")"
+  run run_in_sandbox ".gaia/local/specs/SPEC-005/plan"
+  [ "$status" -eq 0 ]
+  assert_pruned_only "$SANDBOX/.gaia/local/specs/SPEC-005/plan"
+  [ "$(cat "$SANDBOX/.gaia/local/plans/ledger.json")" = "$ledger_before" ]
+}
+
+# --- 20. Best-effort: chokepoint failure (no matching row) never blocks archival ---
+
+@test "PLAN-NNN with no matching ledger row: chokepoint fails but archive still exits 0" {
+  seed_plan ".gaia/local/plans/PLAN-999"
+  seed_plans_ledger '{"id":"PLAN-001","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
+  run run_in_sandbox ".gaia/local/plans/PLAN-999"
+  [ "$status" -eq 0 ]
+  assert_pruned_only "$SANDBOX/.gaia/local/plans/archived/PLAN-999"
 }

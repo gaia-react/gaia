@@ -720,20 +720,22 @@ Update the frontmatter `updated` field to today's date.
 After the canonical write succeeds:
 
 1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md .gaia/local/cache/gate1-<spec_id>.json`, and remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/`. The applier has already read the audit cache to derive `AUDIT.md` (which survives under `.gaia/local/specs/<spec_id>/`), so deleting it here is safe. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
-2. **Update the ledger row:** flip the row in `.gaia/local/specs/ledger.json` from `status: draft` to `status: specified` and stamp the intent (first prose line of the SPEC's `intent` field) for at-a-glance scanning. This is the finalize transition: the SPEC artifact is now frozen, so the authoring session is done and the allocator stops reporting it for resume-vs-start-new. Downstream (plan → implement → merge) owns the feature from here; the ledger's `merged` transition is reconciled from git by `spec-reconcile.sh`, not set here. Failure is non-blocking, log to stderr and continue. The remote `spec/*` tags are the cross-team allocation authority; `.gaia/local/specs/ledger.json` is a per-machine local cache; the SPEC artifact and git history remain authoritative.
+2. **Update the ledger row:** flip the row in `.gaia/local/specs/ledger.json` from `status: draft` to `status: specified` and stamp the intent (the SPEC's `intent` field reduced to a full first sentence, or a word-safe bounded prefix + `...` when the first sentence runs long, via the shared title-normalize rule) for at-a-glance scanning. This is the finalize transition: the SPEC artifact is now frozen, so the authoring session is done and the allocator stops reporting it for resume-vs-start-new. Downstream (plan → implement → merge) owns the feature from here; the ledger's `merged` transition is reconciled from git by `spec-reconcile.sh`, not set here. Failure is non-blocking, log to stderr and continue. The remote `spec/*` tags are the cross-team allocation authority; `.gaia/local/specs/ledger.json` is a per-machine local cache; the SPEC artifact and git history remain authoritative.
 
 ```bash
 SPEC_PATH=".gaia/local/specs/${SPEC_ID}/SPEC.md"
-INTENT=$(awk '
+INTENT_RAW=$(awk '
   /^intent:[[:space:]]*\|/ { in_block=1; next }
   /^intent:[[:space:]]*[^|[:space:]]/ {
     sub(/^intent:[[:space:]]*/, ""); print; exit
   }
   in_block && /^[a-zA-Z_]+:/ { exit }
   in_block && /^[[:space:]]+[^[:space:]]/ {
-    sub(/^[[:space:]]+/, ""); print; exit
+    sub(/^[[:space:]]+/, ""); print
   }
 ' "$SPEC_PATH" 2>/dev/null || echo "")
+INTENT=$(printf '%s' "$INTENT_RAW" \
+  | bash .specify/extensions/gaia/lib/title-normalize.sh 2>/dev/null || echo "")
 PATCH=$(jq -nc --arg intent "$INTENT" \
   '{status: "specified"} + (if $intent == "" then {} else {intent: $intent} end)')
 bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \

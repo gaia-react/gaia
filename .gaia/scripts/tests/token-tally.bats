@@ -727,3 +727,58 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(jq -r '.stray' "$dir/tokens.jsonl")" = "do-not-move" ]
   [ "$(wc -l < "$dir/cost.jsonl" | tr -d ' ')" -eq 2 ]
 }
+
+# ---------- 22. session_cwd (U1): live $PWD, never --out-dir/--ledger (UAT-001) ----------
+@test "22: session_cwd captures the live working directory, diverging from out-dir and ledger dir" {
+  # Canonicalize up front (cd && pwd, no -P) so the expected value matches the
+  # tally's own $PWD byte-for-byte even if $BATS_TEST_TMPDIR resolves through a
+  # /tmp -> /private/tmp symlink on macOS.
+  workdir_raw="$BATS_TEST_TMPDIR/wd"
+  mkdir -p "$workdir_raw"
+  workdir="$(cd "$workdir_raw" && pwd)"
+
+  ( cd "$workdir" && bash "$SCRIPT" \
+      --action execute --spec-id SPEC-013 --plan-slug s \
+      --out-dir "$OUTDIR" --session-id "$SESSION" \
+      --projects-root "$ANCHOR" --ledger "$LEDGER" )
+
+  got="$(jq -r 'select(.spec_id=="SPEC-013") | .session_cwd' "$LEDGER" | tail -1)"
+  [ "$got" = "$workdir" ] || return 1
+  # Pin the worktree divergence UAT-001 rests on: session_cwd is the LIVE cwd,
+  # never the out-dir or the ledger's directory (both resolve to the main
+  # checkout in worktree mode). $workdir is deliberately distinct from both.
+  [ "$got" != "$OUTDIR" ] || return 1
+  [ "$got" != "$(dirname "$LEDGER")" ] || return 1
+}
+
+@test "22b: session_cwd forward-encodes cleanly (/ and . -> -, no / or . survive)" {
+  workdir_raw="$BATS_TEST_TMPDIR/wd"
+  mkdir -p "$workdir_raw"
+  workdir="$(cd "$workdir_raw" && pwd)"
+
+  ( cd "$workdir" && bash "$SCRIPT" \
+      --action execute --spec-id SPEC-013 --plan-slug s \
+      --out-dir "$OUTDIR" --session-id "$SESSION" \
+      --projects-root "$ANCHOR" --ledger "$LEDGER" )
+
+  got="$(jq -r 'select(.spec_id=="SPEC-013") | .session_cwd' "$LEDGER" | tail -1)"
+  enc="$(printf '%s' "$got" | tr './' '-')"
+  case "$enc" in
+    *[./]*) echo "forward-encoded session_cwd still contains / or .: $enc" >&2; return 1 ;;
+  esac
+}
+
+@test "23: session_cwd is still emitted (set to the run cwd) on the degraded path" {
+  workdir_raw="$BATS_TEST_TMPDIR/wd"
+  mkdir -p "$workdir_raw"
+  workdir="$(cd "$workdir_raw" && pwd)"
+
+  # missing/unresolvable session id -> partial run, record still built
+  run bash -c "cd '$workdir' && bash '$SCRIPT' \
+    --action spec --spec-id SPEC-013 \
+    --out-dir '$OUTDIR' --session-id no-such-session-9999 \
+    --projects-root '$ANCHOR' --ledger '$LEDGER'"
+  [ "$status" -eq 0 ]
+  [ "$(led '.partial')" = "true" ]
+  [ "$(led '.session_cwd')" = "$workdir" ]
+}

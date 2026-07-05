@@ -173,6 +173,9 @@ done
 
 SESSION_ID="${SESSION_ID_ARG:-${CLAUDE_CODE_SESSION_ID:-}}"
 PROJECTS_ROOT="${PROJECTS_ROOT_ARG:-$HOME/.claude/projects}"
+# Live $PWD, not --out-dir/--ledger: those resolve to the main checkout even in a
+# worktree, which would defeat transcript-dir resolution for the worktree path.
+SESSION_CWD="${PWD:-}"
 
 partial=0
 
@@ -604,6 +607,7 @@ rec="$(jq -nc \
   --arg project "$PROJECT_ID" \
   --argjson seq "$SEQ" \
   --arg ts "$TS" \
+  --arg session_cwd "$SESSION_CWD" \
   '
     {
       schema_version: 1,
@@ -629,7 +633,8 @@ rec="$(jq -nc \
         project: (if $project == "" then null else $project end),
         seq: $seq,
         final: true,
-        ts: $ts
+        ts: $ts,
+        session_cwd: (if $session_cwd == "" then null else $session_cwd end)
       }
   ' 2>/dev/null || true)"
 

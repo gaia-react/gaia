@@ -28,17 +28,19 @@ The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main che
 | `by_model` | `object`, omitted when empty | Model id → five-bucket object: `{ fresh_input, cache_write_5m, cache_write_1h, cache_read, output }` (all `int`). The `cache_write_5m`/`cache_write_1h` split is what `buckets.cache_write` collapses; a record whose attribution failed omits the key entirely rather than writing `{}`. |
 | `by_agent_type` | `object`, omitted when empty | Bucket key → the same five-bucket shape as `by_model`. Keys: `main` (the main transcript), a sub-agent's own `agentType` (e.g. `general-purpose`), `auto-compaction` (a compaction-summary line, regardless of which transcript it came from), and `unknown` (a sidecar whose sibling `.meta.json` is missing, unreadable, or lacks `.agentType`). Reconciles by equality: collapsing every bucket's `cache_write_5m` + `cache_write_1h` and summing across buckets reproduces the top-level `buckets`/`total` exactly. |
 | `dollars` | `number \| null` | The session's estimated USD cost, priced from `by_model` at generation time. `null` when pricing was unavailable (empty `by_model`, unreadable rate table). |
-| `rate_table_id` | `"sha256:<16-hex>" \| null` | Identity of the committed rate table that priced `dollars`, so a downstream reader can re-price the raw `by_model` under a different card. `null` off the priced path. |
-| `partial` | `bool` | `true` when the session id was empty, the main transcript matched no file, or any matched file failed to parse. An empty sidecar set alone does NOT set this. |
+| `rate_table_id` | `"sha256:<16-hex>" \| null` | Identity of the committed rate table that priced `dollars`, so a downstream reader can re-price the raw `by_model` under a different card. `null` off the priced path. See [[Token Cost Readout]] for how a rate table earns this id. Absent (not present, not `null`) on `source: "backfill"` rows. |
+| `partial` | `bool` | `true` when the session id was empty, the main transcript matched no file, or any matched file failed to parse. An empty sidecar set alone does NOT set this. Absent (not present) on `source: "backfill"` rows; a reader treats a missing `partial` the same as `false` rather than rejecting the row. |
 | `started_at` | `iso \| null` | Earliest usage-bearing transcript timestamp, raw UTC. `null` when `duration_available` is `false`. |
 | `ended_at` | `iso \| null` | Latest usage-bearing transcript timestamp, raw UTC. Same null condition as `started_at`. |
 | `duration_seconds` | `int \| null` | `ended_at` minus `started_at`. `null` when unavailable. |
 | `duration_available` | `bool` | Independent of `partial`: tokens can be complete while duration is unavailable (an unparseable extremal timestamp), and the reverse. |
-| `git_branch` | `string \| null` | Current branch at tally time, or `null` when it could not be resolved. |
-| `project` | `"sha256:<16-hex>" \| "path:<16-hex>" \| null` | Repo identity: a hash of the normalized `origin` remote URL when one exists (so an `https` and `ssh` clone of the same repo collide), else a hash of the main checkout's absolute path, else `null`. |
+| `git_branch` | `string \| null` | Current branch at tally time, or `null` when it could not be resolved. Absent (not present) on `source: "backfill"` rows. |
+| `project` | `"sha256:<16-hex>" \| "path:<16-hex>" \| null` | Repo identity: a hash of the normalized `origin` remote URL when one exists (so an `https` and `ssh` clone of the same repo collide), else a hash of the main checkout's absolute path, else `null`. Absent (not present) on `source: "backfill"` rows. |
 | `seq` | `int` | `0` for `spec`/`plan` rows (one row per session). For `execute`, the count of prior same-`(feature, session_id)` execute rows already on the ledger; monotonic per feature per session. |
 | `final` | `bool` | `true` on every newly appended row. For `execute`, a best-effort rewrite flips every prior same-`(feature, session_id)` row's `final` to `false` after append, so at most one row per feature per session stays `true`. |
 | `ts` | `iso` | Generation stamp: when this record was written. |
+| `session_cwd` | `string \| null` | The session's live working directory at tally time (the tally's own `$PWD`, not `--out-dir` or the resolved ledger path), including from the worktree and degraded-attribution paths. `null` when empty. A reader forward-encodes it with Claude Code's transcript-directory transform (`/` and `.` each become `-`) to name the exact `~/.claude/projects` folder the session's transcript lives under. Absent on rows written before this field existed and on `source: "backfill"` rows; a reader without `session_cwd` falls back to a directory-scan heuristic to locate the transcript. |
+| `source` | `"backfill" \| absent` | Additive provenance marker. Present and equal to `"backfill"` only on rows emitted by the one-off vintage `cost.md` → `cost.jsonl` backfill (see "Archived folder shapes" below); absent (not present, not null) on every natively emitted row. |
 
 ## Execute aggregation rule
 
@@ -59,6 +61,8 @@ A feature's cost artifacts consolidate at archive time into exactly one of two s
 Every section renders from the same uniform `## <heading>` block shape `token-tally.sh` writes, which is what lets archive-time consolidation splice them together and append a grand `## Total`.
 
 **Pre-existing archived folders keep their vintage shape.** Archival is never retroactive: a folder archived under an earlier shape is not migrated to match this one. The archived shape is versioned by vintage, not by when a reader happens to look at it.
+
+A vintage folder whose `cost.md` predates the ledger gets one `source: "backfill"` row per `## SPEC` / `## Planning` / `## Execution` section (never `## Total`, a derived grand-sum rather than its own phase).
 
 ## Pairs with
 
