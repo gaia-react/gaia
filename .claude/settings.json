@@ -55,17 +55,6 @@
         ]
       }
     ],
-    "UserPromptExpansion": [
-      {
-        "matcher": "init",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/intercept-init.sh"
-          }
-        ]
-      }
-    ],
     "WorktreeCreate": [
       {
         "matcher": "",

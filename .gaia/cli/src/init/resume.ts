@@ -118,7 +118,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {flags: {fromStep}, ok: true};
 };
 
-type StepRunner = (argv: readonly string[], options?: {cwd?: string}) => number;
+type StepRunner = (
+  argv: readonly string[],
+  options?: {cwd?: string}
+) => number | Promise<number>;
 
 const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
   'bootstrap-env': runBootstrapEnv,
@@ -224,10 +227,10 @@ type RunOptions = {
   runners?: Partial<Record<StepName, StepRunner>>;
 };
 
-export const run = (
+export const run = async (
   argv: readonly string[],
   options: RunOptions = {}
-): number => {
+): Promise<number> => {
   if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
     process.stdout.write(HELP_TEXT);
 
@@ -293,7 +296,7 @@ export const run = (
     }
 
     const runner = runners[step] ?? STEP_RUNNERS[step];
-    const exit = runner(stepArgv, {cwd});
+    const exit = await runner(stepArgv, {cwd});
 
     if (exit !== EXIT_CODES.OK) {
       // The step itself printed a structured error to stderr.
