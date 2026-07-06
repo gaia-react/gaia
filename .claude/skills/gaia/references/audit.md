@@ -273,12 +273,15 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
 
 ### Delete-entry (remove a specific block from a multi-entry file, e.g. a heading section in MEMORY.md)
 
+Set `depends_on` when this delete-entry removes an index/pointer line for a file that a `promote` or `delete` action removes (e.g. a `MEMORY.md` line pointing at a promoted or deleted memory file). It names that action's id; Stage 2 removes the pointer only if the referenced action landed (`[x]`), so a `promote`/`delete` that skips on drift never strands the source file with its index line already gone. Omit `depends_on` for a standalone delete-entry that removes content in its own right (nothing else removes a file the entry points at).
+
 - [ ] `delete-entry-{nnn}`
   ```yaml
   type: delete-entry
   path: {absolute path}
   expect: |
     {verbatim block to remove, including heading, must match exactly}
+  depends_on: {action id this removal is contingent on, e.g. promote-001 or delete-001; omit the key entirely if standalone}
   reason: {…}
   ```
 
@@ -316,7 +319,7 @@ Each action is a fenced YAML block prefixed with a checkbox line. Stage 2 flips 
 
 ## Ordering
 
-Stage 2 must apply actions in this order: `shrink` → `delete-entry` → `promote` → `delete`. Rationale: shrinks never reference content that later gets touched; deletes come last so earlier pointers don't go stale.
+Stage 2 must apply actions in this order: `shrink` → `promote` → `delete` → `delete-entry`. Rationale: shrinks never reference content that later gets touched; promotes run before the deletes that remove their sources; and index-pointer removals (`delete-entry`) come last so a `delete-entry` carrying `depends_on` is gated on its referenced `promote`/`delete` having already landed. Removing a pointer only after its target is confirmed gone means a `promote`/`delete` that skips on drift never strands a source file with its index line already deleted (the orphaning hazard the old `delete-entry`-before-`promote` order carried).
 
 Wiki-internal redundancy and broken-link repair are handled by `/gaia-wiki consolidate` and `/gaia-wiki lint` respectively, `merge` and `fix-link` action types are not part of this workflow.
 
@@ -438,15 +441,16 @@ You are executing, not reasoning. Follow this loop exactly.
 
 For each unchecked action block:
 
-1. Verify drift signal:
+1. Dependency gate (`delete-entry` carrying `depends_on` only; every other action skips this step): look up the `depends_on` action id's checkbox in the report. If it is anything other than `[x]` (skipped `[~]`, failed `[!]`, still unchecked `[ ]`, or the id is not found), mark this delete-entry `[~]` skipped, record reason `paired action {id} not applied`, and move on WITHOUT removing anything. The `## Ordering` guarantees the referenced `promote`/`delete` is already processed by the time this runs, so its checkbox is authoritative.
+2. Verify drift signal:
    - If the action specifies `expect_sha256`: compute sha256 of the target file. If mismatch → mark `[~]` skipped, record reason `sha drift`, move on.
    - If the action specifies `before:` or `expect:` snippet: read the file and confirm the snippet appears verbatim. If missing → `[~]` skipped, `snippet drift`.
-2. Apply the change using the exact operation:
+3. Apply the change using the exact operation:
    - `type: delete` → remove the file
    - `type: delete-entry` → read file, locate the `expect` block, remove it, write back
    - `type: promote` → perform the `target_action` (use Edit or Write as appropriate), then prepend `log_entry` to `wiki/log.md`, then append `index_entry` to the right section of `wiki/index.md`, then delete `source_path` if `delete_source_after: true`
    - `type: replace` → Edit with `old_string: before`, `new_string: after`. If `before` is not unique, prepend additional context from the file until unique.
-3. Flip the checkbox: `[ ]` → `[x]` on success, `[~]` on skip, `[!]` on error. Record the reason inline on the checkbox line.
+4. Flip the checkbox: `[ ]` → `[x]` on success, `[~]` on skip, `[!]` on error. Record the reason inline on the checkbox line.
 
 ### Post-apply verification (mechanical, no judgment)
 

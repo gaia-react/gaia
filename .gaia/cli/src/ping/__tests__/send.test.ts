@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {postPing} from '../send.js';
+import {normalizePlatform, postPing} from '../send.js';
 
 const UUID_V4_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -53,7 +53,7 @@ describe('postPing', () => {
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body.event).toBe('init');
     expect(body.gaiaVersion).toBe('1.6.1');
-    expect(body.platform).toBe(process.platform);
+    expect(body.platform).toBe(normalizePlatform(process.platform));
     expect(body.projectId).toMatch(UUID_V4_RE);
   });
 
@@ -133,5 +133,18 @@ describe('postPing', () => {
     await postPing(root, {event: 'init'});
 
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('normalizePlatform', () => {
+  test('maps known platforms to coarse labels', () => {
+    expect(normalizePlatform('darwin')).toBe('macos');
+    expect(normalizePlatform('win32')).toBe('windows');
+    expect(normalizePlatform('linux')).toBe('linux');
+  });
+
+  test('folds the long tail into "other"', () => {
+    expect(normalizePlatform('freebsd')).toBe('other');
+    expect(normalizePlatform('android')).toBe('other');
   });
 });

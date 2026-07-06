@@ -28,6 +28,21 @@ const PING_URL = 'https://telemetry.gaiareact.com/ping';
 const TIMEOUT_MS = 2000;
 const MANIFEST_RELATIVE = '.gaia/manifest.json';
 
+const PLATFORM_LABELS: Readonly<Record<string, string>> = {
+  darwin: 'macos',
+  linux: 'linux',
+  win32: 'windows',
+};
+
+/**
+ * Collapse `process.platform` to a coarse, low-cardinality label
+ * (`macos` / `windows` / `linux`), folding the long tail (`freebsd`,
+ * `android`, …) into `other`. Keeps the ping's `platform` field a clean
+ * four-value enum rather than leaking Node's `darwin` / `win32` jargon.
+ */
+export const normalizePlatform = (platform: string): string =>
+  PLATFORM_LABELS[platform] ?? 'other';
+
 const readGaiaVersion = (cwd: string): string => {
   try {
     const raw = readFileSync(path.join(cwd, MANIFEST_RELATIVE), 'utf8');
@@ -58,7 +73,7 @@ export const postPing = async (
     ...payload,
     ...(projectId ? {projectId} : {}),
     gaiaVersion: readGaiaVersion(cwd),
-    platform: process.platform,
+    platform: normalizePlatform(process.platform),
   };
 
   try {
