@@ -614,7 +614,7 @@ Now that the bump has landed, record the transition:
 .gaia/cli/gaia ping --event update --from "$BASELINE" --to "$LATEST" || true
 ```
 
-This ping records the version transition for anonymous adoption analytics and is best-effort, it never gates the update or its resumability.
+This ping records the version transition for adoption analytics and is best-effort, it never gates the update or its resumability.
 
 Deferring the bump to this point (rather than before the walk) keeps an interrupted run resumable: any abort during the walk (user cancels, disk error) leaves `.gaia/VERSION` at `BASELINE`, and because the merge is idempotent (already-merged files match latest and skip), a re-run picks up cleanly. Overwritten files are safe, their prior state is in `.gaia-backup/`. Step 3 catches the remaining window where the bump landed but the user has not yet committed.
 

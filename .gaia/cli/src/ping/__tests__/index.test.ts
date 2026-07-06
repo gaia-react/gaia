@@ -54,6 +54,7 @@ describe('gaia ping', () => {
     stdio = captureStdio();
     fetchSpy = vi.fn().mockResolvedValue(new Response(null, {status: 204}));
     vi.stubGlobal('fetch', fetchSpy);
+    vi.stubEnv('GAIA_TELEMETRY_PING_DISABLE', '');
   });
 
   afterEach(() => {

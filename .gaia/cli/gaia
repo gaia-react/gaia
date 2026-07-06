@@ -20009,7 +20009,7 @@ var postPing = async (cwd, payload) => {
 // src/ping/index.ts
 var HELP_TEXT22 = `Usage: gaia ping --event <init|setup|update> [--field value ...]
 
-  Send the shared anonymous adoption ping. Accepted fields depend on
+  Send the shared adoption ping. Accepted fields depend on
   --event:
 
     init    --mode <interactive|automatic> --i18n <non-negative int> \\

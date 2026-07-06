@@ -987,7 +987,7 @@ Read `setup status --json`:
 
   Never leave `completed_at` unstamped because a step was skipped upstream (e.g. Phase 5 skipped under an unauthenticated `gh`).
 
-**Adoption ping.** After finalize completes (or short-circuits above), send an anonymous setup ping as the last substantive step of this phase, fire-and-forget.
+**Adoption ping.** After finalize completes (or short-circuits above), send a setup adoption ping as the last substantive step of this phase, fire-and-forget.
 
 Compute **`$SETUP_TYPE`** (required) from Phase 1's classification and `RECONFIGURE`:
 

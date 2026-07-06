@@ -635,7 +635,7 @@ Then run the CLI's init finalize step, it removes the `/init` interceptor hook, 
 
 ### Send the adoption ping
 
-Send a fire-and-forget anonymous adoption ping. This is its own Bash call, separate from the `init finalize` call above, and it never gates `/gaia-init`'s success or failure, run it even though `init finalize` just deleted this command file, the instructions are already loaded for the rest of this run:
+Send a fire-and-forget adoption ping. This is its own Bash call, separate from the `init finalize` call above, and it never gates `/gaia-init`'s success or failure, run it even though `init finalize` just deleted this command file, the instructions are already loaded for the rest of this run:
 
 ```bash
 .gaia/cli/gaia ping --event init --mode "$MODE" --i18n "$I18N_COUNT" --ci "$CI_CATEGORY" || true

@@ -3,7 +3,7 @@
  *
  * Flat handler (no `SUBCOMMAND_HANDLERS` map): the single shared entry
  * point the `/gaia-init`, `/setup-gaia`, and `/update-gaia` skills call to
- * fire the anonymous adoption ping. Parses `--event <init|setup|update>`
+ * fire the adoption ping. Parses `--event <init|setup|update>`
  * plus the per-event field flags, then hands the payload to `postPing`
  * (`./send.ts`), which injects `projectId`/`gaiaVersion`/`platform` and is
  * itself fire-and-forget.
@@ -18,7 +18,7 @@ import type {PingEvent, PingPayload} from './send.js';
 
 const HELP_TEXT = `Usage: gaia ping --event <init|setup|update> [--field value ...]
 
-  Send the shared anonymous adoption ping. Accepted fields depend on
+  Send the shared adoption ping. Accepted fields depend on
   --event:
 
     init    --mode <interactive|automatic> --i18n <non-negative int> \\

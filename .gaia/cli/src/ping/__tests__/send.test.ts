@@ -25,6 +25,7 @@ describe('postPing', () => {
     mkdirSync(path.join(root, '.gaia'), {recursive: true});
     fetchSpy = vi.fn().mockResolvedValue(new Response(null, {status: 204}));
     vi.stubGlobal('fetch', fetchSpy);
+    vi.stubEnv('GAIA_TELEMETRY_PING_DISABLE', '');
   });
 
   afterEach(() => {
