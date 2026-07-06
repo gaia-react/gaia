@@ -10,7 +10,10 @@
 # editing it here), so it is excluded from the grep by design, not an
 # oversight. `.gaia/local` is gitignored (not tracked, so `git grep` would
 # never surface it anyway) and CHANGELOG.md/wiki/log.md are excluded because
-# they may legitimately narrate the removal historically.
+# they may legitimately narrate the removal historically. This file itself is
+# excluded too: it is the absence assertion, so it names the retired symbol on
+# purpose (once committed it is tracked, and `git grep` would otherwise match
+# its own text).
 #
 # Parallel-authoring note: two live call sites (spec-archive-merged.sh via
 # spec-close.md, and plan-archive.sh) are removed by sibling tasks in the same
@@ -33,7 +36,8 @@ setup() {
 @test "UAT-007: scoped git grep for cost-consolidate is empty across .specify .gaia .claude wiki" {
   run git -C "$REPO_ROOT" grep -l cost-consolidate -- \
     .specify .gaia .claude wiki \
-    ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' ':!wiki/log.md'
+    ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' ':!wiki/log.md' \
+    ':!.gaia/scripts/tests/cost-consolidate-absence.bats'
   # git grep exits 1 (not 0) when it finds no match; the assertion that
   # matters is emptiness of $output, not the exit code.
   [ -z "$output" ]
