@@ -142,7 +142,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
       started: <current UTC time, ISO 8601, e.g. 2026-05-19T14:32:00Z>
       ```
 
-      This file is deleted automatically when the plan directory is archived during final self-cleanup (RUNNING is not one of the two files the archive keeps, `SUMMARY.md` and `cost.md`). Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature.
+      This file is deleted automatically when the plan directory is deleted during final self-cleanup. Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature.
 
     - **Pre-flight branch policy.** Check the current branch.
 
@@ -198,19 +198,19 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       A `PostToolUse` hook on `gh pr merge` renders the same roll-up at the merge boundary, so the readout also appears when the merge runs from a fresh top-level session. The reader never blocks and never fabricates a number: the `-x` guard and trailing `|| true` mean a missing or failing helper degrades silently, and an unreadable ledger degrades to a partial or absent figure with a marker.
 
-    - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user confirms the PR is ready to merge, the orchestrator **archives** its own plan folder instead of deleting it, preserving `SUMMARY.md` and `cost.md`. Run:
+    - **Final self-cleanup phase (last step before merge).** After all implementation phases pass and the user confirms the PR is ready to merge, the orchestrator deletes its own plan folder outright. Run:
 
       ```bash
       bash .gaia/scripts/plan-archive.sh {PLAN_DIR}
       ```
 
-      The argument is the plan dir. Pass the cached `{PLAN_DIR}` (absolute) directly, the helper normalizes an absolute-under-repo path to repo-relative. A repo-relative literal (`.gaia/local/specs/<SPEC-ID>/plan[-N]` or `.gaia/local/plans/<slug>[-N]`) is equally valid. Unlike the old literal-`rm` self-cleanup, the argument shape does NOT affect the permission match here: the allow entry `Bash(bash .gaia/scripts/plan-archive.sh:*)` uses a `:*` wildcard that matches any argument.
+      The argument is the plan dir. Pass the cached `{PLAN_DIR}` (absolute) directly, the helper normalizes an absolute-under-repo path to repo-relative. A repo-relative literal (`.gaia/local/specs/<SPEC-ID>/plan[-N]` or `.gaia/local/plans/PLAN-NNN`) is equally valid. The argument shape does NOT affect the permission match here: the allow entry `Bash(bash .gaia/scripts/plan-archive.sh:*)` uses a `:*` wildcard that matches any argument.
 
-      This prunes everything except `SUMMARY.md` and `cost.md`, then: for a spec-less plan under `.gaia/local/plans/<slug>/` moves the pruned folder to `.gaia/local/plans/archived/<slug>/`, with a `## Total` appended to `cost.md`; for a spec-colocated plan under `.gaia/local/specs/<SPEC-ID>/plan/` prunes in place (the SPEC folder is the archival unit). When the SPEC folder is later archived, a shared routine consolidates and flattens: it folds the SPEC-root `cost.md`'s `## SPEC` section together with the plan's `## Planning` + `## Execution` into one `## SPEC` + `## Planning` + `## Execution` + `## Total` document at the SPEC root, moves `SUMMARY.md` up beside it, and removes the now-empty `plan/` subfolder, so the archived SPEC folder never nests a `plan/`. The helper always exits 0.
+      For a spec-less plan under `.gaia/local/plans/PLAN-NNN/`, the whole folder is deleted. For a spec-colocated plan under `.gaia/local/specs/<SPEC-ID>/plan[-N]/`, only that subfolder is deleted, the parent SPEC folder and its `SPEC.md` are untouched. `cost.jsonl` and the id-ledgers are the durable record that survives; `SUMMARY.md` and `cost.md` are deleted with the folder. The helper always exits 0.
 
-      Then check `git check-ignore .gaia/local/plans/` (and, for a colocated plan, `git check-ignore .gaia/local/specs/`): both are gitignored under the GAIA default, so the prune+move is invisible to git, skip the commit and report "plan folder archived locally; gitignored, no commit needed." If a path is tracked, commit and push the move as the final commit on the PR. If the user explicitly asks to keep the plan folder un-archived, skip and report.
+      Then check `git check-ignore .gaia/local/plans/` (and, for a colocated plan, `git check-ignore .gaia/local/specs/`): both are gitignored under the GAIA default, so the delete is invisible to git, skip the commit and report "plan folder deleted locally; gitignored, no commit needed." If a path is tracked, commit and push the delete as the final commit on the PR. If the user explicitly asks to keep the plan folder, skip and report.
 
-      The `SUMMARY.md`/`cost.md` content was already surfaced in the Final summary, and now additionally persists on disk.
+      The `SUMMARY.md`/`cost.md` content was already surfaced in the Final summary before the folder is removed.
 
     - **Post-merge worktree cleanup (worktree-mode runs only).** When the orchestrator's pre-flight chose worktree mode (or the run was dispatched into a worktree by upstream tooling), the post-merge phase runs the cleanup procedure below AFTER the user confirms the PR is merged. The procedure detects the squash-merge state and discards the worktree without prompting (the SPEC clarifications.answered confirms pre-consent: the orchestrator told the user "after merge, the worktree will be discarded" before opening the PR; the user merging the PR is the consent).
       1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.

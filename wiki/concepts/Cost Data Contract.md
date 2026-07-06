@@ -3,7 +3,7 @@ type: concept
 title: Cost Data Contract
 status: active
 created: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-07
 tags: [concept, telemetry, cost, data-contract]
 ---
 
@@ -50,22 +50,16 @@ An `execute` action appends one cumulative row per commit, `seq` incrementing pe
 
 Additive-only by default: a new field does not bump `schema_version`. A breaking change, removing or repurposing an existing field, bumps `schema_version` and is confirmed first, an external consumer depends on this contract holding still. The ledger holds only `schema_version` 1-or-later records; a prior, differently-shaped ledger is moved aside to a backup file the contract never reads, so there is no absent-`schema_version` legacy branch to handle downstream.
 
-## Archived folder shapes
+## No folder survives merge
 
-A feature's cost artifacts consolidate at archive time into exactly one of two shapes, depending on whether the feature carried a SPEC identity.
+A merged spec or plan's working folder, `.gaia/local/specs/<SPEC-ID>/` or `.gaia/local/plans/PLAN-NNN/`, is deleted outright rather than pruned and moved to an `archived/` tree. Nothing on disk carries the cost forward: `cost.jsonl` (this ledger) plus the two id-ledgers (`specs/ledger.json`, `plans/ledger.json`) are the whole durable record. Every figure a deleted folder's `cost.md` once rendered, per-action buckets, totals, and dollars, is recoverable from this ledger's rows keyed by `spec_id` or `plan_id`, with no dependency on any `cost.md` file.
 
-**Spec-derived** — `.gaia/local/specs/archived/<SPEC-ID>/` contains `AUDIT.md`, `SPEC.md`, `SUMMARY.md`, `cost.md` (no `plan/` subfolder; it is flattened up). `cost.md` carries `## SPEC` + `## Planning` + `## Execution` + `## Total`.
+Every section `token-tally.sh` writes to a live `cost.md` during a run renders from the same uniform `## <heading>` block shape, which is what lets a reader (or a one-time migration) parse a vintage `cost.md` deterministically.
 
-**Spec-less** — `.gaia/local/plans/archived/PLAN-NNN/` contains `SUMMARY.md`, `cost.md`. `cost.md` carries `## Planning` + `## Execution` + `## Total`, with no `## SPEC` section, a spec-less plan never had one.
-
-Every section renders from the same uniform `## <heading>` block shape `token-tally.sh` writes, which is what lets archive-time consolidation splice them together and append a grand `## Total`.
-
-**Pre-existing archived folders keep their vintage shape.** Archival is never retroactive: a folder archived under an earlier shape is not migrated to match this one. The archived shape is versioned by vintage, not by when a reader happens to look at it.
-
-A vintage folder whose `cost.md` predates the ledger gets one `source: "backfill"` row per `## SPEC` / `## Planning` / `## Execution` section (never `## Total`, a derived grand-sum rather than its own phase).
+A vintage `cost.md` that predates this ledger gets one `source: "backfill"` row per `## SPEC` / `## Planning` / `## Execution` section (never `## Total`, a derived grand-sum rather than its own phase).
 
 ## Pairs with
 
 - [[Token Cost Readout]]: the `by_model` pricing surfaces (rate table, shared pricing lib, tally-time vs roll-up-time dollar figures) built on top of this ledger.
 - [[Telemetry]]: the ledger's place among GAIA's other telemetry streams.
-- [[Task Orchestration]]: the plan-lifecycle archival step that produces the spec-less archived shape above.
+- [[Task Orchestration]]: the plan-lifecycle deletion step that removes the folder this ledger's rows outlive.

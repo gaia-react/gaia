@@ -1,6 +1,6 @@
 ---
 name: speckit-gaia-spec-close
-description: Close a SPEC after implementation+merge. Optional drain of deferred wiki-promote, then disposition prompt (archive / delete / keep) for the local SPEC artifact.
+description: Close a SPEC after implementation+merge. Optional drain of deferred wiki-promote, then delete the local SPEC artifact once cost is represented in cost.jsonl.
 ---
 
 # Spec Close, Lifecycle
@@ -8,9 +8,9 @@ description: Close a SPEC after implementation+merge. Optional drain of deferred
 Closes a SPEC after its implementing PR has merged. Two responsibilities:
 
 1. **Drain a deferred wiki-promote**, if `/speckit-implement` saw the PR unmerged and cached a defer flag.
-2. **Prompt for SPEC artifact disposition**, archive, delete, or keep in place, once the wiki side is settled.
+2. **Delete the local SPEC artifact**, once the wiki side is settled and the ledger records the merge.
 
-Auto-triggered from `wiki-promote` Step 8 on the immediate-merge path. Also invokable manually as `/speckit-gaia-spec-close [SPEC-NNN]` for the deferred path or for retroactive disposition.
+Auto-triggered from `wiki-promote` Step 8 on the immediate-merge path. Also invokable manually as `/speckit-gaia-spec-close [SPEC-NNN]` for the deferred path or for retroactive cleanup.
 
 ## Step 1: Resolve target SPEC
 
@@ -43,44 +43,11 @@ Test for `.gaia/local/cache/wiki-promote/<spec_id>.json`.
 
 Track `drained = <bool>` for telemetry and the final report.
 
-## Step 3: Disposition prompt
+## Step 3: Flip ledger status
 
-Resolve the SPEC folder: `.gaia/local/specs/<spec_id>/` (canonical artifact at `.gaia/local/specs/<spec_id>/SPEC.md`).
+Resolve the SPEC folder: `.gaia/local/specs/<spec_id>/` (canonical artifact at `.gaia/local/specs/<spec_id>/SPEC.md`). Track whether it exists as `folder_exists`, used in Step 4 and the final report.
 
-If the folder is missing, set `disposition = "skipped"`, skip Step 4, and continue to Step 5. Report line surfaces "(artifact missing; nothing to dispose)".
-
-Surface via `AskUserQuestion`:
-
-- Question: `<spec_id> implementation complete and PR merged. Disposition?`
-- Header: `SPEC dispose`
-- Options:
-  - `{ label: "Archive (Recommended)", description: "Move the SPEC folder to .gaia/local/specs/archived/ with status=archived. Preserves the SPEC artifact and its siblings for posterity. Wiki content was already promoted at implement time; no re-summarization." }`
-  - `{ label: "Delete", description: "Remove the SPEC folder. Local-only (.gaia/local/ is gitignored), so the SPEC is not recoverable from git history." }`
-  - `{ label: "Keep in place", description: "Leave the folder at .gaia/local/specs/<spec_id>/ unchanged. Choose if undecided; re-run /speckit-gaia-spec-close <spec_id> later to revisit." }`
-
-## Step 4: Apply disposition
-
-**On `Archive`:**
-
-1. `mkdir -p .gaia/local/specs/archived/`.
-2. If `.gaia/local/specs/archived/<spec_id>/` already exists, the SPEC is already archived, report `<spec_id> already archived at .gaia/local/specs/archived/<spec_id>/.`, set `disposition = "archive"`, and skip the remaining sub-steps.
-3. Edit `.gaia/local/specs/<spec_id>/SPEC.md` frontmatter in place: set `status: archived`; set `archived_at: <ISO 8601 UTC>`. Preserve all other fields verbatim.
-4. Consolidate the SPEC's cost artifacts before the move: `bash .specify/extensions/gaia/lib/cost-consolidate.sh spec "$PWD" "$SPEC_ID" || true` (fail-open, non-blocking). Splices the SPEC-root and plan-folder `cost.md` sections into one dollars-led `cost.md` with a grand total, moves the plan folder's `SUMMARY.md` up beside `SPEC.md`, and removes the `plan[-N]/` subfolder, so the folder that moves next is already flat.
-5. Move the whole folder: `mv .gaia/local/specs/<spec_id> .gaia/local/specs/archived/<spec_id>`. Sibling artifacts move with it.
-6. Purge the SPEC's cache artifacts: `rm -f .gaia/local/cache/gate1-<spec_id>.json .gaia/local/cache/draft-<spec_id>.md .gaia/local/cache/spec-session-<spec_id>.json` and `rm -rf .gaia/local/cache/audit-<spec_id>/`. Never delete `.gaia/local/cache/wiki-promote/<spec_id>.json`, its presence signals wiki content not yet promoted and it is drained by its own owner (Step 2).
-
-**On `Delete`:**
-
-1. `rm -rf .gaia/local/specs/<spec_id>`.
-2. Purge the SPEC's cache artifacts: `rm -f .gaia/local/cache/gate1-<spec_id>.json .gaia/local/cache/draft-<spec_id>.md .gaia/local/cache/spec-session-<spec_id>.json` and `rm -rf .gaia/local/cache/audit-<spec_id>/`. Never delete `.gaia/local/cache/wiki-promote/<spec_id>.json`, its presence signals wiki content not yet promoted and it is drained by its own owner (Step 2).
-
-**On `Keep in place`:**
-
-1. No-op.
-
-## Step 5: Flip ledger status
-
-Update the `.gaia/local/specs/ledger.json` row for `<spec_id>` to record the merge: set `status: merged` and stamp `merged_at` with the current UTC timestamp. Disposition lives on the artifact (and in telemetry); the ledger tracks SPEC lifecycle independently of artifact location.
+Update the `.gaia/local/specs/ledger.json` row for `<spec_id>` to record the merge: set `status: merged` and stamp `merged_at` with the current UTC timestamp. `merged` is the terminal ledger state; the folder is deleted next, so this stamp is the identity record that survives once it is gone.
 
 Run using the Bash tool:
 
@@ -93,34 +60,34 @@ bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
 
 Failure is non-blocking. Pre-ledger SPECs (allocated before `.gaia/local/specs/ledger.json` existed) will not have a row and exit 4, log and continue.
 
-## Step 6: Telemetry
+## Step 4: Delete via the sweep
 
-Append to `.gaia/local/telemetry/spec-pacing.jsonl`:
+If `folder_exists` is false (Step 3), set `disposition = "skipped"` and skip to Step 5; there is nothing to delete.
 
-    { "event": "spec_closed", "spec_id": "<id>", "disposition": "archive|delete|keep|skipped", "drained": <bool>, "ts": "<ISO 8601 UTC>" }
+Otherwise, delegate the delete to the single-id sweep. It gates deletion on cost representation, purges the SPEC's cache keyset, appends the `spec_closed` telemetry event, and runs the mentorship compute-profile chain, all in one place:
 
-Append via `printf '%s\n' '<json>' >> .gaia/local/telemetry/spec-pacing.jsonl`. Failure to append never blocks the flow.
+```bash
+bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" "$SPEC_ID" || true
+```
 
-Then chain `gaia telemetry compute-profile`:
+Read the delegate's output to set `disposition` for Step 5:
 
-    .gaia/cli/gaia telemetry compute-profile
+- Its stdout reports `Deleted <N> merged SPEC folder(s): <ids>` including `$SPEC_ID` → `disposition = "delete"`.
+- Its stderr reports cost not fully represented for `$SPEC_ID` → `disposition = "blocked"`; the folder is retained.
 
-The compute-profile command short-circuits when mentorship is disabled (no-op exit 0). When mentorship is enabled, it regenerates `profile.md` over the rolling 30-day window and writes today's analytics report. Failure of compute-profile never blocks the spec-close flow, log to stderr, continue.
-
-## Step 7: Report
+## Step 5: Report
 
 Print one of (prefix with `Drained <N> wiki pages. ` if Step 2 drained, where `<N>` is the count from wiki-promote's report):
 
-- `<spec_id> closed. Archived to .gaia/local/specs/archived/<spec_id>/.`
-- `<spec_id> closed. SPEC folder deleted.`
-- `<spec_id> closed. SPEC folder kept at .gaia/local/specs/<spec_id>/.`
+- `<spec_id> closed. SPEC folder deleted (cost preserved in cost.jsonl).`
+- `<spec_id> closed; folder retained (cost not fully represented - review).`
 - `<spec_id> closed. (Artifact missing; nothing to dispose.)`
 
 If wiki content was promoted, also surface: `Run /gaia-wiki consolidate periodically to keep the wiki coherent across SPECs.`
 
 ## Notes
 
-- **Disposition does NOT re-summarize into the wiki.** `wiki-promote` (the `after_implement` hook) already wrote `wiki/<domain>/<slug>.md` pages with `promoted_from: <spec_id>` provenance at implement time. Re-summarizing here would duplicate. To consolidate redundant or superseded wiki pages across SPECs, run `/gaia-wiki consolidate`.
+- **This flow does NOT re-summarize into the wiki.** `wiki-promote` (the `after_implement` hook) already wrote `wiki/<domain>/<slug>.md` pages with `promoted_from: <spec_id>` provenance at implement time. Re-summarizing here would duplicate. To consolidate redundant or superseded wiki pages across SPECs, run `/gaia-wiki consolidate`.
 - This command never touches `wiki/`. The wiki-promote → wiki-sync chain owns wiki writes.
-- Archive is reversible (move the folder back). Delete is local-only, `.gaia/local/` is gitignored, so the SPEC is not recoverable from git history. Default to Archive if uncertain.
+- Deletion is local-only: `.gaia/local/` is gitignored, so the SPEC folder is not recoverable from git history once deleted. The durable record is `cost.jsonl`, the `specs`/`plans` ledgers, and the merged PR.
 - The chain from wiki-promote Step 8 fires only on the immediate-merge path. The deferred-drain path runs spec-close once and does not re-enter via the chain (see Step 2's `drained: true` guard).

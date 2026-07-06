@@ -30,9 +30,14 @@
 #      A <sha> that is not a valid commit (bogus/garbage) is treated as dead.
 #   3. plans/<slug>/ and colocated specs/<SPEC-ID>/plan[-N]/ dirs whose RUNNING
 #      sentinel names a branch that no longer exists AND is not marked
-#      DEFERRED/PAUSED/PARKED. Branch-gone + not-parked means the plan merged
-#      and its self-cleanup never ran (interrupted run). Archived, not deleted,
-#      via plan-archive.sh, so SUMMARY.md/cost.md survive the sweep.
+#      DEFERRED/PAUSED/PARKED. Branch-gone + not-parked alone is not enough to
+#      delete: the folder's durable identity record must also confirm it
+#      terminal (a plans/ledger.json PLAN-NNN row at status completed, or a
+#      specs/ledger.json row at status merged for a colocated plan). No row,
+#      a non-terminal status, or a ledger-less free-form plan slug skips the
+#      item and leaves it for a human decision. Only a confirmed-terminal
+#      folder is handed to plan-archive.sh, which deletes it (gated again
+#      there on cost representation).
 #   4. empty leftover dirs under .gaia/local, EXCEPT the structural drop-zones
 #      tooling expects to find. Pruned with `rmdir`, so a non-empty dir can
 #      never be removed even if the logic is wrong.
@@ -107,6 +112,8 @@ fi
 # --- 3. Completed-but-unswept plan dirs ------------------------------------
 plans_dir="$local_dir/plans"
 specs_dir="$local_dir/specs"
+plans_ledger="$plans_dir/ledger.json"
+specs_ledger="$specs_dir/ledger.json"
 for running in "$root/.gaia/local/plans"/*/RUNNING "$root/.gaia/local/specs"/*/plan/RUNNING \
   "$root/.gaia/local/specs"/*/plan-*/RUNNING; do
   [ -f "$running" ] || continue
@@ -124,7 +131,48 @@ for running in "$root/.gaia/local/plans"/*/RUNNING "$root/.gaia/local/specs"/*/p
   [ -n "$branch" ] || continue          # unparseable sentinel -> skip
   # Branch still exists -> plan may be in-flight -> keep.
   git -C "$root" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null 2>&1 && continue
-  # Death proven: archive (not delete) so SUMMARY.md/cost.md survive.
+
+  # Terminal-ledger + identity gate: branch-gone alone never authorizes a
+  # delete once archive is no longer the reversible fallback. Only a folder
+  # whose durable identity record is confirmed terminal proceeds; any
+  # inability to resolve that record (no jq, unreadable ledger, no row, a
+  # non-terminal status, or a ledger-less free-form slug) skips the item.
+  terminal=0
+  case "$plan_dir" in
+    "$plans_dir"/*)
+      plan_slug=${plan_dir#"$plans_dir"/}
+      case "$plan_slug" in
+        PLAN-*)
+          plan_num="${plan_slug#PLAN-}"
+          case "$plan_num" in
+            ''|*[!0-9]*) ;;  # not a PLAN-NNN shape -> no durable identity
+            *)
+              if command -v jq >/dev/null 2>&1 && [ -f "$plans_ledger" ]; then
+                row_status=$(jq -r --arg id "$plan_slug" \
+                  '.plans[]? | select(.id == $id) | .status // empty' \
+                  "$plans_ledger" 2>/dev/null | head -1)
+                [ "$row_status" = "completed" ] && terminal=1
+              fi
+              ;;
+          esac
+          ;;
+        *) ;;  # free-form slug: no durable identity (FC-4) -> never delete
+      esac
+      ;;
+    *)
+      # Colocated specs/<SPEC-ID>/plan[-N]: identity is the parent SPEC.
+      spec_rel=${plan_dir#"$specs_dir"/}
+      spec_id=${spec_rel%%/*}
+      if command -v jq >/dev/null 2>&1 && [ -f "$specs_ledger" ]; then
+        row_status=$(jq -r --arg id "$spec_id" \
+          '.specs[]? | select(.id == $id) | .status // empty' \
+          "$specs_ledger" 2>/dev/null | head -1)
+        [ "$row_status" = "merged" ] && terminal=1
+      fi
+      ;;
+  esac
+  [ "$terminal" -eq 1 ] || continue
+
   plan_rel="${plan_dir#"$root"/}"
   bash "$root/.gaia/scripts/plan-archive.sh" "$plan_rel" >/dev/null 2>&1 || true
 done
