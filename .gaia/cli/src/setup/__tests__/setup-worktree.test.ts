@@ -110,32 +110,6 @@ const writeStateAt = (filePath: string, state: SetupState): void => {
   writeFileSync(filePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 };
 
-/**
- * Parse the last non-empty stderr line as JSON and return its `code` field.
- */
-const lastErrorCode = (errors: string[]): string => {
-  const lines = errors.join('').trim().split('\n');
-
-  return (JSON.parse(lines[lines.length - 1] as string) as {code: string}).code;
-};
-
-/**
- * Write a realistic `mentorship.json` at the given repo root's `.gaia/local/`.
- * The finalize gate is existence-only, so the value is a free knob.
- */
-const writeMentorshipFixture = (
-  repoRoot: string,
-  enabled: boolean | null = false
-): void => {
-  const dir = path.join(repoRoot, '.gaia', 'local');
-  mkdirSync(dir, {mode: 0o755, recursive: true});
-  writeFileSync(
-    path.join(dir, 'mentorship.json'),
-    `${JSON.stringify({analytics: {enabled: false}, decided_at: null, decided_via: null, enabled}, null, 2)}\n`,
-    'utf8'
-  );
-};
-
 describe('gaia setup (linked worktree)', () => {
   let sandbox: WorktreeSandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -204,10 +178,6 @@ describe('gaia setup (linked worktree)', () => {
     for (const step of SETUP_STEPS) {
       runMarkStep([step], {cwd: sandbox.linkedRoot});
     }
-    // The gate resolves mentorship.json from the MAIN worktree root, so the
-    // fixture must live there even though finalize is invoked from the linked
-    // cwd.
-    writeMentorshipFixture(sandbox.mainRoot);
 
     const fixedNow = new Date('2026-05-07T12:00:00.000Z');
     const exit = runFinalize([], {
@@ -228,19 +198,6 @@ describe('gaia setup (linked worktree)', () => {
       'setup-state.json'
     );
     expect(existsSync(linkedStatePath)).toBe(false);
-  });
-
-  test('finalize refuses when mentorship.json exists only in the linked worktree', () => {
-    for (const step of SETUP_STEPS) {
-      runMarkStep([step], {cwd: sandbox.linkedRoot});
-    }
-    // Fixture at the LINKED root only; the main root has none. The gate must
-    // resolve from the main root, so this must NOT satisfy it.
-    writeMentorshipFixture(sandbox.linkedRoot);
-
-    const exit = runFinalize([], {cwd: sandbox.linkedRoot});
-    expect(exit).toBe(1);
-    expect(lastErrorCode(stdio.errors)).toBe('mentorship_decision_missing');
   });
 
   test('a pre-existing per-worktree state file is ignored (no migration)', () => {

@@ -1,7 +1,7 @@
 /**
  * `gaia init finalize` handler.
  *
- * Codifies the cleanup that closes Step 12 of `/gaia-init`:
+ * Codifies the cleanup that closes the final step of `/gaia-init`:
  *
  *   1. Delete `.claude/commands/gaia-init.md` so the command cannot be
  *      run a second time.

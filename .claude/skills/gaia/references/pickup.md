@@ -48,7 +48,7 @@ Do **not** paste the whole handoff back, the user wrote it, they know the shape.
 A handoff is consumed once the user acts. It is never moved or archived.
 
 - **Happy path:** the handoff deletes itself. Its Teardown section instructs the working session to `rm` the file once the Next Actions are complete and verified, so there is nothing for pickup to do.
-- **Stale re-pickup:** if the located handoff describes work that has already fully landed (its branch merged or deleted, its Next Actions all reflected in `git log`), delete it now with `rm .gaia/local/handoff/HANDOFF-*.md`, report "previous handoff's work has landed, cleared it", and resume from `wiki/hot.md`.
+- **Stale re-pickup:** if the located handoff describes work that has already fully landed (its branch merged or deleted, its Next Actions all reflected in `git log`), delete it now with `rm -f .gaia/local/handoff/HANDOFF-*.md`, report "previous handoff's work has landed, cleared it", and resume from `wiki/hot.md`.
 - **Still outstanding:** leave the file in place so an interruption stays recoverable, and resume the unfinished Next Actions.
 
 Be aggressive: a handoff is one-and-done. Only one ever exists, and a finished one is deleted, not kept.

@@ -25,7 +25,7 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 - **`block-eslint-config-edit.sh`**: refuses edits to `eslint.config.mjs`. Reason: lint errors should be fixed in source code, not silenced in config.
 - **`block-vitest-globals-tsconfig.sh`**: refuses adding `vitest/globals` to `tsconfig.json`. Reason: explicit imports (`import {describe, expect, test} from 'vitest'`) are clearer and per-file.
 - **`block-lockfile-edit.sh`**: refuses direct edits to `pnpm-lock.yaml`. Lockfile changes must come from `pnpm install` / `pnpm add` / `pnpm remove`; manual edits routinely produce broken lockfiles. See [[pnpm]].
-- **`block-manifest-write.sh`**: refuses writes to `.gaia/manifest.json` through `Edit`/`Write`/`MultiEdit` (no exemption) and through common Bash vectors (redirect, `tee`, `sed -i`, `sponge`, a `cp`/`mv` destination), honoring a `GAIA_MANIFEST_WRITE=` exemption marker on Bash commands. Registered under both the `Edit|Write|MultiEdit` and `Bash` matchers. The manifest is generated bookkeeping; see `.claude/rules/manifest.md` for the prohibition and rationale.
+- **`block-manifest-write.sh`**: refuses writes to `.gaia/manifest.json` through `Edit`/`Write`/`MultiEdit` (no exemption) and through common Bash vectors (redirect, `tee`, `sed -i`, `sponge`, a `cp`/`mv` destination), honoring a `GAIA_MANIFEST_WRITE=` exemption marker on Bash commands. Registered under both the `Edit|Write|MultiEdit` and `Bash` matchers. The manifest is generated bookkeeping; see `.claude/rules/gaia-folder.md` for the prohibition and rationale.
 
 ### Secrets safeguards (Edit|Write|MultiEdit)
 

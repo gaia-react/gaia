@@ -20,17 +20,9 @@ const resolveConfigPath = (roots: StorageRoots): string =>
   path.join(path.dirname(roots.projectIdPath), CONFIG_FILENAME);
 
 /**
- * True when the mentorship decision artifact exists on disk. Existence-only:
- * the caller cares that a decision was persisted, not what it holds (a valid
- * `enabled:null` file counts; the recovery net owns upgrading that). Reuses
- * `resolveConfigPath` so the artifact location stays defined in one place.
- */
-export const mentorshipConfigExists = (roots: StorageRoots): boolean =>
-  existsSync(resolveConfigPath(roots));
-
-/**
- * Pre-decision default. `enabled === null` means gaia-init has not yet
- * surfaced the AskUserQuestion. The emit path treats null exactly like false.
+ * Pre-decision default. `enabled === null` means the mentorship opt-in has not
+ * yet been surfaced (`/setup-gaia` owns that prompt). The emit path treats null
+ * exactly like false.
  */
 const PRE_DECISION_DEFAULT: MentorshipConfig = {
   analytics: {enabled: false},

@@ -137,7 +137,7 @@ Check whether `.playwright/e2e/language-switch-a11y.spec.ts` exists.
 
 ## Step 7, Manifest (no change needed)
 
-`.gaia/manifest.json` is release-generated and lists only files GAIA ships. New-locale files are adopter-owned, so **do not add them to the manifest**, a path absent from the manifest is adopter-owned and invisible to `/update-gaia`. No manifest edit is needed here. See `.claude/rules/manifest.md`.
+`.gaia/manifest.json` is release-generated and lists only files GAIA ships. New-locale files are adopter-owned, so **do not add them to the manifest**, a path absent from the manifest is adopter-owned and invisible to `/update-gaia`. No manifest edit is needed here. See `.claude/rules/gaia-folder.md`.
 
 ---
 

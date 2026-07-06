@@ -95,9 +95,9 @@ The classification only routes the phases below; each phase re-checks its own co
 
 ## Phase 2: Per-machine setup (skip if setup-state finalized)
 
-If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops **except for the mentorship-decision reconciliation below** (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–6 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
+If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops **except for the mentorship decision below** (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–6 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
 
-**Mentorship-decision reconciliation (runs even when `completed_at` is non-null).** `/gaia-init` finalizes per-machine setup with `gaia setup finalize --force`, but its Step 10 opt-in is a soft step: an interrupted or skipped prompt leaves no `mentorship.json`, and `finalize` does not verify one exists. Because the short-circuit above otherwise skips all of Phase 2, that dropped decision would be unrecoverable and mentorship silently stays at the pre-decision default (`enabled: null`, treated as off). So before falling through to Phase 3, always evaluate this:
+**Mentorship decision (runs even when `completed_at` is non-null).** This clause surfaces the mentorship opt-in whenever no decision has been recorded (`mentorship.json` absent or `enabled: null`, the pre-decision default treated as off). It runs even when `completed_at` is non-null because Phase 2 otherwise short-circuits once per-machine setup is complete and would skip the opt-in. So before falling through to Phase 3, always evaluate this:
 
 ```bash
 DECIDED="null"
@@ -254,7 +254,7 @@ If neither exists, that's fine, the project may not use `.env`. After the copy (
 
 Skip if `mentorship-decision` is in `completed_steps`.
 
-If `.gaia/local/mentorship.json` already exists with a non-null `enabled` field, the decision was already made (e.g. via `/gaia-init` or `gaia mentorship enable`/`disable`). Just record the step and move on:
+If `.gaia/local/mentorship.json` already exists with a non-null `enabled` field, the decision was already made (e.g. via a prior `/setup-gaia` run or `gaia mentorship enable`/`disable`). Just record the step and move on:
 
 ```bash
 if [ -f .gaia/local/mentorship.json ] && [ "$(jq -r 'if .enabled == null then "null" else (.enabled | tostring) end' .gaia/local/mentorship.json 2>/dev/null)" != "null" ]; then
