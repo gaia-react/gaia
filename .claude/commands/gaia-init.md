@@ -633,6 +633,20 @@ Then run the CLI's init finalize step, it removes the `/init` interceptor hook, 
 .gaia/cli/gaia init finalize
 ```
 
+### Send the adoption ping
+
+Send a fire-and-forget adoption ping. This is its own Bash call, separate from the `init finalize` call above, and it never gates `/gaia-init`'s success or failure, run it even though `init finalize` just deleted this command file, the instructions are already loaded for the rest of this run:
+
+```bash
+.gaia/cli/gaia ping --event init --mode "$MODE" --i18n "$I18N_COUNT" --ci "$CI_CATEGORY" || true
+```
+
+Derive the three values from state this run already holds, never from a state file:
+
+- **`$MODE`** is the run-mode answer from the very first gate ("Interactive gates: run mode and non-response policy" above): `interactive` or `automatic`. Held for the whole run.
+- **`$I18N_COUNT`** is `0` when `STRIP_I18N` is `true` (Step 2 Q2, i18n stripped); otherwise the number of locales in `LOCALES` (the count passed to `gaia init configure-i18n --locales`). Automatic mode keeps i18n with only the detected primary language, so `$I18N_COUNT` is `1` there.
+- **`$CI_CATEGORY`** is derived from the four tool modes passed to `gaia init configure-automation` in Step 9 (`--wiki`, `--update-deps`, `--pnpm-audit`, `--stale-branches`): if all four are the same value, use that value (`ci` / `local` / `off`); if any one differs from the others, use `custom`. Automatic mode sets all four to `ci`, so `$CI_CATEGORY` is `ci` there.
+
 Then output the message below verbatim. Output the `cd` line exactly as written, even though Claude is currently running inside the project folder: when the user exits Claude back to the terminal, their shell returns to the directory they launched from (the parent), not the project folder. Do not tell the user they are "already inside" the folder or that they can skip the `cd`.
 
 **If `.github/CODEOWNERS` holds the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder** (automatic mode where gh detection also failed, or any run where a real handle was never obtained), prepend this required follow-up to the message: "⚠ Required: `.github/CODEOWNERS` has a placeholder owner. Edit it to set your real GitHub handle before you push." A gh-detected or user-typed handle writes a real owner, so this warning does not appear.

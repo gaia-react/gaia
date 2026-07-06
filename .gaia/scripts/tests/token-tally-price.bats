@@ -278,7 +278,7 @@ EOF
   # The generation stamp is inherently non-deterministic (real `date -u` at
   # run time); capture the REAL footer line as rendered and reuse it verbatim
   # in the golden expectation, so this proves byte-identity of every OTHER
-  # line without pinning wall-clock time.
+  # line without pinning elapsed time.
   footer_line="$(printf '%s\n' "$actual" | tail -n1)"
   case "$footer_line" in
     'Session `fixturesession0001`'*) : ;;

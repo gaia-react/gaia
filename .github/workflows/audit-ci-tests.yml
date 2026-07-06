@@ -66,6 +66,11 @@ jobs:
               - '.specify/extensions/gaia/lib/**'
               - '.claude/skills/gaia/references/forensics*'
               - '.github/forensics/**'
+              # The statusline suite (.gaia/tests/statusline/) exercises the
+              # shipped .gaia/statusline/gaia-statusline.sh worktree detection;
+              # trigger on both the test dir and the script it guards.
+              - '.gaia/statusline/**'
+              - '.gaia/tests/statusline/**'
       - if: steps.filter.outputs.code == 'true'
         name: Install bats
         run: sudo apt-get update && sudo apt-get install -y bats
@@ -99,3 +104,6 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         name: Run .gaia/tests/lib bats suites
         run: bats .gaia/tests/lib/
+      - if: steps.filter.outputs.code == 'true'
+        name: Run .gaia/tests/statusline bats suites
+        run: bats .gaia/tests/statusline/
