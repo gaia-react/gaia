@@ -3,7 +3,7 @@ type: concept
 title: GAIA Audit
 status: active
 created: 2026-04-20
-updated: 2026-07-01
+updated: 2026-07-07
 tags: [concept, claude, skill, knowledge, hygiene]
 ---
 
@@ -24,9 +24,16 @@ tags: [concept, claude, skill, knowledge, hygiene]
 
 A clean audit (Stage 1 finds 0 actions) skips the gate and auto-applies: there is nothing to approve, and applying only finalizes the report's `status` and clears the statusline nudge. Leaving a 0-action report parked at the gate is the exact path that strands a `draft` that nudges indefinitely.
 
-- **Apply**: spawn Stage 2 to execute the report now (the one-keystroke fast path).
+- **Apply**: execute the report, file any out-of-scope problem as a `tech-debt` issue, then commit, open a PR, and merge it on a main-branch run (the one-keystroke fast path).
 - **Discuss / refine**: talk it through, edit the report in place, then re-ask.
-- **Decline**: delete the report; nothing is applied.
+- **Decline**: delete the report; nothing is applied, filed, or published.
+
+### Full flow: apply, file, publish
+
+Apply is the single up-front decision; from there the run drives to merge autonomously, the same shape `/update-deps` and `/gaia-debt` use (see [[Audit Disposition and Debt Drain]]). Two mechanical steps ride every finalizing path (gated Apply, 0-action auto-apply, `--apply`) and never the Decline path:
+
+- **Out-of-scope findings become `tech-debt` issues.** A real, durable problem the audit surfaces that none of its four action types can fix, wiki-internal redundancy or a broken link, a page-vs-page conflict, a doc whose correct fix is a rewrite rather than a delete, is recorded by Stage 1 and filed by Stage 2 as a `tech-debt` issue through the same disposition pipeline the [[Code Review Audit Agent]] uses (dedup key, severity label, `Handler:` line, security screen). The audit files, it never fixes. This gives an out-of-scope problem a durable home once the run auto-merges without a human reading the printed Summary. One audit-specific divergence: a classless finding is **not** treated as security-class (audit findings are doc hygiene and classless by construction), so only a genuinely security-sensitive finding diverts.
+- **The main conversation publishes.** After Stage 2 returns, the main conversation commits the in-repo edits, opens a PR, and merges it, mirroring the `/update-deps` publish phase. The diff touches only out-of-scope surfaces (`wiki/`, `.claude/`, root `CLAUDE.md`), so it clears the merge gate through the [[PR Merge Workflow]] out-of-scope bypass with no `code-review-audit` marker. A non-main-branch or CI run commits and pushes, leaving the PR to the branch owner. Publish no-ops when the run changed no in-repo file (a memory-only or 0-action run); machine-local memory edits live outside the repo and are never committed.
 
 ### Classification-verification round
 
@@ -44,7 +51,7 @@ Stage 1 (Sonnet) proposes actions (`delete`, `delete-entry`, `promote`, `shrink`
 
 ### Report lifecycle
 
-Each report carries a `status:` field. Stage 1 writes it as `draft`; Stage 2 flips it to `applied` when every action lands cleanly, or `applied-partial` when some actions are skipped or fail (kept so `/gaia-audit --apply` can retry the remainder). A `draft` survives an interrupted run and is resumable. The Step 0 prune keeps the newest few `applied` reports and never deletes a `draft`; declining at the gate deletes the report immediately. Recovery for tracked files is git, printed as a `recovery:` line after apply (`git restore` / `git checkout --` / `git clean`).
+Each report carries a `status:` field. Stage 1 writes it as `draft`; Stage 2 flips it to `applied` when every action lands cleanly, or `applied-partial` when some actions are skipped or fail (kept so `/gaia-audit --apply` can retry the remainder). A `draft` survives an interrupted run and is resumable. The Step 0 prune keeps the newest few `applied` reports and never deletes a `draft`; declining at the gate deletes the report immediately. The report itself stays gitignored under `.gaia/local/audit/`; the applied in-repo edits are what the publish step commits and merges. Recovery before publish is git (`git restore` / `git checkout --` / `git clean`); after a main-branch merge, recovery is a revert of the merged PR.
 
 ## What it catches
 
@@ -53,11 +60,13 @@ Each report carries a `status:` field. Stage 1 writes it as `draft`; Stage 2 fli
 - **Promotable memory**: durable knowledge stuck in machine-local memory → moves to a specific wiki page
 - **Auto-load bloat**: flags `wiki/hot.md`, `CLAUDE.md`, and rules over budget
 - **Stale entries** referencing removed code, branches, or features
-- Wiki-internal redundancy and broken links are out of scope here; see [[Wiki Management]] (consolidate / lint).
+- Wiki-internal redundancy and broken links are not fixed here (that is [[Wiki Management]], consolidate / lint), but they are no longer dropped: each is filed as a `tech-debt` issue whose suggested fix names the right `/gaia-wiki` command.
 
-Guardrails and portability details live in `.claude/skills/gaia/references/audit.md`. Key invariants: Stage 2 never deletes unless Stage 1 named the wiki target; never runs `git add` / `git commit`; reports gitignored under `.gaia/local/audit/`.
+Guardrails and portability details live in `.claude/skills/gaia/references/audit.md`. Key invariants: Stage 2 never deletes unless Stage 1 named the wiki target; Stage 2 never runs `git add` / `git commit` (the main conversation's publish step commits after it returns); the audit files out-of-scope findings but never fixes them; reports gitignored under `.gaia/local/audit/`.
 
 ## Pairs with
 
 - [[Claude Integration]]: registered alongside the other GAIA workflows as a discrete `/gaia-*` command
 - [[Quality Gate]]: code-correctness counterpart; knowledge audit is the same idea for docs
+- [[PR Merge Workflow]]: the publish step drives the audit PR to merge through it; the out-of-scope bypass clears it with no marker
+- [[Audit Disposition and Debt Drain]]: the `tech-debt` filing contract the audit reuses for its out-of-scope findings, and where `/gaia-debt` later drains them

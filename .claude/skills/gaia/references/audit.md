@@ -4,7 +4,12 @@
 
 **Do not execute the playbook yourself in the current conversation.** Dispatch the Stage 1 and Stage 2 subagents via the `Agent` tool. Each subagent runs in isolated context. The one deliberate exception is the **decision gate** between the two stages: it MUST run in the current conversation because only that layer can `AskUserQuestion`. Do not "fix" the gate back into a subagent.
 
-Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, a recommended **classification-verification round** runs in the main conversation between Stage 1's return and the gate to harden Stage 1's classifications against ground truth, then the main conversation summarizes the hardened report and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions) skips both the round and the gate and auto-applies.** There is nothing to approve, and "applying" only finalizes the report's `status` and clears the statusline nudge; leaving a 0-action report parked at the gate is the exact path that strands a `draft` that then nudges indefinitely.
+Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, a recommended **classification-verification round** runs in the main conversation between Stage 1's return and the gate to harden Stage 1's classifications against ground truth, then the main conversation summarizes the hardened report and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions) skips both the round and the gate and auto-applies.** There is nothing to approve, and "applying" only finalizes the report's `status`, files any out-of-scope findings, and clears the statusline nudge; leaving a 0-action report parked at the gate is the exact path that strands a `draft` that then nudges indefinitely.
+
+**Stage 2 also files out-of-scope findings; the main conversation then publishes.** The run does the same full flow /update-deps and /gaia-debt do, one up-front decision (the gate, or the preview in those skills) and then it drives autonomously to merge. Two mechanical additions ride the finalizing path (gated Apply, 0-action auto-apply, and `--apply`), never the Decline path:
+
+1. **Stage 2 files every out-of-scope finding Stage 1 recorded as a `tech-debt` issue** (`## Dispose out-of-scope findings (Stage 2)`). It files, it does not fix, mirroring the code-review-audit disposition contract. This is why an out-of-scope problem the audit surfaces but cannot fix with its four action types gets a durable home instead of a Summary line no one reads once the run auto-merges.
+2. **After Stage 2 returns, the main conversation commits, opens a PR, and merges it** (`## Publish (commit / PR / merge)`), exactly as /update-deps Phase 8 and /gaia-debt's "Drive the PR to merge." The `gh pr merge` gate hooks fire in the invoking session, so the merge is driven from the main conversation, not the Stage 2 subagent. **Stage 2 never commits.** Publish auto-skips when Stage 2 reports an empty diff footprint (a memory-only or 0-action run changed no in-repo file).
 
 ### Path resolution (portable, no hardcoding)
 
@@ -24,18 +29,18 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 
 1. Spawn the Stage 1 (Research) subagent below. Wait for it to return. Stage 1 writes the report with `status: draft`.
 2. If Stage 1 failed (no report path printed), do not gate or spawn Stage 2. Surface the error and stop.
-3. **If Stage 1 reported 0 actions** (a clean audit: its printed totals and the report's `Actions proposed: 0` Summary line both show none), skip both the round and the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no actions there is nothing to verify, review, or approve; Stage 2 only flips the report `status: draft → applied` and busts the statusline nudge. (Leaving a 0-action report at the gate is the exact path that strands a `draft` that then nudges indefinitely.)
+3. **If Stage 1 reported 0 actions** (a clean audit: its printed totals and the report's `Actions proposed: 0` Summary line both show none), skip both the round and the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no in-scope actions there is nothing to verify, review, or approve; Stage 2 flips the report `status: draft → applied`, files any out-of-scope findings (filing is non-destructive and idempotent, so it needs no gate), and busts the statusline nudge. (Leaving a 0-action report at the gate is the exact path that strands a `draft` that then nudges indefinitely.) A 0-action run changes no in-repo file, so the main conversation's Publish step no-ops.
 4. **If Stage 1 reported ≥1 action**, run the **classification-verification round** in the main conversation before the decision gate (full procedure: `## Classification-verification round (recommended)`). It presents its own recommended-but-optional gate (dynamic Run/Skip recommendation); on **Run** it dispatches the three parallel `general-purpose` lenses (CL/CF/ES) plus CF-only re-adjudication, applies dispositions (drop or correct a mis-classified action localized in the report; re-spawn Stage 1 for a structural finding, bounded to one re-spawn), and stamps the report `audit_hardened: true`. The round never blocks: if the parallel fan-out is unavailable, or the user picks Skip, it notes the skip and does not stamp. Then proceed to the decision gate (next step).
 5. **Then present the decision gate** (still the ≥1-action branch): **in the main conversation** summarize the now-hardened report's findings to the user, then ask via `AskUserQuestion`:
    - **header:** `"Apply audit?"`
    - **question:** `"Stage 1 found {N} actions. Apply them?"`
    - **options (this exact order):**
-     1. `{ label: "Apply", description: "Spawn Stage 2 to execute the report now." }`
+     1. `{ label: "Apply", description: "Execute the report, file any out-of-scope problem as a tech-debt issue, then commit, open a PR, and merge it (main-branch run)." }`
      2. `{ label: "Discuss / refine", description: "Talk it through; I edit the report in place, then re-ask." }`
-     3. `{ label: "Decline", description: "Delete the report; nothing is applied." }`
-   - **Apply** → spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest non-`applied` report, no path argument needed.
+     3. `{ label: "Decline", description: "Delete the report; nothing is applied, filed, or published." }`
+   - **Apply** → spawn the Stage 2 (Apply) subagent below. Stage 2 finds the newest non-`applied` report, no path argument needed. When Stage 2 returns, run the Publish procedure (`## Publish (commit / PR / merge)`) in the main conversation.
    - **Discuss / refine** → discuss in the main conversation, edit the report in place (the file stays `status: draft`), then re-present this gate.
-   - **Decline** → `rm` the report file immediately; nothing applied; stop.
+   - **Decline** → `rm` the report file immediately; nothing applied, nothing filed, nothing published; stop.
 
 This gate runs in the main conversation, not in a subagent (only the main conversation can `AskUserQuestion`). "Apply" is the one-keystroke fast path that keeps the one-go feel.
 
@@ -46,6 +51,8 @@ Skip Stage 1 and the decision gate, then check the target report's frontmatter f
 - **Present** → the report is already hardened; spawn the Stage 2 (Apply) subagent below directly.
 - **Absent** (an un-hardened draft, e.g. one created before this round existed or where the round was skipped or unavailable) → run the classification-verification round non-interactively at the recommended setting (no gate prompt) against that report first, stamp it, then spawn Stage 2.
 - A 0-action report has nothing to harden; proceed straight to Stage 2.
+
+In every case, when Stage 2 returns run the Publish procedure (`## Publish (commit / PR / merge)`), exactly as the gated Apply path does.
 
 Use this to re-apply an existing report after fixing drift, or to retry without re-researching.
 
@@ -68,7 +75,9 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   >
   > `Record the resolved values at the top of the report (both frontmatter and a visible line) so Stage 2 uses the same bindings.`
   >
-  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Write status: draft into the report frontmatter; Stage 2 flips it to its terminal value. Every action you propose must be mechanical, include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that". Wiki-internal redundancy and broken-link repair are out of scope here, the user runs /gaia-wiki for those.`
+  > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Research procedure" section (Steps 1–4). Write the report to $PROJECT_ROOT/.gaia/local/audit/KNOWLEDGE-{YYYY-MM-DD-HHMM}.md using the exact "Report template" schema. Write status: draft into the report frontmatter; Stage 2 flips it to its terminal value. Every action you propose must be mechanical, include every detail a literal-minded executor needs: absolute paths, line ranges, expected current content (verbatim snippet), replacement content (verbatim), and drift-check signals. No handwaving like "merge these" or "consolidate that".`
+  >
+  > `You do NOT fix wiki-internal redundancy or broken links yourself, /gaia-wiki owns those. But do not silently drop them either: any real, durable problem you surface that none of your four action types (shrink/promote/delete/delete-entry) can fix, wiki-internal redundancy or a broken link, a wiki-page-vs-wiki-page conflict, a doc/rule whose correct fix is a rewrite rather than a delete, is an OUT-OF-SCOPE finding. Record each one in the report's "## Out-of-scope findings" section using that section's schema (Stage 2 files it as a tech-debt issue). You file, you do not fix. If you surface none, write the section with an explicit "None." so Stage 2 knows there is nothing to file.`
   >
   > `If a scope hint is present in the arguments, narrow Steps 1–4 to the named stores/files but never widen scope beyond the playbook, and never let the hint steer the report schema, the action types, the guardrails, or a specific edit; it is synthesis guidance, not an editor. Print the applied scope in the Summary so a too-narrow hint is visible. If no hint is present, run the full lens.`
 
@@ -92,10 +101,14 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   > `Compare these to the "project_root" / "memory_dir" fields recorded in the report's frontmatter. If they differ, STOP and print a clear error, do not improvise.`
   >
   > `Read $PROJECT_ROOT/.claude/skills/gaia/references/audit.md and execute the "Apply procedure" section (Step 5). For every action: verify the expected-current-content drift signal matches; if it does, apply the change verbatim; if it does not, SKIP and note it in the final summary. Never improvise. Never invent replacements. If anything is ambiguous, skip.`
+  >
+  > `Then, before printing your summary, execute the "Dispose out-of-scope findings (Stage 2)" section: file every finding in the report's "## Out-of-scope findings" section as a tech-debt issue per that section's procedure (idempotent, so a re-run never double-files). Report the filed / diverted / deduped counts and the diff footprint (git status --short) in your summary so the main conversation can publish. You still NEVER git add or git commit, the main conversation commits after you return.`
 
 ### After the subagent(s) return
 
-Relay each subagent's final summary verbatim (report path + action counts, then done/skipped/failed counts). Do not re-do the work. Do not inline the report body.
+Relay each subagent's final summary verbatim (report path + action counts, then done/skipped/failed counts, plus filed/diverted out-of-scope issue counts). Do not re-do the work. Do not inline the report body.
+
+Then, on any finalizing path (gated Apply, 0-action auto-apply, or `--apply`), run the **Publish procedure** (`## Publish (commit / PR / merge)`) in the main conversation. Publish reads Stage 2's reported diff footprint: if it is empty (a memory-only or 0-action run touched no in-repo file), Publish no-ops and the run ends here.
 
 ---
 
@@ -183,7 +196,7 @@ For every memory entry and every rules file, check whether the same fact lives i
 - **CONFLICT**: a store asserts a policy that *contradicts* another canonical source on the same subject; opposed, not merely duplicated. Two scopes:
   - **Cross-store**: a memory entry or a `.claude/rules/*.md` file contradicts the wiki's canonical statement on the same subject. **Resolution favors the wiki.** Emit a `replace` swapping the contradicting line for a wikilink to the canonical page, or a `delete` if the contradicting entry has no residual value. Cite the canonical wiki page + line range in `reason` and note the superseded value inline (e.g. `reason: contradicts wiki/decisions/Foo.md L12-15 (canonical); local store asserted the opposite`).
   - **Project-internal**: two committed project files assert opposing facts on the same subject (e.g. a command file vs a skill playbook vs a wiki page on which model a stage uses). **Resolution favors the authoritative source for that fact**, which you determine and justify in `reason`; it is NOT always the wiki (the command can be wrong and the wiki right; the wiki can be stale and the playbook right). Emit a `replace` on the non-authoritative file.
-  - **Two exclusions.** (a) A live `paths:`-scoped rule (including any provenance-marked `gaia-harden:` rule) that differs from the wiki is the sanctioned Rules-vs-wiki duplication case, never a CONFLICT; do not propose editing it on contradiction grounds. (b) If the conflict is **wiki-page-vs-wiki-page**, do NOT act; note it in the Summary as `wiki-internal conflict (out of scope, run /gaia-wiki consolidate)` and move on.
+  - **Two exclusions.** (a) A live `paths:`-scoped rule (including any provenance-marked `gaia-harden:` rule) that differs from the wiki is the sanctioned Rules-vs-wiki duplication case, never a CONFLICT; do not propose editing it on contradiction grounds. (b) If the conflict is **wiki-page-vs-wiki-page**, do NOT act; record it in `## Out-of-scope findings` (suggested fix: `run /gaia-wiki consolidate`) so Stage 2 files it, and move on.
 
 Rules-vs-wiki: a `.claude/rules/*.md` file is allowed to duplicate wiki content **only** if it exists to enforce auto-loading for a specific `paths:` glob. Otherwise it should link to the wiki page.
 
@@ -253,6 +266,7 @@ Resolved paths (Stage 2 must match these):
 - Over-budget files: {list}
 - Stale entries: {count}
 - Conflicts: {count}
+- Out-of-scope findings: {count} (filed as tech-debt issues by Stage 2)
 - Applied scope: {scope hint, or "full"}
 
 ## Actions
@@ -317,17 +331,33 @@ Set `depends_on` when this delete-entry removes an index/pointer line for a file
   reason: {…}
   ```
 
+## Out-of-scope findings
+
+Real, durable problems Stage 1 surfaced that **none** of the four action types above can fix. Stage 2 **files** each as a `tech-debt` issue (`## Dispose out-of-scope findings (Stage 2)`); it never edits the working tree for one. Not actions, so no checkbox and no `## Ordering` entry. Write `None.` when there are none, so Stage 2 knows there is nothing to file.
+
+One fenced YAML block per finding:
+
+- `oos-{nnn}`
+  ```yaml
+  finding_class: {seeded code-review-audit finding_class, or holistic/unclassified when it maps to none (the usual case for a knowledge/doc finding)}
+  path: {repo-relative POSIX path of the offending file}
+  line: {integer line the finding anchors to}
+  severity: {critical | important | suggestion, using the code-review-audit tier meaning; most knowledge-hygiene findings are suggestion, a genuine cross-page contradiction is important}
+  failure_mode: {one line, concrete: what is wrong and the bad outcome}
+  suggested_fix: {one line, e.g. "run /gaia-wiki consolidate" for wiki-internal redundancy or a page-vs-page conflict, "run /gaia-wiki lint" for a broken link, or a specific rewrite}
+  handler: {prompt | plan, prompt when the fix is a single logical unit confined to one file with no cross-module ripple, else plan}
+  security_sensitive: {true only if the finding's CONTENT reads as a security concern or is secret-shaped, else false; see the divergence note in "## Dispose out-of-scope findings"}
+  ```
+
 ## Ordering
 
 Stage 2 must apply actions in this order: `shrink` → `promote` → `delete` → `delete-entry`. Rationale: shrinks never reference content that later gets touched; promotes run before the deletes that remove their sources; and index-pointer removals (`delete-entry`) come last so a `delete-entry` carrying `depends_on` is gated on its referenced `promote`/`delete` having already landed. Removing a pointer only after its target is confirmed gone means a `promote`/`delete` that skips on drift never strands a source file with its index line already deleted (the orphaning hazard the old `delete-entry`-before-`promote` order carried).
 
-Wiki-internal redundancy and broken-link repair are handled by `/gaia-wiki consolidate` and `/gaia-wiki lint` respectively, `merge` and `fix-link` action types are not part of this workflow.
+Wiki-internal redundancy and broken-link repair are handled by `/gaia-wiki consolidate` and `/gaia-wiki lint` respectively, `merge` and `fix-link` action types are not part of this workflow. The audit does not fix them, but it no longer drops them: it records each in `## Out-of-scope findings` so Stage 2 files a `tech-debt` issue whose suggested fix names the right `/gaia-wiki` command.
 
 ## To re-apply
 
 Apply runs immediately after this report (or at the decision gate). To re-apply later (e.g., after fixing drift): `/gaia-audit --apply` within 72h.
-
-```
 
 End the research run by printing: report path and total actions per category. (Stage 2 runs next automatically.)
 
@@ -466,6 +496,20 @@ Before printing the summary, verify each flipped action actually landed. This is
 
 This verification is the single authority for the report's terminal `status`: after running it, `status` is `applied` only if every action is `[x]`, and `applied-partial` if any action ended `[~]` skipped or `[!]` failed (including a `promote`/`delete` downgraded to `[!]` here).
 
+### Dispose out-of-scope findings (file, do not fix)
+
+After applying the in-scope actions, file every finding in the report's `## Out-of-scope findings` section as a `tech-debt` issue. This is the audit's equivalent of the code-review-audit disposition contract: **you file, you never fix**, and never edit the working tree for one. If that report section reads `None.`, skip this step entirely.
+
+Follow `.claude/agents/code-review-audit.md` sections **C** (backend probe: definitive-absent → file nothing, note it, continue; transient → note and continue), **E.1–E.6** (build the dedup key, dedup query, create with `--body-file`, idempotent labels, the `file:line` + failure-mode + suggested-fix + `Handler:` body), and **E.8** (touch the debt-count sentinel: `mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`). Reuse that procedure verbatim, do not re-derive it. **Skip E.7** (the disposition-ledger sidecar record), the audit writes no sidecar, see the third rule below.
+
+Three audit-specific rules override the agent's defaults; do NOT "fix" them back to the agent's shape:
+
+- **Classless is NOT security-class here.** The agent flags any finding with no stable `finding_class` as security-class, a hidden-security fail-safe for *code*. Audit findings are knowledge/doc hygiene and are `holistic/unclassified` by construction, so that rule would divert every one of them and file nothing on a public repo (which the open-source product is). For the audit, a finding is security-class **only** when its block's `security_sensitive: true` (its content reads as a security concern or is secret-shaped), never merely because it is classless. Screen on that flag, then apply the agent's **section D** visibility gate (PUBLIC/INTERNAL → divert, never a public issue; confirmed PRIVATE → file through E).
+- **Build the dedup key from the block's own fields:** `<!-- gaia-debt-key: v1 class=<finding_class> path=<path> line=<line> -->` from the block's `finding_class` (or `holistic/unclassified`), `path`, and `line`. Dedup exactly as E.2 (open + declined-closed + keyless `path:line` fallback) so a repeated audit never re-files a standing wiki-internal problem. Map `severity` → the `severity:<tier>` label and carry the block's `handler` as the `Handler:` line.
+- **Do NOT write a `<HEAD>.dispositions.json` sidecar.** That sidecar gates the code-review-audit marker; the audit produces no marker (its PR clears via the out-of-scope bypass, see `## Publish`). Writing one would make `audit-disposition-check.sh` gate the audit's own merge on a filing it never needed. File the issues; write no sidecar.
+
+Record the filed / diverted / deduped counts for the final summary. A backend-absent or transient `gh` failure is never fatal: file what you can, note the rest, and let the main conversation publish regardless.
+
 ### Post-flight
 
 Set the report frontmatter `status:` to the terminal value the verification step above decided: `applied` if every action is `[x]`, otherwise `applied-partial`. `applied-partial` is kept so `--apply` can retry the remainder. That verification checklist is the authority for this value, do not re-derive it here.
@@ -491,10 +535,10 @@ Then print a final summary to stdout:
 ```
 
 applied: {n} shrink · {n} delete-entry · {n} promote · {n} delete | skipped: {n} | failed: {n}
+out-of-scope: filed {n} · diverted {n} · deduped {n} (tech-debt issues)
 diff footprint:
 {git status --short}
-recovery: changes are uncommitted; revert any unwanted edit with `git restore <path>` (or `git checkout -- <path>` / `git clean` for new files).
-next: review diff, commit if satisfied
+handoff: changes are uncommitted; the main conversation runs Publish next (branch → commit → PR → merge on a main-branch run, commit → push on any other branch). An empty diff footprint means Publish no-ops.
 
 ```
 
@@ -502,8 +546,77 @@ next: review diff, commit if satisfied
 
 - Never delete a memory entry unless the action's `reason` cites a canonical wiki location. (Stage 1 must supply this; Stage 2 doesn't judge.)
 - Never edit `wiki/log.md` anywhere except prepending a new line at the top.
-- Never `git add` or `git commit`, leave changes in working tree for the human to review.
+- **Stage 2** never `git add` or `git commit`; it leaves the applied changes in the working tree and returns. The main conversation's Publish procedure commits after Stage 2 returns.
 - Never improvise: if drift-check fails, skip and report. Do not search for the "right" target.
 - Never merge two actions: each block is atomic.
 - If an action targets a path that doesn't exist, mark `[!]` with `target missing` and continue.
+- File out-of-scope findings, never fix them: no working-tree edit for an out-of-scope finding, and no `<HEAD>.dispositions.json` sidecar (the audit produces no marker).
+
+## Publish (commit / PR / merge)
+
+Runs in the **main conversation** after Stage 2 returns, on any finalizing path (gated Apply, 0-action auto-apply, `--apply`). It does for the audit's in-repo edits what `/update-deps` Phase 8 does for a dep bump and `/gaia-debt`'s "Drive the PR to merge" does for a fix. It never runs on Decline.
+
+**If Stage 2's diff footprint is empty, skip this entire section.** A memory-only or 0-action run touched no in-repo file, memory edits live under `$HOME/.claude`, outside the repo, and are never committed. Tell the user the audit is finalized and stop.
+
+Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md` edits. Branch on where the run started, mirroring `/update-deps` Phase 8:
+
+### On `main`/`master` and not in CI (interactive main-branch run)
+
+1. **Cut a branch** (the uncommitted applied changes carry over):
+
+   ```bash
+   git checkout -b chore/knowledge-audit-$(date +%Y-%m-%d-%H-%M)
+   ```
+
+2. **Commit.** `.gaia/local/` is gitignored, so `git add -A` never sweeps in the report; memory edits are outside the repo. Route the message through a file, never `-m`, so package/keyword text can't trip a shell hook:
+
+   ```bash
+   git add -A
+   git commit -F <commit-message-file>
+   ```
+
+   Subject: `chore(audit): <concise summary of what was pruned / shrunk / promoted>`. The diff touches only out-of-scope surfaces (`wiki/`, `.claude/`, root `CLAUDE.md`), so the PR clears the merge gate through the PR Merge Workflow's **out-of-scope bypass** with no `code-review-audit` marker. Run the Quality Gate first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a docs-only audit diff has nothing for it to check. (A rare audit edit to a nested `CLAUDE.md` under an in-scope path such as `app/` defeats the bypass, in that case follow the PR Merge Workflow's marker handshake like any in-scope PR.)
+   <!-- gaia:maintainer-only:start -->
+
+   Then clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md`: decide whether the change warrants a `## [Unreleased]` entry (pure pruning / consolidation is usually an internal, no-entry change; a rule or concept-page behavior change is worthy) and, if so, land it on the branch before merging (HEAD moves, so any bypass/marker must still cover the new HEAD). Scrubbed from adopter bundles.
+   <!-- gaia:maintainer-only:end -->
+
+3. **Open the PR and drive it to merge** through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory), exactly as `/gaia-debt`:
+
+   ```bash
+   git push -u origin <branch-name>
+   gh pr create --title "<commit subject>" --body-file <report-summary-file>
+   gh pr merge <N> --squash --delete-branch --auto
+   ```
+
+   `--auto` queues the merge behind required checks (no marker is owed via the bypass). Verify the terminal state before any local cleanup:
+
+   ```bash
+   for i in 1 2 3 4 5; do
+     state=$(gh pr view <N> --json state -q .state)
+     [ "$state" = "MERGED" ] && break
+     sleep 30
+   done
+   ```
+
+   - **`MERGED`** → clean up locally, then print the merged PR URL:
+
+     ```bash
+     git checkout main && git pull origin main
+     git branch -D <branch-name>
+     git fetch --prune origin
+     ```
+
+   - **still queued** → print the PR URL, note auto-merge is queued and lands when checks pass, and **do not** delete the local branch or switch off it.
+
+### On any other branch, or in CI (no new branch)
+
+```bash
+git add -A
+git commit -F <commit-message-file>
+git push
 ```
+
+Do not open a PR and do not merge; the branch owner (the user, or the CI workflow) drives it from here.
+
+If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve.
