@@ -7,7 +7,7 @@
  *
  * `pnpm install` is intentionally NOT performed here; it is a side
  * effect handled by the orchestrating skill before the CLI runs. The
- * anonymous adoption ping is likewise not sent here; the `/gaia-init`
+ * adoption ping is likewise not sent here; the `/gaia-init`
  * Step 11 skill call sends it via `gaia ping --event init` (see
  * `../ping/index.ts`) after this handler returns.
  *
