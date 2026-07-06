@@ -66,6 +66,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/token-pricing-lib.sh" 2>/dev/null || true
 # shellcheck source=.gaia/scripts/ledger-path-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/ledger-path-lib.sh" 2>/dev/null || true
+# shellcheck source=.specify/extensions/gaia/lib/with-ledger-lock.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" 2>/dev/null || true
 
 log() {
   printf '%s\n' "$*" >&2
@@ -638,17 +640,46 @@ rec="$(jq -nc \
       }
   ' 2>/dev/null || true)"
 
-if [[ -n "$rec" ]]; then
-  if [[ -n "$ledger" ]]; then
-    mkdir -p "$(dirname "$ledger")" 2>/dev/null
-    if printf '%s\n' "$rec" >>"$ledger" 2>/dev/null; then
-      # execute: only the terminal row stays final:true (best-effort, fail-open).
-      [[ "$ACTION" == "execute" ]] && clear_prior_finals "$ledger" "$SESSION_ID" "$SPEC_ID_OUT" "$PLAN_ID_OUT" "$SEQ"
-    else
-      log "token-tally: ledger write failed: $ledger"
-    fi
+# cost.jsonl resolves to the main checkout, so every parallel-worktree session
+# appends to one shared file. The append plus (execute only) clear_prior_finals
+# is a read-modify-write hazard, so it runs inside the shared cost mutex keyed on
+# the main-checkout telemetry dir; all worktrees serialize on that one lock and no
+# row is lost. Nothing else moves under the lock: seq, the cutover, and cost.md
+# rendering keep their pre-existing, correct behavior outside it.
+#
+# _cost_ledger_write holds the locked body. It reads the run globals and ALWAYS
+# returns 0: a non-execute append otherwise leaves the trailing execute test false
+# and the function would report failure, which with_ledger_lock passes through and
+# the degrade branch (keyed strictly on the lock-timeout code) could misread.
+_cost_ledger_write() {
+  if printf '%s\n' "$rec" >>"$ledger" 2>/dev/null; then
+    # execute: only the terminal row stays final:true (best-effort, fail-open).
+    [[ "$ACTION" == "execute" ]] && clear_prior_finals "$ledger" "$SESSION_ID" "$SPEC_ID_OUT" "$PLAN_ID_OUT" "$SEQ"
+  else
+    log "token-tally: ledger write failed: $ledger"
   fi
-else
+  return 0
+}
+
+if [[ -n "$rec" && -n "$ledger" ]]; then
+  telemetry_dir="$(dirname "$ledger")"
+  mkdir -p "$telemetry_dir" 2>/dev/null   # the lock dir must exist before acquisition
+  if declare -f with_ledger_lock >/dev/null 2>&1; then
+    lock_rc=0
+    with_ledger_lock "$telemetry_dir" _cost_ledger_write || lock_rc=$?
+    if [[ "$lock_rc" -eq 75 ]]; then
+      # Lock-acquisition timeout: degrade to the append WITHOUT clear_prior_finals.
+      # Never skip the append; never run the rewrite unlocked. The reader's max-seq
+      # fallback copes with the un-cleared prior final, so a timeout never drops a row.
+      log "token-tally: cost lock timed out; appending without clear_prior_finals"
+      printf '%s\n' "$rec" >>"$ledger" 2>/dev/null || log "token-tally: degraded append failed: $ledger"
+    fi
+  else
+    # Mutex helper unavailable (source failed): preserve the never-block contract
+    # with a direct, unguarded append + clear_prior_finals.
+    _cost_ledger_write
+  fi
+elif [[ -z "$rec" ]]; then
   log "token-tally: failed to build ledger record; skipping ledger append"
 fi
 
