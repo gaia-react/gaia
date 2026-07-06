@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: knip
-version: 6.17.1
+version: 6.22.0
 role: dead-code-detection
 created: 2026-05-04
-updated: 2026-06-24
+updated: 2026-07-07
 tags: [dependency, quality]
 ---
 

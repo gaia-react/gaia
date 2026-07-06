@@ -11,6 +11,24 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-06 e4b8e423 WORTHY - promotes three durable lessons from machine memory → wiki/concepts/GAIA Plan.md, wiki/concepts/Git Workflow.md, wiki/modules/Claude Integration.md
+- 2026-07-06 7deac46c SKIP - internal Stage-2 apply-ordering fix (delete-entry gated on paired action); wiki delegates apply-ordering detail to the skill reference file
+- 2026-07-06 c468256f WORTHY - normalizes the adoption-ping platform label (already updated wiki/concepts/Telemetry.md in-commit)
+- 2026-07-06 2c67fb5b SKIP - splits internal audit-nudge label string into concrete reasons; wiki's description of nudge triggers already generic/accurate
+- 2026-07-06 b11d7cb6 WORTHY - anchors worktree plan-cost tally to the main checkout, de-stales archived-docs wording (already updated 6 wiki pages in-commit)
+- 2026-07-06 e81e8023 SKIP - terminology-only rename (wall-clock → elapsed) in skill instructions/comments; wiki already says elapsed
+- 2026-07-06 1053c432 WORTHY - statusline worktree detection keys off session cwd not install path; fact already reflected in wiki/modules/Claude Integration.md
+- 2026-07-06 e40ff974 WORTHY - consolidates adoption pings into a shared gaia ping subcommand (already updated wiki/concepts/Telemetry.md in-commit)
+- 2026-07-06 a9665721 WORTHY - locks shared cost.jsonl, deletes merged spec/plan folders instead of archiving (already updated 4 wiki concept pages in-commit)
+- 2026-07-06 03a9bdda SKIP - CI git-credential re-auth fix confined to generated workflow templates; no wiki page documents claude-code-action push mechanics at this level
+- 2026-07-06 05e115ef WORTHY - generalizes manifest rule into .gaia/ ownership rule, removes intercept-init hook (already updated 6 wiki concept/module pages in-commit)
+- 2026-07-06 fa6796b4 WORTHY - composeStory args-spread-last override gotcha → wiki/concepts/Component Testing.md
+- 2026-07-06 693d3810 WORTHY - hardens audit fan-out against silent no-op subagents → wiki/concepts/Code Review Audit Agent.md (no-op guard section added)
+- 2026-07-06 c5c9fd6f WORTHY - SPEC-024 cost-contract amendments (session_cwd, source, token-rates read contract), already updated wiki/concepts/Cost Data Contract.md + Token Cost Readout.md in-commit
+- 2026-07-06 033d2f50 WORTHY - /gaia-debt happy path runs start to finish, no merge-time confirmation (already updated wiki/concepts/Audit Disposition and Debt Drain.md in-commit)
+- 2026-07-06 eb86ca32 WORTHY - routine chromatic/knip/prettier bump → wiki/dependencies/Chromatic.md, wiki/dependencies/knip.md version bump
+- 2026-07-06 40d34c52 SKIP - stale .gaia/cache/ path fix confined to plan.md skill reference; wiki has no reference to the old path
+- 2026-07-06 9367fe88 SKIP - wiki self-referential sync commit
 - 2026-07-07 gaia-audit WORTHY - knowledge audit promotes plan-mode-vs-skill pitfall from machine memory → wiki/concepts/GAIA Plan.md
 - 2026-07-07 gaia-audit WORTHY - knowledge audit promotes bare-commit staging gotcha from machine memory → wiki/concepts/Git Workflow.md
 - 2026-07-07 gaia-audit WORTHY - knowledge audit promotes maintainer statusline override chain from machine memory → wiki/modules/Claude Integration.md

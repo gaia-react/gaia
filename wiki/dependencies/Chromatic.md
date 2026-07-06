@@ -2,10 +2,10 @@
 type: dependency
 status: active
 package: chromatic
-version: 17.4.1
+version: 17.7.2
 role: visual-regression
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-07-07
 tags: [dependency, testing, visual]
 ---
 
