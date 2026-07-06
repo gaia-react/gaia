@@ -187,7 +187,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       **Token tally (execute-time).** Execute-phase token tallies are recorded automatically: a `PreToolUse` hook on the orchestrator's per-phase git commit/push records this session's execute tally to the durable ledger, keyed to the feature (the SPEC id resolved from the active plan folder, or the plan slug when spec-less). Resumed, halted, and worktree sessions are all captured. The orchestrator does not run a manual execute tally, doing so would double-count the phase.
 
-      After the pre-merge `code-review-audit`'s clean-pass marker is written and before the Final self-cleanup phase archives the plan folder, the orchestrator reports the full-cycle cost by running the roll-up reader and surfacing its spec / plan / execute / total breakdown plus wall-clock elapsed to the user. Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC, the spec-less case):
+      After the pre-merge `code-review-audit`'s clean-pass marker is written and before the Final self-cleanup phase archives the plan folder, the orchestrator reports the full-cycle cost by running the roll-up reader and surfacing its spec / plan / execute / total breakdown plus elapsed time to the user. Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC, the spec-less case):
 
       ```bash
       if [ -x .gaia/scripts/token-rollup.sh ]; then
@@ -412,7 +412,7 @@ handoff. The call sums `message.usage` across the main transcript AND every sub-
 (deduped by message id, so it equals what the API billed), appends one record keyed to the feature
 identity to the durable ledger resolved to the main checkout (so it survives archival of the plan
 folder and a linked worktree), writes the **Planning** section of the plan folder's `cost.md`, and
-prints the four billing buckets plus a total and the wall-clock elapsed. The KICKOFF execution phase
+prints the four billing buckets plus a total and the elapsed time. The KICKOFF execution phase
 later adds an independent **Execution** section to the same `cost.md` (via the git-op hook, on each
 commit); the two sections are tracked separately and never overwrite or sum each other. A spec-derived
 plan passes its SPEC id via `--spec-id`; a SPEC-less plan passes its `PLAN-NNN` id via `--plan-id`
