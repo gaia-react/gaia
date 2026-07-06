@@ -17,7 +17,7 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 1. **Simplify**: run `simplify` skill; apply all endorsed changes.
 2. **Localization check**: no hardcoded user-facing strings or unfilled keys.
 3. `pnpm typecheck`: zero errors. This is the sole enforcer for type-only tests (`expectTypeOf`/`assertType`/`@ts-expect-error`), which [[TDD RED Verification]] exempts from its runtime-RED demand.
-4. `pnpm lint`: zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it.
+4. `pnpm lint`: zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it. `pnpm lint` ignores `.gaia/**`; changes touching `.gaia/cli/**` also run `pnpm lint:cli` (`pnpm -C .gaia/cli lint`), the CLI's own ESLint config in its separate pnpm workspace.
 5. `pnpm test --run`: all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
 6. `pnpm pw`: all Playwright E2E tests pass.
 7. **Dev smoke test**: start `pnpm dev`, curl a route, verify HTTP 200.
@@ -41,7 +41,7 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 Skip the gate entirely if no staged file is something typecheck / lint / tests / build can inspect. The gate runs only when at least one staged file matches:
 
 - **Source**: `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.mjs`, `*.cjs`, `*.css`
-- **Gate-affecting config**: `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `vite.config.*`, `vitest.config.*`, `playwright.config.*`, `eslint.config.*`
+- **Gate-affecting config**: `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `vite.config.*`, `vitest.config.*`, `playwright.config.*`, `eslint.config.*`, `.gaia/cli/eslint.config.mjs`
 
 Pure markdown, `.claude/**`, `wiki/**`, image, or other non-source-affecting commits skip straight to the commit step.
 

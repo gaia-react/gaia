@@ -47,18 +47,9 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         name: Typecheck
         run: pnpm -C .gaia/cli typecheck
-      # Deterministic z.enum ban, mirroring the app-side no-zod-enum lint rule.
-      # The CLI has no ESLint config (its source carries eslint-disable
-      # directives for a fuller ruleset it does not run, so a single-rule config
-      # is not viable), so the ban is a grep guard instead. Use z.literal([...])
-      # for string unions.
       - if: steps.filter.outputs.code == 'true'
-        name: Guard against z.enum (use z.literal)
-        run: |
-          if grep -rnE 'z\.enum\(' .gaia/cli/src; then
-            echo "::error::z.enum() is banned in .gaia/cli/src. Use z.literal([...]) for string unions (sort values alphanumerically)." >&2
-            exit 1
-          fi
+        name: Lint
+        run: pnpm -C .gaia/cli lint
       - if: steps.filter.outputs.code == 'true'
         name: Run Vitest tests
         run: pnpm -C .gaia/cli test --run

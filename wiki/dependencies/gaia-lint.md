@@ -75,6 +75,10 @@ The `resources+/` and `actions+/` carve-out means UI-layer files may import type
 - Edit `@gaia-react/lint` when the rule should propagate to **all** consumers.
 - Edit GAIA's `eslint.config.mjs` only when the override is **GAIA-specific** (folder layout, app-only relaxations).
 
+## CLI consumer
+
+`.gaia/cli` (`@gaia-react/cli`) is a second consumer, with its own `.gaia/cli/eslint.config.mjs` in its separate pnpm workspace. It consumes `base`/`react`/`testing`/`styleHygiene`/`guardrails`/`prettier` with `sourceDir: 'src'`, omitting the React-app-only presets (`storybook`, `playwright`, `betterTailwind`). It spreads `react` only because `base` transitively references `react/*` rules; the ruleset is inert on the CLI's non-JSX TypeScript. It disables a small Node/CLI set (`sonarjs/no-os-command-from-path`, `no-relative-import-paths`, `check-file/folder-match-with-fex`, `testing-library/render-result-naming-convention`) and extends the `unicorn/prevent-abbreviations` ignore list for CLI idioms. `.gaia/cli/eslint.config.mjs` is the source of truth for the full rule table.
+
 ## See also
 
 - [[ESLint Fixes]]
