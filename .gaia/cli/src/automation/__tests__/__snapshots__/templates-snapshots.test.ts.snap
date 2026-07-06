@@ -161,6 +161,16 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m "chore(pnpm-audit): GAIA CI run"
+          # Re-authenticate git before pushing. A claude-code-action step
+          # earlier in this job runs in OIDC mode and rewrites the
+          # checkout-persisted credential (http.<host>.extraheader) around a
+          # short-lived, OIDC-derived GitHub App token that no longer
+          # authorizes this push. Reset the extraheader to the workflow
+          # GH_TOKEN (permissions: contents: write) so the push authenticates
+          # deterministically regardless of what the action left behind.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local http.https://github.com/.extraheader \\
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
           git push origin "$branch"
           pr_url=$(gh pr create \\
             --title "chore(pnpm-audit): GAIA CI run" \\
@@ -472,6 +482,16 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m "chore(update-deps): GAIA CI run"
+          # Re-authenticate git before pushing. A claude-code-action step
+          # earlier in this job runs in OIDC mode and rewrites the
+          # checkout-persisted credential (http.<host>.extraheader) around a
+          # short-lived, OIDC-derived GitHub App token that no longer
+          # authorizes this push. Reset the extraheader to the workflow
+          # GH_TOKEN (permissions: contents: write) so the push authenticates
+          # deterministically regardless of what the action left behind.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local http.https://github.com/.extraheader \\
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
           git push origin "$branch"
           pr_url=$(gh pr create \\
             --title "chore(update-deps): GAIA CI run" \\
@@ -574,6 +594,16 @@ jobs:
           fi
           git add -A
           git commit -m "chore(update-deps): wave-B major bump: \${GROUP}"
+          # Re-authenticate git before pushing. The wave_b_apply
+          # claude-code-action step above runs in OIDC mode and rewrites the
+          # checkout-persisted credential (http.<host>.extraheader) around a
+          # short-lived, OIDC-derived GitHub App token that no longer
+          # authorizes this push. Reset the extraheader to the workflow
+          # GH_TOKEN (permissions: contents: write) so the push authenticates
+          # deterministically regardless of what the action left behind.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local http.https://github.com/.extraheader \\
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
           git push origin "$BRANCH"
           pr_url=$(gh pr create \\
             --title "chore(update-deps): wave-B major bump: \${GROUP}" \\
@@ -728,6 +758,16 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m "chore(wiki): GAIA CI run"
+          # Re-authenticate git before pushing. A claude-code-action step
+          # earlier in this job runs in OIDC mode and rewrites the
+          # checkout-persisted credential (http.<host>.extraheader) around a
+          # short-lived, OIDC-derived GitHub App token that no longer
+          # authorizes this push. Reset the extraheader to the workflow
+          # GH_TOKEN (permissions: contents: write) so the push authenticates
+          # deterministically regardless of what the action left behind.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local http.https://github.com/.extraheader \\
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')"
           git push origin "$branch"
           pr_url=$(gh pr create \\
             --title "chore(wiki): GAIA CI run" \\
