@@ -35,17 +35,27 @@ else
   exit 0
 fi
 
-# Cheap negative gate: no live plan RUNNING sentinel at all, skip before
-# sourcing the resolver lib or paying for token-tally.sh's transcript parse.
+# Source the shared resolver first: it defines resolve_main_checkout_root, the
+# anchor the cheap gate below reuses. Sourcing is side-effect-free and near-free;
+# the expensive work (token-tally.sh's transcript parse) still runs only past the
+# gate.
+. .claude/hooks/lib/gaia-active-plan.sh
+
+# Cheap negative gate: no live plan RUNNING sentinel at all, skip before paying
+# for token-tally.sh's transcript parse. Anchored to the MAIN checkout: a plan
+# executed in a linked worktree keeps its RUNNING sentinel (and all of
+# .gaia/local/specs | plans) only in the main checkout, which is not symlinked
+# into the worktree, so a cwd-relative glob from the worktree would find nothing
+# and silently lose the execute row.
+main_root="$(resolve_main_checkout_root)"
 has_plan=0
-for rf in .gaia/local/plans/*/RUNNING .gaia/local/specs/*/plan/RUNNING .gaia/local/specs/*/plan-*/RUNNING; do
+for rf in "$main_root"/.gaia/local/plans/*/RUNNING "$main_root"/.gaia/local/specs/*/plan/RUNNING "$main_root"/.gaia/local/specs/*/plan-*/RUNNING; do
   [ -f "$rf" ] || continue
   has_plan=1
   break
 done
 [ "$has_plan" -eq 1 ] || exit 0
 
-. .claude/hooks/lib/gaia-active-plan.sh
 plan_dir="$(resolve_active_plan_dir)"
 [ -n "$plan_dir" ] || exit 0
 

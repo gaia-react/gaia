@@ -328,9 +328,17 @@ run_hook() {
   [ "$(jq -r '.partial' "$LEDGER")" = "true" ]
 }
 
-# ---------- 10. Worktree write-through lands in the main-checkout ledger (UAT-009) ----------
-@test "worktree run writes the ledger to the main checkout, not the worktree" {
+# ---------- 10. Worktree run: the plan folder lives ONLY in the main checkout ----------
+# create-worktree.sh symlinks only shared state (cache/shared, audit, telemetry,
+# setup-state.json, mentorship.json) into a linked worktree; it does NOT symlink
+# .gaia/local/specs or .gaia/local/plans. So the RUNNING sentinel exists only in
+# the main checkout and is invisible from a cwd-relative glob run in the worktree.
+# The hook must anchor its plan search to the main checkout, or a plan executed in
+# a worktree (the common /gaia-plan + orchestration path) records ZERO execute
+# cost. Both the ledger and cost.md land in the surviving main checkout.
+@test "worktree run: main-checkout plan folder is discovered; execute row lands in the main ledger" {
   MAIN="$(mktemp -d -t gaia-hook-test-XXXXXX)"
+  MAIN="$(cd "$MAIN" && pwd -P)"   # normalize /var -> /private/var so path compares hold
   git -C "$MAIN" init -q --initial-branch=main
   git -C "$MAIN" config commit.gpgsign false
   git -C "$MAIN" commit -q --allow-empty -m "init"
@@ -338,8 +346,9 @@ run_hook() {
   WT="$(dirname "$MAIN")/gaia-hook-wt-$$"
   git -C "$MAIN" worktree add -q "$WT" -b feature/kickoff
 
-  # The hook resolves repo-relative paths from its own cwd, so the worktree
-  # (where it fires) needs the same scaffolding the main checkout would have.
+  # The hook resolves .claude/hooks/lib + .gaia/scripts repo-relative from its
+  # own cwd (the worktree), so the worktree needs that scaffolding. It does NOT
+  # get the plan folder: that lives only in the main checkout below.
   mkdir -p "$WT/.claude/hooks/lib" "$WT/.gaia/scripts"
   cp "$LIB_SRC" "$WT/.claude/hooks/lib/gaia-active-plan.sh"
   chmod +x "$WT/.claude/hooks/lib/gaia-active-plan.sh"
@@ -348,7 +357,9 @@ run_hook() {
   cp "$LIB_PRICING_SRC" "$WT/.gaia/scripts/token-pricing-lib.sh"
   cp "$LIB_LEDGER_PATH_SRC" "$WT/.gaia/scripts/ledger-path-lib.sh"
 
-  plan_dir="$WT/.gaia/local/plans/my-plan"
+  # The plan folder + RUNNING sentinel live ONLY in the main checkout, keyed to
+  # the worktree's branch (which is what a real worktree plan run looks like).
+  plan_dir="$MAIN/.gaia/local/plans/my-plan"
   write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
   write_running "$plan_dir" "feature/kickoff" "2026-07-01T00:00:00Z"
 
@@ -358,10 +369,40 @@ run_hook() {
 
   MAIN_LEDGER="$MAIN/.gaia/local/telemetry/cost.jsonl"
   [ -f "$MAIN_LEDGER" ]
+  [ "$(jq -r '.kind' "$MAIN_LEDGER")" = "execute" ]
   [ "$(jq -r '.spec_id' "$MAIN_LEDGER")" = "SPEC-013" ]
   [ "$(jq -r '.total' "$MAIN_LEDGER")" -eq 11110 ]
+  # cost.md lands in the surviving main-checkout plan folder, not the worktree.
+  [ -f "$plan_dir/cost.md" ]
   [ ! -f "$WT/.gaia/local/telemetry/cost.jsonl" ]
 
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
   [ -f "$MAIN_LEDGER" ]
+}
+
+# ---------- 11. Direct resolver unit: anchors to the main checkout from a worktree ----------
+# Unit test of the shared resolver in isolation: sourced and called from a
+# worktree cwd, with the RUNNING sentinel present only in the main checkout, it
+# must return the absolute main-checkout plan dir. RED before the anchor fix (the
+# cwd-relative glob finds nothing in the worktree and returns empty).
+@test "resolve_active_plan_dir returns the main-checkout plan dir from a worktree cwd" {
+  MAIN="$(mktemp -d -t gaia-hook-test-XXXXXX)"
+  MAIN="$(cd "$MAIN" && pwd -P)"   # normalize /var -> /private/var so path compares hold
+  git -C "$MAIN" init -q --initial-branch=main
+  git -C "$MAIN" config commit.gpgsign false
+  git -C "$MAIN" commit -q --allow-empty -m "init"
+
+  WT="$(dirname "$MAIN")/gaia-hook-wt-$$"
+  git -C "$MAIN" worktree add -q "$WT" -b feature/kickoff
+
+  # Colocated plan folder in the MAIN checkout only.
+  plan_dir="$MAIN/.gaia/local/specs/SPEC-013/plan"
+  write_readme_with_spec "$plan_dir" ".gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "feature/kickoff" "2026-07-01T00:00:00Z"
+
+  run bash -c "cd '$WT' && . '$LIB_SRC' && resolve_active_plan_dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$plan_dir" ]
+
+  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
 }

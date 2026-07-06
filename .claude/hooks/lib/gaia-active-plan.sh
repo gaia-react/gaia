@@ -11,21 +11,48 @@
 #   plan_dir="$(resolve_active_plan_dir)"
 #   [ -n "$plan_dir" ] && feature_key="$(resolve_feature_key "$plan_dir")"
 
-# Echoes the repo-relative path of the plan directory whose RUNNING sentinel
-# names the current branch, or nothing when none match. When several plans
-# match, disambiguates on the lexicographically latest `started:` value
-# (ISO-8601 sorts correctly as a string): the most recently started run
-# wins. A RUNNING file missing a `branch:` or `started:` line is skipped,
-# not an error.
+# Echoes the absolute path of the MAIN checkout root -- the working tree that
+# owns the shared .git dir -- so a run inside a linked worktree resolves the same
+# plan/spec folders (and, via the ledger lib, the same ledger) the main checkout
+# owns. A linked worktree symlinks only shared state (cache/shared, audit,
+# telemetry, setup-state.json, mentorship.json); .gaia/local/specs and
+# .gaia/local/plans are NOT symlinked, so a RUNNING sentinel is visible only from
+# the main checkout. main_root = dirname(absolute(git rev-parse --git-common-dir)),
+# matching the ledger lib's derivation. Echoes nothing when git cannot resolve the
+# common dir; callers degrade to no match.
+resolve_main_checkout_root() {
+  local common_dir abs main_root
+  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || common_dir=""
+  [ -n "$common_dir" ] || return 0
+  case "$common_dir" in
+    /*) abs="$common_dir" ;;
+    *)  abs="$PWD/$common_dir" ;;
+  esac
+  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)" || main_root=""
+  [ -n "$main_root" ] && printf '%s' "$main_root"
+  return 0
+}
+
+# Echoes the absolute path of the plan directory whose RUNNING sentinel names the
+# current branch, or nothing when none match. The search is anchored to the main
+# checkout (resolve_main_checkout_root), so a plan executed in a linked worktree
+# -- where its RUNNING sentinel lives only in the main checkout -- still resolves.
+# When several plans match, disambiguates on the lexicographically latest
+# `started:` value (ISO-8601 sorts correctly as a string): the most recently
+# started run wins. A RUNNING file missing a `branch:` or `started:` line is
+# skipped, not an error.
 resolve_active_plan_dir() {
-  local cur running_file file_branch file_started best_dir best_started
+  local cur main_root running_file file_branch file_started best_dir best_started
 
   cur="$(git branch --show-current 2>/dev/null)" || true
   [ -n "$cur" ] || return 0
 
+  main_root="$(resolve_main_checkout_root)"
+  [ -n "$main_root" ] || return 0
+
   best_dir=""
   best_started=""
-  for running_file in .gaia/local/plans/*/RUNNING .gaia/local/specs/*/plan/RUNNING .gaia/local/specs/*/plan-*/RUNNING; do
+  for running_file in "$main_root"/.gaia/local/plans/*/RUNNING "$main_root"/.gaia/local/specs/*/plan/RUNNING "$main_root"/.gaia/local/specs/*/plan-*/RUNNING; do
     [ -f "$running_file" ] || continue
 
     file_branch="$(grep '^branch:' "$running_file" 2>/dev/null | cut -d' ' -f2)" || true
