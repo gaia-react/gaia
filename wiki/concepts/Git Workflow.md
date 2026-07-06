@@ -30,4 +30,8 @@ No `--force`, `--force-with-lease`, or `-f` to `main`/`master`; upstream history
 
 Both invariants above have one temporary, explicit exception. `/setup-gaia` provisions a greenfield repo by landing GAIA's own CI-install commit directly on the default branch: that commit has nothing to audit and the branch is not yet a collaboration surface. For that single commit+push it suspends the hook via a machine-local, gitignored sentinel `.gaia/local/setup-in-progress`, then removes it. The sentinel is honored only while fresh (mtime within 10 minutes), so a stale one left behind by a crashed setup self-heals and enforcement resumes on its own; it is gitignored, so it never rides into a clone. Resting state is fully enforcing.
 
+## Splitting an already-staged tree into commits
+
+A bare `git commit -m "..."` with no pathspec commits the entire index, not just the files staged by the most recent `git add`. When only some staged files belong in a commit, pass explicit pathspecs: `git commit -m "..." -- <file1> <file2>`. The `-m` flag must come before the `--`; `-- <paths> -m "msg"` makes git treat `-m` and the message itself as pathspecs, and the commit silently does nothing. Confirm with `git status --short` before and after any split-commit sequence to verify only the intended files landed.
+
 See [[PR Merge Workflow]], [[Claude Hooks]].

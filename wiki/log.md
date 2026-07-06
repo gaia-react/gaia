@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-07 gaia-audit WORTHY - knowledge audit promotes plan-mode-vs-skill pitfall from machine memory → wiki/concepts/GAIA Plan.md
+- 2026-07-07 gaia-audit WORTHY - knowledge audit promotes bare-commit staging gotcha from machine memory → wiki/concepts/Git Workflow.md
+- 2026-07-07 gaia-audit WORTHY - knowledge audit promotes maintainer statusline override chain from machine memory → wiki/modules/Claude Integration.md
 - 2026-07-05 5792046 SKIP - Fable top-tier model gate feature already updated GAIA Plan/GAIA Spec/Task Orchestration in-commit
 - 2026-07-05 4e70ade1 SKIP - previous wiki maintenance chain PR (sync+consolidate+lint), self-contained, nothing further to sync
 - 2026-07-05 b680034d WORTHY - health-audit remediations add WorktreeRemove to canonical hook list + clarify no-snapshot fitness case → wiki/decisions/Claude Integration Fitness.md (edited in-commit)
