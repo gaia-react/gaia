@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-07-07
 tags: [concept, testing]
 ---
 
@@ -24,6 +24,24 @@ expect(screen.getByText('Hello')).toBeInTheDocument();
 > Don't mock `react-router`, `react-i18next`, or other framework deps. Use the stubs in `test/stubs/` instead; they wire real providers with sensible defaults.
 
 `test/stubs/` exposes `stubs.reactRouter()`, `stubs.state()`, etc. Apply as decorators in `tests/index.stories.tsx`; the stories pull them in for both Storybook and Vitest. Only mock **external services** or **utilities** the component imports directly.
+
+## Overriding a prop (callback spies)
+
+A test overriding a prop on a composed story, especially a callback it spies on, only reaches the real component if the story accepts `(args)` and spreads `{...args}` **last**, after any hardcoded default. This repo's stories hardcode structural/demo props inline and spread `{...args}` only for the controllable knobs, so ordering is load-bearing: a story that hardcodes the callback, or spreads `{...args}` before it, silently drops a render-time override. A spy assertion against a dropped override still runs, it just proves nothing: `not.toHaveBeenCalled()` passes vacuously with the callback never wired, so the test stays green even if the behavior it's meant to guard is broken.
+
+```tsx
+// GOOD - accepts args and spreads {...args} LAST, so a test can override onChange
+const Template: StoryFn = (args) => (
+  <Toggle label="Notifications" onChange={() => {}} {...args} />
+);
+```
+
+```tsx
+// BAD - hardcodes onChange after the spread (or never accepts args), so a render-time override is dropped
+const Template: StoryFn = (args) => (
+  <Toggle label="Notifications" {...args} onChange={() => {}} />
+);
+```
 
 ## Custom Conform inputs
 

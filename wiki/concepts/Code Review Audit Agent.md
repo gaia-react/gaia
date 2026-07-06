@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-07-01
+updated: 2026-07-07
 tags: [concept, claude, agent, review]
 ---
 
@@ -25,6 +25,10 @@ Every holistic-reviewer finding must clear a four-check proof gate before it is 
 Critical and Important holistic findings that survive the proof gate go to a selective adversarial pass: a fresh-context refuter subagent that did not produce the finding reads the cited evidence and attempts to rebut. A refuter overturns a finding only with concrete counter-evidence (a guard at `file:line`, a covering test, or an unreachable path). Without that, the verdict defaults to STANDS. Outcome options: drop on "cannot occur," demote on "smaller blast radius," keep otherwise. The resulting disposition flows into the marker-decision interlock so a dropped Critical does not block the merge gate.
 
 Deterministic oracles (`react-doctor`, `knip`) are exempt from the proof gate and adversarial pass; they are not probabilistic judgments.
+
+## No-op guard against silent subagents
+
+A dispatched specialist or refuter can return a harness-reminder-echo instead of doing the work, silently. A shared deterministic predicate (`.gaia/scripts/audit-noop-detect.sh`) classifies each returned text against its expected shape and exits non-zero on a no-op; it loads no finding body into the classifying caller's context. On a no-op, the agent re-dispatches that one subagent exactly once with a hardened retry prefix that forces a Read of the concrete target as its first action. A second consecutive no-op does not re-dispatch again: the agent reviews or refutes that unit itself inline, applies the result exactly as if the subagent had returned it, and records the degraded unit as a count (never detail) on the relevant progress breadcrumb (`oracles done` for a specialist, `adversarial verify done` for a refuter) and in the report summary. The same guard covers the equivalent dispatch surfaces in [[GAIA Spec]] and [[GAIA Plan]].
 
 ## Scope classification and disposition
 
