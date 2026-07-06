@@ -162,8 +162,8 @@ esac
 # Three conservative knowledge-audit drift signals, computed here (never on the
 # statusline hot path) into one verbatim reason string + the raw counters the
 # debounce needs. All local file IO; missing dirs/files fall back to prev/zero,
-# never fatal. Priority when several fire: draft-pending > machine drift >
-# project drift (keeps the segment to one line).
+# never fatal. Priority when several fire: draft-pending > new-memories >
+# staleness > project drift (keeps the segment to one line).
 #
 # Last-audit anchor: the newest .gaia/local/audit/KNOWLEDGE-*.md whose frontmatter
 # `status:` is `applied` (gitignored, machine-local). Its mtime is "last audit on
@@ -217,17 +217,23 @@ if [ "$applied_at" -gt "$audit_last_applied_at" ] 2>/dev/null; then
   audit_memory_baseline="$audit_memory_count"
 fi
 
-# (a) Per-machine drift: memory grew by >= AUDIT_MEMORY_DELTA since the last
-# applied audit, OR >= AUDIT_DRIFT_DAYS elapsed since it.
+# (a) Per-machine drift, two independent arms, each surfacing its own label:
+#   - mem_drift:  memory grew by >= AUDIT_MEMORY_DELTA since the last applied audit
+#   - time_drift: >= AUDIT_DRIFT_DAYS elapsed since the last applied audit
+# The fire thresholds (>= 10 memories, >= 30 days) guarantee both counts are
+# plural, so the reason strings below carry no singular form.
 mem_delta=$((audit_memory_count - audit_memory_baseline))
 drift_secs=$((AUDIT_DRIFT_DAYS * 86400))
-machine_drift=false
+mem_drift=false
+time_drift=false
+days_since=0
 if [ "$mem_delta" -ge "$AUDIT_MEMORY_DELTA" ] 2>/dev/null; then
-  machine_drift=true
+  mem_drift=true
 fi
 if [ "$audit_last_applied_at" -gt 0 ] 2>/dev/null \
   && [ "$((now - audit_last_applied_at))" -ge "$drift_secs" ] 2>/dev/null; then
-  machine_drift=true
+  time_drift=true
+  days_since=$(( (now - audit_last_applied_at) / 86400 ))
 fi
 
 # (b) Project drift: any committed auto-load file over budget. Budget-only, no
@@ -259,13 +265,17 @@ for rule in "$PROJECT_ROOT"/.claude/rules/*.md; do
   fi
 done
 
-# Pick the single highest-priority reason.
+# Pick the single highest-priority reason. The two machine-drift arms each get
+# a self-describing label; when both fire, the concrete new-memory count wins.
 if [ "$draft_pending" = "true" ]; then
   audit_nudge=true
   audit_nudge_reason="resume draft"
-elif [ "$machine_drift" = "true" ]; then
+elif [ "$mem_drift" = "true" ]; then
   audit_nudge=true
-  audit_nudge_reason="machine drift"
+  audit_nudge_reason="$mem_delta new memories"
+elif [ "$time_drift" = "true" ]; then
+  audit_nudge=true
+  audit_nudge_reason="$days_since days since review"
 elif [ "$project_drift" = "true" ]; then
   audit_nudge=true
   audit_nudge_reason="over budget"
