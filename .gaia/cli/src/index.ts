@@ -19,6 +19,7 @@ import {run as runHardenLedger} from './harden/ledger.js';
 import {run as runHardenTally} from './harden/tally.js';
 import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
+import {run as runPing} from './ping/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
 import {run as runScaffold} from './scaffold/index.js';
 import {run as runSetup} from './setup/index.js';
@@ -49,6 +50,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
   setup-ci status|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|verify-run|finalize|write-tool-mode
+  ping --event <init|setup|update> [--field value ...]
 `;
 
 const printHelp = (): void => {
@@ -72,6 +74,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   'harden-tally': runHardenTally,
   init: runInit,
   mentorship: runMentorship,
+  ping: runPing,
   'react-perf': runReactPerf,
   scaffold: runScaffold,
   setup: runSetup,
