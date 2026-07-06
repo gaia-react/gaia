@@ -21,7 +21,8 @@
 # symlinks to) keeps updating.
 #
 # The hot path stays fast (target <50ms): no network calls, no `pnpm` calls.
-# The worktree-detection adds at most one `git rev-parse` fork.
+# The worktree-detection adds up to two `git rev-parse` forks (one for
+# `--git-common-dir`, one for `--show-toplevel`).
 # A background refresher (.gaia/scripts/check-updates.sh) writes the cache.
 #
 # Partial failures are silent; a broken statusline disappears in Claude Code,
