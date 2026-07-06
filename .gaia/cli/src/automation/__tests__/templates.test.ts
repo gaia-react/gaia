@@ -48,13 +48,22 @@ const expectedSteps = [
   'Quality Gate',
 ] as const;
 
+const EXPECTED_TOP_LEVEL_KEYS = [
+  'concurrency',
+  'env',
+  'jobs',
+  'name',
+  'on',
+  'permissions',
+];
+
 describe('workflow templates: gaia-ci-wiki', () => {
   const rendered = renderForTool('wiki');
   const doc = parseRendered(rendered);
 
   test('parses cleanly as YAML with the expected top-level keys', () => {
-    expect(Object.keys(doc).sort()).toEqual(
-      ['concurrency', 'env', 'jobs', 'name', 'on', 'permissions'].sort()
+    expect(Object.keys(doc).toSorted((a, b) => a.localeCompare(b))).toEqual(
+      EXPECTED_TOP_LEVEL_KEYS.toSorted((a, b) => a.localeCompare(b))
     );
   });
 
@@ -76,8 +85,11 @@ describe('workflow templates: gaia-ci-wiki', () => {
 
   test('declares the three secrets at the env level', () => {
     expect(doc.env).toEqual({
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       ANTHROPIC_API_KEY: '${{ secrets.ANTHROPIC_API_KEY }}',
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
     });
   });
@@ -137,6 +149,7 @@ describe('workflow templates: gaia-ci-update-deps', () => {
     expect(rendered).toContain('wave_b_matrix');
     expect(rendered).toContain('strategy:');
     expect(rendered).toContain(
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       'matrix: ${{ fromJson(needs.run.outputs.wave_b_matrix) }}'
     );
   });
@@ -243,8 +256,11 @@ describe('workflow templates: cross-tool invariants', () => {
     'every rendered file references the three secrets (%s)',
     (tool) => {
       const rendered = renderForTool(tool);
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       expect(rendered).toContain('${{ secrets.GITHUB_TOKEN }}');
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       expect(rendered).toContain('${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}');
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       expect(rendered).toContain('${{ secrets.ANTHROPIC_API_KEY }}');
     }
   );

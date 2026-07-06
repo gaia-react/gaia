@@ -103,14 +103,14 @@ const main = async (): Promise<number> => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-main()
-  .then((exitCode) => {
-    process.exit(exitCode);
-  })
-  .catch((error: unknown) => {
-    structuredError({
-      code: 'cli_internal_error',
-      message: error instanceof Error ? error.message : String(error),
-    });
-    process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+try {
+  const exitCode = await main();
+
+  process.exit(exitCode);
+} catch (error: unknown) {
+  structuredError({
+    code: 'cli_internal_error',
+    message: error instanceof Error ? error.message : String(error),
   });
+  process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+}

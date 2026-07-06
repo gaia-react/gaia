@@ -41,24 +41,36 @@ const HTTPS_RE = /^https?:\/\/([^/]+)\/(.+)$/u;
 const SSH_PROTO_RE = /^ssh:\/\/[^/]+\/(.+)$/u;
 const SSH_PROTO_HOST_RE = /^ssh:\/\/(?:[^@/]+@)?([^/]+)\//u;
 
+// Strips every trailing slash with a loop rather than `.replace(/\/+$/u, '')`:
+// sonarjs/super-linear-regex flags the trailing unbounded quantifier next to
+// the `$` anchor, and a normal remote URL has at most one trailing slash
+// anyway, so a loop is just as simple and sidesteps the regex entirely.
+const stripTrailingSlashes = (value: string): string => {
+  let result = value;
+
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
+};
+
 const parseTwoSegments = (
   url: string,
   host: string,
   rest: string
 ): null | ParsedRemote => {
-  const trimmedRest = stripGitSuffix(rest).replace(/\/+$/u, '');
+  const trimmedRest = stripTrailingSlashes(stripGitSuffix(rest));
   const segments = trimmedRest.split('/');
 
   if (segments.length !== 2) return null;
 
+  // Destructuring a `string[]` of a length already verified above: both
+  // are genuinely always defined here, not just per the (unchecked-access)
+  // type.
   const [owner, repo] = segments;
 
-  if (
-    owner === undefined ||
-    repo === undefined ||
-    !isValidSegment(owner) ||
-    !isValidSegment(repo)
-  ) {
+  if (!isValidSegment(owner) || !isValidSegment(repo)) {
     return null;
   }
 

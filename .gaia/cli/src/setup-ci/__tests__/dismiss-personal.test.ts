@@ -4,7 +4,7 @@ import path from 'node:path';
 import {localAutomationPath} from '../../automation/paths.js';
 import {readLocalAutomation} from '../../schemas/local-automation.js';
 import {run} from '../dismiss-personal.js';
-import {setupSandbox} from './sandbox.js';
+import {assertStatusOk, setupSandbox} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
@@ -60,10 +60,9 @@ describe('setup-ci dismiss-personal', () => {
 
     const result = readLocalAutomation(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.local.nudge_dismissed).toBe(true);
-    }
+    expect(result.local.nudge_dismissed).toBe(true);
   });
 
   test('flips nudge_dismissed when existing local has it false', () => {
@@ -81,10 +80,9 @@ describe('setup-ci dismiss-personal', () => {
 
     const result = readLocalAutomation(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.local.nudge_dismissed).toBe(true);
-    }
+    expect(result.local.nudge_dismissed).toBe(true);
   });
 
   test('is idempotent (final state unchanged when already dismissed)', () => {
@@ -102,10 +100,9 @@ describe('setup-ci dismiss-personal', () => {
 
     const result = readLocalAutomation(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.local.nudge_dismissed).toBe(true);
-    }
+    expect(result.local.nudge_dismissed).toBe(true);
   });
 
   test('refuses with local_malformed when existing local is malformed', () => {

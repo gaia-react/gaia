@@ -54,10 +54,7 @@ const walkMarkdown = (root: string, dir: string): string[] => {
 
     if (entry.isDirectory()) {
       out.push(...walkMarkdown(root, full));
-      continue;
-    }
-
-    if (entry.isFile() && entry.name.endsWith('.md')) {
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
       out.push(path.relative(root, full));
     }
   }
@@ -80,19 +77,21 @@ export const findFrontmatterGaps = (cwd: string): readonly Gap[] => {
   }
 
   const gaps: Gap[] = [];
-  const files = walkMarkdown(cwd, wikiDir).sort();
+  const files = walkMarkdown(cwd, wikiDir).toSorted((a, b) =>
+    a.localeCompare(b)
+  );
 
   for (const filePath of files) {
-    if (shouldSkipFile(filePath)) continue;
+    if (!shouldSkipFile(filePath)) {
+      const content = readFileSync(path.join(cwd, filePath), 'utf8');
+      const {frontmatter} = parseFrontmatter(content);
+      const missing = REQUIRED_FIELDS.filter(
+        (field) => !hasField(frontmatter, field)
+      );
 
-    const content = readFileSync(path.join(cwd, filePath), 'utf8');
-    const {frontmatter} = parseFrontmatter(content);
-    const missing = REQUIRED_FIELDS.filter(
-      (field) => !hasField(frontmatter, field)
-    );
-
-    if (missing.length > 0) {
-      gaps.push({missing, path: filePath});
+      if (missing.length > 0) {
+        gaps.push({missing, path: filePath});
+      }
     }
   }
 
@@ -114,15 +113,15 @@ export const run = (
 
     if (token === '--json') {
       json = true;
-      continue;
-    }
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'wiki frontmatter',
-    });
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'wiki frontmatter',
+      });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
   }
 
   try {

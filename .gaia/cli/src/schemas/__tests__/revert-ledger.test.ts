@@ -1,4 +1,6 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {z} from 'zod';
+import assert from 'node:assert/strict';
 import {
   mkdirSync,
   mkdtempSync,
@@ -60,13 +62,13 @@ describe('schemas/revert-ledger', () => {
     test('rejects version: 2', () => {
       expect(() =>
         RevertLedgerSchema.parse({...VALID_LEDGER, version: 2})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects attempts: null', () => {
       expect(() =>
         RevertLedgerSchema.parse({...VALID_LEDGER, attempts: null})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown status', () => {
@@ -77,7 +79,7 @@ describe('schemas/revert-ledger', () => {
             '99': {...VALID_LEDGER.attempts['99'], status: 'wat'},
           },
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects negative original_pr', () => {
@@ -88,7 +90,7 @@ describe('schemas/revert-ledger', () => {
             '99': {...VALID_LEDGER.attempts['99'], original_pr: -1},
           },
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unparseable opened_at', () => {
@@ -99,7 +101,7 @@ describe('schemas/revert-ledger', () => {
             '99': {...VALID_LEDGER.attempts['99'], opened_at: 'tomorrow'},
           },
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('accepts merged status', () => {
@@ -159,10 +161,8 @@ describe('schemas/revert-ledger', () => {
       writeFileSync(sandbox.ledgerPath, JSON.stringify(VALID_LEDGER), 'utf8');
       const result = readRevertLedger(sandbox.root);
       expect(result.status).toBe('ok');
-
-      if (result.status === 'ok') {
-        expect(result.ledger.attempts['99']?.revert_pr).toBe(137);
-      }
+      assert.ok(result.status === 'ok');
+      expect(result.ledger.attempts['99'].revert_pr).toBe(137);
     });
 
     test('returns {status: "malformed"} for invalid JSON', () => {
@@ -204,10 +204,8 @@ describe('schemas/revert-ledger', () => {
       writeRevertLedger(sandbox.root, VALID_LEDGER);
       const result = readRevertLedger(sandbox.root);
       expect(result.status).toBe('ok');
-
-      if (result.status === 'ok') {
-        expect(result.ledger).toEqual(VALID_LEDGER);
-      }
+      assert.ok(result.status === 'ok');
+      expect(result.ledger).toEqual(VALID_LEDGER);
     });
   });
 });

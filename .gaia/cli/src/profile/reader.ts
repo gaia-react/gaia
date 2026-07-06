@@ -151,10 +151,11 @@ const parseFileLines = (raw: string, filePath: string): MentorshipEvent[] => {
   const events: MentorshipEvent[] = [];
 
   for (const line of raw.split('\n')) {
-    if (line.length === 0) continue;
-    const event = parseLine(line, filePath);
+    if (line.length > 0) {
+      const event = parseLine(line, filePath);
 
-    if (event !== null) events.push(event);
+      if (event !== null) events.push(event);
+    }
   }
 
   return events;

@@ -89,7 +89,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
     flag: string,
     index: number
   ): {error: string} | {value: string} => {
-    const next = argv[index + 1];
+    const next = argv.at(index + 1);
 
     if (next === undefined || next.startsWith('--')) {
       return {error: `${flag} requires a path argument`};
@@ -103,11 +103,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
 
     if (token === '--json') {
       json = true;
-
-      continue;
-    }
-
-    if (
+    } else if (
       token === '--workflows-dir' ||
       token === '--baseline' ||
       token === '--latest'
@@ -126,11 +122,9 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
         latest = taken.value;
       }
       index += 1;
-
-      continue;
+    } else {
+      return {error: `unknown flag: ${token}`};
     }
-
-    return {error: `unknown flag: ${token}`};
   }
 
   if (latest !== undefined && baseline === undefined) {
@@ -146,6 +140,62 @@ const safeReadFile = (filePath: string): null | string => {
   } catch {
     return null;
   }
+};
+
+const readTemplateOrFail = (
+  templatePath: string
+): {content: string} | {exitCode: number} => {
+  try {
+    return {content: readFileSync(templatePath, 'utf8')};
+  } catch (error) {
+    structuredError({
+      code: 'template_unreadable',
+      error: error instanceof Error ? error.message : String(error),
+      subcommand: 'setup-ci check-audit-drift',
+    });
+
+    return {exitCode: EXIT_CODES.STORAGE_INACCESSIBLE};
+  }
+};
+
+// Extracted out of `run` (kept its cognitive complexity under the frozen
+// limit): the 2-way / 3-way classification, given the file is on disk.
+const classifyDrift = (
+  onDisk: string,
+  parsed: Pick<ParsedArgs, 'baseline' | 'latest'>
+): {exitCode: number} | {state: AuditDriftState} => {
+  if (parsed.baseline === undefined) {
+    // 2-way mode: installed vs the bundled template.
+    const template = readTemplateOrFail(workflowAuditTemplatePath());
+
+    if ('exitCode' in template) return template;
+
+    return {state: onDisk === template.content ? 'in_sync' : 'drifted'};
+  }
+
+  // 3-way mode: installed vs baseline (prior release) and latest (this
+  // release). The latest template is required; the baseline may be
+  // unavailable (an older pre-template release), which collapses to
+  // conflict so the caller never auto-writes on an unprovable comparison.
+  const latest = readTemplateOrFail(
+    parsed.latest ?? workflowAuditTemplatePath()
+  );
+
+  if ('exitCode' in latest) return latest;
+
+  const baseline = safeReadFile(parsed.baseline);
+
+  if (onDisk === latest.content || baseline === latest.content) {
+    // Installed already at latest, OR the release did not touch the
+    // template (baseline == latest) so there is nothing to apply.
+    return {state: 'in_sync'};
+  }
+
+  if (baseline !== null && onDisk === baseline) {
+    return {state: 'clean'};
+  }
+
+  return {state: 'conflict'};
 };
 
 type RunOptions = {
@@ -195,57 +245,15 @@ export const run = (
   const installedPath = path.join(workflowsDir, 'code-review-audit.yml');
   const onDisk = safeReadFile(installedPath);
 
-  const readTemplateOrFail = (
-    templatePath: string
-  ): {content: string} | {exitCode: number} => {
-    try {
-      return {content: readFileSync(templatePath, 'utf8')};
-    } catch (error) {
-      structuredError({
-        code: 'template_unreadable',
-        error: error instanceof Error ? error.message : String(error),
-        subcommand: 'setup-ci check-audit-drift',
-      });
-
-      return {exitCode: EXIT_CODES.STORAGE_INACCESSIBLE};
-    }
-  };
-
   let state: AuditDriftState;
 
   if (onDisk === null) {
     state = 'missing';
-  } else if (parsed.baseline === undefined) {
-    // 2-way mode: installed vs the bundled template.
-    const template = readTemplateOrFail(workflowAuditTemplatePath());
-
-    if ('exitCode' in template) {
-      return template.exitCode;
-    }
-    state = onDisk === template.content ? 'in_sync' : 'drifted';
   } else {
-    // 3-way mode: installed vs baseline (prior release) and latest (this
-    // release). The latest template is required; the baseline may be
-    // unavailable (an older pre-template release), which collapses to
-    // conflict so the caller never auto-writes on an unprovable comparison.
-    const latest = readTemplateOrFail(
-      parsed.latest ?? workflowAuditTemplatePath()
-    );
+    const classified = classifyDrift(onDisk, parsed);
 
-    if ('exitCode' in latest) {
-      return latest.exitCode;
-    }
-    const baseline = safeReadFile(parsed.baseline);
-
-    if (onDisk === latest.content || baseline === latest.content) {
-      // Installed already at latest, OR the release did not touch the
-      // template (baseline == latest) so there is nothing to apply.
-      state = 'in_sync';
-    } else if (baseline !== null && onDisk === baseline) {
-      state = 'clean';
-    } else {
-      state = 'conflict';
-    }
+    if ('exitCode' in classified) return classified.exitCode;
+    state = classified.state;
   }
 
   if (parsed.json) {

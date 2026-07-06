@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {MentorshipConfigSchema} from '../mentorship-config.js';
 
 const baseConfig = {
@@ -32,7 +33,7 @@ describe('schemas/mentorship-config', () => {
         decided_via: 'gaia-init',
         enabled: true,
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('rejects an unknown decided_via value', () => {
@@ -41,6 +42,6 @@ describe('schemas/mentorship-config', () => {
         ...baseConfig,
         decided_via: 'unknown-source',
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 });

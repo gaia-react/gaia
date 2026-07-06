@@ -43,44 +43,37 @@ type ParsedArgs =
 
 type ParseError = {error: string};
 
-const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
-  let source: string | undefined;
-  let skipRaw: string | undefined;
-  let clear = false;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (token === '--clear') {
-      clear = true;
-      continue;
-    }
-
-    if (token === '--source') {
-      const value = argv[index + 1];
-
-      if (value === undefined || value.length === 0) {
-        return {error: '--source requires a path'};
-      }
-      source = value;
-      index += 1;
-      continue;
-    }
-
-    if (token === '--skip') {
-      const value = argv[index + 1];
-
-      if (value === undefined) {
-        return {error: '--skip requires a comma-separated list'};
-      }
-      skipRaw = value;
-      index += 1;
-      continue;
-    }
-
-    return {error: `unknown flag: ${token ?? ''}`};
+// `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
+// not `string | undefined`; check the bound explicitly instead of comparing
+// the indexed value to `undefined`.
+const takeSourceValue = (
+  argv: readonly string[],
+  index: number
+): {error: string} | {ok: true; value: string} => {
+  if (index >= argv.length || argv[index].length === 0) {
+    return {error: '--source requires a path'};
   }
 
+  return {ok: true, value: argv[index]};
+};
+
+const takeSkipValue = (
+  argv: readonly string[],
+  index: number
+): {error: string} | {ok: true; value: string} => {
+  if (index >= argv.length) {
+    return {error: '--skip requires a comma-separated list'};
+  }
+
+  return {ok: true, value: argv[index]};
+};
+
+/** Post-loop validation, extracted so `parseArgs` itself stays flat. */
+const finalizeParsedArgs = (
+  clear: boolean,
+  source: string | undefined,
+  skipRaw: string | undefined
+): ParsedArgs | ParseError => {
   if (clear) return {clear: true};
 
   if (source === undefined) return {error: '--source is required with --skip'};
@@ -97,6 +90,36 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
   if (skip.length === 0) return {error: '--skip listed no package names'};
 
   return {clear: false, skip, source};
+};
+
+const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
+  let source: string | undefined;
+  let skipRaw: string | undefined;
+  let clear = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+
+    if (token === '--clear') {
+      clear = true;
+    } else if (token === '--source') {
+      const taken = takeSourceValue(argv, index + 1);
+
+      if (!('ok' in taken)) return taken;
+      source = taken.value;
+      index += 1;
+    } else if (token === '--skip') {
+      const taken = takeSkipValue(argv, index + 1);
+
+      if (!('ok' in taken)) return taken;
+      skipRaw = taken.value;
+      index += 1;
+    } else {
+      return {error: `unknown flag: ${token}`};
+    }
+  }
+
+  return finalizeParsedArgs(clear, source, skipRaw);
 };
 
 const readPayload = (

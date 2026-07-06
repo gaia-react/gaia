@@ -82,10 +82,9 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   for (const token of argv) {
     if (token === '--auto') {
       auto = true;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   return {flags: {auto}, ok: true};
@@ -120,14 +119,9 @@ export const classifyCommit = (commit: Commit): BumpKind | null => {
   const match = CONVENTIONAL_HEADER_REGEX.exec(subject);
 
   if (match === null) return null;
-  const groups = match.groups ?? {};
-
-  if (groups.bang === '!') return 'major';
-
-  const {type} = groups;
-
-  if (type === 'feat') return 'minor';
-  if (type !== undefined && PATCH_TYPES.has(type)) return 'patch';
+  if (match.groups?.bang === '!') return 'major';
+  if (match.groups?.type === 'feat') return 'minor';
+  if (PATCH_TYPES.has(match.groups?.type ?? '')) return 'patch';
 
   return null;
 };
@@ -140,9 +134,10 @@ export const aggregateBump = (commits: readonly Commit[]): BumpKind | null => {
   for (const commit of commits) {
     const classified = classifyCommit(commit);
 
-    if (classified === null) continue;
-
-    if (highest === null || RANK[classified] > RANK[highest]) {
+    if (
+      classified !== null &&
+      (highest === null || RANK[classified] > RANK[highest])
+    ) {
       highest = classified;
     }
   }
@@ -179,27 +174,29 @@ const expectSuccess = (
   }
 
   if ((result.status ?? -1) !== 0) {
-    const stderr = (result.stderr ?? '').trim();
+    const stderr = result.stderr.trim();
 
     throw new Error(
       `${command} ${args.join(' ')} exited ${result.status ?? -1}: ${stderr}`
     );
   }
 
-  return result.stdout ?? '';
+  return result.stdout;
 };
 
-const tryRun = (
-  runner: CommandRunner,
-  command: string,
-  args: readonly string[],
-  cwd: string
-): null | string => {
+type TryRunArgs = {
+  args: readonly string[];
+  command: string;
+  cwd: string;
+  runner: CommandRunner;
+};
+
+const tryRun = ({args, command, cwd, runner}: TryRunArgs): null | string => {
   const result = runner(command, args, {cwd});
 
   if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
 
-  return result.stdout ?? '';
+  return result.stdout;
 };
 
 const RECORD_SEPARATOR = '---END-COMMIT---';
@@ -222,20 +219,26 @@ export const collectCommits = (
   const commits: Commit[] = [];
 
   for (const chunk of out.split(RECORD_SEPARATOR)) {
-    const trimmed = chunk.replace(/^[\s\n]+/u, '').replace(/[\s\n]+$/u, '');
+    const trimmed = chunk.trim();
 
-    if (trimmed === '') continue;
-    const lines = trimmed.split('\n');
-    const subject = lines[0] ?? '';
-    const body = lines.slice(1).join('\n');
-    commits.push({body, subject});
+    if (trimmed !== '') {
+      const lines = trimmed.split('\n');
+      const subject = lines[0] ?? '';
+      const body = lines.slice(1).join('\n');
+      commits.push({body, subject});
+    }
   }
 
   return commits;
 };
 
 const lastTag = (cwd: string, runner: CommandRunner): null | string => {
-  const out = tryRun(runner, 'git', ['describe', '--tags', '--abbrev=0'], cwd);
+  const out = tryRun({
+    args: ['describe', '--tags', '--abbrev=0'],
+    command: 'git',
+    cwd,
+    runner,
+  });
 
   if (out === null) return null;
   const trimmed = out.trim();
@@ -300,6 +303,80 @@ type RunOptions = {
   runner?: CommandRunner;
 };
 
+// Each `tryX` helper below owns one step's try/catch and structured-error
+// reporting, so `run` reads as a flat sequence of "did this step succeed?"
+// checks instead of nested try/catch blocks.
+
+const tryReadPackageJsonOrReport = (
+  cwd: string
+): null | ReturnType<typeof readPackageJson> => {
+  try {
+    return readPackageJson(cwd);
+  } catch (error) {
+    structuredError({
+      code: 'package_json_invalid',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release bump',
+    });
+
+    return null;
+  }
+};
+
+const tryCollectCommitsOrReport = (
+  cwd: string,
+  runner: CommandRunner,
+  range: string
+): Commit[] | null => {
+  try {
+    return collectCommits(cwd, runner, range);
+  } catch (error) {
+    process.stderr.write(
+      `bump: ${error instanceof Error ? error.message : String(error)}\n`
+    );
+
+    return null;
+  }
+};
+
+const tryApplyBumpOrReport = (
+  version: string,
+  kind: BumpKind
+): null | string => {
+  try {
+    return applyBump(version, kind);
+  } catch (error) {
+    structuredError({
+      code: 'invalid_version',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release bump',
+    });
+
+    return null;
+  }
+};
+
+const tryWriteVersionOrReport = (
+  pkg: ReturnType<typeof readPackageJson>,
+  cwd: string,
+  nextVersion: string
+): boolean => {
+  try {
+    writePackageJsonVersion(pkg.path, pkg.raw, nextVersion);
+    writeVersionFile(cwd, nextVersion);
+
+    return true;
+  } catch (error) {
+    structuredError({
+      code: 'version_write_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release bump',
+    });
+
+    return false;
+  }
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -325,34 +402,16 @@ export const run = (
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner;
 
-  let pkg: ReturnType<typeof readPackageJson>;
+  const pkg = tryReadPackageJsonOrReport(cwd);
 
-  try {
-    pkg = readPackageJson(cwd);
-  } catch (error) {
-    structuredError({
-      code: 'package_json_invalid',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release bump',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
+  if (pkg === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
   const tag = lastTag(cwd, runner);
   const range = tag === null ? 'HEAD' : `${tag}..HEAD`;
 
-  let commits: Commit[];
+  const commits = tryCollectCommitsOrReport(cwd, runner, range);
 
-  try {
-    commits = collectCommits(cwd, runner, range);
-  } catch (error) {
-    process.stderr.write(
-      `bump: ${error instanceof Error ? error.message : String(error)}\n`
-    );
-
-    return UNEXPECTED_EXIT;
-  }
+  if (commits === null) return UNEXPECTED_EXIT;
 
   if (commits.length === 0) {
     process.stderr.write('bump: no commits since last tag; nothing to bump\n');
@@ -370,19 +429,9 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  let nextVersion: string;
+  const nextVersion = tryApplyBumpOrReport(pkg.version, kind);
 
-  try {
-    nextVersion = applyBump(pkg.version, kind);
-  } catch (error) {
-    structuredError({
-      code: 'invalid_version',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release bump',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
+  if (nextVersion === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
   if (!parsed.flags.auto) {
     process.stdout.write(`v${pkg.version} -> v${nextVersion} (${kind})\n`);
@@ -399,18 +448,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  try {
-    writePackageJsonVersion(pkg.path, pkg.raw, nextVersion);
-    writeVersionFile(cwd, nextVersion);
-  } catch (error) {
-    structuredError({
-      code: 'version_write_failed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release bump',
-    });
-
-    return UNEXPECTED_EXIT;
-  }
+  if (!tryWriteVersionOrReport(pkg, cwd, nextVersion)) return UNEXPECTED_EXIT;
 
   process.stdout.write(`${nextVersion}\n`);
 

@@ -79,7 +79,9 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
+  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
+  // which honestly reflects that `index` can run past the end of argv.
+  const value = argv.at(index);
 
   if (value === undefined)
     return {message: `${flag} requires a value`, ok: false};
@@ -96,19 +98,15 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
     if (token === '--draft') {
       draft = true;
-      continue;
-    }
-
-    if (token === '--version') {
+    } else if (token === '--version') {
       const taken = takeValue(argv, index + 1, '--version');
 
       if (!taken.ok) return taken;
       version = taken.value;
       index += 1;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   return {flags: {draft, version}, ok: true};
@@ -128,8 +126,13 @@ const TYPE_TO_SECTION: Record<string, null | Section> = {
   test: null,
 };
 
+// The optional `(scope)` is matched but deliberately not captured: the
+// message text is entirely carried by `rest`, so a scope segment is just
+// stripped from the subject. No leading `\s*` before `rest`: the caller
+// trims the captured message, so matching the whitespace here too would
+// only invite ambiguous backtracking against the trailing `.*`.
 const CONVENTIONAL_HEADER_REGEX =
-  /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?!?:\s*(?<rest>.*)$/u;
+  /^(?<type>[a-z]+)(?:\([^)]*\))?!?:(?<rest>.*)$/u;
 
 export type Commit = {
   body: string;
@@ -145,16 +148,15 @@ export const groupCommits = (commits: readonly Commit[]): RenderedSections => {
     const subject = commit.subject.trim();
     const match = CONVENTIONAL_HEADER_REGEX.exec(subject);
 
-    if (match === null) continue;
-    const groups = match.groups ?? {};
-    const type = (groups.type ?? '').toLowerCase();
-    const target = TYPE_TO_SECTION[type];
+    if (match !== null) {
+      const type = (match.groups?.type ?? '').toLowerCase();
+      const target = TYPE_TO_SECTION[type];
+      const message = (match.groups?.rest ?? '').trim();
 
-    if (!target) continue;
-    const message = (groups.rest ?? '').trim();
-
-    if (message.length === 0) continue;
-    sections[target].push(message);
+      if (target && message.length > 0) {
+        sections[target].push(message);
+      }
+    }
   }
 
   return sections;
@@ -175,14 +177,21 @@ export const renderBlock = (sections: RenderedSections): string => {
   for (const section of order) {
     const items = sections[section];
 
-    if (items.length === 0) continue;
-    lines.push(`### ${section}`, '');
+    if (items.length > 0) {
+      lines.push(`### ${section}`, '');
 
-    for (const item of items) lines.push(`- ${item}`);
-    lines.push('');
+      for (const item of items) lines.push(`- ${item}`);
+      lines.push('');
+    }
   }
 
-  return lines.join('\n').replace(/\n+$/u, '\n');
+  // Collapse a run of trailing newlines to exactly one, without a
+  // backtracking-prone `\n+$` regex.
+  let joined = lines.join('\n');
+
+  while (joined.endsWith('\n\n')) joined = joined.slice(0, -1);
+
+  return joined;
 };
 
 const RECORD_SEPARATOR = '---END-COMMIT---';
@@ -203,22 +212,23 @@ export const collectCommits = (
   }
 
   if ((result.status ?? -1) !== 0) {
-    const stderr = (result.stderr ?? '').trim();
+    const stderr = result.stderr.trim();
 
     throw new Error(`git log exited ${result.status ?? -1}: ${stderr}`);
   }
 
-  const out = result.stdout ?? '';
+  const out = result.stdout;
   const commits: Commit[] = [];
 
   for (const chunk of out.split(RECORD_SEPARATOR)) {
-    const trimmed = chunk.replace(/^[\s\n]+/u, '').replace(/[\s\n]+$/u, '');
+    const trimmed = chunk.trim();
 
-    if (trimmed === '') continue;
-    const lines = trimmed.split('\n');
-    const subject = lines[0] ?? '';
-    const body = lines.slice(1).join('\n');
-    commits.push({body, subject});
+    if (trimmed !== '') {
+      const lines = trimmed.split('\n');
+      const subject = lines[0] ?? '';
+      const body = lines.slice(1).join('\n');
+      commits.push({body, subject});
+    }
   }
 
   return commits;
@@ -229,7 +239,7 @@ const lastTag = (cwd: string, runner: CommandRunner): null | string => {
 
   if (result.error !== undefined) return null;
   if ((result.status ?? -1) !== 0) return null;
-  const out = (result.stdout ?? '').trim();
+  const out = result.stdout.trim();
 
   if (out.length === 0) return null;
 
@@ -299,12 +309,19 @@ const updateLinkReferences = (body: string, newVersion: string): string => {
   return lines.join('\n');
 };
 
-export const graduateChangelog = (
-  current: string,
-  newVersion: string,
-  block: string,
-  today: string
-): GraduateOutcome => {
+type GraduateChangelogArgs = {
+  block: string;
+  current: string;
+  newVersion: string;
+  today: string;
+};
+
+export const graduateChangelog = ({
+  block,
+  current,
+  newVersion,
+  today,
+}: GraduateChangelogArgs): GraduateOutcome => {
   const versionHeading = `## [${newVersion}] - ${today}`;
 
   if (current.includes(`## [${newVersion}]`)) {
@@ -369,6 +386,43 @@ type RunOptions = {
   today?: string;
 };
 
+// Each `tryX` helper below owns one step's try/catch and error reporting, so
+// `run` reads as a flat sequence of "did this step succeed?" checks instead
+// of nested try/catch blocks.
+
+const tryReadVersionOrReport = (
+  cwd: string,
+  override: string | undefined
+): null | string => {
+  try {
+    return readVersion(cwd, override);
+  } catch (error) {
+    structuredError({
+      code: 'package_json_invalid',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release changelog',
+    });
+
+    return null;
+  }
+};
+
+const tryCollectCommitsOrReport = (
+  cwd: string,
+  runner: CommandRunner,
+  range: string
+): Commit[] | null => {
+  try {
+    return collectCommits(cwd, runner, range);
+  } catch (error) {
+    process.stderr.write(
+      `changelog: ${error instanceof Error ? error.message : String(error)}\n`
+    );
+
+    return null;
+  }
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -394,34 +448,16 @@ export const run = (
   const cwd = options.cwd ?? process.cwd();
   const runner = options.runner ?? defaultRunner;
 
-  let version: string;
+  const version = tryReadVersionOrReport(cwd, parsed.flags.version);
 
-  try {
-    version = readVersion(cwd, parsed.flags.version);
-  } catch (error) {
-    structuredError({
-      code: 'package_json_invalid',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release changelog',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
+  if (version === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
   const tag = lastTag(cwd, runner);
   const range = tag === null ? 'HEAD' : `${tag}..HEAD`;
 
-  let commits: Commit[];
+  const commits = tryCollectCommitsOrReport(cwd, runner, range);
 
-  try {
-    commits = collectCommits(cwd, runner, range);
-  } catch (error) {
-    process.stderr.write(
-      `changelog: ${error instanceof Error ? error.message : String(error)}\n`
-    );
-
-    return UNEXPECTED_EXIT;
-  }
+  if (commits === null) return UNEXPECTED_EXIT;
 
   const sections = groupCommits(commits);
   const block = renderBlock(sections);
@@ -446,7 +482,12 @@ export const run = (
 
   const current = readFileSync(changelogPath, 'utf8');
   const today = options.today ?? todayUtc();
-  const outcome = graduateChangelog(current, version, block, today);
+  const outcome = graduateChangelog({
+    block,
+    current,
+    newVersion: version,
+    today,
+  });
 
   if (outcome.kind === 'duplicate') {
     // Idempotent: nothing to do.

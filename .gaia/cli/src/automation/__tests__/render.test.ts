@@ -194,14 +194,17 @@ describe('renderWorkflowTemplate', () => {
     expect(out).not.toContain('}}');
   });
 
+  // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
   test('preserves GitHub Actions ${{ secrets.X }} expressions verbatim', () => {
     const tmpl = sandbox.writeTemplate(
       'gh.yml.tmpl',
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       'env:\n  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n  TOOL: {{tool_id}}'
     );
 
     const out = renderWorkflowTemplate(tmpl, sandbox.partialsDir, baseVars);
 
+    // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
     expect(out).toContain('${{ secrets.GITHUB_TOKEN }}');
     expect(out).toContain('TOOL: wiki');
   });

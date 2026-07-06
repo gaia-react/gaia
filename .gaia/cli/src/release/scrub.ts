@@ -167,10 +167,7 @@ const walkFiles = (root: string, current: string = root): string[] => {
 
     if (entry.isDirectory()) {
       out.push(...walkFiles(root, full));
-      continue;
-    }
-
-    if (entry.isFile()) {
+    } else if (entry.isFile()) {
       out.push(path.relative(root, full).split(path.sep).join('/'));
     }
   }
@@ -222,28 +219,18 @@ const stripMarkerBlocks = (
     if (!inBlock && hasStart && hasEnd) {
       // Single-line block: drop the entire line.
       blocks += 1;
-      continue;
-    }
-
-    if (!inBlock && hasStart) {
+    } else if (!inBlock && hasStart) {
       inBlock = true;
       blockStartLine = lineNumber;
-      continue;
-    }
-
-    if (inBlock && hasEnd) {
+    } else if (inBlock && hasEnd) {
       inBlock = false;
       blocks += 1;
-      continue;
-    }
-
-    if (!inBlock && hasEnd) {
+    } else if (!inBlock && hasEnd) {
       unbalanced.push({line: lineNumber, reason: 'end_without_start'});
       out.push(line);
-      continue;
+    } else if (!inBlock) {
+      out.push(line);
     }
-
-    if (!inBlock) out.push(line);
   }
 
   if (inBlock) {
@@ -267,29 +254,33 @@ const applyMarkerStrip = (
   let blocksStripped = 0;
 
   for (const relativePath of files) {
-    if (!matchesAnyGlob(relativePath, transform.paths)) continue;
+    if (matchesAnyGlob(relativePath, transform.paths)) {
+      const absolutePath = path.join(stagingRoot, relativePath);
+      const source = readFileSync(absolutePath, 'utf8');
+      const hasAnyMarker =
+        source.includes(transform.start) || source.includes(transform.end);
 
-    const absolutePath = path.join(stagingRoot, relativePath);
-    const source = readFileSync(absolutePath, 'utf8');
+      if (hasAnyMarker) {
+        const result = stripMarkerBlocks(
+          source,
+          transform.start,
+          transform.end
+        );
 
-    if (!source.includes(transform.start) && !source.includes(transform.end)) {
-      continue;
-    }
+        for (const issue of result.unbalanced) {
+          unbalanced.push({
+            file: relativePath,
+            line: issue.line,
+            reason: issue.reason,
+          });
+        }
 
-    const result = stripMarkerBlocks(source, transform.start, transform.end);
-
-    for (const issue of result.unbalanced) {
-      unbalanced.push({
-        file: relativePath,
-        line: issue.line,
-        reason: issue.reason,
-      });
-    }
-
-    if (result.blocks > 0) {
-      atomicWriteFileSync(absolutePath, result.output);
-      filesTouched.push(relativePath);
-      blocksStripped += result.blocks;
+        if (result.blocks > 0) {
+          atomicWriteFileSync(absolutePath, result.output);
+          filesTouched.push(relativePath);
+          blocksStripped += result.blocks;
+        }
+      }
     }
   }
 
@@ -329,16 +320,12 @@ export const parseKeyPath = (key: string): string[] => {
     if (char === '\\' && key[index + 1] === '.') {
       current += '.';
       index += 1;
-      continue;
-    }
-
-    if (char === '.') {
+    } else if (char === '.') {
       segments.push(current);
       current = '';
-      continue;
+    } else {
+      current += char;
     }
-
-    current += char;
   }
 
   segments.push(current);
@@ -377,6 +364,45 @@ const deleteKeyPath = (
   return deleteKeyPath(next as Record<string, unknown>, rest);
 };
 
+/**
+ * Strips the configured key paths from one JSON file in place. Returns the
+ * count of keys actually removed (0 for a non-object file or a file with no
+ * matching keys); the file is rewritten only when that count is positive.
+ */
+const stripJsonKeysFromFile = (
+  absolutePath: string,
+  relativePath: string,
+  keySegments: readonly (readonly string[])[]
+): number => {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(readFileSync(absolutePath, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `Failed to parse JSON at ${relativePath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  const isPlainObject =
+    typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+
+  if (!isPlainObject) return 0;
+
+  const obj = parsed as Record<string, unknown>;
+  let removed = 0;
+
+  for (const segments of keySegments) {
+    if (deleteKeyPath(obj, segments)) removed += 1;
+  }
+
+  if (removed > 0) {
+    atomicWriteFileSync(absolutePath, `${JSON.stringify(obj, null, 2)}\n`);
+  }
+
+  return removed;
+};
+
 const applyJsonStrip = (
   stagingRoot: string,
   files: readonly string[],
@@ -387,38 +413,18 @@ const applyJsonStrip = (
   const keySegments = transform.keys.map((k) => parseKeyPath(k));
 
   for (const relativePath of files) {
-    if (!matchesAnyGlob(relativePath, transform.paths)) continue;
-
-    const absolutePath = path.join(stagingRoot, relativePath);
-    let parsed: unknown;
-
-    try {
-      parsed = JSON.parse(readFileSync(absolutePath, 'utf8'));
-    } catch (error) {
-      throw new Error(
-        `Failed to parse JSON at ${relativePath}: ${error instanceof Error ? error.message : String(error)}`
+    if (matchesAnyGlob(relativePath, transform.paths)) {
+      const absolutePath = path.join(stagingRoot, relativePath);
+      const removed = stripJsonKeysFromFile(
+        absolutePath,
+        relativePath,
+        keySegments
       );
-    }
 
-    if (
-      typeof parsed !== 'object' ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      continue;
-    }
-
-    const obj = parsed as Record<string, unknown>;
-    let removed = 0;
-
-    for (const segments of keySegments) {
-      if (deleteKeyPath(obj, segments)) removed++;
-    }
-
-    if (removed > 0) {
-      atomicWriteFileSync(absolutePath, `${JSON.stringify(obj, null, 2)}\n`);
-      filesTouched.push(relativePath);
-      keysRemoved += removed;
+      if (removed > 0) {
+        filesTouched.push(relativePath);
+        keysRemoved += removed;
+      }
     }
   }
 
@@ -436,12 +442,26 @@ export type Leak = {
   match: string;
 };
 
-const runLeakCheck = (
-  stagingRoot: string,
-  files: readonly string[],
-  check: StaticLeakCheck
-): readonly Leak[] => {
-  const pattern = new RegExp(check.pattern);
+type FileScanArgs = {
+  check: LeakCheckEntry;
+  files: readonly string[];
+  stagingRoot: string;
+};
+
+/**
+ * Shared skeleton for every leak-check kind: walk each in-scope,
+ * not-path-allowlisted file, split into lines, skip line-allowlisted lines,
+ * and delegate to `findLeaksInLine` for the check-specific match logic
+ * (literal regex, wikilink lookup, or excluded-workflow substring search).
+ */
+const scanForLeaks = (
+  {check, files, stagingRoot}: FileScanArgs,
+  findLeaksInLine: (
+    line: string,
+    lineNumber: number,
+    relativePath: string
+  ) => readonly Leak[]
+): Leak[] => {
   const lineAllowlist = (check['line-allowlist'] ?? []).map(
     (raw) => new RegExp(raw)
   );
@@ -449,29 +469,48 @@ const runLeakCheck = (
   const leaks: Leak[] = [];
 
   for (const relativePath of files) {
-    if (!matchesAnyGlob(relativePath, check.scope)) continue;
-    if (matchesAnyGlob(relativePath, pathAllowlist)) continue;
+    const inScope =
+      matchesAnyGlob(relativePath, check.scope) &&
+      !matchesAnyGlob(relativePath, pathAllowlist);
 
-    const source = readFileSync(path.join(stagingRoot, relativePath), 'utf8');
-    const lines = source.split('\n');
+    if (inScope) {
+      const source = readFileSync(path.join(stagingRoot, relativePath), 'utf8');
 
-    for (const [index, line] of lines.entries()) {
-      if (lineAllowlist.some((rx) => rx.test(line))) continue;
-
-      const match = pattern.exec(line);
-
-      if (match === null) continue;
-
-      leaks.push({
-        check: check.id,
-        file: relativePath,
-        line: index + 1,
-        match: match[0],
-      });
+      for (const [index, line] of source.split('\n').entries()) {
+        if (!lineAllowlist.some((rx) => rx.test(line))) {
+          leaks.push(...findLeaksInLine(line, index + 1, relativePath));
+        }
+      }
     }
   }
 
   return leaks;
+};
+
+const runLeakCheck = (
+  stagingRoot: string,
+  files: readonly string[],
+  check: StaticLeakCheck
+): readonly Leak[] => {
+  const pattern = new RegExp(check.pattern);
+
+  return scanForLeaks(
+    {check, files, stagingRoot},
+    (line, lineNumber, relativePath) => {
+      const match = pattern.exec(line);
+
+      return match === null ?
+          []
+        : [
+            {
+              check: check.id,
+              file: relativePath,
+              line: lineNumber,
+              match: match[0],
+            },
+          ];
+    }
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -507,6 +546,35 @@ const isDirectory = (absolutePath: string): boolean => {
  * enumerated as their own exclude lines. Slugs are lowercased for the
  * case-insensitive matching Obsidian uses to resolve wikilinks.
  */
+// Adds the slug(s) contributed by one `.gaia/release-exclude` line: a `.md`
+// exclude contributes its own basename slug; a bare-directory exclude
+// contributes the directory's own slug plus every `.md` page beneath it.
+// Guard-clause early returns (not `continue`): this runs once per line from
+// a plain `for` loop in the caller, not from inside a loop itself.
+const addSlugsForExcludeLine = (
+  line: string,
+  cwd: string,
+  addSlug: (value: string) => void
+): void => {
+  if (line !== 'wiki' && !line.startsWith('wiki/')) return;
+
+  if (line.endsWith('.md')) {
+    addSlug(slugFromPath(line));
+
+    return;
+  }
+
+  const absolute = path.join(cwd, line);
+
+  if (!isDirectory(absolute)) return;
+
+  addSlug(path.basename(line));
+
+  for (const relative of walkFiles(absolute)) {
+    if (relative.endsWith('.md')) addSlug(slugFromPath(relative));
+  }
+};
+
 const buildExcludedSlugSet = (cwd: string): Set<string> => {
   const lines = parseExcludeLines(
     readFileSync(path.join(cwd, RELEASE_EXCLUDE_PATH), 'utf8')
@@ -518,64 +586,39 @@ const buildExcludedSlugSet = (cwd: string): Set<string> => {
   };
 
   for (const line of lines) {
-    if (line !== 'wiki' && !line.startsWith('wiki/')) continue;
-
-    if (line.endsWith('.md')) {
-      addSlug(slugFromPath(line));
-      continue;
-    }
-
-    const absolute = path.join(cwd, line);
-
-    if (!isDirectory(absolute)) continue;
-
-    addSlug(path.basename(line));
-
-    for (const relative of walkFiles(absolute)) {
-      if (relative.endsWith('.md')) addSlug(slugFromPath(relative));
-    }
+    addSlugsForExcludeLine(line, cwd, addSlug);
   }
 
   return slugs;
 };
 
-const runDerivedWikilinkCheck = (
-  stagingRoot: string,
-  files: readonly string[],
-  check: DerivedLeakCheck,
-  cwd: string
-): readonly Leak[] => {
+type DerivedCheckArgs = {
+  check: DerivedLeakCheck;
+  cwd: string;
+  files: readonly string[];
+  stagingRoot: string;
+};
+
+const runDerivedWikilinkCheck = ({
+  check,
+  cwd,
+  files,
+  stagingRoot,
+}: DerivedCheckArgs): readonly Leak[] => {
   const excludedSlugs = buildExcludedSlugSet(cwd);
-  const lineAllowlist = (check['line-allowlist'] ?? []).map(
-    (raw) => new RegExp(raw)
-  );
-  const pathAllowlist = check['path-allowlist'] ?? [];
-  const leaks: Leak[] = [];
 
-  for (const relativePath of files) {
-    if (!matchesAnyGlob(relativePath, check.scope)) continue;
-    if (matchesAnyGlob(relativePath, pathAllowlist)) continue;
-
-    const source = readFileSync(path.join(stagingRoot, relativePath), 'utf8');
-    const lines = source.split('\n');
-
-    for (const [index, line] of lines.entries()) {
-      if (lineAllowlist.some((rx) => rx.test(line))) continue;
-
-      for (const target of extractWikilinks(line)) {
-        if (!excludedSlugs.has(target.toLowerCase())) continue;
-
-        leaks.push({
+  return scanForLeaks(
+    {check, files, stagingRoot},
+    (line, lineNumber, relativePath) =>
+      extractWikilinks(line)
+        .filter((target) => excludedSlugs.has(target.toLowerCase()))
+        .map((target) => ({
           check: check.id,
           file: relativePath,
-          line: index + 1,
+          line: lineNumber,
           match: `[[${target}]]`,
-        });
-      }
-    }
-  }
-
-  return leaks;
+        }))
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -607,66 +650,47 @@ const buildNeverPresentWorkflowSet = (cwd: string): Set<string> => {
   const paths = new Set<string>();
 
   for (const line of lines) {
-    if (!line.startsWith(`${WORKFLOWS_DIR}/`) || !line.endsWith('.yml')) {
-      continue;
+    if (line.startsWith(`${WORKFLOWS_DIR}/`) && line.endsWith('.yml')) {
+      const templatePath = path.join(
+        cwd,
+        SHIPPED_WORKFLOW_TEMPLATES_DIR,
+        `${path.basename(line)}.tmpl`
+      );
+
+      // A shipped `.tmpl` means the workflow is rendered onto adopters on
+      // demand, so a reference to it is not a boundary leak; keep it out of
+      // the set.
+      if (!existsSync(templatePath)) {
+        paths.add(line);
+      }
     }
-
-    const templatePath = path.join(
-      cwd,
-      SHIPPED_WORKFLOW_TEMPLATES_DIR,
-      `${path.basename(line)}.tmpl`
-    );
-
-    // A shipped `.tmpl` means the workflow is rendered onto adopters on demand,
-    // so a reference to it is not a boundary leak; keep it out of the set.
-    if (existsSync(templatePath)) continue;
-
-    paths.add(line);
   }
 
   return paths;
 };
 
-const runDerivedWorkflowCheck = (
-  stagingRoot: string,
-  files: readonly string[],
-  check: DerivedLeakCheck,
-  cwd: string
-): readonly Leak[] => {
+const runDerivedWorkflowCheck = ({
+  check,
+  cwd,
+  files,
+  stagingRoot,
+}: DerivedCheckArgs): readonly Leak[] => {
   const neverPresent = buildNeverPresentWorkflowSet(cwd);
 
   if (neverPresent.size === 0) return [];
 
-  const lineAllowlist = (check['line-allowlist'] ?? []).map(
-    (raw) => new RegExp(raw)
-  );
-  const pathAllowlist = check['path-allowlist'] ?? [];
-  const leaks: Leak[] = [];
-
-  for (const relativePath of files) {
-    if (!matchesAnyGlob(relativePath, check.scope)) continue;
-    if (matchesAnyGlob(relativePath, pathAllowlist)) continue;
-
-    const source = readFileSync(path.join(stagingRoot, relativePath), 'utf8');
-    const lines = source.split('\n');
-
-    for (const [index, line] of lines.entries()) {
-      if (lineAllowlist.some((rx) => rx.test(line))) continue;
-
-      for (const excludedPath of neverPresent) {
-        if (!line.includes(excludedPath)) continue;
-
-        leaks.push({
+  return scanForLeaks(
+    {check, files, stagingRoot},
+    (line, lineNumber, relativePath) =>
+      [...neverPresent]
+        .filter((excludedPath) => line.includes(excludedPath))
+        .map((excludedPath) => ({
           check: check.id,
           file: relativePath,
-          line: index + 1,
+          line: lineNumber,
           match: excludedPath,
-        });
-      }
-    }
-  }
-
-  return leaks;
+        }))
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -699,7 +723,9 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
+  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
+  // which honestly reflects that `index` can run past the end of argv.
+  const value = argv.at(index);
 
   if (value === undefined)
     return {message: `${flag} requires a value`, ok: false};
@@ -721,23 +747,15 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       if (!taken.ok) return taken;
       configPath = taken.value;
       index += 1;
-      continue;
-    }
-
-    if (token === '--json') {
+    } else if (token === '--json') {
       json = true;
-      continue;
-    }
-
-    if (token.startsWith('--')) {
+    } else if (token.startsWith('--')) {
       return {message: `unknown flag: ${token}`, ok: false};
-    }
-
-    if (stagingDir !== undefined) {
+    } else if (stagingDir === undefined) {
+      stagingDir = token;
+    } else {
       return {message: `unexpected positional: ${token}`, ok: false};
     }
-
-    stagingDir = token;
   }
 
   return {flags: {configPath, json, stagingDir}, ok: true};
@@ -797,6 +815,151 @@ const renderHumanReport = (report: Report, jsonMode: boolean): string => {
   return `${out.join('\n')}\n`;
 };
 
+const resolveAbsolute = (cwd: string, value: string): string =>
+  path.isAbsolute(value) ? value : path.join(cwd, value);
+
+const tryVerifyExists = (target: string): boolean => {
+  try {
+    statSync(target);
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const tryLoadConfigOrReport = (configPath: string): null | ScrubConfig => {
+  try {
+    return loadConfig(configPath);
+  } catch (error) {
+    structuredError({
+      code: 'config_load_failed',
+      message: error instanceof Error ? error.message : String(error),
+      path: configPath,
+      subcommand: 'release scrub',
+    });
+
+    return null;
+  }
+};
+
+const tryWalkFilesOrReport = (stagingDir: string): null | readonly string[] => {
+  try {
+    return walkFiles(stagingDir);
+  } catch (error) {
+    structuredError({
+      code: 'staging_walk_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release scrub',
+    });
+
+    return null;
+  }
+};
+
+type ScrubContext = {
+  cwd: string;
+  stagedFiles: readonly string[];
+  stagingDir: string;
+};
+
+/**
+ * Runs every check in one `leak-check` transform: derived checks (which also
+ * read source inputs from `ctx.cwd` rather than the staging tree, see
+ * `buildExcludedSlugSet`) and static regex checks alike.
+ */
+const runLeakChecksForTransform = (
+  checks: readonly LeakCheckEntry[],
+  ctx: ScrubContext
+): Leak[] => {
+  const leaks: Leak[] = [];
+
+  for (const check of checks) {
+    if (isDerivedCheck(check)) {
+      const runDerived =
+        check.derive === 'excluded-workflows' ?
+          runDerivedWorkflowCheck
+        : runDerivedWikilinkCheck;
+
+      leaks.push(
+        ...runDerived({
+          check,
+          cwd: ctx.cwd,
+          files: ctx.stagedFiles,
+          stagingRoot: ctx.stagingDir,
+        })
+      );
+    } else {
+      leaks.push(...runLeakCheck(ctx.stagingDir, ctx.stagedFiles, check));
+    }
+  }
+
+  return leaks;
+};
+
+type TransformResults = {
+  jsonStripFiles: string[];
+  jsonStripKeysRemoved: number;
+  leaks: Leak[];
+  stripBlocks: number;
+  stripFiles: string[];
+  unbalanced: {file: string; line: number; reason: string}[];
+};
+
+// After marker-strip and json-strip land, leak-check sees the post-strip
+// tree because we re-read each file fresh inside the check.
+const runTransforms = (
+  config: ScrubConfig,
+  ctx: ScrubContext
+): TransformResults => {
+  const results: TransformResults = {
+    jsonStripFiles: [],
+    jsonStripKeysRemoved: 0,
+    leaks: [],
+    stripBlocks: 0,
+    stripFiles: [],
+    unbalanced: [],
+  };
+
+  for (const transform of config.transforms) {
+    if (transform.type === 'marker-strip') {
+      const result = applyMarkerStrip(
+        ctx.stagingDir,
+        ctx.stagedFiles,
+        transform
+      );
+      results.stripBlocks += result.blocksStripped;
+      results.stripFiles.push(...result.filesTouched);
+      results.unbalanced.push(...result.unbalanced);
+    } else if (transform.type === 'json-strip') {
+      const result = applyJsonStrip(ctx.stagingDir, ctx.stagedFiles, transform);
+      results.jsonStripKeysRemoved += result.keysRemoved;
+      results.jsonStripFiles.push(...result.filesTouched);
+    } else {
+      results.leaks.push(...runLeakChecksForTransform(transform.checks, ctx));
+    }
+  }
+
+  return results;
+};
+
+const tryRunTransformsOrReport = (
+  config: ScrubConfig,
+  ctx: ScrubContext
+): null | TransformResults => {
+  try {
+    return runTransforms(config, ctx);
+  } catch (error) {
+    structuredError({
+      code: 'transform_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release scrub',
+    });
+
+    return null;
+  }
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -830,20 +993,13 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const stagingDir =
-    path.isAbsolute(parsed.flags.stagingDir) ?
-      parsed.flags.stagingDir
-    : path.join(cwd, parsed.flags.stagingDir);
+  const stagingDir = resolveAbsolute(cwd, parsed.flags.stagingDir);
   const configPath =
-    parsed.flags.configPath ?
-      path.isAbsolute(parsed.flags.configPath) ?
-        parsed.flags.configPath
-      : path.join(cwd, parsed.flags.configPath)
-    : path.join(cwd, DEFAULT_CONFIG_PATH);
+    parsed.flags.configPath === undefined ?
+      path.join(cwd, DEFAULT_CONFIG_PATH)
+    : resolveAbsolute(cwd, parsed.flags.configPath);
 
-  try {
-    statSync(stagingDir);
-  } catch {
+  if (!tryVerifyExists(stagingDir)) {
     structuredError({
       code: 'staging_dir_missing',
       message: `staging directory not found: ${stagingDir}`,
@@ -853,103 +1009,38 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  let config: ScrubConfig;
+  const config = tryLoadConfigOrReport(configPath);
 
-  try {
-    config = loadConfig(configPath);
-  } catch (error) {
-    structuredError({
-      code: 'config_load_failed',
-      message: error instanceof Error ? error.message : String(error),
-      path: configPath,
-      subcommand: 'release scrub',
-    });
+  if (config === null) return UNEXPECTED_EXIT;
 
-    return UNEXPECTED_EXIT;
-  }
+  const stagedFiles = tryWalkFilesOrReport(stagingDir);
 
-  let stagedFiles: readonly string[];
+  if (stagedFiles === null) return UNEXPECTED_EXIT;
 
-  try {
-    stagedFiles = walkFiles(stagingDir);
-  } catch (error) {
-    structuredError({
-      code: 'staging_walk_failed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release scrub',
-    });
+  const results = tryRunTransformsOrReport(config, {
+    cwd,
+    stagedFiles,
+    stagingDir,
+  });
 
-    return UNEXPECTED_EXIT;
-  }
-
-  let stripBlocks = 0;
-  const stripFiles: string[] = [];
-  const unbalanced: {file: string; line: number; reason: string}[] = [];
-  let jsonStripKeysRemoved = 0;
-  const jsonStripFiles: string[] = [];
-  const leaks: Leak[] = [];
-
-  try {
-    for (const transform of config.transforms) {
-      if (transform.type === 'marker-strip') {
-        const result = applyMarkerStrip(stagingDir, stagedFiles, transform);
-        stripBlocks += result.blocksStripped;
-        stripFiles.push(...result.filesTouched);
-
-        for (const issue of result.unbalanced) unbalanced.push(issue);
-        continue;
-      }
-
-      if (transform.type === 'json-strip') {
-        const result = applyJsonStrip(stagingDir, stagedFiles, transform);
-        jsonStripKeysRemoved += result.keysRemoved;
-        jsonStripFiles.push(...result.filesTouched);
-        continue;
-      }
-
-      // After marker-strip and json-strip land, leak-check sees the
-      // post-strip tree because we re-read each file fresh inside the check.
-      // Derived checks additionally read source inputs from cwd (see
-      // buildExcludedSlugSet) rather than the staging tree.
-      for (const check of transform.checks) {
-        if (isDerivedCheck(check)) {
-          const runDerived =
-            check.derive === 'excluded-workflows' ?
-              runDerivedWorkflowCheck
-            : runDerivedWikilinkCheck;
-          leaks.push(...runDerived(stagingDir, stagedFiles, check, cwd));
-          continue;
-        }
-
-        leaks.push(...runLeakCheck(stagingDir, stagedFiles, check));
-      }
-    }
-  } catch (error) {
-    structuredError({
-      code: 'transform_failed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release scrub',
-    });
-
-    return UNEXPECTED_EXIT;
-  }
+  if (results === null) return UNEXPECTED_EXIT;
 
   const report: Report = {
     json_strip: {
-      files_touched: jsonStripFiles,
-      keys_removed: jsonStripKeysRemoved,
+      files_touched: results.jsonStripFiles,
+      keys_removed: results.jsonStripKeysRemoved,
     },
-    leaks,
+    leaks: results.leaks,
     marker_strip: {
-      blocks_stripped: stripBlocks,
-      files_touched: stripFiles,
+      blocks_stripped: results.stripBlocks,
+      files_touched: results.stripFiles,
     },
-    unbalanced_markers: unbalanced,
+    unbalanced_markers: results.unbalanced,
   };
 
   process.stdout.write(renderHumanReport(report, parsed.flags.json));
 
-  if (unbalanced.length > 0 || leaks.length > 0) {
+  if (results.unbalanced.length > 0 || results.leaks.length > 0) {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 

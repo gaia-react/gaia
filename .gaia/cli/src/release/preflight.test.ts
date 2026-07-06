@@ -60,6 +60,17 @@ const captureStdio = (): {
   };
 };
 
+// A runner that fails every call as if the `git` binary itself were missing.
+const gitNotFoundRunner: CommandRunner = () => ({
+  error: new Error('git not found'),
+  output: ['', '', ''] as never,
+  pid: 0,
+  signal: null,
+  status: null,
+  stderr: '',
+  stdout: '',
+});
+
 const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
   output: ['', stdout, ''] as never,
   pid: 0,
@@ -86,17 +97,18 @@ const buildRunner =
     recorded.push({args: [...args], command});
 
     for (const entry of scripted) {
-      if (entry.argv.length !== args.length) continue;
-      let match = true;
+      if (entry.argv.length === args.length) {
+        let match = true;
 
-      for (let index = 0; index < entry.argv.length; index += 1) {
-        if (entry.argv[index] !== args[index]) {
-          match = false;
-          break;
+        for (let index = 0; index < entry.argv.length; index += 1) {
+          if (entry.argv[index] !== args[index]) {
+            match = false;
+            break;
+          }
         }
-      }
 
-      if (match) return entry.result;
+        if (match) return entry.result;
+      }
     }
 
     return okResult('');
@@ -591,25 +603,9 @@ describe('release preflight', () => {
   });
 
   test('exit 2 when git rev-parse fails', () => {
-    const recorded: RecordedCall[] = [];
-
-    const runner: CommandRunner = (_command, _args, _options) => {
-      recorded.push({args: [..._args], command: _command});
-
-      return {
-        error: new Error('git not found'),
-        output: ['', '', ''] as never,
-        pid: 0,
-        signal: null,
-        status: null,
-        stderr: '',
-        stdout: '',
-      };
-    };
-
     const exit = run([], {
       cwd: sandbox.root,
-      runner,
+      runner: gitNotFoundRunner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
         reachable: true,

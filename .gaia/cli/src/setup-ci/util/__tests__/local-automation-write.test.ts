@@ -1,8 +1,9 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {readFileSync} from 'node:fs';
 import {localAutomationPath} from '../../../automation/paths.js';
 import {readLocalAutomation} from '../../../schemas/local-automation.js';
-import {setupSandbox} from '../../__tests__/sandbox.js';
+import {assertStatusOk, setupSandbox} from '../../__tests__/sandbox.js';
 import type {Sandbox} from '../../__tests__/sandbox.js';
 import {writeLocalAutomation} from '../local-automation-write.js';
 
@@ -32,10 +33,9 @@ describe('writeLocalAutomation', () => {
 
     const result = readLocalAutomation(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.local.nudge_dismissed).toBe(true);
-    }
+    expect(result.local.nudge_dismissed).toBe(true);
   });
 
   test('throws on schema-invalid payloads', () => {
@@ -44,6 +44,6 @@ describe('writeLocalAutomation', () => {
         nudge_dismissed: 'yes' as unknown as boolean,
         version: 1,
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 });

@@ -158,8 +158,8 @@ describe('ci-stale-check', () => {
 
     const args = ghSpy.mock.calls[0]?.[0] ?? [];
     // Verbatim assertion: both predicates appear, exactly once each.
-    expect(args.filter((a) => a === '--label').length).toBe(1);
-    expect(args.filter((a) => a === '--author').length).toBe(1);
+    expect(args.filter((a) => a === '--label')).toHaveLength(1);
+    expect(args.filter((a) => a === '--author')).toHaveLength(1);
     // And the values immediately follow the flags.
     const labelIndex = args.indexOf('--label');
     const authorIndex = args.indexOf('--author');

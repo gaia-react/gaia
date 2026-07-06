@@ -35,7 +35,7 @@ import {renderWorkflowTemplate} from '../automation/render.js';
 import {buildWorkflowVars} from '../automation/workflow-vars.js';
 import {EXIT_CODES} from '../exit.js';
 import {readAutomationConfig, TOOL_IDS} from '../schemas/automation-config.js';
-import type {ToolId} from '../schemas/automation-config.js';
+import type {AutomationConfig, ToolId} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 
@@ -78,23 +78,17 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
 
     if (token === '--json') {
       json = true;
-
-      continue;
-    }
-
-    if (token === '--workflows-dir') {
-      const next = argv[index + 1];
+    } else if (token === '--workflows-dir') {
+      const next = argv.at(index + 1);
 
       if (next === undefined || next.startsWith('--')) {
         return {error: '--workflows-dir requires a path argument'};
       }
       workflowsDir = next;
       index += 1;
-
-      continue;
+    } else {
+      return {error: `unknown flag: ${token}`};
     }
-
-    return {error: `unknown flag: ${token}`};
   }
 
   return {json, workflowsDir};
@@ -105,6 +99,52 @@ const safeReadFile = (filePath: string): null | string => {
     return readFileSync(filePath, 'utf8');
   } catch {
     return null;
+  }
+};
+
+type ClassifyToolDriftArgs = {
+  config: AutomationConfig;
+  partialsDir: string;
+  tool: ToolId;
+  workflowsDir: string;
+};
+
+type ToolDriftClassification =
+  {exitCode: number} | {state: 'drifted' | 'in_sync' | 'missing' | 'skip'};
+
+// Extracted out of `run` (kept its cognitive complexity under the frozen
+// limit): a single tool's drift classification, independent of the
+// per-run accumulation into `output`.
+const classifyToolDrift = (
+  args: ClassifyToolDriftArgs
+): ToolDriftClassification => {
+  const {config, partialsDir, tool, workflowsDir} = args;
+  const vars = buildWorkflowVars(config, tool);
+
+  if (vars === null) return {state: 'skip'};
+
+  const renderedPath = path.join(workflowsDir, `gaia-ci-${tool}.yml`);
+  const onDisk = safeReadFile(renderedPath);
+
+  if (onDisk === null) return {state: 'missing'};
+
+  try {
+    const freshRender = renderWorkflowTemplate(
+      workflowTemplatePath(tool),
+      partialsDir,
+      vars
+    );
+
+    return {state: freshRender === onDisk ? 'in_sync' : 'drifted'};
+  } catch (error) {
+    structuredError({
+      code: 'render_failed',
+      error: error instanceof Error ? error.message : String(error),
+      subcommand: 'setup-ci check-drift',
+      tool,
+    });
+
+    return {exitCode: EXIT_CODES.CONFIG_INVALID};
   }
 };
 
@@ -197,43 +237,19 @@ export const run = (
   const output: DriftOutput = {drifted: [], in_sync: [], missing: []};
 
   for (const tool of TOOL_IDS) {
-    const vars = buildWorkflowVars(configRead.config, tool);
+    const classified = classifyToolDrift({
+      config: configRead.config,
+      partialsDir,
+      tool,
+      workflowsDir,
+    });
 
-    if (vars === null) continue;
+    if ('exitCode' in classified) return classified.exitCode;
 
-    const renderedPath = path.join(workflowsDir, `gaia-ci-${tool}.yml`);
-    const onDisk = safeReadFile(renderedPath);
-
-    if (onDisk === null) {
-      output.missing.push(tool);
-
-      continue;
-    }
-
-    let freshRender: string;
-
-    try {
-      freshRender = renderWorkflowTemplate(
-        workflowTemplatePath(tool),
-        partialsDir,
-        vars
-      );
-    } catch (error) {
-      structuredError({
-        code: 'render_failed',
-        error: error instanceof Error ? error.message : String(error),
-        subcommand: 'setup-ci check-drift',
-        tool,
-      });
-
-      return EXIT_CODES.CONFIG_INVALID;
-    }
-
-    if (freshRender === onDisk) {
-      output.in_sync.push(tool);
-    } else {
-      output.drifted.push(tool);
-    }
+    if (classified.state === 'drifted') output.drifted.push(tool);
+    else if (classified.state === 'in_sync') output.in_sync.push(tool);
+    else if (classified.state === 'missing') output.missing.push(tool);
+    // 'skip': tool's mode !== 'ci', omitted from every bucket.
   }
 
   if (parsed.json) {

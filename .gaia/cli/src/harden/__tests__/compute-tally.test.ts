@@ -45,13 +45,13 @@ describe('computeTally', () => {
     expect(result.window_days).toBe(90);
 
     const [candidate] = result.candidates;
-    expect(candidate?.finding_class).toBe(
+    expect(candidate.finding_class).toBe(
       'react-doctor/no-generic-handler-names'
     );
-    expect(candidate?.distinct_pr_count).toBe(3);
-    expect(candidate?.severity_max).toBe('warning');
-    expect(candidate?.pr_numbers).toEqual([1201, 1188, 1175]);
-    expect(candidate?.area_tags).toEqual(['app/components', 'app/hooks']);
+    expect(candidate.distinct_pr_count).toBe(3);
+    expect(candidate.severity_max).toBe('warning');
+    expect(candidate.pr_numbers).toEqual([1201, 1188, 1175]);
+    expect(candidate.area_tags).toEqual(['app/components', 'app/hooks']);
   });
 
   test('does not surface a class on only 2 distinct PRs', () => {

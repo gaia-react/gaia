@@ -200,11 +200,13 @@ export const buildManifest = (
   const entries: [string, ManifestClass][] = [];
 
   for (const relativePath of tracked) {
-    if (isExcluded(relativePath)) continue;
-    const klass = classifyPath(relativePath);
+    if (!isExcluded(relativePath)) {
+      const klass = classifyPath(relativePath);
 
-    if (klass === null) continue;
-    entries.push([relativePath, klass]);
+      if (klass !== null) {
+        entries.push([relativePath, klass]);
+      }
+    }
   }
 
   entries.sort(([a], [b]) => a.localeCompare(b));
@@ -283,6 +285,16 @@ export type ManifestDrift = {
   versionDrift: undefined | {actual: string; expected: string};
 };
 
+// `Record<string, T>` indexing types as `T`, never `undefined`, without
+// `noUncheckedIndexedAccess` — but a file present on one side of the diff
+// genuinely may be absent on the other, so this local widening keeps that
+// runtime possibility honest instead of narrowing a real "missing" case away.
+const lookupClass = (
+  files: Record<string, ManifestClass>,
+  file: string
+): ManifestClass | undefined =>
+  (files as Record<string, ManifestClass | undefined>)[file];
+
 const computeDrift = (
   expected: ManifestShape,
   actual: ManifestShape,
@@ -297,20 +309,17 @@ const computeDrift = (
   }[] = [];
 
   for (const [file, expectedClass] of Object.entries(expected.files)) {
-    const actualClass = actual.files[file];
+    const actualClass = lookupClass(actual.files, file);
 
     if (actualClass === undefined) {
       missing.push({expected: expectedClass, file});
-      continue;
-    }
-
-    if (actualClass !== expectedClass) {
+    } else if (actualClass !== expectedClass) {
       drift.push({actual: actualClass, expected: expectedClass, file});
     }
   }
 
   for (const [file, actualClass] of Object.entries(actual.files)) {
-    if (expected.files[file] === undefined) {
+    if (lookupClass(expected.files, file) === undefined) {
       extra.push({actual: actualClass, file});
     }
   }
@@ -327,13 +336,69 @@ const computeDrift = (
   return {classifierOverlaps, drift, extra, missing, versionDrift};
 };
 
+// Each `renderXLines` helper below owns one report section (empty array when
+// that section has nothing to say), so `renderCheckReport` just concatenates
+// them instead of branching on every section itself.
+
+const renderVersionDriftLines = (result: ManifestDrift): string[] =>
+  result.versionDrift === undefined ?
+    []
+  : [
+      '',
+      'version drift:',
+      `  manifest version: ${result.versionDrift.actual}`,
+      `  .gaia/VERSION:    ${result.versionDrift.expected}`,
+    ];
+
+const renderMissingLines = (result: ManifestDrift): string[] =>
+  result.missing.length === 0 ?
+    []
+  : [
+      '',
+      `missing from manifest (${result.missing.length}):`,
+      ...result.missing.map(
+        (entry) => `  + ${entry.file}  [${entry.expected}]`
+      ),
+    ];
+
+const renderExtraLines = (result: ManifestDrift): string[] =>
+  result.extra.length === 0 ?
+    []
+  : [
+      '',
+      `extra in manifest (${result.extra.length}):`,
+      ...result.extra.map((entry) => `  - ${entry.file}  [${entry.actual}]`),
+    ];
+
+const renderDriftLines = (result: ManifestDrift): string[] =>
+  result.drift.length === 0 ?
+    []
+  : [
+      '',
+      `class drift (${result.drift.length}):`,
+      ...result.drift.map(
+        (entry) => `  ~ ${entry.file}  ${entry.actual} → ${entry.expected}`
+      ),
+    ];
+
+const renderOverlapLines = (result: ManifestDrift): string[] =>
+  result.classifierOverlaps.length === 0 ?
+    []
+  : [
+      '',
+      `classifier-set overlaps with release-exclude (${result.classifierOverlaps.length}):`,
+      ...result.classifierOverlaps.map(
+        (overlap) =>
+          `  ${overlap.setName}: ${overlap.entry} (matched by /${overlap.excludePattern}/)`
+      ),
+    ];
+
 const renderCheckReport = (
   result: ManifestDrift,
   jsonMode: boolean
 ): string => {
   if (jsonMode) return `${JSON.stringify(result, null, 2)}\n`;
 
-  const out: string[] = [];
   const total =
     result.missing.length +
     result.extra.length +
@@ -342,60 +407,17 @@ const renderCheckReport = (
     (result.versionDrift === undefined ? 0 : 1);
 
   if (total === 0) {
-    out.push(
-      'release manifest --check: clean (manifest fresh, classifier sets coherent)'
-    );
-
-    return `${out.join('\n')}\n`;
+    return 'release manifest --check: clean (manifest fresh, classifier sets coherent)\n';
   }
 
-  out.push(`release manifest --check: ${total} issue(s)`);
-
-  if (result.versionDrift !== undefined) {
-    out.push(
-      '',
-      'version drift:',
-      `  manifest version: ${result.versionDrift.actual}`,
-      `  .gaia/VERSION:    ${result.versionDrift.expected}`
-    );
-  }
-
-  if (result.missing.length > 0) {
-    out.push('', `missing from manifest (${result.missing.length}):`);
-
-    for (const entry of result.missing) {
-      out.push(`  + ${entry.file}  [${entry.expected}]`);
-    }
-  }
-
-  if (result.extra.length > 0) {
-    out.push('', `extra in manifest (${result.extra.length}):`);
-
-    for (const entry of result.extra) {
-      out.push(`  - ${entry.file}  [${entry.actual}]`);
-    }
-  }
-
-  if (result.drift.length > 0) {
-    out.push('', `class drift (${result.drift.length}):`);
-
-    for (const entry of result.drift) {
-      out.push(`  ~ ${entry.file}  ${entry.actual} → ${entry.expected}`);
-    }
-  }
-
-  if (result.classifierOverlaps.length > 0) {
-    out.push(
-      '',
-      `classifier-set overlaps with release-exclude (${result.classifierOverlaps.length}):`
-    );
-
-    for (const overlap of result.classifierOverlaps) {
-      out.push(
-        `  ${overlap.setName}: ${overlap.entry} (matched by /${overlap.excludePattern}/)`
-      );
-    }
-  }
+  const out = [
+    `release manifest --check: ${total} issue(s)`,
+    ...renderVersionDriftLines(result),
+    ...renderMissingLines(result),
+    ...renderExtraLines(result),
+    ...renderDriftLines(result),
+    ...renderOverlapLines(result),
+  ];
 
   return `${out.join('\n')}\n`;
 };
@@ -500,7 +522,9 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
+  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
+  // which honestly reflects that `index` can run past the end of argv.
+  const value = argv.at(index);
 
   if (value === undefined)
     return {message: `${flag} requires a value`, ok: false};
@@ -523,25 +547,15 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       if (!taken.ok) return taken;
       outPath = taken.value;
       index += 1;
-      continue;
-    }
-
-    if (token === '--stdout') {
+    } else if (token === '--stdout') {
       stdout = true;
-      continue;
-    }
-
-    if (token === '--check') {
+    } else if (token === '--check') {
       check = true;
-      continue;
-    }
-
-    if (token === '--json') {
+    } else if (token === '--json') {
       json = true;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   if (check && (outPath !== undefined || stdout)) {
@@ -561,6 +575,57 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 type RunOptions = {
   cwd?: string;
   generatedAt?: string;
+};
+
+const tryBuildManifestOrReport = (
+  cwd: string,
+  generatedAt: string | undefined
+): null | {manifest: ManifestShape; repoRoot: string} => {
+  try {
+    const repoRoot = resolveRepoRoot(cwd);
+    const manifest = buildManifest(cwd, {generatedAt, repoRoot});
+
+    return {manifest, repoRoot};
+  } catch (error) {
+    structuredError({
+      code: 'manifest_build_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release manifest',
+    });
+
+    return null;
+  }
+};
+
+const resolveOutputTarget = (
+  cwd: string,
+  repoRoot: string,
+  outPath: string | undefined
+): string => {
+  if (outPath === undefined) {
+    return path.join(repoRoot, '.gaia', 'manifest.json');
+  }
+
+  return path.isAbsolute(outPath) ? outPath : path.join(cwd, outPath);
+};
+
+const tryWriteManifestOrReport = (
+  target: string,
+  serialized: string
+): boolean => {
+  try {
+    atomicWriteFileSync(target, serialized);
+
+    return true;
+  } catch (error) {
+    structuredError({
+      code: 'manifest_write_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release manifest',
+    });
+
+    return false;
+  }
 };
 
 export const run = (
@@ -591,25 +656,11 @@ export const run = (
     return runCheck(cwd, options.generatedAt, parsed.flags.json);
   }
 
-  let manifest: ManifestShape;
-  let repoRoot: string;
+  const built = tryBuildManifestOrReport(cwd, options.generatedAt);
 
-  try {
-    repoRoot = resolveRepoRoot(cwd);
-    manifest = buildManifest(cwd, {
-      generatedAt: options.generatedAt,
-      repoRoot,
-    });
-  } catch (error) {
-    structuredError({
-      code: 'manifest_build_failed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release manifest',
-    });
+  if (built === null) return UNEXPECTED_EXIT;
 
-    return UNEXPECTED_EXIT;
-  }
-
+  const {manifest, repoRoot} = built;
   const serialized = serialize(manifest);
 
   if (parsed.flags.stdout) {
@@ -618,12 +669,7 @@ export const run = (
     return EXIT_CODES.OK;
   }
 
-  const target =
-    parsed.flags.outPath ?
-      path.isAbsolute(parsed.flags.outPath) ?
-        parsed.flags.outPath
-      : path.join(cwd, parsed.flags.outPath)
-    : path.join(repoRoot, '.gaia', 'manifest.json');
+  const target = resolveOutputTarget(cwd, repoRoot, parsed.flags.outPath);
 
   if (!existsSync(path.dirname(target))) {
     structuredError({
@@ -635,17 +681,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  try {
-    atomicWriteFileSync(target, serialized);
-  } catch (error) {
-    structuredError({
-      code: 'manifest_write_failed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release manifest',
-    });
-
-    return UNEXPECTED_EXIT;
-  }
+  if (!tryWriteManifestOrReport(target, serialized)) return UNEXPECTED_EXIT;
 
   // Brief stdout summary: file count + per-class breakdown.
   const counts: Record<ManifestClass, number> = {

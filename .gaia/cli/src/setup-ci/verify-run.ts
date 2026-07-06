@@ -109,90 +109,128 @@ const printHuman = (output: VerifyOutput): void => {
   );
 };
 
-export const run = async (
+type NumericFlagResult = {error: string} | {value: null | number};
+
+type ParsedVerifyArgs = {
+  json: boolean;
+  pollIntervalMs: number;
+  timeoutSeconds: number;
+  workflowFile: string;
+};
+
+// Shared by the --timeout-seconds / --poll-interval-ms branches below (kept
+// `applyVerifyRunToken`'s cognitive complexity under the frozen limit).
+const parseNumericFlag = (
   argv: readonly string[],
-  options: RunOptions = {}
-): Promise<number> => {
-  let json = false;
-  let workflowFile: string | undefined;
-  let timeoutSeconds: null | number = DEFAULT_TIMEOUT_SECONDS;
-  let pollIntervalMs: null | number = DEFAULT_POLL_INTERVAL_MS;
+  index: number,
+  flag: string
+): NumericFlagResult => {
+  const raw = argv.at(index + 1);
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
+  if (raw === undefined) return {error: `${flag} requires a value`};
 
-    if (HELP_TOKENS.has(token)) {
-      process.stdout.write(HELP_TEXT);
+  return {value: parsePositiveInteger(raw)};
+};
 
-      return EXIT_CODES.OK;
-    }
+type ApplyVerifyTokenResult = {consumed: number} | {exitCode: number};
 
-    if (token === '--json') {
-      json = true;
+type VerifyRunState = {
+  json: boolean;
+  pollIntervalMs: null | number;
+  timeoutSeconds: null | number;
+  workflowFile: string | undefined;
+};
 
-      continue;
-    }
+// One token's worth of dispatch, extracted so `parseVerifyRunArgs`'s own
+// loop stays a flat dispatch table (kept its cognitive complexity under the
+// frozen limit). Every branch here returns, so this reads as a flat guard-
+// clause sequence rather than an if/else-if chain nested inside a loop.
+const applyVerifyRunToken = (
+  argv: readonly string[],
+  index: number,
+  state: VerifyRunState
+): ApplyVerifyTokenResult => {
+  const token = argv[index];
 
-    if (token === '--timeout-seconds') {
-      const value = argv[index + 1];
+  if (HELP_TOKENS.has(token)) {
+    process.stdout.write(HELP_TEXT);
 
-      if (value === undefined) {
-        structuredError({
-          code: 'invalid_arguments',
-          message: '--timeout-seconds requires a value',
-          subcommand: 'setup-ci verify-run',
-        });
+    return {exitCode: EXIT_CODES.OK};
+  }
 
-        return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-      }
-      timeoutSeconds = parsePositiveInteger(value);
-      index += 1;
+  if (token === '--json') {
+    state.json = true;
 
-      continue;
-    }
+    return {consumed: 0};
+  }
 
-    if (token === '--poll-interval-ms') {
-      const value = argv[index + 1];
+  if (token === '--timeout-seconds' || token === '--poll-interval-ms') {
+    const result = parseNumericFlag(argv, index, token);
 
-      if (value === undefined) {
-        structuredError({
-          code: 'invalid_arguments',
-          message: '--poll-interval-ms requires a value',
-          subcommand: 'setup-ci verify-run',
-        });
-
-        return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-      }
-      pollIntervalMs = parsePositiveInteger(value);
-      index += 1;
-
-      continue;
-    }
-
-    if (token.startsWith('--')) {
+    if ('error' in result) {
       structuredError({
         code: 'invalid_arguments',
-        message: `unknown flag: ${token}`,
+        message: result.error,
         subcommand: 'setup-ci verify-run',
       });
 
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
     }
 
-    if (workflowFile === undefined) {
-      workflowFile = token;
-
-      continue;
+    if (token === '--timeout-seconds') {
+      state.timeoutSeconds = result.value;
+    } else {
+      state.pollIntervalMs = result.value;
     }
 
+    return {consumed: 1};
+  }
+
+  if (token.startsWith('--')) {
     structuredError({
       code: 'invalid_arguments',
-      message: `unexpected argument: ${token}`,
+      message: `unknown flag: ${token}`,
       subcommand: 'setup-ci verify-run',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
+
+  if (state.workflowFile === undefined) {
+    state.workflowFile = token;
+
+    return {consumed: 0};
+  }
+
+  structuredError({
+    code: 'invalid_arguments',
+    message: `unexpected argument: ${token}`,
+    subcommand: 'setup-ci verify-run',
+  });
+
+  return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+};
+
+// Extracted out of `run` (kept its cognitive complexity under the frozen
+// limit): argv parsing only, independent of the gh orchestration below.
+const parseVerifyRunArgs = (
+  argv: readonly string[]
+): ParsedVerifyArgs | {exitCode: number} => {
+  const state: VerifyRunState = {
+    json: false,
+    pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+    timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
+    workflowFile: undefined,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const result = applyVerifyRunToken(argv, index, state);
+
+    if ('exitCode' in result) return result;
+    index += result.consumed;
+  }
+
+  const {json, pollIntervalMs, timeoutSeconds, workflowFile} = state;
 
   if (workflowFile === undefined) {
     structuredError({
@@ -201,7 +239,7 @@ export const run = async (
       subcommand: 'setup-ci verify-run',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
   if (timeoutSeconds === null) {
@@ -211,7 +249,7 @@ export const run = async (
       subcommand: 'setup-ci verify-run',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
   if (pollIntervalMs === null) {
@@ -221,13 +259,17 @@ export const run = async (
       subcommand: 'setup-ci verify-run',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
-  const cwd = options.cwd ?? process.cwd();
+  return {json, pollIntervalMs, timeoutSeconds, workflowFile};
+};
 
-  // Step 0: resolve the repository's default branch. Hardcoding `main`
-  // breaks repos whose default branch differs (e.g. `master`, `trunk`).
+// Step 0: resolve the repository's default branch. Hardcoding `main`
+// breaks repos whose default branch differs (e.g. `master`, `trunk`).
+const resolveDefaultBranch = async (
+  cwd: string
+): Promise<{branch: string} | {exitCode: number}> => {
   const repoViewResult = await runGh({
     args: ['repo', 'view', '--json', 'defaultBranchRef'],
     cwd,
@@ -240,7 +282,7 @@ export const run = async (
       subcommand: 'setup-ci verify-run',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
   const defaultBranch = parseDefaultBranch(repoViewResult.stdout);
@@ -252,17 +294,26 @@ export const run = async (
       subcommand: 'setup-ci verify-run',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
-  // Captured before step 1 so the race-window guard below can compare
-  // the picked run's `createdAt` against the moment we asked GH to
-  // start one. Any run created earlier than this minus a small fudge
-  // is suspicious (someone else dispatched between our list call and
-  // ours actually appearing).
-  const triggerTime = Date.now();
+  return {branch: defaultBranch};
+};
 
-  // Step 1: trigger the run.
+type TriggerAndCaptureArgs = {
+  cwd: string;
+  defaultBranch: string;
+  triggerTime: number;
+  workflowFile: string;
+};
+
+// Steps 1-2: trigger the workflow_dispatch run, then capture the most
+// recent run id for the workflow (with the race-window soft guard).
+const triggerAndCaptureRunId = async (
+  args: TriggerAndCaptureArgs
+): Promise<{exitCode: number} | {runId: string}> => {
+  const {cwd, defaultBranch, triggerTime, workflowFile} = args;
+
   const triggerResult = await runGh({
     args: ['workflow', 'run', workflowFile, '--ref', defaultBranch],
     cwd,
@@ -276,10 +327,9 @@ export const run = async (
       workflow: workflowFile,
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
-  // Step 2: capture the most recent run id for the workflow.
   const listResult = await runGh({
     args: [
       'run',
@@ -301,14 +351,12 @@ export const run = async (
       workflow: workflowFile,
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
-
-  let runId: string;
 
   try {
     const parsed = JSON.parse(listResult.stdout) as RunListEntry[];
-    const first = parsed[0];
+    const first = parsed.at(0);
 
     if (first === undefined) {
       structuredError({
@@ -318,9 +366,10 @@ export const run = async (
         workflow: workflowFile,
       });
 
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
     }
-    runId = String(first.databaseId);
+
+    const runId = String(first.databaseId);
 
     if (first.createdAt !== undefined) {
       const createdAtMs = new Date(first.createdAt).getTime();
@@ -336,6 +385,8 @@ export const run = async (
         );
       }
     }
+
+    return {runId};
   } catch (error) {
     structuredError({
       code: 'run_list_malformed',
@@ -343,18 +394,31 @@ export const run = async (
       subcommand: 'setup-ci verify-run',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
+};
 
-  // Step 3: poll until completed or timeout.
+type PollRunArgs = {
+  cwd: string;
+  pollIntervalMs: number;
+  runId: string;
+  timeoutSeconds: number;
+};
+
+type PollRunResult =
+  | {conclusion: null | string; timedOut: boolean; url: null | string}
+  | {exitCode: number};
+
+// Step 3: poll until completed or timeout.
+const pollRunUntilDone = async (args: PollRunArgs): Promise<PollRunResult> => {
+  const {cwd, pollIntervalMs, runId, timeoutSeconds} = args;
   const deadline = Date.now() + timeoutSeconds * 1000;
-  let conclusion: null | string = null;
   let url: null | string = null;
-  let timedOut = false;
 
   // First call before any sleep so a fast-completing run resolves
   // immediately in tests.
-  while (true) {
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- intentional sequential poll
     const view = await runGh({
       args: ['run', 'view', runId, '--json', 'status,conclusion,url'],
       cwd,
@@ -370,7 +434,7 @@ export const run = async (
         subcommand: 'setup-ci verify-run',
       });
 
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
     }
 
     let payload: RunViewPayload;
@@ -385,29 +449,69 @@ export const run = async (
         subcommand: 'setup-ci verify-run',
       });
 
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
     }
 
     url = payload.url ?? url;
 
     if (payload.status === 'completed') {
-      conclusion = payload.conclusion ?? null;
-      break;
+      return {conclusion: payload.conclusion ?? null, timedOut: false, url};
     }
 
     if (Date.now() >= deadline) {
-      timedOut = true;
-      break;
+      return {conclusion: null, timedOut: true, url};
     }
 
+    // eslint-disable-next-line no-await-in-loop -- intentional sequential poll
     await sleep(pollIntervalMs);
   }
+};
+
+export const run = async (
+  argv: readonly string[],
+  options: RunOptions = {}
+): Promise<number> => {
+  const parsed = parseVerifyRunArgs(argv);
+
+  if ('exitCode' in parsed) return parsed.exitCode;
+
+  const {json, pollIntervalMs, timeoutSeconds, workflowFile} = parsed;
+  const cwd = options.cwd ?? process.cwd();
+
+  const branchResult = await resolveDefaultBranch(cwd);
+
+  if ('exitCode' in branchResult) return branchResult.exitCode;
+
+  // Captured before step 1 so the race-window guard below can compare
+  // the picked run's `createdAt` against the moment we asked GH to
+  // start one. Any run created earlier than this minus a small fudge
+  // is suspicious (someone else dispatched between our list call and
+  // ours actually appearing).
+  const triggerTime = Date.now();
+
+  const triggered = await triggerAndCaptureRunId({
+    cwd,
+    defaultBranch: branchResult.branch,
+    triggerTime,
+    workflowFile,
+  });
+
+  if ('exitCode' in triggered) return triggered.exitCode;
+
+  const polled = await pollRunUntilDone({
+    cwd,
+    pollIntervalMs,
+    runId: triggered.runId,
+    timeoutSeconds,
+  });
+
+  if ('exitCode' in polled) return polled.exitCode;
 
   const output: VerifyOutput = {
-    conclusion: timedOut ? 'polling_timeout' : conclusion,
-    run_id: runId,
-    url,
-    verified: !timedOut && conclusion === 'success',
+    conclusion: polled.timedOut ? 'polling_timeout' : polled.conclusion,
+    run_id: triggered.runId,
+    url: polled.url,
+    verified: !polled.timedOut && polled.conclusion === 'success',
   };
 
   if (json) {

@@ -1,3 +1,6 @@
+/* eslint-disable sonarjs/publicly-writable-directories -- the *constant-string*
+   tests exercise path-construction logic with `/tmp/repo` synthetic prefixes;
+   nothing is written to disk. */
 import {describe, expect, test} from 'vitest';
 import path from 'node:path';
 import {

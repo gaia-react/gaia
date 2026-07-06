@@ -68,7 +68,9 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
+  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
+  // which honestly reflects that `index` can run past the end of argv.
+  const value = argv.at(index);
 
   if (value === undefined)
     return {message: `${flag} requires a value`, ok: false};
@@ -88,10 +90,9 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       if (!taken.ok) return taken;
       allowedBranch = taken.value;
       index += 1;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   return {flags: {allowedBranch}, ok: true};
@@ -109,14 +110,14 @@ const expectSuccess = (
   }
 
   if ((result.status ?? -1) !== 0) {
-    const stderr = (result.stderr ?? '').trim();
+    const stderr = result.stderr.trim();
 
     throw new Error(
       `${command} ${args.join(' ')} exited ${result.status ?? -1}: ${stderr}`
     );
   }
 
-  return result.stdout ?? '';
+  return result.stdout;
 };
 
 const refuse = (message: string): number => {
@@ -150,10 +151,12 @@ const runWikiStateJson: WikiStateProbe = (cwd) => {
 
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const commitsAhead = parsed.commits_ahead;
-    const stateSha = parsed.state_sha;
-    const {reachable} = parsed;
-    const suggestedBase = parsed.suggested_base;
+    const {
+      commits_ahead: commitsAhead,
+      reachable,
+      state_sha: stateSha,
+      suggested_base: suggestedBase,
+    } = parsed;
 
     if (typeof commitsAhead !== 'number') return null;
 
@@ -192,7 +195,7 @@ const resolveCommit = (
 
   if (resolved.error !== undefined || (resolved.status ?? -1) !== 0) return '';
 
-  return (resolved.stdout ?? '').trim();
+  return resolved.stdout.trim();
 };
 
 /**
@@ -214,7 +217,7 @@ const readDriftSubjects = (
 
   if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
 
-  return (result.stdout ?? '').split('\n').flatMap((line) => {
+  return result.stdout.split('\n').flatMap((line) => {
     const trimmed = line.trim();
 
     return trimmed.length > 0 ? [trimmed] : [];
@@ -239,7 +242,7 @@ const countDriftCommits = (
   });
 
   if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
-  const parsed = Number.parseInt((result.stdout ?? '').trim(), 10);
+  const parsed = Number.parseInt(result.stdout.trim(), 10);
 
   return Number.isInteger(parsed) ? parsed : null;
 };
@@ -249,6 +252,89 @@ type RunOptions = {
   runner?: CommandRunner;
   /** Override the wiki-state probe for tests. */
   wikiStateProbe?: WikiStateProbe;
+};
+
+const tryReadBranchState = (
+  runner: CommandRunner,
+  cwd: string
+): null | {branch: string; status: string} => {
+  try {
+    const branch = expectSuccess(
+      runner('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {cwd}),
+      'git',
+      ['rev-parse', '--abbrev-ref', 'HEAD']
+    ).trim();
+    const status = expectSuccess(
+      runner('git', ['status', '--porcelain=v1', '-uall'], {cwd}),
+      'git',
+      ['status', '--porcelain=v1', '-uall']
+    );
+
+    return {branch, status};
+  } catch (error) {
+    process.stderr.write(
+      `preflight: ${error instanceof Error ? error.message : String(error)}\n`
+    );
+
+    return null;
+  }
+};
+
+type DriftWindow = {base: string; count: number};
+
+/**
+ * Resolve the effective drift window. On the reachable path the wiki-state
+ * JSON's `commits_ahead`/`state_sha` are authoritative. On the orphaned path
+ * (`reachable:false`, the normal post-squash-merge condition) the JSON
+ * hardcodes `commits_ahead:0`, blind to any un-evaluated window; recover the
+ * window from `suggested_base..HEAD`, the reachable baseline `gaia wiki state`
+ * reports for exactly this case. `suggested_base` is `''` on the reachable
+ * path, so the recovery branch is inert there and behavior is unchanged.
+ * `null` when the recovery read fails: a git failure counting the recovered
+ * window can't prove the wiki is current.
+ */
+const resolveDriftWindow = (
+  runner: CommandRunner,
+  cwd: string,
+  wikiState: WikiState
+): DriftWindow | null => {
+  if (wikiState.reachable || wikiState.suggested_base === '') {
+    return {base: wikiState.state_sha, count: wikiState.commits_ahead};
+  }
+
+  const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
+
+  if (recovered === null) return null;
+
+  // Inspect `suggested_base..HEAD`, NOT the orphaned `state_sha`, whose
+  // `..HEAD` range is topologically unreliable after a squash rewrites the SHA.
+  return {base: wikiState.suggested_base, count: recovered};
+};
+
+/**
+ * True when every commit in the drift window is a wiki-sync squash artifact.
+ * Documented bypass (wiki/concepts/Release Workflow.md): a PR squash-merge
+ * rewrites the commit SHA, so `/gaia-wiki sync` → merge leaves the state
+ * pointer one commit behind even when the wiki content is current. The
+ * `wiki:`-subject prefix is the same marker `gaia wiki commit-classify` uses
+ * to flag self-referential sync commits. Substantive (non-`wiki:`) drift is
+ * never benign; the wiki is genuinely stale.
+ */
+const isDriftBenign = (
+  runner: CommandRunner,
+  cwd: string,
+  driftBase: string
+): boolean => {
+  const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
+
+  return (
+    driftSubjects !== null &&
+    // Guards the vacuous-truth case: zero subjects with a nonzero drift count
+    // means the range count disagrees with `git log`, a broken state, not a
+    // benign one.
+    driftSubjects.length > 0 &&
+    driftSubjects.every((subject) => subject.startsWith('wiki:'))
+  );
 };
 
 export const run = (
@@ -277,35 +363,17 @@ export const run = (
   const runner = options.runner ?? defaultRunner;
   const wikiStateProbe = options.wikiStateProbe ?? runWikiStateJson;
 
-  let branch: string;
-  let status: string;
+  const branchState = tryReadBranchState(runner, cwd);
 
-  try {
-    branch = expectSuccess(
-      runner('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {cwd}),
-      'git',
-      ['rev-parse', '--abbrev-ref', 'HEAD']
-    ).trim();
-    status = expectSuccess(
-      runner('git', ['status', '--porcelain=v1', '-uall'], {cwd}),
-      'git',
-      ['status', '--porcelain=v1', '-uall']
-    );
-  } catch (error) {
-    process.stderr.write(
-      `preflight: ${error instanceof Error ? error.message : String(error)}\n`
-    );
+  if (branchState === null) return UNEXPECTED_EXIT;
 
-    return UNEXPECTED_EXIT;
-  }
-
-  if (branch !== parsed.flags.allowedBranch) {
+  if (branchState.branch !== parsed.flags.allowedBranch) {
     return refuse(
-      `preflight: must be on ${parsed.flags.allowedBranch} (current: ${branch})`
+      `preflight: must be on ${parsed.flags.allowedBranch} (current: ${branchState.branch})`
     );
   }
 
-  if (status.trim().length > 0) {
+  if (branchState.status.trim().length > 0) {
     return refuse('preflight: working tree is dirty; commit or stash first');
   }
 
@@ -317,59 +385,23 @@ export const run = (
     );
   }
 
-  // Resolve the effective drift window. On the reachable path the wiki-state
-  // JSON's `commits_ahead`/`state_sha` are authoritative. On the orphaned path
-  // (`reachable:false`, the normal post-squash-merge condition) the JSON
-  // hardcodes `commits_ahead:0`, blind to any un-evaluated window; recover the
-  // window from `suggested_base..HEAD`, the reachable baseline `gaia wiki state`
-  // reports for exactly this case. `suggested_base` is `''` on the reachable
-  // path, so the recovery branch is inert there and behavior is unchanged.
-  let driftCount = wikiState.commits_ahead;
-  let driftBase = wikiState.state_sha;
+  const driftWindow = resolveDriftWindow(runner, cwd, wikiState);
 
-  if (!wikiState.reachable && wikiState.suggested_base !== '') {
-    const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
-
-    // A git failure counting the recovered window can't prove the wiki is
-    // current; refuse rather than green-light a release on an unknown window.
-    if (recovered === null) {
-      return refuse(
-        `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
-      );
-    }
-
-    driftCount = recovered;
-    // Inspect `suggested_base..HEAD`, NOT the orphaned `state_sha`, whose
-    // `..HEAD` range is topologically unreliable after a squash rewrites the SHA.
-    driftBase = wikiState.suggested_base;
+  if (driftWindow === null) {
+    return refuse(
+      `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
+    );
   }
 
-  if (driftCount !== 0) {
-    // Documented bypass (wiki/concepts/Release Workflow.md): drift made up
-    // entirely of wiki-sync squash artifacts is benign. A PR squash-merge
-    // rewrites the commit SHA, so `/gaia-wiki sync` → merge leaves the state
-    // pointer one commit behind even when the wiki content is current. The
-    // `wiki:`-subject prefix is the same marker `gaia wiki commit-classify`
-    // uses to flag self-referential sync commits. Without this the gate is
-    // unsatisfiable for the standard release flow. Substantive (non-`wiki:`)
-    // drift still STOPs; the wiki is genuinely stale.
-    const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
-    const benign =
-      driftSubjects !== null &&
-      // Guards the vacuous-truth case: zero subjects with `driftCount > 0`
-      // means the range count disagrees with `git log`, a broken state, not
-      // a benign one.
-      driftSubjects.length > 0 &&
-      driftSubjects.every((subject) => subject.startsWith('wiki:'));
-
-    if (!benign) {
+  if (driftWindow.count !== 0) {
+    if (!isDriftBenign(runner, cwd, driftWindow.base)) {
       return refuse(
-        `preflight: wiki is ${driftCount} commits behind HEAD; run /gaia-wiki sync first`
+        `preflight: wiki is ${driftWindow.count} commits behind HEAD; run /gaia-wiki sync first`
       );
     }
 
     process.stderr.write(
-      `preflight: wiki drift is ${driftCount} wiki-sync squash artifact(s); proceeding (content current)\n`
+      `preflight: wiki drift is ${driftWindow.count} wiki-sync squash artifact(s); proceeding (content current)\n`
     );
   }
 

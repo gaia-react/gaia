@@ -181,7 +181,9 @@ describe('wiki dead-paths', () => {
 
     const dead = findDeadPaths(sandbox.root);
     expect(dead).toHaveLength(2);
-    expect(dead.map((d) => d.path).sort()).toEqual([
+    expect(
+      dead.map((d) => d.path).toSorted((a, b) => a.localeCompare(b))
+    ).toEqual([
       '.gaia/cli/src/missing/index.ts',
       'app/components/Removed/index.tsx',
     ]);
@@ -194,7 +196,9 @@ describe('wiki dead-paths', () => {
     );
 
     const dead = findDeadPaths(sandbox.root);
-    expect(dead.map((d) => d.path).sort()).toEqual([
+    expect(
+      dead.map((d) => d.path).toSorted((a, b) => a.localeCompare(b))
+    ).toEqual([
       '../../../studio/strategy/bar.md',
       'studio/decisions/foo.md',
       'website/src/sections/baz.md',

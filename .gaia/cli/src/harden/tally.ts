@@ -95,6 +95,21 @@ const parseGhPr = (value: unknown): GhPr | null => {
   return {comments, number: v.number};
 };
 
+// Builds a tally record from a parsed gh PR, taking the LATEST comment that
+// carries a parseable findings block (a re-run audit supersedes an earlier
+// one on the same PR). Returns null when no comment carries a block.
+const recordFromGhPr = (pr: GhPr): null | TallyPrRecord => {
+  let findings: TallyPrRecord['findings'] | undefined;
+
+  for (const comment of pr.comments) {
+    const block = parseFindingsBlock(comment.body);
+
+    if (block !== null) findings = block;
+  }
+
+  return findings === undefined ? null : {findings, pr_number: pr.number};
+};
+
 /**
  * Reads the merged-PR window via gh. Returns one record per PR that carries a
  * parseable findings block (the latest such comment wins so a re-run audit
@@ -138,22 +153,9 @@ const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
 
   for (const value of parsed) {
     const pr = parseGhPr(value);
+    const record = pr === null ? null : recordFromGhPr(pr);
 
-    if (pr === null) continue;
-
-    // The latest comment carrying a block wins (a re-run audit supersedes an
-    // earlier one on the same PR).
-    let findings: TallyPrRecord['findings'] | undefined;
-
-    for (const comment of pr.comments) {
-      const block = parseFindingsBlock(comment.body);
-
-      if (block !== null) findings = block;
-    }
-
-    if (findings !== undefined) {
-      records.push({findings, pr_number: pr.number});
-    }
+    if (record !== null) records.push(record);
   }
 
   return {ghOk: true, prs: records};

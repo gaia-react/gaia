@@ -3,7 +3,7 @@ import {writeFileSync} from 'node:fs';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../finalize.js';
-import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import {assertStatusOk, setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
@@ -61,10 +61,9 @@ describe('setup-ci finalize', () => {
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.config.setup_complete).toBe(true);
-    }
+    expect(result.config.setup_complete).toBe(true);
 
     const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
       string,

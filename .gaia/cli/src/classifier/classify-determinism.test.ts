@@ -62,8 +62,8 @@ type Classification = {
 };
 
 // Classify a real file on disk by its repo-relative path.
-const classifyFile = (repoRelPath: string): Classification => {
-  const out = execFileSync('node', [HELPER, repoRelPath], {
+const classifyFile = (repoRelativePath: string): Classification => {
+  const out = execFileSync('node', [HELPER, repoRelativePath], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
     env: HELPER_ENV,

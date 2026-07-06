@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import type {MockInstance} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   chmodSync,
@@ -98,46 +99,88 @@ const ghViewMerged = JSON.stringify({
 
 const ghCreateUrl = 'https://github.com/owner/repo/pull/137\n';
 
+// Hoisted to module scope (unicorn/consistent-function-scoping): it closes
+// over no per-test state, only the module-level fixtures above.
+const ghImpl: RunFn = (args) => {
+  const [a, b] = args;
+
+  if (a === 'pr' && b === 'view') {
+    return {exitCode: 0, stderr: '', stdout: ghViewMerged};
+  }
+
+  if (a === 'pr' && b === 'create') {
+    return {exitCode: 0, stderr: '', stdout: ghCreateUrl};
+  }
+
+  if (a === 'pr' && b === 'merge') {
+    return {exitCode: 0, stderr: '', stdout: ''};
+  }
+
+  return {exitCode: 0, stderr: '', stdout: ''};
+};
+
+const gitRevertConflictImpl: RunFn = (args) => {
+  if (args[0] === 'revert' && args[1] === '--no-edit') {
+    return {exitCode: 1, stderr: 'CONFLICT (content)', stdout: ''};
+  }
+
+  return {exitCode: 0, stderr: '', stdout: ''};
+};
+
+const gitPushFailureImpl: RunFn = (args) => {
+  if (args[0] === 'symbolic-ref') {
+    return {exitCode: 0, stderr: '', stdout: 'main\n'};
+  }
+
+  if (args[0] === 'push') {
+    return {exitCode: 1, stderr: 'remote rejected', stdout: ''};
+  }
+
+  return {exitCode: 0, stderr: '', stdout: ''};
+};
+
+const ghCreateWithBannerImpl: RunFn = (args) => {
+  if (args[0] === 'pr' && args[1] === 'view') {
+    return {exitCode: 0, stderr: '', stdout: ghViewMerged};
+  }
+
+  if (args[0] === 'pr' && args[1] === 'create') {
+    return {
+      exitCode: 0,
+      stderr: '',
+      stdout:
+        'Creating pull request for ...\nhttps://github.com/owner/repo/pull/137\n',
+    };
+  }
+
+  return {exitCode: 0, stderr: '', stdout: ''};
+};
+
+// Narrows a `withRevertLedgerLock` result without an `if` inside the test
+// body (vitest/no-conditional-in-test forbids that); called from tests to
+// get both the runtime check and the TS type narrowing.
+function assertLocked<T>(
+  result: {locked: false} | {locked: true; value: T}
+): asserts result is {locked: true; value: T} {
+  if (!result.locked) {
+    throw new Error('expected the ledger lock to be acquired');
+  }
+}
+
 describe('ci-revert', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
-  let ghSpy: ReturnType<typeof vi.spyOn> & {
-    mock: {calls: [readonly string[], unknown?][]};
-    mockImplementation: (impl: RunFn) => unknown;
-  };
-  let gitSpy: ReturnType<typeof vi.spyOn> & {
-    mock: {calls: [readonly string[], unknown?][]};
-    mockImplementation: (impl: RunFn) => unknown;
-  };
+  let ghSpy: MockInstance<typeof runProcess.runGh>;
+  let gitSpy: MockInstance<typeof runProcess.runGit>;
 
   beforeEach(() => {
     sandbox = setupSandbox();
     stdio = captureStdio();
 
-    const ghImpl: RunFn = (args) => {
-      const [a, b] = args;
-
-      if (a === 'pr' && b === 'view') {
-        return {exitCode: 0, stderr: '', stdout: ghViewMerged};
-      }
-
-      if (a === 'pr' && b === 'create') {
-        return {exitCode: 0, stderr: '', stdout: ghCreateUrl};
-      }
-
-      if (a === 'pr' && b === 'merge') {
-        return {exitCode: 0, stderr: '', stdout: ''};
-      }
-
-      return {exitCode: 0, stderr: '', stdout: ''};
-    };
-
-    ghSpy = vi
-      .spyOn(runProcess, 'runGh')
-      .mockImplementation(ghImpl) as typeof ghSpy;
+    ghSpy = vi.spyOn(runProcess, 'runGh').mockImplementation(ghImpl);
     gitSpy = vi
       .spyOn(runProcess, 'runGit')
-      .mockReturnValue({exitCode: 0, stderr: '', stdout: ''}) as typeof gitSpy;
+      .mockReturnValue({exitCode: 0, stderr: '', stdout: ''});
   });
 
   afterEach(() => {
@@ -229,8 +272,8 @@ describe('ci-revert', () => {
       expect(exit).not.toBe(0);
 
       // Hard cap: zero gh / git invocations.
-      expect(ghSpy.mock.calls.length).toBe(0);
-      expect(gitSpy.mock.calls.length).toBe(0);
+      expect(ghSpy.mock.calls).toHaveLength(0);
+      expect(gitSpy.mock.calls).toHaveLength(0);
 
       const printed = JSON.parse(stdio.out.join('').trim()) as Record<
         string,
@@ -243,8 +286,8 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99']?.status).toBe('open');
-      expect(ledger.attempts['99']?.revert_pr).toBe(137);
+      expect(ledger.attempts['99'].status).toBe('open');
+      expect(ledger.attempts['99'].revert_pr).toBe(137);
     });
 
     test('exits with pr_not_merged when mergeCommit is null', () => {
@@ -272,8 +315,8 @@ describe('ci-revert', () => {
       expect(exit).not.toBe(0);
 
       // Only gh pr view was called; nothing else.
-      expect(ghSpy.mock.calls.length).toBe(1);
-      expect(gitSpy.mock.calls.length).toBe(0);
+      expect(ghSpy.mock.calls).toHaveLength(1);
+      expect(gitSpy.mock.calls).toHaveLength(0);
 
       const printed = JSON.parse(stdio.out.join('').trim()) as Record<
         string,
@@ -282,7 +325,7 @@ describe('ci-revert', () => {
       expect(printed.error).toBe('pr_not_merged');
 
       // Ledger never written.
-      expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow();
+      expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow(/ENOENT/);
     });
 
     test('rejects when --pr is missing', () => {
@@ -300,14 +343,7 @@ describe('ci-revert', () => {
     });
 
     test('emits revert_failed on git revert conflict', () => {
-      const impl: RunFn = (args) => {
-        if (args[0] === 'revert' && args[1] === '--no-edit') {
-          return {exitCode: 1, stderr: 'CONFLICT (content)', stdout: ''};
-        }
-
-        return {exitCode: 0, stderr: '', stdout: ''};
-      };
-      gitSpy.mockImplementation(impl);
+      gitSpy.mockImplementation(gitRevertConflictImpl);
 
       const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
         cwd: sandbox.root,
@@ -323,18 +359,7 @@ describe('ci-revert', () => {
     });
 
     test('rolls back the local branch when git push fails', () => {
-      const impl: RunFn = (args) => {
-        if (args[0] === 'symbolic-ref') {
-          return {exitCode: 0, stderr: '', stdout: 'main\n'};
-        }
-
-        if (args[0] === 'push') {
-          return {exitCode: 1, stderr: 'remote rejected', stdout: ''};
-        }
-
-        return {exitCode: 0, stderr: '', stdout: ''};
-      };
-      gitSpy.mockImplementation(impl);
+      gitSpy.mockImplementation(gitPushFailureImpl);
 
       const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
         cwd: sandbox.root,
@@ -364,7 +389,7 @@ describe('ci-revert', () => {
       expect(deleteBranch).toBeDefined();
 
       // The ledger must not be written on a failed push.
-      expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow();
+      expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow(/ENOENT/);
     });
 
     test('refuses when the per-PR ledger lock is already held', () => {
@@ -376,8 +401,8 @@ describe('ci-revert', () => {
       expect(exit).not.toBe(0);
 
       // Hard cap: zero gh / git invocations while a revert is in flight.
-      expect(ghSpy.mock.calls.length).toBe(0);
-      expect(gitSpy.mock.calls.length).toBe(0);
+      expect(ghSpy.mock.calls).toHaveLength(0);
+      expect(gitSpy.mock.calls).toHaveLength(0);
 
       const printed = JSON.parse(stdio.out.join('').trim()) as Record<
         string,
@@ -398,7 +423,7 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99']?.revert_pr).toBe(137);
+      expect(ledger.attempts['99'].revert_pr).toBe(137);
     });
 
     test('reclaims a stale per-PR lock and proceeds', () => {
@@ -417,7 +442,7 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99']?.revert_pr).toBe(137);
+      expect(ledger.attempts['99'].revert_pr).toBe(137);
     });
 
     test('refuses when a fresh per-PR lock is held', () => {
@@ -440,23 +465,7 @@ describe('ci-revert', () => {
     });
 
     test('parses the new PR number even with a banner line in stdout', () => {
-      const impl: RunFn = (args) => {
-        if (args[0] === 'pr' && args[1] === 'view') {
-          return {exitCode: 0, stderr: '', stdout: ghViewMerged};
-        }
-
-        if (args[0] === 'pr' && args[1] === 'create') {
-          return {
-            exitCode: 0,
-            stderr: '',
-            stdout:
-              'Creating pull request for ...\nhttps://github.com/owner/repo/pull/137\n',
-          };
-        }
-
-        return {exitCode: 0, stderr: '', stdout: ''};
-      };
-      ghSpy.mockImplementation(impl);
+      ghSpy.mockImplementation(ghCreateWithBannerImpl);
 
       const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
         cwd: sandbox.root,
@@ -466,7 +475,7 @@ describe('ci-revert', () => {
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99']?.revert_pr).toBe(137);
+      expect(ledger.attempts['99'].revert_pr).toBe(137);
     });
   });
 
@@ -490,14 +499,14 @@ describe('ci-revert', () => {
       expect(exit).toBe(0);
 
       // mark-failed never invokes gh / git.
-      expect(ghSpy.mock.calls.length).toBe(0);
-      expect(gitSpy.mock.calls.length).toBe(0);
+      expect(ghSpy.mock.calls).toHaveLength(0);
+      expect(gitSpy.mock.calls).toHaveLength(0);
 
       const ledger = JSON.parse(
         readFileSync(sandbox.ledgerPath, 'utf8')
       ) as RevertLedger;
-      expect(ledger.attempts['99']?.status).toBe('failed');
-      expect(ledger.attempts['99']?.revert_pr).toBe(137);
+      expect(ledger.attempts['99'].status).toBe('failed');
+      expect(ledger.attempts['99'].revert_pr).toBe(137);
     });
 
     test('exits non-zero on missing attempt', () => {
@@ -645,7 +654,7 @@ describe('ci-revert', () => {
       try {
         expect(() =>
           withRevertLedgerLock(sandbox.root, 99, () => 'never-runs')
-        ).toThrow();
+        ).toThrow(/EACCES/);
       } finally {
         // Restore writability so the sandbox cleanup can remove it.
         chmodSync(ledgerDir, 0o700);
@@ -659,14 +668,12 @@ describe('ci-revert', () => {
       );
 
       expect(outer.locked).toBe(true);
+      assertLocked(outer);
 
-      if (outer.locked) {
-        expect(outer.value.locked).toBe(true);
+      expect(outer.value.locked).toBe(true);
+      assertLocked(outer.value);
 
-        if (outer.value.locked) {
-          expect(outer.value.value).toBe('inner-ran');
-        }
-      }
+      expect(outer.value.value).toBe('inner-ran');
     });
 
     test('serializes locks for the same PR', () => {
@@ -677,10 +684,9 @@ describe('ci-revert', () => {
       );
 
       expect(outer.locked).toBe(true);
+      assertLocked(outer);
 
-      if (outer.locked) {
-        expect(outer.value.locked).toBe(false);
-      }
+      expect(outer.value.locked).toBe(false);
     });
 
     test('reclaims a stale lock directory', () => {
@@ -700,13 +706,12 @@ describe('ci-revert', () => {
       );
 
       expect(result.locked).toBe(true);
+      assertLocked(result);
 
-      if (result.locked) {
-        expect(result.value).toBe('critical-ran');
-      }
+      expect(result.value).toBe('critical-ran');
 
       // The lock dir is released on the happy path.
-      expect(() => statSync(lockDir)).toThrow();
+      expect(() => statSync(lockDir)).toThrow(/ENOENT/);
     });
 
     test('refuses when a fresh lock directory exists', () => {

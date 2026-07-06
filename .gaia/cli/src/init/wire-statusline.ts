@@ -73,12 +73,14 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined)
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
+  // not `string | undefined`; check the bound explicitly instead of
+  // comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
+  }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
@@ -100,10 +102,9 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       }
       mode = taken.value;
       index += 1;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   if (mode === undefined) {
@@ -144,11 +145,9 @@ const insertAlphabetical = (
       inserted = true;
     }
 
-    if (existing === key) {
-      // Skip; the new entry will overwrite at the alphabetical slot.
-      continue;
-    }
-    next[existing] = source[existing];
+    // Skip the old value at `key`; the new entry overwrites at the
+    // alphabetical slot instead.
+    if (existing !== key) next[existing] = source[existing];
   }
 
   if (!inserted) next[key] = value;

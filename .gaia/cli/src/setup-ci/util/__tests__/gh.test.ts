@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {chmodSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {setupSandbox} from '../../__tests__/sandbox.js';
+import {assertNotOk, assertOk, setupSandbox} from '../../__tests__/sandbox.js';
 import type {Sandbox} from '../../__tests__/sandbox.js';
 import {runGh} from '../gh.js';
 
@@ -28,10 +28,9 @@ describe('runGh wrapper', () => {
 
     const result = await runGh({args: ['version']});
     expect(result.ok).toBe(true);
+    assertOk(result);
 
-    if (result.ok) {
-      expect(result.stdout).toBe('hello world\n');
-    }
+    expect(result.stdout).toBe('hello world\n');
   });
 
   test('records argv exactly without appending stdin to args', async () => {
@@ -70,10 +69,9 @@ describe('runGh wrapper', () => {
 
     const result = await runGh({args: ['version']});
     expect(result.ok).toBe(false);
+    assertNotOk(result);
 
-    if (!result.ok) {
-      expect(result.exitCode).toBe(7);
-    }
+    expect(result.exitCode).toBe(7);
   });
 
   test('does not crash on EPIPE when the child closes stdin early', async () => {

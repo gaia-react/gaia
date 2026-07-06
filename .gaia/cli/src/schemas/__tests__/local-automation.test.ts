@@ -1,4 +1,6 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {z} from 'zod';
+import assert from 'node:assert/strict';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -41,13 +43,13 @@ describe('schemas/local-automation', () => {
     test('rejects version != 1', () => {
       expect(() =>
         LocalAutomationSchema.parse({...VALID_LOCAL, version: 2})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects a non-boolean nudge_dismissed', () => {
       expect(() =>
         LocalAutomationSchema.parse({...VALID_LOCAL, nudge_dismissed: 'no'})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -71,10 +73,8 @@ describe('schemas/local-automation', () => {
       writeFileSync(sandbox.localPath, JSON.stringify(VALID_LOCAL), 'utf8');
       const result = readLocalAutomation(sandbox.root);
       expect(result.status).toBe('ok');
-
-      if (result.status === 'ok') {
-        expect(result.local.nudge_dismissed).toBe(false);
-      }
+      assert.ok(result.status === 'ok');
+      expect(result.local.nudge_dismissed).toBe(false);
     });
 
     test('returns {status: "malformed"} for invalid JSON', () => {

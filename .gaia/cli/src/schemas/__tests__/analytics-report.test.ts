@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {AnalyticsReportSchema} from '../analytics-report.js';
 
 const baseEngagement = {
@@ -86,7 +87,7 @@ describe('schemas/analytics-report', () => {
         ...baseReport,
         audit: {...baseAudit, no_event_data: false},
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('audit-block all-true assertions: rejects no_user_paths: false', () => {
@@ -95,7 +96,7 @@ describe('schemas/analytics-report', () => {
         ...baseReport,
         audit: {...baseAudit, no_user_paths: false},
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('audit-block all-true assertions: rejects no_user_text: false', () => {
@@ -104,7 +105,7 @@ describe('schemas/analytics-report', () => {
         ...baseReport,
         audit: {...baseAudit, no_user_text: false},
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('audit-block all-true assertions: rejects no_project_identifiers: false', () => {
@@ -113,25 +114,25 @@ describe('schemas/analytics-report', () => {
         ...baseReport,
         audit: {...baseAudit, no_project_identifiers: false},
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('rejects schema_version != 1', () => {
     expect(() =>
       AnalyticsReportSchema.parse({...baseReport, schema_version: 2})
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('rejects report_window_days != 30', () => {
     expect(() =>
       AnalyticsReportSchema.parse({...baseReport, report_window_days: 7})
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('rejects unknown top-level keys (strict)', () => {
     expect(() =>
       AnalyticsReportSchema.parse({...baseReport, extra: 'leak'})
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('rejects pattern strength outside [0, 1]', () => {
@@ -149,7 +150,7 @@ describe('schemas/analytics-report', () => {
           },
         ],
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('accepts an ISO-8601 datetime for report_generated_at', () => {
@@ -167,7 +168,7 @@ describe('schemas/analytics-report', () => {
         ...baseReport,
         report_generated_at: 'not-a-timestamp',
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
   test('accepts adaptation with null outcome', () => {

@@ -1,3 +1,5 @@
+/* eslint-disable no-bitwise -- POSIX file modes are bitfields; `& 0o777`
+   is the standard idiom for masking off the permission bits. */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {

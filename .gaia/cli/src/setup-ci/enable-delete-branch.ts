@@ -50,24 +50,18 @@ export const run = async (
     if (token === '--owner') {
       owner = argv[index + 1];
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--repo') {
+    } else if (token === '--repo') {
       repo = argv[index + 1];
       index += 1;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'setup-ci enable-delete-branch',
+      });
 
-      continue;
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'setup-ci enable-delete-branch',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   if (owner === undefined || repo === undefined) {

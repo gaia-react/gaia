@@ -3,7 +3,7 @@ import {writeFileSync} from 'node:fs';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../write-tool-mode.js';
-import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import {assertStatusOk, setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
@@ -61,12 +61,11 @@ describe('setup-ci write-tool-mode', () => {
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.config.stale_branches.mode).toBe('off');
-      // Schedule preserved.
-      expect(result.config.stale_branches.schedule).toBe('monthly');
-    }
+    expect(result.config.stale_branches.mode).toBe('off');
+    // Schedule preserved.
+    expect(result.config.stale_branches.schedule).toBe('monthly');
   });
 
   test('writes mode without schedule when existing slot has none', () => {
@@ -80,11 +79,10 @@ describe('setup-ci write-tool-mode', () => {
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.config.update_deps.mode).toBe('local');
-      expect(result.config.update_deps.schedule).toBeUndefined();
-    }
+    expect(result.config.update_deps.mode).toBe('local');
+    expect(result.config.update_deps.schedule).toBeUndefined();
   });
 
   test('emits {tool, mode} JSON on success', () => {

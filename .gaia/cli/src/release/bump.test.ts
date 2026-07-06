@@ -119,8 +119,8 @@ describe('applyBump', () => {
   });
 
   test('throws on non-semver', () => {
-    expect(() => applyBump('not.a.version', 'patch')).toThrow();
-    expect(() => applyBump('1.2', 'patch')).toThrow();
+    expect(() => applyBump('not.a.version', 'patch')).toThrow(/not semver/);
+    expect(() => applyBump('1.2', 'patch')).toThrow(/not semver/);
   });
 });
 

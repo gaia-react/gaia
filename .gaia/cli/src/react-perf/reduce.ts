@@ -135,9 +135,14 @@ const reactDoctorRuleFor = (aggregate: Aggregate): null | ReactDoctorRule => {
 };
 
 const collectUnstableInputs = (aggregate: Aggregate): string[] => {
-  const props = [...aggregate.unstableProps].sort(compareStrings);
-  const state = [...aggregate.unstableStateIndexes]
-    .sort((a, b) => a - b)
+  // Bound to a variable before sorting: canonical/no-use-extend-native's
+  // proto-method database predates ES2023 and does not recognize
+  // `toSorted` on an inline array-spread expression.
+  const unstableProps = [...aggregate.unstableProps];
+  const props = unstableProps.toSorted(compareStrings);
+  const unstableStateIndexes = [...aggregate.unstableStateIndexes];
+  const state = unstableStateIndexes
+    .toSorted((a, b) => a - b)
     .map((index) => `state[${String(index)}]`);
   const context = aggregate.unstableContextCount > 0 ? ['context'] : [];
 
@@ -166,6 +171,57 @@ const compareFindings = (a: Aggregate, b: Aggregate): number => {
  * The pure reduce. Deterministic: same input + same frame budget yields a
  * byte-identical summary (stable sort, no clock or randomness).
  */
+/**
+ * Fold one `update`-phase, non-framework render record into its component's
+ * running aggregate (creating the aggregate on first sight). Extracted so
+ * `reduceDump`'s own per-record dispatch stays flat.
+ */
+const accumulateRecord = (
+  record: RenderRecord,
+  aggregates: Map<string, Aggregate>
+): void => {
+  const aggregate = aggregates.get(record.componentName) ?? {
+    componentName: record.componentName,
+    isMemo: false,
+    maxTotalTime: 0,
+    memoDefeatedCount: 0,
+    renderCount: 0,
+    totalSelfTime: 0,
+    unstableContextCount: 0,
+    unstablePropCount: 0,
+    unstableProps: new Set<string>(),
+    unstableStateCount: 0,
+    unstableStateIndexes: new Set<number>(),
+  };
+
+  aggregate.renderCount += 1;
+  aggregate.totalSelfTime += record.selfTime;
+  aggregate.maxTotalTime = Math.max(aggregate.maxTotalTime, record.totalTime);
+  aggregate.isMemo = aggregate.isMemo || record.isMemo === true;
+
+  if (isMemoDefeated(record)) aggregate.memoDefeatedCount += 1;
+
+  for (const entry of record.propsChanged) {
+    if (entry.unstable) {
+      aggregate.unstableProps.add(`prop:${entry.name ?? '?'}`);
+      aggregate.unstablePropCount += 1;
+    }
+  }
+
+  for (const entry of record.stateChanged) {
+    if (entry.unstable) {
+      aggregate.unstableStateIndexes.add(entry.index ?? -1);
+      aggregate.unstableStateCount += 1;
+    }
+  }
+
+  for (const entry of record.contextChanged) {
+    if (entry.unstable) aggregate.unstableContextCount += 1;
+  }
+
+  aggregates.set(record.componentName, aggregate);
+};
+
 export const reduceDump = (
   dump: RawDump,
   options: {frameBudgetMs: number}
@@ -184,63 +240,19 @@ export const reduceDump = (
   for (const record of dump.all) {
     if (record.phase === 'mount') mounts += 1;
 
-    if (record.phase !== 'update') continue;
+    if (record.phase === 'update') {
+      updates += 1;
 
-    updates += 1;
-
-    if (record.componentName === UNKNOWN_NAME) {
-      // Never silently dropped: a wall of unnamed renders is a finding in itself.
-      unknownNameCount += 1;
-
-      continue;
-    }
-
-    if (isFrameworkComponent(record.componentName)) {
-      frameworkFiltered += 1;
-
-      continue;
-    }
-
-    const aggregate = aggregates.get(record.componentName) ?? {
-      componentName: record.componentName,
-      isMemo: false,
-      maxTotalTime: 0,
-      memoDefeatedCount: 0,
-      renderCount: 0,
-      totalSelfTime: 0,
-      unstableContextCount: 0,
-      unstablePropCount: 0,
-      unstableProps: new Set<string>(),
-      unstableStateCount: 0,
-      unstableStateIndexes: new Set<number>(),
-    };
-
-    aggregate.renderCount += 1;
-    aggregate.totalSelfTime += record.selfTime;
-    aggregate.maxTotalTime = Math.max(aggregate.maxTotalTime, record.totalTime);
-    aggregate.isMemo = aggregate.isMemo || record.isMemo === true;
-
-    if (isMemoDefeated(record)) aggregate.memoDefeatedCount += 1;
-
-    for (const entry of record.propsChanged) {
-      if (entry.unstable) {
-        aggregate.unstableProps.add(`prop:${entry.name ?? '?'}`);
-        aggregate.unstablePropCount += 1;
+      if (record.componentName === UNKNOWN_NAME) {
+        // Never silently dropped: a wall of unnamed renders is a finding
+        // in itself.
+        unknownNameCount += 1;
+      } else if (isFrameworkComponent(record.componentName)) {
+        frameworkFiltered += 1;
+      } else {
+        accumulateRecord(record, aggregates);
       }
     }
-
-    for (const entry of record.stateChanged) {
-      if (entry.unstable) {
-        aggregate.unstableStateIndexes.add(entry.index ?? -1);
-        aggregate.unstableStateCount += 1;
-      }
-    }
-
-    for (const entry of record.contextChanged) {
-      if (entry.unstable) aggregate.unstableContextCount += 1;
-    }
-
-    aggregates.set(record.componentName, aggregate);
   }
 
   const appComponents = [...aggregates.values()];
@@ -258,7 +270,7 @@ export const reduceDump = (
         aggregate.memoDefeatedCount > 0 ||
         aggregate.maxTotalTime > frameBudgetMs
     )
-    .sort(compareFindings);
+    .toSorted(compareFindings);
 
   const findings: ReducedFinding[] = findingAggregates.map(
     (aggregate, index) => ({
@@ -314,42 +326,46 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
     if (HELP_TOKENS.has(token)) return {kind: 'help'};
 
     if (token === '--frame-budget-ms') {
-      const value = argv[index + 1];
-      const parsed = Number(value);
-
-      if (value === undefined || !Number.isFinite(parsed) || parsed <= 0) {
+      // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as
+      // `string`, not `string | undefined`; check the bound explicitly
+      // instead of comparing the indexed value to `undefined`.
+      if (index + 1 >= argv.length) {
         return {
           code: 'invalid_arguments',
           kind: 'error',
-          message: `--frame-budget-ms requires a positive number, got: ${String(value)}`,
+          message:
+            '--frame-budget-ms requires a positive number, got: undefined',
+        };
+      }
+
+      const value = argv[index + 1];
+      const parsed = Number(value);
+
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return {
+          code: 'invalid_arguments',
+          kind: 'error',
+          message: `--frame-budget-ms requires a positive number, got: ${value}`,
         };
       }
 
       frameBudgetMs = parsed;
       index += 1;
-
-      continue;
-    }
-
-    if (token.startsWith('--')) {
+    } else if (token.startsWith('--')) {
       return {
         code: 'invalid_arguments',
         kind: 'error',
         message: `unknown flag: ${token}`,
       };
-    }
-
-    if (filePath === undefined) {
+    } else if (filePath === undefined) {
       filePath = token;
-
-      continue;
+    } else {
+      return {
+        code: 'invalid_arguments',
+        kind: 'error',
+        message: `unexpected argument: ${token}`,
+      };
     }
-
-    return {
-      code: 'invalid_arguments',
-      kind: 'error',
-      message: `unexpected argument: ${token}`,
-    };
   }
 
   if (filePath === undefined) {

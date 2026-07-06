@@ -39,16 +39,23 @@ import {
   todayUtc,
   UNEXPECTED_EXIT,
 } from './util/land.js';
+import type {PassthroughFailureOptions} from './util/land.js';
 
 const WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';
 
 const passthroughFailure = (
-  result: Parameters<typeof passthroughFailureWithPrefix>[1],
+  result: PassthroughFailureOptions['result'],
   command: string,
   args: readonly string[]
-): number => passthroughFailureWithPrefix('chain', result, command, args);
+): number =>
+  passthroughFailureWithPrefix({args, command, prefix: 'chain', result});
 
 const stepOk = commandSucceeded;
+
+// `SpawnSyncReturns.stdout` is typed as non-nullable `string`, but a spawn
+// failure can genuinely leave it `null`/`undefined` at runtime despite the
+// type declaration.
+const safeOutput = (value: null | string | undefined): string => value ?? '';
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
@@ -106,7 +113,7 @@ const resolveShortHead = (
 
   if (!stepOk(result)) return null;
 
-  return shortSha((result.stdout ?? '').trim(), cwd);
+  return shortSha(safeOutput(result.stdout).trim(), cwd);
 };
 
 type BranchAwareParse =
@@ -118,10 +125,9 @@ const parseBranchAware = (argv: readonly string[]): BranchAwareParse => {
   for (const token of argv) {
     if (token === '--branch-aware') {
       branchAware = true;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   return {branchAware, ok: true};
@@ -135,17 +141,18 @@ const parseCommitFlags = (argv: readonly string[]): CommitParse => {
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
 
-    if (token === '--label') {
-      const value = argv[index + 1];
-
-      if (value === undefined)
-        return {message: '--label requires a value', ok: false};
-      label = value;
-      index += 1;
-      continue;
+    if (token !== '--label') {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
 
-    return {message: `unknown flag: ${token}`, ok: false};
+    // `noUncheckedIndexedAccess` is off, so TS types `argv[index + 1]` as
+    // `string`, not `string | undefined`; check the bound explicitly instead
+    // of comparing the indexed value to `undefined`.
+    if (index + 1 >= argv.length) {
+      return {message: '--label requires a value', ok: false};
+    }
+    label = argv[index + 1];
+    index += 1;
   }
 
   if (label === undefined || label.length === 0)
@@ -279,6 +286,54 @@ const commit = (argv: readonly string[], options: RunOptions): number => {
   return EXIT_CODES.OK;
 };
 
+type FinishEmptyBranchOptions = {
+  base: string;
+  branch: string;
+  repoRoot: string;
+  runner: CommandRunner;
+};
+
+/**
+ * `chain finish` when the branch has zero commits ahead of `base`: a clean
+ * tree means every stage was a no-op, so drop the empty branch and return to
+ * base rather than open an empty PR. A dirty tree means sync aborted
+ * mid-write (the Step 5b fabrication guard leaves the tree untouched without
+ * committing); leave the branch and changes in place for the maintainer to
+ * resolve.
+ */
+const finishEmptyBranch = (options: FinishEmptyBranchOptions): number => {
+  const {base, branch, repoRoot, runner} = options;
+  let dirty = true;
+
+  try {
+    const tree = inspectWorkingTree(repoRoot, runner);
+    dirty = tree.hasWikiChanges || tree.hasNonWikiChanges;
+  } catch {
+    dirty = true;
+  }
+
+  if (dirty) {
+    process.stdout.write(
+      `chain finish: ${branch} has uncommitted changes and no commits; left in place for review\n`
+    );
+
+    return EXIT_CODES.OK;
+  }
+
+  const checkoutArgs = ['checkout', base];
+  const checkoutResult = runner('git', checkoutArgs, {cwd: repoRoot});
+
+  if (!stepOk(checkoutResult))
+    return passthroughFailure(checkoutResult, 'git', checkoutArgs);
+
+  runner('git', ['branch', '-D', branch], {cwd: repoRoot});
+  process.stdout.write(
+    `chain finish: nothing to land; removed empty branch ${branch}\n`
+  );
+
+  return EXIT_CODES.OK;
+};
+
 const finish = (argv: readonly string[], options: RunOptions): number => {
   const parsed = parseBranchAware(argv);
 
@@ -327,43 +382,10 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
   if (!stepOk(countResult))
     return passthroughFailure(countResult, 'git', countArgs);
 
-  const ahead = Number.parseInt((countResult.stdout ?? '').trim(), 10);
+  const ahead = Number.parseInt(safeOutput(countResult.stdout).trim(), 10);
 
   if (!Number.isNaN(ahead) && ahead === 0) {
-    // No commits to land. A clean tree means every stage was a no-op: drop
-    // the empty branch and return to base rather than open an empty PR. A
-    // dirty tree means sync aborted mid-write (the Step 5b fabrication guard
-    // leaves the tree untouched without committing); leave the branch and
-    // changes in place for the maintainer to resolve.
-    let dirty = true;
-
-    try {
-      const tree = inspectWorkingTree(repoRoot, runner);
-      dirty = tree.hasWikiChanges || tree.hasNonWikiChanges;
-    } catch {
-      dirty = true;
-    }
-
-    if (dirty) {
-      process.stdout.write(
-        `chain finish: ${branch} has uncommitted changes and no commits; left in place for review\n`
-      );
-
-      return EXIT_CODES.OK;
-    }
-
-    const checkoutArgs = ['checkout', base];
-    const checkoutResult = runner('git', checkoutArgs, {cwd: repoRoot});
-
-    if (!stepOk(checkoutResult))
-      return passthroughFailure(checkoutResult, 'git', checkoutArgs);
-
-    runner('git', ['branch', '-D', branch], {cwd: repoRoot});
-    process.stdout.write(
-      `chain finish: nothing to land; removed empty branch ${branch}\n`
-    );
-
-    return EXIT_CODES.OK;
+    return finishEmptyBranch({base, branch, repoRoot, runner});
   }
 
   const shortHead = resolveShortHead(runner, repoRoot) ?? branch;
@@ -396,8 +418,13 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
   // Land like any other PR: `--auto` waits for the gate to go green server side,
   // then finalizeMerge polls for the merge and cleans up locally (or defers to
   // the session-start janitor on timeout).
-  return finalizeMerge(runner, repoRoot, branch, base, 'chain finish', {
+  return finalizeMerge({
     attempts: options.mergePollAttempts,
+    base,
+    branch,
+    cwd: repoRoot,
+    prefix: 'chain finish',
+    runner,
     sleep: options.sleep,
   });
 };

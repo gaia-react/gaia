@@ -32,6 +32,7 @@ export type DeclineEntry = z.infer<typeof DeclineEntrySchema>;
 // the frozen ledger shape (`{"version":1,"declines":[]}`).
 export const DeclineLedgerSchema = z.object({
   version: z.literal(1),
+  // eslint-disable-next-line perfectionist/sort-objects -- serialization order load-bearing, version-first
   declines: z.array(DeclineEntrySchema),
 });
 
@@ -39,6 +40,7 @@ export type DeclineLedger = z.infer<typeof DeclineLedgerSchema>;
 
 export const emptyDeclineLedger = (): DeclineLedger => ({
   version: 1,
+  // eslint-disable-next-line perfectionist/sort-objects -- serialization order load-bearing, version-first
   declines: [],
 });
 

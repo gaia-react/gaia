@@ -155,23 +155,25 @@ const GROUP_RULES: readonly GroupRule[] = [
 
 const buildExactIndex = (
   rules: readonly GroupRule[]
-): Readonly<Record<string, string>> => {
-  const out: Record<string, string> = {};
+): ReadonlyMap<string, string> => {
+  const out = new Map<string, string>();
 
   for (const rule of rules) {
     for (const name of rule.exactNames) {
       // Exact-name conflicts would mean a package is in two groups; if that
       // ever happens, the later rule wins. We do not have any such overlap
       // today.
-      out[name] = rule.group;
+      out.set(name, rule.group);
     }
   }
 
   return out;
 };
 
-const EXACT_INDEX: Readonly<Record<string, string>> =
-  buildExactIndex(GROUP_RULES);
+// A `Map` (not `Record<string, string>`) so a lookup miss types as
+// `string | undefined`: with `noUncheckedIndexedAccess` off, a `Record`
+// index would type as `string`, hiding the genuine "not in any group" case.
+const EXACT_INDEX: ReadonlyMap<string, string> = buildExactIndex(GROUP_RULES);
 
 type PrefixMatch = {
   readonly group: string;
@@ -201,7 +203,7 @@ const PREFIX_LIST: readonly PrefixMatch[] = buildPrefixList(GROUP_RULES);
  * uniformly.
  */
 export const resolveGroup = (name: string): string => {
-  const exact = EXACT_INDEX[name];
+  const exact = EXACT_INDEX.get(name);
 
   if (exact !== undefined) return exact;
 

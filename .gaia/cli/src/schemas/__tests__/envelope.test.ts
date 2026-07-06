@@ -1,4 +1,6 @@
 import {describe, expect, test} from 'vitest';
+import {z} from 'zod';
+import assert from 'node:assert/strict';
 import {
   AgentTypeSchema,
   EnvelopeSchema,
@@ -18,15 +20,19 @@ describe('schemas/envelope', () => {
     });
 
     test('rejects lowercase letters', () => {
-      expect(() => UlidSchema.parse('01hzx0k3q9jsawc0tr6wyj5znt')).toThrow();
+      expect(() => UlidSchema.parse('01hzx0k3q9jsawc0tr6wyj5znt')).toThrow(
+        z.ZodError
+      );
     });
 
     test('rejects forbidden ULID alphabet letters (I, L, O, U)', () => {
-      expect(() => UlidSchema.parse('01HZX0K3Q9JSAWC0TR6WYJ5ZNI')).toThrow();
+      expect(() => UlidSchema.parse('01HZX0K3Q9JSAWC0TR6WYJ5ZNI')).toThrow(
+        z.ZodError
+      );
     });
 
     test('rejects wrong length', () => {
-      expect(() => UlidSchema.parse('01HZX')).toThrow();
+      expect(() => UlidSchema.parse('01HZX')).toThrow(z.ZodError);
     });
   });
 
@@ -36,13 +42,15 @@ describe('schemas/envelope', () => {
     });
 
     test('rejects timestamps without milliseconds', () => {
-      expect(() => Iso8601UtcMsSchema.parse('2026-05-06T12:34:56Z')).toThrow();
+      expect(() => Iso8601UtcMsSchema.parse('2026-05-06T12:34:56Z')).toThrow(
+        z.ZodError
+      );
     });
 
     test('rejects timestamps with timezone offset', () => {
       expect(() =>
         Iso8601UtcMsSchema.parse('2026-05-06T12:34:56.789+00:00')
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -52,11 +60,15 @@ describe('schemas/envelope', () => {
     });
 
     test('rejects uppercase hex', () => {
-      expect(() => Sha256HexHalfSchema.parse('A'.repeat(32))).toThrow();
+      expect(() => Sha256HexHalfSchema.parse('A'.repeat(32))).toThrow(
+        z.ZodError
+      );
     });
 
     test('rejects wrong length', () => {
-      expect(() => Sha256HexHalfSchema.parse('a'.repeat(31))).toThrow();
+      expect(() => Sha256HexHalfSchema.parse('a'.repeat(31))).toThrow(
+        z.ZodError
+      );
     });
   });
 
@@ -76,7 +88,7 @@ describe('schemas/envelope', () => {
     });
 
     test('rejects unknown agent types', () => {
-      expect(() => AgentTypeSchema.parse('engineer')).toThrow();
+      expect(() => AgentTypeSchema.parse('engineer')).toThrow(z.ZodError);
     });
   });
 
@@ -110,7 +122,7 @@ describe('schemas/envelope', () => {
           ...validEnvelope,
           payload: {anything: 'goes-here'},
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('reports the drift under the payload path', () => {
@@ -119,8 +131,7 @@ describe('schemas/envelope', () => {
         payload: {...validUatPassPayload, uat_id: 'not-a-uat-id'},
       });
       expect(result.success).toBe(false);
-
-      if (result.success) return;
+      assert.ok(!result.success);
 
       expect(
         result.error.issues.some((issue) => issue.path[0] === 'payload')
@@ -140,7 +151,7 @@ describe('schemas/envelope', () => {
     test('rejects schema_version != 1', () => {
       expect(() =>
         EnvelopeSchema.parse({...validEnvelope, schema_version: 2})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects an invalid project_id', () => {
@@ -149,7 +160,7 @@ describe('schemas/envelope', () => {
           ...validEnvelope,
           project_id: 'not-a-hex-string',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects an invalid agent_type', () => {
@@ -158,7 +169,7 @@ describe('schemas/envelope', () => {
           ...validEnvelope,
           agent_type: 'Engineer',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 });

@@ -412,7 +412,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     const raw = stdio.outputs.join('');
     expect(raw.endsWith('\n')).toBe(true);
     expect(raw.split('\n').filter(Boolean)).toHaveLength(1);
-    expect(() => JSON.parse(raw.trim())).not.toThrow();
+    expect((): unknown => JSON.parse(raw.trim())).not.toThrow();
   });
 
   test('human summary on a fresh worktree mentions the linked count and main root', () => {

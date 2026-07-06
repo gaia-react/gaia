@@ -64,16 +64,14 @@ const findExportRun = (lines: string[]): ExportRunBounds | null => {
 const findInsertIndex = (
   lines: string[],
   bounds: ExportRunBounds,
-  newLine: string
+  newline: string
 ): number => {
+  // `bounds` is derived from this same `lines` array, so every index in
+  // [start, end) is guaranteed in-range.
   for (let index = bounds.start; index < bounds.end; index += 1) {
     const candidate = lines[index];
 
-    if (
-      candidate !== undefined &&
-      isExportFromLine(candidate) &&
-      newLine.localeCompare(candidate) < 0
-    ) {
+    if (isExportFromLine(candidate) && newline.localeCompare(candidate) < 0) {
       return index;
     }
   }

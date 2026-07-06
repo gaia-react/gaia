@@ -54,7 +54,9 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
+  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
+  // which honestly reflects that `index` can run past the end of argv.
+  const value = argv.at(index);
 
   if (value === undefined)
     return {message: `${flag} requires a value`, ok: false};
@@ -75,19 +77,15 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       if (!taken.ok) return taken;
       version = taken.value;
       index += 1;
-      continue;
-    }
-
-    if (token === '--date') {
+    } else if (token === '--date') {
       const taken = takeValue(argv, index + 1, '--date');
 
       if (!taken.ok) return taken;
       date = taken.value;
       index += 1;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   return {flags: {date, version}, ok: true};

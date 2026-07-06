@@ -40,8 +40,8 @@ export const defaultLedgerRunner: LedgerRunner = (argv, cwd) => {
 
   return {
     exitCode: result.status ?? 1,
-    stderr: result.stderr ?? '',
-    stdout: result.stdout ?? '',
+    stderr: result.stderr,
+    stdout: result.stdout,
   };
 };
 

@@ -398,8 +398,12 @@ describe('scaffold route: flag combos', () => {
       "import legal from './legal';",
     ]);
 
-    // Default-export block updated.
-    expect(after).toMatch(/dashboard,\s*\n\s*index,\s*\n\s*legal,/u);
+    // Default-export block updated. `[ \t]*\n[ \t]*` (not `\s*\n\s*`, whose
+    // `\s` already matches `\n` and overlaps with the literal that follows)
+    // avoids sonarjs/super-linear-regex's overlapping-quantifier shape.
+    expect(after).toMatch(
+      /dashboard,[ \t]*\n[ \t]*index,[ \t]*\n[ \t]*legal,/u
+    );
 
     const pageBody = readFileSync(
       path.join(

@@ -64,12 +64,14 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined)
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
+  // not `string | undefined`; check the bound explicitly instead of
+  // comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
+  }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
@@ -85,19 +87,15 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       if (!taken.ok) return taken;
       title = taken.value;
       index += 1;
-      continue;
-    }
-
-    if (token === '--kebab') {
+    } else if (token === '--kebab') {
       const taken = takeValue(argv, index + 1, '--kebab');
 
       if (!taken.ok) return taken;
       kebab = taken.value;
       index += 1;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   if (title === undefined) {
@@ -140,8 +138,12 @@ const renameClaudeMd = (cwd: string, title: string): void => {
 
   if (!existsSync(target)) return;
   const original = readFileSync(target, 'utf8');
-  // Match the FIRST line that starts with `# ` and replace its body.
-  const next = original.replace(/^#\s+.*$/mu, `# ${title}`);
+  // Match the FIRST line that starts with `# ` and replace its body. A
+  // single `\s` (not `\s+`) avoids stacking two adjacent quantifiers with
+  // overlapping character classes (`\s+` and `.*` both match a space),
+  // which sonarjs flags as super-linear; `.*` still absorbs any further
+  // leading whitespace on the line.
+  const next = original.replace(/^#\s.*$/mu, `# ${title}`);
 
   if (next !== original) {
     atomicWriteFileSync(target, next);

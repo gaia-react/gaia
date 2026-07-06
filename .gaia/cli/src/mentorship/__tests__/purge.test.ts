@@ -166,7 +166,7 @@ describe('mentorship/purge', () => {
     const payload = JSON.parse(purgedLine ?? '{}') as Record<string, unknown>;
     expect(payload.code).toBe('mentorship_purged');
     expect(typeof payload.fresh_install_id).toBe('string');
-    expect((payload.fresh_install_id as string).length).toBe(26);
+    expect(payload.fresh_install_id as string).toHaveLength(26);
   });
 
   test('no mentorship data → prints no_mentorship_data_to_purge and exits 0', async () => {

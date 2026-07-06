@@ -47,10 +47,21 @@ const indexContainsLine = (indexBody: string, line: string): boolean => {
   return lines.includes(line);
 };
 
+/** Strip every trailing newline. Avoids a `/\n+$/` regex, which sonarjs
+ * flags as super-linear (unanchored quantifier scanning every start
+ * position). */
+const stripTrailingNewlines = (text: string): string => {
+  let end = text.length;
+
+  while (end > 0 && text.charAt(end - 1) === '\n') end -= 1;
+
+  return text.slice(0, end);
+};
+
 const appendIndexLine = (indexBody: string, line: string): string => {
   if (indexBody === '') return `${line}\n`;
   // Ensure the existing body ends with exactly one newline before appending.
-  const trimmedTrailing = indexBody.replace(/\n+$/u, '');
+  const trimmedTrailing = stripTrailingNewlines(indexBody);
 
   return `${trimmedTrailing}\n${line}\n`;
 };
@@ -66,12 +77,11 @@ const removeIndexLine = (indexBody: string, line: string): string => {
   // Rebuild with a single trailing newline if the original had any.
   const hadTrailingNewline = indexBody.endsWith('\n');
   const rebuilt = filtered
-    .filter((current, index, all) => {
-      // Drop the empty trailing element so we can re-add a single newline.
-      if (index === all.length - 1 && current === '') return false;
-
-      return true;
-    })
+    .filter(
+      (current, index, all) =>
+        // Drop the empty trailing element so we can re-add a single newline.
+        !(index === all.length - 1 && current === '')
+    )
     .join('\n');
 
   if (rebuilt === '') return '';

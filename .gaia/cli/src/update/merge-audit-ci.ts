@@ -106,7 +106,9 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
+  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
+  // which honestly reflects that `index` can run past the end of argv.
+  const value = argv.at(index);
 
   if (value === undefined)
     return {message: `${flag} requires a value`, ok: false};
@@ -120,30 +122,32 @@ const VALUE_FLAGS: Readonly<Record<string, keyof Flags>> = {
   '--latest': 'latest',
 };
 
+// `Record<string, T>` indexing types as `T`, never `undefined`, without
+// `noUncheckedIndexedAccess` — but `token` may not be one of VALUE_FLAGS'
+// three known keys, and that absence is exactly what routes to the
+// unknown-flag branch below.
+const lookupValueFlag = (token: string): keyof Flags | undefined =>
+  (VALUE_FLAGS as Record<string, keyof Flags | undefined>)[token];
+
 const parseFlags = (argv: readonly string[]): ParsedFlagsResult => {
   const collected: Partial<Record<keyof Flags, string>> = {};
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
+    const field = lookupValueFlag(token);
 
     if (token === '--json') {
       json = true;
-      continue;
-    }
-
-    const field = VALUE_FLAGS[token];
-
-    if (field !== undefined) {
+    } else if (field === undefined) {
+      return {message: `unknown flag: ${token}`, ok: false};
+    } else {
       const taken = takeValue(argv, index + 1, token);
 
       if (!taken.ok) return taken;
       collected[field] = taken.value;
       index += 1;
-      continue;
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   const {baseline, current, latest} = collected;
@@ -215,17 +219,21 @@ const parseAuthors = (value: unknown): Map<string, AuthorEntry> => {
   if (typeof value !== 'string') return entries;
 
   for (const token of value.split(/\s+/)) {
-    if (token.length === 0) continue;
-    const eq = token.indexOf('=');
+    if (token.length > 0) {
+      const eq = token.indexOf('=');
 
-    if (eq <= 0 || eq === token.length - 1) continue; // no '=', empty login, or empty mode
-    const login = token.slice(0, eq);
-    const mode = token.slice(eq + 1);
-    const lowerLogin = login.toLowerCase();
+      // eq > 0 && eq < token.length - 1: has '=', with a non-empty login
+      // and a non-empty mode either side of it.
+      if (eq > 0 && eq !== token.length - 1) {
+        const login = token.slice(0, eq);
+        const mode = token.slice(eq + 1);
+        const lowerLogin = login.toLowerCase();
 
-    // First occurrence wins, matching the resolver's first-match-wins scan.
-    if (!entries.has(lowerLogin))
-      entries.set(lowerLogin, {display: login, mode});
+        // First occurrence wins, matching the resolver's first-match-wins scan.
+        if (!entries.has(lowerLogin))
+          entries.set(lowerLogin, {display: login, mode});
+      }
+    }
   }
 
   return entries;
@@ -334,25 +342,25 @@ const computeReport = (
   for (const triple of triples) {
     const verdict = computeVerdict(triple.b, triple.l, triple.a);
 
-    if (verdict === 'noop') continue;
+    if (verdict !== 'noop') {
+      const item = buildItem(triple);
 
-    const item = buildItem(triple);
-
-    if (verdict === 'apply') {
-      applied.push(item);
-    } else if (verdict === 'conflict') {
-      conflicts.push(item);
-    } else {
-      item.reason =
-        verdict === 'suggest-add' ? 'added' : 'removed-then-changed';
-      suggestions.push(item);
+      if (verdict === 'apply') {
+        applied.push(item);
+      } else if (verdict === 'conflict') {
+        conflicts.push(item);
+      } else {
+        item.reason =
+          verdict === 'suggest-add' ? 'added' : 'removed-then-changed';
+        suggestions.push(item);
+      }
     }
   }
 
   return {
-    applied: applied.sort(bySortKey),
-    conflicts: conflicts.sort(bySortKey),
-    suggestions: suggestions.sort(bySortKey),
+    applied: applied.toSorted(bySortKey),
+    conflicts: conflicts.toSorted(bySortKey),
+    suggestions: suggestions.toSorted(bySortKey),
   };
 };
 
@@ -374,10 +382,11 @@ const printHuman = (report: AuditCiMergeReport): void => {
   ];
 
   for (const [heading, items] of sections) {
-    if (items.length === 0) continue;
-    lines.push('', `${heading}:`);
+    if (items.length > 0) {
+      lines.push('', `${heading}:`);
 
-    for (const item of items) lines.push(`  ${label(item)}`);
+      for (const item of items) lines.push(`  ${label(item)}`);
+    }
   }
 
   process.stdout.write(`${lines.join('\n')}\n`);

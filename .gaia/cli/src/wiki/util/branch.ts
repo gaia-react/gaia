@@ -32,6 +32,13 @@ export const defaultRunner: CommandRunner = (command, args, options) =>
 
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 
+// `SpawnSyncReturns.stdout`/`.stderr` are typed as non-nullable `string`, but
+// a spawn failure can genuinely leave them `null`/`undefined` at runtime
+// despite the type declaration. Routing through a parameter typed to include
+// both keeps the `??` meaningful without an inline (and, at some call sites,
+// "unnecessary") type assertion.
+const safeOutput = (value: null | string | undefined): string => value ?? '';
+
 const expectSuccess = (
   result: SpawnSyncReturns<string>,
   command: string,
@@ -44,14 +51,14 @@ const expectSuccess = (
   }
 
   if ((result.status ?? -1) !== 0) {
-    const stderr = (result.stderr ?? '').trim();
+    const stderr = safeOutput(result.stderr).trim();
 
     throw new Error(
       `${command} ${args.join(' ')} exited ${result.status ?? -1}: ${stderr}`
     );
   }
 
-  return result.stdout ?? '';
+  return safeOutput(result.stdout);
 };
 
 /** Resolve the currently checked-out branch name. */
@@ -84,7 +91,7 @@ export const defaultBranch = (
 
   if (result.error !== undefined || (result.status ?? -1) !== 0) return 'main';
 
-  const ref = (result.stdout ?? '').trim();
+  const ref = safeOutput(result.stdout).trim();
   const stripped =
     ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref;
 
@@ -111,12 +118,11 @@ export const inspectWorkingTree = (
 ): WorkingTreeStatus => {
   const args = ['status', '--porcelain=v1', '-uall'];
   const out = expectSuccess(runner('git', args, {cwd}), 'git', args);
-  const paths: string[] = [];
-
-  for (const rawLine of out.split('\n')) {
+  const paths = out.split('\n').flatMap((rawLine) => {
     const line = rawLine.replace(/\r$/u, '');
 
-    if (line.length === 0) continue;
+    if (line.length === 0) return [];
+
     // Porcelain v1: 2-char status, space, path. Account for renames.
     // Git quotes paths that contain spaces or special chars; strip the quotes.
     const rawPayload = line.slice(3);
@@ -126,13 +132,10 @@ export const inspectWorkingTree = (
       : rawPayload;
     const renameSplit = payload.indexOf(' -> ');
 
-    if (renameSplit === -1) {
-      paths.push(payload);
-    } else {
-      paths.push(payload.slice(0, renameSplit));
-      paths.push(payload.slice(renameSplit + 4));
-    }
-  }
+    return renameSplit === -1 ?
+        [payload]
+      : [payload.slice(0, renameSplit), payload.slice(renameSplit + 4)];
+  });
 
   let hasWikiChanges = false;
   let hasNonWikiChanges = false;

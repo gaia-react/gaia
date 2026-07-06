@@ -65,12 +65,10 @@ export const buildWorkflowVars = (
   // Defensive narrowing: TOOL_ID_TO_CONFIG_KEY only points at ToolConfig
   // entries, but the AutomationConfig union also contains UpdateGaiaConfig
   // and primitive values. The four ToolIds are guaranteed by construction
-  // to map to ToolConfig rows.
-  if (
-    typeof toolConfig !== 'object' ||
-    toolConfig === null ||
-    !('mode' in toolConfig)
-  ) {
+  // to map to ToolConfig rows. `ToolConfigKey` resolves `config[configKey]`
+  // to `ToolConfig` directly, which is never `null`, so only the `typeof`
+  // and `'mode' in` checks are meaningful here.
+  if (typeof toolConfig !== 'object' || !('mode' in toolConfig)) {
     return null;
   }
 

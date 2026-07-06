@@ -1,6 +1,26 @@
 import {describe, expect, test} from 'vitest';
 import {FORBIDDEN_CLOUD_KEYS} from '../../schemas/cloud-projection.js';
 import {KNOWN_CLOUD_ONLY_EVENT_TYPES, projectToCloud} from '../projection.js';
+import type {ProjectionResult} from '../projection.js';
+
+type DriftResult = Extract<ProjectionResult, {ok: false}>;
+type OkResult = Extract<ProjectionResult, {ok: true}>;
+
+function expectProjectionDrift(
+  result: ProjectionResult
+): asserts result is DriftResult {
+  expect(result.ok).toBe(false);
+}
+
+// Assertion functions narrow via TypeScript's `asserts` return type instead
+// of an `if (!result.ok) return;` guard in the test body (vitest/no-
+// conditional-in-test forbids conditionals there); the `expect` call still
+// fails the test loudly when the discriminant doesn't match.
+function expectProjectionOk(
+  result: ProjectionResult
+): asserts result is OkResult {
+  expect(result.ok).toBe(true);
+}
 
 const VALID_ULID = '01HZX0K3Q9JSAWC0TR6WYJ5ZNT';
 const VALID_ISO = '2026-05-06T12:34:56.789Z';
@@ -28,9 +48,7 @@ describe('projectToCloud', () => {
     test('projects a uat_pass envelope to a cloud line containing the five required tags', () => {
       const result = projectToCloud(baseEnvelope);
 
-      expect(result.ok).toBe(true);
-
-      if (!result.ok) return;
+      expectProjectionOk(result);
 
       expect(result.cloudEvent).toMatchObject({
         agent_type: 'Senior',
@@ -44,9 +62,7 @@ describe('projectToCloud', () => {
     test('cloud line is a single-line JSON string with no trailing newline', () => {
       const result = projectToCloud(baseEnvelope);
 
-      expect(result.ok).toBe(true);
-
-      if (!result.ok) return;
+      expectProjectionOk(result);
 
       expect(result.cloudLine).toBe(JSON.stringify(result.cloudEvent));
       expect(result.cloudLine.includes('\n')).toBe(false);
@@ -60,9 +76,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelopeWithLocal);
 
-      expect(result.ok).toBe(true);
-
-      if (!result.ok) return;
+      expectProjectionOk(result);
 
       // `_local` and its values must not appear anywhere in the cloud line.
       expect('_local' in result.cloudEvent).toBe(false);
@@ -79,9 +93,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelopeWithBenignLocal);
 
-      expect(result.ok).toBe(true);
-
-      if (!result.ok) return;
+      expectProjectionOk(result);
 
       expect('_local' in result.cloudEvent).toBe(false);
       expect(result.cloudLine.includes('_local')).toBe(false);
@@ -101,9 +113,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelopeWithDrift);
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(result.code).toBe('cloud_projection_drift');
       expect(result.event_type).toBe('uat_pass');
@@ -121,9 +131,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelopeWithDrift);
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(result.field.length).toBeGreaterThan(0);
     });
@@ -136,9 +144,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelopeWithUnknownType);
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(result.code).toBe('cloud_projection_drift');
       expect(result.event_type).toBe('utterly_unknown_event');
@@ -153,9 +159,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelopeWithBadId);
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(result.code).toBe('cloud_projection_drift');
       expect(result.field).toBe('project_id');
@@ -169,9 +173,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelopeWithBadTimestamp);
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(result.field).toBe('timestamp');
     });
@@ -179,14 +181,14 @@ describe('projectToCloud', () => {
     test('returns a string event_type even when event_type is absent', () => {
       // event_type missing -> envelope parse fails. The drift result's
       // event_type field is typed `string`; it must not be `undefined`.
-      const {event_type: _omitted, ...withoutType} = baseEnvelope;
+      const withoutType: Partial<typeof baseEnvelope> = {...baseEnvelope};
+      delete withoutType.event_type;
+
       const result = projectToCloud(
         withoutType as unknown as typeof baseEnvelope
       );
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(typeof result.event_type).toBe('string');
     });
@@ -201,9 +203,7 @@ describe('projectToCloud', () => {
         envelopeWithNonStringType as unknown as typeof baseEnvelope
       );
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(typeof result.event_type).toBe('string');
     });
@@ -249,9 +249,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelope);
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(result.code).toBe('cloud_projection_drift');
       expect(FORBIDDEN_CLOUD_KEYS).toContain(result.field);
@@ -270,9 +268,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelope);
 
-      expect(result.ok).toBe(false);
-
-      if (result.ok) return;
+      expectProjectionDrift(result);
 
       expect(result.code).toBe('cloud_projection_drift');
       expect(result.field).toBe('email');
@@ -296,9 +292,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelope);
 
-      expect(result.ok).toBe(true);
-
-      if (!result.ok) return;
+      expectProjectionOk(result);
 
       expect(result.cloudEvent.event_type).toBe('code_review_audit_finding');
       expect(result.cloudEvent.payload).toMatchObject({
@@ -324,9 +318,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelope);
 
-      expect(result.ok).toBe(true);
-
-      if (!result.ok) return;
+      expectProjectionOk(result);
 
       expect(result.cloudEvent.payload).toMatchObject({
         items_added: 2,
@@ -349,9 +341,7 @@ describe('projectToCloud', () => {
 
       const result = projectToCloud(envelope);
 
-      expect(result.ok).toBe(true);
-
-      if (!result.ok) return;
+      expectProjectionOk(result);
 
       expect(result.cloudEvent.event_type).toBe('pr_opened');
     });

@@ -206,7 +206,7 @@ describe('wiki state', () => {
     expect(json.drift_severity).toBe('none');
     expect(json.reachable).toBe(true);
     expect(typeof json.head_short).toBe('string');
-    expect((json.head_short as string).length).toBe(7);
+    expect(json.head_short as string).toHaveLength(7);
     // suggested_base only fires on the unreachable recovery path.
     expect(json.suggested_base).toBe('');
   });
@@ -298,7 +298,7 @@ describe('wiki state', () => {
     expect(json.commits_ahead).toBe(1);
     expect(json.drift_severity).toBe('low');
     expect(Array.isArray(json.recent_commits)).toBe(true);
-    expect((json.recent_commits as unknown[]).length).toBe(1);
+    expect(json.recent_commits as unknown[]).toHaveLength(1);
   }, 15_000);
 
   test('reports drift_severity medium for 6-20 commits ahead', () => {

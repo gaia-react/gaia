@@ -3,7 +3,7 @@ import {writeFileSync} from 'node:fs';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../opt-out-team.js';
-import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import {assertStatusOk, setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
@@ -61,13 +61,12 @@ describe('setup-ci opt-out-team', () => {
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.config.setup_opted_out).toBe(true);
-      // Other fields preserved.
-      expect(result.config.wiki.mode).toBe('ci');
-      expect(result.config.update_gaia.mode).toBe('local');
-    }
+    expect(result.config.setup_opted_out).toBe(true);
+    // Other fields preserved.
+    expect(result.config.wiki.mode).toBe('ci');
+    expect(result.config.update_gaia.mode).toBe('local');
   });
 
   test('exits config_missing when .gaia/automation.json is absent', () => {

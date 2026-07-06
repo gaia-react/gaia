@@ -32,6 +32,19 @@ const EACH_PATTERN =
   /(?<!\$)\{\{#each\s+(\w+)\s*\}\}([\s\S]*?)\{\{\/each\s*\}\}/gu;
 const THIS_PATTERN = /(?<!\$)\{\{\s*this\s*\}\}/gu;
 
+// `vars` is a Record<string, ...>, and the project does not enable
+// `noUncheckedIndexedAccess`; TS treats every key as present, but `name`
+// comes from the template text and may genuinely be absent from `vars`. A
+// function's declared return type (unlike a local variable annotation, which
+// TS narrows back to the initializer's type via control flow) is honored at
+// call sites, so wrapping the read here widens it without loosening the
+// exported (and externally consumed, see `automation/render.ts`)
+// `TemplateVars` type itself.
+const getVar = (
+  vars: TemplateVars,
+  name: string
+): TemplateVars[string] | undefined => vars[name];
+
 const isTruthy = (value: boolean | string | string[] | undefined): boolean => {
   if (value === undefined || value === false) return false;
   if (value === true) return true;
@@ -61,7 +74,7 @@ const renderBooleanSections = (template: string, vars: TemplateVars): string =>
 const renderScalars = (template: string, vars: TemplateVars): string =>
   template.replaceAll(VAR_PATTERN, (_match, name: string) => {
     if (name === 'this') return _match;
-    const value = vars[name];
+    const value = getVar(vars, name);
 
     if (value === undefined) return '';
     if (Array.isArray(value)) return value.join(',');

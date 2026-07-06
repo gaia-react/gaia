@@ -108,6 +108,61 @@ const captureStdio = (): {
   };
 };
 
+const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
+  output: ['', stdout, ''] as never,
+  pid: 0,
+  signal: null,
+  status: 0,
+  stderr: '',
+  stdout,
+});
+
+const failResult = (
+  status: number,
+  stderr: string
+): SpawnSyncReturns<string> => ({
+  output: ['', '', stderr] as never,
+  pid: 0,
+  signal: null,
+  status,
+  stderr,
+  stdout: '',
+});
+
+type RecordedCall = {
+  args: string[];
+  command: string;
+};
+
+const buildRecordingRunner =
+  (
+    scripted: {
+      argv: readonly string[];
+      result: SpawnSyncReturns<string>;
+    }[],
+    recorded: RecordedCall[]
+  ): CommandRunner =>
+  (command, args) => {
+    recorded.push({args: [...args], command});
+
+    for (const entry of scripted) {
+      if (entry.argv.length === args.length) {
+        let match = true;
+
+        for (let index = 0; index < entry.argv.length; index += 1) {
+          if (entry.argv[index] !== args[index]) {
+            match = false;
+            break;
+          }
+        }
+
+        if (match) return entry.result;
+      }
+    }
+
+    return okResult('');
+  };
+
 describe('release commit-and-tag --commit', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -227,60 +282,6 @@ describe('release commit-and-tag --commit', () => {
     expect(errors).toContain('rolled back the release commit');
   });
 });
-
-const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
-  output: ['', stdout, ''] as never,
-  pid: 0,
-  signal: null,
-  status: 0,
-  stderr: '',
-  stdout,
-});
-
-const failResult = (
-  status: number,
-  stderr: string
-): SpawnSyncReturns<string> => ({
-  output: ['', '', stderr] as never,
-  pid: 0,
-  signal: null,
-  status,
-  stderr,
-  stdout: '',
-});
-
-type RecordedCall = {
-  args: string[];
-  command: string;
-};
-
-const buildRecordingRunner =
-  (
-    scripted: {
-      argv: readonly string[];
-      result: SpawnSyncReturns<string>;
-    }[],
-    recorded: RecordedCall[]
-  ): CommandRunner =>
-  (command, args) => {
-    recorded.push({args: [...args], command});
-
-    for (const entry of scripted) {
-      if (entry.argv.length !== args.length) continue;
-      let match = true;
-
-      for (let index = 0; index < entry.argv.length; index += 1) {
-        if (entry.argv[index] !== args[index]) {
-          match = false;
-          break;
-        }
-      }
-
-      if (match) return entry.result;
-    }
-
-    return okResult('');
-  };
 
 describe('release commit-and-tag --tag', () => {
   let sandbox: Sandbox;

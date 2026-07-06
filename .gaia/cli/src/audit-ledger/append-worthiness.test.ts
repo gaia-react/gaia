@@ -194,16 +194,18 @@ describe('append-worthiness', () => {
   test('rejects an unknown verdict', () => {
     expect(() =>
       runWriter([TEST_FILE_REL, 'renders formatted price', 'maybe'])
-    ).toThrow();
+    ).toThrow(/verdict/i);
   });
 
   test('rejects a non-keep verdict with no artifact', () => {
     expect(() =>
       runWriter([TEST_FILE_REL, 'renders formatted price', 'delete'])
-    ).toThrow();
+    ).toThrow(/artifact/i);
   });
 
   test('fails when the named test is not found in the file', () => {
-    expect(() => runWriter([TEST_FILE_REL, 'no such test', 'keep'])).toThrow();
+    expect(() => runWriter([TEST_FILE_REL, 'no such test', 'keep'])).toThrow(
+      /no such test/i
+    );
   });
 });

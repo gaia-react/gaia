@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {
   BlockedReturnedCloudPayload,
   CloudPayloadByType,
@@ -25,7 +26,7 @@ describe('schemas/cloud-projection', () => {
     test('rejects unknown keys on UatPassCloudPayload', () => {
       expect(() =>
         UatPassCloudPayload.parse({...goodUatPass, surprise: 1})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown keys on UatFailCloudPayload', () => {
@@ -35,7 +36,7 @@ describe('schemas/cloud-projection', () => {
           email: 'leak@example.com',
           failure_class: 'exception',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown keys on NeedsContextReturnedCloudPayload', () => {
@@ -48,7 +49,7 @@ describe('schemas/cloud-projection', () => {
           stowaway: true,
           task_id: 'TASK-093',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown keys on BlockedReturnedCloudPayload', () => {
@@ -61,7 +62,7 @@ describe('schemas/cloud-projection', () => {
           spec_id: 'SPEC-014',
           task_id: 'TASK-093',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown keys on SpecAmendedCloudPayload', () => {
@@ -73,7 +74,7 @@ describe('schemas/cloud-projection', () => {
           spec_id: 'SPEC-014',
           time_since_close_seconds: 1,
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown keys on PlanRevisedCloudPayload', () => {
@@ -86,7 +87,7 @@ describe('schemas/cloud-projection', () => {
           revision_class: 'scope_change',
           spec_id: 'SPEC-014',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown keys on TimeToResolvedSpecCloudPayload', () => {
@@ -99,7 +100,7 @@ describe('schemas/cloud-projection', () => {
           question_count: 2,
           spec_id: 'SPEC-014',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown keys on CodeReviewAuditFindingCloudPayload', () => {
@@ -112,7 +113,7 @@ describe('schemas/cloud-projection', () => {
           pr_number: 42,
           severity: 'warning',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects a free-text finding_class on CodeReviewAuditFindingCloudPayload', () => {
@@ -124,7 +125,7 @@ describe('schemas/cloud-projection', () => {
           pr_number: 42,
           severity: 'warning',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 

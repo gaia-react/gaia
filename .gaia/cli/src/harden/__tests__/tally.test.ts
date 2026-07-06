@@ -307,10 +307,7 @@ describe('harden-tally run', () => {
     // Ledger says suppressed (exit 0): no candidate.
     run([], {
       cwd: sandbox.root,
-      runLedger: (argv) =>
-        argv.includes('is-suppressed') ?
-          {exitCode: 0, stderr: '', stdout: ''}
-        : {exitCode: 0, stderr: '', stdout: ''},
+      runLedger: () => ({exitCode: 0, stderr: '', stdout: ''}),
     });
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
 

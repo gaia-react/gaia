@@ -162,7 +162,7 @@ describe('setup-ci verify-run', () => {
     const viewCalls = recorded.filter(
       (args) => args[0] === 'run' && args[1] === 'view'
     );
-    expect(viewCalls.length).toBe(3);
+    expect(viewCalls).toHaveLength(3);
   });
 
   test('returns conclusion: polling_timeout on hard timeout', async () => {

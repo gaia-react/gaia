@@ -660,12 +660,10 @@ transforms:
     expect(report.json_strip.files_touched).toHaveLength(0);
   });
 
-  test(
-    String.raw`removes a key whose name contains a literal dot via \. escape`,
-    () => {
-      // YAML double-quote turns `\\.` into `\.`, which parseKeyPath reads as
-      // a literal dot inside the key name. Key path: ['exports', './secret'].
-      const dottedKeyConfig = String.raw`
+  test('removes a key whose name contains a literal dot via backslash-dot escape', () => {
+    // YAML double-quote turns `\\.` into `\.`, which parseKeyPath reads as
+    // a literal dot inside the key name. Key path: ['exports', './secret'].
+    const dottedKeyConfig = String.raw`
 transforms:
   - type: json-strip
     paths:
@@ -673,26 +671,25 @@ transforms:
     keys:
       - "exports.\\./secret"
 `;
-      sandbox = setupSandbox({config: dottedKeyConfig});
-      sandbox.writeStaged(
-        'package.json',
-        JSON.stringify(
-          {exports: {'./public': './a.js', './secret': './b.js'}, name: 'app'},
-          null,
-          2
-        )
-      );
+    sandbox = setupSandbox({config: dottedKeyConfig});
+    sandbox.writeStaged(
+      'package.json',
+      JSON.stringify(
+        {exports: {'./public': './a.js', './secret': './b.js'}, name: 'app'},
+        null,
+        2
+      )
+    );
 
-      const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-      expect(exit).toBe(0);
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
 
-      const after = JSON.parse(
-        readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
-      );
-      expect(after.exports).not.toHaveProperty('./secret');
-      expect(after.exports).toHaveProperty('./public');
-    }
-  );
+    const after = JSON.parse(
+      readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
+    );
+    expect(after.exports).not.toHaveProperty('./secret');
+    expect(after.exports).toHaveProperty('./public');
+  });
 });
 
 describe('parseKeyPath', () => {

@@ -1,8 +1,13 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {readFileSync} from 'node:fs';
 import {automationConfigPath} from '../../../automation/paths.js';
 import {readAutomationConfig} from '../../../schemas/automation-config.js';
-import {setupSandbox, VALID_BASE_CONFIG} from '../../__tests__/sandbox.js';
+import {
+  assertStatusOk,
+  setupSandbox,
+  VALID_BASE_CONFIG,
+} from '../../__tests__/sandbox.js';
 import type {Sandbox} from '../../__tests__/sandbox.js';
 import {writeAutomationConfig} from '../automation-write.js';
 
@@ -35,10 +40,9 @@ describe('writeAutomationConfig', () => {
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.config.setup_complete).toBe(true);
-    }
+    expect(result.config.setup_complete).toBe(true);
   });
 
   test('throws on schema-invalid payloads', () => {
@@ -47,6 +51,6 @@ describe('writeAutomationConfig', () => {
         ...VALID_BASE_CONFIG,
         version: 99 as unknown as 1,
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 });

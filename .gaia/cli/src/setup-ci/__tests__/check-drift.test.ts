@@ -62,18 +62,18 @@ const writeFreshWorkflows = (
       tool
     );
 
-    if (vars === null) continue;
-
-    const rendered = renderWorkflowTemplate(
-      workflowTemplatePath(tool),
-      partialsDir,
-      vars
-    );
-    writeFileSync(
-      path.join(workflowsDir, `gaia-ci-${tool}.yml`),
-      rendered,
-      'utf8'
-    );
+    if (vars !== null) {
+      const rendered = renderWorkflowTemplate(
+        workflowTemplatePath(tool),
+        partialsDir,
+        vars
+      );
+      writeFileSync(
+        path.join(workflowsDir, `gaia-ci-${tool}.yml`),
+        rendered,
+        'utf8'
+      );
+    }
   }
 };
 

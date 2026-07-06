@@ -56,36 +56,14 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 // re-surface.
 const RESURFACE_THRESHOLD = 3;
 
+// A parsed-args result is always an object (never a bare string), so a
+// consuming function's return type never mixes an object shape with a
+// primitive shape.
+type ParseResult<T> = {error: string} | {value: T};
+
 type RunOptions = {
   cwd?: string;
   now?: () => Date;
-};
-
-export const run = (
-  argv: readonly string[],
-  options: RunOptions = {}
-): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
-    process.stdout.write(HELP_TEXT);
-
-    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
-  }
-
-  const sub = argv[0];
-  const rest = argv.slice(1);
-
-  if (sub === 'list') return handleList(rest, options);
-  if (sub === 'record') return handleRecord(rest, options);
-  if (sub === 'is-suppressed') return handleIsSuppressed(rest, options);
-  if (sub === 'prune') return handlePrune(rest, options);
-
-  structuredError({
-    code: 'unknown_subcommand',
-    message: `unknown harden-ledger subcommand: ${sub}`,
-    subcommand: 'harden-ledger',
-  });
-
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
 const parseCountFlag = (value: string | undefined): number | undefined => {
@@ -173,7 +151,7 @@ type RecordArgs = {
   prCount: number | undefined;
 };
 
-const parseRecordArgs = (argv: readonly string[]): RecordArgs | string => {
+const parseRecordArgs = (argv: readonly string[]): ParseResult<RecordArgs> => {
   let findingClass: string | undefined;
   let prCount: number | undefined;
 
@@ -183,37 +161,31 @@ const parseRecordArgs = (argv: readonly string[]): RecordArgs | string => {
     if (token === '--finding-class') {
       findingClass = argv[index + 1];
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--pr-count') {
+    } else if (token === '--pr-count') {
       prCount = parseCountFlag(argv[index + 1]);
       index += 1;
-
-      continue;
+    } else {
+      return {error: `unknown argument: ${token}`};
     }
-
-    return `unknown argument: ${token}`;
   }
 
-  return {findingClass, prCount};
+  return {value: {findingClass, prCount}};
 };
 
 const handleRecord = (argv: readonly string[], options: RunOptions): number => {
   const parsed = parseRecordArgs(argv);
 
-  if (typeof parsed === 'string') {
+  if ('error' in parsed) {
     structuredError({
       code: 'invalid_arguments',
-      message: parsed,
+      message: parsed.error,
       subcommand: 'harden-ledger record',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const {findingClass, prCount} = parsed;
+  const {findingClass, prCount} = parsed.value;
 
   if (findingClass === undefined || findingClass === '') {
     structuredError({
@@ -276,7 +248,7 @@ type IsSuppressedArgs = {
 
 const parseIsSuppressedArgs = (
   argv: readonly string[]
-): IsSuppressedArgs | string => {
+): ParseResult<IsSuppressedArgs> => {
   let findingClass: string | undefined;
   let currentPrCount: number | undefined;
 
@@ -286,21 +258,15 @@ const parseIsSuppressedArgs = (
     if (token === '--finding-class') {
       findingClass = argv[index + 1];
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--current-pr-count') {
+    } else if (token === '--current-pr-count') {
       currentPrCount = parseCountFlag(argv[index + 1]);
       index += 1;
-
-      continue;
+    } else {
+      return {error: `unknown argument: ${token}`};
     }
-
-    return `unknown argument: ${token}`;
   }
 
-  return {currentPrCount, findingClass};
+  return {value: {currentPrCount, findingClass}};
 };
 
 const handleIsSuppressed = (
@@ -309,17 +275,17 @@ const handleIsSuppressed = (
 ): number => {
   const parsed = parseIsSuppressedArgs(argv);
 
-  if (typeof parsed === 'string') {
+  if ('error' in parsed) {
     structuredError({
       code: 'invalid_arguments',
-      message: parsed,
+      message: parsed.error,
       subcommand: 'harden-ledger is-suppressed',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const {currentPrCount, findingClass} = parsed;
+  const {currentPrCount, findingClass} = parsed.value;
 
   if (findingClass === undefined || findingClass === '') {
     structuredError({
@@ -393,7 +359,7 @@ const handleIsSuppressed = (
 
 const parsePruneArgs = (
   argv: readonly string[]
-): string | {windowClasses: string | undefined} => {
+): ParseResult<{windowClasses: string | undefined}> => {
   let windowClasses: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -402,30 +368,28 @@ const parsePruneArgs = (
     if (token === '--window-classes') {
       windowClasses = argv[index + 1];
       index += 1;
-
-      continue;
+    } else {
+      return {error: `unknown argument: ${token}`};
     }
-
-    return `unknown argument: ${token}`;
   }
 
-  return {windowClasses};
+  return {value: {windowClasses}};
 };
 
 const handlePrune = (argv: readonly string[], options: RunOptions): number => {
   const parsed = parsePruneArgs(argv);
 
-  if (typeof parsed === 'string') {
+  if ('error' in parsed) {
     structuredError({
       code: 'invalid_arguments',
-      message: parsed,
+      message: parsed.error,
       subcommand: 'harden-ledger prune',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const {windowClasses} = parsed;
+  const {windowClasses} = parsed.value;
 
   if (windowClasses === undefined) {
     structuredError({
@@ -463,4 +427,33 @@ const handlePrune = (argv: readonly string[], options: RunOptions): number => {
   }
 
   return EXIT_CODES.OK;
+};
+
+// --- dispatch --------------------------------------------------------------
+
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
+    process.stdout.write(HELP_TEXT);
+
+    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+  }
+
+  const sub = argv[0];
+  const rest = argv.slice(1);
+
+  if (sub === 'list') return handleList(rest, options);
+  if (sub === 'record') return handleRecord(rest, options);
+  if (sub === 'is-suppressed') return handleIsSuppressed(rest, options);
+  if (sub === 'prune') return handlePrune(rest, options);
+
+  structuredError({
+    code: 'unknown_subcommand',
+    message: `unknown harden-ledger subcommand: ${sub}`,
+    subcommand: 'harden-ledger',
+  });
+
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };

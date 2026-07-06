@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {
   BlockedReturnedPayload,
   CodeReviewAuditFindingPayload,
@@ -27,7 +28,9 @@ describe('schemas/mentorship-payloads', () => {
     });
 
     test('rejects when required fields are missing', () => {
-      expect(() => UatPassPayload.parse({uat_id: 'UAT-007'})).toThrow();
+      expect(() => UatPassPayload.parse({uat_id: 'UAT-007'})).toThrow(
+        z.ZodError
+      );
     });
 
     test('rejects malformed UAT id', () => {
@@ -39,7 +42,7 @@ describe('schemas/mentorship-payloads', () => {
           task_id: 'TASK-093',
           uat_id: 'uat-7',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects empty area_tags', () => {
@@ -51,7 +54,7 @@ describe('schemas/mentorship-payloads', () => {
           task_id: 'TASK-093',
           uat_id: 'UAT-007',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects attempts < 1', () => {
@@ -63,7 +66,7 @@ describe('schemas/mentorship-payloads', () => {
           task_id: 'TASK-093',
           uat_id: 'UAT-007',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -91,7 +94,7 @@ describe('schemas/mentorship-payloads', () => {
           task_id: 'TASK-093',
           uat_id: 'UAT-007',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -117,7 +120,7 @@ describe('schemas/mentorship-payloads', () => {
           spec_id: 'SPEC-014',
           task_id: 'TASK-093',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -146,7 +149,7 @@ describe('schemas/mentorship-payloads', () => {
           spec_id: 'SPEC-014',
           task_id: 'TASK-093',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -170,7 +173,7 @@ describe('schemas/mentorship-payloads', () => {
           spec_id: 'SPEC-014',
           time_since_close_seconds: 1,
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown field name', () => {
@@ -181,7 +184,7 @@ describe('schemas/mentorship-payloads', () => {
           spec_id: 'SPEC-014',
           time_since_close_seconds: 1,
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -207,7 +210,7 @@ describe('schemas/mentorship-payloads', () => {
           revision_class: 'unknown',
           spec_id: 'SPEC-014',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects negative items_added', () => {
@@ -219,7 +222,7 @@ describe('schemas/mentorship-payloads', () => {
           revision_class: 'scope_change',
           spec_id: 'SPEC-014',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -245,7 +248,7 @@ describe('schemas/mentorship-payloads', () => {
           question_count: 12,
           spec_id: 'SPEC-014',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -284,7 +287,7 @@ describe('schemas/mentorship-payloads', () => {
           pr_number: 0,
           severity: 'warning',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects unknown severity', () => {
@@ -296,7 +299,7 @@ describe('schemas/mentorship-payloads', () => {
           pr_number: 42,
           severity: 'critical',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects a free-text finding_class (drift)', () => {
@@ -308,7 +311,7 @@ describe('schemas/mentorship-payloads', () => {
           pr_number: 42,
           severity: 'warning',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
     test('rejects an unseeded holistic finding_class', () => {
@@ -320,7 +323,7 @@ describe('schemas/mentorship-payloads', () => {
           pr_number: 42,
           severity: 'warning',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 

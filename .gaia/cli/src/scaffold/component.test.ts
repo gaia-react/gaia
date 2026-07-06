@@ -163,7 +163,7 @@ describe('scaffold component', () => {
       'index.stories.tsx'
     );
 
-    expect(() => read(storyPath)).toThrow();
+    expect(() => read(storyPath)).toThrow(/ENOENT/);
 
     const testContents = read(
       path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')

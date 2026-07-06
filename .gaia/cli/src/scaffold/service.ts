@@ -99,7 +99,7 @@ const parseFlags = (argv: readonly string[]): FlagMap => {
     } else if (arg === '--schema') {
       result.schema = argv[index + 1];
       index += 1;
-    } else if (arg !== undefined && !arg.startsWith('--')) {
+    } else if (!arg.startsWith('--')) {
       result.positional.push(arg);
     }
   }
@@ -134,6 +134,16 @@ const ZOD_TYPE_BUILDERS: Record<string, () => string> = {
   string: () => 'z.string()',
 };
 
+// `ZOD_TYPE_BUILDERS` is a Record<string, ...> and the project does not
+// enable `noUncheckedIndexedAccess`, so TS treats every key as present; `base`
+// is caller-controlled and may genuinely not be a builder key. A function's
+// declared return type (unlike a local variable annotation, which TS narrows
+// back to the initializer's type via control flow) is honored at call sites,
+// so wrapping the read here widens it without loosening the lookup table's
+// own type.
+const getZodTypeBuilder = (base: string): (() => string) | undefined =>
+  ZOD_TYPE_BUILDERS[base];
+
 const buildZodExpression = (typeToken: string): null | string => {
   const optional = typeToken.endsWith('?');
   const base = optional ? typeToken.slice(0, -1) : typeToken;
@@ -141,11 +151,13 @@ const buildZodExpression = (typeToken: string): null | string => {
   let expression: null | string = null;
 
   if (enumMatch === null) {
-    const builder = ZOD_TYPE_BUILDERS[base];
+    const builder = getZodTypeBuilder(base);
 
     expression = builder === undefined ? null : builder();
   } else {
-    const variants = (enumMatch[1] ?? '').split(',').flatMap((value) => {
+    // `(.+)` is a mandatory, non-optional group: once `enumMatch` is
+    // non-null, group 1 always participated in the match.
+    const variants = enumMatch[1].split(',').flatMap((value) => {
       const trimmed = value.trim();
 
       return trimmed.length > 0 ? [trimmed] : [];
@@ -207,33 +219,40 @@ const parseSchema = (raw: string): null | SchemaField[] => {
   return fields;
 };
 
-const parseArgs = (argv: readonly string[]): ParsedArgs | string => {
+const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   const flags = parseFlags(argv);
-  const name = flags.positional[0];
+  const name = flags.positional.at(0);
 
-  if (name === undefined) return 'missing required <name>';
+  if (name === undefined) return {error: 'missing required <name>'};
 
   if (!KEBAB_PATTERN.test(name)) {
-    return `<name> must be kebab-case (e.g. "projects", "user-settings"); got: ${name}`;
+    return {
+      error: `<name> must be kebab-case (e.g. "projects", "user-settings"); got: ${name}`,
+    };
   }
 
   if (flags.endpoints === undefined || flags.endpoints.length === 0) {
-    return '--endpoints is required';
+    return {error: '--endpoints is required'};
   }
 
   if (flags.schema === undefined || flags.schema.length === 0) {
-    return '--schema is required';
+    return {error: '--schema is required'};
   }
 
   const endpoints = parseEndpoints(flags.endpoints);
 
   if (endpoints === null) {
-    return `--endpoints must be a comma-separated subset of ${ALL_ENDPOINTS.join(',')}`;
+    return {
+      error: `--endpoints must be a comma-separated subset of ${ALL_ENDPOINTS.join(',')}`,
+    };
   }
   const fields = parseSchema(flags.schema);
 
   if (fields === null) {
-    return '--schema entries must look like "name:string" (allowed types: string, number, boolean, datetime, enum(a,b,...); append "?" for optional)';
+    return {
+      error:
+        '--schema entries must look like "name:string" (allowed types: string, number, boolean, datetime, enum(a,b,...); append "?" for optional)',
+    };
   }
 
   return {
@@ -374,36 +393,6 @@ const composeMockBarrel = (endpoints: ReadonlySet<Endpoint>): TemplateVars => {
 // Database barrel insert
 // ---------------------------------------------------------------------------
 
-/**
- * Insert a new collection registration into `test/mocks/database.ts`,
- * preserving alphabetical order of registered collections.
- *
- * The barrel has three load-bearing regions we mutate:
- *   1. Imports of `{collection, resetCollection} from './<name>/data'`.
- *   2. The `Promise.all([...])` argument list inside `resetTestData`.
- *   3. The `default` export object that maps `{<name>}`.
- *
- * Idempotent: if the new entries already exist verbatim, returns
- * `{written: false}`.
- */
-const updateDatabaseBarrel = (
-  databasePath: string,
-  derived: DerivedNames
-): {written: boolean} => {
-  const raw = readFileSync(databasePath, 'utf8');
-  const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
-  const resetCall = `reset${derived.Plural}()`;
-
-  if (raw.includes(importLine)) return {written: false};
-
-  const next = applyDatabaseEdits(raw, derived, importLine, resetCall);
-
-  if (next === raw) return {written: false};
-  atomicWriteFileSync(databasePath, next);
-
-  return {written: true};
-};
-
 const insertImportAlphabetically = (
   source: string,
   importLine: string
@@ -463,7 +452,9 @@ const insertResetCallAlphabetically = (
   const match = pattern.exec(source);
 
   if (match === null) return source;
-  const inner = (match[1] ?? '').trim();
+  // `([^\]]*)` is a mandatory, non-optional group: it always participates
+  // in the match (possibly as an empty string), never `undefined`.
+  const inner = match[1].trim();
   const newCall = `reset${derived.Plural}()`;
 
   if (inner.length === 0) {
@@ -502,7 +493,9 @@ const insertCollectionExportAlphabetically = (
   const match = populatedPattern.exec(source);
 
   if (match === null) return source;
-  const inner = (match[1] ?? '').trim();
+  // `([^}]*)` is a mandatory, non-optional group: it always participates
+  // in the match (possibly as an empty string), never `undefined`.
+  const inner = match[1].trim();
   const collections = inner.split(',').flatMap((token) => {
     const trimmed = token.trim();
 
@@ -521,12 +514,15 @@ const insertCollectionExportAlphabetically = (
   );
 };
 
-const applyDatabaseEdits = (
-  source: string,
-  derived: DerivedNames,
-  importLine: string,
-  resetCall: string
-): string => {
+type ApplyDatabaseEditsArgs = {
+  derived: DerivedNames;
+  importLine: string;
+  resetCall: string;
+  source: string;
+};
+
+const applyDatabaseEdits = (args: ApplyDatabaseEditsArgs): string => {
+  const {derived, importLine, resetCall, source} = args;
   let next = source;
   next = insertImportAlphabetically(next, importLine);
 
@@ -560,6 +556,41 @@ const applyDatabaseEdits = (
   }
 
   return next;
+};
+
+/**
+ * Insert a new collection registration into `test/mocks/database.ts`,
+ * preserving alphabetical order of registered collections.
+ *
+ * The barrel has three load-bearing regions we mutate:
+ *   1. Imports of `{collection, resetCollection} from './<name>/data'`.
+ *   2. The `Promise.all([...])` argument list inside `resetTestData`.
+ *   3. The `default` export object that maps `{<name>}`.
+ *
+ * Idempotent: if the new entries already exist verbatim, returns
+ * `{written: false}`.
+ */
+const updateDatabaseBarrel = (
+  databasePath: string,
+  derived: DerivedNames
+): {written: boolean} => {
+  const raw = readFileSync(databasePath, 'utf8');
+  const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
+  const resetCall = `reset${derived.Plural}()`;
+
+  if (raw.includes(importLine)) return {written: false};
+
+  const next = applyDatabaseEdits({
+    derived,
+    importLine,
+    resetCall,
+    source: raw,
+  });
+
+  if (next === raw) return {written: false};
+  atomicWriteFileSync(databasePath, next);
+
+  return {written: true};
 };
 
 // ---------------------------------------------------------------------------
@@ -736,8 +767,8 @@ export const run = (
 
   const parsed = parseArgs(argv);
 
-  if (typeof parsed === 'string') {
-    return userError(parsed, 'scaffold service');
+  if ('error' in parsed) {
+    return userError(parsed.error, 'scaffold service');
   }
 
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};

@@ -67,12 +67,14 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined)
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
+  // not `string | undefined`; check the bound explicitly instead of
+  // comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
+  }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 const parseBool = (raw: string): boolean | null => {
@@ -99,42 +101,71 @@ const parseLocales = (raw: string): null | string[] => {
   return parts;
 };
 
+type FlagHandler = (
+  argv: readonly string[],
+  index: number
+) => FlagHandlerResult;
+
+type FlagHandlerResult =
+  {message: string; ok: false} | {ok: true; outcome: FlagOutcome};
+
+type FlagOutcome =
+  {kind: 'locales'; value: string[]} | {kind: 'strip'; value: boolean};
+
+const handleLocalesFlag: FlagHandler = (argv, index) => {
+  const taken = takeValue(argv, index, '--locales');
+
+  if (!taken.ok) return taken;
+  const parsed = parseLocales(taken.value);
+
+  if (parsed === null) return {message: 'invalid --locales list', ok: false};
+
+  return {ok: true, outcome: {kind: 'locales', value: parsed}};
+};
+
+const handleStripFlag: FlagHandler = (argv, index) => {
+  const taken = takeValue(argv, index, '--strip');
+
+  if (!taken.ok) return taken;
+  const parsed = parseBool(taken.value);
+
+  if (parsed === null) {
+    return {message: '--strip must be "true" or "false"', ok: false};
+  }
+
+  return {ok: true, outcome: {kind: 'strip', value: parsed}};
+};
+
+// Object lookup instead of an if/else-if chain per flag, so `parseFlags`
+// itself stays flat (a Map, since a plain object's index signature would
+// hide the genuine "unknown token" miss from TypeScript).
+const FLAG_HANDLERS = new Map<string, FlagHandler>([
+  ['--locales', handleLocalesFlag],
+  ['--strip', handleStripFlag],
+]);
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let locales: string[] | undefined;
   let strip: boolean | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
+    const handler = FLAG_HANDLERS.get(token);
 
-    if (token === '--locales') {
-      const taken = takeValue(argv, index + 1, '--locales');
-
-      if (!taken.ok) return taken;
-      const parsed = parseLocales(taken.value);
-
-      if (parsed === null) {
-        return {message: 'invalid --locales list', ok: false};
-      }
-      locales = parsed;
-      index += 1;
-      continue;
+    if (handler === undefined) {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
 
-    if (token === '--strip') {
-      const taken = takeValue(argv, index + 1, '--strip');
+    const result = handler(argv, index + 1);
 
-      if (!taken.ok) return taken;
-      const parsed = parseBool(taken.value);
+    if (!result.ok) return result;
 
-      if (parsed === null) {
-        return {message: '--strip must be "true" or "false"', ok: false};
-      }
-      strip = parsed;
-      index += 1;
-      continue;
+    if (result.outcome.kind === 'locales') {
+      locales = result.outcome.value;
+    } else {
+      strip = result.outcome.value;
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
+    index += 1;
   }
 
   if (locales === undefined) {

@@ -77,15 +77,18 @@ export const runGh = async (options: GhOptions): Promise<GhResult> =>
     });
 
     child.on('close', (code: null | number) => {
-      const exitCode = code ?? 1;
-
-      if (exitCode === 0) {
+      // Not hoisted into a `const exitCode = code ?? 1` local: Node passes
+      // `null` (a signal-terminated child), not `undefined`, so a default
+      // parameter wouldn't substitute for it; the plain `??` reassignment
+      // shape is what unicorn/prefer-default-parameters flags, so this
+      // stays inline instead.
+      if ((code ?? 1) === 0) {
         settle({ok: true, stdout: stdoutBuf});
 
         return;
       }
 
-      settle({exitCode, ok: false, stderr: stderrBuf});
+      settle({exitCode: code ?? 1, ok: false, stderr: stderrBuf});
     });
 
     // A child that exits before draining stdin leaves the pipe closed;

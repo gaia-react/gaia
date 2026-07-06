@@ -90,6 +90,7 @@ const captureStdio = (): {
 };
 
 const classify = (sandbox: Sandbox): CommitClassification => {
+  let out = '';
   const stdoutSpy = vi
     .spyOn(process.stdout, 'write')
     .mockImplementation((chunk: unknown) => {
@@ -97,7 +98,6 @@ const classify = (sandbox: Sandbox): CommitClassification => {
 
       return true;
     });
-  let out = '';
   const exit = run(['--since', sandbox.initialSha, '--json'], {
     cwd: sandbox.root,
   });

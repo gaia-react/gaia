@@ -292,7 +292,7 @@ describe('wiki sync land', () => {
     for (const [index, prefix] of expected.entries()) {
       const call = verbsAfterRevParse[index];
       expect(call).toBeDefined();
-      const observed = [call?.command, ...(call?.args ?? [])];
+      const observed = [call.command, ...call.args];
       const slice = observed.slice(0, prefix.length);
       expect(slice).toEqual([...prefix]);
     }

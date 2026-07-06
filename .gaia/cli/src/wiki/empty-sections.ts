@@ -67,10 +67,7 @@ const walkMarkdown = (root: string, dir: string): string[] => {
 
     if (entry.isDirectory()) {
       out.push(...walkMarkdown(root, full));
-      continue;
-    }
-
-    if (entry.isFile() && entry.name.endsWith('.md')) {
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
       out.push(path.relative(root, full));
     }
   }
@@ -92,6 +89,12 @@ type Heading = {
  * a fence is never a heading. `bodyLineOffset` is the number of frontmatter
  * lines stripped ahead of `body`, so reported lines map back to the file.
  */
+const markLastHeadingHasContent = (headings: readonly Heading[]): void => {
+  const last = headings.at(-1);
+
+  if (last !== undefined) last.hasContent = true;
+};
+
 const collectHeadings = (body: string, bodyLineOffset: number): Heading[] => {
   const headings: Heading[] = [];
   const lines = body.split('\n');
@@ -100,29 +103,22 @@ const collectHeadings = (body: string, bodyLineOffset: number): Heading[] => {
   for (const [index, line] of lines.entries()) {
     if (FENCE_PATTERN.test(line)) {
       inFence = !inFence;
-      if (headings.length > 0) (headings.at(-1) as Heading).hasContent = true;
-      continue;
-    }
+      markLastHeadingHasContent(headings);
+    } else if (inFence) {
+      markLastHeadingHasContent(headings);
+    } else {
+      const match = ATX_HEADING_PATTERN.exec(line);
 
-    if (inFence) {
-      if (headings.length > 0) (headings.at(-1) as Heading).hasContent = true;
-      continue;
-    }
-
-    const match = ATX_HEADING_PATTERN.exec(line);
-
-    if (match !== null) {
-      headings.push({
-        hasContent: false,
-        level: match[1].length,
-        line: bodyLineOffset + index + 1,
-        text: line.trim(),
-      });
-      continue;
-    }
-
-    if (line.trim() !== '' && headings.length > 0) {
-      (headings.at(-1) as Heading).hasContent = true;
+      if (match !== null) {
+        headings.push({
+          hasContent: false,
+          level: match[1].length,
+          line: bodyLineOffset + index + 1,
+          text: line.trim(),
+        });
+      } else if (line.trim() !== '') {
+        markLastHeadingHasContent(headings);
+      }
     }
   }
 
@@ -141,29 +137,20 @@ const findInBody = (
   relPath: string
 ): EmptySection[] => {
   const headings = collectHeadings(body, bodyLineOffset);
-  const found: EmptySection[] = [];
 
-  for (const [index, heading] of headings.entries()) {
-    if (heading.hasContent) continue;
+  return headings.flatMap((heading, index) => {
+    if (heading.hasContent) return [];
 
-    // Walk forward to the end of this heading's span (next heading of level
-    // <= its level). A deeper heading inside the span makes it a parent.
-    let hasChildHeading = false;
+    // A heading's span is closed by the very next heading in document
+    // order, whatever its level: if that next heading is deeper, this one
+    // has a child (parent, not a leaf); otherwise the span held nothing.
+    const next = headings[index + 1] as Heading | undefined;
+    const hasChildHeading = next !== undefined && next.level > heading.level;
 
-    for (let next = index + 1; next < headings.length; next += 1) {
-      const candidate = headings[next];
+    if (hasChildHeading) return [];
 
-      if (candidate.level <= heading.level) break;
-      hasChildHeading = true;
-      break;
-    }
-
-    if (hasChildHeading) continue;
-
-    found.push({heading: heading.text, line: heading.line, path: relPath});
-  }
-
-  return found;
+    return [{heading: heading.text, line: heading.line, path: relPath}];
+  });
 };
 
 export const findEmptySections = (cwd: string): readonly EmptySection[] => {
@@ -175,19 +162,19 @@ export const findEmptySections = (cwd: string): readonly EmptySection[] => {
     return [];
   }
 
-  const empty: EmptySection[] = [];
-  const files = walkMarkdown(cwd, wikiDir).sort();
+  const files = walkMarkdown(cwd, wikiDir).toSorted((a, b) =>
+    a.localeCompare(b)
+  );
 
-  for (const filePath of files) {
-    if (shouldSkipFile(filePath)) continue;
+  return files
+    .filter((filePath) => !shouldSkipFile(filePath))
+    .flatMap((filePath) => {
+      const content = readFileSync(path.join(cwd, filePath), 'utf8');
+      const {body} = parseFrontmatter(content);
+      const offset = content.split('\n').length - body.split('\n').length;
 
-    const content = readFileSync(path.join(cwd, filePath), 'utf8');
-    const {body} = parseFrontmatter(content);
-    const offset = content.split('\n').length - body.split('\n').length;
-    empty.push(...findInBody(body, offset, filePath));
-  }
-
-  return empty;
+      return findInBody(body, offset, filePath);
+    });
 };
 
 export const run = (
@@ -205,15 +192,15 @@ export const run = (
 
     if (token === '--json') {
       json = true;
-      continue;
-    }
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'wiki empty-sections',
-    });
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'wiki empty-sections',
+      });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
   }
 
   try {

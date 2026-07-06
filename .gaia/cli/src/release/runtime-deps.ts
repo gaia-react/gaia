@@ -200,15 +200,102 @@ const isVariableExpansionContext = (line: string, found: number): boolean => {
 
     if (ch === '$') return true;
 
-    if (ch === '/' || ch === '{' || ch === '}' || PATH_BODY_CHAR.test(ch)) {
-      cursor -= 1;
-      continue;
+    if (!(ch === '/' || ch === '{' || ch === '}' || PATH_BODY_CHAR.test(ch))) {
+      return false;
     }
 
-    return false;
+    cursor -= 1;
   }
 
   return false;
+};
+
+// Trim trailing dots/slashes, which are likely not part of the intended path
+// token. A bounded loop rather than a trailing-quantifier regex (`/[./]+$/`),
+// which a static ReDoS check flags as backtracking-prone regardless of this
+// pattern's actual (linear) cost.
+const trimTrailingDotsSlashes = (candidate: string): string => {
+  let trimmed = candidate;
+
+  while (
+    trimmed.length > 0 &&
+    (trimmed.endsWith('.') || trimmed.endsWith('/'))
+  ) {
+    trimmed = trimmed.slice(0, -1);
+  }
+
+  return trimmed;
+};
+
+type PrefixScanArgs = {
+  filePath: string;
+  lineNumber: number;
+  prefix: string;
+  stripped: string;
+};
+
+/**
+ * Handles a single `indexOf` hit for `prefix` at position `found`: decides
+ * whether it's a genuine rooted-path occurrence (returning a `PathRef`) or a
+ * substring of a larger absolute path (`ref: null`), and returns the cursor
+ * position to resume scanning from.
+ */
+const consumeStep = (
+  args: PrefixScanArgs & {found: number}
+): {nextCursor: number; ref: null | PathRef} => {
+  const {filePath, found, lineNumber, prefix, stripped} = args;
+
+  // Substring-vs-rooted-path discrimination. A `.gaia/` preceded by a
+  // path-body char usually means we're inside a larger absolute path
+  // (`/var/log/.gaia/...`); skip. The exception is shell variable
+  // expansion (`$PROJECT_ROOT/.gaia/...`), where the static portion is
+  // the project-relative path we care about.
+  const leading = found === 0 ? '' : stripped[found - 1];
+  const isSubstring =
+    leading.length > 0 &&
+    PATH_BODY_CHAR.test(leading) &&
+    !isVariableExpansionContext(stripped, found);
+
+  if (isSubstring) return {nextCursor: found + 1, ref: null};
+
+  const candidate = expandPath(stripped, found);
+  const nextCursor = found + candidate.length;
+
+  // Skip pure-prefix matches (`.gaia/` with no body).
+  if (candidate.length <= prefix.length) return {nextCursor, ref: null};
+
+  const trimmed = trimTrailingDotsSlashes(candidate);
+
+  if (trimmed.length <= prefix.length || PROSE_PATH_ALLOWLIST.has(trimmed)) {
+    return {nextCursor, ref: null};
+  }
+
+  return {nextCursor, ref: {filePath, line: lineNumber, path: trimmed}};
+};
+
+/**
+ * Finds every rooted-path occurrence of `prefix` in a single
+ * (comment-stripped) line, applying the substring-vs-rooted-path and
+ * variable-expansion discrimination, and returns one `PathRef` per genuine
+ * occurrence.
+ */
+const collectPrefixRefs = (args: PrefixScanArgs): PathRef[] => {
+  const {prefix, stripped} = args;
+  const refs: PathRef[] = [];
+  let cursor = 0;
+
+  while (cursor <= stripped.length - prefix.length) {
+    const found = stripped.indexOf(prefix, cursor);
+
+    if (found === -1) break;
+
+    const {nextCursor, ref} = consumeStep({...args, found});
+
+    if (ref !== null) refs.push(ref);
+    cursor = nextCursor;
+  }
+
+  return refs;
 };
 
 export const extractPathRefs = (
@@ -216,52 +303,20 @@ export const extractPathRefs = (
   source: string
 ): readonly PathRef[] => {
   const refs: PathRef[] = [];
-  const lines = source.split('\n');
 
-  for (const [index, line] of lines.entries()) {
+  for (const [index, line] of source.split('\n').entries()) {
     const stripped = stripCommentSuffix(line);
 
-    if (stripped.length === 0) continue;
-
-    for (const prefix of PATH_PREFIXES) {
-      let cursor = 0;
-
-      while (cursor <= stripped.length - prefix.length) {
-        const found = stripped.indexOf(prefix, cursor);
-
-        if (found === -1) break;
-        // Substring-vs-rooted-path discrimination. A `.gaia/` preceded by
-        // a path-body char usually means we're inside a larger absolute
-        // path (`/var/log/.gaia/...`); skip. The exception is shell
-        // variable expansion (`$PROJECT_ROOT/.gaia/...`), where the
-        // static portion is the project-relative path we care about.
-        const leading = found === 0 ? '' : stripped[found - 1];
-
-        if (
-          leading.length > 0 &&
-          PATH_BODY_CHAR.test(leading) &&
-          !isVariableExpansionContext(stripped, found)
-        ) {
-          cursor = found + 1;
-          continue;
-        }
-
-        const candidate = expandPath(stripped, found);
-
-        // Skip pure-prefix matches (`.gaia/` with no body).
-        if (candidate.length > prefix.length) {
-          // Trim trailing dots/slashes which are likely not part of the
-          // intended path token.
-          const trimmed = candidate.replace(/[./]+$/, '');
-
-          if (
-            trimmed.length > prefix.length &&
-            !PROSE_PATH_ALLOWLIST.has(trimmed)
-          ) {
-            refs.push({filePath, line: index + 1, path: trimmed});
-          }
-        }
-        cursor = found + candidate.length;
+    if (stripped.length > 0) {
+      for (const prefix of PATH_PREFIXES) {
+        refs.push(
+          ...collectPrefixRefs({
+            filePath,
+            lineNumber: index + 1,
+            prefix,
+            stripped,
+          })
+        );
       }
     }
   }
@@ -288,24 +343,6 @@ const isShippedPath = (
   return false;
 };
 
-const walkScripts = (root: string): string[] => {
-  const out: string[] = [];
-
-  for (const sub of SCAN_GLOBS) {
-    const absolute = path.join(root, sub);
-
-    try {
-      statSync(absolute);
-    } catch {
-      continue;
-    }
-
-    out.push(...walkSh(root, absolute));
-  }
-
-  return out;
-};
-
 const walkSh = (root: string, dir: string): string[] => {
   const out: string[] = [];
 
@@ -314,11 +351,29 @@ const walkSh = (root: string, dir: string): string[] => {
 
     if (entry.isDirectory()) {
       out.push(...walkSh(root, full));
-      continue;
+    } else if (entry.isFile() && entry.name.endsWith('.sh')) {
+      out.push(path.relative(root, full).split(path.sep).join('/'));
+    }
+  }
+
+  return out;
+};
+
+const walkScripts = (root: string): string[] => {
+  const out: string[] = [];
+
+  for (const sub of SCAN_GLOBS) {
+    const absolute = path.join(root, sub);
+    let exists = true;
+
+    try {
+      statSync(absolute);
+    } catch {
+      exists = false;
     }
 
-    if (entry.isFile() && entry.name.endsWith('.sh')) {
-      out.push(path.relative(root, full).split(path.sep).join('/'));
+    if (exists) {
+      out.push(...walkSh(root, absolute));
     }
   }
 
@@ -355,7 +410,9 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
+  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
+  // which honestly reflects that `index` can run past the end of argv.
+  const value = argv.at(index);
 
   if (value === undefined)
     return {message: `${flag} requires a value`, ok: false};
@@ -377,24 +434,17 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       if (!taken.ok) return taken;
       stagingDir = taken.value;
       index += 1;
-      continue;
-    }
-
-    if (token === '--manifest') {
+    } else if (token === '--manifest') {
       const taken = takeValue(argv, index + 1, '--manifest');
 
       if (!taken.ok) return taken;
       manifestPath = taken.value;
       index += 1;
-      continue;
-    }
-
-    if (token === '--json') {
+    } else if (token === '--json') {
       json = true;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   return {flags: {json, manifestPath, stagingDir}, ok: true};
@@ -439,6 +489,86 @@ const renderReport = (report: Report, jsonMode: boolean): string => {
   return `${out.join('\n')}\n`;
 };
 
+// Resolves a possibly-relative CLI path flag against `cwd`, or falls back to
+// `fallback` when the flag is absent.
+const resolvePathFlag = (
+  cwd: string,
+  fallback: string,
+  flag: string | undefined
+): string => {
+  if (flag === undefined) return fallback;
+
+  return path.isAbsolute(flag) ? flag : path.join(cwd, flag);
+};
+
+const tryVerifyRootExists = (root: string): boolean => {
+  try {
+    statSync(root);
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const tryLoadManifestOrReport = (
+  manifestPath: string
+): null | ReadonlySet<string> => {
+  try {
+    return loadManifest(manifestPath);
+  } catch (error) {
+    structuredError({
+      code: 'manifest_load_failed',
+      message: error instanceof Error ? error.message : String(error),
+      path: manifestPath,
+      subcommand: 'release runtime-deps',
+    });
+
+    return null;
+  }
+};
+
+const tryWalkScriptsOrReport = (root: string): null | readonly string[] => {
+  try {
+    return walkScripts(root);
+  } catch (error) {
+    structuredError({
+      code: 'walk_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release runtime-deps',
+    });
+
+    return null;
+  }
+};
+
+// Scans every script's extracted path refs for leaks: a reference that is
+// neither a self-reference nor a shipped/adopter-owned/runtime path.
+const collectLeaks = (
+  root: string,
+  scriptFiles: readonly string[],
+  manifest: ReadonlySet<string>
+): Leak[] => {
+  const leaks: Leak[] = [];
+
+  for (const scriptPath of scriptFiles) {
+    const source = readFileSync(path.join(root, scriptPath), 'utf8');
+    const refs = extractPathRefs(scriptPath, source);
+
+    for (const ref of refs) {
+      // Self-reference: a script citing its own path is fine.
+      const isLeak =
+        ref.path !== scriptPath && !isShippedPath(ref.path, manifest);
+
+      if (isLeak) {
+        leaks.push({file: ref.filePath, line: ref.line, path: ref.path});
+      }
+    }
+  }
+
+  return leaks;
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -462,16 +592,9 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const root =
-    parsed.flags.stagingDir ?
-      path.isAbsolute(parsed.flags.stagingDir) ?
-        parsed.flags.stagingDir
-      : path.join(cwd, parsed.flags.stagingDir)
-    : cwd;
+  const root = resolvePathFlag(cwd, cwd, parsed.flags.stagingDir);
 
-  try {
-    statSync(root);
-  } catch {
+  if (!tryVerifyRootExists(root)) {
     structuredError({
       code: 'root_missing',
       message: `scan root not found: ${root}`,
@@ -481,57 +604,20 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const manifestPath =
-    parsed.flags.manifestPath ?
-      path.isAbsolute(parsed.flags.manifestPath) ?
-        parsed.flags.manifestPath
-      : path.join(cwd, parsed.flags.manifestPath)
-    : path.join(root, '.gaia', 'manifest.json');
+  const manifestPath = resolvePathFlag(
+    cwd,
+    path.join(root, '.gaia', 'manifest.json'),
+    parsed.flags.manifestPath
+  );
+  const manifest = tryLoadManifestOrReport(manifestPath);
 
-  let manifest: ReadonlySet<string>;
+  if (manifest === null) return UNEXPECTED_EXIT;
 
-  try {
-    manifest = loadManifest(manifestPath);
-  } catch (error) {
-    structuredError({
-      code: 'manifest_load_failed',
-      message: error instanceof Error ? error.message : String(error),
-      path: manifestPath,
-      subcommand: 'release runtime-deps',
-    });
+  const scriptFiles = tryWalkScriptsOrReport(root);
 
-    return UNEXPECTED_EXIT;
-  }
+  if (scriptFiles === null) return UNEXPECTED_EXIT;
 
-  let scriptFiles: readonly string[];
-
-  try {
-    scriptFiles = walkScripts(root);
-  } catch (error) {
-    structuredError({
-      code: 'walk_failed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release runtime-deps',
-    });
-
-    return UNEXPECTED_EXIT;
-  }
-
-  const leaks: Leak[] = [];
-
-  for (const scriptPath of scriptFiles) {
-    const source = readFileSync(path.join(root, scriptPath), 'utf8');
-    const refs = extractPathRefs(scriptPath, source);
-
-    for (const ref of refs) {
-      // Self-reference: a script citing its own path is fine.
-      if (ref.path === scriptPath) continue;
-      if (isShippedPath(ref.path, manifest)) continue;
-
-      leaks.push({file: ref.filePath, line: ref.line, path: ref.path});
-    }
-  }
-
+  const leaks = collectLeaks(root, scriptFiles, manifest);
   const report: Report = {leaks, scanned_files: scriptFiles};
   process.stdout.write(renderReport(report, parsed.flags.json));
 

@@ -83,20 +83,22 @@ const countDomainPages = (wikiRoot: string): Record<string, number> => {
 
     if (!existsSync(domainDir) || !statSync(domainDir).isDirectory()) {
       counts[domain] = 0;
-      continue;
-    }
+    } else {
+      const entries = readdirSync(domainDir, {withFileTypes: true});
+      let count = 0;
 
-    const entries = readdirSync(domainDir, {withFileTypes: true});
-    let count = 0;
-
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      if (!entry.name.endsWith('.md')) continue;
-      // Skip per-domain index pages so the count reflects content pages.
-      if (entry.name === '_index.md') continue;
-      count += 1;
+      for (const entry of entries) {
+        // Skip per-domain index pages so the count reflects content pages.
+        if (
+          entry.isFile() &&
+          entry.name.endsWith('.md') &&
+          entry.name !== '_index.md'
+        ) {
+          count += 1;
+        }
+      }
+      counts[domain] = count;
     }
-    counts[domain] = count;
   }
 
   return counts;
@@ -147,6 +149,9 @@ const printHuman = (state: WikiState, write: (chunk: string) => void): void => {
   write(`${lines.join('\n')}\n`);
 };
 
+type ParseStateArgsResult =
+  {exitCode: number; ok: false} | {json: boolean; ok: true};
+
 type RunOptions = {
   cwd?: string;
   /**
@@ -158,6 +163,35 @@ type RunOptions = {
   write?: (chunk: string) => void;
 };
 
+const parseStateArgs = (
+  argv: readonly string[],
+  write: (chunk: string) => void
+): ParseStateArgsResult => {
+  let json = false;
+
+  for (const token of argv) {
+    if (HELP_TOKENS.has(token)) {
+      write(HELP_TEXT);
+
+      return {exitCode: EXIT_CODES.OK, ok: false};
+    }
+
+    if (token === '--json') {
+      json = true;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'wiki state',
+      });
+
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND, ok: false};
+    }
+  }
+
+  return {json, ok: true};
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -167,28 +201,14 @@ export const run = (
     ((chunk: string) => {
       process.stdout.write(chunk);
     });
-  let json = false;
 
-  for (const token of argv) {
-    if (HELP_TOKENS.has(token)) {
-      write(HELP_TEXT);
+  const parsed = parseStateArgs(argv, write);
 
-      return EXIT_CODES.OK;
-    }
-
-    if (token === '--json') {
-      json = true;
-      continue;
-    }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'wiki state',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  if (!parsed.ok) {
+    return parsed.exitCode;
   }
+
+  const {json} = parsed;
 
   let repoRoot: string;
 
