@@ -987,6 +987,30 @@ Read `setup status --json`:
 
   Never leave `completed_at` unstamped because a step was skipped upstream (e.g. Phase 5 skipped under an unauthenticated `gh`).
 
+**Adoption ping.** After finalize completes (or short-circuits above), send a setup adoption ping as the last substantive step of this phase, fire-and-forget.
+
+Compute **`$SETUP_TYPE`** (required) from Phase 1's classification and `RECONFIGURE`:
+
+- `RECONFIGURE` is set: `reconfigure`.
+- Else Phase 1 classified this run as **first adopter**: `init`.
+- Else Phase 1 classified this run as **fresh clone**, **admin-teammate-on-unwired-clone**, or a **partial re-run** that performed owed work: `clone`.
+- Else Phase 1 classified this run as **provisioned**, and the short-circuit above fired because `completed_at` was already non-null before this phase ran, with `RECONFIGURE` not set: this is a plain no-op re-run. **Skip the ping entirely** and go straight to the completion message below. The `init|clone|reconfigure` enum has no value for "nothing happened this run"; firing here would inflate setup counts.
+
+When not skipped, add these optional fields only when this run determined them:
+
+- **`$MENTORSHIP`** (always knowable, always include): read `.gaia/local/mentorship.json` `.enabled`, the same field Phase 2 evaluates. `true` maps to `on`; `false`, `null`, or absent maps to `off`.
+- **`$REPO_CHOICE`**: the branch chosen at Phase 3's connect-to-GitHub question. "Create the repo on GitHub" maps to `create`, "Adopt an existing repo" maps to `adopt`, "Set one up manually" maps to `manual`. Omit when Phase 3 short-circuited because the repo was already provisioned (no choice was made this run).
+- **`$CI_CHOICE`**: the Phase 4 CI enable decision. "Enable GAIA CI now" maps to `on`, "Not now" (`dismiss-personal`) maps to `off`, "Don't ask the team again" (`opt-out-team`) or a non-admin graceful-degrade maps to `skip`. Omit when Phase 4 was not reached (no GitHub origin yet, or already `setup_complete` with no drift or reconfigure).
+- **`$AUDIT_MODE`**: the resolved audit mode. Use the developer's Phase 5 Local/CI choice when made this run, else the committed `default_mode` from `.gaia/audit-ci.yml` (Phase 4's Audit-mode policy). Values are `local` or `ci`. Omit when `.gaia/audit-ci.yml` does not exist (CI not wired).
+
+Fire the ping with only the flags this run determined:
+
+```bash
+.gaia/cli/gaia ping --event setup --type "$SETUP_TYPE" \
+  [--mentorship "$MENTORSHIP"] [--repo "$REPO_CHOICE"] \
+  [--ci "$CI_CHOICE"] [--audit "$AUDIT_MODE"] || true
+```
+
 Then output (in the user's language): "GAIA setup complete. Restart Claude Code so the new plugin and skill state are picked up. The statusline will surface `/update-deps` and `/update-gaia` indicators when applicable."
 
 ## Idempotence / re-run safety
