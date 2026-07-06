@@ -3,7 +3,7 @@ type: concept
 title: Token Cost Readout
 status: active
 created: 2026-07-04
-updated: 2026-07-05
+updated: 2026-07-07
 tags: [concept, telemetry, cost, token-accounting]
 ---
 
@@ -117,7 +117,7 @@ The roll-up's multi-row markers, mixed provenance, a corrupt ledger line, a cros
 
 ## Pairs with
 
-- [[Cost Data Contract]]: the full `cost.jsonl` record schema, the execute aggregation rule, and both archived folder shapes.
+- [[Cost Data Contract]]: the full `cost.jsonl` record schema, the execute aggregation rule, and why no folder survives merge.
 - [[Telemetry]]: the token tally's storage model and the `.gaia/local/telemetry/` streams the ledger lives beside.
 - [[PR Merge Workflow]]: the merge-time `PostToolUse` hook that renders the full-cycle roll-up.
 - [[Task Orchestration]]: KICKOFF plan execution, whose per-commit cost the ledger accumulates.

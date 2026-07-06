@@ -160,7 +160,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Init Workflow]]: `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, configure-automation, finalize, resume.
 - [[Telemetry]]: three-stream telemetry (mentorship, cloud projection, analytics), `.gaia/cli/` workspace, `.gaia/cli/gaia` bundled binary, profile computation, adaptation injection.
 - [[Token Cost Readout]]: per-action token-to-dollar pricing off one shared pricing lib; the `by_model` field, the committed `token-rates.json` rate table, the roll-up's read-time dollar block, and the tally's own per-phase `cost.md` snapshot cost line, each with its degrade markers.
-- [[Cost Data Contract]]: the `cost.jsonl` record schema (every field + type), the execute aggregation rule, the schema_version evolution rule, both archived folder shapes, and `token-tally.sh` as the single source of truth for the emitted schema.
+- [[Cost Data Contract]]: the `cost.jsonl` record schema (every field + type), the execute aggregation rule, the schema_version evolution rule, why no folder survives merge, and `token-tally.sh` as the single source of truth for the emitted schema.
 - [[Serena Integration]]: Serena handles live code; the wiki handles institutional memory.
 - [[React Perf Diagnostic]]: `/gaia-react-perf`: measure-only runtime render-performance diagnostic built on bippy; capture -> reduce CLI -> ranked `memoDefeated` findings with a structural-fix cross-reference.
 - [[Chromatic Opt-Out]]
