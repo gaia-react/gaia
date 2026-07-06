@@ -3,7 +3,7 @@
 #
 # Reads the ground-truth token usage the API already recorded for a GAIA action
 # (/gaia-spec, /gaia-plan, or a KICKOFF plan-execution run) and turns it into a
-# per-action readout: four billing buckets plus a total, a wall-clock elapsed
+# per-action readout: four billing buckets plus a total, an elapsed
 # span, a durable machine-local ledger record (cost.jsonl), a human-readable
 # cost.md, and a printed tally block.
 #
@@ -14,7 +14,7 @@
 # `.message.id` and the same usage, so the tally DEDUPS by `.message.id`
 # (fallback `.uuid`) before summing; without this it overcounts output ~3x.
 #
-# Alongside the tokens it reports wall-clock elapsed = max(.timestamp) -
+# Alongside the tokens it reports elapsed time = max(.timestamp) -
 # min(.timestamp) over the usage-bearing lines (first to last billed model turn),
 # across main + sidecars. Bookkeeping lines (pr-link/system/attachment) and
 # leading user think-time carry no usage and are excluded, so the span sits on

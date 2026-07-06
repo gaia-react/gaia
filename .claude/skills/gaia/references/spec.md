@@ -878,7 +878,7 @@ bash .gaia/scripts/token-tally.sh \
   --out-dir ".gaia/local/specs/${SPEC_ID}" || true
 ```
 
-The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout so a worktree run still records there), writes `cost.md` into the SPEC folder, and prints the four-bucket tally, total, and wall-clock elapsed. Surface the helper's printed tally to the user as part of the save confirmation, so the readout is reported when the action finishes.
+The helper reads `CLAUDE_CODE_SESSION_ID` from the environment, sums `message.usage` across the main transcript and every sub-agent sidecar (deduped to ground truth), appends one record keyed to `SPEC_ID` to the durable ledger (`.gaia/local/telemetry/cost.jsonl`, resolved to the main checkout so a worktree run still records there), writes `cost.md` into the SPEC folder, and prints the four-bucket tally, total, and elapsed time. Surface the helper's printed tally to the user as part of the save confirmation, so the readout is reported when the action finishes.
 
 **Auto-mode:** the tally fires identically in interactive and auto mode; it is a mechanical helper call, not a user prompt, so no auto-mode branch is needed. In auto mode the printed tally simply lands in the transcript, nothing to prompt.
 
