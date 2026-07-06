@@ -74,14 +74,12 @@ describe('init finalize CLI', () => {
 
   beforeEach(() => {
     stdio = captureStdio();
-    vi.stubEnv('GAIA_TELEMETRY_PING_DISABLE', '1');
   });
 
   afterEach(() => {
     stdio.restore();
     sandbox.cleanup();
     vi.restoreAllMocks();
-    vi.unstubAllEnvs();
   });
 
   test('deletes the command file, records state', async () => {
@@ -112,18 +110,5 @@ describe('init finalize CLI', () => {
     const exit = await run(['--bogus'], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
-  });
-
-  test('a rejected telemetry ping does not affect the exit code', async () => {
-    sandbox = setupSandbox();
-    vi.unstubAllEnvs();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockRejectedValue(new Error('network down'))
-    );
-
-    const exit = await run([], {cwd: sandbox.root});
-    expect(exit).toBe(0);
-    vi.unstubAllGlobals();
   });
 });

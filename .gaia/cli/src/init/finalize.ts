@@ -2,13 +2,14 @@
  * `gaia init finalize` handler.
  *
  * Codifies the cleanup that closes the final step of `/gaia-init`:
- *
- *   1. Delete `.claude/commands/gaia-init.md` so the command cannot be
- *      run a second time.
- *   2. Send a one-time anonymous ping (see `util/telemetry-ping.ts`).
+ * deletes `.claude/commands/gaia-init.md` so the command cannot be run a
+ * second time.
  *
  * `pnpm install` is intentionally NOT performed here; it is a side
- * effect handled by the orchestrating skill before the CLI runs.
+ * effect handled by the orchestrating skill before the CLI runs. The
+ * anonymous adoption ping is likewise not sent here; the `/gaia-init`
+ * Step 11 skill call sends it via `gaia ping --event init` (see
+ * `../ping/index.ts`) after this handler returns.
  *
  * Idempotent: re-running is safe; an already-deleted command file stays
  * gone.
@@ -19,7 +20,6 @@ import {existsSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {sendTelemetryPing} from './util/telemetry-ping.js';
 import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = `Usage: gaia init finalize
@@ -97,8 +97,6 @@ export const run = async (
 
     return UNEXPECTED_EXIT;
   }
-
-  await sendTelemetryPing(cwd);
 
   return EXIT_CODES.OK;
 };
