@@ -147,7 +147,7 @@ describe('init resume', () => {
     vi.restoreAllMocks();
   });
 
-  test('--from-step 3 skips steps 1-2 if marked complete; runs from step 3', () => {
+  test('--from-step 3 skips steps 1-2 if marked complete; runs from step 3', async () => {
     sandbox = setupSandbox();
     writeState(sandbox.root, {
       completed_steps: ['strip-branding', 'configure-i18n'],
@@ -172,7 +172,7 @@ describe('init resume', () => {
       return 0;
     };
 
-    const exit = run(['--from-step', '3'], {
+    const exit = await run(['--from-step', '3'], {
       cwd: sandbox.root,
       runners: {
         'configure-automation': stub('configure-automation'),
@@ -196,7 +196,7 @@ describe('init resume', () => {
     expect(calls[0]?.argv).toEqual(['--title', 'Hello', '--kebab', 'hello']);
   });
 
-  test('default --from-step 1 still skips already-complete steps', () => {
+  test('default --from-step 1 still skips already-complete steps', async () => {
     sandbox = setupSandbox();
     writeState(sandbox.root, {
       completed_steps: ['strip-branding'],
@@ -221,7 +221,7 @@ describe('init resume', () => {
       return 0;
     };
 
-    const exit = run([], {
+    const exit = await run([], {
       cwd: sandbox.root,
       runners: {
         'configure-automation': stub('configure-automation'),
@@ -239,23 +239,23 @@ describe('init resume', () => {
     expect(ran).toContain('finalize');
   });
 
-  test('exit 1 when a step has no saved args', () => {
+  test('exit 1 when a step has no saved args', async () => {
     sandbox = setupSandbox();
     writeState(sandbox.root, {completed_steps: [], step_args: {}});
 
-    const exit = run([], {cwd: sandbox.root});
+    const exit = await run([], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('missing_step_args');
   });
 
-  test('propagates non-zero exit from a step runner', () => {
+  test('propagates non-zero exit from a step runner', async () => {
     sandbox = setupSandbox();
     writeState(sandbox.root, {
       completed_steps: [],
       step_args: {'strip-branding': {title: 'X'}},
     });
 
-    const exit = run([], {
+    const exit = await run([], {
       cwd: sandbox.root,
       runners: {
         'strip-branding': () => 2,
@@ -264,16 +264,16 @@ describe('init resume', () => {
     expect(exit).toBe(2);
   });
 
-  test('--from-step out of range exits 1', () => {
+  test('--from-step out of range exits 1', async () => {
     sandbox = setupSandbox();
-    const exit = run(['--from-step', '99'], {cwd: sandbox.root});
+    const exit = await run(['--from-step', '99'], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--from-step must be');
   });
 
-  test('--from-step 0 exits 1', () => {
+  test('--from-step 0 exits 1', async () => {
     sandbox = setupSandbox();
-    const exit = run(['--from-step', '0'], {cwd: sandbox.root});
+    const exit = await run(['--from-step', '0'], {cwd: sandbox.root});
     expect(exit).toBe(1);
   });
 });

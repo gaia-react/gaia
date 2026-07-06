@@ -12,22 +12,38 @@ Otherwise, ask: **"What do you want me to orchestrate?"** and wait for the respo
 
 #### 1a. Detect SPEC reference
 
-Check the description for a SPEC reference. The canonical form (emitted by `/gaia-spec`) is:
+Check the description for a SPEC reference. Three forms are recognized:
 
-    SPEC-NNN: <intent first line>, see .gaia/local/specs/SPEC-NNN/SPEC.md
+1. **Bare id** (the canonical form `/gaia-spec` now hands off): `$ARGUMENTS`, trimmed, is exactly `SPEC-\d+` and nothing else, e.g. `SPEC-026`.
+2. **Path form**: a path matching `.gaia/local/specs/SPEC-\d+/SPEC\.md` appears anywhere in the description.
+3. **Prefix form** (the older, verbose handoff shape, still accepted for pasted history): a `SPEC-\d+:` prefix at the start of the description.
 
-Match either pattern:
+If any form matched, extract the `SPEC-\d+` id from wherever it appeared (the bare token, the path segment, or the text before the colon), then resolve it against the actual filesystem, self-healing a zero-padding mismatch (e.g. `SPEC-026` also resolves from the bare `SPEC-26`):
 
-- A path matching `.gaia/local/specs/SPEC-\d+/SPEC\.md`
-- A `SPEC-\d+:` prefix at the start of the description
+```bash
+ROOT="$(git rev-parse --show-toplevel)"
+RAW="<the SPEC-\d+ id extracted above, e.g. SPEC-026 or SPEC-26>"
+NUM="${RAW#SPEC-}"
+PADDED="SPEC-$(printf '%03d' "$((10#$NUM))")"
+SPEC_ID=""
+for CANDIDATE in "$RAW" "$PADDED"; do
+  if [[ -f "${ROOT}/.gaia/local/specs/${CANDIDATE}/SPEC.md" ]]; then
+    SPEC_ID="$CANDIDATE"
+    break
+  fi
+done
+```
 
-If matched:
+If `SPEC_ID` is still empty (no folder resolves), stop and surface: `"No SPEC found for <RAW>. Check the id and try again."` Do not fall back to a spec-less plan silently, a SPEC reference that resolves to nothing is a typo, not an intentional spec-less request.
 
-1. Read the referenced SPEC file. Its full content is the source-of-truth feature description; the short string passed via `$ARGUMENTS` is just the dispatch summary.
-2. Extract the SPEC id (e.g. `SPEC-005`). Cache the lowercased form (`spec-005`) as `SPEC_SLUG_SEED` for use in step 4's branch-naming policy.
-3. Cache the absolute SPEC path as `SPEC_PATH` for use in the planner prompt (step 4), the planner will reference it in `README.md`.
+Once `SPEC_ID` resolves:
 
-If no SPEC reference is detected, `SPEC_SLUG_SEED` and `SPEC_PATH` are unset; step 3 allocates a `PLAN-NNN` id from the local ledger for the spec-less plan.
+1. Cache `SPEC_DIR="${ROOT}/.gaia/local/specs/${SPEC_ID}"` and the absolute `SPEC_PATH="${SPEC_DIR}/SPEC.md"` for use in the planner prompt (step 4), the planner will reference it in `README.md`.
+2. Read `SPEC_PATH`. Its full content is the source-of-truth feature description; any dispatch summary in the original description is just a label.
+3. Check for a sibling audit: if `${SPEC_DIR}/AUDIT.md` exists, cache its absolute path as `AUDIT_PATH` for use in step 4, the planner reads it too. If absent, `AUDIT_PATH` is unset.
+4. Cache the lowercased SPEC id (`spec-005`) as `SPEC_SLUG_SEED` for use in step 4's branch-naming policy.
+
+If no SPEC reference is detected, `SPEC_SLUG_SEED`, `SPEC_PATH`, and `AUDIT_PATH` are unset; step 3 allocates a `PLAN-NNN` id from the local ledger for the spec-less plan.
 
 Colocated plans no longer use `SPEC_SLUG_SEED` to prefix a `plans/` slug, the plan lives inside the SPEC folder, so plan→SPEC discovery is structural. It is retained for the branch-name marker (step 4's branch policy) and human-facing labels. `SPEC_PATH` additionally seeds `SPEC_DIR` (its parent directory) for plan-directory resolution in step 3.
 
@@ -82,7 +98,7 @@ Cache the resolved absolute `PLAN_DIR`; interpolate it into the planner prompt b
 
 ### 4. Spawn planning agent
 
-Launch a `general-purpose` Agent with the model determined above and this prompt. Interpolate every `{PLAN_DIR}` token with the absolute path resolved in step 3. If `SPEC_PATH` was set in step 1a, interpolate every `{SPEC_PATH}` token with that absolute path; if unset, delete the `**Source SPEC**` paragraph below before sending.
+Launch a `general-purpose` Agent with the model determined above and this prompt. Interpolate every `{PLAN_DIR}` token with the absolute path resolved in step 3. If `SPEC_PATH` was set in step 1a, interpolate every `{SPEC_PATH}` token with that absolute path; if unset, delete the `**Source SPEC**` paragraph below before sending. If `AUDIT_PATH` was also set in step 1a, interpolate every `{AUDIT_PATH}` token with that absolute path; if unset, delete the `**Adversarial audit**` paragraph below before sending.
 
 ---
 
@@ -91,6 +107,8 @@ You are planning a feature using task orchestration. Do not implement anything. 
 **Plan directory:** `{PLAN_DIR}`
 
 **Source SPEC:** `{SPEC_PATH}`, read this file FIRST. Its `intent`, `UATs`, and `clarifications.answered[]` are authoritative for what to plan; the dispatch summary in `Feature:` below is just a label. Reference the SPEC id in `README.md`'s `## Source SPEC` section.
+
+**Adversarial audit:** `{AUDIT_PATH}`, read this file too. Its `## Plan-time directives` section names implementation constraints the SPEC's contract already satisfies; honor each one in the relevant task doc and cite the directive where you do. Its other sections (refuted findings, coverage) are for-the-record only and need no action.
 
 **Write rules.**
 
@@ -102,7 +120,7 @@ You are planning a feature using task orchestration. Do not implement anything. 
 
 First, read `wiki/concepts/Task Orchestration.md`.
 
-**Never author a manifest-registration task.** `.gaia/manifest.json` is release-generated and lists only files GAIA ships; adopter feature work never adds to it, and a file's absence from the manifest is not `/update-gaia` drift (a path absent from the manifest is adopter-owned and invisible to the update). See `.claude/rules/manifest.md`.
+**Never author a manifest-registration task.** `.gaia/manifest.json` is release-generated and lists only files GAIA ships; adopter feature work never adds to it, and a file's absence from the manifest is not `/update-gaia` drift (a path absent from the manifest is adopter-owned and invisible to the update). See `.claude/rules/gaia-folder.md`.
 
 Then write the following files directly to `{PLAN_DIR}/`:
 
@@ -113,7 +131,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
     - Acceptance criteria (concrete and testable)
     - Dependencies on other tasks in this plan
 
-2.  **`{PLAN_DIR}/README.md`**: task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks. **Annotate each phase with its execution model** (e.g. `Phase 1 (2 sub-agents, model sonnet)`); Sonnet is the default, so call out any phase you escalate to Opus explicitly and briefly say why. **If `{SPEC_PATH}` was provided** (i.e. this plan was derived from a SPEC), the README MUST open with a `## Source SPEC` section naming the SPEC id and the absolute path, so plan→SPEC discovery is one read away. Format: `Derived from {SPEC-id} ({SPEC_PATH}).`
+2.  **`{PLAN_DIR}/README.md`**: task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks. **Annotate each phase with its execution model** (e.g. `Phase 1 (2 sub-agents, model sonnet)`); Sonnet is the default, so call out any phase you escalate to Opus explicitly and briefly say why. **If `{SPEC_PATH}` was provided** (i.e. this plan was derived from a SPEC), the README MUST open with a `## Source SPEC` section naming the SPEC id and the absolute path, so plan→SPEC discovery is one read away. Format: `Derived from {SPEC-id} ({SPEC_PATH}).` **If `{AUDIT_PATH}` was also provided**, append a second line: `Adversarial audit: {AUDIT_PATH}.`
 
 3.  **`{PLAN_DIR}/ORCHESTRATOR.md`**: instructions for running the plan. Must cover:
     - **RUNNING sentinel.** As the very first step, write a sentinel file at `{PLAN_DIR}/RUNNING`. Content:
@@ -297,7 +315,7 @@ Shared preamble (interpolate `<PLAN_DIR>` = the resolved plan directory, `<repo_
 
 The lenses:
 
-- **Decomposition & dependency soundness (id prefix `DP`).** The highest-value lens, with no analog upstream or downstream. Attack the task graph: tasks placed in the same phase as "parallel" that actually share state, edit the same files, or consume each other's outputs; phase order that does not respect a real data or interface dependency; a frozen interface contract that two tasks interpret inconsistently; acceptance criteria that are not independently verifiable. Construct the concrete scenario where every per-task acceptance criterion passes yet the integrated result is broken. Flag as `blocker` any task that registers net-new files into `.gaia/manifest.json`, or that treats a file's absence from the manifest as `/update-gaia` drift: the manifest is release-generated only (see `.claude/rules/manifest.md`).
+- **Decomposition & dependency soundness (id prefix `DP`).** The highest-value lens, with no analog upstream or downstream. Attack the task graph: tasks placed in the same phase as "parallel" that actually share state, edit the same files, or consume each other's outputs; phase order that does not respect a real data or interface dependency; a frozen interface contract that two tasks interpret inconsistently; acceptance criteria that are not independently verifiable. Construct the concrete scenario where every per-task acceptance criterion passes yet the integrated result is broken. Flag as `blocker` any task that registers net-new files into `.gaia/manifest.json`, or that treats a file's absence from the manifest as `/update-gaia` drift: the manifest is release-generated only (see `.claude/rules/gaia-folder.md`).
 - **Contract grounding (id prefix `CG`).** Treat every file path, export subpath, type name, and function signature named in a task's interface contract or files-to-touch list as a factual claim, and verify each resolves against the real repo and `node_modules`. A contract that names a non-existent export, a wrong signature, or a hallucinated module is at least `high`, likely `blocker`: the orchestrator will build against it and fail at integration.
 - **SPEC coverage (id prefix `COV`, dispatched only when `SPEC_PATH` is set).** Build the matrix SPEC `UATs` + `success_criteria` ↔ task acceptance criteria. Find the holes: a UAT or success criterion no task covers; a task that drifts from or contradicts the SPEC's binding contract; scope the SPEC declared out-of-bounds that a task re-introduces. Read `<SPEC_PATH>` (interpolated) as the source of truth.
 

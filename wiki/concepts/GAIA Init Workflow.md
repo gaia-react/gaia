@@ -24,7 +24,7 @@ The `/gaia init` namespace provides subcommands for on-boarding a cloned GAIA te
 
 **`configure-automation`**: Writes a runtime-generated automation config file (`automation.json` under `.gaia/`, not checked in; created on first run) with the four maintenance-tool mode selections (wiki, update-deps, pnpm-audit, stale-branches) and `setup_complete: false`. `/setup-gaia` later flips `setup_complete` to `true`.
 
-**`finalize`**: Removes the `/init` interceptor hook (`.claude/hooks/intercept-init.sh`), prunes its `.claude/settings.json` `hooks.UserPromptExpansion` entry, and deletes `.claude/commands/gaia-init.md` so init cannot be re-run. It does not commit; the user reviews and commits the init changes.
+**`finalize`**: Deletes `.claude/commands/gaia-init.md` so init cannot be re-run. It does not commit; the user reviews and commits the init changes.
 
 **`resume`**: Resumes an interrupted init flow. If a previous init ran and failed partway, re-runs from where it left off without re-running completed phases.
 

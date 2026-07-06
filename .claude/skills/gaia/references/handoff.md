@@ -89,7 +89,7 @@ Use the template below. **Omit any section with no real content**, don't leave e
 
 One-and-done. When the Next Actions above are complete and verified (committed or tests green), delete this file. Do not archive:
 
-`rm .gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
+`rm -f .gaia/local/handoff/HANDOFF-{YYYY-MM-DD}-{slug}.md`
 
 If you were interrupted before finishing, leave it. The next `/gaia-pickup` resumes from here.
 ```

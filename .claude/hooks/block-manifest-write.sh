@@ -2,7 +2,7 @@
 # PreToolUse Edit/Write/MultiEdit + Bash hook: deny writes to .gaia/manifest.json.
 #
 # .gaia/manifest.json is release-generated and lists only the files GAIA
-# ships; adopter feature work never adds to it (.claude/rules/manifest.md).
+# ships; adopter feature work never adds to it (.claude/rules/gaia-folder.md).
 # This is a best-effort, defense-in-depth guard, not an airtight one: Bash
 # vectors are unbounded, so it covers the well-known write shapes and stays
 # biased toward allowing on ambiguity, per the serena-code-search-guard.sh
@@ -24,7 +24,7 @@ set -euo pipefail
 payload=$(cat)
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
-DENY_MSG="BLOCKED: .gaia/manifest.json is release-generated and lists only files GAIA ships; feature work never adds to it. See .claude/rules/manifest.md."
+DENY_MSG="BLOCKED: .gaia/manifest.json is release-generated and lists only files GAIA ships; feature work never adds to it. See .claude/rules/gaia-folder.md."
 
 deny() {
   jq -n --arg r "$1" '{

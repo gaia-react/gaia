@@ -29,7 +29,7 @@ Before Step 0's pnpm check, ask this as the **very first** AskUserQuestion (in t
 
 > How do you want to handle the setup questions?
 >
-> - **Interactive** (Recommended). GAIA asks about language, project name, CODEOWNERS, CI, and mentorship one at a time and waits for your answer on the consequential ones.
+> - **Interactive** (Recommended). GAIA asks about language, project name, CODEOWNERS, and CI one at a time and waits for your answer on the consequential ones.
 > - **Automatic.** GAIA selects the recommended default for every question for you, without stopping to ask. It shows you the full list of chosen defaults first, and you can change anything afterward.
 
 List **Interactive** first (the recommended option) and **Automatic** second. This gate is itself HARD-BLOCK: on non-response, re-ask, never assume a mode.
@@ -54,12 +54,11 @@ Every gate is one of two tiers. The tier is fixed here, do not reclassify by jud
 | kebab-case slug | Step 2, Q5 |
 | CI intent (Configure-CI decision) | Step 8, Configure CI integrations |
 
-**SAFE-DEFAULT** (reversible, the recommended default is the safe outcome). On non-response in interactive mode: re-ask once; if still no answer, apply the stated default, name it plainly ("Defaulting mentorship to off, you can enable it later"), and continue. Do not claim the user is absent.
+**SAFE-DEFAULT** (reversible, the recommended default is the safe outcome). On non-response in interactive mode: re-ask once; if still no answer, apply the stated default, name it plainly ("Defaulting the maintenance tools to their recommended run mode, you can reconfigure later"), and continue. Do not claim the user is absent.
 
 | Gate | Default on non-response | Where |
 |---|---|---|
 | Maintenance-tool run modes | all `ci` (CI enabled) or all `local` (CI declined) | Step 9 |
-| Mentorship opt-in | Not now, mentorship + analytics stay off | Step 10 |
 
 ### Free-text identity values are never fabricated
 
@@ -78,7 +77,7 @@ fi
 `gh api user` is the most reliable method: a single call both verifies auth and returns the login. Treat detection as **failed** if `gh` is absent, unauthenticated, or the call returns empty. Do **not** fall back to `git config user.name` (a display name, not a handle) or remote-URL parsing (there is no remote at init time). What stays never-fabricated is any handle that is neither user-typed nor gh-detected: never invent a plausible-looking one.
 
 - Interactive: offer the gh-detected handle as the recommended default; the user can override it. HARD-BLOCK applies only when detection failed (no default to fall back to): re-ask, do not reach Step 5 without a real handle.
-- Automatic: use the gh-detected handle when available. Only when detection also fails, write a loud placeholder that fails visibly, never a guess. Use `REPLACE-WITH-YOUR-GITHUB-HANDLE`, GitHub flags it as an unknown owner so the gap is obvious, and surface it in the Step 12 summary as a required follow-up.
+- Automatic: use the gh-detected handle when available. Only when detection also fails, write a loud placeholder that fails visibly, never a guess. Use `REPLACE-WITH-YOUR-GITHUB-HANDLE`, GitHub flags it as an unknown owner so the gap is obvious, and surface it in the Step 11 summary as a required follow-up.
 
 ### Automatic defaults, per gate
 
@@ -95,21 +94,19 @@ When the user chose Automatic, first detect the project folder name (`basename "
 > | CODEOWNERS handle | {gh-detected handle when available, else `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder} | Placeholder: one-line edit required. Detected handle: none |
 > | GAIA CI intent | Enabled, activate later via /setup-gaia | Yes, /setup-gaia --reconfigure |
 > | Maintenance tools | All four in `ci` mode | Yes, reconfigure |
-> | Mentorship | Not now, mentorship + analytics off | Yes, enable later |
 
-Exactly one row per setting. **Never** duplicate the Mentorship row: that single row covers both `mentorship.enabled` and `analytics.enabled`. For the CODEOWNERS row, show the gh-detected handle when detection succeeds (it is the user's own authenticated identity, not a guess), otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder. **Never** put a guessed or git-config-derived handle there: the only non-placeholder value allowed is the gh-detected login.
+Exactly one row per setting. For the CODEOWNERS row, show the gh-detected handle when detection succeeds (it is the user's own authenticated identity, not a guess), otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder. **Never** put a guessed or git-config-derived handle there: the only non-placeholder value allowed is the gh-detected login.
 
 Then apply the defaults and proceed without stopping (the user chose Automatic; do not block, they can interrupt if they want to change something):
 
 - pnpm upgrade (0c): upgrade (Yes), it is required to continue.
 - Primary language (Q1): the detected user language.
 - Additional languages / i18n (Q2): primary-only, keep i18n scaffolding (`STRIP_I18N=false`). The teardown is never auto-selected.
-- CODEOWNERS (Q3): the gh-detected handle when available; otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder, flagged as a required Step 12 follow-up. Never a guessed or git-derived handle.
+- CODEOWNERS (Q3): the gh-detected handle when available; otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder, flagged as a required Step 11 follow-up. Never a guessed or git-derived handle.
 - Project title (Q4): title-cased folder name.
 - kebab slug (Q5): folder name.
 - CI intent (Step 8): "Yes, I'll enable CI after pushing" (records intent only).
 - Maintenance tools (Step 9): all `ci`.
-- Mentorship (Step 10): Not now (mentorship + analytics off).
 
 ## Step 0: Ensure pnpm is available (and new enough)
 
@@ -251,7 +248,7 @@ Resolve two values from the answer:
 
 ### Q3–Q5, Project identity (one AskUserQuestion, three questions)
 
-_Non-response: title and slug are HARD-BLOCK, re-ask, never guess. CODEOWNERS: offer the gh-detected handle as the recommended default; HARD-BLOCK only when detection failed (no default to fall back to), re-ask, never guess. Automatic mode: title-cased folder name (title), folder name (slug), and the gh-detected handle (CODEOWNERS) when available, else the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder flagged as a required Step 12 follow-up._
+_Non-response: title and slug are HARD-BLOCK, re-ask, never guess. CODEOWNERS: offer the gh-detected handle as the recommended default; HARD-BLOCK only when detection failed (no default to fall back to), re-ask, never guess. Automatic mode: title-cased folder name (title), folder name (slug), and the gh-detected handle (CODEOWNERS) when available, else the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder flagged as a required Step 11 follow-up._
 
 These three go together as a group. Ask them in a single AskUserQuestion call:
 
@@ -303,9 +300,9 @@ printf '* @%s\n' "<github-username>" > .github/CODEOWNERS
 
 `<github-username>` is the bare handle (no leading `@`); the `* @` prefix makes that user the default owner for every path.
 
-`<github-username>` is the handle Q3 resolved: the user's typed handle, or the gh-detected login when the user accepted (or automatic mode used) that default. Any of these is a real handle, write `* @<handle>` and emit **no** Step 12 follow-up warning.
+`<github-username>` is the handle Q3 resolved: the user's typed handle, or the gh-detected login when the user accepted (or automatic mode used) that default. Any of these is a real handle, write `* @<handle>` and emit **no** Step 11 follow-up warning.
 
-Only when Q3 obtained no real handle (automatic mode where gh detection also failed) is `<github-username>` the placeholder `REPLACE-WITH-YOUR-GITHUB-HANDLE`. Write it anyway, GitHub flags the unknown owner in its CODEOWNERS validation, so the gap is visible. Add a required follow-up to the Step 12 summary: "Edit `.github/CODEOWNERS`, it holds a placeholder owner, set your real GitHub handle." Never substitute a guessed handle.
+Only when Q3 obtained no real handle (automatic mode where gh detection also failed) is `<github-username>` the placeholder `REPLACE-WITH-YOUR-GITHUB-HANDLE`. Write it anyway, GitHub flags the unknown owner in its CODEOWNERS validation, so the gap is visible. Add a required follow-up to the Step 11 summary: "Edit `.github/CODEOWNERS`, it holds a placeholder owner, set your real GitHub handle." Never substitute a guessed handle.
 
 ## Step 6: Check `.env`
 
@@ -565,62 +562,11 @@ If the CLI exits non-zero, surface the structured-error JSON verbatim and stop. 
 
 End of Step 9.
 
-## Step 10: Mentorship opt-in
-
-_Non-response: SAFE-DEFAULT. Re-ask once, then default to "Not now" (`mentorship.enabled = false`, `analytics.enabled = false`), say so plainly, and proceed. Automatic mode: same. Never assert the user is absent._
-
-Tell the user (in their language): "GAIA includes an optional mentorship layer that learns how you work and adapts in-session, fully on your machine, never sent off it. Let's set the default."
-
-Then show the privacy explainer (this block stays English regardless of UI language, it's the canonical contract):
-
-> **GAIA's mentorship layer (experimental, optional)**
->
-> GAIA can quietly learn how you work, which kinds of specs you find easy or hard, where you tend to need more context, and adapt in-session to help you ship better specs and code over time.
->
-> **What it observes:** which kinds of specs you find easy or hard, where you need more context, when you amend specs after closing.
->
-> **What it never observes:** when you work, how fast you type, what you read, your mood, your behavior outside GAIA's workflow.
->
-> **Where it lives:** on your machine only, in your Claude project folder. Never in your project's git. Never sent to a server unless you opt into anonymous fine-tuning analytics (which comes with mentorship).
->
-> **Read more:** https://gaiareact.com/mentorship/
-
-Use AskUserQuestion. The question text must include the link: "Would you like to enable GAIA's mentorship layer? https://gaiareact.com/mentorship/". Three options in this exact order:
-
-- **Not now (you can enable later if you like)**: `mentorship.enabled = false`, `analytics.enabled = false`. Init proceeds.
-- **Yes, enable mentorship + anonymous analytics**: `mentorship.enabled = true`, `analytics.enabled = true`. Provision mentorship tree with `chmod 700/600`. Init proceeds.
-- **Tell me more before I decide**: short description only (e.g. "Claude will explain how mentorship works before you decide"). When selected, Claude outputs the full privacy explainer, then drops into a free-form Q&A loop; on user signal of completion, re-present the same three-option AskUserQuestion. Init does not proceed until either "Not now" or "Yes, enable" is selected.
-
-### Apply the answer
-
-**On "Not now":**
-
-```bash
-.gaia/cli/gaia mentorship _internal-write-config --enabled false --analytics false --decided-via gaia-init
-```
-
-(Internal subcommand, see notes.)
-
-**On "Yes, enable":**
-
-```bash
-.gaia/cli/gaia mentorship _internal-write-config --enabled true --analytics true --decided-via gaia-init
-.gaia/cli/gaia mentorship _internal-provision-dirs
-```
-
-`_internal-provision-dirs` calls `ensureMentorshipDirs(roots)` from the storage-paths module and exits 0 silently. The chmod 700/600 is applied at create time.
-
-**On "Tell me more":**
-
-Output the full privacy explainer (what it observes, what it never observes, where it lives), ending with "Learn more: https://gaiareact.com/mentorship/". Then drop into Q&A. When the user signals they're done (e.g. "ok ready to decide"), re-present the same AskUserQuestion. Loop until the user picks Not now or Yes.
-
-End of Step 10.
-
-## Step 11: Refresh the wiki
+## Step 10: Refresh the wiki
 
 The template ships with a wiki shaped for the upstream GAIA project. Refresh the two files that encode "where we are right now" so the new project starts with a clean context:
 
-### 11a. Overwrite `wiki/hot.md`
+### 10a. Overwrite `wiki/hot.md`
 
 Read `wiki/hot.md` first (required before Write can overwrite an existing file), then replace the entire file with:
 
@@ -645,7 +591,7 @@ tags: [meta, cache]
 - None.
 ```
 
-### 11b. Overwrite `wiki/log.md`
+### 10b. Overwrite `wiki/log.md`
 
 Read `wiki/log.md` first, then replace the entire file with the following content (the GAIA development log is irrelevant to the new project). Substitute `<LANGUAGES>` with this run's configured locale codes, comma-separated (e.g. `en` or `en, es, de`); if i18n was stripped, write `single-language (i18n removed)`.
 
@@ -671,18 +617,15 @@ Append-only. New entries at the TOP.
 - Installed: React Doctor, TDD, Playwright CLI skills; typescript-lsp, claude-obsidian plugins
 ```
 
-## Step 12: Finalize
+## Step 11: Finalize
 
-Mark per-machine setup as complete so the statusline does not show "Run /setup-gaia (Required)". `/gaia-init` performs all the same per-machine work as `/setup-gaia` (tools, plugins, spec-kit, statusline chmod, .env, mentorship), but it does not call `gaia setup mark-step` as it goes, so stamp the state file with `--force` now that everything is done:
+Mark per-machine setup as complete so the statusline does not show "Run /setup-gaia (Required)". `/gaia-init` performs all the same per-machine work as `/setup-gaia` (tools, plugins, spec-kit, statusline chmod, .env), but it does not call `gaia setup mark-step` as it goes, so stamp the state file with `--force` now that everything is done:
 
 ```bash
 .gaia/cli/gaia setup finalize --force
 ```
 
-`finalize` refuses to stamp completion while `.gaia/local/mentorship.json` is absent, the mentorship decision must have persisted an artifact first, and that refusal holds even under `--force`. In the normal path Step 10 already wrote the file (its "Not now" default persists `enabled:false` on non-response, and "Yes, enable" persists the file too), so finalize passes. If Step 10 was skipped entirely, finalize exits non-zero with a structured error whose `code` field is `mentorship_decision_missing`. Read that JSON line on stderr and branch on `code` specifically:
-
-- **`mentorship_decision_missing`**: the mentorship decision was dropped, so re-apply Step 10's "Not now" write (the same `.gaia/cli/gaia mentorship _internal-write-config --enabled false --analytics false --decided-via gaia-init` invocation Step 10 documents), then `.gaia/cli/gaia setup mark-step mentorship-decision`, then retry `.gaia/cli/gaia setup finalize --force` **once**. If that safe-default write itself fails, surface its error verbatim and stop, no retry. If the single retry still exits non-zero (whether it re-emits `mentorship_decision_missing` or any other code), surface that error verbatim and stop. Do not heal again, do not loop.
-- **any other `code`** (e.g. `not_a_git_repo`, `state_malformed`, `setup_steps_pending`): surface it verbatim and stop. The self-heal fires only for the dropped-mentorship case, it never masks an unrelated finalize failure.
+If the CLI exits non-zero, it surfaces a structured error whose `code` field explains the cause (e.g. `not_a_git_repo`, `state_malformed`); surface that JSON line verbatim and stop. Do not retry or self-heal.
 
 Then run the CLI's init finalize step, it removes the `/init` interceptor hook, prunes the matching entry from `.claude/settings.json`, and deletes this command file:
 

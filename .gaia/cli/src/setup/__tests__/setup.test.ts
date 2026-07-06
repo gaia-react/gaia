@@ -7,7 +7,6 @@
 import {execFileSync} from 'node:child_process';
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -20,35 +19,6 @@ import {run as runFinalize} from '../finalize.js';
 import {run as runMarkStep} from '../mark-step.js';
 import {run as runStatus} from '../status.js';
 import {SETUP_STEPS} from '../util/state-file.js';
-
-/**
- * Parse the last non-empty stderr line as JSON and return its `code` field.
- * Structured errors write one JSON object per line; the refusal we assert on
- * is always the final one.
- */
-const lastErrorCode = (errors: string[]): string => {
-  const lines = errors.join('').trim().split('\n');
-
-  return (JSON.parse(lines[lines.length - 1] as string) as {code: string}).code;
-};
-
-/**
- * Write a realistic `mentorship.json` at the given repo root's `.gaia/local/`.
- * The finalize gate is existence-only, so the `enabled` value is a free knob;
- * default `false`, pass `null` for the pre-decision-shape UATs.
- */
-const writeMentorshipFixture = (
-  repoRoot: string,
-  enabled: boolean | null = false
-): void => {
-  const dir = path.join(repoRoot, '.gaia', 'local');
-  mkdirSync(dir, {mode: 0o755, recursive: true});
-  writeFileSync(
-    path.join(dir, 'mentorship.json'),
-    `${JSON.stringify({analytics: {enabled: false}, decided_at: null, decided_via: null, enabled}, null, 2)}\n`,
-    'utf8'
-  );
-};
 
 type Sandbox = {
   cleanup: () => void;
@@ -226,7 +196,6 @@ describe('gaia setup finalize', () => {
     for (const step of SETUP_STEPS) {
       runMarkStep([step], {cwd: sandbox.root});
     }
-    writeMentorshipFixture(sandbox.root);
 
     const fixedNow = new Date('2026-05-07T12:00:00.000Z');
     const exit = runFinalize([], {cwd: sandbox.root, now: () => fixedNow});
@@ -240,7 +209,6 @@ describe('gaia setup finalize', () => {
 
   test('--force allows finalize with pending steps', () => {
     runMarkStep(['install-tools'], {cwd: sandbox.root});
-    writeMentorshipFixture(sandbox.root);
 
     const fixedNow = new Date('2026-05-07T12:00:00.000Z');
     const exit = runFinalize(['--force'], {
@@ -257,7 +225,6 @@ describe('gaia setup finalize', () => {
 
   test('finalize from scratch with --force creates a complete state file', () => {
     expect(existsSync(sandbox.statePath)).toBe(false);
-    writeMentorshipFixture(sandbox.root);
 
     const fixedNow = new Date('2026-05-07T12:00:00.000Z');
     const exit = runFinalize(['--force'], {
@@ -277,7 +244,6 @@ describe('gaia setup finalize', () => {
     for (const step of SETUP_STEPS) {
       runMarkStep([step], {cwd: sandbox.root});
     }
-    writeMentorshipFixture(sandbox.root);
 
     runFinalize([], {cwd: sandbox.root});
 
@@ -288,90 +254,6 @@ describe('gaia setup finalize', () => {
       unknown
     >;
     expect(out.complete).toBe(true);
-  });
-});
-
-describe('gaia setup finalize (mentorship gate)', () => {
-  let sandbox: Sandbox;
-  let stdio: ReturnType<typeof captureStdio>;
-
-  beforeEach(() => {
-    stdio = captureStdio();
-    sandbox = setupSandbox();
-  });
-
-  afterEach(() => {
-    stdio.restore();
-    sandbox.cleanup();
-    vi.restoreAllMocks();
-  });
-
-  test('UAT-001: pending + absent mentorship.json + --force refuses without stamping', () => {
-    runMarkStep(['install-tools'], {cwd: sandbox.root});
-
-    const exit = runFinalize(['--force'], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(lastErrorCode(stdio.errors)).toBe('mentorship_decision_missing');
-
-    // A single marked step means the state file already exists; the refusal
-    // must not have stamped completed_at.
-    const parsed = JSON.parse(
-      readFileSync(sandbox.statePath, 'utf8')
-    ) as Record<string, unknown>;
-    expect(parsed.completed_at).toBeNull();
-  });
-
-  test('UAT-004: all steps complete + absent mentorship.json refuses without stamping', () => {
-    for (const step of SETUP_STEPS) {
-      runMarkStep([step], {cwd: sandbox.root});
-    }
-
-    const exit = runFinalize([], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(lastErrorCode(stdio.errors)).toBe('mentorship_decision_missing');
-
-    const parsed = JSON.parse(
-      readFileSync(sandbox.statePath, 'utf8')
-    ) as Record<string, unknown>;
-    expect(parsed.completed_at).toBeNull();
-  });
-
-  test('UAT-005: enabled:null mentorship.json + --force finalizes, artifact byte-unchanged', () => {
-    writeMentorshipFixture(sandbox.root, null);
-    const fixturePath = path.join(
-      sandbox.root,
-      '.gaia',
-      'local',
-      'mentorship.json'
-    );
-    const before = readFileSync(fixturePath, 'utf8');
-    runMarkStep(['install-tools'], {cwd: sandbox.root});
-
-    const fixedNow = new Date('2026-05-07T12:00:00.000Z');
-    const exit = runFinalize(['--force'], {
-      cwd: sandbox.root,
-      now: () => fixedNow,
-    });
-    expect(exit).toBe(0);
-
-    const parsed = JSON.parse(
-      readFileSync(sandbox.statePath, 'utf8')
-    ) as Record<string, unknown>;
-    expect(parsed.completed_at).toBe('2026-05-07T12:00:00.000Z');
-
-    // Finalize must never fabricate or rewrite the decision artifact.
-    expect(readFileSync(fixturePath, 'utf8')).toBe(before);
-  });
-
-  test('UAT-008: no state file + absent mentorship.json + --force refuses and creates no state file', () => {
-    expect(existsSync(sandbox.statePath)).toBe(false);
-
-    const exit = runFinalize(['--force'], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(lastErrorCode(stdio.errors)).toBe('mentorship_decision_missing');
-
-    // The refusal returns before any state write, so nothing is created.
-    expect(existsSync(sandbox.statePath)).toBe(false);
   });
 });
 

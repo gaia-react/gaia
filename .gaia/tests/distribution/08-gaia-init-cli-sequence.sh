@@ -39,10 +39,9 @@
 #                   statusline command. --mode project so the test never
 #                   touches the host's ~/.claude/settings.json.
 #
-#   finalize        .claude/hooks/intercept-init.sh removed;
-#                   .claude/commands/gaia-init.md removed;
-#                   .claude/settings.json no longer references
-#                   intercept-init.sh.
+#   finalize        .claude/commands/gaia-init.md removed. Runs with
+#                   GAIA_TELEMETRY_PING_DISABLE=1 so this regression
+#                   never fires a real network ping.
 #
 # Layer 0.5: runs on the host or runner, no Docker, no Claude OAuth
 # token. Cheap (~few seconds after build-staging); file-level transforms
@@ -93,22 +92,16 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
 [ -f "$SCAFFOLD/app/languages/en/pages/_index.ts" ] \
   || { fail "staged tree missing app/languages/en/pages/_index.ts (rename title target)"; exit 1; }
 
-# finalize targets; the staged tree must ship both the interceptor hook
-# script and the command file so finalize has something to delete, and
-# the settings file must contain a UserPromptExpansion entry for the
-# prune to fire.
-[ -f "$SCAFFOLD/.claude/hooks/intercept-init.sh" ] \
-  || { fail "staged tree missing .claude/hooks/intercept-init.sh (finalize deletion target)"; exit 1; }
+# finalize target; the staged tree must ship the command file so
+# finalize has something to delete.
 [ -f "$SCAFFOLD/.claude/commands/gaia-init.md" ] \
   || { fail "staged tree missing .claude/commands/gaia-init.md (finalize deletion target)"; exit 1; }
-[ -f "$SCAFFOLD/.claude/settings.json" ] \
-  || { fail "staged tree missing .claude/settings.json (finalize prune target)"; exit 1; }
-grep -q "intercept-init.sh" "$SCAFFOLD/.claude/settings.json" \
-  || { fail "staged .claude/settings.json has no intercept-init.sh entry; finalize would no-op silently"; exit 1; }
 
 TITLE="Test Project"
 KEBAB="test-project"
 GAIA="$SCAFFOLD/.gaia/cli/gaia"
+# This regression must never fire a real network ping.
+export GAIA_TELEMETRY_PING_DISABLE=1
 
 # Each invocation runs from inside $SCAFFOLD via a subshell so the CLI's
 # `process.cwd()` resolves to the scaffold root without mutating the
@@ -197,16 +190,7 @@ grep -q '"statusLine":' "$SETTINGS" \
 run_step "finalize" \
   init finalize
 
-[ ! -f "$SCAFFOLD/.claude/hooks/intercept-init.sh" ] \
-  || { fail "finalize did not remove .claude/hooks/intercept-init.sh"; exit 1; }
 [ ! -f "$SCAFFOLD/.claude/commands/gaia-init.md" ] \
   || { fail "finalize did not remove .claude/commands/gaia-init.md"; exit 1; }
-if grep -q "intercept-init.sh" "$SETTINGS"; then
-  fail "finalize did not prune intercept-init.sh entry from .claude/settings.json"
-  exit 1
-fi
-# Settings JSON still parses after the prune.
-node -e "JSON.parse(require('node:fs').readFileSync('$SETTINGS','utf8'))" 2>/dev/null \
-  || { fail "finalize produced invalid JSON in .claude/settings.json"; exit 1; }
 
 pass "gaia init full sequence (strip-branding → configure-i18n → rename → wire-statusline → finalize) produced expected post-conditions on staged tree"

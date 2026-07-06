@@ -9,14 +9,12 @@
  * supplied (escape hatch for maintainers who initialized manually before
  * `/setup-gaia` existed).
  *
- * Also refuses, regardless of `--force`, while `.gaia/local/mentorship.json`
- * is absent: the completion marker must not claim success when the mentorship
- * opt-in decision was never persisted.
+ * Does not require a mentorship decision artifact. The mentorship opt-in is
+ * surfaced by `/setup-gaia`, whose Phase 2 asks when `.gaia/local/mentorship.json`
+ * is absent or its `enabled` is still null.
  */
 import {EXIT_CODES} from '../exit.js';
-import {mentorshipConfigExists} from '../mentorship/config.js';
 import {structuredError} from '../stderr.js';
-import {resolveStorageRoots} from '../storage/paths.js';
 import {
   pendingSteps,
   readStateFile,
@@ -104,19 +102,6 @@ export const run = (
       code: 'setup_steps_pending',
       message: `cannot finalize: ${pending.length} step(s) pending`,
       pending,
-      subcommand: 'setup finalize',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  const roots = resolveStorageRoots({repoRoot});
-
-  if (!mentorshipConfigExists(roots)) {
-    structuredError({
-      code: 'mentorship_decision_missing',
-      message:
-        'cannot finalize: .gaia/local/mentorship.json is absent (the mentorship decision was never persisted)',
       subcommand: 'setup finalize',
     });
 
