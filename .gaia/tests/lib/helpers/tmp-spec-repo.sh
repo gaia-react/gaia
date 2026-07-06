@@ -5,11 +5,15 @@
 #
 # Inside the tmp repo:
 #   - git init (main), test identity, commit.gpgsign false
-#   - .gaia/local/specs, .gaia/local/cache, .specify/extensions/gaia/lib dirs
+#   - .gaia/local/specs, .gaia/local/cache, .gaia/local/telemetry,
+#     .specify/extensions/gaia/lib, .gaia/scripts dirs
 #   - a minimal valid ledger .gaia/local/specs/ledger.json: { "version": 1, "specs": [] }
-#   - copies (NOT symlinks) of the three scripts under test from the real
-#     repo so ${BASH_SOURCE[0]}-relative sourcing inside the scripts resolves
-#     to the tmp lib dir and finds the sibling with-ledger-lock.sh
+#   - copies (NOT symlinks) of the scripts under test from the real repo so
+#     ${BASH_SOURCE[0]}-relative sourcing inside the scripts resolves to the
+#     tmp lib dir and finds the sibling with-ledger-lock.sh
+#   - copies of cost-represented.sh and ledger-path-lib.sh under .gaia/scripts,
+#     and an empty .gaia/local/telemetry/cost.jsonl, so spec-archive-merged.sh's
+#     representation gate resolves against this tmp repo, not the real one
 #   - one initial commit so require_git / rev-parse --git-dir succeeds
 #
 # Flags (repeatable, order-independent):
@@ -82,6 +86,7 @@ EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 _helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 real_repo="$(git -C "$_helper_dir" rev-parse --show-toplevel)"
 real_lib="${real_repo}/.specify/extensions/gaia/lib"
+real_scripts="${real_repo}/.gaia/scripts"
 
 dir="$(mktemp -d -t gaia-spec-lib-test-XXXXXX)"
 cd "$dir"
@@ -91,7 +96,8 @@ git config user.email "test@example.com"
 git config user.name "Test"
 git config commit.gpgsign false
 
-mkdir -p .gaia/local/specs .gaia/local/cache .specify/extensions/gaia/lib
+mkdir -p .gaia/local/specs .gaia/local/cache .gaia/local/telemetry \
+  .specify/extensions/gaia/lib .gaia/scripts
 
 printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 
@@ -103,6 +109,18 @@ for s in spec-allocator.sh plan-allocator.sh ledger-update.sh with-ledger-lock.s
   cp "${real_lib}/${s}" ".specify/extensions/gaia/lib/${s}"
   chmod +x ".specify/extensions/gaia/lib/${s}"
 done
+
+# Copy the cost-representation gate + ledger-path resolver so
+# spec-archive-merged.sh's representation gate resolves against this tmp
+# repo's own git identity and cost.jsonl instead of the real repo's.
+for s in cost-represented.sh ledger-path-lib.sh; do
+  cp "${real_scripts}/${s}" ".gaia/scripts/${s}"
+  chmod +x ".gaia/scripts/${s}"
+done
+
+# Empty cost ledger so the gate resolves; individual tests append rows to
+# exercise representation.
+: > .gaia/local/telemetry/cost.jsonl
 
 # Remote (--with-origin / --seed-remote-tag / --origin-reject-spec-tags) ops
 # are stashed here, in argument order, and executed AFTER the initial commit

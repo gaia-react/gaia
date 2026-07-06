@@ -1,32 +1,28 @@
 #!/usr/bin/env bash
-# plan-archive.sh: Archive a completed gaia-plan folder.
+# plan-archive.sh: Delete a completed gaia-plan folder.
 #
-# On PR merge, an executed gaia-plan's orchestrator self-cleanup used to
-# delete the whole plan folder outright, destroying SUMMARY.md (the
-# phase-findings ledger) and cost.md (the cost tally) along with the
-# scratch material. This helper prunes the folder down to those two files
-# and then, depending on where the plan lives, either archives it or leaves
-# it in place:
+# On PR merge, an executed gaia-plan's orchestrator self-cleanup deletes the
+# whole plan folder, after preserving its durable identity record and gating
+# the delete on cost representation:
 #
-#   - Spec-less plan at .gaia/local/plans/<slug>/: pruned, then moved to
-#     .gaia/local/plans/archived/<slug>/. Its cost.md gains a grand-total
-#     `## Total` section on the way (cost-consolidate.sh plan-total). When
-#     <slug> matches PLAN-<digits> (a plans-ledger-tracked plan, not a
-#     legacy free-form slug), archiving also best-effort advances that
-#     plan's plans-ledger row to status "completed" with a completed_at
-#     timestamp, through plan-ledger-update.sh.
-#   - Spec-colocated plan at .gaia/local/specs/<SPEC-ID>/plan[-N]/: pruned
-#     in place, no move. The SPEC folder is the archival unit; when the
-#     SPEC itself is later archived (spec-archive-merged.sh), the pruned
-#     plan/ subfolder rides along automatically. Its cost.md is spliced
-#     into the SPEC-root cost.md later by cost-consolidate.sh's spec mode,
-#     not here.
+#   - Spec-less plan at .gaia/local/plans/<slug>/: when <slug> matches
+#     PLAN-<digits> (a plans-ledger-tracked plan, not a legacy free-form
+#     slug), this best-effort advances that plan's plans-ledger row to
+#     status "completed" with a completed_at timestamp, through
+#     plan-ledger-update.sh, before the delete decision. The folder is then
+#     deleted outright, gated on every cost.md phase section under it being
+#     value-represented in cost.jsonl (cost-represented.sh); a folder that
+#     fails the gate is left in place.
+#   - Spec-colocated plan at .gaia/local/specs/<SPEC-ID>/plan[-N]/: the same
+#     representation gate applies, keyed on the parent SPEC's identity. Only
+#     the plan[-N] subfolder is deleted; the SPEC folder is the archival unit
+#     for everything else and is untouched here.
 #
-# Encapsulating the prune+move in a subprocess keeps the destructive rm/mv
-# out of the caller's own tool-call stream, so the block-rm-rf.sh
-# PreToolUse hook and the settings.json permission gate never see the
-# internal rm/mv and cannot prompt or block. Every caller (the orchestrator
-# self-cleanup, the local-janitor.sh backstop) shares this one code path.
+# Encapsulating the delete in a subprocess keeps the destructive rm out of
+# the caller's own tool-call stream, so the block-rm-rf.sh PreToolUse hook
+# and the settings.json permission gate never see the internal rm and cannot
+# prompt or block. Every caller (the orchestrator self-cleanup,
+# local-janitor.sh's backstop) shares this one code path.
 #
 # Usage:
 #   plan-archive.sh <plan_dir>
@@ -37,7 +33,7 @@
 # also accepted and normalized to repo-relative before matching: callers
 # that cache an absolute plan dir (the orchestrator) or iterate
 # $root-anchored absolute paths (local-janitor.sh) both hand this script an
-# absolute path, so refusing it would silently skip archival. An absolute
+# absolute path, so refusing it would silently skip cleanup. An absolute
 # path outside the repo root is refused, as is any path not shaped like
 # .gaia/local/plans/<slug> or .gaia/local/specs/<SPEC-ID>/plan[-N].
 #
@@ -45,15 +41,19 @@
 #   - Exit code is ALWAYS 0 (advisory / fail-open); never blocks a caller.
 #   - The PLAN-NNN plans-ledger completion stamp (see above) is best-effort:
 #     a missing ledger, missing row, or lock timeout is swallowed and never
-#     blocks or fails archival.
+#     blocks or fails this script.
+#   - The representation gate is fail-closed: any error resolving the
+#     ledger, sourcing the gate, or a BLOCKING cost.md section leaves the
+#     folder in place rather than deleting it.
 #   - stdout carries at most one human summary line describing what
 #     happened; diagnostics and refusals go to stderr only.
-#   - Idempotent: a missing plan_dir, an already-archived folder, or a
-#     second run after a successful move is a no-op.
-#   - No git dependency for the prune/move itself -- .gaia/local/ is
-#     gitignored, so this is plain filesystem work. git is only consulted
-#     (best-effort, $PWD fallback) to resolve the repo root when the
-#     argument is an absolute path.
+#   - Idempotent: a missing plan_dir, or a second run after a successful
+#     delete, is a no-op.
+#   - No git dependency for the delete itself -- .gaia/local/ is gitignored,
+#     so this is plain filesystem work. git is only consulted (best-effort,
+#     $PWD fallback) to resolve the repo root when the argument is an
+#     absolute path, and to resolve the main-checkout cost ledger for the
+#     representation gate.
 set -uo pipefail
 
 if [ "$#" -lt 1 ]; then
@@ -91,17 +91,18 @@ rel="${rel%/}"
 
 # ---------- classify path shape ----------
 # .gaia/local/plans/<slug>: exactly one segment, and <slug> is not
-# "archived" (guards against double-archiving an already-archived folder).
+# "archived" (guards against re-processing an archival-era leftover).
 # .gaia/local/specs/<SPEC-ID>/plan[-N]: exactly two segments, the second
 # being "plan" or "plan-<digits>".
 kind=""
 slug=""
+spec_part=""
 case "$rel" in
   .gaia/local/plans/*)
     slug="${rel#.gaia/local/plans/}"
     case "$slug" in
       ""|.|..|*/*|archived)
-        echo "plan-archive: refusing $rel (nested path or already-archived)" >&2
+        echo "plan-archive: refusing $rel (nested path or archived)" >&2
         exit 0
         ;;
     esac
@@ -136,68 +137,68 @@ source_abs="$root/$rel"
 
 # ---------- existence check ----------
 if [ ! -e "$source_abs" ]; then
-  echo "plan-archive: $rel does not exist; nothing to archive" >&2
+  echo "plan-archive: $rel does not exist; nothing to do" >&2
   exit 0
 fi
 
-# ---------- prune: keep only SUMMARY.md and cost.md ----------
-# Three glob arms cover dotfiles too (.work/ is dot-prefixed; RUNNING is
-# not). The existence guard skips a literal unmatched glob token.
-for entry in "$source_abs"/* "$source_abs"/.[!.]* "$source_abs"/..?*; do
-  [ -e "$entry" ] || [ -L "$entry" ] || continue
-  name="${entry##*/}"
-  case "$name" in
-    SUMMARY.md|cost.md) continue ;;
-  esac
-  rm -rf -- "$entry"
-done
-
-# ---------- placement ----------
+# ---------- derive representation-gate identity (FC-3) ----------
+attr_field=""
+attr_val=""
 if [ "$kind" = "plans" ]; then
-  archived_rel=".gaia/local/plans/archived/$slug"
-  archived_dir_abs="$root/.gaia/local/plans/archived"
-  target_abs="$archived_dir_abs/$slug"
-
-  mkdir -p "$archived_dir_abs" 2>/dev/null
-
-  # ---- best-effort plans-ledger completion stamp (PLAN-NNN slugs only) ----
-  # Legacy free-form slugs (e.g. cache-consolidation) have no plans-ledger
-  # row, so this never matches and the stamp is skipped. Runs once per
-  # archival regardless of what the placement step below does with the
-  # folder (moved, pruned-in-place on no-clobber, or mv failure).
   case "$slug" in
     PLAN-*)
       plan_num="${slug#PLAN-}"
       case "$plan_num" in
-        ''|*[!0-9]*) ;;
-        *)
-          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          patch="$(jq -nc --arg ts "$now" '{status: "completed", completed_at: $ts}')"
-          bash "$root/.specify/extensions/gaia/lib/plan-ledger-update.sh" "$root" "$slug" "$patch" \
-            >/dev/null 2>&1 || true
-          ;;
+        ''|*[!0-9]*) attr_field="plan_slug"; attr_val="$slug" ;;
+        *) attr_field="plan_id"; attr_val="$slug" ;;
       esac
       ;;
+    *)
+      attr_field="plan_slug"; attr_val="$slug"
+      ;;
   esac
-
-  if [ -e "$target_abs" ]; then
-    echo "plan-archive: $archived_rel already exists; left $rel pruned in place" >&2
-    printf 'Pruned plan in place (archive target exists): %s (kept SUMMARY.md, cost.md)\n' "$rel"
-    exit 0
-  fi
-
-  if mv "$source_abs" "$target_abs" 2>/dev/null; then
-    # Best-effort: a spec-less plan has no SPEC-root to consolidate into, so
-    # its own cost.md gets its grand total here instead of at spec-archive
-    # time. Never blocks the archive on failure.
-    bash "$root/.specify/extensions/gaia/lib/cost-consolidate.sh" plan-total "$target_abs/cost.md" >/dev/null 2>&1 || true
-    printf 'Archived plan: moved %s -> %s (kept SUMMARY.md, cost.md)\n' "$rel" "$archived_rel"
-  else
-    echo "plan-archive: mv failed for $rel -> $archived_rel; left pruned folder in place" >&2
-    printf 'Pruned plan in place (move failed): %s (kept SUMMARY.md, cost.md)\n' "$rel"
-  fi
 else
-  printf 'Pruned colocated plan in place: %s (kept SUMMARY.md, cost.md)\n' "$rel"
+  attr_field="spec_id"; attr_val="$spec_part"
 fi
+
+# ---- best-effort plans-ledger completion stamp (PLAN-NNN slugs only) ----
+# Legacy free-form slugs (e.g. cache-consolidation) have no plans-ledger
+# row, so this never matches and the stamp is skipped. Runs before the
+# representation gate so the terminal identity record survives even a
+# folder the gate leaves in place (a later run, once cost catches up, finds
+# the row already completed and can retry the delete).
+if [ "$kind" = "plans" ] && [ "$attr_field" = "plan_id" ]; then
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  patch="$(jq -nc --arg ts "$now" '{status: "completed", completed_at: $ts}')"
+  bash "$root/.specify/extensions/gaia/lib/plan-ledger-update.sh" "$root" "$slug" "$patch" \
+    >/dev/null 2>&1 || true
+fi
+
+# ---------- representation gate (FC-3) ----------
+# shellcheck source=.gaia/scripts/ledger-path-lib.sh
+. "$root/.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+# shellcheck source=.gaia/scripts/cost-represented.sh
+. "$root/.gaia/scripts/cost-represented.sh" 2>/dev/null || true
+
+ledger=""
+if declare -f gaia_resolve_ledger_path >/dev/null 2>&1; then
+  ledger="$(gaia_resolve_ledger_path "" 2>/dev/null || true)"
+fi
+
+if [ -z "$ledger" ] || ! declare -f cost_folder_represented >/dev/null 2>&1; then
+  echo "plan-archive: could not resolve the cost-representation gate; left $rel in place" >&2
+  printf 'Retained plan (representation gate unavailable): %s\n' "$rel"
+  exit 0
+fi
+
+if ! cost_folder_represented "$source_abs" "$attr_field" "$attr_val" "$ledger" >/dev/null 2>&1; then
+  echo "plan-archive: cost not fully represented; left $rel in place" >&2
+  printf 'Retained plan (cost not fully represented): %s\n' "$rel"
+  exit 0
+fi
+
+# ---------- delete ----------
+rm -rf -- "$source_abs"
+printf 'Deleted plan folder: %s (cost preserved in cost.jsonl)\n' "$rel"
 
 exit 0
