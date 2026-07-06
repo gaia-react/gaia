@@ -13,10 +13,12 @@
 # Right side suppression in linked worktrees: the right-side indicators
 # (`Run /setup-gaia`, `Run /update-deps`, `Run /update-gaia`) all prod the
 # user toward maintenance flows that belong on the main checkout. Inside a
-# linked worktree the right side is empty; the worktree is detected via
-# `dirname(git rev-parse --git-common-dir) != PROJECT_ROOT`. The background
-# refresher still fires from worktrees so the canonical cache (which the
-# worktree's `.gaia/local/cache/shared/` symlinks to) keeps updating.
+# linked worktree the right side is empty; the worktree is detected by
+# comparing the session's checkout root against the shared main root
+# (`dirname(git rev-parse --git-common-dir) != git rev-parse --show-toplevel`
+# for the session dir). The background refresher still fires from worktrees
+# so the canonical cache (which the worktree's `.gaia/local/cache/shared/`
+# symlinks to) keeps updating.
 #
 # The hot path stays fast (target <50ms): no network calls, no `pnpm` calls.
 # The worktree-detection adds at most one `git rev-parse` fork.
