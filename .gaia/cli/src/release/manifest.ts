@@ -1,3 +1,4 @@
+import {z} from 'zod';
 /**
  * `gaia-maintainer release manifest` handler.
  *
@@ -19,11 +20,10 @@
  */
 import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
-import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
        gaia-maintainer release manifest --check [--json]
@@ -157,14 +157,14 @@ const ManifestSchema = z.object({
   version: z.string(),
 });
 
-type ManifestShape = z.infer<typeof ManifestSchema>;
-
 type BuildOptions = {
   /** Override the timestamp for deterministic tests / snapshots. */
   generatedAt?: string;
   /** Override repo root resolution; default is `git rev-parse --show-toplevel`. */
   repoRoot?: string;
 };
+
+type ManifestShape = z.infer<typeof ManifestSchema>;
 
 const resolveRepoRoot = (cwd: string): string =>
   execFileSync('git', ['rev-parse', '--show-toplevel'], {
@@ -197,7 +197,7 @@ export const buildManifest = (
     excludePatterns.some((pattern) => pattern.test(candidate));
 
   const tracked = listGitFiles(repoRoot);
-  const entries: Array<[string, ManifestClass]> = [];
+  const entries: [string, ManifestClass][] = [];
 
   for (const relativePath of tracked) {
     if (isExcluded(relativePath)) continue;
@@ -273,14 +273,14 @@ export const lintClassifierSets = (
 
 export type ManifestDrift = {
   classifierOverlaps: readonly ClassifierOverlap[];
-  drift: ReadonlyArray<{
+  drift: readonly {
     actual: ManifestClass;
     expected: ManifestClass;
     file: string;
-  }>;
-  extra: ReadonlyArray<{actual: ManifestClass; file: string}>;
-  missing: ReadonlyArray<{expected: ManifestClass; file: string}>;
-  versionDrift: {actual: string; expected: string} | undefined;
+  }[];
+  extra: readonly {actual: ManifestClass; file: string}[];
+  missing: readonly {expected: ManifestClass; file: string}[];
+  versionDrift: undefined | {actual: string; expected: string};
 };
 
 const computeDrift = (
@@ -288,13 +288,13 @@ const computeDrift = (
   actual: ManifestShape,
   classifierOverlaps: readonly ClassifierOverlap[]
 ): ManifestDrift => {
-  const missing: Array<{expected: ManifestClass; file: string}> = [];
-  const extra: Array<{actual: ManifestClass; file: string}> = [];
-  const drift: Array<{
+  const missing: {expected: ManifestClass; file: string}[] = [];
+  const extra: {actual: ManifestClass; file: string}[] = [];
+  const drift: {
     actual: ManifestClass;
     expected: ManifestClass;
     file: string;
-  }> = [];
+  }[] = [];
 
   for (const [file, expectedClass] of Object.entries(expected.files)) {
     const actualClass = actual.files[file];
@@ -354,7 +354,7 @@ const renderCheckReport = (
   if (result.versionDrift !== undefined) {
     out.push(
       '',
-      `version drift:`,
+      'version drift:',
       `  manifest version: ${result.versionDrift.actual}`,
       `  .gaia/VERSION:    ${result.versionDrift.expected}`
     );
@@ -476,24 +476,24 @@ const runCheck = (
 // Flags
 // ---------------------------------------------------------------------------
 
-type Flags = {
-  check: boolean;
-  json: boolean;
-  outPath: string | undefined;
-  stdout: boolean;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  check: boolean;
+  json: boolean;
+  outPath: string | undefined;
+  stdout: boolean;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -515,7 +515,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let stdout = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--out') {
       const taken = takeValue(argv, index + 1, '--out');
@@ -567,7 +567,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

@@ -1,3 +1,4 @@
+import {describe, expect, test} from 'vitest';
 /**
  * Tests for the determinism classifier AST helper
  * (`.gaia/scripts/classifier/classify-determinism.mjs`).
@@ -21,7 +22,6 @@ import {execFileSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {describe, expect, it} from 'vitest';
 
 const resolveRepoRoot = (): string => {
   let dir = path.dirname(fileURLToPath(import.meta.url));
@@ -81,15 +81,15 @@ const classifySource = (
   const out = execFileSync('node', [HELPER, fileIdentity, '--stdin'], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
-    input: source,
     env: HELPER_ENV,
+    input: source,
   });
 
   return JSON.parse(out) as Classification;
 };
 
 describe('classify-determinism', () => {
-  it('emits the {file, classification, reasons} contract shape', () => {
+  test('emits the {file, classification, reasons} contract shape', () => {
     const result = classifySource(
       'app/utils/example.ts',
       'export const add = (a: number, b: number): number => a + b;\n'
@@ -101,7 +101,7 @@ describe('classify-determinism', () => {
   });
 
   describe('condition 1: path scoping', () => {
-    it('classifies a pure file outside the candidate paths EMERGENT', () => {
+    test('classifies a pure file outside the candidate paths EMERGENT', () => {
       const result = classifySource(
         'app/routes/_index.tsx',
         'export const add = (a: number, b: number): number => a + b;\n'
@@ -111,7 +111,7 @@ describe('classify-determinism', () => {
       expect(result.reasons.join(' ')).toMatch(/path/i);
     });
 
-    it('classifies a .tsx file under app/components EMERGENT', () => {
+    test('classifies a .tsx file under app/components EMERGENT', () => {
       const result = classifySource(
         'app/components/Foo/utils.tsx',
         'export const add = (a: number, b: number): number => a + b;\n'
@@ -120,7 +120,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('emergent');
     });
 
-    it('classifies a pure .ts file under app/components STRICT', () => {
+    test('classifies a pure .ts file under app/components STRICT', () => {
       const result = classifySource(
         'app/components/Foo/utils.ts',
         'export const add = (a: number, b: number): number => a + b;\n'
@@ -129,7 +129,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('strict');
     });
 
-    it('classifies a pure file under app/services STRICT', () => {
+    test('classifies a pure file under app/services STRICT', () => {
       const result = classifySource(
         'app/services/example/parse.ts',
         'export const toUpper = (s: string): string => s.toUpperCase();\n'
@@ -140,7 +140,7 @@ describe('classify-determinism', () => {
   });
 
   describe('condition 2: module-reachable non-determinism', () => {
-    it('classifies a default-parameter new Date() EMERGENT (the FI-3 fix)', () => {
+    test('classifies a default-parameter new Date() EMERGENT (the FI-3 fix)', () => {
       const result = classifySource(
         'app/utils/date.ts',
         "import {format} from 'date-fns';\n" +
@@ -151,7 +151,7 @@ describe('classify-determinism', () => {
       expect(result.reasons.join(' ')).toMatch(/new Date/);
     });
 
-    it('classifies a module-level new Date() constant EMERGENT', () => {
+    test('classifies a module-level new Date() constant EMERGENT', () => {
       const result = classifySource(
         'app/utils/clock.ts',
         'const TODAY = new Date();\nexport const year = (): number => TODAY.getFullYear();\n'
@@ -160,7 +160,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('emergent');
     });
 
-    it('classifies a class-field Math.random() initializer EMERGENT', () => {
+    test('classifies a class-field Math.random() initializer EMERGENT', () => {
       const result = classifySource(
         'app/utils/id.ts',
         'export class Id {\n  value = Math.random();\n}\n'
@@ -170,7 +170,7 @@ describe('classify-determinism', () => {
       expect(result.reasons.join(' ')).toMatch(/Math\.random/);
     });
 
-    it('classifies a Date.now() call EMERGENT', () => {
+    test('classifies a Date.now() call EMERGENT', () => {
       const result = classifySource(
         'app/utils/now.ts',
         'export const stamp = (): number => Date.now();\n'
@@ -179,7 +179,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('emergent');
     });
 
-    it('classifies a crypto usage EMERGENT', () => {
+    test('classifies a crypto usage EMERGENT', () => {
       const result = classifySource(
         'app/utils/token.ts',
         'export const token = (): string => crypto.randomUUID();\n'
@@ -188,7 +188,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('emergent');
     });
 
-    it('classifies a top-level await EMERGENT', () => {
+    test('classifies a top-level await EMERGENT', () => {
       const result = classifySource(
         'app/utils/config.ts',
         "const data = await import('./other');\nexport const value = data;\n"
@@ -199,7 +199,7 @@ describe('classify-determinism', () => {
   });
 
   describe('condition 3: hook call-surface rule', () => {
-    it('classifies a hook reading a react-router runtime hook EMERGENT', () => {
+    test('classifies a hook reading a react-router runtime hook EMERGENT', () => {
       const result = classifySource(
         'app/hooks/useThing.ts',
         "import {useNavigate} from 'react-router';\n" +
@@ -210,7 +210,7 @@ describe('classify-determinism', () => {
       expect(result.reasons.join(' ')).toMatch(/useNavigate/);
     });
 
-    it('classifies a hook calling a DOM-layout API EMERGENT', () => {
+    test('classifies a hook calling a DOM-layout API EMERGENT', () => {
       const result = classifySource(
         'app/hooks/useSize.ts',
         'export const useSize = (el: HTMLElement) => {\n' +
@@ -220,7 +220,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('emergent');
     });
 
-    it('classifies a useState/useMemo-only hook STRICT', () => {
+    test('classifies a useState/useMemo-only hook STRICT', () => {
       const result = classifySource(
         'app/hooks/useToggle.ts',
         "import {useState, useCallback} from 'react';\n" +
@@ -233,7 +233,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('strict');
     });
 
-    it('classifies a hook using only the allowlisted matchMedia STRICT', () => {
+    test('classifies a hook using only the allowlisted matchMedia STRICT', () => {
       const result = classifySource(
         'app/hooks/useMedia.ts',
         "import {useState} from 'react';\n" +
@@ -245,7 +245,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('strict');
     });
 
-    it('routes a use* export under app/utils through condition 3, not 2/4', () => {
+    test('routes a use* export under app/utils through condition 3, not 2/4', () => {
       // A hook is a hook even under app/utils/**: it is judged by its call
       // surface (condition 3), and a plain useState hook is STRICT.
       const result = classifySource(
@@ -261,7 +261,7 @@ describe('classify-determinism', () => {
   });
 
   describe('condition 4: no public async I/O export', () => {
-    it('classifies a public async export wrapping fetch EMERGENT', () => {
+    test('classifies a public async export wrapping fetch EMERGENT', () => {
       const result = classifySource(
         'app/services/example/load.ts',
         'export const load = async (url: string): Promise<Response> =>\n' +
@@ -271,7 +271,7 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('emergent');
     });
 
-    it('classifies a public async setTimeout-as-sleep export EMERGENT', () => {
+    test('classifies a public async setTimeout-as-sleep export EMERGENT', () => {
       const result = classifySource(
         'app/services/example/sleep.ts',
         'export const sleep = async (ms: number): Promise<void> =>\n' +
@@ -283,7 +283,7 @@ describe('classify-determinism', () => {
   });
 
   describe('versioned DOM-API allowlist + unknown-API default', () => {
-    it('classifies a hook calling a DOM API absent from the allowlist EMERGENT', () => {
+    test('classifies a hook calling a DOM API absent from the allowlist EMERGENT', () => {
       const result = classifySource(
         'app/hooks/useBattery.ts',
         'export const useBattery = () => {\n' +
@@ -296,7 +296,7 @@ describe('classify-determinism', () => {
   });
 
   describe('a11y helpers are an emergent signal', () => {
-    it('classifies a file calling expectNoA11yViolations EMERGENT', () => {
+    test('classifies a file calling expectNoA11yViolations EMERGENT', () => {
       const result = classifySource(
         'app/components/Foo/utils.ts',
         "import {expectNoA11yViolations} from 'test/a11y';\n" +
@@ -308,7 +308,7 @@ describe('classify-determinism', () => {
       expect(result.reasons.join(' ')).toMatch(/expectNoA11yViolations|a11y/i);
     });
 
-    it('classifies a file calling runAxe EMERGENT', () => {
+    test('classifies a file calling runAxe EMERGENT', () => {
       const result = classifySource(
         'app/components/Foo/axe.ts',
         "import {runAxe} from 'test/a11y';\n" +
@@ -320,7 +320,7 @@ describe('classify-determinism', () => {
   });
 
   describe('file-granularity limitation', () => {
-    it('classifies a mixed pure-export/impure-constant file whole-file EMERGENT', () => {
+    test('classifies a mixed pure-export/impure-constant file whole-file EMERGENT', () => {
       const result = classifySource(
         'app/utils/mixed.ts',
         'const SEED = Math.random();\n' +
@@ -333,19 +333,19 @@ describe('classify-determinism', () => {
   });
 
   describe('named regression fixtures (real files on disk)', () => {
-    it('classifies app/utils/date.ts EMERGENT (default-param new Date())', () => {
+    test('classifies app/utils/date.ts EMERGENT (default-param new Date())', () => {
       const result = classifyFile('app/utils/date.ts');
 
       expect(result.classification).toBe('emergent');
     });
 
-    it('classifies app/components/Form/YearMonthDay/utils.ts EMERGENT (module-level TODAY)', () => {
+    test('classifies app/components/Form/YearMonthDay/utils.ts EMERGENT (module-level TODAY)', () => {
       const result = classifyFile('app/components/Form/YearMonthDay/utils.ts');
 
       expect(result.classification).toBe('emergent');
     });
 
-    it('classifies app/components/Toast/ToastNotification/utils.ts STRICT (pure parsePayload)', () => {
+    test('classifies app/components/Toast/ToastNotification/utils.ts STRICT (pure parsePayload)', () => {
       const result = classifyFile(
         'app/components/Toast/ToastNotification/utils.ts'
       );

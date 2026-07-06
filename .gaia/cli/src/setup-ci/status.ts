@@ -21,12 +21,11 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {
+  readAutomationConfig,
   TOOL_ID_TO_CONFIG_KEY,
   TOOL_IDS,
-  readAutomationConfig,
-  type AutomationConfig,
-  type ToolId,
 } from '../schemas/automation-config.js';
+import type {AutomationConfig, ToolId} from '../schemas/automation-config.js';
 import {readLocalAutomation} from '../schemas/local-automation.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
@@ -56,7 +55,7 @@ const enabledTools = (config: AutomationConfig): ToolId[] => {
 
   for (const tool of TOOL_IDS) {
     const key = TOOL_ID_TO_CONFIG_KEY[tool];
-    const slot = config[key] as {mode: string} | undefined;
+    const slot = config[key] as undefined | {mode: string};
 
     if (slot !== undefined && slot.mode === 'ci') {
       result.push(tool);
@@ -76,7 +75,7 @@ const printHuman = (output: StatusOutput): void => {
   }
 
   process.stdout.write(
-    `configured: true\n` +
+    'configured: true\n' +
       `setup_complete: ${String(output.setup_complete)}\n` +
       `setup_opted_out: ${String(output.setup_opted_out)}\n` +
       `nudge_dismissed: ${String(output.nudge_dismissed)}\n` +

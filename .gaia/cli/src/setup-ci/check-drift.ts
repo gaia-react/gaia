@@ -34,11 +34,8 @@ import {
 import {renderWorkflowTemplate} from '../automation/render.js';
 import {buildWorkflowVars} from '../automation/workflow-vars.js';
 import {EXIT_CODES} from '../exit.js';
-import {
-  TOOL_IDS,
-  readAutomationConfig,
-  type ToolId,
-} from '../schemas/automation-config.js';
+import {readAutomationConfig, TOOL_IDS} from '../schemas/automation-config.js';
+import type {ToolId} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 
@@ -57,10 +54,6 @@ const HELP_TEXT = `Usage: gaia setup-ci check-drift [--workflows-dir <path>] [--
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type RunOptions = {
-  cwd?: string;
-};
-
 type DriftOutput = {
   drifted: ToolId[];
   in_sync: ToolId[];
@@ -72,12 +65,16 @@ type ParsedArgs = {
   workflowsDir?: string;
 };
 
+type RunOptions = {
+  cwd?: string;
+};
+
 const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   let json = false;
   let workflowsDir: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;
@@ -103,7 +100,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   return {json, workflowsDir};
 };
 
-const safeReadFile = (filePath: string): string | null => {
+const safeReadFile = (filePath: string): null | string => {
   try {
     return readFileSync(filePath, 'utf8');
   } catch {

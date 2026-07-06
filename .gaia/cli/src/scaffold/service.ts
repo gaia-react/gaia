@@ -18,12 +18,13 @@
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {fileURLToPath} from 'node:url';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {ensureDir, writeFileIfAbsent} from './fs.js';
-import {renderTemplate, type TemplateVars} from './template.js';
+import {renderTemplate} from './template.js';
+import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const KEBAB_PATTERN = /^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u;
@@ -35,19 +36,19 @@ type Endpoint = (typeof ALL_ENDPOINTS)[number];
 
 const ALL_ENDPOINTS_SET: ReadonlySet<string> = new Set(ALL_ENDPOINTS);
 
-type SchemaField = {
-  /** field name in camelCase (client-side schema) */
-  name: string;
-  /** Zod expression for client schema (e.g. `z.string()`, `z.literal(['a','b'])`) */
-  zodExpression: string;
-};
-
 type ParsedArgs = {
   endpoints: ReadonlySet<Endpoint>;
   fields: SchemaField[];
   json: boolean;
   mocks: boolean;
   name: string;
+};
+
+type SchemaField = {
+  /** field name in camelCase (client-side schema) */
+  name: string;
+  /** Zod expression for client schema (e.g. `z.string()`, `z.literal(['a','b'])`) */
+  zodExpression: string;
 };
 
 const HELP_TEXT = `Usage: gaia scaffold service <name> --endpoints "get,post,put,delete" --schema "id:string,name:string"
@@ -133,13 +134,17 @@ const ZOD_TYPE_BUILDERS: Record<string, () => string> = {
   string: () => 'z.string()',
 };
 
-const buildZodExpression = (typeToken: string): string | null => {
+const buildZodExpression = (typeToken: string): null | string => {
   const optional = typeToken.endsWith('?');
   const base = optional ? typeToken.slice(0, -1) : typeToken;
   const enumMatch = ENUM_PATTERN.exec(base);
-  let expression: string | null = null;
+  let expression: null | string = null;
 
-  if (enumMatch !== null) {
+  if (enumMatch === null) {
+    const builder = ZOD_TYPE_BUILDERS[base];
+
+    expression = builder === undefined ? null : builder();
+  } else {
     const variants = (enumMatch[1] ?? '').split(',').flatMap((value) => {
       const trimmed = value.trim();
 
@@ -149,10 +154,6 @@ const buildZodExpression = (typeToken: string): string | null => {
     if (variants.length === 0) return null;
     const quoted = variants.map((value) => `'${value}'`).join(', ');
     expression = `z.literal([${quoted}])`;
-  } else {
-    const builder = ZOD_TYPE_BUILDERS[base];
-
-    expression = builder === undefined ? null : builder();
   }
 
   if (expression === null) return null;
@@ -160,7 +161,7 @@ const buildZodExpression = (typeToken: string): string | null => {
   return optional ? `${expression}.nullish()` : expression;
 };
 
-const parseSchema = (raw: string): SchemaField[] | null => {
+const parseSchema = (raw: string): null | SchemaField[] => {
   const tokens = raw
     .split(',')
     // Re-join enum(...) bodies that were split on internal commas. We split the
@@ -211,12 +212,15 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | string => {
   const name = flags.positional[0];
 
   if (name === undefined) return 'missing required <name>';
+
   if (!KEBAB_PATTERN.test(name)) {
     return `<name> must be kebab-case (e.g. "projects", "user-settings"); got: ${name}`;
   }
+
   if (flags.endpoints === undefined || flags.endpoints.length === 0) {
     return '--endpoints is required';
   }
+
   if (flags.schema === undefined || flags.schema.length === 0) {
     return '--schema is required';
   }
@@ -286,9 +290,11 @@ const singularize = (kebab: string): string => {
   if (kebab.endsWith('ies') && kebab.length > 3) {
     return `${kebab.slice(0, -3)}y`;
   }
+
   if (kebab.endsWith('sses')) {
     return kebab.slice(0, -2);
   }
+
   if (
     kebab.endsWith('xes') ||
     kebab.endsWith('ches') ||
@@ -296,6 +302,7 @@ const singularize = (kebab: string): string => {
   ) {
     return kebab.slice(0, -2);
   }
+
   if (kebab.endsWith('s') && !kebab.endsWith('ss')) {
     return kebab.slice(0, -1);
   }
@@ -307,11 +314,11 @@ const deriveNames = (name: string): DerivedNames => {
   const singularKebab = singularize(name);
 
   return {
+    name,
     NAME_UPPER: toUpperConst(name),
     Plural: toPascal(name),
-    Singular: toPascal(singularKebab),
-    name,
     plural: toCamel(name),
+    Singular: toPascal(singularKebab),
     singular: toCamel(singularKebab),
   };
 };
@@ -411,6 +418,7 @@ const insertImportAlphabetically = (
     if (importPattern.test(line)) {
       if (firstImportIndex === -1) firstImportIndex = index;
       lastImportIndex = index;
+
       if (insertIndex === -1 && importLine.localeCompare(line) < 0) {
         insertIndex = index;
       }
@@ -425,7 +433,7 @@ const insertImportAlphabetically = (
 
     while (
       topInsert < lines.length &&
-      (lines[topInsert]?.startsWith('//') === true ||
+      (lines[topInsert]?.startsWith('//') ||
         lines[topInsert]?.trim().length === 0)
     ) {
       topInsert += 1;
@@ -486,7 +494,7 @@ const insertCollectionExportAlphabetically = (
   // Both are normalized to the populated single-line form here.
   const seedPattern = /export default \{\} as Record<string, never>;/u;
 
-  if (seedPattern.test(source)) {
+  if (source.includes('export default {} as Record<string, never>;')) {
     return source.replace(seedPattern, `export default {${derived.plural}};`);
   }
 
@@ -544,7 +552,7 @@ const applyDatabaseEdits = (
     !collectionEntry
   ) {
     throw new Error(
-      `database barrel edit did not apply cleanly: expected import, ` +
+      'database barrel edit did not apply cleanly: expected import, ' +
         `${resetCall} in the resetTestData Promise.all, and ` +
         `"${derived.plural}" in the default export. ` +
         'Register the collection by hand or fix test/mocks/database.ts.'
@@ -605,11 +613,11 @@ const emitServiceFiles = (
   ensureDir(serviceDir);
 
   const baseVars: TemplateVars = {
+    name: derived.name,
     NAME_UPPER: derived.NAME_UPPER,
     Plural: derived.Plural,
-    Singular: derived.Singular,
-    name: derived.name,
     plural: derived.plural,
+    Singular: derived.Singular,
     singular: derived.singular,
   };
 
@@ -644,11 +652,11 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   ensureDir(mockDir);
 
   const baseVars: TemplateVars = {
+    name: derived.name,
     NAME_UPPER: derived.NAME_UPPER,
     Plural: derived.Plural,
-    Singular: derived.Singular,
-    name: derived.name,
     plural: derived.plural,
+    Singular: derived.Singular,
     singular: derived.singular,
   };
 
@@ -665,6 +673,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
       result
     );
   }
+
   if (endpoints.has('post')) {
     writeRendered(
       path.join(mockDir, 'post.ts'),
@@ -672,6 +681,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
       result
     );
   }
+
   if (endpoints.has('put')) {
     writeRendered(
       path.join(mockDir, 'put.ts'),
@@ -679,6 +689,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
       result
     );
   }
+
   if (endpoints.has('delete')) {
     writeRendered(
       path.join(mockDir, 'delete.ts'),

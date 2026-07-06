@@ -52,21 +52,21 @@ type Mode = 'global' | 'project' | 'skip';
 const isMode = (value: string): value is Mode =>
   value === 'global' || value === 'project' || value === 'skip';
 
-type Flags = {
-  mode: Mode;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  mode: Mode;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -85,7 +85,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let mode: Mode | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--mode') {
       const taken = takeValue(argv, index + 1, '--mode');
@@ -227,7 +227,7 @@ const targetPathForMode = (
   mode: Mode,
   cwd: string,
   home: string
-): string | null => {
+): null | string => {
   if (mode === 'project') return path.join(cwd, '.claude', 'settings.json');
 
   if (mode === 'global') return path.join(home, '.claude', 'settings.json');
@@ -239,7 +239,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

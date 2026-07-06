@@ -70,12 +70,7 @@ const HELP_TEXT = `Usage: gaia setup-ci check-audit-drift [--workflows-dir <p>]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type AuditDriftState =
-  | 'clean'
-  | 'conflict'
-  | 'drifted'
-  | 'in_sync'
-  | 'missing';
+type AuditDriftState = 'clean' | 'conflict' | 'drifted' | 'in_sync' | 'missing';
 
 type ParsedArgs = {
   baseline?: string;
@@ -93,7 +88,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   const takePath = (
     flag: string,
     index: number
-  ): {value: string} | {error: string} => {
+  ): {error: string} | {value: string} => {
     const next = argv[index + 1];
 
     if (next === undefined || next.startsWith('--')) {
@@ -104,7 +99,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   };
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;
@@ -112,12 +107,17 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
       continue;
     }
 
-    if (token === '--workflows-dir' || token === '--baseline' || token === '--latest') {
+    if (
+      token === '--workflows-dir' ||
+      token === '--baseline' ||
+      token === '--latest'
+    ) {
       const taken = takePath(token, index);
 
       if ('error' in taken) {
         return {error: taken.error};
       }
+
       if (token === '--workflows-dir') {
         workflowsDir = taken.value;
       } else if (token === '--baseline') {
@@ -140,7 +140,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   return {baseline, json, latest, workflowsDir};
 };
 
-const safeReadFile = (filePath: string): string | null => {
+const safeReadFile = (filePath: string): null | string => {
   try {
     return readFileSync(filePath, 'utf8');
   } catch {
@@ -228,7 +228,9 @@ export const run = (
     // release). The latest template is required; the baseline may be
     // unavailable (an older pre-template release), which collapses to
     // conflict so the caller never auto-writes on an unprovable comparison.
-    const latest = readTemplateOrFail(parsed.latest ?? workflowAuditTemplatePath());
+    const latest = readTemplateOrFail(
+      parsed.latest ?? workflowAuditTemplatePath()
+    );
 
     if ('exitCode' in latest) {
       return latest.exitCode;

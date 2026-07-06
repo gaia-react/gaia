@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   chmodSync,
@@ -11,7 +12,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {RevertLedger} from '../../schemas/revert-ledger.js';
 import {withRevertLedgerLock} from '../../schemas/revert-ledger.js';
 import {run} from '../revert.js';
@@ -102,11 +102,11 @@ describe('ci-revert', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
   let ghSpy: ReturnType<typeof vi.spyOn> & {
-    mock: {calls: Array<[readonly string[], unknown?]>};
+    mock: {calls: [readonly string[], unknown?][]};
     mockImplementation: (impl: RunFn) => unknown;
   };
   let gitSpy: ReturnType<typeof vi.spyOn> & {
-    mock: {calls: Array<[readonly string[], unknown?]>};
+    mock: {calls: [readonly string[], unknown?][]};
     mockImplementation: (impl: RunFn) => unknown;
   };
 
@@ -147,7 +147,7 @@ describe('ci-revert', () => {
   });
 
   describe('open', () => {
-    it('opens the revert PR and writes the ledger', () => {
+    test('opens the revert PR and writes the ledger', () => {
       const fixedNow = new Date('2026-05-09T05:00:00.000Z');
       const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
         cwd: sandbox.root,
@@ -210,7 +210,7 @@ describe('ci-revert', () => {
       ]);
     });
 
-    it('refuses with revert_already_opened when an entry exists', () => {
+    test('refuses with revert_already_opened when an entry exists', () => {
       sandbox.writeLedger({
         attempts: {
           '99': {
@@ -247,7 +247,7 @@ describe('ci-revert', () => {
       expect(ledger.attempts['99']?.revert_pr).toBe(137);
     });
 
-    it('exits with pr_not_merged when mergeCommit is null', () => {
+    test('exits with pr_not_merged when mergeCommit is null', () => {
       const impl: RunFn = (args) => {
         if (args[0] === 'pr' && args[1] === 'view') {
           return {
@@ -285,7 +285,7 @@ describe('ci-revert', () => {
       expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow();
     });
 
-    it('rejects when --pr is missing', () => {
+    test('rejects when --pr is missing', () => {
       const exit = run(['open', '--label', 'gaia-ci', '--json'], {
         cwd: sandbox.root,
       });
@@ -293,13 +293,13 @@ describe('ci-revert', () => {
       expect(stdio.err.join('')).toContain('--pr');
     });
 
-    it('rejects when --label is missing', () => {
+    test('rejects when --label is missing', () => {
       const exit = run(['open', '--pr', '99', '--json'], {cwd: sandbox.root});
       expect(exit).not.toBe(0);
       expect(stdio.err.join('')).toContain('--label');
     });
 
-    it('emits revert_failed on git revert conflict', () => {
+    test('emits revert_failed on git revert conflict', () => {
       const impl: RunFn = (args) => {
         if (args[0] === 'revert' && args[1] === '--no-edit') {
           return {exitCode: 1, stderr: 'CONFLICT (content)', stdout: ''};
@@ -322,7 +322,7 @@ describe('ci-revert', () => {
       expect(printed.step).toBe('git_revert');
     });
 
-    it('rolls back the local branch when git push fails', () => {
+    test('rolls back the local branch when git push fails', () => {
       const impl: RunFn = (args) => {
         if (args[0] === 'symbolic-ref') {
           return {exitCode: 0, stderr: '', stdout: 'main\n'};
@@ -367,7 +367,7 @@ describe('ci-revert', () => {
       expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow();
     });
 
-    it('refuses when the per-PR ledger lock is already held', () => {
+    test('refuses when the per-PR ledger lock is already held', () => {
       mkdirSync(`${sandbox.ledgerPath}.lock.pr-99`, {recursive: true});
 
       const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
@@ -386,7 +386,7 @@ describe('ci-revert', () => {
       expect(printed.error).toBe('revert_lock_held');
     });
 
-    it('proceeds when a lock for a different PR is held', () => {
+    test('proceeds when a lock for a different PR is held', () => {
       // A lock scoped to PR 137 must not block a revert open for PR 99.
       mkdirSync(`${sandbox.ledgerPath}.lock.pr-137`, {recursive: true});
 
@@ -401,7 +401,7 @@ describe('ci-revert', () => {
       expect(ledger.attempts['99']?.revert_pr).toBe(137);
     });
 
-    it('reclaims a stale per-PR lock and proceeds', () => {
+    test('reclaims a stale per-PR lock and proceeds', () => {
       const lockDir = `${sandbox.ledgerPath}.lock.pr-99`;
       mkdirSync(lockDir, {recursive: true});
       // Backdate the lock dir's mtime well past the stale threshold
@@ -420,7 +420,7 @@ describe('ci-revert', () => {
       expect(ledger.attempts['99']?.revert_pr).toBe(137);
     });
 
-    it('refuses when a fresh per-PR lock is held', () => {
+    test('refuses when a fresh per-PR lock is held', () => {
       const lockDir = `${sandbox.ledgerPath}.lock.pr-99`;
       mkdirSync(lockDir, {recursive: true});
       // mtime within the threshold, a healthy concurrent revert.
@@ -439,7 +439,7 @@ describe('ci-revert', () => {
       expect(printed.error).toBe('revert_lock_held');
     });
 
-    it('parses the new PR number even with a banner line in stdout', () => {
+    test('parses the new PR number even with a banner line in stdout', () => {
       const impl: RunFn = (args) => {
         if (args[0] === 'pr' && args[1] === 'view') {
           return {exitCode: 0, stderr: '', stdout: ghViewMerged};
@@ -471,7 +471,7 @@ describe('ci-revert', () => {
   });
 
   describe('mark-failed', () => {
-    it('flips status to failed', () => {
+    test('flips status to failed', () => {
       sandbox.writeLedger({
         attempts: {
           '99': {
@@ -500,7 +500,7 @@ describe('ci-revert', () => {
       expect(ledger.attempts['99']?.revert_pr).toBe(137);
     });
 
-    it('exits non-zero on missing attempt', () => {
+    test('exits non-zero on missing attempt', () => {
       const exit = run(['mark-failed', '--pr', '99', '--json'], {
         cwd: sandbox.root,
       });
@@ -513,7 +513,7 @@ describe('ci-revert', () => {
       expect(printed.error).toBe('no_revert_attempt');
     });
 
-    it('rejects when --pr is missing', () => {
+    test('rejects when --pr is missing', () => {
       const exit = run(['mark-failed'], {cwd: sandbox.root});
       expect(exit).not.toBe(0);
       expect(stdio.err.join('')).toContain('--pr');
@@ -521,7 +521,7 @@ describe('ci-revert', () => {
   });
 
   describe('is-cap-reached', () => {
-    it('reports true for status: open', () => {
+    test('reports true for status: open', () => {
       sandbox.writeLedger({
         attempts: {
           '99': {
@@ -547,7 +547,7 @@ describe('ci-revert', () => {
       expect(printed.status).toBe('open');
     });
 
-    it('reports true for status: failed', () => {
+    test('reports true for status: failed', () => {
       sandbox.writeLedger({
         attempts: {
           '99': {
@@ -573,7 +573,7 @@ describe('ci-revert', () => {
       expect(printed.status).toBe('failed');
     });
 
-    it('reports false for status: merged', () => {
+    test('reports false for status: merged', () => {
       sandbox.writeLedger({
         attempts: {
           '99': {
@@ -599,7 +599,7 @@ describe('ci-revert', () => {
       expect(printed.status).toBe('merged');
     });
 
-    it('reports false on missing entry', () => {
+    test('reports false on missing entry', () => {
       const exit = run(['is-cap-reached', '--pr', '99', '--json'], {
         cwd: sandbox.root,
       });
@@ -615,19 +615,19 @@ describe('ci-revert', () => {
   });
 
   describe('help & dispatch', () => {
-    it('prints help on no args', () => {
+    test('prints help on no args', () => {
       const exit = run([], {cwd: sandbox.root});
       expect(exit).not.toBe(0);
       expect(stdio.out.join('')).toContain('Usage: gaia ci-revert');
     });
 
-    it('prints help on --help and exits 0', () => {
+    test('prints help on --help and exits 0', () => {
       const exit = run(['--help'], {cwd: sandbox.root});
       expect(exit).toBe(0);
       expect(stdio.out.join('')).toContain('Usage: gaia ci-revert');
     });
 
-    it('exits non-zero on unknown subcommand', () => {
+    test('exits non-zero on unknown subcommand', () => {
       const exit = run(['unknown'], {cwd: sandbox.root});
       expect(exit).not.toBe(0);
       expect(stdio.err.join('')).toContain('unknown');
@@ -635,7 +635,7 @@ describe('ci-revert', () => {
   });
 
   describe('withRevertLedgerLock', () => {
-    it('propagates a non-EEXIST lock-acquire error', () => {
+    test('propagates a non-EEXIST lock-acquire error', () => {
       // A read-only lock parent makes the lock-dir `mkdir` fail with
       // EACCES, a genuine error, not contention. It must propagate
       // rather than be swallowed into {locked: false}.
@@ -652,7 +652,7 @@ describe('ci-revert', () => {
       }
     });
 
-    it('does not serialize locks for different PRs', () => {
+    test('does not serialize locks for different PRs', () => {
       const outer = withRevertLedgerLock(sandbox.root, 99, () =>
         // While PR 99's lock is held, a revert for PR 100 still acquires.
         withRevertLedgerLock(sandbox.root, 100, () => 'inner-ran')
@@ -669,7 +669,7 @@ describe('ci-revert', () => {
       }
     });
 
-    it('serializes locks for the same PR', () => {
+    test('serializes locks for the same PR', () => {
       const outer = withRevertLedgerLock(sandbox.root, 99, () =>
         // A second open for the same PR while the first holds a fresh
         // lock is refused.
@@ -683,7 +683,7 @@ describe('ci-revert', () => {
       }
     });
 
-    it('reclaims a stale lock directory', () => {
+    test('reclaims a stale lock directory', () => {
       const lockDir = path.join(
         sandbox.root,
         '.gaia',
@@ -709,7 +709,7 @@ describe('ci-revert', () => {
       expect(() => statSync(lockDir)).toThrow();
     });
 
-    it('refuses when a fresh lock directory exists', () => {
+    test('refuses when a fresh lock directory exists', () => {
       const lockDir = path.join(
         sandbox.root,
         '.gaia',

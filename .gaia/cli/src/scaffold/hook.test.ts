@@ -329,6 +329,7 @@ describe('gaia scaffold hook', () => {
     expect(payload.written).toHaveLength(2);
     expect(payload.edited).toEqual([]);
     expect(payload.skipped).toEqual([]);
+
     for (const file of payload.written) {
       expect(path.isAbsolute(file)).toBe(true);
     }

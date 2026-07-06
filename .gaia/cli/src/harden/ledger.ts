@@ -22,8 +22,8 @@ import {
   emptyDeclineLedger,
   readDeclineLedger,
   writeDeclineLedger,
-  type DeclineLedger,
 } from '../schemas/decline-ledger.js';
+import type {DeclineLedger} from '../schemas/decline-ledger.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 
@@ -65,13 +65,13 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
 
-  const sub = argv[0] as string;
+  const sub = argv[0];
   const rest = argv.slice(1);
 
   if (sub === 'list') return handleList(rest, options);
@@ -100,7 +100,7 @@ const parseCountFlag = (value: string | undefined): number | undefined => {
 const resolveRoot = (
   options: RunOptions,
   subcommand: string
-): string | null => {
+): null | string => {
   try {
     return resolveRepoRoot(options.cwd ?? process.cwd());
   } catch {
@@ -146,7 +146,7 @@ const handleList = (argv: readonly string[], options: RunOptions): number => {
   if (argv.length > 0) {
     structuredError({
       code: 'invalid_arguments',
-      message: `unknown argument: ${argv[0] as string}`,
+      message: `unknown argument: ${argv[0]}`,
       subcommand: 'harden-ledger list',
     });
 
@@ -178,7 +178,7 @@ const parseRecordArgs = (argv: readonly string[]): RecordArgs | string => {
   let prCount: number | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--finding-class') {
       findingClass = argv[index + 1];
@@ -281,7 +281,7 @@ const parseIsSuppressedArgs = (
   let currentPrCount: number | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--finding-class') {
       findingClass = argv[index + 1];
@@ -393,11 +393,11 @@ const handleIsSuppressed = (
 
 const parsePruneArgs = (
   argv: readonly string[]
-): {windowClasses: string | undefined} | string => {
+): string | {windowClasses: string | undefined} => {
   let windowClasses: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--window-classes') {
       windowClasses = argv[index + 1];

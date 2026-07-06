@@ -45,22 +45,22 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 const STEP_NAME = 'configure-i18n';
 
-type Flags = {
-  locales: string[];
-  strip: boolean;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  locales: string[];
+  strip: boolean;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -83,7 +83,7 @@ const parseBool = (raw: string): boolean | null => {
   return null;
 };
 
-const parseLocales = (raw: string): string[] | null => {
+const parseLocales = (raw: string): null | string[] => {
   const parts = raw.split(',').flatMap((token) => {
     const trimmed = token.trim();
 
@@ -104,7 +104,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let strip: boolean | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--locales') {
       const taken = takeValue(argv, index + 1, '--locales');
@@ -212,7 +212,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

@@ -14,12 +14,8 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {
-  collectOutstandingGroups,
-  saveDeclines,
-  type CountablePayload,
-  type DeclinedRecord,
-} from './declines.js';
+import {collectOutstandingGroups, saveDeclines} from './declines.js';
+import type {CountablePayload, DeclinedRecord} from './declines.js';
 import {resolveGroup} from './groups.js';
 
 const HELP_TEXT = `Usage: gaia update-deps decline [options]
@@ -43,12 +39,11 @@ export type DeclineOptions = {
 };
 
 type ParsedArgs =
-  | {clear: false; skip: readonly string[]; source: string}
-  | {clear: true};
+  {clear: false; skip: readonly string[]; source: string} | {clear: true};
 
 type ParseError = {error: string};
 
-const parseArgs = (argv: readonly string[]): ParseError | ParsedArgs => {
+const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
   let source: string | undefined;
   let skipRaw: string | undefined;
   let clear = false;
@@ -89,6 +84,7 @@ const parseArgs = (argv: readonly string[]): ParseError | ParsedArgs => {
   if (clear) return {clear: true};
 
   if (source === undefined) return {error: '--source is required with --skip'};
+
   if (skipRaw === undefined) {
     return {error: '--skip is required (or use --clear)'};
   }
@@ -107,8 +103,7 @@ const readPayload = (
   cwd: string,
   source: string
 ): CountablePayload | undefined => {
-  const sourcePath =
-    path.isAbsolute(source) ? source : path.join(cwd, source);
+  const sourcePath = path.isAbsolute(source) ? source : path.join(cwd, source);
 
   let parsed: unknown;
 

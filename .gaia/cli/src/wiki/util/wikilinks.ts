@@ -21,10 +21,10 @@ const WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
  */
 export const extractWikilinks = (body: string): string[] => {
   const targets: string[] = [];
-  let match: RegExpExecArray | null = WIKILINK_PATTERN.exec(body);
+  let match: null | RegExpExecArray = WIKILINK_PATTERN.exec(body);
 
   while (match !== null) {
-    const raw = (match[1] as string).trim();
+    const raw = match[1].trim();
     const aliasIndex = raw.indexOf('|');
     const withoutAlias = aliasIndex === -1 ? raw : raw.slice(0, aliasIndex);
     const anchorIndex = withoutAlias.indexOf('#');

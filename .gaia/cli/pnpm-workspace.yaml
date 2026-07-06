@@ -11,3 +11,10 @@
 # --frozen-lockfile install fails with ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
   esbuild: true
+  unrs-resolver: true
+
+# @gaia-react/lint bundles plugins for surfaces this CLI omits (storybook,
+# better-tailwindcss, react/react-dom); their peers are absent from this
+# CLI-only workspace. Pin peer mismatches as warnings, not install failures,
+# for parity with the root workspace's explicit setting.
+strictPeerDependencies: false

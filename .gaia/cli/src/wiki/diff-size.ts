@@ -37,17 +37,17 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const WIKI_PREFIX = 'wiki/';
 
+type ComputeOptions = {
+  base?: string;
+  cwd: string;
+  thresholdPct: number;
+};
+
 type DiffSizeResult = {
   baseLines: number;
   changedLines: number;
   decision: 'exceeded' | 'ok';
   ratioPct: number;
-  thresholdPct: number;
-};
-
-type ComputeOptions = {
-  base?: string;
-  cwd: string;
   thresholdPct: number;
 };
 
@@ -225,6 +225,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
       json = true;
       continue;
     }
+
     if (token === '--threshold-pct') {
       const value = argv[index + 1];
 
@@ -241,6 +242,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
       index += 1;
       continue;
     }
+
     if (token === '--base') {
       const value = argv[index + 1];
 

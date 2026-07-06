@@ -21,24 +21,24 @@
 const FRAMEWORK_NAMES: ReadonlySet<string> = new Set([
   // React Router v7 / Remix internals.
   'DataRoutes2',
+  'fetcher.Form',
+  // React Router form primitives (no app component renders as `Form`).
+  'Form',
   'HydratedRouter',
+  // react-icons shared base wrapper.
+  'IconBase',
   'Link',
   'Links',
   'Outlet',
   'RemixErrorBoundary',
-  'RenderErrorBoundary',
   'RenderedRoute',
+  'RenderErrorBoundary',
   'Router',
   'RouterProvider',
   'RouterProvider2',
   'Scripts',
   'ScrollRestoration',
   'WithComponentProps2',
-  // React Router form primitives (no app component renders as `Form`).
-  'Form',
-  'fetcher.Form',
-  // react-icons shared base wrapper.
-  'IconBase',
 ]);
 
 /**

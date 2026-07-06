@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki empty-sections`.
  */
@@ -5,7 +6,6 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {findEmptySections, run} from './empty-sections.js';
 
 type Sandbox = {
@@ -338,7 +338,7 @@ describe('wiki empty-sections', () => {
     expect(exit).toBe(0);
 
     const parsed = JSON.parse(stdio.outputs.join('')) as {
-      empty: ReadonlyArray<{heading: string; line: number; path: string}>;
+      empty: readonly {heading: string; line: number; path: string}[];
     };
     expect(parsed.empty).toEqual([
       {heading: '## Bar', line: 5, path: 'wiki/concepts/Foo.md'},

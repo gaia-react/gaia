@@ -1,8 +1,9 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {localAutomationPath} from '../../../automation/paths.js';
 import {readLocalAutomation} from '../../../schemas/local-automation.js';
-import {setupSandbox, type Sandbox} from '../../__tests__/sandbox.js';
+import {setupSandbox} from '../../__tests__/sandbox.js';
+import type {Sandbox} from '../../__tests__/sandbox.js';
 import {writeLocalAutomation} from '../local-automation-write.js';
 
 describe('writeLocalAutomation', () => {
@@ -16,7 +17,7 @@ describe('writeLocalAutomation', () => {
     sandbox.cleanup();
   });
 
-  it('writes the gitignored file with 2-space indentation and trailing newline', () => {
+  test('writes the gitignored file with 2-space indentation and trailing newline', () => {
     writeLocalAutomation(sandbox.root, {nudge_dismissed: true, version: 1});
 
     const filePath = localAutomationPath(sandbox.root);
@@ -26,7 +27,7 @@ describe('writeLocalAutomation', () => {
     expect(raw.endsWith('\n')).toBe(true);
   });
 
-  it('round-trips through the read helper', () => {
+  test('round-trips through the read helper', () => {
     writeLocalAutomation(sandbox.root, {nudge_dismissed: true, version: 1});
 
     const result = readLocalAutomation(sandbox.root);
@@ -37,7 +38,7 @@ describe('writeLocalAutomation', () => {
     }
   });
 
-  it('throws on schema-invalid payloads', () => {
+  test('throws on schema-invalid payloads', () => {
     expect(() =>
       writeLocalAutomation(sandbox.root, {
         nudge_dismissed: 'yes' as unknown as boolean,

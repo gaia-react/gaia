@@ -15,11 +15,12 @@ import {
   readRevertLedger,
   withRevertLedgerLock,
   writeRevertLedger,
-  type RevertLedger,
 } from '../schemas/revert-ledger.js';
+import type {RevertLedger} from '../schemas/revert-ledger.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
-import {runGh, runGit, type ProcessResult} from './util/run-process.js';
+import {runGh, runGit} from './util/run-process.js';
+import type {ProcessResult} from './util/run-process.js';
 
 const HELP_TEXT = `Usage: gaia ci-revert <subcommand> [args]
 
@@ -45,13 +46,13 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
 
-  const sub = argv[0] as string;
+  const sub = argv[0];
   const rest = argv.slice(1);
 
   if (sub === 'open') return handleOpen(rest, options);
@@ -84,7 +85,7 @@ const parsePrFlag = (value: string | undefined): number | undefined => {
 const resolveRoot = (
   options: RunOptions,
   subcommand: string
-): string | null => {
+): null | string => {
   try {
     return resolveRepoRoot(options.cwd ?? process.cwd());
   } catch {
@@ -102,11 +103,11 @@ const ensureLedger = (
   repoRoot: string,
   subcommand: string,
   json: boolean
-): RevertLedger | null => {
+): null | RevertLedger => {
   const result = readRevertLedger(repoRoot);
 
   if (result.status === 'malformed') {
-    const payload = {error: 'malformed_ledger', details: result.error};
+    const payload = {details: result.error, error: 'malformed_ledger'};
     structuredError({
       code: 'malformed_ledger',
       message: result.error,
@@ -139,7 +140,7 @@ const parseOpenArgs = (argv: readonly string[]): OpenArgs | string => {
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;
@@ -174,22 +175,21 @@ const parseOpenArgs = (argv: readonly string[]): OpenArgs | string => {
   return {json, label, pr, reason};
 };
 
-const parsePrUrlNumber = (urlOrText: string): number | null => {
+const parsePrUrlNumber = (urlOrText: string): null | number => {
   // gh pr create stdout is the URL; sometimes a banner line precedes it.
   // We scan every whitespace-delimited token for the first one ending in
   // /pull/<digits> or /<digits>.
   const tokens = urlOrText.split(/\s+/u).filter((token) => token.length > 0);
 
-  for (let i = tokens.length - 1; i >= 0; i -= 1) {
-    const token = tokens[i] as string;
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index];
     const pullMatch = /\/pull\/(\d+)$/u.exec(token);
 
-    if (pullMatch !== null) return Number.parseInt(pullMatch[1] as string, 10);
+    if (pullMatch !== null) return Number.parseInt(pullMatch[1], 10);
 
     const trailingMatch = /\/(\d+)$/u.exec(token);
 
-    if (trailingMatch !== null)
-      return Number.parseInt(trailingMatch[1] as string, 10);
+    if (trailingMatch !== null) return Number.parseInt(trailingMatch[1], 10);
   }
 
   return null;
@@ -197,9 +197,9 @@ const parsePrUrlNumber = (urlOrText: string): number | null => {
 
 const DEFAULT_REVERT_BODY = (originalPr: number): string =>
   `Auto-revert of #${originalPr} opened by GAIA CI after post-merge CI failure.\n\n` +
-  `This PR will auto-merge on green CI. If its CI also fails, GAIA CI will\n` +
-  `stop automated activity on this change and open a \`priority:critical\`\n` +
-  `issue requesting human intervention.\n`;
+  'This PR will auto-merge on green CI. If its CI also fails, GAIA CI will\n' +
+  'stop automated activity on this change and open a `priority:critical`\n' +
+  'issue requesting human intervention.\n';
 
 const surfaceRevertFailure = (
   step: string,
@@ -210,7 +210,7 @@ const surfaceRevertFailure = (
     result.stderr.trim() ||
     result.stdout.trim() ||
     `exit code ${result.exitCode}`;
-  const payload = {error: 'revert_failed', step, details};
+  const payload = {details, error: 'revert_failed', step};
   structuredError({
     code: 'revert_failed',
     details,
@@ -366,7 +366,7 @@ const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
     );
   }
 
-  const mergeCommit = view.mergeCommit;
+  const {mergeCommit} = view;
   const mergeSha =
     (
       typeof mergeCommit === 'object' &&
@@ -439,10 +439,10 @@ const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
   // and delete it. Best-effort; every step is non-fatal because the
   // surfaced failure is the one that matters.
   const rollbackRevertBranch = (): void => {
-    if (priorBranch !== '') {
-      runGit(['checkout', '--force', priorBranch], {cwd: repoRoot});
-    } else {
+    if (priorBranch === '') {
       runGit(['checkout', '--force', `origin/${baseRefName}`], {cwd: repoRoot});
+    } else {
+      runGit(['checkout', '--force', priorBranch], {cwd: repoRoot});
     }
     runGit(['branch', '-D', revertBranch], {cwd: repoRoot});
   };
@@ -554,7 +554,7 @@ const parseSimplePrArgs = (argv: readonly string[]): CommonArgs | string => {
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;

@@ -16,8 +16,8 @@ import {run as runCommitAndTag} from './commit-and-tag.js';
 import {run as runManifest} from './manifest.js';
 import {run as runPreflight} from './preflight.js';
 import {run as runRuntimeDeps} from './runtime-deps.js';
-import {run as runScrub} from './scrub.js';
 import {run as runScrubWiki} from './scrub-wiki.js';
+import {run as runScrub} from './scrub.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
 

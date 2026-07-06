@@ -1,7 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {run} from '../verify-run.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -80,7 +81,7 @@ describe('setup-ci verify-run', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns verified: true on completed/success', async () => {
+  test('returns verified: true on completed/success', async () => {
     // Sequence: repo view, workflow run, run list, run view (success).
     const handle = sandbox.installGhShim({
       stdoutQueue: [repoViewPayload, '', runListPayload, completedSuccess],
@@ -101,7 +102,7 @@ describe('setup-ci verify-run', () => {
     expect(parsed.run_id).toBe('12345');
   });
 
-  it('returns verified: false on completed/failure', async () => {
+  test('returns verified: false on completed/failure', async () => {
     const handle = sandbox.installGhShim({
       stdoutQueue: [repoViewPayload, '', runListPayload, completedFailure],
     });
@@ -120,7 +121,7 @@ describe('setup-ci verify-run', () => {
     expect(parsed.conclusion).toBe('failure');
   });
 
-  it('polls until completed when status starts in_progress', async () => {
+  test('polls until completed when status starts in_progress', async () => {
     // 6 calls: repo view, workflow run, run list, view in_progress,
     // view in_progress, view completed.
     const handle = sandbox.installGhShim({
@@ -164,12 +165,12 @@ describe('setup-ci verify-run', () => {
     expect(viewCalls.length).toBe(3);
   });
 
-  it('returns conclusion: polling_timeout on hard timeout', async () => {
+  test('returns conclusion: polling_timeout on hard timeout', async () => {
     // Endless in_progress responses -> the handler should hit the
     // timeout and emit polling_timeout.
     const queue: string[] = [repoViewPayload, '', runListPayload];
 
-    for (let i = 0; i < 50; i += 1) queue.push(inProgress);
+    for (let index = 0; index < 50; index += 1) queue.push(inProgress);
 
     const handle = sandbox.installGhShim({stdoutQueue: queue});
     restore = handle.restore;
@@ -195,7 +196,7 @@ describe('setup-ci verify-run', () => {
     expect(parsed.conclusion).toBe('polling_timeout');
   });
 
-  it('exits non-zero when gh workflow run fails', async () => {
+  test('exits non-zero when gh workflow run fails', async () => {
     // Step 0 (repo view) succeeds; step 1 (workflow run) fails.
     const handle = sandbox.installGhShim({
       exitCodeQueue: [0, 1],
@@ -210,7 +211,7 @@ describe('setup-ci verify-run', () => {
     expect(stdio.err.join('')).toContain('workflow_run_failed');
   });
 
-  it('exits non-zero when gh repo view fails', async () => {
+  test('exits non-zero when gh repo view fails', async () => {
     const handle = sandbox.installGhShim({exitCode: 1});
     restore = handle.restore;
 
@@ -221,7 +222,7 @@ describe('setup-ci verify-run', () => {
     expect(stdio.err.join('')).toContain('default_branch_lookup_failed');
   });
 
-  it('dispatches against a non-main default branch', async () => {
+  test('dispatches against a non-main default branch', async () => {
     const handle = sandbox.installGhShim({
       stdoutQueue: [
         JSON.stringify({defaultBranchRef: {name: 'trunk'}}),
@@ -247,7 +248,7 @@ describe('setup-ci verify-run', () => {
     expect(dispatch?.[dispatch.indexOf('--ref') + 1]).toBe('trunk');
   });
 
-  it('exits non-zero when gh run list returns no runs', async () => {
+  test('exits non-zero when gh run list returns no runs', async () => {
     const handle = sandbox.installGhShim({
       stdoutQueue: [repoViewPayload, '', '[]'],
     });
@@ -260,7 +261,7 @@ describe('setup-ci verify-run', () => {
     expect(stdio.err.join('')).toContain('run_list_empty');
   });
 
-  it('rejects --timeout-seconds with trailing garbage', async () => {
+  test('rejects --timeout-seconds with trailing garbage', async () => {
     const exit = await run(
       ['.github/workflows/foo.yml', '--timeout-seconds', '30abc'],
       {cwd: sandbox.root}
@@ -269,7 +270,7 @@ describe('setup-ci verify-run', () => {
     expect(stdio.err.join('')).toContain('invalid_arguments');
   });
 
-  it('exits non-zero when --timeout-seconds is invalid', async () => {
+  test('exits non-zero when --timeout-seconds is invalid', async () => {
     const exit = await run(
       ['.github/workflows/foo.yml', '--timeout-seconds', '0'],
       {cwd: sandbox.root}
@@ -278,13 +279,13 @@ describe('setup-ci verify-run', () => {
     expect(stdio.err.join('')).toContain('invalid_arguments');
   });
 
-  it('exits non-zero when workflow file argument is missing', async () => {
+  test('exits non-zero when workflow file argument is missing', async () => {
     const exit = await run(['--json'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('missing_required_arg');
   });
 
-  it('--help exits 0', async () => {
+  test('--help exits 0', async () => {
     const exit = await run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

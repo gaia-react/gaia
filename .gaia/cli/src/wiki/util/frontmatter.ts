@@ -14,9 +14,9 @@
 const FRONTMATTER_FENCE = '---';
 const SCALAR_PATTERN = /^([\w-]+)\s*:\s*(.*)$/u;
 
-export type FrontmatterValue = boolean | number | string | string[] | null;
-
 export type Frontmatter = Record<string, FrontmatterValue>;
+
+export type FrontmatterValue = boolean | null | number | string | string[];
 
 const stripQuotes = (raw: string): string => {
   if (raw.length < 2) return raw;
@@ -101,8 +101,8 @@ export const parseFrontmatter = (raw: string): FrontmatterParseResult => {
     const match = SCALAR_PATTERN.exec(line);
 
     if (match === null) continue;
-    const key = match[1] as string;
-    const value = (match[2] as string).trim();
+    const key = match[1];
+    const value = match[2].trim();
     frontmatter[key] = parseScalar(value);
   }
 

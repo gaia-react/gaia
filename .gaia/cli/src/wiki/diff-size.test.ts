@@ -1,8 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {computeDiffSize, run} from './diff-size.js';
 
 type Sandbox = {
@@ -128,7 +128,7 @@ describe('wiki diff-size', () => {
     sandbox.commitAll('base');
     // Change exactly 5 lines in place: numstat reports 5 added + 5 removed.
     const before = fillLines(1000, 'line').split('\n');
-    for (let i = 100; i < 105; i += 1) before[i] = 'edited';
+    for (let index = 100; index < 105; index += 1) before[index] = 'edited';
     sandbox.writeFile('wiki/concepts/A.md', before.join('\n'));
     sandbox.commitAll('5-line edit');
 

@@ -14,13 +14,15 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {
+  readAutomationConfig,
   TOOL_ID_TO_CONFIG_KEY,
   TOOL_IDS,
   ToolModeSchema,
-  readAutomationConfig,
-  type ToolConfig,
-  type ToolId,
-  type ToolMode,
+} from '../schemas/automation-config.js';
+import type {
+  ToolConfig,
+  ToolId,
+  ToolMode,
 } from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
@@ -43,20 +45,20 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
 
-  const toolToken = argv[0] as string;
+  const toolToken = argv[0];
   const modeToken = argv[1] as string | undefined;
   const rest = argv.slice(2);
 
   if (rest.length > 0) {
     structuredError({
       code: 'invalid_arguments',
-      message: `unexpected argument: ${rest[0] as string}`,
+      message: `unexpected argument: ${rest[0]}`,
       subcommand: 'setup-ci write-tool-mode',
     });
 

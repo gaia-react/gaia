@@ -44,10 +44,18 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const DEFAULT_POLL_INTERVAL_MS = 10_000;
-const RACE_WINDOW_GUARD_MS = 5_000;
+const RACE_WINDOW_GUARD_MS = 5000;
+
+type RunListEntry = {createdAt?: string; databaseId: number | string};
 
 type RunOptions = {
   cwd?: string;
+};
+
+type RunViewPayload = {
+  conclusion?: null | string;
+  status?: string;
+  url?: string;
 };
 
 type VerifyOutput = {
@@ -57,20 +65,12 @@ type VerifyOutput = {
   verified: boolean;
 };
 
-type RunListEntry = {createdAt?: string; databaseId: number | string};
-
-type RunViewPayload = {
-  conclusion?: null | string;
-  status?: string;
-  url?: string;
-};
-
 /**
  * Parse a strictly-decimal positive integer. Unlike `Number.parseInt`,
  * this rejects trailing garbage (`"30abc"`), leading signs, and empty
  * strings; returns `null` for anything that is not all digits.
  */
-const parsePositiveInteger = (value: string): number | null => {
+const parsePositiveInteger = (value: string): null | number => {
   if (!/^\d+$/u.test(value)) return null;
   const parsed = Number.parseInt(value, 10);
 
@@ -85,7 +85,7 @@ const parsePositiveInteger = (value: string): number | null => {
 export const parseDefaultBranch = (stdout: string): null | string => {
   try {
     const parsed = JSON.parse(stdout) as {
-      defaultBranchRef?: {name?: unknown} | null;
+      defaultBranchRef?: null | {name?: unknown};
     };
     const name = parsed.defaultBranchRef?.name;
 
@@ -95,7 +95,7 @@ export const parseDefaultBranch = (stdout: string): null | string => {
   }
 };
 
-const sleep = (ms: number): Promise<void> =>
+const sleep = async (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
@@ -115,11 +115,11 @@ export const run = async (
 ): Promise<number> => {
   let json = false;
   let workflowFile: string | undefined;
-  let timeoutSeconds: number | null = DEFAULT_TIMEOUT_SECONDS;
-  let pollIntervalMs: number | null = DEFAULT_POLL_INTERVAL_MS;
+  let timeoutSeconds: null | number = DEFAULT_TIMEOUT_SECONDS;
+  let pollIntervalMs: null | number = DEFAULT_POLL_INTERVAL_MS;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (HELP_TOKENS.has(token)) {
       process.stdout.write(HELP_TEXT);

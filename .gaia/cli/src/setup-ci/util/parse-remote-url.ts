@@ -45,7 +45,7 @@ const parseTwoSegments = (
   url: string,
   host: string,
   rest: string
-): ParsedRemote | null => {
+): null | ParsedRemote => {
   const trimmedRest = stripGitSuffix(rest).replace(/\/+$/u, '');
   const segments = trimmedRest.split('/');
 
@@ -65,7 +65,7 @@ const parseTwoSegments = (
   return {host, owner, repo, url};
 };
 
-export const parseRemoteUrl = (url: string): ParsedRemote | null => {
+export const parseRemoteUrl = (url: string): null | ParsedRemote => {
   if (typeof url !== 'string' || url.trim() === '') return null;
 
   const trimmed = url.trim();
@@ -76,11 +76,7 @@ export const parseRemoteUrl = (url: string): ParsedRemote | null => {
 
     if (hostMatch === null || restMatch === null) return null;
 
-    return parseTwoSegments(
-      trimmed,
-      hostMatch[1] as string,
-      restMatch[1] as string
-    );
+    return parseTwoSegments(trimmed, hostMatch[1], restMatch[1]);
   }
 
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
@@ -88,14 +84,14 @@ export const parseRemoteUrl = (url: string): ParsedRemote | null => {
 
     if (match === null) return null;
 
-    return parseTwoSegments(trimmed, match[1] as string, match[2] as string);
+    return parseTwoSegments(trimmed, match[1], match[2]);
   }
 
   const scpMatch = SCP_SSH_RE.exec(trimmed);
 
   if (scpMatch !== null) {
-    const host = scpMatch[2] as string;
-    const rest = scpMatch[3] as string;
+    const host = scpMatch[2];
+    const rest = scpMatch[3];
 
     return parseTwoSegments(trimmed, host, rest);
   }

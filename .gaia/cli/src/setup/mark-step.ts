@@ -11,10 +11,9 @@ import {
   readStateFile,
   resolveMainWorktreeRoot,
   SETUP_STEPS,
-  type SetupStep,
-  type SetupState,
   writeStateFile,
 } from './util/state-file.js';
+import type {SetupState, SetupStep} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup mark-step <step>
 
@@ -45,7 +44,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const first = argv[0] as string;
+  const first = argv[0];
 
   if (HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);

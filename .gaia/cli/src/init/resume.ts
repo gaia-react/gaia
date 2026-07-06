@@ -27,7 +27,8 @@ import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
 import {run as runRename} from './rename.js';
 import {run as runStripBranding} from './strip-branding.js';
-import {readState, STEP_ORDER, type StepName} from './util/state.js';
+import {readState, STEP_ORDER} from './util/state.js';
+import type {StepName} from './util/state.js';
 import {run as runWireStatusline} from './wire-statusline.js';
 
 const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
@@ -56,21 +57,21 @@ const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
-type Flags = {
-  fromStep: number;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  fromStep: number;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -89,7 +90,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let fromStep = 1;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--from-step') {
       const taken = takeValue(argv, index + 1, '--from-step');
@@ -141,13 +142,13 @@ const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
 export const argvFromStepArgs = (
   step: StepName,
   saved: Record<string, unknown> | undefined
-): string[] | null => {
+): null | string[] => {
   if (step === 'finalize' || step === 'bootstrap-env') return [];
 
   if (saved === undefined) return null;
 
   if (step === 'strip-branding') {
-    const title = saved.title;
+    const {title} = saved;
 
     if (typeof title !== 'string') return null;
 
@@ -155,8 +156,8 @@ export const argvFromStepArgs = (
   }
 
   if (step === 'configure-i18n') {
-    const locales = saved.locales;
-    const strip = saved.strip;
+    const {locales} = saved;
+    const {strip} = saved;
 
     if (
       !Array.isArray(locales) ||
@@ -176,8 +177,8 @@ export const argvFromStepArgs = (
   }
 
   if (step === 'rename') {
-    const title = saved.title;
-    const kebab = saved.kebab;
+    const {title} = saved;
+    const {kebab} = saved;
 
     if (typeof title !== 'string' || typeof kebab !== 'string') return null;
 
@@ -185,7 +186,7 @@ export const argvFromStepArgs = (
   }
 
   if (step === 'configure-automation') {
-    const wiki = saved.wiki;
+    const {wiki} = saved;
     const updateDeps = saved.update_deps;
     const pnpmAudit = saved.pnpm_audit;
     const staleBranches = saved.stale_branches;
@@ -214,7 +215,7 @@ export const argvFromStepArgs = (
   }
 
   // wire-statusline
-  const mode = saved.mode;
+  const {mode} = saved;
 
   if (typeof mode !== 'string') return null;
 
@@ -231,7 +232,7 @@ export const run = async (
   argv: readonly string[],
   options: RunOptions = {}
 ): Promise<number> => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -273,7 +274,7 @@ export const run = async (
     index < STEP_ORDER.length;
     index += 1
   ) {
-    const step = STEP_ORDER[index] as StepName;
+    const step = STEP_ORDER[index];
 
     if (completed.has(step)) {
       process.stdout.write(`init resume: skip ${step} (already complete)\n`);

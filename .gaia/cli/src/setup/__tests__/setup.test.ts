@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the `gaia setup` CLI surface.
  *
@@ -14,7 +15,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run as runFinalize} from '../finalize.js';
 import {run as runMarkStep} from '../mark-step.js';
 import {run as runStatus} from '../status.js';

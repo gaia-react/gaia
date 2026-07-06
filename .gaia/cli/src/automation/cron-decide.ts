@@ -12,23 +12,25 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {
-  TOOL_IDS,
+  readAutomationConfig,
   TOOL_ID_TO_CONFIG_KEY,
-  type AutomationConfig,
-  type ToolConfig,
-  type ToolId,
+  TOOL_IDS,
 } from '../schemas/automation-config.js';
-import {readAutomationConfig} from '../schemas/automation-config.js';
+import type {
+  AutomationConfig,
+  ToolConfig,
+  ToolId,
+} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
-
-type CronReason = 'enabled' | 'tool_off';
 
 type CronDecision = {
   decision: 'run' | 'skip';
   reason: CronReason;
-  skip_log_line: string | null;
+  skip_log_line: null | string;
 };
+
+type CronReason = 'enabled' | 'tool_off';
 
 const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
 
@@ -56,7 +58,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
@@ -65,8 +67,8 @@ export const run = (
   let tool: ToolId | undefined;
   let json = false;
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+  for (const element of argv) {
+    const token = element;
 
     if (token === '--json') {
       json = true;

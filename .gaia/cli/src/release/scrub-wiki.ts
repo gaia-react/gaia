@@ -9,10 +9,10 @@
  * No stdout on success. Exit 0 / 1 / 2.
  */
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>]
 
@@ -32,22 +32,22 @@ const HELP_TEXT = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>]
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
-type Flags = {
-  date: string | undefined;
-  version: string | undefined;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  date: string | undefined;
+  version: string | undefined;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -67,7 +67,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let version: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--version') {
       const taken = takeValue(argv, index + 1, '--version');
@@ -113,7 +113,7 @@ const readVersion = (cwd: string, override: string | undefined): string => {
   };
 
   if (typeof parsed.version !== 'string') {
-    throw new Error('package.json has no string "version"');
+    throw new TypeError('package.json has no string "version"');
   }
 
   return parsed.version;
@@ -167,7 +167,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

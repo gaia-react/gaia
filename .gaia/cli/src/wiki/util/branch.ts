@@ -14,7 +14,8 @@
  *   - For value-shaped helpers (`currentBranch`, `stagedAndUnstagedPaths`)
  *     the same convention applies.
  */
-import {spawnSync, type SpawnSyncReturns} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 
 export type CommandRunner = (
   command: string,
@@ -44,6 +45,7 @@ const expectSuccess = (
 
   if ((result.status ?? -1) !== 0) {
     const stderr = (result.stderr ?? '').trim();
+
     throw new Error(
       `${command} ${args.join(' ')} exited ${result.status ?? -1}: ${stderr}`
     );
@@ -83,7 +85,8 @@ export const defaultBranch = (
   if (result.error !== undefined || (result.status ?? -1) !== 0) return 'main';
 
   const ref = (result.stdout ?? '').trim();
-  const stripped = ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref;
+  const stripped =
+    ref.startsWith('origin/') ? ref.slice('origin/'.length) : ref;
 
   return stripped.length > 0 ? stripped : 'main';
 };

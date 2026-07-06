@@ -1,3 +1,5 @@
+import {load as parseYaml} from 'js-yaml';
+import {z} from 'zod';
 /**
  * `gaia-maintainer release scrub` handler.
  *
@@ -29,12 +31,10 @@
  *   2: unexpected (config parse error, filesystem IO failure)
  */
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
-import {load as parseYaml} from 'js-yaml';
-import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {extractWikilinks} from '../wiki/util/wikilinks.js';
 import {parseExcludeLines} from './manifest.js';
 
@@ -119,12 +119,12 @@ const ConfigSchema = z.object({
 });
 
 export type ScrubConfig = z.infer<typeof ConfigSchema>;
-type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
-type JsonStripTransform = z.infer<typeof JsonStripSchema>;
-type LeakCheckTransform = z.infer<typeof LeakCheckSchema>;
-type LeakCheckEntry = LeakCheckTransform['checks'][number];
-type StaticLeakCheck = z.infer<typeof StaticLeakCheckSchema>;
 type DerivedLeakCheck = z.infer<typeof DerivedLeakCheckSchema>;
+type JsonStripTransform = z.infer<typeof JsonStripSchema>;
+type LeakCheckEntry = LeakCheckTransform['checks'][number];
+type LeakCheckTransform = z.infer<typeof LeakCheckSchema>;
+type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
+type StaticLeakCheck = z.infer<typeof StaticLeakCheckSchema>;
 
 // ---------------------------------------------------------------------------
 // Glob → regex
@@ -188,7 +188,7 @@ export type MarkerStripResult = {
   unbalanced: readonly {
     file: string;
     line: number;
-    reason: 'start_without_end' | 'end_without_start';
+    reason: 'end_without_start' | 'start_without_end';
   }[];
 };
 
@@ -361,7 +361,7 @@ const deleteKeyPath = (
   const [head, ...rest] = segments as [string, ...string[]];
 
   if (rest.length === 0) {
-    if (!Object.prototype.hasOwnProperty.call(obj, head)) return false;
+    if (!Object.hasOwn(obj, head)) return false;
 
     delete obj[head];
 
@@ -512,6 +512,7 @@ const buildExcludedSlugSet = (cwd: string): Set<string> => {
     readFileSync(path.join(cwd, RELEASE_EXCLUDE_PATH), 'utf8')
   );
   const slugs = new Set<string>();
+
   const addSlug = (value: string): void => {
     slugs.add(value.toLowerCase());
   };
@@ -683,15 +684,15 @@ export const loadConfig = (configPath: string): ScrubConfig => {
 // Flags
 // ---------------------------------------------------------------------------
 
+type FlagParseFailure = {message: string; ok: false};
+
+type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+type FlagParseSuccess = {flags: Flags; ok: true};
 type Flags = {
   configPath: string | undefined;
   json: boolean;
   stagingDir: string | undefined;
 };
-
-type FlagParseSuccess = {flags: Flags; ok: true};
-type FlagParseFailure = {message: string; ok: false};
-type FlagParseResult = FlagParseFailure | FlagParseSuccess;
 
 const takeValue = (
   argv: readonly string[],
@@ -712,7 +713,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let stagingDir: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--config') {
       const taken = takeValue(argv, index + 1, '--config');
@@ -770,14 +771,10 @@ type RunOptions = {
 const renderHumanReport = (report: Report, jsonMode: boolean): string => {
   if (jsonMode) return `${JSON.stringify(report, null, 2)}\n`;
 
-  const out: string[] = [];
-
-  out.push(
-    `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`
-  );
-  out.push(
-    `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`
-  );
+  const out: string[] = [
+    `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`,
+    `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`,
+  ];
 
   if (report.unbalanced_markers.length > 0) {
     out.push('', `unbalanced markers (${report.unbalanced_markers.length}):`);
@@ -804,7 +801,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

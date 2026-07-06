@@ -21,7 +21,8 @@ import path from 'node:path';
 import {readOrCreateProjectId, resolveStorageRoots} from '../storage/index.js';
 
 export type PingEvent = 'init' | 'setup' | 'update';
-export type PingPayload = {event: PingEvent} & Record<string, number | string>;
+
+export type PingPayload = Record<string, number | string> & {event: PingEvent};
 
 const PING_URL = 'https://telemetry.gaiareact.com/ping';
 const TIMEOUT_MS = 2000;

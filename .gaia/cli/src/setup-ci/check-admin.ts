@@ -25,16 +25,16 @@ const HELP_TEXT = `Usage: gaia setup-ci check-admin --owner <o> --repo <r> [--js
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type RunOptions = {
-  cwd?: string;
-};
-
 type AuthStatus = 'api_error' | 'ok' | 'unauthenticated';
 
 type CheckAdminOutput = {
   admin: boolean;
   auth_status: AuthStatus;
   error?: string;
+};
+
+type RunOptions = {
+  cwd?: string;
 };
 
 const printHuman = (output: CheckAdminOutput): void => {
@@ -52,7 +52,7 @@ export const run = async (
   let repo: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (HELP_TOKENS.has(token)) {
       process.stdout.write(HELP_TEXT);

@@ -11,7 +11,8 @@
  */
 
 /** The prefix the covered-classes binder matches; also the stable head of the doc copies. */
-export const MARKER_PREFIX = 'gaia-harden: promoted from recurring finding_class';
+export const MARKER_PREFIX =
+  'gaia-harden: promoted from recurring finding_class';
 
 /** The full, frozen provenance-marker comment for a given finding_class (or the '<class>' literal). */
 export const markerComment = (findingClass: string): string =>

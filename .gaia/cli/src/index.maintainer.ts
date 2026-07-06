@@ -25,8 +25,8 @@ import {run as runScaffold} from './scaffold/index.js';
 import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
-import {run as runUpdate} from './update/index.js';
 import {run as runUpdateDeps} from './update-deps/index.js';
+import {run as runUpdate} from './update/index.js';
 import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer <subcommand> [args]

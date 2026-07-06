@@ -34,23 +34,23 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const VALID_DECISIONS = new Set(['RE_ANCHOR', 'SKIP', 'WORTHY']);
 const FRONTMATTER_FENCE = '---';
 
-type ParsedFlags = {
-  decision: string;
-  reason: string;
-  sha: string;
-};
-
-type FlagParseSuccess = {
-  flags: ParsedFlags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: ParsedFlags;
+  ok: true;
+};
+
+type ParsedFlags = {
+  decision: string;
+  reason: string;
+  sha: string;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -72,7 +72,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let reason: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--sha') {
       const taken = takeValue(argv, index + 1, '--sha');
@@ -129,9 +129,9 @@ const todayUtc = (): string => {
 };
 
 type FrontmatterScan =
+  | {endLineIndex: number; kind: 'present'}
   | {kind: 'malformed'}
-  | {kind: 'missing'}
-  | {endLineIndex: number; kind: 'present'};
+  | {kind: 'missing'};
 
 const scanFrontmatter = (lines: readonly string[]): FrontmatterScan => {
   if ((lines[0] ?? '').trim() !== FRONTMATTER_FENCE) {
@@ -189,7 +189,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const first = argv[0] as string;
+  const first = argv[0];
 
   if (HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);

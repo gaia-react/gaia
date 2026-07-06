@@ -1,7 +1,7 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './decline.js';
 import {declinedLedgerPath, loadDeclines} from './declines.js';
 
@@ -154,17 +154,20 @@ describe('update-deps decline', () => {
 
   test('skipping one member snoozes the whole companion group', () => {
     sandbox.writeSource('updates.json');
-    const exit = run(['--source', 'updates.json', '--skip', '@react-router/serve'], {
-      cwd: sandbox.root,
-      now: NOW,
-    });
+    const exit = run(
+      ['--source', 'updates.json', '--skip', '@react-router/serve'],
+      {
+        cwd: sandbox.root,
+        now: NOW,
+      }
+    );
     expect(exit).toBe(0);
     const declined = loadDeclines(sandbox.root);
     expect(declined).toHaveLength(1);
     expect(declined[0]?.group).toBe('react-router');
     expect(declined[0]?.targets).toEqual({
-      'react-router': '7.0.0',
       '@react-router/serve': '7.0.0',
+      'react-router': '7.0.0',
     });
   });
 

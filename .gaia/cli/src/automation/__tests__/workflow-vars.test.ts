@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
 import type {
   AutomationConfig,
   ToolId,
@@ -17,19 +17,19 @@ const baseConfig: AutomationConfig = {
 };
 
 describe('cronForSchedule', () => {
-  it('maps daily to 0 4 * * *', () => {
+  test('maps daily to 0 4 * * *', () => {
     expect(cronForSchedule('daily')).toBe('0 4 * * *');
   });
 
-  it('maps weekly to 0 4 * * 0', () => {
+  test('maps weekly to 0 4 * * 0', () => {
     expect(cronForSchedule('weekly')).toBe('0 4 * * 0');
   });
 
-  it('maps monthly to 0 4 1-7 * 0 (first Sunday)', () => {
+  test('maps monthly to 0 4 1-7 * 0 (first Sunday)', () => {
     expect(cronForSchedule('monthly')).toBe('0 4 1-7 * 0');
   });
 
-  it('returns a non-empty string for every schedule value', () => {
+  test('returns a non-empty string for every schedule value', () => {
     for (const schedule of ['daily', 'weekly', 'monthly'] as const) {
       expect(cronForSchedule(schedule).length).toBeGreaterThan(0);
     }
@@ -37,7 +37,7 @@ describe('cronForSchedule', () => {
 });
 
 describe('buildWorkflowVars', () => {
-  it('returns the wiki vars with default daily schedule', () => {
+  test('returns the wiki vars with default daily schedule', () => {
     const vars = buildWorkflowVars(baseConfig, 'wiki');
 
     expect(vars).toEqual({
@@ -56,7 +56,7 @@ describe('buildWorkflowVars', () => {
     });
   });
 
-  it('returns the update-deps vars with weekly schedule from config', () => {
+  test('returns the update-deps vars with weekly schedule from config', () => {
     const vars = buildWorkflowVars(baseConfig, 'update-deps');
 
     expect(vars).toMatchObject({
@@ -69,7 +69,7 @@ describe('buildWorkflowVars', () => {
     });
   });
 
-  it('returns the pnpm-audit vars with daily schedule', () => {
+  test('returns the pnpm-audit vars with daily schedule', () => {
     const vars = buildWorkflowVars(baseConfig, 'pnpm-audit');
 
     expect(vars).toMatchObject({
@@ -82,7 +82,7 @@ describe('buildWorkflowVars', () => {
     });
   });
 
-  it('returns the stale-branches vars with monthly schedule', () => {
+  test('returns the stale-branches vars with monthly schedule', () => {
     const vars = buildWorkflowVars(baseConfig, 'stale-branches');
 
     expect(vars).toMatchObject({
@@ -96,14 +96,14 @@ describe('buildWorkflowVars', () => {
     });
   });
 
-  it('sets enable_auto_merge=true for the three PR-opening tools', () => {
+  test('sets enable_auto_merge=true for the three PR-opening tools', () => {
     for (const tool of ['wiki', 'update-deps', 'pnpm-audit'] as const) {
       const vars = buildWorkflowVars(baseConfig, tool);
       expect(vars?.enable_auto_merge).toBe(true);
     }
   });
 
-  it('falls back to the default schedule when the config row omits it', () => {
+  test('falls back to the default schedule when the config row omits it', () => {
     const config: AutomationConfig = {
       ...baseConfig,
       update_deps: {mode: 'ci'},
@@ -115,7 +115,7 @@ describe('buildWorkflowVars', () => {
     });
   });
 
-  it('returns null when the tool mode is local', () => {
+  test('returns null when the tool mode is local', () => {
     const config: AutomationConfig = {
       ...baseConfig,
       wiki: {mode: 'local'},
@@ -124,7 +124,7 @@ describe('buildWorkflowVars', () => {
     expect(buildWorkflowVars(config, 'wiki')).toBeNull();
   });
 
-  it('returns null when the tool mode is off', () => {
+  test('returns null when the tool mode is off', () => {
     const config: AutomationConfig = {
       ...baseConfig,
       pnpm_audit: {mode: 'off'},
@@ -133,7 +133,7 @@ describe('buildWorkflowVars', () => {
     expect(buildWorkflowVars(config, 'pnpm-audit')).toBeNull();
   });
 
-  it('produces mutually exclusive enable_* flags per tool', () => {
+  test('produces mutually exclusive enable_* flags per tool', () => {
     const tools: readonly ToolId[] = [
       'wiki',
       'update-deps',

@@ -15,14 +15,14 @@ import path from 'node:path';
 import {MARKER_PREFIX} from './marker.js';
 
 const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 // Prefix-bound / tail-agnostic on purpose: derived from the shared
 // `MARKER_PREFIX` constant, then followed by the class-capture tail. It matches
 // any copy that keeps the frozen prefix regardless of the trailing wording, so
 // this binder never silently drifts from `/gaia-audit`'s full-text match.
 const MARKER_RE = new RegExp(
-  `${escapeRegExp(MARKER_PREFIX)}\\s+(\\S+?)\\s*(?:;|-->)`,
+  String.raw`${escapeRegExp(MARKER_PREFIX)}\s+(\S+?)\s*(?:;|-->)`,
   'g'
 );
 

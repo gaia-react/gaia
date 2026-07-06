@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki near-collisions`.
  */
@@ -5,7 +6,6 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './near-collisions.js';
 
 type Sandbox = {
@@ -93,6 +93,7 @@ describe('wiki near-collisions', () => {
     const rows = out.split('\n').map((line) => line.split('\t'));
     expect(rows).toContainEqual(['concepts', 'auth-flow', 'auth-flows', '1']);
     expect(rows).toContainEqual(['decisions', 'oauth', 'oauth2', '1']);
+
     // Routing should NOT collide with anything.
     for (const row of rows) {
       expect(row).not.toContain('Routing');

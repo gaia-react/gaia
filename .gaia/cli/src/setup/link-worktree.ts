@@ -46,19 +46,19 @@ const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type ActionResult =
-  | 'already-linked'
-  | 'failed'
-  | 'linked'
-  | 'linked-after-backup'
-  | 'skipped-no-target';
-
 type Action = {
   backup?: string;
   error?: string;
   path: string;
   result: ActionResult;
 };
+
+type ActionResult =
+  | 'already-linked'
+  | 'failed'
+  | 'linked'
+  | 'linked-after-backup'
+  | 'skipped-no-target';
 
 type LinkOutput = {
   actions: Action[];

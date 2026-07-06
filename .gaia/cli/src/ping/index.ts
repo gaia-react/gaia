@@ -16,15 +16,15 @@ import {structuredError} from '../stderr.js';
 import {postPing} from './send.js';
 import type {PingEvent, PingPayload} from './send.js';
 
-const HELP_TEXT = `Usage: gaia ping --event <init|setup|update> [--field value ...]
+const HELP_TEXT = String.raw`Usage: gaia ping --event <init|setup|update> [--field value ...]
 
   Send the shared adoption ping. Accepted fields depend on
   --event:
 
-    init    --mode <interactive|automatic> --i18n <non-negative int> \\
+    init    --mode <interactive|automatic> --i18n <non-negative int> \
             --ci <ci|local|off|custom>
-    setup   --type <init|clone|reconfigure> --mentorship <on|off> \\
-            --repo <create|adopt|manual> --ci <on|off|skip> \\
+    setup   --type <init|clone|reconfigure> --mentorship <on|off> \
+            --repo <create|adopt|manual> --ci <on|off|skip> \
             --audit <local|ci>
     update  --from <version> --to <version>
 
@@ -96,15 +96,14 @@ const takeValue = (
 };
 
 type ParseResult =
-  | {message: string; ok: false}
-  | {ok: true; payload: PingPayload};
+  {message: string; ok: false} | {ok: true; payload: PingPayload};
 
 const parsePing = (argv: readonly string[]): ParseResult => {
   let event: PingEvent | undefined;
   const provided = new Map<string, string>();
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--event') {
       const taken = takeValue(argv, index + 1, '--event');
@@ -143,10 +142,7 @@ const parsePing = (argv: readonly string[]): ParseResult => {
       return {message: `unknown flag for event ${event}: ${flag}`, ok: false};
     }
 
-    if (
-      spec.enumValues !== undefined &&
-      !spec.enumValues.includes(rawValue)
-    ) {
+    if (spec.enumValues !== undefined && !spec.enumValues.includes(rawValue)) {
       return {
         message: `${flag} must be one of: ${spec.enumValues.join(', ')}`,
         ok: false,
@@ -175,7 +171,7 @@ export const run = async (
   argv: readonly string[],
   options: RunOptions = {}
 ): Promise<number> => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

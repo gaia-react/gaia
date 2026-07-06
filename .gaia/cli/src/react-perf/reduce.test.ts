@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the `gaia react-perf reduce` Reduce layer.
  *
@@ -9,13 +10,12 @@
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {EXIT_CODES} from '../exit.js';
 import {
   RawDumpSchema,
   ReducedSummarySchema,
-  type RawDump,
 } from '../schemas/react-perf-summary.js';
+import type {RawDump} from '../schemas/react-perf-summary.js';
 import {reduceDump, run} from './reduce.js';
 
 const FIXTURES = path.join(
@@ -34,16 +34,16 @@ describe('reduceDump (pure algorithm)', () => {
       frameBudgetMs: 16,
     });
 
-    it('validates against the Contract-B output schema', () => {
+    test('validates against the Contract-B output schema', () => {
       expect(() => ReducedSummarySchema.parse(summary)).not.toThrow();
     });
 
-    it('counts all 248 records', () => {
+    test('counts all 248 records', () => {
       expect(summary.totals.records).toBe(248);
       expect(summary.totals.mounts + summary.totals.updates).toBe(248);
     });
 
-    it('filters the known framework cohort out of findings', () => {
+    test('filters the known framework cohort out of findings', () => {
       const names = summary.findings.map((finding) => finding.componentName);
       expect(names).not.toContain('RenderedRoute');
       expect(names).not.toContain('Router');
@@ -51,32 +51,34 @@ describe('reduceDump (pure algorithm)', () => {
       expect(summary.totals.frameworkFiltered).toBeGreaterThan(0);
     });
 
-    it('reports zero memoDefeated and the matching stop signal', () => {
+    test('reports zero memoDefeated and the matching stop signal', () => {
       expect(summary.totals.memoDefeated).toBe(0);
       expect(summary.stopSignal.zeroAppMemoDefeated).toBe(true);
     });
 
-    it('has no app component over the default 16ms budget', () => {
+    test('has no app component over the default 16ms budget', () => {
       expect(summary.stopSignal.noAppFrameBudgetBreach).toBe(true);
       expect(summary.findings).toHaveLength(0);
     });
 
-    it('defaults the strictMode caveat to true and meta fields from defaults', () => {
+    test('defaults the strictMode caveat to true and meta fields from defaults', () => {
       // Legacy meta is {installed, commits, errors} only.
       expect(summary.strictModeTimingCaveat).toBe(true);
       expect(summary.rendererVersion).toBeNull();
       expect(summary.profilingAvailable).toBe(false);
     });
 
-    it('buckets null-name renders into unknownNameCount (zero here)', () => {
+    test('buckets null-name renders into unknownNameCount (zero here)', () => {
       expect(summary.unknownNameCount).toBe(0);
     });
   });
 
   describe('memo-defeat.json (one planted culprit)', () => {
-    const summary = reduceDump(loadDump('memo-defeat.json'), {frameBudgetMs: 16});
+    const summary = reduceDump(loadDump('memo-defeat.json'), {
+      frameBudgetMs: 16,
+    });
 
-    it('produces exactly one memoDefeated finding for StatusBadge, ranked #1', () => {
+    test('produces exactly one memoDefeated finding for StatusBadge, ranked #1', () => {
       expect(summary.findings).toHaveLength(1);
       const [finding] = summary.findings;
       expect(finding.componentName).toBe('StatusBadge');
@@ -87,27 +89,27 @@ describe('reduceDump (pure algorithm)', () => {
       expect(finding.unstableInputs).toEqual(['prop:status']);
     });
 
-    it('does NOT flag the legitimate parent state change (SpikePanel)', () => {
+    test('does NOT flag the legitimate parent state change (SpikePanel)', () => {
       const names = summary.findings.map((finding) => finding.componentName);
       expect(names).not.toContain('SpikePanel');
     });
 
-    it('flips zeroAppMemoDefeated to false', () => {
+    test('flips zeroAppMemoDefeated to false', () => {
       expect(summary.totals.memoDefeated).toBe(2);
       expect(summary.stopSignal.zeroAppMemoDefeated).toBe(false);
     });
   });
 
   describe('--frame-budget-ms gate', () => {
-    it('flips exceedsFrameBudget / noAppFrameBudgetBreach under a low budget', () => {
+    test('flips exceedsFrameBudget / noAppFrameBudgetBreach under a low budget', () => {
       const dump = loadDump('bippy-renders-dump.json');
       const tight = reduceDump(dump, {frameBudgetMs: 1});
 
       expect(tight.stopSignal.noAppFrameBudgetBreach).toBe(false);
       expect(tight.findings.length).toBeGreaterThan(0);
-      expect(tight.findings.every((finding) => finding.exceedsFrameBudget)).toBe(
-        true
-      );
+      expect(
+        tight.findings.every((finding) => finding.exceedsFrameBudget)
+      ).toBe(true);
     });
   });
 });
@@ -135,7 +137,7 @@ describe('run (CLI handler)', () => {
     vi.restoreAllMocks();
   });
 
-  it('prints a schema-valid summary and exits 0', () => {
+  test('prints a schema-valid summary and exits 0', () => {
     const code = run([fixturePath('bippy-renders-dump.json')]);
 
     expect(code).toBe(EXIT_CODES.OK);
@@ -144,7 +146,7 @@ describe('run (CLI handler)', () => {
     expect(parsed.totals.records).toBe(248);
   });
 
-  it('is deterministic: same input yields byte-identical stdout', () => {
+  test('is deterministic: same input yields byte-identical stdout', () => {
     run([fixturePath('bippy-renders-dump.json')]);
     const first = stdout;
     stdout = '';
@@ -153,7 +155,7 @@ describe('run (CLI handler)', () => {
     expect(stdout).toBe(first);
   });
 
-  it('rejects the alien react-scan dump with a clear error', () => {
+  test('rejects the alien react-scan dump with a clear error', () => {
     const code = run([fixturePath('renders-dump.json')]);
 
     expect(code).toBe(EXIT_CODES.PAYLOAD_VALIDATION_FAILED);
@@ -162,7 +164,7 @@ describe('run (CLI handler)', () => {
     expect(payload.code).toBe('invalid_dump');
   });
 
-  it('errors on a missing input file', () => {
+  test('errors on a missing input file', () => {
     const code = run([fixturePath('does-not-exist.json')]);
 
     expect(code).toBe(EXIT_CODES.STORAGE_INACCESSIBLE);
@@ -171,7 +173,7 @@ describe('run (CLI handler)', () => {
     expect(payload.code).toBe('input_unreadable');
   });
 
-  it('errors on a missing path argument', () => {
+  test('errors on a missing path argument', () => {
     const code = run([]);
 
     expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
@@ -179,15 +181,19 @@ describe('run (CLI handler)', () => {
     expect(payload.code).toBe('invalid_arguments');
   });
 
-  it('errors on a non-numeric --frame-budget-ms', () => {
-    const code = run([fixturePath('bippy-renders-dump.json'), '--frame-budget-ms', 'nope']);
+  test('errors on a non-numeric --frame-budget-ms', () => {
+    const code = run([
+      fixturePath('bippy-renders-dump.json'),
+      '--frame-budget-ms',
+      'nope',
+    ]);
 
     expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
     const payload = JSON.parse(stderr) as {code: string};
     expect(payload.code).toBe('invalid_arguments');
   });
 
-  it('honors --frame-budget-ms when reducing', () => {
+  test('honors --frame-budget-ms when reducing', () => {
     run([fixturePath('bippy-renders-dump.json'), '--frame-budget-ms', '1']);
     const parsed = ReducedSummarySchema.parse(JSON.parse(stdout));
 

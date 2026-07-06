@@ -19,12 +19,13 @@
  * The version is read from `package.json`. Stdout is a one-line summary
  * per mode; stderr explains every refusal.
  */
-import {type SpawnSyncReturns, spawnSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release commit-and-tag (--commit | --tag) [--no-push]
 
@@ -55,24 +56,24 @@ export const defaultRunner: CommandRunner = (command, args, options) =>
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-type Mode = 'commit' | 'tag';
-
-type Flags = {
-  mode: Mode;
-  noPush: boolean;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  mode: Mode;
+  noPush: boolean;
+};
+
+type Mode = 'commit' | 'tag';
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let mode: Mode | undefined;
@@ -129,17 +130,17 @@ const readVersion = (cwd: string): string => {
   const parsed = JSON.parse(readFileSync(target, 'utf8')) as PackageJsonShape;
 
   if (typeof parsed.version !== 'string') {
-    throw new Error('package.json has no string "version"');
+    throw new TypeError('package.json has no string "version"');
   }
 
   return parsed.version;
 };
 
 type Step = {
-  args: readonly string[];
-  command: string;
   /** When `true`, a non-zero exit is acceptable (fall through). */
   allowFailure?: boolean;
+  args: readonly string[];
+  command: string;
 };
 
 const stepSucceeded = (result: SpawnSyncReturns<string>): boolean =>
@@ -151,7 +152,7 @@ const passthroughFailure = (
 ): number => {
   const stderr = (result.stderr ?? '').trim();
   const errorPart =
-    result.error !== undefined ? ` (${result.error.message})` : '';
+    result.error === undefined ? '' : ` (${result.error.message})`;
   const status = result.status ?? -1;
   process.stderr.write(
     `commit-and-tag: ${step.command} ${step.args.join(' ')} exited ${status}${errorPart}\n`
@@ -288,15 +289,15 @@ const runCommitMode = (ctx: CommitContext): number => {
           cwd: ctx.cwd,
         });
 
-        if (!stepSucceeded(rollback)) {
-          process.stderr.write(
-            `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; ` +
-              'the release commit is left in place; undo it manually before retrying\n'
-          );
-        } else {
+        if (stepSucceeded(rollback)) {
           process.stderr.write(
             `commit-and-tag: ${failedStage} failed; rolled back the release commit ` +
               '(git reset --soft HEAD~1); fix the cause and retry\n'
+          );
+        } else {
+          process.stderr.write(
+            `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; ` +
+              'the release commit is left in place; undo it manually before retrying\n'
           );
         }
 
@@ -348,15 +349,15 @@ const runTagMode = (ctx: TagContext): number => {
         cwd: ctx.cwd,
       });
 
-      if (!stepSucceeded(rollback)) {
-        process.stderr.write(
-          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; ` +
-            `the local tag ${tagName} is left in place; delete it manually before retrying\n`
-        );
-      } else {
+      if (stepSucceeded(rollback)) {
         process.stderr.write(
           `commit-and-tag: push failed; deleted the local tag ${tagName} ` +
             '; fix the cause and retry\n'
+        );
+      } else {
+        process.stderr.write(
+          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; ` +
+            `the local tag ${tagName} is left in place; delete it manually before retrying\n`
         );
       }
 
@@ -380,7 +381,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

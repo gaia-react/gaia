@@ -1,3 +1,4 @@
+import {z} from 'zod';
 /**
  * Zod schema + read/write helpers for the machine-local decline ledger.
  *
@@ -13,7 +14,6 @@
  */
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {z} from 'zod';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {summarizeZodError} from './zod-error.js';
 
@@ -25,6 +25,7 @@ export const DeclineEntrySchema = z.object({
   declined_at_pr_count: z.number().int().nonnegative(),
   finding_class: z.string().min(1),
 });
+
 export type DeclineEntry = z.infer<typeof DeclineEntrySchema>;
 
 // `version` is declared first so JSON serialization emits it first, matching
@@ -33,6 +34,7 @@ export const DeclineLedgerSchema = z.object({
   version: z.literal(1),
   declines: z.array(DeclineEntrySchema),
 });
+
 export type DeclineLedger = z.infer<typeof DeclineLedgerSchema>;
 
 export const emptyDeclineLedger = (): DeclineLedger => ({
@@ -41,9 +43,9 @@ export const emptyDeclineLedger = (): DeclineLedger => ({
 });
 
 export type ReadDeclineLedgerResult =
+  | {error: string; status: 'malformed'}
   | {ledger: DeclineLedger; status: 'ok'}
-  | {status: 'missing'}
-  | {error: string; status: 'malformed'};
+  | {status: 'missing'};
 
 export const readDeclineLedger = (
   repoRoot: string

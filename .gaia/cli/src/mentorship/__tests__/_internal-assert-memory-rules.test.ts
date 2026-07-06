@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia mentorship _internal-assert-memory-rules`.
  *
@@ -14,16 +15,15 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {resolveStorageRoots} from '../../storage/paths.js';
 import type {StorageRoots} from '../../storage/paths.js';
-import {writeMentorshipConfig} from '../config.js';
 import {run} from '../_internal-assert-memory-rules.js';
+import {writeMentorshipConfig} from '../config.js';
+import {installDisplayRule} from '../display-rule-memory.js';
 import {
   DISPLAY_RULE_FILE_NAME,
   DISPLAY_RULE_INDEX_LINE,
 } from '../display-rule.js';
-import {installDisplayRule} from '../display-rule-memory.js';
 
 type Sandbox = {
   cleanup: () => void;

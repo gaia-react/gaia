@@ -22,16 +22,16 @@ const HELP_TEXT = `Usage: gaia setup-ci detect-remote [--json]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type RunOptions = {
-  cwd?: string;
-};
-
 type DetectOutput = {
   found: boolean;
   host: null | string;
   owner: null | string;
   repo: null | string;
   url: null | string;
+};
+
+type RunOptions = {
+  cwd?: string;
 };
 
 const tryGitRemoteUrl = (cwd: string): null | string => {

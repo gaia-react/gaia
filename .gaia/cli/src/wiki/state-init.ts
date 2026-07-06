@@ -35,7 +35,7 @@ type RunOptions = {
   now?: () => Date;
 };
 
-const resolveFullSha = (ref: string, cwd: string): string | null => {
+const resolveFullSha = (ref: string, cwd: string): null | string => {
   try {
     const out = execFileSync(
       'git',
@@ -63,7 +63,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  if (HELP_TOKENS.has(argv[0] as string)) {
+  if (HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -94,7 +94,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const ref = positional[0] as string;
+  const ref = positional[0];
 
   let repoRoot: string;
 
@@ -142,9 +142,9 @@ export const run = (
   const isoNow = nowDate.toISOString();
 
   const payload = {
-    version: 1,
-    last_evaluated_sha: fullSha,
     last_evaluated_at: isoNow,
+    last_evaluated_sha: fullSha,
+    version: 1,
   };
 
   const serialized = `${JSON.stringify(payload, null, 2)}\n`;

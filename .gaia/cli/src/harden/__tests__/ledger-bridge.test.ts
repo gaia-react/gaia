@@ -1,11 +1,8 @@
-import {describe, expect, it, vi} from 'vitest';
-import {EXIT_CODES} from '../../exit.js';
-import {
-  type LedgerRunner,
-  makeLedgerSuppressionPredicate,
-  pruneLedger,
-} from '../ledger-bridge.js';
+import {describe, expect, test, vi} from 'vitest';
 import type {ProcessResult} from '../../ci/util/run-process.js';
+import {EXIT_CODES} from '../../exit.js';
+import {makeLedgerSuppressionPredicate, pruneLedger} from '../ledger-bridge.js';
+import type {LedgerRunner} from '../ledger-bridge.js';
 
 const ok = (stdout = ''): ProcessResult => ({exitCode: 0, stderr: '', stdout});
 const notSuppressed = (): ProcessResult => ({
@@ -15,7 +12,7 @@ const notSuppressed = (): ProcessResult => ({
 });
 
 describe('makeLedgerSuppressionPredicate', () => {
-  it('treats exit 0 as suppressed and passes the class + live count to the ledger', () => {
+  test('treats exit 0 as suppressed and passes the class + live count to the ledger', () => {
     const calls: string[][] = [];
     const predicate = makeLedgerSuppressionPredicate({
       cwd: '/repo',
@@ -31,13 +28,13 @@ describe('makeLedgerSuppressionPredicate', () => {
     const args = calls.at(-1) ?? [];
     expect(args).toContain('harden-ledger');
     expect(args).toContain('is-suppressed');
-    const classIdx = args.indexOf('--finding-class');
-    expect(args[classIdx + 1]).toBe('axe/color-contrast');
-    const countIdx = args.indexOf('--current-pr-count');
-    expect(args[countIdx + 1]).toBe('5');
+    const classIndex = args.indexOf('--finding-class');
+    expect(args[classIndex + 1]).toBe('axe/color-contrast');
+    const countIndex = args.indexOf('--current-pr-count');
+    expect(args[countIndex + 1]).toBe('5');
   });
 
-  it('treats exit 1 (the legitimate not-suppressed code) as not suppressed', () => {
+  test('treats exit 1 (the legitimate not-suppressed code) as not suppressed', () => {
     const predicate = makeLedgerSuppressionPredicate({
       cwd: '/repo',
       runLedger: notSuppressed,
@@ -46,7 +43,7 @@ describe('makeLedgerSuppressionPredicate', () => {
     expect(predicate('axe/color-contrast', 5)).toBe(false);
   });
 
-  it('fails closed on CONFIG_INVALID (a corrupt / version-skewed ledger)', () => {
+  test('fails closed on CONFIG_INVALID (a corrupt / version-skewed ledger)', () => {
     const predicate = makeLedgerSuppressionPredicate({
       cwd: '/repo',
       runLedger: () => ({
@@ -61,7 +58,7 @@ describe('makeLedgerSuppressionPredicate', () => {
     expect(predicate('axe/color-contrast', 5)).toBe(true);
   });
 
-  it('fails closed on STORAGE_INACCESSIBLE', () => {
+  test('fails closed on STORAGE_INACCESSIBLE', () => {
     const predicate = makeLedgerSuppressionPredicate({
       cwd: '/repo',
       runLedger: () => ({
@@ -76,7 +73,7 @@ describe('makeLedgerSuppressionPredicate', () => {
 });
 
 describe('pruneLedger', () => {
-  it('invokes prune with the comma-joined window classes', () => {
+  test('invokes prune with the comma-joined window classes', () => {
     const runLedger = vi.fn<LedgerRunner>(() => ok());
 
     pruneLedger({
@@ -92,7 +89,7 @@ describe('pruneLedger', () => {
     expect(args[idx + 1]).toBe('axe/color-contrast,knip/exports');
   });
 
-  it('invokes prune with an empty value when no classes remain in the window', () => {
+  test('invokes prune with an empty value when no classes remain in the window', () => {
     const runLedger = vi.fn<LedgerRunner>(() => ok());
 
     pruneLedger({cwd: '/repo', runLedger, windowClasses: []});

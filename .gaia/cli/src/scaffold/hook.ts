@@ -74,16 +74,19 @@ const readFlags = (argv: readonly string[]): FlagReadResult => {
       json = true;
       continue;
     }
+
     if (token === '--params') {
       paramsRaw = argv[index + 1];
       index += 1;
       continue;
     }
+
     if (token === '--returns') {
       returns = argv[index + 1];
       index += 1;
       continue;
     }
+
     if (token !== undefined && token.startsWith('--')) {
       // Unknown flag: surface upstream as a usage error.
       throw new Error(`unknown flag: ${token}`);
@@ -194,9 +197,11 @@ const printResult = (result: ScaffoldResult, jsonMode: boolean): void => {
 
     return;
   }
+
   for (const file of result.written) {
     process.stdout.write(`written: ${file}\n`);
   }
+
   for (const file of result.skipped) {
     process.stdout.write(`skipped: ${file}\n`);
   }

@@ -26,16 +26,16 @@ const DEFAULT_AUTHOR = 'github-actions[bot]';
 
 type StaleCheckDecision = {
   decision: 'proceed' | 'skip';
-  open_pr_branch: string | null;
-  open_pr_number: number | null;
+  open_pr_branch: null | string;
+  open_pr_number: null | number;
   reason: 'no_open_gaia_ci_pr' | 'open_gaia_ci_pr_exists';
-  skip_log_line: string | null;
+  skip_log_line: null | string;
 };
 
 const GhPrEntry = {
-  parse(
+  parse: (
     value: unknown
-  ): {createdAt: string; headRefName: string; number: number} | null {
+  ): null | {createdAt: string; headRefName: string; number: number} => {
     if (typeof value !== 'object' || value === null) return null;
     const v = value as Record<string, unknown>;
 
@@ -59,7 +59,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -71,7 +71,7 @@ export const run = (
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;
@@ -200,11 +200,11 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const entries: Array<{
+  const entries: {
     createdAt: string;
     headRefName: string;
     number: number;
-  }> = [];
+  }[] = [];
 
   for (const value of parsed) {
     const entry = GhPrEntry.parse(value);
@@ -223,11 +223,7 @@ export const run = (
       skip_log_line: null,
     };
   } else {
-    const first = entries[0] as {
-      createdAt: string;
-      headRefName: string;
-      number: number;
-    };
+    const first = entries[0];
     decision = {
       decision: 'skip',
       open_pr_branch: first.headRefName,

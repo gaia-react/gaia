@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
 import type {
   AutomationConfig,
   ToolId,
@@ -32,19 +32,19 @@ const renderForTool = (tool: ToolId): string => {
 // Inline snapshots catch unintentional drift in code review. Regenerate
 // after deliberate template edits with `pnpm test --run -u`.
 describe('workflow template snapshots', () => {
-  it('gaia-ci-wiki.yml matches snapshot', () => {
+  test('gaia-ci-wiki.yml matches snapshot', () => {
     expect(renderForTool('wiki')).toMatchSnapshot();
   });
 
-  it('gaia-ci-update-deps.yml matches snapshot', () => {
+  test('gaia-ci-update-deps.yml matches snapshot', () => {
     expect(renderForTool('update-deps')).toMatchSnapshot();
   });
 
-  it('gaia-ci-pnpm-audit.yml matches snapshot', () => {
+  test('gaia-ci-pnpm-audit.yml matches snapshot', () => {
     expect(renderForTool('pnpm-audit')).toMatchSnapshot();
   });
 
-  it('gaia-ci-stale-branches.yml matches snapshot', () => {
+  test('gaia-ci-stale-branches.yml matches snapshot', () => {
     expect(renderForTool('stale-branches')).toMatchSnapshot();
   });
 });

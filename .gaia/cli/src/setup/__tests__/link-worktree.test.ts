@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia setup link-worktree` (SPEC-005 Phase 1).
  *
@@ -18,20 +19,19 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run as runLinkWorktree} from '../link-worktree.js';
+
+type MainOnlySandbox = {
+  cleanup: () => void;
+  /** Path to a plain main checkout (no linked worktree). */
+  mainRoot: string;
+};
 
 type WorktreeSandbox = {
   cleanup: () => void;
   /** Path to the linked worktree (cwd for tests). */
   linkedRoot: string;
   /** Path to the main checkout. */
-  mainRoot: string;
-};
-
-type MainOnlySandbox = {
-  cleanup: () => void;
-  /** Path to a plain main checkout (no linked worktree). */
   mainRoot: string;
 };
 
@@ -161,6 +161,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
       '.gaia/local/audit',
       '.gaia/local/telemetry',
     ]);
+
     for (const action of out.actions) {
       expect(action.result).toBe('linked');
     }
@@ -334,6 +335,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     const out = JSON.parse(stdio.outputs.join('').trim()) as {
       actions: {result: string}[];
     };
+
     for (const action of out.actions) {
       expect(action.result).toBe('linked-after-backup');
     }
@@ -393,6 +395,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     const out = JSON.parse(stdio.outputs.join('').trim()) as {
       actions: {error?: string; result: string}[];
     };
+
     for (const action of out.actions) {
       expect(action.result).toBe('failed');
       expect(action.error).toContain('mocked permission denied');

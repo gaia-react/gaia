@@ -19,9 +19,9 @@ import {
   pendingSteps,
   readStateFile,
   resolveMainWorktreeRoot,
-  type SetupState,
   writeStateFile,
 } from './util/state-file.js';
+import type {SetupState} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup finalize [--force]
 

@@ -1,11 +1,11 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import * as runProcess from '../../ci/util/run-process.js';
+import type {ProcessResult} from '../../ci/util/run-process.js';
 import {markerComment} from '../marker.js';
 import {run} from '../tally.js';
-import type {ProcessResult} from '../../ci/util/run-process.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -65,7 +65,7 @@ const findingsComment = (
   ].join('\n'),
 });
 
-const ghPr = (prNumber: number, comments: Array<{body: string}>) => ({
+const ghPr = (prNumber: number, comments: {body: string}[]) => ({
   comments,
   number: prNumber,
 });
@@ -94,7 +94,7 @@ describe('harden-tally run', () => {
     vi.restoreAllMocks();
   });
 
-  it('emits a candidate for a class on 3 distinct merged PRs at warning', () => {
+  test('emits a candidate for a class on 3 distinct merged PRs at warning', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue(
       stubGh([
         ghPr(1201, [
@@ -136,14 +136,14 @@ describe('harden-tally run', () => {
     const printed = parseStdout(stdout.out);
     expect(printed.candidate_count).toBe(1);
     expect(printed.window_days).toBe(90);
-    const candidates = printed.candidates as Array<Record<string, unknown>>;
+    const candidates = printed.candidates as Record<string, unknown>[];
     expect(candidates[0]?.finding_class).toBe(
       'react-doctor/no-generic-handler-names'
     );
     expect(candidates[0]?.distinct_pr_count).toBe(3);
   });
 
-  it('CI+local findings for the same class across distinct PRs combine into one candidate', () => {
+  test('CI+local findings for the same class across distinct PRs combine into one candidate', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue(
       stubGh([
         ghPr(1, [
@@ -183,11 +183,11 @@ describe('harden-tally run', () => {
 
     const printed = parseStdout(stdout.out);
     expect(printed.candidate_count).toBe(1);
-    const candidates = printed.candidates as Array<Record<string, unknown>>;
+    const candidates = printed.candidates as Record<string, unknown>[];
     expect(candidates[0]?.severity_max).toBe('error');
   });
 
-  it('does not surface a class on only 2 distinct PRs', () => {
+  test('does not surface a class on only 2 distinct PRs', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue(
       stubGh([
         ghPr(1, [
@@ -211,7 +211,7 @@ describe('harden-tally run', () => {
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
   });
 
-  it('does not surface a class found 3 times in a single PR', () => {
+  test('does not surface a class found 3 times in a single PR', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue(
       stubGh([
         ghPr(1, [
@@ -232,7 +232,7 @@ describe('harden-tally run', () => {
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
   });
 
-  it('does not surface a suggestion-only class', () => {
+  test('does not surface a suggestion-only class', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue(
       stubGh(
         [3, 2, 1].map((n) =>
@@ -257,7 +257,7 @@ describe('harden-tally run', () => {
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
   });
 
-  it('drops a class a promoted rule already covers', () => {
+  test('drops a class a promoted rule already covers', () => {
     mkdirSync(sandbox.rulesDir, {recursive: true});
     writeFileSync(
       path.join(sandbox.rulesDir, 'switch.md'),
@@ -288,7 +288,7 @@ describe('harden-tally run', () => {
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
   });
 
-  it('drops a ledger-suppressed class, then re-surfaces once it crosses the threshold again', () => {
+  test('drops a ledger-suppressed class, then re-surfaces once it crosses the threshold again', () => {
     const gh = stubGh(
       [3, 2, 1].map((n) =>
         ghPr(n, [
@@ -308,9 +308,9 @@ describe('harden-tally run', () => {
     run([], {
       cwd: sandbox.root,
       runLedger: (argv) =>
-        argv.includes('is-suppressed')
-          ? {exitCode: 0, stderr: '', stdout: ''}
-          : {exitCode: 0, stderr: '', stdout: ''},
+        argv.includes('is-suppressed') ?
+          {exitCode: 0, stderr: '', stdout: ''}
+        : {exitCode: 0, stderr: '', stdout: ''},
     });
     expect(parseStdout(stdout.out).candidate_count).toBe(0);
 
@@ -319,14 +319,14 @@ describe('harden-tally run', () => {
     run([], {
       cwd: sandbox.root,
       runLedger: (argv) =>
-        argv.includes('is-suppressed')
-          ? {exitCode: 1, stderr: '', stdout: ''}
-          : {exitCode: 0, stderr: '', stdout: ''},
+        argv.includes('is-suppressed') ?
+          {exitCode: 1, stderr: '', stdout: ''}
+        : {exitCode: 0, stderr: '', stdout: ''},
     });
     expect(parseStdout(stdout.out).candidate_count).toBe(1);
   });
 
-  it('prunes the ledger with the classes still recurring in the window', () => {
+  test('prunes the ledger with the classes still recurring in the window', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue(
       stubGh(
         [3, 2, 1].map((n) =>
@@ -359,7 +359,7 @@ describe('harden-tally run', () => {
     expect((pruneCall ?? [])[idx + 1]).toBe('axe/color-contrast');
   });
 
-  it('falls back to candidate_count 0 and gh_ok false when gh fails (non-fatal)', () => {
+  test('falls back to candidate_count 0 and gh_ok false when gh fails (non-fatal)', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue({
       exitCode: 4,
       stderr: 'gh: not authenticated',
@@ -378,7 +378,7 @@ describe('harden-tally run', () => {
     expect(printed.gh_ok).toBe(false);
   });
 
-  it('sets gh_ok true on a successful read of a genuinely empty window', () => {
+  test('sets gh_ok true on a successful read of a genuinely empty window', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue(stubGh([]));
 
     const exit = run([], {
@@ -392,10 +392,8 @@ describe('harden-tally run', () => {
     expect(printed.candidate_count).toBe(0);
   });
 
-  it('queries the 90-day merged-PR window via gh', () => {
-    const ghSpy = vi
-      .spyOn(runProcess, 'runGh')
-      .mockReturnValue(stubGh([]));
+  test('queries the 90-day merged-PR window via gh', () => {
+    const ghSpy = vi.spyOn(runProcess, 'runGh').mockReturnValue(stubGh([]));
 
     run([], {
       cwd: sandbox.root,
@@ -406,7 +404,7 @@ describe('harden-tally run', () => {
     expect(args).toContain('pr');
     expect(args).toContain('list');
     expect(args).toContain('merged');
-    const searchIdx = args.indexOf('--search');
-    expect(args[searchIdx + 1]).toMatch(/^merged:>=\d{4}-\d{2}-\d{2}$/);
+    const searchIndex = args.indexOf('--search');
+    expect(args[searchIndex + 1]).toMatch(/^merged:>=\d{4}-\d{2}-\d{2}$/);
   });
 });

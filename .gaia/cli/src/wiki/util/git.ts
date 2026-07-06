@@ -30,7 +30,7 @@ const runGit = (args: readonly string[], options: RunOptions = {}): string => {
 const tryRunGit = (
   args: readonly string[],
   options: RunOptions = {}
-): string | null => {
+): null | string => {
   try {
     return runGit(args, options);
   } catch {
@@ -171,18 +171,15 @@ const parseShortStat = (
 
   const filesMatch = /(\d+)\s+files?\s+changed/u.exec(stat);
 
-  if (filesMatch !== null)
-    filesChanged = Number.parseInt(filesMatch[1] as string, 10);
+  if (filesMatch !== null) filesChanged = Number.parseInt(filesMatch[1], 10);
 
   const insertMatch = /(\d+)\s+insertions?\(\+\)/u.exec(stat);
 
-  if (insertMatch !== null)
-    insertions = Number.parseInt(insertMatch[1] as string, 10);
+  if (insertMatch !== null) insertions = Number.parseInt(insertMatch[1], 10);
 
   const deleteMatch = /(\d+)\s+deletions?\(-\)/u.exec(stat);
 
-  if (deleteMatch !== null)
-    deletions = Number.parseInt(deleteMatch[1] as string, 10);
+  if (deleteMatch !== null) deletions = Number.parseInt(deleteMatch[1], 10);
 
   return {deletions, files_changed: filesChanged, insertions};
 };
@@ -206,15 +203,15 @@ const fileListForCommit = (sha: string, cwd: string): string[] => {
   });
 };
 
+type ChunkParse = {
+  precedingStat: string;
+  record: null | RawRecord;
+};
+
 type RawRecord = {
   body: string;
   sha: string;
   subject: string;
-};
-
-type ChunkParse = {
-  precedingStat: string;
-  record: RawRecord | null;
 };
 
 const parseChunk = (chunk: string): ChunkParse => {
@@ -287,19 +284,19 @@ export const commitDetails = (
   const chunks = raw.split(recordSeparator);
   const records: RawRecord[] = [];
   const stats: string[] = [];
-  let pendingStat: string | null = null;
+  let pendingStat: null | string = null;
 
   for (const chunk of chunks) {
     const {precedingStat, record} = parseChunk(chunk);
 
-    if (record !== null) {
+    if (record === null) {
+      // Trailing-stat tail belonging to the LAST emitted record.
+      pendingStat = precedingStat;
+    } else {
       records.push(record);
       // Resolve the previous record's stat (if any).
       if (records.length > 1) stats.push(precedingStat);
       pendingStat = null;
-    } else {
-      // Trailing-stat tail belonging to the LAST emitted record.
-      pendingStat = precedingStat;
     }
   }
 

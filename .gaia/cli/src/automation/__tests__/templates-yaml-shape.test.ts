@@ -1,5 +1,5 @@
 import {load} from 'js-yaml';
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
 import {z} from 'zod';
 import type {
   AutomationConfig,
@@ -70,9 +70,9 @@ const tools: readonly ToolId[] = [
 ];
 
 describe('workflow YAML shape', () => {
-  it.each(tools)('%s passes the WorkflowSchema', (tool) => {
+  test.each(tools)('%s passes the WorkflowSchema', (tool) => {
     const rendered = renderForTool(tool);
-    const parsed = load(rendered) as unknown;
+    const parsed = load(rendered);
     const result = WorkflowSchema.safeParse(parsed);
 
     if (!result.success) {
@@ -84,7 +84,7 @@ describe('workflow YAML shape', () => {
     expect(result.success).toBe(true);
   });
 
-  it.each(tools)('%s declares permissions.contents = write', (tool) => {
+  test.each(tools)('%s declares permissions.contents = write', (tool) => {
     const parsed = load(renderForTool(tool)) as {
       permissions: Record<string, string>;
     };

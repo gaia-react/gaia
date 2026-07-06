@@ -43,7 +43,7 @@ const seenSetFor = (filePath: string): Set<string> => {
     const existing = readFileSync(filePath, 'utf8');
 
     for (const match of existing.matchAll(EVENT_ID_NEEDLE_REGEX)) {
-      seen.add(match[1] as string);
+      seen.add(match[1]);
     }
   }
 

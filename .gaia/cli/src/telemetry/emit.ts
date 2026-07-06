@@ -397,8 +397,7 @@ type ValidatedInput = {
 };
 
 type ValidationOutcome =
-  | {exitCode: number; ok: false}
-  | {input: ValidatedInput; ok: true};
+  {exitCode: number; ok: false} | {input: ValidatedInput; ok: true};
 
 const parseAndValidate = (argv: readonly string[]): ValidationOutcome => {
   let parsed: ParsedArgs;

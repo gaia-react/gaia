@@ -68,9 +68,7 @@ const walkMarkdown = (root: string, dir: string): string[] => {
 const hasField = (
   frontmatter: ReturnType<typeof parseFrontmatter>['frontmatter'],
   field: string
-): boolean =>
-  Object.prototype.hasOwnProperty.call(frontmatter, field) &&
-  frontmatter[field] !== null;
+): boolean => Object.hasOwn(frontmatter, field) && frontmatter[field] !== null;
 
 export const findFrontmatterGaps = (cwd: string): readonly Gap[] => {
   const wikiDir = path.join(cwd, 'wiki');

@@ -64,7 +64,8 @@ const severityNote = (findings: readonly Finding[]): string => {
 
     if (count === 0) continue;
 
-    const label = severity === 'info' || count === 1 ? severity : `${severity}s`;
+    const label =
+      severity === 'info' || count === 1 ? severity : `${severity}s`;
     parts.push(`${count} ${label}`);
   }
 
@@ -128,9 +129,11 @@ const computeInner = (
   ];
 
   for (const finding of report.findings) {
-    naturals.push(`${finding.category}: ${finding.grade}`.length);
-    naturals.push(INDENT + finding.file.length);
-    naturals.push(INDENT + finding.remediation.length);
+    naturals.push(
+      `${finding.category}: ${finding.grade}`.length,
+      INDENT + finding.file.length,
+      INDENT + finding.remediation.length
+    );
   }
 
   const inner = Math.min(Math.max(...naturals), WIDTH_CAP, cols - MARGIN);
@@ -166,6 +169,7 @@ export const renderCard = (report: FitnessReport, cols: number): string => {
   const bar = (): string => `+${'-'.repeat(inner + 2)}+`;
   const cluster = (note: string, grade: string): string =>
     `${note.padStart(noteWidth)}${' '.repeat(GAP)}${grade.padEnd(GRADE_WIDTH)}`;
+
   const rightRow = (label: string, note: string, grade: string): string => {
     const right = cluster(note, grade);
 
@@ -196,7 +200,9 @@ export const renderCard = (report: FitnessReport, cols: number): string => {
 
       for (const finding of findings) {
         const tag = `[${finding.severity}]`.padEnd(TAG_WIDTH);
-        out.push(line(`  ${tag} ${truncateTail(finding.file, inner - INDENT)}`));
+        out.push(
+          line(`  ${tag} ${truncateTail(finding.file, inner - INDENT)}`)
+        );
 
         for (const wrapped of wrapText(finding.remediation, inner - INDENT)) {
           out.push(line(`${' '.repeat(INDENT)}${wrapped}`));
@@ -237,7 +243,8 @@ const parseCols = (args: readonly string[]): number | undefined => {
 
     if (arg === '--cols') {
       const value: string | undefined = args[index + 1];
-      const parsed = value === undefined ? Number.NaN : Number.parseInt(value, 10);
+      const parsed =
+        value === undefined ? Number.NaN : Number.parseInt(value, 10);
 
       return Number.isFinite(parsed) ? parsed : undefined;
     }
@@ -253,9 +260,9 @@ const parseCols = (args: readonly string[]): number | undefined => {
 };
 
 const resolveCols = (args: readonly string[]): number => {
-  const fromArg = parseCols(args);
+  const fromArgument = parseCols(args);
 
-  if (fromArg !== undefined && fromArg > 0) return fromArg;
+  if (fromArgument !== undefined && fromArgument > 0) return fromArgument;
 
   const tty = process.stdout.columns;
 

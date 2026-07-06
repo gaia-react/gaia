@@ -1,3 +1,4 @@
+import {z} from 'zod';
 /**
  * Zod schema + read helpers for `.gaia/local/automation.json`, the
  * gitignored personal nudge state.
@@ -7,23 +8,23 @@
  * exist now so all later slices share one canonical source.
  */
 import {existsSync, readFileSync} from 'node:fs';
-import {z} from 'zod';
 import {localAutomationPath} from '../automation/paths.js';
 import {summarizeZodError} from './zod-error.js';
 
 export const LocalAutomationSchema = z.object({
-  version: z.literal(1),
   nudge_dismissed: z.boolean(),
+  version: z.literal(1),
 });
+
 export type LocalAutomation = z.infer<typeof LocalAutomationSchema>;
 
 export const parseLocalAutomation = (raw: unknown): LocalAutomation =>
   LocalAutomationSchema.parse(raw);
 
 export type ReadLocalAutomationResult =
+  | {error: string; status: 'malformed'}
   | {local: LocalAutomation; status: 'ok'}
-  | {status: 'missing'}
-  | {error: string; status: 'malformed'};
+  | {status: 'missing'};
 
 export const readLocalAutomation = (
   repoRoot: string

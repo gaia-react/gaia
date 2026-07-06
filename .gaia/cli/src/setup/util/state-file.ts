@@ -22,6 +22,7 @@ import {
 import path from 'node:path';
 
 export const STATE_FILENAME = 'setup-state.json';
+
 export const STATE_DIRECTORY_RELATIVE = path.join('.gaia', 'local');
 
 /**
@@ -77,8 +78,6 @@ export const SETUP_STEPS = [
   'audit-mode-decision',
 ] as const;
 
-export type SetupStep = (typeof SETUP_STEPS)[number];
-
 export type SetupState = {
   completed_at: null | string;
   completed_steps: SetupStep[];
@@ -86,13 +85,15 @@ export type SetupState = {
   version: 1;
 };
 
+export type SetupStep = (typeof SETUP_STEPS)[number];
+
 const isSetupStep = (value: string): value is SetupStep =>
   (SETUP_STEPS as readonly string[]).includes(value);
 
 export const resolveStateFilePath = (repoRoot: string): string =>
   path.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
 
-export const readStateFile = (repoRoot: string): SetupState | null => {
+export const readStateFile = (repoRoot: string): null | SetupState => {
   const filePath = resolveStateFilePath(repoRoot);
 
   if (!existsSync(filePath)) return null;
@@ -114,15 +115,16 @@ export const readStateFile = (repoRoot: string): SetupState | null => {
     // GAIA release). Silently dropping it would let `finalize` pass a
     // gate it should not. Surface it instead.
     throw new Error(
-      `setup-state.json has unrecognized completed_steps: ` +
-        `${unknownSteps.join(', ')}`
+      `setup-state.json has unrecognized completed_steps: ${unknownSteps.join(
+        ', '
+      )}`
     );
   }
 
   if (typeof parsed.started_at !== 'string') {
     // `started_at` is stamped on first write; a missing/non-string value
     // means a corrupt file. A read helper must not fabricate it.
-    throw new Error('setup-state.json is missing a valid started_at');
+    throw new TypeError('setup-state.json is missing a valid started_at');
   }
 
   return {
@@ -153,7 +155,7 @@ export const writeStateFile = (repoRoot: string, state: SetupState): void => {
  * sequence the slash command expects.
  */
 export const pendingSteps = (state: null | SetupState): SetupStep[] => {
-  const completed = new Set(state?.completed_steps ?? []);
+  const completed = new Set(state?.completed_steps);
 
   return SETUP_STEPS.filter((step) => !completed.has(step));
 };

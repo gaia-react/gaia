@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release manifest`.
  *
@@ -16,7 +17,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   buildManifest,
   classifyPath,
@@ -169,10 +169,10 @@ describe('buildManifest', () => {
 
   test('produces sorted file map with correct classes', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.2.3\n',
       '.gaia/release-exclude': '# none\n',
-      'CLAUDE.md': '# CLAUDE\n',
+      '.gaia/VERSION': '1.2.3\n',
       'app/components/Foo/index.tsx': 'export {};\n',
+      'CLAUDE.md': '# CLAUDE\n',
       'wiki/concepts/Bar.md': '# Bar\n',
       'wiki/hot.md': '# hot\n',
       'wiki/log.md': '# log\n',
@@ -200,9 +200,9 @@ describe('buildManifest', () => {
 
   test('respects release-exclude patterns', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '0.1.0\n',
       '.gaia/release-exclude': '.gaia/scripts\n',
       '.gaia/scripts/keep-me.mjs': 'console.log("hi");\n',
+      '.gaia/VERSION': '0.1.0\n',
       'app/keep.ts': 'export {};\n',
     });
 
@@ -232,8 +232,8 @@ describe('run (CLI)', () => {
 
   test('writes .gaia/manifest.json by default', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
       'app/foo.ts': 'export {};\n',
     });
 
@@ -258,8 +258,8 @@ describe('run (CLI)', () => {
 
   test('--stdout prints to stdout without writing file', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '0.0.1\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '0.0.1\n',
     });
 
     const exit = run(['--stdout'], {
@@ -278,8 +278,8 @@ describe('run (CLI)', () => {
 
   test('rejects unknown flags', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '0.0.1\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '0.0.1\n',
     });
 
     const exit = run(['--bogus'], {cwd: sandbox.root});
@@ -354,10 +354,10 @@ describe('run --check', () => {
 
   const seedAndGenerate = (extraFiles: Record<string, string> = {}): void => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
-      'CLAUDE.md': '# CLAUDE\n',
+      '.gaia/VERSION': '1.0.0\n',
       'app/foo.ts': 'export {};\n',
+      'CLAUDE.md': '# CLAUDE\n',
       'wiki/concepts/Bar.md': '# bar\n',
       'wiki/index.md': '# index\n',
       ...extraFiles,
@@ -528,8 +528,8 @@ describe('run --check', () => {
 
   test('missing manifest file: exits non-zero with manifest_missing error', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
       'app/foo.ts': 'export {};\n',
     });
 
@@ -540,8 +540,8 @@ describe('run --check', () => {
 
   test('--check is incompatible with --out', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
     });
 
     const exit = run(['--check', '--out', 'foo.json'], {cwd: sandbox.root});
@@ -551,8 +551,8 @@ describe('run --check', () => {
 
   test('--json requires --check', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
     });
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -588,12 +588,12 @@ describe('run --check', () => {
 
   test('classifier-set overlap: exits non-zero and names the overlap', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       // CLAUDE.md is in the SHARED classifier set; if release-exclude
       // also matches it, the SHARED entry is dead code.
       '.gaia/release-exclude': 'CLAUDE.md\n',
-      'CLAUDE.md': '# CLAUDE\n',
+      '.gaia/VERSION': '1.0.0\n',
       'app/foo.ts': 'export {};\n',
+      'CLAUDE.md': '# CLAUDE\n',
     });
 
     const exit = run([], {
@@ -617,9 +617,9 @@ describe('run --check', () => {
 });
 
 type ManifestDriftJson = {
-  drift: Array<{actual: string; expected: string; file: string}>;
-  extra: Array<{actual: string; file: string}>;
-  missing: Array<{expected: string; file: string}>;
+  drift: {actual: string; expected: string; file: string}[];
+  extra: {actual: string; file: string}[];
+  missing: {expected: string; file: string}[];
 };
 
 describe('byte-identity vs generate-manifest.mjs', () => {
@@ -636,7 +636,10 @@ describe('byte-identity vs generate-manifest.mjs', () => {
       // exercising every classifier branch so any drift in either
       // implementation manifests as a diff in the output.
       sandbox.commit('seed', {
-        '.gaia/VERSION': '1.0.5\n',
+        '.claude/commands/gaia-init.md': '# init\n',
+        '.claude/commands/gaia-release.md': '# release-only\n', // excluded
+        '.claude/settings.json': '{}\n',
+        '.claude/skills/tdd/SKILL.md': '# tdd\n',
         '.gaia/release-exclude': [
           '# comment',
           '.claude/commands/gaia-release.md',
@@ -649,18 +652,15 @@ describe('byte-identity vs generate-manifest.mjs', () => {
           'wiki/meta',
           '',
         ].join('\n'),
-        '.claude/commands/gaia-init.md': '# init\n',
-        '.claude/commands/gaia-release.md': '# release-only\n', // excluded
-        '.claude/settings.json': '{}\n',
-        '.claude/skills/tdd/SKILL.md': '# tdd\n',
         '.gaia/scripts/legacy.mjs': '// excluded\n', // excluded
+        '.gaia/VERSION': '1.0.5\n',
         '.github/CODEOWNERS': '* @maintainer\n',
         '.github/workflows/release.yml': 'name: release\n',
+        'app/components/Foo/index.tsx': 'export {};\n',
         'CHANGELOG.md': '# changelog\n', // excluded (root governance, category 11)
         'CLAUDE.md': '# CLAUDE\n',
-        'README.md': '# README\n', // excluded (root governance, category 11)
-        'app/components/Foo/index.tsx': 'export {};\n',
         'package.json': '{"name":"x"}\n',
+        'README.md': '# README\n', // excluded (root governance, category 11)
         'wiki/concepts/Foo.md': '# foo\n',
         'wiki/decisions/Bar.md': '# bar\n',
         'wiki/entities/Skip.md': '# excluded\n', // excluded

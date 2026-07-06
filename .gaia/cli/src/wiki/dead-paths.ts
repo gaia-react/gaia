@@ -159,6 +159,7 @@ export const findDeadPaths = (cwd: string): readonly DeadRef[] => {
 
         if (token === undefined) continue;
         if (!isTrackedPath(token)) continue;
+
         if (SIBLING_REPO_PATTERN.test(token)) {
           dead.push({filePath, line: index + 1, path: token});
           continue;

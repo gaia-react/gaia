@@ -147,8 +147,7 @@ describe('appendIdempotent', () => {
     const eventId = '01HZX0K3Q9JSAWC0TR6WYJ5ZNT';
     const line = JSON.stringify({event_id: eventId});
 
-    for (let i = 0; i < 25; i += 1) {
-      // eslint-disable-next-line no-await-in-loop -- sequential dedup check
+    for (let index = 0; index < 25; index += 1) {
       await appendIdempotent({eventId, fileMode: 0o600, filePath, line});
     }
 

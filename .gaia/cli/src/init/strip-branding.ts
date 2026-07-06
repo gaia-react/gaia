@@ -18,9 +18,9 @@
  */
 import {existsSync, readFileSync, rmSync} from 'node:fs';
 import path from 'node:path';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = `Usage: gaia init strip-branding --title <T>
@@ -40,21 +40,21 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 const STEP_NAME = 'strip-branding';
 
-type Flags = {
-  title: string;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  title: string;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -73,7 +73,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let title: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--title') {
       const taken = takeValue(argv, index + 1, '--title');
@@ -135,11 +135,14 @@ const debrandStorybook = (cwd: string, title: string): void => {
 
   // Rewrite the brand to the project wordmark: no GAIA title or URL.
   // A function replacement avoids `$` in the title being read as a backref.
-  const safeTitle = title.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+  const safeTitle = title
+    .replaceAll('\\', '\\\\')
+    .replaceAll("'", String.raw`\'`);
 
   next = next.replaceAll(
     /const BRAND = \{[\s\S]*?\};/gu,
-    () => `const BRAND = {\n  brandTarget: '_blank',\n  brandTitle: '${safeTitle}',\n};`
+    () =>
+      `const BRAND = {\n  brandTarget: '_blank',\n  brandTitle: '${safeTitle}',\n};`
   );
 
   if (next !== original) {
@@ -155,7 +158,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

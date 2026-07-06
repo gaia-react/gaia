@@ -1,9 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {
-  MAX_SNOOZE_MS,
   collectOutstandingGroups,
   collectSnoozedGroups,
   computeActionableCount,
@@ -11,11 +10,11 @@ import {
   findActiveDecline,
   isSuppressed,
   loadDeclines,
+  MAX_SNOOZE_MS,
   saveDeclines,
   totalCount,
-  type CountablePayload,
-  type DeclinedRecord,
 } from './declines.js';
+import type {CountablePayload, DeclinedRecord} from './declines.js';
 
 type Sandbox = {cleanup: () => void; root: string};
 
@@ -51,8 +50,8 @@ const payload: CountablePayload = {
 };
 
 const reactRouterTargets = {
-  'react-router': '7.2.0',
   '@react-router/serve': '7.2.0',
+  'react-router': '7.2.0',
 };
 
 const now = new Date('2026-06-11T18:00:00.000Z');
@@ -228,11 +227,7 @@ describe('collectSnoozedGroups', () => {
       group: 'singleton:left-pad',
       targets: {'left-pad': '1.4.0'},
     });
-    const result = collectSnoozedGroups(
-      multi,
-      [declineRecord(), leftPad],
-      now
-    );
+    const result = collectSnoozedGroups(multi, [declineRecord(), leftPad], now);
     expect(result.map((entry) => entry.group)).toEqual([
       'react-router',
       'singleton:left-pad',

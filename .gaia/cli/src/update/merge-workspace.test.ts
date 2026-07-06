@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia update merge-workspace`.
  *
@@ -7,22 +8,18 @@
  * there are no on-disk side effects to assert (the `/update-gaia` skill
  * applies `applied[]` via the Edit tool to preserve comments and order).
  */
-import {
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {run, type WorkspaceMergeReport} from './merge-workspace.js';
+import {run} from './merge-workspace.js';
+import type {WorkspaceMergeReport} from './merge-workspace.js';
 
 type Sandbox = {
-  root: string;
   baselinePath: string;
-  latestPath: string;
-  currentPath: string;
   cleanup: () => void;
+  currentPath: string;
+  latestPath: string;
+  root: string;
   write: (which: 'baseline' | 'current' | 'latest', contents: string) => void;
 };
 
@@ -136,11 +133,11 @@ describe('update merge-workspace', () => {
     const report = parseJson(stdio.outputs);
     expect(report.applied).toEqual([
       {
-        adopter: 10080,
-        baseline: 10080,
+        adopter: 10_080,
+        baseline: 10_080,
         key: 'minimumReleaseAge',
         kind: 'key',
-        latest: 20160,
+        latest: 20_160,
       },
     ]);
     expect(report.conflicts).toEqual([]);
@@ -160,10 +157,10 @@ describe('update merge-workspace', () => {
     expect(report.conflicts).toEqual([
       {
         adopter: 5000,
-        baseline: 10080,
+        baseline: 10_080,
         key: 'minimumReleaseAge',
         kind: 'key',
-        latest: 20160,
+        latest: 20_160,
       },
     ]);
   });

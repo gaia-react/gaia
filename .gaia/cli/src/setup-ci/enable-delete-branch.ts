@@ -39,7 +39,7 @@ export const run = async (
   let repo: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (HELP_TOKENS.has(token)) {
       process.stdout.write(HELP_TEXT);

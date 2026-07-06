@@ -1,5 +1,6 @@
 import {describe, expect, test} from 'vitest';
-import {renderCard, type FitnessReport} from './render-card.js';
+import {renderCard} from './render-card.js';
+import type {FitnessReport} from './render-card.js';
 
 const baseReport = (): FitnessReport => ({
   categories: [
@@ -51,7 +52,7 @@ describe('renderCard', () => {
     const lines = renderCard(baseReport(), 80).split('\n');
 
     expect(lines[0]).toMatch(/^\+-+\+$/);
-    expect(lines[lines.length - 1]).toMatch(/^\+-+\+$/);
+    expect(lines.at(-1)).toMatch(/^\+-+\+$/);
   });
 
   test('renders categories alphabetically', () => {
@@ -100,9 +101,9 @@ describe('renderCard', () => {
       },
     ];
 
-    expect(Math.max(...lineWidths(renderCard(report, 500)))).toBeLessThanOrEqual(
-      WIDTH_CAP_PLUS_BORDER
-    );
+    expect(
+      Math.max(...lineWidths(renderCard(report, 500)))
+    ).toBeLessThanOrEqual(WIDTH_CAP_PLUS_BORDER);
   });
 
   test('truncates an over-long file path while keeping borders aligned', () => {

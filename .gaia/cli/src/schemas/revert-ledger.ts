@@ -1,3 +1,4 @@
+import {z} from 'zod';
 /**
  * Zod schema + read/write helpers for the revert-attempt ledger.
  *
@@ -20,7 +21,6 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import {z} from 'zod';
 import {revertLedgerPath} from '../ci/paths.js';
 import {summarizeZodError} from './zod-error.js';
 
@@ -29,6 +29,7 @@ export const RevertAttemptStatusSchema = z.literal([
   'merged',
   'open',
 ] as const);
+
 export type RevertAttemptStatus = z.infer<typeof RevertAttemptStatusSchema>;
 
 export const RevertAttemptSchema = z.object({
@@ -37,12 +38,14 @@ export const RevertAttemptSchema = z.object({
   revert_pr: z.number().int().positive(),
   status: RevertAttemptStatusSchema,
 });
+
 export type RevertAttempt = z.infer<typeof RevertAttemptSchema>;
 
 export const RevertLedgerSchema = z.object({
   attempts: z.record(z.string(), RevertAttemptSchema),
   version: z.literal(1),
 });
+
 export type RevertLedger = z.infer<typeof RevertLedgerSchema>;
 
 export const emptyRevertLedger = (): RevertLedger => ({
@@ -51,9 +54,9 @@ export const emptyRevertLedger = (): RevertLedger => ({
 });
 
 export type ReadRevertLedgerResult =
+  | {error: string; status: 'malformed'}
   | {ledger: RevertLedger; status: 'ok'}
-  | {status: 'missing'}
-  | {error: string; status: 'malformed'};
+  | {status: 'missing'};
 
 export const readRevertLedger = (repoRoot: string): ReadRevertLedgerResult => {
   const filePath = revertLedgerPath(repoRoot);

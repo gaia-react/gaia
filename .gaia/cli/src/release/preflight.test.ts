@@ -1,12 +1,14 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release preflight`.
  */
-import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {type CommandRunner, run} from './preflight.js';
+import {run} from './preflight.js';
+import type {CommandRunner} from './preflight.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -74,10 +76,10 @@ type RecordedCall = {
 
 const buildRunner =
   (
-    scripted: Array<{
+    scripted: {
       argv: readonly string[];
       result: SpawnSyncReturns<string>;
-    }>,
+    }[],
     recorded: RecordedCall[]
   ): CommandRunner =>
   (command, args) => {
@@ -590,6 +592,7 @@ describe('release preflight', () => {
 
   test('exit 2 when git rev-parse fails', () => {
     const recorded: RecordedCall[] = [];
+
     const runner: CommandRunner = (_command, _args, _options) => {
       recorded.push({args: [..._args], command: _command});
 

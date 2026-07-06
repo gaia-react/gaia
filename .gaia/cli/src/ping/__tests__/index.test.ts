@@ -1,10 +1,10 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia ping` argument parsing and per-event payload shape.
  */
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from '../index.js';
 
 type Sandbox = {
@@ -72,7 +72,16 @@ describe('gaia ping', () => {
 
   test('init event: sends mode, i18n (as a number), and ci', async () => {
     const exit = await run(
-      ['--event', 'init', '--mode', 'interactive', '--i18n', '2', '--ci', 'custom'],
+      [
+        '--event',
+        'init',
+        '--mode',
+        'interactive',
+        '--i18n',
+        '2',
+        '--ci',
+        'custom',
+      ],
       {cwd: sandbox.root}
     );
 
@@ -205,9 +214,12 @@ describe('gaia ping', () => {
   test('honors GAIA_TELEMETRY_PING_DISABLE=1: no fetch, exit 0', async () => {
     vi.stubEnv('GAIA_TELEMETRY_PING_DISABLE', '1');
 
-    const exit = await run(['--event', 'update', '--from', '1.0.0', '--to', '1.1.0'], {
-      cwd: sandbox.root,
-    });
+    const exit = await run(
+      ['--event', 'update', '--from', '1.0.0', '--to', '1.1.0'],
+      {
+        cwd: sandbox.root,
+      }
+    );
 
     expect(exit).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled();

@@ -19,18 +19,11 @@
  */
 import {spawn} from 'node:child_process';
 
-export type GhSuccess = {
-  ok: true;
-  stdout: string;
-};
-
 export type GhFailure = {
   exitCode: number;
   ok: false;
   stderr: string;
 };
-
-export type GhResult = GhFailure | GhSuccess;
 
 export type GhOptions = {
   args: readonly string[];
@@ -39,8 +32,15 @@ export type GhOptions = {
   stdin?: Buffer | string;
 };
 
-export const runGh = (options: GhOptions): Promise<GhResult> => {
-  return new Promise((resolve) => {
+export type GhResult = GhFailure | GhSuccess;
+
+export type GhSuccess = {
+  ok: true;
+  stdout: string;
+};
+
+export const runGh = async (options: GhOptions): Promise<GhResult> =>
+  new Promise((resolve) => {
     const child = spawn('gh', [...options.args], {
       cwd: options.cwd ?? process.cwd(),
       env: options.env ?? process.env,
@@ -97,12 +97,11 @@ export const runGh = (options: GhOptions): Promise<GhResult> => {
       // Intentionally swallowed; `close` carries the real outcome.
     });
 
-    if (options.stdin !== undefined) {
+    if (options.stdin === undefined) {
+      child.stdin.end();
+    } else {
       // `end(payload)` writes then closes in one call; respecting
       // backpressure is unnecessary because we are done after this.
       child.stdin.end(options.stdin);
-    } else {
-      child.stdin.end();
     }
   });
-};

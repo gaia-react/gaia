@@ -1,3 +1,4 @@
+import {load as parseYaml} from 'js-yaml';
 /**
  * `gaia update merge-audit-ci --baseline <file> --latest <file> --current <file>`
  * handler.
@@ -36,7 +37,6 @@
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {load as parseYaml} from 'js-yaml';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
@@ -75,32 +75,31 @@ const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
 /** The adopter-shared section: a space-separated `login=mode` string. */
 const AUTHORS_SECTION = 'audit_authors';
 
-export type AuditCiVerdictItem = {
-  kind: 'entry' | 'key';
-  section?: string;
-  key: string;
-  baseline?: unknown;
-  latest?: unknown;
-  adopter?: unknown;
-  reason?: 'added' | 'removed-then-changed';
-};
-
 export type AuditCiMergeReport = {
   applied: AuditCiVerdictItem[];
   conflicts: AuditCiVerdictItem[];
   suggestions: AuditCiVerdictItem[];
 };
 
+export type AuditCiVerdictItem = {
+  adopter?: unknown;
+  baseline?: unknown;
+  key: string;
+  kind: 'entry' | 'key';
+  latest?: unknown;
+  reason?: 'added' | 'removed-then-changed';
+  section?: string;
+};
+
 type Flags = {
   baseline: string;
-  latest: string;
   current: string;
   json: boolean;
+  latest: string;
 };
 
 type ParsedFlagsResult =
-  | {flags: Flags; ok: true}
-  | {message: string; ok: false};
+  {flags: Flags; ok: true} | {message: string; ok: false};
 
 const takeValue = (
   argv: readonly string[],
@@ -126,7 +125,7 @@ const parseFlags = (argv: readonly string[]): ParsedFlagsResult => {
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;
@@ -173,8 +172,8 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
   }
 
   if (typeof a === 'object' && typeof b === 'object') {
-    const aKeys = Object.keys(a as Record<string, unknown>);
-    const bKeys = Object.keys(b as Record<string, unknown>);
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
 
     if (aKeys.length !== bKeys.length) return false;
 
@@ -192,7 +191,7 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
 type Presence = {has: boolean; value: unknown};
 
 const lookup = (root: Record<string, unknown>, key: string): Presence =>
-  Object.prototype.hasOwnProperty.call(root, key) ?
+  Object.hasOwn(root, key) ?
     {has: true, value: root[key]}
   : {has: false, value: undefined};
 
@@ -232,7 +231,8 @@ const parseAuthors = (value: unknown): Map<string, AuthorEntry> => {
   return entries;
 };
 
-type Verdict = 'apply' | 'conflict' | 'noop' | 'suggest-add' | 'suggest-removed';
+type Verdict =
+  'apply' | 'conflict' | 'noop' | 'suggest-add' | 'suggest-removed';
 
 const computeVerdict = (b: Presence, l: Presence, a: Presence): Verdict => {
   if (b.has && l.has) {
@@ -249,12 +249,12 @@ const computeVerdict = (b: Presence, l: Presence, a: Presence): Verdict => {
 };
 
 type Triple = {
-  kind: 'entry' | 'key';
-  section?: string;
-  key: string;
-  b: Presence;
-  l: Presence;
   a: Presence;
+  b: Presence;
+  key: string;
+  kind: 'entry' | 'key';
+  l: Presence;
+  section?: string;
 };
 
 const buildItem = (triple: Triple): AuditCiVerdictItem => {
@@ -281,8 +281,8 @@ const authorPresence = (
   const entry = entries.get(login);
 
   return entry === undefined ?
-    {has: false, value: undefined}
-  : {has: true, value: entry.mode};
+      {has: false, value: undefined}
+    : {has: true, value: entry.mode};
 };
 
 const computeReport = (
@@ -343,7 +343,8 @@ const computeReport = (
     } else if (verdict === 'conflict') {
       conflicts.push(item);
     } else {
-      item.reason = verdict === 'suggest-add' ? 'added' : 'removed-then-changed';
+      item.reason =
+        verdict === 'suggest-add' ? 'added' : 'removed-then-changed';
       suggestions.push(item);
     }
   }
@@ -366,7 +367,7 @@ const printHuman = (report: AuditCiMergeReport): void => {
   const label = (item: AuditCiVerdictItem): string =>
     item.section === undefined ? item.key : `${item.section}.${item.key}`;
 
-  const sections: Array<[string, readonly AuditCiVerdictItem[]]> = [
+  const sections: [string, readonly AuditCiVerdictItem[]][] = [
     ['Applied', report.applied],
     ['Conflicts', report.conflicts],
     ['Suggestions', report.suggestions],
@@ -383,12 +384,12 @@ const printHuman = (report: AuditCiMergeReport): void => {
 };
 
 type LoadResult =
-  | {ok: true; root: Record<string, unknown>}
   | {
-      ok: false;
       code: 'audit_ci_file_missing' | 'audit_ci_parse_failed';
       message: string;
-    };
+      ok: false;
+    }
+  | {ok: true; root: Record<string, unknown>};
 
 const loadAuditCi = (absPath: string, role: string): LoadResult => {
   if (!existsSync(absPath)) {
@@ -427,7 +428,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -446,7 +447,7 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const inputs: Array<[string, string]> = [
+  const inputs: [string, string][] = [
     ['baseline', resolvePath(cwd, parsed.flags.baseline)],
     ['latest', resolvePath(cwd, parsed.flags.latest)],
     ['current', resolvePath(cwd, parsed.flags.current)],

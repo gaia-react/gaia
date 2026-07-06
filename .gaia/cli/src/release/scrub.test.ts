@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release scrub`.
  */
@@ -10,7 +11,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {globToRegex, parseKeyPath, run} from './scrub.js';
 
 const JSON_STRIP_CONFIG = `
@@ -106,7 +106,7 @@ transforms:
     end: "<!-- gaia:maintainer-only:end -->"
 `;
 
-const LEAK_ONLY_CONFIG = `
+const LEAK_ONLY_CONFIG = String.raw`
 transforms:
   - type: leak-check
     checks:
@@ -117,7 +117,7 @@ transforms:
         line-allowlist:
           - "uat[-_]id"
       - id: maintainer-paths
-        pattern: "\\\\.gaia/cli/src/"
+        pattern: "\\.gaia/cli/src/"
         scope:
           - ".claude/**"
           - "wiki/**"
@@ -145,12 +145,12 @@ transforms:
 // leak-check tests are hermetic (they do not load the real config), so the
 // pattern is copied verbatim; the FP-guard case below is what proves the inline
 // alternation stays quote-anchored if either side drifts.
-const WORKFLOW_DENYLIST_CONFIG = `
+const WORKFLOW_DENYLIST_CONFIG = String.raw`
 transforms:
   - type: leak-check
     checks:
       - id: workflow-denylist
-        pattern: "^\\\\s*paths-ignore\\\\s*:|^\\\\s*-\\\\s*['\\"]?!|\\\\[[^\\\\]]*['\\"]!"
+        pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!|\\[[^\\]]*['\"]!"
         scope:
           - ".github/workflows/**"
 `;
@@ -340,7 +340,7 @@ describe('release scrub CLI', () => {
     expect(exit).toBe(0);
 
     const parsed = JSON.parse(stdio.outputs.join('')) as {
-      leaks: ReadonlyArray<{check: string; file: string; line: number}>;
+      leaks: readonly {check: string; file: string; line: number}[];
       marker_strip: {
         blocks_stripped: number;
         files_touched: readonly string[];
@@ -660,36 +660,39 @@ transforms:
     expect(report.json_strip.files_touched).toHaveLength(0);
   });
 
-  test('removes a key whose name contains a literal dot via \\. escape', () => {
-    // YAML double-quote turns `\\.` into `\.`, which parseKeyPath reads as
-    // a literal dot inside the key name. Key path: ['exports', './secret'].
-    const dottedKeyConfig = `
+  test(
+    String.raw`removes a key whose name contains a literal dot via \. escape`,
+    () => {
+      // YAML double-quote turns `\\.` into `\.`, which parseKeyPath reads as
+      // a literal dot inside the key name. Key path: ['exports', './secret'].
+      const dottedKeyConfig = String.raw`
 transforms:
   - type: json-strip
     paths:
       - "package.json"
     keys:
-      - "exports.\\\\./secret"
+      - "exports.\\./secret"
 `;
-    sandbox = setupSandbox({config: dottedKeyConfig});
-    sandbox.writeStaged(
-      'package.json',
-      JSON.stringify(
-        {exports: {'./public': './a.js', './secret': './b.js'}, name: 'app'},
-        null,
-        2
-      )
-    );
+      sandbox = setupSandbox({config: dottedKeyConfig});
+      sandbox.writeStaged(
+        'package.json',
+        JSON.stringify(
+          {exports: {'./public': './a.js', './secret': './b.js'}, name: 'app'},
+          null,
+          2
+        )
+      );
 
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
+      const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+      expect(exit).toBe(0);
 
-    const after = JSON.parse(
-      readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
-    );
-    expect(after.exports).not.toHaveProperty('./secret');
-    expect(after.exports).toHaveProperty('./public');
-  });
+      const after = JSON.parse(
+        readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
+      );
+      expect(after.exports).not.toHaveProperty('./secret');
+      expect(after.exports).toHaveProperty('./public');
+    }
+  );
 });
 
 describe('parseKeyPath', () => {
@@ -947,7 +950,7 @@ transforms:
 // Derived excluded-workflow-ref check
 // ---------------------------------------------------------------------------
 
-const WORKFLOW_DERIVED_CONFIG = `
+const WORKFLOW_DERIVED_CONFIG = String.raw`
 transforms:
   - type: leak-check
     checks:
@@ -958,7 +961,7 @@ transforms:
           - ".github/workflows/**"
           - ".gaia/cli/templates/**"
         line-allowlist:
-          - "\\\\[ -f \\\\.github/workflows/forensics-triage\\\\.yml \\\\]"
+          - "\\[ -f \\.github/workflows/forensics-triage\\.yml \\]"
 `;
 
 // Representative `.gaia/release-exclude`: three excluded workflows, one of

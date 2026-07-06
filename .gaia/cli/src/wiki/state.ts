@@ -27,8 +27,8 @@ import {
   recentCommits,
   resolveRepoRoot,
   shortSha,
-  type RecentCommit,
 } from './util/git.js';
+import type {RecentCommit} from './util/git.js';
 
 const HELP_TEXT = `Usage: gaia wiki state [--json]
 `;
@@ -107,7 +107,7 @@ type StateFileShape = {
   last_evaluated_sha?: string;
 };
 
-const readStateFile = (statePath: string): StateFileShape | null => {
+const readStateFile = (statePath: string): null | StateFileShape => {
   if (!existsSync(statePath)) return null;
   const raw = readFileSync(statePath, 'utf8');
 
@@ -133,12 +133,14 @@ const printHuman = (state: WikiState, write: (chunk: string) => void): void => {
 
   if (state.recent_commits.length > 0) {
     lines.push('  Recent unsynced:');
+
     for (const commit of state.recent_commits) {
       lines.push(`    - ${commit.sha} ${commit.subject}`);
     }
   }
 
   lines.push('  Per-domain pages:');
+
   for (const [domain, count] of Object.entries(state.per_domain_page_counts)) {
     lines.push(`    ${domain}: ${count}`);
   }

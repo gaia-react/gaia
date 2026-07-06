@@ -1,6 +1,7 @@
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from '../read-config.js';
-import {VALID_BASE_CONFIG, setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   errors: string[];
@@ -49,7 +50,7 @@ describe('automation read-config', () => {
     vi.restoreAllMocks();
   });
 
-  it('emits JSON with --json', () => {
+  test('emits JSON with --json', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -60,7 +61,7 @@ describe('automation read-config', () => {
     expect((parsed.wiki as Record<string, string>).mode).toBe('ci');
   });
 
-  it('emits a human report without --json', () => {
+  test('emits a human report without --json', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -70,27 +71,27 @@ describe('automation read-config', () => {
     expect(out).toContain('schedule=daily');
   });
 
-  it('exits non-zero with config_missing when the file does not exist', () => {
+  test('exits non-zero with config_missing when the file does not exist', () => {
     const exit = run([], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('config_missing');
   });
 
-  it('exits non-zero with config_malformed for malformed JSON', () => {
+  test('exits non-zero with config_malformed for malformed JSON', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, version: 2 as unknown as 1});
     const exit = run([], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('config_malformed');
   });
 
-  it('rejects unknown flags', () => {
+  test('rejects unknown flags', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     const exit = run(['--bogus'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('unknown argument');
   });
 
-  it('--help exits 0', () => {
+  test('--help exits 0', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Usage:');

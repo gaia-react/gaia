@@ -11,7 +11,8 @@
  * Stderr: clear refusal on each failure.
  * Exit: 0 / 1 / 2.
  */
-import {type SpawnSyncReturns, spawnSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {run as runWikiState} from '../wiki/state.js';
@@ -46,21 +47,21 @@ export const defaultRunner: CommandRunner = (command, args, options) =>
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-type Flags = {
-  allowedBranch: string;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  allowedBranch: string;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -79,7 +80,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let allowedBranch = DEFAULT_BRANCH;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--branch') {
       const taken = takeValue(argv, index + 1, '--branch');
@@ -109,6 +110,7 @@ const expectSuccess = (
 
   if ((result.status ?? -1) !== 0) {
     const stderr = (result.stderr ?? '').trim();
+
     throw new Error(
       `${command} ${args.join(' ')} exited ${result.status ?? -1}: ${stderr}`
     );
@@ -129,7 +131,7 @@ type WikiState = {
   state_sha: string;
   suggested_base: string;
 };
-type WikiStateProbe = (cwd: string) => WikiState | null;
+type WikiStateProbe = (cwd: string) => null | WikiState;
 
 const runWikiStateJson: WikiStateProbe = (cwd) => {
   // Capture stdout from the wiki state subcommand via an injected sink;
@@ -150,7 +152,7 @@ const runWikiStateJson: WikiStateProbe = (cwd) => {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const commitsAhead = parsed.commits_ahead;
     const stateSha = parsed.state_sha;
-    const reachable = parsed.reachable;
+    const {reachable} = parsed;
     const suggestedBase = parsed.suggested_base;
 
     if (typeof commitsAhead !== 'number') return null;
@@ -202,7 +204,7 @@ const readDriftSubjects = (
   runner: CommandRunner,
   cwd: string,
   base: string
-): string[] | null => {
+): null | string[] => {
   const fullSha = resolveCommit(runner, cwd, base);
 
   if (fullSha === '') return null;
@@ -228,7 +230,7 @@ const countDriftCommits = (
   runner: CommandRunner,
   cwd: string,
   base: string
-): number | null => {
+): null | number => {
   const fullSha = resolveCommit(runner, cwd, base);
 
   if (fullSha === '') return null;
@@ -253,7 +255,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

@@ -42,8 +42,8 @@ export type ParseResult = {
     | 'invalid_input_json'
     | 'invalid_trailer_json'
     | 'no_subagent_type'
-    | 'no_trailer'
     | 'no_tool_response'
+    | 'no_trailer'
     | 'wrong_tool';
 };
 
@@ -68,7 +68,7 @@ const extractTrailer = (output: string): string | undefined => {
 };
 
 const escapeRegex = (input: string): string =>
-  input.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  input.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 const stripQuotes = (raw: string): string => {
   if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
@@ -79,7 +79,10 @@ const stripQuotes = (raw: string): string => {
 };
 
 const trailerScalar = (trailer: string, key: string): string | undefined => {
-  const pattern = new RegExp(`^${escapeRegex(key)}\\s*:\\s*(.*?)\\s*$`, 'm');
+  const pattern = new RegExp(
+    String.raw`^${escapeRegex(key)}\s*:\s*(.*?)\s*$`,
+    'm'
+  );
   const match = trailer.match(pattern);
 
   if (match === null) return undefined;
@@ -302,8 +305,7 @@ type HookInput = {
 const extractHookInput = (
   rawJson: string
 ):
-  | {input: HookInput; ok: true}
-  | {ok: false; reason: ParseResult['reason']} => {
+  {input: HookInput; ok: true} | {ok: false; reason: ParseResult['reason']} => {
   let parsed: unknown;
 
   try {

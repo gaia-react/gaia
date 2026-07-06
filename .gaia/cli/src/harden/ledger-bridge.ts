@@ -50,10 +50,14 @@ type BridgeOptions = {
   runLedger?: LedgerRunner;
 };
 
-export const makeLedgerSuppressionPredicate = ({
-  cwd,
-  runLedger = defaultLedgerRunner,
-}: BridgeOptions): ((findingClass: string, currentPrCount: number) => boolean) =>
+export const makeLedgerSuppressionPredicate =
+  ({
+    cwd,
+    runLedger = defaultLedgerRunner,
+  }: BridgeOptions): ((
+    findingClass: string,
+    currentPrCount: number
+  ) => boolean) =>
   (findingClass, currentPrCount) => {
     const result = runLedger(
       [

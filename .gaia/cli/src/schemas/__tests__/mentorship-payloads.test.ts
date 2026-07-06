@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
 import {
   BlockedReturnedPayload,
   CodeReviewAuditFindingPayload,
@@ -14,7 +14,7 @@ import {
 
 describe('schemas/mentorship-payloads', () => {
   describe('UatPassPayload', () => {
-    it('accepts a fully-populated good case', () => {
+    test('accepts a fully-populated good case', () => {
       expect(() =>
         UatPassPayload.parse({
           area_tags: ['visual', 'react', 'form'],
@@ -26,11 +26,11 @@ describe('schemas/mentorship-payloads', () => {
       ).not.toThrow();
     });
 
-    it('rejects when required fields are missing', () => {
+    test('rejects when required fields are missing', () => {
       expect(() => UatPassPayload.parse({uat_id: 'UAT-007'})).toThrow();
     });
 
-    it('rejects malformed UAT id', () => {
+    test('rejects malformed UAT id', () => {
       expect(() =>
         UatPassPayload.parse({
           area_tags: ['visual'],
@@ -42,7 +42,7 @@ describe('schemas/mentorship-payloads', () => {
       ).toThrow();
     });
 
-    it('rejects empty area_tags', () => {
+    test('rejects empty area_tags', () => {
       expect(() =>
         UatPassPayload.parse({
           area_tags: [],
@@ -54,7 +54,7 @@ describe('schemas/mentorship-payloads', () => {
       ).toThrow();
     });
 
-    it('rejects attempts < 1', () => {
+    test('rejects attempts < 1', () => {
       expect(() =>
         UatPassPayload.parse({
           area_tags: ['visual'],
@@ -68,7 +68,7 @@ describe('schemas/mentorship-payloads', () => {
   });
 
   describe('UatFailPayload', () => {
-    it('accepts a good case with valid failure_class', () => {
+    test('accepts a good case with valid failure_class', () => {
       expect(() =>
         UatFailPayload.parse({
           area_tags: ['react'],
@@ -81,7 +81,7 @@ describe('schemas/mentorship-payloads', () => {
       ).not.toThrow();
     });
 
-    it('rejects unknown failure_class', () => {
+    test('rejects unknown failure_class', () => {
       expect(() =>
         UatFailPayload.parse({
           area_tags: ['react'],
@@ -96,7 +96,7 @@ describe('schemas/mentorship-payloads', () => {
   });
 
   describe('NeedsContextReturnedPayload', () => {
-    it('accepts a good case', () => {
+    test('accepts a good case', () => {
       expect(() =>
         NeedsContextReturnedPayload.parse({
           agent_type: 'Senior',
@@ -108,7 +108,7 @@ describe('schemas/mentorship-payloads', () => {
       ).not.toThrow();
     });
 
-    it('rejects unknown context_request_class', () => {
+    test('rejects unknown context_request_class', () => {
       expect(() =>
         NeedsContextReturnedPayload.parse({
           agent_type: 'Senior',
@@ -122,7 +122,7 @@ describe('schemas/mentorship-payloads', () => {
   });
 
   describe('BlockedReturnedPayload', () => {
-    it.each(['intent', 'spec', 'code'])(
+    test.each(['intent', 'spec', 'code'])(
       'accepts classification: %s',
       (classification) => {
         expect(() =>
@@ -137,7 +137,7 @@ describe('schemas/mentorship-payloads', () => {
       }
     );
 
-    it('rejects unknown classification', () => {
+    test('rejects unknown classification', () => {
       expect(() =>
         BlockedReturnedPayload.parse({
           agent_type: 'Senior',
@@ -151,7 +151,7 @@ describe('schemas/mentorship-payloads', () => {
   });
 
   describe('SpecAmendedPayload', () => {
-    it('accepts a good case', () => {
+    test('accepts a good case', () => {
       expect(() =>
         SpecAmendedPayload.parse({
           amendment_reason: 'add missed empty-state UAT',
@@ -162,7 +162,7 @@ describe('schemas/mentorship-payloads', () => {
       ).not.toThrow();
     });
 
-    it('rejects empty fields_changed', () => {
+    test('rejects empty fields_changed', () => {
       expect(() =>
         SpecAmendedPayload.parse({
           amendment_reason: 'reason',
@@ -173,7 +173,7 @@ describe('schemas/mentorship-payloads', () => {
       ).toThrow();
     });
 
-    it('rejects unknown field name', () => {
+    test('rejects unknown field name', () => {
       expect(() =>
         SpecAmendedPayload.parse({
           amendment_reason: 'reason',
@@ -186,7 +186,7 @@ describe('schemas/mentorship-payloads', () => {
   });
 
   describe('PlanRevisedPayload', () => {
-    it('accepts a good case', () => {
+    test('accepts a good case', () => {
       expect(() =>
         PlanRevisedPayload.parse({
           items_added: 2,
@@ -198,7 +198,7 @@ describe('schemas/mentorship-payloads', () => {
       ).not.toThrow();
     });
 
-    it('rejects unknown revision_class', () => {
+    test('rejects unknown revision_class', () => {
       expect(() =>
         PlanRevisedPayload.parse({
           items_added: 0,
@@ -210,7 +210,7 @@ describe('schemas/mentorship-payloads', () => {
       ).toThrow();
     });
 
-    it('rejects negative items_added', () => {
+    test('rejects negative items_added', () => {
       expect(() =>
         PlanRevisedPayload.parse({
           items_added: -1,
@@ -224,7 +224,7 @@ describe('schemas/mentorship-payloads', () => {
   });
 
   describe('TimeToResolvedSpecPayload', () => {
-    it('accepts a good case', () => {
+    test('accepts a good case', () => {
       expect(() =>
         TimeToResolvedSpecPayload.parse({
           abandoned: false,
@@ -236,7 +236,7 @@ describe('schemas/mentorship-payloads', () => {
       ).not.toThrow();
     });
 
-    it('rejects non-boolean abandoned', () => {
+    test('rejects non-boolean abandoned', () => {
       expect(() =>
         TimeToResolvedSpecPayload.parse({
           abandoned: 'no',
@@ -250,7 +250,7 @@ describe('schemas/mentorship-payloads', () => {
   });
 
   describe('CodeReviewAuditFindingPayload', () => {
-    it('accepts a good case (with optional spec_id)', () => {
+    test('accepts a good case (with optional spec_id)', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
@@ -263,7 +263,7 @@ describe('schemas/mentorship-payloads', () => {
       ).not.toThrow();
     });
 
-    it('accepts a good case omitting optional spec_id', () => {
+    test('accepts a good case omitting optional spec_id', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
@@ -275,7 +275,7 @@ describe('schemas/mentorship-payloads', () => {
       ).not.toThrow();
     });
 
-    it('rejects pr_number < 1', () => {
+    test('rejects pr_number < 1', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
@@ -287,7 +287,7 @@ describe('schemas/mentorship-payloads', () => {
       ).toThrow();
     });
 
-    it('rejects unknown severity', () => {
+    test('rejects unknown severity', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
@@ -299,7 +299,7 @@ describe('schemas/mentorship-payloads', () => {
       ).toThrow();
     });
 
-    it('rejects a free-text finding_class (drift)', () => {
+    test('rejects a free-text finding_class (drift)', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
@@ -311,7 +311,7 @@ describe('schemas/mentorship-payloads', () => {
       ).toThrow();
     });
 
-    it('rejects an unseeded holistic finding_class', () => {
+    test('rejects an unseeded holistic finding_class', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
@@ -325,7 +325,7 @@ describe('schemas/mentorship-payloads', () => {
   });
 
   describe('MentorshipPayloadByType', () => {
-    it('exposes all eight event types', () => {
+    test('exposes all eight event types', () => {
       expect(MENTORSHIP_EVENT_TYPES).toHaveLength(8);
       expect(new Set(MENTORSHIP_EVENT_TYPES)).toEqual(
         new Set([
@@ -341,7 +341,7 @@ describe('schemas/mentorship-payloads', () => {
       );
     });
 
-    it('maps every event type to a Zod schema', () => {
+    test('maps every event type to a Zod schema', () => {
       for (const eventType of MENTORSHIP_EVENT_TYPES) {
         expect(typeof MentorshipPayloadByType[eventType].parse).toBe(
           'function'

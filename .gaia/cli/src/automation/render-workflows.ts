@@ -10,11 +10,11 @@ import {mkdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {
-  TOOL_IDS,
-  TOOL_ID_TO_CONFIG_KEY,
   readAutomationConfig,
-  type ToolId,
+  TOOL_ID_TO_CONFIG_KEY,
+  TOOL_IDS,
 } from '../schemas/automation-config.js';
+import type {ToolId} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 import {workflowPartialsDirectory, workflowTemplatePath} from './paths.js';
@@ -72,7 +72,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   let configPath: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--out-dir') {
       const next = argv[index + 1];
@@ -137,7 +137,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;

@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki state-bump`.
  *
@@ -14,7 +15,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './state-bump.js';
 
 type Sandbox = {
@@ -191,7 +191,7 @@ describe('wiki state-bump', () => {
   });
 
   test('idempotent: running twice with the same value leaves identical bytes', () => {
-    const initial = `${JSON.stringify({version: 1, foo: 'bar'}, null, 2)}\n`;
+    const initial = `${JSON.stringify({foo: 'bar', version: 1}, null, 2)}\n`;
     sandbox = setupSandbox(initial);
 
     expect(run(['foo', 'baz'], {cwd: sandbox.root})).toBe(0);

@@ -1,3 +1,4 @@
+import type {z} from 'zod';
 /**
  * `gaia react-perf reduce <raw.json> [--frame-budget-ms <n>]`.
  *
@@ -15,17 +16,18 @@
  * a cheap memo defeat on its own.
  */
 import {readFileSync} from 'node:fs';
-import type {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
 import {
   RawDumpSchema,
   ReducedSummarySchema,
-  type ChangeEntry,
-  type RawDump,
-  type ReactDoctorRule,
-  type ReducedFinding,
-  type ReducedSummary,
-  type RenderRecord,
+} from '../schemas/react-perf-summary.js';
+import type {
+  ChangeEntry,
+  RawDump,
+  ReactDoctorRule,
+  ReducedFinding,
+  ReducedSummary,
+  RenderRecord,
 } from '../schemas/react-perf-summary.js';
 import {structuredError} from '../stderr.js';
 import {isFrameworkComponent} from './framework-denylist.js';
@@ -54,9 +56,10 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 // cannot flood stderr.
 const summarizeDumpError = (filePath: string, error: z.ZodError): string => {
   const lines = error.issues.slice(0, MAX_ERROR_ISSUES).map((issue) => {
-    const pathStr = issue.path.length === 0 ? '<root>' : issue.path.join('.');
+    const pathString =
+      issue.path.length === 0 ? '<root>' : issue.path.join('.');
 
-    return `${pathStr}: ${issue.message}`;
+    return `${pathString}: ${issue.message}`;
   });
 
   const omitted = error.issues.length - lines.length;
@@ -68,15 +71,15 @@ const summarizeDumpError = (filePath: string, error: z.ZodError): string => {
 type Aggregate = {
   componentName: string;
   isMemo: boolean;
-  renderCount: number;
-  memoDefeatedCount: number;
-  totalSelfTime: number;
   maxTotalTime: number;
-  unstableProps: Set<string>;
-  unstableStateIndexes: Set<number>;
-  unstablePropCount: number;
+  memoDefeatedCount: number;
+  renderCount: number;
+  totalSelfTime: number;
   unstableContextCount: number;
+  unstablePropCount: number;
+  unstableProps: Set<string>;
   unstableStateCount: number;
+  unstableStateIndexes: Set<number>;
 };
 
 const compareStrings = (a: string, b: string): number => {
@@ -103,7 +106,7 @@ const isMemoDefeated = (record: RenderRecord): boolean => {
 
   const entries = allChangeEntries(record);
 
-  return entries.length > 0 && entries.every((entry) => entry.unstable === true);
+  return entries.length > 0 && entries.every((entry) => entry.unstable);
 };
 
 /**
@@ -113,9 +116,14 @@ const isMemoDefeated = (record: RenderRecord): boolean => {
  * `no-unstable-nested-components` needs a nested-definition smell that the flat
  * records cannot surface, so it is never emitted in v1.
  */
-const reactDoctorRuleFor = (aggregate: Aggregate): ReactDoctorRule | null => {
-  const {unstableContextCount, unstablePropCount, unstableStateCount} = aggregate;
-  const max = Math.max(unstableContextCount, unstablePropCount, unstableStateCount);
+const reactDoctorRuleFor = (aggregate: Aggregate): null | ReactDoctorRule => {
+  const {unstableContextCount, unstablePropCount, unstableStateCount} =
+    aggregate;
+  const max = Math.max(
+    unstableContextCount,
+    unstablePropCount,
+    unstableStateCount
+  );
 
   if (max <= 0) return null;
 
@@ -193,21 +201,19 @@ export const reduceDump = (
       continue;
     }
 
-    const aggregate =
-      aggregates.get(record.componentName) ??
-      {
-        componentName: record.componentName,
-        isMemo: false,
-        renderCount: 0,
-        memoDefeatedCount: 0,
-        totalSelfTime: 0,
-        maxTotalTime: 0,
-        unstableProps: new Set<string>(),
-        unstableStateIndexes: new Set<number>(),
-        unstablePropCount: 0,
-        unstableContextCount: 0,
-        unstableStateCount: 0,
-      };
+    const aggregate = aggregates.get(record.componentName) ?? {
+      componentName: record.componentName,
+      isMemo: false,
+      maxTotalTime: 0,
+      memoDefeatedCount: 0,
+      renderCount: 0,
+      totalSelfTime: 0,
+      unstableContextCount: 0,
+      unstablePropCount: 0,
+      unstableProps: new Set<string>(),
+      unstableStateCount: 0,
+      unstableStateIndexes: new Set<number>(),
+    };
 
     aggregate.renderCount += 1;
     aggregate.totalSelfTime += record.selfTime;
@@ -222,12 +228,14 @@ export const reduceDump = (
         aggregate.unstablePropCount += 1;
       }
     }
+
     for (const entry of record.stateChanged) {
       if (entry.unstable) {
         aggregate.unstableStateIndexes.add(entry.index ?? -1);
         aggregate.unstableStateCount += 1;
       }
     }
+
     for (const entry of record.contextChanged) {
       if (entry.unstable) aggregate.unstableContextCount += 1;
     }
@@ -247,81 +255,88 @@ export const reduceDump = (
   const findingAggregates = appComponents
     .filter(
       (aggregate) =>
-        aggregate.memoDefeatedCount > 0 || aggregate.maxTotalTime > frameBudgetMs
+        aggregate.memoDefeatedCount > 0 ||
+        aggregate.maxTotalTime > frameBudgetMs
     )
     .sort(compareFindings);
 
-  const findings: ReducedFinding[] = findingAggregates.map((aggregate, index) => ({
-    componentName: aggregate.componentName,
-    isMemo: aggregate.isMemo,
-    renderCount: aggregate.renderCount,
-    memoDefeatedCount: aggregate.memoDefeatedCount,
-    totalSelfTime: aggregate.totalSelfTime,
-    maxTotalTime: aggregate.maxTotalTime,
-    exceedsFrameBudget: aggregate.maxTotalTime > frameBudgetMs,
-    unstableInputs: collectUnstableInputs(aggregate),
-    reactDoctorRule: reactDoctorRuleFor(aggregate),
-    rank: index + 1,
-  }));
+  const findings: ReducedFinding[] = findingAggregates.map(
+    (aggregate, index) => ({
+      componentName: aggregate.componentName,
+      exceedsFrameBudget: aggregate.maxTotalTime > frameBudgetMs,
+      isMemo: aggregate.isMemo,
+      maxTotalTime: aggregate.maxTotalTime,
+      memoDefeatedCount: aggregate.memoDefeatedCount,
+      rank: index + 1,
+      reactDoctorRule: reactDoctorRuleFor(aggregate),
+      renderCount: aggregate.renderCount,
+      totalSelfTime: aggregate.totalSelfTime,
+      unstableInputs: collectUnstableInputs(aggregate),
+    })
+  );
 
   return {
-    schemaVersion: 1,
-    rendererVersion: dump.meta.rendererVersion,
-    profilingAvailable: dump.meta.profilingAvailable,
-    strictModeTimingCaveat: dump.meta.strictMode,
-    totals: {
-      records: dump.all.length,
-      updates,
-      mounts,
-      frameworkFiltered,
-      appComponents: appComponents.length,
-      memoDefeated,
-    },
     findings,
-    unknownNameCount,
+    profilingAvailable: dump.meta.profilingAvailable,
+    rendererVersion: dump.meta.rendererVersion,
+    schemaVersion: 1,
     stopSignal: {
-      zeroAppMemoDefeated: memoDefeated === 0,
       noAppFrameBudgetBreach: appComponents.every(
         (aggregate) => aggregate.maxTotalTime <= frameBudgetMs
       ),
+      zeroAppMemoDefeated: memoDefeated === 0,
     },
+    strictModeTimingCaveat: dump.meta.strictMode,
+    totals: {
+      appComponents: appComponents.length,
+      frameworkFiltered,
+      memoDefeated,
+      mounts,
+      records: dump.all.length,
+      updates,
+    },
+    unknownNameCount,
   };
 };
 
 type ParsedArgs =
-  | {kind: 'help'}
-  | {kind: 'error'; code: string; message: string}
-  | {kind: 'ok'; filePath: string; frameBudgetMs: number};
+  | {code: string; kind: 'error'; message: string}
+  | {filePath: string; frameBudgetMs: number; kind: 'ok'}
+  | {kind: 'help'};
 
 const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let filePath: string | undefined;
   let frameBudgetMs = DEFAULT_FRAME_BUDGET_MS;
 
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i] as string;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
 
     if (HELP_TOKENS.has(token)) return {kind: 'help'};
 
     if (token === '--frame-budget-ms') {
-      const value = argv[i + 1];
+      const value = argv[index + 1];
       const parsed = Number(value);
 
       if (value === undefined || !Number.isFinite(parsed) || parsed <= 0) {
         return {
-          kind: 'error',
           code: 'invalid_arguments',
+          kind: 'error',
           message: `--frame-budget-ms requires a positive number, got: ${String(value)}`,
         };
       }
 
       frameBudgetMs = parsed;
-      i += 1;
+      index += 1;
 
       continue;
     }
 
     if (token.startsWith('--')) {
-      return {kind: 'error', code: 'invalid_arguments', message: `unknown flag: ${token}`};
+      return {
+        code: 'invalid_arguments',
+        kind: 'error',
+        message: `unknown flag: ${token}`,
+      };
     }
 
     if (filePath === undefined) {
@@ -331,21 +346,21 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
     }
 
     return {
-      kind: 'error',
       code: 'invalid_arguments',
+      kind: 'error',
       message: `unexpected argument: ${token}`,
     };
   }
 
   if (filePath === undefined) {
     return {
-      kind: 'error',
       code: 'invalid_arguments',
+      kind: 'error',
       message: 'missing required <raw.json> path',
     };
   }
 
-  return {kind: 'ok', filePath, frameBudgetMs};
+  return {filePath, frameBudgetMs, kind: 'ok'};
 };
 
 export const run = (argv: readonly string[]): number => {

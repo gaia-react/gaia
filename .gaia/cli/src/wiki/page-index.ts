@@ -21,7 +21,8 @@ import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {parseFrontmatter, type Frontmatter} from './util/frontmatter.js';
+import {parseFrontmatter} from './util/frontmatter.js';
+import type {Frontmatter} from './util/frontmatter.js';
 import {resolveRepoRoot} from './util/git.js';
 import {extractWikilinks} from './util/wikilinks.js';
 
@@ -38,10 +39,10 @@ export type PageEntry = {
   inbound_links: number;
   outbound_links: number;
   path: string;
-  status: string | null;
+  status: null | string;
   tags: string[];
   title: string;
-  type: string | null;
+  type: null | string;
 };
 
 export type PageIndex = {
@@ -85,7 +86,7 @@ const extractTitle = (body: string, fallback: string): string => {
   return fallback;
 };
 
-const stringValue = (value: Frontmatter[string]): string | null => {
+const stringValue = (value: Frontmatter[string]): null | string => {
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
   if (typeof value === 'boolean') return value ? 'true' : 'false';
@@ -107,10 +108,10 @@ type PageRecord = {
   outboundTargets: string[];
   relativePath: string;
   slug: string;
-  status: string | null;
+  status: null | string;
   tags: string[];
   title: string;
-  type: string | null;
+  type: null | string;
 };
 
 const collectPages = (wikiRoot: string): PageRecord[] => {

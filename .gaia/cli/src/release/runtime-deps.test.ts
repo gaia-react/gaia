@@ -1,10 +1,10 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release runtime-deps`.
  */
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {extractPathRefs, run} from './runtime-deps.js';
 
 type Sandbox = {
@@ -343,7 +343,7 @@ describe('release runtime-deps CLI', () => {
     expect(exit).toBe(1);
 
     const parsed = JSON.parse(stdio.outputs.join('')) as {
-      leaks: ReadonlyArray<{file: string; line: number; path: string}>;
+      leaks: readonly {file: string; line: number; path: string}[];
       scanned_files: readonly string[];
     };
     expect(parsed.leaks).toHaveLength(1);

@@ -1,9 +1,9 @@
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {MentorshipConfigSchema} from '../schemas/mentorship-config.js';
 import type {MentorshipConfig} from '../schemas/mentorship-config.js';
 import type {StorageRoots} from '../storage/paths.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 export const CONFIG_FILENAME = 'mentorship.json';
 

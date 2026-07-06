@@ -21,7 +21,7 @@
  *     sequence short-circuits with exit code 2; no narration, the
  *     command's own stderr is piped through.
  */
-import {type SpawnSyncReturns} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {
@@ -29,16 +29,16 @@ import {
   defaultRunner,
   inspectWorkingTree,
   isProtectedBranch,
-  type CommandRunner,
 } from './util/branch.js';
+import type {CommandRunner} from './util/branch.js';
 import {resolveRepoRoot, shortSha} from './util/git.js';
 import {
-  UNEXPECTED_EXIT,
   commandSucceeded,
   finalizeMerge,
   passthroughFailure as passthroughFailureWithPrefix,
   refuse,
   todayUtc,
+  UNEXPECTED_EXIT,
 } from './util/land.js';
 
 const HELP_TEXT = `Usage: gaia wiki sync land [--branch-aware]
@@ -56,21 +56,21 @@ const HELP_TEXT = `Usage: gaia wiki sync land [--branch-aware]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type ParsedFlags = {
-  branchAware: boolean;
-};
-
-type FlagParseSuccess = {
-  flags: ParsedFlags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: ParsedFlags;
+  ok: true;
+};
+
+type ParsedFlags = {
+  branchAware: boolean;
+};
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let branchAware = false;
@@ -259,20 +259,20 @@ const protectedBranchLanding = (
 
 type RunOptions = {
   cwd?: string;
-  runner?: CommandRunner;
-  /** Override "today" for deterministic tests. ISO-8601 date string. */
-  today?: string;
   /** Override the merge-poll attempt count on the protected-branch path. */
   mergePollAttempts?: number;
+  runner?: CommandRunner;
   /** Override the inter-poll sleep on the protected-branch path (test no-op). */
   sleep?: (ms: number) => void;
+  /** Override "today" for deterministic tests. ISO-8601 date string. */
+  today?: string;
 };
 
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -380,6 +380,7 @@ const spawnHead = (runner: CommandRunner, cwd: string): string => {
 
   if ((result.status ?? -1) !== 0) {
     const stderr = (result.stderr ?? '').trim();
+
     throw new Error(
       `git rev-parse HEAD exited ${result.status ?? -1}: ${stderr}`
     );

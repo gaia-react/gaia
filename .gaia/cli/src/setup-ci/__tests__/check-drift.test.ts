@@ -1,15 +1,17 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {
   workflowPartialsDirectory,
   workflowTemplatePath,
 } from '../../automation/paths.js';
 import {renderWorkflowTemplate} from '../../automation/render.js';
 import {buildWorkflowVars} from '../../automation/workflow-vars.js';
-import {TOOL_IDS, type ToolId} from '../../schemas/automation-config.js';
+import {TOOL_IDS} from '../../schemas/automation-config.js';
+import type {ToolId} from '../../schemas/automation-config.js';
 import {run} from '../check-drift.js';
-import {setupSandbox, VALID_BASE_CONFIG, type Sandbox} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -90,7 +92,7 @@ describe('setup-ci check-drift', () => {
     vi.restoreAllMocks();
   });
 
-  it('reports all enabled tools as in_sync when rendered files match templates', () => {
+  test('reports all enabled tools as in_sync when rendered files match templates', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
     writeFreshWorkflows(sandbox, TOOL_IDS);
 
@@ -107,7 +109,7 @@ describe('setup-ci check-drift', () => {
     expect(new Set(parsed.in_sync)).toEqual(new Set(TOOL_IDS));
   });
 
-  it('flags drifted tools when on-disk bytes diverge from a fresh render', () => {
+  test('flags drifted tools when on-disk bytes diverge from a fresh render', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
     writeFreshWorkflows(sandbox, TOOL_IDS);
 
@@ -131,11 +133,11 @@ describe('setup-ci check-drift', () => {
     expect(parsed.drifted).toEqual(['pnpm-audit']);
     expect(parsed.missing).toEqual([]);
     expect(new Set(parsed.in_sync)).toEqual(
-      new Set(['wiki', 'update-deps', 'stale-branches'])
+      new Set(['stale-branches', 'update-deps', 'wiki'])
     );
   });
 
-  it('flags tools as missing when the rendered workflow file does not exist', () => {
+  test('flags tools as missing when the rendered workflow file does not exist', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
     // Only write three of the four workflows; wiki goes missing.
     writeFreshWorkflows(sandbox, [
@@ -155,11 +157,11 @@ describe('setup-ci check-drift', () => {
     expect(parsed.missing).toEqual(['wiki']);
     expect(parsed.drifted).toEqual([]);
     expect(new Set(parsed.in_sync)).toEqual(
-      new Set(['update-deps', 'pnpm-audit', 'stale-branches'])
+      new Set(['pnpm-audit', 'stale-branches', 'update-deps'])
     );
   });
 
-  it('omits tools whose mode != ci from all three buckets', () => {
+  test('omits tools whose mode != ci from all three buckets', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       pnpm_audit: {mode: 'local', schedule: 'weekly'},
@@ -178,16 +180,16 @@ describe('setup-ci check-drift', () => {
     };
     expect(parsed.drifted).toEqual([]);
     expect(parsed.missing).toEqual([]);
-    expect(new Set(parsed.in_sync)).toEqual(new Set(['wiki', 'update-deps']));
+    expect(new Set(parsed.in_sync)).toEqual(new Set(['update-deps', 'wiki']));
   });
 
-  it('exits non-zero with config_missing when .gaia/automation.json is absent', () => {
+  test('exits non-zero with config_missing when .gaia/automation.json is absent', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('config_missing');
   });
 
-  it('exits non-zero with config_malformed for an invalid config', () => {
+  test('exits non-zero with config_malformed for an invalid config', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       version: 99 as unknown as 1,
@@ -198,7 +200,7 @@ describe('setup-ci check-drift', () => {
     expect(stdio.err.join('')).toContain('config_malformed');
   });
 
-  it('honors --workflows-dir override', () => {
+  test('honors --workflows-dir override', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
     const customDir = path.join(sandbox.root, 'custom-workflows');
     mkdirSync(customDir, {recursive: true});
@@ -218,7 +220,7 @@ describe('setup-ci check-drift', () => {
     expect(new Set(parsed.missing)).toEqual(new Set(TOOL_IDS));
   });
 
-  it('emits a human-readable summary without --json', () => {
+  test('emits a human-readable summary without --json', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
     writeFreshWorkflows(sandbox, TOOL_IDS);
 
@@ -229,13 +231,13 @@ describe('setup-ci check-drift', () => {
     expect(out).toContain('in_sync:');
   });
 
-  it('rejects unknown flags', () => {
+  test('rejects unknown flags', () => {
     const exit = run(['--bogus'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unknown flag');
   });
 
-  it('--help exits 0', () => {
+  test('--help exits 0', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

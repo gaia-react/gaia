@@ -36,11 +36,12 @@ const setupSandbox = (): Sandbox => {
 const captureStdout = (): {restore: () => string} => {
   const chunks: string[] = [];
   const original = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((chunk: unknown): boolean => {
+
+  process.stdout.write = (chunk: unknown): boolean => {
     chunks.push(typeof chunk === 'string' ? chunk : String(chunk));
 
     return true;
-  }) as typeof process.stdout.write;
+  };
 
   return {
     restore: (): string => {
@@ -54,11 +55,12 @@ const captureStdout = (): {restore: () => string} => {
 const captureStderr = (): {restore: () => string} => {
   const chunks: string[] = [];
   const original = process.stderr.write.bind(process.stderr);
-  process.stderr.write = ((chunk: unknown): boolean => {
+
+  process.stderr.write = (chunk: unknown): boolean => {
     chunks.push(typeof chunk === 'string' ? chunk : String(chunk));
 
     return true;
-  }) as typeof process.stderr.write;
+  };
 
   return {
     restore: (): string => {
@@ -439,7 +441,7 @@ describe('scaffold route: flag combos', () => {
     expect(parsed).toHaveProperty('written');
     expect(parsed).toHaveProperty('edited');
     expect(parsed).toHaveProperty('skipped');
-    expect(Array.isArray(parsed['written'])).toBe(true);
+    expect(Array.isArray(parsed.written)).toBe(true);
   });
 });
 

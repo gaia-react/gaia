@@ -43,23 +43,26 @@ const levenshtein = (a: string, b: string): number => {
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
 
-  const previous: number[] = Array.from({length: b.length + 1}, (_, i) => i);
+  const previous: number[] = Array.from(
+    {length: b.length + 1},
+    (_, index) => index
+  );
   const current: number[] = Array.from({length: b.length + 1}, () => 0);
 
-  for (let i = 1; i <= a.length; i += 1) {
-    current[0] = i;
+  for (let index = 1; index <= a.length; index += 1) {
+    current[0] = index;
 
-    for (let j = 1; j <= b.length; j += 1) {
-      const cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
-      current[j] = Math.min(
-        (current[j - 1] ?? 0) + 1,
-        (previous[j] ?? 0) + 1,
-        (previous[j - 1] ?? 0) + cost
+    for (let index_ = 1; index_ <= b.length; index_ += 1) {
+      const cost = a.charAt(index - 1) === b.charAt(index_ - 1) ? 0 : 1;
+      current[index_] = Math.min(
+        (current[index_ - 1] ?? 0) + 1,
+        (previous[index_] ?? 0) + 1,
+        (previous[index_ - 1] ?? 0) + cost
       );
     }
 
-    for (let j = 0; j <= b.length; j += 1) {
-      previous[j] = current[j] ?? 0;
+    for (let index = 0; index <= b.length; index += 1) {
+      previous[index] = current[index] ?? 0;
     }
   }
 
@@ -111,12 +114,12 @@ export const findCollisions = (
   const results: Collision[] = [];
 
   for (const {domain, slugs} of domainGroups) {
-    for (let i = 0; i < slugs.length; i += 1) {
-      const slugA = slugs[i] as string;
+    for (let index = 0; index < slugs.length; index += 1) {
+      const slugA = slugs[index];
       const normA = normalizeSlug(slugA);
 
-      for (let j = i + 1; j < slugs.length; j += 1) {
-        const slugB = slugs[j] as string;
+      for (let index_ = index + 1; index_ < slugs.length; index_ += 1) {
+        const slugB = slugs[index_];
         const normB = normalizeSlug(slugB);
 
         // Skip true duplicates (identical raw slug); that case can't
@@ -145,8 +148,9 @@ export const findCollisions = (
   return results;
 };
 
-type ParsedFlags = {
-  maxDistance: number;
+type FlagParseFailure = {
+  message: string;
+  ok: false;
 };
 
 type FlagParseSuccess = {
@@ -154,9 +158,8 @@ type FlagParseSuccess = {
   ok: true;
 };
 
-type FlagParseFailure = {
-  message: string;
-  ok: false;
+type ParsedFlags = {
+  maxDistance: number;
 };
 
 const takeValue = (
@@ -178,7 +181,7 @@ const parseFlags = (
   let maxDistance = DEFAULT_MAX_DISTANCE;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--max-distance') {
       const taken = takeValue(argv, index + 1, '--max-distance');
@@ -211,7 +214,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

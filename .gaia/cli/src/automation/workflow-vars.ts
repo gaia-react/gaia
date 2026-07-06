@@ -7,13 +7,10 @@
  * the tool's mode is not `'ci'` so callers short-circuit and skip
  * rendering that workflow.
  */
-import {
-  TOOL_ID_TO_CONFIG_KEY,
-  type AutomationConfig,
-  type ToolId,
-} from '../schemas/automation-config.js';
+import {TOOL_ID_TO_CONFIG_KEY} from '../schemas/automation-config.js';
+import type {AutomationConfig, ToolId} from '../schemas/automation-config.js';
 
-export type WorkflowSchedule = 'daily' | 'weekly' | 'monthly';
+export type WorkflowSchedule = 'daily' | 'monthly' | 'weekly';
 
 export type WorkflowTemplateVars = {
   config_key: string;
@@ -61,7 +58,7 @@ export const cronForSchedule = (schedule: WorkflowSchedule): string =>
 export const buildWorkflowVars = (
   config: AutomationConfig,
   tool: ToolId
-): WorkflowTemplateVars | null => {
+): null | WorkflowTemplateVars => {
   const configKey = TOOL_ID_TO_CONFIG_KEY[tool];
   const toolConfig = config[configKey];
 

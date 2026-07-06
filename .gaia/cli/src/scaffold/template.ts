@@ -53,14 +53,14 @@ const renderEachBlocks = (template: string, vars: TemplateVars): string =>
 
 const renderBooleanSections = (template: string, vars: TemplateVars): string =>
   template.replaceAll(SECTION_PATTERN, (_match, name: string, body: string) => {
-    if (name === 'each') return _match as string;
+    if (name === 'each') return _match;
 
     return isTruthy(vars[name]) ? body : '';
   });
 
 const renderScalars = (template: string, vars: TemplateVars): string =>
   template.replaceAll(VAR_PATTERN, (_match, name: string) => {
-    if (name === 'this') return _match as string;
+    if (name === 'this') return _match;
     const value = vars[name];
 
     if (value === undefined) return '';

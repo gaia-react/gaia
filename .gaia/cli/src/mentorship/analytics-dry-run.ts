@@ -1,6 +1,3 @@
-/* eslint-disable unicorn/prevent-abbreviations -- `analyticsDir` mirrors the
-   frozen `StorageRoots.analyticsDir` field name (see
-   `.gaia/cli/src/storage/paths.ts`). */
 /**
  * `gaia mentorship analytics dry-run`.
  *

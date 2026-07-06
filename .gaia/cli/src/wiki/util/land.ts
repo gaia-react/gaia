@@ -6,9 +6,9 @@
  * 2 (unexpected). These leaf helpers keep that translation identical across
  * the two surfaces.
  */
-import {type SpawnSyncReturns} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../../exit.js';
-import {type CommandRunner} from './branch.js';
+import type {CommandRunner} from './branch.js';
 
 /** Exit code for an unexpected git/gh process failure. */
 export const UNEXPECTED_EXIT = 2;
@@ -46,7 +46,7 @@ export const passthroughFailure = (
 ): number => {
   const stderr = (result.stderr ?? '').trim();
   const errorPart =
-    result.error !== undefined ? ` (${result.error.message})` : '';
+    result.error === undefined ? '' : ` (${result.error.message})`;
   const status = result.status ?? -1;
   process.stderr.write(
     `${prefix}: ${command} ${args.join(' ')} exited ${status}${errorPart}\n`

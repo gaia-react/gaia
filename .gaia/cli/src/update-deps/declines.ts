@@ -29,20 +29,6 @@ const LEDGER_RELATIVE_PATH = path.join(
   'declined-updates.json'
 );
 
-export type DeclinedRecord = {
-  /** ISO-8601 stamp of when the group was snoozed; the 14-day cap counts from here. */
-  declined_at: string;
-  /** Companion group id, or `singleton:<name>`. */
-  group: string;
-  /** Each member's declined target version at snooze time (`name -> version`). */
-  targets: Readonly<Record<string, string>>;
-};
-
-type DeclinedLedger = {
-  declined: readonly DeclinedRecord[];
-  schema_version: 1;
-};
-
 /**
  * Minimal structural view of the emitted updates payload, just the fields the
  * count helpers need. Declared locally (not imported from `run.ts`) so this
@@ -61,6 +47,15 @@ export type CountablePayload = {
   }[];
 };
 
+export type DeclinedRecord = {
+  /** ISO-8601 stamp of when the group was snoozed; the 14-day cap counts from here. */
+  declined_at: string;
+  /** Companion group id, or `singleton:<name>`. */
+  group: string;
+  /** Each member's declined target version at snooze time (`name -> version`). */
+  targets: Readonly<Record<string, string>>;
+};
+
 /**
  * A currently-active snooze, surfaced in the emitted updates payload so the
  * interactive preview can mark the group and default-skip it. Distinct from the
@@ -76,6 +71,11 @@ export type SnoozedGroup = {
   snoozed_at: string;
   /** The snoozed target versions (`name -> version`), matching the current offer. */
   targets: Readonly<Record<string, string>>;
+};
+
+type DeclinedLedger = {
+  declined: readonly DeclinedRecord[];
+  schema_version: 1;
 };
 
 export const declinedLedgerPath = (cwd: string): string =>
@@ -105,7 +105,7 @@ export const loadDeclines = (cwd: string): readonly DeclinedRecord[] => {
 
   if (parsed === null || typeof parsed !== 'object') return [];
 
-  const declined = (parsed as {declined?: unknown}).declined;
+  const {declined} = parsed as {declined?: unknown};
 
   if (!Array.isArray(declined)) return [];
 

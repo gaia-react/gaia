@@ -22,12 +22,13 @@
  * exits 0 on `--auto` for major and writes nothing, expecting the
  * maintainer-facing slash command to confirm before re-invoking.
  */
-import {type SpawnSyncReturns, spawnSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release bump [--auto]
 
@@ -59,21 +60,21 @@ export const defaultRunner: CommandRunner = (command, args, options) =>
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-type Flags = {
-  auto: boolean;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  auto: boolean;
+};
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let auto = false;
@@ -111,7 +112,7 @@ export type Commit = {
 
 export const classifyCommit = (commit: Commit): BumpKind | null => {
   const subject = commit.subject.trim();
-  const body = commit.body;
+  const {body} = commit;
 
   // Breaking change: major.
   if (/(^|\n)BREAKING CHANGE: /u.test(body)) return 'major';
@@ -123,7 +124,7 @@ export const classifyCommit = (commit: Commit): BumpKind | null => {
 
   if (groups.bang === '!') return 'major';
 
-  const type = groups.type;
+  const {type} = groups;
 
   if (type === 'feat') return 'minor';
   if (type !== undefined && PATCH_TYPES.has(type)) return 'patch';
@@ -179,6 +180,7 @@ const expectSuccess = (
 
   if ((result.status ?? -1) !== 0) {
     const stderr = (result.stderr ?? '').trim();
+
     throw new Error(
       `${command} ${args.join(' ')} exited ${result.status ?? -1}: ${stderr}`
     );
@@ -192,7 +194,7 @@ const tryRun = (
   command: string,
   args: readonly string[],
   cwd: string
-): string | null => {
+): null | string => {
   const result = runner(command, args, {cwd});
 
   if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
@@ -232,7 +234,7 @@ export const collectCommits = (
   return commits;
 };
 
-const lastTag = (cwd: string, runner: CommandRunner): string | null => {
+const lastTag = (cwd: string, runner: CommandRunner): null | string => {
   const out = tryRun(runner, 'git', ['describe', '--tags', '--abbrev=0'], cwd);
 
   if (out === null) return null;
@@ -249,7 +251,7 @@ type PackageJsonShape = {
 
 const readPackageJson = (
   cwd: string
-): {raw: string; version: string; path: string} => {
+): {path: string; raw: string; version: string} => {
   const target = path.join(cwd, 'package.json');
 
   if (!existsSync(target)) {
@@ -259,7 +261,7 @@ const readPackageJson = (
   const parsed = JSON.parse(raw) as PackageJsonShape;
 
   if (typeof parsed.version !== 'string') {
-    throw new Error('package.json has no string "version"');
+    throw new TypeError('package.json has no string "version"');
   }
 
   return {path: target, raw, version: parsed.version};
@@ -302,7 +304,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

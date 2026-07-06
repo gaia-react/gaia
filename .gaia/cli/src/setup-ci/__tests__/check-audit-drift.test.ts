@@ -1,9 +1,10 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {workflowAuditTemplatePath} from '../../automation/paths.js';
 import {run} from '../check-audit-drift.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -77,7 +78,7 @@ describe('setup-ci check-audit-drift', () => {
     vi.restoreAllMocks();
   });
 
-  it('reports in_sync when the installed file matches the template', () => {
+  test('reports in_sync when the installed file matches the template', () => {
     writeAuditWorkflow(sandbox);
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -87,7 +88,7 @@ describe('setup-ci check-audit-drift', () => {
     expect(parsed.state).toBe('in_sync');
   });
 
-  it('reports drifted when the installed file bytes differ from the template', () => {
+  test('reports drifted when the installed file bytes differ from the template', () => {
     writeAuditWorkflow(sandbox, '# drifted contents\n');
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -97,7 +98,7 @@ describe('setup-ci check-audit-drift', () => {
     expect(parsed.state).toBe('drifted');
   });
 
-  it('reports missing when the workflow file does not exist', () => {
+  test('reports missing when the workflow file does not exist', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
@@ -105,7 +106,7 @@ describe('setup-ci check-audit-drift', () => {
     expect(parsed.state).toBe('missing');
   });
 
-  it('honors --workflows-dir override (in_sync)', () => {
+  test('honors --workflows-dir override (in_sync)', () => {
     const customDir = path.join(sandbox.root, 'custom-workflows');
     mkdirSync(customDir, {recursive: true});
     writeFileSync(
@@ -123,7 +124,7 @@ describe('setup-ci check-audit-drift', () => {
     expect(parsed.state).toBe('in_sync');
   });
 
-  it('honors --workflows-dir override (missing)', () => {
+  test('honors --workflows-dir override (missing)', () => {
     const customDir = path.join(sandbox.root, 'custom-workflows');
     mkdirSync(customDir, {recursive: true});
 
@@ -136,7 +137,7 @@ describe('setup-ci check-audit-drift', () => {
     expect(parsed.state).toBe('missing');
   });
 
-  it('emits human-readable output without --json', () => {
+  test('emits human-readable output without --json', () => {
     writeAuditWorkflow(sandbox);
 
     const exit = run([], {cwd: sandbox.root});
@@ -145,14 +146,14 @@ describe('setup-ci check-audit-drift', () => {
     expect(stdio.out.join('')).toContain('audit workflow: in_sync');
   });
 
-  it('rejects unknown flags with invalid_arguments', () => {
+  test('rejects unknown flags with invalid_arguments', () => {
     const exit = run(['--bogus'], {cwd: sandbox.root});
 
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unknown flag');
   });
 
-  it('emits help text and exits 0 when --help is passed', () => {
+  test('emits help text and exits 0 when --help is passed', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
@@ -178,7 +179,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
   const OLD = '# v1 audit workflow\n';
   const NEW = '# v2 audit workflow\n';
 
-  it('reports in_sync when the installed file equals the latest template', () => {
+  test('reports in_sync when the installed file equals the latest template', () => {
     writeAuditWorkflow(sandbox, NEW);
     const baseline = writeTemplateFixture(sandbox, 'baseline.tmpl', OLD);
     const latest = writeTemplateFixture(sandbox, 'latest.tmpl', NEW);
@@ -190,7 +191,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(readState(stdio)).toBe('in_sync');
   });
 
-  it('reports clean when the installed file equals the baseline template (stale)', () => {
+  test('reports clean when the installed file equals the baseline template (stale)', () => {
     writeAuditWorkflow(sandbox, OLD);
     const baseline = writeTemplateFixture(sandbox, 'baseline.tmpl', OLD);
     const latest = writeTemplateFixture(sandbox, 'latest.tmpl', NEW);
@@ -202,7 +203,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(readState(stdio)).toBe('clean');
   });
 
-  it('reports conflict when the installed file matches neither template (adopter drift)', () => {
+  test('reports conflict when the installed file matches neither template (adopter drift)', () => {
     writeAuditWorkflow(sandbox, '# adopter-customized\n');
     const baseline = writeTemplateFixture(sandbox, 'baseline.tmpl', OLD);
     const latest = writeTemplateFixture(sandbox, 'latest.tmpl', NEW);
@@ -214,7 +215,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(readState(stdio)).toBe('conflict');
   });
 
-  it('reports in_sync (no-op) when the release did not change the template even if the installed file drifted', () => {
+  test('reports in_sync (no-op) when the release did not change the template even if the installed file drifted', () => {
     writeAuditWorkflow(sandbox, '# adopter-customized\n');
     const baseline = writeTemplateFixture(sandbox, 'baseline.tmpl', OLD);
     const latest = writeTemplateFixture(sandbox, 'latest.tmpl', OLD);
@@ -226,7 +227,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(readState(stdio)).toBe('in_sync');
   });
 
-  it('reports conflict (never auto-writes) when the baseline template is unavailable', () => {
+  test('reports conflict (never auto-writes) when the baseline template is unavailable', () => {
     writeAuditWorkflow(sandbox, OLD);
     const latest = writeTemplateFixture(sandbox, 'latest.tmpl', NEW);
     const missingBaseline = path.join(sandbox.root, 'does-not-exist.tmpl');
@@ -239,7 +240,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(readState(stdio)).toBe('conflict');
   });
 
-  it('reports missing in 3-way mode when the installed file is absent', () => {
+  test('reports missing in 3-way mode when the installed file is absent', () => {
     const baseline = writeTemplateFixture(sandbox, 'baseline.tmpl', OLD);
     const latest = writeTemplateFixture(sandbox, 'latest.tmpl', NEW);
 
@@ -250,7 +251,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(readState(stdio)).toBe('missing');
   });
 
-  it('defaults --latest to the bundled template when only --baseline is given', () => {
+  test('defaults --latest to the bundled template when only --baseline is given', () => {
     writeAuditWorkflow(sandbox);
     const baseline = writeTemplateFixture(sandbox, 'baseline.tmpl', OLD);
 
@@ -259,7 +260,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(readState(stdio)).toBe('in_sync');
   });
 
-  it('rejects --latest without --baseline', () => {
+  test('rejects --latest without --baseline', () => {
     const latest = writeTemplateFixture(sandbox, 'latest.tmpl', NEW);
 
     const exit = run(['--latest', latest, '--json'], {cwd: sandbox.root});
@@ -268,7 +269,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(stdio.err.join('')).toContain('--latest requires --baseline');
   });
 
-  it('errors when the latest template path is unreadable', () => {
+  test('errors when the latest template path is unreadable', () => {
     writeAuditWorkflow(sandbox, OLD);
     const baseline = writeTemplateFixture(sandbox, 'baseline.tmpl', OLD);
     const missingLatest = path.join(sandbox.root, 'no-latest.tmpl');
@@ -282,7 +283,7 @@ describe('setup-ci check-audit-drift (3-way merge classify)', () => {
     expect(stdio.err.join('')).toContain('template_unreadable');
   });
 
-  it('emits human-readable 3-way output without --json', () => {
+  test('emits human-readable 3-way output without --json', () => {
     writeAuditWorkflow(sandbox, OLD);
     const baseline = writeTemplateFixture(sandbox, 'baseline.tmpl', OLD);
     const latest = writeTemplateFixture(sandbox, 'latest.tmpl', NEW);

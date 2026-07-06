@@ -1,12 +1,6 @@
-/* eslint-disable unicorn/prevent-abbreviations -- StorageRoots field names
-   (cloudDir, analyticsDir, mentorshipDir) and function names (ensureCloudDirs,
-   ensureMentorshipDirs) are frozen interface contracts. Renaming would break
-   downstream callers that bind to them. Internal-only locals follow the rule. */
 /* eslint-disable no-bitwise -- POSIX file modes are bitfields; 0o777 masking
    is the standard idiom for verifying modes via & 0o777. */
-/* eslint-disable sonarjs/no-os-command-from-path -- `git` on PATH is the
-   canonical repo-root resolution mechanism (matches husky, lint-staged, and
-   the rest of the project's tooling). */
+
 import {execSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {chmod, mkdir, stat} from 'node:fs/promises';

@@ -24,10 +24,10 @@ const isExportFromLine = (line: string): boolean =>
   EXPORT_FROM_PATTERN.test(line);
 
 type SplitResult = {
-  /** Trailing newline at EOF, if present. */
-  trailingNewline: string;
   /** Lines without the trailing-newline artifact. */
   lines: string[];
+  /** Trailing newline at EOF, if present. */
+  trailingNewline: string;
 };
 
 const splitPreservingTrailingNewline = (raw: string): SplitResult => {
@@ -41,10 +41,10 @@ const splitPreservingTrailingNewline = (raw: string): SplitResult => {
 };
 
 type ExportRunBounds = {
-  /** Index of the first export-from line. */
-  start: number;
   /** Index one-past the last export-from line. */
   end: number;
+  /** Index of the first export-from line. */
+  start: number;
 };
 
 const findExportRun = (lines: string[]): ExportRunBounds | null => {

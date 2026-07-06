@@ -28,16 +28,16 @@ import {
   defaultRunner,
   inspectWorkingTree,
   isProtectedBranch,
-  type CommandRunner,
 } from './util/branch.js';
+import type {CommandRunner} from './util/branch.js';
 import {resolveRepoRoot, shortSha} from './util/git.js';
 import {
-  UNEXPECTED_EXIT,
   commandSucceeded,
   finalizeMerge,
   passthroughFailure as passthroughFailureWithPrefix,
   refuse,
   todayUtc,
+  UNEXPECTED_EXIT,
 } from './util/land.js';
 
 const WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';
@@ -75,16 +75,16 @@ const HELP_TEXT = `Usage: gaia wiki chain <begin|commit|finish> [args]
 
 type RunOptions = {
   cwd?: string;
-  runner?: CommandRunner;
-  /** Override "today" for deterministic tests. ISO-8601 date string. */
-  today?: string;
   /** Override the merge-poll attempt count in `finish` (tests pass a small n). */
   mergePollAttempts?: number;
+  runner?: CommandRunner;
   /** Override the inter-poll sleep in `finish` (tests pass a no-op). */
   sleep?: (ms: number) => void;
+  /** Override "today" for deterministic tests. ISO-8601 date string. */
+  today?: string;
 };
 
-const resolveRoot = (cwdOption: string, action: string): string | null => {
+const resolveRoot = (cwdOption: string, action: string): null | string => {
   try {
     return resolveRepoRoot(cwdOption);
   } catch {
@@ -98,7 +98,10 @@ const resolveRoot = (cwdOption: string, action: string): string | null => {
   }
 };
 
-const resolveShortHead = (runner: CommandRunner, cwd: string): string | null => {
+const resolveShortHead = (
+  runner: CommandRunner,
+  cwd: string
+): null | string => {
   const result = runner('git', ['rev-parse', 'HEAD'], {cwd});
 
   if (!stepOk(result)) return null;
@@ -107,8 +110,7 @@ const resolveShortHead = (runner: CommandRunner, cwd: string): string | null => 
 };
 
 type BranchAwareParse =
-  | {branchAware: boolean; ok: true}
-  | {message: string; ok: false};
+  {branchAware: boolean; ok: true} | {message: string; ok: false};
 
 const parseBranchAware = (argv: readonly string[]): BranchAwareParse => {
   let branchAware = false;
@@ -136,7 +138,8 @@ const parseCommitFlags = (argv: readonly string[]): CommitParse => {
     if (token === '--label') {
       const value = argv[index + 1];
 
-      if (value === undefined) return {message: '--label requires a value', ok: false};
+      if (value === undefined)
+        return {message: '--label requires a value', ok: false};
       label = value;
       index += 1;
       continue;
@@ -321,7 +324,8 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
   const countArgs = ['rev-list', '--count', `${base}..HEAD`];
   const countResult = runner('git', countArgs, {cwd: repoRoot});
 
-  if (!stepOk(countResult)) return passthroughFailure(countResult, 'git', countArgs);
+  if (!stepOk(countResult))
+    return passthroughFailure(countResult, 'git', countArgs);
 
   const ahead = Number.parseInt((countResult.stdout ?? '').trim(), 10);
 
@@ -364,12 +368,13 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
 
   const shortHead = resolveShortHead(runner, repoRoot) ?? branch;
   const prTitle = `wiki: maintenance chain through ${shortHead}`;
-  const prBody = `Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via \`gaia wiki chain finish\`.`;
+  const prBody =
+    'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.';
 
   // Remote steps run while still on the chain branch so `gh pr merge` targets
   // its PR. Once `push` succeeds the branch exists on the remote and is left
   // for the maintainer to resolve rather than force-reverted.
-  const remoteSequence: Array<{args: string[]; command: string}> = [
+  const remoteSequence: {args: string[]; command: string}[] = [
     {args: ['push', '-u', 'origin', branch], command: 'git'},
     {
       args: ['pr', 'create', '--title', prTitle, '--body', prBody],
@@ -384,7 +389,8 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
   for (const step of remoteSequence) {
     const result = runner(step.command, step.args, {cwd: repoRoot});
 
-    if (!stepOk(result)) return passthroughFailure(result, step.command, step.args);
+    if (!stepOk(result))
+      return passthroughFailure(result, step.command, step.args);
   }
 
   // Land like any other PR: `--auto` waits for the gate to go green server side,
@@ -397,7 +403,9 @@ const finish = (argv: readonly string[], options: RunOptions): number => {
 };
 
 const ACTIONS: Readonly<
-  Partial<Record<string, (argv: readonly string[], options: RunOptions) => number>>
+  Partial<
+    Record<string, (argv: readonly string[], options: RunOptions) => number>
+  >
 > = {
   begin,
   commit,

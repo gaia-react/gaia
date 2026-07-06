@@ -1,15 +1,15 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {atomicWriteFile, atomicWriteFileSync} from './atomic-write.js';
 
 describe('atomic-write', () => {

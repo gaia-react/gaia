@@ -29,7 +29,8 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {commitDetails, resolveRepoRoot, type CommitDetail} from './util/git.js';
+import {commitDetails, resolveRepoRoot} from './util/git.js';
+import type {CommitDetail} from './util/git.js';
 
 const HELP_TEXT = `Usage: gaia wiki commit-classify --since <sha> [--json]
 
@@ -38,8 +39,6 @@ const HELP_TEXT = `Usage: gaia wiki commit-classify --since <sha> [--json]
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-
-export type CommitSuggestion = 'SKIP' | 'WORTHY';
 
 export type ClassifiedCommit = {
   body: string;
@@ -56,14 +55,16 @@ export type CommitClassification = {
   commits: ClassifiedCommit[];
 };
 
-type FlagParseSuccess = {
-  flags: {json: boolean; since: string};
-  ok: true;
-};
+export type CommitSuggestion = 'SKIP' | 'WORTHY';
 
 type FlagParseFailure = {
   message: string;
   ok: false;
+};
+
+type FlagParseSuccess = {
+  flags: {json: boolean; since: string};
+  ok: true;
 };
 
 const takeValue = (
@@ -86,7 +87,7 @@ const parseFlags = (
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--since') {
       const taken = takeValue(argv, index + 1, '--since');
@@ -152,9 +153,9 @@ const touchesOnlyTests = (files: readonly string[]): boolean =>
 const classify = (
   commit: CommitDetail
 ): {reason: string; suggestion: CommitSuggestion} => {
-  const subject = commit.subject;
-  const body = commit.body;
-  const files = commit.files;
+  const {subject} = commit;
+  const {body} = commit;
+  const {files} = commit;
 
   // 1. Hard-skip prefixes.
   if (subject.startsWith('Merge pull request')) {
@@ -170,7 +171,7 @@ const classify = (
   }
 
   // 2. Strong WORTHY signals.
-  if (subject.startsWith('feat!:') || /BREAKING CHANGE/u.test(body)) {
+  if (subject.startsWith('feat!:') || body.includes('BREAKING CHANGE')) {
     return {reason: 'breaking change signal', suggestion: 'WORTHY'};
   }
 
@@ -302,10 +303,8 @@ const printHuman = (classification: CommitClassification): void => {
 
   for (const commit of classification.commits) {
     lines.push(
-      `  ${commit.sha.slice(0, 7)}  ${commit.suggestion.padEnd(7)}  ${commit.subject}`
-    );
-    lines.push(`            reason: ${commit.suggestion_reason}`);
-    lines.push(
+      `  ${commit.sha.slice(0, 7)}  ${commit.suggestion.padEnd(7)}  ${commit.subject}`,
+      `            reason: ${commit.suggestion_reason}`,
       `            ${commit.files_changed} files, +${commit.insertions} -${commit.deletions}`
     );
   }
@@ -320,7 +319,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;

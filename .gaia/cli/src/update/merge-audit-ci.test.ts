@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia update merge-audit-ci`.
  *
@@ -10,15 +11,15 @@
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {run, type AuditCiMergeReport} from './merge-audit-ci.js';
+import {run} from './merge-audit-ci.js';
+import type {AuditCiMergeReport} from './merge-audit-ci.js';
 
 type Sandbox = {
-  root: string;
   baselinePath: string;
-  latestPath: string;
-  currentPath: string;
   cleanup: () => void;
+  currentPath: string;
+  latestPath: string;
+  root: string;
   write: (which: 'baseline' | 'current' | 'latest', contents: string) => void;
 };
 

@@ -17,9 +17,24 @@ import {isValidFindingClass} from '../schemas/finding-class.js';
 
 export const RECURRENCE_THRESHOLD = 3;
 
+export type ComputeTallyArgs = {
+  /** True when a promoted rule already covers the class (drop it). */
+  coveredClass: (findingClass: string) => boolean;
+  prs: readonly TallyPrRecord[];
+  /** True when the decline ledger suppresses the class at this PR count. */
+  suppressedClass: (findingClass: string, currentPrCount: number) => boolean;
+  windowDays: number;
+};
+
 export type CountableSeverity = 'error' | 'warning';
 
-type Severity = 'error' | 'suggestion' | 'warning';
+export type TallyCandidate = {
+  area_tags: string[];
+  distinct_pr_count: number;
+  finding_class: string;
+  pr_numbers: number[];
+  severity_max: CountableSeverity;
+};
 
 export type TallyFinding = {
   area_tags: readonly string[];
@@ -32,30 +47,17 @@ export type TallyPrRecord = {
   pr_number: number;
 };
 
-export type TallyCandidate = {
-  area_tags: string[];
-  distinct_pr_count: number;
-  finding_class: string;
-  pr_numbers: number[];
-  severity_max: CountableSeverity;
-};
-
 export type TallyResult = {
   candidate_count: number;
   candidates: TallyCandidate[];
   window_days: number;
 };
 
-export type ComputeTallyArgs = {
-  /** True when a promoted rule already covers the class (drop it). */
-  coveredClass: (findingClass: string) => boolean;
-  prs: readonly TallyPrRecord[];
-  /** True when the decline ledger suppresses the class at this PR count. */
-  suppressedClass: (findingClass: string, currentPrCount: number) => boolean;
-  windowDays: number;
-};
+type Severity = 'error' | 'suggestion' | 'warning';
 
-const isCountableSeverity = (severity: Severity): severity is CountableSeverity =>
+const isCountableSeverity = (
+  severity: Severity
+): severity is CountableSeverity =>
   severity === 'error' || severity === 'warning';
 
 type ClassAggregate = {

@@ -34,8 +34,8 @@ import {
   computeActionableCount,
   loadDeclines,
   totalCount,
-  type SnoozedGroup,
 } from './declines.js';
+import type {SnoozedGroup} from './declines.js';
 import {resolveGroup, resolveGroupMembers} from './groups.js';
 
 export {resolveGroup} from './groups.js';
@@ -53,8 +53,6 @@ const HELP_TEXT = `Usage: gaia update-deps run --emit-updates <path>
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-export type Kind = 'major' | 'minor' | 'patch';
-
 /**
  * Display bucket for the interactive preview. `nonsemver` collects pre-1.0
  * packages (current major is 0), where semver makes no breaking-change
@@ -63,31 +61,18 @@ export type Kind = 'major' | 'minor' | 'patch';
  */
 export type Bucket = 'major' | 'minor' | 'nonsemver' | 'patch';
 
-export type WaveAEntry = {
-  bucket: Bucket;
-  current: string;
-  group: string;
-  is_pinned: boolean;
-  kind: 'minor' | 'patch';
-  latest: string;
-  name: string;
-  wanted: string;
+export type Kind = 'major' | 'minor' | 'patch';
+
+export type PnpmResult = {
+  status: null | number;
+  stderr: string;
+  stdout: string;
 };
 
-export type WaveBPackage = {
-  bucket: Bucket;
-  current: string;
-  is_pinned: boolean;
-  kind: Kind;
-  latest: string;
-  name: string;
-  wanted: string;
-};
-
-export type WaveBGroup = {
-  group: string;
-  packages: readonly WaveBPackage[];
-};
+export type PnpmRunner = (
+  args: readonly string[],
+  options: {cwd: string}
+) => PnpmResult;
 
 export type SkippedEntry = {
   current: string;
@@ -114,18 +99,33 @@ export type UpdatesPayload = {
   wave_b: readonly WaveBGroup[];
 };
 
-// ---------- pnpm runner indirection ----------
-
-export type PnpmResult = {
-  status: number | null;
-  stderr: string;
-  stdout: string;
+export type WaveAEntry = {
+  bucket: Bucket;
+  current: string;
+  group: string;
+  is_pinned: boolean;
+  kind: 'minor' | 'patch';
+  latest: string;
+  name: string;
+  wanted: string;
 };
 
-export type PnpmRunner = (
-  args: readonly string[],
-  options: {cwd: string}
-) => PnpmResult;
+// ---------- pnpm runner indirection ----------
+
+export type WaveBGroup = {
+  group: string;
+  packages: readonly WaveBPackage[];
+};
+
+export type WaveBPackage = {
+  bucket: Bucket;
+  current: string;
+  is_pinned: boolean;
+  kind: Kind;
+  latest: string;
+  name: string;
+  wanted: string;
+};
 
 const defaultPnpmRunner: PnpmRunner = (args, options) => {
   const result = spawnSync('pnpm', args as string[], {
@@ -176,7 +176,7 @@ const parseSegments = (raw: string): readonly number[] => {
   // Take only the dot-separated leading numeric part. `1.2.3-beta.1` →
   // `[1, 2, 3]`. Non-numeric chunks beyond the first three slots are
   // ignored; the SKILL only needs leading-integer comparison.
-  const parts = cleaned.split(/[+-]/u)[0]?.split('.') ?? [];
+  const parts = cleaned.split(/[+-]/u, 1)[0]?.split('.') ?? [];
   const out: number[] = [];
 
   for (const part of parts) {
@@ -220,11 +220,11 @@ const compareSegments = (
   a: readonly number[],
   b: readonly number[]
 ): number => {
-  const len = Math.max(a.length, b.length);
+  const length_ = Math.max(a.length, b.length);
 
-  for (let i = 0; i < len; i += 1) {
-    const av = a[i] ?? 0;
-    const bv = b[i] ?? 0;
+  for (let index = 0; index < length_; index += 1) {
+    const av = a[index] ?? 0;
+    const bv = b[index] ?? 0;
 
     if (av !== bv) return av < bv ? -1 : 1;
   }
@@ -321,17 +321,17 @@ const isPinnedSpec = (spec: string | undefined): boolean => {
 
 // ---------- pnpm outdated parsing ----------
 
-type OutdatedRaw = {
-  current: string;
-  dependencyType?: string;
-  latest: string;
-  wanted: string;
-};
-
 type OutdatedEntry = {
   current: string;
   latest: string;
   name: string;
+  wanted: string;
+};
+
+type OutdatedRaw = {
+  current: string;
+  dependencyType?: string;
+  latest: string;
   wanted: string;
 };
 
@@ -411,19 +411,17 @@ const fetchPackageVersions = (
   return parsed.filter((value): value is string => typeof value === 'string');
 };
 
-type VersionFetcher = (name: string) => readonly string[];
-
 type CappedDecision =
-  | {kind: 'drop'}
-  | {kind: 'pass'}
-  | {kind: 'rewrite'; latest: string};
+  {kind: 'drop'} | {kind: 'pass'} | {kind: 'rewrite'; latest: string};
+
+type VersionFetcher = (name: string) => readonly string[];
 
 // ---------- ESLint 9.x cap ----------
 
-const ESLINT_CAPPED = new Set(['eslint', '@eslint/js']);
+const ESLINT_CAPPED = new Set(['@eslint/js', 'eslint']);
 
 const findHighest9x = (versions: readonly string[]): string | undefined => {
-  let best: {raw: string; segments: readonly number[]} | undefined;
+  let best: undefined | {raw: string; segments: readonly number[]};
 
   for (const candidate of versions) {
     const segments = parseSegments(candidate);
@@ -475,7 +473,7 @@ const applyEslintCap = (
 const matchesCeilingPrefix = (version: string, ceiling: string): boolean => {
   const ceilingParts =
     stripRange(ceiling)
-      .split(/[+-]/u)[0]
+      .split(/[+-]/u, 1)[0]
       ?.split('.')
       .filter((part) => part.length > 0) ?? [];
 
@@ -483,8 +481,8 @@ const matchesCeilingPrefix = (version: string, ceiling: string): boolean => {
 
   const versionSegments = parseSegments(version);
 
-  for (let index = 0; index < ceilingParts.length; index += 1) {
-    const pinned = Number.parseInt(ceilingParts[index] ?? '', 10);
+  for (const [index, ceilingPart] of ceilingParts.entries()) {
+    const pinned = Number.parseInt(ceilingPart ?? '', 10);
 
     if (!Number.isFinite(pinned)) return false;
     if ((versionSegments[index] ?? 0) !== pinned) return false;
@@ -501,7 +499,7 @@ const findHighestUnderCeiling = (
   versions: readonly string[],
   ceiling: string
 ): string | undefined => {
-  let best: {raw: string; segments: readonly number[]} | undefined;
+  let best: undefined | {raw: string; segments: readonly number[]};
 
   for (const candidate of versions) {
     if (candidate.includes('-')) continue; // prerelease
@@ -664,7 +662,7 @@ const capToAgedVersion = (params: {
 }): string | undefined => {
   const currentSegments = parseSegments(params.current);
   const latestSegments = parseSegments(params.latest);
-  let best: {raw: string; segments: readonly number[]} | undefined;
+  let best: undefined | {raw: string; segments: readonly number[]};
 
   for (const [version, isoTime] of Object.entries(params.times)) {
     if (version === 'created' || version === 'modified') continue;
@@ -775,6 +773,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   // Memoize `pnpm view <name> versions` across the ESLint cap and every hold
   // cap in this run; both may consult the same package.
   const versionCache = new Map<string, readonly string[]>();
+
   const getVersions: VersionFetcher = (name) => {
     const cached = versionCache.get(name);
 
@@ -901,7 +900,7 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
       // entry (e.g. dependencies not installed).
       const current =
         readInstalledVersion(options.cwd, siblingName) ??
-        (spec !== undefined ? stripRange(spec) : '');
+        (spec === undefined ? '' : stripRange(spec));
       const latest = fetchLatestVersion(siblingName, options.cwd, pnpmRunner);
 
       if (latest === undefined) {

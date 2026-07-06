@@ -18,9 +18,9 @@
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
@@ -42,22 +42,22 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 const STEP_NAME = 'rename';
 
-type Flags = {
-  kebab: string;
-  title: string;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  kebab: string;
+  title: string;
+};
 
 const takeValue = (
   argv: readonly string[],
@@ -77,7 +77,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let kebab: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--title') {
       const taken = takeValue(argv, index + 1, '--title');
@@ -159,7 +159,7 @@ const replaceStringPropertyAll = (
   key: string,
   newValue: string
 ): string => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, '\\$&');
+  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
   const pattern = new RegExp(
     String.raw`(\b${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
     'gmu'
@@ -179,7 +179,7 @@ const replaceTopLevelStringProperty = (
   key: string,
   newValue: string
 ): string => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, '\\$&');
+  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
   const pattern = new RegExp(
     String.raw`^(\x20\x20${key}\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2`,
     'gmu'
@@ -194,11 +194,11 @@ const replaceTopLevelStringProperty = (
  * `meta.title` so other `title` keys elsewhere in the file are untouched.
  */
 const replaceMetaTitle = (source: string, newValue: string): string => {
-  const escaped = newValue.replaceAll(/[$\\]/gu, '\\$&');
+  const escaped = newValue.replaceAll(/[$\\]/gu, String.raw`\$&`);
   // Match `meta: {` opened at the top object level, then the first
   // `title:` string within it before the block closes.
   const pattern =
-    /^(\x20\x20meta\s*:\s*\{[^}]*?\btitle\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2/mu;
+    /^(\u0020\u0020meta\s*:\s*\{[^}]*?\btitle\s*:\s*)(['"])(?:[^'"\\]|\\.)*\2/mu;
 
   return source.replace(pattern, `$1$2${escaped}$2`);
 };
@@ -246,7 +246,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

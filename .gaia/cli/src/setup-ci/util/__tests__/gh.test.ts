@@ -1,7 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {chmodSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {setupSandbox, type Sandbox} from '../../__tests__/sandbox.js';
+import {setupSandbox} from '../../__tests__/sandbox.js';
+import type {Sandbox} from '../../__tests__/sandbox.js';
 import {runGh} from '../gh.js';
 
 describe('runGh wrapper', () => {
@@ -18,7 +19,7 @@ describe('runGh wrapper', () => {
     sandbox.cleanup();
   });
 
-  it('spawns gh and resolves stdout on exit code 0', async () => {
+  test('spawns gh and resolves stdout on exit code 0', async () => {
     const handle = sandbox.installGhShim({
       exitCode: 0,
       stdoutQueue: ['hello world\n'],
@@ -33,7 +34,7 @@ describe('runGh wrapper', () => {
     }
   });
 
-  it('records argv exactly without appending stdin to args', async () => {
+  test('records argv exactly without appending stdin to args', async () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
@@ -53,7 +54,7 @@ describe('runGh wrapper', () => {
     expect(flat).not.toContain('super-secret-payload-12345');
   });
 
-  it('pipes stdin to the child process', async () => {
+  test('pipes stdin to the child process', async () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
@@ -63,7 +64,7 @@ describe('runGh wrapper', () => {
     expect(stdinBytes).toBe('piped-value');
   });
 
-  it('returns ok: false with stderr on non-zero exit', async () => {
+  test('returns ok: false with stderr on non-zero exit', async () => {
     const handle = sandbox.installGhShim({exitCode: 7});
     restore = handle.restore;
 
@@ -75,7 +76,7 @@ describe('runGh wrapper', () => {
     }
   });
 
-  it('does not crash on EPIPE when the child closes stdin early', async () => {
+  test('does not crash on EPIPE when the child closes stdin early', async () => {
     // Install a shim that exits immediately WITHOUT draining stdin, so a
     // large payload fills the pipe buffer and the wrapper's write/end
     // hits EPIPE. Without an `error` handler this would be an unhandled

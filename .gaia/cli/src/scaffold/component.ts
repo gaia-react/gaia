@@ -40,7 +40,12 @@ const PROP_ENTRY_PATTERN = /^([A-Za-z_][\w$]*)\s*:\s*(.+)$/u;
 const TEMPLATES_DIR = 'component';
 const COMPONENTS_DEFAULT_PARENT = 'app/components';
 
-const BRACKET_PAIRS: Record<string, string> = {'(': ')', '<': '>', '[': ']', '{': '}'};
+const BRACKET_PAIRS: Record<string, string> = {
+  '(': ')',
+  '<': '>',
+  '[': ']',
+  '{': '}',
+};
 const CLOSERS = new Set(Object.values(BRACKET_PAIRS));
 
 /**
@@ -76,30 +81,30 @@ const splitTopLevelCommas = (raw: string): string[] => {
   return segments;
 };
 
-type ParsedFlags = {
-  json: boolean;
-  name: string;
-  parent: string;
-  props: PropEntry[];
-  story: boolean;
-};
-
-type PropEntry = {
-  name: string;
-  type: string;
-};
-
-type FlagParseSuccess = {
-  flags: ParsedFlags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: ParsedFlags;
+  ok: true;
+};
+
+type ParsedFlags = {
+  json: boolean;
+  name: string;
+  parent: string;
+  props: PropertyEntry[];
+  story: boolean;
+};
+
+type PropertyEntry = {
+  name: string;
+  type: string;
+};
 
 const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
 
@@ -130,7 +135,7 @@ const parseProps = (raw: string): FlagParseResult => {
     };
   }
 
-  const props: PropEntry[] = [];
+  const props: PropertyEntry[] = [];
 
   for (const entry of entries) {
     const match = PROP_ENTRY_PATTERN.exec(entry);
@@ -142,7 +147,7 @@ const parseProps = (raw: string): FlagParseResult => {
       };
     }
 
-    props.push({name: match[1] as string, type: (match[2] as string).trim()});
+    props.push({name: match[1], type: match[2].trim()});
   }
 
   return {
@@ -176,10 +181,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let parent = COMPONENTS_DEFAULT_PARENT;
   let story = true;
   let json = false;
-  let props: PropEntry[] = [];
+  let props: PropertyEntry[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--no-story') {
       story = false;
@@ -240,11 +245,11 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
 const buildPropsTypeBlock = (
   componentName: string,
-  props: readonly PropEntry[]
+  props: readonly PropertyEntry[]
 ): string => {
   if (props.length === 0) return '';
   const entries = props
-    .map((prop) => `  ${prop.name}: ${prop.type};`)
+    .map((property) => `  ${property.name}: ${property.type};`)
     .join('\n');
 
   return `\ntype ${componentName}Props = {\n${entries}\n};\n`;
@@ -252,7 +257,7 @@ const buildPropsTypeBlock = (
 
 const buildPropsGeneric = (
   componentName: string,
-  props: readonly PropEntry[]
+  props: readonly PropertyEntry[]
 ): string => (props.length === 0 ? '' : `<${componentName}Props>`);
 
 /**
@@ -265,25 +270,26 @@ const buildPropsGeneric = (
 const isFunctionType = (type: string): boolean =>
   type.includes('=>') || /\bFunction\b/u.test(type);
 
-const buildPropAttribute = (prop: PropEntry): string => {
-  const type = prop.type;
+const buildPropertyAttribute = (property: PropertyEntry): string => {
+  const {type} = property;
 
-  if (type === 'string') return `${prop.name}="${prop.name}"`;
-  if (type === 'number') return `${prop.name}={0}`;
-  if (type === 'boolean') return `${prop.name}={true}`;
-  if (type.endsWith('[]')) return `${prop.name}={[]}`;
+  if (type === 'string') return `${property.name}="${property.name}"`;
+  if (type === 'number') return `${property.name}={0}`;
+  if (type === 'boolean') return `${property.name}={true}`;
+  if (type.endsWith('[]')) return `${property.name}={[]}`;
+
   // Function-typed props get a callable no-op cast: `({} as () => void)()`
   // throws TypeError the moment an author wires the prop into the render body,
   // so the fallback must be invocable, not an empty-object cast.
   if (isFunctionType(type)) {
-    return `${prop.name}={(() => undefined) as ${type}}`;
+    return `${property.name}={(() => undefined) as ${type}}`;
   }
 
-  return `${prop.name}={{} as ${type}}`;
+  return `${property.name}={{} as ${type}}`;
 };
 
-const buildPropAttributes = (props: readonly PropEntry[]): string =>
-  props.map(buildPropAttribute).join(' ');
+const buildPropertyAttributes = (props: readonly PropertyEntry[]): string =>
+  props.map(buildPropertyAttribute).join(' ');
 
 /**
  * The JSX the test renders. With a story, the test renders the composed
@@ -292,12 +298,12 @@ const buildPropAttributes = (props: readonly PropEntry[]): string =>
  */
 const buildRenderJsx = (
   componentName: string,
-  props: readonly PropEntry[],
+  props: readonly PropertyEntry[],
   withStory: boolean
 ): string => {
   if (withStory || props.length === 0) return `<${componentName} />`;
 
-  return `<${componentName} ${buildPropAttributes(props)} />`;
+  return `<${componentName} ${buildPropertyAttributes(props)} />`;
 };
 
 /**
@@ -307,7 +313,7 @@ const buildRenderJsx = (
  */
 const buildStoryDefault = (
   componentName: string,
-  props: readonly PropEntry[]
+  props: readonly PropertyEntry[]
 ): string => {
   if (props.length === 0) {
     return `export const Default: StoryFn = () => <${componentName} />;`;
@@ -315,7 +321,7 @@ const buildStoryDefault = (
 
   return [
     'export const Default: StoryFn = () => (',
-    `  <${componentName} ${buildPropAttributes(props)} />`,
+    `  <${componentName} ${buildPropertyAttributes(props)} />`,
     ');',
   ].join('\n');
 };
@@ -366,7 +372,7 @@ const defaultIsDirectory = (absPath: string): boolean =>
 type RenderFileOptions = {
   componentName: string;
   parent: string;
-  props: readonly PropEntry[];
+  props: readonly PropertyEntry[];
   templatesRoot: string;
   withStory: boolean;
 };
@@ -380,7 +386,9 @@ const renderComponentFile = (options: RenderFileOptions): string => {
   const propsTypeBlock = buildPropsTypeBlock(componentName, props);
   const propsGeneric = buildPropsGeneric(componentName, props);
   const propsParam =
-    props.length === 0 ? '' : `{${props.map((prop) => prop.name).join(', ')}}`;
+    props.length === 0 ?
+      ''
+    : `{${props.map((property) => property.name).join(', ')}}`;
 
   return renderTemplate(templatePath, {
     Name: componentName,

@@ -1,3 +1,4 @@
+import {describe, expect, test} from 'vitest';
 /**
  * Maintainer drift-guard: asserts that the in-tree
  * `.github/workflows/code-review-audit.yml` is byte-identical to the
@@ -11,7 +12,6 @@
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {describe, expect, it} from 'vitest';
 import {workflowAuditTemplatePath} from '../paths.js';
 
 const resolveRepoRoot = (): string => {
@@ -33,7 +33,7 @@ const resolveRepoRoot = (): string => {
 };
 
 describe('audit-template dogfood drift-guard', () => {
-  it('in-tree code-review-audit.yml is byte-identical to the canonical template', () => {
+  test('in-tree code-review-audit.yml is byte-identical to the canonical template', () => {
     const repoRoot = resolveRepoRoot();
     const inTreePath = path.join(
       repoRoot,
@@ -53,7 +53,7 @@ describe('audit-template dogfood drift-guard', () => {
     expect(inTree).toBe(template);
   });
 
-  it('instructs the audit agent to emit the machine-readable findings block', () => {
+  test('instructs the audit agent to emit the machine-readable findings block', () => {
     const template = readFileSync(workflowAuditTemplatePath(), 'utf8');
 
     // The tally pass parses findings from the PR comment via these stable

@@ -33,8 +33,8 @@
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
-import {ADOPTER_OWNED_SENTINELS as GIT_TRACKED_SENTINELS} from './manifest.js';
 import {structuredError} from '../stderr.js';
+import {ADOPTER_OWNED_SENTINELS as GIT_TRACKED_SENTINELS} from './manifest.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
 
@@ -107,11 +107,11 @@ const RUNTIME_PREFIXES: readonly string[] = [
 const RUNTIME_MARKERS: ReadonlySet<string> = new Set([
   '.claude/i18n-strings-checked',
   '.claude/wiki-drift-checked',
-  '.claude/wiki-safety-checked',
   // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
   // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
   // it. Created on first compaction event; never a shipped dependency.
   '.claude/wiki-recompact-pending',
+  '.claude/wiki-safety-checked',
 ]);
 
 const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
@@ -175,7 +175,7 @@ const stripCommentSuffix = (line: string): string => {
 const expandPath = (line: string, start: number): string => {
   let end = start;
 
-  while (end < line.length && PATH_BODY_CHAR.test(line[end] as string)) {
+  while (end < line.length && PATH_BODY_CHAR.test(line[end])) {
     end += 1;
   }
 
@@ -196,7 +196,7 @@ const isVariableExpansionContext = (line: string, found: number): boolean => {
   let cursor = found - 1;
 
   while (cursor >= 0) {
-    const ch = line[cursor] as string;
+    const ch = line[cursor];
 
     if (ch === '$') return true;
 
@@ -235,7 +235,7 @@ export const extractPathRefs = (
         // path (`/var/log/.gaia/...`); skip. The exception is shell
         // variable expansion (`$PROJECT_ROOT/.gaia/...`), where the
         // static portion is the project-relative path we care about.
-        const leading = found === 0 ? '' : (stripped[found - 1] as string);
+        const leading = found === 0 ? '' : stripped[found - 1];
 
         if (
           leading.length > 0 &&
@@ -247,6 +247,7 @@ export const extractPathRefs = (
         }
 
         const candidate = expandPath(stripped, found);
+
         // Skip pure-prefix matches (`.gaia/` with no body).
         if (candidate.length > prefix.length) {
           // Trim trailing dots/slashes which are likely not part of the
@@ -275,6 +276,7 @@ const isShippedPath = (
   if (manifest.has(candidate)) return true;
   if (ADOPTER_OWNED_SENTINELS.has(candidate)) return true;
   if (RUNTIME_MARKERS.has(candidate)) return true;
+
   if (
     RUNTIME_PREFIXES.some(
       (prefix) => candidate === prefix || candidate.startsWith(`${prefix}/`)
@@ -338,15 +340,15 @@ const loadManifest = (manifestPath: string): ReadonlySet<string> => {
 // Flags
 // ---------------------------------------------------------------------------
 
+type FlagParseFailure = {message: string; ok: false};
+
+type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+type FlagParseSuccess = {flags: Flags; ok: true};
 type Flags = {
   json: boolean;
   manifestPath: string | undefined;
   stagingDir: string | undefined;
 };
-
-type FlagParseSuccess = {flags: Flags; ok: true};
-type FlagParseFailure = {message: string; ok: false};
-type FlagParseResult = FlagParseFailure | FlagParseSuccess;
 
 const takeValue = (
   argv: readonly string[],
@@ -367,7 +369,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let stagingDir: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--staging') {
       const taken = takeValue(argv, index + 1, '--staging');
@@ -420,11 +422,9 @@ type RunOptions = {
 const renderReport = (report: Report, jsonMode: boolean): string => {
   if (jsonMode) return `${JSON.stringify(report, null, 2)}\n`;
 
-  const out: string[] = [];
-
-  out.push(
-    `release runtime-deps: scanned ${report.scanned_files.length} script(s)`
-  );
+  const out: string[] = [
+    `release runtime-deps: scanned ${report.scanned_files.length} script(s)`,
+  ];
 
   if (report.leaks.length > 0) {
     out.push('', `runtime-dependency leaks (${report.leaks.length}):`);
@@ -443,7 +443,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

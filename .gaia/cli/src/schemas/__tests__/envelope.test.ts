@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
 import {
   AgentTypeSchema,
   EnvelopeSchema,
@@ -13,33 +13,33 @@ const VALID_HEX_32 = 'a'.repeat(32);
 
 describe('schemas/envelope', () => {
   describe('UlidSchema', () => {
-    it('accepts a 26-char Crockford-base32 ULID', () => {
+    test('accepts a 26-char Crockford-base32 ULID', () => {
       expect(() => UlidSchema.parse(VALID_ULID)).not.toThrow();
     });
 
-    it('rejects lowercase letters', () => {
+    test('rejects lowercase letters', () => {
       expect(() => UlidSchema.parse('01hzx0k3q9jsawc0tr6wyj5znt')).toThrow();
     });
 
-    it('rejects forbidden ULID alphabet letters (I, L, O, U)', () => {
+    test('rejects forbidden ULID alphabet letters (I, L, O, U)', () => {
       expect(() => UlidSchema.parse('01HZX0K3Q9JSAWC0TR6WYJ5ZNI')).toThrow();
     });
 
-    it('rejects wrong length', () => {
+    test('rejects wrong length', () => {
       expect(() => UlidSchema.parse('01HZX')).toThrow();
     });
   });
 
   describe('Iso8601UtcMsSchema', () => {
-    it('accepts ISO-8601 UTC with millisecond precision', () => {
+    test('accepts ISO-8601 UTC with millisecond precision', () => {
       expect(() => Iso8601UtcMsSchema.parse(VALID_ISO)).not.toThrow();
     });
 
-    it('rejects timestamps without milliseconds', () => {
+    test('rejects timestamps without milliseconds', () => {
       expect(() => Iso8601UtcMsSchema.parse('2026-05-06T12:34:56Z')).toThrow();
     });
 
-    it('rejects timestamps with timezone offset', () => {
+    test('rejects timestamps with timezone offset', () => {
       expect(() =>
         Iso8601UtcMsSchema.parse('2026-05-06T12:34:56.789+00:00')
       ).toThrow();
@@ -47,21 +47,21 @@ describe('schemas/envelope', () => {
   });
 
   describe('Sha256HexHalfSchema', () => {
-    it('accepts 32 lowercase hex chars', () => {
+    test('accepts 32 lowercase hex chars', () => {
       expect(() => Sha256HexHalfSchema.parse(VALID_HEX_32)).not.toThrow();
     });
 
-    it('rejects uppercase hex', () => {
+    test('rejects uppercase hex', () => {
       expect(() => Sha256HexHalfSchema.parse('A'.repeat(32))).toThrow();
     });
 
-    it('rejects wrong length', () => {
+    test('rejects wrong length', () => {
       expect(() => Sha256HexHalfSchema.parse('a'.repeat(31))).toThrow();
     });
   });
 
   describe('AgentTypeSchema', () => {
-    it.each([
+    test.each([
       'PO',
       'Senior',
       'Junior',
@@ -75,7 +75,7 @@ describe('schemas/envelope', () => {
       expect(() => AgentTypeSchema.parse(agentType)).not.toThrow();
     });
 
-    it('rejects unknown agent types', () => {
+    test('rejects unknown agent types', () => {
       expect(() => AgentTypeSchema.parse('engineer')).toThrow();
     });
   });
@@ -100,11 +100,11 @@ describe('schemas/envelope', () => {
       timestamp: VALID_ISO,
     };
 
-    it('accepts a hand-constructed example matching the SPEC snippet', () => {
+    test('accepts a hand-constructed example matching the SPEC snippet', () => {
       expect(() => EnvelopeSchema.parse(validEnvelope)).not.toThrow();
     });
 
-    it('rejects a payload that does not match its mentorship event_type', () => {
+    test('rejects a payload that does not match its mentorship event_type', () => {
       expect(() =>
         EnvelopeSchema.parse({
           ...validEnvelope,
@@ -113,7 +113,7 @@ describe('schemas/envelope', () => {
       ).toThrow();
     });
 
-    it('reports the drift under the payload path', () => {
+    test('reports the drift under the payload path', () => {
       const result = EnvelopeSchema.safeParse({
         ...validEnvelope,
         payload: {...validUatPassPayload, uat_id: 'not-a-uat-id'},
@@ -127,7 +127,7 @@ describe('schemas/envelope', () => {
       ).toBe(true);
     });
 
-    it('leaves the payload unconstrained for non-mentorship event_types', () => {
+    test('leaves the payload unconstrained for non-mentorship event_types', () => {
       expect(() =>
         EnvelopeSchema.parse({
           ...validEnvelope,
@@ -137,13 +137,13 @@ describe('schemas/envelope', () => {
       ).not.toThrow();
     });
 
-    it('rejects schema_version != 1', () => {
+    test('rejects schema_version != 1', () => {
       expect(() =>
         EnvelopeSchema.parse({...validEnvelope, schema_version: 2})
       ).toThrow();
     });
 
-    it('rejects an invalid project_id', () => {
+    test('rejects an invalid project_id', () => {
       expect(() =>
         EnvelopeSchema.parse({
           ...validEnvelope,
@@ -152,7 +152,7 @@ describe('schemas/envelope', () => {
       ).toThrow();
     });
 
-    it('rejects an invalid agent_type', () => {
+    test('rejects an invalid agent_type', () => {
       expect(() =>
         EnvelopeSchema.parse({
           ...validEnvelope,

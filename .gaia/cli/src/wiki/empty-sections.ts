@@ -114,7 +114,7 @@ const collectHeadings = (body: string, bodyLineOffset: number): Heading[] => {
     if (match !== null) {
       headings.push({
         hasContent: false,
-        level: (match[1] as string).length,
+        level: match[1].length,
         line: bodyLineOffset + index + 1,
         text: line.trim(),
       });
@@ -151,7 +151,7 @@ const findInBody = (
     let hasChildHeading = false;
 
     for (let next = index + 1; next < headings.length; next += 1) {
-      const candidate = headings[next] as Heading;
+      const candidate = headings[next];
 
       if (candidate.level <= heading.level) break;
       hasChildHeading = true;

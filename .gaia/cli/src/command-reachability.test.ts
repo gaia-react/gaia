@@ -1,3 +1,4 @@
+import {describe, expect, test} from 'vitest';
 /**
  * Maintainer reachability-guard for the CLI subcommand surface.
  *
@@ -33,7 +34,6 @@
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {describe, expect, it} from 'vitest';
 
 // Subcommands reachable only through their router with no external invoker,
 // allowed on purpose. Each entry needs a reason. Wiring or retiring a command
@@ -62,19 +62,19 @@ const INVOKER_SURFACES: readonly string[] = [
 ];
 
 const TEXT_EXTENSIONS = new Set([
-  '.md',
+  '.cjs',
+  '.js',
+  '.json',
   '.markdown',
+  '.md',
+  '.mjs',
+  '.sh',
+  '.tmpl',
   '.ts',
   '.tsx',
-  '.js',
-  '.mjs',
-  '.cjs',
-  '.sh',
-  '.yml',
-  '.yaml',
-  '.tmpl',
-  '.json',
   '.txt',
+  '.yaml',
+  '.yml',
 ]);
 
 const resolveRepoRoot = (): string => {
@@ -95,7 +95,7 @@ const resolveRepoRoot = (): string => {
 };
 
 const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 // The keys of a router's `SUBCOMMAND_HANDLERS` map. Every handler value is a
 // `run<Pascal>` symbol, so anchoring on `: run[A-Z]` selects exactly the
@@ -192,8 +192,9 @@ const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
 const routersPresent = existsSync(cliSrc);
 
 const leafCommands = routersPresent ? enumerateLeafCommands(cliSrc) : [];
-const invokerText = routersPresent
-  ? INVOKER_SURFACES.map((surface) =>
+const invokerText =
+  routersPresent ?
+    INVOKER_SURFACES.map((surface) =>
       collectText(path.join(repoRoot, surface))
     ).join('\n')
   : '';
@@ -202,15 +203,18 @@ const invokerText = routersPresent
 // invoker text: the binary name, then the space-separated path, bounded so
 // `wiki state` never matches inside `wiki state-bump`.
 const isReachable = (commandPath: string): boolean => {
-  const tokens = commandPath.split(' ').map(escapeRegExp).join('\\s+');
+  const tokens = commandPath
+    .split(' ')
+    .map(escapeRegExp)
+    .join(String.raw`\s+`);
 
   return new RegExp(
-    `(?<![\\w-])gaia(?:-maintainer)?\\s+${tokens}(?![\\w-])`
+    String.raw`(?<![\w-])gaia(?:-maintainer)?\s+${tokens}(?![\w-])`
   ).test(invokerText);
 };
 
 describe('CLI subcommand reachability guard', () => {
-  it('enumerates the command surface (guards against parser rot)', () => {
+  test('enumerates the command surface (guards against parser rot)', () => {
     if (!routersPresent) return;
 
     // A silent enumerator would make the reachability test pass vacuously.
@@ -225,7 +229,7 @@ describe('CLI subcommand reachability guard', () => {
     expect(isReachable('zzz fabricated-command')).toBe(false);
   });
 
-  it('every map-dispatched leaf command has an external invoker', () => {
+  test('every map-dispatched leaf command has an external invoker', () => {
     if (!routersPresent) return;
 
     const dead = leafCommands.filter(
@@ -234,16 +238,16 @@ describe('CLI subcommand reachability guard', () => {
 
     expect(
       dead,
-      `These CLI subcommands are wired into a SUBCOMMAND_HANDLERS map but ` +
-        `invoked by nothing (no skill / command / hook / agent / workflow / ` +
-        `bundled template / wiki string). Wire an invoker, retire the ` +
+      'These CLI subcommands are wired into a SUBCOMMAND_HANDLERS map but ' +
+        'invoked by nothing (no skill / command / hook / agent / workflow / ' +
+        'bundled template / wiki string). Wire an invoker, retire the ' +
         `command, or add it to INTERNAL_COMMANDS with a reason:\n  ${dead.join(
           '\n  '
         )}`
     ).toEqual([]);
   });
 
-  it('the internal-command allowlist has no stale entries', () => {
+  test('the internal-command allowlist has no stale entries', () => {
     if (!routersPresent) return;
 
     const leafSet = new Set(leafCommands);
@@ -256,7 +260,7 @@ describe('CLI subcommand reachability guard', () => {
 
     expect(
       stale,
-      `Remove these stale INTERNAL_COMMANDS entries (command retired or now ` +
+      'Remove these stale INTERNAL_COMMANDS entries (command retired or now ' +
         `has an external invoker):\n  ${stale.join('\n  ')}`
     ).toEqual([]);
   });

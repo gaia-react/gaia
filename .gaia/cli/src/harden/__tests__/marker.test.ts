@@ -1,3 +1,4 @@
+import {describe, expect, test} from 'vitest';
 /**
  * Guard for the frozen provenance marker (`marker.ts`).
  *
@@ -17,7 +18,6 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {describe, expect, it} from 'vitest';
 import {coveredClassesFromRules} from '../covered-classes.js';
 import {MARKER_PREFIX, markerComment} from '../marker.js';
 
@@ -46,13 +46,13 @@ const occurrences = (haystack: string, needle: string): number =>
   haystack.split(needle).length - 1;
 
 describe('provenance marker constant', () => {
-  it('MARKER_PREFIX is the stable head of markerComment for any class', () => {
+  test('MARKER_PREFIX is the stable head of markerComment for any class', () => {
     const literal = markerComment('anything');
     expect(literal.startsWith(`<!-- ${MARKER_PREFIX} `)).toBe(true);
     expect(literal).toContain(MARKER_PREFIX);
   });
 
-  it('the covered-classes binder matches the marker and captures the class', () => {
+  test('the covered-classes binder matches the marker and captures the class', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'gaia-marker-'));
 
     try {
@@ -61,9 +61,9 @@ describe('provenance marker constant', () => {
         markerComment('rule/switch-statement')
       );
 
-      expect(
-        coveredClassesFromRules(dir).has('rule/switch-statement')
-      ).toBe(true);
+      expect(coveredClassesFromRules(dir).has('rule/switch-statement')).toBe(
+        true
+      );
     } finally {
       rmSync(dir, {force: true, recursive: true});
     }
@@ -72,18 +72,18 @@ describe('provenance marker constant', () => {
   describe('every doc copy reproduces markerComment verbatim', () => {
     const literal = markerComment('<class>');
 
-    it('harden.md carries it at the template site and the frozen-marker section', () => {
+    test('harden.md carries it at the template site and the frozen-marker section', () => {
       const body = readRepoFile('.claude/skills/gaia/references/harden.md');
       expect(occurrences(body, literal)).toBeGreaterThanOrEqual(2);
     });
 
-    it('audit.md carries it', () => {
+    test('audit.md carries it', () => {
       expect(readRepoFile('.claude/skills/gaia/references/audit.md')).toContain(
         literal
       );
     });
 
-    it('the Policy-Memory Loop wiki page carries it', () => {
+    test('the Policy-Memory Loop wiki page carries it', () => {
       expect(readRepoFile('wiki/concepts/Policy-Memory Loop.md')).toContain(
         literal
       );

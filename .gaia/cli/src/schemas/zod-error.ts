@@ -11,9 +11,10 @@ export const summarizeZodError = (
   error: z.ZodError
 ): string => {
   const lines = error.issues.map((issue) => {
-    const pathStr = issue.path.length === 0 ? '<root>' : issue.path.join('.');
+    const pathString =
+      issue.path.length === 0 ? '<root>' : issue.path.join('.');
 
-    return `${pathStr}: ${issue.message}`;
+    return `${pathString}: ${issue.message}`;
   });
 
   return `${filePath}: ${lines.join('; ')}`;

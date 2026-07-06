@@ -1,9 +1,10 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {writeFileSync} from 'node:fs';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../opt-out-team.js';
-import {setupSandbox, VALID_BASE_CONFIG, type Sandbox} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -52,7 +53,7 @@ describe('setup-ci opt-out-team', () => {
     vi.restoreAllMocks();
   });
 
-  it('flips setup_opted_out=true preserving other fields', () => {
+  test('flips setup_opted_out=true preserving other fields', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
 
     const exit = run([], {cwd: sandbox.root});
@@ -69,13 +70,13 @@ describe('setup-ci opt-out-team', () => {
     }
   });
 
-  it('exits config_missing when .gaia/automation.json is absent', () => {
+  test('exits config_missing when .gaia/automation.json is absent', () => {
     const exit = run([], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('config_missing');
   });
 
-  it('exits config_malformed when config fails schema validation', () => {
+  test('exits config_malformed when config fails schema validation', () => {
     writeFileSync(
       automationConfigPath(sandbox.root),
       JSON.stringify({...VALID_BASE_CONFIG, version: 99}),
@@ -87,7 +88,7 @@ describe('setup-ci opt-out-team', () => {
     expect(stdio.err.join('')).toContain('config_malformed');
   });
 
-  it('emits opted_out: true JSON on success', () => {
+  test('emits opted_out: true JSON on success', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
 
     const exit = run([], {cwd: sandbox.root});
@@ -100,7 +101,7 @@ describe('setup-ci opt-out-team', () => {
     expect(parsed.opted_out).toBe(true);
   });
 
-  it('rejects unexpected arguments', () => {
+  test('rejects unexpected arguments', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
 
     const exit = run(['--bogus'], {cwd: sandbox.root});
@@ -108,7 +109,7 @@ describe('setup-ci opt-out-team', () => {
     expect(stdio.err.join('')).toContain('unexpected argument');
   });
 
-  it('--help exits 0', () => {
+  test('--help exits 0', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

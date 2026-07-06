@@ -1,7 +1,9 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release bump`.
  */
-import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,14 +13,8 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {
-  aggregateBump,
-  applyBump,
-  classifyCommit,
-  type CommandRunner,
-  run,
-} from './bump.js';
+import {aggregateBump, applyBump, classifyCommit, run} from './bump.js';
+import type {CommandRunner} from './bump.js';
 
 describe('classifyCommit', () => {
   test('feat: → minor', () => {
@@ -207,7 +203,7 @@ const failResult = (status: number): SpawnSyncReturns<string> => ({
 });
 
 const buildLogOutput = (
-  commits: Array<{subject: string; body?: string}>
+  commits: {body?: string; subject: string}[]
 ): string => {
   const RECORD_SEPARATOR = '---END-COMMIT---';
 
@@ -220,7 +216,7 @@ const buildLogOutput = (
 };
 
 const buildRunner =
-  (commits: Array<{subject: string; body?: string}>): CommandRunner =>
+  (commits: {body?: string; subject: string}[]): CommandRunner =>
   (command, args) => {
     if (command === 'git' && args[0] === 'describe') {
       // Simulate "no tag yet"

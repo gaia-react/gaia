@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki chain <begin|commit|finish>`.
  *
@@ -7,11 +8,11 @@
  * keyed off argv. Each test asserts the handler's exit code and the exact
  * sequence of git/gh invocations the fake observed.
  */
-import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './chain.js';
 import type {CommandRunner} from './util/branch.js';
 
@@ -108,17 +109,15 @@ const matches = (
 
 const buildRunner =
   (
-    scripted: Array<{
+    scripted: {
       argv: readonly string[];
       result: SpawnSyncReturns<string>;
-    }>,
+    }[],
     recorded: RecordedCall[]
   ): CommandRunner =>
   (command, args) => {
     recorded.push({args: [...args], command});
-    const match = scripted.find((entry) =>
-      matches(entry.argv, command, args)
-    );
+    const match = scripted.find((entry) => matches(entry.argv, command, args));
 
     if (match !== undefined) return match.result;
 
@@ -161,7 +160,9 @@ describe('wiki chain', () => {
 
       const exit = run(['begin'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
-      expect(stdio.outputs.join('')).toContain('chain begin: in-place on feature/x');
+      expect(stdio.outputs.join('')).toContain(
+        'chain begin: in-place on feature/x'
+      );
       expect(recorded.find((c) => c.args[0] === 'checkout')).toBeUndefined();
     });
 
@@ -180,7 +181,9 @@ describe('wiki chain', () => {
 
       const exit = run(['begin'], {cwd: sandbox.root, runner});
       expect(exit).toBe(1);
-      expect(stdio.errors.join('')).toContain('refusing to start a wiki chain on main');
+      expect(stdio.errors.join('')).toContain(
+        'refusing to start a wiki chain on main'
+      );
       expect(recorded.find((c) => c.args[0] === 'checkout')).toBeUndefined();
     });
 
@@ -231,7 +234,9 @@ describe('wiki chain', () => {
 
       const exit = run(['begin'], {cwd: sandbox.root, runner});
       expect(exit).toBe(1);
-      expect(stdio.errors.join('')).toContain('refusing to start a wiki chain on main');
+      expect(stdio.errors.join('')).toContain(
+        'refusing to start a wiki chain on main'
+      );
     });
 
     test('rejects unknown flag', () => {
@@ -261,9 +266,14 @@ describe('wiki chain', () => {
         runner,
       });
       expect(exit).toBe(0);
-      expect(stdio.outputs.join('')).toContain('chain commit: wiki: lint through abc1234');
+      expect(stdio.outputs.join('')).toContain(
+        'chain commit: wiki: lint through abc1234'
+      );
       const verbs = gitCalls(recorded);
-      expect(verbs.at(-2)).toMatchObject({args: ['add', 'wiki'], command: 'git'});
+      expect(verbs.at(-2)).toMatchObject({
+        args: ['add', 'wiki'],
+        command: 'git',
+      });
       expect(verbs.at(-1)).toMatchObject({
         args: ['commit', '-m', 'wiki: lint through abc1234'],
         command: 'git',
@@ -289,7 +299,9 @@ describe('wiki chain', () => {
         runner,
       });
       expect(exit).toBe(0);
-      expect(stdio.outputs.join('')).toContain('chain commit: nothing to commit');
+      expect(stdio.outputs.join('')).toContain(
+        'chain commit: nothing to commit'
+      );
       expect(recorded.find((c) => c.args[0] === 'commit')).toBeUndefined();
     });
 
@@ -368,7 +380,9 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
-      expect(stdio.outputs.join('')).toContain('chain finish: in-place commits remain on feature/x');
+      expect(stdio.outputs.join('')).toContain(
+        'chain finish: in-place commits remain on feature/x'
+      );
       expect(ghCalls(recorded)).toHaveLength(0);
       expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
     });
@@ -424,23 +438,21 @@ describe('wiki chain', () => {
       const pushIndex = ordered.findIndex((c) =>
         c.startsWith('git push -u origin wiki-sync/2026-05-07-bbbbbbb')
       );
-      const prCreateIndex = ordered.findIndex((c) => c.startsWith('gh pr create'));
-      const prMergeIndex = ordered.findIndex(
-        (c) => c === 'gh pr merge --squash --auto --delete-branch'
+      const prCreateIndex = ordered.findIndex((c) =>
+        c.startsWith('gh pr create')
+      );
+      const prMergeIndex = ordered.indexOf(
+        'gh pr merge --squash --auto --delete-branch'
       );
       const pollIndex = ordered.findIndex((c) =>
         c.startsWith('gh pr view wiki-sync/2026-05-07-bbbbbbb')
       );
-      const checkoutBaseIndex = ordered.findIndex((c) => c === 'git checkout main');
-      const pullIndex = ordered.findIndex(
-        (c) => c === 'git pull --ff-only origin main'
+      const checkoutBaseIndex = ordered.indexOf('git checkout main');
+      const pullIndex = ordered.indexOf('git pull --ff-only origin main');
+      const branchDeleteIndex = ordered.indexOf(
+        'git branch -D wiki-sync/2026-05-07-bbbbbbb'
       );
-      const branchDeleteIndex = ordered.findIndex(
-        (c) => c === 'git branch -D wiki-sync/2026-05-07-bbbbbbb'
-      );
-      const pruneIndex = ordered.findIndex(
-        (c) => c === 'git fetch --prune origin'
-      );
+      const pruneIndex = ordered.indexOf('git fetch --prune origin');
       expect(pushIndex).toBeGreaterThanOrEqual(0);
       expect(prCreateIndex).toBeGreaterThan(pushIndex);
       expect(prMergeIndex).toBeGreaterThan(prCreateIndex);
@@ -490,8 +502,8 @@ describe('wiki chain', () => {
 
       const exit = run(['finish', '--branch-aware'], {
         cwd: sandbox.root,
-        runner,
         mergePollAttempts: 3,
+        runner,
         sleep: () => undefined,
       });
       expect(exit).toBe(0);
@@ -536,7 +548,9 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
-      expect(stdio.outputs.join('')).toContain('removed empty branch wiki-sync/2026-05-07-ccccccc');
+      expect(stdio.outputs.join('')).toContain(
+        'removed empty branch wiki-sync/2026-05-07-ccccccc'
+      );
       expect(gitCalls(recorded)).toContainEqual({
         args: ['checkout', 'main'],
         command: 'git',
@@ -575,7 +589,9 @@ describe('wiki chain', () => {
 
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
-      expect(stdio.outputs.join('')).toContain('has uncommitted changes and no commits');
+      expect(stdio.outputs.join('')).toContain(
+        'has uncommitted changes and no commits'
+      );
       expect(recorded.find((c) => c.args[0] === 'checkout')).toBeUndefined();
       expect(recorded.find((c) => c.args[0] === 'branch')).toBeUndefined();
       expect(ghCalls(recorded)).toHaveLength(0);

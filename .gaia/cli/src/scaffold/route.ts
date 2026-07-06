@@ -18,7 +18,8 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {writeFileIfAbsent} from './fs.js';
-import {renderTemplate, type TemplateVars} from './template.js';
+import {renderTemplate} from './template.js';
+import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const VALID_GROUPS = new Set(['_public+', '_session+']);
@@ -34,7 +35,7 @@ const KEBAB_PATTERN = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
 type ParsedFlags = {
   action: boolean;
   dryRun: boolean;
-  group: string | null;
+  group: null | string;
   i18n: boolean;
   json: boolean;
   loader: boolean;
@@ -62,7 +63,7 @@ const userError = (message: string, subcommand = 'scaffold route'): number => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-const parseFlags = (rest: readonly string[]): ParsedFlags | null => {
+const parseFlags = (rest: readonly string[]): null | ParsedFlags => {
   const flags: ParsedFlags = {
     action: false,
     dryRun: false,
@@ -123,7 +124,7 @@ const templateDir = (): string => {
   return path.join(path.dirname(here), 'templates', 'route');
 };
 
-type LocaleBarrelInsertResult = 'inserted' | 'present' | 'missing';
+type LocaleBarrelInsertResult = 'inserted' | 'missing' | 'present';
 
 /**
  * Insert an `import <name> from './<Folder>';` line and a corresponding
@@ -153,53 +154,48 @@ const insertIntoLocaleBarrel = (
   }
 
   // Insert the import alphabetically by importName.
-  let importInsertIdx =
+  let importInsertIndex =
     importLines.length === 0 ? 0 : (importLines.at(-1) ?? 0) + 1;
 
   for (const idx of importLines) {
     const existing = lines[idx];
 
     if (existing === undefined) continue;
-    const match = existing.match(/^import\s+(\w+)\s+from/u);
+    const match = /^import\s+(\w+)\s+from/u.exec(existing);
 
-    if (
-      match &&
-      match[1] !== undefined &&
-      importName.localeCompare(match[1]) < 0
-    ) {
-      importInsertIdx = idx;
+    if (match?.[1] !== undefined && importName.localeCompare(match[1]) < 0) {
+      importInsertIndex = idx;
       break;
     }
   }
 
-  lines.splice(importInsertIdx, 0, importLine);
+  lines.splice(importInsertIndex, 0, importLine);
 
   // Now insert into the export default { ... } block.
   // Find the line with `export default {` and the closing `};`.
-  const openIdx = lines.findIndex((line) =>
+  const openIndex = lines.findIndex((line) =>
     /export\s+default\s+\{/u.test(line)
   );
   const closeIdx = lines.findIndex(
-    (line, idx) => idx > openIdx && /^\s*\}\s*;?\s*$/u.test(line)
+    (line, idx) => idx > openIndex && /^\s*\}\s*;?\s*$/u.test(line)
   );
 
-  if (openIdx === -1 || closeIdx === -1) {
+  if (openIndex === -1 || closeIdx === -1) {
     // Couldn't structurally locate the export block; bail without writing.
     return 'missing';
   }
 
   // Detect indentation from existing entries.
   const entryPattern = /^(\s+)(\w+),?\s*$/u;
-  const existingEntries: Array<{indent: string; key: string; lineIdx: number}> =
-    [];
+  const existingEntries: {indent: string; key: string; lineIdx: number}[] = [];
 
-  for (let idx = openIdx + 1; idx < closeIdx; idx += 1) {
+  for (let idx = openIndex + 1; idx < closeIdx; idx += 1) {
     const line = lines[idx];
 
     if (line === undefined) continue;
-    const match = line.match(entryPattern);
+    const match = entryPattern.exec(line);
 
-    if (match && match[1] !== undefined && match[2] !== undefined) {
+    if (match?.[1] !== undefined && match[2] !== undefined) {
       existingEntries.push({indent: match[1], key: match[2], lineIdx: idx});
     }
   }
@@ -208,7 +204,7 @@ const insertIntoLocaleBarrel = (
   const newEntryLine = `${indent}${importName},`;
 
   if (existingEntries.length === 0) {
-    lines.splice(openIdx + 1, 0, newEntryLine);
+    lines.splice(openIndex + 1, 0, newEntryLine);
   } else {
     let inserted = false;
 
@@ -342,9 +338,11 @@ const printHumanReadable = (result: ScaffoldResult, dryRun: boolean): void => {
   for (const file of result.written) {
     process.stdout.write(`${pad(writeLabel)} ${file}\n`);
   }
+
   for (const file of result.edited) {
     process.stdout.write(`${pad(editLabel)} ${file}\n`);
   }
+
   for (const file of result.skipped) {
     process.stdout.write(`${pad('skipped')} ${file}\n`);
   }
@@ -496,7 +494,7 @@ export const run = (
         // an actionable message rather than reporting a misleading success.
         return userError(
           `locale barrel not found at ${localeBarrel}; the locale file was ` +
-            `written but its import was not wired. Run from the repo root, or ` +
+            'written but its import was not wired. Run from the repo root, or ' +
             `add "import ${importName} from './${name}';" to the barrel by hand.`
         );
       }

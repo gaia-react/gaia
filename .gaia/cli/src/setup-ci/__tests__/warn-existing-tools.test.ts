@@ -1,8 +1,9 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {run} from '../warn-existing-tools.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -57,7 +58,7 @@ describe('setup-ci warn-existing-tools', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns empty array on a clean repo', () => {
+  test('returns empty array on a clean repo', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
@@ -68,7 +69,7 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual([]);
   });
 
-  it('detects .github/dependabot.yml', () => {
+  test('detects .github/dependabot.yml', () => {
     writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -81,7 +82,7 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual(['dependabot']);
   });
 
-  it('detects .github/dependabot.yaml', () => {
+  test('detects .github/dependabot.yaml', () => {
     writeFileAt(sandbox.root, '.github/dependabot.yaml', 'version: 2\n');
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -94,7 +95,7 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual(['dependabot']);
   });
 
-  it('detects renovate.json', () => {
+  test('detects renovate.json', () => {
     writeFileAt(sandbox.root, 'renovate.json', '{}\n');
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -107,7 +108,7 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual(['renovate']);
   });
 
-  it('detects .renovaterc.json and .github/renovate.json under same name', () => {
+  test('detects .renovaterc.json and .github/renovate.json under same name', () => {
     writeFileAt(sandbox.root, '.renovaterc.json', '{}\n');
     writeFileAt(sandbox.root, '.github/renovate.json', '{}\n');
 
@@ -121,7 +122,7 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual(['renovate']);
   });
 
-  it('reports both when both exist', () => {
+  test('reports both when both exist', () => {
     writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
     writeFileAt(sandbox.root, 'renovate.json', '{}\n');
 
@@ -135,7 +136,7 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual(['dependabot', 'renovate']);
   });
 
-  it('deduplicates when both .yml and .yaml exist', () => {
+  test('deduplicates when both .yml and .yaml exist', () => {
     writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
     writeFileAt(sandbox.root, '.github/dependabot.yaml', 'version: 2\n');
 
@@ -149,7 +150,7 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual(['dependabot']);
   });
 
-  it('emits a human report without --json', () => {
+  test('emits a human report without --json', () => {
     writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
 
     const exit = run([], {cwd: sandbox.root});
@@ -157,13 +158,13 @@ describe('setup-ci warn-existing-tools', () => {
     expect(stdio.out.join('')).toContain('detected: dependabot');
   });
 
-  it('rejects unknown flags', () => {
+  test('rejects unknown flags', () => {
     const exit = run(['--bogus'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unknown flag');
   });
 
-  it('--help exits 0', () => {
+  test('--help exits 0', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

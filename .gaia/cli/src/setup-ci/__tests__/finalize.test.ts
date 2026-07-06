@@ -1,9 +1,10 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {writeFileSync} from 'node:fs';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {automationConfigPath} from '../../automation/paths.js';
 import {readAutomationConfig} from '../../schemas/automation-config.js';
 import {run} from '../finalize.js';
-import {setupSandbox, VALID_BASE_CONFIG, type Sandbox} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -52,7 +53,7 @@ describe('setup-ci finalize', () => {
     vi.restoreAllMocks();
   });
 
-  it('flips setup_complete=true on a pending config', () => {
+  test('flips setup_complete=true on a pending config', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: false});
 
     const exit = run([], {cwd: sandbox.root});
@@ -73,7 +74,7 @@ describe('setup-ci finalize', () => {
     expect(parsed.already_finalized).toBe(false);
   });
 
-  it('returns already_finalized: true when config is already finalized', () => {
+  test('returns already_finalized: true when config is already finalized', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
 
     const exit = run([], {cwd: sandbox.root});
@@ -87,13 +88,13 @@ describe('setup-ci finalize', () => {
     expect(parsed.already_finalized).toBe(true);
   });
 
-  it('exits config_missing when config is absent', () => {
+  test('exits config_missing when config is absent', () => {
     const exit = run([], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('config_missing');
   });
 
-  it('exits config_malformed for malformed config', () => {
+  test('exits config_malformed for malformed config', () => {
     writeFileSync(
       automationConfigPath(sandbox.root),
       JSON.stringify({...VALID_BASE_CONFIG, version: 99}),
@@ -105,7 +106,7 @@ describe('setup-ci finalize', () => {
     expect(stdio.err.join('')).toContain('config_malformed');
   });
 
-  it('rejects unexpected arguments', () => {
+  test('rejects unexpected arguments', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
 
     const exit = run(['--bogus'], {cwd: sandbox.root});
@@ -113,7 +114,7 @@ describe('setup-ci finalize', () => {
     expect(stdio.err.join('')).toContain('unexpected argument');
   });
 
-  it('--help exits 0', () => {
+  test('--help exits 0', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

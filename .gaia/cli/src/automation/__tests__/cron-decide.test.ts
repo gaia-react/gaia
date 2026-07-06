@@ -1,8 +1,9 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {run as runCronDecide} from '../cron-decide.js';
-import {VALID_BASE_CONFIG, setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = () => {
   const outputs: string[] = [];
@@ -37,12 +38,12 @@ const decisionFromStdout = (
 ): {
   decision: string;
   reason: string;
-  skip_log_line: string | null;
+  skip_log_line: null | string;
 } =>
   JSON.parse(out) as {
     decision: string;
     reason: string;
-    skip_log_line: string | null;
+    skip_log_line: null | string;
   };
 
 describe('automation cron-decide', () => {
@@ -60,13 +61,13 @@ describe('automation cron-decide', () => {
     vi.restoreAllMocks();
   });
 
-  it('exits non-zero with config_missing when there is no config', () => {
+  test('exits non-zero with config_missing when there is no config', () => {
     const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('config_missing');
   });
 
-  it('skips with reason tool_off when wiki.mode is "off"', () => {
+  test('skips with reason tool_off when wiki.mode is "off"', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, wiki: {mode: 'off'}});
     const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -76,7 +77,7 @@ describe('automation cron-decide', () => {
     expect(decision.skip_log_line).toBe('tool mode is off; skipping');
   });
 
-  it('runs with reason enabled when wiki is configured (mode != off)', () => {
+  test('runs with reason enabled when wiki is configured (mode != off)', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -86,7 +87,7 @@ describe('automation cron-decide', () => {
     expect(decision.skip_log_line).toBeNull();
   });
 
-  it('never suppresses on cost overage; a configured wiki tool always runs (reason=enabled)', () => {
+  test('never suppresses on cost overage; a configured wiki tool always runs (reason=enabled)', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     // A stale state file with cost_overage=true once forced a skip. The
     // state layer is gone: cron-decide no longer reads any state file, so
@@ -111,7 +112,7 @@ describe('automation cron-decide', () => {
     expect(decision.skip_log_line).toBeNull();
   });
 
-  it('non-wiki tools return tool_off-shaped placeholder', () => {
+  test('non-wiki tools return tool_off-shaped placeholder', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     const exit = runCronDecide(['update-deps', '--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -120,7 +121,7 @@ describe('automation cron-decide', () => {
     expect(decision.reason).toBe('tool_off');
   });
 
-  it('non-wiki tool with mode != off still returns the placeholder', () => {
+  test('non-wiki tool with mode != off still returns the placeholder', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       stale_branches: {mode: 'ci', schedule: 'weekly'},

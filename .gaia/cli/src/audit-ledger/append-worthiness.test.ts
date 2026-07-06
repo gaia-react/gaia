@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 /**
  * Tests for the worthiness-audit ledger writer
  * (`.gaia/scripts/audit-ledger/append-worthiness.mjs`).
@@ -27,7 +28,6 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 
 const resolveRepoRoot = (): string => {
   let dir = path.dirname(fileURLToPath(import.meta.url));
@@ -94,8 +94,8 @@ const redSignalFor = (fullName: string): string => {
   const out = execFileSync('node', [SIGNAL_HELPER, TEST_FILE_REL, '--stdin'], {
     cwd: workDir,
     encoding: 'utf8',
-    input: TEST_SOURCE,
     env: {...process.env, NODE_PATH: CLI_NODE_MODULES},
+    input: TEST_SOURCE,
   });
   const line = out
     .trim()
@@ -139,11 +139,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(workDir, {recursive: true, force: true});
+  rmSync(workDir, {force: true, recursive: true});
 });
 
 describe('append-worthiness', () => {
-  it('appends a keep line whose signal byte-matches the RED-ledger signal', () => {
+  test('appends a keep line whose signal byte-matches the RED-ledger signal', () => {
     runWriter([TEST_FILE_REL, 'renders formatted price', 'keep']);
 
     const lines = readLedger();
@@ -159,7 +159,7 @@ describe('append-worthiness', () => {
     expect(line.auditedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('carries the machine-checkable artifact for a non-keep verdict', () => {
+  test('carries the machine-checkable artifact for a non-keep verdict', () => {
     runWriter([
       TEST_FILE_REL,
       'renders formatted price',
@@ -174,7 +174,7 @@ describe('append-worthiness', () => {
     );
   });
 
-  it('appends rather than truncates across runs', () => {
+  test('appends rather than truncates across runs', () => {
     runWriter([TEST_FILE_REL, 'renders formatted price', 'keep']);
     runWriter([
       TEST_FILE_REL,
@@ -191,19 +191,19 @@ describe('append-worthiness', () => {
     ]);
   });
 
-  it('rejects an unknown verdict', () => {
+  test('rejects an unknown verdict', () => {
     expect(() =>
       runWriter([TEST_FILE_REL, 'renders formatted price', 'maybe'])
     ).toThrow();
   });
 
-  it('rejects a non-keep verdict with no artifact', () => {
+  test('rejects a non-keep verdict with no artifact', () => {
     expect(() =>
       runWriter([TEST_FILE_REL, 'renders formatted price', 'delete'])
     ).toThrow();
   });
 
-  it('fails when the named test is not found in the file', () => {
+  test('fails when the named test is not found in the file', () => {
     expect(() => runWriter([TEST_FILE_REL, 'no such test', 'keep'])).toThrow();
   });
 });

@@ -20,15 +20,15 @@
  */
 import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
-import {type AutomationConfig} from '../schemas/automation-config.js';
+import type {AutomationConfig} from '../schemas/automation-config.js';
 import {writeAutomationConfig} from '../setup-ci/util/automation-write.js';
 import {structuredError} from '../stderr.js';
 import {markStepCompleted} from './util/state.js';
 
-const HELP_TEXT = `Usage: gaia init configure-automation \\
-  --wiki <ci|local|off> \\
-  --update-deps <ci|local|off> \\
-  --pnpm-audit <ci|local|off> \\
+const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
+  --wiki <ci|local|off> \
+  --update-deps <ci|local|off> \
+  --pnpm-audit <ci|local|off> \
   --stale-branches <ci|local|off>
 
   Write .gaia/automation.json with the user's tool-mode selections and
@@ -53,7 +53,17 @@ const UNEXPECTED_EXIT = 2;
 const STEP_NAME = 'configure-automation';
 const SUBCOMMAND = 'init configure-automation';
 
-type ToolMode = 'ci' | 'local' | 'off';
+type FlagParseFailure = {
+  message: string;
+  ok: false;
+};
+
+type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
 
 type Flags = {
   pnpmAudit: ToolMode;
@@ -62,17 +72,7 @@ type Flags = {
   wiki: ToolMode;
 };
 
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
-type FlagParseFailure = {
-  message: string;
-  ok: false;
-};
-
-type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+type ToolMode = 'ci' | 'local' | 'off';
 
 const isToolMode = (value: string): value is ToolMode =>
   value === 'ci' || value === 'local' || value === 'off';
@@ -118,7 +118,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let staleBranches: ToolMode | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--wiki') {
       const taken = takeMode(argv, index + 1, '--wiki', wiki);
@@ -198,7 +198,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -227,10 +227,10 @@ export const run = (
         code: 'schema_violation',
         message: error.issues
           .map((issue) => {
-            const pathStr =
+            const pathString =
               issue.path.length === 0 ? '<root>' : issue.path.join('.');
 
-            return `${pathStr}: ${issue.message}`;
+            return `${pathString}: ${issue.message}`;
           })
           .join('; '),
         subcommand: SUBCOMMAND,

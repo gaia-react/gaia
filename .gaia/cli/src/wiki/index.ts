@@ -20,9 +20,9 @@ import {run as runLogPrepend} from './log-prepend.js';
 import {run as runNearCollisions} from './near-collisions.js';
 import {run as runOrphans} from './orphans.js';
 import {run as runPageIndex} from './page-index.js';
-import {run as runState} from './state.js';
 import {run as runStateBump} from './state-bump.js';
 import {run as runStateInit} from './state-init.js';
+import {run as runState} from './state.js';
 import {run as runSyncLand} from './sync-land.js';
 
 const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]

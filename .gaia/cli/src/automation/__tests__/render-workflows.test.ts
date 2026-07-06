@@ -1,10 +1,11 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {AutomationConfig} from '../../schemas/automation-config.js';
 import {automationConfigPath} from '../paths.js';
 import {run} from '../render-workflows.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureIo = () => {
   const errors: string[] = [];
@@ -60,13 +61,14 @@ describe('automation render-workflows', () => {
     vi.restoreAllMocks();
   });
 
-  it('writes one file per CI-mode tool when all four are configured', () => {
+  test('writes one file per CI-mode tool when all four are configured', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
+
     for (const tool of [
       'wiki',
       'update-deps',
@@ -77,7 +79,7 @@ describe('automation render-workflows', () => {
     }
   });
 
-  it('writes only the requested subset when --tools is given', () => {
+  test('writes only the requested subset when --tools is given', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
@@ -94,7 +96,7 @@ describe('automation render-workflows', () => {
     );
   });
 
-  it('writes nothing in --dry-run mode and reports per-tool byte counts', () => {
+  test('writes nothing in --dry-run mode and reports per-tool byte counts', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
@@ -115,7 +117,7 @@ describe('automation render-workflows', () => {
     );
   });
 
-  it('skips tools whose mode is local and writes the others', () => {
+  test('skips tools whose mode is local and writes the others', () => {
     const config: AutomationConfig = {
       ...allFourCi,
       wiki: {mode: 'local'},
@@ -131,7 +133,7 @@ describe('automation render-workflows', () => {
     expect(io.errors.join('')).toContain('wiki: skipped (mode=local)');
   });
 
-  it('skips tools whose mode is off', () => {
+  test('skips tools whose mode is off', () => {
     const config: AutomationConfig = {
       ...allFourCi,
       update_deps: {mode: 'off'},
@@ -147,7 +149,7 @@ describe('automation render-workflows', () => {
     expect(io.errors.join('')).toContain('update-deps: skipped (mode=off)');
   });
 
-  it('exits non-zero with config_missing when there is no config', () => {
+  test('exits non-zero with config_missing when there is no config', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -156,7 +158,7 @@ describe('automation render-workflows', () => {
     expect(io.errors.join('')).toContain('"code":"config_missing"');
   });
 
-  it('exits non-zero with config_malformed when the config is invalid JSON', () => {
+  test('exits non-zero with config_malformed when the config is invalid JSON', () => {
     writeFileSync(
       automationConfigPath(sandbox.root),
       '{this is not json',
@@ -170,7 +172,7 @@ describe('automation render-workflows', () => {
     expect(io.errors.join('')).toContain('"code":"config_malformed"');
   });
 
-  it('exits non-zero with config_malformed when the config fails Zod parsing', () => {
+  test('exits non-zero with config_malformed when the config fails Zod parsing', () => {
     writeFileSync(
       automationConfigPath(sandbox.root),
       JSON.stringify({version: 1}),
@@ -184,7 +186,7 @@ describe('automation render-workflows', () => {
     expect(io.errors.join('')).toContain('"code":"config_malformed"');
   });
 
-  it('creates a missing --out-dir with mkdir -p semantics', () => {
+  test('creates a missing --out-dir with mkdir -p semantics', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, 'nested', 'deeper', 'workflows');
 
@@ -194,7 +196,7 @@ describe('automation render-workflows', () => {
     expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(true);
   });
 
-  it('overwrites existing files on a repeat invocation (idempotent)', () => {
+  test('overwrites existing files on a repeat invocation (idempotent)', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
@@ -207,7 +209,7 @@ describe('automation render-workflows', () => {
     expect(second).toBe(first);
   });
 
-  it('rejects unknown flags', () => {
+  test('rejects unknown flags', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
@@ -217,19 +219,19 @@ describe('automation render-workflows', () => {
     expect(io.errors.join('')).toContain('"code":"invalid_arguments"');
   });
 
-  it('rejects --out-dir without a value', () => {
+  test('rejects --out-dir without a value', () => {
     const exit = run(['--out-dir'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(io.errors.join('')).toContain('--out-dir requires a path argument');
   });
 
-  it('rejects --out-dir followed by another flag', () => {
+  test('rejects --out-dir followed by another flag', () => {
     const exit = run(['--out-dir', '--dry-run'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(io.errors.join('')).toContain('--out-dir requires a path argument');
   });
 
-  it('rejects --tools with an unknown tool', () => {
+  test('rejects --tools with an unknown tool', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
@@ -241,7 +243,7 @@ describe('automation render-workflows', () => {
     expect(io.errors.join('')).toContain('--tools entries must be a subset');
   });
 
-  it('emits help text when --help is passed', () => {
+  test('emits help text when --help is passed', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(io.outs.join('')).toContain(
@@ -249,7 +251,7 @@ describe('automation render-workflows', () => {
     );
   });
 
-  it('writes byte-identical content to what renderWorkflowTemplate produces directly', () => {
+  test('writes byte-identical content to what renderWorkflowTemplate produces directly', () => {
     sandbox.writeConfig(allFourCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 

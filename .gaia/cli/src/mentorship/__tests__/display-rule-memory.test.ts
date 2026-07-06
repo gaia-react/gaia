@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 /**
  * Tests for `display-rule-memory.ts`.
  *
@@ -14,19 +15,18 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {resolveStorageRoots} from '../../storage/paths.js';
 import type {StorageRoots} from '../../storage/paths.js';
-import {
-  DISPLAY_RULE_BODY,
-  DISPLAY_RULE_FILE_NAME,
-  DISPLAY_RULE_INDEX_LINE,
-} from '../display-rule.js';
 import {
   assertDisplayRule,
   installDisplayRule,
   removeDisplayRule,
 } from '../display-rule-memory.js';
+import {
+  DISPLAY_RULE_BODY,
+  DISPLAY_RULE_FILE_NAME,
+  DISPLAY_RULE_INDEX_LINE,
+} from '../display-rule.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -142,7 +142,7 @@ describe('removeDisplayRule', () => {
     const indexPath = path.join(sandbox.roots.memoryDir, 'MEMORY.md');
     writeFileSync(
       indexPath,
-      `- [Other rule A](a.md) - A\n- [Other rule B](b.md) - B\n`,
+      '- [Other rule A](a.md) - A\n- [Other rule B](b.md) - B\n',
       'utf8'
     );
 

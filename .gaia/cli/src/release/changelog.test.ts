@@ -1,18 +1,19 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release changelog`.
  */
-import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
-  type CommandRunner,
   graduateChangelog,
   groupCommits,
   renderBlock,
   run,
 } from './changelog.js';
+import type {CommandRunner} from './changelog.js';
 
 const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
   output: ['', stdout, ''] as never,
@@ -33,7 +34,7 @@ const failResult = (status: number): SpawnSyncReturns<string> => ({
 });
 
 const buildLogOutput = (
-  commits: Array<{subject: string; body?: string}>
+  commits: {body?: string; subject: string}[]
 ): string => {
   const RECORD_SEPARATOR = '---END-COMMIT---';
 
@@ -46,7 +47,7 @@ const buildLogOutput = (
 };
 
 const buildRunner =
-  (commits: Array<{subject: string; body?: string}>): CommandRunner =>
+  (commits: {body?: string; subject: string}[]): CommandRunner =>
   (command, args) => {
     if (command === 'git' && args[0] === 'describe') {
       return failResult(128);
@@ -95,11 +96,11 @@ describe('renderBlock', () => {
 
   test('orders Added → Changed → Fixed', () => {
     const block = renderBlock({Added: ['a'], Changed: ['c'], Fixed: ['f']});
-    const addedIdx = block.indexOf('### Added');
-    const changedIdx = block.indexOf('### Changed');
-    const fixedIdx = block.indexOf('### Fixed');
-    expect(addedIdx).toBeLessThan(changedIdx);
-    expect(changedIdx).toBeLessThan(fixedIdx);
+    const addedIndex = block.indexOf('### Added');
+    const changedIndex = block.indexOf('### Changed');
+    const fixedIndex = block.indexOf('### Fixed');
+    expect(addedIndex).toBeLessThan(changedIndex);
+    expect(changedIndex).toBeLessThan(fixedIndex);
   });
 });
 
@@ -122,8 +123,8 @@ describe('graduateChangelog', () => {
     expect(outcome.updated).toContain('## [Unreleased]');
     expect(outcome.updated).toContain('## [1.1.0] - 2026-05-07');
     const unreleasedIdx = outcome.updated.indexOf('## [Unreleased]');
-    const datedIdx = outcome.updated.indexOf('## [1.1.0]');
-    expect(unreleasedIdx).toBeLessThan(datedIdx);
+    const datedIndex = outcome.updated.indexOf('## [1.1.0]');
+    expect(unreleasedIdx).toBeLessThan(datedIndex);
     expect(outcome.updated).toContain('- new thing');
   });
 
@@ -202,7 +203,7 @@ const setupSandbox = (currentVersion: string): Sandbox => {
   );
   writeFileSync(
     path.join(root, 'CHANGELOG.md'),
-    `# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n- old\n`,
+    '# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n- old\n',
     'utf8'
   );
 
