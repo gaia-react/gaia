@@ -1,6 +1,6 @@
 ---
 name: gaia-audit
-description: Audit memory, wiki, and auto-loaded files for duplication, conflicting instructions, and stale content. The default path researches, then asks you a single Apply / Discuss / Decline question before any change. Pass --apply to re-run the apply stage against the most recent report.
+description: Audit memory, wiki, and auto-loaded files for duplication, conflicting instructions, and stale content. The default path researches, then asks you a single Apply / Discuss / Decline question; on Apply it applies the report, files any out-of-scope problem as a tech-debt issue, then commits, opens a PR, and merges it on a main-branch run like /update-deps. Pass --apply to re-run the apply-and-publish stage against the most recent report.
 argument-hint: [--apply] [scope-hint]
 ---
 
