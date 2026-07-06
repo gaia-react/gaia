@@ -40,7 +40,7 @@ The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main che
 | `final` | `bool` | `true` on every newly appended row. For `execute`, a best-effort rewrite flips every prior same-`(feature, session_id)` row's `final` to `false` after append, so at most one row per feature per session stays `true`. |
 | `ts` | `iso` | Generation stamp: when this record was written. |
 | `session_cwd` | `string \| null` | The session's live working directory at tally time (the tally's own `$PWD`, not `--out-dir` or the resolved ledger path), including from the worktree and degraded-attribution paths. `null` when empty. A reader forward-encodes it with Claude Code's transcript-directory transform (`/` and `.` each become `-`) to name the exact `~/.claude/projects` folder the session's transcript lives under. Absent on rows written before this field existed and on `source: "backfill"` rows; a reader without `session_cwd` falls back to a directory-scan heuristic to locate the transcript. |
-| `source` | `"backfill" \| absent` | Additive provenance marker. Present and equal to `"backfill"` only on rows emitted by the one-off vintage `cost.md` → `cost.jsonl` backfill (see "Archived folder shapes" below); absent (not present, not null) on every natively emitted row. |
+| `source` | `"backfill" \| absent` | Additive provenance marker. Present and equal to `"backfill"` only on rows emitted by the one-off vintage `cost.md` → `cost.jsonl` backfill (see "No folder survives merge" below); absent (not present, not null) on every natively emitted row. |
 
 ## Execute aggregation rule
 
