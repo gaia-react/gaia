@@ -280,3 +280,42 @@ describe('workflow templates: cross-tool invariants', () => {
     }
   );
 });
+
+describe('workflow templates: push re-authentication (issue #581)', () => {
+  // A `claude-code-action` step earlier in the job runs in OIDC mode and
+  // rewrites the checkout-persisted git credential
+  // (`http.https://github.com/.extraheader`) around a short-lived,
+  // OIDC-derived GitHub App token that no longer authorizes the subsequent
+  // `git push`. Every push that can follow such a step must first reset the
+  // extraheader to the workflow `GH_TOKEN` so it authenticates
+  // deterministically. `wiki` (confirmed failing) and `update-deps` (same
+  // bug, latent) are the affected tools.
+  const REAUTH = 'git config --local http.https://github.com/.extraheader';
+  const affected = ['wiki', 'update-deps'] as const;
+
+  it.each(affected)(
+    're-authenticates with GH_TOKEN before the auto-merge push (%s)',
+    (tool) => {
+      const rendered = renderForTool(tool);
+      const reauthAt = rendered.indexOf(REAUTH);
+      const pushAt = rendered.indexOf('git push origin "$branch"');
+
+      expect(reauthAt).toBeGreaterThan(-1);
+      expect(pushAt).toBeGreaterThan(reauthAt);
+      expect(rendered).toContain('x-access-token:%s');
+      expect(rendered).toContain('"$GH_TOKEN"');
+    }
+  );
+
+  it('re-authenticates before the wave-B push too (update-deps)', () => {
+    const rendered = renderForTool('update-deps');
+    const waveBPushAt = rendered.indexOf('git push origin "$BRANCH"');
+    const reauthBeforeWaveB = rendered.lastIndexOf(REAUTH, waveBPushAt);
+
+    expect(waveBPushAt).toBeGreaterThan(-1);
+    expect(reauthBeforeWaveB).toBeGreaterThan(-1);
+    expect(reauthBeforeWaveB).toBeLessThan(waveBPushAt);
+    // Both the run-job auto-merge push and the wave-B group push re-auth.
+    expect(rendered.split(REAUTH).length - 1).toBe(2);
+  });
+});

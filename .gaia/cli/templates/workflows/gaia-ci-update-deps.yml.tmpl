@@ -172,6 +172,16 @@ jobs:
           fi
           git add -A
           git commit -m "chore({{tool_id}}): wave-B major bump: ${GROUP}"
+          # Re-authenticate git before pushing. The wave_b_apply
+          # claude-code-action step above runs in OIDC mode and rewrites the
+          # checkout-persisted credential (http.<host>.extraheader) around a
+          # short-lived, OIDC-derived GitHub App token that no longer
+          # authorizes this push. Reset the extraheader to the workflow
+          # GH_TOKEN (permissions: contents: write) so the push authenticates
+          # deterministically regardless of what the action left behind.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local http.https://github.com/.extraheader \
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
           git push origin "$BRANCH"
           pr_url=$(gh pr create \
             --title "chore({{tool_id}}): wave-B major bump: ${GROUP}" \
