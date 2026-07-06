@@ -13,13 +13,16 @@
 # Right side suppression in linked worktrees: the right-side indicators
 # (`Run /setup-gaia`, `Run /update-deps`, `Run /update-gaia`) all prod the
 # user toward maintenance flows that belong on the main checkout. Inside a
-# linked worktree the right side is empty; the worktree is detected via
-# `dirname(git rev-parse --git-common-dir) != PROJECT_ROOT`. The background
-# refresher still fires from worktrees so the canonical cache (which the
-# worktree's `.gaia/local/cache/shared/` symlinks to) keeps updating.
+# linked worktree the right side is empty; the worktree is detected by
+# comparing the session's checkout root against the shared main root
+# (`dirname(git rev-parse --git-common-dir) != git rev-parse --show-toplevel`
+# for the session dir). The background refresher still fires from worktrees
+# so the canonical cache (which the worktree's `.gaia/local/cache/shared/`
+# symlinks to) keeps updating.
 #
 # The hot path stays fast (target <50ms): no network calls, no `pnpm` calls.
-# The worktree-detection adds at most one `git rev-parse` fork.
+# The worktree-detection adds up to two `git rev-parse` forks (one for
+# `--git-common-dir`, one for `--show-toplevel`).
 # A background refresher (.gaia/scripts/check-updates.sh) writes the cache.
 #
 # Partial failures are silent; a broken statusline disappears in Claude Code,
@@ -58,17 +61,29 @@ fi
 # ---------- Worktree detection ----------
 # The right side prods toward maintenance flows that belong on the main
 # checkout. Linked worktrees skip the cache read entirely so no indicators
-# emit there. Detection uses git plumbing only; falls through (treats as
-# main checkout) silently when git is unavailable.
+# emit there. Detection keys off the SESSION's directory (from the status
+# payload), not this script's install path: a maintainer wrapper can exec the
+# script from the main checkout while the session runs in a linked worktree,
+# so PROJECT_ROOT is an unreliable signal. Compares the session's checkout
+# root against the shared main root; falls through (treats as main checkout)
+# silently when git or the session dir is unavailable.
+session_dir="$(printf '%s' "$input" | jq -r '.workspace.current_dir // .cwd // empty' 2>/dev/null)"
+[ -n "$session_dir" ] || session_dir="$PROJECT_ROOT"
+
 is_worktree=0
-common_dir="$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)"
+common_dir="$(git -C "$session_dir" rev-parse --git-common-dir 2>/dev/null)"
 if [ -n "$common_dir" ]; then
   case "$common_dir" in
     /*) absolute_common_dir="$common_dir" ;;
-    *)  absolute_common_dir="$PROJECT_ROOT/$common_dir" ;;
+    *)  absolute_common_dir="$session_dir/$common_dir" ;;
   esac
-  main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd)"
-  if [ -n "$main_root" ] && [ "$main_root" != "$PROJECT_ROOT" ]; then
+  # Resolve both roots to physical paths (pwd -P) so a symlinked checkout path
+  # does not read as a worktree through mismatched symlink resolution (git
+  # returns physical paths; a bare `pwd` would stay logical).
+  main_root="$(cd "$(dirname "$absolute_common_dir")" 2>/dev/null && pwd -P)"
+  session_top="$(git -C "$session_dir" rev-parse --show-toplevel 2>/dev/null)"
+  session_root="$(cd "$session_top" 2>/dev/null && pwd -P)"
+  if [ -n "$main_root" ] && [ -n "$session_root" ] && [ "$main_root" != "$session_root" ]; then
     is_worktree=1
   fi
 fi
