@@ -21,7 +21,7 @@ The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main che
 | `kind` | `"spec" \| "plan" \| "execute"` | Which action produced the row. |
 | `spec_id` | `"SPEC-NNN" \| null` | Set only when the feature carries a SPEC identity. |
 | `plan_id` | `"PLAN-NNN" \| null` | Set only for a spec-less plan/execute. `spec_id` and `plan_id` are never both set; a spec identity wins the tiebreak when both are somehow supplied. An unclassifiable or absent feature key degrades to a partial row with **both** null, never a mistyped id. |
-| `plan_slug` | `string \| null` | The plan folder's human-facing slug, used for `cost.md` titles. |
+| `plan_slug` | `string \| null` | The plan folder's human-facing slug. |
 | `session_id` | `string` | The Claude Code session that produced the tally. |
 | `buckets` | `object` | `{ fresh_input, cache_write, cache_read, output }`, four `int`s: the session's deduped token totals. |
 | `total` | `int` | Sum of the four `buckets`. |
@@ -40,7 +40,7 @@ The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main che
 | `final` | `bool` | `true` on every newly appended row. For `execute`, a best-effort rewrite flips every prior same-`(feature, session_id)` row's `final` to `false` after append, so at most one row per feature per session stays `true`. |
 | `ts` | `iso` | Generation stamp: when this record was written. |
 | `session_cwd` | `string \| null` | The session's live working directory at tally time (the tally's own `$PWD`, not `--out-dir` or the resolved ledger path), including from the worktree and degraded-attribution paths. `null` when empty. A reader forward-encodes it with Claude Code's transcript-directory transform (`/` and `.` each become `-`) to name the exact `~/.claude/projects` folder the session's transcript lives under. Absent on rows written before this field existed and on `source: "backfill"` rows; a reader without `session_cwd` falls back to a directory-scan heuristic to locate the transcript. |
-| `source` | `"backfill" \| absent` | Additive provenance marker. Present and equal to `"backfill"` only on rows emitted by the one-off vintage `cost.md` → `cost.jsonl` backfill (see "No folder survives merge" below); absent (not present, not null) on every natively emitted row. |
+| `source` | `"backfill" \| absent` | Additive provenance marker. Present and equal to `"backfill"` only on rows emitted by the one-off vintage `cost.md` → `cost.jsonl` backfill (see "Retention at merge" below); absent (not present, not null) on every natively emitted row. |
 
 ## Execute aggregation rule
 
@@ -50,16 +50,16 @@ An `execute` action appends one cumulative row per commit, `seq` incrementing pe
 
 Additive-only by default: a new field does not bump `schema_version`. A breaking change, removing or repurposing an existing field, bumps `schema_version` and is confirmed first, an external consumer depends on this contract holding still. The ledger holds only `schema_version` 1-or-later records; a prior, differently-shaped ledger is moved aside to a backup file the contract never reads, so there is no absent-`schema_version` legacy branch to handle downstream.
 
-## No folder survives merge
+## Retention at merge
 
-A merged spec or plan's working folder, `.gaia/local/specs/<SPEC-ID>/` or `.gaia/local/plans/PLAN-NNN/`, is deleted outright rather than pruned and moved to an `archived/` tree. Nothing on disk carries the cost forward: `cost.jsonl` (this ledger) plus the two id-ledgers (`specs/ledger.json`, `plans/ledger.json`) are the whole durable record. Every figure a deleted folder's `cost.md` once rendered, per-action buckets, totals, and dollars, is recoverable from this ledger's rows keyed by `spec_id` or `plan_id`, with no dependency on any `cost.md` file.
+A merged SPEC folder's `SPEC.md`, `AUDIT.md`, and `cost.json` sidecar are kept at merge; the SessionStart janitor age-reaps the folder once its merge has aged past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days) and its cost is fully represented in this ledger. A spec-less `PLAN-NNN` folder, and a spec-colocated plan's `plan[-N]` subfolder, take the older path instead: deleted outright at merge rather than pruned and moved to an `archived/` tree. Either way, nothing kept on disk carries the cost forward: `cost.jsonl` (this ledger) plus the two id-ledgers (`specs/ledger.json`, `plans/ledger.json`) are the whole durable record. Every figure a deleted folder's `cost.json` sidecar once carried, per-phase buckets, totals, and dollars, is recoverable from this ledger's rows keyed by `spec_id` or `plan_id`, with no dependency on any sidecar file surviving.
 
-Every section `token-tally.sh` writes to a live `cost.md` during a run renders from the same uniform `## <heading>` block shape, which is what lets a reader (or a one-time migration) parse a vintage `cost.md` deterministically.
+`token-tally.sh` writes a per-folder `cost.json` sidecar alongside its ledger append: a single JSON object keyed by phase kind (`spec` for a spec folder; `plan` and/or `execute` for a plan folder), each value the same record shape as the matching `cost.jsonl` row, scoped to that one run. A plan or execute write replaces only its own key and preserves any sibling key's value untouched, so a plan folder's sidecar accumulates both phases without one write clobbering the other.
 
-A vintage `cost.md` that predates this ledger gets one `source: "backfill"` row per `## SPEC` / `## Planning` / `## Execution` section (never `## Total`, a derived grand-sum rather than its own phase).
+A vintage `cost.md` that predates this ledger and the sidecar gets one `source: "backfill"` row per `## SPEC` / `## Planning` / `## Execution` section (never `## Total`, a derived grand-sum rather than its own phase).
 
 ## Pairs with
 
 - [[Token Cost Readout]]: the `by_model` pricing surfaces (rate table, shared pricing lib, tally-time vs roll-up-time dollar figures) built on top of this ledger.
 - [[Telemetry]]: the ledger's place among GAIA's other telemetry streams.
-- [[Task Orchestration]]: the plan-lifecycle deletion step that removes the folder this ledger's rows outlive.
+- [[Task Orchestration]]: the merge-time reconcile and retention lifecycle that eventually removes the folder this ledger's rows outlive.

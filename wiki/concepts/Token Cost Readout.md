@@ -9,9 +9,9 @@ tags: [concept, telemetry, cost, token-accounting]
 
 # Token Cost Readout
 
-GAIA prices the ground-truth token usage of each workflow action (`/gaia-spec`, `/gaia-plan`, and KICKOFF plan execution) into a dollar estimate. Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and also prices a generation-time cost line into each `cost.md` section it writes (the write half), and `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
+GAIA prices the ground-truth token usage of each workflow action (`/gaia-spec`, `/gaia-plan`, and KICKOFF plan execution) into a dollar estimate. Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and also prices a generation-time `dollars` figure into each `cost.json` sidecar record it writes, alongside the matching `cost.jsonl` row (the write half), and `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
 
-The write half is documented alongside the rest of the tally in [[Telemetry]]'s storage model; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the committed rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-section cost line.
+The write half is documented alongside the rest of the tally in [[Telemetry]]'s storage model; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the committed rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-run dollar figure.
 
 ## The `by_model` ledger field
 
@@ -86,38 +86,32 @@ A ledger key that does not match `claude-` is silently ignored: it contributes n
 
 Like the token readout, the dollar block runs under a strict never-block contract: every failure mode degrades to a marked figure and the roll-up always exits 0.
 
-## The tally-time cost line
+## The tally-time dollar figure
 
-Each `cost.md` section `token-tally.sh` writes, the plan's `## Planning` section, its `## Execution` section, and the single-section spec doc, carries its own estimated USD cost line, priced from that section's own in-process `by_model`. The line renders after the token block (after the elapsed line and any token partial marker) and before the session/generated footer, and never begins with `## `, so it never becomes its own heading. On the clean, fully-priced path it reads:
-
-```
-**Est. cost (USD):** $0.88
-```
-
-a single section total, no per-model split. The line is additive: every existing token line, the bucket table, the elapsed-time line, and the token partial marker, renders exactly as it did before this line existed.
+There is no per-section markdown cost line anymore: `token-tally.sh`'s dollar estimate, priced from that run's own in-process `by_model`, lives in the `cost.json` sidecar record's `dollars` field and in the matching `cost.jsonl` row alongside it, not in any per-folder markdown file. The human-facing at-save readout is the tally's printed stdout block, the four buckets, the total, and the elapsed-time line (plus a partial marker when the token read is incomplete), which the workflow surfaces to the user. The dollar figure itself does not print to stdout; a reader who wants it reads the sidecar's `dollars` field directly, or waits for the roll-up's read-time reprice.
 
 ## Snapshot vs live
 
-The tally's cost line is a generation-time snapshot: it is frozen at the rate whose effective window covers the session's run-time anchor at the moment the section is written. The `## Execution` section refreshes on every orchestrator commit that rewrites it, so its snapshot moves forward each time; the `## Planning` section and the spec doc are each written once and stay fixed after that.
+The sidecar record's `dollars` is a generation-time snapshot: it is frozen at the rate whose effective window covers the session's run-time anchor at the moment the record is written. The `execute` key refreshes on every orchestrator commit that rewrites the sidecar (each write replaces only its own key and preserves the sibling, see [[Cost Data Contract]]), so its snapshot moves forward each time; the `spec` and `plan` keys are each written once and stay fixed after that.
 
-The roll-up's dollar block is a read-time reprice: it recomputes from the ledger every time it runs, against whatever rate table is committed at that moment. Both surfaces select a rate the same way, effective-dating on the run-time anchor through the shared lib's `rate_window` logic, so the two figures agree for a session most of the time. They can still diverge for one session: the rate table can be edited between the tally's write and a later merge-time roll-up, or the roll-up's ledger dedup can select a different underlying row than the one the tally priced. The roll-up is the authoritative live figure; `cost.md` is a per-phase snapshot of what pricing looked like when that phase's section was written.
+The roll-up's dollar block is a read-time reprice: it recomputes from the ledger every time it runs, against whatever rate table is committed at that moment. Both surfaces select a rate the same way, effective-dating on the run-time anchor through the shared lib's `rate_window` logic, so the two figures agree for a session most of the time. They can still diverge for one session: the rate table can be edited between the tally's write and a later merge-time roll-up, or the roll-up's ledger dedup can select a different underlying row than the one the tally priced. The roll-up is the authoritative live figure; the sidecar's `dollars` field is a per-phase snapshot of what pricing looked like when that record was written.
 
 ## Tally-time degrade markers
 
-`token-tally.sh` degrades to a marked figure under the same never-block contract as the roll-up, using a subset of markers shaped for pricing a single in-process session rather than scanning a ledger:
+`token-tally.sh` degrades the record's `dollars` field to `null` under the same never-block contract as the roll-up, but there is no marker text anywhere, only the raw number or `null`; there is no per-folder file left to render a marker line into.
 
-| Marker | Kind | Trigger |
-| --- | --- | --- |
-| `unavailable (rate table unreadable)` | unavailable | The committed rate table is missing or unparseable (same wording as the roll-up's). |
-| `unavailable (per-model attribution unavailable)` | unavailable | The section's `by_model` is empty. Worded for the tally's own cause, a session with no per-model records, distinct from the roll-up's "records predate per-model attribution". |
-| `Lower bound: unpriced model(s) <ids>` | lower bound | A `claude-` model in the section's `by_model` is absent from the rate table; the priceable portion still renders and the missing model is named. |
-| `Lower bound: some transcript inputs were unreadable; cost is a floor` | lower bound | The section's own token render is itself partial (the token partial marker also renders); the cost line is marked a floor. |
+| Trigger | Record effect |
+| --- | --- |
+| The committed rate table is missing or unparseable | `dollars: null` |
+| The section's `by_model` is empty (no per-model attribution for the session) | `dollars: null` |
+| A `claude-` model in the section's `by_model` is absent from the rate table | `dollars` prices the remaining models and silently omits the unpriced one, a lower bound with no marker recorded |
+| The section's own token render is itself partial | `dollars` prices whatever `by_model` data is available, silently, with no marker recorded (the token partial marker on the bucket totals still renders independently) |
 
-The roll-up's multi-row markers, mixed provenance, a corrupt ledger line, a cross-session missing run-time anchor, don't arise at tally time: each tally invocation prices a single in-process session and reads no ledger.
+A reader who wants a human-facing description of a degrade, rather than a bare number, reads the roll-up's dollar-block markers above, which cover the same triggers and render as text at read time.
 
 ## Pairs with
 
-- [[Cost Data Contract]]: the full `cost.jsonl` record schema, the execute aggregation rule, and why no folder survives merge.
+- [[Cost Data Contract]]: the full `cost.jsonl` record schema, the execute aggregation rule, and the retention rules for what survives merge.
 - [[Telemetry]]: the token tally's storage model and the `.gaia/local/telemetry/` streams the ledger lives beside.
 - [[PR Merge Workflow]]: the merge-time `PostToolUse` hook that renders the full-cycle roll-up.
 - [[Task Orchestration]]: KICKOFF plan execution, whose per-commit cost the ledger accumulates.
