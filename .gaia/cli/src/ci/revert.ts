@@ -15,11 +15,12 @@ import {
   readRevertLedger,
   withRevertLedgerLock,
   writeRevertLedger,
-  type RevertLedger,
 } from '../schemas/revert-ledger.js';
+import type {RevertAttempt, RevertLedger} from '../schemas/revert-ledger.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
-import {runGh, runGit, type ProcessResult} from './util/run-process.js';
+import {runGh, runGit} from './util/run-process.js';
+import type {ProcessResult} from './util/run-process.js';
 
 const HELP_TEXT = `Usage: gaia ci-revert <subcommand> [args]
 
@@ -36,40 +37,14 @@ const HELP_TEXT = `Usage: gaia ci-revert <subcommand> [args]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type RunOptions = {
-  cwd?: string;
-  now?: () => Date;
-};
-
-export const run = (
-  argv: readonly string[],
-  options: RunOptions = {}
-): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
-    process.stdout.write(HELP_TEXT);
-
-    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
-  }
-
-  const sub = argv[0] as string;
-  const rest = argv.slice(1);
-
-  if (sub === 'open') return handleOpen(rest, options);
-  if (sub === 'mark-failed') return handleMarkFailed(rest, options);
-  if (sub === 'is-cap-reached') return handleIsCapReached(rest, options);
-
-  structuredError({
-    code: 'unknown_subcommand',
-    message: `unknown ci-revert subcommand: ${sub}`,
-    subcommand: 'ci-revert',
-  });
-
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-};
-
 type CommonArgs = {
   json: boolean;
   pr: number | undefined;
+};
+
+type RunOptions = {
+  cwd?: string;
+  now?: () => Date;
 };
 
 const parsePrFlag = (value: string | undefined): number | undefined => {
@@ -84,7 +59,7 @@ const parsePrFlag = (value: string | undefined): number | undefined => {
 const resolveRoot = (
   options: RunOptions,
   subcommand: string
-): string | null => {
+): null | string => {
   try {
     return resolveRepoRoot(options.cwd ?? process.cwd());
   } catch {
@@ -102,11 +77,11 @@ const ensureLedger = (
   repoRoot: string,
   subcommand: string,
   json: boolean
-): RevertLedger | null => {
+): null | RevertLedger => {
   const result = readRevertLedger(repoRoot);
 
   if (result.status === 'malformed') {
-    const payload = {error: 'malformed_ledger', details: result.error};
+    const payload = {details: result.error, error: 'malformed_ledger'};
     structuredError({
       code: 'malformed_ledger',
       message: result.error,
@@ -125,6 +100,16 @@ const ensureLedger = (
   return result.ledger;
 };
 
+// `ledger.attempts` is a Record<string, RevertAttempt> and the project does
+// not enable `noUncheckedIndexedAccess`, so TS treats every key as present.
+// The key here is a user-supplied PR number that may genuinely be absent
+// from the ledger; narrow at this read site instead of loosening the
+// shared ledger schema type (owned by `schemas/`, outside this cluster).
+const getAttempt = (
+  ledger: RevertLedger,
+  key: string
+): RevertAttempt | undefined => ledger.attempts[key];
+
 // --- open ----------------------------------------------------------------
 
 type OpenArgs = CommonArgs & {
@@ -132,64 +117,49 @@ type OpenArgs = CommonArgs & {
   reason: string | undefined;
 };
 
-const parseOpenArgs = (argv: readonly string[]): OpenArgs | string => {
+const parseOpenArgs = (argv: readonly string[]): OpenArgs | {error: string} => {
   let pr: number | undefined;
   let label: string | undefined;
   let reason: string | undefined;
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;
-
-      continue;
-    }
-
-    if (token === '--pr') {
+    } else if (token === '--pr') {
       pr = parsePrFlag(argv[index + 1]);
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--label') {
+    } else if (token === '--label') {
       label = argv[index + 1];
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--reason') {
+    } else if (token === '--reason') {
       reason = argv[index + 1];
       index += 1;
-
-      continue;
+    } else {
+      return {error: `unknown argument: ${token}`};
     }
-
-    return `unknown argument: ${token}`;
   }
 
   return {json, label, pr, reason};
 };
 
-const parsePrUrlNumber = (urlOrText: string): number | null => {
+const parsePrUrlNumber = (urlOrText: string): null | number => {
   // gh pr create stdout is the URL; sometimes a banner line precedes it.
   // We scan every whitespace-delimited token for the first one ending in
   // /pull/<digits> or /<digits>.
   const tokens = urlOrText.split(/\s+/u).filter((token) => token.length > 0);
 
-  for (let i = tokens.length - 1; i >= 0; i -= 1) {
-    const token = tokens[i] as string;
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index];
     const pullMatch = /\/pull\/(\d+)$/u.exec(token);
 
-    if (pullMatch !== null) return Number.parseInt(pullMatch[1] as string, 10);
+    if (pullMatch !== null) return Number.parseInt(pullMatch[1], 10);
 
     const trailingMatch = /\/(\d+)$/u.exec(token);
 
-    if (trailingMatch !== null)
-      return Number.parseInt(trailingMatch[1] as string, 10);
+    if (trailingMatch !== null) return Number.parseInt(trailingMatch[1], 10);
   }
 
   return null;
@@ -197,9 +167,9 @@ const parsePrUrlNumber = (urlOrText: string): number | null => {
 
 const DEFAULT_REVERT_BODY = (originalPr: number): string =>
   `Auto-revert of #${originalPr} opened by GAIA CI after post-merge CI failure.\n\n` +
-  `This PR will auto-merge on green CI. If its CI also fails, GAIA CI will\n` +
-  `stop automated activity on this change and open a \`priority:critical\`\n` +
-  `issue requesting human intervention.\n`;
+  'This PR will auto-merge on green CI. If its CI also fails, GAIA CI will\n' +
+  'stop automated activity on this change and open a `priority:critical`\n' +
+  'issue requesting human intervention.\n';
 
 const surfaceRevertFailure = (
   step: string,
@@ -210,7 +180,7 @@ const surfaceRevertFailure = (
     result.stderr.trim() ||
     result.stdout.trim() ||
     `exit code ${result.exitCode}`;
-  const payload = {error: 'revert_failed', step, details};
+  const payload = {details, error: 'revert_failed', step};
   structuredError({
     code: 'revert_failed',
     details,
@@ -226,13 +196,356 @@ const surfaceRevertFailure = (
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
+type ResolvedRevertPr = {
+  baseRefName: string;
+  headRefName: string;
+  mergeSha: string;
+  title: string;
+};
+
+const resolveRevertPr = (
+  pr: number,
+  repoRoot: string,
+  json: boolean
+): ResolvedRevertPr | {code: number} => {
+  const viewResult = runGh(
+    [
+      'pr',
+      'view',
+      String(pr),
+      '--json',
+      'mergeCommit,headRefName,baseRefName,title',
+    ],
+    {cwd: repoRoot}
+  );
+
+  if (viewResult.exitCode !== 0) {
+    return {code: surfaceRevertFailure('gh_pr_view', viewResult, json)};
+  }
+
+  let view: {
+    baseRefName?: unknown;
+    headRefName?: unknown;
+    mergeCommit?: unknown;
+    title?: unknown;
+  };
+
+  try {
+    view = JSON.parse(viewResult.stdout) as Record<string, unknown>;
+  } catch (error) {
+    return {
+      code: surfaceRevertFailure(
+        'gh_pr_view_parse',
+        {
+          exitCode: 1,
+          stderr: error instanceof Error ? error.message : String(error),
+          stdout: '',
+        },
+        json
+      ),
+    };
+  }
+
+  const {mergeCommit} = view;
+  const mergeSha =
+    (
+      typeof mergeCommit === 'object' &&
+      mergeCommit !== null &&
+      typeof (mergeCommit as Record<string, unknown>).oid === 'string'
+    ) ?
+      ((mergeCommit as Record<string, unknown>).oid as string)
+    : null;
+
+  if (mergeSha === null) {
+    const payload = {error: 'pr_not_merged', pr};
+    structuredError({
+      code: 'pr_not_merged',
+      message: `PR #${pr} has no merge commit; cannot revert`,
+      pr,
+      subcommand: 'ci-revert open',
+    });
+
+    if (json) {
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+    }
+
+    return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+  }
+
+  const headRefName =
+    typeof view.headRefName === 'string' ? view.headRefName : null;
+  const baseRefName =
+    typeof view.baseRefName === 'string' ? view.baseRefName : null;
+  const title = typeof view.title === 'string' ? view.title : `PR #${pr}`;
+
+  if (headRefName === null || baseRefName === null) {
+    return {
+      code: surfaceRevertFailure(
+        'gh_pr_view_parse',
+        {exitCode: 1, stderr: 'missing headRefName / baseRefName', stdout: ''},
+        json
+      ),
+    };
+  }
+
+  return {baseRefName, headRefName, mergeSha, title};
+};
+
+type CreateRevertBranchArgs = {
+  baseRefName: string;
+  headRefName: string;
+  json: boolean;
+  mergeSha: string;
+  repoRoot: string;
+};
+
+const createRevertBranch = (
+  args: CreateRevertBranchArgs
+): {code: number} | {revertBranch: string} => {
+  const {baseRefName, headRefName, json, mergeSha, repoRoot} = args;
+  const shortSha = mergeSha.slice(0, 7);
+  const revertBranch = `gaia-ci/revert/${headRefName}-${shortSha}`;
+
+  // Step 6: git fetch / checkout / revert / push
+  const fetchResult = runGit(['fetch', 'origin', baseRefName], {cwd: repoRoot});
+
+  if (fetchResult.exitCode !== 0) {
+    return {code: surfaceRevertFailure('git_fetch', fetchResult, json)};
+  }
+
+  // Capture the branch the repo was on before we create the revert
+  // branch, so a later failure can restore it. An empty result (detached
+  // HEAD) is fine; the rollback simply skips the checkout-back step.
+  const priorBranchResult = runGit(
+    ['symbolic-ref', '--quiet', '--short', 'HEAD'],
+    {cwd: repoRoot}
+  );
+  const priorBranch =
+    priorBranchResult.exitCode === 0 ? priorBranchResult.stdout.trim() : '';
+
+  const checkoutResult = runGit(
+    ['checkout', '-b', revertBranch, `origin/${baseRefName}`],
+    {cwd: repoRoot}
+  );
+
+  if (checkoutResult.exitCode !== 0) {
+    return {code: surfaceRevertFailure('git_checkout', checkoutResult, json)};
+  }
+
+  // Restore the repo to its pre-revert state: leave the revert branch
+  // and delete it. Best-effort; every step is non-fatal because the
+  // surfaced failure is the one that matters.
+  const rollbackRevertBranch = (): void => {
+    if (priorBranch === '') {
+      runGit(['checkout', '--force', `origin/${baseRefName}`], {cwd: repoRoot});
+    } else {
+      runGit(['checkout', '--force', priorBranch], {cwd: repoRoot});
+    }
+    runGit(['branch', '-D', revertBranch], {cwd: repoRoot});
+  };
+
+  const revertResult = runGit(['revert', '--no-edit', mergeSha], {
+    cwd: repoRoot,
+  });
+
+  if (revertResult.exitCode !== 0) {
+    // Abort the in-progress revert, then unwind the branch we created so
+    // the repo is left exactly as we found it.
+    runGit(['revert', '--abort'], {cwd: repoRoot});
+    rollbackRevertBranch();
+
+    return {code: surfaceRevertFailure('git_revert', revertResult, json)};
+  }
+
+  const pushResult = runGit(['push', '-u', 'origin', revertBranch], {
+    cwd: repoRoot,
+  });
+
+  if (pushResult.exitCode !== 0) {
+    // The local branch carries a committed revert; a failed push leaves
+    // a non-atomic mutation behind. Roll the local repo back to its
+    // prior state so a retry starts clean.
+    rollbackRevertBranch();
+
+    return {code: surfaceRevertFailure('git_push', pushResult, json)};
+  }
+
+  return {revertBranch};
+};
+
+type OpenRevertPrArgs = {
+  baseRefName: string;
+  body: string;
+  json: boolean;
+  label: string;
+  repoRoot: string;
+  revertBranch: string;
+  title: string;
+};
+
+const openRevertPr = (
+  args: OpenRevertPrArgs
+): {code: number} | {newPr: number} => {
+  const {baseRefName, body, json, label, repoRoot, revertBranch, title} = args;
+
+  const createResult = runGh(
+    [
+      'pr',
+      'create',
+      '--base',
+      baseRefName,
+      '--head',
+      revertBranch,
+      '--title',
+      `Revert: ${title}`,
+      '--body',
+      body,
+      '--label',
+      label,
+    ],
+    {cwd: repoRoot}
+  );
+
+  if (createResult.exitCode !== 0) {
+    return {code: surfaceRevertFailure('gh_pr_create', createResult, json)};
+  }
+
+  const newPr = parsePrUrlNumber(createResult.stdout);
+
+  if (newPr === null) {
+    return {
+      code: surfaceRevertFailure(
+        'gh_pr_create_parse',
+        {
+          exitCode: 1,
+          stderr: `unable to parse PR number from: ${createResult.stdout}`,
+          stdout: '',
+        },
+        json
+      ),
+    };
+  }
+
+  const mergeAutoResult = runGh(
+    ['pr', 'merge', String(newPr), '--auto', '--squash'],
+    {cwd: repoRoot}
+  );
+
+  if (mergeAutoResult.exitCode !== 0) {
+    return {
+      code: surfaceRevertFailure('gh_pr_merge_auto', mergeAutoResult, json),
+    };
+  }
+
+  return {newPr};
+};
+
+type HandleOpenLockedArgs = {
+  json: boolean;
+  label: string;
+  options: RunOptions;
+  pr: number;
+  reason: string | undefined;
+  repoRoot: string;
+};
+
+const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
+  const {json, label, options, pr, reason, repoRoot} = args;
+
+  const ledger = ensureLedger(repoRoot, 'open', json);
+
+  if (ledger === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+
+  const key = String(pr);
+  const existing = getAttempt(ledger, key);
+
+  if (existing !== undefined) {
+    const payload = {
+      error: 'revert_already_opened',
+      existing_revert_pr: existing.revert_pr,
+    };
+    structuredError({
+      code: 'revert_already_opened',
+      existing_revert_pr: existing.revert_pr,
+      message: `revert already opened for PR #${pr} (revert PR #${existing.revert_pr})`,
+      subcommand: 'ci-revert open',
+    });
+
+    if (json) {
+      process.stdout.write(`${JSON.stringify(payload)}\n`);
+    }
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  const resolved = resolveRevertPr(pr, repoRoot, json);
+
+  if ('code' in resolved) return resolved.code;
+
+  const {baseRefName, headRefName, mergeSha, title} = resolved;
+
+  const branchResult = createRevertBranch({
+    baseRefName,
+    headRefName,
+    json,
+    mergeSha,
+    repoRoot,
+  });
+
+  if ('code' in branchResult) return branchResult.code;
+
+  const {revertBranch} = branchResult;
+
+  const body = reason ?? DEFAULT_REVERT_BODY(pr);
+
+  const prResult = openRevertPr({
+    baseRefName,
+    body,
+    json,
+    label,
+    repoRoot,
+    revertBranch,
+    title,
+  });
+
+  if ('code' in prResult) return prResult.code;
+
+  const {newPr} = prResult;
+
+  // Update the ledger.
+  const nowDate = (options.now ?? (() => new Date()))();
+  ledger.attempts[key] = {
+    opened_at: nowDate.toISOString(),
+    original_pr: pr,
+    revert_pr: newPr,
+    status: 'open',
+  };
+  writeRevertLedger(repoRoot, ledger);
+
+  const success = {
+    original_pr: pr,
+    revert_branch: revertBranch,
+    revert_pr: newPr,
+  };
+
+  if (json) {
+    process.stdout.write(`${JSON.stringify(success)}\n`);
+  } else {
+    process.stdout.write(
+      `revert PR #${newPr} opened on branch ${revertBranch} for #${pr}\n`
+    );
+  }
+
+  return EXIT_CODES.OK;
+};
+
 const handleOpen = (argv: readonly string[], options: RunOptions): number => {
   const parsed = parseOpenArgs(argv);
 
-  if (typeof parsed === 'string') {
+  if ('error' in parsed) {
     structuredError({
       code: 'invalid_arguments',
-      message: parsed,
+      message: parsed.error,
       subcommand: 'ci-revert open',
     });
 
@@ -291,285 +604,25 @@ const handleOpen = (argv: readonly string[], options: RunOptions): number => {
   return locked.value;
 };
 
-type HandleOpenLockedArgs = {
-  json: boolean;
-  label: string;
-  options: RunOptions;
-  pr: number;
-  reason: string | undefined;
-  repoRoot: string;
-};
-
-const handleOpenLocked = (args: HandleOpenLockedArgs): number => {
-  const {json, label, options, pr, reason, repoRoot} = args;
-
-  const ledger = ensureLedger(repoRoot, 'open', json);
-
-  if (ledger === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-
-  const key = String(pr);
-  const existing = ledger.attempts[key];
-
-  if (existing !== undefined) {
-    const payload = {
-      error: 'revert_already_opened',
-      existing_revert_pr: existing.revert_pr,
-    };
-    structuredError({
-      code: 'revert_already_opened',
-      existing_revert_pr: existing.revert_pr,
-      message: `revert already opened for PR #${pr} (revert PR #${existing.revert_pr})`,
-      subcommand: 'ci-revert open',
-    });
-
-    if (json) {
-      process.stdout.write(`${JSON.stringify(payload)}\n`);
-    }
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  // Step 4: gh pr view
-  const viewResult = runGh(
-    [
-      'pr',
-      'view',
-      String(pr),
-      '--json',
-      'mergeCommit,headRefName,baseRefName,title',
-    ],
-    {cwd: repoRoot}
-  );
-
-  if (viewResult.exitCode !== 0) {
-    return surfaceRevertFailure('gh_pr_view', viewResult, json);
-  }
-
-  let view: {
-    baseRefName?: unknown;
-    headRefName?: unknown;
-    mergeCommit?: unknown;
-    title?: unknown;
-  };
-
-  try {
-    view = JSON.parse(viewResult.stdout) as Record<string, unknown>;
-  } catch (error) {
-    return surfaceRevertFailure(
-      'gh_pr_view_parse',
-      {
-        exitCode: 1,
-        stderr: error instanceof Error ? error.message : String(error),
-        stdout: '',
-      },
-      json
-    );
-  }
-
-  const mergeCommit = view.mergeCommit;
-  const mergeSha =
-    (
-      typeof mergeCommit === 'object' &&
-      mergeCommit !== null &&
-      typeof (mergeCommit as Record<string, unknown>).oid === 'string'
-    ) ?
-      ((mergeCommit as Record<string, unknown>).oid as string)
-    : null;
-
-  if (mergeSha === null) {
-    const payload = {error: 'pr_not_merged', pr};
-    structuredError({
-      code: 'pr_not_merged',
-      message: `PR #${pr} has no merge commit; cannot revert`,
-      pr,
-      subcommand: 'ci-revert open',
-    });
-
-    if (json) {
-      process.stdout.write(`${JSON.stringify(payload)}\n`);
-    }
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  const headRefName =
-    typeof view.headRefName === 'string' ? view.headRefName : null;
-  const baseRefName =
-    typeof view.baseRefName === 'string' ? view.baseRefName : null;
-  const title = typeof view.title === 'string' ? view.title : `PR #${pr}`;
-
-  if (headRefName === null || baseRefName === null) {
-    return surfaceRevertFailure(
-      'gh_pr_view_parse',
-      {exitCode: 1, stderr: 'missing headRefName / baseRefName', stdout: ''},
-      json
-    );
-  }
-
-  const shortSha = mergeSha.slice(0, 7);
-  const revertBranch = `gaia-ci/revert/${headRefName}-${shortSha}`;
-
-  // Step 6: git fetch / checkout / revert / push
-  const fetchResult = runGit(['fetch', 'origin', baseRefName], {cwd: repoRoot});
-
-  if (fetchResult.exitCode !== 0) {
-    return surfaceRevertFailure('git_fetch', fetchResult, json);
-  }
-
-  // Capture the branch the repo was on before we create the revert
-  // branch, so a later failure can restore it. An empty result (detached
-  // HEAD) is fine; the rollback simply skips the checkout-back step.
-  const priorBranchResult = runGit(
-    ['symbolic-ref', '--quiet', '--short', 'HEAD'],
-    {cwd: repoRoot}
-  );
-  const priorBranch =
-    priorBranchResult.exitCode === 0 ? priorBranchResult.stdout.trim() : '';
-
-  const checkoutResult = runGit(
-    ['checkout', '-b', revertBranch, `origin/${baseRefName}`],
-    {cwd: repoRoot}
-  );
-
-  if (checkoutResult.exitCode !== 0) {
-    return surfaceRevertFailure('git_checkout', checkoutResult, json);
-  }
-
-  // Restore the repo to its pre-revert state: leave the revert branch
-  // and delete it. Best-effort; every step is non-fatal because the
-  // surfaced failure is the one that matters.
-  const rollbackRevertBranch = (): void => {
-    if (priorBranch !== '') {
-      runGit(['checkout', '--force', priorBranch], {cwd: repoRoot});
-    } else {
-      runGit(['checkout', '--force', `origin/${baseRefName}`], {cwd: repoRoot});
-    }
-    runGit(['branch', '-D', revertBranch], {cwd: repoRoot});
-  };
-
-  const revertResult = runGit(['revert', '--no-edit', mergeSha], {
-    cwd: repoRoot,
-  });
-
-  if (revertResult.exitCode !== 0) {
-    // Abort the in-progress revert, then unwind the branch we created so
-    // the repo is left exactly as we found it.
-    runGit(['revert', '--abort'], {cwd: repoRoot});
-    rollbackRevertBranch();
-
-    return surfaceRevertFailure('git_revert', revertResult, json);
-  }
-
-  const pushResult = runGit(['push', '-u', 'origin', revertBranch], {
-    cwd: repoRoot,
-  });
-
-  if (pushResult.exitCode !== 0) {
-    // The local branch carries a committed revert; a failed push leaves
-    // a non-atomic mutation behind. Roll the local repo back to its
-    // prior state so a retry starts clean.
-    rollbackRevertBranch();
-
-    return surfaceRevertFailure('git_push', pushResult, json);
-  }
-
-  const body = reason ?? DEFAULT_REVERT_BODY(pr);
-
-  const createResult = runGh(
-    [
-      'pr',
-      'create',
-      '--base',
-      baseRefName,
-      '--head',
-      revertBranch,
-      '--title',
-      `Revert: ${title}`,
-      '--body',
-      body,
-      '--label',
-      label,
-    ],
-    {cwd: repoRoot}
-  );
-
-  if (createResult.exitCode !== 0) {
-    return surfaceRevertFailure('gh_pr_create', createResult, json);
-  }
-
-  const newPr = parsePrUrlNumber(createResult.stdout);
-
-  if (newPr === null) {
-    return surfaceRevertFailure(
-      'gh_pr_create_parse',
-      {
-        exitCode: 1,
-        stderr: `unable to parse PR number from: ${createResult.stdout}`,
-        stdout: '',
-      },
-      json
-    );
-  }
-
-  const mergeAutoResult = runGh(
-    ['pr', 'merge', String(newPr), '--auto', '--squash'],
-    {cwd: repoRoot}
-  );
-
-  if (mergeAutoResult.exitCode !== 0) {
-    return surfaceRevertFailure('gh_pr_merge_auto', mergeAutoResult, json);
-  }
-
-  // Update the ledger.
-  const nowDate = (options.now ?? (() => new Date()))();
-  ledger.attempts[key] = {
-    opened_at: nowDate.toISOString(),
-    original_pr: pr,
-    revert_pr: newPr,
-    status: 'open',
-  };
-  writeRevertLedger(repoRoot, ledger);
-
-  const success = {
-    original_pr: pr,
-    revert_branch: revertBranch,
-    revert_pr: newPr,
-  };
-
-  if (json) {
-    process.stdout.write(`${JSON.stringify(success)}\n`);
-  } else {
-    process.stdout.write(
-      `revert PR #${newPr} opened on branch ${revertBranch} for #${pr}\n`
-    );
-  }
-
-  return EXIT_CODES.OK;
-};
-
 // --- mark-failed ---------------------------------------------------------
 
-const parseSimplePrArgs = (argv: readonly string[]): CommonArgs | string => {
+const parseSimplePrArgs = (
+  argv: readonly string[]
+): CommonArgs | {error: string} => {
   let pr: number | undefined;
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;
-
-      continue;
-    }
-
-    if (token === '--pr') {
+    } else if (token === '--pr') {
       pr = parsePrFlag(argv[index + 1]);
       index += 1;
-
-      continue;
+    } else {
+      return {error: `unknown argument: ${token}`};
     }
-
-    return `unknown argument: ${token}`;
   }
 
   return {json, pr};
@@ -581,10 +634,10 @@ const handleMarkFailed = (
 ): number => {
   const parsed = parseSimplePrArgs(argv);
 
-  if (typeof parsed === 'string') {
+  if ('error' in parsed) {
     structuredError({
       code: 'invalid_arguments',
-      message: parsed,
+      message: parsed.error,
       subcommand: 'ci-revert mark-failed',
     });
 
@@ -612,7 +665,7 @@ const handleMarkFailed = (
   if (ledger === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
   const key = String(pr);
-  const entry = ledger.attempts[key];
+  const entry = getAttempt(ledger, key);
 
   if (entry === undefined) {
     const payload = {error: 'no_revert_attempt', pr};
@@ -658,10 +711,10 @@ const handleIsCapReached = (
 ): number => {
   const parsed = parseSimplePrArgs(argv);
 
-  if (typeof parsed === 'string') {
+  if ('error' in parsed) {
     structuredError({
       code: 'invalid_arguments',
-      message: parsed,
+      message: parsed.error,
       subcommand: 'ci-revert is-cap-reached',
     });
 
@@ -688,7 +741,7 @@ const handleIsCapReached = (
 
   if (ledger === null) return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 
-  const entry = ledger.attempts[String(pr)];
+  const entry = getAttempt(ledger, String(pr));
   const status = entry?.status ?? null;
   const capReached = status === 'open' || status === 'failed';
 
@@ -703,4 +756,30 @@ const handleIsCapReached = (
   }
 
   return EXIT_CODES.OK;
+};
+
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
+    process.stdout.write(HELP_TEXT);
+
+    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+  }
+
+  const sub = argv[0];
+  const rest = argv.slice(1);
+
+  if (sub === 'open') return handleOpen(rest, options);
+  if (sub === 'mark-failed') return handleMarkFailed(rest, options);
+  if (sub === 'is-cap-reached') return handleIsCapReached(rest, options);
+
+  structuredError({
+    code: 'unknown_subcommand',
+    message: `unknown ci-revert subcommand: ${sub}`,
+    subcommand: 'ci-revert',
+  });
+
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };

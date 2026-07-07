@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   mkdirSync,
@@ -8,22 +9,35 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {saveDeclines} from './declines.js';
+import {resolveGroupMembers} from './groups.js';
 import {
   classifyBucket,
   classifyKind,
   computeUpdates,
   resolveGroup,
   run,
-  type PnpmRunner,
 } from './run.js';
-import {saveDeclines} from './declines.js';
-import {resolveGroupMembers} from './groups.js';
+import type {PnpmResult, PnpmRunner} from './run.js';
 
 type Sandbox = {
   cleanup: () => void;
   root: string;
   writePackageJson: (contents: Record<string, unknown>) => void;
+};
+
+// minimumReleaseAge: 10080 (7 days). With RELEASE_AGE_NOW at 2026-06-02T00:00Z
+// the cooldown cutoff is 2026-05-26T00:00Z: anything published on/before it
+// is "aged", anything after is "too young".
+const RELEASE_AGE_NOW = (): Date => new Date('2026-06-02T00:00:00.000Z');
+const PREVIEW_NOW = (): Date => new Date('2026-06-11T18:00:00.000Z');
+
+const writeWorkspace = (root: string, minutes: number): void => {
+  writeFileSync(
+    path.join(root, 'pnpm-workspace.yaml'),
+    `minimumReleaseAge: ${minutes}\n`,
+    'utf8'
+  );
 };
 
 const setupSandbox = (): Sandbox => {
@@ -84,86 +98,113 @@ const captureStdio = (): {
 
 type FakeOutdated = Record<
   string,
-  {current: string; latest: string; wanted: string; dependencyType?: string}
+  {current: string; dependencyType?: string; latest: string; wanted: string}
 >;
-
-/**
- * Map from package name to its latest version, used to fake `pnpm view <name> version`.
- * Use `null` to simulate a registry failure (package not found / network error).
- */
-type FakeViewVersions = Record<string, string | null>;
 
 /**
  * Map from package name to its `version -> ISO publish time` table, used to
  * fake `pnpm view <name> time --json`. Use `null` to simulate a registry
  * failure (the release-age cooldown then records the package as unresolved).
  */
-type FakeViewTimes = Record<string, Record<string, string> | null>;
+type FakeViewTimes = Record<string, null | Record<string, string>>;
 
-const makePnpmRunner = (
-  fakeOutdated: FakeOutdated,
-  eslintVersions?: readonly string[],
-  fakeViewVersions?: FakeViewVersions,
-  fakeViewTimes?: FakeViewTimes,
-  fakeVersionLists?: Record<string, readonly string[]>
-): PnpmRunner => {
-  return (args) => {
-    if (args[0] === 'outdated' && args.includes('--json')) {
-      // pnpm outdated exits 1 when packages are outdated; mirror that.
-      return {
-        status: Object.keys(fakeOutdated).length === 0 ? 0 : 1,
-        stderr: '',
-        stdout: JSON.stringify(fakeOutdated),
-      };
-    }
+/**
+ * Map from package name to its latest version, used to fake `pnpm view <name> version`.
+ * Use `null` to simulate a registry failure (package not found / network error).
+ */
+type FakeViewVersions = Record<string, null | string>;
 
-    // pnpm view <name> versions --json; used by the ESLint cap and the config
-    // version-hold cap. `eslint` falls back to the `eslintVersions` arg.
-    if (args[0] === 'view' && args[2] === 'versions') {
-      const pkgName = args[1] as string;
-      const list =
-        fakeVersionLists?.[pkgName] ??
-        (pkgName === 'eslint' ? eslintVersions : undefined) ??
-        [];
+// pnpm outdated exits 1 when packages are outdated; mirror that.
+const handleOutdated = (
+  args: readonly string[],
+  fakeOutdated: FakeOutdated
+): PnpmResult | undefined => {
+  if (args[0] !== 'outdated' || !args.includes('--json')) return undefined;
 
-      return {status: 0, stderr: '', stdout: JSON.stringify(list)};
-    }
+  return {
+    status: Object.keys(fakeOutdated).length === 0 ? 0 : 1,
+    stderr: '',
+    stdout: JSON.stringify(fakeOutdated),
+  };
+};
 
-    // pnpm view <name> time --json; used by the release-age cooldown.
-    if (args[0] === 'view' && args[2] === 'time' && args[3] === '--json') {
-      const pkgName = args[1] as string;
-      const times = fakeViewTimes?.[pkgName];
+// pnpm view <name> versions --json; used by the ESLint cap and the config
+// version-hold cap. `eslint` falls back to the `eslintVersions` arg.
+const handleViewVersions = (
+  args: readonly string[],
+  eslintVersions: readonly string[] | undefined,
+  fakeVersionLists: Record<string, readonly string[]> | undefined
+): PnpmResult | undefined => {
+  if (args[0] !== 'view' || args[2] !== 'versions') return undefined;
 
-      if (times === null) {
-        return {status: 1, stderr: `E404 Not found: ${pkgName}`, stdout: ''};
-      }
+  const pkgName = args[1];
+  const list =
+    fakeVersionLists?.[pkgName] ??
+    (pkgName === 'eslint' ? eslintVersions : undefined) ??
+    [];
 
-      if (times !== undefined) {
-        return {status: 0, stderr: '', stdout: JSON.stringify(times)};
-      }
-    }
+  return {status: 0, stderr: '', stdout: JSON.stringify(list)};
+};
 
-    // pnpm view <name> version; used to fetch latest for sibling expansion
-    if (args[0] === 'view' && args[2] === 'version' && args.length === 3) {
-      const pkgName = args[1] as string;
-      const resolved = fakeViewVersions?.[pkgName];
+// pnpm view <name> time --json; used by the release-age cooldown.
+const handleViewTime = (
+  args: readonly string[],
+  fakeViewTimes: FakeViewTimes | undefined
+): PnpmResult | undefined => {
+  if (args[0] !== 'view' || args[2] !== 'time' || args[3] !== '--json') {
+    return undefined;
+  }
 
-      if (resolved === null) {
-        return {status: 1, stderr: `E404 Not found: ${pkgName}`, stdout: ''};
-      }
+  const pkgName = args[1];
+  const times = fakeViewTimes?.[pkgName];
 
-      if (resolved !== undefined) {
-        return {status: 0, stderr: '', stdout: `${resolved}\n`};
-      }
-    }
+  if (times === null) {
+    return {status: 1, stderr: `E404 Not found: ${pkgName}`, stdout: ''};
+  }
 
-    return {
+  return times === undefined ? undefined : (
+      {status: 0, stderr: '', stdout: JSON.stringify(times)}
+    );
+};
+
+// pnpm view <name> version; used to fetch latest for sibling expansion.
+const handleViewVersion = (
+  args: readonly string[],
+  fakeViewVersions: FakeViewVersions | undefined
+): PnpmResult | undefined => {
+  if (args[0] !== 'view' || args[2] !== 'version' || args.length !== 3) {
+    return undefined;
+  }
+
+  const pkgName = args[1];
+  const resolved = fakeViewVersions?.[pkgName];
+
+  if (resolved === null) {
+    return {status: 1, stderr: `E404 Not found: ${pkgName}`, stdout: ''};
+  }
+
+  return resolved === undefined ? undefined : (
+      {status: 0, stderr: '', stdout: `${resolved}\n`}
+    );
+};
+
+const makePnpmRunner =
+  (
+    fakeOutdated: FakeOutdated,
+    eslintVersions?: readonly string[],
+    fakeViewVersions?: FakeViewVersions,
+    fakeViewTimes?: FakeViewTimes,
+    fakeVersionLists?: Record<string, readonly string[]>
+  ): PnpmRunner =>
+  (args) =>
+    handleOutdated(args, fakeOutdated) ??
+    handleViewVersions(args, eslintVersions, fakeVersionLists) ??
+    handleViewTime(args, fakeViewTimes) ??
+    handleViewVersion(args, fakeViewVersions) ?? {
       status: 1,
       stderr: `unexpected args: ${args.join(' ')}`,
       stdout: '',
     };
-  };
-};
 
 describe('update-deps run: version classification', () => {
   test('classifyKind returns major when leading integer differs', () => {
@@ -256,8 +297,8 @@ describe('update-deps run: computeUpdates', () => {
   test('all minor/patch land in wave_a as singletons by default', () => {
     sandbox.writePackageJson({
       dependencies: {
-        foo: '^1.2.3',
         bar: '~4.5.0',
+        foo: '^1.2.3',
       },
     });
 
@@ -302,20 +343,20 @@ describe('update-deps run: computeUpdates', () => {
   test('any major bump in a group lands in wave_b with all members from outdated', () => {
     sandbox.writePackageJson({
       dependencies: {
-        'react-router': '^6.30.0',
         '@react-router/serve': '^6.30.0',
+        'react-router': '^6.30.0',
       },
     });
 
     const result = computeUpdates({
       cwd: sandbox.root,
       pnpmRunner: makePnpmRunner({
-        'react-router': {current: '6.30.0', latest: '7.0.0', wanted: '6.30.0'},
         '@react-router/serve': {
           current: '6.30.0',
           latest: '7.0.0',
           wanted: '6.30.0',
         },
+        'react-router': {current: '6.30.0', latest: '7.0.0', wanted: '6.30.0'},
       }),
     });
 
@@ -600,27 +641,27 @@ describe('update-deps run: computeUpdates', () => {
 
     expect(result.wave_a).toEqual([]);
     expect(result.wave_b).toHaveLength(1);
-    const group = result.wave_b[0];
+    const group = result.wave_b.at(0);
     expect(group?.group).toBe('react');
     expect(group?.packages).toHaveLength(2);
-    const reactPkg = group?.packages.find((p) => p.name === 'react');
-    const reactDomPkg = group?.packages.find((p) => p.name === 'react-dom');
-    expect(reactPkg?.latest).toBe('19.0.0');
-    expect(reactPkg?.kind).toBe('major');
-    expect(reactDomPkg?.latest).toBe('19.0.0');
-    expect(reactDomPkg?.current).toBe('18.2.0');
+    const reactPackage = group?.packages.find((p) => p.name === 'react');
+    const reactDomPackage = group?.packages.find((p) => p.name === 'react-dom');
+    expect(reactPackage?.latest).toBe('19.0.0');
+    expect(reactPackage?.kind).toBe('major');
+    expect(reactDomPackage?.latest).toBe('19.0.0');
+    expect(reactDomPackage?.current).toBe('18.2.0');
     // sibling with equal current/latest gets kind: "patch" as no-op default
     // (react-dom 18.2.0 → 19.0.0 is actually a major, verify that too)
-    expect(reactDomPkg?.kind).toBe('major');
-    expect(reactDomPkg?.wanted).toBe('19.0.0');
+    expect(reactDomPackage?.kind).toBe('major');
+    expect(reactDomPackage?.wanted).toBe('19.0.0');
   });
 
   test('sibling expansion: non-outdated group member included in wave_a when trigger is minor', () => {
     // react-router is minor bump, @react-router/serve is current but present in pkg.json
     sandbox.writePackageJson({
       dependencies: {
-        'react-router': '^7.0.0',
         '@react-router/serve': '^7.0.0',
+        'react-router': '^7.0.0',
       },
     });
 
@@ -637,7 +678,9 @@ describe('update-deps run: computeUpdates', () => {
 
     expect(result.wave_b).toEqual([]);
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
+    const rrd = result.wave_a.find(
+      (entry) => entry.name === '@react-router/serve'
+    );
     expect(rrd).toBeDefined();
     expect(rrd?.latest).toBe('7.1.0');
     expect(rrd?.current).toBe('7.0.0');
@@ -649,8 +692,8 @@ describe('update-deps run: computeUpdates', () => {
     // @react-router/serve is truly up-to-date after fetch; must still be included
     sandbox.writePackageJson({
       dependencies: {
-        'react-router': '^7.1.0',
         '@react-router/serve': '^7.1.0',
+        'react-router': '^7.1.0',
       },
     });
 
@@ -666,7 +709,9 @@ describe('update-deps run: computeUpdates', () => {
     });
 
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
+    const rrd = result.wave_a.find(
+      (entry) => entry.name === '@react-router/serve'
+    );
     expect(rrd).toBeDefined();
     // current 7.1.0 vs latest 7.2.0 → minor
     expect(rrd?.kind).toBe('minor');
@@ -676,8 +721,8 @@ describe('update-deps run: computeUpdates', () => {
     // @react-router/serve is exactly on latest after fetch → no-op, kind: "patch"
     sandbox.writePackageJson({
       dependencies: {
-        'react-router': '^7.1.0',
         '@react-router/serve': '^7.2.0',
+        'react-router': '^7.1.0',
       },
     });
 
@@ -693,7 +738,9 @@ describe('update-deps run: computeUpdates', () => {
     });
 
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
+    const rrd = result.wave_a.find(
+      (entry) => entry.name === '@react-router/serve'
+    );
     expect(rrd).toBeDefined();
     // current 7.2.0 vs latest 7.2.0 → equal, kind: "patch" as no-op default
     expect(rrd?.kind).toBe('patch');
@@ -765,8 +812,8 @@ describe('update-deps run: computeUpdates', () => {
     // storybook (exact) IS flagged outdated → pull in @storybook/react via pnpm view.
     sandbox.writePackageJson({
       devDependencies: {
-        storybook: '^8.0.0',
         '@storybook/react': '^8.0.0',
+        storybook: '^8.0.0',
       },
     });
 
@@ -782,7 +829,7 @@ describe('update-deps run: computeUpdates', () => {
     });
 
     expect(result.wave_b).toHaveLength(1);
-    const group = result.wave_b[0];
+    const group = result.wave_b.at(0);
     expect(group?.group).toBe('storybook');
     expect(group?.packages).toHaveLength(2);
     const sbReact = group?.packages.find((p) => p.name === '@storybook/react');
@@ -793,8 +840,8 @@ describe('update-deps run: computeUpdates', () => {
   test('sibling expansion: current version comes from node_modules, not the spec', () => {
     sandbox.writePackageJson({
       devDependencies: {
-        storybook: '^8.0.0',
         '@storybook/react': '^8.0.0',
+        storybook: '^8.0.0',
       },
     });
     // @storybook/react is already on 9.0.0 in node_modules even though the
@@ -938,9 +985,10 @@ describe('update-deps run: CLI', () => {
   });
 
   test('rejects unknown flags', () => {
-    const exit = run(['--emit-updates', '/tmp/x.json', '--bogus'], {
-      cwd: sandbox.root,
-    });
+    const exit = run(
+      ['--emit-updates', path.join(sandbox.root, 'x.json'), '--bogus'],
+      {cwd: sandbox.root}
+    );
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('unknown flag');
   });
@@ -963,29 +1011,17 @@ describe('update-deps run: release-age cooldown', () => {
     sandbox.cleanup();
   });
 
-  // minimumReleaseAge: 10080 (7 days). With NOW at 2026-06-02T00:00Z the
-  // cooldown cutoff is 2026-05-26T00:00Z: anything published on/before it is
-  // "aged", anything after is "too young".
-  const NOW = (): Date => new Date('2026-06-02T00:00:00.000Z');
   const ANCIENT = '2025-01-01T00:00:00.000Z';
   const AGED = '2026-05-20T00:00:00.000Z';
   const TOO_YOUNG = '2026-05-30T00:00:00.000Z';
 
-  const writeWorkspace = (root: string, minutes: number): void => {
-    writeFileSync(
-      path.join(root, 'pnpm-workspace.yaml'),
-      `minimumReleaseAge: ${minutes}\n`,
-      'utf8'
-    );
-  };
-
   test('caps latest to the newest aged version at or below latest', () => {
     sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
-    writeWorkspace(sandbox.root, 10080);
+    writeWorkspace(sandbox.root, 10_080);
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner(
         {foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'}},
         undefined,
@@ -1012,11 +1048,11 @@ describe('update-deps run: release-age cooldown', () => {
 
   test('skips a package when every upgrade is younger than the cooldown', () => {
     sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
-    writeWorkspace(sandbox.root, 10080);
+    writeWorkspace(sandbox.root, 10_080);
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner(
         {foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'}},
         undefined,
@@ -1035,11 +1071,11 @@ describe('update-deps run: release-age cooldown', () => {
 
   test('leaves latest untouched when it is already old enough', () => {
     sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
-    writeWorkspace(sandbox.root, 10080);
+    writeWorkspace(sandbox.root, 10_080);
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner(
         {foo: {current: '1.0.0', latest: '1.2.0', wanted: '1.2.0'}},
         undefined,
@@ -1055,11 +1091,11 @@ describe('update-deps run: release-age cooldown', () => {
 
   test('ignores prerelease versions when capping', () => {
     sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
-    writeWorkspace(sandbox.root, 10080);
+    writeWorkspace(sandbox.root, 10_080);
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner(
         {foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'}},
         undefined,
@@ -1068,8 +1104,8 @@ describe('update-deps run: release-age cooldown', () => {
           foo: {
             '1.0.0': ANCIENT,
             '1.2.0': AGED,
-            '1.3.0-beta.1': AGED,
             '1.3.0': TOO_YOUNG,
+            '1.3.0-beta.1': AGED,
           },
         }
       ),
@@ -1087,7 +1123,7 @@ describe('update-deps run: release-age cooldown', () => {
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner({
         foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'},
       }),
@@ -1104,7 +1140,7 @@ describe('update-deps run: release-age cooldown', () => {
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner({
         foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'},
       }),
@@ -1116,11 +1152,11 @@ describe('update-deps run: release-age cooldown', () => {
 
   test('records release-age-unresolved when the time lookup fails', () => {
     sandbox.writePackageJson({dependencies: {foo: '^1.0.0'}});
-    writeWorkspace(sandbox.root, 10080);
+    writeWorkspace(sandbox.root, 10_080);
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner(
         {foo: {current: '1.0.0', latest: '1.3.0', wanted: '1.3.0'}},
         undefined,
@@ -1137,44 +1173,46 @@ describe('update-deps run: release-age cooldown', () => {
 
   test('caps a sibling-expanded version too', () => {
     sandbox.writePackageJson({
-      dependencies: {'react-router': '^7.0.0', '@react-router/serve': '^7.0.0'},
+      dependencies: {'@react-router/serve': '^7.0.0', 'react-router': '^7.0.0'},
     });
-    writeWorkspace(sandbox.root, 10080);
+    writeWorkspace(sandbox.root, 10_080);
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner(
         {'react-router': {current: '7.0.0', latest: '7.2.0', wanted: '7.2.0'}},
         undefined,
         {'@react-router/serve': '7.3.0'},
         {
-          'react-router': {'7.0.0': ANCIENT, '7.2.0': AGED},
           '@react-router/serve': {
             '7.0.0': ANCIENT,
             '7.2.0': AGED,
             '7.3.0': TOO_YOUNG,
           },
+          'react-router': {'7.0.0': ANCIENT, '7.2.0': AGED},
         }
       ),
     });
 
     expect(result.skipped).toEqual([]);
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
+    const rrd = result.wave_a.find(
+      (entry) => entry.name === '@react-router/serve'
+    );
     expect(rrd?.latest).toBe('7.2.0');
     expect(rrd?.kind).toBe('minor');
   });
 
   test('an up-to-date sibling (current === latest) is still included', () => {
     sandbox.writePackageJson({
-      dependencies: {'react-router': '^7.1.0', '@react-router/serve': '^7.2.0'},
+      dependencies: {'@react-router/serve': '^7.2.0', 'react-router': '^7.1.0'},
     });
-    writeWorkspace(sandbox.root, 10080);
+    writeWorkspace(sandbox.root, 10_080);
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: RELEASE_AGE_NOW,
       pnpmRunner: makePnpmRunner(
         {'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'}},
         undefined,
@@ -1187,7 +1225,9 @@ describe('update-deps run: release-age cooldown', () => {
 
     expect(result.skipped).toEqual([]);
     expect(result.wave_a).toHaveLength(2);
-    const rrd = result.wave_a.find((e) => e.name === '@react-router/serve');
+    const rrd = result.wave_a.find(
+      (entry) => entry.name === '@react-router/serve'
+    );
     expect(rrd).toBeDefined();
     expect(rrd?.kind).toBe('patch');
     expect(rrd?.latest).toBe('7.2.0');
@@ -1196,7 +1236,6 @@ describe('update-deps run: release-age cooldown', () => {
 
 describe('update-deps run: preview payload fields', () => {
   let sandbox: Sandbox;
-  const NOW = (): Date => new Date('2026-06-11T18:00:00.000Z');
 
   beforeEach(() => {
     sandbox = setupSandbox();
@@ -1224,7 +1263,7 @@ describe('update-deps run: preview payload fields', () => {
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: PREVIEW_NOW,
       pnpmRunner: makePnpmRunner({
         foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
         tiny: {current: '0.4.0', latest: '0.5.0', wanted: '0.5.0'},
@@ -1244,7 +1283,7 @@ describe('update-deps run: preview payload fields', () => {
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: PREVIEW_NOW,
       pnpmRunner: makePnpmRunner({
         bar: {current: '4.5.0', latest: '4.5.1', wanted: '4.5.1'},
         foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
@@ -1258,30 +1297,30 @@ describe('update-deps run: preview payload fields', () => {
   test('a snoozed group drops out of actionable_count but not total_count', () => {
     sandbox.writePackageJson({
       dependencies: {
+        '@react-router/serve': '^7.1.0',
         foo: '^1.2.3',
         'react-router': '^7.1.0',
-        '@react-router/serve': '^7.1.0',
       },
     });
     saveDeclines(sandbox.root, [
       {
-        declined_at: NOW().toISOString(),
+        declined_at: PREVIEW_NOW().toISOString(),
         group: 'react-router',
-        targets: {'react-router': '7.2.0', '@react-router/serve': '7.2.0'},
+        targets: {'@react-router/serve': '7.2.0', 'react-router': '7.2.0'},
       },
     ]);
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: PREVIEW_NOW,
       pnpmRunner: makePnpmRunner({
-        foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
-        'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'},
         '@react-router/serve': {
           current: '7.1.0',
           latest: '7.2.0',
           wanted: '7.2.0',
         },
+        foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+        'react-router': {current: '7.1.0', latest: '7.2.0', wanted: '7.2.0'},
       }),
     });
 
@@ -1294,9 +1333,9 @@ describe('update-deps run: preview payload fields', () => {
       {
         group: 'react-router',
         resurfaces_at: new Date(
-          NOW().getTime() + 14 * 24 * 60 * 60 * 1000
+          PREVIEW_NOW().getTime() + 14 * 24 * 60 * 60 * 1000
         ).toISOString(),
-        snoozed_at: NOW().toISOString(),
+        snoozed_at: PREVIEW_NOW().toISOString(),
         targets: {'@react-router/serve': '7.2.0', 'react-router': '7.2.0'},
       },
     ]);
@@ -1307,7 +1346,7 @@ describe('update-deps run: preview payload fields', () => {
 
     const result = computeUpdates({
       cwd: sandbox.root,
-      now: NOW,
+      now: PREVIEW_NOW,
       pnpmRunner: makePnpmRunner({
         foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
       }),

@@ -41,31 +41,43 @@ const HTTPS_RE = /^https?:\/\/([^/]+)\/(.+)$/u;
 const SSH_PROTO_RE = /^ssh:\/\/[^/]+\/(.+)$/u;
 const SSH_PROTO_HOST_RE = /^ssh:\/\/(?:[^@/]+@)?([^/]+)\//u;
 
+// Strips every trailing slash with a loop rather than `.replace(/\/+$/u, '')`:
+// sonarjs/super-linear-regex flags the trailing unbounded quantifier next to
+// the `$` anchor, and a normal remote URL has at most one trailing slash
+// anyway, so a loop is just as simple and sidesteps the regex entirely.
+const stripTrailingSlashes = (value: string): string => {
+  let result = value;
+
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
+};
+
 const parseTwoSegments = (
   url: string,
   host: string,
   rest: string
-): ParsedRemote | null => {
-  const trimmedRest = stripGitSuffix(rest).replace(/\/+$/u, '');
+): null | ParsedRemote => {
+  const trimmedRest = stripTrailingSlashes(stripGitSuffix(rest));
   const segments = trimmedRest.split('/');
 
   if (segments.length !== 2) return null;
 
+  // Destructuring a `string[]` of a length already verified above: both
+  // are genuinely always defined here, not just per the (unchecked-access)
+  // type.
   const [owner, repo] = segments;
 
-  if (
-    owner === undefined ||
-    repo === undefined ||
-    !isValidSegment(owner) ||
-    !isValidSegment(repo)
-  ) {
+  if (!isValidSegment(owner) || !isValidSegment(repo)) {
     return null;
   }
 
   return {host, owner, repo, url};
 };
 
-export const parseRemoteUrl = (url: string): ParsedRemote | null => {
+export const parseRemoteUrl = (url: string): null | ParsedRemote => {
   if (typeof url !== 'string' || url.trim() === '') return null;
 
   const trimmed = url.trim();
@@ -76,11 +88,7 @@ export const parseRemoteUrl = (url: string): ParsedRemote | null => {
 
     if (hostMatch === null || restMatch === null) return null;
 
-    return parseTwoSegments(
-      trimmed,
-      hostMatch[1] as string,
-      restMatch[1] as string
-    );
+    return parseTwoSegments(trimmed, hostMatch[1], restMatch[1]);
   }
 
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
@@ -88,14 +96,14 @@ export const parseRemoteUrl = (url: string): ParsedRemote | null => {
 
     if (match === null) return null;
 
-    return parseTwoSegments(trimmed, match[1] as string, match[2] as string);
+    return parseTwoSegments(trimmed, match[1], match[2]);
   }
 
   const scpMatch = SCP_SSH_RE.exec(trimmed);
 
   if (scpMatch !== null) {
-    const host = scpMatch[2] as string;
-    const rest = scpMatch[3] as string;
+    const host = scpMatch[2];
+    const rest = scpMatch[3];
 
     return parseTwoSegments(trimmed, host, rest);
   }

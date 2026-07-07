@@ -29,7 +29,7 @@ export type ParsedFinding = {
 
 const SEVERITIES = new Set(['error', 'suggestion', 'warning']);
 
-const parseFinding = (value: unknown): ParsedFinding | null => {
+const parseFinding = (value: unknown): null | ParsedFinding => {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
 
@@ -59,7 +59,7 @@ const parseFinding = (value: unknown): ParsedFinding | null => {
  * Returns the well-formed findings in `body`, `[]` for an explicit empty block,
  * or `null` when no parseable block is present.
  */
-export const parseFindingsBlock = (body: string): ParsedFinding[] | null => {
+export const parseFindingsBlock = (body: string): null | ParsedFinding[] => {
   const startIndex = body.indexOf(START_SENTINEL);
 
   if (startIndex === -1) return null;
@@ -91,7 +91,7 @@ export const parseFindingsBlock = (body: string): ParsedFinding[] | null => {
 
   if (typeof parsed !== 'object' || parsed === null) return null;
 
-  const findings = (parsed as Record<string, unknown>).findings;
+  const {findings} = parsed as Record<string, unknown>;
 
   if (!Array.isArray(findings)) return null;
 

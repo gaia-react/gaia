@@ -1,10 +1,10 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia init configure-automation`.
  */
 import {existsSync, mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {automationConfigPath} from '../automation/paths.js';
 import {AutomationConfigSchema} from '../schemas/automation-config.js';
 import {run} from './configure-automation.js';

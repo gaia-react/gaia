@@ -1,3 +1,4 @@
+import {describe, expect, test} from 'vitest';
 /**
  * Tests for `inspectWorkingTree`.
  *
@@ -8,8 +9,8 @@
  * change and `sync land` refuses to land it.
  */
 import type {SpawnSyncReturns} from 'node:child_process';
-import {describe, expect, test} from 'vitest';
-import {inspectWorkingTree, type CommandRunner} from './branch.js';
+import {inspectWorkingTree} from './branch.js';
+import type {CommandRunner} from './branch.js';
 
 const okResult = (stdout: string): SpawnSyncReturns<string> => ({
   output: ['', stdout, ''] as never,

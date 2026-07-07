@@ -224,8 +224,7 @@ export const detectIntentClarityGap = (args: DetectArgs): PatternResult[] => {
     // `_unknown` is a sentinel for specs that could not be attributed to a
     // real area, not an area itself. Excluded from threshold evaluation and
     // coaching output so it can never surface as "...working in _unknown".
-    if (area === UNKNOWN_AREA) continue;
-    results.push(buildAreaResult(area, entry));
+    if (area !== UNKNOWN_AREA) results.push(buildAreaResult(area, entry));
   }
 
   return results;

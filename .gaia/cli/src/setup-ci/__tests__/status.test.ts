@@ -1,9 +1,10 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {localAutomationPath} from '../../automation/paths.js';
 import {run} from '../status.js';
-import {setupSandbox, VALID_BASE_CONFIG, type Sandbox} from './sandbox.js';
+import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -52,7 +53,7 @@ describe('setup-ci status', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns configured: false when .gaia/automation.json is missing', () => {
+  test('returns configured: false when .gaia/automation.json is missing', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
@@ -64,7 +65,7 @@ describe('setup-ci status', () => {
     expect(parsed.tools_enabled).toEqual([]);
   });
 
-  it('returns configured: true with full report when config is present', () => {
+  test('returns configured: true with full report when config is present', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       pnpm_audit: {mode: 'local', schedule: 'weekly'},
@@ -89,7 +90,7 @@ describe('setup-ci status', () => {
     ]);
   });
 
-  it('reports nudge_dismissed from .gaia/local/automation.json when present', () => {
+  test('reports nudge_dismissed from .gaia/local/automation.json when present', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
       recursive: true,
@@ -110,7 +111,7 @@ describe('setup-ci status', () => {
     expect(parsed.nudge_dismissed).toBe(true);
   });
 
-  it('exits non-zero when local file is malformed', () => {
+  test('exits non-zero when local file is malformed', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
       recursive: true,
@@ -126,7 +127,7 @@ describe('setup-ci status', () => {
     expect(stdio.err.join('')).toContain('local_malformed');
   });
 
-  it('exits non-zero when committed config is malformed', () => {
+  test('exits non-zero when committed config is malformed', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       version: 99 as unknown as 1,
@@ -137,7 +138,7 @@ describe('setup-ci status', () => {
     expect(stdio.err.join('')).toContain('config_malformed');
   });
 
-  it('emits a human report without --json', () => {
+  test('emits a human report without --json', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
 
     const exit = run([], {cwd: sandbox.root});
@@ -148,20 +149,20 @@ describe('setup-ci status', () => {
     expect(out).toContain('tools_enabled:');
   });
 
-  it('emits a missing-config human message when .gaia/automation.json absent', () => {
+  test('emits a missing-config human message when .gaia/automation.json absent', () => {
     const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
     expect(stdio.out.join('')).toContain('not configured');
   });
 
-  it('rejects unknown flags', () => {
+  test('rejects unknown flags', () => {
     const exit = run(['--bogus'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unknown flag');
   });
 
-  it('--help exits 0', () => {
+  test('--help exits 0', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

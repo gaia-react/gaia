@@ -1,7 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {run} from '../detect-remote.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -50,7 +51,7 @@ describe('setup-ci detect-remote', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns parsed fields when origin is configured', () => {
+  test('returns parsed fields when origin is configured', () => {
     execFileSync(
       'git',
       ['remote', 'add', 'origin', 'git@github.com:foo/bar.git'],
@@ -70,7 +71,7 @@ describe('setup-ci detect-remote', () => {
     expect(parsed.repo).toBe('bar');
   });
 
-  it('returns found: false when origin is missing', () => {
+  test('returns found: false when origin is missing', () => {
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
@@ -83,7 +84,7 @@ describe('setup-ci detect-remote', () => {
     expect(parsed.host).toBeNull();
   });
 
-  it('returns found: false when remote URL is unparseable', () => {
+  test('returns found: false when remote URL is unparseable', () => {
     execFileSync(
       'git',
       ['remote', 'add', 'origin', 'https://gitlab.com/foo/bar/baz.git'],
@@ -102,7 +103,7 @@ describe('setup-ci detect-remote', () => {
     expect(parsed.url).toBe('https://gitlab.com/foo/bar/baz.git');
   });
 
-  it('emits a human report without --json', () => {
+  test('emits a human report without --json', () => {
     execFileSync(
       'git',
       ['remote', 'add', 'origin', 'https://github.com/foo/bar'],
@@ -114,13 +115,13 @@ describe('setup-ci detect-remote', () => {
     expect(stdio.out.join('')).toContain('host: github.com');
   });
 
-  it('rejects unknown flags', () => {
+  test('rejects unknown flags', () => {
     const exit = run(['--bogus'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unknown flag');
   });
 
-  it('--help exits 0', () => {
+  test('--help exits 0', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

@@ -1,4 +1,5 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {
   BlockedReturnedCloudPayload,
   CloudPayloadByType,
@@ -22,23 +23,23 @@ const goodUatPass = {
 
 describe('schemas/cloud-projection', () => {
   describe('strict-mode rejection (UAT-014)', () => {
-    it('rejects unknown keys on UatPassCloudPayload', () => {
+    test('rejects unknown keys on UatPassCloudPayload', () => {
       expect(() =>
         UatPassCloudPayload.parse({...goodUatPass, surprise: 1})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects unknown keys on UatFailCloudPayload', () => {
+    test('rejects unknown keys on UatFailCloudPayload', () => {
       expect(() =>
         UatFailCloudPayload.parse({
           ...goodUatPass,
           email: 'leak@example.com',
           failure_class: 'exception',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects unknown keys on NeedsContextReturnedCloudPayload', () => {
+    test('rejects unknown keys on NeedsContextReturnedCloudPayload', () => {
       expect(() =>
         NeedsContextReturnedCloudPayload.parse({
           agent_type: 'Senior',
@@ -48,10 +49,10 @@ describe('schemas/cloud-projection', () => {
           stowaway: true,
           task_id: 'TASK-093',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects unknown keys on BlockedReturnedCloudPayload', () => {
+    test('rejects unknown keys on BlockedReturnedCloudPayload', () => {
       expect(() =>
         BlockedReturnedCloudPayload.parse({
           agent_type: 'Senior',
@@ -61,10 +62,10 @@ describe('schemas/cloud-projection', () => {
           spec_id: 'SPEC-014',
           task_id: 'TASK-093',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects unknown keys on SpecAmendedCloudPayload', () => {
+    test('rejects unknown keys on SpecAmendedCloudPayload', () => {
       expect(() =>
         SpecAmendedCloudPayload.parse({
           amendment_reason: 'reason',
@@ -73,10 +74,10 @@ describe('schemas/cloud-projection', () => {
           spec_id: 'SPEC-014',
           time_since_close_seconds: 1,
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects unknown keys on PlanRevisedCloudPayload', () => {
+    test('rejects unknown keys on PlanRevisedCloudPayload', () => {
       expect(() =>
         PlanRevisedCloudPayload.parse({
           hostname: 'leak',
@@ -86,10 +87,10 @@ describe('schemas/cloud-projection', () => {
           revision_class: 'scope_change',
           spec_id: 'SPEC-014',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects unknown keys on TimeToResolvedSpecCloudPayload', () => {
+    test('rejects unknown keys on TimeToResolvedSpecCloudPayload', () => {
       expect(() =>
         TimeToResolvedSpecCloudPayload.parse({
           abandoned: false,
@@ -99,10 +100,10 @@ describe('schemas/cloud-projection', () => {
           question_count: 2,
           spec_id: 'SPEC-014',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects unknown keys on CodeReviewAuditFindingCloudPayload', () => {
+    test('rejects unknown keys on CodeReviewAuditFindingCloudPayload', () => {
       expect(() =>
         CodeReviewAuditFindingCloudPayload.parse({
           area_tags: ['typescript'],
@@ -112,10 +113,10 @@ describe('schemas/cloud-projection', () => {
           pr_number: 42,
           severity: 'warning',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects a free-text finding_class on CodeReviewAuditFindingCloudPayload', () => {
+    test('rejects a free-text finding_class on CodeReviewAuditFindingCloudPayload', () => {
       expect(() =>
         CodeReviewAuditFindingCloudPayload.parse({
           area_tags: ['typescript'],
@@ -124,16 +125,16 @@ describe('schemas/cloud-projection', () => {
           pr_number: 42,
           severity: 'warning',
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
   describe('happy paths', () => {
-    it('accepts a clean uat_pass cloud payload', () => {
+    test('accepts a clean uat_pass cloud payload', () => {
       expect(() => UatPassCloudPayload.parse(goodUatPass)).not.toThrow();
     });
 
-    it('accepts a clean code_review_audit_finding (with optional spec_id)', () => {
+    test('accepts a clean code_review_audit_finding (with optional spec_id)', () => {
       expect(() =>
         CodeReviewAuditFindingCloudPayload.parse({
           area_tags: ['typescript'],
@@ -147,7 +148,7 @@ describe('schemas/cloud-projection', () => {
   });
 
   describe('CloudPayloadByType', () => {
-    it('exposes all eight event types', () => {
+    test('exposes all eight event types', () => {
       const eventTypes = Object.keys(CloudPayloadByType);
       expect(eventTypes).toHaveLength(8);
       expect(new Set(eventTypes)).toEqual(
@@ -166,7 +167,7 @@ describe('schemas/cloud-projection', () => {
   });
 
   describe('FORBIDDEN_CLOUD_KEYS', () => {
-    it('lists all UAT-013 forbidden identity-bearing fields', () => {
+    test('lists all UAT-013 forbidden identity-bearing fields', () => {
       const required = [
         '_local',
         'developer_id',

@@ -1,9 +1,6 @@
-import {describe, expect, it} from 'vitest';
-import {
-  computeTally,
-  type TallyPrRecord,
-  windowClasses,
-} from '../compute-tally.js';
+import {describe, expect, test} from 'vitest';
+import {computeTally, windowClasses} from '../compute-tally.js';
+import type {TallyPrRecord} from '../compute-tally.js';
 
 const pr = (
   prNumber: number,
@@ -14,7 +11,7 @@ const noCover = (): boolean => false;
 const noSuppress = (): boolean => false;
 
 describe('computeTally', () => {
-  it('surfaces a class seen on 3 distinct PRs at warning severity', () => {
+  test('surfaces a class seen on 3 distinct PRs at warning severity', () => {
     const result = computeTally({
       coveredClass: noCover,
       prs: [
@@ -48,16 +45,16 @@ describe('computeTally', () => {
     expect(result.window_days).toBe(90);
 
     const [candidate] = result.candidates;
-    expect(candidate?.finding_class).toBe(
+    expect(candidate.finding_class).toBe(
       'react-doctor/no-generic-handler-names'
     );
-    expect(candidate?.distinct_pr_count).toBe(3);
-    expect(candidate?.severity_max).toBe('warning');
-    expect(candidate?.pr_numbers).toEqual([1201, 1188, 1175]);
-    expect(candidate?.area_tags).toEqual(['app/components', 'app/hooks']);
+    expect(candidate.distinct_pr_count).toBe(3);
+    expect(candidate.severity_max).toBe('warning');
+    expect(candidate.pr_numbers).toEqual([1201, 1188, 1175]);
+    expect(candidate.area_tags).toEqual(['app/components', 'app/hooks']);
   });
 
-  it('does not surface a class on only 2 distinct PRs', () => {
+  test('does not surface a class on only 2 distinct PRs', () => {
     const result = computeTally({
       coveredClass: noCover,
       prs: [
@@ -75,7 +72,7 @@ describe('computeTally', () => {
     expect(result.candidate_count).toBe(0);
   });
 
-  it('does not surface a class repeated 3 times within ONE PR', () => {
+  test('does not surface a class repeated 3 times within ONE PR', () => {
     const result = computeTally({
       coveredClass: noCover,
       prs: [
@@ -92,7 +89,7 @@ describe('computeTally', () => {
     expect(result.candidate_count).toBe(0);
   });
 
-  it('ignores suggestion-only findings but counts the same class at warning', () => {
+  test('ignores suggestion-only findings but counts the same class at warning', () => {
     const suggestionOnly = computeTally({
       coveredClass: noCover,
       prs: [3, 2, 1].map((n) =>
@@ -126,7 +123,7 @@ describe('computeTally', () => {
     expect(atWarning.candidate_count).toBe(1);
   });
 
-  it('combines CI-run and local-run findings for the same class across distinct PRs', () => {
+  test('combines CI-run and local-run findings for the same class across distinct PRs', () => {
     // Each PR contributes one comment block (CI or local); the core only sees a
     // per-PR finding list, so auditor location never changes eligibility.
     const result = computeTally({
@@ -162,7 +159,7 @@ describe('computeTally', () => {
     expect(result.candidates[0]?.severity_max).toBe('error');
   });
 
-  it('collapses two same-class findings in one PR to a single distinct-PR count', () => {
+  test('collapses two same-class findings in one PR to a single distinct-PR count', () => {
     const result = computeTally({
       coveredClass: noCover,
       prs: [30, 20, 10].map((n) =>
@@ -191,13 +188,17 @@ describe('computeTally', () => {
     ]);
   });
 
-  it('ignores class-less / invalid findings entirely', () => {
+  test('ignores class-less / invalid findings entirely', () => {
     const result = computeTally({
       coveredClass: noCover,
       prs: [3, 2, 1].map((n) =>
         pr(n, [
           {area_tags: [], finding_class: '', severity: 'error'},
-          {area_tags: [], finding_class: 'not-a-real-prefix/x', severity: 'error'},
+          {
+            area_tags: [],
+            finding_class: 'not-a-real-prefix/x',
+            severity: 'error',
+          },
           {
             area_tags: [],
             finding_class: 'holistic/something-made-up',
@@ -212,7 +213,7 @@ describe('computeTally', () => {
     expect(result.candidate_count).toBe(0);
   });
 
-  it('drops a class a promoted rule already covers', () => {
+  test('drops a class a promoted rule already covers', () => {
     const result = computeTally({
       coveredClass: (c) => c === 'rule/switch-statement',
       prs: [3, 2, 1].map((n) =>
@@ -231,7 +232,7 @@ describe('computeTally', () => {
     expect(result.candidate_count).toBe(0);
   });
 
-  it('drops a class the ledger reports suppressed and passes the live PR count', () => {
+  test('drops a class the ledger reports suppressed and passes the live PR count', () => {
     const seen: number[] = [];
     const result = computeTally({
       coveredClass: noCover,
@@ -256,7 +257,7 @@ describe('computeTally', () => {
     expect(seen).toContain(3);
   });
 
-  it('windowClasses returns classes with >= threshold recurrence regardless of suppression', () => {
+  test('windowClasses returns classes with >= threshold recurrence regardless of suppression', () => {
     const prs = [
       ...[3, 2, 1].map((n) =>
         pr(n, [

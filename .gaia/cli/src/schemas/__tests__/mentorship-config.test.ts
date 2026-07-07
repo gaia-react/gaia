@@ -1,4 +1,5 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {MentorshipConfigSchema} from '../mentorship-config.js';
 
 const baseConfig = {
@@ -9,11 +10,11 @@ const baseConfig = {
 };
 
 describe('schemas/mentorship-config', () => {
-  it('accepts the pre-decision default (null decided_at)', () => {
+  test('accepts the pre-decision default (null decided_at)', () => {
     expect(() => MentorshipConfigSchema.parse(baseConfig)).not.toThrow();
   });
 
-  it('accepts an ISO-8601 datetime for decided_at', () => {
+  test('accepts an ISO-8601 datetime for decided_at', () => {
     expect(() =>
       MentorshipConfigSchema.parse({
         ...baseConfig,
@@ -24,7 +25,7 @@ describe('schemas/mentorship-config', () => {
     ).not.toThrow();
   });
 
-  it('rejects a non-datetime string for decided_at', () => {
+  test('rejects a non-datetime string for decided_at', () => {
     expect(() =>
       MentorshipConfigSchema.parse({
         ...baseConfig,
@@ -32,15 +33,15 @@ describe('schemas/mentorship-config', () => {
         decided_via: 'gaia-init',
         enabled: true,
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('rejects an unknown decided_via value', () => {
+  test('rejects an unknown decided_via value', () => {
     expect(() =>
       MentorshipConfigSchema.parse({
         ...baseConfig,
         decided_via: 'unknown-source',
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 });

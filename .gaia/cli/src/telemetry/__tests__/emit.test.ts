@@ -254,6 +254,10 @@ describe('handleEmit', () => {
     );
 
     expect(exit).toBe(EXIT_CODES.UNKNOWN_EVENT_TYPE);
+    // The exact stderr line is re-verified field-by-field below (code,
+    // event_type); asserting the literal serialized string here would
+    // duplicate that check and make it brittle to unrelated field additions.
+    // eslint-disable-next-line vitest/prefer-called-with -- see comment above
     expect(stderrSpy).toHaveBeenCalled();
 
     const stderrCall = stderrSpy.mock.calls[0]?.[0] as string;
@@ -273,6 +277,10 @@ describe('handleEmit', () => {
     });
 
     expect(exit).toBe(EXIT_CODES.PAYLOAD_VALIDATION_FAILED);
+    // The exact stderr line is re-verified field-by-field below (code,
+    // issues); asserting the literal serialized string here would
+    // duplicate that check and make it brittle to unrelated field additions.
+    // eslint-disable-next-line vitest/prefer-called-with -- see comment above
     expect(stderrSpy).toHaveBeenCalled();
 
     const stderrCall = stderrSpy.mock.calls[0]?.[0] as string;
@@ -383,7 +391,13 @@ describe('handleEmit', () => {
     });
 
     expect(exit).toBe(EXIT_CODES.PAYLOAD_VALIDATION_FAILED);
-    expect(stderrSpy).toHaveBeenCalled();
+    expect(stderrSpy).toHaveBeenCalledWith(
+      `${JSON.stringify({
+        arg: '--no-such-flag',
+        code: 'arg_parse_error',
+        issue: 'unknown flag: --no-such-flag',
+      })}\n`
+    );
   });
 
   test('fails loud on a corrupted mentorship.json (no silent fallback)', async () => {

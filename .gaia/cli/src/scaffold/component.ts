@@ -36,11 +36,16 @@ import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
-const PROP_ENTRY_PATTERN = /^([A-Za-z_][\w$]*)\s*:\s*(.+)$/u;
+const PROP_NAME_PATTERN = /^[A-Za-z_][\w$]*$/u;
 const TEMPLATES_DIR = 'component';
 const COMPONENTS_DEFAULT_PARENT = 'app/components';
 
-const BRACKET_PAIRS: Record<string, string> = {'(': ')', '<': '>', '[': ']', '{': '}'};
+const BRACKET_PAIRS: Record<string, string> = {
+  '(': ')',
+  '<': '>',
+  '[': ']',
+  '{': '}',
+};
 const CLOSERS = new Set(Object.values(BRACKET_PAIRS));
 
 /**
@@ -65,33 +70,14 @@ const splitTopLevelCommas = (raw: string): string[] => {
     if (char === ',' && depth === 0) {
       segments.push(current);
       current = '';
-      continue;
+    } else {
+      current += char;
     }
-
-    current += char;
   }
 
   segments.push(current);
 
   return segments;
-};
-
-type ParsedFlags = {
-  json: boolean;
-  name: string;
-  parent: string;
-  props: PropEntry[];
-  story: boolean;
-};
-
-type PropEntry = {
-  name: string;
-  type: string;
-};
-
-type FlagParseSuccess = {
-  flags: ParsedFlags;
-  ok: true;
 };
 
 type FlagParseFailure = {
@@ -100,6 +86,24 @@ type FlagParseFailure = {
 };
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: ParsedFlags;
+  ok: true;
+};
+
+type ParsedFlags = {
+  json: boolean;
+  name: string;
+  parent: string;
+  props: PropertyEntry[];
+  story: boolean;
+};
+
+type PropertyEntry = {
+  name: string;
+  type: string;
+};
 
 const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
 
@@ -113,6 +117,22 @@ const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
+
+// Splits on the first `:` rather than a single regex (avoids a `\s*`
+// immediately preceding a `.+` catch-all, an overlapping-quantifier shape
+// flagged by sonarjs/super-linear-regex).
+const parsePropertyEntry = (entry: string): null | PropertyEntry => {
+  const colonIndex = entry.indexOf(':');
+
+  if (colonIndex === -1) return null;
+
+  const name = entry.slice(0, colonIndex).trim();
+  const type = entry.slice(colonIndex + 1).trim();
+
+  if (!PROP_NAME_PATTERN.test(name) || type === '') return null;
+
+  return {name, type};
+};
 
 const parseProps = (raw: string): FlagParseResult => {
   const segments = splitTopLevelCommas(raw);
@@ -130,19 +150,19 @@ const parseProps = (raw: string): FlagParseResult => {
     };
   }
 
-  const props: PropEntry[] = [];
+  const props: PropertyEntry[] = [];
 
   for (const entry of entries) {
-    const match = PROP_ENTRY_PATTERN.exec(entry);
+    const parsedEntry = parsePropertyEntry(entry);
 
-    if (match === null) {
+    if (parsedEntry === null) {
       return {
         message: `--props entry must be name:type (got: "${entry}")`,
         ok: false,
       };
     }
 
-    props.push({name: match[1] as string, type: (match[2] as string).trim()});
+    props.push(parsedEntry);
   }
 
   return {
@@ -157,72 +177,140 @@ const parseProps = (raw: string): FlagParseResult => {
   };
 };
 
+type TakeValueResult = {message: string; ok: false} | {ok: true; value: string};
+
 const takeValue = (
   argv: readonly string[],
   index: number,
   flag: string
-): FlagParseResult | string => {
-  const value = argv[index];
+): TakeValueResult => {
+  const value = argv.at(index);
 
   if (value === undefined || value.startsWith('--')) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return value;
+  return {ok: true, value};
+};
+
+type ParentFlagResult =
+  {message: string; ok: false} | {ok: true; parent: string};
+
+const parseParentFlag = (
+  argv: readonly string[],
+  index: number
+): ParentFlagResult => {
+  const parsedValue = takeValue(argv, index + 1, '--parent');
+
+  if (!parsedValue.ok) return parsedValue;
+
+  return {ok: true, parent: parsedValue.value};
+};
+
+type PropsFlagResult =
+  {message: string; ok: false} | {ok: true; props: PropertyEntry[]};
+
+const parsePropsFlag = (
+  argv: readonly string[],
+  index: number
+): PropsFlagResult => {
+  const parsedValue = takeValue(argv, index + 1, '--props');
+
+  if (!parsedValue.ok) return parsedValue;
+
+  const parsed = parseProps(parsedValue.value);
+
+  if (!parsed.ok) return parsed;
+
+  return {ok: true, props: parsed.flags.props};
+};
+
+type ApplyTokenResult = FlagParseFailure | {consumed: number};
+
+type FlagsState = {
+  json: boolean;
+  name: string | undefined;
+  parent: string;
+  props: PropertyEntry[];
+  story: boolean;
+};
+
+// One token's worth of dispatch, extracted so `parseFlags`'s own loop stays
+// a flat dispatch table (kept `parseFlags`'s cognitive complexity under the
+// frozen limit). `consumed` is how many EXTRA argv slots this token ate
+// (its value, for flags that take one); the caller folds it into the loop
+// counter via `+=`, matching the accepted `index += 1` idiom (a plain
+// reassignment trips sonarjs/updated-loop-counter).
+const applyToken = (
+  argv: readonly string[],
+  index: number,
+  state: FlagsState
+): ApplyTokenResult => {
+  const token = argv[index];
+
+  if (token === '--no-story') {
+    state.story = false;
+
+    return {consumed: 0};
+  }
+
+  if (token === '--json') {
+    state.json = true;
+
+    return {consumed: 0};
+  }
+
+  if (token === '--parent') {
+    const result = parseParentFlag(argv, index);
+
+    if (!result.ok) return result;
+    state.parent = result.parent;
+
+    return {consumed: 1};
+  }
+
+  if (token === '--props') {
+    const result = parsePropsFlag(argv, index);
+
+    if (!result.ok) return result;
+    state.props = result.props;
+
+    return {consumed: 1};
+  }
+
+  if (token.startsWith('--')) {
+    return {message: `unknown flag: ${token}`, ok: false};
+  }
+
+  if (state.name === undefined) {
+    state.name = token;
+
+    return {consumed: 0};
+  }
+
+  return {message: `unexpected positional argument: ${token}`, ok: false};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
-  let name: string | undefined;
-  let parent = COMPONENTS_DEFAULT_PARENT;
-  let story = true;
-  let json = false;
-  let props: PropEntry[] = [];
+  const state: FlagsState = {
+    json: false,
+    name: undefined,
+    parent: COMPONENTS_DEFAULT_PARENT,
+    props: [],
+    story: true,
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const result = applyToken(argv, index, state);
 
-    if (token === '--no-story') {
-      story = false;
-      continue;
+    if ('consumed' in result) {
+      index += result.consumed;
+    } else {
+      return result;
     }
-
-    if (token === '--json') {
-      json = true;
-      continue;
-    }
-
-    if (token === '--parent') {
-      const value = takeValue(argv, index + 1, '--parent');
-
-      if (typeof value !== 'string') return value;
-      parent = value;
-      index += 1;
-      continue;
-    }
-
-    if (token === '--props') {
-      const value = takeValue(argv, index + 1, '--props');
-
-      if (typeof value !== 'string') return value;
-      const parsed = parseProps(value);
-
-      if (!parsed.ok) return parsed;
-      props = parsed.flags.props;
-      index += 1;
-      continue;
-    }
-
-    if (token.startsWith('--')) {
-      return {message: `unknown flag: ${token}`, ok: false};
-    }
-
-    if (name === undefined) {
-      name = token;
-      continue;
-    }
-
-    return {message: `unexpected positional argument: ${token}`, ok: false};
   }
+
+  const {json, name, parent, props, story} = state;
 
   if (name === undefined) {
     return {message: 'component name is required', ok: false};
@@ -235,16 +323,25 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     };
   }
 
-  return {flags: {json, name, parent, props, story}, ok: true};
+  return {
+    flags: {
+      json,
+      name,
+      parent,
+      props,
+      story,
+    },
+    ok: true,
+  };
 };
 
 const buildPropsTypeBlock = (
   componentName: string,
-  props: readonly PropEntry[]
+  props: readonly PropertyEntry[]
 ): string => {
   if (props.length === 0) return '';
   const entries = props
-    .map((prop) => `  ${prop.name}: ${prop.type};`)
+    .map((property) => `  ${property.name}: ${property.type};`)
     .join('\n');
 
   return `\ntype ${componentName}Props = {\n${entries}\n};\n`;
@@ -252,7 +349,7 @@ const buildPropsTypeBlock = (
 
 const buildPropsGeneric = (
   componentName: string,
-  props: readonly PropEntry[]
+  props: readonly PropertyEntry[]
 ): string => (props.length === 0 ? '' : `<${componentName}Props>`);
 
 /**
@@ -265,25 +362,26 @@ const buildPropsGeneric = (
 const isFunctionType = (type: string): boolean =>
   type.includes('=>') || /\bFunction\b/u.test(type);
 
-const buildPropAttribute = (prop: PropEntry): string => {
-  const type = prop.type;
+const buildPropertyAttribute = (property: PropertyEntry): string => {
+  const {type} = property;
 
-  if (type === 'string') return `${prop.name}="${prop.name}"`;
-  if (type === 'number') return `${prop.name}={0}`;
-  if (type === 'boolean') return `${prop.name}={true}`;
-  if (type.endsWith('[]')) return `${prop.name}={[]}`;
+  if (type === 'string') return `${property.name}="${property.name}"`;
+  if (type === 'number') return `${property.name}={0}`;
+  if (type === 'boolean') return `${property.name}={true}`;
+  if (type.endsWith('[]')) return `${property.name}={[]}`;
+
   // Function-typed props get a callable no-op cast: `({} as () => void)()`
   // throws TypeError the moment an author wires the prop into the render body,
   // so the fallback must be invocable, not an empty-object cast.
   if (isFunctionType(type)) {
-    return `${prop.name}={(() => undefined) as ${type}}`;
+    return `${property.name}={(() => undefined) as ${type}}`;
   }
 
-  return `${prop.name}={{} as ${type}}`;
+  return `${property.name}={{} as ${type}}`;
 };
 
-const buildPropAttributes = (props: readonly PropEntry[]): string =>
-  props.map(buildPropAttribute).join(' ');
+const buildPropertyAttributes = (props: readonly PropertyEntry[]): string =>
+  props.map(buildPropertyAttribute).join(' ');
 
 /**
  * The JSX the test renders. With a story, the test renders the composed
@@ -292,12 +390,12 @@ const buildPropAttributes = (props: readonly PropEntry[]): string =>
  */
 const buildRenderJsx = (
   componentName: string,
-  props: readonly PropEntry[],
+  props: readonly PropertyEntry[],
   withStory: boolean
 ): string => {
   if (withStory || props.length === 0) return `<${componentName} />`;
 
-  return `<${componentName} ${buildPropAttributes(props)} />`;
+  return `<${componentName} ${buildPropertyAttributes(props)} />`;
 };
 
 /**
@@ -307,7 +405,7 @@ const buildRenderJsx = (
  */
 const buildStoryDefault = (
   componentName: string,
-  props: readonly PropEntry[]
+  props: readonly PropertyEntry[]
 ): string => {
   if (props.length === 0) {
     return `export const Default: StoryFn = () => <${componentName} />;`;
@@ -315,7 +413,7 @@ const buildStoryDefault = (
 
   return [
     'export const Default: StoryFn = () => (',
-    `  <${componentName} ${buildPropAttributes(props)} />`,
+    `  <${componentName} ${buildPropertyAttributes(props)} />`,
     ');',
   ].join('\n');
 };
@@ -366,7 +464,7 @@ const defaultIsDirectory = (absPath: string): boolean =>
 type RenderFileOptions = {
   componentName: string;
   parent: string;
-  props: readonly PropEntry[];
+  props: readonly PropertyEntry[];
   templatesRoot: string;
   withStory: boolean;
 };
@@ -380,7 +478,9 @@ const renderComponentFile = (options: RenderFileOptions): string => {
   const propsTypeBlock = buildPropsTypeBlock(componentName, props);
   const propsGeneric = buildPropsGeneric(componentName, props);
   const propsParam =
-    props.length === 0 ? '' : `{${props.map((prop) => prop.name).join(', ')}}`;
+    props.length === 0 ?
+      ''
+    : `{${props.map((property) => property.name).join(', ')}}`;
 
   return renderTemplate(templatePath, {
     Name: componentName,
@@ -462,7 +562,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  const subcommand = argv[0];
+  const subcommand = argv.at(0);
 
   if (subcommand !== undefined && HELP_TOKENS.has(subcommand)) {
     process.stdout.write(HELP_TEXT);

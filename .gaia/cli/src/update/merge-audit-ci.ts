@@ -1,3 +1,4 @@
+import {load as parseYaml} from 'js-yaml';
 /**
  * `gaia update merge-audit-ci --baseline <file> --latest <file> --current <file>`
  * handler.
@@ -36,7 +37,6 @@
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {load as parseYaml} from 'js-yaml';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 
@@ -75,39 +75,40 @@ const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
 /** The adopter-shared section: a space-separated `login=mode` string. */
 const AUTHORS_SECTION = 'audit_authors';
 
-export type AuditCiVerdictItem = {
-  kind: 'entry' | 'key';
-  section?: string;
-  key: string;
-  baseline?: unknown;
-  latest?: unknown;
-  adopter?: unknown;
-  reason?: 'added' | 'removed-then-changed';
-};
-
 export type AuditCiMergeReport = {
   applied: AuditCiVerdictItem[];
   conflicts: AuditCiVerdictItem[];
   suggestions: AuditCiVerdictItem[];
 };
 
+export type AuditCiVerdictItem = {
+  adopter?: unknown;
+  baseline?: unknown;
+  key: string;
+  kind: 'entry' | 'key';
+  latest?: unknown;
+  reason?: 'added' | 'removed-then-changed';
+  section?: string;
+};
+
 type Flags = {
   baseline: string;
-  latest: string;
   current: string;
   json: boolean;
+  latest: string;
 };
 
 type ParsedFlagsResult =
-  | {flags: Flags; ok: true}
-  | {message: string; ok: false};
+  {flags: Flags; ok: true} | {message: string; ok: false};
 
 const takeValue = (
   argv: readonly string[],
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
+  // `.at()` (unlike bracket indexing) types its result `string | undefined`,
+  // which honestly reflects that `index` can run past the end of argv.
+  const value = argv.at(index);
 
   if (value === undefined)
     return {message: `${flag} requires a value`, ok: false};
@@ -121,30 +122,32 @@ const VALUE_FLAGS: Readonly<Record<string, keyof Flags>> = {
   '--latest': 'latest',
 };
 
+// `Record<string, T>` indexing types as `T`, never `undefined`, without
+// `noUncheckedIndexedAccess` — but `token` may not be one of VALUE_FLAGS'
+// three known keys, and that absence is exactly what routes to the
+// unknown-flag branch below.
+const lookupValueFlag = (token: string): keyof Flags | undefined =>
+  (VALUE_FLAGS as Record<string, keyof Flags | undefined>)[token];
+
 const parseFlags = (argv: readonly string[]): ParsedFlagsResult => {
   const collected: Partial<Record<keyof Flags, string>> = {};
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
+    const field = lookupValueFlag(token);
 
     if (token === '--json') {
       json = true;
-      continue;
-    }
-
-    const field = VALUE_FLAGS[token];
-
-    if (field !== undefined) {
+    } else if (field === undefined) {
+      return {message: `unknown flag: ${token}`, ok: false};
+    } else {
       const taken = takeValue(argv, index + 1, token);
 
       if (!taken.ok) return taken;
       collected[field] = taken.value;
       index += 1;
-      continue;
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   const {baseline, current, latest} = collected;
@@ -173,8 +176,8 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
   }
 
   if (typeof a === 'object' && typeof b === 'object') {
-    const aKeys = Object.keys(a as Record<string, unknown>);
-    const bKeys = Object.keys(b as Record<string, unknown>);
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
 
     if (aKeys.length !== bKeys.length) return false;
 
@@ -192,7 +195,7 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
 type Presence = {has: boolean; value: unknown};
 
 const lookup = (root: Record<string, unknown>, key: string): Presence =>
-  Object.prototype.hasOwnProperty.call(root, key) ?
+  Object.hasOwn(root, key) ?
     {has: true, value: root[key]}
   : {has: false, value: undefined};
 
@@ -216,23 +219,28 @@ const parseAuthors = (value: unknown): Map<string, AuthorEntry> => {
   if (typeof value !== 'string') return entries;
 
   for (const token of value.split(/\s+/)) {
-    if (token.length === 0) continue;
-    const eq = token.indexOf('=');
+    if (token.length > 0) {
+      const eq = token.indexOf('=');
 
-    if (eq <= 0 || eq === token.length - 1) continue; // no '=', empty login, or empty mode
-    const login = token.slice(0, eq);
-    const mode = token.slice(eq + 1);
-    const lowerLogin = login.toLowerCase();
+      // eq > 0 && eq < token.length - 1: has '=', with a non-empty login
+      // and a non-empty mode either side of it.
+      if (eq > 0 && eq !== token.length - 1) {
+        const login = token.slice(0, eq);
+        const mode = token.slice(eq + 1);
+        const lowerLogin = login.toLowerCase();
 
-    // First occurrence wins, matching the resolver's first-match-wins scan.
-    if (!entries.has(lowerLogin))
-      entries.set(lowerLogin, {display: login, mode});
+        // First occurrence wins, matching the resolver's first-match-wins scan.
+        if (!entries.has(lowerLogin))
+          entries.set(lowerLogin, {display: login, mode});
+      }
+    }
   }
 
   return entries;
 };
 
-type Verdict = 'apply' | 'conflict' | 'noop' | 'suggest-add' | 'suggest-removed';
+type Verdict =
+  'apply' | 'conflict' | 'noop' | 'suggest-add' | 'suggest-removed';
 
 const computeVerdict = (b: Presence, l: Presence, a: Presence): Verdict => {
   if (b.has && l.has) {
@@ -249,12 +257,12 @@ const computeVerdict = (b: Presence, l: Presence, a: Presence): Verdict => {
 };
 
 type Triple = {
-  kind: 'entry' | 'key';
-  section?: string;
-  key: string;
-  b: Presence;
-  l: Presence;
   a: Presence;
+  b: Presence;
+  key: string;
+  kind: 'entry' | 'key';
+  l: Presence;
+  section?: string;
 };
 
 const buildItem = (triple: Triple): AuditCiVerdictItem => {
@@ -281,8 +289,8 @@ const authorPresence = (
   const entry = entries.get(login);
 
   return entry === undefined ?
-    {has: false, value: undefined}
-  : {has: true, value: entry.mode};
+      {has: false, value: undefined}
+    : {has: true, value: entry.mode};
 };
 
 const computeReport = (
@@ -334,24 +342,25 @@ const computeReport = (
   for (const triple of triples) {
     const verdict = computeVerdict(triple.b, triple.l, triple.a);
 
-    if (verdict === 'noop') continue;
+    if (verdict !== 'noop') {
+      const item = buildItem(triple);
 
-    const item = buildItem(triple);
-
-    if (verdict === 'apply') {
-      applied.push(item);
-    } else if (verdict === 'conflict') {
-      conflicts.push(item);
-    } else {
-      item.reason = verdict === 'suggest-add' ? 'added' : 'removed-then-changed';
-      suggestions.push(item);
+      if (verdict === 'apply') {
+        applied.push(item);
+      } else if (verdict === 'conflict') {
+        conflicts.push(item);
+      } else {
+        item.reason =
+          verdict === 'suggest-add' ? 'added' : 'removed-then-changed';
+        suggestions.push(item);
+      }
     }
   }
 
   return {
-    applied: applied.sort(bySortKey),
-    conflicts: conflicts.sort(bySortKey),
-    suggestions: suggestions.sort(bySortKey),
+    applied: applied.toSorted(bySortKey),
+    conflicts: conflicts.toSorted(bySortKey),
+    suggestions: suggestions.toSorted(bySortKey),
   };
 };
 
@@ -366,29 +375,30 @@ const printHuman = (report: AuditCiMergeReport): void => {
   const label = (item: AuditCiVerdictItem): string =>
     item.section === undefined ? item.key : `${item.section}.${item.key}`;
 
-  const sections: Array<[string, readonly AuditCiVerdictItem[]]> = [
+  const sections: [string, readonly AuditCiVerdictItem[]][] = [
     ['Applied', report.applied],
     ['Conflicts', report.conflicts],
     ['Suggestions', report.suggestions],
   ];
 
   for (const [heading, items] of sections) {
-    if (items.length === 0) continue;
-    lines.push('', `${heading}:`);
+    if (items.length > 0) {
+      lines.push('', `${heading}:`);
 
-    for (const item of items) lines.push(`  ${label(item)}`);
+      for (const item of items) lines.push(`  ${label(item)}`);
+    }
   }
 
   process.stdout.write(`${lines.join('\n')}\n`);
 };
 
 type LoadResult =
-  | {ok: true; root: Record<string, unknown>}
   | {
-      ok: false;
       code: 'audit_ci_file_missing' | 'audit_ci_parse_failed';
       message: string;
-    };
+      ok: false;
+    }
+  | {ok: true; root: Record<string, unknown>};
 
 const loadAuditCi = (absPath: string, role: string): LoadResult => {
   if (!existsSync(absPath)) {
@@ -427,7 +437,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -446,7 +456,7 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const inputs: Array<[string, string]> = [
+  const inputs: [string, string][] = [
     ['baseline', resolvePath(cwd, parsed.flags.baseline)],
     ['latest', resolvePath(cwd, parsed.flags.latest)],
     ['current', resolvePath(cwd, parsed.flags.current)],

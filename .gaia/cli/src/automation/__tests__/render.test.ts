@@ -1,7 +1,7 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {renderWorkflowTemplate, resolvePartials} from '../render.js';
 import type {WorkflowTemplateVars} from '../workflow-vars.js';
 
@@ -60,7 +60,7 @@ describe('resolvePartials', () => {
     sandbox.cleanup();
   });
 
-  it('replaces a partial token with the partial body', () => {
+  test('replaces a partial token with the partial body', () => {
     sandbox.writePartial('foo', 'concurrency: {group: gaia-ci-test}');
 
     const out = resolvePartials(
@@ -71,7 +71,7 @@ describe('resolvePartials', () => {
     expect(out).toBe('pre concurrency: {group: gaia-ci-test} post');
   });
 
-  it('tolerates whitespace variants of the partial token', () => {
+  test('tolerates whitespace variants of the partial token', () => {
     sandbox.writePartial('foo', 'X');
 
     expect(resolvePartials('{{>partials/foo}}', sandbox.partialsDir)).toBe('X');
@@ -83,7 +83,7 @@ describe('resolvePartials', () => {
     );
   });
 
-  it('replaces multiple partial tokens in one pass', () => {
+  test('replaces multiple partial tokens in one pass', () => {
     sandbox.writePartial('foo', 'F');
     sandbox.writePartial('bar', 'B');
 
@@ -95,7 +95,7 @@ describe('resolvePartials', () => {
     expect(out).toBe('F | B');
   });
 
-  it('supports kebab-case partial names', () => {
+  test('supports kebab-case partial names', () => {
     sandbox.writePartial('auto-merge', 'AM');
     sandbox.writePartial('pre-run-skip', 'PRS');
 
@@ -107,7 +107,7 @@ describe('resolvePartials', () => {
     expect(out).toBe('AM | PRS');
   });
 
-  it('throws when a partial body contains {{>', () => {
+  test('throws when a partial body contains {{>', () => {
     sandbox.writePartial('outer', '{{> partials/inner }}');
     sandbox.writePartial('inner', 'body');
 
@@ -116,13 +116,13 @@ describe('resolvePartials', () => {
     ).toThrow(/partial 'outer' contains '\{\{>'/u);
   });
 
-  it('throws with a clear message when a partial file is missing', () => {
+  test('throws with a clear message when a partial file is missing', () => {
     expect(() =>
       resolvePartials('{{> partials/nope }}', sandbox.partialsDir)
     ).toThrow(/partial 'nope' could not be read/u);
   });
 
-  it('returns the input unchanged when no partial tokens are present', () => {
+  test('returns the input unchanged when no partial tokens are present', () => {
     expect(resolvePartials('plain content here', sandbox.partialsDir)).toBe(
       'plain content here'
     );
@@ -140,7 +140,7 @@ describe('renderWorkflowTemplate', () => {
     sandbox.cleanup();
   });
 
-  it('substitutes scalar variables', () => {
+  test('substitutes scalar variables', () => {
     const tmpl = sandbox.writeTemplate(
       'scalar.yml.tmpl',
       'name: {{workflow_name}}\ncron: {{cron}}'
@@ -151,7 +151,7 @@ describe('renderWorkflowTemplate', () => {
     expect(out).toBe('name: GAIA CI - Test\ncron: 0 4 * * *');
   });
 
-  it('renders boolean section bodies based on flag value', () => {
+  test('renders boolean section bodies based on flag value', () => {
     const tmpl = sandbox.writeTemplate(
       'flag.yml.tmpl',
       'a{{#enable_diff_size_check}}-on-{{/enable_diff_size_check}}b'
@@ -169,7 +169,7 @@ describe('renderWorkflowTemplate', () => {
     ).toBe('ab');
   });
 
-  it('inlines a partial then resolves variables inside it', () => {
+  test('inlines a partial then resolves variables inside it', () => {
     sandbox.writePartial('header', 'name: {{workflow_name}}');
     const tmpl = sandbox.writeTemplate(
       'with-partial.yml.tmpl',
@@ -181,7 +181,7 @@ describe('renderWorkflowTemplate', () => {
     expect(out).toBe('name: GAIA CI - Test\nrest');
   });
 
-  it('produces output with no remaining {{ or }} tokens', () => {
+  test('produces output with no remaining {{ or }} tokens', () => {
     sandbox.writePartial('hdr', 'name: {{workflow_name}}\ncron: {{cron}}');
     const tmpl = sandbox.writeTemplate(
       'full.yml.tmpl',
@@ -194,19 +194,22 @@ describe('renderWorkflowTemplate', () => {
     expect(out).not.toContain('}}');
   });
 
-  it('preserves GitHub Actions ${{ secrets.X }} expressions verbatim', () => {
+  // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
+  test('preserves GitHub Actions ${{ secrets.X }} expressions verbatim', () => {
     const tmpl = sandbox.writeTemplate(
       'gh.yml.tmpl',
+      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
       'env:\n  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n  TOOL: {{tool_id}}'
     );
 
     const out = renderWorkflowTemplate(tmpl, sandbox.partialsDir, baseVars);
 
+    // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
     expect(out).toContain('${{ secrets.GITHUB_TOKEN }}');
     expect(out).toContain('TOOL: wiki');
   });
 
-  it('throws when a partial recursively includes another partial', () => {
+  test('throws when a partial recursively includes another partial', () => {
     sandbox.writePartial('outer', '{{> partials/inner }}');
     sandbox.writePartial('inner', 'X');
     const tmpl = sandbox.writeTemplate('t.yml.tmpl', '{{> partials/outer }}');

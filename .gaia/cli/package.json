@@ -8,6 +8,8 @@
     "bundle:adopter": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --banner:js=$'#!/usr/bin/env node\\nimport { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia && chmod +x gaia && rm -rf templates && cp -r src/scaffold/templates templates && mkdir -p templates/workflows && cp -r src/automation/templates/workflows/. templates/workflows/",
     "bundle:maintainer": "esbuild src/index.maintainer.ts --bundle --platform=node --target=node20 --format=esm --banner:js=$'#!/usr/bin/env node\\nimport { createRequire as __createRequire } from \"node:module\"; const require = __createRequire(import.meta.url);' --outfile=gaia-maintainer && chmod +x gaia-maintainer",
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
+    "lint": "eslint --max-warnings=0 --cache --cache-location ./node_modules/.cache/eslint src",
+    "lint:fix": "eslint --fix --max-warnings=0 --cache --cache-location ./node_modules/.cache/eslint src",
     "test": "vitest --passWithNoTests",
     "fixtures:build": "tsx ./test-fixtures/profile/build.ts",
     "gaia": "tsx ./src/index.ts",
@@ -19,9 +21,13 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@gaia-react/lint": "1.9.0",
     "@types/js-yaml": "4.0.9",
     "@types/node": "25.6.1",
     "esbuild": "0.28.1",
+    "eslint": "9.39.4",
+    "prettier": "3.9.1",
+    "prettier-plugin-tailwindcss": "0.8.0",
     "tsx": "4.22.4",
     "typescript": "6.0.3",
     "vite": "8.0.16",

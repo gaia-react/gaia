@@ -1,3 +1,4 @@
+import {describe, expect, test} from 'vitest';
 /**
  * Maintainer reachability-guard for the CLI subcommand surface.
  *
@@ -33,7 +34,6 @@
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {describe, expect, it} from 'vitest';
 
 // Subcommands reachable only through their router with no external invoker,
 // allowed on purpose. Each entry needs a reason. Wiring or retiring a command
@@ -62,19 +62,19 @@ const INVOKER_SURFACES: readonly string[] = [
 ];
 
 const TEXT_EXTENSIONS = new Set([
-  '.md',
+  '.cjs',
+  '.js',
+  '.json',
   '.markdown',
+  '.md',
+  '.mjs',
+  '.sh',
+  '.tmpl',
   '.ts',
   '.tsx',
-  '.js',
-  '.mjs',
-  '.cjs',
-  '.sh',
-  '.yml',
-  '.yaml',
-  '.tmpl',
-  '.json',
   '.txt',
+  '.yaml',
+  '.yml',
 ]);
 
 const resolveRepoRoot = (): string => {
@@ -95,27 +95,35 @@ const resolveRepoRoot = (): string => {
 };
 
 const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 // The keys of a router's `SUBCOMMAND_HANDLERS` map. Every handler value is a
 // `run<Pascal>` symbol, so anchoring on `: run[A-Z]` selects exactly the
 // command keys and skips the `code:` / `message:` / `subcommand:` lines of the
 // router's `structuredError` fallback.
+// Anchored per-line (not multiline/global on the whole body): sonarjs's
+// regex-complexity check flags the combined `m`/`g` form as super-linear.
+// Testing one line at a time is equivalent (each map entry is one line) and
+// keeps each match a single bounded-length attempt.
+const HANDLER_KEY_PATTERN = /^\s*'?([a-z][a-z0-9-]*)'?\s*:\s*run[A-Z]/u;
+
 const extractHandlerKeys = (source: string): string[] => {
   const start = source.indexOf('const SUBCOMMAND_HANDLERS');
 
   if (start === -1) return [];
 
-  const endRel = source.slice(start).indexOf('\n};');
+  const endOffset = source.slice(start).indexOf('\n};');
   const body =
-    endRel === -1 ? source.slice(start) : source.slice(start, start + endRel);
+    endOffset === -1 ?
+      source.slice(start)
+    : source.slice(start, start + endOffset);
 
   const keys: string[] = [];
 
-  for (const match of body.matchAll(
-    /^\s*'?([a-z][a-z0-9-]*)'?\s*:\s*run[A-Z]/gm
-  )) {
-    keys.push(match[1]);
+  for (const line of body.split('\n')) {
+    const match = HANDLER_KEY_PATTERN.exec(line);
+
+    if (match) keys.push(match[1]);
   }
 
   return keys;
@@ -156,7 +164,12 @@ const enumerateLeafCommands = (cliSrc: string): string[] => {
     }
   }
 
-  return [...leaves].sort();
+  // Bound to a variable before sorting: canonical/no-use-extend-native's
+  // proto-method database predates ES2023 and does not recognize
+  // `toSorted` on an inline array-spread expression.
+  const leafArray = [...leaves];
+
+  return leafArray.toSorted((a, b) => a.localeCompare(b));
 };
 
 const collectText = (absDir: string): string => {
@@ -173,14 +186,14 @@ const collectText = (absDir: string): string => {
   const parts: string[] = [];
 
   for (const rel of entries) {
-    if (!TEXT_EXTENSIONS.has(path.extname(rel).toLowerCase())) continue;
+    if (TEXT_EXTENSIONS.has(path.extname(rel).toLowerCase())) {
+      const abs = path.join(absDir, rel);
 
-    const abs = path.join(absDir, rel);
-
-    try {
-      if (statSync(abs).isFile()) parts.push(readFileSync(abs, 'utf8'));
-    } catch {
-      // Unreadable entry (e.g. a dangling symlink); skip it.
+      try {
+        if (statSync(abs).isFile()) parts.push(readFileSync(abs, 'utf8'));
+      } catch {
+        // Unreadable entry (e.g. a dangling symlink); skip it.
+      }
     }
   }
 
@@ -192,8 +205,9 @@ const cliSrc = path.join(repoRoot, '.gaia', 'cli', 'src');
 const routersPresent = existsSync(cliSrc);
 
 const leafCommands = routersPresent ? enumerateLeafCommands(cliSrc) : [];
-const invokerText = routersPresent
-  ? INVOKER_SURFACES.map((surface) =>
+const invokerText =
+  routersPresent ?
+    INVOKER_SURFACES.map((surface) =>
       collectText(path.join(repoRoot, surface))
     ).join('\n')
   : '';
@@ -202,62 +216,71 @@ const invokerText = routersPresent
 // invoker text: the binary name, then the space-separated path, bounded so
 // `wiki state` never matches inside `wiki state-bump`.
 const isReachable = (commandPath: string): boolean => {
-  const tokens = commandPath.split(' ').map(escapeRegExp).join('\\s+');
+  const tokens = commandPath
+    .split(' ')
+    .map(escapeRegExp)
+    .join(String.raw`\s+`);
 
   return new RegExp(
-    `(?<![\\w-])gaia(?:-maintainer)?\\s+${tokens}(?![\\w-])`
+    String.raw`(?<![\w-])gaia(?:-maintainer)?\s+${tokens}(?![\w-])`
   ).test(invokerText);
 };
 
 describe('CLI subcommand reachability guard', () => {
-  it('enumerates the command surface (guards against parser rot)', () => {
-    if (!routersPresent) return;
+  // Maintainer-only guard: `routersPresent` is false on an adopter clone
+  // (`.gaia/cli` release-excluded), so the whole suite skips there rather
+  // than pretending to have passed a check it could not run.
+  test.skipIf(!routersPresent)(
+    'enumerates the command surface (guards against parser rot)',
+    () => {
+      // A silent enumerator would make the reachability test pass vacuously.
+      // Pin a few known leaves and a floor count so parser drift fails loudly.
+      expect(leafCommands).toContain('update merge-workspace');
+      expect(leafCommands).toContain('wiki orphans');
+      expect(leafCommands).toContain('release bump');
+      expect(leafCommands).toContain('harden-tally');
+      expect(leafCommands.length).toBeGreaterThanOrEqual(40);
 
-    // A silent enumerator would make the reachability test pass vacuously.
-    // Pin a few known leaves and a floor count so parser drift fails loudly.
-    expect(leafCommands).toContain('update merge-workspace');
-    expect(leafCommands).toContain('wiki orphans');
-    expect(leafCommands).toContain('release bump');
-    expect(leafCommands).toContain('harden-tally');
-    expect(leafCommands.length).toBeGreaterThanOrEqual(40);
+      // The oracle must be able to return false, else everything looks
+      // reachable.
+      expect(isReachable('zzz fabricated-command')).toBe(false);
+    }
+  );
 
-    // The oracle must be able to return false, else everything looks reachable.
-    expect(isReachable('zzz fabricated-command')).toBe(false);
-  });
+  test.skipIf(!routersPresent)(
+    'every map-dispatched leaf command has an external invoker',
+    () => {
+      const dead = leafCommands.filter(
+        (command) =>
+          // INTERNAL_COMMANDS is a deliberately-empty allowlist populated by
+          // future maintainer edits, not by any code in this file.
+          // eslint-disable-next-line sonarjs/no-empty-collection
+          !INTERNAL_COMMANDS.has(command) && !isReachable(command)
+      );
 
-  it('every map-dispatched leaf command has an external invoker', () => {
-    if (!routersPresent) return;
+      // See the file docstring for how to resolve a dead command (wire an
+      // invoker, retire it, or allowlist it in INTERNAL_COMMANDS).
+      expect(dead).toEqual([]);
+    }
+  );
 
-    const dead = leafCommands.filter(
-      (command) => !INTERNAL_COMMANDS.has(command) && !isReachable(command)
-    );
+  test.skipIf(!routersPresent)(
+    'the internal-command allowlist has no stale entries',
+    () => {
+      const leafSet = new Set(leafCommands);
 
-    expect(
-      dead,
-      `These CLI subcommands are wired into a SUBCOMMAND_HANDLERS map but ` +
-        `invoked by nothing (no skill / command / hook / agent / workflow / ` +
-        `bundled template / wiki string). Wire an invoker, retire the ` +
-        `command, or add it to INTERNAL_COMMANDS with a reason:\n  ${dead.join(
-          '\n  '
-        )}`
-    ).toEqual([]);
-  });
+      // An allowlisted command that was retired (no longer a leaf) or that
+      // has since gained an invoker must drop out of the allowlist.
+      // INTERNAL_COMMANDS is a deliberately-empty allowlist populated by
+      // future maintainer edits, not by any code in this file.
+      // eslint-disable-next-line sonarjs/no-empty-collection
+      const stale = [...INTERNAL_COMMANDS.keys()].filter(
+        (command) => !leafSet.has(command) || isReachable(command)
+      );
 
-  it('the internal-command allowlist has no stale entries', () => {
-    if (!routersPresent) return;
-
-    const leafSet = new Set(leafCommands);
-
-    // An allowlisted command that was retired (no longer a leaf) or that has
-    // since gained an invoker must drop out of the allowlist.
-    const stale = [...INTERNAL_COMMANDS.keys()].filter(
-      (command) => !leafSet.has(command) || isReachable(command)
-    );
-
-    expect(
-      stale,
-      `Remove these stale INTERNAL_COMMANDS entries (command retired or now ` +
-        `has an external invoker):\n  ${stale.join('\n  ')}`
-    ).toEqual([]);
-  });
+      // See the file docstring: remove any stale INTERNAL_COMMANDS entry
+      // (command retired or now has an external invoker).
+      expect(stale).toEqual([]);
+    }
+  );
 });

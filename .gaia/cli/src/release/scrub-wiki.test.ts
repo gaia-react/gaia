@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release scrub-wiki`.
  */
@@ -10,7 +11,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {renderHotMd, renderLogMd, run} from './scrub-wiki.js';
 
 type Sandbox = {

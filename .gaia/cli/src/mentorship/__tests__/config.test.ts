@@ -1,6 +1,7 @@
 /* eslint-disable no-bitwise -- POSIX file modes are bitfields; `& 0o777`
    is the standard idiom for masking off the permission bits. */
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {
   existsSync,
   mkdtempSync,
@@ -101,7 +102,7 @@ describe('mentorship/config', () => {
       // Corrupt the file: write a literal `{` (incomplete JSON object).
       writeFileSync(configPathFor(repoRoot), '{', {mode: 0o644});
 
-      expect(() => readMentorshipConfig(roots)).toThrow();
+      expect(() => readMentorshipConfig(roots)).toThrow(SyntaxError);
     });
 
     test('throws on a JSON object that does not match MentorshipConfigSchema', () => {
@@ -119,7 +120,7 @@ describe('mentorship/config', () => {
         {mode: 0o644}
       );
 
-      expect(() => readMentorshipConfig(roots)).toThrow();
+      expect(() => readMentorshipConfig(roots)).toThrow(z.ZodError);
     });
   });
 

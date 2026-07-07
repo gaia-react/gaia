@@ -25,10 +25,6 @@ const HELP_TEXT = `Usage: gaia setup-ci check-admin --owner <o> --repo <r> [--js
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type RunOptions = {
-  cwd?: string;
-};
-
 type AuthStatus = 'api_error' | 'ok' | 'unauthenticated';
 
 type CheckAdminOutput = {
@@ -37,10 +33,55 @@ type CheckAdminOutput = {
   error?: string;
 };
 
+type RunOptions = {
+  cwd?: string;
+};
+
 const printHuman = (output: CheckAdminOutput): void => {
   process.stdout.write(
     `admin: ${String(output.admin)}\nauth_status: ${output.auth_status}\n`
   );
+};
+
+const printOutput = (output: CheckAdminOutput, json: boolean): void => {
+  if (json) {
+    process.stdout.write(`${JSON.stringify(output)}\n`);
+  } else {
+    printHuman(output);
+  }
+};
+
+// Extracted out of `run` (kept its cognitive complexity under the frozen
+// limit): the two-step gh probe, independent of --json/human printing.
+const probeAdmin = async (
+  owner: string,
+  repo: string,
+  cwd: string
+): Promise<CheckAdminOutput> => {
+  // Step 1: gh auth status.
+  const authResult = await runGh({args: ['auth', 'status'], cwd});
+
+  if (!authResult.ok) {
+    return {admin: false, auth_status: 'unauthenticated'};
+  }
+
+  // Step 2: gh api repos/<owner>/<repo> --jq .permissions.admin.
+  const apiResult = await runGh({
+    args: ['api', `repos/${owner}/${repo}`, '--jq', '.permissions.admin'],
+    cwd,
+  });
+
+  if (!apiResult.ok) {
+    return {
+      admin: false,
+      auth_status: 'api_error',
+      error: apiResult.stderr.trim(),
+    };
+  }
+
+  const trimmed = apiResult.stdout.trim();
+
+  return {admin: trimmed === 'true', auth_status: 'ok'};
 };
 
 export const run = async (
@@ -52,7 +93,7 @@ export const run = async (
   let repo: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (HELP_TOKENS.has(token)) {
       process.stdout.write(HELP_TEXT);
@@ -62,31 +103,21 @@ export const run = async (
 
     if (token === '--json') {
       json = true;
-
-      continue;
-    }
-
-    if (token === '--owner') {
+    } else if (token === '--owner') {
       owner = argv[index + 1];
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--repo') {
+    } else if (token === '--repo') {
       repo = argv[index + 1];
       index += 1;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'setup-ci check-admin',
+      });
 
-      continue;
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'setup-ci check-admin',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   if (owner === undefined || repo === undefined) {
@@ -99,59 +130,9 @@ export const run = async (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  // Step 1: gh auth status.
-  const authResult = await runGh({
-    args: ['auth', 'status'],
-    cwd: options.cwd ?? process.cwd(),
-  });
+  const output = await probeAdmin(owner, repo, options.cwd ?? process.cwd());
 
-  if (!authResult.ok) {
-    const output: CheckAdminOutput = {
-      admin: false,
-      auth_status: 'unauthenticated',
-    };
-
-    if (json) {
-      process.stdout.write(`${JSON.stringify(output)}\n`);
-    } else {
-      printHuman(output);
-    }
-
-    return EXIT_CODES.OK;
-  }
-
-  // Step 2: gh api repos/<owner>/<repo> --jq .permissions.admin.
-  const apiResult = await runGh({
-    args: ['api', `repos/${owner}/${repo}`, '--jq', '.permissions.admin'],
-    cwd: options.cwd ?? process.cwd(),
-  });
-
-  if (!apiResult.ok) {
-    const output: CheckAdminOutput = {
-      admin: false,
-      auth_status: 'api_error',
-      error: apiResult.stderr.trim(),
-    };
-
-    if (json) {
-      process.stdout.write(`${JSON.stringify(output)}\n`);
-    } else {
-      printHuman(output);
-    }
-
-    return EXIT_CODES.OK;
-  }
-
-  const trimmed = apiResult.stdout.trim();
-  const admin = trimmed === 'true';
-
-  const output: CheckAdminOutput = {admin, auth_status: 'ok'};
-
-  if (json) {
-    process.stdout.write(`${JSON.stringify(output)}\n`);
-  } else {
-    printHuman(output);
-  }
+  printOutput(output, json);
 
   return EXIT_CODES.OK;
 };

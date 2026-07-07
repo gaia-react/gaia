@@ -21,7 +21,7 @@
  *     sequence short-circuits with exit code 2; no narration, the
  *     command's own stderr is piped through.
  */
-import {type SpawnSyncReturns} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {
@@ -29,16 +29,16 @@ import {
   defaultRunner,
   inspectWorkingTree,
   isProtectedBranch,
-  type CommandRunner,
 } from './util/branch.js';
+import type {CommandRunner} from './util/branch.js';
 import {resolveRepoRoot, shortSha} from './util/git.js';
 import {
-  UNEXPECTED_EXIT,
   commandSucceeded,
   finalizeMerge,
   passthroughFailure as passthroughFailureWithPrefix,
   refuse,
   todayUtc,
+  UNEXPECTED_EXIT,
 } from './util/land.js';
 
 const HELP_TEXT = `Usage: gaia wiki sync land [--branch-aware]
@@ -56,15 +56,6 @@ const HELP_TEXT = `Usage: gaia wiki sync land [--branch-aware]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type ParsedFlags = {
-  branchAware: boolean;
-};
-
-type FlagParseSuccess = {
-  flags: ParsedFlags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
@@ -72,16 +63,24 @@ type FlagParseFailure = {
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
 
+type FlagParseSuccess = {
+  flags: ParsedFlags;
+  ok: true;
+};
+
+type ParsedFlags = {
+  branchAware: boolean;
+};
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let branchAware = false;
 
   for (const token of argv) {
     if (token === '--branch-aware') {
       branchAware = true;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   return {flags: {branchAware}, ok: true};
@@ -109,7 +108,12 @@ const passthroughFailure = (
   result: SpawnSyncReturns<string>,
   step: RunStep
 ): number =>
-  passthroughFailureWithPrefix('sync-land', result, step.command, step.args);
+  passthroughFailureWithPrefix({
+    args: step.args,
+    command: step.command,
+    prefix: 'sync-land',
+    result,
+  });
 
 const stepSucceeded = commandSucceeded;
 
@@ -247,32 +251,61 @@ const protectedBranchLanding = (
   // Land like any other PR: `--auto` waits for the gate to go green server side,
   // then finalizeMerge polls for the merge and cleans up locally (or defers to
   // the session-start janitor on timeout). Mirrors `chain finish`.
-  return finalizeMerge(
-    ctx.runner,
-    ctx.cwd,
-    branchName,
-    ctx.originalBranch,
-    'sync-land',
-    {attempts: options.mergePollAttempts, sleep: options.sleep}
-  );
+  return finalizeMerge({
+    attempts: options.mergePollAttempts,
+    base: ctx.originalBranch,
+    branch: branchName,
+    cwd: ctx.cwd,
+    prefix: 'sync-land',
+    runner: ctx.runner,
+    sleep: options.sleep,
+  });
+};
+
+// `SpawnSyncReturns.stdout`/`.stderr` are typed as non-nullable `string`, but
+// a spawn failure can genuinely leave them `null`/`undefined` at runtime
+// despite the type declaration.
+const safeOutput = (value: null | string | undefined): string => value ?? '';
+
+/**
+ * Resolve HEAD via the injected runner so tests can stub it. Mirrors
+ * the argv of the shared `headSha` helper in `util/git.ts`, but routes
+ * through the runner indirection so a mocked runner sees the call.
+ */
+const spawnHead = (runner: CommandRunner, cwd: string): string => {
+  const result = runner('git', ['rev-parse', 'HEAD'], {cwd});
+
+  if (result.error !== undefined) {
+    throw new Error(`git rev-parse HEAD failed: ${result.error.message}`);
+  }
+
+  if ((result.status ?? -1) !== 0) {
+    const stderr = safeOutput(result.stderr).trim();
+
+    throw new Error(
+      `git rev-parse HEAD exited ${result.status ?? -1}: ${stderr}`
+    );
+  }
+
+  return safeOutput(result.stdout).trim();
 };
 
 type RunOptions = {
   cwd?: string;
-  runner?: CommandRunner;
-  /** Override "today" for deterministic tests. ISO-8601 date string. */
-  today?: string;
   /** Override the merge-poll attempt count on the protected-branch path. */
   mergePollAttempts?: number;
+  runner?: CommandRunner;
   /** Override the inter-poll sleep on the protected-branch path (test no-op). */
   sleep?: (ms: number) => void;
+  /** Override "today" for deterministic tests. ISO-8601 date string. */
+  today?: string;
 };
 
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -364,26 +397,4 @@ export const run = (
   }
 
   return inPlaceLanding(ctx);
-};
-
-/**
- * Resolve HEAD via the injected runner so tests can stub it. Mirrors
- * the argv of the shared `headSha` helper in `util/git.ts`, but routes
- * through the runner indirection so a mocked runner sees the call.
- */
-const spawnHead = (runner: CommandRunner, cwd: string): string => {
-  const result = runner('git', ['rev-parse', 'HEAD'], {cwd});
-
-  if (result.error !== undefined) {
-    throw new Error(`git rev-parse HEAD failed: ${result.error.message}`);
-  }
-
-  if ((result.status ?? -1) !== 0) {
-    const stderr = (result.stderr ?? '').trim();
-    throw new Error(
-      `git rev-parse HEAD exited ${result.status ?? -1}: ${stderr}`
-    );
-  }
-
-  return (result.stdout ?? '').trim();
 };

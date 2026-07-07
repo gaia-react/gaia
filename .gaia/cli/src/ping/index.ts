@@ -16,15 +16,15 @@ import {structuredError} from '../stderr.js';
 import {postPing} from './send.js';
 import type {PingEvent, PingPayload} from './send.js';
 
-const HELP_TEXT = `Usage: gaia ping --event <init|setup|update> [--field value ...]
+const HELP_TEXT = String.raw`Usage: gaia ping --event <init|setup|update> [--field value ...]
 
   Send the shared adoption ping. Accepted fields depend on
   --event:
 
-    init    --mode <interactive|automatic> --i18n <non-negative int> \\
+    init    --mode <interactive|automatic> --i18n <non-negative int> \
             --ci <ci|local|off|custom>
-    setup   --type <init|clone|reconfigure> --mentorship <on|off> \\
-            --repo <create|adopt|manual> --ci <on|off|skip> \\
+    setup   --type <init|clone|reconfigure> --mentorship <on|off> \
+            --repo <create|adopt|manual> --ci <on|off|skip> \
             --audit <local|ci>
     update  --from <version> --to <version>
 
@@ -86,25 +86,29 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined || value.startsWith('--')) {
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as
+  // `string`, not `string | undefined`; check the bound explicitly instead
+  // of comparing the indexed value to `undefined`.
+  if (index >= argv.length || argv[index].startsWith('--')) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 type ParseResult =
-  | {message: string; ok: false}
-  | {ok: true; payload: PingPayload};
+  {message: string; ok: false} | {ok: true; payload: PingPayload};
 
-const parsePing = (argv: readonly string[]): ParseResult => {
+type TokenParseResult =
+  | {event: PingEvent; ok: true; provided: Map<string, string>}
+  | {message: string; ok: false};
+
+const parseArgvTokens = (argv: readonly string[]): TokenParseResult => {
   let event: PingEvent | undefined;
   const provided = new Map<string, string>();
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--event') {
       const taken = takeValue(argv, index + 1, '--event');
@@ -119,20 +123,26 @@ const parsePing = (argv: readonly string[]): ParseResult => {
       }
       event = taken.value;
       index += 1;
-      continue;
+    } else {
+      const taken = takeValue(argv, index + 1, token);
+
+      if (!taken.ok) return taken;
+      provided.set(token, taken.value);
+      index += 1;
     }
-
-    const taken = takeValue(argv, index + 1, token);
-
-    if (!taken.ok) return taken;
-    provided.set(token, taken.value);
-    index += 1;
   }
 
   if (event === undefined) {
     return {message: '--event is required', ok: false};
   }
 
+  return {event, ok: true, provided};
+};
+
+const buildPayloadForEvent = (
+  event: PingEvent,
+  provided: ReadonlyMap<string, string>
+): ParseResult => {
   const specs = FIELDS_BY_EVENT[event];
   const payload: PingPayload = {event};
 
@@ -143,10 +153,7 @@ const parsePing = (argv: readonly string[]): ParseResult => {
       return {message: `unknown flag for event ${event}: ${flag}`, ok: false};
     }
 
-    if (
-      spec.enumValues !== undefined &&
-      !spec.enumValues.includes(rawValue)
-    ) {
+    if (spec.enumValues !== undefined && !spec.enumValues.includes(rawValue)) {
       return {
         message: `${flag} must be one of: ${spec.enumValues.join(', ')}`,
         ok: false,
@@ -158,13 +165,20 @@ const parsePing = (argv: readonly string[]): ParseResult => {
         return {message: `${flag} must be a non-negative integer`, ok: false};
       }
       payload[spec.key] = Number(rawValue);
-      continue;
+    } else {
+      payload[spec.key] = rawValue;
     }
-
-    payload[spec.key] = rawValue;
   }
 
   return {ok: true, payload};
+};
+
+const parsePing = (argv: readonly string[]): ParseResult => {
+  const tokenResult = parseArgvTokens(argv);
+
+  if (!tokenResult.ok) return tokenResult;
+
+  return buildPayloadForEvent(tokenResult.event, tokenResult.provided);
 };
 
 type RunOptions = {
@@ -175,7 +189,7 @@ export const run = async (
   argv: readonly string[],
   options: RunOptions = {}
 ): Promise<number> => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

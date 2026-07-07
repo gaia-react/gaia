@@ -9,6 +9,7 @@
  * Replaces the prose near-collision pass in `wiki/consolidate.md` Step 2c.
  */
 import {existsSync, readdirSync, statSync} from 'node:fs';
+import type {Dirent} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -43,23 +44,26 @@ const levenshtein = (a: string, b: string): number => {
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
 
-  const previous: number[] = Array.from({length: b.length + 1}, (_, i) => i);
+  const previous: number[] = Array.from(
+    {length: b.length + 1},
+    (_, index) => index
+  );
   const current: number[] = Array.from({length: b.length + 1}, () => 0);
 
-  for (let i = 1; i <= a.length; i += 1) {
-    current[0] = i;
+  for (let row = 1; row <= a.length; row += 1) {
+    current[0] = row;
 
-    for (let j = 1; j <= b.length; j += 1) {
-      const cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
-      current[j] = Math.min(
-        (current[j - 1] ?? 0) + 1,
-        (previous[j] ?? 0) + 1,
-        (previous[j - 1] ?? 0) + cost
+    for (let col = 1; col <= b.length; col += 1) {
+      const cost = a.charAt(row - 1) === b.charAt(col - 1) ? 0 : 1;
+      current[col] = Math.min(
+        (current[col - 1] ?? 0) + 1,
+        (previous[col] ?? 0) + 1,
+        (previous[col - 1] ?? 0) + cost
       );
     }
 
-    for (let j = 0; j <= b.length; j += 1) {
-      previous[j] = current[j] ?? 0;
+    for (let col = 0; col <= b.length; col += 1) {
+      previous[col] = current[col] ?? 0;
     }
   }
 
@@ -71,31 +75,36 @@ type DomainSlugs = {
   slugs: string[];
 };
 
-const collectDomainSlugs = (wikiRoot: string): DomainSlugs[] => {
-  const collected: DomainSlugs[] = [];
+const isCollectibleSlugFile = (entry: Dirent): boolean =>
+  entry.isFile() &&
+  entry.name.endsWith('.md') &&
+  !SKIPPED_FILES.has(entry.name) &&
+  !entry.name.startsWith('_');
 
-  for (const domain of DOMAIN_DIRS) {
+const collectDomainSlugs = (wikiRoot: string): DomainSlugs[] =>
+  DOMAIN_DIRS.flatMap((domain) => {
     const domainDir = path.join(wikiRoot, domain);
 
-    if (!existsSync(domainDir) || !statSync(domainDir).isDirectory()) continue;
+    if (!existsSync(domainDir) || !statSync(domainDir).isDirectory()) {
+      return [];
+    }
 
     const entries = readdirSync(domainDir, {withFileTypes: true});
-    const slugs: string[] = [];
+    // Ordinal comparator (not `localeCompare`): this order determines which
+    // slug in a pair reports as `slugA` vs `slugB`, and `localeCompare`
+    // treats `-`/`_` differently than the default sort's code-unit order,
+    // flipping that tie-break for near-identical slugs like `a-b`/`a_b`.
+    const slugs = entries
+      .filter((entry) => isCollectibleSlugFile(entry))
+      .map((entry) => entry.name.replace(/\.md$/u, ''))
+      .toSorted((left, right) =>
+        left < right ? -1
+        : left > right ? 1
+        : 0
+      );
 
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      if (!entry.name.endsWith('.md')) continue;
-      if (SKIPPED_FILES.has(entry.name)) continue;
-      if (entry.name.startsWith('_')) continue;
-      slugs.push(entry.name.replace(/\.md$/u, ''));
-    }
-    slugs.sort();
-
-    if (slugs.length >= 2) collected.push({domain, slugs});
-  }
-
-  return collected;
-};
+    return slugs.length >= 2 ? [{domain, slugs}] : [];
+  });
 
 export type Collision = {
   distance: number;
@@ -111,22 +120,26 @@ export const findCollisions = (
   const results: Collision[] = [];
 
   for (const {domain, slugs} of domainGroups) {
-    for (let i = 0; i < slugs.length; i += 1) {
-      const slugA = slugs[i] as string;
+    for (let index = 0; index < slugs.length; index += 1) {
+      const slugA = slugs[index];
       const normA = normalizeSlug(slugA);
 
-      for (let j = i + 1; j < slugs.length; j += 1) {
-        const slugB = slugs[j] as string;
+      for (
+        let otherIndex = index + 1;
+        otherIndex < slugs.length;
+        otherIndex += 1
+      ) {
+        const slugB = slugs[otherIndex];
         const normB = normalizeSlug(slugB);
 
         // Skip true duplicates (identical raw slug); that case can't
         // happen on a real filesystem and is meaningless to flag.
-        if (slugA === slugB) continue;
+        if (slugA !== slugB) {
+          const distance = levenshtein(normA, normB);
 
-        const distance = levenshtein(normA, normB);
-
-        if (distance <= maxDistance) {
-          results.push({distance, domain, slugA, slugB});
+          if (distance <= maxDistance) {
+            results.push({distance, domain, slugA, slugB});
+          }
         }
       }
     }
@@ -145,8 +158,9 @@ export const findCollisions = (
   return results;
 };
 
-type ParsedFlags = {
-  maxDistance: number;
+type FlagParseFailure = {
+  message: string;
+  ok: false;
 };
 
 type FlagParseSuccess = {
@@ -154,9 +168,8 @@ type FlagParseSuccess = {
   ok: true;
 };
 
-type FlagParseFailure = {
-  message: string;
-  ok: false;
+type ParsedFlags = {
+  maxDistance: number;
 };
 
 const takeValue = (
@@ -164,12 +177,14 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined)
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as
+  // `string`, not `string | undefined`; check the bound explicitly instead
+  // of comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
+  }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 const parseFlags = (
@@ -178,26 +193,25 @@ const parseFlags = (
   let maxDistance = DEFAULT_MAX_DISTANCE;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
-    if (token === '--max-distance') {
-      const taken = takeValue(argv, index + 1, '--max-distance');
-
-      if (!taken.ok) return taken;
-      const parsed = Number.parseInt(taken.value, 10);
-
-      if (Number.isNaN(parsed) || parsed < 1) {
-        return {
-          message: `--max-distance must be a positive integer (got: "${taken.value}")`,
-          ok: false,
-        };
-      }
-      maxDistance = parsed;
-      index += 1;
-      continue;
+    if (token !== '--max-distance') {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
 
-    return {message: `unknown flag: ${token}`, ok: false};
+    const taken = takeValue(argv, index + 1, '--max-distance');
+
+    if (!taken.ok) return taken;
+    const parsed = Number.parseInt(taken.value, 10);
+
+    if (Number.isNaN(parsed) || parsed < 1) {
+      return {
+        message: `--max-distance must be a positive integer (got: "${taken.value}")`,
+        ok: false,
+      };
+    }
+    maxDistance = parsed;
+    index += 1;
   }
 
   return {flags: {maxDistance}, ok: true};
@@ -211,7 +225,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

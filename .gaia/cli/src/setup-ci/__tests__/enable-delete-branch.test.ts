@@ -1,7 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {run} from '../enable-delete-branch.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -53,7 +54,7 @@ describe('setup-ci enable-delete-branch', () => {
     vi.restoreAllMocks();
   });
 
-  it('PATCHes delete_branch_on_merge=true on success', async () => {
+  test('PATCHes delete_branch_on_merge=true on success', async () => {
     const handle = sandbox.installGhShim({exitCode: 0});
     restore = handle.restore;
 
@@ -81,7 +82,7 @@ describe('setup-ci enable-delete-branch', () => {
     expect(parsed.applied).toBe(true);
   });
 
-  it('returns applied: false with error on gh failure', async () => {
+  test('returns applied: false with error on gh failure', async () => {
     const handle = sandbox.installGhShim({exitCode: 1});
     restore = handle.restore;
 
@@ -98,7 +99,7 @@ describe('setup-ci enable-delete-branch', () => {
     expect(parsed.error).toBe('gh_api_error');
   });
 
-  it('JSON output never leaks gh stderr substrings on failure', async () => {
+  test('JSON output never leaks gh stderr substrings on failure', async () => {
     const sentinel = 'TOKEN_LEAK_CANARY_abc123:repo/secret';
     const handle = sandbox.installGhShim({
       exitCode: 1,
@@ -120,13 +121,13 @@ describe('setup-ci enable-delete-branch', () => {
     expect(parsed.error).toBe('gh_api_error');
   });
 
-  it('exits non-zero when --owner missing', async () => {
+  test('exits non-zero when --owner missing', async () => {
     const exit = await run(['--repo', 'bar'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('missing_required_arg');
   });
 
-  it('rejects unknown flags', async () => {
+  test('rejects unknown flags', async () => {
     const exit = await run(['--owner', 'foo', '--repo', 'bar', '--bogus'], {
       cwd: sandbox.root,
     });
@@ -134,7 +135,7 @@ describe('setup-ci enable-delete-branch', () => {
     expect(stdio.err.join('')).toContain('unknown flag');
   });
 
-  it('--help exits 0', async () => {
+  test('--help exits 0', async () => {
     const exit = await run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

@@ -1,8 +1,5 @@
 /* eslint-disable no-bitwise -- POSIX file mode bit masking. */
-/* eslint-disable testing-library/render-result-naming-convention --
-   `renderProfile` produces a markdown string for a CLI tool, not a React
-   render result; the testing-library rule triggers on any `render*`
-   identifier without scoping to React. */
+
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {
   existsSync,
@@ -31,7 +28,7 @@ describe('renderProfile', () => {
       windowDays: 30,
     });
 
-    const firstLine = output.split('\n')[0];
+    const firstLine = output.split('\n', 1)[0];
     expect(firstLine).toBe(PROFILE_DO_NOT_EDIT_HEADER);
   });
 

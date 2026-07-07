@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki state`.
  */
@@ -5,7 +6,6 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './state.js';
 
 type Sandbox = {
@@ -84,15 +84,16 @@ const setupSandbox = (): Sandbox => {
   const commitEmptyChain = (count: number): void => {
     if (count <= 0) return;
     const lines: string[] = [];
-    for (let i = 0; i < count; i += 1) {
+
+    for (let index = 0; index < count; index += 1) {
       lines.push(
         'commit refs/heads/main',
-        `mark :${i + 1}`,
-        `committer Test <test@example.com> ${1_700_000_000 + i} +0000`,
+        `mark :${index + 1}`,
+        `committer Test <test@example.com> ${1_700_000_000 + index} +0000`,
         'data <<COMMITMSG',
-        `feat: change ${i}`,
+        `feat: change ${index}`,
         'COMMITMSG',
-        i === 0 ? 'from refs/heads/main^0' : `from :${i}`,
+        index === 0 ? 'from refs/heads/main^0' : `from :${index}`,
         ''
       );
     }
@@ -156,7 +157,7 @@ const captureStdio = (): {
 const writeStateFile = (root: string, sha: string): void => {
   writeFileSync(
     path.join(root, 'wiki', '.state.json'),
-    `${JSON.stringify({version: 1, last_evaluated_sha: sha}, null, 2)}\n`,
+    `${JSON.stringify({last_evaluated_sha: sha, version: 1}, null, 2)}\n`,
     'utf8'
   );
 };
@@ -165,7 +166,7 @@ const writeStateFileAt = (root: string, sha: string, at: string): void => {
   writeFileSync(
     path.join(root, 'wiki', '.state.json'),
     `${JSON.stringify(
-      {version: 1, last_evaluated_sha: sha, last_evaluated_at: at},
+      {last_evaluated_at: at, last_evaluated_sha: sha, version: 1},
       null,
       2
     )}\n`,
@@ -205,7 +206,7 @@ describe('wiki state', () => {
     expect(json.drift_severity).toBe('none');
     expect(json.reachable).toBe(true);
     expect(typeof json.head_short).toBe('string');
-    expect((json.head_short as string).length).toBe(7);
+    expect(json.head_short as string).toHaveLength(7);
     // suggested_base only fires on the unreachable recovery path.
     expect(json.suggested_base).toBe('');
   });
@@ -297,14 +298,15 @@ describe('wiki state', () => {
     expect(json.commits_ahead).toBe(1);
     expect(json.drift_severity).toBe('low');
     expect(Array.isArray(json.recent_commits)).toBe(true);
-    expect((json.recent_commits as unknown[]).length).toBe(1);
+    expect(json.recent_commits as unknown[]).toHaveLength(1);
   }, 15_000);
 
   test('reports drift_severity medium for 6-20 commits ahead', () => {
     const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
     writeStateFile(sandbox.root, baseSha);
-    for (let i = 0; i < 6; i += 1) {
-      sandbox.commit(`feat: change ${i}`, {[`app/foo${i}.ts`]: 'x\n'});
+
+    for (let index = 0; index < 6; index += 1) {
+      sandbox.commit(`feat: change ${index}`, {[`app/foo${index}.ts`]: 'x\n'});
     }
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -354,8 +356,8 @@ describe('wiki state', () => {
 
   test('returns per_domain_page_counts shaped object', () => {
     const sha = sandbox.commit('initial', {
-      'wiki/concepts/Foo.md': '# Foo\n',
       'wiki/concepts/Bar.md': '# Bar\n',
+      'wiki/concepts/Foo.md': '# Foo\n',
       'wiki/decisions/Baz.md': '# Baz\n',
     });
     writeStateFile(sandbox.root, sha);

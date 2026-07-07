@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Worktree-aware coverage for the `gaia setup` CLI surface.
  *
@@ -20,11 +21,11 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run as runFinalize} from '../finalize.js';
 import {run as runMarkStep} from '../mark-step.js';
 import {run as runStatus} from '../status.js';
-import {SETUP_STEPS, type SetupState} from '../util/state-file.js';
+import {SETUP_STEPS} from '../util/state-file.js';
+import type {SetupState} from '../util/state-file.js';
 
 type WorktreeSandbox = {
   cleanup: () => void;

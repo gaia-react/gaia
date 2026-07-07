@@ -110,10 +110,7 @@ const walkMarkdown = (root: string, dir: string): string[] => {
 
     if (entry.isDirectory()) {
       out.push(...walkMarkdown(root, full));
-      continue;
-    }
-
-    if (entry.isFile() && entry.name.endsWith('.md')) {
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
       out.push(path.relative(root, full));
     }
   }
@@ -131,6 +128,49 @@ const pathExists = (root: string, candidate: string): boolean => {
   }
 };
 
+// A tracked token is dead when it points outside this repo (sibling-monorepo
+// segments never resolve on a single-repo clone) or when it simply doesn't
+// exist on disk.
+const isDeadToken = (cwd: string, token: string): boolean =>
+  SIBLING_REPO_PATTERN.test(token) || !pathExists(cwd, token);
+
+type FileContext = {
+  cwd: string;
+  filePath: string;
+};
+
+const collectDeadPathsInLine = (
+  ctx: FileContext,
+  lineNumber: number,
+  line: string
+): readonly DeadRef[] => {
+  if (HISTORICAL_BULLET_PATTERN.test(line)) return [];
+
+  const refs: DeadRef[] = [];
+
+  for (const match of line.matchAll(PATH_TOKEN_PATTERN)) {
+    // The capture group `([^`\n]+?)` isn't inside an optional quantifier or
+    // alternation, so it always participates once `match` exists; without
+    // `noUncheckedIndexedAccess`, TS already types `match[1]` as `string`.
+    const token = match[1];
+
+    if (isTrackedPath(token) && isDeadToken(ctx.cwd, token)) {
+      refs.push({filePath: ctx.filePath, line: lineNumber, path: token});
+    }
+  }
+
+  return refs;
+};
+
+const collectDeadPathsInFile = (ctx: FileContext): readonly DeadRef[] => {
+  const content = readFileSync(path.join(ctx.cwd, ctx.filePath), 'utf8');
+  const lines = content.split('\n');
+
+  return lines.flatMap((line, index) =>
+    collectDeadPathsInLine(ctx, index + 1, line)
+  );
+};
+
 export const findDeadPaths = (cwd: string): readonly DeadRef[] => {
   const wikiDir = path.join(cwd, 'wiki');
 
@@ -140,37 +180,11 @@ export const findDeadPaths = (cwd: string): readonly DeadRef[] => {
     return [];
   }
 
-  const dead: DeadRef[] = [];
   const files = walkMarkdown(cwd, wikiDir);
 
-  for (const filePath of files) {
-    if (shouldSkipFile(filePath)) continue;
-
-    const content = readFileSync(path.join(cwd, filePath), 'utf8');
-    const lines = content.split('\n');
-
-    for (const [index, line] of lines.entries()) {
-      if (HISTORICAL_BULLET_PATTERN.test(line)) continue;
-
-      const matches = line.matchAll(PATH_TOKEN_PATTERN);
-
-      for (const match of matches) {
-        const token = match[1];
-
-        if (token === undefined) continue;
-        if (!isTrackedPath(token)) continue;
-        if (SIBLING_REPO_PATTERN.test(token)) {
-          dead.push({filePath, line: index + 1, path: token});
-          continue;
-        }
-        if (pathExists(cwd, token)) continue;
-
-        dead.push({filePath, line: index + 1, path: token});
-      }
-    }
-  }
-
-  return dead;
+  return files
+    .filter((filePath) => !shouldSkipFile(filePath))
+    .flatMap((filePath) => collectDeadPathsInFile({cwd, filePath}));
 };
 
 export const run = (
@@ -188,15 +202,15 @@ export const run = (
 
     if (token === '--json') {
       json = true;
-      continue;
-    }
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'wiki dead-paths',
-    });
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'wiki dead-paths',
+      });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
   }
 
   try {

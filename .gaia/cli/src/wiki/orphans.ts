@@ -56,15 +56,15 @@ export const run = (
 
     if (token === '--json') {
       json = true;
-      continue;
-    }
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'wiki orphans',
-    });
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'wiki orphans',
+      });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
   }
 
   let cwd: string;

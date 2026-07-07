@@ -1,7 +1,3 @@
-/* eslint-disable unicorn/prevent-abbreviations -- the filename is a frozen
-   subcommand-name contract: `gaia mentorship _internal-provision-dirs` is
-   wired into gaia-init's slash-command flow. Renaming would break the
-   dispatcher. */
 /**
  * Internal subcommand consumed by gaia-init's slash-command flow.
  *

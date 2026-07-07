@@ -18,12 +18,13 @@
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {fileURLToPath} from 'node:url';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {ensureDir, writeFileIfAbsent} from './fs.js';
-import {renderTemplate, type TemplateVars} from './template.js';
+import {renderTemplate} from './template.js';
+import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const KEBAB_PATTERN = /^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u;
@@ -35,19 +36,19 @@ type Endpoint = (typeof ALL_ENDPOINTS)[number];
 
 const ALL_ENDPOINTS_SET: ReadonlySet<string> = new Set(ALL_ENDPOINTS);
 
-type SchemaField = {
-  /** field name in camelCase (client-side schema) */
-  name: string;
-  /** Zod expression for client schema (e.g. `z.string()`, `z.literal(['a','b'])`) */
-  zodExpression: string;
-};
-
 type ParsedArgs = {
   endpoints: ReadonlySet<Endpoint>;
   fields: SchemaField[];
   json: boolean;
   mocks: boolean;
   name: string;
+};
+
+type SchemaField = {
+  /** field name in camelCase (client-side schema) */
+  name: string;
+  /** Zod expression for client schema (e.g. `z.string()`, `z.literal(['a','b'])`) */
+  zodExpression: string;
 };
 
 const HELP_TEXT = `Usage: gaia scaffold service <name> --endpoints "get,post,put,delete" --schema "id:string,name:string"
@@ -98,7 +99,7 @@ const parseFlags = (argv: readonly string[]): FlagMap => {
     } else if (arg === '--schema') {
       result.schema = argv[index + 1];
       index += 1;
-    } else if (arg !== undefined && !arg.startsWith('--')) {
+    } else if (!arg.startsWith('--')) {
       result.positional.push(arg);
     }
   }
@@ -133,14 +134,30 @@ const ZOD_TYPE_BUILDERS: Record<string, () => string> = {
   string: () => 'z.string()',
 };
 
-const buildZodExpression = (typeToken: string): string | null => {
+// `ZOD_TYPE_BUILDERS` is a Record<string, ...> and the project does not
+// enable `noUncheckedIndexedAccess`, so TS treats every key as present; `base`
+// is caller-controlled and may genuinely not be a builder key. A function's
+// declared return type (unlike a local variable annotation, which TS narrows
+// back to the initializer's type via control flow) is honored at call sites,
+// so wrapping the read here widens it without loosening the lookup table's
+// own type.
+const getZodTypeBuilder = (base: string): (() => string) | undefined =>
+  ZOD_TYPE_BUILDERS[base];
+
+const buildZodExpression = (typeToken: string): null | string => {
   const optional = typeToken.endsWith('?');
   const base = optional ? typeToken.slice(0, -1) : typeToken;
   const enumMatch = ENUM_PATTERN.exec(base);
-  let expression: string | null = null;
+  let expression: null | string = null;
 
-  if (enumMatch !== null) {
-    const variants = (enumMatch[1] ?? '').split(',').flatMap((value) => {
+  if (enumMatch === null) {
+    const builder = getZodTypeBuilder(base);
+
+    expression = builder === undefined ? null : builder();
+  } else {
+    // `(.+)` is a mandatory, non-optional group: once `enumMatch` is
+    // non-null, group 1 always participated in the match.
+    const variants = enumMatch[1].split(',').flatMap((value) => {
       const trimmed = value.trim();
 
       return trimmed.length > 0 ? [trimmed] : [];
@@ -149,10 +166,6 @@ const buildZodExpression = (typeToken: string): string | null => {
     if (variants.length === 0) return null;
     const quoted = variants.map((value) => `'${value}'`).join(', ');
     expression = `z.literal([${quoted}])`;
-  } else {
-    const builder = ZOD_TYPE_BUILDERS[base];
-
-    expression = builder === undefined ? null : builder();
   }
 
   if (expression === null) return null;
@@ -160,7 +173,7 @@ const buildZodExpression = (typeToken: string): string | null => {
   return optional ? `${expression}.nullish()` : expression;
 };
 
-const parseSchema = (raw: string): SchemaField[] | null => {
+const parseSchema = (raw: string): null | SchemaField[] => {
   const tokens = raw
     .split(',')
     // Re-join enum(...) bodies that were split on internal commas. We split the
@@ -206,30 +219,40 @@ const parseSchema = (raw: string): SchemaField[] | null => {
   return fields;
 };
 
-const parseArgs = (argv: readonly string[]): ParsedArgs | string => {
+const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   const flags = parseFlags(argv);
-  const name = flags.positional[0];
+  const name = flags.positional.at(0);
 
-  if (name === undefined) return 'missing required <name>';
+  if (name === undefined) return {error: 'missing required <name>'};
+
   if (!KEBAB_PATTERN.test(name)) {
-    return `<name> must be kebab-case (e.g. "projects", "user-settings"); got: ${name}`;
+    return {
+      error: `<name> must be kebab-case (e.g. "projects", "user-settings"); got: ${name}`,
+    };
   }
+
   if (flags.endpoints === undefined || flags.endpoints.length === 0) {
-    return '--endpoints is required';
+    return {error: '--endpoints is required'};
   }
+
   if (flags.schema === undefined || flags.schema.length === 0) {
-    return '--schema is required';
+    return {error: '--schema is required'};
   }
 
   const endpoints = parseEndpoints(flags.endpoints);
 
   if (endpoints === null) {
-    return `--endpoints must be a comma-separated subset of ${ALL_ENDPOINTS.join(',')}`;
+    return {
+      error: `--endpoints must be a comma-separated subset of ${ALL_ENDPOINTS.join(',')}`,
+    };
   }
   const fields = parseSchema(flags.schema);
 
   if (fields === null) {
-    return '--schema entries must look like "name:string" (allowed types: string, number, boolean, datetime, enum(a,b,...); append "?" for optional)';
+    return {
+      error:
+        '--schema entries must look like "name:string" (allowed types: string, number, boolean, datetime, enum(a,b,...); append "?" for optional)',
+    };
   }
 
   return {
@@ -286,9 +309,11 @@ const singularize = (kebab: string): string => {
   if (kebab.endsWith('ies') && kebab.length > 3) {
     return `${kebab.slice(0, -3)}y`;
   }
+
   if (kebab.endsWith('sses')) {
     return kebab.slice(0, -2);
   }
+
   if (
     kebab.endsWith('xes') ||
     kebab.endsWith('ches') ||
@@ -296,6 +321,7 @@ const singularize = (kebab: string): string => {
   ) {
     return kebab.slice(0, -2);
   }
+
   if (kebab.endsWith('s') && !kebab.endsWith('ss')) {
     return kebab.slice(0, -1);
   }
@@ -307,11 +333,11 @@ const deriveNames = (name: string): DerivedNames => {
   const singularKebab = singularize(name);
 
   return {
+    name,
     NAME_UPPER: toUpperConst(name),
     Plural: toPascal(name),
-    Singular: toPascal(singularKebab),
-    name,
     plural: toCamel(name),
+    Singular: toPascal(singularKebab),
     singular: toCamel(singularKebab),
   };
 };
@@ -367,36 +393,6 @@ const composeMockBarrel = (endpoints: ReadonlySet<Endpoint>): TemplateVars => {
 // Database barrel insert
 // ---------------------------------------------------------------------------
 
-/**
- * Insert a new collection registration into `test/mocks/database.ts`,
- * preserving alphabetical order of registered collections.
- *
- * The barrel has three load-bearing regions we mutate:
- *   1. Imports of `{collection, resetCollection} from './<name>/data'`.
- *   2. The `Promise.all([...])` argument list inside `resetTestData`.
- *   3. The `default` export object that maps `{<name>}`.
- *
- * Idempotent: if the new entries already exist verbatim, returns
- * `{written: false}`.
- */
-const updateDatabaseBarrel = (
-  databasePath: string,
-  derived: DerivedNames
-): {written: boolean} => {
-  const raw = readFileSync(databasePath, 'utf8');
-  const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
-  const resetCall = `reset${derived.Plural}()`;
-
-  if (raw.includes(importLine)) return {written: false};
-
-  const next = applyDatabaseEdits(raw, derived, importLine, resetCall);
-
-  if (next === raw) return {written: false};
-  atomicWriteFileSync(databasePath, next);
-
-  return {written: true};
-};
-
 const insertImportAlphabetically = (
   source: string,
   importLine: string
@@ -411,6 +407,7 @@ const insertImportAlphabetically = (
     if (importPattern.test(line)) {
       if (firstImportIndex === -1) firstImportIndex = index;
       lastImportIndex = index;
+
       if (insertIndex === -1 && importLine.localeCompare(line) < 0) {
         insertIndex = index;
       }
@@ -425,7 +422,7 @@ const insertImportAlphabetically = (
 
     while (
       topInsert < lines.length &&
-      (lines[topInsert]?.startsWith('//') === true ||
+      (lines[topInsert]?.startsWith('//') ||
         lines[topInsert]?.trim().length === 0)
     ) {
       topInsert += 1;
@@ -455,7 +452,9 @@ const insertResetCallAlphabetically = (
   const match = pattern.exec(source);
 
   if (match === null) return source;
-  const inner = (match[1] ?? '').trim();
+  // `([^\]]*)` is a mandatory, non-optional group: it always participates
+  // in the match (possibly as an empty string), never `undefined`.
+  const inner = match[1].trim();
   const newCall = `reset${derived.Plural}()`;
 
   if (inner.length === 0) {
@@ -486,7 +485,7 @@ const insertCollectionExportAlphabetically = (
   // Both are normalized to the populated single-line form here.
   const seedPattern = /export default \{\} as Record<string, never>;/u;
 
-  if (seedPattern.test(source)) {
+  if (source.includes('export default {} as Record<string, never>;')) {
     return source.replace(seedPattern, `export default {${derived.plural}};`);
   }
 
@@ -494,7 +493,9 @@ const insertCollectionExportAlphabetically = (
   const match = populatedPattern.exec(source);
 
   if (match === null) return source;
-  const inner = (match[1] ?? '').trim();
+  // `([^}]*)` is a mandatory, non-optional group: it always participates
+  // in the match (possibly as an empty string), never `undefined`.
+  const inner = match[1].trim();
   const collections = inner.split(',').flatMap((token) => {
     const trimmed = token.trim();
 
@@ -513,12 +514,15 @@ const insertCollectionExportAlphabetically = (
   );
 };
 
-const applyDatabaseEdits = (
-  source: string,
-  derived: DerivedNames,
-  importLine: string,
-  resetCall: string
-): string => {
+type ApplyDatabaseEditsArgs = {
+  derived: DerivedNames;
+  importLine: string;
+  resetCall: string;
+  source: string;
+};
+
+const applyDatabaseEdits = (args: ApplyDatabaseEditsArgs): string => {
+  const {derived, importLine, resetCall, source} = args;
   let next = source;
   next = insertImportAlphabetically(next, importLine);
 
@@ -544,7 +548,7 @@ const applyDatabaseEdits = (
     !collectionEntry
   ) {
     throw new Error(
-      `database barrel edit did not apply cleanly: expected import, ` +
+      'database barrel edit did not apply cleanly: expected import, ' +
         `${resetCall} in the resetTestData Promise.all, and ` +
         `"${derived.plural}" in the default export. ` +
         'Register the collection by hand or fix test/mocks/database.ts.'
@@ -552,6 +556,41 @@ const applyDatabaseEdits = (
   }
 
   return next;
+};
+
+/**
+ * Insert a new collection registration into `test/mocks/database.ts`,
+ * preserving alphabetical order of registered collections.
+ *
+ * The barrel has three load-bearing regions we mutate:
+ *   1. Imports of `{collection, resetCollection} from './<name>/data'`.
+ *   2. The `Promise.all([...])` argument list inside `resetTestData`.
+ *   3. The `default` export object that maps `{<name>}`.
+ *
+ * Idempotent: if the new entries already exist verbatim, returns
+ * `{written: false}`.
+ */
+const updateDatabaseBarrel = (
+  databasePath: string,
+  derived: DerivedNames
+): {written: boolean} => {
+  const raw = readFileSync(databasePath, 'utf8');
+  const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
+  const resetCall = `reset${derived.Plural}()`;
+
+  if (raw.includes(importLine)) return {written: false};
+
+  const next = applyDatabaseEdits({
+    derived,
+    importLine,
+    resetCall,
+    source: raw,
+  });
+
+  if (next === raw) return {written: false};
+  atomicWriteFileSync(databasePath, next);
+
+  return {written: true};
 };
 
 // ---------------------------------------------------------------------------
@@ -605,11 +644,11 @@ const emitServiceFiles = (
   ensureDir(serviceDir);
 
   const baseVars: TemplateVars = {
+    name: derived.name,
     NAME_UPPER: derived.NAME_UPPER,
     Plural: derived.Plural,
-    Singular: derived.Singular,
-    name: derived.name,
     plural: derived.plural,
+    Singular: derived.Singular,
     singular: derived.singular,
   };
 
@@ -644,11 +683,11 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   ensureDir(mockDir);
 
   const baseVars: TemplateVars = {
+    name: derived.name,
     NAME_UPPER: derived.NAME_UPPER,
     Plural: derived.Plural,
-    Singular: derived.Singular,
-    name: derived.name,
     plural: derived.plural,
+    Singular: derived.Singular,
     singular: derived.singular,
   };
 
@@ -665,6 +704,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
       result
     );
   }
+
   if (endpoints.has('post')) {
     writeRendered(
       path.join(mockDir, 'post.ts'),
@@ -672,6 +712,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
       result
     );
   }
+
   if (endpoints.has('put')) {
     writeRendered(
       path.join(mockDir, 'put.ts'),
@@ -679,6 +720,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
       result
     );
   }
+
   if (endpoints.has('delete')) {
     writeRendered(
       path.join(mockDir, 'delete.ts'),
@@ -725,8 +767,8 @@ export const run = (
 
   const parsed = parseArgs(argv);
 
-  if (typeof parsed === 'string') {
-    return userError(parsed, 'scaffold service');
+  if ('error' in parsed) {
+    return userError(parsed.error, 'scaffold service');
   }
 
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};

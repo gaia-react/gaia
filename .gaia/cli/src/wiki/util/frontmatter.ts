@@ -12,16 +12,21 @@
  * this module covers the shapes wiki pages emit today.
  */
 const FRONTMATTER_FENCE = '---';
-const SCALAR_PATTERN = /^([\w-]+)\s*:\s*(.*)$/u;
-
-export type FrontmatterValue = boolean | number | string | string[] | null;
+// No `\s*` around the colon (real wiki frontmatter never has one): an
+// unbounded quantifier immediately beside another quantified/disjoint class
+// is the shape `sonarjs/super-linear-regex` flags. Any leading/trailing
+// whitespace in the captured value is still stripped by the `.trim()` call
+// at the call site below.
+const SCALAR_PATTERN = /^([\w-]+):(.*)$/u;
 
 export type Frontmatter = Record<string, FrontmatterValue>;
+
+export type FrontmatterValue = boolean | null | number | string | string[];
 
 const stripQuotes = (raw: string): string => {
   if (raw.length < 2) return raw;
   const first = raw.charAt(0);
-  const last = raw.charAt(raw.length - 1);
+  const last = raw.at(-1);
 
   if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
     return raw.slice(1, -1);
@@ -30,6 +35,10 @@ const stripQuotes = (raw: string): string => {
   return raw;
 };
 
+// A YAML scalar parser inherently returns heterogeneous JS types
+// (null/boolean/number/string/array) by design; `FrontmatterValue` already
+// declares that exact union, so this isn't inconsistent, it's the contract.
+// eslint-disable-next-line sonarjs/function-return-type -- see comment above
 const parseScalar = (raw: string): FrontmatterValue => {
   const trimmed = raw.trim();
 
@@ -97,13 +106,17 @@ export const parseFrontmatter = (raw: string): FrontmatterParseResult => {
   const frontmatter: Frontmatter = {};
 
   for (const line of yamlLines) {
-    if (line.trim() === '' || line.trim().startsWith('#')) continue;
-    const match = SCALAR_PATTERN.exec(line);
+    const trimmedLine = line.trim();
 
-    if (match === null) continue;
-    const key = match[1] as string;
-    const value = (match[2] as string).trim();
-    frontmatter[key] = parseScalar(value);
+    if (trimmedLine !== '' && !trimmedLine.startsWith('#')) {
+      const match = SCALAR_PATTERN.exec(line);
+
+      if (match !== null) {
+        const key = match[1];
+        const value = match[2].trim();
+        frontmatter[key] = parseScalar(value);
+      }
+    }
   }
 
   const body = lines.slice(closingIndex + 1).join('\n');

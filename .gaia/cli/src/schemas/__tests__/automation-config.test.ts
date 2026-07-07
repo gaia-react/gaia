@@ -1,14 +1,16 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {z} from 'zod';
+import assert from 'node:assert/strict';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {
   AutomationConfigSchema,
   CONFIG_KEY_TO_TOOL_ID,
-  TOOL_ID_TO_CONFIG_KEY,
-  TOOL_IDS,
   parseAutomationConfig,
   readAutomationConfig,
+  TOOL_ID_TO_CONFIG_KEY,
+  TOOL_IDS,
 } from '../automation-config.js';
 
 type Sandbox = {
@@ -46,31 +48,32 @@ const setupSandbox = (): Sandbox => {
 
 describe('schemas/automation-config', () => {
   describe('AutomationConfigSchema', () => {
-    it('parses a valid config', () => {
+    test('parses a valid config', () => {
       expect(() => parseAutomationConfig(VALID_CONFIG)).not.toThrow();
     });
 
-    it('rejects version != 1', () => {
+    test('rejects version != 1', () => {
       expect(() =>
         AutomationConfigSchema.parse({...VALID_CONFIG, version: 2})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects unknown tool mode', () => {
+    test('rejects unknown tool mode', () => {
       expect(() =>
         AutomationConfigSchema.parse({
           ...VALID_CONFIG,
           wiki: {mode: 'ci2'},
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects missing wiki section', () => {
-      const {wiki: _wiki, ...rest} = VALID_CONFIG;
-      expect(() => AutomationConfigSchema.parse(rest)).toThrow();
+    test('rejects missing wiki section', () => {
+      const rest: Record<string, unknown> = {...VALID_CONFIG};
+      delete rest.wiki;
+      expect(() => AutomationConfigSchema.parse(rest)).toThrow(z.ZodError);
     });
 
-    it('accepts ToolConfig without schedule', () => {
+    test('accepts ToolConfig without schedule', () => {
       expect(() =>
         AutomationConfigSchema.parse({
           ...VALID_CONFIG,
@@ -79,19 +82,19 @@ describe('schemas/automation-config', () => {
       ).not.toThrow();
     });
 
-    it('rejects update_gaia mode != "local"', () => {
+    test('rejects update_gaia mode != "local"', () => {
       expect(() =>
         AutomationConfigSchema.parse({
           ...VALID_CONFIG,
           update_gaia: {mode: 'ci'},
         })
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
   describe('TOOL_ID_TO_CONFIG_KEY <-> CONFIG_KEY_TO_TOOL_ID round-trip', () => {
     for (const tool of TOOL_IDS) {
-      it(`round-trips for ${tool}`, () => {
+      test(`round-trips for ${tool}`, () => {
         const configKey = TOOL_ID_TO_CONFIG_KEY[tool];
         expect(CONFIG_KEY_TO_TOOL_ID[configKey]).toBe(tool);
       });
@@ -109,33 +112,29 @@ describe('schemas/automation-config', () => {
       sandbox.cleanup();
     });
 
-    it('returns {status: "missing"} when the file does not exist', () => {
+    test('returns {status: "missing"} when the file does not exist', () => {
       const result = readAutomationConfig(sandbox.root);
       expect(result.status).toBe('missing');
     });
 
-    it('returns {status: "ok", config} for valid JSON', () => {
+    test('returns {status: "ok", config} for valid JSON', () => {
       writeFileSync(sandbox.configPath, JSON.stringify(VALID_CONFIG), 'utf8');
       const result = readAutomationConfig(sandbox.root);
       expect(result.status).toBe('ok');
-
-      if (result.status === 'ok') {
-        expect(result.config.wiki.mode).toBe('ci');
-      }
+      assert.ok(result.status === 'ok');
+      expect(result.config.wiki.mode).toBe('ci');
     });
 
-    it('returns {status: "malformed"} for invalid JSON', () => {
+    test('returns {status: "malformed"} for invalid JSON', () => {
       writeFileSync(sandbox.configPath, '{not json', 'utf8');
       const result = readAutomationConfig(sandbox.root);
       expect(result.status).toBe('malformed');
-
-      if (result.status === 'malformed') {
-        expect(result.error).toContain('automation.json');
-        expect(result.error).toContain('invalid JSON');
-      }
+      assert.ok(result.status === 'malformed');
+      expect(result.error).toContain('automation.json');
+      expect(result.error).toContain('invalid JSON');
     });
 
-    it('returns {status: "malformed"} for schema-violating JSON', () => {
+    test('returns {status: "malformed"} for schema-violating JSON', () => {
       writeFileSync(
         sandbox.configPath,
         JSON.stringify({...VALID_CONFIG, wiki: {mode: 'wat'}}),
@@ -143,14 +142,13 @@ describe('schemas/automation-config', () => {
       );
       const result = readAutomationConfig(sandbox.root);
       expect(result.status).toBe('malformed');
-
-      if (result.status === 'malformed') {
-        expect(result.error).toContain('wiki.mode');
-      }
+      assert.ok(result.status === 'malformed');
+      expect(result.error).toContain('wiki.mode');
     });
 
-    it('returns {status: "malformed"} when version is missing', () => {
-      const {version: _version, ...rest} = VALID_CONFIG;
+    test('returns {status: "malformed"} when version is missing', () => {
+      const rest: Record<string, unknown> = {...VALID_CONFIG};
+      delete rest.version;
       writeFileSync(sandbox.configPath, JSON.stringify(rest), 'utf8');
       const result = readAutomationConfig(sandbox.root);
       expect(result.status).toBe('malformed');

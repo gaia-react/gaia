@@ -30,7 +30,7 @@ const runGit = (args: readonly string[], options: RunOptions = {}): string => {
 const tryRunGit = (
   args: readonly string[],
   options: RunOptions = {}
-): string | null => {
+): null | string => {
   try {
     return runGit(args, options);
   } catch {
@@ -169,20 +169,21 @@ const parseShortStat = (
   let insertions = 0;
   let deletions = 0;
 
-  const filesMatch = /(\d+)\s+files?\s+changed/u.exec(stat);
+  // `\d{1,9}` (not `\d+`): bounding the digit run avoids the quadratic
+  // backtracking risk of an unbounded quantifier followed by a disjoint
+  // literal/class on unanchored input, while still covering any realistic
+  // file/line count (up to 999,999,999).
+  const filesMatch = /(\d{1,9})\s+files?\s+changed/u.exec(stat);
 
-  if (filesMatch !== null)
-    filesChanged = Number.parseInt(filesMatch[1] as string, 10);
+  if (filesMatch !== null) filesChanged = Number.parseInt(filesMatch[1], 10);
 
-  const insertMatch = /(\d+)\s+insertions?\(\+\)/u.exec(stat);
+  const insertMatch = /(\d{1,9})\s+insertions?\(\+\)/u.exec(stat);
 
-  if (insertMatch !== null)
-    insertions = Number.parseInt(insertMatch[1] as string, 10);
+  if (insertMatch !== null) insertions = Number.parseInt(insertMatch[1], 10);
 
-  const deleteMatch = /(\d+)\s+deletions?\(-\)/u.exec(stat);
+  const deleteMatch = /(\d{1,9})\s+deletions?\(-\)/u.exec(stat);
 
-  if (deleteMatch !== null)
-    deletions = Number.parseInt(deleteMatch[1] as string, 10);
+  if (deleteMatch !== null) deletions = Number.parseInt(deleteMatch[1], 10);
 
   return {deletions, files_changed: filesChanged, insertions};
 };
@@ -206,19 +207,19 @@ const fileListForCommit = (sha: string, cwd: string): string[] => {
   });
 };
 
+type ChunkParse = {
+  precedingStat: string;
+  record: null | RawRecord;
+};
+
 type RawRecord = {
   body: string;
   sha: string;
   subject: string;
 };
 
-type ChunkParse = {
-  precedingStat: string;
-  record: RawRecord | null;
-};
-
 const parseChunk = (chunk: string): ChunkParse => {
-  const trimmed = chunk.replace(/^[\s\n]+/u, '').replace(/[\s\n]+$/u, '');
+  const trimmed = chunk.trim();
 
   if (trimmed === '') return {precedingStat: '', record: null};
 
@@ -234,8 +235,9 @@ const parseChunk = (chunk: string): ChunkParse => {
   }
 
   const statLines = lines.slice(0, commitLineIndex);
+  // `\d{1,9}` (not `\d+`): see the bounding note on `parseShortStat` above.
   const precedingStat =
-    statLines.find((line) => /\d+\s+files?\s+changed/u.test(line)) ?? '';
+    statLines.find((line) => /\d{1,9}\s+files?\s+changed/u.test(line)) ?? '';
 
   const commitBlock = lines.slice(commitLineIndex);
   const sha = (commitBlock[0] ?? '').replace(/^COMMIT\s+/u, '').trim();
@@ -287,19 +289,19 @@ export const commitDetails = (
   const chunks = raw.split(recordSeparator);
   const records: RawRecord[] = [];
   const stats: string[] = [];
-  let pendingStat: string | null = null;
+  let pendingStat: null | string = null;
 
   for (const chunk of chunks) {
     const {precedingStat, record} = parseChunk(chunk);
 
-    if (record !== null) {
+    if (record === null) {
+      // Trailing-stat tail belonging to the LAST emitted record.
+      pendingStat = precedingStat;
+    } else {
       records.push(record);
       // Resolve the previous record's stat (if any).
       if (records.length > 1) stats.push(precedingStat);
       pendingStat = null;
-    } else {
-      // Trailing-stat tail belonging to the LAST emitted record.
-      pendingStat = precedingStat;
     }
   }
 

@@ -18,7 +18,8 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {writeFileIfAbsent} from './fs.js';
-import {renderTemplate, type TemplateVars} from './template.js';
+import {renderTemplate} from './template.js';
+import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const VALID_GROUPS = new Set(['_public+', '_session+']);
@@ -34,7 +35,7 @@ const KEBAB_PATTERN = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
 type ParsedFlags = {
   action: boolean;
   dryRun: boolean;
-  group: string | null;
+  group: null | string;
   i18n: boolean;
   json: boolean;
   loader: boolean;
@@ -62,7 +63,7 @@ const userError = (message: string, subcommand = 'scaffold route'): number => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-const parseFlags = (rest: readonly string[]): ParsedFlags | null => {
+const parseFlags = (rest: readonly string[]): null | ParsedFlags => {
   const flags: ParsedFlags = {
     action: false,
     dryRun: false,
@@ -76,7 +77,7 @@ const parseFlags = (rest: readonly string[]): ParsedFlags | null => {
     const flag = rest[index];
 
     if (flag === '--group') {
-      const value = rest[index + 1];
+      const value = rest.at(index + 1);
 
       if (value === undefined) return null;
       flags.group = value;
@@ -123,7 +124,131 @@ const templateDir = (): string => {
   return path.join(path.dirname(here), 'templates', 'route');
 };
 
-type LocaleBarrelInsertResult = 'inserted' | 'present' | 'missing';
+type LocaleBarrelInsertResult = 'inserted' | 'missing' | 'present';
+
+// Adjacent `\s*` groups either side of the optional `;?` collapse into an
+// ambiguous overlapping-quantifier shape once the semicolon is absent
+// (sonarjs/super-linear-regex); folding whitespace-or-semicolon into one
+// character class removes the ambiguity.
+const CLOSE_BRACE_PATTERN = /^\s*\}[\s;]*$/u;
+
+// Finds where a new `import <name> from '...'` line belongs, alphabetically,
+// among the barrel's existing top-of-file import lines.
+const findImportInsertIndex = (
+  lines: readonly string[],
+  importName: string
+): number => {
+  const importLines: number[] = [];
+
+  for (const [idx, line] of lines.entries()) {
+    if (/^import\s/u.test(line)) importLines.push(idx);
+  }
+
+  for (const idx of importLines) {
+    const existing = lines[idx];
+    const match = /^import\s+(\w+)\s+from/u.exec(existing);
+
+    if (match?.[1] !== undefined && importName.localeCompare(match[1]) < 0) {
+      return idx;
+    }
+  }
+
+  return importLines.length === 0 ? 0 : (importLines.at(-1) ?? 0) + 1;
+};
+
+type ExportBlockBounds = {closeIdx: number; openIndex: number};
+
+// Locates the `export default { ... }` block: the line declaring it and its
+// closing brace.
+const locateExportDefaultBlock = (
+  lines: readonly string[]
+): ExportBlockBounds | null => {
+  const openIndex = lines.findIndex((line) =>
+    /export\s+default\s+\{/u.test(line)
+  );
+  const closeIdx = lines.findIndex(
+    (line, idx) => idx > openIndex && CLOSE_BRACE_PATTERN.test(line)
+  );
+
+  if (openIndex === -1 || closeIdx === -1) return null;
+
+  return {closeIdx, openIndex};
+};
+
+type ExportEntry = {indent: string; key: string; lineIdx: number};
+
+const EXPORT_ENTRY_PATTERN = /^(\s+)(\w+),?\s*$/u;
+
+// Reads the existing `key,` entries inside an `export default { ... }` block
+// so a new one can be inserted alphabetically with matching indentation.
+const collectExportEntries = (
+  lines: readonly string[],
+  bounds: ExportBlockBounds
+): ExportEntry[] => {
+  const entries: ExportEntry[] = [];
+
+  for (let idx = bounds.openIndex + 1; idx < bounds.closeIdx; idx += 1) {
+    const line = lines[idx];
+    const match = EXPORT_ENTRY_PATTERN.exec(line);
+
+    if (match?.[1] !== undefined) {
+      entries.push({indent: match[1], key: match[2], lineIdx: idx});
+    }
+  }
+
+  return entries;
+};
+
+type InsertExportEntryArgs = {
+  bounds: ExportBlockBounds;
+  entries: readonly ExportEntry[];
+  importName: string;
+};
+
+// Splices a new `key,` entry into the export block, alphabetically among
+// `entries`, mutating `lines` in place.
+const insertExportEntry = (
+  lines: string[],
+  args: InsertExportEntryArgs
+): void => {
+  const {bounds, entries, importName} = args;
+  const indent = entries[0]?.indent ?? '  ';
+  const newEntryLine = `${indent}${importName},`;
+
+  if (entries.length === 0) {
+    lines.splice(bounds.openIndex + 1, 0, newEntryLine);
+
+    return;
+  }
+
+  for (const entry of entries) {
+    if (importName.localeCompare(entry.key) < 0) {
+      lines.splice(entry.lineIdx, 0, newEntryLine);
+
+      return;
+    }
+  }
+
+  const lastEntry = entries.at(-1);
+
+  if (lastEntry === undefined) return;
+
+  // Ensure the last entry has a trailing comma so insertion is clean.
+  const lastLine = lines[lastEntry.lineIdx];
+
+  if (!lastLine.endsWith(',')) {
+    lines[lastEntry.lineIdx] = `${lastLine},`;
+  }
+
+  lines.splice(lastEntry.lineIdx + 1, 0, newEntryLine);
+};
+
+type InsertIntoLocaleBarrelArgs = {
+  barrelPath: string;
+  dryRun: boolean;
+  importName: string;
+  moduleName: string;
+};
 
 /**
  * Insert an `import <name> from './<Folder>';` line and a corresponding
@@ -134,11 +259,10 @@ type LocaleBarrelInsertResult = 'inserted' | 'present' | 'missing';
  * `export * from`), so this is local logic.
  */
 const insertIntoLocaleBarrel = (
-  barrelPath: string,
-  importName: string,
-  moduleName: string,
-  dryRun: boolean
+  args: InsertIntoLocaleBarrelArgs
 ): LocaleBarrelInsertResult => {
+  const {barrelPath, dryRun, importName, moduleName} = args;
+
   if (!existsSync(barrelPath)) return 'missing';
   const original = readFileSync(barrelPath, 'utf8');
   const importLine = `import ${importName} from './${moduleName}';`;
@@ -146,95 +270,21 @@ const insertIntoLocaleBarrel = (
   if (original.includes(importLine)) return 'present';
 
   const lines = original.split('\n');
-  const importLines: number[] = [];
 
-  for (const [idx, line] of lines.entries()) {
-    if (/^import\s/u.test(line)) importLines.push(idx);
-  }
+  lines.splice(findImportInsertIndex(lines, importName), 0, importLine);
 
-  // Insert the import alphabetically by importName.
-  let importInsertIdx =
-    importLines.length === 0 ? 0 : (importLines.at(-1) ?? 0) + 1;
+  const bounds = locateExportDefaultBlock(lines);
 
-  for (const idx of importLines) {
-    const existing = lines[idx];
-
-    if (existing === undefined) continue;
-    const match = existing.match(/^import\s+(\w+)\s+from/u);
-
-    if (
-      match &&
-      match[1] !== undefined &&
-      importName.localeCompare(match[1]) < 0
-    ) {
-      importInsertIdx = idx;
-      break;
-    }
-  }
-
-  lines.splice(importInsertIdx, 0, importLine);
-
-  // Now insert into the export default { ... } block.
-  // Find the line with `export default {` and the closing `};`.
-  const openIdx = lines.findIndex((line) =>
-    /export\s+default\s+\{/u.test(line)
-  );
-  const closeIdx = lines.findIndex(
-    (line, idx) => idx > openIdx && /^\s*\}\s*;?\s*$/u.test(line)
-  );
-
-  if (openIdx === -1 || closeIdx === -1) {
+  if (bounds === null) {
     // Couldn't structurally locate the export block; bail without writing.
     return 'missing';
   }
 
-  // Detect indentation from existing entries.
-  const entryPattern = /^(\s+)(\w+),?\s*$/u;
-  const existingEntries: Array<{indent: string; key: string; lineIdx: number}> =
-    [];
-
-  for (let idx = openIdx + 1; idx < closeIdx; idx += 1) {
-    const line = lines[idx];
-
-    if (line === undefined) continue;
-    const match = line.match(entryPattern);
-
-    if (match && match[1] !== undefined && match[2] !== undefined) {
-      existingEntries.push({indent: match[1], key: match[2], lineIdx: idx});
-    }
-  }
-
-  const indent = existingEntries[0]?.indent ?? '  ';
-  const newEntryLine = `${indent}${importName},`;
-
-  if (existingEntries.length === 0) {
-    lines.splice(openIdx + 1, 0, newEntryLine);
-  } else {
-    let inserted = false;
-
-    for (const entry of existingEntries) {
-      if (importName.localeCompare(entry.key) < 0) {
-        lines.splice(entry.lineIdx, 0, newEntryLine);
-        inserted = true;
-        break;
-      }
-    }
-
-    if (!inserted) {
-      const lastEntry = existingEntries.at(-1);
-
-      if (lastEntry !== undefined) {
-        // Ensure the last entry has a trailing comma so insertion is clean.
-        const lastLine = lines[lastEntry.lineIdx];
-
-        if (lastLine !== undefined && !lastLine.endsWith(',')) {
-          lines[lastEntry.lineIdx] = `${lastLine},`;
-        }
-
-        lines.splice(lastEntry.lineIdx + 1, 0, newEntryLine);
-      }
-    }
-  }
+  insertExportEntry(lines, {
+    bounds,
+    entries: collectExportEntries(lines, bounds),
+    importName,
+  });
 
   const next = lines.join('\n');
 
@@ -318,12 +368,15 @@ const buildRouteVars = (
   routeName: names.routeName,
 });
 
-const writeFile = (
-  result: ScaffoldResult,
-  absPath: string,
-  contents: string,
-  dryRun: boolean
-): void => {
+type WriteFileArgs = {
+  absPath: string;
+  contents: string;
+  dryRun: boolean;
+  result: ScaffoldResult;
+};
+
+const writeFile = (args: WriteFileArgs): void => {
+  const {absPath, contents, dryRun, result} = args;
   const {written} = writeFileIfAbsent(absPath, contents, {dryRun});
 
   if (written) {
@@ -333,25 +386,104 @@ const writeFile = (
   }
 };
 
+const padLabel = (label: string): string => label.padEnd(11);
+
 const printHumanReadable = (result: ScaffoldResult, dryRun: boolean): void => {
   if (dryRun) process.stdout.write('dry-run: no files written\n');
   const writeLabel = dryRun ? 'would write' : 'written';
   const editLabel = dryRun ? 'would edit' : 'edited';
-  const pad = (label: string): string => label.padEnd(11);
 
   for (const file of result.written) {
-    process.stdout.write(`${pad(writeLabel)} ${file}\n`);
+    process.stdout.write(`${padLabel(writeLabel)} ${file}\n`);
   }
+
   for (const file of result.edited) {
-    process.stdout.write(`${pad(editLabel)} ${file}\n`);
+    process.stdout.write(`${padLabel(editLabel)} ${file}\n`);
   }
+
   for (const file of result.skipped) {
-    process.stdout.write(`${pad('skipped')} ${file}\n`);
+    process.stdout.write(`${padLabel('skipped')} ${file}\n`);
   }
 };
 
 const printJson = (result: ScaffoldResult): void => {
   process.stdout.write(`${JSON.stringify(result)}\n`);
+};
+
+type WriteLocaleFilesArgs = {
+  dryRun: boolean;
+  name: string;
+  names: ResolvedNames;
+  result: ScaffoldResult;
+  root: string;
+  tmpls: TemplatePaths;
+};
+
+// Extracted out of `run` (kept its cognitive complexity under the frozen
+// limit): emits the locale file and wires it into the sibling barrel.
+// Returns an exit code on failure, `null` on success.
+const writeLocaleFiles = (args: WriteLocaleFilesArgs): null | number => {
+  const {dryRun, name, names, result, root, tmpls} = args;
+
+  // Locales are flat files keyed by the kebab route name
+  // (app/languages/en/pages/<kebab>.ts), wired into the sibling
+  // index.ts barrel by `import <i18nKey> from './<kebab>'`.
+  const localeFile = path.join(
+    root,
+    'app',
+    'languages',
+    'en',
+    'pages',
+    `${name}.ts`
+  );
+  const localeVars: TemplateVars = {
+    i18nKey: names.i18nKey,
+    pageName: names.pageName,
+    routeName: name,
+  };
+  writeFile({
+    absPath: localeFile,
+    contents: renderTemplate(tmpls.locale, localeVars),
+    dryRun,
+    result,
+  });
+
+  const localeBarrel = path.join(
+    root,
+    'app',
+    'languages',
+    'en',
+    'pages',
+    'index.ts'
+  );
+  const importName = names.i18nKey;
+  const status = insertIntoLocaleBarrel({
+    barrelPath: localeBarrel,
+    dryRun,
+    importName,
+    moduleName: name,
+  });
+
+  if (status === 'inserted') {
+    result.edited.push(localeBarrel);
+
+    return null;
+  }
+
+  if (status === 'present') {
+    result.skipped.push(localeBarrel);
+
+    return null;
+  }
+
+  // 'missing': the locale file was emitted but the barrel could not be
+  // located, so the page's translations are not wired. Fail loudly with
+  // an actionable message rather than reporting a misleading success.
+  return userError(
+    `locale barrel not found at ${localeBarrel}; the locale file was ` +
+      'written but its import was not wired. Run from the repo root, or ' +
+      `add "import ${importName} from './${name}';" to the barrel by hand.`
+  );
 };
 
 /**
@@ -361,7 +493,7 @@ export const run = (
   rest: readonly string[],
   options: RunOptions = {}
 ): number => {
-  const [first] = rest;
+  const first = rest.at(0);
 
   if (first === undefined || first === '--help' || first === '-h') {
     process.stdout.write(HELP_TEXT);
@@ -397,115 +529,68 @@ export const run = (
   // than its source, so deriving the root from the module location (as an
   // earlier version did) overshot the repo root by two directories.
   const root = options.cwd ?? process.cwd();
-  const {dryRun} = flags;
-  const names = resolveNames(name, flags.group);
+  const {dryRun, group, i18n, json} = flags;
+  const names = resolveNames(name, group);
+  const {groupSegment, i18nKey, pageName} = names;
   const tmpls = templatePaths();
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
   try {
     const routeVars = buildRouteVars(names, flags, name);
 
-    const routeAbs = path.join(
-      root,
-      'app',
-      'routes',
-      flags.group,
-      `${name}.tsx`
-    );
-    writeFile(result, routeAbs, renderTemplate(tmpls.route, routeVars), dryRun);
+    const routeAbs = path.join(root, 'app', 'routes', group, `${name}.tsx`);
+    writeFile({
+      absPath: routeAbs,
+      contents: renderTemplate(tmpls.route, routeVars),
+      dryRun,
+      result,
+    });
 
-    const pageDir = path.join(
-      root,
-      'app',
-      'pages',
-      names.groupSegment,
-      names.pageName
-    );
+    const pageDir = path.join(root, 'app', 'pages', groupSegment, pageName);
     const pageVars: TemplateVars = {
-      groupSegment: names.groupSegment,
-      hasI18n: flags.i18n,
-      i18nKey: names.i18nKey,
-      noI18n: !flags.i18n,
-      pageName: names.pageName,
+      groupSegment,
+      hasI18n: i18n,
+      i18nKey,
+      noI18n: !i18n,
+      pageName,
     };
 
-    writeFile(
+    writeFile({
+      absPath: path.join(pageDir, 'index.tsx'),
+      contents: renderTemplate(tmpls.pageIndex, pageVars),
+      dryRun,
       result,
-      path.join(pageDir, 'index.tsx'),
-      renderTemplate(tmpls.pageIndex, pageVars),
-      dryRun
-    );
-    writeFile(
+    });
+    writeFile({
+      absPath: path.join(pageDir, 'tests', 'index.test.tsx'),
+      contents: renderTemplate(tmpls.pageTest, pageVars),
+      dryRun,
       result,
-      path.join(pageDir, 'tests', 'index.test.tsx'),
-      renderTemplate(tmpls.pageTest, pageVars),
-      dryRun
-    );
-    writeFile(
+    });
+    writeFile({
+      absPath: path.join(pageDir, 'tests', 'index.stories.tsx'),
+      contents: renderTemplate(tmpls.pageStories, pageVars),
+      dryRun,
       result,
-      path.join(pageDir, 'tests', 'index.stories.tsx'),
-      renderTemplate(tmpls.pageStories, pageVars),
-      dryRun
-    );
+    });
 
-    if (flags.i18n) {
-      // Locales are flat files keyed by the kebab route name
-      // (app/languages/en/pages/<kebab>.ts), wired into the sibling
-      // index.ts barrel by `import <i18nKey> from './<kebab>'`.
-      const localeFile = path.join(
-        root,
-        'app',
-        'languages',
-        'en',
-        'pages',
-        `${name}.ts`
-      );
-      const localeVars: TemplateVars = {
-        i18nKey: names.i18nKey,
-        pageName: names.pageName,
-        routeName: name,
-      };
-      writeFile(
-        result,
-        localeFile,
-        renderTemplate(tmpls.locale, localeVars),
-        dryRun
-      );
-
-      const localeBarrel = path.join(
-        root,
-        'app',
-        'languages',
-        'en',
-        'pages',
-        'index.ts'
-      );
-      const importName = names.i18nKey;
-      const status = insertIntoLocaleBarrel(
-        localeBarrel,
-        importName,
+    if (i18n) {
+      const failure = writeLocaleFiles({
+        dryRun,
         name,
-        dryRun
-      );
+        names,
+        result,
+        root,
+        tmpls,
+      });
 
-      if (status === 'inserted') result.edited.push(localeBarrel);
-      else if (status === 'present') result.skipped.push(localeBarrel);
-      else {
-        // 'missing': the locale file was emitted but the barrel could not be
-        // located, so the page's translations are not wired. Fail loudly with
-        // an actionable message rather than reporting a misleading success.
-        return userError(
-          `locale barrel not found at ${localeBarrel}; the locale file was ` +
-            `written but its import was not wired. Run from the repo root, or ` +
-            `add "import ${importName} from './${name}';" to the barrel by hand.`
-        );
-      }
+      if (failure !== null) return failure;
     }
   } catch (error) {
     return userError(error instanceof Error ? error.message : String(error));
   }
 
-  if (flags.json) printJson(result);
+  if (json) printJson(result);
   else printHumanReadable(result, dryRun);
 
   return EXIT_CODES.OK;

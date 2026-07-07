@@ -14,12 +14,8 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {
-  collectOutstandingGroups,
-  saveDeclines,
-  type CountablePayload,
-  type DeclinedRecord,
-} from './declines.js';
+import {collectOutstandingGroups, saveDeclines} from './declines.js';
+import type {CountablePayload, DeclinedRecord} from './declines.js';
 import {resolveGroup} from './groups.js';
 
 const HELP_TEXT = `Usage: gaia update-deps decline [options]
@@ -43,52 +39,45 @@ export type DeclineOptions = {
 };
 
 type ParsedArgs =
-  | {clear: false; skip: readonly string[]; source: string}
-  | {clear: true};
+  {clear: false; skip: readonly string[]; source: string} | {clear: true};
 
 type ParseError = {error: string};
 
-const parseArgs = (argv: readonly string[]): ParseError | ParsedArgs => {
-  let source: string | undefined;
-  let skipRaw: string | undefined;
-  let clear = false;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (token === '--clear') {
-      clear = true;
-      continue;
-    }
-
-    if (token === '--source') {
-      const value = argv[index + 1];
-
-      if (value === undefined || value.length === 0) {
-        return {error: '--source requires a path'};
-      }
-      source = value;
-      index += 1;
-      continue;
-    }
-
-    if (token === '--skip') {
-      const value = argv[index + 1];
-
-      if (value === undefined) {
-        return {error: '--skip requires a comma-separated list'};
-      }
-      skipRaw = value;
-      index += 1;
-      continue;
-    }
-
-    return {error: `unknown flag: ${token ?? ''}`};
+// `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
+// not `string | undefined`; check the bound explicitly instead of comparing
+// the indexed value to `undefined`.
+const takeSourceValue = (
+  argv: readonly string[],
+  index: number
+): {error: string} | {ok: true; value: string} => {
+  if (index >= argv.length || argv[index].length === 0) {
+    return {error: '--source requires a path'};
   }
 
+  return {ok: true, value: argv[index]};
+};
+
+const takeSkipValue = (
+  argv: readonly string[],
+  index: number
+): {error: string} | {ok: true; value: string} => {
+  if (index >= argv.length) {
+    return {error: '--skip requires a comma-separated list'};
+  }
+
+  return {ok: true, value: argv[index]};
+};
+
+/** Post-loop validation, extracted so `parseArgs` itself stays flat. */
+const finalizeParsedArgs = (
+  clear: boolean,
+  source: string | undefined,
+  skipRaw: string | undefined
+): ParsedArgs | ParseError => {
   if (clear) return {clear: true};
 
   if (source === undefined) return {error: '--source is required with --skip'};
+
   if (skipRaw === undefined) {
     return {error: '--skip is required (or use --clear)'};
   }
@@ -103,12 +92,41 @@ const parseArgs = (argv: readonly string[]): ParseError | ParsedArgs => {
   return {clear: false, skip, source};
 };
 
+const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
+  let source: string | undefined;
+  let skipRaw: string | undefined;
+  let clear = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+
+    if (token === '--clear') {
+      clear = true;
+    } else if (token === '--source') {
+      const taken = takeSourceValue(argv, index + 1);
+
+      if (!('ok' in taken)) return taken;
+      source = taken.value;
+      index += 1;
+    } else if (token === '--skip') {
+      const taken = takeSkipValue(argv, index + 1);
+
+      if (!('ok' in taken)) return taken;
+      skipRaw = taken.value;
+      index += 1;
+    } else {
+      return {error: `unknown flag: ${token}`};
+    }
+  }
+
+  return finalizeParsedArgs(clear, source, skipRaw);
+};
+
 const readPayload = (
   cwd: string,
   source: string
 ): CountablePayload | undefined => {
-  const sourcePath =
-    path.isAbsolute(source) ? source : path.join(cwd, source);
+  const sourcePath = path.isAbsolute(source) ? source : path.join(cwd, source);
 
   let parsed: unknown;
 

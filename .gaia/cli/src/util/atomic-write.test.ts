@@ -1,15 +1,17 @@
+/* eslint-disable no-bitwise -- POSIX file modes are bitfields; `& 0o777`
+   is the standard idiom for masking off the permission bits. */
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {atomicWriteFile, atomicWriteFileSync} from './atomic-write.js';
 
 describe('atomic-write', () => {
@@ -71,7 +73,7 @@ describe('atomic-write', () => {
     const target = path.join(dir, 'blocked');
     mkdirSync(target);
 
-    expect(() => atomicWriteFileSync(target, 'data')).toThrow();
+    expect(() => atomicWriteFileSync(target, 'data')).toThrow(/EISDIR/);
     expect(readdirSync(dir)).toEqual(['blocked']);
   });
 
@@ -79,7 +81,7 @@ describe('atomic-write', () => {
     const target = path.join(dir, 'blocked');
     mkdirSync(target);
 
-    await expect(atomicWriteFile(target, 'data')).rejects.toThrow();
+    await expect(atomicWriteFile(target, 'data')).rejects.toThrow(/EISDIR/);
     expect(readdirSync(dir)).toEqual(['blocked']);
   });
 });

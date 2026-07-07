@@ -75,7 +75,10 @@ describe('parseTrailer: code-review-audit', () => {
         finding_class: 'holistic/missing-auth-check',
         severity: 'error',
       },
-      {finding_class: 'react-doctor/no-generic-handler-names', severity: 'warning'},
+      {
+        finding_class: 'react-doctor/no-generic-handler-names',
+        severity: 'warning',
+      },
     ]);
     const input = buildHookInput(
       'code-review-audit',
@@ -348,7 +351,9 @@ describe('parseTrailer: engineer-return path', () => {
       )
     );
 
-    const types = parseTrailer(input).invocations.map((i) => i.eventType);
+    const types = parseTrailer(input).invocations.map(
+      (index) => index.eventType
+    );
     expect(types).toEqual([
       'uat_pass',
       'needs_context_returned',

@@ -20,15 +20,15 @@
  */
 import {z} from 'zod';
 import {EXIT_CODES} from '../exit.js';
-import {type AutomationConfig} from '../schemas/automation-config.js';
+import type {AutomationConfig} from '../schemas/automation-config.js';
 import {writeAutomationConfig} from '../setup-ci/util/automation-write.js';
 import {structuredError} from '../stderr.js';
 import {markStepCompleted} from './util/state.js';
 
-const HELP_TEXT = `Usage: gaia init configure-automation \\
-  --wiki <ci|local|off> \\
-  --update-deps <ci|local|off> \\
-  --pnpm-audit <ci|local|off> \\
+const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
+  --wiki <ci|local|off> \
+  --update-deps <ci|local|off> \
+  --pnpm-audit <ci|local|off> \
   --stale-branches <ci|local|off>
 
   Write .gaia/automation.json with the user's tool-mode selections and
@@ -53,7 +53,17 @@ const UNEXPECTED_EXIT = 2;
 const STEP_NAME = 'configure-automation';
 const SUBCOMMAND = 'init configure-automation';
 
-type ToolMode = 'ci' | 'local' | 'off';
+type FlagParseFailure = {
+  message: string;
+  ok: false;
+};
+
+type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
 
 type Flags = {
   pnpmAudit: ToolMode;
@@ -62,17 +72,7 @@ type Flags = {
   wiki: ToolMode;
 };
 
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
-type FlagParseFailure = {
-  message: string;
-  ok: false;
-};
-
-type FlagParseResult = FlagParseFailure | FlagParseSuccess;
+type ToolMode = 'ci' | 'local' | 'off';
 
 const isToolMode = (value: string): value is ToolMode =>
   value === 'ci' || value === 'local' || value === 'off';
@@ -82,20 +82,23 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined)
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
+  // not `string | undefined`; check the bound explicitly instead of
+  // comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
+  }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 const takeMode = (
   argv: readonly string[],
   index: number,
-  flag: string,
-  current: ToolMode | undefined
+  context: {current: ToolMode | undefined; flag: string}
 ): {message: string; ok: false} | {mode: ToolMode; ok: true} => {
+  const {current, flag} = context;
+
   if (current !== undefined) {
     return {message: `${flag} specified twice`, ok: false};
   }
@@ -111,72 +114,62 @@ const takeMode = (
   return {mode: taken.value, ok: true};
 };
 
+type FlagKey = keyof Flags;
+
+// Object lookup instead of an if/else-if chain per flag: every flag follows
+// the identical take-mode-and-assign shape, so dispatching through a table
+// keeps `parseFlags` itself flat (a Map, since a plain object's index
+// signature would hide the genuine "unknown token" miss from TypeScript).
+const FLAG_SPECS = new Map<string, {flag: string; key: FlagKey}>([
+  ['--pnpm-audit', {flag: '--pnpm-audit', key: 'pnpmAudit'}],
+  ['--stale-branches', {flag: '--stale-branches', key: 'staleBranches'}],
+  ['--update-deps', {flag: '--update-deps', key: 'updateDeps'}],
+  ['--wiki', {flag: '--wiki', key: 'wiki'}],
+]);
+
+const REQUIRED_MESSAGE: Readonly<Record<FlagKey, string>> = {
+  pnpmAudit: '--pnpm-audit is required',
+  staleBranches: '--stale-branches is required',
+  updateDeps: '--update-deps is required',
+  wiki: '--wiki is required',
+};
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
-  let wiki: ToolMode | undefined;
-  let updateDeps: ToolMode | undefined;
-  let pnpmAudit: ToolMode | undefined;
-  let staleBranches: ToolMode | undefined;
+  const flags: Partial<Flags> = {};
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
+    const spec = FLAG_SPECS.get(token);
 
-    if (token === '--wiki') {
-      const taken = takeMode(argv, index + 1, '--wiki', wiki);
-
-      if (!taken.ok) return taken;
-      wiki = taken.mode;
-      index += 1;
-      continue;
+    if (spec === undefined) {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
 
-    if (token === '--update-deps') {
-      const taken = takeMode(argv, index + 1, '--update-deps', updateDeps);
+    const taken = takeMode(argv, index + 1, {
+      current: flags[spec.key],
+      flag: spec.flag,
+    });
 
-      if (!taken.ok) return taken;
-      updateDeps = taken.mode;
-      index += 1;
-      continue;
-    }
-
-    if (token === '--pnpm-audit') {
-      const taken = takeMode(argv, index + 1, '--pnpm-audit', pnpmAudit);
-
-      if (!taken.ok) return taken;
-      pnpmAudit = taken.mode;
-      index += 1;
-      continue;
-    }
-
-    if (token === '--stale-branches') {
-      const taken = takeMode(
-        argv,
-        index + 1,
-        '--stale-branches',
-        staleBranches
-      );
-
-      if (!taken.ok) return taken;
-      staleBranches = taken.mode;
-      index += 1;
-      continue;
-    }
-
-    return {message: `unknown flag: ${token}`, ok: false};
+    if (!taken.ok) return taken;
+    flags[spec.key] = taken.mode;
+    index += 1;
   }
 
-  if (wiki === undefined) return {message: '--wiki is required', ok: false};
-  if (updateDeps === undefined)
-    return {message: '--update-deps is required', ok: false};
-
-  if (pnpmAudit === undefined) {
-    return {message: '--pnpm-audit is required', ok: false};
+  for (const key of FLAG_SPECS.values()) {
+    if (flags[key.key] === undefined) {
+      return {message: REQUIRED_MESSAGE[key.key], ok: false};
+    }
   }
 
-  if (staleBranches === undefined) {
-    return {message: '--stale-branches is required', ok: false};
-  }
-
-  return {flags: {pnpmAudit, staleBranches, updateDeps, wiki}, ok: true};
+  return {
+    flags: {
+      pnpmAudit: flags.pnpmAudit,
+      staleBranches: flags.staleBranches,
+      updateDeps: flags.updateDeps,
+      wiki: flags.wiki,
+    } as Flags,
+    ok: true,
+  };
 };
 
 const buildConfig = (flags: Flags): AutomationConfig => ({
@@ -198,7 +191,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -227,10 +220,10 @@ export const run = (
         code: 'schema_violation',
         message: error.issues
           .map((issue) => {
-            const pathStr =
+            const pathString =
               issue.path.length === 0 ? '<root>' : issue.path.join('.');
 
-            return `${pathStr}: ${issue.message}`;
+            return `${pathString}: ${issue.message}`;
           })
           .join('; '),
         subcommand: SUBCOMMAND,

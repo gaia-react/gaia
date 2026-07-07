@@ -7,4 +7,5 @@
  * import them with the existing `import {run as runCiX}` idiom.
  */
 export {run as runCiRevert} from './revert.js';
+
 export {run as runCiStaleCheck} from './stale-check.js';

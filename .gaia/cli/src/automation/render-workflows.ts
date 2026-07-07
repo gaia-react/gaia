@@ -10,11 +10,11 @@ import {mkdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {
-  TOOL_IDS,
-  TOOL_ID_TO_CONFIG_KEY,
   readAutomationConfig,
-  type ToolId,
+  TOOL_ID_TO_CONFIG_KEY,
+  TOOL_IDS,
 } from '../schemas/automation-config.js';
+import type {AutomationConfig, ToolId} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 import {workflowPartialsDirectory, workflowTemplatePath} from './paths.js';
@@ -44,7 +44,9 @@ type ParsedArgs = {
   tools: readonly ToolId[];
 };
 
-const parseTools = (raw: string): readonly ToolId[] | string => {
+type ParseToolsResult = {error: string} | {tools: readonly ToolId[]};
+
+const parseTools = (raw: string): ParseToolsResult => {
   const parts = raw.split(',').flatMap((part) => {
     const trimmed = part.trim();
 
@@ -52,81 +54,173 @@ const parseTools = (raw: string): readonly ToolId[] | string => {
   });
 
   if (parts.length === 0) {
-    return '--tools requires at least one tool';
+    return {error: '--tools requires at least one tool'};
   }
 
   const known = new Set<string>(TOOL_IDS);
   const bad = parts.filter((part) => !known.has(part));
 
   if (bad.length > 0) {
-    return `--tools entries must be a subset of ${TOOL_IDS.join(', ')}; got: ${bad.join(', ')}`;
+    return {
+      error: `--tools entries must be a subset of ${TOOL_IDS.join(', ')}; got: ${bad.join(', ')}`,
+    };
   }
 
-  return parts as readonly ToolId[];
+  return {tools: parts as readonly ToolId[]};
+};
+
+type FlagValueResult = {error: string} | {value: string};
+
+// `noUncheckedIndexedAccess` is off, so TS types `argv[index + 1]` as
+// `string`, not `string | undefined`; check the bound explicitly instead of
+// comparing the indexed value to `undefined`.
+const readFlagValue = (
+  argv: readonly string[],
+  index: number,
+  errorMessage: string
+): FlagValueResult => {
+  if (index + 1 >= argv.length || argv[index + 1].startsWith('--')) {
+    return {error: errorMessage};
+  }
+
+  return {value: argv[index + 1]};
+};
+
+type ParseState = {
+  configPath: string | undefined;
+  dryRun: boolean;
+  outDir: string | undefined;
+  tools: readonly ToolId[];
+};
+
+type TokenOutcome = {error: string} | {indexDelta: number};
+
+// One flat `if...return` per flag (no `else if` chain) keeps this shallow:
+// each branch is a sibling, not nested inside the previous one.
+const applyToken = (
+  argv: readonly string[],
+  index: number,
+  state: ParseState
+): TokenOutcome => {
+  const token = argv[index];
+
+  if (token === '--out-dir') {
+    const next = readFlagValue(
+      argv,
+      index,
+      '--out-dir requires a path argument'
+    );
+
+    if ('error' in next) return next;
+    state.outDir = next.value;
+
+    return {indexDelta: 1};
+  }
+
+  if (token === '--tools') {
+    const next = readFlagValue(
+      argv,
+      index,
+      '--tools requires a comma-separated tool list'
+    );
+
+    if ('error' in next) return next;
+    const parsedTools = parseTools(next.value);
+
+    if ('error' in parsedTools) return parsedTools;
+    state.tools = parsedTools.tools;
+
+    return {indexDelta: 1};
+  }
+
+  if (token === '--config') {
+    const next = readFlagValue(
+      argv,
+      index,
+      '--config requires a path argument'
+    );
+
+    if ('error' in next) return next;
+    state.configPath = next.value;
+
+    return {indexDelta: 1};
+  }
+
+  if (token === '--dry-run') {
+    state.dryRun = true;
+
+    return {indexDelta: 0};
+  }
+
+  return {error: `unexpected argument: ${token}`};
 };
 
 const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
-  let outDir: string | undefined;
-  let dryRun = false;
-  let tools: readonly ToolId[] = TOOL_IDS;
-  let configPath: string | undefined;
+  const state: ParseState = {
+    configPath: undefined,
+    dryRun: false,
+    outDir: undefined,
+    tools: TOOL_IDS,
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const outcome = applyToken(argv, index, state);
 
-    if (token === '--out-dir') {
-      const next = argv[index + 1];
-
-      if (next === undefined || next.startsWith('--')) {
-        return {error: '--out-dir requires a path argument'};
-      }
-      outDir = next;
-      index += 1;
-
-      continue;
-    }
-
-    if (token === '--tools') {
-      const next = argv[index + 1];
-
-      if (next === undefined || next.startsWith('--')) {
-        return {error: '--tools requires a comma-separated tool list'};
-      }
-      const parsed = parseTools(next);
-
-      if (typeof parsed === 'string') return {error: parsed};
-      tools = parsed;
-      index += 1;
-
-      continue;
-    }
-
-    if (token === '--config') {
-      const next = argv[index + 1];
-
-      if (next === undefined || next.startsWith('--')) {
-        return {error: '--config requires a path argument'};
-      }
-      configPath = next;
-      index += 1;
-
-      continue;
-    }
-
-    if (token === '--dry-run') {
-      dryRun = true;
-
-      continue;
-    }
-
-    return {error: `unexpected argument: ${token}`};
+    if ('error' in outcome) return outcome;
+    index += outcome.indexDelta;
   }
 
-  if (outDir === undefined) {
+  if (state.outDir === undefined) {
     return {error: '--out-dir is required'};
   }
 
-  return {configPath, dryRun, outDir, tools};
+  return {
+    configPath: state.configPath,
+    dryRun: state.dryRun,
+    outDir: state.outDir,
+    tools: state.tools,
+  };
+};
+
+type RenderOneToolOptions = {
+  config: AutomationConfig;
+  dryRun: boolean;
+  outDir: string;
+  partialsDir: string;
+  tool: ToolId;
+};
+
+// Extracted so the loop in `run` is a single flat call: each early `return`
+// here plays the role `continue` would in the loop, without adding nesting.
+const renderOneTool = (options: RenderOneToolOptions): void => {
+  const {config, dryRun, outDir, partialsDir, tool} = options;
+  const vars = buildWorkflowVars(config, tool);
+
+  if (vars === null) {
+    const toolConfig = config[TOOL_ID_TO_CONFIG_KEY[tool]] as {mode: string};
+    process.stderr.write(`${tool}: skipped (mode=${toolConfig.mode})\n`);
+
+    return;
+  }
+
+  const rendered = renderWorkflowTemplate(
+    workflowTemplatePath(tool),
+    partialsDir,
+    vars
+  );
+
+  const outPath = path.join(outDir, `gaia-ci-${tool}.yml`);
+
+  if (dryRun) {
+    process.stdout.write(
+      `${tool}: ${String(rendered.length)} bytes -> ${outPath}\n`
+    );
+
+    return;
+  }
+
+  writeFileSync(outPath, rendered, 'utf8');
+  process.stdout.write(`wrote ${outPath}\n`);
 };
 
 type RunOptions = {
@@ -137,7 +231,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
@@ -200,35 +294,13 @@ export const run = (
   }
 
   for (const tool of parsed.tools) {
-    const vars = buildWorkflowVars(configResult.config, tool);
-
-    if (vars === null) {
-      const toolConfig = configResult.config[TOOL_ID_TO_CONFIG_KEY[tool]] as {
-        mode: string;
-      };
-      process.stderr.write(`${tool}: skipped (mode=${toolConfig.mode})\n`);
-
-      continue;
-    }
-
-    const rendered = renderWorkflowTemplate(
-      workflowTemplatePath(tool),
+    renderOneTool({
+      config: configResult.config,
+      dryRun: parsed.dryRun,
+      outDir: parsed.outDir,
       partialsDir,
-      vars
-    );
-
-    const outPath = path.join(parsed.outDir, `gaia-ci-${tool}.yml`);
-
-    if (parsed.dryRun) {
-      process.stdout.write(
-        `${tool}: ${String(rendered.length)} bytes -> ${outPath}\n`
-      );
-
-      continue;
-    }
-
-    writeFileSync(outPath, rendered, 'utf8');
-    process.stdout.write(`wrote ${outPath}\n`);
+      tool,
+    });
   }
 
   return EXIT_CODES.OK;

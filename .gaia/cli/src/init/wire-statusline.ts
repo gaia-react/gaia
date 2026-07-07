@@ -52,15 +52,6 @@ type Mode = 'global' | 'project' | 'skip';
 const isMode = (value: string): value is Mode =>
   value === 'global' || value === 'project' || value === 'skip';
 
-type Flags = {
-  mode: Mode;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
@@ -68,24 +59,35 @@ type FlagParseFailure = {
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
 
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  mode: Mode;
+};
+
 const takeValue = (
   argv: readonly string[],
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined)
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
+  // not `string | undefined`; check the bound explicitly instead of
+  // comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
+  }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let mode: Mode | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--mode') {
       const taken = takeValue(argv, index + 1, '--mode');
@@ -100,10 +102,9 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       }
       mode = taken.value;
       index += 1;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   if (mode === undefined) {
@@ -144,11 +145,9 @@ const insertAlphabetical = (
       inserted = true;
     }
 
-    if (existing === key) {
-      // Skip; the new entry will overwrite at the alphabetical slot.
-      continue;
-    }
-    next[existing] = source[existing];
+    // Skip the old value at `key`; the new entry overwrites at the
+    // alphabetical slot instead.
+    if (existing !== key) next[existing] = source[existing];
   }
 
   if (!inserted) next[key] = value;
@@ -227,7 +226,7 @@ const targetPathForMode = (
   mode: Mode,
   cwd: string,
   home: string
-): string | null => {
+): null | string => {
   if (mode === 'project') return path.join(cwd, '.claude', 'settings.json');
 
   if (mode === 'global') return path.join(home, '.claude', 'settings.json');
@@ -239,7 +238,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

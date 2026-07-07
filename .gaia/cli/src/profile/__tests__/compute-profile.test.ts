@@ -126,7 +126,7 @@ describe('computeProfile', () => {
 
     const contents = readFileSync(sandbox.roots.profilePath, 'utf8');
     // UAT-036: top-line DO-NOT-EDIT header verbatim.
-    expect(contents.split('\n')[0]).toBe(PROFILE_DO_NOT_EDIT_HEADER);
+    expect(contents.split('\n', 1)[0]).toBe(PROFILE_DO_NOT_EDIT_HEADER);
     // UAT-029 default content shape: pattern detail says "below sample threshold across all areas".
     expect(contents).toContain('(below sample threshold across all areas)');
     expect(contents).toContain('## Active patterns');
@@ -153,7 +153,7 @@ describe('computeProfile', () => {
     expect(exit).toBe(EXIT_CODES.OK);
 
     const regenerated = readFileSync(sandbox.roots.profilePath, 'utf8');
-    expect(regenerated.split('\n')[0]).toBe(PROFILE_DO_NOT_EDIT_HEADER);
+    expect(regenerated.split('\n', 1)[0]).toBe(PROFILE_DO_NOT_EDIT_HEADER);
     expect(regenerated).not.toContain('user-added content');
     expect(regenerated).not.toContain('my custom header');
   });
@@ -224,7 +224,7 @@ describe('computeProfile', () => {
 
     const contents = readFileSync(sandbox.roots.profilePath, 'utf8');
     // No half-written prefix; full DO-NOT-EDIT header present.
-    expect(contents.split('\n')[0]).toBe(PROFILE_DO_NOT_EDIT_HEADER);
+    expect(contents.split('\n', 1)[0]).toBe(PROFILE_DO_NOT_EDIT_HEADER);
     expect(contents).toContain('## Pattern detail');
   });
 });

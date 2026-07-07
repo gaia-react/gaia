@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki state-init`.
  *
@@ -16,7 +17,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './state-init.js';
 
 type Sandbox = {
@@ -113,9 +113,9 @@ describe('wiki state-init', () => {
     const written = readFileSync(sandbox.statePath, 'utf8');
     const parsed = JSON.parse(written) as Record<string, unknown>;
     expect(parsed).toEqual({
-      version: 1,
-      last_evaluated_sha: sandbox.headSha,
       last_evaluated_at: '2026-05-07T12:00:00.000Z',
+      last_evaluated_sha: sandbox.headSha,
+      version: 1,
     });
     // Pretty-printed with 2 spaces and trailing newline.
     expect(written.endsWith('\n')).toBe(true);

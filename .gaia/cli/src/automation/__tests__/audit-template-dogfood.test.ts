@@ -1,3 +1,4 @@
+import {describe, expect, test} from 'vitest';
 /**
  * Maintainer drift-guard: asserts that the in-tree
  * `.github/workflows/code-review-audit.yml` is byte-identical to the
@@ -11,7 +12,6 @@
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {describe, expect, it} from 'vitest';
 import {workflowAuditTemplatePath} from '../paths.js';
 
 const resolveRepoRoot = (): string => {
@@ -33,27 +33,27 @@ const resolveRepoRoot = (): string => {
 };
 
 describe('audit-template dogfood drift-guard', () => {
-  it('in-tree code-review-audit.yml is byte-identical to the canonical template', () => {
-    const repoRoot = resolveRepoRoot();
-    const inTreePath = path.join(
-      repoRoot,
-      '.github',
-      'workflows',
-      'code-review-audit.yml'
-    );
+  const repoRoot = resolveRepoRoot();
+  const inTreePath = path.join(
+    repoRoot,
+    '.github',
+    'workflows',
+    'code-review-audit.yml'
+  );
+  // Adopter clone: the workflow is release-excluded; skip gracefully.
+  const inTreeExists = existsSync(inTreePath);
 
-    if (!existsSync(inTreePath)) {
-      // Adopter clone: the workflow is release-excluded; skip.
-      return;
+  test.skipIf(!inTreeExists)(
+    'in-tree code-review-audit.yml is byte-identical to the canonical template',
+    () => {
+      const inTree = readFileSync(inTreePath, 'utf8');
+      const template = readFileSync(workflowAuditTemplatePath(), 'utf8');
+
+      expect(inTree).toBe(template);
     }
+  );
 
-    const inTree = readFileSync(inTreePath, 'utf8');
-    const template = readFileSync(workflowAuditTemplatePath(), 'utf8');
-
-    expect(inTree).toBe(template);
-  });
-
-  it('instructs the audit agent to emit the machine-readable findings block', () => {
+  test('instructs the audit agent to emit the machine-readable findings block', () => {
     const template = readFileSync(workflowAuditTemplatePath(), 'utf8');
 
     // The tally pass parses findings from the PR comment via these stable

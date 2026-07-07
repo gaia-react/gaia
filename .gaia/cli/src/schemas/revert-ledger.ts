@@ -1,3 +1,4 @@
+import {z} from 'zod';
 /**
  * Zod schema + read/write helpers for the revert-attempt ledger.
  *
@@ -20,7 +21,6 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import {z} from 'zod';
 import {revertLedgerPath} from '../ci/paths.js';
 import {summarizeZodError} from './zod-error.js';
 
@@ -29,6 +29,7 @@ export const RevertAttemptStatusSchema = z.literal([
   'merged',
   'open',
 ] as const);
+
 export type RevertAttemptStatus = z.infer<typeof RevertAttemptStatusSchema>;
 
 export const RevertAttemptSchema = z.object({
@@ -37,12 +38,14 @@ export const RevertAttemptSchema = z.object({
   revert_pr: z.number().int().positive(),
   status: RevertAttemptStatusSchema,
 });
+
 export type RevertAttempt = z.infer<typeof RevertAttemptSchema>;
 
 export const RevertLedgerSchema = z.object({
   attempts: z.record(z.string(), RevertAttemptSchema),
   version: z.literal(1),
 });
+
 export type RevertLedger = z.infer<typeof RevertLedgerSchema>;
 
 export const emptyRevertLedger = (): RevertLedger => ({
@@ -51,9 +54,9 @@ export const emptyRevertLedger = (): RevertLedger => ({
 });
 
 export type ReadRevertLedgerResult =
+  | {error: string; status: 'malformed'}
   | {ledger: RevertLedger; status: 'ok'}
-  | {status: 'missing'}
-  | {error: string; status: 'malformed'};
+  | {status: 'missing'};
 
 export const readRevertLedger = (repoRoot: string): ReadRevertLedgerResult => {
   const filePath = revertLedgerPath(repoRoot);
@@ -112,6 +115,50 @@ export const writeRevertLedger = (
 const STALE_LOCK_MS = 5 * 60_000;
 
 /**
+ * Re-create the lock directory once. Returns `false` when another process
+ * won the race and re-created the lock first (`EEXIST`).
+ */
+const retryLockMkdir = (lockDir: string): boolean => {
+  try {
+    mkdirSync(lockDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+
+    return false;
+  }
+
+  return true;
+};
+
+/**
+ * Attempt to take over a pre-existing lock directory after an `EEXIST`.
+ *
+ * Returns `true` when this caller now holds the lock (the prior lock was
+ * stale and has been reclaimed, or it vanished and was re-created), and
+ * `false` when a fresh lock is still held by a live concurrent revert.
+ */
+const reclaimStaleLock = (lockDir: string): boolean => {
+  let mtimeMs: number;
+
+  try {
+    mtimeMs = statSync(lockDir).mtimeMs;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+
+    // The lock vanished between the failed `mkdir` and the `stat`; retry.
+    return retryLockMkdir(lockDir);
+  }
+
+  // A fresh lock belongs to a healthy concurrent revert; refuse.
+  if (Date.now() - mtimeMs <= STALE_LOCK_MS) return false;
+
+  // Stale: presumed orphaned by a killed process. Reclaim it.
+  rmSync(lockDir, {force: true, recursive: true});
+
+  return retryLockMkdir(lockDir);
+};
+
+/**
  * Acquire an advisory lock around a ledger read-modify-write for one PR.
  *
  * The "one revert per PR" hard cap is a check-then-act on a shared file:
@@ -162,48 +209,4 @@ export const withRevertLedgerLock = <T>(
   } finally {
     rmSync(lockDir, {force: true, recursive: true});
   }
-};
-
-/**
- * Attempt to take over a pre-existing lock directory after an `EEXIST`.
- *
- * Returns `true` when this caller now holds the lock (the prior lock was
- * stale and has been reclaimed, or it vanished and was re-created), and
- * `false` when a fresh lock is still held by a live concurrent revert.
- */
-const reclaimStaleLock = (lockDir: string): boolean => {
-  let mtimeMs: number;
-
-  try {
-    mtimeMs = statSync(lockDir).mtimeMs;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-
-    // The lock vanished between the failed `mkdir` and the `stat`; retry.
-    return retryLockMkdir(lockDir);
-  }
-
-  // A fresh lock belongs to a healthy concurrent revert; refuse.
-  if (Date.now() - mtimeMs <= STALE_LOCK_MS) return false;
-
-  // Stale: presumed orphaned by a killed process. Reclaim it.
-  rmSync(lockDir, {force: true, recursive: true});
-
-  return retryLockMkdir(lockDir);
-};
-
-/**
- * Re-create the lock directory once. Returns `false` when another process
- * won the race and re-created the lock first (`EEXIST`).
- */
-const retryLockMkdir = (lockDir: string): boolean => {
-  try {
-    mkdirSync(lockDir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-
-    return false;
-  }
-
-  return true;
 };

@@ -1,18 +1,34 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release changelog`.
  */
-import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
-  type CommandRunner,
   graduateChangelog,
   groupCommits,
   renderBlock,
   run,
 } from './changelog.js';
+import type {CommandRunner} from './changelog.js';
+
+// Narrows a graduateChangelog outcome to its 'ok' variant, failing the test
+// loudly (rather than a conditional early-return) when it isn't.
+function assertOk(
+  outcome: ReturnType<typeof graduateChangelog>
+): asserts outcome is Extract<
+  ReturnType<typeof graduateChangelog>,
+  {kind: 'ok'}
+> {
+  if (outcome.kind !== 'ok') {
+    throw new Error(
+      `expected graduateChangelog to return "ok", got "${outcome.kind}"`
+    );
+  }
+}
 
 const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
   output: ['', stdout, ''] as never,
@@ -33,7 +49,7 @@ const failResult = (status: number): SpawnSyncReturns<string> => ({
 });
 
 const buildLogOutput = (
-  commits: Array<{subject: string; body?: string}>
+  commits: {body?: string; subject: string}[]
 ): string => {
   const RECORD_SEPARATOR = '---END-COMMIT---';
 
@@ -46,7 +62,7 @@ const buildLogOutput = (
 };
 
 const buildRunner =
-  (commits: Array<{subject: string; body?: string}>): CommandRunner =>
+  (commits: {body?: string; subject: string}[]): CommandRunner =>
   (command, args) => {
     if (command === 'git' && args[0] === 'describe') {
       return failResult(128);
@@ -95,11 +111,11 @@ describe('renderBlock', () => {
 
   test('orders Added → Changed → Fixed', () => {
     const block = renderBlock({Added: ['a'], Changed: ['c'], Fixed: ['f']});
-    const addedIdx = block.indexOf('### Added');
-    const changedIdx = block.indexOf('### Changed');
-    const fixedIdx = block.indexOf('### Fixed');
-    expect(addedIdx).toBeLessThan(changedIdx);
-    expect(changedIdx).toBeLessThan(fixedIdx);
+    const addedIndex = block.indexOf('### Added');
+    const changedIndex = block.indexOf('### Changed');
+    const fixedIndex = block.indexOf('### Fixed');
+    expect(addedIndex).toBeLessThan(changedIndex);
+    expect(changedIndex).toBeLessThan(fixedIndex);
   });
 });
 
@@ -115,32 +131,41 @@ describe('graduateChangelog', () => {
 
   test('inserts dated heading and fresh Unreleased above', () => {
     const block = '### Added\n\n- new thing\n';
-    const outcome = graduateChangelog(TEMPLATE, '1.1.0', block, '2026-05-07');
-    expect(outcome.kind).toBe('ok');
+    const outcome = graduateChangelog({
+      block,
+      current: TEMPLATE,
+      newVersion: '1.1.0',
+      today: '2026-05-07',
+    });
+    assertOk(outcome);
 
-    if (outcome.kind !== 'ok') return;
     expect(outcome.updated).toContain('## [Unreleased]');
     expect(outcome.updated).toContain('## [1.1.0] - 2026-05-07');
     const unreleasedIdx = outcome.updated.indexOf('## [Unreleased]');
-    const datedIdx = outcome.updated.indexOf('## [1.1.0]');
-    expect(unreleasedIdx).toBeLessThan(datedIdx);
+    const datedIndex = outcome.updated.indexOf('## [1.1.0]');
+    expect(unreleasedIdx).toBeLessThan(datedIndex);
     expect(outcome.updated).toContain('- new thing');
   });
 
   test('returns duplicate when version already present', () => {
     const block = '### Added\n\n- foo\n';
-    const outcome = graduateChangelog(TEMPLATE, '1.0.0', block, '2026-05-07');
+    const outcome = graduateChangelog({
+      block,
+      current: TEMPLATE,
+      newVersion: '1.0.0',
+      today: '2026-05-07',
+    });
     expect(outcome.kind).toBe('duplicate');
   });
 
   test('returns no-unreleased when heading missing', () => {
     const minimal = '# Changelog\n\n## [1.0.0] - 2026-01-01\n';
-    const outcome = graduateChangelog(
-      minimal,
-      '1.1.0',
-      '### Added\n- x\n',
-      '2026-05-07'
-    );
+    const outcome = graduateChangelog({
+      block: '### Added\n- x\n',
+      current: minimal,
+      newVersion: '1.1.0',
+      today: '2026-05-07',
+    });
     expect(outcome.kind).toBe('no-unreleased');
   });
 
@@ -149,15 +174,14 @@ describe('graduateChangelog', () => {
 [Unreleased]: https://github.com/gaia-react/gaia/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/gaia-react/gaia/releases/tag/v1.0.0
 `;
-    const outcome = graduateChangelog(
-      withLinks,
-      '1.1.0',
-      '### Added\n\n- new thing\n',
-      '2026-05-07'
-    );
-    expect(outcome.kind).toBe('ok');
+    const outcome = graduateChangelog({
+      block: '### Added\n\n- new thing\n',
+      current: withLinks,
+      newVersion: '1.1.0',
+      today: '2026-05-07',
+    });
+    assertOk(outcome);
 
-    if (outcome.kind !== 'ok') return;
     // [Unreleased] compare link repointed at the just-released version.
     expect(outcome.updated).toContain(
       '[Unreleased]: https://github.com/gaia-react/gaia/compare/v1.1.0...HEAD'
@@ -173,15 +197,14 @@ describe('graduateChangelog', () => {
   });
 
   test('leaves the output link-free when the file has no link block', () => {
-    const outcome = graduateChangelog(
-      TEMPLATE,
-      '1.1.0',
-      '### Added\n\n- new thing\n',
-      '2026-05-07'
-    );
-    expect(outcome.kind).toBe('ok');
+    const outcome = graduateChangelog({
+      block: '### Added\n\n- new thing\n',
+      current: TEMPLATE,
+      newVersion: '1.1.0',
+      today: '2026-05-07',
+    });
+    assertOk(outcome);
 
-    if (outcome.kind !== 'ok') return;
     expect(outcome.updated).not.toContain('releases/tag/');
     expect(outcome.updated).not.toContain('[Unreleased]:');
   });
@@ -202,7 +225,7 @@ const setupSandbox = (currentVersion: string): Sandbox => {
   );
   writeFileSync(
     path.join(root, 'CHANGELOG.md'),
-    `# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n- old\n`,
+    '# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n- old\n',
     'utf8'
   );
 

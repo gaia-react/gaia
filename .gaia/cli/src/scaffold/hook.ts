@@ -72,23 +72,18 @@ const readFlags = (argv: readonly string[]): FlagReadResult => {
 
     if (token === '--json') {
       json = true;
-      continue;
-    }
-    if (token === '--params') {
+    } else if (token === '--params') {
       paramsRaw = argv[index + 1];
       index += 1;
-      continue;
-    }
-    if (token === '--returns') {
+    } else if (token === '--returns') {
       returns = argv[index + 1];
       index += 1;
-      continue;
-    }
-    if (token !== undefined && token.startsWith('--')) {
+    } else if (token.startsWith('--')) {
       // Unknown flag: surface upstream as a usage error.
       throw new Error(`unknown flag: ${token}`);
+    } else {
+      positional.push(token);
     }
-    if (token !== undefined) positional.push(token);
   }
 
   return {
@@ -194,9 +189,11 @@ const printResult = (result: ScaffoldResult, jsonMode: boolean): void => {
 
     return;
   }
+
   for (const file of result.written) {
     process.stdout.write(`written: ${file}\n`);
   }
+
   for (const file of result.skipped) {
     process.stdout.write(`skipped: ${file}\n`);
   }
@@ -225,7 +222,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const name = parsed.positional[0];
+  const name = parsed.positional.at(0);
 
   if (name === undefined) {
     structuredError({

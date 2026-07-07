@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki page-index`.
  */
@@ -5,8 +6,8 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {run, type PageIndex} from './page-index.js';
+import {run} from './page-index.js';
+import type {PageIndex} from './page-index.js';
 
 type Sandbox = {
   cleanup: () => void;

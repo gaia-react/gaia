@@ -145,7 +145,7 @@ describe('renderTemplate', () => {
 
 describe('loadTemplate', () => {
   test('throws when the template file does not exist', () => {
-    expect(() => loadTemplate('does-not-exist.tpl')).toThrow();
+    expect(() => loadTemplate('does-not-exist.tpl')).toThrow(/ENOENT/);
   });
 });
 
@@ -168,9 +168,20 @@ describe('substituteVars', () => {
     expect(substituteVars(body, vars)).toBe(renderTemplate(filePath, vars));
   });
 
+  // These strings intentionally contain literal `${{ ... }}` GitHub Actions
+  // expression text (VAR_PATTERN's negative lookbehind on `$` is what's under
+  // test): no-template-curly-in-string only checks quoted-string literals for
+  // an accidentally-unescaped template placeholder, which isn't the case
+  // here.
+  // eslint-disable-next-line no-template-curly-in-string
   test('leaves GitHub Actions ${{ secrets.X }} expressions unchanged', () => {
-    const out = substituteVars('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}', {});
+    const out = substituteVars(
+      // eslint-disable-next-line no-template-curly-in-string
+      'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}',
+      {}
+    );
 
+    // eslint-disable-next-line no-template-curly-in-string
     expect(out).toBe('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}');
   });
 });

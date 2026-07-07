@@ -11,10 +11,8 @@
 import {mkdirSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {automationConfigPath} from '../../automation/paths.js';
-import {
-  AutomationConfigSchema,
-  type AutomationConfig,
-} from '../../schemas/automation-config.js';
+import {AutomationConfigSchema} from '../../schemas/automation-config.js';
+import type {AutomationConfig} from '../../schemas/automation-config.js';
 
 export const writeAutomationConfig = (
   repoRoot: string,

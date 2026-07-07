@@ -26,16 +26,16 @@ const DEFAULT_AUTHOR = 'github-actions[bot]';
 
 type StaleCheckDecision = {
   decision: 'proceed' | 'skip';
-  open_pr_branch: string | null;
-  open_pr_number: number | null;
+  open_pr_branch: null | string;
+  open_pr_number: null | number;
   reason: 'no_open_gaia_ci_pr' | 'open_gaia_ci_pr_exists';
-  skip_log_line: string | null;
+  skip_log_line: null | string;
 };
 
 const GhPrEntry = {
-  parse(
+  parse: (
     value: unknown
-  ): {createdAt: string; headRefName: string; number: number} | null {
+  ): null | {createdAt: string; headRefName: string; number: number} => {
     if (typeof value !== 'object' || value === null) return null;
     const v = value as Record<string, unknown>;
 
@@ -51,50 +51,36 @@ const GhPrEntry = {
   },
 };
 
+type ParsedArgs = {
+  author: string;
+  base: string;
+  json: boolean;
+  label: string;
+};
+
 type RunOptions = {
   cwd?: string;
 };
 
-export const run = (
-  argv: readonly string[],
-  options: RunOptions = {}
-): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
-    process.stdout.write(HELP_TEXT);
-
-    return EXIT_CODES.OK;
-  }
-
+const parseArgs = (argv: readonly string[]): ParsedArgs | {code: number} => {
   let label: string | undefined;
   let base: string | undefined;
   let author: string = DEFAULT_AUTHOR;
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--json') {
       json = true;
-
-      continue;
-    }
-
-    if (token === '--label') {
+    } else if (token === '--label') {
       label = argv[index + 1];
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--base') {
+    } else if (token === '--base') {
       base = argv[index + 1];
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--author') {
-      const value = argv[index + 1];
+    } else if (token === '--author') {
+      const value = argv.at(index + 1);
 
       if (value === undefined) {
         structuredError({
@@ -103,21 +89,19 @@ export const run = (
           subcommand: 'ci-stale-check',
         });
 
-        return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+        return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
       }
       author = value;
       index += 1;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown argument: ${token}`,
+        subcommand: 'ci-stale-check',
+      });
 
-      continue;
+      return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown argument: ${token}`,
-      subcommand: 'ci-stale-check',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   if (label === undefined || label === '') {
@@ -127,7 +111,7 @@ export const run = (
       subcommand: 'ci-stale-check',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
   if (base === undefined || base === '') {
@@ -137,8 +121,88 @@ export const run = (
       subcommand: 'ci-stale-check',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
+
+  return {author, base, json, label};
+};
+
+type PrEntry = {createdAt: string; headRefName: string; number: number};
+
+const fetchOpenPrEntries = (
+  ghArgs: readonly string[],
+  cwd: string | undefined,
+  json: boolean
+): {code: number} | {entries: PrEntry[]} => {
+  const result = runGh(ghArgs, {cwd});
+
+  if (result.exitCode !== 0) {
+    structuredError({
+      code: 'gh_invocation_failed',
+      exit_code: result.exitCode,
+      message: result.stderr.trim() || `gh pr list exited ${result.exitCode}`,
+      subcommand: 'ci-stale-check',
+    });
+
+    if (json) {
+      process.stdout.write(
+        `${JSON.stringify({error: 'gh_invocation_failed', exit_code: result.exitCode})}\n`
+      );
+    }
+
+    return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    structuredError({
+      code: 'gh_response_unparseable',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'ci-stale-check',
+    });
+
+    return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+  }
+
+  if (!Array.isArray(parsed)) {
+    structuredError({
+      code: 'gh_response_unparseable',
+      message: 'gh pr list did not return a JSON array',
+      subcommand: 'ci-stale-check',
+    });
+
+    return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+  }
+
+  const entries: PrEntry[] = [];
+
+  for (const value of parsed) {
+    const entry = GhPrEntry.parse(value);
+
+    if (entry !== null) entries.push(entry);
+  }
+
+  return {entries};
+};
+
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
+    process.stdout.write(HELP_TEXT);
+
+    return EXIT_CODES.OK;
+  }
+
+  const parsedArgs = parseArgs(argv);
+
+  if ('code' in parsedArgs) return parsedArgs.code;
+
+  const {author, base, json, label} = parsedArgs;
 
   // Order matters for test verbatim-argv assertions; keep --label and
   // --author together as the "predicates" pair, --base last.
@@ -157,60 +221,11 @@ export const run = (
     'number,headRefName,createdAt',
   ];
 
-  const result = runGh(ghArgs, {cwd: options.cwd});
+  const fetched = fetchOpenPrEntries(ghArgs, options.cwd, json);
 
-  if (result.exitCode !== 0) {
-    structuredError({
-      code: 'gh_invocation_failed',
-      exit_code: result.exitCode,
-      message: result.stderr.trim() || `gh pr list exited ${result.exitCode}`,
-      subcommand: 'ci-stale-check',
-    });
+  if ('code' in fetched) return fetched.code;
 
-    if (json) {
-      process.stdout.write(
-        `${JSON.stringify({error: 'gh_invocation_failed', exit_code: result.exitCode})}\n`
-      );
-    }
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(result.stdout);
-  } catch (error) {
-    structuredError({
-      code: 'gh_response_unparseable',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'ci-stale-check',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  if (!Array.isArray(parsed)) {
-    structuredError({
-      code: 'gh_response_unparseable',
-      message: 'gh pr list did not return a JSON array',
-      subcommand: 'ci-stale-check',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  const entries: Array<{
-    createdAt: string;
-    headRefName: string;
-    number: number;
-  }> = [];
-
-  for (const value of parsed) {
-    const entry = GhPrEntry.parse(value);
-
-    if (entry !== null) entries.push(entry);
-  }
+  const {entries} = fetched;
 
   let decision: StaleCheckDecision;
 
@@ -223,11 +238,7 @@ export const run = (
       skip_log_line: null,
     };
   } else {
-    const first = entries[0] as {
-      createdAt: string;
-      headRefName: string;
-      number: number;
-    };
+    const first = entries[0];
     decision = {
       decision: 'skip',
       open_pr_branch: first.headRefName,

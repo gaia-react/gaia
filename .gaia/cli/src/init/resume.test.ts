@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia init resume`.
  *
@@ -8,7 +9,6 @@
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {argvFromStepArgs, run} from './resume.js';
 import {writeState} from './util/state.js';
 
@@ -165,7 +165,8 @@ describe('init resume', () => {
       },
     });
 
-    const calls: Array<{step: string; argv: readonly string[]}> = [];
+    const calls: {argv: readonly string[]; step: string}[] = [];
+
     const stub = (step: string) => (argv: readonly string[]) => {
       calls.push({argv, step});
 
@@ -215,6 +216,7 @@ describe('init resume', () => {
     });
 
     const ran: string[] = [];
+
     const stub = (step: string) => () => {
       ran.push(step);
 

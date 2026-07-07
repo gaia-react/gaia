@@ -13,10 +13,8 @@
 import {mkdirSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {localAutomationPath} from '../../automation/paths.js';
-import {
-  LocalAutomationSchema,
-  type LocalAutomation,
-} from '../../schemas/local-automation.js';
+import {LocalAutomationSchema} from '../../schemas/local-automation.js';
+import type {LocalAutomation} from '../../schemas/local-automation.js';
 
 export const writeLocalAutomation = (
   repoRoot: string,

@@ -1,5 +1,8 @@
+/* eslint-disable sonarjs/publicly-writable-directories -- the *constant-string*
+   tests exercise path-construction logic with `/tmp/repo` synthetic prefixes;
+   nothing is written to disk. */
+import {describe, expect, test} from 'vitest';
 import path from 'node:path';
-import {describe, expect, it} from 'vitest';
 import {
   automationConfigPath,
   githubWorkflowsDirectory,
@@ -12,13 +15,13 @@ import {
 
 describe('automation/paths', () => {
   describe('automationConfigPath', () => {
-    it('returns <repoRoot>/.gaia/automation.json', () => {
+    test('returns <repoRoot>/.gaia/automation.json', () => {
       expect(automationConfigPath('/tmp/repo')).toBe(
         path.join('/tmp/repo', '.gaia', 'automation.json')
       );
     });
 
-    it('handles a trailing slash via path.join semantics', () => {
+    test('handles a trailing slash via path.join semantics', () => {
       expect(automationConfigPath('/tmp/repo/')).toBe(
         path.join('/tmp/repo/', '.gaia', 'automation.json')
       );
@@ -26,7 +29,7 @@ describe('automation/paths', () => {
   });
 
   describe('localAutomationPath', () => {
-    it('returns <repoRoot>/.gaia/local/automation.json', () => {
+    test('returns <repoRoot>/.gaia/local/automation.json', () => {
       expect(localAutomationPath('/tmp/repo')).toBe(
         path.join('/tmp/repo', '.gaia', 'local', 'automation.json')
       );
@@ -34,7 +37,7 @@ describe('automation/paths', () => {
   });
 
   describe('githubWorkflowsDirectory', () => {
-    it('returns <repoRoot>/.github/workflows', () => {
+    test('returns <repoRoot>/.github/workflows', () => {
       expect(githubWorkflowsDirectory('/tmp/repo')).toBe(
         path.join('/tmp/repo', '.github', 'workflows')
       );
@@ -42,7 +45,7 @@ describe('automation/paths', () => {
   });
 
   describe('workflowFilePath', () => {
-    it('returns the kebab-case workflow filename per tool', () => {
+    test('returns the kebab-case workflow filename per tool', () => {
       expect(workflowFilePath('/tmp/repo', 'wiki')).toBe(
         path.join('/tmp/repo', '.github', 'workflows', 'gaia-ci-wiki.yml')
       );
@@ -61,7 +64,7 @@ describe('automation/paths', () => {
   });
 
   describe('workflowTemplatePath', () => {
-    it('ends with templates/workflows/gaia-ci-<tool>.yml.tmpl', () => {
+    test('ends with templates/workflows/gaia-ci-<tool>.yml.tmpl', () => {
       expect(
         workflowTemplatePath('wiki').endsWith(
           path.join('templates', 'workflows', 'gaia-ci-wiki.yml.tmpl')
@@ -86,7 +89,7 @@ describe('automation/paths', () => {
   });
 
   describe('workflowAuditTemplatePath', () => {
-    it('ends with templates/workflows/code-review-audit.yml.tmpl', () => {
+    test('ends with templates/workflows/code-review-audit.yml.tmpl', () => {
       expect(
         workflowAuditTemplatePath().endsWith(
           path.join('templates', 'workflows', 'code-review-audit.yml.tmpl')
@@ -96,7 +99,7 @@ describe('automation/paths', () => {
   });
 
   describe('workflowPartialsDirectory', () => {
-    it('ends with templates/workflows/partials', () => {
+    test('ends with templates/workflows/partials', () => {
       expect(
         workflowPartialsDirectory().endsWith(
           path.join('templates', 'workflows', 'partials')

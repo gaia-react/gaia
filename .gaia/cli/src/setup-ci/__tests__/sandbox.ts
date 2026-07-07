@@ -44,6 +44,38 @@ export type Sandbox = {
   writeConfig: (config: AutomationConfig) => void;
 };
 
+export function assertNotOk<T extends {ok: boolean}>(
+  result: T
+): asserts result is Extract<T, {ok: false}> {
+  if (result.ok) {
+    throw new Error('expected ok: false');
+  }
+}
+
+/** Same narrowing, for the `{ok: boolean, ...}` result shape (e.g. runGh). */
+export function assertOk<T extends {ok: boolean}>(
+  result: T
+): asserts result is Extract<T, {ok: true}> {
+  if (!result.ok) {
+    throw new Error('expected ok: true');
+  }
+}
+
+/**
+ * Narrows a `{status: 'ok', ...} | ...` discriminated union (e.g.
+ * `readAutomationConfig`/`readLocalAutomation` results) without an `if`
+ * inside the test body — vitest/no-conditional-in-test forbids a bare `if`
+ * there, and vitest/no-conditional-expect forbids an `expect` inside one.
+ * Shared across setup-ci tests that read back a schema-validated file.
+ */
+export function assertStatusOk<T extends {status: string}>(
+  result: T
+): asserts result is Extract<T, {status: 'ok'}> {
+  if (result.status !== 'ok') {
+    throw new Error(`expected status "ok", got: ${result.status}`);
+  }
+}
+
 export const VALID_BASE_CONFIG: AutomationConfig = {
   pnpm_audit: {mode: 'ci', schedule: 'weekly'},
   setup_complete: false,
@@ -191,31 +223,37 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
         } else {
           process.env.PATH = previousPath;
         }
+
         if (previousArgv === undefined) {
           delete process.env.GH_SHIM_ARGV_FILE;
         } else {
           process.env.GH_SHIM_ARGV_FILE = previousArgv;
         }
+
         if (previousStdin === undefined) {
           delete process.env.GH_SHIM_STDIN_FILE;
         } else {
           process.env.GH_SHIM_STDIN_FILE = previousStdin;
         }
+
         if (previousQueue === undefined) {
           delete process.env.GH_SHIM_STDOUT_QUEUE_FILE;
         } else {
           process.env.GH_SHIM_STDOUT_QUEUE_FILE = previousQueue;
         }
+
         if (previousStderrQueue === undefined) {
           delete process.env.GH_SHIM_STDERR_QUEUE_FILE;
         } else {
           process.env.GH_SHIM_STDERR_QUEUE_FILE = previousStderrQueue;
         }
+
         if (previousExitQueue === undefined) {
           delete process.env.GH_SHIM_EXIT_CODE_QUEUE_FILE;
         } else {
           process.env.GH_SHIM_EXIT_CODE_QUEUE_FILE = previousExitQueue;
         }
+
         if (previousExitCode === undefined) {
           delete process.env.GH_SHIM_EXIT_CODE;
         } else {

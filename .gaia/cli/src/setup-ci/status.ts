@@ -21,13 +21,17 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {
+  readAutomationConfig,
   TOOL_ID_TO_CONFIG_KEY,
   TOOL_IDS,
-  readAutomationConfig,
-  type AutomationConfig,
-  type ToolId,
+} from '../schemas/automation-config.js';
+import type {
+  AutomationConfig,
+  ReadAutomationConfigResult,
+  ToolId,
 } from '../schemas/automation-config.js';
 import {readLocalAutomation} from '../schemas/local-automation.js';
+import type {ReadLocalAutomationResult} from '../schemas/local-automation.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
 
@@ -56,14 +60,43 @@ const enabledTools = (config: AutomationConfig): ToolId[] => {
 
   for (const tool of TOOL_IDS) {
     const key = TOOL_ID_TO_CONFIG_KEY[tool];
-    const slot = config[key] as {mode: string} | undefined;
+    const slot = config[key] as undefined | {mode: string};
 
-    if (slot !== undefined && slot.mode === 'ci') {
+    if (slot?.mode === 'ci') {
       result.push(tool);
     }
   }
 
   return result;
+};
+
+// Extracted out of `run` (kept its cognitive complexity under the frozen
+// limit): the status/config shape derivation, independent of exit-code
+// handling and json/human printing.
+const buildStatusOutput = (
+  configRead: ReadAutomationConfigResult,
+  localRead: ReadLocalAutomationResult
+): StatusOutput => {
+  const nudgeDismissed =
+    localRead.status === 'ok' ? localRead.local.nudge_dismissed : false;
+
+  if (configRead.status !== 'ok') {
+    return {
+      configured: false,
+      nudge_dismissed: nudgeDismissed,
+      setup_complete: false,
+      setup_opted_out: false,
+      tools_enabled: [],
+    };
+  }
+
+  return {
+    configured: true,
+    nudge_dismissed: nudgeDismissed,
+    setup_complete: configRead.config.setup_complete,
+    setup_opted_out: configRead.config.setup_opted_out,
+    tools_enabled: enabledTools(configRead.config),
+  };
 };
 
 const printHuman = (output: StatusOutput): void => {
@@ -76,7 +109,7 @@ const printHuman = (output: StatusOutput): void => {
   }
 
   process.stdout.write(
-    `configured: true\n` +
+    'configured: true\n' +
       `setup_complete: ${String(output.setup_complete)}\n` +
       `setup_opted_out: ${String(output.setup_opted_out)}\n` +
       `nudge_dismissed: ${String(output.nudge_dismissed)}\n` +
@@ -99,17 +132,15 @@ export const run = (
 
     if (token === '--json') {
       json = true;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'setup-ci status',
+      });
 
-      continue;
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'setup-ci status',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   let repoRoot: string;
@@ -150,24 +181,7 @@ export const run = (
     return EXIT_CODES.CONFIG_INVALID;
   }
 
-  const output: StatusOutput =
-    configRead.status === 'ok' ?
-      {
-        configured: true,
-        nudge_dismissed:
-          localRead.status === 'ok' ? localRead.local.nudge_dismissed : false,
-        setup_complete: configRead.config.setup_complete,
-        setup_opted_out: configRead.config.setup_opted_out,
-        tools_enabled: enabledTools(configRead.config),
-      }
-    : {
-        configured: false,
-        nudge_dismissed:
-          localRead.status === 'ok' ? localRead.local.nudge_dismissed : false,
-        setup_complete: false,
-        setup_opted_out: false,
-        tools_enabled: [],
-      };
+  const output = buildStatusOutput(configRead, localRead);
 
   if (json) {
     process.stdout.write(`${JSON.stringify(output)}\n`);

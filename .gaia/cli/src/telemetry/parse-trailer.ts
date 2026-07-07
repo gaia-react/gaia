@@ -42,8 +42,8 @@ export type ParseResult = {
     | 'invalid_input_json'
     | 'invalid_trailer_json'
     | 'no_subagent_type'
-    | 'no_trailer'
     | 'no_tool_response'
+    | 'no_trailer'
     | 'wrong_tool';
 };
 
@@ -58,17 +58,16 @@ const extractTrailer = (output: string): string | undefined => {
     if (TRAILER_FENCE.test(line)) {
       if (inBlock) return collected.join('\n');
       inBlock = true;
-      continue;
+    } else if (inBlock) {
+      collected.push(line);
     }
-
-    if (inBlock) collected.push(line);
   }
 
   return undefined;
 };
 
 const escapeRegex = (input: string): string =>
-  input.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  input.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 const stripQuotes = (raw: string): string => {
   if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
@@ -79,11 +78,18 @@ const stripQuotes = (raw: string): string => {
 };
 
 const trailerScalar = (trailer: string, key: string): string | undefined => {
-  const pattern = new RegExp(`^${escapeRegex(key)}\\s*:\\s*(.*?)\\s*$`, 'm');
-  const match = trailer.match(pattern);
+  const pattern = new RegExp(
+    String.raw`^${escapeRegex(key)}\s*:\s*(.*?)\s*$`,
+    'm'
+  );
+  const match = pattern.exec(trailer);
 
   if (match === null) return undefined;
-  const raw = match[1] ?? '';
+  // The single capture group `(.*?)` isn't inside an optional quantifier or
+  // alternation, so it always participates once the overall pattern
+  // matches; without `noUncheckedIndexedAccess`, TS already types `match[1]`
+  // as `string`, so no `?? ''` fallback is needed.
+  const raw = match[1];
 
   return stripQuotes(raw.trim());
 };
@@ -131,6 +137,41 @@ const areaTagsString = (source: Record<string, unknown>): string => {
   return '';
 };
 
+const buildAuditFindingInvocation = (
+  finding: unknown,
+  prNumber: string
+): EmitInvocation | undefined => {
+  if (!isPlainObject(finding)) return undefined;
+
+  const findingClass = stringField(finding, 'finding_class');
+  const severity = stringField(finding, 'severity');
+
+  if (findingClass === undefined || severity === undefined) return undefined;
+
+  // A finding whose class is not in the controlled set is not a countable
+  // finding; drop it before it reaches an emit so free-text drift never
+  // lands in the tally.
+  if (!isValidFindingClass(findingClass)) return undefined;
+
+  return {
+    args: [
+      '--pr-number',
+      prNumber,
+      '--finding-class',
+      findingClass,
+      '--severity',
+      severity,
+      '--area-tags',
+      areaTagsString(finding),
+      '--auditor-type',
+      'code-review-audit',
+      '--agent-type',
+      'Reviewer',
+    ],
+    eventType: 'code_review_audit_finding',
+  };
+};
+
 const buildAuditFindings = (trailer: string): readonly EmitInvocation[] => {
   const findingsRaw = trailerScalar(trailer, 'findings_json');
 
@@ -142,41 +183,47 @@ const buildAuditFindings = (trailer: string): readonly EmitInvocation[] => {
 
   // `trailerScalar` already strips surrounding quotes; no extra strip here.
   const prNumber = trailerScalar(trailer, 'pr_number') ?? '0';
-  const invocations: EmitInvocation[] = [];
 
-  for (const finding of parsed) {
-    if (!isPlainObject(finding)) continue;
+  return parsed.flatMap((finding) => {
+    const invocation = buildAuditFindingInvocation(finding, prNumber);
 
-    const findingClass = stringField(finding, 'finding_class');
-    const severity = stringField(finding, 'severity');
+    return invocation === undefined ? [] : [invocation];
+  });
+};
 
-    if (findingClass === undefined || severity === undefined) continue;
+const buildUatPassInvocation = (
+  entry: unknown,
+  agentType: string
+): EmitInvocation | undefined => {
+  if (!isPlainObject(entry)) return undefined;
 
-    // A finding whose class is not in the controlled set is not a countable
-    // finding; drop it before it reaches an emit so free-text drift never
-    // lands in the tally.
-    if (!isValidFindingClass(findingClass)) continue;
+  const uatId = stringField(entry, 'uat_id');
+  const specId = stringField(entry, 'spec_id');
+  const taskId = stringField(entry, 'task_id');
 
-    invocations.push({
-      args: [
-        '--pr-number',
-        prNumber,
-        '--finding-class',
-        findingClass,
-        '--severity',
-        severity,
-        '--area-tags',
-        areaTagsString(finding),
-        '--auditor-type',
-        'code-review-audit',
-        '--agent-type',
-        'Reviewer',
-      ],
-      eventType: 'code_review_audit_finding',
-    });
+  if (uatId === undefined || specId === undefined || taskId === undefined) {
+    return undefined;
   }
 
-  return invocations;
+  const attempts = numericField(entry, 'attempts') ?? '1';
+
+  return {
+    args: [
+      '--uat-id',
+      uatId,
+      '--spec-id',
+      specId,
+      '--task-id',
+      taskId,
+      '--attempts',
+      attempts,
+      '--area-tags',
+      areaTagsString(entry),
+      '--agent-type',
+      agentType,
+    ],
+    eventType: 'uat_pass',
+  };
 };
 
 const buildUatPasses = (
@@ -191,41 +238,11 @@ const buildUatPasses = (
 
   if (!Array.isArray(parsed)) return [];
 
-  const invocations: EmitInvocation[] = [];
+  return parsed.flatMap((entry) => {
+    const invocation = buildUatPassInvocation(entry, agentType);
 
-  for (const entry of parsed) {
-    if (!isPlainObject(entry)) continue;
-
-    const uatId = stringField(entry, 'uat_id');
-    const specId = stringField(entry, 'spec_id');
-    const taskId = stringField(entry, 'task_id');
-
-    if (uatId === undefined || specId === undefined || taskId === undefined) {
-      continue;
-    }
-
-    const attempts = numericField(entry, 'attempts') ?? '1';
-
-    invocations.push({
-      args: [
-        '--uat-id',
-        uatId,
-        '--spec-id',
-        specId,
-        '--task-id',
-        taskId,
-        '--attempts',
-        attempts,
-        '--area-tags',
-        areaTagsString(entry),
-        '--agent-type',
-        agentType,
-      ],
-      eventType: 'uat_pass',
-    });
-  }
-
-  return invocations;
+    return invocation === undefined ? [] : [invocation];
+  });
 };
 
 const buildNeedsContext = (
@@ -302,8 +319,7 @@ type HookInput = {
 const extractHookInput = (
   rawJson: string
 ):
-  | {input: HookInput; ok: true}
-  | {ok: false; reason: ParseResult['reason']} => {
+  {input: HookInput; ok: true} | {ok: false; reason: ParseResult['reason']} => {
   let parsed: unknown;
 
   try {
@@ -366,8 +382,7 @@ export const parseTrailer = (rawHookInputJson: string): ParseResult => {
 
   // Engineer-return path: agent_type defaults to Senior when absent.
   const agentType = trailerScalar(trailer, 'agent_type') ?? 'Senior';
-  const collected: EmitInvocation[] = [];
-  collected.push(...buildUatPasses(trailer, agentType));
+  const collected: EmitInvocation[] = [...buildUatPasses(trailer, agentType)];
   const needsContext = buildNeedsContext(trailer, agentType);
 
   if (needsContext !== undefined) collected.push(needsContext);

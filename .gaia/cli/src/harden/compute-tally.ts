@@ -17,9 +17,24 @@ import {isValidFindingClass} from '../schemas/finding-class.js';
 
 export const RECURRENCE_THRESHOLD = 3;
 
+export type ComputeTallyArgs = {
+  /** True when a promoted rule already covers the class (drop it). */
+  coveredClass: (findingClass: string) => boolean;
+  prs: readonly TallyPrRecord[];
+  /** True when the decline ledger suppresses the class at this PR count. */
+  suppressedClass: (findingClass: string, currentPrCount: number) => boolean;
+  windowDays: number;
+};
+
 export type CountableSeverity = 'error' | 'warning';
 
-type Severity = 'error' | 'suggestion' | 'warning';
+export type TallyCandidate = {
+  area_tags: string[];
+  distinct_pr_count: number;
+  finding_class: string;
+  pr_numbers: number[];
+  severity_max: CountableSeverity;
+};
 
 export type TallyFinding = {
   area_tags: readonly string[];
@@ -32,36 +47,96 @@ export type TallyPrRecord = {
   pr_number: number;
 };
 
-export type TallyCandidate = {
-  area_tags: string[];
-  distinct_pr_count: number;
-  finding_class: string;
-  pr_numbers: number[];
-  severity_max: CountableSeverity;
-};
-
 export type TallyResult = {
   candidate_count: number;
   candidates: TallyCandidate[];
   window_days: number;
 };
 
-export type ComputeTallyArgs = {
-  /** True when a promoted rule already covers the class (drop it). */
-  coveredClass: (findingClass: string) => boolean;
-  prs: readonly TallyPrRecord[];
-  /** True when the decline ledger suppresses the class at this PR count. */
-  suppressedClass: (findingClass: string, currentPrCount: number) => boolean;
-  windowDays: number;
-};
+type Severity = 'error' | 'suggestion' | 'warning';
 
-const isCountableSeverity = (severity: Severity): severity is CountableSeverity =>
+const isCountableSeverity = (
+  severity: Severity
+): severity is CountableSeverity =>
   severity === 'error' || severity === 'warning';
 
 type ClassAggregate = {
   areaTags: string[];
   prNumbers: number[];
   severityMax: CountableSeverity;
+};
+
+type PerPrCollapse = {
+  areaTags: Map<string, Set<string>>;
+  severity: Map<string, CountableSeverity>;
+};
+
+// Collapse one PR's findings so a class counts once per PR regardless of how
+// many findings carry it; tracks the strongest severity and the union of area
+// tags seen for it. Class-less / invalid and suggestion-severity findings are
+// dropped before counting.
+const collapsePr = (pr: TallyPrRecord): PerPrCollapse => {
+  const severity = new Map<string, CountableSeverity>();
+  const areaTags = new Map<string, Set<string>>();
+
+  for (const finding of pr.findings) {
+    if (
+      isCountableSeverity(finding.severity) &&
+      isValidFindingClass(finding.finding_class)
+    ) {
+      const existing = severity.get(finding.finding_class);
+
+      if (existing !== 'error') {
+        severity.set(finding.finding_class, finding.severity);
+      }
+
+      const tags = areaTags.get(finding.finding_class) ?? new Set<string>();
+
+      for (const tag of finding.area_tags) tags.add(tag);
+      areaTags.set(finding.finding_class, tags);
+    }
+  }
+
+  return {areaTags, severity};
+};
+
+type MergeAggregateArgs = {
+  byClass: Map<string, ClassAggregate>;
+  findingClass: string;
+  prNumber: number;
+  severity: CountableSeverity;
+  tags: ReadonlySet<string>;
+};
+
+// Merges one PR's collapsed severity/tags for a class into its running
+// aggregate, creating the aggregate on first sight.
+const mergeAggregate = ({
+  byClass,
+  findingClass,
+  prNumber,
+  severity,
+  tags,
+}: MergeAggregateArgs): void => {
+  const aggregate = byClass.get(findingClass) ?? {
+    areaTags: [],
+    prNumbers: [],
+    severityMax: 'warning' as CountableSeverity,
+  };
+
+  aggregate.prNumbers.push(prNumber);
+
+  if (severity === 'error') aggregate.severityMax = 'error';
+
+  const seenTags = new Set(aggregate.areaTags);
+
+  for (const tag of tags) {
+    if (!seenTags.has(tag)) {
+      aggregate.areaTags.push(tag);
+      seenTags.add(tag);
+    }
+  }
+
+  byClass.set(findingClass, aggregate);
 };
 
 /**
@@ -76,49 +151,16 @@ const aggregateByClass = (
   const byClass = new Map<string, ClassAggregate>();
 
   for (const pr of prs) {
-    // Collapse within the PR first so a class counts once per PR regardless of
-    // how many findings carry it; track the strongest severity seen for it.
-    const perPrSeverity = new Map<string, CountableSeverity>();
-    const perPrAreaTags = new Map<string, Set<string>>();
+    const {areaTags, severity} = collapsePr(pr);
 
-    for (const finding of pr.findings) {
-      if (!isCountableSeverity(finding.severity)) continue;
-      if (!isValidFindingClass(finding.finding_class)) continue;
-
-      const existing = perPrSeverity.get(finding.finding_class);
-
-      if (existing !== 'error') {
-        perPrSeverity.set(finding.finding_class, finding.severity);
-      }
-
-      const tags =
-        perPrAreaTags.get(finding.finding_class) ?? new Set<string>();
-
-      for (const tag of finding.area_tags) tags.add(tag);
-      perPrAreaTags.set(finding.finding_class, tags);
-    }
-
-    for (const [findingClass, severity] of perPrSeverity) {
-      const aggregate = byClass.get(findingClass) ?? {
-        areaTags: [],
-        prNumbers: [],
-        severityMax: 'warning' as CountableSeverity,
-      };
-
-      aggregate.prNumbers.push(pr.pr_number);
-
-      if (severity === 'error') aggregate.severityMax = 'error';
-
-      const seenTags = new Set(aggregate.areaTags);
-
-      for (const tag of perPrAreaTags.get(findingClass) ?? []) {
-        if (!seenTags.has(tag)) {
-          aggregate.areaTags.push(tag);
-          seenTags.add(tag);
-        }
-      }
-
-      byClass.set(findingClass, aggregate);
+    for (const [findingClass, findingSeverity] of severity) {
+      mergeAggregate({
+        byClass,
+        findingClass,
+        prNumber: pr.pr_number,
+        severity: findingSeverity,
+        tags: areaTags.get(findingClass) ?? new Set<string>(),
+      });
     }
   }
 
@@ -137,18 +179,20 @@ export const computeTally = ({
 
   for (const [findingClass, aggregate] of byClass) {
     const distinctPrCount = aggregate.prNumbers.length;
+    const qualifies =
+      distinctPrCount >= RECURRENCE_THRESHOLD &&
+      !coveredClass(findingClass) &&
+      !suppressedClass(findingClass, distinctPrCount);
 
-    if (distinctPrCount < RECURRENCE_THRESHOLD) continue;
-    if (coveredClass(findingClass)) continue;
-    if (suppressedClass(findingClass, distinctPrCount)) continue;
-
-    candidates.push({
-      area_tags: aggregate.areaTags,
-      distinct_pr_count: distinctPrCount,
-      finding_class: findingClass,
-      pr_numbers: aggregate.prNumbers,
-      severity_max: aggregate.severityMax,
-    });
+    if (qualifies) {
+      candidates.push({
+        area_tags: aggregate.areaTags,
+        distinct_pr_count: distinctPrCount,
+        finding_class: findingClass,
+        pr_numbers: aggregate.prNumbers,
+        severity_max: aggregate.severityMax,
+      });
+    }
   }
 
   return {

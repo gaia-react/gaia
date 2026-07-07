@@ -42,10 +42,17 @@ const run = (
   // that as exit code 1 so callers don't accidentally see it as success.
   const exitCode = result.status ?? 1;
 
+  // @types/node claims stdout/stderr are always `string` once an encoding
+  // is given, but Node can still leave them `null` if the child never
+  // spawned (e.g. ENOENT). Narrow at this read site rather than trusting
+  // the (incomplete) declared type.
+  const stdout = result.stdout as null | string;
+  const stderr = result.stderr as null | string;
+
   return {
     exitCode,
-    stderr: result.stderr ?? '',
-    stdout: result.stdout ?? '',
+    stderr: stderr ?? '',
+    stdout: stdout ?? '',
   };
 };
 

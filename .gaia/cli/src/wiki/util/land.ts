@@ -6,9 +6,9 @@
  * 2 (unexpected). These leaf helpers keep that translation identical across
  * the two surfaces.
  */
-import {type SpawnSyncReturns} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../../exit.js';
-import {type CommandRunner} from './branch.js';
+import type {CommandRunner} from './branch.js';
 
 /** Exit code for an unexpected git/gh process failure. */
 export const UNEXPECTED_EXIT = 2;
@@ -33,20 +33,30 @@ export const refuse = (message: string): number => {
 export const commandSucceeded = (result: SpawnSyncReturns<string>): boolean =>
   result.error === undefined && (result.status ?? -1) === 0;
 
+// `SpawnSyncReturns.stdout`/`.stderr` are typed as non-nullable `string`, but
+// a spawn failure can genuinely leave them `null`/`undefined` at runtime
+// despite the type declaration.
+const safeOutput = (value: null | string | undefined): string => value ?? '';
+
+export type PassthroughFailureOptions = {
+  args: readonly string[];
+  command: string;
+  prefix: string;
+  result: SpawnSyncReturns<string>;
+};
+
 /**
  * Surface a failing git/gh step (command + argv + its stderr) under `prefix`
  * and return exit code 2. The caller gets enough context to diagnose without
  * re-running; the CLI adds nothing beyond that.
  */
 export const passthroughFailure = (
-  prefix: string,
-  result: SpawnSyncReturns<string>,
-  command: string,
-  args: readonly string[]
+  options: PassthroughFailureOptions
 ): number => {
-  const stderr = (result.stderr ?? '').trim();
+  const {args, command, prefix, result} = options;
+  const stderr = safeOutput(result.stderr).trim();
   const errorPart =
-    result.error !== undefined ? ` (${result.error.message})` : '';
+    result.error === undefined ? '' : ` (${result.error.message})`;
   const status = result.status ?? -1;
   process.stderr.write(
     `${prefix}: ${command} ${args.join(' ')} exited ${status}${errorPart}\n`
@@ -74,6 +84,9 @@ const sleepSync = (ms: number): void => {
 
 export type MergeWaitOptions = {
   attempts?: number;
+  branch: string;
+  cwd: string;
+  runner: CommandRunner;
   sleep?: (ms: number) => void;
 };
 
@@ -90,20 +103,23 @@ export type MergeWaitOptions = {
  * (transient network / auth) counts as "not yet" and keeps polling rather than
  * aborting the wait.
  */
-const waitForMerge = (
-  runner: CommandRunner,
-  cwd: string,
-  branch: string,
-  options: MergeWaitOptions
-): boolean => {
-  const attempts = options.attempts ?? MERGE_POLL_ATTEMPTS;
-  const sleep = options.sleep ?? sleepSync;
+const waitForMerge = (options: MergeWaitOptions): boolean => {
+  const {
+    attempts = MERGE_POLL_ATTEMPTS,
+    branch,
+    cwd,
+    runner,
+    sleep = sleepSync,
+  } = options;
   const args = ['pr', 'view', branch, '--json', 'state', '--jq', '.state'];
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const result = runner('gh', args, {cwd});
 
-    if (commandSucceeded(result) && (result.stdout ?? '').trim() === 'MERGED')
+    if (
+      commandSucceeded(result) &&
+      safeOutput(result.stdout).trim() === 'MERGED'
+    )
       return true;
 
     if (attempt < attempts - 1) sleep(MERGE_POLL_INTERVAL_MS);
@@ -112,22 +128,31 @@ const waitForMerge = (
   return false;
 };
 
+type CleanupAfterMergeOptions = {
+  base: string;
+  branch: string;
+  cwd: string;
+  runner: CommandRunner;
+};
+
 /**
  * Local cleanup after a confirmed merge: return to `base`, fast-forward it to
  * the just-merged commit, delete the local landing branch, and prune the
  * deleted remote ref. Best-effort by design: the merge already succeeded, so a
  * stale local checkout or an already-pruned ref must not surface as an error.
  */
-const cleanupAfterMerge = (
-  runner: CommandRunner,
-  cwd: string,
-  branch: string,
-  base: string
-): void => {
+const cleanupAfterMerge = (options: CleanupAfterMergeOptions): void => {
+  const {base, branch, cwd, runner} = options;
+
   runner('git', ['checkout', base], {cwd});
   runner('git', ['pull', '--ff-only', 'origin', base], {cwd});
   runner('git', ['branch', '-D', branch], {cwd});
   runner('git', ['fetch', '--prune', 'origin'], {cwd});
+};
+
+export type FinalizeMergeOptions = MergeWaitOptions & {
+  base: string;
+  prefix: string;
 };
 
 /**
@@ -137,16 +162,11 @@ const cleanupAfterMerge = (
  * `prefix`-tagged summary and returns `EXIT_CODES.OK`. Shared by `chain finish`
  * and `sync land`'s protected-branch path.
  */
-export const finalizeMerge = (
-  runner: CommandRunner,
-  cwd: string,
-  branch: string,
-  base: string,
-  prefix: string,
-  options: MergeWaitOptions
-): number => {
-  if (waitForMerge(runner, cwd, branch, options)) {
-    cleanupAfterMerge(runner, cwd, branch, base);
+export const finalizeMerge = (options: FinalizeMergeOptions): number => {
+  const {base, branch, cwd, prefix, runner} = options;
+
+  if (waitForMerge(options)) {
+    cleanupAfterMerge({base, branch, cwd, runner});
     process.stdout.write(
       `${prefix}: merged PR for ${branch} and cleaned up locally\n`
     );

@@ -24,10 +24,10 @@ const isExportFromLine = (line: string): boolean =>
   EXPORT_FROM_PATTERN.test(line);
 
 type SplitResult = {
-  /** Trailing newline at EOF, if present. */
-  trailingNewline: string;
   /** Lines without the trailing-newline artifact. */
   lines: string[];
+  /** Trailing newline at EOF, if present. */
+  trailingNewline: string;
 };
 
 const splitPreservingTrailingNewline = (raw: string): SplitResult => {
@@ -41,10 +41,10 @@ const splitPreservingTrailingNewline = (raw: string): SplitResult => {
 };
 
 type ExportRunBounds = {
-  /** Index of the first export-from line. */
-  start: number;
   /** Index one-past the last export-from line. */
   end: number;
+  /** Index of the first export-from line. */
+  start: number;
 };
 
 const findExportRun = (lines: string[]): ExportRunBounds | null => {
@@ -64,16 +64,14 @@ const findExportRun = (lines: string[]): ExportRunBounds | null => {
 const findInsertIndex = (
   lines: string[],
   bounds: ExportRunBounds,
-  newLine: string
+  newline: string
 ): number => {
+  // `bounds` is derived from this same `lines` array, so every index in
+  // [start, end) is guaranteed in-range.
   for (let index = bounds.start; index < bounds.end; index += 1) {
     const candidate = lines[index];
 
-    if (
-      candidate !== undefined &&
-      isExportFromLine(candidate) &&
-      newLine.localeCompare(candidate) < 0
-    ) {
+    if (isExportFromLine(candidate) && newline.localeCompare(candidate) < 0) {
       return index;
     }
   }

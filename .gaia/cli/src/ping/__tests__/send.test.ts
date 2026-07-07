@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for the shared `postPing` core.
  */
@@ -10,7 +11,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {normalizePlatform, postPing} from '../send.js';
 
 const UUID_V4_RE =
@@ -58,7 +58,12 @@ describe('postPing', () => {
   });
 
   test('preserves event-specific payload keys alongside the injected fields', async () => {
-    await postPing(root, {ci: 'custom', event: 'init', i18n: 2, mode: 'interactive'});
+    await postPing(root, {
+      ci: 'custom',
+      event: 'init',
+      i18n: 2,
+      mode: 'interactive',
+    });
 
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
@@ -104,7 +109,11 @@ describe('postPing', () => {
   });
 
   test('falls back to "unknown" when the manifest is malformed', async () => {
-    writeFileSync(path.join(root, '.gaia', 'manifest.json'), '{ broken', 'utf8');
+    writeFileSync(
+      path.join(root, '.gaia', 'manifest.json'),
+      '{ broken',
+      'utf8'
+    );
 
     await postPing(root, {event: 'init'});
 

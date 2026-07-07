@@ -1,7 +1,9 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {z} from 'zod';
+import assert from 'node:assert/strict';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {
   LocalAutomationSchema,
   parseLocalAutomation,
@@ -34,20 +36,20 @@ const setupSandbox = (): Sandbox => {
 
 describe('schemas/local-automation', () => {
   describe('LocalAutomationSchema', () => {
-    it('parses a valid local config', () => {
+    test('parses a valid local config', () => {
       expect(() => parseLocalAutomation(VALID_LOCAL)).not.toThrow();
     });
 
-    it('rejects version != 1', () => {
+    test('rejects version != 1', () => {
       expect(() =>
         LocalAutomationSchema.parse({...VALID_LOCAL, version: 2})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
 
-    it('rejects a non-boolean nudge_dismissed', () => {
+    test('rejects a non-boolean nudge_dismissed', () => {
       expect(() =>
         LocalAutomationSchema.parse({...VALID_LOCAL, nudge_dismissed: 'no'})
-      ).toThrow();
+      ).toThrow(z.ZodError);
     });
   });
 
@@ -62,28 +64,26 @@ describe('schemas/local-automation', () => {
       sandbox.cleanup();
     });
 
-    it('returns {status: "missing"} when the file does not exist', () => {
+    test('returns {status: "missing"} when the file does not exist', () => {
       const result = readLocalAutomation(sandbox.root);
       expect(result.status).toBe('missing');
     });
 
-    it('returns {status: "ok"} for valid JSON', () => {
+    test('returns {status: "ok"} for valid JSON', () => {
       writeFileSync(sandbox.localPath, JSON.stringify(VALID_LOCAL), 'utf8');
       const result = readLocalAutomation(sandbox.root);
       expect(result.status).toBe('ok');
-
-      if (result.status === 'ok') {
-        expect(result.local.nudge_dismissed).toBe(false);
-      }
+      assert.ok(result.status === 'ok');
+      expect(result.local.nudge_dismissed).toBe(false);
     });
 
-    it('returns {status: "malformed"} for invalid JSON', () => {
+    test('returns {status: "malformed"} for invalid JSON', () => {
       writeFileSync(sandbox.localPath, '{nope', 'utf8');
       const result = readLocalAutomation(sandbox.root);
       expect(result.status).toBe('malformed');
     });
 
-    it('returns {status: "malformed"} for schema-violating JSON', () => {
+    test('returns {status: "malformed"} for schema-violating JSON', () => {
       writeFileSync(
         sandbox.localPath,
         JSON.stringify({...VALID_LOCAL, version: 99}),

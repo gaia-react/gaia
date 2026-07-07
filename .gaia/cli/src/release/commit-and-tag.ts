@@ -19,12 +19,13 @@
  * The version is read from `package.json`. Stdout is a one-line summary
  * per mode; stderr explains every refusal.
  */
-import {type SpawnSyncReturns, spawnSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {atomicWriteFileSync} from '../util/atomic-write.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release commit-and-tag (--commit | --tag) [--no-push]
 
@@ -55,18 +56,6 @@ export const defaultRunner: CommandRunner = (command, args, options) =>
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-type Mode = 'commit' | 'tag';
-
-type Flags = {
-  mode: Mode;
-  noPush: boolean;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
@@ -74,39 +63,36 @@ type FlagParseFailure = {
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
 
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  mode: Mode;
+  noPush: boolean;
+};
+
+type Mode = 'commit' | 'tag';
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let mode: Mode | undefined;
   let noPush = false;
 
   for (const token of argv) {
-    if (token === '--commit') {
+    if (token === '--commit' || token === '--tag') {
       if (mode !== undefined) {
         return {
           message: '--commit and --tag are mutually exclusive',
           ok: false,
         };
       }
-      mode = 'commit';
-      continue;
-    }
-
-    if (token === '--tag') {
-      if (mode !== undefined) {
-        return {
-          message: '--commit and --tag are mutually exclusive',
-          ok: false,
-        };
-      }
-      mode = 'tag';
-      continue;
-    }
-
-    if (token === '--no-push') {
+      mode = token === '--commit' ? 'commit' : 'tag';
+    } else if (token === '--no-push') {
       noPush = true;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   if (mode === undefined) {
@@ -129,17 +115,17 @@ const readVersion = (cwd: string): string => {
   const parsed = JSON.parse(readFileSync(target, 'utf8')) as PackageJsonShape;
 
   if (typeof parsed.version !== 'string') {
-    throw new Error('package.json has no string "version"');
+    throw new TypeError('package.json has no string "version"');
   }
 
   return parsed.version;
 };
 
 type Step = {
-  args: readonly string[];
-  command: string;
   /** When `true`, a non-zero exit is acceptable (fall through). */
   allowFailure?: boolean;
+  args: readonly string[];
+  command: string;
 };
 
 const stepSucceeded = (result: SpawnSyncReturns<string>): boolean =>
@@ -149,9 +135,9 @@ const passthroughFailure = (
   result: SpawnSyncReturns<string>,
   step: Step
 ): number => {
-  const stderr = (result.stderr ?? '').trim();
+  const stderr = result.stderr.trim();
   const errorPart =
-    result.error !== undefined ? ` (${result.error.message})` : '';
+    result.error === undefined ? '' : ` (${result.error.message})`;
   const status = result.status ?? -1;
   process.stderr.write(
     `commit-and-tag: ${step.command} ${step.args.join(' ')} exited ${status}${errorPart}\n`
@@ -218,6 +204,59 @@ const writeStateSha = (cwd: string, sha: string): void => {
   );
 };
 
+/**
+ * Stages `wiki/.state.json` (if present) and amends the release commit with
+ * it. On failure, rolls back the release commit (`git reset --soft HEAD~1`)
+ * so the maintainer retries from a clean state instead of carrying a
+ * half-finished commit forward. Returns the exit code to return from
+ * `runCommitMode` on failure, or `null` when the state file is absent or the
+ * amend succeeded (caller should continue).
+ */
+const amendStateFile = (ctx: CommitContext): null | number => {
+  const statePath = path.join(ctx.cwd, 'wiki', '.state.json');
+
+  if (!existsSync(statePath)) return null;
+
+  const amendSequence: Step[] = [
+    {args: ['add', 'wiki/.state.json'], command: 'git'},
+    {args: ['commit', '--amend', '--no-edit'], command: 'git'},
+  ];
+
+  for (const step of amendSequence) {
+    const result = ctx.runner(step.command, step.args, {cwd: ctx.cwd});
+
+    if (!stepSucceeded(result)) {
+      // The `--amend` token uniquely identifies the commit step in this
+      // two-step sequence; anything else is the state-file staging step.
+      const failedStage =
+        step.args.includes('--amend') ? 'amend' : 'staging the state file';
+      // The release commit already landed but the state-SHA amend step
+      // failed, leaving a partial release commit. Undo it (`reset --soft`
+      // keeps the staged files) so the maintainer can retry from a clean
+      // state instead of carrying a half-finished commit forward.
+      const rollback = ctx.runner('git', ['reset', '--soft', 'HEAD~1'], {
+        cwd: ctx.cwd,
+      });
+
+      if (stepSucceeded(rollback)) {
+        process.stderr.write(
+          `commit-and-tag: ${failedStage} failed; rolled back the release commit ` +
+            '(git reset --soft HEAD~1); fix the cause and retry\n'
+        );
+      } else {
+        process.stderr.write(
+          `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; ` +
+            'the release commit is left in place; undo it manually before retrying\n'
+        );
+      }
+
+      return passthroughFailure(result, step);
+    }
+  }
+
+  return null;
+};
+
 const runCommitMode = (ctx: CommitContext): number => {
   // 1. Stage the release-related files (only those that exist).
   const presentFiles = RELEASE_FILES.filter((file) =>
@@ -251,7 +290,7 @@ const runCommitMode = (ctx: CommitContext): number => {
       command: 'git',
     });
   }
-  const newSha = (headResult.stdout ?? '').trim();
+  const newSha = headResult.stdout.trim();
 
   try {
     writeStateSha(ctx.cwd, newSha);
@@ -264,46 +303,9 @@ const runCommitMode = (ctx: CommitContext): number => {
   }
 
   // Stage the state file (if it exists) and amend.
-  const statePath = path.join(ctx.cwd, 'wiki', '.state.json');
+  const amendFailure = amendStateFile(ctx);
 
-  if (existsSync(statePath)) {
-    const amendSequence: Step[] = [
-      {args: ['add', 'wiki/.state.json'], command: 'git'},
-      {args: ['commit', '--amend', '--no-edit'], command: 'git'},
-    ];
-
-    for (const step of amendSequence) {
-      const result = ctx.runner(step.command, step.args, {cwd: ctx.cwd});
-
-      if (!stepSucceeded(result)) {
-        // The `--amend` token uniquely identifies the commit step in this
-        // two-step sequence; anything else is the state-file staging step.
-        const failedStage =
-          step.args.includes('--amend') ? 'amend' : 'staging the state file';
-        // The release commit already landed but the state-SHA amend step
-        // failed, leaving a partial release commit. Undo it (`reset --soft`
-        // keeps the staged files) so the maintainer can retry from a clean
-        // state instead of carrying a half-finished commit forward.
-        const rollback = ctx.runner('git', ['reset', '--soft', 'HEAD~1'], {
-          cwd: ctx.cwd,
-        });
-
-        if (!stepSucceeded(rollback)) {
-          process.stderr.write(
-            `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; ` +
-              'the release commit is left in place; undo it manually before retrying\n'
-          );
-        } else {
-          process.stderr.write(
-            `commit-and-tag: ${failedStage} failed; rolled back the release commit ` +
-              '(git reset --soft HEAD~1); fix the cause and retry\n'
-          );
-        }
-
-        return passthroughFailure(result, step);
-      }
-    }
-  }
+  if (amendFailure !== null) return amendFailure;
 
   process.stdout.write(
     `commit-and-tag: committed v${ctx.version} (${newSha.slice(0, 7)})\n`
@@ -348,15 +350,15 @@ const runTagMode = (ctx: TagContext): number => {
         cwd: ctx.cwd,
       });
 
-      if (!stepSucceeded(rollback)) {
-        process.stderr.write(
-          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; ` +
-            `the local tag ${tagName} is left in place; delete it manually before retrying\n`
-        );
-      } else {
+      if (stepSucceeded(rollback)) {
         process.stderr.write(
           `commit-and-tag: push failed; deleted the local tag ${tagName} ` +
             '; fix the cause and retry\n'
+        );
+      } else {
+        process.stderr.write(
+          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; ` +
+            `the local tag ${tagName} is left in place; delete it manually before retrying\n`
         );
       }
 
@@ -380,7 +382,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;

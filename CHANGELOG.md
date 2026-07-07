@@ -16,6 +16,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Added
 
+- the `.gaia/cli` maintainer package is now linted to GAIA standards: a dedicated `.gaia/cli/eslint.config.mjs`, a `pnpm lint:cli` script, and a `cli-tests.yml` CI step that enforces it on every push, so the CLI holds the same quality bar as the app (#592)
 - adoption pings now cover `setup` and `update` in addition to `init`, unified under a shared `gaia ping` subcommand, and carry a stable per-install `projectId` (#585)
 - a per-agent reliability guard on the shared adversarial-audit fan-out that `/gaia-spec`, `/gaia-plan`, and the pre-merge `code-review-audit` all run: a shared deterministic no-op detector (`.gaia/scripts/audit-noop-detect.sh`) classifies each dispatched auditor's on-disk output without loading a finding body into the orchestrator's context; a silently no-op'd auditor gets exactly one hardened first-tool-call retry and then a guaranteed inline fallback that records degraded coverage instead of counting the lens as "found nothing"; and every audit dispatch prompt now leads with a positive first-tool-call guard line (#579)
 - spec-less one-off plans now receive a monotonic `PLAN-NNN` id allocated from a local, per-machine `.gaia/local/plans/ledger.json`, replacing the description-derived slug folder. This gives an ephemeral plan the same stable ordering and allocation record a SPEC gets, so "which was plan #3" is answerable and the folder name is a clean telemetry/feature key. (#565)

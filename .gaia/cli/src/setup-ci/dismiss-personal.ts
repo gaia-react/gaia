@@ -31,8 +31,12 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  for (const token of argv) {
-    if (HELP_TOKENS.has(token)) {
+  // Every branch below returns, so only the first token is ever examined
+  // regardless of argv.length; check it directly instead of looping.
+  const firstToken = argv.at(0);
+
+  if (firstToken !== undefined) {
+    if (HELP_TOKENS.has(firstToken)) {
       process.stdout.write(HELP_TEXT);
 
       return EXIT_CODES.OK;
@@ -40,7 +44,7 @@ export const run = (
 
     structuredError({
       code: 'invalid_arguments',
-      message: `unexpected argument: ${token}`,
+      message: `unexpected argument: ${firstToken}`,
       subcommand: 'setup-ci dismiss-personal',
     });
 

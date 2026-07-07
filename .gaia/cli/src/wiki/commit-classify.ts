@@ -29,7 +29,8 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {commitDetails, resolveRepoRoot, type CommitDetail} from './util/git.js';
+import {commitDetails, resolveRepoRoot} from './util/git.js';
+import type {CommitDetail} from './util/git.js';
 
 const HELP_TEXT = `Usage: gaia wiki commit-classify --since <sha> [--json]
 
@@ -38,8 +39,6 @@ const HELP_TEXT = `Usage: gaia wiki commit-classify --since <sha> [--json]
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-
-export type CommitSuggestion = 'SKIP' | 'WORTHY';
 
 export type ClassifiedCommit = {
   body: string;
@@ -56,14 +55,16 @@ export type CommitClassification = {
   commits: ClassifiedCommit[];
 };
 
-type FlagParseSuccess = {
-  flags: {json: boolean; since: string};
-  ok: true;
-};
+export type CommitSuggestion = 'SKIP' | 'WORTHY';
 
 type FlagParseFailure = {
   message: string;
   ok: false;
+};
+
+type FlagParseSuccess = {
+  flags: {json: boolean; since: string};
+  ok: true;
 };
 
 const takeValue = (
@@ -71,12 +72,14 @@ const takeValue = (
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined)
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as
+  // `string`, not `string | undefined`; check the bound explicitly instead
+  // of comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
+  }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 const parseFlags = (
@@ -86,7 +89,7 @@ const parseFlags = (
   let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--since') {
       const taken = takeValue(argv, index + 1, '--since');
@@ -94,15 +97,11 @@ const parseFlags = (
       if (!taken.ok) return taken;
       since = taken.value;
       index += 1;
-      continue;
-    }
-
-    if (token === '--json') {
+    } else if (token === '--json') {
       json = true;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   if (since === undefined) {
@@ -149,14 +148,14 @@ const touchesAppNonTest = (files: readonly string[]): boolean =>
 const touchesOnlyTests = (files: readonly string[]): boolean =>
   files.length > 0 && files.every((file) => file.includes('.test.'));
 
-const classify = (
-  commit: CommitDetail
-): {reason: string; suggestion: CommitSuggestion} => {
-  const subject = commit.subject;
-  const body = commit.body;
-  const files = commit.files;
+type ClassifyDecision = {reason: string; suggestion: CommitSuggestion};
 
-  // 1. Hard-skip prefixes.
+// Rule 1: hard-skip prefixes, regardless of anything else.
+const classifyHardSkip = (
+  commit: CommitDetail
+): ClassifyDecision | undefined => {
+  const {subject} = commit;
+
   if (subject.startsWith('Merge pull request')) {
     return {reason: 'merge commit', suggestion: 'SKIP'};
   }
@@ -169,8 +168,16 @@ const classify = (
     return {reason: 'style: formatting only', suggestion: 'SKIP'};
   }
 
-  // 2. Strong WORTHY signals.
-  if (subject.startsWith('feat!:') || /BREAKING CHANGE/u.test(body)) {
+  return undefined;
+};
+
+// Rule 2: strong WORTHY signals.
+const classifyStrongWorthy = (
+  commit: CommitDetail
+): ClassifyDecision | undefined => {
+  const {body, subject} = commit;
+
+  if (subject.startsWith('feat!:') || body.includes('BREAKING CHANGE')) {
     return {reason: 'breaking change signal', suggestion: 'WORTHY'};
   }
 
@@ -181,99 +188,112 @@ const classify = (
     return {reason: 'explicit ADR signal', suggestion: 'WORTHY'};
   }
 
-  // 3. Touches a wiki-heavy domain.
+  return undefined;
+};
+
+// Rules 3/4: touches a wiki-heavy domain or a flows-relevant app path.
+const classifyTouchedDomains = (
+  commit: CommitDetail
+): ClassifyDecision | undefined => {
+  const {files} = commit;
+
   if (touchesAny(files, WIKI_HEAVY_DOMAINS)) {
     return {reason: 'touches wiki-heavy domain', suggestion: 'WORTHY'};
   }
 
-  // 4. Flows-relevant app paths.
   if (touchesAny(files, FLOWS_RELEVANT_PATHS)) {
     return {reason: 'touches flows-relevant path', suggestion: 'WORTHY'};
   }
 
-  // 5. Architecture-suppressible chore prefixes.
-  if (subject.startsWith('chore(deps):')) {
-    if (ARCH_BODY_PATTERN.test(body)) {
-      return {
-        reason: 'chore(deps): body mentions architecture / decision',
-        suggestion: 'WORTHY',
-      };
-    }
+  return undefined;
+};
 
-    return {reason: 'chore(deps): version bump only', suggestion: 'SKIP'};
+// Rule 5: architecture-suppressible chore prefixes.
+const classifyArchSuppressibleChore = (
+  commit: CommitDetail
+): ClassifyDecision | undefined => {
+  const {body, subject} = commit;
+
+  if (subject.startsWith('chore(deps):')) {
+    return ARCH_BODY_PATTERN.test(body) ?
+        {
+          reason: 'chore(deps): body mentions architecture / decision',
+          suggestion: 'WORTHY',
+        }
+      : {reason: 'chore(deps): version bump only', suggestion: 'SKIP'};
   }
 
   if (subject.startsWith('chore(cli):')) {
-    if (ARCH_BODY_PATTERN.test(body)) {
-      return {
-        reason: 'chore(cli): body mentions architecture / decision',
-        suggestion: 'WORTHY',
-      };
-    }
-
-    return {reason: 'chore(cli): tooling-internal', suggestion: 'SKIP'};
+    return ARCH_BODY_PATTERN.test(body) ?
+        {
+          reason: 'chore(cli): body mentions architecture / decision',
+          suggestion: 'WORTHY',
+        }
+      : {reason: 'chore(cli): tooling-internal', suggestion: 'SKIP'};
   }
 
   if (subject.startsWith('wiki:')) {
-    if (ARCH_BODY_PATTERN.test(body)) {
-      return {reason: 'wiki: body mentions architecture', suggestion: 'WORTHY'};
-    }
-
-    return {reason: 'wiki: self-referential', suggestion: 'SKIP'};
+    return ARCH_BODY_PATTERN.test(body) ?
+        {reason: 'wiki: body mentions architecture', suggestion: 'WORTHY'}
+      : {reason: 'wiki: self-referential', suggestion: 'SKIP'};
   }
 
-  // 6/7. feat/fix/refactor: app/** non-test → WORTHY; tests-only or
-  // app inventory paths without decision keywords → SKIP.
+  return undefined;
+};
+
+// Rules 6/7: feat/fix/refactor touching app/** non-test → WORTHY; tests-only
+// or app inventory paths without decision keywords → SKIP.
+const classifyFeatureCommit = (
+  commit: CommitDetail
+): ClassifyDecision | undefined => {
+  const {body, files, subject} = commit;
   const isFeatureCommit =
     subject.startsWith('feat:') ||
     subject.startsWith('fix:') ||
     subject.startsWith('refactor:');
 
-  if (isFeatureCommit) {
-    if (touchesOnlyTests(files)) {
-      return {
-        reason: 'feat/fix/refactor: tests-only',
-        suggestion: 'SKIP',
-      };
-    }
+  if (!isFeatureCommit) return undefined;
 
-    const onlyInventory =
-      files.length > 0 &&
-      files.every((file) =>
-        APP_INVENTORY_PREFIXES.some((prefix) => file.startsWith(prefix))
-      );
+  if (touchesOnlyTests(files)) {
+    return {reason: 'feat/fix/refactor: tests-only', suggestion: 'SKIP'};
+  }
 
-    if (onlyInventory && !ARCH_BODY_PATTERN.test(body)) {
-      return {
-        reason:
-          'feat/fix/refactor: only inventory paths (Serena handles inventory)',
-        suggestion: 'SKIP',
-      };
-    }
+  const onlyInventory =
+    files.length > 0 &&
+    files.every((file) =>
+      APP_INVENTORY_PREFIXES.some((prefix) => file.startsWith(prefix))
+    );
 
-    if (touchesAppNonTest(files)) {
-      return {
-        reason: 'feat/fix/refactor: app/** non-test',
-        suggestion: 'WORTHY',
-      };
-    }
-
+  if (onlyInventory && !ARCH_BODY_PATTERN.test(body)) {
     return {
-      reason: 'feat/fix/refactor: defer to human review',
+      reason:
+        'feat/fix/refactor: only inventory paths (Serena handles inventory)',
+      suggestion: 'SKIP',
+    };
+  }
+
+  if (touchesAppNonTest(files)) {
+    return {
+      reason: 'feat/fix/refactor: app/** non-test',
       suggestion: 'WORTHY',
     };
   }
 
-  // 8. Catch-all chore / docs / test prefixes.
-  if (subject.startsWith('chore:')) {
-    if (ARCH_BODY_PATTERN.test(body)) {
-      return {
-        reason: 'chore: body mentions architecture',
-        suggestion: 'WORTHY',
-      };
-    }
+  return {
+    reason: 'feat/fix/refactor: defer to human review',
+    suggestion: 'WORTHY',
+  };
+};
 
-    return {reason: 'chore: generic chore', suggestion: 'SKIP'};
+// Rules 8/9: catch-all chore / docs / test prefixes, else default to WORTHY
+// (a false positive is cheaper than a false negative here).
+const classifyCatchAll = (commit: CommitDetail): ClassifyDecision => {
+  const {body, subject} = commit;
+
+  if (subject.startsWith('chore:')) {
+    return ARCH_BODY_PATTERN.test(body) ?
+        {reason: 'chore: body mentions architecture', suggestion: 'WORTHY'}
+      : {reason: 'chore: generic chore', suggestion: 'SKIP'};
   }
 
   if (subject.startsWith('docs:')) {
@@ -284,12 +304,19 @@ const classify = (
     return {reason: 'test: test-only change', suggestion: 'SKIP'};
   }
 
-  // 9. Default: defer to human review.
   return {
     reason: 'no matching prefix, defer to human review',
     suggestion: 'WORTHY',
   };
 };
+
+const classify = (commit: CommitDetail): ClassifyDecision =>
+  classifyHardSkip(commit) ??
+  classifyStrongWorthy(commit) ??
+  classifyTouchedDomains(commit) ??
+  classifyArchSuppressibleChore(commit) ??
+  classifyFeatureCommit(commit) ??
+  classifyCatchAll(commit);
 
 const printHuman = (classification: CommitClassification): void => {
   if (classification.commits.length === 0) {
@@ -302,10 +329,8 @@ const printHuman = (classification: CommitClassification): void => {
 
   for (const commit of classification.commits) {
     lines.push(
-      `  ${commit.sha.slice(0, 7)}  ${commit.suggestion.padEnd(7)}  ${commit.subject}`
-    );
-    lines.push(`            reason: ${commit.suggestion_reason}`);
-    lines.push(
+      `  ${commit.sha.slice(0, 7)}  ${commit.suggestion.padEnd(7)}  ${commit.subject}`,
+      `            reason: ${commit.suggestion_reason}`,
       `            ${commit.files_changed} files, +${commit.insertions} -${commit.deletions}`
     );
   }
@@ -320,7 +345,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;

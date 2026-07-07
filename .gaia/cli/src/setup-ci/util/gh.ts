@@ -19,18 +19,11 @@
  */
 import {spawn} from 'node:child_process';
 
-export type GhSuccess = {
-  ok: true;
-  stdout: string;
-};
-
 export type GhFailure = {
   exitCode: number;
   ok: false;
   stderr: string;
 };
-
-export type GhResult = GhFailure | GhSuccess;
 
 export type GhOptions = {
   args: readonly string[];
@@ -39,8 +32,15 @@ export type GhOptions = {
   stdin?: Buffer | string;
 };
 
-export const runGh = (options: GhOptions): Promise<GhResult> => {
-  return new Promise((resolve) => {
+export type GhResult = GhFailure | GhSuccess;
+
+export type GhSuccess = {
+  ok: true;
+  stdout: string;
+};
+
+export const runGh = async (options: GhOptions): Promise<GhResult> =>
+  new Promise((resolve) => {
     const child = spawn('gh', [...options.args], {
       cwd: options.cwd ?? process.cwd(),
       env: options.env ?? process.env,
@@ -77,15 +77,18 @@ export const runGh = (options: GhOptions): Promise<GhResult> => {
     });
 
     child.on('close', (code: null | number) => {
-      const exitCode = code ?? 1;
-
-      if (exitCode === 0) {
+      // Not hoisted into a `const exitCode = code ?? 1` local: Node passes
+      // `null` (a signal-terminated child), not `undefined`, so a default
+      // parameter wouldn't substitute for it; the plain `??` reassignment
+      // shape is what unicorn/prefer-default-parameters flags, so this
+      // stays inline instead.
+      if ((code ?? 1) === 0) {
         settle({ok: true, stdout: stdoutBuf});
 
         return;
       }
 
-      settle({exitCode, ok: false, stderr: stderrBuf});
+      settle({exitCode: code ?? 1, ok: false, stderr: stderrBuf});
     });
 
     // A child that exits before draining stdin leaves the pipe closed;
@@ -97,12 +100,11 @@ export const runGh = (options: GhOptions): Promise<GhResult> => {
       // Intentionally swallowed; `close` carries the real outcome.
     });
 
-    if (options.stdin !== undefined) {
+    if (options.stdin === undefined) {
+      child.stdin.end();
+    } else {
       // `end(payload)` writes then closes in one call; respecting
       // backpressure is unnecessary because we are done after this.
       child.stdin.end(options.stdin);
-    } else {
-      child.stdin.end();
     }
   });
-};

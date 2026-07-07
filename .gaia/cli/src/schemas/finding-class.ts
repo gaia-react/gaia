@@ -88,7 +88,7 @@ const CLOSED_VOCABULARY: ReadonlySet<string> = new Set([
 
 const splitPrefix = (
   value: string
-): {prefix: string; slug: string} | undefined => {
+): undefined | {prefix: string; slug: string} => {
   const separatorIndex = value.indexOf('/');
 
   if (separatorIndex === -1) return undefined;

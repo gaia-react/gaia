@@ -12,23 +12,25 @@
  */
 import {EXIT_CODES} from '../exit.js';
 import {
-  TOOL_IDS,
+  readAutomationConfig,
   TOOL_ID_TO_CONFIG_KEY,
-  type AutomationConfig,
-  type ToolConfig,
-  type ToolId,
+  TOOL_IDS,
 } from '../schemas/automation-config.js';
-import {readAutomationConfig} from '../schemas/automation-config.js';
+import type {
+  AutomationConfig,
+  ToolConfig,
+  ToolId,
+} from '../schemas/automation-config.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../wiki/util/git.js';
-
-type CronReason = 'enabled' | 'tool_off';
 
 type CronDecision = {
   decision: 'run' | 'skip';
   reason: CronReason;
-  skip_log_line: string | null;
+  skip_log_line: null | string;
 };
+
+type CronReason = 'enabled' | 'tool_off';
 
 const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
 
@@ -48,43 +50,57 @@ const toolConfigFor = (config: AutomationConfig, tool: ToolId): ToolConfig =>
   // indexed access resolves directly to `ToolConfig`; no cast needed.
   config[TOOL_ID_TO_CONFIG_KEY[tool]];
 
-type RunOptions = {
-  cwd?: string;
+type DecideArgs = {
+  tool: ToolId;
+  toolConfig: ToolConfig;
 };
 
-export const run = (
-  argv: readonly string[],
-  options: RunOptions = {}
-): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
-    process.stdout.write(HELP_TEXT);
+const decide = (args: DecideArgs): CronDecision => {
+  const {tool, toolConfig} = args;
 
-    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+  // 1. tool_off
+  if (toolConfig.mode === 'off') {
+    return {
+      decision: 'skip',
+      reason: 'tool_off',
+      skip_log_line: 'tool mode is off; skipping',
+    };
   }
 
+  // Non-wiki tools are not yet implemented. Emit a clearly-tagged
+  // tool_off-shaped placeholder so the workflow can see the limitation
+  // and bail.
+  if (tool !== 'wiki') {
+    return {
+      decision: 'skip',
+      reason: 'tool_off',
+      skip_log_line: `cron-decide not yet implemented for ${tool}; skipping`,
+    };
+  }
+
+  // 2. enabled: a configured wiki tool always runs.
+  return {decision: 'run', reason: 'enabled', skip_log_line: null};
+};
+
+type ArgvParseResult =
+  {exitCode: number; ok: false} | {json: boolean; ok: true; tool: ToolId};
+
+const parseCronDecideArgs = (argv: readonly string[]): ArgvParseResult => {
   let tool: ToolId | undefined;
   let json = false;
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
-
+  for (const token of argv) {
     if (token === '--json') {
       json = true;
-
-      continue;
-    }
-
-    if (token.startsWith('--')) {
+    } else if (token.startsWith('--')) {
       structuredError({
         code: 'invalid_arguments',
         message: `unknown flag: ${token}`,
         subcommand: 'automation cron-decide',
       });
 
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-    }
-
-    if (tool === undefined) {
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND, ok: false};
+    } else if (tool === undefined) {
       if (!TOOL_ID_SET.has(token)) {
         structuredError({
           code: 'invalid_arguments',
@@ -92,20 +108,18 @@ export const run = (
           subcommand: 'automation cron-decide',
         });
 
-        return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+        return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND, ok: false};
       }
       tool = token as ToolId;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unexpected argument: ${token}`,
+        subcommand: 'automation cron-decide',
+      });
 
-      continue;
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND, ok: false};
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unexpected argument: ${token}`,
-      subcommand: 'automation cron-decide',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   if (tool === undefined) {
@@ -115,8 +129,33 @@ export const run = (
       subcommand: 'automation cron-decide',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND, ok: false};
   }
+
+  return {json, ok: true, tool};
+};
+
+type RunOptions = {
+  cwd?: string;
+};
+
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
+    process.stdout.write(HELP_TEXT);
+
+    return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+  }
+
+  const parsed = parseCronDecideArgs(argv);
+
+  if (!parsed.ok) {
+    return parsed.exitCode;
+  }
+
+  const {json, tool} = parsed;
 
   let repoRoot: string;
 
@@ -170,36 +209,4 @@ export const run = (
   }
 
   return EXIT_CODES.OK;
-};
-
-type DecideArgs = {
-  tool: ToolId;
-  toolConfig: ToolConfig;
-};
-
-const decide = (args: DecideArgs): CronDecision => {
-  const {tool, toolConfig} = args;
-
-  // 1. tool_off
-  if (toolConfig.mode === 'off') {
-    return {
-      decision: 'skip',
-      reason: 'tool_off',
-      skip_log_line: 'tool mode is off; skipping',
-    };
-  }
-
-  // Non-wiki tools are not yet implemented. Emit a clearly-tagged
-  // tool_off-shaped placeholder so the workflow can see the limitation
-  // and bail.
-  if (tool !== 'wiki') {
-    return {
-      decision: 'skip',
-      reason: 'tool_off',
-      skip_log_line: `cron-decide not yet implemented for ${tool}; skipping`,
-    };
-  }
-
-  // 2. enabled: a configured wiki tool always runs.
-  return {decision: 'run', reason: 'enabled', skip_log_line: null};
 };

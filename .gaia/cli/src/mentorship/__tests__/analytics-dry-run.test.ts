@@ -144,7 +144,9 @@ describe('mentorship/analytics-dry-run', () => {
 
     // Still exits 0 on the happy path; the mismatch is a warning.
     expect(exit).toBe(EXIT_CODES.OK);
-    expect(stderrSpy).toHaveBeenCalled();
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"code":"analytics_audit_fields_mismatch"')
+    );
     const stderrCall = stderrSpy.mock.calls[0]?.[0] as string;
     const payload = JSON.parse(stderrCall) as Record<string, unknown>;
     expect(payload.code).toBe('analytics_audit_fields_mismatch');

@@ -14,21 +14,18 @@
  * yields an empty candidate list rather than aborting the refresher.
  */
 import path from 'node:path';
-import {runGh, type ProcessResult} from '../ci/util/run-process.js';
+import {runGh} from '../ci/util/run-process.js';
+import type {ProcessResult} from '../ci/util/run-process.js';
 import {EXIT_CODES} from '../exit.js';
-import {
-  computeTally,
-  type TallyPrRecord,
-  type TallyResult,
-  windowClasses,
-} from './compute-tally.js';
+import {computeTally, windowClasses} from './compute-tally.js';
+import type {TallyPrRecord, TallyResult} from './compute-tally.js';
 import {coveredClassesFromRules} from './covered-classes.js';
 import {
   defaultLedgerRunner,
   makeLedgerSuppressionPredicate,
   pruneLedger,
-  type LedgerRunner,
 } from './ledger-bridge.js';
+import type {LedgerRunner} from './ledger-bridge.js';
 import {parseFindingsBlock} from './parse-findings-block.js';
 
 const HELP_TEXT = `Usage: gaia harden-tally
@@ -43,6 +40,9 @@ const HELP_TEXT = `Usage: gaia harden-tally
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const WINDOW_DAYS = 90;
+
+/** The emitted tally JSON: the pure result plus the window-read success flag. */
+type EmittedTally = TallyResult & {gh_ok: boolean};
 
 type RunOptions = {
   cwd?: string;
@@ -60,9 +60,6 @@ type WindowPrs = {
   prs: TallyPrRecord[];
 };
 
-/** The emitted tally JSON: the pure result plus the window-read success flag. */
-type EmittedTally = TallyResult & {gh_ok: boolean};
-
 const windowStartDate = (now: Date): string => {
   const start = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
@@ -70,7 +67,7 @@ const windowStartDate = (now: Date): string => {
 };
 
 type GhPr = {
-  comments: Array<{body: string}>;
+  comments: {body: string}[];
   number: number;
 };
 
@@ -81,7 +78,7 @@ const parseGhPr = (value: unknown): GhPr | null => {
   if (typeof v.number !== 'number' || !Number.isFinite(v.number)) return null;
   if (!Array.isArray(v.comments)) return null;
 
-  const comments: Array<{body: string}> = [];
+  const comments: {body: string}[] = [];
 
   for (const comment of v.comments) {
     if (
@@ -89,11 +86,28 @@ const parseGhPr = (value: unknown): GhPr | null => {
       comment !== null &&
       typeof (comment as Record<string, unknown>).body === 'string'
     ) {
-      comments.push({body: (comment as Record<string, unknown>).body as string});
+      comments.push({
+        body: (comment as Record<string, unknown>).body as string,
+      });
     }
   }
 
   return {comments, number: v.number};
+};
+
+// Builds a tally record from a parsed gh PR, taking the LATEST comment that
+// carries a parseable findings block (a re-run audit supersedes an earlier
+// one on the same PR). Returns null when no comment carries a block.
+const recordFromGhPr = (pr: GhPr): null | TallyPrRecord => {
+  let findings: TallyPrRecord['findings'] | undefined;
+
+  for (const comment of pr.comments) {
+    const block = parseFindingsBlock(comment.body);
+
+    if (block !== null) findings = block;
+  }
+
+  return findings === undefined ? null : {findings, pr_number: pr.number};
 };
 
 /**
@@ -139,29 +153,19 @@ const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
 
   for (const value of parsed) {
     const pr = parseGhPr(value);
+    const record = pr === null ? null : recordFromGhPr(pr);
 
-    if (pr === null) continue;
-
-    // The latest comment carrying a block wins (a re-run audit supersedes an
-    // earlier one on the same PR).
-    let findings: TallyPrRecord['findings'] | undefined;
-
-    for (const comment of pr.comments) {
-      const block = parseFindingsBlock(comment.body);
-
-      if (block !== null) findings = block;
-    }
-
-    if (findings !== undefined) {
-      records.push({findings, pr_number: pr.number});
-    }
+    if (record !== null) records.push(record);
   }
 
   return {ghOk: true, prs: records};
 };
 
-export const run = (argv: readonly string[], options: RunOptions = {}): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -172,9 +176,7 @@ export const run = (argv: readonly string[], options: RunOptions = {}): number =
   const now = new Date();
 
   const {ghOk, prs} = fetchWindowPrs(cwd, now);
-  const covered = coveredClassesFromRules(
-    path.join(cwd, '.claude', 'rules')
-  );
+  const covered = coveredClassesFromRules(path.join(cwd, '.claude', 'rules'));
 
   const tallyResult = computeTally({
     coveredClass: (findingClass) => covered.has(findingClass),

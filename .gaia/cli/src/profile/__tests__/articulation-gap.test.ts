@@ -139,32 +139,39 @@ describe('detectArticulationGap (unit)', () => {
 });
 
 describe('detectArticulationGap (fixture)', () => {
-  test('articulation-fire fixture fires when present', () => {
-    const events = loadFixture('articulation-fire.jsonl');
+  // Fixtures are produced by task-fixtures (parallel sibling) and may not be
+  // present at the time of this run; loaded outside the test body so the
+  // "skip when absent" decision is not a conditional inside the test itself.
+  const fireEvents = loadFixture('articulation-fire.jsonl');
+  const belowThresholdEvents = loadFixture('below-threshold.jsonl');
 
-    if (events.length === 0) {
-      // Fixtures are produced by task-fixtures (parallel sibling). Skip
-      // gracefully if not present at the time of this run; the harness
-      // executes the unit assertions above to cover detector logic.
-      return;
+  test.skipIf(fireEvents.length === 0)(
+    'articulation-fire fixture fires when present',
+    () => {
+      const results = detectArticulationGap({
+        events: fireEvents,
+        windowDays: 30,
+      });
+      const visual = results.find((entry) => entry.area_tag === 'visual');
+
+      expect(visual).toBeDefined();
+      expect(visual?.sample_count).toBeGreaterThanOrEqual(10);
+      expect(visual?.strength).not.toBeNull();
+      expect(visual?.strength).toBeGreaterThanOrEqual(0.5);
     }
-    const results = detectArticulationGap({events, windowDays: 30});
-    const visual = results.find((entry) => entry.area_tag === 'visual');
+  );
 
-    expect(visual).toBeDefined();
-    expect(visual?.sample_count).toBeGreaterThanOrEqual(10);
-    expect(visual?.strength).not.toBeNull();
-    expect(visual?.strength).toBeGreaterThanOrEqual(0.5);
-  });
+  test.skipIf(belowThresholdEvents.length === 0)(
+    'below-threshold fixture stays below threshold when present',
+    () => {
+      const results = detectArticulationGap({
+        events: belowThresholdEvents,
+        windowDays: 30,
+      });
+      const visual = results.find((entry) => entry.area_tag === 'visual');
 
-  test('below-threshold fixture stays below threshold when present', () => {
-    const events = loadFixture('below-threshold.jsonl');
-
-    if (events.length === 0) return;
-    const results = detectArticulationGap({events, windowDays: 30});
-    const visual = results.find((entry) => entry.area_tag === 'visual');
-
-    expect(visual?.sample_count).toBeLessThan(10);
-    expect(visual?.strength).toBeNull();
-  });
+      expect(visual?.sample_count).toBeLessThan(10);
+      expect(visual?.strength).toBeNull();
+    }
+  );
 });

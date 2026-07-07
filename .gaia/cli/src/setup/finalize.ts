@@ -19,9 +19,9 @@ import {
   pendingSteps,
   readStateFile,
   resolveMainWorktreeRoot,
-  type SetupState,
   writeStateFile,
 } from './util/state-file.js';
+import type {SetupState} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup finalize [--force]
 
@@ -52,16 +52,15 @@ export const run = (
 
     if (token === '--force') {
       force = true;
-      continue;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'setup finalize',
+      });
+
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'setup finalize',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   let repoRoot: string;

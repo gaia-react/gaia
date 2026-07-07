@@ -62,10 +62,11 @@ const severityNote = (findings: readonly Finding[]): string => {
   for (const severity of SEVERITY_ORDER) {
     const count = counts.get(severity) ?? 0;
 
-    if (count === 0) continue;
-
-    const label = severity === 'info' || count === 1 ? severity : `${severity}s`;
-    parts.push(`${count} ${label}`);
+    if (count > 0) {
+      const label =
+        severity === 'info' || count === 1 ? severity : `${severity}s`;
+      parts.push(`${count} ${label}`);
+    }
   }
 
   return parts.join(', ');
@@ -128,14 +129,49 @@ const computeInner = (
   ];
 
   for (const finding of report.findings) {
-    naturals.push(`${finding.category}: ${finding.grade}`.length);
-    naturals.push(INDENT + finding.file.length);
-    naturals.push(INDENT + finding.remediation.length);
+    naturals.push(
+      `${finding.category}: ${finding.grade}`.length,
+      INDENT + finding.file.length,
+      INDENT + finding.remediation.length
+    );
   }
 
   const inner = Math.min(Math.max(...naturals), WIDTH_CAP, cols - MARGIN);
 
   return Math.max(inner, floor);
+};
+
+type FindingsRenderContext = {
+  inner: number;
+  line: (content: string) => string;
+};
+
+/** Renders one category's finding block (blank line, header, then each
+ * finding's tag/file/remediation lines). Empty when the category has no
+ * findings. Extracted so `renderCard` itself stays flat. */
+const renderCategoryFindings = (
+  category: {grade: string; name: string},
+  findings: readonly Finding[] | undefined,
+  context: FindingsRenderContext
+): string[] => {
+  if (findings === undefined || findings.length === 0) return [];
+
+  const {inner, line} = context;
+  const lines: string[] = [
+    line(''),
+    line(`${category.name}: ${category.grade}`),
+  ];
+
+  for (const finding of findings) {
+    const tag = `[${finding.severity}]`.padEnd(TAG_WIDTH);
+    lines.push(line(`  ${tag} ${truncateTail(finding.file, inner - INDENT)}`));
+
+    for (const wrapped of wrapText(finding.remediation, inner - INDENT)) {
+      lines.push(line(`${' '.repeat(INDENT)}${wrapped}`));
+    }
+  }
+
+  return lines;
 };
 
 export const renderCard = (report: FitnessReport, cols: number): string => {
@@ -166,6 +202,7 @@ export const renderCard = (report: FitnessReport, cols: number): string => {
   const bar = (): string => `+${'-'.repeat(inner + 2)}+`;
   const cluster = (note: string, grade: string): string =>
     `${note.padStart(noteWidth)}${' '.repeat(GAP)}${grade.padEnd(GRADE_WIDTH)}`;
+
   const rightRow = (label: string, note: string, grade: string): string => {
     const right = cluster(note, grade);
 
@@ -188,20 +225,12 @@ export const renderCard = (report: FitnessReport, cols: number): string => {
     out.push(bar(), line('FINDINGS'));
 
     for (const category of categories) {
-      const findings = byCategory.get(category.name);
-
-      if (findings === undefined || findings.length === 0) continue;
-
-      out.push(line(''), line(`${category.name}: ${category.grade}`));
-
-      for (const finding of findings) {
-        const tag = `[${finding.severity}]`.padEnd(TAG_WIDTH);
-        out.push(line(`  ${tag} ${truncateTail(finding.file, inner - INDENT)}`));
-
-        for (const wrapped of wrapText(finding.remediation, inner - INDENT)) {
-          out.push(line(`${' '.repeat(INDENT)}${wrapped}`));
-        }
-      }
+      out.push(
+        ...renderCategoryFindings(category, byCategory.get(category.name), {
+          inner,
+          line,
+        })
+      );
     }
   }
 
@@ -236,8 +265,12 @@ const parseCols = (args: readonly string[]): number | undefined => {
     const arg = args[index];
 
     if (arg === '--cols') {
-      const value: string | undefined = args[index + 1];
-      const parsed = value === undefined ? Number.NaN : Number.parseInt(value, 10);
+      // `noUncheckedIndexedAccess` is off, so TS types `args[index]` as
+      // `string`, not `string | undefined`; check the bound explicitly
+      // instead of comparing the indexed value to `undefined`.
+      if (index + 1 >= args.length) return undefined;
+
+      const parsed = Number.parseInt(args[index + 1], 10);
 
       return Number.isFinite(parsed) ? parsed : undefined;
     }
@@ -253,13 +286,16 @@ const parseCols = (args: readonly string[]): number | undefined => {
 };
 
 const resolveCols = (args: readonly string[]): number => {
-  const fromArg = parseCols(args);
+  const fromArgument = parseCols(args);
 
-  if (fromArg !== undefined && fromArg > 0) return fromArg;
+  if (fromArgument !== undefined && fromArgument > 0) return fromArgument;
 
-  const tty = process.stdout.columns;
+  // `process.stdout.columns` is typed as a plain `number`, but Node only
+  // populates it when stdout is a TTY; `isTTY` is the documented guard for
+  // whether the value is meaningful (e.g. piped output has no columns).
+  const {columns, isTTY} = process.stdout;
 
-  return tty !== undefined && tty > 0 ? tty : FALLBACK_COLS;
+  return isTTY && columns > 0 ? columns : FALLBACK_COLS;
 };
 
 export const run = async (args: readonly string[]): Promise<number> => {

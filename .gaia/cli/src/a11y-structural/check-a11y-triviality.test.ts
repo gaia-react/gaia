@@ -1,3 +1,4 @@
+import {afterEach, describe, expect, test} from 'vitest';
 /**
  * Tests for the structural a11y-triviality floor AST helper
  * (`.gaia/scripts/a11y-structural/check-a11y-triviality.mjs`).
@@ -26,7 +27,6 @@ import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {afterEach, describe, expect, it} from 'vitest';
 
 const resolveRepoRoot = (): string => {
   let dir = path.dirname(fileURLToPath(import.meta.url));
@@ -82,6 +82,7 @@ const writeStories = (stories: string): string => {
   tmpDirs.push(dir);
   const file = path.join(dir, 'index.stories.tsx');
   writeFileSync(file, stories);
+
   return file;
 };
 
@@ -94,6 +95,7 @@ const check = (
   stories?: string
 ): Verdict => {
   const args = [HELPER, fileIdentity, '--stdin'];
+
   if (stories !== undefined) {
     args.push('--stories', writeStories(stories));
   }
@@ -101,15 +103,15 @@ const check = (
   const out = execFileSync('node', args, {
     cwd: REPO_ROOT,
     encoding: 'utf8',
-    input: source,
     env: HELPER_ENV,
+    input: source,
   });
 
   return JSON.parse(out) as Verdict;
 };
 
 describe('check-a11y-triviality', () => {
-  it('emits the {file, verdict, findings} contract shape', () => {
+  test('emits the {file, verdict, findings} contract shape', () => {
     const result = check(
       'app/components/Spinner/tests/index.test.tsx',
       [
@@ -129,7 +131,7 @@ describe('check-a11y-triviality', () => {
   });
 
   describe('not an a11y test file', () => {
-    it('returns not-a11y for a file with no a11y-helper call', () => {
+    test('returns not-a11y for a file with no a11y-helper call', () => {
       const result = check(
         'app/components/Foo/tests/index.test.tsx',
         [
@@ -148,7 +150,7 @@ describe('check-a11y-triviality', () => {
   });
 
   describe('condition A: render passes no props or only defaults', () => {
-    it('flags an a11y test whose render passes NO props', () => {
+    test('flags an a11y test whose render passes NO props', () => {
       const result = check(
         'app/components/Button/tests/index.test.tsx',
         [
@@ -168,7 +170,7 @@ describe('check-a11y-triviality', () => {
       expect(result.findings[0].reason).toMatch(/no props|default/i);
     });
 
-    it('flags a self-closing render with zero attributes', () => {
+    test('flags a self-closing render with zero attributes', () => {
       // `runAxe` is an a11y signal too. A self-closing render with zero
       // attributes carries no props.
       const result = check(
@@ -189,7 +191,7 @@ describe('check-a11y-triviality', () => {
       expect(result.findings[0].reason).toMatch(/no props|default/i);
     });
 
-    it('does NOT flag (condition A) an a11y test whose render passes real props', () => {
+    test('does NOT flag (condition A) an a11y test whose render passes real props', () => {
       // Props supplied AND no stories declaring interactive variants -> the
       // structural floor has nothing to flag.
       const result = check(
@@ -211,7 +213,7 @@ describe('check-a11y-triviality', () => {
   });
 
   describe('condition B: no interactive/landmark node while stories declare interactive variants', () => {
-    it('flags a render with props but no interactive markup when stories declare interactive variants', () => {
+    test('flags a render with props but no interactive markup when stories declare interactive variants', () => {
       const stories = [
         "import type {Meta, StoryFn} from '@storybook/react-vite';",
         "import Card from '..';",
@@ -240,10 +242,12 @@ describe('check-a11y-triviality', () => {
       );
 
       expect(result.verdict).toBe('trivial');
-      expect(result.findings[0].reason).toMatch(/interactive|landmark|variant/i);
+      expect(result.findings[0].reason).toMatch(
+        /interactive|landmark|variant/i
+      );
     });
 
-    it('does NOT flag (condition B) when the render itself contains an interactive host node', () => {
+    test('does NOT flag (condition B) when the render itself contains an interactive host node', () => {
       const stories = [
         "import type {Meta, StoryFn} from '@storybook/react-vite';",
         "import Field from '..';",
@@ -274,7 +278,7 @@ describe('check-a11y-triviality', () => {
       expect(result.findings).toHaveLength(0);
     });
 
-    it('does NOT flag (condition B) when stories declare no interactive variant', () => {
+    test('does NOT flag (condition B) when stories declare no interactive variant', () => {
       const stories = [
         "import type {Meta, StoryFn} from '@storybook/react-vite';",
         "import Note from '..';",
@@ -303,7 +307,7 @@ describe('check-a11y-triviality', () => {
   });
 
   describe('multiple tests in one file', () => {
-    it('only flags the a11y test, never the behavior tests', () => {
+    test('only flags the a11y test, never the behavior tests', () => {
       const result = check(
         'app/components/Toggle/tests/index.test.tsx',
         [

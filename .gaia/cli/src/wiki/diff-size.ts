@@ -37,17 +37,17 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const WIKI_PREFIX = 'wiki/';
 
+type ComputeOptions = {
+  base?: string;
+  cwd: string;
+  thresholdPct: number;
+};
+
 type DiffSizeResult = {
   baseLines: number;
   changedLines: number;
   decision: 'exceeded' | 'ok';
   ratioPct: number;
-  thresholdPct: number;
-};
-
-type ComputeOptions = {
-  base?: string;
-  cwd: string;
   thresholdPct: number;
 };
 
@@ -61,6 +61,30 @@ const git = (cwd: string, args: readonly string[]): string =>
  * List `(path, size_bytes)` tuples for every blob under `wiki/` at the
  * given ref. Returns an empty list when the ref has no `wiki/` subtree.
  */
+const parseLsTreeLine = (
+  line: string
+): undefined | {path: string; sizeBytes: number} => {
+  if (line.length === 0) return undefined;
+
+  const tab = line.indexOf('\t');
+
+  if (tab === -1) return undefined;
+
+  // ls-tree -l format: "<mode> <type> <object> <size>\t<path>"
+  const meta = line.slice(0, tab).trim().split(/\s+/);
+  const filePath = line.slice(tab + 1);
+
+  if (meta.length < 4) return undefined;
+
+  const sizeToken = meta[3];
+
+  if (sizeToken === '-') return undefined;
+
+  const sizeBytes = Number.parseInt(sizeToken, 10);
+
+  return Number.isNaN(sizeBytes) ? undefined : {path: filePath, sizeBytes};
+};
+
 const wikiBlobsAtRef = (
   cwd: string,
   ref: string
@@ -73,27 +97,11 @@ const wikiBlobsAtRef = (
     return [];
   }
 
-  const out: {path: string; sizeBytes: number}[] = [];
+  return raw.split('\n').flatMap((line) => {
+    const parsed = parseLsTreeLine(line);
 
-  for (const line of raw.split('\n')) {
-    if (line.length === 0) continue;
-    // ls-tree -l format: "<mode> <type> <object> <size>\t<path>"
-    const tab = line.indexOf('\t');
-
-    if (tab === -1) continue;
-
-    const meta = line.slice(0, tab).trim().split(/\s+/);
-    const sizeToken = meta[3];
-    const filePath = line.slice(tab + 1);
-
-    if (sizeToken === undefined || sizeToken === '-') continue;
-
-    const sizeBytes = Number.parseInt(sizeToken, 10);
-
-    if (!Number.isNaN(sizeBytes)) out.push({path: filePath, sizeBytes});
-  }
-
-  return out;
+    return parsed === undefined ? [] : [parsed];
+  });
 };
 
 /**
@@ -132,6 +140,29 @@ const sumWikiLinesAtRef = (cwd: string, ref: string): number => {
  * `<base>...HEAD` diff. Binary files (numstat reports `-\t-`) are
  * skipped; the wiki vault is text-only, so this is informational.
  */
+const parseNumstatEntry = (
+  entry: string
+): undefined | {added: number; removed: number} => {
+  if (entry.length === 0 || !entry.includes('\t')) return undefined;
+
+  const parts = entry.split('\t');
+
+  if (parts.length < 3) return undefined;
+
+  const [addedToken, removedToken, filePath] = parts;
+
+  if (!filePath.startsWith(WIKI_PREFIX)) return undefined;
+  if (addedToken === '-' || removedToken === '-') return undefined;
+
+  const added = Number.parseInt(addedToken, 10);
+  const removed = Number.parseInt(removedToken, 10);
+
+  return {
+    added: Number.isNaN(added) ? 0 : added,
+    removed: Number.isNaN(removed) ? 0 : removed,
+  };
+};
+
 const sumChangedLines = (cwd: string, base: string): number => {
   let raw: string;
 
@@ -148,35 +179,11 @@ const sumChangedLines = (cwd: string, base: string): number => {
     return 0;
   }
 
-  let total = 0;
+  return raw.split('\0').reduce((total, entry) => {
+    const parsed = parseNumstatEntry(entry);
 
-  for (const entry of raw.split('\0')) {
-    if (entry.length === 0) continue;
-    if (!entry.includes('\t')) continue;
-
-    const parts = entry.split('\t');
-    const addedToken = parts[0];
-    const removedToken = parts[1];
-    const filePath = parts[2];
-
-    if (
-      addedToken === undefined ||
-      removedToken === undefined ||
-      filePath === undefined
-    )
-      continue;
-
-    if (!filePath.startsWith(WIKI_PREFIX)) continue;
-    if (addedToken === '-' || removedToken === '-') continue;
-
-    const added = Number.parseInt(addedToken, 10);
-    const removed = Number.parseInt(removedToken, 10);
-
-    if (!Number.isNaN(added)) total += added;
-    if (!Number.isNaN(removed)) total += removed;
-  }
-
-  return total;
+    return parsed === undefined ? total : total + parsed.added + parsed.removed;
+  }, 0);
 };
 
 export const computeDiffSize = (options: ComputeOptions): DiffSizeResult => {
@@ -203,6 +210,8 @@ export const computeDiffSize = (options: ComputeOptions): DiffSizeResult => {
   };
 };
 
+type FlagValueResult = {error: string} | {value: string};
+
 type ParsedArgs = {
   base?: string;
   json: boolean;
@@ -213,53 +222,97 @@ type ParseError = {
   error: string;
 };
 
-const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
-  let json = false;
-  let thresholdPct: number | undefined;
-  let base: string | undefined;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-
-    if (token === '--json') {
-      json = true;
-      continue;
-    }
-    if (token === '--threshold-pct') {
-      const value = argv[index + 1];
-
-      if (value === undefined) {
-        return {error: '--threshold-pct requires a numeric value'};
-      }
-
-      const parsed = Number.parseFloat(value);
-
-      if (!Number.isFinite(parsed)) {
-        return {error: `--threshold-pct must be numeric, got: ${value}`};
-      }
-      thresholdPct = parsed;
-      index += 1;
-      continue;
-    }
-    if (token === '--base') {
-      const value = argv[index + 1];
-
-      if (value === undefined || value.length === 0) {
-        return {error: '--base requires a ref'};
-      }
-      base = value;
-      index += 1;
-      continue;
-    }
-
-    return {error: `unknown flag: ${token}`};
+const readFlagValue = (
+  argv: readonly string[],
+  index: number,
+  errorMessage: string
+): FlagValueResult => {
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index + 1]` as
+  // `string`, not `string | undefined`; check the bound explicitly instead
+  // of comparing the indexed value to `undefined`.
+  if (index + 1 >= argv.length) {
+    return {error: errorMessage};
   }
 
-  if (thresholdPct === undefined) {
+  return {value: argv[index + 1]};
+};
+
+type ArgsState = {
+  base: string | undefined;
+  json: boolean;
+  thresholdPct: number | undefined;
+};
+
+type TokenOutcome = {error: string} | {indexDelta: number};
+
+// One flat `if...return` per flag (no `else if` chain) keeps this shallow.
+const applyDiffSizeToken = (
+  argv: readonly string[],
+  index: number,
+  state: ArgsState
+): TokenOutcome => {
+  const token = argv[index];
+
+  if (token === '--json') {
+    state.json = true;
+
+    return {indexDelta: 0};
+  }
+
+  if (token === '--threshold-pct') {
+    const next = readFlagValue(
+      argv,
+      index,
+      '--threshold-pct requires a numeric value'
+    );
+
+    if ('error' in next) return next;
+
+    const parsed = Number.parseFloat(next.value);
+
+    if (!Number.isFinite(parsed)) {
+      return {error: `--threshold-pct must be numeric, got: ${next.value}`};
+    }
+    state.thresholdPct = parsed;
+
+    return {indexDelta: 1};
+  }
+
+  if (token === '--base') {
+    const next = readFlagValue(argv, index, '--base requires a ref');
+
+    if ('error' in next) return next;
+
+    if (next.value.length === 0) {
+      return {error: '--base requires a ref'};
+    }
+    state.base = next.value;
+
+    return {indexDelta: 1};
+  }
+
+  return {error: `unknown flag: ${token}`};
+};
+
+const parseArgs = (argv: readonly string[]): ParsedArgs | ParseError => {
+  const state: ArgsState = {
+    base: undefined,
+    json: false,
+    thresholdPct: undefined,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const outcome = applyDiffSizeToken(argv, index, state);
+
+    if ('error' in outcome) return outcome;
+    index += outcome.indexDelta;
+  }
+
+  if (state.thresholdPct === undefined) {
     return {error: '--threshold-pct is required'};
   }
 
-  return {base, json, thresholdPct};
+  return {base: state.base, json: state.json, thresholdPct: state.thresholdPct};
 };
 
 type RunOptions = {

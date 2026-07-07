@@ -27,7 +27,8 @@ import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
 import {run as runRename} from './rename.js';
 import {run as runStripBranding} from './strip-branding.js';
-import {readState, STEP_ORDER, type StepName} from './util/state.js';
+import {readState, STEP_ORDER} from './util/state.js';
+import type {StepName} from './util/state.js';
 import {run as runWireStatusline} from './wire-statusline.js';
 
 const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
@@ -56,15 +57,6 @@ const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
 
-type Flags = {
-  fromStep: number;
-};
-
-type FlagParseSuccess = {
-  flags: Flags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
@@ -72,24 +64,35 @@ type FlagParseFailure = {
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
 
+type FlagParseSuccess = {
+  flags: Flags;
+  ok: true;
+};
+
+type Flags = {
+  fromStep: number;
+};
+
 const takeValue = (
   argv: readonly string[],
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined)
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as `string`,
+  // not `string | undefined`; check the bound explicitly instead of
+  // comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
+  }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   let fromStep = 1;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--from-step') {
       const taken = takeValue(argv, index + 1, '--from-step');
@@ -109,10 +112,9 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       }
       fromStep = parsed;
       index += 1;
-      continue;
+    } else {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
-
-    return {message: `unknown flag: ${token}`, ok: false};
   }
 
   return {flags: {fromStep}, ok: true};
@@ -133,92 +135,155 @@ const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
   'wire-statusline': runWireStatusline,
 };
 
-/**
- * Reconstructs the argv used the first time a step ran from its saved
- * `step_args`. Returns `null` when a required key is missing; caller
- * surfaces that as exit 1.
- */
-export const argvFromStepArgs = (
-  step: StepName,
+type StepArgvBuilder = (
   saved: Record<string, unknown> | undefined
-): string[] | null => {
-  if (step === 'finalize' || step === 'bootstrap-env') return [];
+) => null | string[];
 
+const buildStripBrandingArgv: StepArgvBuilder = (saved) => {
   if (saved === undefined) return null;
+  const {title} = saved;
 
-  if (step === 'strip-branding') {
-    const title = saved.title;
+  if (typeof title !== 'string') return null;
 
-    if (typeof title !== 'string') return null;
+  return ['--title', title];
+};
 
-    return ['--title', title];
+const buildConfigureI18nArgv: StepArgvBuilder = (saved) => {
+  if (saved === undefined) return null;
+  const {locales, strip} = saved;
+
+  if (
+    !Array.isArray(locales) ||
+    locales.some((entry) => typeof entry !== 'string')
+  ) {
+    return null;
   }
 
-  if (step === 'configure-i18n') {
-    const locales = saved.locales;
-    const strip = saved.strip;
+  if (typeof strip !== 'boolean') return null;
 
-    if (
-      !Array.isArray(locales) ||
-      locales.some((entry) => typeof entry !== 'string')
-    ) {
-      return null;
-    }
+  return [
+    '--locales',
+    (locales as string[]).join(','),
+    '--strip',
+    strip ? 'true' : 'false',
+  ];
+};
 
-    if (typeof strip !== 'boolean') return null;
+const buildRenameArgv: StepArgvBuilder = (saved) => {
+  if (saved === undefined) return null;
+  const {kebab, title} = saved;
 
-    return [
-      '--locales',
-      (locales as string[]).join(','),
-      '--strip',
-      strip ? 'true' : 'false',
-    ];
+  if (typeof title !== 'string' || typeof kebab !== 'string') return null;
+
+  return ['--title', title, '--kebab', kebab];
+};
+
+const isToolModeValue = (value: unknown): boolean =>
+  value === 'ci' || value === 'local' || value === 'off';
+
+const buildConfigureAutomationArgv: StepArgvBuilder = (saved) => {
+  if (saved === undefined) return null;
+  const {
+    pnpm_audit: pnpmAudit,
+    stale_branches: staleBranches,
+    update_deps: updateDeps,
+    wiki,
+  } = saved;
+
+  if (
+    !isToolModeValue(wiki) ||
+    !isToolModeValue(updateDeps) ||
+    !isToolModeValue(pnpmAudit) ||
+    !isToolModeValue(staleBranches)
+  ) {
+    return null;
   }
 
-  if (step === 'rename') {
-    const title = saved.title;
-    const kebab = saved.kebab;
+  return [
+    '--wiki',
+    wiki as string,
+    '--update-deps',
+    updateDeps as string,
+    '--pnpm-audit',
+    pnpmAudit as string,
+    '--stale-branches',
+    staleBranches as string,
+  ];
+};
 
-    if (typeof title !== 'string' || typeof kebab !== 'string') return null;
-
-    return ['--title', title, '--kebab', kebab];
-  }
-
-  if (step === 'configure-automation') {
-    const wiki = saved.wiki;
-    const updateDeps = saved.update_deps;
-    const pnpmAudit = saved.pnpm_audit;
-    const staleBranches = saved.stale_branches;
-    const valid = (value: unknown): boolean =>
-      value === 'ci' || value === 'local' || value === 'off';
-
-    if (
-      !valid(wiki) ||
-      !valid(updateDeps) ||
-      !valid(pnpmAudit) ||
-      !valid(staleBranches)
-    ) {
-      return null;
-    }
-
-    return [
-      '--wiki',
-      wiki as string,
-      '--update-deps',
-      updateDeps as string,
-      '--pnpm-audit',
-      pnpmAudit as string,
-      '--stale-branches',
-      staleBranches as string,
-    ];
-  }
-
-  // wire-statusline
-  const mode = saved.mode;
+const buildWireStatuslineArgv: StepArgvBuilder = (saved) => {
+  if (saved === undefined) return null;
+  const {mode} = saved;
 
   if (typeof mode !== 'string') return null;
 
   return ['--mode', mode];
+};
+
+const STEP_ARGV_BUILDERS: Readonly<Record<StepName, StepArgvBuilder>> = {
+  'bootstrap-env': () => [],
+  'configure-automation': buildConfigureAutomationArgv,
+  'configure-i18n': buildConfigureI18nArgv,
+  finalize: () => [],
+  rename: buildRenameArgv,
+  'strip-branding': buildStripBrandingArgv,
+  'wire-statusline': buildWireStatuslineArgv,
+};
+
+/**
+ * Reconstructs the argv used the first time a step ran from its saved
+ * `step_args`. Returns `null` when a required key is missing; caller
+ * surfaces that as exit 1. Dispatches through a per-step builder table so
+ * this stays a flat lookup regardless of how many steps exist.
+ */
+export const argvFromStepArgs = (
+  step: StepName,
+  saved: Record<string, unknown> | undefined
+): null | string[] => STEP_ARGV_BUILDERS[step](saved);
+
+type ReplayContext = {
+  cwd: string;
+  runners: Partial<Record<StepName, StepRunner>>;
+  stepArgs: Record<string, unknown>;
+};
+
+type ReplayOutcome = {code: number; kind: 'exit'} | {kind: 'continue'};
+
+/**
+ * Replay a single non-skipped step: reconstruct its argv, run it, and
+ * report whether `run` should stop (missing args / non-zero exit) or
+ * continue to the next step.
+ */
+const replayStep = async (
+  step: StepName,
+  context: ReplayContext
+): Promise<ReplayOutcome> => {
+  const saved = context.stepArgs[step] as Record<string, unknown> | undefined;
+  const stepArgv = argvFromStepArgs(step, saved);
+
+  if (stepArgv === null) {
+    structuredError({
+      code: 'missing_step_args',
+      message:
+        `step "${step}" has no saved arguments to replay; run ` +
+        `"gaia init ${step} …" with explicit flags first`,
+      subcommand: 'init resume',
+    });
+
+    return {code: EXIT_CODES.UNKNOWN_SUBCOMMAND, kind: 'exit'};
+  }
+
+  const runner = context.runners[step] ?? STEP_RUNNERS[step];
+  const exit = await runner(stepArgv, {cwd: context.cwd});
+
+  if (exit !== EXIT_CODES.OK) {
+    // The step itself printed a structured error to stderr.
+    return {code: exit, kind: 'exit'};
+  }
+
+  process.stdout.write(`init resume: ran ${step}\n`);
+
+  return {kind: 'continue'};
 };
 
 type RunOptions = {
@@ -231,7 +296,7 @@ export const run = async (
   argv: readonly string[],
   options: RunOptions = {}
 ): Promise<number> => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -273,37 +338,23 @@ export const run = async (
     index < STEP_ORDER.length;
     index += 1
   ) {
-    const step = STEP_ORDER[index] as StepName;
+    const step = STEP_ORDER[index];
 
     if (completed.has(step)) {
       process.stdout.write(`init resume: skip ${step} (already complete)\n`);
-      continue;
-    }
-
-    const saved = state.step_args[step] as Record<string, unknown> | undefined;
-    const stepArgv = argvFromStepArgs(step, saved);
-
-    if (stepArgv === null) {
-      structuredError({
-        code: 'missing_step_args',
-        message:
-          `step "${step}" has no saved arguments to replay; run ` +
-          `"gaia init ${step} …" with explicit flags first`,
-        subcommand: 'init resume',
+    } else {
+      // Steps replay sequentially and in order: each mutates repo state the
+      // next step's idempotency check may depend on, so they cannot run
+      // concurrently.
+      // eslint-disable-next-line no-await-in-loop -- intentional sequential
+      const outcome = await replayStep(step, {
+        cwd,
+        runners,
+        stepArgs: state.step_args,
       });
 
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+      if (outcome.kind === 'exit') return outcome.code;
     }
-
-    const runner = runners[step] ?? STEP_RUNNERS[step];
-    const exit = await runner(stepArgv, {cwd});
-
-    if (exit !== EXIT_CODES.OK) {
-      // The step itself printed a structured error to stderr.
-      return exit;
-    }
-
-    process.stdout.write(`init resume: ran ${step}\n`);
   }
 
   return EXIT_CODES.OK;

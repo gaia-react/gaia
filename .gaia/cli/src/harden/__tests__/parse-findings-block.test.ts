@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
 import {parseFindingsBlock} from '../parse-findings-block.js';
 
 const block = (payload: string): string =>
@@ -12,7 +12,7 @@ const block = (payload: string): string =>
   ].join('\n');
 
 describe('parseFindingsBlock', () => {
-  it('extracts findings from the HTML-comment payload between the sentinels', () => {
+  test('extracts findings from the HTML-comment payload between the sentinels', () => {
     const body = block(
       JSON.stringify({
         auditor: 'ci',
@@ -48,18 +48,18 @@ describe('parseFindingsBlock', () => {
     ]);
   });
 
-  it('returns [] for an explicit empty findings block', () => {
+  test('returns [] for an explicit empty findings block', () => {
     const body = block(
       JSON.stringify({auditor: 'ci', findings: [], pr_number: 7, schema: 1})
     );
     expect(parseFindingsBlock(body)).toEqual([]);
   });
 
-  it('returns null when no sentinels are present', () => {
+  test('returns null when no sentinels are present', () => {
     expect(parseFindingsBlock('just a normal comment')).toBeNull();
   });
 
-  it('returns null when the payload between sentinels is not valid JSON', () => {
+  test('returns null when the payload between sentinels is not valid JSON', () => {
     const body = [
       '<!-- gaia-harden:findings:start -->',
       '<!-- { not json } -->',
@@ -68,7 +68,7 @@ describe('parseFindingsBlock', () => {
     expect(parseFindingsBlock(body)).toBeNull();
   });
 
-  it('drops malformed finding entries but keeps well-formed ones', () => {
+  test('drops malformed finding entries but keeps well-formed ones', () => {
     const body = block(
       JSON.stringify({
         auditor: 'local',

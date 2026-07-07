@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release manifest`.
  *
@@ -16,7 +17,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   buildManifest,
   classifyPath,
@@ -169,10 +169,10 @@ describe('buildManifest', () => {
 
   test('produces sorted file map with correct classes', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.2.3\n',
       '.gaia/release-exclude': '# none\n',
-      'CLAUDE.md': '# CLAUDE\n',
+      '.gaia/VERSION': '1.2.3\n',
       'app/components/Foo/index.tsx': 'export {};\n',
+      'CLAUDE.md': '# CLAUDE\n',
       'wiki/concepts/Bar.md': '# Bar\n',
       'wiki/hot.md': '# hot\n',
       'wiki/log.md': '# log\n',
@@ -200,9 +200,9 @@ describe('buildManifest', () => {
 
   test('respects release-exclude patterns', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '0.1.0\n',
       '.gaia/release-exclude': '.gaia/scripts\n',
       '.gaia/scripts/keep-me.mjs': 'console.log("hi");\n',
+      '.gaia/VERSION': '0.1.0\n',
       'app/keep.ts': 'export {};\n',
     });
 
@@ -232,8 +232,8 @@ describe('run (CLI)', () => {
 
   test('writes .gaia/manifest.json by default', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
       'app/foo.ts': 'export {};\n',
     });
 
@@ -258,8 +258,8 @@ describe('run (CLI)', () => {
 
   test('--stdout prints to stdout without writing file', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '0.0.1\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '0.0.1\n',
     });
 
     const exit = run(['--stdout'], {
@@ -278,8 +278,8 @@ describe('run (CLI)', () => {
 
   test('rejects unknown flags', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '0.0.1\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '0.0.1\n',
     });
 
     const exit = run(['--bogus'], {cwd: sandbox.root});
@@ -354,10 +354,10 @@ describe('run --check', () => {
 
   const seedAndGenerate = (extraFiles: Record<string, string> = {}): void => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
-      'CLAUDE.md': '# CLAUDE\n',
+      '.gaia/VERSION': '1.0.0\n',
       'app/foo.ts': 'export {};\n',
+      'CLAUDE.md': '# CLAUDE\n',
       'wiki/concepts/Bar.md': '# bar\n',
       'wiki/index.md': '# index\n',
       ...extraFiles,
@@ -528,8 +528,8 @@ describe('run --check', () => {
 
   test('missing manifest file: exits non-zero with manifest_missing error', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
       'app/foo.ts': 'export {};\n',
     });
 
@@ -540,8 +540,8 @@ describe('run --check', () => {
 
   test('--check is incompatible with --out', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
     });
 
     const exit = run(['--check', '--out', 'foo.json'], {cwd: sandbox.root});
@@ -551,8 +551,8 @@ describe('run --check', () => {
 
   test('--json requires --check', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '1.0.0\n',
     });
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -588,12 +588,12 @@ describe('run --check', () => {
 
   test('classifier-set overlap: exits non-zero and names the overlap', () => {
     sandbox.commit('seed', {
-      '.gaia/VERSION': '1.0.0\n',
       // CLAUDE.md is in the SHARED classifier set; if release-exclude
       // also matches it, the SHARED entry is dead code.
       '.gaia/release-exclude': 'CLAUDE.md\n',
-      'CLAUDE.md': '# CLAUDE\n',
+      '.gaia/VERSION': '1.0.0\n',
       'app/foo.ts': 'export {};\n',
+      'CLAUDE.md': '# CLAUDE\n',
     });
 
     const exit = run([], {
@@ -617,116 +617,136 @@ describe('run --check', () => {
 });
 
 type ManifestDriftJson = {
-  drift: Array<{actual: string; expected: string; file: string}>;
-  extra: Array<{actual: string; file: string}>;
-  missing: Array<{expected: string; file: string}>;
+  drift: {actual: string; expected: string; file: string}[];
+  extra: {actual: string; file: string}[];
+  missing: {expected: string; file: string}[];
+};
+
+// Materialize the legacy script's path once at module scope: `test.skipIf`
+// below needs it at test-definition time, before any test body runs.
+const LEGACY_SCRIPT_PATH = path.resolve(
+  __dirname,
+  '../../../scripts/generate-manifest.mjs'
+);
+
+// Seeds a sandbox with a small slice of the real repo layout, picking paths
+// that exercise every classifier branch so any drift in either
+// implementation manifests as a diff in the output, then builds the manifest
+// against it. Shared by both tests below.
+const seedManifestSandbox = (): {
+  manifest: ReturnType<typeof buildManifest>;
+  sandbox: Sandbox;
+} => {
+  const sandbox = setupSandbox();
+
+  sandbox.commit('seed', {
+    '.claude/commands/gaia-init.md': '# init\n',
+    '.claude/commands/gaia-release.md': '# release-only\n', // excluded
+    '.claude/settings.json': '{}\n',
+    '.claude/skills/tdd/SKILL.md': '# tdd\n',
+    '.gaia/release-exclude': [
+      '# comment',
+      '.claude/commands/gaia-release.md',
+      '.gaia/scripts',
+      '.gaia/release-exclude',
+      '.github/CODEOWNERS',
+      'CHANGELOG.md',
+      'README.md',
+      'wiki/entities',
+      'wiki/meta',
+      '',
+    ].join('\n'),
+    '.gaia/scripts/legacy.mjs': '// excluded\n', // excluded
+    '.gaia/VERSION': '1.0.5\n',
+    '.github/CODEOWNERS': '* @maintainer\n',
+    '.github/workflows/release.yml': 'name: release\n',
+    'app/components/Foo/index.tsx': 'export {};\n',
+    'CHANGELOG.md': '# changelog\n', // excluded (root governance, category 11)
+    'CLAUDE.md': '# CLAUDE\n',
+    'package.json': '{"name":"x"}\n',
+    'README.md': '# README\n', // excluded (root governance, category 11)
+    'wiki/concepts/Foo.md': '# foo\n',
+    'wiki/decisions/Bar.md': '# bar\n',
+    'wiki/entities/Skip.md': '# excluded\n', // excluded
+    'wiki/hot.md': '# hot\n', // sentinel
+    'wiki/index.md': '# index\n',
+    'wiki/log.md': '# log\n', // sentinel
+    'wiki/overview.md': '# overview\n',
+  });
+
+  const manifest = buildManifest(sandbox.root, {
+    generatedAt: '2026-05-07T00:00:00.000Z',
+  });
+
+  return {manifest, sandbox};
 };
 
 describe('byte-identity vs generate-manifest.mjs', () => {
-  /**
-   * Snapshot test: invoke the legacy script and `buildManifest` against
-   * the same sandbox. Output must be byte-identical aside from the
-   * `generated` timestamp (which we pin in `buildManifest`).
-   */
-  test('produces same JSON shape as the legacy script', () => {
-    const sandbox = setupSandbox();
+  // Regression guard on the classifier's category assignments, independent
+  // of whether the legacy script is still around to compare against.
+  test('classifies every category correctly', () => {
+    const {manifest, sandbox} = seedManifestSandbox();
 
     try {
-      // Mirror a small slice of the real repo layout. Pick paths
-      // exercising every classifier branch so any drift in either
-      // implementation manifests as a diff in the output.
-      sandbox.commit('seed', {
-        '.gaia/VERSION': '1.0.5\n',
-        '.gaia/release-exclude': [
-          '# comment',
-          '.claude/commands/gaia-release.md',
-          '.gaia/scripts',
-          '.gaia/release-exclude',
-          '.github/CODEOWNERS',
-          'CHANGELOG.md',
-          'README.md',
-          'wiki/entities',
-          'wiki/meta',
-          '',
-        ].join('\n'),
-        '.claude/commands/gaia-init.md': '# init\n',
-        '.claude/commands/gaia-release.md': '# release-only\n', // excluded
-        '.claude/settings.json': '{}\n',
-        '.claude/skills/tdd/SKILL.md': '# tdd\n',
-        '.gaia/scripts/legacy.mjs': '// excluded\n', // excluded
-        '.github/CODEOWNERS': '* @maintainer\n',
-        '.github/workflows/release.yml': 'name: release\n',
-        'CHANGELOG.md': '# changelog\n', // excluded (root governance, category 11)
-        'CLAUDE.md': '# CLAUDE\n',
-        'README.md': '# README\n', // excluded (root governance, category 11)
-        'app/components/Foo/index.tsx': 'export {};\n',
-        'package.json': '{"name":"x"}\n',
-        'wiki/concepts/Foo.md': '# foo\n',
-        'wiki/decisions/Bar.md': '# bar\n',
-        'wiki/entities/Skip.md': '# excluded\n', // excluded
-        'wiki/hot.md': '# hot\n', // sentinel
-        'wiki/index.md': '# index\n',
-        'wiki/log.md': '# log\n', // sentinel
-        'wiki/overview.md': '# overview\n',
-      });
-
-      const manifest = buildManifest(sandbox.root, {
-        generatedAt: '2026-05-07T00:00:00.000Z',
-      });
-
-      // Materialize the legacy script into the sandbox and run it
-      // there, so it sees the sandbox's `git ls-files` and reads from
-      // the sandbox's `.gaia/VERSION` + `.gaia/release-exclude`.
-      const legacyScriptPath = path.resolve(
-        __dirname,
-        '../../../scripts/generate-manifest.mjs'
-      );
-
-      if (!existsSync(legacyScriptPath)) {
-        // Legacy script has been removed (post-migration). Skip the
-        // byte-identity comparison; the structural assertions below
-        // remain meaningful as a regression guard.
-        expect(manifest.files['CLAUDE.md']).toBe('shared');
-        expect(manifest.files['.claude/commands/gaia-init.md']).toBe('owned');
-        expect(
-          manifest.files['.claude/commands/gaia-release.md']
-        ).toBeUndefined();
-        expect(manifest.files['.gaia/scripts/legacy.mjs']).toBeUndefined();
-        expect(manifest.files['CHANGELOG.md']).toBeUndefined();
-        expect(manifest.files['wiki/hot.md']).toBeUndefined();
-        expect(manifest.files['wiki/log.md']).toBeUndefined();
-        expect(manifest.files['wiki/entities/Skip.md']).toBeUndefined();
-        expect(manifest.files['wiki/concepts/Foo.md']).toBe('wiki-owned');
-        expect(manifest.files['wiki/overview.md']).toBe('wiki-owned');
-        expect(manifest.files['wiki/index.md']).toBe('shared');
-        expect(manifest.files['.github/workflows/release.yml']).toBe('shared');
-        expect(manifest.files['.github/CODEOWNERS']).toBeUndefined();
-
-        return;
-      }
-
-      const legacyOutput = execFileSync('node', [legacyScriptPath], {
-        cwd: sandbox.root,
-        encoding: 'utf8',
-      });
-      const legacyParsed = JSON.parse(legacyOutput) as {
-        files: Record<string, string>;
-        generated: string;
-        version: string;
-      };
-
-      // Pin generated to make output deterministic.
-      legacyParsed.generated = manifest.generated;
-
-      expect(legacyParsed.files).toEqual(manifest.files);
-      expect(legacyParsed.version).toEqual(manifest.version);
-
-      // Byte-identity: serialize both with the same shape and compare.
-      const ourSerialized = `${JSON.stringify(manifest, null, 2)}\n`;
-      const theirSerialized = `${JSON.stringify(legacyParsed, null, 2)}\n`;
-      expect(ourSerialized).toEqual(theirSerialized);
+      expect(manifest.files['CLAUDE.md']).toBe('shared');
+      expect(manifest.files['.claude/commands/gaia-init.md']).toBe('owned');
+      expect(
+        manifest.files['.claude/commands/gaia-release.md']
+      ).toBeUndefined();
+      expect(manifest.files['.gaia/scripts/legacy.mjs']).toBeUndefined();
+      expect(manifest.files['CHANGELOG.md']).toBeUndefined();
+      expect(manifest.files['wiki/hot.md']).toBeUndefined();
+      expect(manifest.files['wiki/log.md']).toBeUndefined();
+      expect(manifest.files['wiki/entities/Skip.md']).toBeUndefined();
+      expect(manifest.files['wiki/concepts/Foo.md']).toBe('wiki-owned');
+      expect(manifest.files['wiki/overview.md']).toBe('wiki-owned');
+      expect(manifest.files['wiki/index.md']).toBe('shared');
+      expect(manifest.files['.github/workflows/release.yml']).toBe('shared');
+      expect(manifest.files['.github/CODEOWNERS']).toBeUndefined();
     } finally {
       sandbox.cleanup();
     }
   });
+
+  /**
+   * Snapshot test: invoke the legacy script and `buildManifest` against
+   * the same sandbox. Output must be byte-identical aside from the
+   * `generated` timestamp (which we pin in `buildManifest`). Skipped once
+   * the legacy script is removed (post-migration); the structural test
+   * above remains meaningful as a regression guard on its own.
+   */
+  test.skipIf(!existsSync(LEGACY_SCRIPT_PATH))(
+    'produces same JSON shape as the legacy script',
+    () => {
+      const {manifest, sandbox} = seedManifestSandbox();
+
+      try {
+        // Materialize the legacy script into the sandbox and run it
+        // there, so it sees the sandbox's `git ls-files` and reads from
+        // the sandbox's `.gaia/VERSION` + `.gaia/release-exclude`.
+        const legacyOutput = execFileSync('node', [LEGACY_SCRIPT_PATH], {
+          cwd: sandbox.root,
+          encoding: 'utf8',
+        });
+        const legacyParsed = JSON.parse(legacyOutput) as {
+          files: Record<string, string>;
+          generated: string;
+          version: string;
+        };
+
+        // Pin generated to make output deterministic.
+        legacyParsed.generated = manifest.generated;
+
+        expect(legacyParsed.files).toEqual(manifest.files);
+        expect(legacyParsed.version).toEqual(manifest.version);
+
+        // Byte-identity: serialize both with the same shape and compare.
+        const ourSerialized = `${JSON.stringify(manifest, null, 2)}\n`;
+        const theirSerialized = `${JSON.stringify(legacyParsed, null, 2)}\n`;
+        expect(ourSerialized).toEqual(theirSerialized);
+      } finally {
+        sandbox.cleanup();
+      }
+    }
+  );
 });

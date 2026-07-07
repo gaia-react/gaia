@@ -46,19 +46,19 @@ const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type ActionResult =
-  | 'already-linked'
-  | 'failed'
-  | 'linked'
-  | 'linked-after-backup'
-  | 'skipped-no-target';
-
 type Action = {
   backup?: string;
   error?: string;
   path: string;
   result: ActionResult;
 };
+
+type ActionResult =
+  | 'already-linked'
+  | 'failed'
+  | 'linked'
+  | 'linked-after-backup'
+  | 'skipped-no-target';
 
 type LinkOutput = {
   actions: Action[];
@@ -270,35 +270,12 @@ const printHuman = (output: LinkOutput): void => {
   );
 };
 
-export const run = (
-  argv: readonly string[],
-  options: RunOptions = {}
-): number => {
-  let json = false;
-
-  for (const token of argv) {
-    if (HELP_TOKENS.has(token)) {
-      process.stdout.write(HELP_TEXT);
-
-      return EXIT_CODES.OK;
-    }
-
-    if (token === '--json') {
-      json = true;
-      continue;
-    }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'setup link-worktree',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  const cwd = options.cwd ?? process.cwd();
-
+// Extracted out of `run` (kept its cognitive complexity under the frozen
+// limit): the main-root / worktree-root resolution, independent of the
+// json/human output that follows.
+const resolveWorktreeRoots = (
+  cwd: string
+): {exitCode: number} | {mainRoot: string; worktreeRoot: string} => {
   // Canonicalize the cwd (resolve symlinks like macOS /var -> /private/var)
   // so the main_root and worktree_root paths emitted in the JSON are
   // self-consistent; git always returns canonical paths from --show-toplevel,
@@ -322,21 +299,21 @@ export const run = (
       subcommand: 'setup link-worktree',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
   // Resolve the current worktree root (may equal mainRoot on a main checkout).
   // Use git --show-toplevel mirroring the script. If `resolveMainWorktreeRoot`
   // succeeded above, this fork is essentially guaranteed to succeed too, but
   // guard for the unlikely case anyway.
-  let worktreeRoot: string;
-
   try {
-    worktreeRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    const worktreeRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
       cwd: canonicalCwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
+
+    return {mainRoot, worktreeRoot};
   } catch {
     structuredError({
       code: 'not_a_git_repo',
@@ -344,8 +321,42 @@ export const run = (
       subcommand: 'setup link-worktree',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
+};
+
+export const run = (
+  argv: readonly string[],
+  options: RunOptions = {}
+): number => {
+  let json = false;
+
+  for (const token of argv) {
+    if (HELP_TOKENS.has(token)) {
+      process.stdout.write(HELP_TEXT);
+
+      return EXIT_CODES.OK;
+    }
+
+    if (token === '--json') {
+      json = true;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'setup link-worktree',
+      });
+
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    }
+  }
+
+  const cwd = options.cwd ?? process.cwd();
+  const roots = resolveWorktreeRoots(cwd);
+
+  if ('exitCode' in roots) return roots.exitCode;
+
+  const {mainRoot, worktreeRoot} = roots;
 
   if (mainRoot === worktreeRoot) {
     const output: LinkOutput = {

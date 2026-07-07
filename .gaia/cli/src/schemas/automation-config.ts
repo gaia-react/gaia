@@ -1,3 +1,4 @@
+import {z} from 'zod';
 /**
  * Zod schema + read helpers for `.gaia/automation.json`, the committed
  * GAIA CI configuration file.
@@ -8,7 +9,6 @@
  * the discriminated `status` field.
  */
 import {existsSync, readFileSync} from 'node:fs';
-import {z} from 'zod';
 import {automationConfigPath} from '../automation/paths.js';
 import {summarizeZodError} from './zod-error.js';
 
@@ -18,35 +18,41 @@ export const TOOL_IDS = [
   'pnpm-audit',
   'stale-branches',
 ] as const;
+
 export type ToolId = (typeof TOOL_IDS)[number];
 
 export const ToolModeSchema = z.literal(['ci', 'local', 'off']);
+
 export type ToolMode = z.infer<typeof ToolModeSchema>;
 
 export const ScheduleSchema = z.literal(['daily', 'monthly', 'weekly']);
+
 export type Schedule = z.infer<typeof ScheduleSchema>;
 
 export const ToolConfigSchema = z.object({
   mode: ToolModeSchema,
   schedule: ScheduleSchema.optional(),
 });
+
 export type ToolConfig = z.infer<typeof ToolConfigSchema>;
 
 export const UpdateGaiaConfigSchema = z.object({
   mode: z.literal('local'),
 });
+
 export type UpdateGaiaConfig = z.infer<typeof UpdateGaiaConfigSchema>;
 
 export const AutomationConfigSchema = z.object({
-  version: z.literal(1),
+  pnpm_audit: ToolConfigSchema,
   setup_complete: z.boolean(),
   setup_opted_out: z.boolean(),
-  wiki: ToolConfigSchema,
-  update_deps: ToolConfigSchema,
-  pnpm_audit: ToolConfigSchema,
   stale_branches: ToolConfigSchema,
+  update_deps: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema,
+  version: z.literal(1),
+  wiki: ToolConfigSchema,
 });
+
 export type AutomationConfig = z.infer<typeof AutomationConfigSchema>;
 
 /**
@@ -87,8 +93,8 @@ export const parseAutomationConfig = (raw: unknown): AutomationConfig =>
 
 export type ReadAutomationConfigResult =
   | {config: AutomationConfig; status: 'ok'}
-  | {status: 'missing'}
-  | {error: string; status: 'malformed'};
+  | {error: string; status: 'malformed'}
+  | {status: 'missing'};
 
 export const readAutomationConfig = (
   repoRoot: string

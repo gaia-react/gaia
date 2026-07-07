@@ -36,11 +36,12 @@ const setupSandbox = (): Sandbox => {
 const captureStdout = (): {restore: () => string} => {
   const chunks: string[] = [];
   const original = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((chunk: unknown): boolean => {
+
+  process.stdout.write = (chunk: unknown): boolean => {
     chunks.push(typeof chunk === 'string' ? chunk : String(chunk));
 
     return true;
-  }) as typeof process.stdout.write;
+  };
 
   return {
     restore: (): string => {
@@ -54,11 +55,12 @@ const captureStdout = (): {restore: () => string} => {
 const captureStderr = (): {restore: () => string} => {
   const chunks: string[] = [];
   const original = process.stderr.write.bind(process.stderr);
-  process.stderr.write = ((chunk: unknown): boolean => {
+
+  process.stderr.write = (chunk: unknown): boolean => {
     chunks.push(typeof chunk === 'string' ? chunk : String(chunk));
 
     return true;
-  }) as typeof process.stderr.write;
+  };
 
   return {
     restore: (): string => {
@@ -396,8 +398,12 @@ describe('scaffold route: flag combos', () => {
       "import legal from './legal';",
     ]);
 
-    // Default-export block updated.
-    expect(after).toMatch(/dashboard,\s*\n\s*index,\s*\n\s*legal,/u);
+    // Default-export block updated. `[ \t]*\n[ \t]*` (not `\s*\n\s*`, whose
+    // `\s` already matches `\n` and overlaps with the literal that follows)
+    // avoids sonarjs/super-linear-regex's overlapping-quantifier shape.
+    expect(after).toMatch(
+      /dashboard,[ \t]*\n[ \t]*index,[ \t]*\n[ \t]*legal,/u
+    );
 
     const pageBody = readFileSync(
       path.join(
@@ -439,7 +445,7 @@ describe('scaffold route: flag combos', () => {
     expect(parsed).toHaveProperty('written');
     expect(parsed).toHaveProperty('edited');
     expect(parsed).toHaveProperty('skipped');
-    expect(Array.isArray(parsed['written'])).toBe(true);
+    expect(Array.isArray(parsed.written)).toBe(true);
   });
 });
 

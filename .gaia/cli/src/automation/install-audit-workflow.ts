@@ -38,27 +38,22 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
   let dryRun = false;
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
 
     if (token === '--out-dir') {
-      const next = argv[index + 1];
-
-      if (next === undefined || next.startsWith('--')) {
+      // `noUncheckedIndexedAccess` is off, so TS types `argv[index + 1]` as
+      // `string`, not `string | undefined`; check the bound explicitly
+      // instead of comparing the indexed value to `undefined`.
+      if (index + 1 >= argv.length || argv[index + 1].startsWith('--')) {
         return {error: '--out-dir requires a path argument'};
       }
-      outDir = next;
+      outDir = argv[index + 1];
       index += 1;
-
-      continue;
-    }
-
-    if (token === '--dry-run') {
+    } else if (token === '--dry-run') {
       dryRun = true;
-
-      continue;
+    } else {
+      return {error: `unexpected argument: ${token}`};
     }
-
-    return {error: `unexpected argument: ${token}`};
   }
 
   if (outDir === undefined) {
@@ -76,7 +71,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length === 0 || HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length === 0 || HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return argv.length === 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;

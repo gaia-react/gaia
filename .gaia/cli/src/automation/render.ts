@@ -13,7 +13,8 @@
  */
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
-import {substituteVars, type TemplateVars} from '../scaffold/template.js';
+import {substituteVars} from '../scaffold/template.js';
+import type {TemplateVars} from '../scaffold/template.js';
 import type {WorkflowTemplateVars} from './workflow-vars.js';
 
 // Negative lookbehind on `$` keeps GitHub Actions expressions like

@@ -1,7 +1,7 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {run} from '../stale-check.js';
 import * as runProcess from '../util/run-process.js';
 
@@ -66,7 +66,7 @@ describe('ci-stale-check', () => {
     vi.restoreAllMocks();
   });
 
-  it('emits decision: "skip" when gh returns one entry', () => {
+  test('emits decision: "skip" when gh returns one entry', () => {
     const ghSpy = vi.spyOn(runProcess, 'runGh').mockReturnValue({
       exitCode: 0,
       stderr: '',
@@ -104,7 +104,7 @@ describe('ci-stale-check', () => {
     );
   });
 
-  it('emits decision: "proceed" when gh returns []', () => {
+  test('emits decision: "proceed" when gh returns []', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue({
       exitCode: 0,
       stderr: '',
@@ -126,7 +126,7 @@ describe('ci-stale-check', () => {
     expect(printed.skip_log_line).toBeNull();
   });
 
-  it('exits non-zero with structured error when gh fails', () => {
+  test('exits non-zero with structured error when gh fails', () => {
     vi.spyOn(runProcess, 'runGh').mockReturnValue({
       exitCode: 4,
       stderr: 'gh: not authenticated',
@@ -145,7 +145,7 @@ describe('ci-stale-check', () => {
     expect(printed).toContain('gh_invocation_failed');
   });
 
-  it('passes both --label AND --author to gh pr list', () => {
+  test('passes both --label AND --author to gh pr list', () => {
     const ghSpy = vi.spyOn(runProcess, 'runGh').mockReturnValue({
       exitCode: 0,
       stderr: '',
@@ -158,16 +158,16 @@ describe('ci-stale-check', () => {
 
     const args = ghSpy.mock.calls[0]?.[0] ?? [];
     // Verbatim assertion: both predicates appear, exactly once each.
-    expect(args.filter((a) => a === '--label').length).toBe(1);
-    expect(args.filter((a) => a === '--author').length).toBe(1);
+    expect(args.filter((a) => a === '--label')).toHaveLength(1);
+    expect(args.filter((a) => a === '--author')).toHaveLength(1);
     // And the values immediately follow the flags.
-    const labelIdx = args.indexOf('--label');
-    const authorIdx = args.indexOf('--author');
-    expect(args[labelIdx + 1]).toBe('gaia-ci');
-    expect(args[authorIdx + 1]).toBe('github-actions[bot]');
+    const labelIndex = args.indexOf('--label');
+    const authorIndex = args.indexOf('--author');
+    expect(args[labelIndex + 1]).toBe('gaia-ci');
+    expect(args[authorIndex + 1]).toBe('github-actions[bot]');
   });
 
-  it('honors a custom --author', () => {
+  test('honors a custom --author', () => {
     const ghSpy = vi.spyOn(runProcess, 'runGh').mockReturnValue({
       exitCode: 0,
       stderr: '',
@@ -188,23 +188,23 @@ describe('ci-stale-check', () => {
     );
 
     const args = ghSpy.mock.calls[0]?.[0] ?? [];
-    const authorIdx = args.indexOf('--author');
-    expect(args[authorIdx + 1]).toBe('someone-else');
+    const authorIndex = args.indexOf('--author');
+    expect(args[authorIndex + 1]).toBe('someone-else');
   });
 
-  it('rejects when --label is missing', () => {
+  test('rejects when --label is missing', () => {
     const exit = run(['--base', 'main', '--json'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('--label');
   });
 
-  it('rejects when --base is missing', () => {
+  test('rejects when --base is missing', () => {
     const exit = run(['--label', 'gaia-ci', '--json'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('--base');
   });
 
-  it('exits 0 with help on --help', () => {
+  test('exits 0 with help on --help', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage: gaia ci-stale-check');

@@ -18,10 +18,12 @@
  * matches how Obsidian counts them.
  */
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
+import type {Dirent} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {parseFrontmatter, type Frontmatter} from './util/frontmatter.js';
+import {parseFrontmatter} from './util/frontmatter.js';
+import type {Frontmatter} from './util/frontmatter.js';
 import {resolveRepoRoot} from './util/git.js';
 import {extractWikilinks} from './util/wikilinks.js';
 
@@ -38,10 +40,10 @@ export type PageEntry = {
   inbound_links: number;
   outbound_links: number;
   path: string;
-  status: string | null;
+  status: null | string;
   tags: string[];
   title: string;
-  type: string | null;
+  type: null | string;
 };
 
 export type PageIndex = {
@@ -85,7 +87,7 @@ const extractTitle = (body: string, fallback: string): string => {
   return fallback;
 };
 
-const stringValue = (value: Frontmatter[string]): string | null => {
+const stringValue = (value: Frontmatter[string]): null | string => {
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
   if (typeof value === 'boolean') return value ? 'true' : 'false';
@@ -107,66 +109,70 @@ type PageRecord = {
   outboundTargets: string[];
   relativePath: string;
   slug: string;
-  status: string | null;
+  status: null | string;
   tags: string[];
   title: string;
-  type: string | null;
+  type: null | string;
 };
 
-const collectPages = (wikiRoot: string): PageRecord[] => {
-  const pages: PageRecord[] = [];
+const isIndexablePage = (entry: Dirent): boolean =>
+  entry.isFile() &&
+  entry.name.endsWith('.md') &&
+  !SKIPPED_FILES.has(entry.name) &&
+  !entry.name.startsWith('_');
 
-  for (const domain of DOMAIN_DIRS) {
-    const domainDir = path.join(wikiRoot, domain);
+const readPageRecord = (
+  domainDir: string,
+  domain: string,
+  entry: Dirent
+): PageRecord => {
+  const absPath = path.join(domainDir, entry.name);
+  const raw = readFileSync(absPath, 'utf8');
+  const {body, frontmatter} = parseFrontmatter(raw);
+  const slug = slugFromPath(entry.name);
+  const title = extractTitle(body, slug);
+  const targets = extractWikilinks(body);
 
-    if (!existsSync(domainDir) || !statSync(domainDir).isDirectory()) continue;
-
-    const entries = readdirSync(domainDir, {withFileTypes: true});
-
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      if (!entry.name.endsWith('.md')) continue;
-      if (SKIPPED_FILES.has(entry.name)) continue;
-      if (entry.name.startsWith('_')) continue;
-
-      const absPath = path.join(domainDir, entry.name);
-      const raw = readFileSync(absPath, 'utf8');
-      const {body, frontmatter} = parseFrontmatter(raw);
-      const slug = slugFromPath(entry.name);
-      const title = extractTitle(body, slug);
-      const targets = extractWikilinks(body);
-
-      pages.push({
-        body,
-        domain,
-        outboundTargets: targets,
-        relativePath: path.posix.join('wiki', domain, entry.name),
-        slug,
-        status: stringValue(frontmatter.status),
-        tags: arrayOfStrings(frontmatter.tags),
-        title,
-        type: stringValue(frontmatter.type),
-      });
-    }
-  }
-
-  return pages;
+  return {
+    body,
+    domain,
+    outboundTargets: targets,
+    relativePath: path.posix.join('wiki', domain, entry.name),
+    slug,
+    status: stringValue(frontmatter.status),
+    tags: arrayOfStrings(frontmatter.tags),
+    title,
+    type: stringValue(frontmatter.type),
+  };
 };
 
-const collectRootLinkSources = (wikiRoot: string): string[][] => {
-  const sources: string[][] = [];
+const collectDomainPages = (
+  wikiRoot: string,
+  domain: string
+): readonly PageRecord[] => {
+  const domainDir = path.join(wikiRoot, domain);
 
-  for (const filename of ROOT_LINK_SOURCES) {
-    const absPath = path.join(wikiRoot, filename);
+  if (!existsSync(domainDir) || !statSync(domainDir).isDirectory()) return [];
 
-    if (!existsSync(absPath)) continue;
-    const raw = readFileSync(absPath, 'utf8');
+  const entries = readdirSync(domainDir, {withFileTypes: true});
+
+  return entries
+    .filter((entry) => isIndexablePage(entry))
+    .map((entry) => readPageRecord(domainDir, domain, entry));
+};
+
+const collectPages = (wikiRoot: string): PageRecord[] =>
+  DOMAIN_DIRS.flatMap((domain) => collectDomainPages(wikiRoot, domain));
+
+const collectRootLinkSources = (wikiRoot: string): string[][] =>
+  ROOT_LINK_SOURCES.filter((filename) =>
+    existsSync(path.join(wikiRoot, filename))
+  ).map((filename) => {
+    const raw = readFileSync(path.join(wikiRoot, filename), 'utf8');
     const {body} = parseFrontmatter(raw);
-    sources.push(extractWikilinks(body));
-  }
 
-  return sources;
-};
+    return extractWikilinks(body);
+  });
 
 const buildIndex = (
   pages: readonly PageRecord[],
@@ -188,9 +194,10 @@ const buildIndex = (
     for (const target of targets) {
       const matched = byKey.get(target.toLowerCase());
 
-      if (matched === undefined) continue;
-      const key = matched.relativePath;
-      inboundCounts.set(key, (inboundCounts.get(key) ?? 0) + 1);
+      if (matched !== undefined) {
+        const key = matched.relativePath;
+        inboundCounts.set(key, (inboundCounts.get(key) ?? 0) + 1);
+      }
     }
   };
 
@@ -257,16 +264,15 @@ export const run = (
 
     if (token === '--json') {
       json = true;
-      continue;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'wiki page-index',
+      });
+
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'wiki page-index',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   let repoRoot: string;

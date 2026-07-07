@@ -1,5 +1,6 @@
 import {describe, expect, test} from 'vitest';
-import {renderCard, type FitnessReport} from './render-card.js';
+import {renderCard} from './render-card.js';
+import type {FitnessReport} from './render-card.js';
 
 const baseReport = (): FitnessReport => ({
   categories: [
@@ -33,6 +34,8 @@ const baseReport = (): FitnessReport => ({
   overall: 'B+',
 });
 
+const WIDTH_CAP_PLUS_BORDER = 124; // 120-column cap + "| " and " |"
+
 const lineWidths = (card: string): number[] =>
   card.split('\n').map((line) => line.length);
 
@@ -51,7 +54,7 @@ describe('renderCard', () => {
     const lines = renderCard(baseReport(), 80).split('\n');
 
     expect(lines[0]).toMatch(/^\+-+\+$/);
-    expect(lines[lines.length - 1]).toMatch(/^\+-+\+$/);
+    expect(lines.at(-1)).toMatch(/^\+-+\+$/);
   });
 
   test('renders categories alphabetically', () => {
@@ -69,7 +72,11 @@ describe('renderCard', () => {
 
     for (const index of indices) expect(index).toBeGreaterThan(-1);
 
-    expect(indices).toEqual([...indices].sort((a, b) => a - b));
+    // Bound to a variable before sorting: canonical/no-use-extend-native's
+    // proto-method database predates ES2023 and does not recognize
+    // `toSorted` on an inline array-spread expression.
+    const indicesCopy = [...indices];
+    expect(indices).toEqual(indicesCopy.toSorted((a, b) => a - b));
   });
 
   test('omits the FINDINGS block on a clean run and carries no footer', () => {
@@ -100,9 +107,9 @@ describe('renderCard', () => {
       },
     ];
 
-    expect(Math.max(...lineWidths(renderCard(report, 500)))).toBeLessThanOrEqual(
-      WIDTH_CAP_PLUS_BORDER
-    );
+    expect(
+      Math.max(...lineWidths(renderCard(report, 500)))
+    ).toBeLessThanOrEqual(WIDTH_CAP_PLUS_BORDER);
   });
 
   test('truncates an over-long file path while keeping borders aligned', () => {
@@ -148,5 +155,3 @@ describe('renderCard', () => {
     expect(allEqual(lineWidths(card))).toBe(true);
   });
 });
-
-const WIDTH_CAP_PLUS_BORDER = 124; // 120-column cap + "| " and " |"

@@ -1,7 +1,3 @@
-/* eslint-disable unicorn/prevent-abbreviations -- `mentorshipDir` mirrors the
-   frozen `StorageRoots.mentorshipDir` field name (see
-   `.gaia/cli/src/storage/paths.ts`). Internal-only helper params follow the
-   same convention to keep call-site reads aligned. */
 /**
  * `gaia mentorship status`.
  *

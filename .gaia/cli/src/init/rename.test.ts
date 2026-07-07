@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia init rename`.
  */
@@ -10,7 +11,6 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './rename.js';
 import {readState} from './util/state.js';
 
@@ -157,7 +157,7 @@ describe('init rename', () => {
 
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('rename');
-    expect(state.step_args['rename']).toEqual({
+    expect(state.step_args.rename).toEqual({
       kebab: 'hello-world',
       title: 'Hello World',
     });

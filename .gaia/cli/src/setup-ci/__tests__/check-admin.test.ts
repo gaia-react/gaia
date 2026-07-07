@@ -1,7 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {run} from '../check-admin.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -53,7 +54,7 @@ describe('setup-ci check-admin', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns admin: true, auth_status: ok when gh auth ok and api returns true', async () => {
+  test('returns admin: true, auth_status: ok when gh auth ok and api returns true', async () => {
     // First call: `gh auth status` (exits 0 with no stdout). Second
     // call: `gh api ...` returns "true\n".
     const handle = sandbox.installGhShim({
@@ -86,7 +87,7 @@ describe('setup-ci check-admin', () => {
     ]);
   });
 
-  it('returns admin: false, auth_status: ok when api returns false', async () => {
+  test('returns admin: false, auth_status: ok when api returns false', async () => {
     const handle = sandbox.installGhShim({
       exitCode: 0,
       stdoutQueue: ['', 'false\n'],
@@ -106,7 +107,7 @@ describe('setup-ci check-admin', () => {
     expect(parsed.auth_status).toBe('ok');
   });
 
-  it('returns admin: false, auth_status: unauthenticated when gh auth fails', async () => {
+  test('returns admin: false, auth_status: unauthenticated when gh auth fails', async () => {
     // gh auth status fails -> exit code != 0.
     const handle = sandbox.installGhShim({exitCode: 1});
     restore = handle.restore;
@@ -125,7 +126,7 @@ describe('setup-ci check-admin', () => {
     expect(parsed.auth_status).toBe('unauthenticated');
   });
 
-  it('returns admin: false, auth_status: api_error when api call fails', async () => {
+  test('returns admin: false, auth_status: api_error when api call fails', async () => {
     // First gh call (auth status) succeeds; second (api) fails.
     const handle = sandbox.installGhShim({
       exitCodeQueue: [0, 1],
@@ -146,13 +147,13 @@ describe('setup-ci check-admin', () => {
     expect(parsed.auth_status).toBe('api_error');
   });
 
-  it('exits non-zero when --owner missing', async () => {
+  test('exits non-zero when --owner missing', async () => {
     const exit = await run(['--repo', 'bar', '--json'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('missing_required_arg');
   });
 
-  it('rejects unknown flags', async () => {
+  test('rejects unknown flags', async () => {
     const exit = await run(['--owner', 'foo', '--repo', 'bar', '--bogus'], {
       cwd: sandbox.root,
     });
@@ -160,7 +161,7 @@ describe('setup-ci check-admin', () => {
     expect(stdio.err.join('')).toContain('unknown flag');
   });
 
-  it('--help exits 0', async () => {
+  test('--help exits 0', async () => {
     const exit = await run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

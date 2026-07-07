@@ -1,9 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {
-  MAX_SNOOZE_MS,
   collectOutstandingGroups,
   collectSnoozedGroups,
   computeActionableCount,
@@ -11,11 +10,11 @@ import {
   findActiveDecline,
   isSuppressed,
   loadDeclines,
+  MAX_SNOOZE_MS,
   saveDeclines,
   totalCount,
-  type CountablePayload,
-  type DeclinedRecord,
 } from './declines.js';
+import type {CountablePayload, DeclinedRecord} from './declines.js';
 
 type Sandbox = {cleanup: () => void; root: string};
 
@@ -51,8 +50,8 @@ const payload: CountablePayload = {
 };
 
 const reactRouterTargets = {
-  'react-router': '7.2.0',
   '@react-router/serve': '7.2.0',
+  'react-router': '7.2.0',
 };
 
 const now = new Date('2026-06-11T18:00:00.000Z');
@@ -123,35 +122,60 @@ describe('declines ledger I/O', () => {
 describe('isSuppressed', () => {
   test('matches on equal group + targets inside the 14-day window', () => {
     expect(
-      isSuppressed('react-router', reactRouterTargets, [declineRecord()], now)
+      isSuppressed({
+        currentTargets: reactRouterTargets,
+        declines: [declineRecord()],
+        group: 'react-router',
+        now,
+      })
     ).toBe(true);
   });
 
   test('does not match when a target version moved', () => {
     const moved = {...reactRouterTargets, 'react-router': '7.3.0'};
-    expect(isSuppressed('react-router', moved, [declineRecord()], now)).toBe(
-      false
-    );
+    expect(
+      isSuppressed({
+        currentTargets: moved,
+        declines: [declineRecord()],
+        group: 'react-router',
+        now,
+      })
+    ).toBe(false);
   });
 
   test('does not match when a new sibling joins the group', () => {
     const grown = {...reactRouterTargets, '@react-router/dev': '7.2.0'};
-    expect(isSuppressed('react-router', grown, [declineRecord()], now)).toBe(
-      false
-    );
+    expect(
+      isSuppressed({
+        currentTargets: grown,
+        declines: [declineRecord()],
+        group: 'react-router',
+        now,
+      })
+    ).toBe(false);
   });
 
   test('still suppressed one day before the 14-day cap', () => {
     const later = new Date(now.getTime() + MAX_SNOOZE_MS - 24 * 3600 * 1000);
     expect(
-      isSuppressed('react-router', reactRouterTargets, [declineRecord()], later)
+      isSuppressed({
+        currentTargets: reactRouterTargets,
+        declines: [declineRecord()],
+        group: 'react-router',
+        now: later,
+      })
     ).toBe(true);
   });
 
   test('resurfaces once the 14-day cap elapses', () => {
     const later = new Date(now.getTime() + MAX_SNOOZE_MS);
     expect(
-      isSuppressed('react-router', reactRouterTargets, [declineRecord()], later)
+      isSuppressed({
+        currentTargets: reactRouterTargets,
+        declines: [declineRecord()],
+        group: 'react-router',
+        now: later,
+      })
     ).toBe(false);
   });
 });
@@ -160,26 +184,36 @@ describe('findActiveDecline', () => {
   test('returns the matching record inside the window', () => {
     const record = declineRecord();
     expect(
-      findActiveDecline('react-router', reactRouterTargets, [record], now)
+      findActiveDecline({
+        currentTargets: reactRouterTargets,
+        declines: [record],
+        group: 'react-router',
+        now,
+      })
     ).toBe(record);
   });
 
   test('returns undefined when nothing matches', () => {
     const moved = {...reactRouterTargets, 'react-router': '7.3.0'};
     expect(
-      findActiveDecline('react-router', moved, [declineRecord()], now)
+      findActiveDecline({
+        currentTargets: moved,
+        declines: [declineRecord()],
+        group: 'react-router',
+        now,
+      })
     ).toBeUndefined();
   });
 
   test('returns undefined once the cap elapses', () => {
     const later = new Date(now.getTime() + MAX_SNOOZE_MS);
     expect(
-      findActiveDecline(
-        'react-router',
-        reactRouterTargets,
-        [declineRecord()],
-        later
-      )
+      findActiveDecline({
+        currentTargets: reactRouterTargets,
+        declines: [declineRecord()],
+        group: 'react-router',
+        now: later,
+      })
     ).toBeUndefined();
   });
 });
@@ -228,11 +262,7 @@ describe('collectSnoozedGroups', () => {
       group: 'singleton:left-pad',
       targets: {'left-pad': '1.4.0'},
     });
-    const result = collectSnoozedGroups(
-      multi,
-      [declineRecord(), leftPad],
-      now
-    );
+    const result = collectSnoozedGroups(multi, [declineRecord(), leftPad], now);
     expect(result.map((entry) => entry.group)).toEqual([
       'react-router',
       'singleton:left-pad',

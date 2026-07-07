@@ -1,8 +1,8 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {findDeadPaths, run} from './dead-paths.js';
 
 type Sandbox = {
@@ -181,7 +181,9 @@ describe('wiki dead-paths', () => {
 
     const dead = findDeadPaths(sandbox.root);
     expect(dead).toHaveLength(2);
-    expect(dead.map((d) => d.path).sort()).toEqual([
+    expect(
+      dead.map((d) => d.path).toSorted((a, b) => a.localeCompare(b))
+    ).toEqual([
       '.gaia/cli/src/missing/index.ts',
       'app/components/Removed/index.tsx',
     ]);
@@ -194,7 +196,9 @@ describe('wiki dead-paths', () => {
     );
 
     const dead = findDeadPaths(sandbox.root);
-    expect(dead.map((d) => d.path).sort()).toEqual([
+    expect(
+      dead.map((d) => d.path).toSorted((a, b) => a.localeCompare(b))
+    ).toEqual([
       '../../../studio/strategy/bar.md',
       'studio/decisions/foo.md',
       'website/src/sections/baz.md',
@@ -232,7 +236,7 @@ describe('wiki dead-paths', () => {
     expect(exit).toBe(0);
 
     const parsed = JSON.parse(stdio.outputs.join('')) as {
-      dead: ReadonlyArray<{filePath: string; line: number; path: string}>;
+      dead: readonly {filePath: string; line: number; path: string}[];
     };
     expect(parsed.dead).toHaveLength(1);
     expect(parsed.dead[0]?.path).toBe('.claude/hooks/gone.sh');

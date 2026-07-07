@@ -379,7 +379,7 @@ describe('gaia scaffold service', () => {
   test('--json emits a single ScaffoldResult JSON line', () => {
     let captured = '';
     const originalWrite = process.stdout.write.bind(process.stdout);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (process.stdout as any).write = (chunk: string | Uint8Array): boolean => {
       captured +=
         typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');

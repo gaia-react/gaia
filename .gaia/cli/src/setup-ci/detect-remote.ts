@@ -22,16 +22,16 @@ const HELP_TEXT = `Usage: gaia setup-ci detect-remote [--json]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-type RunOptions = {
-  cwd?: string;
-};
-
 type DetectOutput = {
   found: boolean;
   host: null | string;
   owner: null | string;
   repo: null | string;
   url: null | string;
+};
+
+type RunOptions = {
+  cwd?: string;
 };
 
 const tryGitRemoteUrl = (cwd: string): null | string => {
@@ -78,17 +78,15 @@ export const run = (
 
     if (token === '--json') {
       json = true;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'setup-ci detect-remote',
+      });
 
-      continue;
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'setup-ci detect-remote',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   let repoRoot: string;

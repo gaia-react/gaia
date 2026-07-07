@@ -29,20 +29,6 @@ const LEDGER_RELATIVE_PATH = path.join(
   'declined-updates.json'
 );
 
-export type DeclinedRecord = {
-  /** ISO-8601 stamp of when the group was snoozed; the 14-day cap counts from here. */
-  declined_at: string;
-  /** Companion group id, or `singleton:<name>`. */
-  group: string;
-  /** Each member's declined target version at snooze time (`name -> version`). */
-  targets: Readonly<Record<string, string>>;
-};
-
-type DeclinedLedger = {
-  declined: readonly DeclinedRecord[];
-  schema_version: 1;
-};
-
 /**
  * Minimal structural view of the emitted updates payload, just the fields the
  * count helpers need. Declared locally (not imported from `run.ts`) so this
@@ -59,6 +45,15 @@ export type CountablePayload = {
     group: string;
     packages: readonly {current: string; latest: string; name: string}[];
   }[];
+};
+
+export type DeclinedRecord = {
+  /** ISO-8601 stamp of when the group was snoozed; the 14-day cap counts from here. */
+  declined_at: string;
+  /** Companion group id, or `singleton:<name>`. */
+  group: string;
+  /** Each member's declined target version at snooze time (`name -> version`). */
+  targets: Readonly<Record<string, string>>;
 };
 
 /**
@@ -78,8 +73,45 @@ export type SnoozedGroup = {
   targets: Readonly<Record<string, string>>;
 };
 
+type DeclinedLedger = {
+  declined: readonly DeclinedRecord[];
+  schema_version: 1;
+};
+
 export const declinedLedgerPath = (cwd: string): string =>
   path.join(cwd, LEDGER_RELATIVE_PATH);
+
+/**
+ * Validate and normalize one raw ledger entry. Returns `null` for anything
+ * malformed (wrong shape, non-string field, non-string target version) so
+ * one bad record only drops itself, not the whole ledger.
+ *
+ * `entry` is cast through `Record<string, unknown>`, not `Partial<DeclinedRecord>`:
+ * the latter would tell TypeScript `targets` can never be `null`, masking the
+ * genuine "arbitrary untrusted JSON" runtime possibility this function exists
+ * to guard against.
+ */
+const parseDeclinedRecord = (entry: unknown): DeclinedRecord | null => {
+  if (entry === null || typeof entry !== 'object') return null;
+
+  const record = entry as Record<string, unknown>;
+  const {declined_at: declinedAt, group, targets: rawTargets} = record;
+
+  if (typeof group !== 'string') return null;
+  if (typeof declinedAt !== 'string') return null;
+  if (rawTargets === null || typeof rawTargets !== 'object') return null;
+
+  const targets: Record<string, string> = {};
+
+  for (const [name, version] of Object.entries(
+    rawTargets as Record<string, unknown>
+  )) {
+    if (typeof version !== 'string') return null;
+    targets[name] = version;
+  }
+
+  return {declined_at: declinedAt, group, targets};
+};
 
 /**
  * Read the ledger, tolerating a missing file, malformed JSON, and individual
@@ -105,37 +137,16 @@ export const loadDeclines = (cwd: string): readonly DeclinedRecord[] => {
 
   if (parsed === null || typeof parsed !== 'object') return [];
 
-  const declined = (parsed as {declined?: unknown}).declined;
+  const {declined} = parsed as {declined?: unknown};
 
   if (!Array.isArray(declined)) return [];
 
   const out: DeclinedRecord[] = [];
 
   for (const entry of declined) {
-    if (entry === null || typeof entry !== 'object') continue;
+    const record = parseDeclinedRecord(entry);
 
-    const obj = entry as Partial<DeclinedRecord>;
-
-    if (typeof obj.group !== 'string') continue;
-    if (typeof obj.declined_at !== 'string') continue;
-    if (obj.targets === null || typeof obj.targets !== 'object') continue;
-
-    const targets: Record<string, string> = {};
-    let wellFormed = true;
-
-    for (const [name, version] of Object.entries(
-      obj.targets as Record<string, unknown>
-    )) {
-      if (typeof version !== 'string') {
-        wellFormed = false;
-        break;
-      }
-      targets[name] = version;
-    }
-
-    if (!wellFormed) continue;
-
-    out.push({declined_at: obj.declined_at, group: obj.group, targets});
+    if (record !== null) out.push(record);
   }
 
   return out;
@@ -168,6 +179,30 @@ const targetsEqual = (
   return true;
 };
 
+export type DeclineQueryArgs = {
+  currentTargets: Readonly<Record<string, string>>;
+  declines: readonly DeclinedRecord[];
+  group: string;
+  now: Date;
+};
+
+/** Whether `record` is the active snooze for `context`'s group and current
+ * target versions (matching group + target snapshot, younger than
+ * `MAX_SNOOZE_MS`). */
+const isActiveDecline = (
+  record: DeclinedRecord,
+  context: Omit<DeclineQueryArgs, 'declines'>
+): boolean => {
+  if (record.group !== context.group) return false;
+  if (!targetsEqual(record.targets, context.currentTargets)) return false;
+
+  const declinedAtMs = Date.parse(record.declined_at);
+
+  if (!Number.isFinite(declinedAtMs)) return false;
+
+  return context.now.getTime() - declinedAtMs < MAX_SNOOZE_MS;
+};
+
 /**
  * The active snooze record for a group's current target versions, or
  * `undefined` when none applies. A record matches when its group and target
@@ -176,37 +211,16 @@ const targetsEqual = (
  * or the cap elapsing breaks the match, so a stale record never matches.
  */
 export const findActiveDecline = (
-  group: string,
-  currentTargets: Readonly<Record<string, string>>,
-  declines: readonly DeclinedRecord[],
-  now: Date
-): DeclinedRecord | undefined => {
-  for (const record of declines) {
-    if (record.group !== group) continue;
-    if (!targetsEqual(record.targets, currentTargets)) continue;
-
-    const declinedAtMs = Date.parse(record.declined_at);
-
-    if (!Number.isFinite(declinedAtMs)) continue;
-    if (now.getTime() - declinedAtMs >= MAX_SNOOZE_MS) continue;
-
-    return record;
-  }
-
-  return undefined;
-};
+  args: DeclineQueryArgs
+): DeclinedRecord | undefined =>
+  args.declines.find((record) => isActiveDecline(record, args));
 
 /**
  * Whether a group's current target versions are currently snoozed. Thin
  * boolean wrapper over {@link findActiveDecline}.
  */
-export const isSuppressed = (
-  group: string,
-  currentTargets: Readonly<Record<string, string>>,
-  declines: readonly DeclinedRecord[],
-  now: Date
-): boolean =>
-  findActiveDecline(group, currentTargets, declines, now) !== undefined;
+export const isSuppressed = (args: DeclineQueryArgs): boolean =>
+  findActiveDecline(args) !== undefined;
 
 /**
  * Aggregate the payload into `group -> {name: latest}`, counting only genuine
@@ -222,32 +236,37 @@ export const collectOutstandingGroups = (
 ): ReadonlyMap<string, Readonly<Record<string, string>>> => {
   const map = new Map<string, Record<string, string>>();
 
-  const record = (
-    group: string,
-    name: string,
-    current: string,
-    latest: string
-  ): void => {
-    if (current === latest) return;
+  const record = (item: {
+    current: string;
+    group: string;
+    latest: string;
+    name: string;
+  }): void => {
+    if (item.current === item.latest) return;
 
-    const existing = map.get(group);
+    const existing = map.get(item.group);
 
     if (existing === undefined) {
-      map.set(group, {[name]: latest});
+      map.set(item.group, {[item.name]: item.latest});
 
       return;
     }
 
-    existing[name] = latest;
+    existing[item.name] = item.latest;
   };
 
   for (const entry of payload.wave_a) {
-    record(entry.group, entry.name, entry.current, entry.latest);
+    record(entry);
   }
 
   for (const groupEntry of payload.wave_b) {
     for (const pkg of groupEntry.packages) {
-      record(groupEntry.group, pkg.name, pkg.current, pkg.latest);
+      record({
+        current: pkg.current,
+        group: groupEntry.group,
+        latest: pkg.latest,
+        name: pkg.name,
+      });
     }
   }
 
@@ -277,9 +296,14 @@ export const computeActionableCount = (
   let count = 0;
 
   for (const [group, targets] of collectOutstandingGroups(payload)) {
-    if (isSuppressed(group, targets, declines, now)) continue;
+    const suppressed = isSuppressed({
+      currentTargets: targets,
+      declines,
+      group,
+      now,
+    });
 
-    count += Object.keys(targets).length;
+    if (!suppressed) count += Object.keys(targets).length;
   }
 
   return count;
@@ -300,19 +324,24 @@ export const collectSnoozedGroups = (
   const out: SnoozedGroup[] = [];
 
   for (const [group, targets] of collectOutstandingGroups(payload)) {
-    const record = findActiveDecline(group, targets, declines, now);
-
-    if (record === undefined) continue;
-
-    // `declined_at` parsed finite already; findActiveDecline filtered NaN.
-    const resurfacesAtMs = Date.parse(record.declined_at) + MAX_SNOOZE_MS;
-
-    out.push({
+    const record = findActiveDecline({
+      currentTargets: targets,
+      declines,
       group,
-      resurfaces_at: new Date(resurfacesAtMs).toISOString(),
-      snoozed_at: record.declined_at,
-      targets,
+      now,
     });
+
+    if (record !== undefined) {
+      // `declined_at` parsed finite already; findActiveDecline filtered NaN.
+      const resurfacesAtMs = Date.parse(record.declined_at) + MAX_SNOOZE_MS;
+
+      out.push({
+        group,
+        resurfaces_at: new Date(resurfacesAtMs).toISOString(),
+        snoozed_at: record.declined_at,
+        targets,
+      });
+    }
   }
 
   return out.toSorted((a, b) =>

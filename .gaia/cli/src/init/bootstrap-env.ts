@@ -36,7 +36,7 @@ export const run = (
   argv: readonly string[],
   options: RunOptions = {}
 ): number => {
-  if (argv.length > 0 && HELP_TOKENS.has(argv[0] as string)) {
+  if (argv.length > 0 && HELP_TOKENS.has(argv[0])) {
     process.stdout.write(HELP_TEXT);
 
     return EXIT_CODES.OK;
@@ -45,7 +45,7 @@ export const run = (
   if (argv.length > 0) {
     structuredError({
       code: 'invalid_arguments',
-      message: `unknown flag: ${argv[0] as string}`,
+      message: `unknown flag: ${argv[0]}`,
       subcommand: 'init bootstrap-env',
     });
 

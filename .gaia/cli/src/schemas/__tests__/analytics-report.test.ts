@@ -1,4 +1,5 @@
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
+import {z} from 'zod';
 import {AnalyticsReportSchema} from '../analytics-report.js';
 
 const baseEngagement = {
@@ -43,11 +44,11 @@ const baseReport = {
 };
 
 describe('schemas/analytics-report', () => {
-  it('accepts a minimal good report (empty patterns/adaptations)', () => {
+  test('accepts a minimal good report (empty patterns/adaptations)', () => {
     expect(() => AnalyticsReportSchema.parse(baseReport)).not.toThrow();
   });
 
-  it('accepts a report with patterns and adaptations populated', () => {
+  test('accepts a report with patterns and adaptations populated', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,
@@ -80,61 +81,61 @@ describe('schemas/analytics-report', () => {
     ).not.toThrow();
   });
 
-  it('audit-block all-true assertions: rejects no_event_data: false', () => {
+  test('audit-block all-true assertions: rejects no_event_data: false', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,
         audit: {...baseAudit, no_event_data: false},
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('audit-block all-true assertions: rejects no_user_paths: false', () => {
+  test('audit-block all-true assertions: rejects no_user_paths: false', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,
         audit: {...baseAudit, no_user_paths: false},
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('audit-block all-true assertions: rejects no_user_text: false', () => {
+  test('audit-block all-true assertions: rejects no_user_text: false', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,
         audit: {...baseAudit, no_user_text: false},
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('audit-block all-true assertions: rejects no_project_identifiers: false', () => {
+  test('audit-block all-true assertions: rejects no_project_identifiers: false', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,
         audit: {...baseAudit, no_project_identifiers: false},
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('rejects schema_version != 1', () => {
+  test('rejects schema_version != 1', () => {
     expect(() =>
       AnalyticsReportSchema.parse({...baseReport, schema_version: 2})
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('rejects report_window_days != 30', () => {
+  test('rejects report_window_days != 30', () => {
     expect(() =>
       AnalyticsReportSchema.parse({...baseReport, report_window_days: 7})
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('rejects unknown top-level keys (strict)', () => {
+  test('rejects unknown top-level keys (strict)', () => {
     expect(() =>
       AnalyticsReportSchema.parse({...baseReport, extra: 'leak'})
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('rejects pattern strength outside [0, 1]', () => {
+  test('rejects pattern strength outside [0, 1]', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,
@@ -149,10 +150,10 @@ describe('schemas/analytics-report', () => {
           },
         ],
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('accepts an ISO-8601 datetime for report_generated_at', () => {
+  test('accepts an ISO-8601 datetime for report_generated_at', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,
@@ -161,16 +162,16 @@ describe('schemas/analytics-report', () => {
     ).not.toThrow();
   });
 
-  it('rejects a non-datetime string for report_generated_at', () => {
+  test('rejects a non-datetime string for report_generated_at', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,
         report_generated_at: 'not-a-timestamp',
       })
-    ).toThrow();
+    ).toThrow(z.ZodError);
   });
 
-  it('accepts adaptation with null outcome', () => {
+  test('accepts adaptation with null outcome', () => {
     expect(() =>
       AnalyticsReportSchema.parse({
         ...baseReport,

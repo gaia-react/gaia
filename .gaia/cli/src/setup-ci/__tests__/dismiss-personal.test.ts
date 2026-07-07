@@ -1,10 +1,11 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {localAutomationPath} from '../../automation/paths.js';
 import {readLocalAutomation} from '../../schemas/local-automation.js';
 import {run} from '../dismiss-personal.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {assertStatusOk, setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
   err: string[];
@@ -53,19 +54,18 @@ describe('setup-ci dismiss-personal', () => {
     vi.restoreAllMocks();
   });
 
-  it('creates the local file when missing', () => {
+  test('creates the local file when missing', () => {
     const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
     const result = readLocalAutomation(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.local.nudge_dismissed).toBe(true);
-    }
+    expect(result.local.nudge_dismissed).toBe(true);
   });
 
-  it('flips nudge_dismissed when existing local has it false', () => {
+  test('flips nudge_dismissed when existing local has it false', () => {
     mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
       recursive: true,
     });
@@ -80,13 +80,12 @@ describe('setup-ci dismiss-personal', () => {
 
     const result = readLocalAutomation(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.local.nudge_dismissed).toBe(true);
-    }
+    expect(result.local.nudge_dismissed).toBe(true);
   });
 
-  it('is idempotent (final state unchanged when already dismissed)', () => {
+  test('is idempotent (final state unchanged when already dismissed)', () => {
     mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
       recursive: true,
     });
@@ -101,13 +100,12 @@ describe('setup-ci dismiss-personal', () => {
 
     const result = readLocalAutomation(sandbox.root);
     expect(result.status).toBe('ok');
+    assertStatusOk(result);
 
-    if (result.status === 'ok') {
-      expect(result.local.nudge_dismissed).toBe(true);
-    }
+    expect(result.local.nudge_dismissed).toBe(true);
   });
 
-  it('refuses with local_malformed when existing local is malformed', () => {
+  test('refuses with local_malformed when existing local is malformed', () => {
     mkdirSync(path.dirname(localAutomationPath(sandbox.root)), {
       recursive: true,
     });
@@ -122,7 +120,7 @@ describe('setup-ci dismiss-personal', () => {
     expect(stdio.err.join('')).toContain('local_malformed');
   });
 
-  it('emits dismissed: true JSON on success', () => {
+  test('emits dismissed: true JSON on success', () => {
     const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
@@ -133,13 +131,13 @@ describe('setup-ci dismiss-personal', () => {
     expect(parsed.dismissed).toBe(true);
   });
 
-  it('rejects unexpected arguments', () => {
+  test('rejects unexpected arguments', () => {
     const exit = run(['--bogus'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unexpected argument');
   });
 
-  it('--help exits 0', () => {
+  test('--help exits 0', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.out.join('')).toContain('Usage:');

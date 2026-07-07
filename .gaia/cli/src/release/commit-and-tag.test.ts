@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia-maintainer release commit-and-tag`.
  *
@@ -5,7 +6,8 @@
  * runners (for the tag-push path, where pushing to a remote isn't
  * portable in CI).
  */
-import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -15,8 +17,8 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {type CommandRunner, run} from './commit-and-tag.js';
+import {run} from './commit-and-tag.js';
+import type {CommandRunner} from './commit-and-tag.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -105,6 +107,61 @@ const captureStdio = (): {
     },
   };
 };
+
+const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
+  output: ['', stdout, ''] as never,
+  pid: 0,
+  signal: null,
+  status: 0,
+  stderr: '',
+  stdout,
+});
+
+const failResult = (
+  status: number,
+  stderr: string
+): SpawnSyncReturns<string> => ({
+  output: ['', '', stderr] as never,
+  pid: 0,
+  signal: null,
+  status,
+  stderr,
+  stdout: '',
+});
+
+type RecordedCall = {
+  args: string[];
+  command: string;
+};
+
+const buildRecordingRunner =
+  (
+    scripted: {
+      argv: readonly string[];
+      result: SpawnSyncReturns<string>;
+    }[],
+    recorded: RecordedCall[]
+  ): CommandRunner =>
+  (command, args) => {
+    recorded.push({args: [...args], command});
+
+    for (const entry of scripted) {
+      if (entry.argv.length === args.length) {
+        let match = true;
+
+        for (let index = 0; index < entry.argv.length; index += 1) {
+          if (entry.argv[index] !== args[index]) {
+            match = false;
+            break;
+          }
+        }
+
+        if (match) return entry.result;
+      }
+    }
+
+    return okResult('');
+  };
 
 describe('release commit-and-tag --commit', () => {
   let sandbox: Sandbox;
@@ -225,60 +282,6 @@ describe('release commit-and-tag --commit', () => {
     expect(errors).toContain('rolled back the release commit');
   });
 });
-
-const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
-  output: ['', stdout, ''] as never,
-  pid: 0,
-  signal: null,
-  status: 0,
-  stderr: '',
-  stdout,
-});
-
-const failResult = (
-  status: number,
-  stderr: string
-): SpawnSyncReturns<string> => ({
-  output: ['', '', stderr] as never,
-  pid: 0,
-  signal: null,
-  status,
-  stderr,
-  stdout: '',
-});
-
-type RecordedCall = {
-  args: string[];
-  command: string;
-};
-
-const buildRecordingRunner =
-  (
-    scripted: Array<{
-      argv: readonly string[];
-      result: SpawnSyncReturns<string>;
-    }>,
-    recorded: RecordedCall[]
-  ): CommandRunner =>
-  (command, args) => {
-    recorded.push({args: [...args], command});
-
-    for (const entry of scripted) {
-      if (entry.argv.length !== args.length) continue;
-      let match = true;
-
-      for (let index = 0; index < entry.argv.length; index += 1) {
-        if (entry.argv[index] !== args[index]) {
-          match = false;
-          break;
-        }
-      }
-
-      if (match) return entry.result;
-    }
-
-    return okResult('');
-  };
 
 describe('release commit-and-tag --tag', () => {
   let sandbox: Sandbox;

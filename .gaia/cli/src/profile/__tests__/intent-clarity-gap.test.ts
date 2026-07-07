@@ -126,8 +126,10 @@ describe('detectIntentClarityGap (unit)', () => {
     }
 
     // Amend 2 of those closed specs.
-    events.push(buildSpecAmended('SPEC-000', 100));
-    events.push(buildSpecAmended('SPEC-001', 101));
+    events.push(
+      buildSpecAmended('SPEC-000', 100),
+      buildSpecAmended('SPEC-001', 101)
+    );
     const results = detectIntentClarityGap({events, windowDays: 30});
     const visual = results.find((entry) => entry.area_tag === 'visual');
     const amendedRate = visual?.components.find(
@@ -146,8 +148,10 @@ describe('detectIntentClarityGap (unit)', () => {
     // 10 closed specs in `visual`; amend all 10 of them.
     for (let index = 0; index < 10; index += 1) {
       const specId = `SPEC-${index.toString().padStart(3, '0')}`;
-      events.push(buildTimeToResolved(specId, 'visual', 5, index));
-      events.push(buildSpecAmended(specId, 100 + index));
+      events.push(
+        buildTimeToResolved(specId, 'visual', 5, index),
+        buildSpecAmended(specId, 100 + index)
+      );
     }
     const results = detectIntentClarityGap({events, windowDays: 30});
     const visual = results.find((entry) => entry.area_tag === 'visual');

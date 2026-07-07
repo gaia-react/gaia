@@ -1,5 +1,5 @@
 import {load} from 'js-yaml';
-import {describe, expect, it} from 'vitest';
+import {describe, expect, test} from 'vitest';
 import {z} from 'zod';
 import type {
   AutomationConfig,
@@ -69,22 +69,27 @@ const tools: readonly ToolId[] = [
   'stale-branches',
 ];
 
-describe('workflow YAML shape', () => {
-  it.each(tools)('%s passes the WorkflowSchema', (tool) => {
-    const rendered = renderForTool(tool);
-    const parsed = load(rendered) as unknown;
-    const result = WorkflowSchema.safeParse(parsed);
+// Extracted so the `if (!result.success) throw` lives outside the test
+// body (vitest/no-conditional-in-test forbids conditionals in test bodies);
+// the `expect`-prefixed name still satisfies vitest/expect-expect.
+const expectWorkflowSchemaValid = (tool: ToolId, rendered: string): void => {
+  const parsed = load(rendered);
+  const result = WorkflowSchema.safeParse(parsed);
 
-    if (!result.success) {
-      // Surface the issue path for fast diagnosis.
-      throw new Error(
-        `${tool} schema mismatch: ${JSON.stringify(result.error.issues, null, 2)}`
-      );
-    }
-    expect(result.success).toBe(true);
+  if (!result.success) {
+    // Surface the issue path for fast diagnosis.
+    throw new Error(
+      `${tool} schema mismatch: ${JSON.stringify(result.error.issues, null, 2)}`
+    );
+  }
+};
+
+describe('workflow YAML shape', () => {
+  test.each(tools)('%s passes the WorkflowSchema', (tool) => {
+    expectWorkflowSchemaValid(tool, renderForTool(tool));
   });
 
-  it.each(tools)('%s declares permissions.contents = write', (tool) => {
+  test.each(tools)('%s declares permissions.contents = write', (tool) => {
     const parsed = load(renderForTool(tool)) as {
       permissions: Record<string, string>;
     };

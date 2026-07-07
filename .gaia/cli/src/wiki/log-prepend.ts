@@ -34,17 +34,6 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const VALID_DECISIONS = new Set(['RE_ANCHOR', 'SKIP', 'WORTHY']);
 const FRONTMATTER_FENCE = '---';
 
-type ParsedFlags = {
-  decision: string;
-  reason: string;
-  sha: string;
-};
-
-type FlagParseSuccess = {
-  flags: ParsedFlags;
-  ok: true;
-};
-
 type FlagParseFailure = {
   message: string;
   ok: false;
@@ -52,57 +41,62 @@ type FlagParseFailure = {
 
 type FlagParseResult = FlagParseFailure | FlagParseSuccess;
 
+type FlagParseSuccess = {
+  flags: ParsedFlags;
+  ok: true;
+};
+
+type ParsedFlags = {
+  decision: string;
+  reason: string;
+  sha: string;
+};
+
 const takeValue = (
   argv: readonly string[],
   index: number,
   flag: string
 ): {message: string; ok: false} | {ok: true; value: string} => {
-  const value = argv[index];
-
-  if (value === undefined) {
+  // `noUncheckedIndexedAccess` is off, so TS types `argv[index]` as
+  // `string`, not `string | undefined`; check the bound explicitly instead
+  // of comparing the indexed value to `undefined`.
+  if (index >= argv.length) {
     return {message: `${flag} requires a value`, ok: false};
   }
 
-  return {ok: true, value};
+  return {ok: true, value: argv[index]};
+};
+
+type FlagKey = 'decision' | 'reason' | 'sha';
+
+// Explicitly `| undefined` (rather than relying on the `Record`'s index
+// signature) so the `key === undefined` check below reflects a genuine
+// runtime possibility (an unrecognized flag) that TS can't otherwise see.
+const FLAG_BY_TOKEN: Readonly<Record<string, FlagKey | undefined>> = {
+  '--decision': 'decision',
+  '--reason': 'reason',
+  '--sha': 'sha',
 };
 
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
-  let sha: string | undefined;
-  let decision: string | undefined;
-  let reason: string | undefined;
+  const values: Partial<Record<FlagKey, string>> = {};
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index] as string;
+    const token = argv[index];
+    const key = FLAG_BY_TOKEN[token];
 
-    if (token === '--sha') {
-      const taken = takeValue(argv, index + 1, '--sha');
-
-      if (!taken.ok) return taken;
-      sha = taken.value;
-      index += 1;
-      continue;
+    if (key === undefined) {
+      return {message: `unknown flag: ${token}`, ok: false};
     }
 
-    if (token === '--decision') {
-      const taken = takeValue(argv, index + 1, '--decision');
+    const taken = takeValue(argv, index + 1, token);
 
-      if (!taken.ok) return taken;
-      decision = taken.value;
-      index += 1;
-      continue;
-    }
-
-    if (token === '--reason') {
-      const taken = takeValue(argv, index + 1, '--reason');
-
-      if (!taken.ok) return taken;
-      reason = taken.value;
-      index += 1;
-      continue;
-    }
-
-    return {message: `unknown flag: ${token}`, ok: false};
+    if (!taken.ok) return taken;
+    values[key] = taken.value;
+    index += 1;
   }
+
+  const {decision, reason, sha} = values;
 
   if (sha === undefined) return {message: '--sha is required', ok: false};
   if (decision === undefined)
@@ -129,9 +123,9 @@ const todayUtc = (): string => {
 };
 
 type FrontmatterScan =
+  | {endLineIndex: number; kind: 'present'}
   | {kind: 'malformed'}
-  | {kind: 'missing'}
-  | {endLineIndex: number; kind: 'present'};
+  | {kind: 'missing'};
 
 const scanFrontmatter = (lines: readonly string[]): FrontmatterScan => {
   if ((lines[0] ?? '').trim() !== FRONTMATTER_FENCE) {
@@ -189,7 +183,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const first = argv[0] as string;
+  const first = argv[0];
 
   if (HELP_TOKENS.has(first)) {
     process.stdout.write(HELP_TEXT);
@@ -250,11 +244,11 @@ export const run = (
   }
 
   const date = options.today ?? todayUtc();
-  const newLine = `- ${date} ${parsed.flags.sha} ${parsed.flags.decision} - ${parsed.flags.reason}`;
+  const newline = `- ${date} ${parsed.flags.sha} ${parsed.flags.decision} - ${parsed.flags.reason}`;
   const insertionIndex = findInsertionIndex(lines, scan.endLineIndex);
   const next = [
     ...lines.slice(0, insertionIndex),
-    newLine,
+    newline,
     ...lines.slice(insertionIndex),
   ].join('\n');
 

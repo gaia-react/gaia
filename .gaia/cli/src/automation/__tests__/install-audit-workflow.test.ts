@@ -1,8 +1,9 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {run} from '../install-audit-workflow.js';
-import {setupSandbox, type Sandbox} from './sandbox.js';
+import {setupSandbox} from './sandbox.js';
+import type {Sandbox} from './sandbox.js';
 
 const captureIo = () => {
   const errors: string[] = [];
@@ -47,7 +48,7 @@ describe('automation install-audit-workflow', () => {
     vi.restoreAllMocks();
   });
 
-  it('writes code-review-audit.yml to the specified out-dir', () => {
+  test('writes code-review-audit.yml to the specified out-dir', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -56,7 +57,7 @@ describe('automation install-audit-workflow', () => {
     expect(existsSync(path.join(outDir, 'code-review-audit.yml'))).toBe(true);
   });
 
-  it('writes a non-trivial file with expected content', () => {
+  test('writes a non-trivial file with expected content', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -69,7 +70,7 @@ describe('automation install-audit-workflow', () => {
     expect(content).toContain('code-review-audit');
   });
 
-  it('reports wrote <path>/code-review-audit.yml on stdout', () => {
+  test('reports wrote <path>/code-review-audit.yml on stdout', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -79,7 +80,7 @@ describe('automation install-audit-workflow', () => {
     );
   });
 
-  it('creates a missing --out-dir with mkdir -p semantics', () => {
+  test('creates a missing --out-dir with mkdir -p semantics', () => {
     const outDir = path.join(sandbox.root, 'nested', 'deeper', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -88,7 +89,7 @@ describe('automation install-audit-workflow', () => {
     expect(existsSync(path.join(outDir, 'code-review-audit.yml'))).toBe(true);
   });
 
-  it('in --dry-run mode prints byte count and target, writes nothing', () => {
+  test('in --dry-run mode prints byte count and target, writes nothing', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir, '--dry-run'], {cwd: sandbox.root});
@@ -101,7 +102,7 @@ describe('automation install-audit-workflow', () => {
     );
   });
 
-  it('is idempotent: overwrites an existing file on repeat invocation', () => {
+  test('is idempotent: overwrites an existing file on repeat invocation', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -119,7 +120,7 @@ describe('automation install-audit-workflow', () => {
     expect(second).toBe(first);
   });
 
-  it('rejects unknown flags with invalid_arguments', () => {
+  test('rejects unknown flags with invalid_arguments', () => {
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir, '--bogus'], {cwd: sandbox.root});
@@ -128,28 +129,28 @@ describe('automation install-audit-workflow', () => {
     expect(io.errors.join('')).toContain('"code":"invalid_arguments"');
   });
 
-  it('rejects missing --out-dir value with invalid_arguments', () => {
+  test('rejects missing --out-dir value with invalid_arguments', () => {
     const exit = run(['--out-dir'], {cwd: sandbox.root});
 
     expect(exit).not.toBe(0);
     expect(io.errors.join('')).toContain('--out-dir requires a path argument');
   });
 
-  it('rejects --out-dir followed by another flag', () => {
+  test('rejects --out-dir followed by another flag', () => {
     const exit = run(['--out-dir', '--dry-run'], {cwd: sandbox.root});
 
     expect(exit).not.toBe(0);
     expect(io.errors.join('')).toContain('--out-dir requires a path argument');
   });
 
-  it('exits non-zero when --out-dir is omitted entirely', () => {
+  test('exits non-zero when --out-dir is omitted entirely', () => {
     const exit = run(['--dry-run'], {cwd: sandbox.root});
 
     expect(exit).not.toBe(0);
     expect(io.errors.join('')).toContain('--out-dir is required');
   });
 
-  it('emits help text and exits 0 when --help is passed', () => {
+  test('emits help text and exits 0 when --help is passed', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
 
     expect(exit).toBe(0);

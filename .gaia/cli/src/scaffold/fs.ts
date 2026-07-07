@@ -41,6 +41,7 @@ export const writeFileIfAbsent = (
     const existing = readFileSync(absPath, 'utf8');
 
     if (existing === contents) return {written: false};
+
     throw new Error(`refusing to overwrite ${absPath}`);
   }
 

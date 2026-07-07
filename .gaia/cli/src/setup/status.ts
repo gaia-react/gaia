@@ -23,8 +23,8 @@ import {
   pendingSteps,
   readStateFile,
   resolveMainWorktreeRoot,
-  type SetupStep,
 } from './util/state-file.js';
+import type {SetupStep} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup status [--json]
 
@@ -64,8 +64,10 @@ const printHuman = (output: StatusOutput): void => {
   if (output.completed_steps.length > 0) {
     lines.push(`  Completed: ${output.completed_steps.join(', ')}`);
   }
-  lines.push(`  Pending: ${output.pending_steps.join(', ')}`);
-  lines.push('  Run /setup-gaia to finish.');
+  lines.push(
+    `  Pending: ${output.pending_steps.join(', ')}`,
+    '  Run /setup-gaia to finish.'
+  );
   process.stdout.write(`${lines.join('\n')}\n`);
 };
 
@@ -84,16 +86,15 @@ export const run = (
 
     if (token === '--json') {
       json = true;
-      continue;
+    } else {
+      structuredError({
+        code: 'invalid_arguments',
+        message: `unknown flag: ${token}`,
+        subcommand: 'setup status',
+      });
+
+      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
     }
-
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown flag: ${token}`,
-      subcommand: 'setup status',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
   let repoRoot: string;

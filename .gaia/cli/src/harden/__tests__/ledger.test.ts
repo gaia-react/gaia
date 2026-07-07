@@ -1,3 +1,6 @@
+/* eslint-disable no-bitwise -- POSIX file modes are bitfields; `& 0o777`
+   is the standard idiom for masking off the permission bits. */
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
   mkdtempSync,
@@ -8,12 +11,9 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {EXIT_CODES} from '../../exit.js';
-import {
-  declineLedgerPath,
-  type DeclineLedger,
-} from '../../schemas/decline-ledger.js';
+import {declineLedgerPath} from '../../schemas/decline-ledger.js';
+import type {DeclineLedger} from '../../schemas/decline-ledger.js';
 import {run} from '../ledger.js';
 
 type Sandbox = {
@@ -84,7 +84,7 @@ describe('harden-ledger', () => {
   });
 
   describe('list', () => {
-    it('prints the empty ledger and exits 0 on a fresh repo', () => {
+    test('prints the empty ledger and exits 0 on a fresh repo', () => {
       const code = run(['list'], {cwd: sandbox.root});
 
       expect(code).toBe(EXIT_CODES.OK);
@@ -93,9 +93,15 @@ describe('harden-ledger', () => {
   });
 
   describe('record', () => {
-    it('creates exactly one entry with an ISO timestamp and pr count', () => {
+    test('creates exactly one entry with an ISO timestamp and pr count', () => {
       const code = run(
-        ['record', '--finding-class', 'react-doctor/no-generic-handler-names', '--pr-count', '7'],
+        [
+          'record',
+          '--finding-class',
+          'react-doctor/no-generic-handler-names',
+          '--pr-count',
+          '7',
+        ],
         {cwd: sandbox.root, now: () => FIXED_NOW}
       );
 
@@ -110,15 +116,21 @@ describe('harden-ledger', () => {
       });
     });
 
-    it('upserts: re-recording the same class overwrites count and timestamp', () => {
-      run(['record', '--finding-class', 'axe/color-contrast', '--pr-count', '7'], {
-        cwd: sandbox.root,
-        now: () => new Date('2026-06-01T00:00:00.000Z'),
-      });
-      run(['record', '--finding-class', 'axe/color-contrast', '--pr-count', '9'], {
-        cwd: sandbox.root,
-        now: () => new Date('2026-06-05T00:00:00.000Z'),
-      });
+    test('upserts: re-recording the same class overwrites count and timestamp', () => {
+      run(
+        ['record', '--finding-class', 'axe/color-contrast', '--pr-count', '7'],
+        {
+          cwd: sandbox.root,
+          now: () => new Date('2026-06-01T00:00:00.000Z'),
+        }
+      );
+      run(
+        ['record', '--finding-class', 'axe/color-contrast', '--pr-count', '9'],
+        {
+          cwd: sandbox.root,
+          now: () => new Date('2026-06-05T00:00:00.000Z'),
+        }
+      );
 
       const ledger = readLedger(sandbox.ledgerPath);
       expect(ledger.declines).toHaveLength(1);
@@ -129,7 +141,7 @@ describe('harden-ledger', () => {
       });
     });
 
-    it('keeps distinct classes as separate entries', () => {
+    test('keeps distinct classes as separate entries', () => {
       run(['record', '--finding-class', 'knip/exports', '--pr-count', '3'], {
         cwd: sandbox.root,
       });
@@ -141,7 +153,7 @@ describe('harden-ledger', () => {
       expect(ledger.declines).toHaveLength(2);
     });
 
-    it('creates the harden dir with mode 755', () => {
+    test('creates the harden dir with mode 755', () => {
       run(['record', '--finding-class', 'knip/types', '--pr-count', '1'], {
         cwd: sandbox.root,
       });
@@ -150,13 +162,13 @@ describe('harden-ledger', () => {
       expect(mode).toBe(0o755);
     });
 
-    it('exits non-zero when --finding-class is missing', () => {
+    test('exits non-zero when --finding-class is missing', () => {
       const code = run(['record', '--pr-count', '7'], {cwd: sandbox.root});
 
       expect(code).not.toBe(EXIT_CODES.OK);
     });
 
-    it('exits non-zero when --pr-count is missing', () => {
+    test('exits non-zero when --pr-count is missing', () => {
       const code = run(['record', '--finding-class', 'knip/exports'], {
         cwd: sandbox.root,
       });
@@ -167,33 +179,60 @@ describe('harden-ledger', () => {
 
   describe('is-suppressed', () => {
     beforeEach(() => {
-      run(['record', '--finding-class', 'rule/switch-statement', '--pr-count', '7'], {
-        cwd: sandbox.root,
-        now: () => FIXED_NOW,
-      });
+      run(
+        [
+          'record',
+          '--finding-class',
+          'rule/switch-statement',
+          '--pr-count',
+          '7',
+        ],
+        {
+          cwd: sandbox.root,
+          now: () => FIXED_NOW,
+        }
+      );
     });
 
-    it('exits 0 when below the re-surface threshold', () => {
+    test('exits 0 when below the re-surface threshold', () => {
       const code = run(
-        ['is-suppressed', '--finding-class', 'rule/switch-statement', '--current-pr-count', '8'],
+        [
+          'is-suppressed',
+          '--finding-class',
+          'rule/switch-statement',
+          '--current-pr-count',
+          '8',
+        ],
         {cwd: sandbox.root}
       );
 
       expect(code).toBe(EXIT_CODES.OK);
     });
 
-    it('exits non-zero at the re-surface threshold (>= 3)', () => {
+    test('exits non-zero at the re-surface threshold (>= 3)', () => {
       const code = run(
-        ['is-suppressed', '--finding-class', 'rule/switch-statement', '--current-pr-count', '10'],
+        [
+          'is-suppressed',
+          '--finding-class',
+          'rule/switch-statement',
+          '--current-pr-count',
+          '10',
+        ],
         {cwd: sandbox.root}
       );
 
       expect(code).not.toBe(EXIT_CODES.OK);
     });
 
-    it('exits non-zero for an unknown class', () => {
+    test('exits non-zero for an unknown class', () => {
       const code = run(
-        ['is-suppressed', '--finding-class', 'holistic/n-plus-one', '--current-pr-count', '99'],
+        [
+          'is-suppressed',
+          '--finding-class',
+          'holistic/n-plus-one',
+          '--current-pr-count',
+          '99',
+        ],
         {cwd: sandbox.root}
       );
 
@@ -211,7 +250,7 @@ describe('harden-ledger', () => {
       });
     });
 
-    it('removes entries not in the window-classes set, keeps those in it', () => {
+    test('removes entries not in the window-classes set, keeps those in it', () => {
       const code = run(['prune', '--window-classes', 'knip/exports'], {
         cwd: sandbox.root,
       });
@@ -223,7 +262,7 @@ describe('harden-ledger', () => {
       expect(ledger.declines[0]?.finding_class).toBe('knip/exports');
     });
 
-    it('is idempotent: a second prune with the same set is a no-op', () => {
+    test('is idempotent: a second prune with the same set is a no-op', () => {
       run(['prune', '--window-classes', 'knip/exports'], {cwd: sandbox.root});
       const code = run(['prune', '--window-classes', 'knip/exports'], {
         cwd: sandbox.root,
@@ -235,7 +274,7 @@ describe('harden-ledger', () => {
       expect(ledger.declines).toHaveLength(1);
     });
 
-    it('prunes all entries when given an empty set', () => {
+    test('prunes all entries when given an empty set', () => {
       const code = run(['prune', '--window-classes', ''], {cwd: sandbox.root});
 
       expect(code).toBe(EXIT_CODES.OK);
@@ -246,7 +285,7 @@ describe('harden-ledger', () => {
   });
 
   describe('corrupt file', () => {
-    it('list fails loud (non-zero, structured error) rather than treating as empty', () => {
+    test('list fails loud (non-zero, structured error) rather than treating as empty', () => {
       run(['record', '--finding-class', 'knip/exports', '--pr-count', '1'], {
         cwd: sandbox.root,
       });
@@ -258,19 +297,25 @@ describe('harden-ledger', () => {
       expect(io.err.join('')).toContain('malformed_ledger');
     });
 
-    it('is-suppressed fails loud rather than re-surfacing a declined class', () => {
+    test('is-suppressed fails loud rather than re-surfacing a declined class', () => {
       // Seed a valid entry first so the harden dir exists, then corrupt it.
       run(['record', '--finding-class', 'knip/exports', '--pr-count', '1'], {
         cwd: sandbox.root,
       });
       writeFileSync(
         sandbox.ledgerPath,
-        JSON.stringify({version: 2, declines: 'nope'}),
+        JSON.stringify({declines: 'nope', version: 2}),
         'utf8'
       );
 
       const code = run(
-        ['is-suppressed', '--finding-class', 'knip/exports', '--current-pr-count', '1'],
+        [
+          'is-suppressed',
+          '--finding-class',
+          'knip/exports',
+          '--current-pr-count',
+          '1',
+        ],
         {cwd: sandbox.root}
       );
 
@@ -280,7 +325,7 @@ describe('harden-ledger', () => {
   });
 
   describe('unknown subcommand', () => {
-    it('exits non-zero', () => {
+    test('exits non-zero', () => {
       const code = run(['frobnicate'], {cwd: sandbox.root});
 
       expect(code).not.toBe(EXIT_CODES.OK);

@@ -40,8 +40,8 @@ export const defaultLedgerRunner: LedgerRunner = (argv, cwd) => {
 
   return {
     exitCode: result.status ?? 1,
-    stderr: result.stderr ?? '',
-    stdout: result.stdout ?? '',
+    stderr: result.stderr,
+    stdout: result.stdout,
   };
 };
 
@@ -50,10 +50,14 @@ type BridgeOptions = {
   runLedger?: LedgerRunner;
 };
 
-export const makeLedgerSuppressionPredicate = ({
-  cwd,
-  runLedger = defaultLedgerRunner,
-}: BridgeOptions): ((findingClass: string, currentPrCount: number) => boolean) =>
+export const makeLedgerSuppressionPredicate =
+  ({
+    cwd,
+    runLedger = defaultLedgerRunner,
+  }: BridgeOptions): ((
+    findingClass: string,
+    currentPrCount: number
+  ) => boolean) =>
   (findingClass, currentPrCount) => {
     const result = runLedger(
       [

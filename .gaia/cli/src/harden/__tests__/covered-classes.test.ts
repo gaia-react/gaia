@@ -1,7 +1,7 @@
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {coveredClassesFromRules} from '../covered-classes.js';
 import {markerComment} from '../marker.js';
 
@@ -16,7 +16,7 @@ describe('coveredClassesFromRules', () => {
     rmSync(dir, {force: true, recursive: true});
   });
 
-  it('reads the promoted finding_class from a provenance-marked rule', () => {
+  test('reads the promoted finding_class from a provenance-marked rule', () => {
     writeFileSync(
       path.join(dir, 'switch-statement.md'),
       [
@@ -29,19 +29,21 @@ describe('coveredClassesFromRules', () => {
       ].join('\n')
     );
 
-    expect(coveredClassesFromRules(dir).has('rule/switch-statement')).toBe(true);
+    expect(coveredClassesFromRules(dir).has('rule/switch-statement')).toBe(
+      true
+    );
   });
 
-  it('returns an empty set for a directory with no marked rules', () => {
+  test('returns an empty set for a directory with no marked rules', () => {
     writeFileSync(path.join(dir, 'plain.md'), '# Just a rule\nno marker here');
     expect(coveredClassesFromRules(dir).size).toBe(0);
   });
 
-  it('returns an empty set when the directory does not exist', () => {
+  test('returns an empty set when the directory does not exist', () => {
     expect(coveredClassesFromRules(path.join(dir, 'nope')).size).toBe(0);
   });
 
-  it('collects markers across multiple rule files', () => {
+  test('collects markers across multiple rule files', () => {
     // Deliberate abbreviated tail: the binder is prefix-bound / tail-agnostic,
     // so a copy that keeps the frozen prefix but shortens the tail still binds.
     // This is the ONE fixture that proves tail-agnosticism on purpose; every

@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki sync land`.
  *
@@ -9,11 +10,11 @@
  * proving the CLI shapes the call pipeline correctly without depending
  * on a real `gh` binary or remote.
  */
-import {execFileSync, type SpawnSyncReturns} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
+import type {SpawnSyncReturns} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './sync-land.js';
 import type {CommandRunner} from './util/branch.js';
 
@@ -69,16 +70,16 @@ const captureStdio = (): {
   };
 };
 
-type RecordedCall = {
-  args: string[];
-  command: string;
-};
-
 type MockSpec = {
   argv: readonly string[];
   status?: number;
   stderr?: string;
   stdout?: string;
+};
+
+type RecordedCall = {
+  args: string[];
+  command: string;
 };
 
 const okResult = (stdout = ''): SpawnSyncReturns<string> => ({
@@ -118,10 +119,10 @@ const matches = (
 
 const buildRunner =
   (
-    scripted: Array<{
+    scripted: {
       argv: readonly string[];
       result: SpawnSyncReturns<string>;
-    }>,
+    }[],
     recorded: RecordedCall[]
   ): CommandRunner =>
   (command, args) => {
@@ -260,8 +261,8 @@ describe('wiki sync land', () => {
     const exit = run(['--branch-aware'], {
       cwd: sandbox.root,
       runner,
-      today: '2026-05-07',
       sleep: () => undefined,
+      today: '2026-05-07',
     });
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain(
@@ -291,7 +292,7 @@ describe('wiki sync land', () => {
     for (const [index, prefix] of expected.entries()) {
       const call = verbsAfterRevParse[index];
       expect(call).toBeDefined();
-      const observed = [call?.command, ...(call?.args ?? [])];
+      const observed = [call.command, ...call.args];
       const slice = observed.slice(0, prefix.length);
       expect(slice).toEqual([...prefix]);
     }
@@ -332,10 +333,10 @@ describe('wiki sync land', () => {
 
     const exit = run(['--branch-aware'], {
       cwd: sandbox.root,
-      runner,
-      today: '2026-05-07',
       mergePollAttempts: 3,
+      runner,
       sleep: () => undefined,
+      today: '2026-05-07',
     });
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain(

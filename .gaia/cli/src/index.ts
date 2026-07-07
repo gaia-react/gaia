@@ -22,12 +22,12 @@ import {run as runMentorship} from './mentorship/index.js';
 import {run as runPing} from './ping/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
 import {run as runScaffold} from './scaffold/index.js';
-import {run as runSetup} from './setup/index.js';
 import {run as runSetupCi} from './setup-ci/index.js';
+import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
 import {run as runTelemetry} from './telemetry/index.js';
-import {run as runUpdate} from './update/index.js';
 import {run as runUpdateDeps} from './update-deps/index.js';
+import {run as runUpdate} from './update/index.js';
 import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia <subcommand> [args]
@@ -121,14 +121,14 @@ const main = async (): Promise<number> => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
-main()
-  .then((exitCode) => {
-    process.exit(exitCode);
-  })
-  .catch((error: unknown) => {
-    structuredError({
-      code: 'cli_internal_error',
-      message: error instanceof Error ? error.message : String(error),
-    });
-    process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+try {
+  const exitCode = await main();
+
+  process.exit(exitCode);
+} catch (error: unknown) {
+  structuredError({
+    code: 'cli_internal_error',
+    message: error instanceof Error ? error.message : String(error),
   });
+  process.exit(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+}

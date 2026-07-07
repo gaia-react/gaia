@@ -1,3 +1,4 @@
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia wiki orphans`.
  */
@@ -5,7 +6,6 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {run} from './orphans.js';
 
 type Sandbox = {
@@ -168,7 +168,7 @@ describe('wiki orphans', () => {
     expect(exit).toBe(0);
 
     const parsed = JSON.parse(stdio.outputs.join('')) as {
-      orphans: ReadonlyArray<{domain: string; path: string; title: string}>;
+      orphans: readonly {domain: string; path: string; title: string}[];
     };
     expect(parsed.orphans).toEqual([
       {

@@ -81,9 +81,14 @@ const captureStdio = (): StdioCapture => {
 
 const read = (filePath: string): string => readFileSync(filePath, 'utf8');
 
-// Built from fragments so Vitest's environment scanner does not read the
-// directive text in the assertions below as a real environment pragma for
-// this file; this is a Node CLI test and must not be forced into jsdom.
+// Built from fragments so Vitest's environment scanner never sees the literal
+// directive token in this file. This is a Node CLI test; if the scanner reads
+// the token it forces jsdom, which is absent from the isolated CLI install, so
+// the forks worker fails to start. The interpolation is load-bearing, not
+// cosmetic: the eslint autofix would inline it to a plain string and reinstate a
+// real directive. The scanner reads comments too, so no comment here (including
+// this one) may spell the token out either.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-template-expression -- keep the split; see note above
 const JSDOM_ENV_DIRECTIVE = `// @vitest-${'environment'} jsdom`;
 
 describe('scaffold component', () => {
@@ -163,7 +168,7 @@ describe('scaffold component', () => {
       'index.stories.tsx'
     );
 
-    expect(() => read(storyPath)).toThrow();
+    expect(() => read(storyPath)).toThrow(/ENOENT/);
 
     const testContents = read(
       path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')
@@ -234,7 +239,14 @@ describe('scaffold component', () => {
 
   test('--props --no-story test renders the component with representative props', () => {
     const exit = run(
-      ['Bar', '--parent', 'app/components', '--props', 'label:string', '--no-story'],
+      [
+        'Bar',
+        '--parent',
+        'app/components',
+        '--props',
+        'label:string',
+        '--no-story',
+      ],
       {cwd: sandbox.root}
     );
 

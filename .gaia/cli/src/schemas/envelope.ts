@@ -1,8 +1,6 @@
 import {z} from 'zod';
-import {
-  MentorshipPayloadByType,
-  type MentorshipEventType,
-} from './mentorship-payloads.js';
+import {MentorshipPayloadByType} from './mentorship-payloads.js';
+import type {MentorshipEventType} from './mentorship-payloads.js';
 
 export const AgentTypeSchema = z.literal([
   'Curator',
