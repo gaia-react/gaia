@@ -94,6 +94,7 @@ repair_specs_intent() {
 _extract_plan_prose() {
   awk '
     /^#/ { if (started) exit; next }
+    /^Commit:[[:space:]]/ { if (started) exit; next }
     /^[[:space:]]*$/ { if (started) exit; next }
     { started = 1; print }
   ' "$1" 2>/dev/null

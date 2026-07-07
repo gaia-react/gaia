@@ -137,6 +137,57 @@ EOF
   [ "$new_subject" != "Reframe /gaia-plan worktree isolation prompt: drop the experimental disclaimer, add a brief plain-la" ]
 }
 
+# --- 2b. Plans subject repair skips the Commit: anchor line -----------------
+
+@test "2b: plans subject repair skips a leading Commit: anchor line but still recovers a non-anchor Commit-prefixed prose line" {
+  cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
+{
+  "version": 1,
+  "plans": [
+    {
+      "id": "PLAN-100",
+      "allocated_at": "2026-07-04T08:49:05Z",
+      "source": "allocated",
+      "subject": "placeholder subject one"
+    },
+    {
+      "id": "PLAN-101",
+      "allocated_at": "2026-07-04T08:49:05Z",
+      "source": "allocated",
+      "subject": "placeholder subject two"
+    }
+  ]
+}
+EOF
+
+  mkdir -p "$SANDBOX/.gaia/local/plans/archived/PLAN-100"
+  cat > "$SANDBOX/.gaia/local/plans/archived/PLAN-100/SUMMARY.md" <<'EOF'
+## Phase 1, First
+Commit: abc1234
+
+Real prose line describing the phase.
+EOF
+
+  mkdir -p "$SANDBOX/.gaia/local/plans/archived/PLAN-101"
+  cat > "$SANDBOX/.gaia/local/plans/archived/PLAN-101/SUMMARY.md" <<'EOF'
+## Phase 1, Second
+Committed the parser cleanly.
+
+Some other paragraph that must not leak into the recovered subject.
+EOF
+
+  run _run_repair
+  [ "$status" -eq 0 ]
+
+  subj_anchor="$(_plans_field PLAN-100 subject)"
+  [ "$subj_anchor" = "Real prose line describing the phase." ]
+  [ "$subj_anchor" != "Commit: abc1234" ]
+  ! grep -qF "abc1234" <<<"$subj_anchor"
+
+  subj_guard="$(_plans_field PLAN-101 subject)"
+  [ "$subj_guard" = "Committed the parser cleanly." ]
+}
+
 # --- 3. Plans subject repair fallback ---------------------------------------
 
 @test "3: plans subject fallback word-safe-trims the stored value when no source is recoverable" {
