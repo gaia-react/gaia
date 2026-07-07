@@ -1,0 +1,1 @@
+{"type":"assistant","uuid":"u-nest-a","timestamp":"2026-08-01T11:01:00.000Z","message":{"id":"nest-a","role":"assistant","usage":{"input_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":5,"output_tokens":7}}}

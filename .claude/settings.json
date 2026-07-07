@@ -29,6 +29,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/wiki-squash-autocommits.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/token-tally-review.sh"
           }
         ]
       }
@@ -214,6 +218,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/token-rollup-merge.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/token-tally-review.sh"
           },
           {
             "type": "command",

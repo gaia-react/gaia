@@ -1,0 +1,2 @@
+{"type":"assistant","uuid":"u-rev-a","timestamp":"2026-08-01T11:00:00.000Z","message":{"id":"rev-a","role":"assistant","usage":{"input_tokens":100,"cache_creation_input_tokens":200,"cache_read_input_tokens":300,"output_tokens":400}}}
+{"type":"assistant","uuid":"u-rev-b","timestamp":"2026-08-01T11:02:00.000Z","message":{"id":"rev-b","role":"assistant","usage":{"input_tokens":13,"cache_creation_input_tokens":17,"cache_read_input_tokens":19,"output_tokens":23}}}
