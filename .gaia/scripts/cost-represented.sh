@@ -6,7 +6,7 @@
 #
 #   cost_folder_represented <folder_abs> <attr_field> <attr_val> <ledger_path>
 #
-# It answers one question: is every cost.md phase section under <folder_abs>
+# It answers one question: is every cost phase record under <folder_abs>
 # provably captured in <ledger_path> (cost.jsonl) with matching values? It is
 # the guard that authorizes deleting a folder, so it is deliberately strict.
 #
@@ -17,23 +17,35 @@
 #   <ledger_path>  absolute path to cost.jsonl. The caller resolves the
 #                  main-checkout ledger; tests pass an isolated one.
 #
-# It scans every cost.md at the folder root and one level down (a colocated
-# plan / plan-<N> subfolder), parses each `## SPEC` / `## Planning` /
-# `## Execution` section (never `## Total`, a derived grand-sum), and classifies
-# each discovered section:
+# Source precedence, per folder tree (`find -maxdepth 2`, folder root and one
+# level down for a colocated plan / plan-<N> subfolder):
+#
+#   cost.json present   drive the gate from the sidecar(s) ONLY (never also
+#                        parse cost.md). Each sidecar is a JSON object keyed by
+#                        phase kind; a sidecar that fails to parse as an object
+#                        is an unparseable sidecar and BLOCKS, never silently
+#                        skipped.
+#   cost.json absent,
+#   cost.md present      transitional legacy fallback: parse `## SPEC` /
+#                        `## Planning` / `## Execution` sections exactly as
+#                        before (never `## Total`, a derived grand-sum).
+#   neither present      return 0 (nothing to lose).
+#
+# Whichever source wins, each discovered record classifies as:
 #
 #   REPRESENTED  the four buckets are present-and-numeric AND the ledger holds a
 #                JSON-object row with the same identity, kind, and session, whose
 #                four bucket values match or whose total equals the section sum.
-#   BLOCKING     the section's buckets are missing / non-numeric (fail closed),
-#                or no matching ledger row exists.
+#   BLOCKING     the record's buckets are missing / non-numeric (fail closed),
+#                the sidecar itself is unparseable, or no matching ledger row
+#                exists.
 #
 # Output: one manifest line per discovered section on stdout, tab-separated:
 #
 #   <kind>\t<REPRESENTED|BLOCKING>\t<reason>
 #
 # Diagnostics go to stderr. Return code: 0 iff every discovered section is
-# REPRESENTED. A folder with no cost.md and no recognized section returns 0
+# REPRESENTED. A folder with neither source and no recognized section returns 0
 # (nothing to lose; the caller owns the separate identity check). Returns 1 if
 # any section is BLOCKING.
 #
@@ -100,6 +112,25 @@ if ! declare -f cost_folder_represented >/dev/null 2>&1; then
     ' "$1" 2>/dev/null
   }
 
+  # _cost_repr_parse_sidecar <cost.json>: emit the SAME tab line shape
+  # _cost_repr_parse emits, one line per keyed record:
+  #   kind \t fresh \t cwrite \t cread \t output \t session
+  # A missing bucket yields an empty field, which _cost_repr_is_uint reads as
+  # non-numeric and blocks (fail closed) -- identical contract to the markdown
+  # parser. The caller validates the file is a JSON object before calling this.
+  _cost_repr_parse_sidecar() {
+    jq -r '
+      to_entries[]
+      | [ (.value.kind // .key),
+          (.value.buckets.fresh_input // "" | tostring),
+          (.value.buckets.cache_write  // "" | tostring),
+          (.value.buckets.cache_read   // "" | tostring),
+          (.value.buckets.output       // "" | tostring),
+          (.value.session_id // "") ]
+      | @tsv
+    ' "$1" 2>/dev/null
+  }
+
   # _cost_repr_row_match <ledger> <field> <val> <kind> <session> \
   #                      <fresh> <cwrite> <cread> <output> <sum>
   # Prints "true"/"false": whether <ledger> carries a JSON-object row matching
@@ -143,42 +174,85 @@ if ! declare -f cost_folder_represented >/dev/null 2>&1; then
     [ -d "$folder_abs" ] || return 0
 
     local blocking=0 saw_section=0
+    local -a sidecar_files=()
     local -a cost_files=()
-    local cost_md
-    while IFS= read -r -d '' cost_md; do
-      cost_files+=("$cost_md")
-    done < <(find "$folder_abs" -maxdepth 2 -type f -name cost.md -print0 2>/dev/null)
-
-    [ "${#cost_files[@]}" -gt 0 ] || return 0
-
     local f kind fresh cwrite cread output session sum matched
-    for f in "${cost_files[@]}"; do
-      while IFS=$'\t' read -r kind fresh cwrite cread output session; do
-        [ -n "$kind" ] || continue
-        saw_section=1
 
-        # Fail closed: any bucket that is missing or non-numeric blocks.
-        if _cost_repr_is_uint "$fresh" \
-          && _cost_repr_is_uint "$cwrite" \
-          && _cost_repr_is_uint "$cread" \
-          && _cost_repr_is_uint "$output"; then
-          fresh=$((10#$fresh)); cwrite=$((10#$cwrite))
-          cread=$((10#$cread)); output=$((10#$output))
-          sum=$((fresh + cwrite + cread + output))
-          matched="$(_cost_repr_row_match "$ledger_path" "$attr_field" "$attr_val" \
-            "$kind" "$session" "$fresh" "$cwrite" "$cread" "$output" "$sum")"
-          if [ "$matched" = "true" ]; then
-            printf '%s\tREPRESENTED\tmatched ledger row for %s=%s\n' "$kind" "$attr_field" "$attr_val"
+    while IFS= read -r -d '' f; do
+      sidecar_files+=("$f")
+    done < <(find "$folder_abs" -maxdepth 2 -type f -name cost.json -print0 2>/dev/null)
+
+    if [ "${#sidecar_files[@]}" -gt 0 ]; then
+      # Sidecar source: any cost.json under the tree wins over cost.md.
+      for f in "${sidecar_files[@]}"; do
+        if ! jq -e 'type=="object"' "$f" >/dev/null 2>&1; then
+          saw_section=1
+          blocking=1
+          printf 'unparseable\tBLOCKING\tunparseable cost.json\n'
+          continue
+        fi
+        while IFS=$'\t' read -r kind fresh cwrite cread output session; do
+          [ -n "$kind" ] || continue
+          saw_section=1
+
+          # Fail closed: any bucket that is missing or non-numeric blocks.
+          if _cost_repr_is_uint "$fresh" \
+            && _cost_repr_is_uint "$cwrite" \
+            && _cost_repr_is_uint "$cread" \
+            && _cost_repr_is_uint "$output"; then
+            fresh=$((10#$fresh)); cwrite=$((10#$cwrite))
+            cread=$((10#$cread)); output=$((10#$output))
+            sum=$((fresh + cwrite + cread + output))
+            matched="$(_cost_repr_row_match "$ledger_path" "$attr_field" "$attr_val" \
+              "$kind" "$session" "$fresh" "$cwrite" "$cread" "$output" "$sum")"
+            if [ "$matched" = "true" ]; then
+              printf '%s\tREPRESENTED\tmatched ledger row for %s=%s\n' "$kind" "$attr_field" "$attr_val"
+            else
+              blocking=1
+              printf '%s\tBLOCKING\tno matching ledger row for %s=%s\n' "$kind" "$attr_field" "$attr_val"
+            fi
           else
             blocking=1
-            printf '%s\tBLOCKING\tno matching ledger row for %s=%s\n' "$kind" "$attr_field" "$attr_val"
+            printf '%s\tBLOCKING\tincomplete or non-numeric buckets\n' "$kind"
           fi
-        else
-          blocking=1
-          printf '%s\tBLOCKING\tincomplete or non-numeric buckets\n' "$kind"
-        fi
-      done < <(_cost_repr_parse "$f")
-    done
+        done < <(_cost_repr_parse_sidecar "$f")
+      done
+    else
+      # Transitional legacy fallback: no cost.json anywhere under the tree.
+      while IFS= read -r -d '' f; do
+        cost_files+=("$f")
+      done < <(find "$folder_abs" -maxdepth 2 -type f -name cost.md -print0 2>/dev/null)
+
+      [ "${#cost_files[@]}" -gt 0 ] || return 0
+
+      for f in "${cost_files[@]}"; do
+        while IFS=$'\t' read -r kind fresh cwrite cread output session; do
+          [ -n "$kind" ] || continue
+          saw_section=1
+
+          # Fail closed: any bucket that is missing or non-numeric blocks.
+          if _cost_repr_is_uint "$fresh" \
+            && _cost_repr_is_uint "$cwrite" \
+            && _cost_repr_is_uint "$cread" \
+            && _cost_repr_is_uint "$output"; then
+            fresh=$((10#$fresh)); cwrite=$((10#$cwrite))
+            cread=$((10#$cread)); output=$((10#$output))
+            sum=$((fresh + cwrite + cread + output))
+            matched="$(_cost_repr_row_match "$ledger_path" "$attr_field" "$attr_val" \
+              "$kind" "$session" "$fresh" "$cwrite" "$cread" "$output" "$sum")"
+            if [ "$matched" = "true" ]; then
+              printf '%s\tREPRESENTED\tmatched ledger row for %s=%s\n' "$kind" "$attr_field" "$attr_val"
+            else
+              blocking=1
+              printf '%s\tBLOCKING\tno matching ledger row for %s=%s\n' "$kind" "$attr_field" "$attr_val"
+            fi
+          else
+            blocking=1
+            printf '%s\tBLOCKING\tincomplete or non-numeric buckets\n' "$kind"
+          fi
+        done < <(_cost_repr_parse "$f")
+      done
+    fi
 
     [ "$saw_section" -eq 1 ] || return 0
     [ "$blocking" -eq 0 ] || return 1
