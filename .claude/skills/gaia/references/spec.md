@@ -575,9 +575,9 @@ Tier descriptions to fill in: **Standard** = `"The selected lenses verify every 
 
 #### 7a. Dispatch the lens auditors (parallel fan-out)
 
-Announce once, verbatim:
+Announce once, verbatim, naming each lens in full with its id code in parentheses (e.g. `factual grounding (FG)`), never the bare code:
 
-> Dispatching adversarial SPEC-audit (<audit_intensity>): lenses <selected lens ids>, then refutation (typically a dozen-plus agents, several minutes).
+> Dispatching adversarial SPEC-audit (<audit_intensity>): lenses <selected lens names, each with its id in parentheses>, then refutation (typically a dozen-plus agents, several minutes).
 
 Append an `audit_dispatched` telemetry event with `intensity: <audit_intensity>` and `lenses` set to the dispatched lens-id list. Then spawn **one `general-purpose` Agent per selected lens, all in parallel** (one message, one Agent tool call per lens): the four core lenses always, plus each specialist the gauge selected. Each agent audits the working-draft cache (`.gaia/local/cache/draft-<spec_id>.md`, the post-self-review draft, NOT the step-3 canonical file), **writes its findings JSON to `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json`** (writing the file even when its findings array is empty), then returns only the thin digest below, no finding bodies.
 

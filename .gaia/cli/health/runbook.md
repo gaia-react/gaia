@@ -82,10 +82,10 @@ Human refuses → escalate.
 | Bucket D (cross-class walk)                                                                                       | Sonnet |
 | Bucket E: Auditor (mechanical: hook integrity, settings hygiene, GAIA-install fitness, wiki fitness)              | Haiku  |
 | Bucket E: Auditor (judgment: skill/command/agent frontmatter, rule hygiene, `CLAUDE.md` hygiene, grade synthesis) | Sonnet |
-| Challenger lens: BS (blind-spot)                                                                                  | Sonnet |
-| Challenger lens: MC (misclassification)                                                                           | Sonnet |
-| Challenger lens: GH (grade-honesty)                                                                               | Sonnet |
-| Challenger lens: FV (fix-verification, deep/optional)                                                             | Sonnet |
+| Challenger lens: Blind-spot (BS)                                                                                  | Sonnet |
+| Challenger lens: Misclassification (MC)                                                                           | Sonnet |
+| Challenger lens: Grade-honesty (GH)                                                                               | Sonnet |
+| Challenger lens: Fix-verification (FV, deep/optional)                                                             | Sonnet |
 | Fixer: config-yaml-md                                                                                             | Sonnet |
 | Fixer: source-ts                                                                                                  | Sonnet |
 | Fixer: wiki-content                                                                                               | Sonnet |
@@ -310,6 +310,10 @@ The challenger is a single adversarial pass the Orchestrator spawns at the clean
 **Depth-1.** Only the Orchestrator (main thread) spawns leaves; the challenger lenses are Orchestrator-spawned `general-purpose` leaf subagents, consistent with the buckets, the Adjudicator, and the Fixers. No leaf spawns the challenger.
 
 ### Lenses
+
+Announce the fan-out once, naming each dispatched lens in full with its id in parentheses (e.g. `blind-spot (BS)`), never the bare code; list only the lenses actually dispatched (fix-verification appears only when its gate selects it):
+
+> Spawning the false-clean challenger against the terminal clean verdict: blind-spot (BS), misclassification (MC), grade-honesty (GH), fix-verification (FV).
 
 Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: the terminal cycle's bucket artifacts (`.gaia/local/audit/c<N>/bucket-a.txt`, `bucket-b/`, `bucket-c.txt`, `bucket-d.md`, `bucket-e/`), `.gaia/local/audit/c<N>/findings.json`, and BOTH "Decided / not findings" lists (`.gaia/cli/health/taxonomy.md` § Decided / not findings and `wiki/decisions/Claude Integration Fitness.md` § Decided / not findings) so it does not re-surface settled items. Each returns only the findings JSON (the canonical schema, see §Audit artifacts), no narrative.
 
