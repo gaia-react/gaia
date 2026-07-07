@@ -21,7 +21,7 @@ setup() {
 @test "UAT-015: this feature's diff vs main touched neither block-env-read.sh nor settings.json" {
   cd "$REPO_ROOT"
   local base changed
-  base=$(git merge-base HEAD main)
+  base=$(git merge-base HEAD origin/main)
   changed=$(git diff --name-only "$base" HEAD)
 
   printf '%s\n' "$changed" | grep -qF '.claude/hooks/block-env-read.sh' && return 1

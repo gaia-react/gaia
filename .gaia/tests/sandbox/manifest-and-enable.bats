@@ -22,7 +22,7 @@ setup() {
 @test "UAT-013: .gaia/manifest.json was not touched by this feature's diff vs main" {
   cd "$REPO_ROOT"
   local base changed
-  base=$(git merge-base HEAD main)
+  base=$(git merge-base HEAD origin/main)
   changed=$(git diff --name-only "$base" HEAD)
 
   printf '%s\n' "$changed" | grep -qF '.gaia/manifest.json' && return 1
