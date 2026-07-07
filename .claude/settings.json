@@ -10,6 +10,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/wiki-session-start.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/debt-session-reconcile.sh"
           }
         ]
       }
