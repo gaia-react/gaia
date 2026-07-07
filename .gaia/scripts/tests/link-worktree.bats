@@ -250,3 +250,89 @@ FAKE
   [ -f "$MAIN/.gaia/local/telemetry/cost.jsonl" ]
   [ "$(cat "$MAIN/.gaia/local/telemetry/cost.jsonl")" = '{"action":"execute","total":42}' ]
 }
+
+# ---------- 10. Fresh worktree shares root .env files, skips .env.example ----------
+@test "env files: fresh worktree shares .env and .env.local, skips .env.example" {
+  printf 'ENV_VAR=main' > "$MAIN/.env"
+  printf 'LOCAL_VAR=local' > "$MAIN/.env.local"
+  printf 'EXAMPLE_VAR=example' > "$MAIN/.env.example"
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+
+  [ -L "$LINKED/.env" ]
+  [ -L "$LINKED/.env.local" ]
+  [ "$(readlink "$LINKED/.env")" = "$MAIN/.env" ]
+  [ "$(readlink "$LINKED/.env.local")" = "$MAIN/.env.local" ]
+
+  # .env.example is committed and already present as a plain file; never linked.
+  [ ! -L "$LINKED/.env.example" ]
+
+  # Content reads through the symlink.
+  [ "$(cat "$LINKED/.env")" = "ENV_VAR=main" ]
+}
+
+# ---------- 11. No env files in main -> no env symlinks, still exit 0 ----------
+@test "env files: no env files in main means no env symlinks, still exit 0" {
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  [ ! -L "$LINKED/.env" ]
+
+  # The five fixed symlinks still exist (no regression from the env addition).
+  [ -L "$LINKED/.gaia/local/setup-state.json" ]
+  [ -L "$LINKED/.gaia/local/cache/shared" ]
+  [ -L "$LINKED/.gaia/local/audit" ]
+  [ -L "$LINKED/.gaia/local/telemetry" ]
+}
+
+# ---------- 12. Idempotent re-run: env symlink logs "already-linked" ----------
+@test "env files: idempotent re-run logs already-linked with no backups" {
+  printf 'ENV_VAR=main' > "$MAIN/.env"
+  run_in "$LINKED"
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  grep -qF -- "already-linked: $LINKED/.env" <<<"$output" || return 1
+
+  run bash -c "find '$LINKED' -maxdepth 1 -name '.env.bak.*' -print"
+  [ -z "$output" ]
+}
+
+# ---------- 13. Pre-existing plain .env in worktree is backed up then linked ----------
+@test "env files: pre-existing plain .env in worktree is backed up then linked" {
+  printf 'ENV_VAR=main' > "$MAIN/.env"
+  printf 'STRAY_VAR=stray' > "$LINKED/.env"
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  [ -L "$LINKED/.env" ]
+
+  bak="$(ls -a "$LINKED" | grep '^\.env\.bak\.')"
+  [ -n "$bak" ]
+  [ "$(cat "$LINKED/$bak")" = "STRAY_VAR=stray" ]
+
+  grep -qF -- "linked-after-backup: $LINKED/.env" <<<"$output" || return 1
+}
+
+# ---------- 14. Runtime read-through: writes to main .env are visible via the symlink ----------
+@test "env files: a write to main .env is visible via the worktree symlink" {
+  printf 'ENV_VAR=main' > "$MAIN/.env"
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+
+  printf '\nAPPENDED_VAR=appended\n' >> "$MAIN/.env"
+  grep -qF -- "APPENDED_VAR=appended" "$LINKED/.env" || return 1
+}
+
+# ---------- 15. Editor cruft under the .env.* glob is rejected by the regex guard ----------
+@test "env files: editor cruft under .env.* glob is rejected by the regex guard" {
+  printf 'ENV_VAR=main' > "$MAIN/.env"
+  printf 'STRAY_CRUFT=1' > "$MAIN/.env.local~"
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  [ -L "$LINKED/.env" ]
+
+  # The cruft is NOT linked: fails if the regex guard is dropped and the shell
+  # links the raw glob match.
+  [ ! -L "$LINKED/.env.local~" ]
+}
