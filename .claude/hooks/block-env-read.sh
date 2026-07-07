@@ -191,7 +191,11 @@ process_segment() {
   seg_cmd=$(strip_env_prefix "$seg")
   read -r -a toks <<<"$seg_cmd"
 
-  process_tokens "${toks[@]}"
+  # An empty segment (e.g. between the two words of `true && cat .env.local`,
+  # which the |&;() split turns into an empty run) yields an empty toks array.
+  # On bash 3.2 under `set -u`, a bare "${toks[@]}" on an empty array aborts
+  # with "unbound variable" before later segments are evaluated, so guard it.
+  [ "${#toks[@]}" -eq 0 ] || process_tokens "${toks[@]}"
   check_redirect_from_dotenv "$seg"
   return 0
 }

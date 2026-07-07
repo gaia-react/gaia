@@ -119,6 +119,21 @@ assert_allowed() {
   assert_denied
 }
 
+@test "true && cat .env.local is denied (compound-command segment walk)" {
+  run_hook_bash "true && cat .env.local"
+  assert_denied
+}
+
+@test "cd /tmp; cat .env.local is denied (semicolon segment walk)" {
+  run_hook_bash "cd /tmp; cat .env.local"
+  assert_denied
+}
+
+@test "false || cat .env.local is denied (or segment walk)" {
+  run_hook_bash "false || cat .env.local"
+  assert_denied
+}
+
 # --- Bash denies: bare environment dumps (UAT-005) ---
 
 @test "bare env is denied" {
@@ -147,6 +162,11 @@ assert_allowed() {
 
 @test "pnpm dev is allowed" {
   run_hook_bash "pnpm dev"
+  assert_allowed
+}
+
+@test "pnpm i && pnpm dev is allowed (benign compound command)" {
+  run_hook_bash "pnpm i && pnpm dev"
   assert_allowed
 }
 
