@@ -211,6 +211,69 @@ describe('gaia ping', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  test('setup event: --sandbox on is accepted', async () => {
+    const exit = await run(['--event', 'setup', '--sandbox', 'on'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(0);
+    expect(parsedBody()).toMatchObject({event: 'setup', sandbox: 'on'});
+  });
+
+  test('setup event: --sandbox off is accepted', async () => {
+    const exit = await run(['--event', 'setup', '--sandbox', 'off'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(0);
+    expect(parsedBody()).toMatchObject({event: 'setup', sandbox: 'off'});
+  });
+
+  test('setup event: --sandbox composes with the existing setup fields', async () => {
+    const exit = await run(
+      [
+        '--event',
+        'setup',
+        '--sandbox',
+        'on',
+        '--type',
+        'clone',
+        '--mentorship',
+        'off',
+      ],
+      {cwd: sandbox.root}
+    );
+
+    expect(exit).toBe(0);
+    expect(parsedBody()).toMatchObject({
+      event: 'setup',
+      mentorship: 'off',
+      sandbox: 'on',
+      type: 'clone',
+    });
+  });
+
+  test('setup event: --sandbox outside on|off exits 1 naming the allowed values', async () => {
+    const exit = await run(['--event', 'setup', '--sandbox', 'yes'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const error = stdio.errors.join('');
+    expect(error).toContain('invalid_arguments');
+    expect(error).toContain('on, off');
+  });
+
+  test('init event: --sandbox is rejected as an unknown flag (scoped to setup only)', async () => {
+    const exit = await run(['--event', 'init', '--sandbox', 'on'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   test('honors GAIA_TELEMETRY_PING_DISABLE=1: no fetch, exit 0', async () => {
     vi.stubEnv('GAIA_TELEMETRY_PING_DISABLE', '1');
 
@@ -239,6 +302,7 @@ describe('gaia ping', () => {
 
     expect(exit).toBe(0);
     expect(outputs.join('')).toContain('Usage: gaia ping');
+    expect(outputs.join('')).toContain('--sandbox <on|off>');
     stdoutSpy.mockRestore();
   });
 });

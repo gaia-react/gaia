@@ -90,6 +90,28 @@ describe('schemas/automation-config', () => {
         })
       ).toThrow(z.ZodError);
     });
+
+    test('parses and retains sandbox_recommended: true', () => {
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        sandbox_recommended: true,
+      });
+      expect(parsed.sandbox_recommended).toBe(true);
+    });
+
+    test('parses when sandbox_recommended is absent (tolerated)', () => {
+      const parsed = AutomationConfigSchema.parse(VALID_CONFIG);
+      expect(parsed.sandbox_recommended).toBeUndefined();
+    });
+
+    test('rejects a non-boolean sandbox_recommended', () => {
+      expect(() =>
+        AutomationConfigSchema.parse({
+          ...VALID_CONFIG,
+          sandbox_recommended: 'yes',
+        })
+      ).toThrow(z.ZodError);
+    });
   });
 
   describe('TOOL_ID_TO_CONFIG_KEY <-> CONFIG_KEY_TO_TOOL_ID round-trip', () => {

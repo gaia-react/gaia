@@ -25,7 +25,7 @@ const HELP_TEXT = String.raw`Usage: gaia ping --event <init|setup|update> [--fie
             --ci <ci|local|off|custom>
     setup   --type <init|clone|reconfigure> --mentorship <on|off> \
             --repo <create|adopt|manual> --ci <on|off|skip> \
-            --audit <local|ci>
+            --audit <local|ci> --sandbox <on|off>
     update  --from <version> --to <version>
 
   All fields are individually optional; only provided fields are sent.
@@ -72,6 +72,7 @@ const FIELDS_BY_EVENT: Readonly<Record<PingEvent, readonly FieldSpec[]>> = {
     },
     {enumValues: ['on', 'off', 'skip'], flag: '--ci', key: 'ci'},
     {enumValues: ['local', 'ci'], flag: '--audit', key: 'audit'},
+    {enumValues: ['on', 'off'], flag: '--sandbox', key: 'sandbox'},
   ],
   update: [
     {flag: '--from', key: 'from'},
