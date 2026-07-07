@@ -146,7 +146,7 @@ Evidence:
 Evidence:
 
 - `.claude/skills/gaia/references/spec.md` Step 2, pre-flight `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"` returns the first unfinalized draft SPEC id (or `none`); on hit, prompt with the normative phrasing and two options.
-- `lib/spec-allocator.sh in_progress <root>`: returns the first `.gaia/local/specs/ledger.json` row with `status: draft`. A finalized SPEC (`specified`/`merged`/`archived`) is never returned; its merged transition is reconciled from git ground truth by `spec-reconcile.sh`.
+- `lib/spec-allocator.sh in_progress <root>`: returns the first `.gaia/local/specs/ledger.json` row with `status: draft`. A finalized SPEC (`ready`/`merged`) is never returned; its merged transition is reconciled from git ground truth by `spec-reconcile.sh`.
 
 ## UAT-014: research subagent dispatch with announce
 

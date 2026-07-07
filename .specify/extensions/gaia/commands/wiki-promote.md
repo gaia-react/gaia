@@ -1,21 +1,28 @@
 ---
 name: speckit-gaia-wiki-promote
-description: Promote merged SPEC content into the GAIA wiki.
+description: Promote merged SPEC or plan content into the GAIA wiki.
 ---
 
 # Wiki Promote, `after_implement` hook
 
-Fires automatically on `/speckit-implement` completion. Reads the SPEC artifact, detects whether the implementing PR has merged, and either promotes content into `gaia/wiki/` or persists a defer flag.
+Fires automatically on `/speckit-implement` completion for the spec arm (`SPEC-NNN`); also invokable directly with a `PLAN-NNN` id for the plan arm (from `plan-close`, on an accepted promotion offer). Reads the consolidated `SUMMARY.md`, detects whether the implementing PR has merged, and either promotes content into `gaia/wiki/` or persists a defer flag.
 
-## Step 1 - Resolve the SPEC
+## Step 1 - Resolve the source
 
-The hook fires on `/speckit-implement` completion. The agent has the SPEC ID in conversation context (the implementer agent referenced it).
+The hook fires on `/speckit-implement` completion for the spec arm. The agent has the SPEC ID in conversation context (the implementer agent referenced it). For the plan arm, the caller (`plan-close`) passes the `PLAN-NNN` id directly as the invocation argument.
 
-Identify the SPEC ID from the running conversation. If ambiguous, fall back to the most-recently-modified `.gaia/local/specs/SPEC-*/SPEC.md` (deriving the SPEC ID from the parent folder name; excluding `-revised-contracts` and `-refit-decision` suffixes).
+Identify the id from the running conversation or invocation argument. If ambiguous on the spec arm, fall back to the most-recently-modified `.gaia/local/specs/SPEC-*/SUMMARY.md` (or `SPEC.md` under the legacy fallback below), deriving the SPEC ID from the parent folder name (excluding `-revised-contracts` and `-refit-decision` suffixes).
 
-Read the SPEC frontmatter. Required fields: `spec_id`, `wiki_promote_default`, `wiki_promote_targets` (default `[]`).
+Resolve the source path by id shape:
 
-If the SPEC file is missing, exit with: `wiki-promote: SPEC artifact not found; nothing to promote.`
+- `SPEC-NNN` → `.gaia/local/specs/SPEC-NNN/SUMMARY.md`
+- `PLAN-NNN` → `.gaia/local/plans/PLAN-NNN/SUMMARY.md`
+
+Read the consolidated `SUMMARY.md` frontmatter. Required fields: `wiki_promote_default`, `wiki_promote_targets` (may be an empty list).
+
+**Legacy fallback (pre-consolidation SPECs):** if `SUMMARY.md` is absent but a legacy `SPEC.md` still exists in the same folder, fall back to reading `SPEC.md`'s frontmatter and body instead; downstream steps (title, body, routing) source from whichever file resolved here.
+
+If neither `SUMMARY.md` nor a legacy `SPEC.md` exists, exit with: `wiki-promote: no consolidated SUMMARY.md or SPEC artifact found; nothing to promote.`
 
 ## Step 2 - Read promotion gate
 
@@ -47,11 +54,11 @@ pr_json=$(gh pr list --head "$current_branch" --state merged --json number,merge
 
 If `$pr_json` is `[]` (no merged PR for this branch):
 
-1. Write defer flag to `.gaia/local/cache/wiki-promote/SPEC-NNN.json`:
+1. Write defer flag to `.gaia/local/cache/wiki-promote/<id>.json` (`<id>` is the `SPEC-NNN` or `PLAN-NNN` resolved in Step 1):
 
    ```json
    {
-     "spec_id": "SPEC-NNN",
+     "id": "<id>",
      "branch": "<current_branch>",
      "deferred_at": "<now ISO 8601 UTC>",
      "status": "awaiting-merge"
@@ -60,21 +67,21 @@ If `$pr_json` is `[]` (no merged PR for this branch):
 
    (Cache directory creation: `mkdir -p .gaia/local/cache/wiki-promote/`. The `.gaia/local/` line in `.gitignore` covers this path.)
 
-2. Exit with: `wiki-promote: SPEC-NNN deferred, awaiting PR merge for branch <current_branch>. Drain via /speckit-gaia-spec-close SPEC-NNN after merge.`
+2. Exit with: `wiki-promote: <id> deferred, awaiting PR merge for branch <current_branch>. Drain via /speckit-gaia-spec-close or /speckit-gaia-plan-close (matching the id shape) after merge.`
 
 If `$pr_json` contains a merged PR:
 
 1. Capture `pr_number`, `pr_url`, `pr_body`, `merged_at` for downstream steps.
 2. Continue to Step 4 (routing, Phase 3).
-3. If a defer flag exists at `.gaia/local/cache/wiki-promote/SPEC-NNN.json`, delete it (the wait is over).
+3. If a defer flag exists at `.gaia/local/cache/wiki-promote/<id>.json`, delete it (the wait is over).
 
 If `gh` is not installed or not authenticated, treat as "no merged PR", write the defer flag with an additional field `gh_unavailable: true` and exit. This handles GAIA's framework-neutrality (offline, GitLab, Bitbucket users).
 
 ## Step 4 - Route to wiki destinations
 
-Read `wiki_promote_targets` from the SPEC frontmatter.
+Read `wiki_promote_targets` from the resolved source's frontmatter (`SUMMARY.md`, or the legacy `SPEC.md` under the Step 1 fallback).
 
-If empty or absent: default to `[decisions]`.
+If empty or absent: default to `[decisions]`. This is also the routing default for the plan arm: a plan's consolidated `SUMMARY.md` seeds `wiki_promote_targets` to `[decisions]` unless the closer picked targets at close time, so the same fallback applies without a plan-specific branch.
 
 Allowed subdomain values:
 
@@ -88,28 +95,28 @@ Validate the list:
 - Any value not in the allowed set → emit warning `wiki-promote: unrecognized target '<value>' in wiki_promote_targets; skipped.` and drop that value.
 - All values invalid after filtering → fall back to `[decisions]`.
 
-Compute `<spec-slug>` once for this run:
+Compute `<slug>` once for this run:
 
-1. Read the SPEC's H1 heading (the first `# ` line in the SPEC body).
+1. Read the resolved source's H1 heading (the first `# ` line in the body).
 2. Lowercase it, strip non-ASCII, replace any run of non-alphanumeric characters with a single hyphen, trim leading/trailing hyphens.
-3. If no H1 is found or the slug ends up empty, fall back to the SPEC ID itself (e.g. `SPEC-004`).
+3. If no H1 is found or the slug ends up empty, fall back to the id itself (e.g. `SPEC-004` or `PLAN-004`).
 
 For each valid target subdomain:
 
-1. Compute target path: `wiki/<subdomain>/<spec-slug>.md`.
-2. Check if the file already exists on disk (`test -f wiki/<subdomain>/<spec-slug>.md`).
-3. If it exists, read its frontmatter and check whether `promoted_from` equals the current `SPEC-NNN`.
+1. Compute target path: `wiki/<subdomain>/<slug>.md`.
+2. Check if the file already exists on disk (`test -f wiki/<subdomain>/<slug>.md`).
+3. If it exists, read its frontmatter and check whether `promoted_from` equals the current id.
 4. Build the routing plan tuple:
 
    ```yaml
    - subdomain: <decisions|concepts|modules|flows|components|dependencies>
-     slug: <spec-slug>
-     target_path: wiki/<subdomain>/<spec-slug>.md
+     slug: <slug>
+     target_path: wiki/<subdomain>/<slug>.md
      exists_already: <bool>
      promoted_from_match: <bool>
    ```
 
-If no valid targets remain after validation (should not happen given the `[decisions]` fallback, but guard for it), emit warning and exit silently, do not write any pages. Append a log line `WARN: SPEC-NNN had no valid wiki_promote_targets; skipped.`.
+If no valid targets remain after validation (should not happen given the `[decisions]` fallback, but guard for it), emit warning and exit silently, do not write any pages. Append a log line `WARN: <id> had no valid wiki_promote_targets; skipped.`.
 
 The routing plan is the input to Step 5 (page rendering). The `wiki/index.md` and per-domain `_index.md` files are updated in Step 5 (one batch update per subdomain).
 
@@ -128,7 +135,7 @@ For each tuple:
 1. **New page** (`exists_already: false`) → status `new`.
 2. **Existing page, our promotion** (`exists_already: true` AND `promoted_from_match: true`) → run hand-edit detection:
    1. Read the current file's frontmatter to extract `promoted_at`.
-   2. Run `git log --format='%H %s' -- wiki/<subdomain>/<spec-slug>.md` to list commits touching this file.
+   2. Run `git log --format='%H %s' -- wiki/<subdomain>/<slug>.md` to list commits touching this file.
    3. For each commit whose author timestamp is later than `promoted_at`, inspect the commit subject. A commit is a "promotion commit" if its subject contains `wiki-promote` or `wiki-sync` (case-insensitive). Otherwise it is a hand-edit.
    4. If any hand-edit commit is found → status `hand-edited`.
    5. If no hand-edit commits are found → status `our-update`.
@@ -141,8 +148,8 @@ For each tuple:
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `new`               | Render frontmatter + body (per Step 5b). Write file. Append to `pages_written`.                                                                                                                                                                                                                                                         |
 | `our-update`        | Read existing frontmatter, preserve `created`. Render fresh frontmatter (advancing `updated` and `promoted_at` to today/now) + body. Write file. Append to `pages_updated`.                                                                                                                                                             |
-| `hand-edited`       | Do NOT write. Emit warning to stdout: `wiki-promote: skipped wiki/<subdomain>/<spec-slug>.md (hand-edited since last promotion).`. Append a log line `WARN: skipped wiki/<subdomain>/<spec-slug>.md (hand-edited since last promotion)`. Append the path to `pages_skipped`.                                                            |
-| `foreign-collision` | Do NOT write. Emit warning to stdout: `wiki-promote: target wiki/<subdomain>/<spec-slug>.md exists with no promoted_from match; skipped to avoid clobbering hand-authored content.`. Append a log line `WARN: skipped wiki/<subdomain>/<spec-slug>.md (foreign-collision; no promoted_from match)`. Append the path to `pages_skipped`. |
+| `hand-edited`       | Do NOT write. Emit warning to stdout: `wiki-promote: skipped wiki/<subdomain>/<slug>.md (hand-edited since last promotion).`. Append a log line `WARN: skipped wiki/<subdomain>/<slug>.md (hand-edited since last promotion)`. Append the path to `pages_skipped`.                                                                     |
+| `foreign-collision` | Do NOT write. Emit warning to stdout: `wiki-promote: target wiki/<subdomain>/<slug>.md exists with no promoted_from match; skipped to avoid clobbering hand-authored content.`. Append a log line `WARN: skipped wiki/<subdomain>/<slug>.md (foreign-collision; no promoted_from match)`. Append the path to `pages_skipped`.          |
 
 If `--preview` was set in Step 2, render but do NOT write. Print each rendered page (path + content) to stdout, classified by status. Skip the `wiki/log.md` append.
 
@@ -165,12 +172,11 @@ Fields:
 - `status`: `active` (always; `superseded` handling is out of scope for this task).
 - `created`: for `new`, today's ISO date (`YYYY-MM-DD`). For `our-update`, preserve the value from the existing file's frontmatter.
 - `updated`: today's ISO date.
-- `promoted_from`: the SPEC ID (e.g. `SPEC-NNN`).
+- `promoted_from`: the folder id (`SPEC-NNN` for the spec arm, `PLAN-NNN` for the plan arm).
 - `promoted_at`: current ISO 8601 UTC timestamp.
-- `spec_artifact_path`: `.gaia/local/specs/SPEC-NNN/SPEC.md`.
 - `pr_number`: from Step 3.
 - `pr_url`: from Step 3.
-- `tags`: copied from the SPEC's frontmatter `tags` if present and non-empty; otherwise `[promoted, <subdomain>]`.
+- `tags`: copied from the resolved source's frontmatter `tags` if present and non-empty; otherwise `[promoted, <subdomain>]`.
 
 ### `wiki/log.md` append
 
@@ -179,12 +185,12 @@ After all pages have been processed (and at least one was written or updated), p
 Line format:
 
 ```
-- <YYYY-MM-DD> <pr_short_sha> - PROMOTED: SPEC-NNN → <comma-separated paths>
+- <YYYY-MM-DD> <pr_short_sha> - PROMOTED: <id> → <comma-separated paths>
 ```
 
 - `<YYYY-MM-DD>`: today.
 - `<pr_short_sha>`: short SHA of the merge commit. Resolve via `gh pr view <pr_number> --json mergeCommit --jq '.mergeCommit.oid' | cut -c1-7`. If unavailable, fall back to `current` (a literal placeholder is acceptable for the deferred-then-drained path; the orchestrator covers this).
-- `<comma-separated paths>`: union of `pages_written` and `pages_updated`, in the order they were processed. If the union is empty (everything skipped), do NOT append a `PROMOTED:` line, instead append `WARN: SPEC-NNN promotion produced no writes; see warnings above.`.
+- `<comma-separated paths>`: union of `pages_written` and `pages_updated`, in the order they were processed. If the union is empty (everything skipped), do NOT append a `PROMOTED:` line, instead append `WARN: <id> promotion produced no writes; see warnings above.`.
 
 If `wiki/log.md` does not contain a `## [Unreleased]` section, prepend the section header above the existing first `## ` heading. (Defensive, the file should already have one per the existing wiki convention.)
 
@@ -192,38 +198,39 @@ If `wiki/log.md` does not contain a `## [Unreleased]` section, prepend the secti
 
 Render the body in the following sections, in order, immediately after the closing `---` of the frontmatter. No template engine, emit markdown directly.
 
-1. **Title**, H1 line copied verbatim from the SPEC's H1 (the first `# ` line in the SPEC body).
-2. **Lede**, first paragraph of the SPEC's `## One-line summary` section if present; else the first paragraph of the SPEC's `## Intent` section. If neither exists, fall back to a single-line lede `Promoted from SPEC-NNN.`.
-3. **Decisions / behaviors**, under an H2 `## Decisions` (for `type: decision`) or `## Behavior` (for all other types), include the SPEC's `## Intent` body and, if present, any H2 in the SPEC body whose heading begins with `## Composition with ` (the section that explains how the SPEC composes with prior architecture). Adapt voice from future-tense ("will promote") to present-tense ("promotes") where the change is mechanical; leave wording alone where rewriting risks meaning drift.
-4. **UAT references**, under an H2 `## UAT references`, render a bullet list. For each entry in the SPEC's frontmatter `uats:` list, emit `- **<UAT-ID>**, <one-line summary>`. Source the one-line summary from the UAT entry's `summary` field if present; otherwise the first sentence of its `intent` field. If `uats:` is empty or absent, omit the entire `## UAT references` section.
-5. **Related**, sibling wikilinks. Determine the set of sibling pages produced by the **current run**: every entry in the union of `pages_written` and `pages_updated` whose `target_path` is not the page being rendered. (Skipped pages, `hand-edited`, `foreign-collision`, are excluded; their files were not written and a wikilink would dangle.)
+1. **Title**, H1 line copied verbatim from the resolved source's H1 (the `SUMMARY.md` H1, or the legacy `SPEC.md`'s H1 under the Step 1 fallback).
+2. **Lede**, first paragraph of the source body immediately after the H1. **Legacy `SPEC.md` fallback only:** first paragraph of the SPEC's `## One-line summary` section if present; else the first paragraph of its `## Intent` section; if neither exists, fall back to a single-line lede `Promoted from <id>.`.
+3. **Decisions / behaviors**, under an H2 `## Decisions` (for `type: decision`) or `## Behavior` (for all other types). For the consolidated `SUMMARY.md` source, render the body prose as-is, it is already present-tense final-state prose written by the consolidation producer, no voice adaptation needed. **Legacy `SPEC.md` fallback only:** include the SPEC's `## Intent` body and, if present, any H2 in the SPEC body whose heading begins with `## Composition with ` (the section that explains how the SPEC composes with prior architecture); adapt voice from future-tense ("will promote") to present-tense ("promotes") where the change is mechanical, leave wording alone where rewriting risks meaning drift.
+4. **Divergence**, if the resolved source has a `## Divergence` section (consolidated `SUMMARY.md` only, an optional section the consolidation producer writes when shipped scope is materially narrower than the stated intent), render it verbatim under its own `## Divergence` heading. Omit entirely when absent.
+5. **UAT references**, under an H2 `## UAT references`, render a bullet list. **Legacy `SPEC.md` fallback only** (the consolidated `SUMMARY.md` frontmatter carries no `uats:` list, so this section is omitted entirely on that path): for each entry in the SPEC's frontmatter `uats:` list, emit `- **<UAT-ID>**, <one-line summary>`. Source the one-line summary from the UAT entry's `summary` field if present; otherwise the first sentence of its `intent` field. If `uats:` is empty or absent, omit the entire `## UAT references` section.
+6. **Related**, sibling wikilinks. Determine the set of sibling pages produced by the **current run**: every entry in the union of `pages_written` and `pages_updated` whose `target_path` is not the page being rendered. (Skipped pages, `hand-edited`, `foreign-collision`, are excluded; their files were not written and a wikilink would dangle.)
    - **Solo-page promotion** (no siblings): omit the entire `## Related` section. Do not emit the H2 at all.
    - **Has siblings**: emit:
 
      ```markdown
      ## Related
 
-     Promoted from the same SPEC:
+     Promoted from the same source:
 
      - [[<sibling-page-title>]]
      - [[<sibling-page-title>]]
      ```
 
-     `<sibling-page-title>` is the H1 of the sibling page (same value used as the H1 in Step 5b §1, the SPEC's H1 line, since all sibling pages share it). Sort sibling entries alphabetically by title. Use exact wikilink form `[[Title]]`, Obsidian resolves the link by page title across the vault, so no path is needed.
+     `<sibling-page-title>` is the H1 of the sibling page (same value used as the H1 in Step 5b §1, since all sibling pages share it). Sort sibling entries alphabetically by title. Use exact wikilink form `[[Title]]`, Obsidian resolves the link by page title across the vault, so no path is needed.
 
-6. **References**, emit an H2 `## References` followed by a bullet list with the SPEC backlink, the PR URL, and the promotion timestamp:
+7. **References**, emit an H2 `## References` followed by a bullet list with the source backlink, the PR URL, and the promotion timestamp:
 
    ```markdown
    ## References
 
-   - Source SPEC: [SPEC-NNN](../../.gaia/local/specs/SPEC-NNN/SPEC.md) (local SPEC artifact, gitignored, link does not resolve from GitHub web view)
+   - Source: [<id>](<relative-path>) (local artifact, gitignored, link does not resolve from GitHub web view; removed once the folder reaps, the PR link and `promoted_from` below are the durable provenance)
    - Implementing PR: [PR #NNN](https://github.com/<owner>/<repo>/pull/NNN)
    - Promoted at: <ISO 8601 UTC>
    ```
 
    Substitutions:
-   - `SPEC-NNN`, the SPEC ID from Step 1.
-   - The repo-relative path uses `../../` because promoted wiki pages live at `wiki/<subdomain>/<page>.md` (two segments deep from the repo root).
+   - `<id>`, the `SPEC-NNN` or `PLAN-NNN` id from Step 1.
+   - `<relative-path>`, the resolved source's repo-relative path with a `../../` prefix (promoted wiki pages live at `wiki/<subdomain>/<page>.md`, two segments deep from the repo root): `../../.gaia/local/specs/SPEC-NNN/SUMMARY.md`, `../../.gaia/local/plans/PLAN-NNN/SUMMARY.md`, or the legacy `../../.gaia/local/specs/SPEC-NNN/SPEC.md` under the Step 1 fallback.
    - `<owner>/<repo>`, resolved once per run by running, via the Bash tool:
 
      ```bash
@@ -239,7 +246,7 @@ Render the body in the following sections, in order, immediately after the closi
    - `NNN`, `pr_number` from Step 3.
    - `<ISO 8601 UTC>`, same value as `promoted_at` in the page frontmatter.
 
-   The "(local SPEC artifact, gitignored, link does not resolve from GitHub web view)" note appears on this first-occurrence line only. If the SPEC backlink is referenced again later in the body, omit the parenthetical.
+   The "(local artifact, gitignored, ...)" note appears on this first-occurrence line only. If the source backlink is referenced again later in the body, omit the parenthetical.
 
 ### `wiki/index.md` update
 
@@ -280,13 +287,13 @@ Emit a structured payload to stdout (the next agent reads it as conversation con
 ```json
 {
   "source": "wiki-promote",
-  "spec_id": "SPEC-NNN",
+  "id": "<SPEC-NNN or PLAN-NNN>",
   "pr_number": <NNN>,
   "pr_url": "<full URL>",
   "pages_written": ["wiki/<subdomain>/<slug>.md", ...],
   "pages_updated": [...],
   "pages_skipped": [...],
-  "log_line": "<YYYY-MM-DD> <short_pr_sha> - PROMOTED: SPEC-NNN → <comma-separated paths>"
+  "log_line": "<YYYY-MM-DD> <short_pr_sha> - PROMOTED: <id> → <comma-separated paths>"
 }
 ```
 
@@ -303,7 +310,7 @@ If `/gaia-wiki sync` fails or refuses, exit with the warning `wiki-promote: page
 Print a brief summary:
 
 ```
-Wiki promote complete for SPEC-NNN.
+Wiki promote complete for <id>.
 
   PR:               <pr_url>
   Pages written:    <count> (<comma-separated paths>)
@@ -314,18 +321,21 @@ Wiki promote complete for SPEC-NNN.
 
 If any pages were skipped due to hand-edit detection, include a one-line note:
 
-`Hand-edited skips can be resolved by re-running /speckit-gaia-spec-close SPEC-NNN --force (TBD; for now resolve manually).`
+`Hand-edited skips can be resolved by re-running /speckit-gaia-spec-close <id> --force (or /speckit-gaia-plan-close for a PLAN-NNN id; TBD; for now resolve manually).`
 
-## Step 8 - Chain to spec-close (immediate-merge path only)
+## Step 8 - Chain to close (immediate-merge path only)
 
 This step fires only when Step 3 found a merged PR and Steps 4–7 ran full. On the deferred path, Step 3 exits before reaching here. On the silent-skip path (`wiki_promote_default: no`) and the preview path (`--preview`), Step 2 exits before reaching here. So an unconditional invoke at this step is safe, the only way to land here is the immediate-merge full-run.
 
-**Suppression guard.** If wiki-promote was re-fired from `/speckit-gaia-spec-close` Step 2's drain (deferred path), spec-close passes the literal flag `drained: true` in the invocation that triggered this run. Skip this step **only when** the invoking message contains the exact string `drained: true`, match the literal token; do not infer "drained" from the surrounding conversation or from the fact that a cache was cleared. When `drained: true` is present, spec-close is the parent and will handle disposition itself once wiki-promote returns; skip Step 8.
+**Suppression guard.** If wiki-promote was re-fired from `/speckit-gaia-spec-close`'s or `/speckit-gaia-plan-close`'s Step 2 drain (deferred path), the closer passes the literal flag `drained: true` in the invocation that triggered this run. Skip this step **only when** the invoking message contains the exact string `drained: true`, match the literal token; do not infer "drained" from the surrounding conversation or from the fact that a cache was cleared. When `drained: true` is present, the closer is the parent and will handle disposition itself once wiki-promote returns; skip Step 8.
 
-Otherwise, invoke `/speckit-gaia-spec-close` directly by calling the Skill tool to run that command with `<spec_id>` as its argument, the line below states the intent, it is not a substitute for the call:
+Otherwise, route by id shape and invoke the matching closer directly by calling the Skill tool, the lines below state the intent, they are not a substitute for the call:
 
-> Invoking `/speckit-gaia-spec-close <spec_id>`. wiki-promote completed inline; the cache is already cleared. Spec-close will skip drain and go straight to the disposition prompt.
+- `SPEC-NNN` → invoke `/speckit-gaia-spec-close <id>`.
+- `PLAN-NNN` → invoke `/speckit-gaia-plan-close <id>`.
 
-This presents the user with the archive / delete / keep prompt for the local SPEC artifact. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<spec_id>/`.
+> Invoking the closer matching this id. wiki-promote completed inline; the cache is already cleared. The closer will skip drain and go straight to the disposition prompt.
 
-If `/speckit-gaia-spec-close` fails or refuses, exit with the warning `wiki-promote: pages staged and committed; spec-close chain failed. Run /speckit-gaia-spec-close <spec_id> manually to dispose of the SPEC artifact.` Do NOT retry the chain, the wiki side is already settled.
+This presents the user with the close flow's disposition prompt. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<id>/` (spec arm) or `.gaia/local/plans/<id>/` (plan arm).
+
+If the closer fails or refuses, exit with the warning `wiki-promote: pages staged and committed; close chain failed. Run /speckit-gaia-spec-close <id> or /speckit-gaia-plan-close <id> manually to dispose of the artifact.` Do NOT retry the chain, the wiki side is already settled.

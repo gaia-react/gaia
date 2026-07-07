@@ -284,10 +284,28 @@ Otherwise, ask: **"What do you want to spec?"** and wait for the response before
 
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
-First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row). Then delete any merged SPEC folder that is past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days) and whose cost is fully represented in `cost.jsonl`, the safety net for a PR that merged out-of-band or a close that never ran (an unparseable or unrepresented cost sidecar phase blocks that folder's deletion rather than risking an unrecoverable loss; a folder still within the window is kept regardless of representation). Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. All three passes are best-effort and fail-open; the delete sweep runs second so it acts on the rows reconcile just advanced to `merged`:
+First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row).
 
 ```bash
 bash .specify/extensions/gaia/lib/spec-reconcile.sh "$PWD" 2>/dev/null || true
+```
+
+Then, for any merged row whose folder still holds `SPEC.md` or `AUDIT.md` with no well-formed consolidated `SUMMARY.md`, an out-of-band merge that never ran the close flow's consolidation, cold-consolidate it before the delete sweep below runs. This pass is the producer for `spec-archive-merged.sh`'s consolidation gate, which keeps any folder still holding unconsolidated layers; without this pass those folders would never clear that gate. Identify candidates:
+
+```bash
+jq -r '.specs[] | select(.status == "merged") | .id' .gaia/local/specs/ledger.json 2>/dev/null | while read -r id; do
+  folder=".gaia/local/specs/${id}"
+  { [ -f "${folder}/SPEC.md" ] || [ -f "${folder}/AUDIT.md" ]; } || continue
+  bash .gaia/scripts/summary-verify.sh "${folder}/SUMMARY.md" >/dev/null 2>&1 && continue
+  echo "$id"
+done
+```
+
+For each candidate id, run a cold consolidation (agent synthesis, not a script): read the layers in precedence `SPEC.md` → `AUDIT.md` → plan `PROGRESS.md` (top wins), grounded in the merged code and passing tests, and write `.gaia/local/specs/<id>/SUMMARY.md` in the pinned shape (present-tense body, `wiki_promote_default` + `wiki_promote_targets` frontmatter, non-empty H1, optional `## Divergence`). Then gate the layer removal on the verify script: `bash .gaia/scripts/summary-verify.sh .gaia/local/specs/<id>/SUMMARY.md`; on exit 0, `rm .gaia/local/specs/<id>/SPEC.md .gaia/local/specs/<id>/AUDIT.md`; on exit 1, leave the layers in place and move to the next candidate. This pass never destroys a layer it failed to replace, and a candidate whose synthesis or verify fails is simply left for a future pass, never blocking this prompt.
+
+Then delete any merged SPEC folder that is past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days), whose layers are consolidated (the pass above), and whose cost is fully represented in `cost.jsonl`, the safety net for a PR that merged out-of-band or a close that never ran (an unparseable or unrepresented cost sidecar phase blocks that folder's deletion rather than risking an unrecoverable loss; a folder still within the window is kept regardless of representation). Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. Both passes are best-effort and fail-open:
+
+```bash
 bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" 2>/dev/null || true
 bash .specify/extensions/gaia/lib/spec-abandon-empty.sh "$PWD" 2>/dev/null || true
 # Best-effort sweep of stale audit caches left by "Start new" or abandoned exits.

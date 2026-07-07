@@ -3,7 +3,7 @@ type: concept
 title: GAIA Plan
 status: active
 created: 2026-04-30
-updated: 2026-07-04
+updated: 2026-07-08
 tags: [concept, claude, skill, orchestration]
 ---
 
@@ -25,7 +25,13 @@ The harness's own plan mode (`ExitPlanMode`, a single markdown written to `~/.cl
 
 ## Orchestrator contract
 
-`ORCHESTRATOR.md` pins each task sub-agent to `model: sonnet` by default, decoupling execution from the orchestrator's own session model, since the spec and plan audits resolve the complexity upstream so execution runs on the cheaper model. The planner escalates a specific phase to Opus only when it names a genuinely deep-synthesis reason. `ORCHESTRATOR.md` also mandates a brief **final summary** before awaiting merge confirmation: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, and quality-gate status. A few lines, not a recap of every change. The final cleanup phase (deleting the plan folder outright, gated on every `cost.md` phase being value-represented in `cost.jsonl`, which with the two id-ledgers is the whole durable record that survives) only runs after the user confirms the PR is ready to merge; see [[Task Orchestration]] for the deletion mechanics.
+`ORCHESTRATOR.md` pins each task sub-agent to `model: sonnet` by default, decoupling execution from the orchestrator's own session model, since the spec and plan audits resolve the complexity upstream so execution runs on the cheaper model. The planner escalates a specific phase to Opus only when it names a genuinely deep-synthesis reason. `ORCHESTRATOR.md` also mandates a brief **final summary** before awaiting merge confirmation: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, and quality-gate status. A few lines, not a recap of every change. The final cleanup phase only runs after the user confirms the PR is ready to merge: consolidation produces a verified `SUMMARY.md`, then a spec-less plan's folder is kept, reduced to `SUMMARY.md` + `cost.json` with its `RUNNING` sentinel cleared, gated on every phase's cost being value-represented in `cost.jsonl`, which with the two id-ledgers is the whole durable record that survives; a spec-colocated plan deletes only its own `plan[-N]` subfolder once the parent SPEC's `SUMMARY.md` exists. See [[Task Orchestration]] for the full retention mechanics.
+
+## Ledger status and closure
+
+A plan's `.gaia/local/plans/ledger.json` row (or, for a spec-colocated plan, the parent SPEC's `.gaia/local/specs/ledger.json` row) carries a `status` of `ready | merged | abandoned`, allocated at `ready` and age-anchored on `merged_at`. `plan-close`, mirroring `spec-close`, runs consolidation once the implementing PR has merged, drains any deferred wiki-promote, and delegates the single-id reap to the retention helpers described in [[Task Orchestration]].
+
+Reaching the wiki is offered-then-gated rather than default-on: the consolidated `SUMMARY.md` carries `wiki_promote_default: ask` and `wiki_promote_targets: [decisions]` unless the closer picks different targets, so a human is asked at close whether the plan's outcome is worth a wiki page; a declined promotion counts as drained, the same drain the retention gate checks for. This is deliberately asymmetric with a SPEC's default-on promotion, since not every plan produces wiki-durable knowledge.
 
 ## Pairs with
 

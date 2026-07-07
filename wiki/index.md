@@ -143,7 +143,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Incremental CI Skipping]]: required checks skip when the delta since they last passed green has no relevant files; `resolve-check-base.sh` / `resolve-audit-base.sh`.
 - [[Claude Hooks]]
 - [[Claude Integration Conventions]]: Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
-- [[Local Working State]]: layout and retention of the gitignored `.gaia/local/` working-state folder; the SessionStart janitor that GCs orphaned audit markers, completed plan dirs, and stray empty dirs.
+- [[Local Working State]]: layout and retention of the gitignored `.gaia/local/` working-state folder; the SessionStart janitor that GCs orphaned audit markers, merged plan dirs, and stray empty dirs.
 - [[Claude Skills]]
 - [[Update Workflow]]: `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.
 <!-- gaia:maintainer-only:start -->
