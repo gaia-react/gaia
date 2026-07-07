@@ -394,6 +394,10 @@ On **Skip**, do not stamp `audit_hardened`; proceed to the decision gate. On **R
 
 ### Dispatch the three lenses (parallel fan-out)
 
+Announce once, naming each lens in full with its id code in parentheses (e.g. `classification grounding (CL)`), never the bare code:
+
+> Dispatching the three lenses in parallel against ground truth: classification grounding (CL), conflict adjudication (CF), edit safety / blast-radius (ES).
+
 Dispatch **one `general-purpose` Agent per lens, all in parallel** (one message, one Agent tool call per lens), each handed the shared preamble plus its lens line. Each agent reads the Stage 1 report at `<REPORT_PATH>` (resolved under `.gaia/local/audit/`), the cited stores, the wiki, and `node_modules` if relevant, and returns only the findings JSON below, no narrative.
 
 Shared preamble (interpolate `<REPORT_PATH>` = the Stage 1 report path the main conversation just received, `<repo_root>` = `$PWD`, `<MEMORY_DIR>` = the resolved memory dir from the report frontmatter):
