@@ -440,6 +440,129 @@ describe('gaia setup link-worktree (linked worktree)', () => {
   });
 });
 
+describe('gaia setup link-worktree (env file sharing)', () => {
+  let sandbox: WorktreeSandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+    sandbox = setupWorktreeSandbox();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('fresh worktree: shares .env and .env.local, skips .env.example; actions still length 5', () => {
+    writeFileSync(path.join(sandbox.mainRoot, '.env'), 'A=1', 'utf8');
+    writeFileSync(path.join(sandbox.mainRoot, '.env.local'), 'B=2', 'utf8');
+    writeFileSync(path.join(sandbox.mainRoot, '.env.example'), 'C=3', 'utf8');
+
+    const exit = runLinkWorktree(['--json'], {
+      cwd: sandbox.linkedRoot,
+      now: () => FROZEN_TS,
+    });
+    expect(exit).toBe(0);
+
+    const out = JSON.parse(stdio.outputs.join('').trim()) as {
+      actions: {path: string}[];
+      env_actions: {path: string; result: string}[];
+    };
+
+    expect(out.env_actions.map((action) => action.path)).toEqual([
+      '.env',
+      '.env.local',
+    ]);
+
+    for (const action of out.env_actions) {
+      expect(action.result).toBe('linked');
+    }
+
+    expect(out.actions).toHaveLength(5);
+
+    for (const rel of ['.env', '.env.local']) {
+      const sourcePath = path.join(sandbox.linkedRoot, rel);
+      expect(lstatSync(sourcePath).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(sourcePath)).toBe(path.join(sandbox.mainRoot, rel));
+    }
+
+    expect(existsSync(path.join(sandbox.linkedRoot, '.env.example'))).toBe(
+      false
+    );
+  });
+
+  test('no env files in main checkout: env_actions is an empty array', () => {
+    const exit = runLinkWorktree(['--json'], {
+      cwd: sandbox.linkedRoot,
+      now: () => FROZEN_TS,
+    });
+    expect(exit).toBe(0);
+
+    const out = JSON.parse(stdio.outputs.join('').trim()) as {
+      env_actions: unknown[];
+    };
+    expect(out.env_actions).toEqual([]);
+  });
+
+  test('idempotent: second run reports env already-linked for .env', () => {
+    writeFileSync(path.join(sandbox.mainRoot, '.env'), 'A=1', 'utf8');
+
+    runLinkWorktree([], {cwd: sandbox.linkedRoot, now: () => FROZEN_TS});
+    stdio.outputs.length = 0;
+
+    const exit = runLinkWorktree(['--json'], {
+      cwd: sandbox.linkedRoot,
+      now: () => FROZEN_TS,
+    });
+    expect(exit).toBe(0);
+
+    const out = JSON.parse(stdio.outputs.join('').trim()) as {
+      env_actions: {path: string; result: string}[];
+    };
+    expect(out.env_actions).toEqual([{path: '.env', result: 'already-linked'}]);
+  });
+
+  test('pre-existing plain .env in worktree: linked-after-backup with a backup file on disk', () => {
+    writeFileSync(path.join(sandbox.mainRoot, '.env'), 'A=1', 'utf8');
+    writeFileSync(path.join(sandbox.linkedRoot, '.env'), 'STALE=1', 'utf8');
+
+    const exit = runLinkWorktree(['--json'], {
+      cwd: sandbox.linkedRoot,
+      now: () => FROZEN_TS,
+    });
+    expect(exit).toBe(0);
+
+    const out = JSON.parse(stdio.outputs.join('').trim()) as {
+      env_actions: {backup?: string; path: string; result: string}[];
+    };
+    const envAction = out.env_actions.find((action) => action.path === '.env');
+
+    expect(envAction?.result).toBe('linked-after-backup');
+    expect(envAction?.backup).toBeDefined();
+
+    const backupAbs = path.join(sandbox.linkedRoot, String(envAction?.backup));
+    expect(existsSync(backupAbs)).toBe(true);
+  });
+
+  test('editor cruft (.env.local~) is rejected by the shareable-env regex', () => {
+    writeFileSync(path.join(sandbox.mainRoot, '.env'), 'A=1', 'utf8');
+    writeFileSync(path.join(sandbox.mainRoot, '.env.local~'), 'B=2', 'utf8');
+
+    const exit = runLinkWorktree(['--json'], {
+      cwd: sandbox.linkedRoot,
+      now: () => FROZEN_TS,
+    });
+    expect(exit).toBe(0);
+
+    const out = JSON.parse(stdio.outputs.join('').trim()) as {
+      env_actions: {path: string}[];
+    };
+    expect(out.env_actions.map((action) => action.path)).toEqual(['.env']);
+  });
+});
+
 describe('gaia setup link-worktree (main checkout)', () => {
   let sandbox: MainOnlySandbox;
   let stdio: ReturnType<typeof captureStdio>;

@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # GAIA worktree shared-state symlink hook (SPEC-005).
 #
-# Creates five symlinks from the current linked worktree into the main
-# checkout so gitignored shared state (setup-state.json, mentorship.json,
-# cache/, audit/, telemetry/) does not diverge per-worktree:
+# Creates symlinks from the current linked worktree into the main checkout:
+# the five fixed .gaia/local/ shared-state paths (setup-state.json,
+# mentorship.json, cache/, audit/, telemetry/) plus any gitignored
+# checkout-root .env / .env.* files (excluding the committed .env.example),
+# so neither diverges per-worktree:
 #
 #   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
 #   <worktree>/.gaia/local/mentorship.json  -> <main>/.gaia/local/mentorship.json
 #   <worktree>/.gaia/local/cache/shared/      -> <main>/.gaia/local/cache/shared/
 #   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
 #   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
+#   <worktree>/.env, <worktree>/.env.*       -> <main>/.env, <main>/.env.*
 #
 # Behavior:
 #   - Idempotent: re-running on an already-linked worktree is a no-op.
@@ -134,5 +137,24 @@ link_one ".gaia/local/mentorship.json"  ".gaia/local"
 link_one ".gaia/local/cache/shared"     ".gaia/local/cache"
 link_one ".gaia/local/audit"            ".gaia/local"
 link_one ".gaia/local/telemetry"        ".gaia/local"
+
+# ---------- share gitignored root .env / .env.* files ----------
+# Vite (`pnpm dev`) and Playwright's dotenv `config()` read .env / .env.* from
+# the checkout root. They are gitignored, so a fresh worktree has none; symlink
+# whatever the main checkout holds so the worktree app sees the same secrets.
+# .env.example is committed (already present in the worktree) and is never linked.
+link_env_files() {
+  local f base
+  local re='^\.env(\.[A-Za-z0-9_-]+)*$'
+  for f in "$main_root"/.env "$main_root"/.env.*; do
+    [ -e "$f" ] || continue
+    base="$(basename "$f")"
+    [ "$base" = ".env.example" ] && continue
+    [[ "$base" =~ $re ]] || continue   # identical set to CLI ENV_BASENAME_RE + read guard
+    link_one "$base" "."
+  done
+}
+
+link_env_files
 
 exit 0
