@@ -59,7 +59,11 @@ rm_segment=$(grep -oE '(^|[^[:alnum:]_-])rm[[:space:]]+[^;&|]*' <<<"$cmd" | head
 
 # Tokenize and inspect non-flag args.
 read -r -a tokens <<<"$rm_segment"
-for tok in "${tokens[@]}"; do
+# tokens is provably non-empty here (rm_segment is guarded non-empty above and
+# always carries the `rm` token), but guard the expansion anyway so the
+# array-guard lint stays a zero-exception gate: on bash 3.2 a bare "${tokens[@]}"
+# over an empty array aborts under `set -u`.
+for tok in ${tokens[@]+"${tokens[@]}"}; do
   # Skip the literal `rm` word and flag tokens.
   [[ "$tok" == "rm" || "$tok" == rm ]] && continue
   [[ "$tok" == -* ]] && continue
