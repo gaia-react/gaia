@@ -354,13 +354,15 @@ Present (recommended option FIRST, carrying the `(Recommended)` tag):
   - `{ label: "Run the audit (Recommended)", description: "Three parallel auditors verify decomposition soundness, contract grounding, and SPEC coverage against the real repo. A few agents, a couple of minutes." }`
   - `{ label: "Skip the audit", description: "Hand off the plan as written. Best reserved for trivial single-phase plans." }`
 
-`Skip` is never the recommended option for a non-trivial plan. On **Skip**, proceed to step 4.7.
+`Skip` is never the recommended option for a non-trivial plan. On **Skip**, proceed to step 4.7. Skip does not run the audit, so no audit-window breadcrumb is written; its absence is the correct signal to the step-4.8 tally that no decomposition audit ran.
 
 **Auto-mode.** No prompt fires. When `/gaia-plan` runs non-interactively (a headless or automation context with no interactive user), gauge the plan, run the audit if it is non-trivial, and apply its dispositions non-interactively.
 
-**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block the handoff: note the skip (`decomposition audit unavailable`) and proceed to step 4.7. The orchestrator's per-phase quality gates and the non-skippable pre-merge `code-review-audit` remain the safety net.
+**Fallback (never block).** If the parallel `general-purpose` Agent fan-out is unavailable (a restricted context that cannot spawn subagents), do NOT block the handoff: note the skip (`decomposition audit unavailable`) and proceed to step 4.7. The orchestrator's per-phase quality gates and the non-skippable pre-merge `code-review-audit` remain the safety net. Like Skip, this path writes no audit-window breadcrumb.
 
 #### 4.6a. Dispatch the lens auditors (parallel fan-out)
+
+Capture the audit window start for the cost-ledger breadcrumb: `AUDIT_WINDOW_START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"`.
 
 Spawn **one `general-purpose` Agent per lens, all in parallel** (one message, one Agent tool call per lens). The **SPEC coverage** lens is dispatched only when `SPEC_PATH` was set in step 1a; the other two always run. A SPEC-less plan's undispatched SPEC coverage lens is recorded not-applicable, never as a no-op. Each agent reads the plan folder and returns only the findings JSON below, no narrative.
 
@@ -417,6 +419,28 @@ Collect findings across all lenses. The plan is editable and unsaved-to-handoff,
 **Interactive:** surface each material (non-`low`) finding to the user before applying (issue, evidence, recommendation; apply / keep / revise); apply `low` findings silently. **Auto-mode:** auto-apply unambiguous fixes; if a repair is ambiguous (more than one defensible fix), leave the plan unchanged and record the finding in a `## Audit notes` section appended to `README.md` so the orchestrator and user see it. If the audit re-spawned the planner, re-run step 4.5 against the regenerated folder before proceeding.
 
 **Degraded-coverage record (both modes).** Independent of the ambiguous-repair recording above, if any lens from 4.6a was retried or ran as an inline fallback, append one line per degraded lens to the same `## Audit notes` section in `README.md` (creating the section if it does not already exist), naming the lens and its disposition (`retried_recovered` or `inline_fallback`), so a reader can tell a clean lens from a degraded one. Write this line in interactive mode as well as auto-mode; it is not gated behind the auto-only ambiguous-repair branch above.
+
+**Close the audit window (cost-ledger breadcrumb).** The audit unit is now complete (findings applied, and any structural re-spawn resolved). Capture the end and write the FC-1 breadcrumb by sourcing the FC-5 lib and calling its single breadcrumb writer, to the feature-namespaced path. A spec-derived plan is namespaced by the SPEC id, not the plan-dir basename, so two SPECs planned concurrently never collide on one shared breadcrumb. Do not inline `jq -n` here, the write goes through `gaia_audit_window_write` so the same code path a unit test exercises is the one production runs:
+
+```bash
+AUDIT_WINDOW_END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+. .gaia/scripts/audit-window-lib.sh 2>/dev/null || true
+if [[ -n "${SPEC_PATH:-}" ]]; then
+  AUDIT_SPEC_ID="$(basename "$(dirname "$SPEC_PATH")")"
+  AUDIT_WINDOW_PATH=".gaia/local/cache/audit-window-${AUDIT_SPEC_ID}-plan.json"
+  AUDIT_LENSES='["DP","CG","COV"]'
+else
+  AUDIT_WINDOW_PATH=".gaia/local/cache/audit-window-$(basename "$PLAN_DIR").json"
+  AUDIT_LENSES='["DP","CG"]'
+fi
+gaia_audit_window_write \
+  "$AUDIT_WINDOW_PATH" \
+  "${CLAUDE_CODE_SESSION_ID}" \
+  "$AUDIT_WINDOW_START" "$AUDIT_WINDOW_END" \
+  "$AUDIT_LENSES" "" || true
+```
+
+Note the explicit empty 6th argument: plan audits have no intensity tier, so the writer omits the `intensity` key. Never key the spec-derived path on `$(basename "$PLAN_DIR")`, that basename is the literal `plan`/`plan-2` and is identical across every SPEC, so two SPECs planned concurrently would collide on one shared breadcrumb and mutually degrade. This call is best-effort (`|| true`) and never blocks the handoff.
 
 ### 4.7. Telemetry: revision detection
 
@@ -505,7 +529,10 @@ fi
 The helper always exits 0, and the trailing `|| true` is defense-in-depth: this **never blocks the
 handoff**, and unreadable input degrades to a partial figure with a marker rather than a fabricated
 number. It is a mechanical helper call, not a prompt, so it runs identically in interactive and auto
-(`AskUserQuestion`-less) mode. Surface the printed tally in the step-5 report to the user.
+(`AskUserQuestion`-less) mode. Surface the printed tally in the step-5 report to the user. This same
+call reads and deletes the step-4.6 audit-window breadcrumb (the feature-namespaced
+`audit-window-<spec_id>-plan.json` or `audit-window-<plan-id>.json`) if present, nesting an
+`audit.adversarial` annotation into this `plan` record when the window resolves.
 
 ### 5. Report to user
 
