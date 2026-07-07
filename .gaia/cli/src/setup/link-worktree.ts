@@ -10,6 +10,11 @@
  *   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
  *   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
  *
+ * Also links gitignored checkout-root `.env` / `.env.*` files (excluding the
+ * committed `.env.example`) from the main checkout, one symlink per file,
+ * reported separately in the `env_actions` field so the frozen five-entry
+ * `actions` contract above is untouched.
+ *
  * No-op on a main checkout (not a linked worktree). Pre-existing plain
  * files / dirs are moved to <path>.bak.<timestamp> before the symlink is
  * created. Exits 1 on any `failed` action; the user explicitly invoked
@@ -23,6 +28,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readlinkSync,
   realpathSync,
   renameSync,
@@ -36,9 +42,11 @@ import {resolveMainWorktreeRoot} from './util/state-file.js';
 const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
   Idempotently create the five worktree shared-state symlinks pointing at
-  the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
-  No-op on a main checkout (not a linked worktree); exits 0 with a
-  one-line "not a linked worktree" message.
+  the main checkout. Also links gitignored checkout-root .env / .env.*
+  files (excluding .env.example) from the main checkout. Backs up
+  pre-existing plain files to <path>.bak.<ts>. No-op on a main checkout
+  (not a linked worktree); exits 0 with a one-line "not a linked worktree"
+  message.
 
   --json   Print a single JSON line describing the result instead of the
            human-readable summary.
@@ -62,6 +70,7 @@ type ActionResult =
 
 type LinkOutput = {
   actions: Action[];
+  env_actions: Action[];
   is_worktree: boolean;
   main_root: null | string;
   worktree_root: null | string;
@@ -103,6 +112,14 @@ const SHARED_PATHS: readonly SharedPathSpec[] = [
   {ensureTargetDir: true, relativePath: '.gaia/local/audit'},
   {ensureTargetDir: true, relativePath: '.gaia/local/telemetry'},
 ];
+
+// Shareable env-file basename set: `.env` and any `.env.*` variant under the
+// checkout root, except the committed `.env.example`. Mirrors .gitignore's
+// `.env` / `.env.*` / `!.env.example` and the `is_dotenv_path` definition in
+// `.claude/hooks/block-env-read.sh`. See SPEC-005 plan README.md.
+const ENV_BASENAME_RE = /^\.env(\.[A-Za-z0-9_-]+)*$/;
+const isShareableEnvironmentFile = (base: string): boolean =>
+  ENV_BASENAME_RE.test(base) && base !== '.env.example';
 
 const formatTimestamp = (date: Date): string => {
   const pad = (value: number): string => String(value).padStart(2, '0');
@@ -209,13 +226,11 @@ const ACTION_HUMAN_LABELS: Readonly<Record<ActionResult, string>> = {
   'skipped-no-target': 'skipped-no-target',
 };
 
-const printHuman = (output: LinkOutput): void => {
-  if (!output.is_worktree) {
-    process.stdout.write('not a linked worktree\n');
-
-    return;
-  }
-
+// The frozen five-path summary lines, byte-for-byte identical to the
+// pre-env-sharing output (link-worktree.test.ts asserts the exact
+// substrings). Returns lines instead of writing directly so `printHuman`
+// can append the env summary after it.
+const buildFixedSummaryLines = (output: LinkOutput): string[] => {
   const failed = output.actions.filter((action) => action.result === 'failed');
 
   if (failed.length > 0) {
@@ -231,9 +246,8 @@ const printHuman = (output: LinkOutput): void => {
         : '';
       lines.push(`  ${label}: ${action.path}${suffix}`);
     }
-    process.stdout.write(`${lines.join('\n')}\n`);
 
-    return;
+    return lines;
   }
 
   const allAlreadyLinked = output.actions.every(
@@ -241,33 +255,68 @@ const printHuman = (output: LinkOutput): void => {
   );
 
   if (allAlreadyLinked) {
-    process.stdout.write(
-      `All ${String(output.actions.length)} paths already linked.\n`
-    );
-
-    return;
+    return [`All ${String(output.actions.length)} paths already linked.`];
   }
 
   const backedUp = output.actions.filter(
     (action) => action.result === 'linked-after-backup'
   );
 
-  if (backedUp.length > 0) {
-    const lines = [
-      `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.`,
-    ];
+  const lines = [
+    `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.`,
+  ];
 
-    for (const action of backedUp) {
-      lines.push(`  Backed up: ${action.path} -> ${String(action.backup)}`);
-    }
-    process.stdout.write(`${lines.join('\n')}\n`);
+  for (const action of backedUp) {
+    lines.push(`  Backed up: ${action.path} -> ${String(action.backup)}`);
+  }
+
+  return lines;
+};
+
+// Env-file summary, appended after the fixed five-path summary. Empty
+// `env_actions` (no gitignored .env files in the main checkout) produces no
+// lines at all.
+const buildEnvironmentSummaryLines = (
+  envActions: readonly Action[]
+): string[] => {
+  if (envActions.length === 0) return [];
+
+  const allAlreadyLinked = envActions.every(
+    (action) => action.result === 'already-linked'
+  );
+
+  if (allAlreadyLinked) {
+    return [`All ${String(envActions.length)} env file(s) already linked.`];
+  }
+
+  const lines = [
+    `Linked ${String(envActions.length)} env file(s): ${envActions
+      .map((action) => `${action.path} (${action.result})`)
+      .join(', ')}.`,
+  ];
+
+  const failed = envActions.filter((action) => action.result === 'failed');
+
+  for (const action of failed) {
+    lines.push(`  failed: ${action.path}: ${String(action.error)}`);
+  }
+
+  return lines;
+};
+
+const printHuman = (output: LinkOutput): void => {
+  if (!output.is_worktree) {
+    process.stdout.write('not a linked worktree\n');
 
     return;
   }
 
-  process.stdout.write(
-    `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.\n`
-  );
+  const lines = [
+    ...buildFixedSummaryLines(output),
+    ...buildEnvironmentSummaryLines(output.env_actions),
+  ];
+
+  process.stdout.write(`${lines.join('\n')}\n`);
 };
 
 // Extracted out of `run` (kept its cognitive complexity under the frozen
@@ -361,6 +410,7 @@ export const run = (
   if (mainRoot === worktreeRoot) {
     const output: LinkOutput = {
       actions: [],
+      env_actions: [],
       is_worktree: false,
       main_root: mainRoot,
       worktree_root: worktreeRoot,
@@ -383,8 +433,21 @@ export const run = (
     linkOne({mainRoot, spec, symlink, timestamp, worktreeRoot})
   );
 
+  // Env files are a separate, discovered (not fixed) set: every gitignored
+  // `.env` / `.env.*` under the main checkout root except `.env.example`.
+  // Reported in the new `env_actions` field; the frozen five-entry `actions`
+  // array above is untouched.
+  const envSpecs: SharedPathSpec[] = readdirSync(mainRoot)
+    .filter((name) => isShareableEnvironmentFile(name))
+    .toSorted((a, b) => a.localeCompare(b))
+    .map((name) => ({ensureTargetDir: false, relativePath: name}));
+  const envActions = envSpecs.map((spec) =>
+    linkOne({mainRoot, spec, symlink, timestamp, worktreeRoot})
+  );
+
   const output: LinkOutput = {
     actions,
+    env_actions: envActions,
     is_worktree: true,
     main_root: mainRoot,
     worktree_root: worktreeRoot,
@@ -396,7 +459,9 @@ export const run = (
     printHuman(output);
   }
 
-  const anyFailed = actions.some((action) => action.result === 'failed');
+  const anyFailed = [...actions, ...envActions].some(
+    (action) => action.result === 'failed'
+  );
 
   return anyFailed ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
