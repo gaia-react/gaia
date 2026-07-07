@@ -316,7 +316,7 @@ find .gaia/local/cache -maxdepth 1 -type d -name 'audit-*' -mtime +1 \
   -exec rm -rf {} + 2>/dev/null || true
 ```
 
-Then run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an unfinalized **draft** SPEC already exists, a prior authoring session that never reached the canonical save (step 9). The allocator reports only drafts; a finalized SPEC (`specified`/`merged`) is never surfaced here, because you resume a draft, not a frozen artifact.
+Then run `bash .specify/extensions/gaia/lib/spec-allocator.sh in_progress "$PWD"`. If the output is a `SPEC-NNN` id (not `none`), an unfinalized **draft** SPEC already exists, a prior authoring session that never reached the canonical save (step 9). The allocator reports only drafts; a finalized SPEC (`ready`/`merged`) is never surfaced here, because you resume a draft, not a frozen artifact.
 
 The id may name a **draft-phase** session, a SPEC allocated in another terminal whose interactive loop has not yet reached the canonical save (step 9), so `.gaia/local/specs/SPEC-NNN/SPEC.md` may not exist yet and the live draft is at `.gaia/local/cache/draft-SPEC-NNN.md`. The `WORKING`-selection below resolves this correctly, preferring the draft cache when the canonical file is absent or older.
 
