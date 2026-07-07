@@ -266,6 +266,32 @@ run_hook() {
   [ "$(jq -r '.plan_id' "$LEDGER")" = "null" ]
 }
 
+# ---------- 6c. Empty id_flag survives stock /bin/bash (bash 3.2 empty-array guard) ----------
+# Same unclassifiable-key path as 6b (id_flag=() empty), but pinned to stock
+# /bin/bash. On macOS's /bin/bash 3.2.57 a bare "${id_flag[@]}" over an empty
+# array aborts with `unbound variable` under `set -u`, killing the hook at exit 1
+# before token-tally runs, so the whole tally is silently dropped; bash 4.4+
+# never trips it. The rest of this suite runs under env bash (Homebrew bash 5),
+# blind to the entire class, so only a run pinned to /bin/bash reproduces the
+# regression. On a bash-5 /bin/bash (Linux CI) this simply passes; on a stock Mac
+# it is the real gate. The hook is invoked as `/bin/bash <hook>` so its
+# `#!/usr/bin/env bash` shebang (which would pick up bash 5) is bypassed.
+@test "unclassifiable key under stock /bin/bash: empty id_flag does not abort the hook" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  build_repo
+  cd "$REPO"
+  plan_dir="$REPO/.gaia/local/specs/SPEC-099/plan"
+  write_readme_spec_less "$plan_dir"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  input=$("$HELPERS/mock-hook-input.sh" pre-tool-use "$SESSION" Bash "git commit -m x")
+  run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "echo '$input' | /bin/bash '$HOOK_ABS'"
+  [ "$status" -eq 0 ]
+  LEDGER="$REPO/.gaia/local/telemetry/cost.jsonl"
+  [ -f "$LEDGER" ]
+  [ "$(jq -r '.partial' "$LEDGER")" = "true" ]
+}
+
 # ---------- 7. Disambiguation by latest started ----------
 @test "two matching plan folders disambiguate on the latest started timestamp" {
   build_repo

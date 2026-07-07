@@ -77,8 +77,14 @@ esac
 # (token-tally.sh falls back to its $HOME/.claude/projects default), set by
 # bats to point at a fixture so no test run ever touches a real session's
 # transcript search path.
+#
+# id_flag is empty for an unclassifiable key (the case `*)` branch above). The
+# offset-guard `${id_flag[@]+"${id_flag[@]}"}` keeps that empty expansion from
+# firing bare: on stock macOS /bin/bash 3.2 a bare "${id_flag[@]}" over an empty
+# array aborts with `unbound variable` under `set -u` (before the trailing
+# `|| true`, so the tally is silently dropped); bash 4.4+ tolerates it.
 bash .gaia/scripts/token-tally.sh \
-  --action execute "${id_flag[@]}" --plan-slug "$slug" \
+  --action execute ${id_flag[@]+"${id_flag[@]}"} --plan-slug "$slug" \
   --out-dir "$plan_dir" --session-id "$sid" \
   ${GAIA_TALLY_PROJECTS_ROOT:+--projects-root "$GAIA_TALLY_PROJECTS_ROOT"} >/dev/null 2>&1 || true
 
