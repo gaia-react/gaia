@@ -117,6 +117,29 @@ describe('sandbox marker', () => {
     );
   });
 
+  test('throws on a present-but-off-vocabulary outcome/capability', () => {
+    writeSandboxMarker(repoRoot, {
+      capability: 'ready',
+      outcome: 'enabled',
+      resolved_at: '2026-01-01T00:00:00.000Z',
+      version: 1,
+    });
+    writeFileSync(
+      resolveMarkerPath(repoRoot),
+      JSON.stringify({
+        capability: 'ready',
+        outcome: 'garbage',
+        resolved_at: '2026-01-01T00:00:00.000Z',
+        version: 1,
+      }),
+      {mode: 0o644}
+    );
+
+    expect(() => readSandboxMarker(repoRoot)).toThrow(
+      /unknown outcome or capability/u
+    );
+  });
+
   test('overwrites the previous marker (write-temp-and-rename)', () => {
     writeSandboxMarker(repoRoot, {
       capability: 'ready',

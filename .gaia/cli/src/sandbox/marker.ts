@@ -25,6 +25,20 @@ export type SandboxMarker = {
 
 export type SandboxOutcome = 'declined' | 'enabled' | 'incapable';
 
+// Canonical enum vocabularies, used to reject a present-but-off-vocabulary
+// hand-edited marker, matching the enum validation the sibling
+// automation-config reader gets from Zod.
+const CAPABILITIES: readonly Capability[] = [
+  'needs-deps',
+  'ready',
+  'unsupported',
+];
+const OUTCOMES: readonly SandboxOutcome[] = [
+  'declined',
+  'enabled',
+  'incapable',
+];
+
 export const resolveMarkerPath = (repoRoot: string): string =>
   path.join(repoRoot, '.gaia', 'local', MARKER_FILENAME);
 
@@ -50,6 +64,15 @@ export const readSandboxMarker = (repoRoot: string): null | SandboxMarker => {
     // Malformed/wrong-version file: fail loud rather than silently
     // defaulting, mirroring the sibling state readers (setup-state.json).
     throw new TypeError('sandbox.json is missing required fields');
+  }
+
+  if (
+    !(OUTCOMES as readonly string[]).includes(parsed.outcome) ||
+    !(CAPABILITIES as readonly string[]).includes(parsed.capability)
+  ) {
+    // Present but off-vocabulary (e.g. a hand-edited marker): fail loud,
+    // matching the enum validation the automation-config reader gets from Zod.
+    throw new TypeError('sandbox.json has an unknown outcome or capability');
   }
 
   return {
