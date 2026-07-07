@@ -175,6 +175,20 @@
             "type": "command",
             "command": ".claude/hooks/block-manifest-write.sh",
             "statusMessage": "Checking manifest-write guard…"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-env-read.sh",
+            "statusMessage": "Checking .env read guard…"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-env-read.sh"
           }
         ]
       },
