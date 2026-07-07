@@ -95,7 +95,7 @@ The classification only routes the phases below; each phase re-checks its own co
 
 ## Phase 2: Per-machine setup (skip if setup-state finalized)
 
-If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops **except for the mentorship decision below** (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–6 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
+If `setup status --json` reports a non-null `completed_at`, this whole phase no-ops **except for the mentorship and sandbox decisions below** (a first adopter finished per-machine work inside `/gaia-init`, so the repo prompt in Phase 3 is their first real interaction, with no tool-install log lines before it, and the recorded per-machine steps are unchanged). Otherwise run Steps 1–6 below in order. Each records itself via `.gaia/cli/gaia setup mark-step <step>` and is skipped when already in `completed_steps`.
 
 **Mentorship decision (runs even when `completed_at` is non-null).** This clause surfaces the mentorship opt-in whenever no decision has been recorded (`mentorship.json` absent or `enabled: null`, the pre-decision default treated as off). It runs even when `completed_at` is non-null because Phase 2 otherwise short-circuits once per-machine setup is complete and would skip the opt-in. So before falling through to Phase 3, always evaluate this:
 
@@ -109,6 +109,71 @@ fi
 ```
 
 If `DECIDED` is `null` (file absent, `enabled: null`, or an unreadable config), run **Step 6's opt-in body** now, the prompt-through-write sub-block: the privacy explainer, the AskUserQuestion, the chosen `_internal-write-config` branch, and its `mark-step mentorship-decision` (Step 6's lines starting at the user-facing prompt, not its up-front skip guard), regardless of `completed_at` or whether `mentorship-decision` is already in `completed_steps`; `mentorship.json` is the source of truth here. If `DECIDED` is `true` or `false`, the decision stands and this is a no-op. (When `completed_at` is null, this clause fires first; Step 6's own guard then short-circuits its in-sequence run.)
+
+**Sandbox decision (runs even when `completed_at` is non-null).** This clause surfaces the OS-level Bash sandbox enablement decision whenever no per-machine resolution has been recorded. It runs even when `completed_at` is non-null for the same reason as the mentorship clause above: Phase 2 otherwise short-circuits once per-machine setup is complete and would skip the decision. So before falling through to Phase 3, always evaluate this:
+
+```bash
+RESOLVED="$(.gaia/cli/gaia sandbox status --json 2>/dev/null | jq -r '.resolved // false')"
+```
+
+If `RESOLVED` is `true` and `RECONFIGURE` is NOT set, the decision stands: do NOT re-prompt and do NOT flip the settled value. Skip to the rest of setup. Otherwise (marker absent, or `--reconfigure`), run the decision body below. This clause is gated on the `gaia sandbox status` marker, never on a `SETUP_STEPS` value: no `SETUP_STEPS` entry is added and `gaia setup mark-step` is never called for the sandbox decision; `.gaia/local/sandbox.json` is the only tracking.
+
+1. **Read the recommendation.** Absent file, absent key, or an unreadable config all mean "no recommendation", so the default is off:
+
+   ```bash
+   RECOMMENDED="$(jq -r '.sandbox_recommended // false' .gaia/automation.json 2>/dev/null || echo false)"
+   ```
+
+2. **Classify capability** via the injectable CLI (falls back to a real host probe when flags are omitted):
+
+   ```bash
+   .gaia/cli/gaia sandbox detect --json
+   ```
+
+   Cache `capability`, `installCommand`, `reason` from the JSON.
+
+3. **Branch on capability.** Never half-enable: the sandbox is either fully applied or left off.
+   - `unsupported` (native Windows or WSL1): do NOT enable. Tell the developer plainly that Claude Code's OS-level sandbox is unavailable on this machine (use `reason`) and point them to WSL2 instead. Record the outcome and skip the prompt:
+
+     ```bash
+     .gaia/cli/gaia sandbox record --outcome incapable --capability unsupported
+     ```
+
+   - `needs-deps` (Linux/WSL2 missing bubblewrap/socat): do NOT enable, do NOT half-enable. Print the concrete `installCommand` (plus the Fedora form carried in `reason`) and tell the developer the sandbox stays off until those are installed and `/setup-gaia` is re-run. Record the outcome and skip the prompt:
+
+     ```bash
+     .gaia/cli/gaia sandbox record --outcome incapable --capability needs-deps
+     ```
+
+   - `ready` (macOS Seatbelt, or Linux/WSL2 with both deps present): run the single prompt below.
+
+4. **The single informed prompt** (`ready` only). Use AskUserQuestion exactly once, there is no promptless auto-enable branch anywhere in this file. Its default option tracks `RECOMMENDED`: when `true`, "Enable the sandbox" is Recommended; when `false` (including when nothing was recommended), "Don't enable" is Recommended.
+
+   > Enable Claude Code's OS-level Bash sandbox on this machine? It sandboxes Bash commands and their child processes, but it can break local tools: `docker`, `gh`, `terraform`, and other commands that need network or host access may fail or need allowlisting. Your project owner {recommends / does not recommend} it; each machine decides for itself.
+   >
+   > - **Enable the sandbox** / **Don't enable** (Recommended tracks the owner's recommendation, default off when none)
+
+   On **enable**:
+
+   ```bash
+   REGISTRY="$(npm config get registry 2>/dev/null)"
+   DOCKER_PRESENT=false; command -v docker >/dev/null 2>&1 && DOCKER_PRESENT=true
+   .gaia/cli/gaia sandbox apply --registry "$REGISTRY" --docker-present "$DOCKER_PRESENT" --capability ready
+   ```
+
+   `apply` deep-merges the minimal seed into `.claude/settings.local.json` (gitignored) and writes the `enabled` marker. Then print the honesty message below. Tell the developer the enable takes effect on the NEXT Claude Code session (this setup run stays unsandboxed), matching the existing "restart Claude Code" closing line in Phase 6.
+
+   On **don't enable**:
+
+   ```bash
+   .gaia/cli/gaia sandbox record --outcome declined --capability ready
+   ```
+
+**Sandbox honesty message.** Print this on the enable path above:
+
+> Note: enabling the sandbox alone does not protect .env. The sandbox's default read policy is permissive (it still reads ~/.aws, ~/.ssh, .env). What protects `.env` is GAIA's existing `Read(.env)` / `Edit(.env)` deny rules merging into the sandbox boundary, which reaches subprocesses spawned by sandboxed Bash. It does NOT cover the `.env.local` / `.env.production` variant family (delivered by a hook, which does not merge), NOT MCP shell execution, and NOT a `docker *`-excluded command that runs outside the sandbox. The same merged deny also blocks the app's own `.env` reads under Claude-run tooling (Vite, tests). And if bubblewrap/socat later goes missing, an enabled machine degrades to unsandboxed by default.
+>
+> The minimal seed itself only adds the registry host to `allowedDomains` and, when docker is present, a `docker *` exclusion. It still leaves `gh`/git-over-https, `uvx`, `curl`, and claude plugin installs BLOCKED until you allowlist them yourself.
 
 ### Step 1: install-tools
 
@@ -999,6 +1064,11 @@ Compute **`$SETUP_TYPE`** (required) from Phase 1's classification and `RECONFIG
 When not skipped, add these optional fields only when this run determined them:
 
 - **`$MENTORSHIP`** (always knowable, always include): read `.gaia/local/mentorship.json` `.enabled`, the same field Phase 2 evaluates. `true` maps to `on`; `false`, `null`, or absent maps to `off`.
+- **`$SANDBOX`** (always knowable, always include): read the sandbox decision straight from the marker Phase 2 resolves (or resolved on a prior run), so a plain re-run reports it correctly too. `outcome: enabled` maps to `on`; `declined`, `incapable`, or an absent marker maps to `off`:
+
+  ```bash
+  SANDBOX="$(.gaia/cli/gaia sandbox status --json 2>/dev/null | jq -r 'if .outcome == "enabled" then "on" else "off" end')"
+  ```
 - **`$REPO_CHOICE`**: the branch chosen at Phase 3's connect-to-GitHub question. "Create the repo on GitHub" maps to `create`, "Adopt an existing repo" maps to `adopt`, "Set one up manually" maps to `manual`. Omit when Phase 3 short-circuited because the repo was already provisioned (no choice was made this run).
 - **`$CI_CHOICE`**: the Phase 4 CI enable decision. "Enable GAIA CI now" maps to `on`, "Not now" (`dismiss-personal`) maps to `off`, "Don't ask the team again" (`opt-out-team`) or a non-admin graceful-degrade maps to `skip`. Omit when Phase 4 was not reached (no GitHub origin yet, or already `setup_complete` with no drift or reconfigure).
 - **`$AUDIT_MODE`**: the resolved audit mode. Use the developer's Phase 5 Local/CI choice when made this run, else the committed `default_mode` from `.gaia/audit-ci.yml` (Phase 4's Audit-mode policy). Values are `local` or `ci`. Omit when `.gaia/audit-ci.yml` does not exist (CI not wired).
@@ -1007,7 +1077,7 @@ Fire the ping with only the flags this run determined:
 
 ```bash
 .gaia/cli/gaia ping --event setup --type "$SETUP_TYPE" \
-  [--mentorship "$MENTORSHIP"] [--repo "$REPO_CHOICE"] \
+  [--mentorship "$MENTORSHIP"] [--sandbox "$SANDBOX"] [--repo "$REPO_CHOICE"] \
   [--ci "$CI_CHOICE"] [--audit "$AUDIT_MODE"] || true
 ```
 

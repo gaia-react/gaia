@@ -38,7 +38,12 @@ import {fileURLToPath} from 'node:url';
 // Subcommands reachable only through their router with no external invoker,
 // allowed on purpose. Each entry needs a reason. Wiring or retiring a command
 // here makes the "no stale entries" test fail until the entry is removed.
-const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map();
+const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([
+  [
+    'sandbox seed',
+    'Inspection/debug verb: prints the seed settings fragment as JSON. The setup flow calls `gaia sandbox apply`, which computes and writes the seed internally, so `seed` has no external invoker by design.',
+  ],
+]);
 
 // Directories under the repo root scanned for invocation strings. None of
 // these contain a router or a test file, so a command can never vouch for
@@ -251,11 +256,7 @@ describe('CLI subcommand reachability guard', () => {
     'every map-dispatched leaf command has an external invoker',
     () => {
       const dead = leafCommands.filter(
-        (command) =>
-          // INTERNAL_COMMANDS is a deliberately-empty allowlist populated by
-          // future maintainer edits, not by any code in this file.
-          // eslint-disable-next-line sonarjs/no-empty-collection
-          !INTERNAL_COMMANDS.has(command) && !isReachable(command)
+        (command) => !INTERNAL_COMMANDS.has(command) && !isReachable(command)
       );
 
       // See the file docstring for how to resolve a dead command (wire an
@@ -271,9 +272,6 @@ describe('CLI subcommand reachability guard', () => {
 
       // An allowlisted command that was retired (no longer a leaf) or that
       // has since gained an invoker must drop out of the allowlist.
-      // INTERNAL_COMMANDS is a deliberately-empty allowlist populated by
-      // future maintainer edits, not by any code in this file.
-      // eslint-disable-next-line sonarjs/no-empty-collection
       const stale = [...INTERNAL_COMMANDS.keys()].filter(
         (command) => !leafSet.has(command) || isReachable(command)
       );
