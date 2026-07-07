@@ -58,10 +58,15 @@ EOF
 }
 
 # seed_merged_folder <spec_id>: the foldered SPEC.md shape under an active
-# specs/<id>/ dir, no cost.md (automatically represented).
+# specs/<id>/ dir, no cost.md (automatically represented). Also seeds a
+# consolidated SUMMARY.md so spec-archive-merged.sh's consolidation gate
+# (a folder holding SPEC.md with no SUMMARY.md is kept) does not block the
+# reap; summary-verify.sh is not copied into this fixture repo, so the
+# gate's fallback (a plain non-empty file) is what this satisfies.
 seed_merged_folder() {
   mkdir -p "$REPO/.gaia/local/specs/$1"
   echo "# $1" > "$REPO/.gaia/local/specs/$1/SPEC.md"
+  echo "# $1 summary" > "$REPO/.gaia/local/specs/$1/SUMMARY.md"
 }
 
 # write_cost_md <dir> <heading> <fresh> <cwrite> <cread> <output>: one real,

@@ -44,9 +44,9 @@ _alloc() {
   [ "$(jq -r '.plans[1].id' "$ledger")" = "PLAN-002" ]
   [ "$(jq -r '.plans[1].source' "$ledger")" = "allocated" ]
   [ "$(jq -r '.plans[1].subject' "$ledger")" = "my subject" ]
-  # status (lifecycle) and source (provenance) both read "allocated" but are
-  # distinct fields.
-  [ "$(jq -r '.plans[1].status' "$ledger")" = "allocated" ]
+  # status (lifecycle) is the new-row canonical "ready"; source (provenance)
+  # is unrelated and still reads "allocated". Distinct fields.
+  [ "$(jq -r '.plans[1].status' "$ledger")" = "ready" ]
   [ "$(jq -c '.plans[1] | keys_unsorted' "$ledger")" = '["id","allocated_at","source","subject","status"]' ]
 
   # 2-space indent, trailing newline (jq's default output).

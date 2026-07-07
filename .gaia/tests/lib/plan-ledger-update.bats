@@ -35,7 +35,7 @@ setup() {
       "allocated_at": "2026-01-01T00:00:00Z",
       "source": "allocated",
       "subject": "x",
-      "status": "allocated"
+      "status": "ready"
     }
   ]
 }
@@ -61,11 +61,11 @@ _row_field() {
     "$SANDBOX/$LEDGER_REL"
 }
 
-@test "1: completed patch exits 0, sets status+completed_at, preserves other fields" {
-  run _update PLAN-001 '{"status":"completed","completed_at":"2026-07-05T00:00:00Z"}'
+@test "1: merged patch exits 0, sets status+merged_at, preserves other fields" {
+  run _update PLAN-001 '{"status":"merged","merged_at":"2026-07-05T00:00:00Z"}'
   [ "$status" -eq 0 ]
-  [ "$(_row_field status)" = "completed" ]
-  [ "$(_row_field completed_at)" = "2026-07-05T00:00:00Z" ]
+  [ "$(_row_field status)" = "merged" ]
+  [ "$(_row_field merged_at)" = "2026-07-05T00:00:00Z" ]
   [ "$(_row_field id)" = "PLAN-001" ]
   [ "$(_row_field allocated_at)" = "2026-01-01T00:00:00Z" ]
   [ "$(_row_field source)" = "allocated" ]
@@ -76,19 +76,19 @@ _row_field() {
   run _update PLAN-001 '{"status":"bogus"}'
   [ "$status" -eq 6 ]
   grep -qF "non-canonical status 'bogus'" <<<"$output"
-  [ "$(_row_field status)" = "allocated" ]
+  [ "$(_row_field status)" = "ready" ]
 }
 
 @test "3: status-less patch updates only the targeted field, status untouched" {
   run _update PLAN-001 '{"subject":"new subject"}'
   [ "$status" -eq 0 ]
   [ "$(_row_field subject)" = "new subject" ]
-  [ "$(_row_field status)" = "allocated" ]
+  [ "$(_row_field status)" = "ready" ]
 }
 
 @test "4: patch for a non-existent row exits 4 and mutates nothing" {
   before="$(cat "$SANDBOX/$LEDGER_REL")"
-  run _update PLAN-999 '{"status":"completed"}'
+  run _update PLAN-999 '{"status":"merged"}'
   [ "$status" -eq 4 ]
   [ "$(cat "$SANDBOX/$LEDGER_REL")" = "$before" ]
 }
@@ -98,11 +98,19 @@ _row_field() {
   [ "$status" -eq 5 ]
 }
 
-@test "6: allocated, completed, and abandoned are all accepted" {
-  for s in allocated completed abandoned; do
+@test "6: ready, merged, and abandoned are all accepted" {
+  for s in ready merged abandoned; do
     run _update PLAN-001 "{\"status\":\"$s\"}"
     [ "$status" -eq 0 ]
     [ "$(_row_field status)" = "$s" ]
+  done
+}
+
+@test "6b: allocated, completed, and specified are all rejected with exit 6" {
+  for s in allocated completed specified; do
+    run _update PLAN-001 "{\"status\":\"$s\"}"
+    [ "$status" -eq 6 ]
+    grep -qF "non-canonical status '$s'" <<<"$output"
   done
 }
 

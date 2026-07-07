@@ -3,10 +3,11 @@
 #
 # Three concerns:
 #   1. Behavioral guard: ledger-update.sh (the single chokepoint for ledger
-#      writes) accepts the four canonical statuses {draft, specified, merged,
-#      archived} plus the tolerated legacy in-progress, and rejects anything
-#      else with exit 6. This guard ships to adopters, so it protects every
-#      tool-path write on every clone.
+#      writes) accepts the four canonical statuses {draft, ready, merged,
+#      abandoned}, and rejects anything else (including the retired
+#      specified/archived/in-progress/allocated/completed values) with exit 6.
+#      This guard ships to adopters, so it protects every tool-path write on
+#      every clone.
 #   2. Auto-fix: spec-reconcile.sh renames a known-misnamed status (shipped ->
 #      merged) to canonical through that same chokepoint, and leaves an
 #      unrecognized status untouched (logging it). This repairs the hand-edit /
@@ -25,9 +26,10 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  # Statuses ledger-update.sh accepts: the four canonical values plus the
-  # tolerated legacy in-progress.
-  WRITABLE="draft specified merged archived in-progress"
+  # Statuses ledger-update.sh accepts: the four canonical unified values.
+  WRITABLE="draft ready merged abandoned"
+  # Retired values the guard now rejects (superseded by the unified vocabulary).
+  RETIRED="specified archived in-progress allocated completed"
 }
 
 teardown() {
@@ -70,12 +72,21 @@ _plant_status() {
   [ "$(cat "$REPO/.gaia/local/specs/ledger.json")" = "$before" ]
 }
 
-@test "3: every writable status (canonical + legacy in-progress) is accepted" {
+@test "3: every writable status (the unified vocabulary) is accepted" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   for s in $WRITABLE; do
     run _ledger_update "$REPO" SPEC-001 "{\"status\":\"$s\"}"
     [ "$status" -eq 0 ]
     [ "$(jq -r '.specs[0].status' "$REPO/.gaia/local/specs/ledger.json")" = "$s" ]
+  done
+}
+
+@test "3b: every retired status is rejected with exit 6" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
+  for s in $RETIRED; do
+    run _ledger_update "$REPO" SPEC-001 "{\"status\":\"$s\"}"
+    [ "$status" -eq 6 ]
+    grep -qF "non-canonical status '$s'" <<<"$output"
   done
 }
 
@@ -119,4 +130,55 @@ _plant_status() {
     echo "off-vocabulary ledger rows: $bad" >&2
     false
   }
+}
+
+# --- 8: the SPEC-artifact frontmatter axis stays distinct from the ledger axis
+#
+# lint.sh validates a wholly separate status axis (the SPEC artifact's own
+# authoring lifecycle, in-progress|reopened|closed), never the ledger-row
+# vocabulary this suite covers. Belt-and-suspenders: confirms the ledger
+# guard's unified vocabulary was never leaked into lint.sh's enum. The
+# branch-keyed token-tally resolver half of this regression (the `^branch:`
+# match) is already covered by .gaia/tests/hooks/token-tally-git-op.bats;
+# not re-tested here.
+
+_lint_fixture() {
+  local status_val="$1"
+  cat <<EOF
+---
+spec_id: SPEC-999
+type: feature
+status: $status_val
+immutable: true
+wiki_promote_default: ask
+chain_trigger: none
+intent: test intent
+success_criteria: test criteria
+uats: []
+scope_boundaries: test scope
+clarifications: none
+research_summary: none
+created: 2026-01-01
+updated: 2026-01-01
+---
+
+# Test SPEC
+EOF
+}
+
+@test "8: lint.sh accepts status in-progress and rejects status ready (bad_status)" {
+  root="$(git -C "$BATS_TEST_DIRNAME" rev-parse --show-toplevel)"
+  lint="$root/.specify/extensions/gaia/lib/lint.sh"
+  fixture="$(mktemp)"
+
+  _lint_fixture "in-progress" > "$fixture"
+  run bash "$lint" "$fixture"
+  [ "$status" -eq 0 ]
+
+  _lint_fixture "ready" > "$fixture"
+  run bash "$lint" "$fixture"
+  [ "$status" -eq 1 ]
+  grep -qF '"bad_status"' <<<"$output"
+
+  rm -f "$fixture"
 }

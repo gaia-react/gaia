@@ -3,7 +3,7 @@ type: concept
 title: Cost Data Contract
 status: active
 created: 2026-07-05
-updated: 2026-07-07
+updated: 2026-07-08
 tags: [concept, telemetry, cost, data-contract]
 ---
 
@@ -52,7 +52,7 @@ Additive-only by default: a new field does not bump `schema_version`. A breaking
 
 ## Retention at merge
 
-A merged SPEC folder's `SPEC.md`, `AUDIT.md`, and `cost.json` sidecar are kept at merge; the SessionStart janitor age-reaps the folder once its merge has aged past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days) and its cost is fully represented in this ledger. A spec-less `PLAN-NNN` folder, and a spec-colocated plan's `plan[-N]` subfolder, take the older path instead: deleted outright at merge rather than pruned and moved to an `archived/` tree. Either way, nothing kept on disk carries the cost forward: `cost.jsonl` (this ledger) plus the two id-ledgers (`specs/ledger.json`, `plans/ledger.json`) are the whole durable record. Every figure a deleted folder's `cost.json` sidecar once carried, per-phase buckets, totals, and dollars, is recoverable from this ledger's rows keyed by `spec_id` or `plan_id`, with no dependency on any sidecar file surviving.
+A merged folder's archival unit is its consolidated `SUMMARY.md` plus its `cost.json` sidecar, kept at merge; the SessionStart janitor age-reaps the folder once its merge has aged past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days) and its cost is fully represented in this ledger, a check the delete/reap gate (`cost-represented.sh`) drives from the `cost.json` sidecar itself, cross-checked against this ledger. A spec-less `PLAN-NNN` folder takes the symmetric path: kept at merge, reduced to `SUMMARY.md` + `cost.json`, and age-reaped by the same fail-closed gate, keyed on `plan_id` instead of `spec_id`. A spec-colocated plan's `plan[-N]` subfolder is deleted once its own `PROGRESS.md` has fed the parent SPEC's `SUMMARY.md`; the parent SPEC folder remains the archival unit. Either way, nothing kept on disk carries the cost forward beyond the sidecar: `cost.jsonl` (this ledger) plus the two id-ledgers (`specs/ledger.json`, `plans/ledger.json`) are the whole durable record. Every figure a reaped folder's `cost.json` sidecar once carried, per-phase buckets, totals, and dollars, is recoverable from this ledger's rows keyed by `spec_id` or `plan_id`, with no dependency on any sidecar file surviving.
 
 `token-tally.sh` writes a per-folder `cost.json` sidecar alongside its ledger append: a single JSON object keyed by phase kind (`spec` for a spec folder; `plan` and/or `execute` for a plan folder), each value the same record shape as the matching `cost.jsonl` row, scoped to that one run. A plan or execute write replaces only its own key and preserves any sibling key's value untouched, so a plan folder's sidecar accumulates both phases without one write clobbering the other.
 

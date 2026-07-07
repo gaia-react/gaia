@@ -3,7 +3,7 @@
 #
 # Each test runs the script inside an isolated `git init`'d temp sandbox so
 # its `git rev-parse --show-toplevel` resolves to the fixture root (not the
-# GAIA repo root) and every delete touches only throwaway fixtures. The
+# GAIA repo root) and every reduce/delete touches only throwaway fixtures. The
 # sandbox's own git-common-dir similarly resolves the representation gate's
 # cost ledger to the sandbox's own .gaia/local/telemetry/cost.jsonl, never the
 # real repo's.
@@ -26,7 +26,7 @@ setup() {
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
   git -C "$SANDBOX" init --quiet
 
-  # The PLAN-NNN completion stamp shells out to plan-ledger-update.sh, which
+  # The PLAN-NNN merge stamp shells out to plan-ledger-update.sh, which
   # sources with-ledger-lock.sh from its own dir; both are copied here so a
   # PLAN-<digits> slug's stamp resolves instead of silently failing. The
   # representation gate sources cost-represented.sh + ledger-path-lib.sh at
@@ -53,36 +53,46 @@ run_in_sandbox() {
   ( cd "$SANDBOX" && "$SCRIPT" "$@" )
 }
 
+# copy_summary_verify: mirrors plan-archive.sh's own .gaia/scripts/
+# summary-verify.sh call target inside the sandbox, so the spec-colocated
+# consolidation gate delegates to the real verify-gate instead of falling
+# back to a plain non-empty check. Tests that don't call this exercise the
+# fallback path (summary-verify.sh absent from the sandbox).
+copy_summary_verify() {
+  cp "$REPO_ROOT/.gaia/scripts/summary-verify.sh" "$SANDBOX/.gaia/scripts/summary-verify.sh"
+}
+
 # seed_plan <rel_dir>: creates a plan folder (relative to $SANDBOX) with the
-# canonical fixture set: SUMMARY.md, cost.md, KICKOFF.md, RUNNING, .work/x.
-# Callers that need the representation gate to pass overwrite cost.md
-# afterward with write_cost_md (this stub content never parses as a section).
+# canonical fixture set: SUMMARY.md (the consolidated artifact), PROGRESS.md
+# (the live run ledger), KICKOFF.md, RUNNING, .work/x. Callers that need the
+# representation gate to pass add a cost.json record afterward with
+# write_cost_json.
 seed_plan() {
   local dir="$SANDBOX/$1"
   mkdir -p "$dir/.work"
   echo "summary" > "$dir/SUMMARY.md"
-  echo "tokens" > "$dir/cost.md"
+  echo "progress" > "$dir/PROGRESS.md"
   echo "kickoff" > "$dir/KICKOFF.md"
   : > "$dir/RUNNING"
   echo "scratch" > "$dir/.work/x"
 }
 
-# write_cost_md <abs_dir> <heading> <fresh> <cwrite> <cread> <output>: writes
-# a cost.md with one real, parseable phase section (SPEC/Planning/Execution
-# heading, four-bucket table), the shape cost-represented.sh's parser expects.
-write_cost_md() {
-  local dir="$1" heading="$2" fresh="$3" cwrite="$4" cread="$5" output="$6"
-  local total=$((fresh + cwrite + cread + output))
-  {
-    printf '# Cost\n\n'
-    printf '## %s\n\n' "$heading"
-    printf '| Bucket | Tokens |\n| --- | --- |\n'
-    printf '| Fresh input | %s |\n' "$fresh"
-    printf '| Cache write | %s |\n' "$cwrite"
-    printf '| Cache read | %s |\n' "$cread"
-    printf '| Output | %s |\n' "$output"
-    printf '| **Total** | %s |\n\n' "$total"
-  } > "$dir/cost.md"
+# write_cost_json <abs_dir> <fresh> <cwrite> <cread> <output>: writes a
+# cost.json sidecar with one execute-phase record, the shape
+# cost-represented.sh's sidecar parser expects. Every plan folder in this
+# suite archives post-execution, so the kind is always "execute".
+write_cost_json() {
+  local dir="$1" fresh="$2" cwrite="$3" cread="$4" output="$5"
+  jq -cn \
+    --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
+    --argjson cread "$cread" --argjson output "$output" '
+    {execute: {
+      kind: "execute",
+      session_id: null,
+      buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
+      total: ($fresh + $cwrite + $cread + $output)
+    }}
+  ' > "$dir/cost.json"
 }
 
 # seed_cost_row <kind> <field> <val> <session> <fresh> <cwrite> <cread> <output>
@@ -138,28 +148,33 @@ plan_row_field() {
     "$SANDBOX/.gaia/local/plans/ledger.json"
 }
 
-# --- 1. Spec-less PLAN-NNN delete, ledger stamped completed -----------------
+# --- 1. Spec-less PLAN-NNN reduce, ledger stamped merged --------------------
 
-@test "spec-less PLAN-NNN: represented cost -> deleted, no archived/ tree, ledger stamped completed" {
+@test "spec-less PLAN-NNN: represented cost -> reduced to SUMMARY.md + cost.json, RUNNING/PROGRESS.md gone, ledger stamped merged" {
   seed_plan ".gaia/local/plans/PLAN-005"
-  write_cost_md "$SANDBOX/.gaia/local/plans/PLAN-005" Execution 10 1 1 2
+  write_cost_json "$SANDBOX/.gaia/local/plans/PLAN-005" 10 1 1 2
   seed_cost_row execute plan_id PLAN-005 "" 10 1 1 2
   seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-005"
   [ "$status" -eq 0 ]
-  assert_deleted "$SANDBOX/.gaia/local/plans/PLAN-005"
-  assert_deleted "$SANDBOX/.gaia/local/plans/archived/PLAN-005"
-  [ "$(plan_row_field PLAN-005 status)" = "completed" ]
-  [ -n "$(plan_row_field PLAN-005 completed_at)" ]
-  grep -qF "Deleted plan folder: .gaia/local/plans/PLAN-005" <<<"$output"
+  [ -d "$SANDBOX/.gaia/local/plans/PLAN-005" ]
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-005/SUMMARY.md" ]
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-005/cost.json" ]
+  [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-005/RUNNING" ]
+  [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-005/PROGRESS.md" ]
+  [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-005/KICKOFF.md" ]
+  [ "$(plan_row_field PLAN-005 status)" = "merged" ]
+  [ -n "$(plan_row_field PLAN-005 merged_at)" ]
+  grep -qF "Reduced plan folder to SUMMARY.md + cost.json" <<<"$output"
 }
 
 # --- 2. Colocated plan delete, parent untouched (UAT-005) -------------------
 
-@test "colocated plan: represented cost -> plan/ deleted, parent SPEC folder and SPEC.md untouched" {
+@test "colocated plan: parent SPEC SUMMARY.md present + represented cost -> plan/ deleted, parent SPEC folder and SPEC.md untouched" {
   seed_plan ".gaia/local/specs/SPEC-005/plan"
   echo "spec body" > "$SANDBOX/.gaia/local/specs/SPEC-005/SPEC.md"
-  write_cost_md "$SANDBOX/.gaia/local/specs/SPEC-005/plan" Execution 5 0 0 1
+  echo "# SPEC-005" > "$SANDBOX/.gaia/local/specs/SPEC-005/SUMMARY.md"
+  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-005/plan" 5 0 0 1
   seed_cost_row execute spec_id SPEC-005 "" 5 0 0 1
   run run_in_sandbox ".gaia/local/specs/SPEC-005/plan"
   [ "$status" -eq 0 ]
@@ -171,14 +186,67 @@ plan_row_field() {
 
 # --- 3. Colocated plan-2 revision, same delete semantics --------------------
 
-@test "colocated plan-2 revision: represented cost -> deleted, parent untouched" {
+@test "colocated plan-2 revision: parent SPEC SUMMARY.md present + represented cost -> deleted, parent untouched" {
   seed_plan ".gaia/local/specs/SPEC-005/plan-2"
-  write_cost_md "$SANDBOX/.gaia/local/specs/SPEC-005/plan-2" Execution 3 0 0 1
+  echo "# SPEC-005" > "$SANDBOX/.gaia/local/specs/SPEC-005/SUMMARY.md"
+  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-005/plan-2" 3 0 0 1
   seed_cost_row execute spec_id SPEC-005 "" 3 0 0 1
   run run_in_sandbox ".gaia/local/specs/SPEC-005/plan-2"
   [ "$status" -eq 0 ]
   assert_deleted "$SANDBOX/.gaia/local/specs/SPEC-005/plan-2"
   grep -qF "Deleted plan folder: .gaia/local/specs/SPEC-005/plan-2" <<<"$output"
+}
+
+# --- 3b. DEF-07 fail-closed consolidation gate: no parent SUMMARY.md -> kept
+
+@test "colocated plan: parent SPEC has no consolidated SUMMARY.md yet -> plan/ kept (fail-closed consolidation gate)" {
+  seed_plan ".gaia/local/specs/SPEC-020/plan"
+  echo "spec body" > "$SANDBOX/.gaia/local/specs/SPEC-020/SPEC.md"
+  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-020/plan" 5 0 0 1
+  seed_cost_row execute spec_id SPEC-020 "" 5 0 0 1
+  run run_in_sandbox ".gaia/local/specs/SPEC-020/plan"
+  [ "$status" -eq 0 ]
+  [ -d "$SANDBOX/.gaia/local/specs/SPEC-020/plan" ]
+  [ -f "$SANDBOX/.gaia/local/specs/SPEC-020/plan/PROGRESS.md" ]
+  grep -qF "Retained plan" <<<"$output"
+}
+
+# --- 3c. Real summary-verify.sh delegation: well-formed SUMMARY.md -> deleted
+
+@test "colocated plan: real summary-verify.sh present + well-formed parent SUMMARY.md -> plan/ deleted" {
+  copy_summary_verify
+  seed_plan ".gaia/local/specs/SPEC-021/plan"
+  echo "spec body" > "$SANDBOX/.gaia/local/specs/SPEC-021/SPEC.md"
+  cat > "$SANDBOX/.gaia/local/specs/SPEC-021/SUMMARY.md" <<'EOF'
+---
+wiki_promote_default: ask
+wiki_promote_targets: [decisions]
+---
+# SPEC-021
+
+Consolidated body.
+EOF
+  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-021/plan" 2 0 0 1
+  seed_cost_row execute spec_id SPEC-021 "" 2 0 0 1
+  run run_in_sandbox ".gaia/local/specs/SPEC-021/plan"
+  [ "$status" -eq 0 ]
+  assert_deleted "$SANDBOX/.gaia/local/specs/SPEC-021/plan"
+  grep -qF "Deleted plan folder: .gaia/local/specs/SPEC-021/plan" <<<"$output"
+}
+
+# --- 3d. Real summary-verify.sh delegation: malformed SUMMARY.md -> kept ----
+
+@test "colocated plan: real summary-verify.sh present + malformed parent SUMMARY.md -> plan/ kept" {
+  copy_summary_verify
+  seed_plan ".gaia/local/specs/SPEC-022/plan"
+  echo "spec body" > "$SANDBOX/.gaia/local/specs/SPEC-022/SPEC.md"
+  echo "not well-formed" > "$SANDBOX/.gaia/local/specs/SPEC-022/SUMMARY.md"
+  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-022/plan" 2 0 0 1
+  seed_cost_row execute spec_id SPEC-022 "" 2 0 0 1
+  run run_in_sandbox ".gaia/local/specs/SPEC-022/plan"
+  [ "$status" -eq 0 ]
+  [ -d "$SANDBOX/.gaia/local/specs/SPEC-022/plan" ]
+  grep -qF "Retained plan" <<<"$output"
 }
 
 # --- 4. No cost.md at all: nothing to lose, deletes outright ----------------
@@ -194,31 +262,31 @@ plan_row_field() {
   [ ! -e "$SANDBOX/.gaia/local/plans/archived" ]
 }
 
-# --- 5. Representation gate blocks: unrepresented cost.md -> retained -------
+# --- 5. Representation gate blocks: unrepresented cost.json -> retained -----
 
-@test "representation gate blocks: unrepresented cost.md -> folder retained, not deleted" {
+@test "representation gate blocks: unrepresented cost.json -> folder retained, not reduced" {
   seed_plan ".gaia/local/plans/PLAN-006"
-  write_cost_md "$SANDBOX/.gaia/local/plans/PLAN-006" Execution 10 1 1 2
+  write_cost_json "$SANDBOX/.gaia/local/plans/PLAN-006" 10 1 1 2
   # No matching ledger row seeded: the section cannot be represented.
   seed_plans_ledger '{"id":"PLAN-006","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-006"
   [ "$status" -eq 0 ]
   [ -d "$SANDBOX/.gaia/local/plans/PLAN-006" ]
-  [ -f "$SANDBOX/.gaia/local/plans/PLAN-006/cost.md" ]
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-006/cost.json" ]
   grep -qF "Retained plan" <<<"$output"
 }
 
-# --- 6. Ledger stamp still applies even when the gate blocks the delete -----
+# --- 6. Ledger stamp still applies even when the gate blocks the reduce -----
 
-@test "PLAN-NNN slug: ledger stamp still applies even when the representation gate blocks the delete" {
+@test "PLAN-NNN slug: ledger stamp still applies even when the representation gate blocks the reduce" {
   seed_plan ".gaia/local/plans/PLAN-007"
-  write_cost_md "$SANDBOX/.gaia/local/plans/PLAN-007" Execution 10 1 1 2
+  write_cost_json "$SANDBOX/.gaia/local/plans/PLAN-007" 10 1 1 2
   seed_plans_ledger '{"id":"PLAN-007","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-007"
   [ "$status" -eq 0 ]
   [ -d "$SANDBOX/.gaia/local/plans/PLAN-007" ]
-  [ "$(plan_row_field PLAN-007 status)" = "completed" ]
-  [ -n "$(plan_row_field PLAN-007 completed_at)" ]
+  [ "$(plan_row_field PLAN-007 status)" = "merged" ]
+  [ -n "$(plan_row_field PLAN-007 merged_at)" ]
   grep -qF "Retained plan" <<<"$output"
 }
 
@@ -226,7 +294,7 @@ plan_row_field() {
 
 @test "legacy free-form slug: no ledger-stamp attempt, represented cost -> deleted" {
   seed_plan ".gaia/local/plans/cache-consolidation"
-  write_cost_md "$SANDBOX/.gaia/local/plans/cache-consolidation" Execution 4 0 0 0
+  write_cost_json "$SANDBOX/.gaia/local/plans/cache-consolidation" 4 0 0 0
   seed_cost_row execute plan_slug cache-consolidation "" 4 0 0 0
   seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/cache-consolidation"
@@ -240,7 +308,8 @@ plan_row_field() {
 
 @test "spec-colocated plan: deletion never stamps any plans-ledger row" {
   seed_plan ".gaia/local/specs/SPEC-006/plan"
-  write_cost_md "$SANDBOX/.gaia/local/specs/SPEC-006/plan" Execution 2 0 0 0
+  echo "# SPEC-006" > "$SANDBOX/.gaia/local/specs/SPEC-006/SUMMARY.md"
+  write_cost_json "$SANDBOX/.gaia/local/specs/SPEC-006/plan" 2 0 0 0
   seed_cost_row execute spec_id SPEC-006 "" 2 0 0 0
   seed_plans_ledger '{"id":"PLAN-005","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   ledger_before="$(cat "$SANDBOX/.gaia/local/plans/ledger.json")"
@@ -250,16 +319,35 @@ plan_row_field() {
   [ "$(cat "$SANDBOX/.gaia/local/plans/ledger.json")" = "$ledger_before" ]
 }
 
-# --- 9. Best-effort: a missing ledger row for the stamp never blocks delete -
+# --- 9. Best-effort: a missing ledger row for the stamp never blocks reduce -
 
-@test "PLAN-NNN with no matching ledger row: stamp is a no-op but deletion still proceeds" {
+@test "PLAN-NNN with no matching ledger row: stamp is a no-op but reduce still proceeds" {
   seed_plan ".gaia/local/plans/PLAN-999"
-  write_cost_md "$SANDBOX/.gaia/local/plans/PLAN-999" Execution 1 0 0 0
+  write_cost_json "$SANDBOX/.gaia/local/plans/PLAN-999" 1 0 0 0
   seed_cost_row execute plan_id PLAN-999 "" 1 0 0 0
   seed_plans_ledger '{"id":"PLAN-001","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-999"
   [ "$status" -eq 0 ]
-  assert_deleted "$SANDBOX/.gaia/local/plans/PLAN-999"
+  [ -d "$SANDBOX/.gaia/local/plans/PLAN-999" ]
+  [ -f "$SANDBOX/.gaia/local/plans/PLAN-999/SUMMARY.md" ]
+  [ ! -e "$SANDBOX/.gaia/local/plans/PLAN-999/RUNNING" ]
+}
+
+# --- 9b. Spec-less PLAN-NNN with no SUMMARY.md yet: kept, not reduced ------
+
+@test "spec-less PLAN-NNN with no SUMMARY.md yet: kept intact, not reduced (fail-closed consolidation gate)" {
+  local dir="$SANDBOX/.gaia/local/plans/PLAN-010"
+  mkdir -p "$dir/.work"
+  echo "progress" > "$dir/PROGRESS.md"
+  : > "$dir/RUNNING"
+  write_cost_json "$dir" 3 0 0 0
+  seed_cost_row execute plan_id PLAN-010 "" 3 0 0 0
+  seed_plans_ledger '{"id":"PLAN-010","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
+  run run_in_sandbox ".gaia/local/plans/PLAN-010"
+  [ "$status" -eq 0 ]
+  [ -f "$dir/PROGRESS.md" ]
+  [ -f "$dir/RUNNING" ]
+  grep -qF "Retained plan (no consolidated SUMMARY.md yet)" <<<"$output"
 }
 
 # --- 10. Refuse operating inside the archived/ tree -------------------------
@@ -299,7 +387,7 @@ plan_row_field() {
 
 @test "absolute path under repo root normalizes to the same end-state" {
   seed_plan ".gaia/local/plans/foo"
-  write_cost_md "$SANDBOX/.gaia/local/plans/foo" Execution 2 0 0 1
+  write_cost_json "$SANDBOX/.gaia/local/plans/foo" 2 0 0 1
   seed_cost_row execute plan_slug foo "" 2 0 0 1
   run run_in_sandbox "$SANDBOX/.gaia/local/plans/foo"
   [ "$status" -eq 0 ]
@@ -365,7 +453,7 @@ plan_row_field() {
 
 @test "trailing slash on a well-formed slug still deletes correctly" {
   seed_plan ".gaia/local/plans/foo"
-  write_cost_md "$SANDBOX/.gaia/local/plans/foo" Execution 2 0 0 1
+  write_cost_json "$SANDBOX/.gaia/local/plans/foo" 2 0 0 1
   seed_cost_row execute plan_slug foo "" 2 0 0 1
   run run_in_sandbox ".gaia/local/plans/foo/"
   [ "$status" -eq 0 ]

@@ -457,3 +457,108 @@ _clear_merged_at() {
   assert_contains "Deleted 1 merged SPEC folder(s): SPEC-002"
   rm -rf "$REPO2"
 }
+
+# --- 21: --close bypasses the age gate only -----------------------------------
+
+@test "21: --close reaps a within-window consolidated folder; without --close it stays kept" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 2)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$REPO/$SPECS/SPEC-001" ]
+
+  run bash "$REPO/$ARCHIVE" "$REPO" SPEC-001 --close
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged SPEC folder(s): SPEC-001"
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+}
+
+# --- 22: --close never bypasses the cost or consolidation gates --------------
+
+@test "22: --close does not bypass the cost gate or the consolidation gate" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001 --seed-merged-folder SPEC-002)"
+  _plant_cost_md SPEC-001 100 10 5 20 sess-1
+  # No matching cost.jsonl row for SPEC-001: unrepresented.
+  rm -f "$REPO/$SPECS/SPEC-002/SUMMARY.md"
+
+  run bash "$REPO/$ARCHIVE" "$REPO" SPEC-001 --close
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$REPO/$SPECS/SPEC-001" ]
+
+  run bash "$REPO/$ARCHIVE" "$REPO" SPEC-002 --close
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$REPO/$SPECS/SPEC-002" ]
+}
+
+# --- 23: consolidation gate keeps a SPEC.md-only folder regardless of age/cost -
+
+@test "23: a folder holding SPEC.md with no SUMMARY.md is kept past the window even when cost-represented" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  rm -f "$REPO/$SPECS/SPEC-001/SUMMARY.md"
+  _plant_cost_md SPEC-001 100 10 5 20 sess-1
+  _seed_cost_row SPEC-001 sess-1 100 10 5 20
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "consolidation never ran; kept SPEC-001"
+
+  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
+}
+
+@test "24: a folder holding only AUDIT.md (no SPEC.md, no SUMMARY.md) is kept" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  rm -f "$REPO/$SPECS/SPEC-001/SPEC.md" "$REPO/$SPECS/SPEC-001/SUMMARY.md"
+  printf '# Audit\n' > "$REPO/$SPECS/SPEC-001/AUDIT.md"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "consolidation never ran; kept SPEC-001"
+
+  [ -f "$REPO/$SPECS/SPEC-001/AUDIT.md" ]
+}
+
+@test "25: a folder already reduced to SUMMARY.md (no SPEC.md) passes the consolidation gate" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  rm -f "$REPO/$SPECS/SPEC-001/SPEC.md"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged SPEC folder(s): SPEC-001"
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+}
+
+# --- 26: real delegation to summary-verify.sh, not just the fallback --------
+
+@test "26: prefers summary-verify.sh when present; a malformed but non-empty SUMMARY.md is kept" {
+  real_root="$(cd "$BATS_TEST_DIRNAME" && git rev-parse --show-toplevel)"
+  verify_src="$real_root/.gaia/scripts/summary-verify.sh"
+  [ -f "$verify_src" ] || skip "summary-verify.sh not present yet"
+
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  cp "$verify_src" "$REPO/.gaia/scripts/summary-verify.sh"
+  # SPEC.md is already seeded; overwrite SUMMARY.md with non-empty but
+  # malformed content (no frontmatter/H1). A plain [ -s SUMMARY.md ] fallback
+  # would wrongly pass this; only real delegation to summary-verify.sh
+  # catches the malformed shape.
+  printf 'not frontmatter, not well-formed\n' > "$REPO/$SPECS/SPEC-001/SUMMARY.md"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "consolidation never ran; kept SPEC-001"
+}

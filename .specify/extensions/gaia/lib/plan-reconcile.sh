@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# plan-reconcile.sh: flip a PLAN-NNN plans-ledger row to "completed" at
+# plan-reconcile.sh: flip a PLAN-NNN plans-ledger row to "merged" at
 # orchestrator-confirmed merge. The plan-side counterpart to spec-reconcile.sh,
 # but orchestrator-driven: the merge is already confirmed and the plan_id is
 # known, so there is NO gh/PR scan. It decouples the status advance from the
-# folder delete, so a PLAN-NNN row reaches "completed" even when plan-archive.sh
+# folder delete, so a PLAN-NNN row reaches "merged" even when plan-archive.sh
 # gates the delete off. Best-effort, fail-open, ALWAYS exit 0. Idempotent.
 #
 # Usage: plan-reconcile.sh <repo_root> <plan_id>
@@ -28,9 +28,9 @@ esac
 
 command -v jq >/dev/null 2>&1 || exit 0
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-patch="$(jq -nc --arg ts "$now" '{status: "completed", completed_at: $ts}')"
+patch="$(jq -nc --arg ts "$now" '{status: "merged", merged_at: $ts}')"
 if bash "${_lib_dir}/plan-ledger-update.sh" "$repo_root" "$plan_id" "$patch" >/dev/null 2>&1; then
-  printf 'reconciled %s -> completed\n' "$plan_id"
+  printf 'reconciled %s -> merged\n' "$plan_id"
 else
   echo "plan-reconcile: could not advance $plan_id (missing ledger/row or lock timeout); left as-is" >&2
 fi

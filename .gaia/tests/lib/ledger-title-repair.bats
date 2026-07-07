@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Tests for `.specify/extensions/gaia/lib/ledger-title-repair.sh`: the one-off,
 # best-effort, idempotent repair of EXISTING specs `intent` / plans `subject`
-# ledger rows plus the archived-PLAN `status`/`completed_at` stamp (U2 + U3
+# ledger rows plus the archived-PLAN `status`/`merged_at` stamp (U2 + U3
 # existing-row repair).
 #
 # Does NOT use helpers/tmp-spec-repo.sh: that shared harness copies a fixed
@@ -188,6 +188,101 @@ EOF
   [ "$subj_guard" = "Committed the parser cleanly." ]
 }
 
+# --- 2c. Plans subject repair from a consolidated SUMMARY.md H1 -------------
+
+@test "2c: plans subject repair recovers the title from a consolidated SUMMARY.md H1, exact string match" {
+  cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
+{
+  "version": 1,
+  "plans": [
+    {
+      "id": "PLAN-200",
+      "allocated_at": "2026-07-05T00:00:00Z",
+      "source": "allocated",
+      "subject": "placeholder subject"
+    }
+  ]
+}
+EOF
+
+  mkdir -p "$SANDBOX/.gaia/local/plans/PLAN-200"
+  cat > "$SANDBOX/.gaia/local/plans/PLAN-200/SUMMARY.md" <<'EOF'
+---
+wiki_promote_default: ask
+wiki_promote_targets: [decisions]
+---
+# Add real-time collaboration cursors
+
+Users now see teammates' live cursor positions in the shared canvas.
+EOF
+
+  run _run_repair
+  [ "$status" -eq 0 ]
+
+  [ "$(_plans_field PLAN-200 subject)" = "Add real-time collaboration cursors" ]
+}
+
+# --- 2d. Plans subject repair falls back to PROGRESS.md ---------------------
+
+@test "2d: plans subject repair falls back to PROGRESS.md when no SUMMARY.md is present" {
+  cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
+{
+  "version": 1,
+  "plans": [
+    {
+      "id": "PLAN-201",
+      "allocated_at": "2026-07-05T00:00:00Z",
+      "source": "allocated",
+      "subject": "placeholder subject"
+    }
+  ]
+}
+EOF
+
+  mkdir -p "$SANDBOX/.gaia/local/plans/PLAN-201"
+  cat > "$SANDBOX/.gaia/local/plans/PLAN-201/PROGRESS.md" <<'EOF'
+## Phase 1, First
+Commit: abc1234
+
+Recovered from the live PROGRESS.md ledger mid-run.
+EOF
+
+  run _run_repair
+  [ "$status" -eq 0 ]
+
+  [ "$(_plans_field PLAN-201 subject)" = "Recovered from the live PROGRESS.md ledger mid-run." ]
+}
+
+# --- 2e. Plans subject repair falls back to README.md -----------------------
+
+@test "2e: plans subject repair falls back to README.md when no SUMMARY.md or PROGRESS.md is present" {
+  cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
+{
+  "version": 1,
+  "plans": [
+    {
+      "id": "PLAN-202",
+      "allocated_at": "2026-07-05T00:00:00Z",
+      "source": "allocated",
+      "subject": "placeholder subject"
+    }
+  ]
+}
+EOF
+
+  mkdir -p "$SANDBOX/.gaia/local/plans/PLAN-202"
+  cat > "$SANDBOX/.gaia/local/plans/PLAN-202/README.md" <<'EOF'
+# PLAN-202
+
+Recovered from the README fallback when no ledger file exists yet.
+EOF
+
+  run _run_repair
+  [ "$status" -eq 0 ]
+
+  [ "$(_plans_field PLAN-202 subject)" = "Recovered from the README fallback when no ledger file exists yet." ]
+}
+
 # --- 3. Plans subject repair fallback ---------------------------------------
 
 @test "3: plans subject fallback word-safe-trims the stored value when no source is recoverable" {
@@ -219,7 +314,7 @@ EOF
 
 # --- 4. Status stamp (derivable) ---------------------------------------------
 
-@test "4: archived PLAN row with a derivable cost.md generated stamp advances to completed with matching completed_at" {
+@test "4: archived PLAN row with a derivable cost.md generated stamp advances to merged with matching merged_at" {
   cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
 {
   "version": 1,
@@ -257,13 +352,13 @@ EOF
   run _run_repair
   [ "$status" -eq 0 ]
 
-  [ "$(_plans_field PLAN-002 status)" = "completed" ]
-  [ "$(_plans_field PLAN-002 completed_at)" = "2026-02-02T02:02:02Z" ]
+  [ "$(_plans_field PLAN-002 status)" = "merged" ]
+  [ "$(_plans_field PLAN-002 merged_at)" = "2026-02-02T02:02:02Z" ]
 }
 
 # --- 4b. Status stamp (no derivable signal -> no fabrication) ---------------
 
-@test "4b: archived PLAN row with no cost.md generated stamp advances to completed with no fabricated completed_at" {
+@test "4b: archived PLAN row with no cost.md generated stamp advances to merged with no fabricated merged_at" {
   cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
 {
   "version": 1,
@@ -288,10 +383,10 @@ EOF
   run _run_repair
   [ "$status" -eq 0 ]
 
-  [ "$(_plans_field PLAN-003 status)" = "completed" ]
-  completed_at="$(_plans_field PLAN-003 completed_at)"
-  [ "$completed_at" = "null" ]
-  [ "$completed_at" != "2026-01-01T00:00:00Z" ]
+  [ "$(_plans_field PLAN-003 status)" = "merged" ]
+  merged_at="$(_plans_field PLAN-003 merged_at)"
+  [ "$merged_at" = "null" ]
+  [ "$merged_at" != "2026-01-01T00:00:00Z" ]
 }
 
 # --- 5. Non-canonical safety -------------------------------------------------

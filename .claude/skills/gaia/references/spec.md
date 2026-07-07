@@ -284,10 +284,28 @@ Otherwise, ask: **"What do you want to spec?"** and wait for the response before
 
 ### 2. Resume-vs-start-new prompt (pre-flight)
 
-First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row). Then delete any merged SPEC folder that is past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days) and whose cost is fully represented in `cost.jsonl`, the safety net for a PR that merged out-of-band or a close that never ran (an unparseable or unrepresented cost sidecar phase blocks that folder's deletion rather than risking an unrecoverable loss; a folder still within the window is kept regardless of representation). Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. All three passes are best-effort and fail-open; the delete sweep runs second so it acts on the rows reconcile just advanced to `merged`:
+First, best-effort reconcile any finalized-but-open SPEC against git, so a SPEC whose implementing PR has already merged is recorded as `merged` rather than lingering. This never blocks and is a no-op when nothing is reconcilable (no `gh` call unless the ledger holds a finalized-unmerged row).
 
 ```bash
 bash .specify/extensions/gaia/lib/spec-reconcile.sh "$PWD" 2>/dev/null || true
+```
+
+Then, for any merged row whose folder still holds `SPEC.md` or `AUDIT.md` with no well-formed consolidated `SUMMARY.md`, an out-of-band merge that never ran the close flow's consolidation, cold-consolidate it before the delete sweep below runs. This pass is the producer for `spec-archive-merged.sh`'s consolidation gate, which keeps any folder still holding unconsolidated layers; without this pass those folders would never clear that gate. Identify candidates:
+
+```bash
+jq -r '.specs[] | select(.status == "merged") | .id' .gaia/local/specs/ledger.json 2>/dev/null | while read -r id; do
+  folder=".gaia/local/specs/${id}"
+  { [ -f "${folder}/SPEC.md" ] || [ -f "${folder}/AUDIT.md" ]; } || continue
+  bash .gaia/scripts/summary-verify.sh "${folder}/SUMMARY.md" >/dev/null 2>&1 && continue
+  echo "$id"
+done
+```
+
+For each candidate id, run a cold consolidation (agent synthesis, not a script): read the layers in precedence `SPEC.md` → `AUDIT.md` → plan `PROGRESS.md` (top wins), grounded in the merged code and passing tests, and write `.gaia/local/specs/<id>/SUMMARY.md` in the pinned shape (present-tense body, `wiki_promote_default` + `wiki_promote_targets` frontmatter, non-empty H1, optional `## Divergence`). Then gate the layer removal on the verify script: `bash .gaia/scripts/summary-verify.sh .gaia/local/specs/<id>/SUMMARY.md`; on exit 0, `rm .gaia/local/specs/<id>/SPEC.md .gaia/local/specs/<id>/AUDIT.md`; on exit 1, leave the layers in place and move to the next candidate. This pass never destroys a layer it failed to replace, and a candidate whose synthesis or verify fails is simply left for a future pass, never blocking this prompt.
+
+Then delete any merged SPEC folder that is past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days), whose layers are consolidated (the pass above), and whose cost is fully represented in `cost.jsonl`, the safety net for a PR that merged out-of-band or a close that never ran (an unparseable or unrepresented cost sidecar phase blocks that folder's deletion rather than risking an unrecoverable loss; a folder still within the window is kept regardless of representation). Then sweep any never-authored draft older than the guard age to the terminal `abandoned` status, so a ghost allocation (no SPEC.md, no draft cache, no gate-1 snapshot) stops re-surfacing on this very prompt. Both passes are best-effort and fail-open:
+
+```bash
 bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" 2>/dev/null || true
 bash .specify/extensions/gaia/lib/spec-abandon-empty.sh "$PWD" 2>/dev/null || true
 # Best-effort sweep of stale audit caches left by "Start new" or abandoned exits.
@@ -796,7 +814,7 @@ Update the frontmatter `updated` field to today's date.
 After the canonical write succeeds:
 
 1. **Delete the working-draft cache:** `rm -f .gaia/local/cache/draft-<spec_id>.md .gaia/local/cache/gate1-<spec_id>.json`, and remove the audit cache with `rm -rf .gaia/local/cache/audit-<spec_id>/`. The applier has already read the audit cache to derive `AUDIT.md` (which survives under `.gaia/local/specs/<spec_id>/`), so deleting it here is safe. The canonical artifact is the source of truth from this point forward; a stale cache would mislead step 2 of a future session.
-2. **Update the ledger row:** flip the row in `.gaia/local/specs/ledger.json` from `status: draft` to `status: specified` and stamp the intent (the SPEC's `intent` field reduced to a full first sentence, or a word-safe bounded prefix + `...` when the first sentence runs long, via the shared title-normalize rule) for at-a-glance scanning. This is the finalize transition: the SPEC artifact is now frozen, so the authoring session is done and the allocator stops reporting it for resume-vs-start-new. Downstream (plan → implement → merge) owns the feature from here; the ledger's `merged` transition is reconciled from git by `spec-reconcile.sh`, not set here. Failure is non-blocking, log to stderr and continue. The remote `spec/*` tags are the cross-team allocation authority; `.gaia/local/specs/ledger.json` is a per-machine local cache; the SPEC artifact and git history remain authoritative.
+2. **Update the ledger row:** flip the row in `.gaia/local/specs/ledger.json` from `status: draft` to `status: ready` and stamp the intent (the SPEC's `intent` field reduced to a full first sentence, or a word-safe bounded prefix + `...` when the first sentence runs long, via the shared title-normalize rule) for at-a-glance scanning. This is the finalize transition: the SPEC artifact is now frozen, so the authoring session is done and the allocator stops reporting it for resume-vs-start-new. Downstream (plan → implement → merge) owns the feature from here; the ledger's `merged` transition is reconciled from git by `spec-reconcile.sh`, not set here. Failure is non-blocking, log to stderr and continue. The remote `spec/*` tags are the cross-team allocation authority; `.gaia/local/specs/ledger.json` is a per-machine local cache; the SPEC artifact and git history remain authoritative.
 
 ```bash
 SPEC_PATH=".gaia/local/specs/${SPEC_ID}/SPEC.md"
@@ -813,7 +831,7 @@ INTENT_RAW=$(awk '
 INTENT=$(printf '%s' "$INTENT_RAW" \
   | bash .specify/extensions/gaia/lib/title-normalize.sh 2>/dev/null || echo "")
 PATCH=$(jq -nc --arg intent "$INTENT" \
-  '{status: "specified"} + (if $intent == "" then {} else {intent: $intent} end)')
+  '{status: "ready"} + (if $intent == "" then {} else {intent: $intent} end)')
 bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
   || echo "ledger-update skipped (row missing or jq failure), non-blocking" >&2
 ```

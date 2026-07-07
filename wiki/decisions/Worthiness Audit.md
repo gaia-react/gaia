@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-06-23
+updated: 2026-07-08
 tags: [decision, tdd, testing, audit, quality]
 ---
 
@@ -97,7 +97,7 @@ assertion inline, so the human confirms against the evidence without opening
 files. The list is capped: top-N by severity with a count (`delete` proposals
 before `fix` findings), never a wall. On the no-orchestrator path the findings
 share one end-of-task summary with the determinism roll-up; on the orchestrated
-path the same content goes into the leaf's `SUMMARY.md` and the pre-merge
+path the same content goes into the leaf's `PROGRESS.md` and the pre-merge
 summary.
 
 ## Audit ledger

@@ -144,7 +144,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Hooks]]
 - [[OS Sandbox]]: two-tier sandbox-enablement preference (owner recommends, each machine resolves) and the honest `.env` deny-merge boundary.
 - [[Claude Integration Conventions]]: Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
-- [[Local Working State]]: layout and retention of the gitignored `.gaia/local/` working-state folder; the SessionStart janitor that GCs orphaned audit markers, completed plan dirs, and stray empty dirs.
+- [[Local Working State]]: layout and retention of the gitignored `.gaia/local/` working-state folder; the SessionStart janitor that GCs orphaned audit markers, merged plan dirs, and stray empty dirs.
 - [[Claude Skills]]
 - [[Update Workflow]]: `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.
 <!-- gaia:maintainer-only:start -->

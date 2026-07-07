@@ -2,7 +2,7 @@
 # Independent-oracle tests for .gaia/scripts/plan-resume-point.sh.
 #
 # plan-resume-point.sh computes a git-arbitrated resume point for a GAIA
-# plan: for each SUMMARY.md phase block it proves the recorded Commit: sha
+# plan: for each PROGRESS.md phase block it proves the recorded Commit: sha
 # is an ancestor of a given ref, echoes the first-gap phase (or M+1 when all
 # phases are complete) on line 1, followed by zero or more
 # `COMPLETE <n> <short-sha>` lines for the verified-complete phases, and
@@ -54,7 +54,7 @@ _run_helper() {
 @test "001a: P1 and P2 ancestors, no P3 block -> resume 3, COMPLETE 1 and 2" {
   sha1=$(_commit p1)
   sha2=$(_commit p2)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -75,7 +75,7 @@ EOF
 
 @test "001b: only a P1 block present and ancestor -> resume 2, COMPLETE 1 only" {
   sha1=$(_commit p1)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -94,7 +94,7 @@ EOF
   sha1=$(_commit p1)
   sha2=$(_commit p2)
   git -C "$REPO" reset --hard --quiet HEAD~1
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -112,9 +112,9 @@ EOF
   [ "${#lines[@]}" -eq 2 ]
 }
 
-# --- 009: missing / empty / malformed SUMMARY --------------------------------
+# --- 009: missing / empty / malformed ledger ---------------------------------
 
-@test "009a: no SUMMARY.md at all -> resume 1, no COMPLETE lines" {
+@test "009a: neither PROGRESS.md nor SUMMARY.md -> resume 1, no COMPLETE lines" {
   _commit p1 >/dev/null
   _run_helper --phases 3
   [ "$status" -eq 0 ]
@@ -122,18 +122,18 @@ EOF
   [ "${#lines[@]}" -eq 1 ]
 }
 
-@test "009b: empty SUMMARY.md -> resume 1, no COMPLETE lines" {
+@test "009b: empty PROGRESS.md -> resume 1, no COMPLETE lines" {
   _commit p1 >/dev/null
-  : > "$PLAN/SUMMARY.md"
+  : > "$PLAN/PROGRESS.md"
   _run_helper --phases 3
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "1" ]
   [ "${#lines[@]}" -eq 1 ]
 }
 
-@test "009c: malformed/garbage SUMMARY.md -> resume 1, no COMPLETE lines" {
+@test "009c: malformed/garbage PROGRESS.md -> resume 1, no COMPLETE lines" {
   _commit p1 >/dev/null
-  cat > "$PLAN/SUMMARY.md" <<'EOF'
+  cat > "$PLAN/PROGRESS.md" <<'EOF'
 this is not a valid summary file
 random garbage text
 no phase headings anywhere in here
@@ -144,13 +144,33 @@ EOF
   [ "${#lines[@]}" -eq 1 ]
 }
 
+# --- 009d: legacy live SUMMARY.md fallback (no PROGRESS.md present) ---------
+# A plan folder crossing the rename boundary mid-run has only the legacy
+# live ledger; the helper falls back to it and resumes at the same integer
+# it would from an equivalent PROGRESS.md fixture (test 013).
+
+@test "009d: legacy-only SUMMARY.md (no PROGRESS.md), P1 ancestor -> resume 2, COMPLETE 1" {
+  sha1=$(_commit p1)
+  cat > "$PLAN/SUMMARY.md" <<EOF
+## Phase 1, First
+Commit: $sha1
+
+_No notes._
+EOF
+  _run_helper --phases 1
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "2" ]
+  [ "${lines[1]}" = "COMPLETE 1 $sha1" ]
+  [ "${#lines[@]}" -eq 2 ]
+}
+
 # --- 010: all phases ancestors ------------------------------------------------
 
 @test "010: P1 P2 P3 all ancestors -> resume 4, COMPLETE 1 2 3" {
   sha1=$(_commit p1)
   sha2=$(_commit p2)
   sha3=$(_commit p3)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -180,7 +200,7 @@ EOF
 @test "011: HALTED Phase 2 block superseded by a later completion block -> resume 3, COMPLETE 1 2" {
   sha1=$(_commit p1)
   sha2=$(_commit p2)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -207,7 +227,7 @@ EOF
 
 @test "012a: P2 block has no Commit anchor (first content line is prose) -> resume 2, COMPLETE 1 only" {
   sha1=$(_commit p1)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -226,7 +246,7 @@ EOF
 
 @test "012b: P2 Commit is not a valid sha token -> resume 2, COMPLETE 1 only" {
   sha1=$(_commit p1)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -246,7 +266,7 @@ EOF
 
 @test "012c: P2 Commit is a well-formed but non-existent sha -> resume 2, COMPLETE 1 only" {
   sha1=$(_commit p1)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -270,7 +290,7 @@ EOF
 
 @test "012d: --git-dir at a non-repo makes every ancestry check fail, incl. P1 -> resume 1, no COMPLETE lines" {
   sha1=$(_commit p1)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -288,7 +308,7 @@ EOF
 
 @test "013: canonical block (Commit is the first content line), ancestor -> resume 2, COMPLETE 1" {
   sha1=$(_commit p1)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -309,7 +329,7 @@ EOF
   sha3=$(_commit p3)
   git -C "$REPO" reset --hard --quiet HEAD~1
   sha30=$(_commit p30)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 
@@ -346,7 +366,7 @@ EOF
 
 @test "015: dash-form heading (## Phase 1 - X) parses the same as comma form -> resume 2, COMPLETE 1" {
   sha1=$(_commit p1)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1 - First
 Commit: $sha1
 
@@ -366,7 +386,7 @@ EOF
   _commit base
   git -C "$REPO" checkout --quiet -b wt
   wtsha=$(_commit wt-only)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $wtsha
 
@@ -384,7 +404,7 @@ EOF
   git -C "$REPO" checkout --quiet -b wt
   git -C "$REPO" checkout --quiet main
   mainsha=$(_commit main-only)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $mainsha
 
@@ -400,7 +420,7 @@ EOF
   _commit base
   git -C "$REPO" checkout --quiet -b wt
   wtsha=$(_commit wt-only)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $wtsha
 
@@ -417,7 +437,7 @@ EOF
 @test "019: no --phases flag, P1 P2 ancestors -> resume 3, COMPLETE 1 2 (never an all-complete signal)" {
   sha1=$(_commit p1)
   sha2=$(_commit p2)
-  cat > "$PLAN/SUMMARY.md" <<EOF
+  cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
 Commit: $sha1
 

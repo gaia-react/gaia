@@ -6,7 +6,8 @@
 # `git -C <repo> rev-parse --git-dir` succeeds.
 #
 # The helper's seed flags cover draft/in-progress/merged rows but have no
-# --seed-specified flag, so the "specified" row these tests need is seeded by
+# --seed-ready flag, so the "ready" row these tests need (the candidate
+# status the guard's finalize transition now writes) is seeded by
 # jq-patching the ledger directly after --seed-inprogress.
 
 setup() {
@@ -26,14 +27,14 @@ teardown() {
   fi
 }
 
-# Promotes the SPEC-006 row (seeded in-progress by the helper) to "specified",
+# Promotes the SPEC-006 row (seeded in-progress by the helper) to "ready",
 # the finalize state these tests exercise.
-_promote_to_specified() {
+_promote_to_ready() {
   local id="$1"
   local tmp
   tmp="$(mktemp)"
   jq --arg id "$id" \
-    '(.specs[] | select(.id == $id) | .status) = "specified"' \
+    '(.specs[] | select(.id == $id) | .status) = "ready"' \
     "$REPO/.gaia/local/specs/ledger.json" > "$tmp"
   mv "$tmp" "$REPO/.gaia/local/specs/ledger.json"
 }
@@ -82,7 +83,7 @@ _no_gh_path() {
 # --- 6: matching merged PR flips SPEC-006 to merged with merged_at from the PR ---
 @test "6: gh returns a merged PR matching spec-006-*; SPEC-006 flips to merged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
-  _promote_to_specified SPEC-006
+  _promote_to_ready SPEC-006
   _stub_gh_echoing '[{"number":42,"headRefName":"spec-006-x","mergedAt":"2026-05-01T00:00:00Z"}]'
 
   run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
@@ -92,23 +93,23 @@ _no_gh_path() {
   [ "$(jq -r '.specs[] | select(.id=="SPEC-006") | .merged_at' "$REPO/.gaia/local/specs/ledger.json")" = "2026-05-01T00:00:00Z" ]
 }
 
-# --- 7: no matching merged PR; SPEC-006 stays specified, no-op ---
-@test "7: no matching merged PR; SPEC-006 stays specified, no-op, exit 0" {
+# --- 7: no matching merged PR; SPEC-006 stays ready, no-op ---
+@test "7: no matching merged PR; SPEC-006 stays ready, no-op, exit 0" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
-  _promote_to_specified SPEC-006
+  _promote_to_ready SPEC-006
   # A merged PR exists, but its head branch does not match spec-006-*.
   _stub_gh_echoing '[{"number":7,"headRefName":"spec-999-other","mergedAt":"2026-05-01T00:00:00Z"}]'
 
   run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
-  [ "$(_status_of SPEC-006)" = "specified" ]
+  [ "$(_status_of SPEC-006)" = "ready" ]
   [ "$(jq -r '.specs[] | select(.id=="SPEC-006") | has("merged_at")' "$REPO/.gaia/local/specs/ledger.json")" = "false" ]
 }
 
 # --- 8: fail-open; no gh on PATH, or gh present but returns empty ---
 @test "8a: gh absent from PATH; exit 0, ledger unchanged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
-  _promote_to_specified SPEC-006
+  _promote_to_ready SPEC-006
   before="$(cat "$REPO/.gaia/local/specs/ledger.json")"
   _no_gh_path
 
@@ -120,7 +121,7 @@ _no_gh_path() {
 
 @test "8b: gh present but returns empty output; exit 0, ledger unchanged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
-  _promote_to_specified SPEC-006
+  _promote_to_ready SPEC-006
   before="$(cat "$REPO/.gaia/local/specs/ledger.json")"
   _stub_gh_empty
 
@@ -128,4 +129,22 @@ _no_gh_path() {
   [ "$status" -eq 0 ]
   after="$(cat "$REPO/.gaia/local/specs/ledger.json")"
   [ "$before" = "$after" ]
+}
+
+# --- 9: a retired 'specified' row is off-vocab, never a merge candidate ---
+@test "9: a retired 'specified' row is not a merge candidate; logged unrecognized, left as-is" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
+  tmp="$(mktemp)"
+  jq '(.specs[] | select(.id == "SPEC-006") | .status) = "specified"' \
+    "$REPO/.gaia/local/specs/ledger.json" > "$tmp"
+  mv "$tmp" "$REPO/.gaia/local/specs/ledger.json"
+  # A matching merged PR exists, but a "specified" row is off-vocabulary now
+  # (the finalize state migrated to "ready"), so it is never reached as a
+  # candidate; the off-vocab normalizer logs it as unrecognized instead.
+  _stub_gh_echoing '[{"number":42,"headRefName":"spec-006-x","mergedAt":"2026-05-01T00:00:00Z"}]'
+
+  run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
+  [ "$status" -eq 0 ]
+  grep -qF "unrecognized status specified" <<<"$output"
+  [ "$(_status_of SPEC-006)" = "specified" ]
 }

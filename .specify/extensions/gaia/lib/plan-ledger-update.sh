@@ -7,7 +7,7 @@
 #   plan-ledger-update.sh <repo_root> <plan_id> '<json-object>'
 #
 # Refuses if the row is missing, callers must allocate via plan-allocator.sh
-# first. Initial status:"allocated" is written inline by plan-allocator.sh at
+# first. Initial status:"ready" is written inline by plan-allocator.sh at
 # row creation (NOT via this chokepoint); every later transition goes through
 # here.
 #
@@ -18,13 +18,12 @@
 # network ops. See with-ledger-lock.sh for the lock env knobs
 # (GAIA_LEDGER_LOCK_*).
 #
-# Canonical status vocabulary: allocated | completed | abandoned. `abandoned`
-# is reserved: the guard accepts it, but no shipped code path stamps it, there
-# is no auto-abandon sweep and no plan-reconcile in this feature, because a
-# gitignored local-only ledger has no reliable stale-plan signal. The plans
-# `status` field is distinct in meaning from the pre-existing `source` field
-# (which also reads "allocated" but records provenance, not lifecycle); this
-# chokepoint never touches `source`.
+# Canonical status vocabulary: ready | merged | abandoned. `abandoned` is
+# reserved: the guard accepts it, but no shipped code path stamps it, there is
+# no auto-abandon sweep, because a gitignored local-only ledger has no
+# reliable stale-plan signal. The plans `status` field is distinct in meaning
+# from the pre-existing `source` field (which reads "allocated" but records
+# provenance, not lifecycle); this chokepoint never touches `source`.
 #
 # Exit codes: 0 ok, 2 usage, 4 ledger or row missing OR lock-acquisition
 # timeout (could not safely apply the ledger write), 5 invalid patch JSON,
@@ -61,9 +60,9 @@ fi
 patch_status="$(jq -r 'if type == "object" and has("status") then (.status | tostring) else empty end' <<<"$patch" 2>/dev/null || true)"
 if [ -n "$patch_status" ]; then
   case "$patch_status" in
-    allocated | completed | abandoned) ;;
+    ready | merged | abandoned) ;;
     *)
-      echo "plan-ledger-update: non-canonical status '$patch_status' (allowed: allocated, completed, abandoned)" >&2
+      echo "plan-ledger-update: non-canonical status '$patch_status' (allowed: ready, merged, abandoned)" >&2
       exit 6
       ;;
   esac

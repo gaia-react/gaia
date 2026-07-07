@@ -10,7 +10,10 @@
 # This is the BACKSTOP, not the owner. Each subsystem still owns its own
 # lifecycle (audit.md prunes its KNOWLEDGE reports; plan.md self-cleans on
 # merge). The janitor only removes residue whose death is PROVABLE, so it is
-# safe to run unconditionally every session. It sweeps exactly six things:
+# safe to run unconditionally every session. Before the sweeps below, it also
+# best-effort runs the one-time ledger-status-migrate.sh, so every sweep that
+# reads a ledger row's status sees the unified vocabulary. It then sweeps
+# exactly seven things:
 #
 #   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
 #      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
@@ -32,12 +35,12 @@
 #      sentinel names a branch that no longer exists AND is not marked
 #      DEFERRED/PAUSED/PARKED. Branch-gone + not-parked alone is not enough to
 #      delete: the folder's durable identity record must also confirm it
-#      terminal (a plans/ledger.json PLAN-NNN row at status completed, or a
+#      terminal (a plans/ledger.json PLAN-NNN row at status merged, or a
 #      specs/ledger.json row at status merged for a colocated plan). No row,
 #      a non-terminal status, or a ledger-less free-form plan slug skips the
 #      item and leaves it for a human decision. Only a confirmed-terminal
-#      folder is handed to plan-archive.sh, which deletes it (gated again
-#      there on cost representation).
+#      folder is handed to plan-archive.sh, which reduces or deletes it
+#      (gated again there on cost representation).
 #   4. empty leftover dirs under .gaia/local, EXCEPT the structural drop-zones
 #      tooling expects to find. Pruned with `rmdir`, so a non-empty dir can
 #      never be removed even if the logic is wrong.
@@ -53,6 +56,11 @@
 #      it clears both gates; this sweep is a thin delegation to
 #      spec-archive-merged.sh, which owns both gates, symmetric with how
 #      sweep #3 delegates plan-folder deletes to plan-archive.sh.
+#   7. merged spec-less plan folders (reduced to SUMMARY.md + cost.json by
+#      sweep #3's plan-archive.sh delegation) whose merged_at has aged past
+#      the same retention window AND whose cost is fully represented. A thin
+#      delegation to plan-archive-merged.sh, which owns both gates,
+#      symmetric with sweep #6's spec-folder delegation.
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -91,6 +99,12 @@ fi
 
 local_dir="$root/.gaia/local"
 [ -d "$local_dir" ] || exit 0
+
+# --- One-time ledger status vocabulary migration ---------------------------
+# Runs before the reap sweeps below so they read rows already on the unified
+# vocabulary (ready|merged|abandoned) instead of a retired status.
+migrate="$root/.gaia/scripts/ledger-status-migrate.sh"
+[ -f "$migrate" ] && bash "$migrate" "$root" >/dev/null 2>&1 || true
 
 # --- 2. Orphaned audit markers ---------------------------------------------
 head_sha=$(git -C "$root" rev-parse HEAD 2>/dev/null || true)
@@ -157,7 +171,7 @@ for running in "$root/.gaia/local/plans"/*/RUNNING "$root/.gaia/local/specs"/*/p
                 row_status=$(jq -r --arg id "$plan_slug" \
                   '.plans[]? | select(.id == $id) | .status // empty' \
                   "$plans_ledger" 2>/dev/null | head -1)
-                [ "$row_status" = "completed" ] && terminal=1
+                [ "$row_status" = "merged" ] && terminal=1
               fi
               ;;
           esac
@@ -231,6 +245,12 @@ fi
 archive_merged="$root/.specify/extensions/gaia/lib/spec-archive-merged.sh"
 if [ -x "$archive_merged" ] || [ -f "$archive_merged" ]; then
   bash "$archive_merged" "$root" >/dev/null 2>&1 || true
+fi
+
+# --- 7. Age-reap merged spec-less plan folders past the retention window ---
+archive_plan="$root/.specify/extensions/gaia/lib/plan-archive-merged.sh"
+if [ -x "$archive_plan" ] || [ -f "$archive_plan" ]; then
+  bash "$archive_plan" "$root" >/dev/null 2>&1 || true
 fi
 
 exit 0
