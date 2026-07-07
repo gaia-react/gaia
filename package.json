@@ -31,6 +31,7 @@
     "test:ci": "vitest --run --passWithNoTests --coverage --bail 1",
     "test:lint-staged": "vitest --run --changed --passWithNoTests --bail 1",
     "test:forensics": "bash .gaia/tests/forensics/run-all.sh",
+    "test:sandbox": "bash .gaia/tests/sandbox/run-all.sh",
     "pw": "pnpm exec playwright test",
     "pw-ui": "pnpm exec playwright test --ui",
     "chromatic": "pnpm exec chromatic --auto-accept-changes 'main' --storybook-build-dir 'storybook-static' --only-changed --exit-once-uploaded --exit-zero-on-changes --skip '@(renovate/**|dependabot/**)'",
