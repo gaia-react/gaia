@@ -2,7 +2,9 @@
 # Tests for `.specify/extensions/gaia/lib/plan-reconcile.sh`, the plan-arm
 # counterpart to `spec-reconcile.sh` (see spec-reconcile.bats for the spec
 # arm). Orchestrator-driven: the caller already knows the merge is confirmed
-# and the plan_id, so there is no gh/PR scan here, unlike the spec arm.
+# and the plan_id, so there is no gh/PR scan here, unlike the spec arm. Plan
+# age anchors on `merged_at`, so this arm writes status "merged", not the
+# retired "completed".
 #
 # Does NOT use helpers/tmp-spec-repo.sh: that shared harness seeds only the
 # specs ledger and does not copy plan-ledger-update.sh. Mirrors the self-copy
@@ -37,7 +39,7 @@ setup() {
       "allocated_at": "2026-01-01T00:00:00Z",
       "source": "allocated",
       "subject": "x",
-      "status": "allocated"
+      "status": "ready"
     }
   ]
 }
@@ -63,12 +65,12 @@ _row_field() {
     "$SANDBOX/$LEDGER_REL"
 }
 
-@test "1: allocated PLAN-005 flips to completed with an ISO completed_at, exit 0" {
+@test "1: ready PLAN-005 flips to merged with an ISO merged_at, exit 0" {
   run _reconcile PLAN-005
   [ "$status" -eq 0 ]
-  grep -qF "reconciled PLAN-005 -> completed" <<<"$output"
-  [ "$(_row_field PLAN-005 status)" = "completed" ]
-  case "$(_row_field PLAN-005 completed_at)" in
+  grep -qF "reconciled PLAN-005 -> merged" <<<"$output"
+  [ "$(_row_field PLAN-005 status)" = "merged" ]
+  case "$(_row_field PLAN-005 merged_at)" in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;;
     *) return 1 ;;
   esac
@@ -79,15 +81,15 @@ _row_field() {
   [ ! -d "$SANDBOX/.gaia/local/plans/PLAN-005" ]
   run _reconcile PLAN-005
   [ "$status" -eq 0 ]
-  [ "$(_row_field PLAN-005 status)" = "completed" ]
+  [ "$(_row_field PLAN-005 status)" = "merged" ]
 }
 
-@test "2: idempotent; a second run re-stamps completed and exits 0" {
+@test "2: idempotent; a second run re-stamps merged and exits 0" {
   run _reconcile PLAN-005
   [ "$status" -eq 0 ]
   run _reconcile PLAN-005
   [ "$status" -eq 0 ]
-  [ "$(_row_field PLAN-005 status)" = "completed" ]
+  [ "$(_row_field PLAN-005 status)" = "merged" ]
 }
 
 @test "3: a non-PLAN-NNN id is a no-op, exits 0, leaves the ledger unchanged" {
@@ -115,9 +117,9 @@ _row_field() {
   [ "$before" = "$after" ]
 }
 
-@test "5: the plans status vocabulary guard holds; plan-reconcile never writes merged" {
+@test "5: the plans status vocabulary guard holds; plan-reconcile never writes the retired 'completed' status" {
   run _reconcile PLAN-005
   [ "$status" -eq 0 ]
-  grep -qF -- "-> merged" <<<"$output" && return 1
-  [ "$(_row_field PLAN-005 status)" = "completed" ]
+  grep -qF -- "-> completed" <<<"$output" && return 1
+  [ "$(_row_field PLAN-005 status)" = "merged" ]
 }

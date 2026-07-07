@@ -11,7 +11,7 @@
 #   Identity gate       - the folder has a durable id-ledger record at its
 #                         terminal status: a specs/ledger.json row at status
 #                         merged for a SPEC-<n> folder, or a plans/ledger.json row
-#                         at status completed for a PLAN-<n> folder. A legacy
+#                         at status merged for a PLAN-<n> folder. A legacy
 #                         free-form plan slug, or a spec that predates the ledger,
 #                         has no durable identity: it classifies NEEDS-DECISION and
 #                         is never auto-deleted; a human resolves it (synthesize an
@@ -159,12 +159,12 @@ classify_and_print() {
     plans)
       case "$base" in
         PLAN-[0-9]*)
-          if [ "$(ledger_status "$plans_ledger" "$base")" = "completed" ]; then
+          if [ "$(ledger_status "$plans_ledger" "$base")" = "merged" ]; then
             attr_field="plan_id"
             attr_val="$base"
           else
             status="NEEDS-DECISION"
-            reason="no-completed-plans-ledger-row"
+            reason="no-merged-plans-ledger-row"
           fi
           ;;
         *)

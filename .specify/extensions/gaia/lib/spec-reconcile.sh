@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # spec-reconcile.sh: Reconcile finalized-but-open SPEC ledger rows against git
 # ground truth. For every .gaia/local/specs/ledger.json row whose status is
-# "specified" (the finalize state) or the legacy "in-progress", check whether a
-# merged PR exists whose head branch matches spec-NNN-* ; if so, flip the row to
-# status "merged" and stamp merged_at with that PR's mergedAt.
+# "ready" (the finalize state), check whether a merged PR exists whose head
+# branch matches spec-NNN-* ; if so, flip the row to status "merged" and stamp
+# merged_at with that PR's mergedAt.
 #
 # Why this exists: the allocator's in_progress signal is draft-only and is set
 # at both ends by the authoring session, so it never goes stale. But the merged
@@ -55,7 +55,7 @@ canon_for_status() {
 offvocab_ids="$(jq -r '
   .specs[]
   | select((.status // "") as $s
-      | ["draft","specified","merged","archived","abandoned","in-progress"] | index($s) | not)
+      | ["draft","ready","merged","abandoned"] | index($s) | not)
   | .id
 ' "$ledger_path" 2>/dev/null || true)"
 
@@ -80,7 +80,7 @@ fi
 
 # Candidate rows (local, cheap): finalized but not yet recorded as merged.
 candidates="$(jq -r '
-  .specs[] | select(.status == "specified" or .status == "in-progress") | .id
+  .specs[] | select(.status == "ready") | .id
 ' "$ledger_path" 2>/dev/null || true)"
 [ -n "$candidates" ] || exit 0
 

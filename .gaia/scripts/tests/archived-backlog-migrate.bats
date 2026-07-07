@@ -105,14 +105,14 @@ add_plan_ledger_row() {
   local id="$1" status="$2" tmp
   tmp="$(mktemp "${BATS_TEST_TMPDIR}/planledger.XXXXXX")"
   jq --arg id "$id" --arg status "$status" \
-    '.plans += [{"id": $id, "status": $status, "completed_at": "2026-07-05T00:00:00Z"}]' \
+    '.plans += [{"id": $id, "status": $status, "merged_at": "2026-07-05T00:00:00Z"}]' \
     "$PLANS_LEDGER" > "$tmp" && mv "$tmp" "$PLANS_LEDGER"
 }
 
 # --- 1. UAT-009 default dry-run no-op ----------------------------------------
 
 @test "UAT-009 default dry-run: deletes nothing, prints a manifest, cost.jsonl byte-identical" {
-  add_plan_ledger_row PLAN-005 completed
+  add_plan_ledger_row PLAN-005 merged
   {
     printf '# Cost: PLAN-005\n\n'
     section Planning 10 20 30 40 sess-a
@@ -143,7 +143,7 @@ add_plan_ledger_row() {
 # --- 2. UAT-008 represented -> deleted under --confirm -----------------------
 
 @test "UAT-008 represented PLAN folder: manifest DELETE, removed under --confirm, cost.jsonl untouched" {
-  add_plan_ledger_row PLAN-006 completed
+  add_plan_ledger_row PLAN-006 merged
   {
     printf '# Cost: PLAN-006\n\n'
     section Planning 10 20 30 40 sess-b
@@ -182,7 +182,7 @@ add_plan_ledger_row() {
 # --- 3. UAT-008 unrepresented / unparseable -> BLOCKED ----------------------
 
 @test "UAT-008 value-mismatched phase: BLOCKED, survives --confirm" {
-  add_plan_ledger_row PLAN-007 completed
+  add_plan_ledger_row PLAN-007 merged
   {
     printf '# Cost: PLAN-007\n\n'
     section Execution 999 1 1 1 sess-c
@@ -196,7 +196,7 @@ add_plan_ledger_row() {
 }
 
 @test "UAT-008 unparseable phase (non-numeric bucket): BLOCKED reason unparseable, survives --confirm" {
-  add_plan_ledger_row PLAN-011 completed
+  add_plan_ledger_row PLAN-011 merged
   {
     printf '# Cost: PLAN-011\n\n'
     printf '## Execution\n\n'
@@ -219,7 +219,7 @@ add_plan_ledger_row() {
 # --- 4. UAT-008 dry-run manifest columns -------------------------------------
 
 @test "UAT-008 dry-run manifest: {folder, phases verified, phases blocking} per folder" {
-  add_plan_ledger_row PLAN-008 completed
+  add_plan_ledger_row PLAN-008 merged
   {
     printf '# Cost: PLAN-008\n\n'
     section Planning 10 20 30 40 sess-d
@@ -287,7 +287,7 @@ add_plan_ledger_row() {
 # --- 7. Needs-backfill -> BLOCKED (verify-only, DP-002/COV-001) --------------
 
 @test "needs-backfill: a phase with no ledger row is BLOCKED (needs-backfill); cost.jsonl byte-identical in BOTH modes" {
-  add_plan_ledger_row PLAN-009 completed
+  add_plan_ledger_row PLAN-009 merged
   {
     printf '# Cost: PLAN-009\n\n'
     section Planning 10 20 30 40 sess-g

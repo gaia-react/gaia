@@ -10,7 +10,7 @@
 #   plan-allocator.sh next <repo_root> [<subject>]  # print next PLAN-NNN, append ledger row
 #
 # Ledger rows are {id, allocated_at, source, subject, status}. status is
-# written "allocated" inline here at row creation; every later transition
+# written "ready" inline here at row creation; every later transition
 # goes through the guarded plan-ledger-update.sh chokepoint. Numbers are
 # never reused.
 #
@@ -91,7 +91,7 @@ append_ledger_row() {
   ensure_ledger
   tmp="$(mktemp)"
   if ! jq --arg id "$id" --arg now "$now" --arg subject "$subject" \
-    '.plans += [{id: $id, allocated_at: $now, source: "allocated", subject: $subject, status: "allocated"}]' \
+    '.plans += [{id: $id, allocated_at: $now, source: "allocated", subject: $subject, status: "ready"}]' \
     "$ledger_path" > "$tmp"; then
     rm -f "$tmp"
     echo "plan-allocator: failed to update ledger at $ledger_path" >&2

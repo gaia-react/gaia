@@ -232,11 +232,11 @@ EOF
       GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/$alloc" next "$repo" > "$repo/out.$idx" 2>/dev/null
     ' _ "$REPO" "$ALLOC" "$i" &
   done
-  # One barrier-gated step-8-style flip of the seeded draft row.
+  # One barrier-gated step-9-style flip of the seeded draft row.
   bash -c '
     repo="$1"; lu="$2"
     until [ -f "$repo/start.flag" ]; do :; done
-    GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/$lu" "$repo" SPEC-001 "{\"status\":\"in-progress\"}" 2>/dev/null
+    GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/$lu" "$repo" SPEC-001 "{\"status\":\"ready\"}" 2>/dev/null
   ' _ "$REPO" "$LEDGER_UPDATE" &
 
   touch "$REPO/start.flag"
@@ -245,8 +245,8 @@ EOF
   # Ledger is still valid JSON.
   run jq -e . "$REPO/.gaia/local/specs/ledger.json"
   [ "$status" -eq 0 ]
-  # Seeded row flipped to in-progress.
-  [ "$(jq -r '.specs[] | select(.id=="SPEC-001") | .status' "$REPO/.gaia/local/specs/ledger.json")" = "in-progress" ]
+  # Seeded row flipped to ready.
+  [ "$(jq -r '.specs[] | select(.id=="SPEC-001") | .status' "$REPO/.gaia/local/specs/ledger.json")" = "ready" ]
   # SPEC-001 + N freshly allocated rows, all present, no row lost.
   total="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")"
   [ "$total" -eq "$((N + 1))" ]

@@ -183,14 +183,14 @@ set_row_reservation() {
 #
 # A SPEC is "in flight" for resume-vs-start-new purposes only while it is being
 # authored. The ledger row is created at `next` (skill step 3) with status
-# "draft" and flipped to "specified" when the SPEC artifact is finalized and
+# "draft" and flipped to "ready" when the SPEC artifact is finalized and
 # frozen (skill step 8). Both transitions are owned by the same authoring
 # session, so this signal cannot go stale on a fragile downstream chain.
 #
-# A finalized SPEC (specified / merged / archived) is downstream feature work
-# tracked by branches and PRs, NOT a draft a new /gaia-spec session would
-# resume, so it is deliberately not reported here. The merged transition is
-# reconciled from git ground truth by spec-reconcile.sh, out of this read path.
+# A finalized SPEC (ready / merged) is downstream feature work tracked by
+# branches and PRs, NOT a draft a new /gaia-spec session would resume, so it
+# is deliberately not reported here. The merged transition is reconciled from
+# git ground truth by spec-reconcile.sh, out of this read path.
 #
 # Source: the .gaia/local/specs/ledger.json ledger only. The prior SPEC-file frontmatter
 # fallback is intentionally gone: every SPEC gets a ledger row at allocation, so
@@ -429,7 +429,7 @@ _reconcile_one_provisional() {
 
 # Process every provisional+draft row (deferred push / renumber-on-collision).
 # Only a still-provisional, not-yet-shared draft is renumber-eligible; a
-# specified/merged/archived row is left as accepted-stale. Runs with the ledger
+# ready/merged row is left as accepted-stale. Runs with the ledger
 # mutex ALREADY held (called from allocate_next and, wrapped, from the
 # reserve_pending subcommand). Fail-open.
 _reserve_pending_locked() {
