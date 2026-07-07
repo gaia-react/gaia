@@ -4,8 +4,8 @@
 # Reads the ground-truth token usage the API already recorded for a GAIA action
 # (/gaia-spec, /gaia-plan, or a KICKOFF plan-execution run) and turns it into a
 # per-action readout: four billing buckets plus a total, an elapsed
-# span, a durable machine-local ledger record (cost.jsonl), a human-readable
-# cost.md, and a printed tally block.
+# span, a durable machine-local ledger record (cost.jsonl), a per-folder
+# cost.json sidecar keyed by phase kind, and a printed tally block.
 #
 # It sums `.message.usage` across the session's MAIN transcript
 # (<projects-root>/*/<session-id>.jsonl) AND every sub-agent sidecar
@@ -24,7 +24,7 @@
 # `date -j` is macOS-only, which breaks the Linux CI bats run).
 #
 # The ledger stores the raw UTC endpoints (C2, the durable machine record); the
-# HUMAN surfaces (stdout, cost.md) render those two endpoints in the machine's
+# HUMAN surface (stdout) renders those two endpoints in the machine's
 # LOCAL zone (jq for the clock, `date +%Z` for the zone label — jq's own %z/%Z
 # misreport the offset across a DST boundary on some builds, while `date +%Z`
 # reads the effective system zone, is identical on macOS and Linux, and parses
@@ -35,13 +35,13 @@
 #     Every failure mode degrades to a partial/absent figure with a marker;
 #     no number is ever fabricated.
 #   - stdout carries ONLY the tally block; all diagnostics go to stderr.
-#   - Side effects: append one ledger record; write <out-dir>/cost.md. For
-#     action=plan|execute the cost.md carries independent `## Planning` and
-#     `## Execution` sections; each run replaces ONLY its own section and copies
-#     the sibling through untouched, so the plan-authoring cost (written by
-#     /gaia-plan) and the plan-execution cost (written by the KICKOFF git-op
-#     hook on each commit) never overwrite or sum. action=spec writes a sectioned
-#     `## SPEC` doc into the SPEC folder, a separate file that is unaffected.
+#   - Side effects: append one ledger record; write <out-dir>/cost.json. For
+#     action=plan|execute the sidecar carries independent `plan` and `execute`
+#     keys; each run replaces ONLY its own key and copies the sibling through
+#     byte-unchanged, so the plan-authoring cost (written by /gaia-plan) and
+#     the plan-execution cost (written by the KICKOFF git-op hook on each
+#     commit) never overwrite or sum. action=spec writes a `spec`-keyed
+#     sidecar into the SPEC folder, a separate file that is unaffected.
 #   - `partial` flips when the session id is empty, the main transcript matched
 #     no file, or any matched file failed to parse. An empty sidecar set is NOT
 #     partial. `duration_available` is a SEPARATE flag: tokens can be complete
@@ -194,7 +194,7 @@ case "$PLAN_ID" in PLAN-*) PLAN_ID_OUT="$PLAN_ID" ;; esac
 if [[ -n "$SPEC_ID_OUT" ]]; then
   PLAN_ID_OUT=""   # spec identity wins; the record never carries both
 fi
-# The single feature key used for cost.md titles and the seq/final match.
+# The single feature key used for the stdout title and the seq/final match.
 FEATURE="${SPEC_ID_OUT:-$PLAN_ID_OUT}"
 
 # Missing required flags are belt-and-suspenders (callers pass well-formed args);
@@ -401,19 +401,16 @@ fi
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # ---------- dollar pricing of this section's own by_model (SPEC-022) ----------
-# Each cost.md section prices its OWN in-process BY_MODEL at the rate whose
-# effective window covers TS (this run's generation stamp) -- a frozen
+# Each run's cost.json record prices its OWN in-process BY_MODEL at the rate
+# whose effective window covers TS (this run's generation stamp) -- a frozen
 # snapshot, deliberately distinct from token-rollup.sh's read-time reprice.
 # Never guesses, never blocks: empty attribution or an unreadable rate table
 # degrade to a marked "unavailable" line rather than a fabricated figure.
 #
-# The ledger persists the RAW numeric `dollars` (not the `$%.2f` string) so a
+# The ledger persists the RAW numeric `dollars` (not a formatted string) so a
 # downstream reader reproduces this exact historical figure, plus `rate_table_id`
 # (the identity of the rate table that priced it) so it can re-price the raw
 # by_model under a different card. Both are null off the priced path.
-COST_STATE="no_attribution"   # one of: priced | no_attribution | rate_unreadable
-COST_DOLLARS_FMT=""
-COST_UNPRICED=""
 COST_DOLLARS_RAW="null"       # JSON number on the priced path, else null
 RATE_TABLE_ID=""              # sha256:<16hex> on the priced path, else empty -> null
 
@@ -437,28 +434,20 @@ if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
       ' 2>/dev/null || true)"
     if [[ -n "$priced" ]] && jq -e 'type=="object"' >/dev/null 2>&1 <<<"$priced"; then
       dollars="$(jq -r '.dollars' <<<"$priced" 2>/dev/null)"
-      COST_DOLLARS_FMT="$(printf '$%.2f' "$dollars" 2>/dev/null)"
-      # Literal fallback string, not a command sub.
-      # shellcheck disable=SC2016
-      [[ -z "$COST_DOLLARS_FMT" ]] && COST_DOLLARS_FMT='$0.00'
-      COST_UNPRICED="$(jq -r '.unpriced | join(", ")' <<<"$priced" 2>/dev/null)"
-      COST_STATE="priced"
       # Persist the raw numeric dollars only when it is a valid JSON number.
       if printf '%s' "$dollars" | jq -e 'type=="number"' >/dev/null 2>&1; then
         COST_DOLLARS_RAW="$dollars"
       fi
       # rate_table_id identifies the exact table that priced this row.
       RATE_TABLE_ID="$(rate_table_id "$cost_rt" 2>/dev/null || true)"
-    else
-      # pricing failed unexpectedly -> treat as unreadable, never fabricate
-      COST_STATE="rate_unreadable"
     fi
-  else
-    COST_STATE="rate_unreadable"
+    # else: pricing failed unexpectedly -> leave dollars/rate_table_id null,
+    # never fabricate.
   fi
+  # else: rate table unresolvable/unreadable -> leave dollars/rate_table_id null.
 fi
 
-# Display titles: stdout uses `<feature>/<slug>`, cost.md uses `<feature> / <slug>`.
+# Display title: stdout uses `<feature>/<slug>`.
 if [[ "$ACTION" == "spec" ]]; then
   out_title="$ACTION $FEATURE"
 else
@@ -644,8 +633,8 @@ rec="$(jq -nc \
 # appends to one shared file. The append plus (execute only) clear_prior_finals
 # is a read-modify-write hazard, so it runs inside the shared cost mutex keyed on
 # the main-checkout telemetry dir; all worktrees serialize on that one lock and no
-# row is lost. Nothing else moves under the lock: seq, the cutover, and cost.md
-# rendering keep their pre-existing, correct behavior outside it.
+# row is lost. Nothing else moves under the lock: seq, the cutover, and the
+# cost.json sidecar write keep their pre-existing, correct behavior outside it.
 #
 # _cost_ledger_write holds the locked body. It reads the run globals and ALWAYS
 # returns 0: a non-execute append otherwise leaves the trailing execute test false
@@ -683,112 +672,27 @@ elif [[ -z "$rec" ]]; then
   log "token-tally: failed to build ledger record; skipping ledger append"
 fi
 
-# ---------- cost.md rendering helpers ----------
-# render_tally_body emits this run's tally as a self-contained markdown block
-# (bucket table + elapsed line + optional partial marker + session/generated
-# footer). It is used verbatim under a `## <phase>` heading (`## SPEC` for spec,
-# `## Planning`/`## Execution` for plan/execute). It reads the aggregate globals
-# computed above, all set before any call.
-render_tally_body() {
-  printf '| Bucket | Tokens |\n'
-  printf '| --- | --- |\n'
-  printf '| Fresh input | %s |\n' "$FRESH"
-  printf '| Cache write | %s |\n' "$CWRITE"
-  printf '| Cache read | %s |\n' "$CREAD"
-  printf '| Output | %s |\n' "$OUT"
-  printf '| **Total** | %s |\n\n' "$TOTAL"
-  if [[ "$DUR_AVAIL" == "true" ]]; then
-    printf '**Elapsed (first to last model turn):** %s (%s to %s)\n' "$HUMAN" "$LOCAL_START" "$LOCAL_END"
-  else
-    printf '_Elapsed: unavailable (no readable turn timestamps)._\n'
-  fi
-  if [[ "$partial" -ne 0 ]]; then
-    printf '\n_Partial: one or more transcript inputs were missing or unparseable; figures are a lower bound._\n'
-  fi
-  # ---------- estimated dollar cost (SPEC-022; additive, never begins with "## ") ----------
-  case "$COST_STATE" in
-    rate_unreadable)
-      printf '\n_Est. cost (USD): unavailable (rate table unreadable)._\n'
-      ;;
-    no_attribution)
-      printf '\n_Est. cost (USD): unavailable (per-model attribution unavailable)._\n'
-      ;;
-    priced)
-      printf '\n**Est. cost (USD):** %s\n' "$COST_DOLLARS_FMT"
-      [[ -n "$COST_UNPRICED" ]] && printf '_Lower bound: unpriced model(s) %s._\n' "$COST_UNPRICED"
-      [[ "$partial" -ne 0 ]] && printf '_Lower bound: some transcript inputs were unreadable; cost is a floor._\n'
-      ;;
-  esac
-  # Backticks below are literal markdown (inline-code the session id), not a command sub.
-  # shellcheck disable=SC2016
-  printf '\nSession `%s` · generated %s\n' "$SESSION_ID" "$TS"
-}
-
-# extract_section prints a `## <title>` block from an existing cost.md: the
-# heading line through the line before the next `## ` heading (or EOF), trailing
-# blank lines trimmed. Absent section -> empty output. This is how a plan/execute
-# write copies the SIBLING phase's section through verbatim while replacing only
-# its own, so the two costs never overwrite each other. Idempotent: re-extracting
-# a block this script wrote reproduces it byte-for-byte.
-extract_section() {
-  awk -v hdr="## $2" '
-    $0 == hdr { inb = 1 }
-    inb && $0 != hdr && /^## / { inb = 0 }
-    inb { buf = buf $0 "\n" }
-    END { sub(/\n+$/, "", buf); if (length(buf)) print buf }
-  ' "$1" 2>/dev/null
-}
-
-# ---------- cost.md (README C3) ----------
-# spec writes a sectioned `## SPEC` doc into the SPEC folder. plan and execute
-# BOTH target the plan folder's cost.md, so they must not clobber each other:
-# /gaia-plan records the `## Planning` section, the KICKOFF git-op hook records
-# the `## Execution` section (rewritten on every orchestrator commit). Each write
-# replaces ONLY its own section and copies the sibling through untouched, so the
-# plan-authoring and plan-execution costs are tracked independently and never
-# overwrite or sum. Every doc's sections are uniform `## <heading>` blocks so the
-# archive consolidation can splice them.
-if [[ -n "$OUT_DIR" ]]; then
+# ---------- cost.json sidecar (README C3; FC-1) ----------
+# One object keyed by phase kind: {"spec":<rec>} for a spec folder, and
+# {"plan":<rec>, "execute":<rec>} for a plan folder. Each value is the same
+# record shape appended to the central cost.jsonl. A plan/execute write replaces
+# ONLY its own key and copies the sibling key through byte-unchanged, so the
+# plan-authoring cost (written by /gaia-plan) and the plan-execution cost
+# (written by the KICKOFF git-op hook on each commit) never overwrite or sum.
+# Never blocks: a jq failure leaves the prior sidecar untouched and logs to
+# stderr; it never aborts the tally and never fabricates.
+if [[ -n "$OUT_DIR" && -n "$rec" ]]; then
   mkdir -p "$OUT_DIR" 2>/dev/null
-  md_file="$OUT_DIR/cost.md"
-
-  if [[ "$ACTION" == "plan" || "$ACTION" == "execute" ]]; then
-    if [[ "$ACTION" == "plan" ]]; then section="Planning"; else section="Execution"; fi
-
-    # Copy through whatever the sibling phase already recorded (empty on the
-    # first write of either phase), then overwrite only this run's section.
-    prev_planning=""
-    prev_execution=""
-    if [[ -f "$md_file" ]]; then
-      prev_planning="$(extract_section "$md_file" "Planning")"
-      prev_execution="$(extract_section "$md_file" "Execution")"
-    fi
-    cur_block="$(printf '## %s\n\n%s' "$section" "$(render_tally_body)")"
-    if [[ "$section" == "Planning" ]]; then
-      prev_planning="$cur_block"
-    else
-      prev_execution="$cur_block"
-    fi
-
-    # Always emit Planning before Execution, independent of which ran first. The
-    # trailing `:` keeps the group's exit status tied to the redirect (could the
-    # file be opened?), not to the last `[[ ]]` test, which is false whenever the
-    # sibling section is absent -- so a plan-only write no longer logs a spurious
-    # write failure.
-    {
-      printf '# Cost: %s / %s\n\n' "$FEATURE" "$PLAN_SLUG"
-      [[ -n "$prev_planning" ]] && printf '%s\n\n' "$prev_planning"
-      [[ -n "$prev_execution" ]] && printf '%s\n' "$prev_execution"
-      :
-    } >"$md_file" 2>/dev/null || log "token-tally: cost.md write failed: $md_file"
+  sidecar="$OUT_DIR/cost.json"
+  if [[ -f "$sidecar" ]]; then
+    updated="$(jq -c --argjson rec "$rec" --arg k "$ACTION" '. + {($k): $rec}' "$sidecar" 2>/dev/null || true)"
   else
-    # spec: a sectioned SPEC-root doc (`# Cost: <feature>` + `## SPEC` body) so
-    # the archive consolidation splices it uniformly with plan/execute sections.
-    {
-      printf '# Cost: %s\n\n' "$FEATURE"
-      printf '## SPEC\n\n'
-      render_tally_body
-    } >"$md_file" 2>/dev/null || log "token-tally: cost.md write failed: $md_file"
+    updated="$(jq -cn --argjson rec "$rec" --arg k "$ACTION" '{($k): $rec}' 2>/dev/null || true)"
+  fi
+  if [[ -n "$updated" ]] && jq -e 'type=="object"' >/dev/null 2>&1 <<<"$updated"; then
+    printf '%s\n' "$updated" >"$sidecar" 2>/dev/null || log "token-tally: cost.json write failed: $sidecar"
+  else
+    log "token-tally: could not build cost.json; leaving prior sidecar as-is"
   fi
 fi
 

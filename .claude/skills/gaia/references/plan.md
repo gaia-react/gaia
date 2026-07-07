@@ -243,11 +243,27 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       The argument is the plan dir. Pass the cached `{PLAN_DIR}` (absolute) directly, the helper normalizes an absolute-under-repo path to repo-relative. A repo-relative literal (`.gaia/local/specs/<SPEC-ID>/plan[-N]` or `.gaia/local/plans/PLAN-NNN`) is equally valid. The argument shape does NOT affect the permission match here: the allow entry `Bash(bash .gaia/scripts/plan-archive.sh:*)` uses a `:*` wildcard that matches any argument.
 
-      For a spec-less plan under `.gaia/local/plans/PLAN-NNN/`, the whole folder is deleted. For a spec-colocated plan under `.gaia/local/specs/<SPEC-ID>/plan[-N]/`, only that subfolder is deleted, the parent SPEC folder and its `SPEC.md` are untouched. `cost.jsonl` and the id-ledgers are the durable record that survives; `SUMMARY.md` and `cost.md` are deleted with the folder. The helper always exits 0.
+      For a spec-less plan under `.gaia/local/plans/PLAN-NNN/`, the whole folder is deleted. For a spec-colocated plan under `.gaia/local/specs/<SPEC-ID>/plan[-N]/`, only that subfolder is deleted; the parent SPEC folder and its `SPEC.md`, `AUDIT.md`, and `cost.json` sidecar are KEPT, reaped later by the SessionStart janitor once past the retention window (`GAIA_SPEC_RETENTION_DAYS`) and cost-represented. `cost.jsonl` and the id-ledgers are the durable record that survives; `SUMMARY.md` and the plan's `cost.json` sidecar are deleted with the plan subfolder. The helper always exits 0.
 
       Then check `git check-ignore .gaia/local/plans/` (and, for a colocated plan, `git check-ignore .gaia/local/specs/`): both are gitignored under the GAIA default, so the delete is invisible to git, skip the commit and report "plan folder deleted locally; gitignored, no commit needed." If a path is tracked, commit and push the delete as the final commit on the PR. If the user explicitly asks to keep the plan folder, skip and report.
 
-      The `SUMMARY.md`/`cost.md` content was already surfaced in the Final summary before the folder is removed.
+      The `SUMMARY.md`/`cost.json` content was already surfaced in the Final summary before the folder is removed.
+
+    - **Post-merge auto-reconcile (both isolation modes).** After the PR merges, before any worktree-discard handoff or isolation-context stop (see the next bullet), the orchestrator reconciles the plan/SPEC ledger. This is its OWN standalone step with its OWN `MERGED` confirmation, separate from the worktree-only cleanup below, and it applies to BOTH feature-branch and worktree isolation modes; a feature-branch run never reaches the worktree-only cleanup, so nesting the reconcile there would silently drop it for the default (Recommended) mode.
+      1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
+      2. **Resolve the main-checkout root; never pass `$PWD`.** In worktree isolation the orchestrator's cwd is the worktree, whose `.gaia/local/specs/` and `.gaia/local/plans/` ledgers are not among the symlink-shared paths, so `"$PWD"` resolves a nonexistent ledger and the reconcile silently no-ops. Resolve the main root the same way `token-tally.sh` does for its ledger:
+
+         ```bash
+         common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
+         case "$common_dir" in /*) abs="$common_dir" ;; *) abs="$PWD/$common_dir" ;; esac
+         main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)"
+         ```
+
+         In a feature-branch run `main_root` equals `$PWD`, so the same code is correct in both modes.
+      3. A spec-colocated plan on a `spec-NNN-*` branch runs `bash .specify/extensions/gaia/lib/spec-reconcile.sh "$main_root" || true` (flips the SPEC's `specs/ledger.json` row `specified` → `merged`); a spec-less `PLAN-NNN` plan runs `bash .specify/extensions/gaia/lib/plan-reconcile.sh "$main_root" "$PLAN_ID" || true` (flips the `plans/ledger.json` row → `completed`). Both are best-effort and never block.
+      4. Backstops remain: `spec-reconcile.sh` still runs in the `/gaia-spec` pre-flight sweep (spec arm); `plan-archive.sh`'s pre-gate `completed` stamp remains the plan-arm backstop, so the ledger still converges if the orchestrator is interrupted mid-cleanup.
+
+      Sequenced BEFORE the worktree-discard handoff / isolation-context stop below, so an isolated worktree run reconciles before it stops to emit its continuation prompt.
 
     - **Post-merge worktree cleanup (worktree-mode runs only).** When the orchestrator's pre-flight chose worktree mode (or the run was dispatched into a worktree by upstream tooling), the post-merge phase runs the cleanup procedure below AFTER the user confirms the PR is merged. The procedure detects the squash-merge state and discards the worktree without prompting (the SPEC clarifications.answered confirms pre-consent: the orchestrator told the user "after merge, the worktree will be discarded" before opening the PR; the user merging the PR is the consent).
       1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
@@ -448,10 +464,10 @@ flushed its sidecar to disk. Tally the `/gaia-plan` session's ground-truth token
 handoff. The call sums `message.usage` across the main transcript AND every sub-agent sidecar
 (deduped by message id, so it equals what the API billed), appends one record keyed to the feature
 identity to the durable ledger resolved to the main checkout (so it survives archival of the plan
-folder and a linked worktree), writes the **Planning** section of the plan folder's `cost.md`, and
+folder and a linked worktree), writes the plan folder's `cost.json` sidecar (the `plan` record), and
 prints the four billing buckets plus a total and the elapsed time. The KICKOFF execution phase
-later adds an independent **Execution** section to the same `cost.md` (via the git-op hook, on each
-commit); the two sections are tracked separately and never overwrite or sum each other. A spec-derived
+later adds an independent `execute` record to the same `cost.json` (via the git-op hook, on each
+commit); the two records are tracked separately and never overwrite or sum each other. A spec-derived
 plan passes its SPEC id via `--spec-id`; a SPEC-less plan passes its `PLAN-NNN` id via `--plan-id`
 instead, exactly one of the two flags, never both, matching the ledger's `spec_id`-XOR-`plan_id`
 contract:
@@ -467,7 +483,7 @@ if [[ -n "${SPEC_PATH:-}" ]]; then
     --out-dir "$PLAN_DIR" || true
 else
   # SPEC-less plan: PLAN_SLUG is the PLAN-NNN id allocated in step 3, so it
-  # doubles as both the feature identity and the cost.md title slug.
+  # doubles as both the feature identity and the cost.json record's plan_slug field.
   bash .gaia/scripts/token-tally.sh \
     --action plan \
     --plan-id "$PLAN_SLUG" \

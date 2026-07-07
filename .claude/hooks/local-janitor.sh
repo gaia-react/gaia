@@ -10,7 +10,7 @@
 # This is the BACKSTOP, not the owner. Each subsystem still owns its own
 # lifecycle (audit.md prunes its KNOWLEDGE reports; plan.md self-cleans on
 # merge). The janitor only removes residue whose death is PROVABLE, so it is
-# safe to run unconditionally every session. It sweeps exactly five things:
+# safe to run unconditionally every session. It sweeps exactly six things:
 #
 #   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
 #      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
@@ -47,6 +47,12 @@
 #      rather than reference-checked: a generous window survives a paused
 #      multi-day authoring session while still reaping abandoned drafts and
 #      forgotten profiling dumps that no other owner ever cleans up.
+#   6. merged SPEC folders whose merged_at has aged past the retention window
+#      (GAIA_SPEC_RETENTION_DAYS, default 30) AND whose cost is fully
+#      represented. A merged SPEC folder is kept at merge and reaped only once
+#      it clears both gates; this sweep is a thin delegation to
+#      spec-archive-merged.sh, which owns both gates, symmetric with how
+#      sweep #3 delegates plan-folder deletes to plan-archive.sh.
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -214,6 +220,17 @@ if [ -d "$cache_dir" ]; then
     while IFS= read -r hit; do
       rm -rf -- "$(dirname "$hit")"
     done
+fi
+
+# --- 6. Age-reap merged SPEC folders past the retention window -------------
+# Merged SPEC folders are kept at merge and reaped only once merged past the
+# retention window (GAIA_SPEC_RETENTION_DAYS, default 30) AND cost-represented.
+# The age + cost gates live in spec-archive-merged.sh, so this is a thin
+# delegation, symmetric with sweep #3's plan-archive.sh delegation. Fail-open:
+# a missing script is a silent no-op, and the script itself always exits 0.
+archive_merged="$root/.specify/extensions/gaia/lib/spec-archive-merged.sh"
+if [ -x "$archive_merged" ] || [ -f "$archive_merged" ]; then
+  bash "$archive_merged" "$root" >/dev/null 2>&1 || true
 fi
 
 exit 0

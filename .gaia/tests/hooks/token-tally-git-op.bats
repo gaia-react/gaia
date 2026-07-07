@@ -127,7 +127,7 @@ run_hook() {
 # their SPEC folder at specs/<SPEC-ID>/plan[-N]. The hook's cheap has_plan gate
 # and the shared resolver both scan the union of the three RUNNING globs. These
 # cases prove the colocated location is keyed and tallied exactly like a
-# spec-less plan: the feature key still resolves to the SPEC id, cost.md lands
+# spec-less plan: the feature key still resolves to the SPEC id, cost.json lands
 # inside the colocated plan dir, and the plan_slug degrades to the folder
 # basename (`plan` / `plan-2`) with no effect on the spec-keyed ledger row.
 @test "colocated spec plan (specs/<id>/plan) records a spec-keyed execute record" {
@@ -150,8 +150,8 @@ run_hook() {
   [ "$(jq -r '.plan_slug' "$LEDGER")" = "plan" ]
   [ "$(jq -r '.total' "$LEDGER")" -eq 11110 ]
   [ "$(jq -r '.partial' "$LEDGER")" = "false" ]
-  # cost.md lands inside the colocated plan dir, not under plans/.
-  [ -f "$plan_dir/cost.md" ]
+  # cost.json lands inside the colocated plan dir, not under plans/.
+  [ -f "$plan_dir/cost.json" ]
 }
 
 @test "colocated re-planned folder (specs/<id>/plan-2) is discovered and keyed" {
@@ -361,7 +361,7 @@ run_hook() {
 # the main checkout and is invisible from a cwd-relative glob run in the worktree.
 # The hook must anchor its plan search to the main checkout, or a plan executed in
 # a worktree (the common /gaia-plan + orchestration path) records ZERO execute
-# cost. Both the ledger and cost.md land in the surviving main checkout.
+# cost. Both the ledger and cost.json land in the surviving main checkout.
 @test "worktree run: main-checkout plan folder is discovered; execute row lands in the main ledger" {
   MAIN="$(mktemp -d -t gaia-hook-test-XXXXXX)"
   MAIN="$(cd "$MAIN" && pwd -P)"   # normalize /var -> /private/var so path compares hold
@@ -398,8 +398,8 @@ run_hook() {
   [ "$(jq -r '.kind' "$MAIN_LEDGER")" = "execute" ]
   [ "$(jq -r '.spec_id' "$MAIN_LEDGER")" = "SPEC-013" ]
   [ "$(jq -r '.total' "$MAIN_LEDGER")" -eq 11110 ]
-  # cost.md lands in the surviving main-checkout plan folder, not the worktree.
-  [ -f "$plan_dir/cost.md" ]
+  # cost.json lands in the surviving main-checkout plan folder, not the worktree.
+  [ -f "$plan_dir/cost.json" ]
   [ ! -f "$WT/.gaia/local/telemetry/cost.jsonl" ]
 
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"

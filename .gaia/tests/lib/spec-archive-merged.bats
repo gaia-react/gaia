@@ -38,6 +38,11 @@ setup() {
   SPECS=".gaia/local/specs"
   TELEMETRY=".gaia/local/telemetry/spec-pacing.jsonl"
   LEDGER=".gaia/local/telemetry/cost.jsonl"
+  # --seed-merged-folder stamps a fixed merged_at ("2026-01-02T00:00:00Z")
+  # rather than "just merged", so every delete test below needs the age gate
+  # collapsed to stay deterministic regardless of wall-clock time. The
+  # age-gate tests re-export this per test to exercise the window itself.
+  export GAIA_SPEC_RETENTION_DAYS=0
 }
 
 teardown() {
@@ -107,6 +112,36 @@ _seed_cost_row() {
       buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
       total: $total, seq: 0, final: true, source: "test"}' \
     >> "$REPO/$LEDGER"
+}
+
+# _days_ago <n>: portable ISO8601 timestamp n days in the past, computed with
+# jq (never `date -d`/`date -j`, matching the project's cross-platform epoch
+# rule; mirrors spec-abandon-empty.bats's old_ts/new_ts helpers).
+_days_ago() {
+  jq -rn --argjson n "$1" '(now - ($n * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
+}
+
+# _set_merged_at <repo> <spec_id> <iso>: patches the seeded ledger row's
+# merged_at, for tests that need a specific age instead of the fixture's
+# fixed date.
+_set_merged_at() {
+  local repo="$1" id="$2" iso="$3"
+  local tmp; tmp="$(mktemp)"
+  jq --arg id "$id" --arg ts "$iso" \
+    '.specs |= map(if .id == $id then . + {merged_at: $ts} else . end)' \
+    "$repo/$SPECS/ledger.json" > "$tmp"
+  mv "$tmp" "$repo/$SPECS/ledger.json"
+}
+
+# _clear_merged_at <repo> <spec_id>: removes merged_at from the seeded ledger
+# row, for the missing-merged_at keep case.
+_clear_merged_at() {
+  local repo="$1" id="$2"
+  local tmp; tmp="$(mktemp)"
+  jq --arg id "$id" \
+    '.specs |= map(if .id == $id then del(.merged_at) else . end)' \
+    "$repo/$SPECS/ledger.json" > "$tmp"
+  mv "$tmp" "$repo/$SPECS/ledger.json"
 }
 
 # --- 1: delete happy path (cost represented) ---------------------------------
@@ -298,4 +333,127 @@ _seed_cost_row() {
   run _archive "$REPO"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+# --- 13: age gate, within window -> kept -------------------------------------
+
+@test "13: a merged folder within the retention window is kept, not deleted" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 2)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "SPEC-001 within retention window (or merged_at missing/unparseable); kept"
+
+  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
+}
+
+# --- 14: age gate, past window + represented -> reaped -----------------------
+
+@test "14: a merged folder past the retention window with represented cost is reaped" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 45)"
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged SPEC folder(s): SPEC-001"
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+
+  # Ledger row stays merged; merged_at is a precondition, not set by the sweep.
+  [ "$(jq -r '.specs[0].status' "$REPO/$SPECS/ledger.json")" = "merged" ]
+}
+
+# --- 15: age gate, past window but unrepresented -> kept ---------------------
+
+@test "15: a folder past the retention window but unrepresented is kept" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 45)"
+  _plant_cost_md SPEC-001 100 10 5 20 sess-1
+  # No matching cost.jsonl row: the SPEC section is unrepresented.
+  export GAIA_SPEC_RETENTION_DAYS=30
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "cost not fully represented in cost.jsonl; left SPEC-001 folder for review"
+
+  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
+}
+
+# --- 16/17: missing or unparseable merged_at -> kept regardless of age/rep ---
+
+@test "16: a merged row with no merged_at is kept regardless of representation" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _clear_merged_at "$REPO" SPEC-001
+  export GAIA_SPEC_RETENTION_DAYS=0
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "SPEC-001 within retention window (or merged_at missing/unparseable); kept"
+
+  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
+}
+
+@test "17: a merged row with an unparseable merged_at is kept regardless of representation" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _set_merged_at "$REPO" SPEC-001 "not-a-timestamp"
+  export GAIA_SPEC_RETENTION_DAYS=0
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  assert_contains "SPEC-001 within retention window (or merged_at missing/unparseable); kept"
+
+  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
+}
+
+# --- 18/19: GAIA_SPEC_RETENTION_DAYS knob is honored --------------------------
+
+@test "18: GAIA_SPEC_RETENTION_DAYS=0 reaps a just-merged represented folder" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 0)"
+  export GAIA_SPEC_RETENTION_DAYS=0
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged SPEC folder(s): SPEC-001"
+  [ ! -e "$REPO/$SPECS/SPEC-001" ]
+}
+
+@test "19: GAIA_SPEC_RETENTION_DAYS=99999 keeps an old merged folder" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 400)"
+  export GAIA_SPEC_RETENTION_DAYS=99999
+
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+
+  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
+}
+
+# --- 20: a non-numeric knob value falls back to the 30-day default ----------
+
+@test "20: a non-numeric GAIA_SPEC_RETENTION_DAYS falls back to the 30-day default" {
+  export GAIA_SPEC_RETENTION_DAYS="abc"
+
+  # Within the 30-day fallback: kept (proves the fallback isn't 0).
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
+  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 10)"
+  run _archive "$REPO"
+  [ "$status" -eq 0 ]
+  refute_contains "Deleted"
+  [ -d "$REPO/$SPECS/SPEC-001" ]
+
+  # Past the 30-day fallback: reaped (proves the fallback isn't unbounded).
+  REPO2="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-002)"
+  _set_merged_at "$REPO2" SPEC-002 "$(_days_ago 45)"
+  run bash "$REPO2/$ARCHIVE" "$REPO2"
+  [ "$status" -eq 0 ]
+  assert_contains "Deleted 1 merged SPEC folder(s): SPEC-002"
+  rm -rf "$REPO2"
 }

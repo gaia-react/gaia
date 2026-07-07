@@ -18,9 +18,19 @@
 #   - NO pending wiki-promote drain cache at
 #     .gaia/local/cache/wiki-promote/<id>.json (those have not promoted their
 #     wiki content yet; the close flow drains them, so leave them be)
+#   - the row's merged_at is parseable AND has aged past the retention window
+#     (the age gate below); a missing or unparseable merged_at keeps the
+#     folder rather than reading as infinitely old
 # A merged row with no active folder (e.g. a pre-folder SPEC) is skipped.
 #
-# Representation gate: before deleting a candidate's folder, this sources
+# Age gate: a merged folder is kept until GAIA_SPEC_RETENTION_DAYS (default
+# 30; a non-numeric override falls back to 30) days have passed since the
+# row's merged_at, so a just-merged SPEC survives for review instead of
+# vanishing at merge. The gate lives here so every caller inherits it: the
+# /gaia-spec pre-flight sweep, the spec-close single-id delegate, and the
+# janitor's SessionStart sweep.
+#
+# Representation gate: once a candidate clears the age gate, this sources
 # .gaia/scripts/cost-represented.sh and asks whether every cost.md phase
 # section under the folder is already captured, value for value, in the
 # main-checkout cost.jsonl (resolved via .gaia/scripts/ledger-path-lib.sh). Any
@@ -60,6 +70,25 @@ specs_dir="${repo_root}/.gaia/local/specs"
 cache_dir="${repo_root}/.gaia/local/cache/wiki-promote"
 telemetry_path="${repo_root}/.gaia/local/telemetry/spec-pacing.jsonl"
 
+# Retention knob, read once: a non-numeric override falls back to the default.
+retention_days="${GAIA_SPEC_RETENTION_DAYS:-30}"
+case "$retention_days" in '' | *[!0-9]*) retention_days=30 ;; esac
+now_epoch="$(date -u +%s 2>/dev/null || echo 0)"
+
+# _age_past_window <merged_at_iso>: 0 iff merged_at is parseable AND older
+# than the retention window (reap-eligible). 1 iff missing/unparseable/within
+# window (keep). A missing or unparseable merged_at never reads as infinitely
+# old, so it keeps the folder rather than authorizing a delete.
+_age_past_window() {
+  local iso="$1" merged_epoch age_days
+  [ -n "$iso" ] || return 1
+  merged_epoch="$(jq -rn --arg t "$iso" '($t | sub("\\.[0-9]+Z$";"Z") | fromdateiso8601)' 2>/dev/null || true)"
+  case "$merged_epoch" in '' | *[!0-9]*) return 1 ;; esac
+  [ "$now_epoch" -gt 0 ] || return 1
+  age_days=$(( (now_epoch - merged_epoch) / 86400 ))
+  [ "$age_days" -ge "$retention_days" ] && return 0 || return 1
+}
+
 # No ledger or no jq → nothing to do. (No git needed for the delete itself:
 # specs are local/gitignored, so it is a plain filesystem rm, never a git op.)
 [ -f "$ledger_path" ] || exit 0
@@ -98,6 +127,15 @@ while IFS= read -r spec_id; do
   # Leave specs whose wiki content has not been promoted yet; the close flow
   # owns their drain + disposition.
   [ -f "${cache_dir}/${spec_id}.json" ] && continue
+
+  # Age gate: cheaper than the representation gate below, and avoids computing
+  # representation for a folder that is kept regardless. A missing/unparseable
+  # merged_at keeps the folder (fail-closed).
+  merged_at="$(jq -r --arg id "$spec_id" '.specs[] | select(.id==$id) | .merged_at // ""' "$ledger_path" 2>/dev/null || true)"
+  if ! _age_past_window "$merged_at"; then
+    echo "spec-archive-merged: $spec_id within retention window (or merged_at missing/unparseable); kept" >&2
+    continue
+  fi
 
   # Representation gate: refuse to delete a folder whose cost.md sections are
   # not fully accounted for in cost.jsonl. Any non-zero verdict, including an

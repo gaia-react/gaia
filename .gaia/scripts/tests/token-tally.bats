@@ -28,8 +28,8 @@
 #   duration_seconds 125   duration_available true   human "2m5s"
 #   decoys excluded: user line 16:59:30 (before min), pr-link 17:10:00 (after max)
 #   regression traps: all-lines->630s, main-only->30s, deduped-min->124s
-#   the ledger records the raw UTC endpoints; the human surfaces (stdout,
-#     cost.md) render them in the machine's LOCAL zone (proven below under a
+#   the ledger records the raw UTC endpoints; the human surface (stdout)
+#     renders them in the machine's LOCAL zone (proven below under a
 #     pinned TZ=UTC baseline and a TZ=JST-9 non-UTC conversion)
 #
 # Degradation fixtures (isolated trees):
@@ -106,12 +106,12 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(led '.buckets.output')" -eq 10 ]
   [ "$(led '.total')" -eq 11110 ]
 
-  # cost.md carries the same five figures.
-  grep -q "| Fresh input | 100 |" "$OUTDIR/cost.md"
-  grep -q "| Cache write | 1000 |" "$OUTDIR/cost.md"
-  grep -q "| Cache read | 10000 |" "$OUTDIR/cost.md"
-  grep -q "| Output | 10 |" "$OUTDIR/cost.md"
-  grep -q "| \*\*Total\*\* | 11110 |" "$OUTDIR/cost.md"
+  # cost.json carries the same five figures under the execute key.
+  [ "$(jq -r '.execute.buckets.fresh_input' "$OUTDIR/cost.json")" -eq 100 ]
+  [ "$(jq -r '.execute.buckets.cache_write' "$OUTDIR/cost.json")" -eq 1000 ]
+  [ "$(jq -r '.execute.buckets.cache_read' "$OUTDIR/cost.json")" -eq 10000 ]
+  [ "$(jq -r '.execute.buckets.output' "$OUTDIR/cost.json")" -eq 10 ]
+  [ "$(jq -r '.execute.total' "$OUTDIR/cost.json")" -eq 11110 ]
 
   # UAT-004: every bucket non-zero and mutually distinct (kills hardcoded-zero,
   # single-collapsed-input, and wrong-field-mapping helpers).
@@ -169,61 +169,56 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$after" -eq "$before" ]
 }
 
-# ---------- 5. cost.md content (UAT-001) ----------
-@test "cost.md exists in --out-dir with all five figures (not empty/placeholder)" {
+# ---------- 5. cost.json content (UAT-001) ----------
+@test "cost.json exists in --out-dir with all five figures (not empty/placeholder)" {
   run_anchor
   [ "$status" -eq 0 ]
-  [ -f "$OUTDIR/cost.md" ]
-  [ -s "$OUTDIR/cost.md" ]
-  # all five figures present
-  grep -q "100" "$OUTDIR/cost.md"
-  grep -q "1000" "$OUTDIR/cost.md"
-  grep -q "10000" "$OUTDIR/cost.md"
-  grep -q " 10 " "$OUTDIR/cost.md"
-  grep -q "11110" "$OUTDIR/cost.md"
+  [ -f "$OUTDIR/cost.json" ]
+  [ -s "$OUTDIR/cost.json" ]
+  # all five figures present under the execute key
+  [ "$(jq -r '.execute.buckets.fresh_input' "$OUTDIR/cost.json")" -eq 100 ]
+  [ "$(jq -r '.execute.buckets.cache_write' "$OUTDIR/cost.json")" -eq 1000 ]
+  [ "$(jq -r '.execute.buckets.cache_read' "$OUTDIR/cost.json")" -eq 10000 ]
+  [ "$(jq -r '.execute.buckets.output' "$OUTDIR/cost.json")" -eq 10 ]
+  [ "$(jq -r '.execute.total' "$OUTDIR/cost.json")" -eq 11110 ]
 }
 
-# ---------- 5b. Planning + Execution sections coexist in one cost.md ----------
-# /gaia-plan and the KICKOFF git-op hook both write the plan folder's cost.md.
-# The plan-authoring and plan-execution costs must live in independent sections
-# of the SAME file: never overwriting each other, never summed. Planning uses the
+# ---------- 5b. plan + execute keys coexist in one cost.json ----------
+# /gaia-plan and the KICKOFF git-op hook both write the plan folder's cost.json.
+# The plan-authoring and plan-execution costs must live in independent keys of
+# the SAME file: never overwriting each other, never summed. Planning uses the
 # single-line fixture (total 562); Execution uses the anchor (total 11110), so a
 # clobbered-vs-preserved or a summed regression is unambiguous.
-@test "plan then execute: cost.md keeps independent Planning + Execution sections (no overwrite, no sum)" {
+@test "plan then execute: cost.json keeps independent plan + execute keys (no overwrite, no sum)" {
   run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
     --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/l-plan.jsonl"
   [ "$status" -eq 0 ]
-  grep -q "^## Planning$" "$OUTDIR/cost.md"
-  grep -q "| \*\*Total\*\* | 562 |" "$OUTDIR/cost.md"
+  [ "$(jq -r '.plan.total' "$OUTDIR/cost.json")" -eq 562 ]
+  [ "$(jq -r '.execute // "absent"' "$OUTDIR/cost.json")" = "absent" ]
 
-  # Execution tally into the SAME out-dir must add a section, not replace the file.
+  before="$(jq -c '.plan' "$OUTDIR/cost.json")"
+
+  # Execution tally into the SAME out-dir must add a key, not replace the file.
   run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug my-plan \
     --out-dir "$OUTDIR" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/l-exec.jsonl"
   [ "$status" -eq 0 ]
 
-  # Both sections present, Planning before Execution.
-  grep -q "^## Planning$" "$OUTDIR/cost.md"
-  grep -q "^## Execution$" "$OUTDIR/cost.md"
-  pln="$(grep -n '^## Planning$' "$OUTDIR/cost.md" | cut -d: -f1)"
-  exn="$(grep -n '^## Execution$' "$OUTDIR/cost.md" | cut -d: -f1)"
-  [ "$pln" -lt "$exn" ]
-
-  # Planning total intact at 562 (NOT overwritten); Execution total is 11110.
-  plan_slice="$(awk '/^## Planning$/{p=1;next} /^## Execution$/{p=0} p' "$OUTDIR/cost.md")"
-  exec_slice="$(awk '/^## Execution$/{e=1;next} e' "$OUTDIR/cost.md")"
-  [[ "$plan_slice" == *"| **Total** | 562 |"* ]]
-  [[ "$exec_slice" == *"| **Total** | 11110 |"* ]]
+  # Both keys present; plan is byte-unchanged, execute reflects its own tally.
+  after="$(jq -c '.plan' "$OUTDIR/cost.json")"
+  [ "$before" = "$after" ]
+  [ "$(jq -r '.execute.total' "$OUTDIR/cost.json")" -eq 11110 ]
 
   # No summed figure anywhere (562 + 11110 = 11672 must never appear).
-  ! grep -q "11672" "$OUTDIR/cost.md"
+  grep -qF "11672" <(jq -c '.' "$OUTDIR/cost.json") && return 1
+  return 0
 }
 
 # The git-op hook re-runs the execute tally on every orchestrator commit, so the
-# Execution section is rewritten repeatedly; that must not duplicate headings or
-# disturb the Planning section written once upstream.
-@test "repeated execute writes preserve the Planning section and never duplicate headings" {
+# execute key is rewritten repeatedly; that must not disturb the plan key
+# written once upstream, and the file stays a two-key object (no duplication).
+@test "repeated execute writes preserve the plan key and never duplicate keys" {
   run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
     --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/lp.jsonl"
@@ -236,10 +231,9 @@ led() { jq -r "$1" "$LEDGER"; }
     [ "$status" -eq 0 ]
   done
 
-  [ "$(grep -c '^## Planning$' "$OUTDIR/cost.md")" -eq 1 ]
-  [ "$(grep -c '^## Execution$' "$OUTDIR/cost.md")" -eq 1 ]
-  grep -q "| \*\*Total\*\* | 562 |" "$OUTDIR/cost.md"
-  grep -q "| \*\*Total\*\* | 11110 |" "$OUTDIR/cost.md"
+  [ "$(jq -r 'keys | sort | join(",")' "$OUTDIR/cost.json")" = "execute,plan" ]
+  [ "$(jq -r '.plan.total' "$OUTDIR/cost.json")" -eq 562 ]
+  [ "$(jq -r '.execute.total' "$OUTDIR/cost.json")" -eq 11110 ]
 }
 
 # ---------- 6. Ledger keyed + durable (UAT-005) ----------
@@ -294,7 +288,7 @@ led() { jq -r "$1" "$LEDGER"; }
 }
 
 # ---------- 8. Graceful degradation (UAT-007) ----------
-@test "non-existent session: exit 0, partial, buckets 0, marker in all three surfaces" {
+@test "non-existent session: exit 0, partial, buckets 0, marker in all surfaces" {
   run bash "$SCRIPT" \
     --action spec --spec-id SPEC-013 \
     --out-dir "$OUTDIR" --session-id "no-such-session-9999" \
@@ -309,8 +303,8 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(led '.partial')" = "true" ]
   [ "$(led '.total')" -eq 0 ]
 
-  # cost.md marker present
-  grep -q "_Partial:" "$OUTDIR/cost.md"
+  # cost.json carries the same partial:true marker (same $rec as the ledger)
+  [ "$(jq -r '.spec.partial' "$OUTDIR/cost.json")" = "true" ]
 }
 
 @test "malformed sidecar line: exit 0, partial, still tallies the readable files" {
@@ -357,10 +351,12 @@ led() { jq -r "$1" "$LEDGER"; }
 
   # stdout pinned human format + LOCAL window (kills 0, ms=125000, all-lines=630s,
   # main-only=30s, deduped-min=124s). TZ=UTC -> local clock == UTC, labelled UTC.
-  [[ "$output" == *"Elapsed:      2m5s  (first to last model turn: 2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)"* ]]
+  grep -qF "Elapsed:      2m5s  (first to last model turn: 2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)" <<<"$output"
 
-  # cost.md elapsed line (below the total row, not a table row)
-  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-02 17:00:00 UTC to 2026-07-02 17:02:05 UTC)$" "$OUTDIR/cost.md"
+  # cost.json carries the raw UTC endpoints under the execute key (no
+  # human-rendered duration string; that surface is stdout-only).
+  [ "$(jq -r '.execute.started_at' "$OUTDIR/cost.json")" = "2026-07-02T17:00:00.000Z" ]
+  [ "$(jq -r '.execute.ended_at' "$OUTDIR/cost.json")" = "2026-07-02T17:02:05.000Z" ]
 }
 
 # ---------- 10b. Endpoints render in the machine's LOCAL zone (owner request) ----------
@@ -382,9 +378,13 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(led '.duration_seconds')" -eq 125 ]
 
   # human surfaces: +0900 local, crossing midnight into 2026-07-03
-  [[ "$output" == *"first to last model turn: 2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST"* ]]
-  [[ "$output" == *"Elapsed:      2m5s"* ]]
-  grep -q "^\*\*Elapsed (first to last model turn):\*\* 2m5s (2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST)$" "$OUTDIR/cost.md"
+  grep -qF "first to last model turn: 2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST" <<<"$output"
+  grep -qF "Elapsed:      2m5s" <<<"$output"
+
+  # cost.json keeps the raw UTC endpoints regardless of TZ (no local rendering
+  # in the sidecar; that is stdout-only).
+  [ "$(jq -r '.execute.started_at' "$OUTDIR/cost.json")" = "2026-07-02T17:00:00.000Z" ]
+  [ "$(jq -r '.execute.ended_at' "$OUTDIR/cost.json")" = "2026-07-02T17:02:05.000Z" ]
 }
 
 # ---------- 11. Max in a sidecar (documents sidecar inclusion) ----------
@@ -549,8 +549,8 @@ led() { jq -r "$1" "$LEDGER"; }
   fi
 }
 
-# ---------- 16. spec doc: schema_version, ## SPEC section, no legacy md (AC2) ----------
-@test "spec: schema_version 1, kind spec, seq 0/final, cost.md ## SPEC section, only cost.md written" {
+# ---------- 16. spec doc: schema_version, spec key, no legacy md (AC2) ----------
+@test "spec: schema_version 1, kind spec, seq 0/final, cost.json keyed by spec, only cost.json written" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
     --out-dir "$OUTDIR" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$LEDGER"
@@ -563,13 +563,18 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(led '.seq')" -eq 0 ]
   [ "$(led '.final')" = "true" ]
 
-  grep -qF '# Cost: SPEC-013' "$OUTDIR/cost.md"
-  grep -qF '## SPEC' "$OUTDIR/cost.md"
-  grep -qF '| **Total** | 11110 |' "$OUTDIR/cost.md"
+  [ "$(jq -r '.spec.kind' "$OUTDIR/cost.json")" = "spec" ]
+  [ "$(jq -r '.spec.spec_id' "$OUTDIR/cost.json")" = "SPEC-013" ]
+  [ "$(jq -r '.spec.total' "$OUTDIR/cost.json")" -eq 11110 ]
 
-  # cost.md is the ONLY markdown written (no legacy-named sibling remains)
-  [ -f "$OUTDIR/cost.md" ]
-  [ "$(ls "$OUTDIR"/*.md | wc -l | tr -d ' ')" -eq 1 ]
+  # FC-1 acceptance shape (UAT-001): kind, spec_id, session_id present, buckets
+  # shaped, total present, all under the top-level `spec` key.
+  run jq -e '.spec | (.kind=="spec") and (.spec_id=="SPEC-013") and (.session_id!=null) and (.buckets|has("fresh_input")) and has("total")' "$OUTDIR/cost.json"
+  [ "$status" -eq 0 ]
+
+  # cost.json is the ONLY sidecar written (no legacy cost.md sibling remains)
+  [ -f "$OUTDIR/cost.json" ]
+  [ ! -f "$OUTDIR/cost.md" ]
 }
 
 # ---------- 17. spec_id XOR plan_id -- the single source-of-truth gate (AC3) ----------
