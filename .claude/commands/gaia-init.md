@@ -94,6 +94,7 @@ When the user chose Automatic, first detect the project folder name (`basename "
 > | CODEOWNERS handle | {gh-detected handle when available, else `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder} | Placeholder: one-line edit required. Detected handle: none |
 > | GAIA CI intent | Enabled, activate later via /setup-gaia | Yes, /setup-gaia --reconfigure |
 > | Maintenance tools | All four in `ci` mode | Yes, reconfigure |
+> | Sandbox recommendation | Not recommended | Yes, reconfigure |
 
 Exactly one row per setting. For the CODEOWNERS row, show the gh-detected handle when detection succeeds (it is the user's own authenticated identity, not a guess), otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder. **Never** put a guessed or git-config-derived handle there: the only non-placeholder value allowed is the gh-detected login.
 
@@ -107,6 +108,7 @@ Then apply the defaults and proceed without stopping (the user chose Automatic; 
 - kebab slug (Q5): folder name.
 - CI intent (Step 8): "Yes, I'll enable CI after pushing" (records intent only).
 - Maintenance tools (Step 9): all `ci`.
+- Sandbox recommendation (Step 9): not recommended (`false`).
 
 ## Step 0: Ensure pnpm is available (and new enough)
 
@@ -544,19 +546,35 @@ Mode meanings:
 
 The fifth config key, `update_gaia.mode`, is fixed to `local` and not surfaced as a question, `/update-gaia` is a per-machine command by design.
 
+### Sandbox recommendation
+
+Independent of the tool-mode branch above, record whether this project recommends Claude Code's OS-level Bash sandbox. This is a committed **recommendation** only, never an enablement, each machine still resolves it for itself at `/setup-gaia`.
+
+_Non-response: SAFE-DEFAULT. Default to "No, don't recommend" (`false`). Automatic mode: same default, no re-ask._
+
+Use AskUserQuestion (in the user's language; this configuration block stays in English):
+
+> Recommend Claude Code's OS-level Bash sandbox to your team? Each machine still decides at /setup-gaia; this only records the recommendation.
+>
+> - **No, don't recommend (Recommended).** No team-level nudge; every machine still decides independently at `/setup-gaia`.
+> - **Yes, recommend the sandbox.** `/setup-gaia` shows this as the suggested answer on each machine.
+
+Hold the answer as `true` (recommend) or `false` (don't recommend, including the non-response/Automatic default).
+
 ### Apply the answer
 
-Once you have a value for each of the four tools (from Branch A, Branch B, or a resumed run's saved arguments), run, ALWAYS, the terminal write:
+Once you have a value for each of the four tools (from Branch A, Branch B, or a resumed run's saved arguments) and the sandbox recommendation above, run, ALWAYS, the terminal write:
 
 ```bash
 .gaia/cli/gaia init configure-automation \
   --wiki <wiki-mode> \
   --update-deps <update-deps-mode> \
   --pnpm-audit <pnpm-audit-mode> \
-  --stale-branches <stale-branches-mode>
+  --stale-branches <stale-branches-mode> \
+  --sandbox-recommended <true|false>
 ```
 
-Substitute each `<*-mode>` with the derived selection (`ci` is only valid on the CI-enabled branch; the CI-declined branch substitutes `local` or `off`). This call is mandatory on every exit path, there is no Step 9 branch that skips it.
+Substitute each `<*-mode>` with the derived selection (`ci` is only valid on the CI-enabled branch; the CI-declined branch substitutes `local` or `off`) and `<true|false>` with the sandbox recommendation. This call is mandatory on every exit path, there is no Step 9 branch that skips it.
 
 If the CLI exits non-zero, surface the structured-error JSON verbatim and stop. The user can re-run the failing command manually after addressing the cause, then resume `/gaia-init` with `.gaia/cli/gaia init resume`.
 

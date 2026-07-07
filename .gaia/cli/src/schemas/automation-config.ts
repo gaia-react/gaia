@@ -44,6 +44,7 @@ export type UpdateGaiaConfig = z.infer<typeof UpdateGaiaConfigSchema>;
 
 export const AutomationConfigSchema = z.object({
   pnpm_audit: ToolConfigSchema,
+  sandbox_recommended: z.boolean().optional(),
   setup_complete: z.boolean(),
   setup_opted_out: z.boolean(),
   stale_branches: ToolConfigSchema,
@@ -59,9 +60,16 @@ export type AutomationConfig = z.infer<typeof AutomationConfigSchema>;
  * The `AutomationConfig` keys that hold a `ToolConfig` row, i.e. the
  * per-tool slots a `ToolId` can resolve to. Excludes `update_gaia`
  * (`UpdateGaiaConfig`) and the scalar config fields.
+ *
+ * `-?` strips the source's optional modifier from the intermediate mapped
+ * type: without it, an optional `AutomationConfig` key (e.g.
+ * `sandbox_recommended`) makes the homomorphic mapping preserve that
+ * optionality onto its own (unrelated) `never` slot, and indexing the
+ * mapped type by `keyof AutomationConfig` then widens the whole union to
+ * include `undefined`.
  */
 export type ToolConfigKey = {
-  [K in keyof AutomationConfig]: AutomationConfig[K] extends ToolConfig ? K
+  [K in keyof AutomationConfig]-?: AutomationConfig[K] extends ToolConfig ? K
   : never;
 }[keyof AutomationConfig];
 

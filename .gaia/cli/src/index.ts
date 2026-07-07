@@ -21,6 +21,7 @@ import {run as runInit} from './init/index.js';
 import {run as runMentorship} from './mentorship/index.js';
 import {run as runPing} from './ping/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
+import {run as runSandbox} from './sandbox/index.js';
 import {run as runScaffold} from './scaffold/index.js';
 import {run as runSetupCi} from './setup-ci/index.js';
 import {run as runSetup} from './setup/index.js';
@@ -50,6 +51,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   init strip-branding|configure-i18n|rename|wire-statusline|finalize|resume
   setup status|mark-step|finalize|link-worktree
   setup-ci status|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|verify-run|finalize|write-tool-mode
+  sandbox detect|seed|apply|record|status
   ping --event <init|setup|update> [--field value ...]
 `;
 
@@ -76,6 +78,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   mentorship: runMentorship,
   ping: runPing,
   'react-perf': runReactPerf,
+  sandbox: runSandbox,
   scaffold: runScaffold,
   setup: runSetup,
   'setup-ci': runSetupCi,

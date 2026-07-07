@@ -2,11 +2,16 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 /**
  * Tests for `gaia init configure-automation`.
  */
+import assert from 'node:assert/strict';
 import {existsSync, mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {automationConfigPath} from '../automation/paths.js';
-import {AutomationConfigSchema} from '../schemas/automation-config.js';
+import {
+  AutomationConfigSchema,
+  readAutomationConfig,
+} from '../schemas/automation-config.js';
+import {writeAutomationConfig} from '../setup-ci/util/automation-write.js';
 import {run} from './configure-automation.js';
 import {readState} from './util/state.js';
 
@@ -148,6 +153,78 @@ describe('init configure-automation', () => {
     expect(parsed.update_gaia.mode).toBe('local');
     expect(parsed.setup_complete).toBe(false);
     expect(parsed.setup_opted_out).toBe(false);
+  });
+
+  test('--sandbox-recommended true writes sandbox_recommended: true', () => {
+    sandbox = setupSandbox();
+
+    const exit = run([...allCiArgs, '--sandbox-recommended', 'true'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(0);
+
+    const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
+    const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
+    expect(parsed.sandbox_recommended).toBe(true);
+  });
+
+  test('--sandbox-recommended false writes sandbox_recommended: false', () => {
+    sandbox = setupSandbox();
+
+    const exit = run([...allCiArgs, '--sandbox-recommended', 'false'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(0);
+
+    const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
+    const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
+    expect(parsed.sandbox_recommended).toBe(false);
+  });
+
+  test('omitting --sandbox-recommended omits the key entirely', () => {
+    sandbox = setupSandbox();
+
+    const exit = run(allCiArgs, {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
+    const written: Record<string, unknown> = JSON.parse(raw);
+    expect('sandbox_recommended' in written).toBe(false);
+
+    const result = readAutomationConfig(sandbox.root);
+    expect(result.status).toBe('ok');
+  });
+
+  test('round-trip: readAutomationConfig -> writeAutomationConfig preserves a present sandbox_recommended', () => {
+    sandbox = setupSandbox();
+
+    const exit = run([...allCiArgs, '--sandbox-recommended', 'true'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(0);
+
+    const result = readAutomationConfig(sandbox.root);
+    expect(result.status).toBe('ok');
+    assert.ok(result.status === 'ok');
+
+    writeAutomationConfig(sandbox.root, result.config);
+
+    const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
+    const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
+    expect(parsed.sandbox_recommended).toBe(true);
+  });
+
+  test('exit 1 when --sandbox-recommended value is invalid', () => {
+    sandbox = setupSandbox();
+
+    const exit = run([...allCiArgs, '--sandbox-recommended', 'maybe'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain(
+      '--sandbox-recommended must be one of: true, false'
+    );
+    expect(existsSync(automationConfigPath(sandbox.root))).toBe(false);
   });
 
   test('configure-automation writes complete config with all-local modes (CI-declined derivation)', () => {

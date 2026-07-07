@@ -29,7 +29,8 @@ const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
   --wiki <ci|local|off> \
   --update-deps <ci|local|off> \
   --pnpm-audit <ci|local|off> \
-  --stale-branches <ci|local|off>
+  --stale-branches <ci|local|off> \
+  [--sandbox-recommended <true|false>]
 
   Write .gaia/automation.json with the user's tool-mode selections and
   setup_complete: false. Phase A of GAIA CI; no GitHub repo or workflow
@@ -40,6 +41,11 @@ const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
     --update-deps <ci|local|off>
     --pnpm-audit <ci|local|off>
     --stale-branches <ci|local|off>
+
+  Optional flags:
+    --sandbox-recommended <true|false>
+      Records the owner's Bash-sandbox recommendation. Omitted entirely
+      when the flag is absent (no recommendation on file).
 
   Exit codes:
     0   success (no stdout)
@@ -67,6 +73,7 @@ type FlagParseSuccess = {
 
 type Flags = {
   pnpmAudit: ToolMode;
+  sandboxRecommended?: boolean;
   staleBranches: ToolMode;
   updateDeps: ToolMode;
   wiki: ToolMode;
@@ -114,44 +121,101 @@ const takeMode = (
   return {mode: taken.value, ok: true};
 };
 
-type FlagKey = keyof Flags;
+// The four tool-mode flags, required on every call. `sandboxRecommended` is
+// optional and parsed separately below (its value domain is true/false, not
+// ci/local/off, so it does not fit the `takeMode` shape).
+type RequiredFlagKey = 'pnpmAudit' | 'staleBranches' | 'updateDeps' | 'wiki';
 
 // Object lookup instead of an if/else-if chain per flag: every flag follows
 // the identical take-mode-and-assign shape, so dispatching through a table
 // keeps `parseFlags` itself flat (a Map, since a plain object's index
 // signature would hide the genuine "unknown token" miss from TypeScript).
-const FLAG_SPECS = new Map<string, {flag: string; key: FlagKey}>([
+const FLAG_SPECS = new Map<string, {flag: string; key: RequiredFlagKey}>([
   ['--pnpm-audit', {flag: '--pnpm-audit', key: 'pnpmAudit'}],
   ['--stale-branches', {flag: '--stale-branches', key: 'staleBranches'}],
   ['--update-deps', {flag: '--update-deps', key: 'updateDeps'}],
   ['--wiki', {flag: '--wiki', key: 'wiki'}],
 ]);
 
-const REQUIRED_MESSAGE: Readonly<Record<FlagKey, string>> = {
+const REQUIRED_MESSAGE: Readonly<Record<RequiredFlagKey, string>> = {
   pnpmAudit: '--pnpm-audit is required',
   staleBranches: '--stale-branches is required',
   updateDeps: '--update-deps is required',
   wiki: '--wiki is required',
 };
 
+const SANDBOX_RECOMMENDED_FLAG = '--sandbox-recommended';
+
+const isBooleanLiteral = (value: string): value is 'false' | 'true' =>
+  value === 'true' || value === 'false';
+
+const takeSandboxRecommended = (
+  argv: readonly string[],
+  index: number,
+  current: boolean | undefined
+): {message: string; ok: false} | {ok: true; value: boolean} => {
+  if (current !== undefined) {
+    return {
+      message: `${SANDBOX_RECOMMENDED_FLAG} specified twice`,
+      ok: false,
+    };
+  }
+
+  const taken = takeValue(argv, index, SANDBOX_RECOMMENDED_FLAG);
+
+  if (!taken.ok) return taken;
+
+  if (!isBooleanLiteral(taken.value)) {
+    return {
+      message: `${SANDBOX_RECOMMENDED_FLAG} must be one of: true, false`,
+      ok: false,
+    };
+  }
+
+  return {ok: true, value: taken.value === 'true'};
+};
+
+const applyToolFlag = (
+  argv: readonly string[],
+  index: number,
+  context: {flags: Partial<Flags>; token: string}
+): {message: string; ok: false} | {ok: true} => {
+  const {flags, token} = context;
+  const spec = FLAG_SPECS.get(token);
+
+  if (spec === undefined) {
+    return {message: `unknown flag: ${token}`, ok: false};
+  }
+
+  const taken = takeMode(argv, index, {
+    current: flags[spec.key],
+    flag: spec.flag,
+  });
+
+  if (!taken.ok) return taken;
+  flags[spec.key] = taken.mode;
+
+  return {ok: true};
+};
+
 const parseFlags = (argv: readonly string[]): FlagParseResult => {
   const flags: Partial<Flags> = {};
+  let sandboxRecommended: boolean | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    const spec = FLAG_SPECS.get(token);
 
-    if (spec === undefined) {
-      return {message: `unknown flag: ${token}`, ok: false};
+    if (token === SANDBOX_RECOMMENDED_FLAG) {
+      const taken = takeSandboxRecommended(argv, index + 1, sandboxRecommended);
+
+      if (!taken.ok) return taken;
+      sandboxRecommended = taken.value;
+    } else {
+      const applied = applyToolFlag(argv, index + 1, {flags, token});
+
+      if (!applied.ok) return applied;
     }
 
-    const taken = takeMode(argv, index + 1, {
-      current: flags[spec.key],
-      flag: spec.flag,
-    });
-
-    if (!taken.ok) return taken;
-    flags[spec.key] = taken.mode;
     index += 1;
   }
 
@@ -164,6 +228,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {
     flags: {
       pnpmAudit: flags.pnpmAudit,
+      sandboxRecommended,
       staleBranches: flags.staleBranches,
       updateDeps: flags.updateDeps,
       wiki: flags.wiki,
@@ -174,6 +239,11 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
 const buildConfig = (flags: Flags): AutomationConfig => ({
   pnpm_audit: {mode: flags.pnpmAudit, schedule: 'daily'},
+  // Omit the key entirely when the flag was never passed (no recommendation
+  // on file), rather than writing an explicit `undefined`.
+  ...(flags.sandboxRecommended === undefined ?
+    {}
+  : {sandbox_recommended: flags.sandboxRecommended}),
   setup_complete: false,
   setup_opted_out: false,
   stale_branches: {mode: flags.staleBranches, schedule: 'monthly'},
