@@ -125,6 +125,45 @@ branch_exists() {
   branch_exists "main"
 }
 
+# --- Migration trigger: ledger-status-migrate.sh runs before the reap sweeps ---
+#
+# The janitor best-effort runs the one-time ledger-status-migrate.sh right
+# after the .gaia/local guard, so a row still on a retired status is on the
+# unified vocabulary by the time the reap sweeps read it.
+
+# copy_migrate_deps: mirrors ledger-status-migrate.sh's own repo-relative call
+# target inside the fixture repo so the janitor's migration trigger resolves
+# for real instead of silently no-op'ing.
+copy_migrate_deps() {
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-status-migrate.sh" \
+    "$REPO/.gaia/scripts/ledger-status-migrate.sh"
+  cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/with-ledger-lock.sh" \
+    "$REPO/.specify/extensions/gaia/lib/with-ledger-lock.sh"
+}
+
+@test "migration trigger: a specified/completed fixture row is ready/merged after a janitor run" {
+  make_repo
+  copy_migrate_deps
+  mkdir -p "$REPO/.gaia/local/specs" "$REPO/.gaia/local/plans"
+  cat > "$REPO/.gaia/local/specs/ledger.json" <<'EOF'
+{"version": 1, "specs": [
+  {"id":"SPEC-080","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","status":"specified"}
+]}
+EOF
+  cat > "$REPO/.gaia/local/plans/ledger.json" <<'EOF'
+{"version": 1, "plans": [
+  {"id":"PLAN-080","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"completed","completed_at":"2026-01-02T00:00:00Z"}
+]}
+EOF
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.specs[] | select(.id=="SPEC-080") | .status' "$REPO/.gaia/local/specs/ledger.json")" = "ready" ]
+  [ "$(jq -r '.plans[] | select(.id=="PLAN-080") | .status' "$REPO/.gaia/local/plans/ledger.json")" = "merged" ]
+  [ "$(jq -r '.plans[] | select(.id=="PLAN-080") | .merged_at' "$REPO/.gaia/local/plans/ledger.json")" != "null" ]
+}
+
 # --- Sweep #3: completed-but-unswept plan dirs, terminal-ledger + identity gate ---
 #
 # The janitor delegates the actual delete to plan-archive.sh, so these tests
@@ -166,6 +205,25 @@ write_cost_md() {
   } > "$dir/cost.md"
 }
 
+# write_cost_json <abs_dir> <fresh> <cwrite> <cread> <output>: writes a
+# cost.json sidecar with one execute-phase record, the shape
+# cost-represented.sh's sidecar parser expects. A reduced plan folder keeps
+# only cost.json (not cost.md), so the terminal PLAN-NNN reduce test uses this.
+write_cost_json() {
+  local dir="$1" fresh="$2" cwrite="$3" cread="$4" output="$5"
+  mkdir -p "$dir"
+  jq -cn \
+    --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
+    --argjson cread "$cread" --argjson output "$output" '
+    {execute: {
+      kind: "execute",
+      session_id: null,
+      buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
+      total: ($fresh + $cwrite + $cread + $output)
+    }}
+  ' > "$dir/cost.json"
+}
+
 # seed_cost_row <kind> <field> <val> <fresh> <cwrite> <cread> <output>: appends
 # one row (token-tally/backfill schema, no session) to the fixture repo's real
 # cost ledger, matching where plan-archive.sh's own gaia_resolve_ledger_path
@@ -205,19 +263,22 @@ seed_specs_ledger() {
 EOF
 }
 
-@test "sweep 3: terminal PLAN-NNN + branch-gone + represented -> deleted, no archived/ copy" {
+@test "sweep 3: terminal PLAN-NNN + branch-gone + represented -> reduced to SUMMARY.md + cost.json, RUNNING gone" {
   make_repo
   copy_plan_archive_deps
   mkdir -p "$REPO/.gaia/local/plans/PLAN-050"
+  echo "summary" > "$REPO/.gaia/local/plans/PLAN-050/SUMMARY.md"
   printf 'branch: gone-branch-plan-050\n' > "$REPO/.gaia/local/plans/PLAN-050/RUNNING"
-  write_cost_md "$REPO/.gaia/local/plans/PLAN-050" Execution 10 1 1 2
+  write_cost_json "$REPO/.gaia/local/plans/PLAN-050" 10 1 1 2
   seed_cost_row execute plan_id PLAN-050 10 1 1 2
-  seed_plans_ledger '{"id":"PLAN-050","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"completed","completed_at":"2026-01-02T00:00:00Z"}'
+  seed_plans_ledger '{"id":"PLAN-050","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"merged","merged_at":"2026-01-02T00:00:00Z"}'
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/plans/PLAN-050" ]
-  [ ! -e "$REPO/.gaia/local/plans/archived/PLAN-050" ]
+  [ -d "$REPO/.gaia/local/plans/PLAN-050" ]
+  [ -f "$REPO/.gaia/local/plans/PLAN-050/SUMMARY.md" ]
+  [ -f "$REPO/.gaia/local/plans/PLAN-050/cost.json" ]
+  [ ! -e "$REPO/.gaia/local/plans/PLAN-050/RUNNING" ]
 }
 
 @test "sweep 3: non-terminal ledger status -> skipped (branch-gone alone is insufficient)" {
@@ -252,6 +313,7 @@ EOF
   copy_plan_archive_deps
   mkdir -p "$REPO/.gaia/local/specs/SPEC-050/plan"
   echo "spec body" > "$REPO/.gaia/local/specs/SPEC-050/SPEC.md"
+  echo "# SPEC-050" > "$REPO/.gaia/local/specs/SPEC-050/SUMMARY.md"
   printf 'branch: gone-branch-spec-050\n' > "$REPO/.gaia/local/specs/SPEC-050/plan/RUNNING"
   write_cost_md "$REPO/.gaia/local/specs/SPEC-050/plan" Execution 4 0 0 1
   seed_cost_row execute spec_id SPEC-050 4 0 0 1
@@ -262,4 +324,56 @@ EOF
   [ ! -e "$REPO/.gaia/local/specs/SPEC-050/plan" ]
   [ -d "$REPO/.gaia/local/specs/SPEC-050" ]
   [ -f "$REPO/.gaia/local/specs/SPEC-050/SPEC.md" ]
+}
+
+# --- Sweep #7: age-reap merged spec-less plan folders past the retention window ---
+#
+# Merged spec-less plan folders (already reduced to SUMMARY.md + cost.json by
+# sweep #3's plan-archive.sh delegation) are reaped only once merged_at ages
+# past the retention window (GAIA_SPEC_RETENTION_DAYS, default 30) AND cost is
+# fully represented. The janitor delegates both gates to plan-archive-merged.sh,
+# so these tests copy the real script plus its transitive deps, symmetric with
+# sweep #6's spec-reap suite.
+
+# copy_plan_archive_merged_deps: mirrors plan-archive-merged.sh's own
+# repo-relative call targets inside the fixture repo so the janitor's
+# `bash "$root/.specify/extensions/gaia/lib/plan-archive-merged.sh" ...` call
+# resolves for real instead of silently failing.
+copy_plan_archive_merged_deps() {
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
+  cp "$REPO_ROOT_REAL/.specify/extensions/gaia/lib/plan-archive-merged.sh" \
+    "$REPO/.specify/extensions/gaia/lib/plan-archive-merged.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/cost-represented.sh" "$REPO/.gaia/scripts/cost-represented.sh"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+}
+
+# days_ago <n>: portable ISO8601 timestamp n days in the past, computed with
+# jq (never `date -d`/`date -j`, matching the project's cross-platform epoch
+# rule).
+days_ago() {
+  jq -rn --argjson n "$1" '(now - ($n * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
+}
+
+@test "sweep 7: merged spec-less plan folder past the retention window with represented cost is reaped" {
+  make_repo
+  copy_plan_archive_merged_deps
+  mkdir -p "$REPO/.gaia/local/plans/PLAN-070"
+  echo "summary" > "$REPO/.gaia/local/plans/PLAN-070/SUMMARY.md"
+  seed_plans_ledger "{\"id\":\"PLAN-070\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"merged\",\"merged_at\":\"$(days_ago 45)\"}"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/plans/PLAN-070" ]
+}
+
+@test "sweep 7: merged spec-less plan folder within the retention window is kept" {
+  make_repo
+  copy_plan_archive_merged_deps
+  mkdir -p "$REPO/.gaia/local/plans/PLAN-071"
+  echo "summary" > "$REPO/.gaia/local/plans/PLAN-071/SUMMARY.md"
+  seed_plans_ledger "{\"id\":\"PLAN-071\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"merged\",\"merged_at\":\"$(days_ago 2)\"}"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/plans/PLAN-071" ]
 }

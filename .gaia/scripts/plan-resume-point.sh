@@ -5,7 +5,8 @@
 # cold-startable orchestrator. On a cold restart (crash, context compaction,
 # deliberate HALT) the orchestrator needs to know which phases are genuinely
 # committed rather than re-running everything from Phase 1. This helper reads
-# the plan's append-only SUMMARY.md ledger and, for each phase, proves
+# the plan's append-only PROGRESS.md ledger (falling back to a legacy live
+# SUMMARY.md when PROGRESS.md is absent) and, for each phase, proves
 # whether that phase's recorded commit is a genuine ancestor of the
 # reconnected branch's HEAD. Git is the arbiter -- a ledger block is only a
 # hint. On any ambiguity (missing block, unparseable SHA, non-existent SHA,
@@ -18,8 +19,9 @@
 #   plan-resume-point.sh --plan-dir <path> [--phases <M>] [--branch <ref>] \
 #     [--git-dir <path>]
 #
-#   --plan-dir <path>  Directory holding SUMMARY.md. Locates the ledger
-#                       only; it is NOT the git context.
+#   --plan-dir <path>  Directory holding PROGRESS.md (or a legacy live
+#                       SUMMARY.md). Locates the ledger only; it is NOT the
+#                       git context.
 #   --phases <M>       Optional positive integer, the plan's total phase
 #                       count. Present: the helper may echo M+1 to signal
 #                       all-complete. Omitted (or not a positive integer):
@@ -43,7 +45,7 @@
 # Verified-complete phases are exactly 1 .. (resume-point - 1), contiguous.
 # No other stdout; diagnostics (if any) go to stderr only.
 #
-# SUMMARY.md block format read (delimiter-agnostic, number-bounded,
+# PROGRESS.md block format read (delimiter-agnostic, number-bounded,
 # last-block-wins):
 #   ## Phase <N>, <title>
 #   Commit: <short-sha>
@@ -130,16 +132,23 @@ _commit_anchor() {
       }
     }
     END { print sha }
-  ' "$summary"
+  ' "$ledger"
 }
 
 # ---------- locate the ledger ----------
-summary=""
+# PROGRESS.md is the live ledger. A legacy live SUMMARY.md (pre-rename
+# format) is a fallback ONLY for a plan running across the rename boundary;
+# once PROGRESS.md exists it always wins.
+ledger=""
 if [ -n "$PLAN_DIR" ]; then
-  summary="$PLAN_DIR/SUMMARY.md"
+  if [ -s "$PLAN_DIR/PROGRESS.md" ]; then
+    ledger="$PLAN_DIR/PROGRESS.md"
+  elif [ -s "$PLAN_DIR/SUMMARY.md" ]; then
+    ledger="$PLAN_DIR/SUMMARY.md"
+  fi
 fi
 
-if [ -z "$summary" ] || [ ! -s "$summary" ]; then
+if [ -z "$ledger" ] || [ ! -s "$ledger" ]; then
   echo 1
   exit 0
 fi
@@ -170,7 +179,7 @@ else
       if (hn + 0 > max) max = hn + 0
     }
     END { print max + 0 }
-  ' "$summary")"
+  ' "$ledger")"
   [ -n "$recorded_max" ] || recorded_max=0
   upper="$recorded_max"
 fi

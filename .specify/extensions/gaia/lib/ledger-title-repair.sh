@@ -8,11 +8,12 @@
 # Part A -- re-derives each specs-ledger row's `intent` from its SPEC.md
 #   (folder or archived/folder), through the shared title-normalize rule.
 # Part B -- re-derives each plans-ledger row's `subject` from its recoverable
-#   SUMMARY.md/README.md (folder or archived/folder), else word-safe-trims
-#   the stored subject in place.
-# Part C -- stamps `status: "completed"` on every plans-ledger row that is
-#   already archived on disk but not yet marked completed, deriving
-#   `completed_at` only from a real `cost.md` "generated <ts>" stamp; never
+#   consolidated SUMMARY.md H1, PROGRESS.md, or README.md (folder or
+#   archived/folder, the archived candidate being the legacy live-ledger
+#   shape), else word-safe-trims the stored subject in place.
+# Part C -- stamps `status: "merged"` on every plans-ledger row that is
+#   already archived on disk but not yet marked merged, deriving
+#   `merged_at` only from a real `cost.md` "generated <ts>" stamp; never
 #   fabricated from the current time or from `allocated_at`.
 #
 # Guarantees:
@@ -20,7 +21,7 @@
 #   - Prints one summary line per repaired/stamped row to stdout;
 #     diagnostics go to stderr only.
 #   - Best-effort and idempotent: a row already matching its derived value
-#     (or already `completed`) is left untouched, so re-running produces no
+#     (or already `merged`) is left untouched, so re-running produces no
 #     further change.
 #   - Never corrupts a row it cannot confidently repair: a row with no
 #     recoverable source is skipped (specs) or word-safe-trimmed from its own
@@ -86,13 +87,32 @@ repair_specs_intent() {
 
 # ---------- Part B: plans `subject` repair ----------------------------------
 
-# Recovers a clean human title's raw prose from a SUMMARY.md/README.md: skips
-# any leading heading lines (e.g. "# PLAN-001 Summary") and blank lines, then
-# collects the first paragraph of body prose that follows, stopping at the
-# next blank line or heading (so a heading right after the paragraph, with no
-# blank line between, does not pull in the next section).
+# Recovers a clean human title's raw prose from a consolidated SUMMARY.md,
+# PROGRESS.md, or README.md. A leading closed "---" ... "---" YAML
+# frontmatter block (the consolidated shape) is skipped first; the "# "
+# H1 immediately following it is the recovered title, matching the same
+# line wiki-promote reads (DP-004/CG-001), so title recovery and
+# wiki-promote never disagree on the same artifact. Without frontmatter
+# (the legacy live-ledger / archived shape has no consolidated H1), the
+# original rule applies: skip any leading heading lines (e.g.
+# "# PLAN-001 Summary") and blank lines, then collect the first paragraph
+# of body prose that follows, stopping at the next blank line or heading
+# (so a heading right after the paragraph, with no blank line between,
+# does not pull in the next section).
 _extract_plan_prose() {
   awk '
+    NR == 1 && /^---$/ { in_fm = 1; has_fm = 1; next }
+    in_fm { if ($0 ~ /^---$/) in_fm = 0; next }
+    has_fm && !h1_done {
+      if ($0 ~ /^[[:space:]]*$/) next
+      h1_done = 1
+      if ($0 ~ /^# /) {
+        line = $0
+        sub(/^# /, "", line)
+        print line
+        exit
+      }
+    }
     /^#/ { if (started) exit; next }
     /^Commit:[[:space:]]/ { if (started) exit; next }
     /^[[:space:]]*$/ { if (started) exit; next }
@@ -106,8 +126,9 @@ _recover_plan_source_text() {
   local id="$1" candidate raw
   for candidate in \
     "$repo_root/.gaia/local/plans/$id/SUMMARY.md" \
-    "$repo_root/.gaia/local/plans/archived/$id/SUMMARY.md" \
+    "$repo_root/.gaia/local/plans/$id/PROGRESS.md" \
     "$repo_root/.gaia/local/plans/$id/README.md" \
+    "$repo_root/.gaia/local/plans/archived/$id/SUMMARY.md" \
     "$repo_root/.gaia/local/plans/archived/$id/README.md"; do
     [ -f "$candidate" ] || continue
     raw="$(_extract_plan_prose "$candidate")"
@@ -164,7 +185,7 @@ _last_generated_ts() {
 repair_plans_status() {
   [ -f "$plans_ledger" ] || return 0
 
-  local ids id status archived_dir cost_md completed_at patch
+  local ids id status archived_dir cost_md merged_at patch
   ids="$(jq -r '.plans[].id' "$plans_ledger" 2>/dev/null)"
 
   while IFS= read -r id; do
@@ -179,23 +200,23 @@ repair_plans_status() {
     [ -d "$archived_dir" ] || continue
 
     status="$(jq -r --arg id "$id" '.plans[] | select(.id == $id) | .status // ""' "$plans_ledger" 2>/dev/null)"
-    [ "$status" = "completed" ] && continue
+    [ "$status" = "merged" ] && continue
 
-    completed_at=""
+    merged_at=""
     cost_md="$archived_dir/cost.md"
     if [ -f "$cost_md" ]; then
-      completed_at="$(_last_generated_ts "$cost_md")"
+      merged_at="$(_last_generated_ts "$cost_md")"
     fi
 
     # Never fabricate a timestamp: if no cost.md "generated" stamp is
-    # present, completed_at degrades to omitted, not allocated_at or "now".
-    if [ -n "$completed_at" ]; then
-      patch="$(jq -nc --arg st completed --arg ts "$completed_at" '{status: $st, completed_at: $ts}')"
+    # present, merged_at degrades to omitted, not allocated_at or "now".
+    if [ -n "$merged_at" ]; then
+      patch="$(jq -nc --arg st merged --arg ts "$merged_at" '{status: $st, merged_at: $ts}')"
     else
-      patch="$(jq -nc --arg st completed '{status: $st}')"
+      patch="$(jq -nc --arg st merged '{status: $st}')"
     fi
     bash "${_lib_dir}/plan-ledger-update.sh" "$repo_root" "$id" "$patch" >/dev/null 2>&1 || true
-    printf 'stamped plans status completed: %s\n' "$id"
+    printf 'stamped plans status merged: %s\n' "$id"
   done <<<"$ids"
 }
 

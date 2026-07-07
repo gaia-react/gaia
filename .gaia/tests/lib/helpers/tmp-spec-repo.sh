@@ -36,9 +36,14 @@
 #   --seed-merged-folder SPEC-NNN  append a ledger row status:"merged" AND
 #                               write the foldered shape
 #                               .gaia/local/specs/SPEC-NNN/SPEC.md with
-#                               status: specified + immutable: true frontmatter
-#                               (the archive-sweep happy-path fixture: a merged
-#                               row with an active folder still to be swept)
+#                               status: specified + immutable: true frontmatter,
+#                               plus a consolidated SPEC-NNN/SUMMARY.md (the
+#                               archive-sweep happy-path fixture: a merged row
+#                               with an active, already-consolidated folder
+#                               still to be swept). A test exercising the
+#                               consolidation gate itself removes the seeded
+#                               SUMMARY.md to simulate a folder consolidation
+#                               never ran on.
 #   --seed-flat-sibling SPEC-NNN-SUFFIX  write a legacy flat sibling file
 #                               .gaia/local/specs/SPEC-NNN-SUFFIX.md; a
 #                               sibling migration candidate for spec-folderize.sh
@@ -229,6 +234,15 @@ immutable: true
 ---
 
 # ${id}
+EOF
+      cat > ".gaia/local/specs/${id}/SUMMARY.md" <<EOF
+---
+wiki_promote_default: ask
+wiki_promote_targets: []
+---
+# ${id}
+
+Consolidated summary body.
 EOF
       ;;
     --seed-provisional)
