@@ -134,15 +134,31 @@ Then write the following files directly to `{PLAN_DIR}/`:
 2.  **`{PLAN_DIR}/README.md`**: task graph showing phases, which tasks run in parallel within each phase, and the frozen interface contracts shared across tasks. **Annotate each phase with its execution model** (e.g. `Phase 1 (2 sub-agents, model sonnet)`); Sonnet is the default, so call out any phase you escalate to Opus explicitly and briefly say why. **If `{SPEC_PATH}` was provided** (i.e. this plan was derived from a SPEC), the README MUST open with a `## Source SPEC` section naming the SPEC id and the absolute path, so plan→SPEC discovery is one read away. Format: `Derived from {SPEC-id} ({SPEC_PATH}).` **If `{AUDIT_PATH}` was also provided**, append a second line: `Adversarial audit: {AUDIT_PATH}.`
 
 3.  **`{PLAN_DIR}/ORCHESTRATOR.md`**: instructions for running the plan. Must cover:
-    - **RUNNING sentinel.** As the very first step, write a sentinel file at `{PLAN_DIR}/RUNNING`. Content:
+    - **Resume detection (cold-start, before the sentinel write).** Before writing this run's RUNNING sentinel, and before the pre-flight branch policy below, check for a pre-existing `{PLAN_DIR}/RUNNING`.
+      - **No prior sentinel.** This is a fresh first run: skip resume entirely, proceed to the pre-flight branch policy, and let it write this run's own sentinel afterward as usual. The detection read MUST precede the sentinel write, or every fresh run would self-detect as a resume.
+      - **Merged-PR guard.** If a sentinel exists, check whether its plan's PR is already merged before reconnecting to anything. The sentinel carries no PR number, so recover it from the sentinel's `branch:` line:
 
-      ```
-      branch: <output of git branch --show-current>
-      slug: <basename of {PLAN_DIR}>
-      started: <current UTC time, ISO 8601, e.g. 2026-05-19T14:32:00Z>
-      ```
+        ```bash
+        pr_state="$(gh pr list --head "<sentinel-branch>" --state all --json number,state \
+          --jq '.[0].state' 2>/dev/null)"
+        ```
 
-      This file is deleted automatically when the plan directory is deleted during final self-cleanup. Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature.
+        If `pr_state` is `MERGED`, do not drive a resume of merged work, `plan-archive.sh`'s fail-closed representation gate can leave a stale RUNNING/SUMMARY on an already-merged plan, surface it and stop. If no PR is found (empty result) or the state is `OPEN`, proceed with resume; the guard degrades to a no-op when there is nothing merged to protect against.
+      - **Reconnect by isolation mode.** Read `branch:` and `mode:` from the sentinel. If `mode:` is absent (a legacy sentinel written before this line existed), derive it from `git worktree list`: a worktree whose checked-out branch equals the sentinel branch means worktree mode, otherwise feature-branch mode. Reconnect using the matching operation: `git checkout <branch>` for feature-branch mode, or re-enter the existing worktree for worktree mode (do NOT `git checkout` the worktree-held branch and do NOT create a new worktree). Do NOT re-fire the on-main branch-mode `AskUserQuestion` and do NOT cut a new branch. **Failed reconnect:** if the sentinel branch is genuinely missing or the working tree is dirty, surface the condition and STOP, never silently start a new branch.
+      - **Compute the resume point.** Run the helper from the reconnected working context:
+
+        ```bash
+        bash .gaia/scripts/plan-resume-point.sh --plan-dir {PLAN_DIR} --phases <M>
+        ```
+
+        where `<M>` is the plan's total phase count (from README's phase list). In worktree mode, run this with cwd inside the worktree so its ancestor check evaluates the worktree branch's HEAD; `--plan-dir` stays the main-checkout `{PLAN_DIR}` regardless, it locates the ledger only, never the git context. Read the resume point `K` from line 1 of stdout; read the `COMPLETE <n> <sha>` lines for the gate announcement below.
+      - **Confirmation gate (only when `K > 1`).** Present via `AskUserQuestion`, announcing each verified-complete phase and its short-SHA taken from the helper's `COMPLETE` lines (the one source of truth, do not re-parse `SUMMARY.md`):
+        - `Resume at Phase K (Recommended)`: enter the phase loop at Phase K.
+        - `Restart from Phase 1`: run every phase from Phase 1.
+        - `Abandon`: stop cleanly without re-running, committing, merging, or deleting anything; the sentinel, `SUMMARY.md`, branch, and prior commits stay intact.
+
+        When `K` equals `M+1` (every phase a verified-complete ancestor), resume proceeds straight to the pre-merge `code-review-audit` with no phase re-run.
+      - **Resumed-run git flow.** A resumed run reuses the already-open PR, it does NOT re-issue `gh pr create`; it updates the existing PR with subsequent commits exactly like an uninterrupted run. Its per-phase commits still tally to the same feature because the branch-keyed token-tally resolver (`.claude/hooks/lib/gaia-active-plan.sh`) matches after reconnect; the pre-merge marker handshake and `plan-archive.sh` cleanup behave unchanged. No code change here, the token-tally hooks are already resume-aware.
 
     - **Pre-flight branch policy.** Check the current branch.
 
@@ -167,6 +183,17 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       **The plan folder stays in the main checkout.** The worktree shares only a fixed set of gitignored state with the main checkout by symlink (`.gaia/local/cache/shared/`, `.gaia/local/audit/`, `.gaia/local/telemetry/`, `setup-state.json`, `mentorship.json`); the plan folder is not among them, so `{PLAN_DIR}` exists only in the main checkout. Read the task docs and `README.md` from `{PLAN_DIR}` (its main-checkout absolute path) and write `SUMMARY.md` there, while each task edits the worktree's own copy of the tracked files it touches. Dispatch each task sub-agent with both: the worktree's absolute path for the file to edit, and `{PLAN_DIR}` for the docs to read. Run `plan-archive.sh {PLAN_DIR}` only after `ExitWorktree` returns the session to the main checkout, so the helper's repo-root guard resolves the main checkout rather than the worktree.
 
+    - **RUNNING sentinel.** Immediately after the pre-flight branch policy above (the feature branch is cut, or the worktree is entered), write a sentinel file at `{PLAN_DIR}/RUNNING`. Content:
+
+      ```
+      branch: <the isolation branch: git branch --show-current now that pre-flight cut the branch / entered the worktree>
+      slug: <basename of {PLAN_DIR}>
+      started: <current UTC time, ISO 8601, e.g. 2026-05-19T14:32:00Z>
+      mode: <feature-branch|worktree, the isolation mode chosen at pre-flight>
+      ```
+
+      This file is deleted automatically when the plan directory is deleted during final self-cleanup. Its purpose: it marks this plan as the branch's active run, which the execute-phase token-tally hooks (`.claude/hooks/lib/gaia-active-plan.sh`, `.claude/hooks/token-tally-git-op.sh`) read to key each commit's tally to the right feature. The write happens here, after the branch policy, rather than as the very first step: the token-tally resolver (`.claude/hooks/lib/gaia-active-plan.sh:58-59`) matches a sentinel by `^branch:` against the current branch, so a sentinel recording `main` while phase commits land on the feature branch would never match, and a later cold resume would target the wrong branch. `mode:` records the isolation mode so a later resume picks the right reconnect operation without re-prompting; the resolver reads only `branch:`/`started:`, so the extra `mode:` line does not disturb it. Resume detection above still runs before pre-flight; only the write of this run's own sentinel moves here.
+
     - **Phase order** with per-phase quality gates (`pnpm typecheck && pnpm lint`). Name each phase's execution model in the outline (Sonnet by default; see the Sub-agent invocation bullet), so a cold orchestrator sees the model alongside the phase.
     - **Pre-merge `code-review-audit` (non-skippable).** Before any `gh pr merge` call, the orchestrator spawns the `code-review-audit` agent on the current branch. The agent's clean pass writes `.gaia/local/audit/<HEAD-sha>.ok`, which the deny-hook (`.claude/hooks/pr-merge-audit-check.sh`) gates `gh pr merge` on. The orchestrator does NOT wait for the deny-hook to fire and learn from it, that round-trip is friction. Spawn the agent proactively. Contract: `wiki/concepts/PR Merge Workflow.md`. Verbatim agent-spawn template:
 
@@ -181,7 +208,17 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
     - **Sub-agent invocation:** the verbatim prompt template for each task sub-agent. **Each task sub-agent MUST be dispatched as `general-purpose` with `model: "sonnet"` explicitly pinned.** The feature's complexity is resolved upstream, during `/gaia-spec` + its audit and `/gaia-plan` + the decomposition audit, precisely so execution can run on the cheaper model. Pin Sonnet on the dispatch itself so the executors run on Sonnet regardless of the orchestrator's own session model: a cold orchestrator is often on Opus, and an unpinned sub-agent inherits that. **Escape hatch:** the planner MAY pin `model: "opus"` on a specific phase or task it judges to be genuinely deep synthesis (a subtle parser grammar, a cross-cutting type redesign), but must name which phase and why in that phase's `ORCHESTRATOR.md` entry. Sonnet is the floor; Opus is a per-phase, justified exception, never the blanket default. Sub-agents do NOT commit, push, or open/update the PR, they only edit files and report. The orchestrator owns all git operations. **The prompt template MUST require sub-agents to end their return with a `## Notes for orchestrator` section** containing any of: `### Findings` (non-obvious things they noticed), `### Deviations from plan` (where the task spec was wrong / they had to work around it), `### Follow-ups` (work the user should consider after merge). Subsections may be empty or omitted; only non-trivial signal belongs here, routine "phase done, tests green" status does NOT.
     - **Orchestrator-owned git flow.** After each phase that produces changes (and only once the quality gate is clean), the orchestrator stages, commits with a meaningful message, and pushes. The orchestrator opens the PR after the first phase's commit lands on the remote (using `gh pr create`) and updates it with subsequent commits. Never commit a broken state.
-    - **Phase findings ledger (`{PLAN_DIR}/SUMMARY.md`).** Append-only file the orchestrator maintains across the run, so sub-agent observations survive context compression. After each phase, the orchestrator appends a `## Phase N, <title>` block containing the phase's commit short-SHA and the merged `Notes for orchestrator` content from every sub-agent in that phase. If a phase produced no notes (all sub-agents reported only routine status), append the phase heading with `_No notes._` so the ledger reflects the full run. Sub-agents do not write to this file directly; the orchestrator owns it.
+    - **Phase findings ledger (`{PLAN_DIR}/SUMMARY.md`).** Append-only file the orchestrator maintains across the run, so sub-agent observations survive context compression. After each phase, the orchestrator appends a `## Phase N, <title>` block whose first content line is `Commit: <short-sha>`, the machine-readable anchor `.gaia/scripts/plan-resume-point.sh` reads, followed by the merged `Notes for orchestrator` content from every sub-agent in that phase, or `_No notes._` if the phase produced no notes. **`plan.md` is the single source of truth for this block format**; any other doc or reference page that describes the ledger points here rather than restating the literal `Commit:` line. Example:
+
+      ```
+      ## Phase 2, Helper implementation
+      Commit: a1b2c3d
+
+      ### Findings
+      …
+      ```
+
+      A HALTED block carries no `Commit:` anchor: `## Phase N, <title> (HALTED)` (see Stop conditions below), a halt did not commit. Sub-agents do not write to this file directly; the orchestrator owns it.
     - **Stop conditions.** On any sub-agent failure or quality-gate failure: STOP and surface to the user. Do not "fix and continue", do not commit, do not push. Before stopping, append the failure context (which phase, which sub-agent, error) to `SUMMARY.md` under a `## Phase N, <title> (HALTED)` block so the user and any follow-up session see the same record.
     - **Final summary.** After all implementation phases pass and the final commit is pushed, before awaiting merge confirmation, **read `{PLAN_DIR}/SUMMARY.md`** and print a brief summary to the user: phases completed, sub-agents run, files touched (count), commits pushed (count + short SHAs), PR URL, quality-gate status, and the highest-signal findings/deviations/follow-ups drawn from `SUMMARY.md` so nothing is lost to context compression. Keep it tight, a few lines plus the surfaced notes, not a recap of every change.
 
@@ -234,7 +271,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       No error surfaced. No `ExitWorktree` invocation in this branch. The continuation prompt is self-contained, the user pastes it into a new session and the cleanup completes without further investigation.
 
-4.  **`{PLAN_DIR}/KICKOFF.md`**: the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt, no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline. The kickoff also includes a one-line reference to the pre-merge `code-review-audit` obligation (e.g. "Before any `gh pr merge`, run the `code-review-audit` agent, see ORCHESTRATOR.md's Pre-merge code-review-audit section.") and a one-line default-execution-model statement (e.g. "Dispatch each task sub-agent as `general-purpose` with `model: \"sonnet\"` unless ORCHESTRATOR.md's phase list escalates that phase to Opus."). Both lines ensure a cold-started orchestrator reads the requirement before doing any work, surviving any context compression that drops the ORCHESTRATOR.md content from the first read.
+4.  **`{PLAN_DIR}/KICKOFF.md`**: the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt, no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline. The kickoff also includes a one-line reference to the pre-merge `code-review-audit` obligation (e.g. "Before any `gh pr merge`, run the `code-review-audit` agent, see ORCHESTRATOR.md's Pre-merge code-review-audit section."), a one-line default-execution-model statement (e.g. "Dispatch each task sub-agent as `general-purpose` with `model: \"sonnet\"` unless ORCHESTRATOR.md's phase list escalates that phase to Opus."), and a one-line cold-start resume statement (e.g. "On cold start, before pre-flight, check `{PLAN_DIR}/RUNNING` for a prior run and follow ORCHESTRATOR.md's Resume detection section (reconnect + resume gate) before writing the sentinel."). All three lines ensure a cold-started orchestrator reads the requirement before doing any work, surviving any context compression that drops the ORCHESTRATOR.md content from the first read.
 
 Before returning, delete `{PLAN_DIR}/.work/` if you created it. Use the literal repo-relative path so the project's `rm -rf .gaia/local/plans/*` permission (spec-less plans) or `rm -rf .gaia/local/specs/*` permission (colocated plans) auto-approves it without a prompt: `rm -rf <repo-relative PLAN_DIR>/.work`, e.g. `rm -rf .gaia/local/plans/<slug>/.work` or `rm -rf .gaia/local/specs/<SPEC-ID>/plan/.work`. Do not reconstruct an absolute path from variables, which misses that match and trips the empty-variable rm guard.
 
