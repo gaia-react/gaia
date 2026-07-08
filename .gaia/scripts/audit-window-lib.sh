@@ -10,9 +10,12 @@
 #   { usage: [ {id, u, m} ], tmin, tmax, file_agent, file_id }
 # where `file_agent` is "main" for the main transcript or the sidecar's
 # agentType, and `file_id` is the sidecar basename (agent-<hash>) or "" for
-# main. No side effects at source time; defines functions only. Every
-# function returns 0 and degrades to empty / {} / [] on any failure -- never
-# blocks the caller, never fabricates a figure.
+# main. No side effects at source time; defines functions only. The read/query
+# functions return 0 and degrade to empty / {} / [] on any failure -- never
+# blocking the caller, never fabricating a figure. The one writer,
+# gaia_audit_window_write, instead PROPAGATES failure (non-zero when it wrote
+# nothing) so a lost breadcrumb is detectable; its callers guard with `|| true`
+# so that too never blocks.
 #
 # Timestamp precision (COV-003): a breadcrumb's started_at/ended_at are
 # written at SECOND precision (date -u +%Y-%m-%dT%H:%M:%SZ) while sidecar
@@ -133,26 +136,48 @@ gaia_window_subset() {
 # The single breadcrumb writer (DP-001). Writes the FC-1 breadcrumb JSON to
 # <breadcrumb_path> via `jq -n` (never string-concatenated), omitting the
 # `intensity` key entirely when the 6th arg is empty/absent (plan audits).
-# Best-effort: the JSON is built in a variable first (nothing touches disk
-# until it validates), so an invalid <lenses_json> or a jq failure leaves no
-# partial file; an unwritable target path likewise writes nothing. Always
-# returns 0, never blocks the caller.
+# The JSON is built in a variable first (nothing touches disk until it
+# validates), so an invalid <lenses_json> or a jq failure leaves no partial
+# file; an unwritable target path likewise writes nothing.
+#
+# Unlike the read/query helpers above, this writer PROPAGATES failure: it
+# returns 0 only when a valid breadcrumb reached disk, and non-zero (with a
+# diagnostic on stderr) when it wrote nothing -- an empty target path, jq
+# absent from PATH, a jq failure / empty or non-object JSON, or an unwritable
+# target. jq's stderr flows through rather than being discarded, so the real
+# cause surfaces. This makes a lost breadcrumb detectable and unit-testable
+# rather than silently swallowed. Callers guard the call with `|| true`, so a
+# non-zero return still
+# never blocks them; it just stops converting a recoverable error into silent
+# data loss.
 gaia_audit_window_write() {
   local path="${1:-}" session_id="${2:-}" started_at="${3:-}" ended_at="${4:-}" lenses_json="${5:-}" intensity="${6:-}"
-  [[ -z "$path" ]] && return 0
+  if [[ -z "$path" ]]; then
+    printf 'gaia_audit_window_write: no breadcrumb path given; nothing written\n' >&2
+    return 1
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    printf 'gaia_audit_window_write: jq not found on PATH; breadcrumb %s not written\n' "$path" >&2
+    return 1
+  fi
   local json
   if [[ -z "$intensity" ]]; then
     json="$(jq -n --arg sid "$session_id" --arg st "$started_at" --arg en "$ended_at" --argjson lenses "$lenses_json" '
       {session_id: $sid, started_at: $st, ended_at: $en, lenses: $lenses}
-    ' 2>/dev/null)"
+    ')" || json=""
   else
     json="$(jq -n --arg sid "$session_id" --arg st "$started_at" --arg en "$ended_at" --argjson lenses "$lenses_json" --arg it "$intensity" '
       {session_id: $sid, started_at: $st, ended_at: $en, lenses: $lenses, intensity: $it}
-    ' 2>/dev/null)"
+    ')" || json=""
   fi
-  [[ -z "$json" ]] && return 0
-  jq -e 'type == "object"' >/dev/null 2>&1 <<<"$json" || return 0
-  printf '%s\n' "$json" >"$path" 2>/dev/null
+  if [[ -z "$json" ]] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$json"; then
+    printf 'gaia_audit_window_write: could not build a valid breadcrumb for %s; nothing written\n' "$path" >&2
+    return 1
+  fi
+  if ! printf '%s\n' "$json" >"$path" 2>/dev/null; then
+    printf 'gaia_audit_window_write: cannot write breadcrumb to %s\n' "$path" >&2
+    return 1
+  fi
   return 0
 }
 

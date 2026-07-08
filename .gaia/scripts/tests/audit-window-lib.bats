@@ -262,7 +262,7 @@ setup() {
 }
 
 # ---------- 10. gaia_audit_window_write (DP-001, AC10) ----------
-@test "gaia_audit_window_write: writes the FC-1 shape, omits intensity for plan audits, never leaves a partial file" {
+@test "gaia_audit_window_write: writes the FC-1 shape on success, omits intensity for plan audits" {
   bc="$BATS_TEST_TMPDIR/spec-breadcrumb.json"
   run gaia_audit_window_write "$bc" "sess-1" "2026-07-08T01:00:00Z" "2026-07-08T01:05:00Z" '["FG","TST","COV","RT"]' "standard"
   [ "$status" -eq 0 ]
@@ -278,13 +278,37 @@ setup() {
   [ "$status" -eq 0 ]
   jq -e 'has("intensity")' >/dev/null 2>&1 <"$bc2" && return 1
   [ "$(jq -r '.session_id' <"$bc2")" = "sess-2" ]
+}
 
-  run gaia_audit_window_write "$BATS_TEST_TMPDIR/nonexistent-dir/bc.json" "s" "a" "b" '[]' ""
-  [ "$status" -eq 0 ]
+# The breadcrumb writer PROPAGATES failure: it returns non-zero and writes
+# nothing when it cannot produce a valid breadcrumb, so a lost breadcrumb is
+# detectable and unit-testable instead of silently swallowed behind return 0.
+# Callers keep their `|| true`, so a non-zero return still never blocks them.
+@test "gaia_audit_window_write: returns non-zero and writes nothing on jq/write failure" {
+  # unwritable target (parent dir absent): the printf redirect fails -> non-zero
+  run gaia_audit_window_write "$BATS_TEST_TMPDIR/nonexistent-dir/bc.json" "s" "2026-07-08T01:00:00Z" "2026-07-08T01:05:00Z" '[]' ""
+  [ "$status" -ne 0 ]
   [ ! -e "$BATS_TEST_TMPDIR/nonexistent-dir/bc.json" ]
 
+  # malformed lenses arg: jq -n fails -> non-zero, no partial file left behind
   bc3="$BATS_TEST_TMPDIR/bad-lenses.json"
-  run gaia_audit_window_write "$bc3" "s" "a" "b" "not-json" ""
-  [ "$status" -eq 0 ]
+  run gaia_audit_window_write "$bc3" "s" "2026-07-08T01:00:00Z" "2026-07-08T01:05:00Z" "not-json" ""
+  [ "$status" -ne 0 ]
   [ ! -e "$bc3" ]
+
+  # empty target path: nothing to write -> non-zero
+  run gaia_audit_window_write "" "s" "2026-07-08T01:00:00Z" "2026-07-08T01:05:00Z" '[]' ""
+  [ "$status" -ne 0 ]
+
+  # jq unavailable on PATH (the issue's primary reproduction): the `command -v`
+  # guard fires, the writer returns non-zero and writes nothing. PATH is
+  # restored right after the call so the remaining assertions keep jq.
+  bc4="$BATS_TEST_TMPDIR/nojq.json"
+  saved_path="$PATH"
+  # shellcheck disable=SC2123 # deliberately blank PATH to make jq unfindable; restored right after the call
+  PATH=""
+  run gaia_audit_window_write "$bc4" "s" "2026-07-08T01:00:00Z" "2026-07-08T01:05:00Z" '["FG"]' ""
+  PATH="$saved_path"
+  [ "$status" -ne 0 ]
+  [ ! -e "$bc4" ]
 }
