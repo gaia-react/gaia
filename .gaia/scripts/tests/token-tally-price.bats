@@ -66,6 +66,16 @@ setup() {
   OUTDIR="$BATS_TEST_TMPDIR/out"
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
 
+  # Isolated, empty audit-window cache. --action spec/plan consume-on-tally a
+  # breadcrumb from --cache-dir (SPEC-032, audit-window-<id>.json); an empty
+  # per-test dir keeps the tally off the real .gaia/local/cache, which it would
+  # otherwise fall through to and DELETE a developer's live breadcrumb when a
+  # fixture id (SPEC-013/SPEC-022) matches the SPEC/PLAN they are mid-audit on.
+  # Add --cache-dir "$CACHE" to every new spec/plan invocation (execute never
+  # reads a breadcrumb).
+  CACHE="$BATS_TEST_TMPDIR/cache"
+  mkdir -p "$CACHE"
+
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test"
@@ -80,11 +90,13 @@ setup() {
     if [ "$action" = "spec" ]; then
       run bash "$SCRIPT" --action spec --spec-id SPEC-022 \
         --out-dir "$out" --session-id fixturemultimodel0001 \
-        --projects-root "$MULTIMODEL" --ledger "$ledger" --rate-table "$RATES_E2E"
+        --projects-root "$MULTIMODEL" --ledger "$ledger" --rate-table "$RATES_E2E" \
+        --cache-dir "$CACHE"
     else
       run bash "$SCRIPT" --action "$action" --spec-id SPEC-022 --plan-slug spec-022-dollar-cost \
         --out-dir "$out" --session-id fixturemultimodel0001 \
-        --projects-root "$MULTIMODEL" --ledger "$ledger" --rate-table "$RATES_E2E"
+        --projects-root "$MULTIMODEL" --ledger "$ledger" --rate-table "$RATES_E2E" \
+        --cache-dir "$CACHE"
     fi
     [ "$status" -eq 0 ]
 
@@ -116,7 +128,8 @@ setup() {
 @test "UAT-006: legacy model-less session -> dollars null (no attribution), token record intact, exit 0" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
     --out-dir "$OUTDIR" --session-id fixturesession0001 \
-    --projects-root "$LEGACY" --ledger "$LEDGER" --rate-table "$RATES_E2E"
+    --projects-root "$LEGACY" --ledger "$LEDGER" --rate-table "$RATES_E2E" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   sc="$OUTDIR/cost.json"
