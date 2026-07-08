@@ -425,12 +425,15 @@ Collect findings across all lenses. The plan is editable and unsaved-to-handoff,
 ```bash
 AUDIT_WINDOW_END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 . .gaia/scripts/audit-window-lib.sh 2>/dev/null || true
+audit_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
+case "$audit_common_dir" in /*) audit_abs="$audit_common_dir" ;; *) audit_abs="$PWD/$audit_common_dir" ;; esac
+AUDIT_CACHE_DIR="$(cd "$(dirname "$audit_abs")" 2>/dev/null && pwd)/.gaia/local/cache"
 if [[ -n "${SPEC_PATH:-}" ]]; then
   AUDIT_SPEC_ID="$(basename "$(dirname "$SPEC_PATH")")"
-  AUDIT_WINDOW_PATH=".gaia/local/cache/audit-window-${AUDIT_SPEC_ID}-plan.json"
+  AUDIT_WINDOW_PATH="$AUDIT_CACHE_DIR/audit-window-${AUDIT_SPEC_ID}-plan.json"
   AUDIT_LENSES='["DP","CG","COV"]'
 else
-  AUDIT_WINDOW_PATH=".gaia/local/cache/audit-window-$(basename "$PLAN_DIR").json"
+  AUDIT_WINDOW_PATH="$AUDIT_CACHE_DIR/audit-window-$(basename "$PLAN_DIR").json"
   AUDIT_LENSES='["DP","CG"]'
 fi
 gaia_audit_window_write \
