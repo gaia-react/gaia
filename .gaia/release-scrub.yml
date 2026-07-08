@@ -43,6 +43,24 @@ transforms:
     start: "# gaia:maintainer-only:start"
     end: "# gaia:maintainer-only:end"
 
+  # Code Audit Team maintainer-only blocks: the roster's maintainer-only
+  # entries in .gaia/audit-ci.yml, the resolver's built-in-default block in
+  # .gaia/scripts/resolve-audit-members.sh, and the ruleset-detection branch
+  # in .gaia/scripts/read-audit-ci-config.sh. Same #-comment markers as the
+  # .prettierignore transform above, kept as its own block (rather than
+  # folded into that transform's paths) so the .prettierignore-specific
+  # rationale above stays intact.
+  # **/*.sh is broad by design: any maintainer-only block wrapped in shipped
+  # shell is meant to be stripped, wherever it lands. Same for **/*.yml.tmpl
+  # (workflow render templates).
+  - type: marker-strip
+    paths:
+      - ".gaia/audit-ci.yml"
+      - "**/*.sh"
+      - "**/*.yml.tmpl"
+    start: "# gaia:maintainer-only:start"
+    end: "# gaia:maintainer-only:end"
+
   # Maintainer-only package.json keys that must not reach adopter projects.
   # bin: registers the gaia CLI binary, only meaningful when a package is
   #   published and installed as a dependency; adopters build apps, not
@@ -193,6 +211,30 @@ transforms:
           # adopter the guard is false and the echo is a graceful no-op, the same
           # runtime-optional class the `excluded-workflow-ref` guard covers.
           - "\\.github/forensics/bootstrap-labels\\.sh"
+
+      # ---- Code Audit Team maintainer-only member names ----
+      # A mis-wrapped roster entry or resolver block would leave a
+      # code-audit-maintainer-* member name (Phase 1's roster, Phase 1's
+      # resolver built-in-default) in a shipped surface. Do NOT mirror the
+      # maintainer-paths scope above verbatim: it does not cover
+      # .gaia/scripts/** or .gaia/audit-ci.yml, yet those are exactly where
+      # this leak would appear (resolve-audit-members.sh,
+      # read-audit-ci-config.sh, the roster itself), so this check adds them
+      # explicitly alongside the maintainer-paths surfaces.
+      - id: maintainer-audit-members
+        description: "code-audit-maintainer-* member names surviving the roster/resolver strip"
+        pattern: "code-audit-maintainer-"
+        scope:
+          - "CLAUDE.md"
+          - ".claude/**"
+          - "wiki/**"
+          - ".gaia/statusline/**"
+          - ".gaia/scripts/**"
+          - ".gaia/audit-ci.yml"
+          - ".gaia/cli/templates/**"
+          - ".gaia/cli/src/automation/templates/**"
+          - ".github/workflows/**"
+          - ".specify/extensions/gaia/**"
 
       # ---- Never-present-on-adopter workflows referenced in shipped surfaces ----
       # `.github/workflows/` is the one distribution-boundary directory where

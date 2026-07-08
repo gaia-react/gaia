@@ -985,6 +985,214 @@ const seedWorkflowSource = (sandbox: Sandbox): void => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// SPEC-034 Code Audit Team: audit-ci.yml / shipped-shell marker-strip +
+// maintainer-audit-members leak-check
+// ---------------------------------------------------------------------------
+
+const AUDIT_CI_MARKER_CONFIG = `
+transforms:
+  - type: marker-strip
+    paths:
+      - ".gaia/audit-ci.yml"
+      - "**/*.sh"
+    start: "# gaia:maintainer-only:start"
+    end: "# gaia:maintainer-only:end"
+`;
+
+const MAINTAINER_AUDIT_MEMBERS_LEAK_CONFIG = `
+transforms:
+  - type: leak-check
+    checks:
+      - id: maintainer-audit-members
+        pattern: "code-audit-maintainer-"
+        scope:
+          - ".claude/**"
+          - ".gaia/scripts/**"
+          - ".gaia/audit-ci.yml"
+`;
+
+describe('audit-ci.yml / shipped-shell marker-strip', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('strips a marker-wrapped roster entry from a .gaia/audit-ci.yml-shaped fixture', () => {
+    sandbox = setupSandbox({config: AUDIT_CI_MARKER_CONFIG});
+    sandbox.writeStaged(
+      '.gaia/audit-ci.yml',
+      [
+        'auditors:',
+        '  - name: code-audit-frontend',
+        '    globs:',
+        '      - "app/**"',
+        '    scope: adopter',
+        '    default: true',
+        '  # gaia:maintainer-only:start',
+        '  - name: code-audit-maintainer-shell',
+        '    globs:',
+        '      - ".gaia/**/*.sh"',
+        '    scope: maintainer-only',
+        '  # gaia:maintainer-only:end',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = readFileSync(
+      path.join(sandbox.stagingDir, '.gaia/audit-ci.yml'),
+      'utf8'
+    );
+    expect(after).not.toContain('code-audit-maintainer-shell');
+    expect(after).not.toContain('gaia:maintainer-only');
+    expect(after).toContain('code-audit-frontend');
+  });
+
+  test('strips a marker-wrapped block from a shipped .sh fixture', () => {
+    sandbox = setupSandbox({config: AUDIT_CI_MARKER_CONFIG});
+    sandbox.writeStaged(
+      '.gaia/scripts/resolve-audit-members.sh',
+      [
+        '#!/usr/bin/env bash',
+        'builtin_roster() {',
+        '  cat <<YAML',
+        'auditors:',
+        '  - name: code-audit-frontend',
+        '    default: true',
+        '  # gaia:maintainer-only:start',
+        '  - name: code-audit-maintainer-shell',
+        '  # gaia:maintainer-only:end',
+        'YAML',
+        '}',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+
+    const after = readFileSync(
+      path.join(sandbox.stagingDir, '.gaia/scripts/resolve-audit-members.sh'),
+      'utf8'
+    );
+    expect(after).not.toContain('code-audit-maintainer-shell');
+    expect(after).toContain('code-audit-frontend');
+  });
+});
+
+describe('maintainer-audit-members leak-check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('flags an un-wrapped code-audit-maintainer- reference in a scoped path', () => {
+    sandbox = setupSandbox({config: MAINTAINER_AUDIT_MEMBERS_LEAK_CONFIG});
+    sandbox.writeStaged(
+      '.gaia/scripts/some-script.sh',
+      '#!/usr/bin/env bash\necho "dispatching code-audit-maintainer-shell"\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('maintainer-audit-members');
+    expect(out).toContain('code-audit-maintainer-');
+  });
+
+  test('passes a clean tree with no code-audit-maintainer- references', () => {
+    sandbox = setupSandbox({config: MAINTAINER_AUDIT_MEMBERS_LEAK_CONFIG});
+    sandbox.writeStaged(
+      '.gaia/scripts/some-script.sh',
+      '#!/usr/bin/env bash\necho "dispatching code-audit-frontend"\n'
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
+  test('DP-003 tripwire: a literal in a header comment outside the markers survives the strip and trips the leak-check', () => {
+    // Guards the exact collision between the resolver's own documentation and
+    // the strip boundary: a code-audit-maintainer-* literal named in prose
+    // ABOVE the markers (not inside a wrapped block) is never stripped, so it
+    // must be caught by the leak-check instead.
+    const config = `
+transforms:
+  - type: marker-strip
+    paths:
+      - "**/*.sh"
+    start: "# gaia:maintainer-only:start"
+    end: "# gaia:maintainer-only:end"
+
+  - type: leak-check
+    checks:
+      - id: maintainer-audit-members
+        pattern: "code-audit-maintainer-"
+        scope:
+          - ".gaia/scripts/**"
+`;
+    sandbox = setupSandbox({config});
+    sandbox.writeStaged(
+      '.gaia/scripts/resolve-audit-members.sh',
+      [
+        '#!/usr/bin/env bash',
+        '# resolve-audit-members.sh: dispatches to code-audit-maintainer-shell',
+        '# and code-audit-maintainer-node when present.',
+        '',
+        'builtin_roster() {',
+        '  cat <<YAML',
+        'auditors:',
+        '  - name: code-audit-frontend',
+        '    default: true',
+        '  # gaia:maintainer-only:start',
+        '  - name: code-audit-maintainer-shell',
+        '  # gaia:maintainer-only:end',
+        'YAML',
+        '}',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const after = readFileSync(
+      path.join(sandbox.stagingDir, '.gaia/scripts/resolve-audit-members.sh'),
+      'utf8'
+    );
+    // The header comment (outside the markers) survives the strip...
+    expect(after).toContain(
+      '# resolve-audit-members.sh: dispatches to code-audit-maintainer-shell'
+    );
+    // ...but the wrapped roster entry (inside the markers) is gone.
+    expect(after).not.toContain('  - name: code-audit-maintainer-shell');
+    expect(after).not.toContain('gaia:maintainer-only');
+
+    const out = stdio.outputs.join('');
+    expect(out).toContain('maintainer-audit-members');
+  });
+});
+
 describe('excluded-workflow-ref derived check', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
