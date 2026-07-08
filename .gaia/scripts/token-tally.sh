@@ -551,7 +551,10 @@ fi
 # In an authoring session with no code-review-audit sidecars this is a byte
 # no-op (tmp_phase == tmp; the lib's own degrade guarantees this).
 tmp_phase="$tmp"
-if [[ -n "$tmp" && -s "$tmp" ]]; then
+# Guard on function existence only: a missing/unsourced audit-window-lib.sh
+# (e.g. a partial /update-gaia mid-upgrade) must degrade to NO exclusion, not
+# an empty stream that would zero out $tmp_phase and fabricate a 0 total.
+if [[ -n "$tmp" && -s "$tmp" ]] && declare -F gaia_exclude_review_windows >/dev/null 2>&1; then
   tmp_phase_candidate="$(mktemp 2>/dev/null)" || tmp_phase_candidate=""
   if [[ -n "$tmp_phase_candidate" ]]; then
     gaia_exclude_review_windows "$tmp" >"$tmp_phase_candidate" 2>/dev/null
