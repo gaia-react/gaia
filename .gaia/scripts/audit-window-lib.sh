@@ -42,10 +42,10 @@
 # parses as a JSON object carrying string started_at and string ended_at;
 # otherwise echoes nothing. Never errors, always returns 0.
 gaia_audit_window_read() {
-  local path="${1:-}"
-  [[ -n "$path" && -f "$path" ]] || return 0
+  local bc_path="${1:-}"
+  [[ -n "$bc_path" && -f "$bc_path" ]] || return 0
   local content
-  content="$(cat "$path" 2>/dev/null)" || return 0
+  content="$(cat "$bc_path" 2>/dev/null)" || return 0
   [[ -z "$content" ]] && return 0
   if jq -e 'type == "object" and (.started_at | type) == "string" and (.ended_at | type) == "string"' \
       >/dev/null 2>&1 <<<"$content"; then
@@ -151,13 +151,13 @@ gaia_window_subset() {
 # never blocks them; it just stops converting a recoverable error into silent
 # data loss.
 gaia_audit_window_write() {
-  local path="${1:-}" session_id="${2:-}" started_at="${3:-}" ended_at="${4:-}" lenses_json="${5:-}" intensity="${6:-}"
-  if [[ -z "$path" ]]; then
+  local bc_path="${1:-}" session_id="${2:-}" started_at="${3:-}" ended_at="${4:-}" lenses_json="${5:-}" intensity="${6:-}"
+  if [[ -z "$bc_path" ]]; then
     printf 'gaia_audit_window_write: no breadcrumb path given; nothing written\n' >&2
     return 1
   fi
   if ! command -v jq >/dev/null 2>&1; then
-    printf 'gaia_audit_window_write: jq not found on PATH; breadcrumb %s not written\n' "$path" >&2
+    printf 'gaia_audit_window_write: jq not found on PATH; breadcrumb %s not written\n' "$bc_path" >&2
     return 1
   fi
   local json
@@ -171,11 +171,11 @@ gaia_audit_window_write() {
     ')" || json=""
   fi
   if [[ -z "$json" ]] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$json"; then
-    printf 'gaia_audit_window_write: could not build a valid breadcrumb for %s; nothing written\n' "$path" >&2
+    printf 'gaia_audit_window_write: could not build a valid breadcrumb for %s; nothing written\n' "$bc_path" >&2
     return 1
   fi
-  if ! printf '%s\n' "$json" >"$path" 2>/dev/null; then
-    printf 'gaia_audit_window_write: cannot write breadcrumb to %s\n' "$path" >&2
+  if ! printf '%s\n' "$json" >"$bc_path" 2>/dev/null; then
+    printf 'gaia_audit_window_write: cannot write breadcrumb to %s\n' "$bc_path" >&2
     return 1
   fi
   return 0
