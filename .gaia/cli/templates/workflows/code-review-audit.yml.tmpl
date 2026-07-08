@@ -962,6 +962,37 @@ jobs:
             cat "$log"
           done
 
+      - name: Prepare status-comment upserter
+        # Write the single-comment upsert helper to a run-scoped temp path. Every
+        # terminal status step below invokes it so the workflow upserts ONE
+        # code-review-audit status comment per PR (located by the stable marker)
+        # instead of appending a fresh comment on every push/synchronize.
+        # always(): the helper must exist before whichever terminal status step
+        # fires, on every code path.
+        if: always()
+        run: |
+          cat > "$RUNNER_TEMP/cra-status-upsert.sh" <<'UPSERT_EOF'
+          #!/usr/bin/env bash
+          # Upsert the single code-review-audit status comment on a PR.
+          # Usage: cra-status-upsert.sh <pr-number> <body>
+          set -eu
+          MARKER='<!-- gaia:cra-status -->'
+          pr="$1"
+          body="$2"
+          full_body="$(printf '%s\n%s' "$MARKER" "$body")"
+          existing_id="$(MARKER="$MARKER" gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues/${pr}/comments" \
+            --jq '.[] | select(.body | contains(env.MARKER)) | .id' | head -n1)"
+          if [ -n "$existing_id" ]; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_id}" \
+              -f body="$full_body" >/dev/null
+          else
+            gh pr comment "$pr" --body "$full_body"
+          fi
+          UPSERT_EOF
+          chmod +x "$RUNNER_TEMP/cra-status-upsert.sh"
+
       # ----------------------------------------------------------------
       # Terminal status steps. Exactly one fires per run; together they
       # guarantee the job reaches a clean conclusion on every code path
@@ -977,8 +1008,8 @@ jobs:
           GATE_LABEL: ${{ steps.config.outputs.gate_label }}
         run: |
           set -eu
-          gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit skipped: gate_label '$GATE_LABEL' not present on PR"
+          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            "code-review-audit skipped: gate_label '$GATE_LABEL' not present on PR"
 
       - name: Status - skipped (chore-deps PR)
         if: |
@@ -986,8 +1017,8 @@ jobs:
           steps.chore-deps.outputs.skip == 'true'
         run: |
           set -eu
-          gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit skipped: chore(deps) / chore(deps-dev) PRs are pre-verified by the /update-deps wrapper's local quality gate"
+          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            "code-review-audit skipped: chore(deps) / chore(deps-dev) PRs are pre-verified by the /update-deps wrapper's local quality gate"
 
       - name: Status - skipped (no source changes)
         if: |
@@ -995,8 +1026,8 @@ jobs:
           steps.source-changes.outputs.has_source == 'false'
         run: |
           set -eu
-          gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit); GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied with no local audit run"
+          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit); GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied with no local audit run"
 
       - name: Status - skipped (trailer matches)
         if: |
@@ -1010,8 +1041,8 @@ jobs:
         run: |
           set -eu
           short_tree="$(printf '%s' "$MATCHED_TREE" | cut -c1-7)"
-          gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit skipped: GAIA-Audit trailer matches version $MATCHED_VERSION tree $short_tree"
+          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            "code-review-audit skipped: GAIA-Audit trailer matches version $MATCHED_VERSION tree $short_tree"
 
       - name: Status - skipped (workflow self-modification)
         if: |
@@ -1020,8 +1051,8 @@ jobs:
           steps.workflow-self-mod.outputs.self_modified == 'true'
         run: |
           set -eu
-          gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit skipped: PR modifies the audit workflow itself; claude-code-action's workflow-validation guardrail would refuse to run"
+          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            "code-review-audit skipped: PR modifies the audit workflow itself; claude-code-action's workflow-validation guardrail would refuse to run"
 
       - name: Status - local-mode stand-down
         # Green terminal step for the local-mode stand-down path. The JOB
@@ -1039,8 +1070,8 @@ jobs:
           OVERRIDE_LABEL: ${{ steps.config.outputs.override_label }}
         run: |
           set -eu
-          gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit standing down for this author (local mode). Merge via Claude (which runs the audit locally) or add the '${OVERRIDE_LABEL}' label to force a CI audit."
+          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            "code-review-audit standing down for this author (local mode). Merge via Claude (which runs the audit locally) or add the '${OVERRIDE_LABEL}' label to force a CI audit."
 
       - name: Status - audit aborted
         # `continue-on-error: true` on the audit step keeps the workflow
@@ -1063,8 +1094,8 @@ jobs:
           steps.audit.outcome != 'success'
         run: |
           set -eu
-          gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit aborted: workflow validation refusal, max-turns, SDK error, or transient API failure (see workflow run logs)"
+          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            "code-review-audit aborted: workflow validation refusal, max-turns, SDK error, or transient API failure (see workflow run logs)"
           exit 1
 
       - name: Status - audit complete
@@ -1096,5 +1127,5 @@ jobs:
           else
             mode="no fixes needed"
           fi
-          gh pr comment "$PR_NUMBER" \
-            --body "code-review-audit complete: $mode"
+          bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+            "code-review-audit complete: $mode"
