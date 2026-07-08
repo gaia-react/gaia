@@ -50,6 +50,26 @@ STUB
   chmod +x "$SANDBOX/bin/gh"
 }
 
+# stub_gh_json <json>: a fake `gh` whose `issue list` applies the script's own
+# --jq filter (scanned from argv) to <json>, so the real exclusion expression is
+# exercised rather than a pre-baked count.
+stub_gh_json() {
+  cat > "$SANDBOX/bin/gh" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
+  filter='length'
+  prev=""
+  for a in "\$@"; do
+    if [ "\$prev" = "--jq" ]; then filter="\$a"; fi
+    prev="\$a"
+  done
+  printf '%s' '$1' | jq -r "\$filter"
+fi
+exit 0
+STUB
+  chmod +x "$SANDBOX/bin/gh"
+}
+
 # Prepend the stub dir so our `gh` wins over any host `gh`; keep the rest of PATH
 # so the real `jq` still resolves.
 run_refresh() {
@@ -115,4 +135,17 @@ open_count() { jq -r '.openCount' "$CACHE"; }
   [ "$status" -eq 0 ]
   [ "$(open_count)" = "0" ]
   [ -e "$SENTINEL" ]
+}
+
+# --- 5. Excludes debt:in-progress from the open count -------------------------
+# The core concurrency contract: an open tech-debt issue carrying the claim label
+# is subtracted from the count so a peer session's nudge drops. Three issues, one
+# claimed, must count 2.
+@test "excludes debt:in-progress from the open count" {
+  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"},{"name":"severity:important"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:suggestion"},{"name":"debt:in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"severity:critical"}]}]'
+  : > "$SENTINEL"
+  touch -t "$(past_ts 300)" "$SENTINEL"   # aged past the 120s grace: count trusted & written
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "2" ]
 }

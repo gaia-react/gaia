@@ -1,9 +1,10 @@
 #!/usr/bin/env bats
 # Tests for `.claude/hooks/debt-sentinel-touch.sh`, the PostToolUse Bash hook
 # that arms the debt-count staleness sentinel after a debt-count-mutating `gh`
-# command (`gh issue create` / `gh pr merge` / `gh issue close` / `gh issue
-# reopen`). Arming the sentinel makes the open `tech-debt` count recompute on the
-# next statusline tick instead of waiting on the refresher's 6h TTL.
+# command (`gh issue create` / `gh pr merge` / `gh issue edit` / `gh issue
+# close` / `gh issue reopen`). Arming the sentinel makes the open `tech-debt`
+# count recompute on the next statusline tick instead of waiting on the
+# refresher's 6h TTL.
 #
 # Each test runs the hook inside a throwaway git repo (the hook writes the
 # sentinel relative to CWD and reads `.claude/hooks/lib/repo-scope.sh` relative to
@@ -47,6 +48,16 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
 
 @test "gh issue reopen arms the sentinel" {
   run_hook 'gh issue reopen 590'
+  assert_armed
+}
+
+@test "gh issue edit --add-label arms the sentinel" {
+  run_hook 'gh issue edit 590 --add-label debt:in-progress'
+  assert_armed
+}
+
+@test "gh issue edit --remove-label arms the sentinel" {
+  run_hook 'gh issue edit 590 --remove-label debt:in-progress'
   assert_armed
 }
 
