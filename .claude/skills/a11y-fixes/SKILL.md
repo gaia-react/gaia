@@ -1,6 +1,6 @@
 ---
 name: a11y-fixes
-description: Resolve axe-core accessibility violations reported by Vitest (test/a11y.ts), Playwright (.playwright/a11y.ts), or the code-review-audit agent's a11y bucket. Trigger on any axe rule id appearing in test output, not only the ones named here. Contains fix patterns for the most common violations (color-contrast, label, label-title-only, image-alt, button-name, link-name, region, landmark-one-main, heading-order, aria-allowed-attr, aria-required-attr, aria-required-children, aria-required-parent, aria-valid-attr-value, focus-trap, tabindex, html-has-lang, document-title, duplicate-id, listitem, definition-list); for any violation not listed, apply the general axe guidance and the same fix-then-verify loop.
+description: Resolve axe-core accessibility violations reported by Vitest (test/a11y.ts), Playwright (.playwright/a11y.ts), or the code-audit-frontend agent's a11y bucket. Trigger on any axe rule id appearing in test output, not only the ones named here. Contains fix patterns for the most common violations (color-contrast, label, label-title-only, image-alt, button-name, link-name, region, landmark-one-main, heading-order, aria-allowed-attr, aria-required-attr, aria-required-children, aria-required-parent, aria-valid-attr-value, focus-trap, tabindex, html-has-lang, document-title, duplicate-id, listitem, definition-list); for any violation not listed, apply the general axe guidance and the same fix-then-verify loop.
 model: haiku
 ---
 
@@ -8,7 +8,7 @@ model: haiku
 
 How to resolve specific axe-core violations in this project.
 
-Violations come from `test/a11y.ts` (Vitest), `.playwright/a11y.ts` (Playwright), or the `code-review-audit` agent's a11y bucket. General a11y guidance lives in `.claude/rules/accessibility.md`.
+Violations come from `test/a11y.ts` (Vitest), `.playwright/a11y.ts` (Playwright), or the `code-audit-frontend` agent's a11y bucket. General a11y guidance lives in `.claude/rules/accessibility.md`.
 
 ## color-contrast
 

@@ -453,7 +453,7 @@ git add -A
 git commit -F <commit-message-file>
 ```
 
-The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR is turnkey-mergeable without a code-review-audit marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate, so nothing else is owed before committing.
+The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR is turnkey-mergeable without a code-audit-frontend marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate, so nothing else is owed before committing.
 
 Then branch on where the run started.
 

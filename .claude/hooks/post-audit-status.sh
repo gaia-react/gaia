@@ -2,7 +2,7 @@
 # post-audit-status.sh, post the GAIA-Audit success commit status on HEAD.
 #
 # Purpose
-#   Called by the code-review-audit agent (.claude/agents/code-review-audit.md)
+#   Called by the code-audit-frontend agent (.claude/agents/code-audit-frontend.md)
 #   on the local (Claude-driven merge) path, AFTER the audit marker has been
 #   written. Posts a GAIA-Audit commit status of state=success on HEAD so the
 #   same server-side gate the CI path satisfies is satisfied here too, letting
@@ -39,7 +39,7 @@
 #   2 , Usage error (no marker path argument). Stderr.
 #
 # References
-#   Audit-marker handshake: .claude/agents/code-review-audit.md "Audit marker (gate handshake)"
+#   Audit-marker handshake: .claude/agents/code-audit-frontend.md "Audit marker (gate handshake)"
 #   Per-author resolver:    .gaia/scripts/read-audit-ci-config.sh
 #   State-aware readers:    .claude/hooks/pr-merge-audit-check.sh
 #

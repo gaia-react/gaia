@@ -283,7 +283,7 @@ describe('projectToCloud', () => {
         event_type: 'code_review_audit_finding',
         payload: {
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'react-doctor/no-generic-handler-names',
           pr_number: 42,
           severity: 'warning',

@@ -73,7 +73,7 @@ Inspect the `finding_class` prefix and the pattern's nature:
   This prefix list mirrors `ORACLE_PREFIXES` in `.gaia/cli/src/schemas/finding-class.ts`; keep the two in sync, a prefix added to the code but not here is misclassified as holistic/rule and mis-routed.
   <!-- gaia:maintainer-only:end -->
 
-  A deterministic check already exists for it. Recommend making that check BLOCKING or adding it to the quality gate, an enforcement edit, NOT a new prose rule. Point at `wiki/decisions/Quality Gate.md` and the tool's wiring (`.claude/rules/knip.md`, `.claude/rules/dep-audit.md`, the `code-review-audit` agent, or the relevant CI workflow). A `knip/*` class is the exception to the quality-gate route: the developer Quality Gate intentionally omits knip (see `.claude/rules/knip.md`), so route knip enforcement to the `code-review-audit` agent or CI, never the dev gate. Never draft prose for an oracle class.
+  A deterministic check already exists for it. Recommend making that check BLOCKING or adding it to the quality gate, an enforcement edit, NOT a new prose rule. Point at `wiki/decisions/Quality Gate.md` and the tool's wiring (`.claude/rules/knip.md`, `.claude/rules/dep-audit.md`, the `code-audit-frontend` agent, or the relevant CI workflow). A `knip/*` class is the exception to the quality-gate route: the developer Quality Gate intentionally omits knip (see `.claude/rules/knip.md`), so route knip enforcement to the `code-audit-frontend` agent or CI, never the dev gate. Never draft prose for an oracle class.
 
 - **Mechanizable holistic/rule pattern** (the pattern can be caught by a lint rule, a hook, or a test). Recommend a DETERMINISTIC CHECK. v1 produces a hook+script SKETCH only; it activates nothing, writes no `.claude/rules/` file for it, and claims no prune lifecycle over it.
 
@@ -124,7 +124,7 @@ Produce ONLY a skill scaffold; activate nothing and write no `.claude/rules/` fi
 
 ### approve, enforcement edit (oracle class)
 
-Make the existing deterministic check blocking or add it to the quality gate. This is an edit to existing enforcement wiring (the tool's rule file, the `code-review-audit` agent, the quality gate doc, or the CI workflow), not a new prose rule. Land the edit in the working tree only; never commit. Because this form writes no provenance marker, the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
+Make the existing deterministic check blocking or add it to the quality gate. This is an edit to existing enforcement wiring (the tool's rule file, the `code-audit-frontend` agent, the quality gate doc, or the CI workflow), not a new prose rule. Land the edit in the working tree only; never commit. Because this form writes no provenance marker, the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
 
 ### decline
 

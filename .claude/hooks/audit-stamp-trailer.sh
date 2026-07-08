@@ -4,7 +4,7 @@
 # Purpose
 #   Implements the stamp invariant + stamp placement rule described in
 #   .gaia/local/plans/code-review-audit-ci/trailer-format.md. Called by the
-#   code-review-audit agent (.claude/agents/code-review-audit.md) after the
+#   code-audit-frontend agent (.claude/agents/code-audit-frontend.md) after the
 #   audit has decided that an "Audit marker" is warranted. The trailer travels
 #   with the commit through the network so CI can skip its own audit run when
 #   the trailer's <agent-version> + <tree-sha> match the PR head.
@@ -39,7 +39,7 @@
 #
 # References
 #   Frozen contract:        .gaia/local/plans/code-review-audit-ci/trailer-format.md
-#   Audit-marker handshake: .claude/agents/code-review-audit.md "Audit marker (gate handshake)"
+#   Audit-marker handshake: .claude/agents/code-audit-frontend.md "Audit marker (gate handshake)"
 #   PR-merge gate hook:     .claude/hooks/pr-merge-audit-check.sh
 #
 # Notes
@@ -196,7 +196,7 @@ fi
 
 # Pushed: never amend a published commit. Carry the trailer on an empty
 # commit created locally only, the caller pushes after writing the audit
-# marker (see .claude/agents/code-review-audit.md "Audit marker (gate
+# marker (see .claude/agents/code-audit-frontend.md "Audit marker (gate
 # handshake)"). Marker-before-push ensures a "chore: code review audit
 # passed" commit never reaches remote history without a corresponding
 # marker: if the marker write is interrupted, the un-pushed commit is

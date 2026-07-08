@@ -164,7 +164,7 @@ const buildAuditFindingInvocation = (
       '--area-tags',
       areaTagsString(finding),
       '--auditor-type',
-      'code-review-audit',
+      'code-audit-frontend',
       '--agent-type',
       'Reviewer',
     ],
@@ -372,7 +372,7 @@ export const parseTrailer = (rawHookInputJson: string): ParseResult => {
     return {invocations: [], reason: 'no_trailer'};
   }
 
-  if (subagentType === 'code-review-audit') {
+  if (subagentType === 'code-audit-frontend') {
     const invocations = buildAuditFindings(trailer);
 
     return invocations.length > 0 ?

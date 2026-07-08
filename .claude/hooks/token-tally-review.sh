@@ -68,7 +68,7 @@ shopt -s nullglob
 for meta in "$projects_root"/*/"$sid"/subagents/agent-*.meta.json; do
   [ -f "$meta" ] || continue
   atype=$(jq -r '.agentType // ""' "$meta" 2>/dev/null || printf '')
-  if [ "$atype" = "code-review-audit" ]; then
+  if [ "$atype" = "code-audit-frontend" ]; then
     has_review=1
     break
   fi

@@ -1,6 +1,6 @@
 # /gaia-debt
 
-Drain the `tech-debt` backlog the audit files. `/gaia-debt` reads the open `tech-debt` issues, orders them deterministically (highest severity then oldest first, no model call), recommends the top candidate, and resolves **exactly one** issue per invocation on a fresh branch through the same `code-review-audit` marker gate every feature PR passes, with `Closes #N` in the PR body so the merge closes the issue natively.
+Drain the `tech-debt` backlog the audit files. `/gaia-debt` reads the open `tech-debt` issues, orders them deterministically (highest severity then oldest first, no model call), recommends the top candidate, and resolves **exactly one** issue per invocation on a fresh branch through the same `code-audit-frontend` marker gate every feature PR passes, with `Closes #N` in the PR body so the merge closes the issue natively.
 
 The ordering is a pure, source-checkable sort over the issues' severity labels and `createdAt` timestamps. It never calls a model to rank the backlog, and it never resolves more than one issue per run.
 
@@ -8,7 +8,7 @@ The ordering is a pure, source-checkable sort over the issues' severity labels a
 
 Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the candidate is chosen the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There is **one** interactive decision, the up-front candidate pick, and only when the backlog holds two or more issues. After that the flow does not pause for confirmation. Pause only when input is genuinely needed (that candidate pick) or something unexpected blocks the path (a security-class diversion, a rejected push, a gate that will not go green). Resolve **exactly one** issue per invocation; there is no batch drain and the skill never auto-advances to the next issue.
 
-The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same `code-review-audit` marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
+The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same `code-audit-frontend` marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
 
 ## Argument parsing
 
@@ -84,7 +84,7 @@ For the selected (non-diverted) issue:
 4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) before committing, then commit and push.
 5. **Open the PR** with `gh pr create`. The PR body includes `Closes #N` (GitHub's auto-close keyword) so the merge closes the issue natively.
 
-The PR is an ordinary in-scope source change: it passes the **same** `code-review-audit` marker gate as any feature PR. Let the normal gate produce a real marker; do not bypass, fake, or pre-empt it. Getting that marker and completing the merge are covered under *Drive the PR to merge* below.
+The PR is an ordinary in-scope source change: it passes the **same** `code-audit-frontend` marker gate as any feature PR. Let the normal gate produce a real marker; do not bypass, fake, or pre-empt it. Getting that marker and completing the merge are covered under *Drive the PR to merge* below.
 
 ## Touch the debt-count sentinel
 
@@ -103,7 +103,7 @@ Once the PR is up, drive it straight to merge with no confirmation prompt: the c
 Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read it, don't merge from memory. Follow its marker handshake; do **not** substitute a bare `gh pr merge`:
 
 - **Resolve the audit mode** for the PR author with the workflow's portable helper (`.gaia/scripts/read-audit-ci-config.sh --resolve-author <login>`). This reads the project's own `.gaia/audit-ci.yml` (team `default_mode` plus per-author overrides), so the flow obeys an adopter's config instead of assuming the maintainer's CI.
-- **Get a real marker for HEAD.** In `ci` mode, wait for CI's `GAIA-Audit` success status (a `pending` status is not a marker, and `--auto` cannot skip this: the local merge hook denies `gh pr merge` until the marker exists). In `local` mode, or when the audit workflow is absent, run the `code-review-audit` agent as the producer; on a clean pass it writes the marker and posts the success status. If the whole diff is out of audit scope, the workflow's out-of-scope bypass clears the merge with no marker. Never hand-write, fake, or pre-empt the marker, an in-scope debt fix earns its marker the same way every feature PR does.
+- **Get a real marker for HEAD.** In `ci` mode, wait for CI's `GAIA-Audit` success status (a `pending` status is not a marker, and `--auto` cannot skip this: the local merge hook denies `gh pr merge` until the marker exists). In `local` mode, or when the audit workflow is absent, run the `code-audit-frontend` agent as the producer; on a clean pass it writes the marker and posts the success status. If the whole diff is out of audit scope, the workflow's out-of-scope bypass clears the merge with no marker. Never hand-write, fake, or pre-empt the marker, an in-scope debt fix earns its marker the same way every feature PR does.
   <!-- gaia:maintainer-only:start -->
 - **Clear the CHANGELOG gate.** The workflow's maintainer-only CHANGELOG gate applies to debt PRs too: decide whether the fix needs an `## [Unreleased]` entry and, if so, land it on the branch before merging (re-confirm the marker still covers HEAD after the extra commit). Scrubbed from adopter bundles, so adopters never run this step.
   <!-- gaia:maintainer-only:end -->

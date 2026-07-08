@@ -27,10 +27,7 @@ export const useSystemTheme = (): Theme | undefined =>
   );
 
 export const useOptimisticThemeMode = ():
-  | 'dark'
-  | 'light'
-  | 'system'
-  | undefined => {
+  'dark' | 'light' | 'system' | undefined => {
   const fetchers = useFetchers();
   const themeFetcher = fetchers.find(
     (f) => f.formAction === '/resources/theme-switch'

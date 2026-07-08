@@ -1,6 +1,6 @@
-# code-review-audit Extensions
+# code-audit-frontend Extensions
 
-This directory contains library-specific audit rules for the `code-review-audit` agent (`.claude/agents/code-review-audit.md`). The extension mechanism is part of a broader Claude-integration convention documented in `wiki/concepts/Claude Integration Conventions.md`.
+This directory contains library-specific audit rules for the `code-audit-frontend` agent (`.claude/agents/code-audit-frontend.md`). The extension mechanism is part of a broader Claude-integration convention documented in `wiki/concepts/Claude Integration Conventions.md`.
 
 ## How it works
 

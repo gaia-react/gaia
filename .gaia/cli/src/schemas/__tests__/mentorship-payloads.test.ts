@@ -257,7 +257,7 @@ describe('schemas/mentorship-payloads', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'react-doctor/no-generic-handler-names',
           pr_number: 42,
           severity: 'warning',
@@ -270,7 +270,7 @@ describe('schemas/mentorship-payloads', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'holistic/missing-auth-check',
           pr_number: 42,
           severity: 'warning',
@@ -282,7 +282,7 @@ describe('schemas/mentorship-payloads', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'axe/color-contrast',
           pr_number: 0,
           severity: 'warning',
@@ -294,7 +294,7 @@ describe('schemas/mentorship-payloads', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'axe/color-contrast',
           pr_number: 42,
           severity: 'critical',
@@ -306,7 +306,7 @@ describe('schemas/mentorship-payloads', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'type_hole',
           pr_number: 42,
           severity: 'warning',
@@ -318,7 +318,7 @@ describe('schemas/mentorship-payloads', () => {
       expect(() =>
         CodeReviewAuditFindingPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'holistic/something-made-up',
           pr_number: 42,
           severity: 'warning',

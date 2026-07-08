@@ -49,7 +49,7 @@ concurrency:
 
 jobs:
   code-review-audit:
-    name: code-review-audit
+    name: code-audit-frontend
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -319,7 +319,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            Run the code-review-audit agent at .claude/agents/code-review-audit.md.
+            Run the code-audit-frontend agent at .claude/agents/code-audit-frontend.md.
             Review the INCREMENTAL diff ${{ steps.base.outputs.base }}...HEAD; this
             base is the most recent commit on this PR that already passed a clean
             audit under the current agent version (or origin/main if none), so

@@ -2,7 +2,7 @@ import {z} from 'zod';
 
 /**
  * A `finding_class` is a stable, machine-stable identifier for a kind of
- * code-review-audit finding. Recurrence (the policy-memory loop) keys on it,
+ * code-audit-frontend finding. Recurrence (the policy-memory loop) keys on it,
  * so it must reject free-text drift.
  *
  * Per-bucket convention:

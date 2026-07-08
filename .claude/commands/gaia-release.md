@@ -8,7 +8,7 @@ Cut a new GAIA release. Thin orchestrator over the `.gaia/cli/gaia-maintainer re
 This command is **maintainer-only**, both this slash command and the `gaia-maintainer` binary are stripped from distributed tarballs by `.gaia/release-exclude` so adopters never see them. The adopter `gaia` binary has no `release` namespace at all; only `gaia-maintainer` does. Unlike `/gaia-init`, this command does not self-delete; it runs every release.
 
 > [!important] `main` is protected
-> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit _after_ it lands on `main`. The release PR is subject to the same CI gate (`Vitest and Playwright`, `Run Chromatic`, a few minutes) and `code-review-audit` merge handshake as any other PR. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, so `--auto` is required to queue the merge until checks pass. See `wiki/concepts/PR Merge Workflow.md`.
+> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit _after_ it lands on `main`. The release PR is subject to the same CI gate (`Vitest and Playwright`, `Run Chromatic`, a few minutes) and `code-audit-frontend` merge handshake as any other PR. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, so `--auto` is required to queue the merge until checks pass. See `wiki/concepts/PR Merge Workflow.md`.
 
 ## Required argument
 
@@ -117,7 +117,7 @@ gh pr create --base main --head "release/v<NEW_VERSION>" \
 
 ### 10. Code-review-audit + marker handshake
 
-The release PR is **not** exempt from the merge gate, `.claude/hooks/pr-merge-audit-check.sh` denies `gh pr merge` until a `code-review-audit` marker exists for the release commit's HEAD SHA. Run the four-step protocol in `wiki/concepts/PR Merge Workflow.md`: spawn `code-review-audit` on the branch, fix every Critical and Important finding, push (HEAD moves), re-spawn until the agent writes `.gaia/local/audit/<HEAD-sha>.ok`. Knip / react-doctor advisories never block the marker.
+The release PR is **not** exempt from the merge gate, `.claude/hooks/pr-merge-audit-check.sh` denies `gh pr merge` until a `code-audit-frontend` marker exists for the release commit's HEAD SHA. Run the four-step protocol in `wiki/concepts/PR Merge Workflow.md`: spawn `code-audit-frontend` on the branch, fix every Critical and Important finding, push (HEAD moves), re-spawn until the agent writes `.gaia/local/audit/<HEAD-sha>.ok`. Knip / react-doctor advisories never block the marker.
 
 The fix step reads the re-run carry-forward ledger (`.gaia/local/audit/<base-sha>.rerun.json`) for the deterministic list of what to fix (`remaining[]`) and what the last round already fixed (`fixed_last_round[]`), instead of relying on the previous round's full report. Each re-spawn reads the same ledger; the base is stable across fix rounds, so the path does not change as HEAD moves. The audit's LOCAL Task return is terse (pointer + counts); the per-finding detail is in the ledger. Fail-open: if the ledger is absent, corrupt, or stale, fix from the report's open findings as today.
 
