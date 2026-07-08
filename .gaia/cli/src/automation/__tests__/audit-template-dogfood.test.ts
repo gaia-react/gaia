@@ -62,6 +62,6 @@ describe('audit-template dogfood drift-guard', () => {
     expect(template).toContain('<!-- gaia-harden:findings:end -->');
     // The finding_class values come from the per-bucket convention in the
     // agent definition, not a second one re-derived in the workflow.
-    expect(template).toContain('.claude/agents/code-review-audit.md');
+    expect(template).toContain('.claude/agents/code-audit-frontend.md');
   });
 });
