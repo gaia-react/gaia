@@ -46,6 +46,15 @@ setup() {
   OUTDIR="$BATS_TEST_TMPDIR/out"
   LEDGER="$BATS_TEST_TMPDIR/cost.jsonl"
 
+  # Isolated, empty audit-window cache. --action spec/plan consume-on-tally a
+  # breadcrumb from --cache-dir (SPEC-032, audit-window-<id>.json); an empty
+  # per-test dir keeps the tally off the real .gaia/local/cache, which it would
+  # otherwise fall through to and DELETE a developer's live breadcrumb if a
+  # fixture id matched the SPEC/PLAN they are mid-audit on. Add --cache-dir
+  # "$CACHE" to every new spec/plan invocation (execute never reads a breadcrumb).
+  CACHE="$BATS_TEST_TMPDIR/cache"
+  mkdir -p "$CACHE"
+
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test"
@@ -56,7 +65,7 @@ setup() {
 @test "spec action: real tally writes a well-shaped cost.json sidecar, no cost.md" {
   run bash "$TALLY" --action spec --spec-id SPEC-X \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$SINGLE" --ledger "$LEDGER"
+    --projects-root "$SINGLE" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   [ -f "$OUTDIR/cost.json" ]
@@ -70,7 +79,7 @@ setup() {
 @test "spec action: gate passes when the real sidecar matches the real ledger row" {
   run bash "$TALLY" --action spec --spec-id SPEC-X \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$SINGLE" --ledger "$LEDGER"
+    --projects-root "$SINGLE" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # shellcheck source=/dev/null
@@ -84,7 +93,7 @@ setup() {
 @test "spec action: gate blocks on a mutated bucket and on unparseable JSON" {
   run bash "$TALLY" --action spec --spec-id SPEC-X \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$SINGLE" --ledger "$LEDGER"
+    --projects-root "$SINGLE" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # shellcheck source=/dev/null
@@ -109,7 +118,7 @@ setup() {
 @test "plan then execute: gate passes for both sidecar keys, plan key byte-unchanged" {
   run bash "$TALLY" --action plan --plan-id PLAN-X --plan-slug my-plan \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$SINGLE" --ledger "$LEDGER"
+    --projects-root "$SINGLE" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   before="$(jq -c '.plan' "$OUTDIR/cost.json")"

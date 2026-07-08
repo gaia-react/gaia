@@ -106,6 +106,17 @@ setup() {
   OUTDIR="$BATS_TEST_TMPDIR/out"
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
 
+  # Isolated, empty audit-window cache for spec/plan tallies. --action spec/plan
+  # consume-on-tally a breadcrumb from --cache-dir (SPEC-032, audit-window-<id>
+  # .json); an empty per-test dir keeps every such invocation off the real
+  # .gaia/local/cache, which it would otherwise fall through to and DELETE a
+  # developer's live breadcrumb when a fixture id matches. Add --cache-dir
+  # "$CACHE" to every new spec/plan invocation that runs from the repo cwd. (The
+  # SPEC-032 audit-nesting tests pass their own fixture $AR_CACHE and are
+  # unaffected; execute never reads a breadcrumb.)
+  CACHE="$BATS_TEST_TMPDIR/cache"
+  mkdir -p "$CACHE"
+
   # Git identity for the worktree sandbox (CI without a configured user).
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -229,7 +240,8 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "plan then execute: cost.json keeps independent plan + execute keys (no overwrite, no sum)" {
   run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/l-plan.jsonl"
+    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/l-plan.jsonl" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.plan.total' "$OUTDIR/cost.json")" -eq 562 ]
   [ "$(jq -r '.execute // "absent"' "$OUTDIR/cost.json")" = "absent" ]
@@ -258,7 +270,8 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "repeated execute writes preserve the plan key and never duplicate keys" {
   run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/lp.jsonl"
+    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/lp.jsonl" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   for n in 1 2 3; do
@@ -278,7 +291,8 @@ led() { jq -r "$1" "$LEDGER"; }
   run bash "$SCRIPT" \
     --action plan --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
     --out-dir "$OUTDIR" --session-id "$SESSION" \
-    --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/durable.jsonl"
+    --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/durable.jsonl" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # exactly one valid JSON line with the right key fields
@@ -329,7 +343,8 @@ led() { jq -r "$1" "$LEDGER"; }
   run bash "$SCRIPT" \
     --action spec --spec-id SPEC-013 \
     --out-dir "$OUTDIR" --session-id "no-such-session-9999" \
-    --projects-root "$ANCHOR" --ledger "$LEDGER"
+    --projects-root "$ANCHOR" --ledger "$LEDGER" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # stdout marker + zero buckets
@@ -362,7 +377,8 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "empty session id (no --session-id, unset env): exit 0, partial, no crash" {
   run env -u CLAUDE_CODE_SESSION_ID bash "$SCRIPT" \
     --action spec --spec-id SPEC-013 \
-    --out-dir "$OUTDIR" --projects-root "$ANCHOR" --ledger "$LEDGER"
+    --out-dir "$OUTDIR" --projects-root "$ANCHOR" --ledger "$LEDGER" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ "$(led '.partial')" = "true" ]
   [ "$(led '.total')" -eq 0 ]
@@ -443,7 +459,8 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "single usage line: duration 0, available true" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-000 \
     --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$FIX/single/projects" --ledger "$LEDGER"
+    --projects-root "$FIX/single/projects" --ledger "$LEDGER" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ "$(led '.duration_seconds')" -eq 0 ]
   [ "$(led '.duration_available')" = "true" ]
@@ -453,7 +470,8 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "zero usage lines (timestamped non-usage only): unavailable/null, buckets 0, partial false" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-000 \
     --out-dir "$OUTDIR" --session-id "fixturezero0001" \
-    --projects-root "$FIX/zero/projects" --ledger "$LEDGER"
+    --projects-root "$FIX/zero/projects" --ledger "$LEDGER" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ "$(led '.duration_available')" = "false" ]
   [ "$(led '.duration_seconds')" = "null" ]
@@ -466,7 +484,8 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "malformed extremal timestamp: unavailable, buckets intact, partial false (flag independence)" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-000 \
     --out-dir "$OUTDIR" --session-id "fixturemalformed0001" \
-    --projects-root "$FIX/malformed/projects" --ledger "$LEDGER"
+    --projects-root "$FIX/malformed/projects" --ledger "$LEDGER" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # duration unavailable ...
@@ -590,7 +609,8 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "spec: schema_version 1, kind spec, seq 0/final, cost.json keyed by spec, only cost.json written" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
     --out-dir "$OUTDIR" --session-id "$SESSION" \
-    --projects-root "$ANCHOR" --ledger "$LEDGER"
+    --projects-root "$ANCHOR" --ledger "$LEDGER" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   [ "$(led '.schema_version')" -eq 1 ]
@@ -623,7 +643,8 @@ led() { jq -r "$1" "$LEDGER"; }
   # spec-derived plan: --spec-id SPEC-* -> spec_id set, plan_id null
   run bash "$SCRIPT" --action plan --spec-id SPEC-023 --plan-slug p \
     --out-dir "$OUTDIR/sd-plan" --session-id fixturesingle0001 \
-    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/sd-plan.jsonl"
+    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/sd-plan.jsonl" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.kind' "$BATS_TEST_TMPDIR/sd-plan.jsonl")" = "plan" ]
   [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/sd-plan.jsonl")" = "SPEC-023" ]
@@ -632,7 +653,8 @@ led() { jq -r "$1" "$LEDGER"; }
   # spec-less plan: --plan-id PLAN-* -> plan_id set, spec_id null
   run bash "$SCRIPT" --action plan --plan-id PLAN-007 --plan-slug p \
     --out-dir "$OUTDIR/sl-plan" --session-id fixturesingle0001 \
-    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/sl-plan.jsonl"
+    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/sl-plan.jsonl" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.kind' "$BATS_TEST_TMPDIR/sl-plan.jsonl")" = "plan" ]
   [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/sl-plan.jsonl")" = "null" ]
@@ -697,6 +719,9 @@ led() { jq -r "$1" "$LEDGER"; }
     git -C "$1" commit --allow-empty -q -m init
   }
   runproj() {
+    # Deliberately no --cache-dir: this cd's into a fresh mkrepo'd git repo, so
+    # token-tally.sh derives its cache from THAT repo's git-common-dir, never the
+    # real .gaia/local/cache. Isolated by construction.
     ( cd "$1" && bash "$SCRIPT" --action spec --spec-id SPEC-013 \
         --out-dir "$1/out" --session-id fixturesingle0001 \
         --projects-root "$FIX/single/projects" --ledger "$1/cost.jsonl" >/dev/null 2>&1 )
@@ -747,7 +772,8 @@ led() { jq -r "$1" "$LEDGER"; }
 
   run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
     --out-dir "$dir/out" --session-id fixturesingle0001 \
-    --projects-root "$FIX/single/projects" --ledger "$dir/cost.jsonl"
+    --projects-root "$FIX/single/projects" --ledger "$dir/cost.jsonl" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # old ledger moved to .bak (never read, never deleted); fresh cost.jsonl holds
@@ -763,7 +789,8 @@ led() { jq -r "$1" "$LEDGER"; }
   printf '%s\n' '{"stray":"do-not-move"}' > "$dir/tokens.jsonl"
   run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
     --out-dir "$dir/out" --session-id fixturesingle0001 \
-    --projects-root "$FIX/single/projects" --ledger "$dir/cost.jsonl"
+    --projects-root "$FIX/single/projects" --ledger "$dir/cost.jsonl" \
+    --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ -f "$dir/tokens.jsonl" ]
   [ "$(jq -r '.stray' "$dir/tokens.jsonl")" = "do-not-move" ]
@@ -815,7 +842,10 @@ led() { jq -r "$1" "$LEDGER"; }
   mkdir -p "$workdir_raw"
   workdir="$(cd "$workdir_raw" && pwd)"
 
-  # missing/unresolvable session id -> partial run, record still built
+  # missing/unresolvable session id -> partial run, record still built.
+  # Deliberately no --cache-dir: this cd's into a non-repo tmpdir, so
+  # git-common-dir resolution fails and token-tally.sh leaves CACHE_DIR empty,
+  # skipping the breadcrumb block entirely. Never touches the real cache.
   run bash -c "cd '$workdir' && bash '$SCRIPT' \
     --action spec --spec-id SPEC-013 \
     --out-dir '$OUTDIR' --session-id no-such-session-9999 \

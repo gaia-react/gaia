@@ -38,6 +38,14 @@ setup() {
 
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
 
+  # Isolated, empty audit-window cache. The one --action spec tally below
+  # consume-on-tally a breadcrumb from --cache-dir (SPEC-032, audit-window-<id>
+  # .json); an empty per-test dir keeps it off the real .gaia/local/cache, which
+  # it would otherwise fall through to and DELETE a developer's live
+  # audit-window-SPEC-032.json. (--action review never reads a breadcrumb.)
+  CACHE="$BATS_TEST_TMPDIR/cache"
+  mkdir -p "$CACHE"
+
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test"
@@ -163,7 +171,7 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "6: back-compat -- token-rollup.sh's kind filter excludes a review row from a feature's totals" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
     --out-dir "$BATS_TEST_TMPDIR/out" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER"
+    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   spec_total="$(led '.total')"
 
