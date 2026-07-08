@@ -133,7 +133,10 @@ set -euo pipefail
 DEFAULT_BUDGET_SECONDS="1800"
 DEFAULT_MAX_TURNS="30"
 DEFAULT_PUSH_FIXES="true"
-DEFAULT_DEFAULT_MODE="ci"
+# Built-in fallback for the `default_mode` knob when it is absent or empty. Named
+# for its role rather than the sibling `DEFAULT_<key>` pattern: the config key is
+# itself `default_mode`, so `DEFAULT_DEFAULT_MODE` would stutter.
+FALLBACK_MODE="ci"
 DEFAULT_OVERRIDE_LABEL="run-audit"
 # `audit_authors`'s default is the empty string; it passes through verbatim
 # so the resolver sees exactly what the adopter wrote (or nothing).
@@ -568,7 +571,7 @@ budget_seconds=$(normalize_integer "$raw_budget_seconds" "$DEFAULT_BUDGET_SECOND
 max_turns=$(normalize_integer "$raw_max_turns" "$DEFAULT_MAX_TURNS" "max_turns")
 push_fixes=$(normalize_boolean "$raw_push_fixes" "$DEFAULT_PUSH_FIXES" "push_fixes")
 # default_mode: empty → ci; invalid/off → coerced by workflow presence.
-default_mode=$(normalize_mode "$raw_default_mode" "$DEFAULT_DEFAULT_MODE" "default_mode")
+default_mode=$(normalize_mode "$raw_default_mode" "$FALLBACK_MODE" "default_mode")
 if [ -z "$raw_override_label" ]; then
   override_label="$DEFAULT_OVERRIDE_LABEL"
 else
