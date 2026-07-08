@@ -46,7 +46,9 @@ wiki/decisions/Forensics Triage Workflow.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked
-# from an adopter's project. _internal/ rules belong to the same harness.
+# from an adopter's project. .claude/rules/maintainers/ holds maintainer-only
+# rules (smoke-harness conventions plus other maintainer-only guidance) that
+# must never ship to an adopter.
 # .gaia/scripts/tests and .github/audit/tests are bats suites for shipped
 # GAIA-owned scripts (.gaia/scripts/ and .github/audit/ helpers). Their only
 # runner, audit-ci-tests.yml, is release-excluded (category 9), so they never
@@ -54,7 +56,7 @@ wiki/decisions/Forensics Triage Workflow.md
 # code they never edit, so the suites guard only maintainer changes.
 .gaia/tests
 .gaia/scripts/tests
-.claude/rules/_internal
+.claude/rules/maintainers
 .github/audit/tests
 .specify/extensions/gaia/test
 # react-perf-smoke.spec.ts is the bippy version-bump canary: it asserts GAIA's

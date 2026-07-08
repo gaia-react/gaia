@@ -12,7 +12,7 @@
 # Each test isolates state under a fresh scratch HOME and a fresh scratch repo
 # root via mktemp; cleanup is mandatory and runs on every exit path. Walk-
 # through narrative (47 UATs, maintainer judgment allowed) lives at
-# `.specify/extensions/gaia/test/smoke-telemetry-v1.md` per `.claude/rules/_internal/smoke.md`.
+# `.specify/extensions/gaia/test/smoke-telemetry-v1.md` per `.claude/rules/maintainers/smoke.md`.
 set -euo pipefail
 
 # Resolve the real repo root from this script's location so the harness
