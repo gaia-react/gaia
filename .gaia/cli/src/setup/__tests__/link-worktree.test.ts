@@ -135,7 +135,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     vi.restoreAllMocks();
   });
 
-  test('fresh worktree: creates all five symlinks; --json shape is correct; exit 0', () => {
+  test('fresh worktree: creates all six symlinks; --json shape is correct; exit 0', () => {
     const exit = runLinkWorktree(['--json'], {
       cwd: sandbox.linkedRoot,
       now: () => FROZEN_TS,
@@ -153,26 +153,28 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     expect(out.is_worktree).toBe(true);
     expect(out.main_root).toBe(sandbox.mainRoot);
     expect(out.worktree_root).toBe(sandbox.linkedRoot);
-    expect(out.actions).toHaveLength(5);
+    expect(out.actions).toHaveLength(6);
     expect(out.actions.map((action) => action.path)).toEqual([
       '.gaia/local/setup-state.json',
       '.gaia/local/mentorship.json',
       '.gaia/local/cache/shared',
       '.gaia/local/audit',
       '.gaia/local/telemetry',
+      '.gaia/local/debt',
     ]);
 
     for (const action of out.actions) {
       expect(action.result).toBe('linked');
     }
 
-    // On disk, all five are symlinks pointing at the main checkout.
+    // On disk, all six are symlinks pointing at the main checkout.
     for (const rel of [
       '.gaia/local/setup-state.json',
       '.gaia/local/mentorship.json',
       '.gaia/local/cache/shared',
       '.gaia/local/audit',
       '.gaia/local/telemetry',
+      '.gaia/local/debt',
     ]) {
       const sourcePath = path.join(sandbox.linkedRoot, rel);
       expect(lstatSync(sourcePath).isSymbolicLink()).toBe(true);
@@ -180,7 +182,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     }
   });
 
-  test('already-linked worktree: re-running is a no-op; all five already-linked; exit 0', () => {
+  test('already-linked worktree: re-running is a no-op; all six already-linked; exit 0', () => {
     runLinkWorktree([], {cwd: sandbox.linkedRoot, now: () => FROZEN_TS});
     stdio.outputs.length = 0;
     stdio.errors.length = 0;
@@ -201,7 +203,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     }
   });
 
-  test('already-linked human summary reports "All 5 paths already linked."', () => {
+  test('already-linked human summary reports "All 6 paths already linked."', () => {
     runLinkWorktree([], {cwd: sandbox.linkedRoot, now: () => FROZEN_TS});
     stdio.outputs.length = 0;
 
@@ -211,7 +213,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     });
     expect(exit).toBe(0);
 
-    expect(stdio.outputs.join('')).toContain('All 5 paths already linked.');
+    expect(stdio.outputs.join('')).toContain('All 6 paths already linked.');
   });
 
   test('worktree with pre-existing plain files: backed up; backup paths in JSON; exit 0', () => {
@@ -265,6 +267,14 @@ describe('gaia setup link-worktree (linked worktree)', () => {
         'cost.jsonl'
       ),
       '{}',
+      'utf8'
+    );
+    mkdirSync(path.join(sandbox.linkedRoot, '.gaia', 'local', 'debt'), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(sandbox.linkedRoot, '.gaia', 'local', 'debt', 'count.json'),
+      '{"openCount":7}',
       'utf8'
     );
 
@@ -325,6 +335,11 @@ describe('gaia setup link-worktree (linked worktree)', () => {
       bogusTarget,
       path.join(sandbox.linkedRoot, '.gaia', 'local', 'telemetry'),
     ]);
+    execFileSync('ln', [
+      '-s',
+      bogusTarget,
+      path.join(sandbox.linkedRoot, '.gaia', 'local', 'debt'),
+    ]);
 
     const exit = runLinkWorktree(['--json'], {
       cwd: sandbox.linkedRoot,
@@ -368,6 +383,9 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     ).toBe(true);
     expect(
       existsSync(path.join(sandbox.mainRoot, '.gaia', 'local', 'audit'))
+    ).toBe(true);
+    expect(
+      existsSync(path.join(sandbox.mainRoot, '.gaia', 'local', 'debt'))
     ).toBe(true);
     expect(
       existsSync(
@@ -423,7 +441,7 @@ describe('gaia setup link-worktree (linked worktree)', () => {
     expect(exit).toBe(0);
 
     const out = stdio.outputs.join('');
-    expect(out).toContain('Linked 5 paths to');
+    expect(out).toContain('Linked 6 paths to');
     expect(out).toContain(sandbox.mainRoot);
   });
 
@@ -455,7 +473,7 @@ describe('gaia setup link-worktree (env file sharing)', () => {
     vi.restoreAllMocks();
   });
 
-  test('fresh worktree: shares .env and .env.local, skips .env.example; actions still length 5', () => {
+  test('fresh worktree: shares .env and .env.local, skips .env.example; actions still length 6', () => {
     writeFileSync(path.join(sandbox.mainRoot, '.env'), 'A=1', 'utf8');
     writeFileSync(path.join(sandbox.mainRoot, '.env.local'), 'B=2', 'utf8');
     writeFileSync(path.join(sandbox.mainRoot, '.env.example'), 'C=3', 'utf8');
@@ -480,7 +498,7 @@ describe('gaia setup link-worktree (env file sharing)', () => {
       expect(action.result).toBe('linked');
     }
 
-    expect(out.actions).toHaveLength(5);
+    expect(out.actions).toHaveLength(6);
 
     for (const rel of ['.env', '.env.local']) {
       const sourcePath = path.join(sandbox.linkedRoot, rel);

@@ -1,7 +1,7 @@
 /**
  * `gaia setup link-worktree [--json]` handler.
  *
- * Idempotently creates the five SPEC-005 shared-state symlinks from the
+ * Idempotently creates the six SPEC-005 shared-state symlinks from the
  * current linked worktree into the main checkout:
  *
  *   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
@@ -9,10 +9,11 @@
  *   <worktree>/.gaia/local/cache/shared/     -> <main>/.gaia/local/cache/shared/
  *   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
  *   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
+ *   <worktree>/.gaia/local/debt/             -> <main>/.gaia/local/debt/
  *
  * Also links gitignored checkout-root `.env` / `.env.*` files (excluding the
  * committed `.env.example`) from the main checkout, one symlink per file,
- * reported separately in the `env_actions` field so the frozen five-entry
+ * reported separately in the `env_actions` field so the frozen six-entry
  * `actions` contract above is untouched.
  *
  * No-op on a main checkout (not a linked worktree). Pre-existing plain
@@ -41,7 +42,7 @@ import {resolveMainWorktreeRoot} from './util/state-file.js';
 
 const HELP_TEXT = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the five worktree shared-state symlinks pointing at
+  Idempotently create the six worktree shared-state symlinks pointing at
   the main checkout. Also links gitignored checkout-root .env / .env.*
   files (excluding .env.example) from the main checkout. Backs up
   pre-existing plain files to <path>.bak.<ts>. No-op on a main checkout
@@ -96,7 +97,7 @@ type SharedPathSpec = {
 };
 
 /**
- * Frozen path set; five entries, in this order, always present in the
+ * Frozen path set; six entries, in this order, always present in the
  * output `actions` array regardless of result. See SPEC-005 plan README.
  *
  * `mentorship.json` is a per-machine file entry alongside `setup-state.json`
@@ -104,6 +105,11 @@ type SharedPathSpec = {
  * finalize gate, which resolves from the main-worktree root, and the
  * mentorship write/read path, which resolves from the linked root, pointing
  * at one file so a decision made in a linked worktree satisfies the gate.
+ *
+ * `debt/` holds the `/gaia-debt` count cache and its `refresh-requested`
+ * sentinel. Sharing it means a tech-debt fix merged from inside a linked
+ * worktree arms the main checkout's sentinel, so the statusline debt nudge
+ * recomputes instead of freezing on its TTL until the backlog empties.
  */
 const SHARED_PATHS: readonly SharedPathSpec[] = [
   {ensureTargetDir: false, relativePath: '.gaia/local/setup-state.json'},
@@ -111,6 +117,7 @@ const SHARED_PATHS: readonly SharedPathSpec[] = [
   {ensureTargetDir: true, relativePath: '.gaia/local/cache/shared'},
   {ensureTargetDir: true, relativePath: '.gaia/local/audit'},
   {ensureTargetDir: true, relativePath: '.gaia/local/telemetry'},
+  {ensureTargetDir: true, relativePath: '.gaia/local/debt'},
 ];
 
 // Shareable env-file basename set: `.env` and any `.env.*` variant under the
@@ -226,7 +233,7 @@ const ACTION_HUMAN_LABELS: Readonly<Record<ActionResult, string>> = {
   'skipped-no-target': 'skipped-no-target',
 };
 
-// The frozen five-path summary lines, byte-for-byte identical to the
+// The frozen fixed-path summary lines, byte-for-byte identical to the
 // pre-env-sharing output (link-worktree.test.ts asserts the exact
 // substrings). Returns lines instead of writing directly so `printHuman`
 // can append the env summary after it.
@@ -273,7 +280,7 @@ const buildFixedSummaryLines = (output: LinkOutput): string[] => {
   return lines;
 };
 
-// Env-file summary, appended after the fixed five-path summary. Empty
+// Env-file summary, appended after the fixed shared-path summary. Empty
 // `env_actions` (no gitignored .env files in the main checkout) produces no
 // lines at all.
 const buildEnvironmentSummaryLines = (
@@ -435,7 +442,7 @@ export const run = (
 
   // Env files are a separate, discovered (not fixed) set: every gitignored
   // `.env` / `.env.*` under the main checkout root except `.env.example`.
-  // Reported in the new `env_actions` field; the frozen five-entry `actions`
+  // Reported in the new `env_actions` field; the frozen six-entry `actions`
   // array above is untouched.
   const envSpecs: SharedPathSpec[] = readdirSync(mainRoot)
     .filter((name) => isShareableEnvironmentFile(name))

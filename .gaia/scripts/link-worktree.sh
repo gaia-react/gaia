@@ -2,8 +2,8 @@
 # GAIA worktree shared-state symlink hook (SPEC-005).
 #
 # Creates symlinks from the current linked worktree into the main checkout:
-# the five fixed .gaia/local/ shared-state paths (setup-state.json,
-# mentorship.json, cache/, audit/, telemetry/) plus any gitignored
+# the six fixed .gaia/local/ shared-state paths (setup-state.json,
+# mentorship.json, cache/, audit/, telemetry/, debt/) plus any gitignored
 # checkout-root .env / .env.* files (excluding the committed .env.example),
 # so neither diverges per-worktree:
 #
@@ -12,6 +12,7 @@
 #   <worktree>/.gaia/local/cache/shared/      -> <main>/.gaia/local/cache/shared/
 #   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
 #   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
+#   <worktree>/.gaia/local/debt/             -> <main>/.gaia/local/debt/
 #   <worktree>/.env, <worktree>/.env.*       -> <main>/.env, <main>/.env.*
 #
 # Behavior:
@@ -70,6 +71,7 @@ mkdir -p "$main_root/.gaia/local" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/audit" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/telemetry" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null
+mkdir -p "$main_root/.gaia/local/debt" 2>/dev/null
 # `setup-state.json` and `mentorship.json` are files: do NOT pre-create them.
 # If one doesn't exist on main, the symlink will dangle until the main checkout
 # writes it via the normal setup flow; that's fine. Readers gracefully treat
@@ -137,6 +139,7 @@ link_one ".gaia/local/mentorship.json"  ".gaia/local"
 link_one ".gaia/local/cache/shared"     ".gaia/local/cache"
 link_one ".gaia/local/audit"            ".gaia/local"
 link_one ".gaia/local/telemetry"        ".gaia/local"
+link_one ".gaia/local/debt"             ".gaia/local"
 
 # ---------- share gitignored root .env / .env.* files ----------
 # Vite (`pnpm dev`) and Playwright's dotenv `config()` read .env / .env.* from

@@ -24,7 +24,7 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
 | `audit/worthiness.jsonl` | worthiness check | live | append-only |
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
-| `debt/` | debt sentinel | live | recomputed |
+| `debt/` | debt sentinel | live | symlinked to the main worktree's copy so a debt fix merged from a linked worktree arms the main checkout's count cache and sentinel; recomputed |
 | `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | reaped on SPEC merge/close and the merged-SPEC age reap; stale entries age-swept |
 | `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`, coaching) | live | symlinked to the main worktree's copy so every linked worktree shares one copy; self-pruned by its owners (tarball prune on update, coaching marker cleared each session) |
 | `specs/` | [[GAIA Spec]] | live | a merged folder is kept at merge; age-reaped after the retention window |
@@ -34,7 +34,7 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `handoff/`, `forensics/` | [[GAIA Handoff]] / [[Forensics]] | live | drop zones |
 | `telemetry/` | [[Telemetry]] | live | append-only logs |
 
-Worktree creation symlinks a second, disjoint set alongside the five `.gaia/local/` paths above: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
+Worktree creation symlinks a second, disjoint set alongside the six `.gaia/local/` paths above: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
 
 A **live** entry is load-bearing state that tooling reads. An **ephemeral** entry is consumed once and then orphaned; its owner is meant to prune it, and the janitor backstops what the owner misses.
 
