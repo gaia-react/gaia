@@ -253,3 +253,23 @@ tag_now() {
   [ "$status" -eq 0 ]
   [ "$output" = "depth=scoped lenses=FEAT source=diff" ]
 }
+
+# ---------- Multi-lens canonical ordering (determinism crux) ----------
+
+@test "scoped diff hitting all four lenses emits them in canonical FEAT,DIST,TIDY,SELF order" {
+  tag_now "v1.0.0"
+  # One file per lens, committed in reverse-canonical order to prove the gauge
+  # orders by source-order (the scoped_lenses append block), not detection
+  # order. This is the only test that exercises 2+ simultaneous lens hits, the
+  # exact multi-value case the byte-identical determinism guarantee rests on.
+  commit_file ".gaia/cli/health/runbook.md"  # SELF
+  commit_file ".gaia/release-exclude"        # TIDY
+  commit_file ".gaia/scripts/some-script.sh" # DIST
+  commit_file ".claude/skills/foo/SKILL.md"  # FEAT
+
+  run_gauge
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.depth' "$GAUGE_JSON")" = "scoped" ]
+  [ "$(jq -c '.lenses' "$GAUGE_JSON")" = '["FEAT","DIST","TIDY","SELF"]' ]
+  [ "$output" = "depth=scoped lenses=FEAT,DIST,TIDY,SELF source=diff" ]
+}
