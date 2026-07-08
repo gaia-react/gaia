@@ -312,3 +312,26 @@ setup() {
   [ "$status" -ne 0 ]
   [ ! -e "$bc4" ]
 }
+
+# ---------- 11. zsh ambient-shell safety: no $path/$PATH special-var collision ----------
+# The lib carries `#!/bin/bash` but is sourced in-process into the session's
+# ambient shell, which is zsh on a macOS default. zsh ties the special array
+# $path to the scalar $PATH, so a `local path=<file>` local would overwrite
+# $PATH with a single non-directory value for the function's duration -- making
+# `command -v jq` fail even with jq on $PATH. The writer would then return
+# non-zero writing nothing, and the reader would silently degrade to empty.
+# Both functions use a non-special local name, so they round-trip under zsh.
+# The subprocess inherits $PATH (jq present); a $path clobber, not a missing
+# jq, is what this pins.
+@test "gaia_audit_window_write/read: round-trips under zsh (no \$path/\$PATH special-var collision)" {
+  command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
+  bc="$BATS_TEST_TMPDIR/zsh-bc.json"
+  run zsh -c "source '$LIB'; gaia_audit_window_write '$bc' sess-z 2026-07-08T01:00:00Z 2026-07-08T01:05:00Z '[\"FG\"]' standard"
+  [ "$status" -eq 0 ]
+  [ -f "$bc" ]
+  [ "$(jq -r '.session_id' <"$bc")" = "sess-z" ]
+  # the reader must also round-trip under zsh, otherwise it silently degrades to empty
+  run zsh -c "source '$LIB'; gaia_audit_window_read '$bc'"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.session_id' <<<"$output")" = "sess-z" ]
+}
