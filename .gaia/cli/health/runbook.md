@@ -55,6 +55,8 @@ After cycle 3 without clean: escalate (max loops hit; Orchestrator preserves all
 
 **Verdict widening note.** The overall verdict is F-to-A+, computed as the floor of all buckets. It is never higher than Bucket E's `shared_fitness_grade`. Both the overall grade and the shared-fitness sub-grade appear in all report templates (clean exit and escalation).
 
+After the loop terminates and before the final verdict is emitted, the Orchestrator runs the Comprehensive Audit phase once (see Pointers); it reports alongside and never mutates the integrity verdict math.
+
 ## Circuit breakers
 
 A Fixer dispatch pauses for human-confirm if the proposed fix:
@@ -423,3 +425,4 @@ The seven shared Claude-integration fitness categories (hook integrity; skill/co
 - **ADR**: `wiki/decisions/Bundle-time Scrub.md`; what scrub catches, what it doesn't.
 - **Wiki-style rule**: `.claude/rules/wiki-style.md`; UAT/SPEC narrative-vs-structural triage.
 - **Release flow**: `.github/workflows/release.yml`; step order; primitives wired in.
+- **Comprehensive phase**: `.gaia/cli/health/comprehensive/runbook.md`; diff-gated, report-only design-level audit that runs once after the cycle loop terminates and before the final verdict. Maintainer-only, release-excluded.
