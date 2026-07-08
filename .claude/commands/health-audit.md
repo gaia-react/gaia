@@ -33,7 +33,7 @@ For cycle in 1..3:
     if the false-clean challenger has not run yet this run:
       you spawn the false-clean challenger lenses as parallel leaf subagents (BS/MC/GH always, FV when a prior cycle dispatched a Fixer); mark it run
       if a lens substantiates a finding: inject it into c<N>/findings.json (action=real-fix, bucket=challenger); at cycle < 3 fall through to fixers + next cycle; at cycle 3 escalate false-clean-refuted and preserve c*/
-    if still clean: report honest overall grade (A+ when no findings at all, else the floor that residual info may cap at A), exit
+    if still clean: break the loop and proceed to the Comprehensive phase (Step 3)
   you compare open-finding (action=real-fix) fingerprints between
     c<N>/findings.json and c<N-1>/findings.json (jq + comm); escalate on intersection
   you spawn parallel Fixers (lane-aware) as leaf subagents; fitness findings → claude-surface lane
@@ -55,7 +55,16 @@ You spawn the five buckets, the Adjudicator, and the Fixers, and every one is a 
 
 A fresh Adjudicator per cycle keeps prior-cycle findings from bleeding into this cycle's verification: it never reads a prior cycle's `findings.json` (you own the cross-cycle oscillation compare), so every cycle's Adjudicator starts on clean context. **Bucket E** runs as its own leaf so its voluminous raw fitness output stays on disk and out of the Adjudicator's context: the Adjudicator reads only Bucket E's findings JSON. Each bucket is spawned with its assigned model (Haiku for the mechanical buckets, Sonnet for the judgment-bearing ones; see the runbook's model table), which pins per-bucket models correctly now that the Orchestrator dispatches them directly.
 
-## Step 3, Honor the circuit breakers
+## Step 3, Comprehensive phase (post-loop)
+
+After the loop above breaks or escalates — clean exit and escalation both route through here — and before the Step 5 report is emitted, run the **Comprehensive Audit phase** per `.gaia/cli/health/comprehensive/runbook.md`. It is diff-gated (a pre-flight gauge picks skip / scoped / full), report-only (no auto-heal, files nothing), and maintainer-only.
+
+- Runs **exactly once**, **never inside the loop above**.
+- Pass `--comprehensive-full` through to the gauge when the maintainer invoked `/health-audit` with that force flag. Pass `--major` through when the maintainer invoked `/health-audit --major` (the gauge maps it to `source=major`).
+- **Do not copy the comprehensive protocol here.** The comprehensive runbook is the single source of truth; this command file only points to it.
+- Does **not** recompute or mutate the integrity verdict math (the three-input floor). It reports alongside, in Step 5.
+
+## Step 4, Honor the circuit breakers
 
 A Fixer dispatch pauses for human-confirm if the proposed fix:
 
@@ -68,7 +77,7 @@ A Fixer dispatch pauses for human-confirm if the proposed fix:
 
 If the human refuses → escalate.
 
-## Step 4, Report
+## Step 5, Report
 
 On clean exit (no open findings remain; the reported grade is the honest floor: A+ when there were no findings at all, otherwise capped by any non-blocking residual `info`, typically A):
 
@@ -80,6 +89,7 @@ Cycles: <N>
 Findings closed: <count> (per cycle: <breakdown>)
 Non-blocking residuals: <count> (e.g. wiki/.state.json post-sync drift, recorded not blocking)
 Artifacts: cleaned (.gaia/local/audit/c[0-9] removed)
+comprehensive: skipped (no framework-facing changes since <tag>)
 ```
 
 On escalation:
@@ -92,9 +102,25 @@ Reason: <max-loops | oscillation | circuit-breaker | unclassified-finding | fixe
 Outstanding findings: <list with fingerprints>
 Cycles run: <N>
 Artifacts: preserved at .gaia/local/audit/c1/, c2/, c3/ (see findings.json in each)
+comprehensive: skipped (no framework-facing changes since <tag>)
 ```
 
 The overall grade is F-to-A+ and is never higher than the shared-fitness grade. Both grades appear in every report output (clean exit and escalation).
+
+The `comprehensive:` line above is the Comprehensive phase's `skip`-depth result: interpolate `<tag>` from the gauge's resolved baseline (`jq -r '.baseline_tag' .gaia/local/audit/comprehensive/gauge.json`), never emit the literal placeholder. On a `scoped`/`full` depth, replace that line with the report path and its top-line counts:
+
+```
+Comprehensive: .gaia/local/audit/comprehensive/REPORT.md
+  (<actionable> actionable across <lenses>; <refuted> refuted; depth <depth>)
+```
+
+If the verification round confirmed a blocker, add a release-gate flag on its own line:
+
+```
+RELEASE-GATE: comprehensive audit confirmed <n> blocker(s) — see REPORT.md ## Priority index
+```
+
+The comprehensive line is additive: it does not change the `HEALTH AUDIT: <grade>` computation or the shared-fitness grade. The integrity verdict math above is untouched.
 
 ## What you do NOT do
 
@@ -104,5 +130,6 @@ The overall grade is F-to-A+ and is never higher than the shared-fitness grade. 
 - Do not write to `wiki/log.md` or `wiki/hot.md`.
 - Do not edit the runbook mid-loop. If the runbook needs changing, escalate first.
 - Do not delete `.gaia/local/audit/c[0-9]/` on escalation. Preserve everything for human review.
+- Do not let the Comprehensive phase edit audited files or file issues; it is report-only, and it never feeds the integrity verdict math.
 
 Begin by reading `.gaia/cli/health/runbook.md`.
