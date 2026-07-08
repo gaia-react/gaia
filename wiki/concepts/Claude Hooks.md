@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-07-04
+updated: 2026-07-08
 tags: [concept, claude, hooks]
 ---
 
@@ -64,6 +64,7 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 
 - **`token-tally-git-op.sh`** (PreToolUse, Bash): fires on the orchestrator's per-phase `git commit`/`push` during plan execution; gated on an active plan folder (resolved via the shared `.claude/hooks/lib/gaia-active-plan.sh`), it records the execution session's ground-truth token tally keyed to the feature. See [[Token Cost Readout]].
 - **`token-rollup-merge.sh`** (PostToolUse, Bash): fires on `gh pr merge`; resolves the feature key from the active plan folder (or the ledger's most recent `execute` row as a labeled fallback) and renders the full spec/plan/execute/total cost roll-up into the merging session. See [[Token Cost Readout]].
+- **`token-tally-review.sh`** (PostToolUse, Bash matcher `gh pr merge`, and Stop): captures a `code-review-audit` run as a standalone `kind: "review"` cost ledger row. One script serves both end-of-context triggers (the merge gate, and an ad-hoc run that ends without a merge); `token-tally.sh --action review` owns window detection and dedups by `review_id`, so whichever trigger fires first writes the row. See [[Cost Data Contract]].
 
 ### Wiki coherence (multiple events)
 
@@ -85,5 +86,7 @@ The wiki sync system is convergent: the user's already-paid-for Claude session d
 ## Adding hooks
 
 Ask Claude to add a hook; Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` via the `update-config` skill. Naming convention: `block-{noun}.sh` for blockers, `check-{noun}.sh` for advisory, `pre-{event}-{noun}.sh` for pre-event reminders. Blocker scripts begin with `#!/usr/bin/env bash` + `set -euo pipefail`, read stdin via `jq`, and either `exit 0`/`exit 2` or emit the structured `hookSpecificOutput.permissionDecision` JSON.
+
+A CI gate (`.gaia/scripts/lint-hook-array-guard.sh`, run over `.claude/hooks/` on every push) flags a bare `"${arr[@]}"` / `"${arr[*]}"` expansion in a `set -u` hook body: on stock macOS `/bin/bash` (3.2.57) that expansion aborts with `unbound variable` over an empty array before any trailing `|| true` can catch it, a failure class the bash-5 test suites in CI cannot see. Guard the expansion (`"${arr[@]+"${arr[@]}"}"`) or check the array is non-empty first.
 
 See [[Quality Gate]], [[Pre-commit Hooks]], [[Git Workflow]], [[Claude Integration Conventions]], [[TDD RED Verification]].
