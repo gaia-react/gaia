@@ -2,7 +2,7 @@
 
 Release-gate harness for telemetry-v1. Six deterministic tests covering the integration surface of the three-stream architecture (cloud / mentorship / analytics).
 
-The walk-through narrative for the full UAT surface (with maintainer-judgment-allowed steps such as the `Tell me more` Q&A loop) lives at `.specify/extensions/gaia/test/smoke-telemetry-v1.md`. Per `.claude/rules/_internal/smoke.md`, classification is by _shape_: this harness is fully procedural; the runbook accommodates judgment.
+The walk-through narrative for the full UAT surface (with maintainer-judgment-allowed steps such as the `Tell me more` Q&A loop) lives at `.specify/extensions/gaia/test/smoke-telemetry-v1.md`. Per `.claude/rules/maintainers/smoke.md`, classification is by _shape_: this harness is fully procedural; the runbook accommodates judgment.
 
 ## Scope
 
@@ -62,6 +62,6 @@ This avoids adding a new `_internal-test-projection` subcommand to maintain. The
 ## See also
 
 - `.specify/extensions/gaia/test/smoke-telemetry-v1.md`; UAT runbook (full walk-through, maintainer-judgment-allowed).
-- `.claude/rules/_internal/smoke.md`; convention this harness implements.
+- `.claude/rules/maintainers/smoke.md`; convention this harness implements.
 - `.gaia/local/plans/spec-001-telemetry-v1/task-smoke.md`; task brief.
 - `.gaia/local/specs/SPEC-001.md`; source SPEC.

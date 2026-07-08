@@ -1,6 +1,6 @@
 # Distribution tests
 
-Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the release bundle via category 3 (`.gaia/tests/`). Audience is the machine; every scenario reports PASS/FAIL with a deterministic exit code. Convention: `.claude/rules/_internal/smoke.md`.
+Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the release bundle via category 3 (`.gaia/tests/`). Audience is the machine; every scenario reports PASS/FAIL with a deterministic exit code. Convention: `.claude/rules/maintainers/smoke.md`.
 
 ## When to run
 
