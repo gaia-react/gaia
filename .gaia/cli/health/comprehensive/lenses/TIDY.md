@@ -60,75 +60,13 @@ skip it; do not raise it here.
   structure.
 - **Stale manifest references** — `.gaia/manifest.json` entries pointing at
   files that no longer exist on disk (a tidiness signal: dead bookkeeping).
+  Note these from the tidiness angle; DIST separately notes the same entries
+  from the distribution-integrity angle — this manifest overlap is the one
+  deliberate exception to the no-overlap partition, not a scope-boundary bug.
 
-## Discovery-noted real targets (verified; name these so TIDY is non-trivial)
-
-1. **Telemetry `.jsonl` files grow unbounded, no retention.** All three files
-   at `.gaia/local/telemetry/` (`cost.jsonl`, `spec-pacing.jsonl`,
-   `gh-mirror.jsonl`) and every dated file under
-   `.gaia/local/telemetry/cloud/` (`events-YYYY-MM-DD.jsonl`, currently 10
-   files spanning `events-2026-05-06.jsonl` through the present) append
-   forever. `.claude/hooks/local-janitor.sh:203-205` explicitly *keeps alive*
-   `telemetry` and `telemetry/cloud` (excludes them from its stale-artifact
-   sweep) with no rotation, size cap, or age-based trim anywhere in that
-   file. Confirm no other script owns telemetry retention before filing;
-   if none does, this is real.
-
-2. **Gitignored `archived/` trees grow forever.** `.gaia/local/specs/archived/`
-   currently holds 22 SPEC-NNN entries (SPEC-003 through SPEC-025 and
-   others); `.gaia/local/plans/archived/` holds 7. `.claude/hooks/local-janitor.sh:203-205`
-   also keeps `specs/archived` and `plans/archived` alive (excluded from the
-   stale sweep). Per the plan brief, pruning is maintainer-only via
-   `health-audit`'s own `audit/archived` cleanup, not automatic — confirm
-   this against the janitor and health-audit runbook before filing severity.
-
-3. **Split-brain spec/plan/ledger logic.** `.gaia/scripts/` and
-   `.specify/extensions/gaia/lib/` both hold spec/plan/archive/ledger
-   scripts with overlapping responsibility and no cross-reference tying
-   them together as one system: e.g. `.gaia/scripts/plan-archive.sh` and
-   `.gaia/scripts/plan-resume-point.sh` vs.
-   `.specify/extensions/gaia/lib/plan-archive-merged.sh`,
-   `plan-reconcile.sh`, `plan-allocator.sh`, and `plan-ledger-update.sh`;
-   similarly `.gaia/scripts/summary-verify.sh` vs.
-   `.specify/extensions/gaia/lib/spec-archive-merged.sh`,
-   `spec-reconcile.sh`, `spec-allocator.sh`. Two directories, one domain,
-   no documented ownership boundary. Judge this from the layout/ownership
-   angle only (which tree should own which responsibility, and whether that
-   split is documented anywhere) — do not review the scripts' internal
-   correctness, that is DIST's surface.
-
-4. **Two coexisting merged-SPEC layouts.** Compare
-   `.gaia/local/specs/archived/SPEC-025/` (four files: `SPEC.md`,
-   `AUDIT.md`, `cost.md`, `SUMMARY.md`) against
-   `.gaia/local/specs/SPEC-032/` (two files: `SUMMARY.md`, `cost.json`). The
-   old shape (`SPEC.md`+`AUDIT.md`+`cost.md`) and the new shape
-   (`SUMMARY.md`+`cost.json`) coexist across the archived tree with no
-   migration note explaining which specs use which layout or why the older
-   layout wasn't backfilled.
-
-5. **Cache root is a flat grab-bag.** `.gaia/local/cache/` mixes a
-   subdirectory (`ca-research/`), another subdirectory (`shared/`), and a
-   loose file (`v2-update-notes.md`) at the same level, with cleanup relying
-   on `.claude/hooks/local-janitor.sh:221-233`'s filename-glob matching
-   (`gate1-*.json`, `draft-*.md`, `audit-*` dirs, `renders.json`) rather than
-   a subfolder-per-producer convention. Any new cache producer that doesn't
-   pick a glob the janitor already recognizes leaks forever.
-
-6. **Manifest references now-absent files.** Cross-reference
-   `.gaia/manifest.json`'s `files` array against the working tree: some entries
-   marked `"owned"` have no file on disk. At time of writing two dangle — a
-   stale `.claude/rules/` doc and a retired helper under
-   `.specify/extensions/gaia/lib/` — but cite whichever manifest lines you
-   actually find. Note this from the tidiness angle (stale bookkeeping in a
-   workspace artifact); DIST separately notes the same pair from the
-   distribution-integrity angle — this is the one deliberate, named exception
-   to the no-overlap partition (per the plan brief), not a bug in your scope
-   boundary.
-
-Verify each target against the live repo before filing (paths/line numbers
-may drift as the repo evolves) — file what you actually find, using the
-targets above as a guaranteed-non-trivial starting point, not a checklist to
-copy verbatim.
+Verify each class against the live repo before filing (paths and line
+numbers drift as the repo evolves) — file what you actually find; the
+classes above are a floor, not a checklist to copy verbatim.
 
 ## Reads first
 
