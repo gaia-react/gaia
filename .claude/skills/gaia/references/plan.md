@@ -292,12 +292,13 @@ Then write the following files directly to `{PLAN_DIR}/`:
       When detected, the orchestrator does NOT call `ExitWorktree`. It emits this copy-paste continuation prompt to the user, then stops:
 
           The worktree at <ABSOLUTE-PATH-TO-WORKTREE> is ready to discard.
-          PR #<N> squash-merged as <short-sha>. From a fresh top-level Claude
-          Code session rooted at <ABSOLUTE-PATH-TO-MAIN-CHECKOUT>, call:
+          PR #<N> squash-merged as <short-sha>. From a shell at
+          <ABSOLUTE-PATH-TO-MAIN-CHECKOUT>, run:
 
-              ExitWorktree({worktree: "<ABSOLUTE-PATH-TO-WORKTREE>", discard_changes: true})
+              git worktree remove --force <ABSOLUTE-PATH-TO-WORKTREE>
+              git branch -D <branch-name>   # only if the merge did not already delete it
 
-      No error surfaced. No `ExitWorktree` invocation in this branch. The continuation prompt is self-contained, the user pastes it into a new session and the cleanup completes without further investigation.
+      Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWorktree` only operates on a worktree created by `EnterWorktree` in the current session: from a fresh session it is a no-op on a prior-session worktree, and its schema requires `action` and rejects a `worktree` parameter. A plain `git worktree remove --force` is the correct session-independent cleanup. No error surfaces, no `ExitWorktree` invocation happens in this branch, and the user pastes the shell commands into any terminal to complete the cleanup without further investigation.
 
 4.  **`{PLAN_DIR}/KICKOFF.md`**: the orchestrator's kickoff prompt itself, ready to be read and executed verbatim. The file is the prompt, no preamble, no "copy and paste below" instruction, no surrounding commentary, no `---` separators framing the prompt as a quoted block. The opening line addresses the orchestrator directly (e.g. "You are the orchestrator for the {feature} plan…"). Must be fully self-contained with no assumed context: absolute paths to `README.md` and `ORCHESTRATOR.md`, the goal, hard rules, and the execution outline. The kickoff also includes a one-line reference to the pre-merge `code-audit-frontend` obligation (e.g. "Before any `gh pr merge`, run the `code-audit-frontend` agent, see ORCHESTRATOR.md's Pre-merge code-audit-frontend section."), a one-line default-execution-model statement (e.g. "Dispatch each task sub-agent as `general-purpose` with `model: \"sonnet\"` unless ORCHESTRATOR.md's phase list escalates that phase to Opus."), and a one-line cold-start resume statement (e.g. "On cold start, before pre-flight, check `{PLAN_DIR}/RUNNING` for a prior run and follow ORCHESTRATOR.md's Resume detection section (reconnect + resume gate) before writing the sentinel."). All three lines ensure a cold-started orchestrator reads the requirement before doing any work, surviving any context compression that drops the ORCHESTRATOR.md content from the first read.
 
