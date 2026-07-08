@@ -224,7 +224,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       **Token tally (execute-time).** Execute-phase token tallies are recorded automatically: a `PreToolUse` hook on the orchestrator's per-phase git commit/push records this session's execute tally to the durable ledger, keyed to the feature (the SPEC id resolved from the active plan folder, or the plan slug when spec-less). Resumed, halted, and worktree sessions are all captured. The orchestrator does not run a manual execute tally, doing so would double-count the phase.
 
-      After the pre-merge `code-audit-frontend`'s clean-pass marker is written and before the Final self-cleanup phase archives the plan folder, the orchestrator reports the full-cycle cost by running the roll-up reader and surfacing its spec / plan / execute / total breakdown plus elapsed time to the user. Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC, the spec-less case):
+      After the pre-merge `code-audit-frontend`'s clean-pass marker is written and before the Final self-cleanup phase archives the plan folder, the orchestrator reports the full-cycle cost by running the roll-up reader and reporting exactly one cost line built from its output, not the reader's multi-line block. Substitute the plan's real SPEC id (from the `## Source SPEC` section of `README.md`, or the plan slug if the plan has no SPEC, the spec-less case):
 
       ```bash
       if [ -x .gaia/scripts/token-rollup.sh ]; then
@@ -232,6 +232,8 @@ Then write the following files directly to `{PLAN_DIR}/`:
           --spec-id "<SPEC-NNN from README's Source SPEC, or the plan slug if none>" || true
       fi
       ```
+
+      Report the cost as exactly one line: `Cost: ~<total> tokens, $<dollars>, <elapsed> (<stage> $X.XX + <stage> $X.XX)`, where `<total>` is the reader's grand `Total` token count abbreviated to millions with one decimal and a `~` prefix (e.g. `~10.6M`), `<dollars>` is its `Est. cost (USD)` total as `$X.XX`, `<elapsed>` is the grand `Total` elapsed in `<N>h<M>m<S>s`, and the trailing breakdown lists each stage the reader priced (`spec`, `plan`, `execute`) with its own `$X.XX`. Never fabricate: if a dollar figure is unavailable write `cost unavailable` in its place; if elapsed is unavailable drop that term; carry through any `(partial: lower bound)` marker the reader emits. This line reads identically to the `/gaia-spec` and `/gaia-plan` cost lines; keep the three in sync.
 
       A `PostToolUse` hook on `gh pr merge` renders the same roll-up at the merge boundary, so the readout also appears when the merge runs from a fresh top-level session. The reader never blocks and never fabricates a number: the `-x` guard and trailing `|| true` mean a missing or failing helper degrades silently, and an unreadable ledger degrades to a partial or absent figure with a marker.
 
@@ -532,14 +534,29 @@ fi
 The helper always exits 0, and the trailing `|| true` is defense-in-depth: this **never blocks the
 handoff**, and unreadable input degrades to a partial figure with a marker rather than a fabricated
 number. It is a mechanical helper call, not a prompt, so it runs identically in interactive and auto
-(`AskUserQuestion`-less) mode. Surface the printed tally in the step-5 report to the user. This same
+(`AskUserQuestion`-less) mode. The step-5 report surfaces the cost from this tally, using the pinned one-line format defined there. This same
 call reads and deletes the step-4.6 audit-window breadcrumb (the feature-namespaced
 `audit-window-<spec_id>-plan.json` or `audit-window-<plan-id>.json`) if present, nesting an
 `audit.adversarial` annotation into this `plan` record when the window resolves.
 
 ### 5. Report to user
 
-Output a short summary of what's in `$PLAN_DIR/` (including the token tally printed in step 4.8), then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
+Output a short summary of what's in `$PLAN_DIR/`, then report the cost as exactly one line (do not restate the four-bucket tally block), then emit the copy-paste prompt the user drops into a fresh Claude Code session to start the orchestrator cold.
+
+Cost line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`, where `<total>` is the token count abbreviated to millions with one decimal and a `~` prefix (e.g. `~2.4M`), `<dollars>` is `$X.XX`, and `<elapsed>` is the `<N>h<M>m<S>s` figure. Source the figures by whether the plan derives from a SPEC:
+
+- **Spec-derived** (`SPEC_PATH` set): the step-4.8 tally has already written the `plan` ledger row, so read the running spec+plan cycle from the roll-up reader, substituting the plan's `SPEC-NNN` id (the one derived in step 4.8):
+
+  ```bash
+  if [ -x .gaia/scripts/token-rollup.sh ]; then
+    bash .gaia/scripts/token-rollup.sh --spec-id "<SPEC-NNN>" || true
+  fi
+  ```
+
+  Take `<total>`, `<dollars>`, and `<elapsed>` from the reader's grand `Total` and `Est. cost (USD)` total lines, and append a stage breakdown `(spec $X.XX + plan $X.XX)` from its per-stage dollar rows.
+- **Spec-less** (`--plan-id` path): take total and elapsed from the step-4.8 printed tally and read `<dollars>` from the `dollars` field of the `plan` record in `$PLAN_DIR/cost.json`; emit the line with no breakdown.
+
+Never fabricate: if a dollar figure is null or unpriced write `cost unavailable` in its place; if elapsed is unavailable drop that term; if any figure is a partial lower bound append ` (partial: lower bound)`. This line reads identically to the `/gaia-spec` cost line (spec reference, step 9) and the orchestrator's full-cycle line; keep the three in sync.
 
 The prompt is a single line, exactly:
 
