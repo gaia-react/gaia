@@ -200,7 +200,7 @@ When detected, emit this copy-paste continuation prompt to the user and stop:
         git worktree remove --force <ABSOLUTE-PATH-TO-WORKTREE>
         git branch -D <branch-name>   # only if the merge did not already delete it
 
-Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWorktree` only operates on a worktree created by `EnterWorktree` in the current session: from a fresh session it is a no-op on a prior-session worktree, and its schema requires `action` and rejects a `worktree` parameter. A plain `git worktree remove --force` is the correct session-independent cleanup. This deliberately diverges from `plan.md`'s Isolation-context detection block, whose `ExitWorktree({worktree: ...})` continuation form has the same defect; that upstream issue is tracked separately as its own tech-debt item and is not re-mirrored here.
+Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWorktree` only operates on a worktree created by `EnterWorktree` in the current session: from a fresh session it is a no-op on a prior-session worktree, and its schema requires `action` and rejects a `worktree` parameter. A plain `git worktree remove --force` is the correct session-independent cleanup. This matches `plan.md`'s Isolation-context detection block, whose continuation prompt emits the same session-independent shell cleanup.
 
 ## list subcommand
 
