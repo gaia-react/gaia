@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-05
+updated: 2026-07-09
 tags: [concept, claude, review]
 ---
 
@@ -38,21 +38,15 @@ For each out-of-scope finding the audit classifies security first (below), probe
 
 ### Filing a tech-debt issue
 
-A non-security out-of-scope finding on a present backend files as a `tech-debt` GitHub issue carrying:
+A non-security out-of-scope finding on a present backend files as a `tech-debt` GitHub issue carrying a **frozen versioned dedup key**, a single HTML-comment line present verbatim in the body:
 
-- A **frozen versioned dedup key**, a single HTML-comment line present verbatim in the body:
+```
+<!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->
+```
 
-  ```
-  <!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->
-  ```
+The body is self-contained: the dedup-key line, the `file:line`, a concrete failure mode, a suggested fix, and a handler-class line (`prompt` or `plan`, advisory only). The issue carries exactly one `severity:*` label (mapped from the finding's report tier) plus `tech-debt`; a deliberately-closed finding carries the GitHub `wontfix` label instead so it is not re-filed.
 
-  `v1` is the schema version. `<finding_class>` is a seeded `finding_class` or the fallback class `holistic/unclassified` when the finding maps to no seeded class. `<path>` is a repo-relative POSIX path; `<line>` is an integer.
-
-- A **self-contained body**, built in a gitignored body-file (e.g. `.gaia/local/audit/issue-body.md`) and passed via `gh issue create --body-file <path>` (or stdin), never a `--body` argv string. The CI workflow runs `--verbose`, so an argv body would echo finding detail into the public Actions log. The body carries the dedup-key line, the `file:line` (resolving to a real line in the named file), a concrete failure mode (input + state + bad outcome), a suggested fix, and a handler-class line.
-
-- **Exactly one severity label** plus `tech-debt`. Report tier maps to label: Critical → `severity:critical`, Important → `severity:important`, Suggestion → `severity:suggestion`. A deliberately-closed finding carries the GitHub `wontfix` label so it is not re-filed. Labels are created idempotently before the first filing (`gh label create <name> --color <hex> 2>/dev/null || true`); a pre-existing label is not an error.
-
-The **handler class** is exactly `prompt` or `plan` (never `gaia-spec`). `prompt` means the fix is a single logical unit confined to one file, with no public-contract change and no cross-module ripple; `plan` is anything else. It is advisory: `/gaia-debt` may override it after reading the code.
+The `file-tech-debt` skill (`.claude/skills/file-tech-debt/SKILL.md`) is the source of truth for the filing mechanics: key construction, the `--body-file` invocation, idempotent labels, the body schema, and the sentinel touch.
 
 ### Idempotent dedup
 
@@ -130,7 +124,7 @@ A statusline segment, `Run /gaia-debt (N issues)` (`issue` singular at N==1), su
 
 `.gaia/scripts/debt-count-refresh.sh` runs detached in the background each tick. It recomputes `openCount` via `gh issue list --label tech-debt --state open` and rewrites the cache when a staleness sentinel (`.gaia/local/debt/refresh-requested`, an empty marker file) is present or the cache is older than its own TTL, independent of the aggregate update-check TTL. On any `gh` failure it preserves the previous count rather than blanking it; a backend-absent run with no prior cache seeds `openCount` 0 so no segment renders.
 
-A single `gh` PostToolUse hook (`.claude/hooks/debt-sentinel-touch.sh`) sets the sentinel deterministically after any of the four commands that move the open count: `gh issue create`, `gh pr merge`, `gh issue close`, and `gh issue reopen`. The hook matches on the command shape alone and does not resolve whether the issue carried the `tech-debt` label: touching the sentinel only schedules a recompute, so a broad match is harmless. Two in-flow touches complement it as best-effort belt-and-suspenders, not replacements: the audit touches the sentinel after it files an issue (E.8, which runs inside the audit subagent), and the `/gaia-debt` skill touches it after opening a fix PR. A mutation performed directly in the **main** session, most notably a `gh issue create` or `gh issue close` a human or the assistant runs by hand, is caught only by the hook, so the hook is what keeps those prompt rather than TTL-delayed. Every sentinel or cache writer runs `mkdir -p .gaia/local/debt` first, because the directory is not assumed to pre-exist on a fresh clone or in CI.
+A single `gh` PostToolUse hook (`.claude/hooks/debt-sentinel-touch.sh`) sets the sentinel deterministically after any of the four commands that move the open count: `gh issue create`, `gh pr merge`, `gh issue close`, and `gh issue reopen`. The hook matches on the command shape alone and does not resolve whether the issue carried the `tech-debt` label: touching the sentinel only schedules a recompute, so a broad match is harmless. Two in-flow touches complement it as best-effort belt-and-suspenders, not replacements: the audit touches the sentinel after it files an issue (the file-tech-debt skill's sentinel-touch step, which runs inside the audit subagent), and the `/gaia-debt` skill touches it after opening a fix PR. A mutation performed directly in the **main** session, most notably a `gh issue create` or `gh issue close` a human or the assistant runs by hand, is caught only by the hook, so the hook is what keeps those prompt rather than TTL-delayed. Every sentinel or cache writer runs `mkdir -p .gaia/local/debt` first, because the directory is not assumed to pre-exist on a fresh clone or in CI.
 
 A mutation that never reaches a first-party hook, a close from the GitHub web UI, a teammate, or a plain `gh issue close` in a non-hooked shell, is reconciled on the next session start. The `startup|resume` SessionStart hook (`.claude/hooks/debt-session-reconcile.sh`) arms the sentinel when, and only when, the pinned cache already shows an open count greater than zero, so an empty backlog stays fully network-free (no sentinel, no `gh` call). It therefore reconciles the count **downward** only: a `tech-debt` issue opened externally while the local count is zero still surfaces on the next TTL, not the session start. A count that is stale-high, the case where the nudge lingers after the backlog has actually emptied, clears on the first session start after the close.
 

@@ -219,70 +219,15 @@ Probe the issue backend once at the start of the disposition flow:
 - A **divert failure** (missing advisory credential or API error) reverts the finding to a redacted operator/maintainer surface, never a public issue, and the marker still writes. Record `diverted`.
 - A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, the Actions log, or `.gaia/local/audit/progress.log`. A diverted security finding contributes only to counts on those surfaces.
 
-Even when a classless finding diverts on PUBLIC/INTERNAL, build its dedup key with `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (section E.1) so the redacted operator surface and any future dedup are well-formed.
+Even when a classless finding diverts on PUBLIC/INTERNAL, build its dedup key with `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (the dedup key format defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) so the redacted operator surface and any future dedup are well-formed.
 
 ### E. Non-security disposition pipeline
 
 For each finding routed here, non-security on any repo, **or** a security-class finding on a confirmed PRIVATE repo (section D), on a **present** backend:
 
-**E.1. Build the dedup key.** A single HTML-comment line, present verbatim in the issue body:
-
-```
-<!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->
-```
-
-Use the seeded `finding_class`, or `holistic/unclassified` (the out-of-scope fallback) when the finding maps to no seeded class. `v1` is the schema version (bump only on a breaking key change). `<path>` is a repo-relative POSIX path; `<line>` is an integer.
-
-**E.2. Dedup (never `gh` full-text search):**
-
-1. `gh issue list --label tech-debt --state open --json number,title,body` → exact substring match of the key line in `body`.
-2. Also `--state closed`: an exact key match on a closed issue carrying `wontfix` (or closed as not-planned) is a **declined** finding → do **not** re-file.
-3. Keyless human-filed fallback: scan open `tech-debt` issue bodies for the bare `<path>:<line>` substring, anchored so the matched `<line>` is followed by a non-digit (or end-of-string), otherwise `foo.ts:4` false-matches a sibling `foo.ts:42`; a hit suppresses the re-file even with no machine key present.
-
-`gh issue list` body matching is exact-local only because GitHub full-text search tokenizes on `/ : @` and cannot reliably match the key.
-
-**E.3.** If a matching open or declined-closed issue exists → **do not re-file** (idempotent).
-
-**E.4. Otherwise file.** Create the labels idempotently **first** (E.6), build the body in a gitignored body-file (E.5), **re-check the dedup immediately before create** (shrinks the TOCTOU window for a concurrent CI-plus-local run; prefer search-or-update under the key over blind create), then:
-
-```bash
-gh issue create --label tech-debt --label severity:<tier> --body-file <path>
-```
-
-**Never** pass `--body <argv>`, the CI workflow runs `--verbose` and would echo argv into the public Actions log. Use `--body-file` (or stdin) so the body never reaches argv.
-
-**E.5. Issue body** (self-contained, built in a gitignored body-file, e.g. `.gaia/local/audit/issue-body.md`):
-
-- the E.1 dedup-key comment line,
-- `file:line` (the cited location must resolve to a real line in the named file),
-- a non-empty concrete failure mode (input + state + bad outcome),
-- a suggested fix,
-- a handler-class line, exactly `Handler: prompt` or `Handler: plan` (never `gaia-spec`):
-  - `prompt`, the fix is a single logical unit confined to one file, no public-contract change, no cross-module ripple.
-  - `plan`, anything else.
-  - Advisory; `/gaia-debt` may override after reading the code.
-
-**E.6. Labels** (created idempotently **before** the first filing, a pre-existing label is not an error):
-
-- Every out-of-scope non-security issue carries `tech-debt` **plus exactly one** severity label.
-- Report-tier → severity-label: `Critical → severity:critical`, `Important → severity:important`, `Suggestion → severity:suggestion`.
-- A deliberately-closed finding carries the GitHub `wontfix` label so it is not re-filed.
-
-```bash
-for label in tech-debt severity:critical severity:important severity:suggestion wontfix; do
-  gh label create "$label" --color <hex> 2>/dev/null || true
-done
-```
+Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`) — the source of truth for building the wrapped `gaia-debt-key`, running the dedup query (open + declined-closed + keyless `path:line` fallback, never `gh` full-text search), filing with `gh issue create --body-file` (never `--body <argv>`, which the CI `--verbose` run would echo into the public Actions log), creating the `tech-debt` + `severity:<tier>` labels idempotently, the issue-body schema (dedup-key line + `file:line` + failure mode + suggested fix + `Handler: prompt|plan`), and touching the debt-count sentinel.
 
 **E.7. Record `filed` with `issue_number`** in the disposition-ledger sidecar (section F).
-
-**E.8. Touch the debt-count staleness sentinel** so the statusline recomputes on the next tick:
-
-```bash
-mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
-```
-
-**Create the parent dir first.** On a fresh clone or in CI no statusline tick has run, so `.gaia/local/debt/` may not exist and a bare `touch` would fail silently and leave the sentinel unset, every sentinel toucher is responsible for its own `mkdir -p`. Best-effort; never blocking.
 
 ### F. Disposition-ledger sidecar
 
@@ -306,7 +251,7 @@ The disposition **entries** (the per-finding content) are decided at the marker-
 }
 ```
 
-**Key relationship.** The sidecar `key` field holds the **inner content only** of the E.1 dedup key, `v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer>`, **without** the `<!-- gaia-debt-key: … -->` HTML-comment wrapper. The filed issue body carries the full **wrapped** form. Every reader (this agent's verify-after-file re-query and the marker-backstop hook) confirms a match by **reconstructing the wrapped form `<!-- gaia-debt-key: ${key} -->`** and testing whether the issue body **contains that** as a substring, never line-equality against a whole body line. Match the **wrapped** form, not the bare inner key: the inner key ends in `line=<integer>` with no trailing boundary, so a `line=4` key is a substring of a sibling `line=42 -->` body (same finding_class, same path); only the wrapped form's trailing ` -->` makes the match collision-safe.
+**Key relationship.** The sidecar `key` field holds the **inner content only** of the dedup key (key format defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`), `v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer>`, **without** the `<!-- gaia-debt-key: … -->` HTML-comment wrapper. The filed issue body carries the full **wrapped** form. Every reader (this agent's verify-after-file re-query and the marker-backstop hook) confirms a match by **reconstructing the wrapped form `<!-- gaia-debt-key: ${key} -->`** and testing whether the issue body **contains that** as a substring, never line-equality against a whole body line. Match the **wrapped** form, not the bare inner key: the inner key ends in `line=<integer>` with no trailing boundary, so a `line=4` key is a substring of a sibling `line=42 -->` body (same finding_class, same path); only the wrapped form's trailing ` -->` makes the match collision-safe.
 
 Disposition semantics:
 
@@ -318,7 +263,7 @@ Disposition semantics:
 
 ### G. Disposition gate (the fourth marker precondition)
 
-Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the E.2 dedup procedure) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key, so a `line=4` key does not false-match a sibling `line=42 -->` issue). Then apply the marker-write rule:
+Before writing the marker, the disposition gate confirms every identified out-of-scope finding has a disposition. **Verify after filing:** re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, and confirm each `filed` entry still resolves to an open issue whose body carries the **wrapped** key `<!-- gaia-debt-key: ${key} -->` (match the wrapped form, not the bare inner key, so a `line=4` key does not false-match a sibling `line=42 -->` issue). Then apply the marker-write rule:
 
 - **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
 - **Do NOT write the marker** when any entry is `pending(definitive)`, a present, writable backend with a genuinely-missing disposition. This is the **one intended block**; the operator must resolve the filing failure and re-invoke before the marker clears.
@@ -814,7 +759,7 @@ After producing the report (which includes the adversarial verification of Criti
   1. No **in-scope** Critical Issue exists.
   2. The **in-scope** Important Issues are empty, OR every in-scope item is already fixed in the working tree (verify by re-reading the relevant file; do not trust prior chat claims).
   3. The **in-scope** Suggestions are empty, OR every in-scope suggestion is auto-fixed in the working tree (verify by re-reading the relevant file). **Escalated suggestions do not satisfy this condition**, an escalation is not a resolution.
-  4. **Every identified out-of-scope finding has a disposition** (the disposition gate, see Scope classification and out-of-scope disposition). Verify after filing: re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure) immediately before writing the marker, then apply the sidecar marker-write rule, write on `filed` / `diverted` / `waived` / `pending(transient)`; withhold **only** on `pending(definitive)`.
+  4. **Every identified out-of-scope finding has a disposition** (the disposition gate, see Scope classification and out-of-scope disposition). Verify after filing: re-query open `tech-debt` issues for each out-of-scope key (the dedup procedure defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) immediately before writing the marker, then apply the sidecar marker-write rule, write on `filed` / `diverted` / `waived` / `pending(transient)`; withhold **only** on `pending(definitive)`.
 - **Do NOT write the marker** when any in-scope Critical Issue exists, any in-scope Important Issue remains unaddressed, any in-scope Suggestion is either unaddressed or escalated, or any out-of-scope finding's disposition is `pending(definitive)`. Escalated in-scope suggestions block unconditionally, the operator must fix or explicitly accept the escalation, commit, and re-invoke this agent on the new HEAD before the marker is written. A `pending(definitive)` out-of-scope disposition (a present, writable backend with a genuinely-missing filing) blocks the same way; backend-absent (`waived`), transient (`pending(transient)`), and diverted findings fail open and never withhold the marker.
 
 Decide the disposition entries (section F) at this marker-decision point regardless of the outcome, but write the sidecar **file** (`.gaia/local/audit/<HEAD-sha>.dispositions.json`) keyed to the **same HEAD as the marker**, folded into the marker-write sequence below (post-stamp `$HEAD_SHA`, step 2a) when the marker is warranted, or keyed to the current (unmoved) HEAD when it is not, so the marker-backstop hook (which resolves `git rev-parse HEAD` at merge time) finds it and can verify the marker's claimed dispositions.
