@@ -1,0 +1,1 @@
+{"type":"assistant","uuid":"u-aud-a","timestamp":"2026-08-01T10:05:10.000Z","message":{"id":"aud-a","role":"assistant","usage":{"input_tokens":10,"cache_creation_input_tokens":20,"cache_read_input_tokens":30,"output_tokens":40}}}

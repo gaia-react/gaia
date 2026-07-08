@@ -54,6 +54,43 @@
 #     cache_creation_input_tokens (500), proving the 1h fallback:
 #     by_model["claude-sonnet-4-6"] = {cache_write_5m:0, cache_write_1h:500, ...},
 #     reconciling to aggregate cache_write:500.
+#
+# auditreview/ (session fixtureauditreview0001): the FC-2/FC-4 oracle for the
+# adversarial-audit nesting and the phase-side double-count guard. Session
+# contains a main transcript, two adversarial general-purpose sidecars (an
+# audit's dispatched lenses), and a code-review-audit sidecar with one nested
+# general-purpose sub-agent contained in its own span. HAND-COMPUTED:
+#   main       fresh=1  cwrite=2   cread=3   out=4    ts 09:00:00
+#   aud-a      fresh=10 cwrite=20  cread=30  out=40   ts 10:05:10 (general-purpose)
+#   aud-b      fresh=11 cwrite=21  cread=31  out=41   ts 10:06:00 (general-purpose)
+#   rev-a      fresh=100 cwrite=200 cread=300 out=400 ts 11:00:00 (code-review-audit, file tmin)
+#   rev-b      fresh=13  cwrite=17  cread=19  out=23  ts 11:02:00 (code-review-audit, file tmax)
+#   nest-a     fresh=2   cwrite=3   cread=5   out=7   ts 11:01:00 (general-purpose, nested inside rev's span)
+#   session-wide totals (all 6 lines): fresh=137 cwrite=263 cread=388 out=515 total=1303
+#   review window = [rev file tmin, tmax] = [11:00:00, 11:02:00] -> contains
+#     rev-a, rev-b (the review's own file) and nest-a; excludes aud-a/aud-b/main.
+#     review record: fresh=115 cwrite=220 cread=324 out=430 total=1089,
+#     duration_seconds 120 (11:02:00-11:00:00), review_id "agent-rev0001".
+#   phase buckets after excluding the review window (drops rev-a/rev-b/nest-a,
+#     keeps main+aud-a+aud-b): fresh=22 cwrite=43 cread=64 out=85 total=214
+#     (= session-wide total 1303 minus the review window's 1089 minus... no:
+#     214 = 1+10+11 / 2+20+21 / 3+30+31 / 4+40+41, i.e. main+aud-a+aud-b only;
+#     the double-count guard proves an --action execute row lands exactly here,
+#     never 1303).
+#   adversarial-audit breadcrumb window = [10:05:00, 10:07:00] -> contains
+#     aud-a + aud-b only (both single-point tmin==tmax, trivially inside):
+#     audit.adversarial.buckets fresh=21 cwrite=41 cread=61 out=81,
+#     elapsed_seconds 50 (10:06:00-10:05:10). Each value <= the phase bucket
+#     above (UAT-003). No `.message.model` anywhere in this fixture, so
+#     by_model is always empty and every dollars figure is null by
+#     construction (no rate-table fixture needed for this suite).
+#   fixtures/token-tally/auditreview/cache/audit-window-SPEC-032.json: the spec
+#     breadcrumb (session fixtureauditreview0001, intensity "standard").
+#   fixtures/token-tally/auditreview/cache/audit-window-SPEC-032-plan.json: the
+#     spec-derived plan breadcrumb, same window, lenses ["DP","CG","COV"], no
+#     `intensity` key (UAT-005). Tests copy these into an isolated per-test
+#     cache dir before running (the breadcrumb is consumed/deleted on read), so
+#     the checked-in fixtures are never mutated.
 
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
@@ -786,4 +823,196 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$status" -eq 0 ]
   [ "$(led '.partial')" = "true" ]
   [ "$(led '.session_cwd')" = "$workdir" ]
+}
+
+# =====================================================================
+# 24. FC-2 adversarial-audit nesting + FC-4 double-count guard (SPEC-032)
+# =====================================================================
+# All tests below use the auditreview/ fixture (see the header comment). Every
+# test copies the checked-in breadcrumb fixture(s) into an isolated per-test
+# cache dir first: the phase tally consumes (deletes) a matched breadcrumb, so
+# running directly against the checked-in fixture would mutate it in place.
+
+setup_auditreview() {
+  AR="$FIX/auditreview/projects"
+  AR_SESSION="fixtureauditreview0001"
+  AR_CACHE_SRC="$FIX/auditreview/cache"
+  AR_CACHE="$BATS_TEST_TMPDIR/ar-cache"
+  mkdir -p "$AR_CACHE"
+}
+
+@test "24.1: spec action nests audit.adversarial identically on ledger row and cost.json sidecar (UAT-001/002)" {
+  setup_auditreview
+  cp "$AR_CACHE_SRC/audit-window-SPEC-032.json" "$AR_CACHE/"
+
+  run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
+    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
+    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+  [ "$status" -eq 0 ]
+
+  # phase totals: hand-computed 22/43/64/85/214 (main + aud-a + aud-b only;
+  # the review window is excluded even though this fixture has no review
+  # action running, proving the exclusion is unconditional on the phase path).
+  [ "$(led '.buckets.fresh_input')" -eq 22 ]
+  [ "$(led '.buckets.cache_write')" -eq 43 ]
+  [ "$(led '.buckets.cache_read')" -eq 64 ]
+  [ "$(led '.buckets.output')" -eq 85 ]
+  [ "$(led '.total')" -eq 214 ]
+
+  # audit.adversarial: hand-computed 21/41/61/81, elapsed 50, full lens set,
+  # intensity present (spec).
+  [ "$(led '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
+  [ "$(led '.audit.adversarial.buckets.cache_write')" -eq 41 ]
+  [ "$(led '.audit.adversarial.buckets.cache_read')" -eq 61 ]
+  [ "$(led '.audit.adversarial.buckets.output')" -eq 81 ]
+  [ "$(led '.audit.adversarial.elapsed_seconds')" -eq 50 ]
+  [ "$(led '.audit.adversarial.dollars')" = "null" ]
+  [ "$(led '.audit.adversarial.intensity')" = "standard" ]
+  [ "$(led '.audit.adversarial.lenses | sort | join(",")')" = "COV,FG,RT,TST" ]
+
+  # identical on the cost.json sidecar's .spec value (UAT-001). Both sides use
+  # `jq -c` (never the shared `led()` helper's `-r`, which pretty-prints an
+  # object instead of leaving it compact) so the comparison is byte-exact.
+  sidecar="$OUTDIR/cost.json"
+  ledger_audit="$(jq -c '.audit' "$LEDGER")"
+  sidecar_audit="$(jq -c '.spec.audit' "$sidecar")"
+  [ "$ledger_audit" = "$sidecar_audit" ]
+
+  # the breadcrumb is consumed (deleted) once the phase tally has read it.
+  [ ! -f "$AR_CACHE/audit-window-SPEC-032.json" ]
+}
+
+@test "24.2: UAT-003 subset invariant -- every audit bucket <= the phase bucket, phase total unaffected" {
+  setup_auditreview
+  cp "$AR_CACHE_SRC/audit-window-SPEC-032.json" "$AR_CACHE/"
+
+  run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
+    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
+    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+  [ "$status" -eq 0 ]
+
+  [ "$(led '.audit.adversarial.buckets.fresh_input <= .buckets.fresh_input')" = "true" ]
+  [ "$(led '.audit.adversarial.buckets.cache_write <= .buckets.cache_write')" = "true" ]
+  [ "$(led '.audit.adversarial.buckets.cache_read <= .buckets.cache_read')" = "true" ]
+  [ "$(led '.audit.adversarial.buckets.output <= .buckets.output')" = "true" ]
+
+  # the phase total is the same 214 whether or not the audit key is present
+  # (it is never summed into total/buckets/dollars).
+  [ "$(led '.total')" -eq 214 ]
+}
+
+@test "24.3: plan action (spec-derived) nests audit.adversarial with no intensity key (UAT-005)" {
+  setup_auditreview
+  cp "$AR_CACHE_SRC/audit-window-SPEC-032-plan.json" "$AR_CACHE/"
+
+  run bash "$SCRIPT" --action plan --spec-id SPEC-032 --plan-slug spec-032-audit-cost \
+    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
+    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+  [ "$status" -eq 0 ]
+
+  [ "$(led '.buckets.fresh_input')" -eq 22 ]
+  [ "$(led '.total')" -eq 214 ]
+
+  [ "$(led '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
+  [ "$(led '.audit.adversarial.buckets.output')" -eq 81 ]
+  [ "$(led '.audit.adversarial.elapsed_seconds')" -eq 50 ]
+  [ "$(led '.audit.adversarial.lenses | sort | join(",")')" = "CG,COV,DP" ]
+
+  # plan audits carry no intensity key at all (UAT-005), not a null value.
+  run jq -e '.audit.adversarial | has("intensity")' "$LEDGER"
+  [ "$status" -eq 1 ]
+  [ "$output" = "false" ]
+
+  [ ! -f "$AR_CACHE/audit-window-SPEC-032-plan.json" ]
+}
+
+@test "24.4: degrade -- absent breadcrumb omits .audit, phase record still written (UAT-009)" {
+  setup_auditreview
+  # AR_CACHE is intentionally left empty: no breadcrumb for SPEC-032 exists.
+
+  run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
+    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
+    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+  [ "$status" -eq 0 ]
+
+  run jq -e 'has("audit")' "$LEDGER"
+  [ "$status" -eq 1 ]
+  [ "$output" = "false" ]
+  [ "$(led '.total')" -eq 214 ]
+}
+
+@test "24.5: degrade -- breadcrumb session_id mismatch omits .audit and still consumes the breadcrumb (UAT-009)" {
+  setup_auditreview
+  jq '.session_id = "some-other-session"' "$AR_CACHE_SRC/audit-window-SPEC-032.json" \
+    > "$AR_CACHE/audit-window-SPEC-032.json"
+
+  run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
+    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
+    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+  [ "$status" -eq 0 ]
+
+  run jq -e 'has("audit")' "$LEDGER"
+  [ "$status" -eq 1 ]
+  [ "$output" = "false" ]
+  [ "$(led '.total')" -eq 214 ]
+  [ ! -f "$AR_CACHE/audit-window-SPEC-032.json" ]
+}
+
+@test "24.6: degrade -- a window catching zero sidecar activity omits .audit (never a zero-filled object)" {
+  setup_auditreview
+  jq '.started_at = "2099-01-01T00:00:00Z" | .ended_at = "2099-01-02T00:00:00Z"' \
+    "$AR_CACHE_SRC/audit-window-SPEC-032.json" > "$AR_CACHE/audit-window-SPEC-032.json"
+
+  run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
+    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
+    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+  [ "$status" -eq 0 ]
+
+  run jq -e 'has("audit")' "$LEDGER"
+  [ "$status" -eq 1 ]
+  [ "$output" = "false" ]
+}
+
+@test "24.7: double-count guard -- execute excludes the review window from phase buckets (AUDIT directive #3)" {
+  setup_auditreview
+
+  run bash "$SCRIPT" --action execute --spec-id SPEC-032 --plan-slug spec-032-audit-cost \
+    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
+    --projects-root "$AR" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+
+  # hand-computed: main+aud-a+aud-b only (214), NEVER the session-wide 1303
+  # (which would double-count the review sidecar's own spend).
+  [ "$(led '.buckets.fresh_input')" -eq 22 ]
+  [ "$(led '.buckets.cache_write')" -eq 43 ]
+  [ "$(led '.buckets.cache_read')" -eq 64 ]
+  [ "$(led '.buckets.output')" -eq 85 ]
+  [ "$(led '.total')" -eq 214 ]
+  [ "$(led '.total')" -ne 1303 ]
+
+  # the FC-2 nesting gate is spec/plan only, never execute (the SPEC's own
+  # words): no audit key at all, even though a breadcrumb-shaped fixture
+  # exists for this same feature id.
+  run jq -e 'has("audit")' "$LEDGER"
+  [ "$status" -eq 1 ]
+  [ "$output" = "false" ]
+}
+
+@test "24.8: back-compat -- a nested .spec.audit sidecar still passes cost_folder_represented" {
+  setup_auditreview
+  cp "$AR_CACHE_SRC/audit-window-SPEC-032.json" "$AR_CACHE/"
+
+  run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
+    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
+    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+  [ "$status" -eq 0 ]
+  run jq -e '.spec | has("audit")' "$OUTDIR/cost.json"
+  [ "$status" -eq 0 ]
+
+  GATE="$SCRIPT_DIR/cost-represented.sh"
+  # shellcheck source=/dev/null
+  . "$GATE"
+  run cost_folder_represented "$OUTDIR" spec_id SPEC-032 "$LEDGER"
+  [ "$status" -eq 0 ]
+  grep -qF "$(printf 'spec\tREPRESENTED')" <<<"$output"
 }

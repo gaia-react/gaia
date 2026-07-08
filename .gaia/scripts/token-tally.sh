@@ -68,6 +68,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/ledger-path-lib.sh" 2>/dev/null || true
 # shellcheck source=.specify/extensions/gaia/lib/with-ledger-lock.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" 2>/dev/null || true
+# shellcheck source=.gaia/scripts/audit-window-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/audit-window-lib.sh" 2>/dev/null || true
 
 log() {
   printf '%s\n' "$*" >&2
@@ -100,6 +102,41 @@ rate_table_id() {
   h="$(hash16 <"$path")" || return 1
   [[ -z "$h" ]] && return 1
   printf 'sha256:%s' "$h"
+}
+
+# Collision-resistant repo identity from the origin remote: normalize the URL
+# (lowercase; strip a leading scheme://; strip a leading user@; ":" -> "/"; drop
+# a trailing .git and slash) then sha256:<first16hex>. Two checkouts of one repo
+# (https and ssh forms) normalize to the same value; two repos sharing only a
+# leaf-dir name do not. No origin -> path:<first16hex(main_root)>. Echoes nothing
+# (caller nulls it) when nothing resolves.
+#
+# Defined here (rather than near its call site further down) so both the
+# --action review branch and the phase-action path below can call it before
+# either is textually reached.
+compute_project_id() {
+  local url norm h common_dir abs main_root
+  url="$(git remote get-url origin 2>/dev/null || true)"
+  if [[ -n "$url" ]]; then
+    norm="$(printf '%s' "$url" | tr '[:upper:]' '[:lower:]')"
+    norm="${norm#*://}"          # strip a leading scheme://
+    norm="${norm#*@}"            # strip a leading user@
+    norm="${norm//:/\/}"         # ":" -> "/"
+    norm="${norm%.git}"          # drop a trailing .git
+    norm="${norm%/}"             # drop a trailing slash
+    h="$(printf '%s' "$norm" | hash16)" || return 0
+    [[ -n "$h" ]] && printf 'sha256:%s' "$h"
+    return 0
+  fi
+  # Path fallback: hash the main-checkout absolute path (same derivation the lib
+  # uses for the ledger, here for the directory rather than the file).
+  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
+  [[ -z "$common_dir" ]] && return 0
+  case "$common_dir" in /*) abs="$common_dir" ;; *) abs="$PWD/$common_dir" ;; esac
+  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)"
+  [[ -z "$main_root" ]] && return 0
+  h="$(printf '%s' "$main_root" | hash16)" || return 0
+  [[ -n "$h" ]] && printf 'path:%s' "$h"
 }
 
 # Pinned human duration format: <N>h<M>m<S>s, dropping any LEADING zero-valued
@@ -145,11 +182,12 @@ SESSION_ID_ARG=""
 PROJECTS_ROOT_ARG=""
 LEDGER_OVERRIDE=""
 RATE_TABLE_OVERRIDE=""
+CACHE_DIR_ARG=""
 
 while [[ $# -gt 0 ]]; do
   key="$1"
   case "$key" in
-    --action|--spec-id|--plan-id|--plan-slug|--out-dir|--session-id|--projects-root|--ledger|--rate-table)
+    --action|--spec-id|--plan-id|--plan-slug|--out-dir|--session-id|--projects-root|--ledger|--rate-table|--cache-dir)
       val="${2:-}"
       case "$key" in
         --action)        ACTION="$val" ;;
@@ -161,6 +199,7 @@ while [[ $# -gt 0 ]]; do
         --projects-root) PROJECTS_ROOT_ARG="$val" ;;
         --ledger)        LEDGER_OVERRIDE="$val" ;;
         --rate-table)    RATE_TABLE_OVERRIDE="$val" ;;
+        --cache-dir)     CACHE_DIR_ARG="$val" ;;
       esac
       # `shift 2` fails (and does NOT shift) when a flag is the final arg with no
       # value, which would spin this loop forever; fall back to a single shift.
@@ -198,10 +237,16 @@ fi
 FEATURE="${SPEC_ID_OUT:-$PLAN_ID_OUT}"
 
 # Missing required flags are belt-and-suspenders (callers pass well-formed args);
-# degrade to partial rather than crash.
+# degrade to partial rather than crash. --action review is exempt from the
+# feature-identity and --out-dir checks (COV-001): a review record is
+# legitimately unattributed (both ids null is valid, not a defect) and writes
+# no cost.json sidecar, so neither absence may mark it partial (UAT-007, the
+# SPEC's never-mark-partial clause).
+if [[ "$ACTION" != "review" ]]; then
+  [[ -z "$FEATURE" ]] && { log "token-tally: no feature identity (--spec-id SPEC-* or --plan-id PLAN-*)"; partial=1; }
+  [[ -z "$OUT_DIR" ]] && { log "token-tally: missing --out-dir"; partial=1; }
+fi
 [[ -z "$ACTION" ]]  && { log "token-tally: missing --action"; partial=1; }
-[[ -z "$FEATURE" ]] && { log "token-tally: no feature identity (--spec-id SPEC-* or --plan-id PLAN-*)"; partial=1; }
-[[ -z "$OUT_DIR" ]] && { log "token-tally: missing --out-dir"; partial=1; }
 if [[ "$ACTION" == "plan" || "$ACTION" == "execute" ]] && [[ -z "$PLAN_SLUG" ]]; then
   log "token-tally: missing --plan-slug for action=$ACTION"
   partial=1
@@ -230,8 +275,14 @@ tmp="$(mktemp 2>/dev/null)" || tmp=""
 # transcripts available at authoring time (Claude Code / Supacode current
 # format), so this branch is present-when-detected: absent otherwise, and all
 # main-transcript usage routes to `main`. The DOCS task describes this marker.
+# emit_file <path> <bkt> <file_id>: <file_id> stamps the FILE's own identity
+# ("" for the main transcript, the sidecar basename sans .jsonl for a sidecar)
+# alongside <bkt> (the FILE's agent type: "main" or the sidecar's agentType),
+# so the audit-window-lib (SPEC-032 FC-5) can select records by sidecar
+# identity/window. The per-usage-entry `b` tag (compaction override included)
+# is untouched -- only two new FILE-level keys are added to the emitted line.
 emit_file() {
-  jq -cn --arg bkt "$2" '
+  jq -cn --arg bkt "$2" --arg fid "$3" '
     reduce inputs as $x (
       {usage:{}, tmin:null, tmax:null};
       if $x.message.usage != null
@@ -246,7 +297,8 @@ emit_file() {
                | .tmax = (if .tmax == null or $x.timestamp > .tmax then $x.timestamp else .tmax end)
             else . end)
       else . end)
-    | {usage: (.usage | to_entries | map({id: .key, u: .value.u, m: .value.m, b: .value.b})), tmin, tmax}
+    | {usage: (.usage | to_entries | map({id: .key, u: .value.u, m: .value.m, b: .value.b})),
+       tmin, tmax, file_agent: $bkt, file_id: $fid}
   ' "$1" >>"$tmp" 2>/dev/null || partial=1
 }
 
@@ -267,7 +319,7 @@ if [[ -n "$SESSION_ID" && -n "$tmp" ]]; then
   main_found=0
   for f in "$PROJECTS_ROOT"/*/"$SESSION_ID".jsonl; do
     if [[ -f "$f" ]]; then
-      emit_file "$f" "main"
+      emit_file "$f" "main" ""
       main_found=1
       break
     fi
@@ -277,8 +329,237 @@ if [[ -n "$SESSION_ID" && -n "$tmp" ]]; then
   # Sidecars: zero matches is fine (a session may fan out no sub-agents), NOT
   # partial. The agent-*.jsonl glob excludes the sibling agent-*.meta.json files.
   for f in "$PROJECTS_ROOT"/*/"$SESSION_ID"/subagents/agent-*.jsonl; do
-    [[ -f "$f" ]] && emit_file "$f" "$(sidecar_agent_type "$f")"
+    if [[ -f "$f" ]]; then
+      sidecar_file_id="$(basename "$f")"
+      sidecar_file_id="${sidecar_file_id%.jsonl}"
+      emit_file "$f" "$(sidecar_agent_type "$f")" "$sidecar_file_id"
+    fi
   done
+fi
+
+# ---------- --action review: standalone FC-3 records, no phase record ----------
+# A distinct path, branched early (before the phase aggregate/pricing/rec
+# machinery below): scans this session's sidecars for code-review-audit runs
+# and appends one standalone kind:"review" ledger row per run not already
+# recorded, then exits. It never builds a phase aggregate, never nests an
+# audit annotation, and never writes a cost.json sidecar (a review is not
+# phase-keyed). --spec-id/--plan-id/--out-dir are all optional here; the
+# feature-identity and --out-dir partial checks above are already skipped for
+# this action (COV-001).
+if [[ "$ACTION" == "review" ]]; then
+  windows="$(gaia_review_windows "$tmp")"
+  win_count="$(jq -r 'length' <<<"$windows" 2>/dev/null)"
+  is_uint "$win_count" || win_count=0
+
+  if [[ "$win_count" -eq 0 ]]; then
+    log "token-tally: no code-review-audit run in session"
+    [[ -n "$tmp" ]] && rm -f "$tmp" 2>/dev/null
+    exit 0
+  fi
+
+  ledger=""
+  if lp="$(gaia_resolve_ledger_path "$LEDGER_OVERRIDE")" && [[ -n "$lp" ]]; then
+    ledger="$lp"
+  else
+    log "token-tally: could not resolve ledger path; skipping review append"
+    [[ -n "$tmp" ]] && rm -f "$tmp" 2>/dev/null
+    exit 0
+  fi
+
+  # Cutover (mirrors the phase path below): the first cost.jsonl append moves a
+  # legacy tokens.jsonl sibling aside, exactly once, idempotent thereafter.
+  if [[ "$(basename "$ledger")" == "cost.jsonl" ]]; then
+    ledger_dir="$(dirname "$ledger")"
+    if [[ -f "$ledger_dir/tokens.jsonl" && ! -f "$ledger" ]]; then
+      mv "$ledger_dir/tokens.jsonl" "$ledger_dir/tokens.jsonl.bak" 2>/dev/null \
+        || log "token-tally: cutover move-aside failed: $ledger_dir/tokens.jsonl"
+    fi
+  fi
+
+  GIT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+  PROJECT_ID="$(compute_project_id 2>/dev/null || true)"
+  TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  partial_bool=false
+  [[ "$partial" -ne 0 ]] && partial_bool=true
+
+  # Resolve the rate table ONCE for every review record this run produces
+  # (never re-resolved per window).
+  review_cost_ok=false
+  review_rt=""
+  review_rates="null"
+  if review_rt="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" && [[ -n "$review_rt" ]]; then
+    if review_rates="$(gaia_load_rate_table "$review_rt")"; then
+      review_cost_ok=true
+    else
+      log "token-tally: rate table unreadable: $review_rt"
+    fi
+  else
+    log "token-tally: could not resolve rate table path"
+  fi
+
+  telemetry_dir="$(dirname "$ledger")"
+  mkdir -p "$telemetry_dir" 2>/dev/null   # the lock dir must exist before acquisition
+
+  _review_ledger_write() {
+    printf '%s\n' "$r_rec" >>"$ledger" 2>/dev/null || log "token-tally: ledger write failed: $ledger"
+    return 0
+  }
+
+  while IFS= read -r w; do
+    [[ -z "$w" ]] && continue
+    review_id="$(jq -r '.review_id // empty' <<<"$w")"
+    w_started="$(jq -r '.started_at // empty' <<<"$w")"
+    w_ended="$(jq -r '.ended_at // empty' <<<"$w")"
+    [[ -z "$review_id" ]] && continue
+
+    # Dedup: skip a review_id already on the ledger (idempotent across both the
+    # Stop-hook and the gh-pr-merge triggers, and across repeat runs).
+    dup_count="$(jq -R -n --arg rid "$review_id" '
+      [ inputs
+        | (try fromjson catch empty)
+        | select(type == "object")
+        | select(.kind == "review" and .review_id == $rid)
+      ] | length
+    ' "$ledger" 2>/dev/null || printf '0')"
+    is_uint "$dup_count" || dup_count=0
+    if [[ "$dup_count" -gt 0 ]]; then
+      log "token-tally: review $review_id already recorded; skipping"
+      continue
+    fi
+
+    # Unfiltered $tmp: this IS the review's own window (never tmp_phase, which
+    # excludes code-review-audit windows for the PHASE path only).
+    subset="$(gaia_window_subset "$tmp" "$w_started" "$w_ended")"
+
+    r_fresh="$(jq -r '.buckets.fresh_input' <<<"$subset" 2>/dev/null)"
+    r_cwrite="$(jq -r '.buckets.cache_write' <<<"$subset" 2>/dev/null)"
+    r_cread="$(jq -r '.buckets.cache_read' <<<"$subset" 2>/dev/null)"
+    r_output="$(jq -r '.buckets.output' <<<"$subset" 2>/dev/null)"
+    is_uint "$r_fresh"  || r_fresh=0
+    is_uint "$r_cwrite" || r_cwrite=0
+    is_uint "$r_cread"  || r_cread=0
+    is_uint "$r_output" || r_output=0
+    r_total=$(( r_fresh + r_cwrite + r_cread + r_output ))
+
+    r_count="$(jq -r '.count' <<<"$subset" 2>/dev/null)"
+    is_uint "$r_count" || r_count=0
+    r_dur="$(jq -r '.elapsed_seconds' <<<"$subset" 2>/dev/null)"
+    r_avail=false
+    if [[ "$r_count" -gt 0 ]] && is_uint "$r_dur"; then
+      r_avail=true
+    else
+      r_dur=""
+    fi
+
+    r_by_model="$(jq -c '.by_model' <<<"$subset" 2>/dev/null)"
+    jq -e 'type=="object"' >/dev/null 2>&1 <<<"$r_by_model" || r_by_model='{}'
+    r_dollars="null"
+    r_rtid=""
+    if [[ "$review_cost_ok" == "true" ]] && jq -e 'length > 0' >/dev/null 2>&1 <<<"$r_by_model"; then
+      r_priced="$(jq -cn --argjson rates "$review_rates" --arg ts "$TS" --argjson bm "$r_by_model" \
+        "$GAIA_PRICING_JQ_DEFS"'
+          priced_row({ts: $ts, by_model: $bm})
+        ' 2>/dev/null || true)"
+      if [[ -n "$r_priced" ]] && jq -e 'type=="object"' >/dev/null 2>&1 <<<"$r_priced"; then
+        r_d="$(jq -r '.dollars' <<<"$r_priced" 2>/dev/null)"
+        if printf '%s' "$r_d" | jq -e 'type=="number"' >/dev/null 2>&1; then
+          r_dollars="$r_d"
+        fi
+        r_rtid="$(rate_table_id "$review_rt" 2>/dev/null || true)"
+      fi
+    fi
+
+    r_rec="$(jq -nc \
+      --arg session_id "$SESSION_ID" \
+      --argjson fresh "$r_fresh" \
+      --argjson cwrite "$r_cwrite" \
+      --argjson cread "$r_cread" \
+      --argjson out "$r_output" \
+      --argjson total "$r_total" \
+      --argjson by_model "$r_by_model" \
+      --argjson dollars "$r_dollars" \
+      --arg rate_table_id "$r_rtid" \
+      --argjson partial "$partial_bool" \
+      --arg started "$w_started" \
+      --arg ended "$w_ended" \
+      --argjson dur "${r_dur:-null}" \
+      --argjson avail "$r_avail" \
+      --arg git_branch "$GIT_BRANCH" \
+      --arg project "$PROJECT_ID" \
+      --arg ts "$TS" \
+      --arg session_cwd "$SESSION_CWD" \
+      --arg spec_id "$SPEC_ID_OUT" \
+      --arg plan_id "$PLAN_ID_OUT" \
+      --arg review_id "$review_id" \
+      '
+        {
+          schema_version: 1,
+          kind: "review",
+          spec_id: (if $spec_id == "" then null else $spec_id end),
+          plan_id: (if $plan_id == "" then null else $plan_id end),
+          plan_slug: null,
+          session_id: $session_id,
+          buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $out},
+          total: $total
+        }
+        + (if ($by_model | type) == "object" and ($by_model | length) > 0 then {by_model: $by_model} else {} end)
+        + {
+            dollars: $dollars,
+            rate_table_id: (if $rate_table_id == "" then null else $rate_table_id end),
+            partial: $partial,
+            started_at: (if $avail then $started else null end),
+            ended_at: (if $avail then $ended else null end),
+            duration_seconds: (if $avail then $dur else null end),
+            duration_available: $avail,
+            git_branch: (if $git_branch == "" then null else $git_branch end),
+            project: (if $project == "" then null else $project end),
+            seq: 0,
+            final: true,
+            ts: $ts,
+            session_cwd: (if $session_cwd == "" then null else $session_cwd end),
+            source: "code-review-audit",
+            review_id: $review_id
+          }
+      ' 2>/dev/null || true)"
+
+    if [[ -n "$r_rec" ]]; then
+      if declare -f with_ledger_lock >/dev/null 2>&1; then
+        lock_rc=0
+        with_ledger_lock "$telemetry_dir" _review_ledger_write || lock_rc=$?
+        if [[ "$lock_rc" -eq 75 ]]; then
+          log "token-tally: review lock timed out; appending without lock"
+          printf '%s\n' "$r_rec" >>"$ledger" 2>/dev/null || log "token-tally: degraded review append failed: $ledger"
+        fi
+      else
+        _review_ledger_write
+      fi
+      log "token-tally: recorded review $review_id"
+    else
+      log "token-tally: failed to build review record for $review_id"
+    fi
+  done < <(jq -c '.[]' <<<"$windows" 2>/dev/null)
+
+  [[ -n "$tmp" ]] && rm -f "$tmp" 2>/dev/null
+  exit 0
+fi
+
+# ---------- exclude any code-review-audit window from a phase tally ----------
+# Double-count guard (AUDIT directive #3): a review run's spend must land ONLY
+# in its own standalone kind:"review" row, never also folded into a phase
+# total. $tmp stays intact (unused by phase actions past this point); the
+# aggregate + BY_MODEL + BY_AGENT_TYPE + duration below all read $tmp_phase.
+# In an authoring session with no code-review-audit sidecars this is a byte
+# no-op (tmp_phase == tmp; the lib's own degrade guarantees this).
+tmp_phase="$tmp"
+# Guard on function existence only: a missing/unsourced audit-window-lib.sh
+# (e.g. a partial /update-gaia mid-upgrade) must degrade to NO exclusion, not
+# an empty stream that would zero out $tmp_phase and fabricate a 0 total.
+if [[ -n "$tmp" && -s "$tmp" ]] && declare -F gaia_exclude_review_windows >/dev/null 2>&1; then
+  tmp_phase_candidate="$(mktemp 2>/dev/null)" || tmp_phase_candidate=""
+  if [[ -n "$tmp_phase_candidate" ]]; then
+    gaia_exclude_review_windows "$tmp" >"$tmp_phase_candidate" 2>/dev/null
+    tmp_phase="$tmp_phase_candidate"
+  fi
 fi
 
 # ---------- aggregate: global dedup + bucket sums + global min/max ----------
@@ -290,7 +571,7 @@ TMIN=""
 TMAX=""
 BY_MODEL='{}'
 BY_AGENT_TYPE='{}'
-if [[ -n "$tmp" && -s "$tmp" ]]; then
+if [[ -n "$tmp_phase" && -s "$tmp_phase" ]]; then
   IFS=$'\t' read -r FRESH CWRITE CREAD OUT TMIN TMAX < <(
     jq -rs '
       ((map(.usage) | add // []) | reduce .[] as $x ({}; .[$x.id] = {u: $x.u, m: $x.m}) | [.[]]) as $u
@@ -301,7 +582,7 @@ if [[ -n "$tmp" && -s "$tmp" ]]; then
           (map(.tmin) | map(select(. != null)) | min // ""),
           (map(.tmax) | map(select(. != null)) | max // "") ]
       | @tsv
-    ' "$tmp" 2>/dev/null || printf '0\t0\t0\t0\t\t\n'
+    ' "$tmp_phase" 2>/dev/null || printf '0\t0\t0\t0\t\t\n'
   )
 
   # ---------- per-model attribution (FC-1): same dedup-by-id, grouped by model ----------
@@ -327,7 +608,7 @@ if [[ -n "$tmp" && -s "$tmp" ]]; then
       })
     | map(select(([.value[]] | add) > 0))
     | from_entries
-  ' "$tmp" 2>/dev/null)"
+  ' "$tmp_phase" 2>/dev/null)"
   jq -e 'type == "object"' >/dev/null 2>&1 <<<"$BY_MODEL" || BY_MODEL='{}'
 
   # ---------- per-agent-type attribution: same dedup-by-id, grouped by bucket ----------
@@ -356,9 +637,13 @@ if [[ -n "$tmp" && -s "$tmp" ]]; then
       })
     | map(select(([.value[]] | add) > 0))
     | from_entries
-  ' "$tmp" 2>/dev/null)"
+  ' "$tmp_phase" 2>/dev/null)"
   jq -e 'type == "object"' >/dev/null 2>&1 <<<"$BY_AGENT_TYPE" || BY_AGENT_TYPE='{}'
 fi
+# $tmp itself is no longer needed for a phase action (the aggregate above, and
+# the FC-2 audit-nesting block further down, both read $tmp_phase). $tmp_phase
+# stays alive until after that block runs, so its cleanup is deferred to just
+# before the ledger-record build.
 [[ -n "$tmp" ]] && rm -f "$tmp" 2>/dev/null
 
 is_uint "$FRESH"  || FRESH=0
@@ -447,6 +732,117 @@ if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
   # else: rate table unresolvable/unreadable -> leave dollars/rate_table_id null.
 fi
 
+# ---------- FC-2: nest the adversarial-audit annotation (spec/plan only) ----------
+# A strict subset drill-down of the phase record just aggregated above: never
+# summed into total/buckets/dollars, and omitted entirely (never fabricated)
+# when the breadcrumb is absent/unparseable, its session_id does not match
+# this tally's session, or its window catches zero sidecar activity.
+AUDIT_JSON=""
+if [[ "$ACTION" == "spec" || "$ACTION" == "plan" ]]; then
+  # --cache-dir (test seam) defaults to <main_root>/.gaia/local/cache, deriving
+  # main_root the same git-common-dir way ledger-path-lib.sh derives the ledger
+  # main_root -- NOT via compute_project_id, which returns a hash, not a path
+  # (CG-002).
+  CACHE_DIR="$CACHE_DIR_ARG"
+  if [[ -z "$CACHE_DIR" ]]; then
+    audit_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
+    if [[ -n "$audit_common_dir" ]]; then
+      case "$audit_common_dir" in
+        /*) audit_abs="$audit_common_dir" ;;
+        *)  audit_abs="$PWD/$audit_common_dir" ;;
+      esac
+      audit_main_root="$(cd "$(dirname "$audit_abs")" 2>/dev/null && pwd)"
+      [[ -n "$audit_main_root" ]] && CACHE_DIR="$audit_main_root/.gaia/local/cache"
+    fi
+  fi
+
+  # The breadcrumb key MUST match what task-breadcrumb-emit writes (FC-1,
+  # DP-002 / CG-001): spec -> $SPEC_ID_OUT; spec-derived plan -> "<spec_id>-plan"
+  # (namespaced by the SPEC id, never $PLAN_SLUG, which is the literal
+  # "plan"/"plan-2" identical across every SPEC); SPEC-less plan -> $PLAN_ID_OUT.
+  if [[ "$ACTION" == "spec" ]]; then
+    audit_feature="$SPEC_ID_OUT"
+  elif [[ -n "$SPEC_ID_OUT" ]]; then
+    audit_feature="${SPEC_ID_OUT}-plan"
+  else
+    audit_feature="$PLAN_ID_OUT"
+  fi
+
+  if [[ -n "$CACHE_DIR" && -n "$audit_feature" ]]; then
+    breadcrumb="$CACHE_DIR/audit-window-${audit_feature}.json"
+    bc="$(gaia_audit_window_read "$breadcrumb")"
+
+    if [[ -n "$bc" ]]; then
+      bc_session="$(jq -r '.session_id // empty' <<<"$bc")"
+      if [[ -n "$SESSION_ID" && "$bc_session" == "$SESSION_ID" ]]; then
+        bc_started="$(jq -r '.started_at // empty' <<<"$bc")"
+        bc_ended="$(jq -r '.ended_at // empty' <<<"$bc")"
+        bc_lenses="$(jq -c '.lenses // []' <<<"$bc")"
+        jq -e 'type=="array"' >/dev/null 2>&1 <<<"$bc_lenses" || bc_lenses='[]'
+        bc_intensity="$(jq -r '.intensity // empty' <<<"$bc")"
+
+        # Computed from $tmp_phase (the SAME deduped survivor stream the phase
+        # total above aggregates), never a fresh re-read: because the subset is
+        # a window-filtered subset of the same sidecar files, each audit bucket
+        # is <= the phase bucket by construction (UAT-003).
+        audit_subset="$(gaia_window_subset "$tmp_phase" "$bc_started" "$bc_ended")"
+        audit_count="$(jq -r '.count' <<<"$audit_subset" 2>/dev/null)"
+        is_uint "$audit_count" || audit_count=0
+
+        if [[ "$audit_count" -gt 0 ]]; then
+          audit_by_model="$(jq -c '.by_model' <<<"$audit_subset" 2>/dev/null)"
+          jq -e 'type=="object"' >/dev/null 2>&1 <<<"$audit_by_model" || audit_by_model='{}'
+          audit_dollars="null"
+          # Reuse the SAME cost_rt/cost_rates resolved for the phase dollars
+          # above; never resolve the rate table a second time. cost_ok is
+          # unset (falsy) when BY_MODEL was empty, which safely degrades this
+          # to null (a subset of an empty-attribution phase is also empty).
+          if [[ "$cost_ok" == "true" ]] && jq -e 'length > 0' >/dev/null 2>&1 <<<"$audit_by_model"; then
+            audit_priced="$(jq -cn --argjson rates "$cost_rates" --arg ts "$TS" --argjson bm "$audit_by_model" \
+              "$GAIA_PRICING_JQ_DEFS"'
+                priced_row({ts: $ts, by_model: $bm})
+              ' 2>/dev/null || true)"
+            if [[ -n "$audit_priced" ]] && jq -e 'type=="object"' >/dev/null 2>&1 <<<"$audit_priced"; then
+              audit_d="$(jq -r '.dollars' <<<"$audit_priced" 2>/dev/null)"
+              if printf '%s' "$audit_d" | jq -e 'type=="number"' >/dev/null 2>&1; then
+                audit_dollars="$audit_d"
+              fi
+            fi
+          fi
+
+          AUDIT_JSON="$(jq -nc \
+            --argjson buckets "$(jq -c '.buckets' <<<"$audit_subset")" \
+            --argjson dollars "$audit_dollars" \
+            --argjson elapsed "$(jq -r '.elapsed_seconds' <<<"$audit_subset")" \
+            --argjson lenses "$bc_lenses" \
+            --arg intensity "$bc_intensity" \
+            '
+              {
+                adversarial: (
+                  {buckets: $buckets, dollars: $dollars, elapsed_seconds: $elapsed, lenses: $lenses}
+                  + (if $intensity != "" then {intensity: $intensity} else {} end)
+                )
+              }
+            ' 2>/dev/null || true)"
+        fi
+        # else: window caught zero sidecar activity -> omit (degrade, never a
+        # zero-filled/fabricated object).
+      fi
+      # else: breadcrumb session_id != this tally's session -> omit (resume/
+      # degrade, UAT-009); never attribute another session's audit.
+
+      # Consume the breadcrumb: the phase tally is its only reader, and it has
+      # now made its decision either way (nested, or omitted because the
+      # session no longer matches / the window caught nothing). A breadcrumb
+      # that was absent/unparseable in the first place has nothing to remove.
+      rm -f "$breadcrumb" 2>/dev/null || true
+    fi
+  fi
+fi
+
+# $tmp_phase's last reader was the FC-2 block just above; safe to remove now.
+[[ -n "$tmp_phase" && "$tmp_phase" != "$tmp" ]] && rm -f "$tmp_phase" 2>/dev/null
+
 # Display title: stdout uses `<feature>/<slug>`.
 if [[ "$ACTION" == "spec" ]]; then
   out_title="$ACTION $FEATURE"
@@ -460,37 +856,6 @@ fi
 # records to the surviving main ledger. --ledger overrides (test seam).
 resolve_ledger() {
   gaia_resolve_ledger_path "$LEDGER_OVERRIDE"
-}
-
-# Collision-resistant repo identity from the origin remote: normalize the URL
-# (lowercase; strip a leading scheme://; strip a leading user@; ":" -> "/"; drop
-# a trailing .git and slash) then sha256:<first16hex>. Two checkouts of one repo
-# (https and ssh forms) normalize to the same value; two repos sharing only a
-# leaf-dir name do not. No origin -> path:<first16hex(main_root)>. Echoes nothing
-# (caller nulls it) when nothing resolves.
-compute_project_id() {
-  local url norm h common_dir abs main_root
-  url="$(git remote get-url origin 2>/dev/null || true)"
-  if [[ -n "$url" ]]; then
-    norm="$(printf '%s' "$url" | tr '[:upper:]' '[:lower:]')"
-    norm="${norm#*://}"          # strip a leading scheme://
-    norm="${norm#*@}"            # strip a leading user@
-    norm="${norm//:/\/}"         # ":" -> "/"
-    norm="${norm%.git}"          # drop a trailing .git
-    norm="${norm%/}"             # drop a trailing slash
-    h="$(printf '%s' "$norm" | hash16)" || return 0
-    [[ -n "$h" ]] && printf 'sha256:%s' "$h"
-    return 0
-  fi
-  # Path fallback: hash the main-checkout absolute path (same derivation the lib
-  # uses for the ledger, here for the directory rather than the file).
-  common_dir="$(git rev-parse --git-common-dir 2>/dev/null)"
-  [[ -z "$common_dir" ]] && return 0
-  case "$common_dir" in /*) abs="$common_dir" ;; *) abs="$PWD/$common_dir" ;; esac
-  main_root="$(cd "$(dirname "$abs")" 2>/dev/null && pwd)"
-  [[ -z "$main_root" ]] && return 0
-  h="$(printf '%s' "$main_root" | hash16)" || return 0
-  [[ -n "$h" ]] && printf 'path:%s' "$h"
 }
 
 # Best-effort: clear `final` on every PRIOR same-(feature,session) execute row so
@@ -599,6 +964,7 @@ rec="$(jq -nc \
   --argjson seq "$SEQ" \
   --arg ts "$TS" \
   --arg session_cwd "$SESSION_CWD" \
+  --arg audit_json "$AUDIT_JSON" \
   '
     {
       schema_version: 1,
@@ -612,6 +978,7 @@ rec="$(jq -nc \
     }
     + (if ($by_model | type) == "object" and ($by_model | length) > 0 then {by_model: $by_model} else {} end)
     + (if ($by_agent_type | type) == "object" and ($by_agent_type | length) > 0 then {by_agent_type: $by_agent_type} else {} end)
+    + (if $audit_json != "" then {audit: ($audit_json | fromjson)} else {} end)
     + {
         dollars: $dollars,
         rate_table_id: (if $rate_table_id == "" then null else $rate_table_id end),

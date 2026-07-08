@@ -22,6 +22,7 @@ setup() {
   TALLY_SRC="$REPO_ROOT/.gaia/scripts/token-tally.sh"
   LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
   LIB_LEDGER_PATH_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
+  LIB_AUDIT_WINDOW_SRC="$REPO_ROOT/.gaia/scripts/audit-window-lib.sh"
   ANCHOR="$REPO_ROOT/.gaia/scripts/tests/fixtures/token-tally/projects"
   SESSION="fixturesession0001"
 
@@ -50,6 +51,7 @@ build_repo() {
   chmod +x "$REPO/.gaia/scripts/token-tally.sh"
   cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
   cp "$LIB_LEDGER_PATH_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$LIB_AUDIT_WINDOW_SRC" "$REPO/.gaia/scripts/audit-window-lib.sh"
 }
 
 write_running() {
