@@ -4,7 +4,7 @@ title: Cost Data Contract
 status: active
 created: 2026-07-05
 updated: 2026-07-08
-tags: [concept, telemetry, cost, data-contract]
+tags: [concept, telemetry, cost, data-contract, audit]
 ---
 
 # Cost Data Contract
@@ -18,7 +18,7 @@ The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main che
 | Field | Type | Notes |
 | --- | --- | --- |
 | `schema_version` | `int` (literal `1`) | Identifies the record shape. See the evolution rule below. |
-| `kind` | `"spec" \| "plan" \| "execute"` | Which action produced the row. |
+| `kind` | `"spec" \| "plan" \| "execute" \| "review"` | Which action produced the row. `"review"` is a standalone record, not a spec/plan/execute phase: one row per `code-review-audit` invocation, deduped by `review_id`. See "Review rows" below. |
 | `spec_id` | `"SPEC-NNN" \| null` | Set only when the feature carries a SPEC identity. |
 | `plan_id` | `"PLAN-NNN" \| null` | Set only for a spec-less plan/execute. `spec_id` and `plan_id` are never both set; a spec identity wins the tiebreak when both are somehow supplied. An unclassifiable or absent feature key degrades to a partial row with **both** null, never a mistyped id. |
 | `plan_slug` | `string \| null` | The plan folder's human-facing slug. |
@@ -40,11 +40,17 @@ The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main che
 | `final` | `bool` | `true` on every newly appended row. For `execute`, a best-effort rewrite flips every prior same-`(feature, session_id)` row's `final` to `false` after append, so at most one row per feature per session stays `true`. |
 | `ts` | `iso` | Generation stamp: when this record was written. |
 | `session_cwd` | `string \| null` | The session's live working directory at tally time (the tally's own `$PWD`, not `--out-dir` or the resolved ledger path), including from the worktree and degraded-attribution paths. `null` when empty. A reader forward-encodes it with Claude Code's transcript-directory transform (`/` and `.` each become `-`) to name the exact `~/.claude/projects` folder the session's transcript lives under. Absent on rows written before this field existed and on `source: "backfill"` rows; a reader without `session_cwd` falls back to a directory-scan heuristic to locate the transcript. |
-| `source` | `"backfill" \| absent` | Additive provenance marker. Present and equal to `"backfill"` only on rows emitted by the one-off vintage `cost.md` → `cost.jsonl` backfill (see "Retention at merge" below); absent (not present, not null) on every natively emitted row. |
+| `source` | `"backfill" \| "code-review-audit" \| absent` | Additive provenance marker. `"backfill"` marks the one-off vintage `cost.md` → `cost.jsonl` backfill (see "Retention at merge" below); `"code-review-audit"` marks every `kind: "review"` row. Absent (not present, not null) on every other natively emitted row. |
+| `review_id` | `string`, present only on `kind: "review"` rows | The dedup key for the triggering `code-review-audit` run. A later trigger for a `review_id` already on the ledger writes nothing. |
+| `audit` | `object`, present only on `kind: "spec"` \| `"plan"` rows, omitted when absent | `{ adversarial: { buckets, dollars, elapsed_seconds, lenses, intensity? } }`: a same-session adversarial-audit-window drill-down. A strict subset of the phase's own `buckets` / `total` / `dollars`, never summed into them. Omitted, never fabricated, when no matching-session audit-window breadcrumb exists or its window catches zero sidecar activity. |
 
 ## Execute aggregation rule
 
 An `execute` action appends one cumulative row per commit, `seq` incrementing per `(feature, session_id)`. A reader takes the row with `final: true` for a given `session_id` (falling back to the row with the max `seq` when none is marked final, the ledger-write rewrite is best-effort and can fail open) as the session's true cumulative cost. That row is counted once: no per-commit overcount, and no cross-row total comparison is needed, the terminal row already carries the full cumulative figure.
+
+## Review rows
+
+A `code-review-audit` run (the pre-merge gate, or an ad-hoc invocation) writes a standalone `kind: "review"` row rather than nesting into a spec/plan/execute phase; `plan_slug` is always `null` on these rows. Two triggers can fire for the same run, a `gh pr merge` PostToolUse hook and a Stop hook, `token-tally.sh --action review` owns the window detection and `review_id` dedup so only the first trigger writes a row. A spec/plan/execute phase's own aggregated total excludes any overlapping `code-review-audit` window from its buckets, so a reader summing a phase row plus its `review` rows never double-counts.
 
 ## schema_version evolution rule
 

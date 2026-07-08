@@ -11,6 +11,29 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-08 45f001ac SKIP - CI workflow bug fix, upsert single PR status comment instead of appending; internal workflow-template detail, no prior wiki coverage to correct
+- 2026-07-08 ae4f8c9c SKIP - companion refactor of spec-033 lens briefs (repo-state seeds to defect classes); same self-contained instruction files, no wiki page to update
+- 2026-07-08 4e159043 SKIP - maintainer-only /health-audit comprehensive-audit phase (SPEC-033); self-contained in runbook.md + 4 lens briefs, no existing Health Audit wiki page to extend
+- 2026-07-08 f3477e89 SKIP - CHANGELOG entry consolidation/dedup only, no code or architecture change
+- 2026-07-08 022dc019 SKIP - test-only isolation fix across tally bats suites, no production code changed
+- 2026-07-08 e9957d7a WORTHY - audit-phase cost tracking, review action + audit.adversarial nesting (SPEC-032); wiki/concepts/Cost Data Contract.md kind/source/review_id/audit fields + Review rows section, wiki/concepts/Claude Hooks.md token-tally-review.sh entry added this sync
+- 2026-07-08 490df787 SKIP - chore(deps): version bump only
+- 2026-07-08 be46eeb2 SKIP - doc-only prose fix in .claude/skills/gaia/references/spec.md, not a wiki file
+- 2026-07-08 119af6dc WORTHY - unify spec/plan knowledge lifecycles (SPEC-031); six wiki lifecycle pages + index rewritten in-commit
+- 2026-07-08 bf8e40be WORTHY - two-tier sandbox-enablement preference (SPEC-030); new wiki/concepts/OS Sandbox.md + index line added in-commit
+- 2026-07-08 313df9b4 WORTHY - share gitignored .env/.env.* into linked worktrees; wiki/concepts/Local Working State.md updated in-commit
+- 2026-07-08 8e27df09 WORTHY - cost.json sidecar + retention reversal (SPEC-029); four cost/plan wiki concept pages + index updated in-commit
+- 2026-07-08 4a09129f SKIP - bats !-negation convention captured in .claude/rules/bats-assertions.md; no wiki shell/bats testing page exists at this altitude
+- 2026-07-08 cb16d364 WORTHY - activated hook array-guard lint as CI gate; documented bash 3.2 empty-array class + guard pattern in wiki/concepts/Claude Hooks.md
+- 2026-07-08 962c02d2 SKIP - narrow bash 3.2 empty-array guard fix in one hook script, no architectural surface
+- 2026-07-08 3ef712f5 WORTHY - read-side .env secret guard (SPEC-028); wiki/concepts/Claude Hooks.md + wiki/modules/Claude Integration.md updated in-commit
+- 2026-07-08 6a1f2e07 WORTHY - git-arbitrated phase-resume for plan orchestrator (SPEC-027); wiki/concepts/Task Orchestration.md updated in-commit
+- 2026-07-08 27fcc432 SKIP - lens full-name narration tweak in skill/CLI reference files only, no wiki-facing behavior change
+- 2026-07-08 34598ec6 WORTHY - /gaia-debt nudge staleness fix; wiki/concepts/Audit Disposition and Debt Drain.md updated in-commit
+- 2026-07-08 de933024 WORTHY - .gaia/cli lint config; wiki/decisions/Quality Gate.md + wiki/dependencies/gaia-lint.md updated in-commit
+- 2026-07-08 fb989b5c WORTHY - gaia-audit publish+tech-debt flow; wiki/concepts/GAIA Audit.md updated in-commit
+- 2026-07-08 a0affa3a SKIP - chore(deps): version bump only
+- 2026-07-08 bab6e5b3 SKIP - prior wiki-sync/consolidate/lint maintenance commit, self-contained
 - 2026-07-06 e4b8e423 WORTHY - promotes three durable lessons from machine memory → wiki/concepts/GAIA Plan.md, wiki/concepts/Git Workflow.md, wiki/modules/Claude Integration.md
 - 2026-07-06 7deac46c SKIP - internal Stage-2 apply-ordering fix (delete-entry gated on paired action); wiki delegates apply-ordering detail to the skill reference file
 - 2026-07-06 c468256f WORTHY - normalizes the adoption-ping platform label (already updated wiki/concepts/Telemetry.md in-commit)
