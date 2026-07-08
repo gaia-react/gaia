@@ -80,9 +80,15 @@
 #
 # Required-check verification + fail-closed:
 #   When the resolved mode (after precedence + normalization) is `local`,
-#   confirm `GAIA-Audit` is a registered `required_status_checks` context on
-#   the default branch before honoring `local`. If it cannot be confirmed
-#   (API error, branch unprotected, context absent, `gh` absent or
+#   confirm `GAIA-Audit` is a registered required status check on the
+#   default branch before honoring `local`. Confirmation honors EITHER
+#   protection model: classic branch protection (`required_status_checks`
+#   context) or a repository ruleset (`required_status_checks[].context`
+#   under `rules/branches/<branch>`) -- see `required_check_confirmed`. The
+#   ruleset read is maintainer-only (marker-wrapped, stripped at release);
+#   adopters confirm via classic protection only, per `setup-gaia.md`'s
+#   registration recipe. If it cannot be confirmed under either model (API
+#   error, branch unprotected, context absent, `gh` absent or
 #   unauthenticated, no repo slug) → fail closed: force resolved_mode=ci and
 #   warn on stderr. A `ci` resolution never pays this API cost.
 #
@@ -483,10 +489,17 @@ resolve_author_mode() {
 }
 
 # required_check_confirmed
-#   Returns 0 (success) only when `GAIA-Audit` is a registered
-#   `required_status_checks` context on the default branch; returns 1
-#   otherwise (API error, branch unprotected, context absent, `gh` absent
-#   or unauthenticated, no repo slug). Callers fail closed on non-zero.
+#   Returns 0 (success) only when `GAIA-Audit` is a registered required
+#   status check on the default branch, under EITHER protection model:
+#   classic branch protection or a repository ruleset. Returns 1 otherwise
+#   (API error, branch unprotected, context absent, `gh` absent or
+#   unauthenticated, no repo slug). Callers fail closed on non-zero.
+#
+#   Classic protection is tried first -- this is the ONLY check an adopter
+#   repo (classic protection, per setup-gaia.md) ever needs. The ruleset
+#   read only runs when classic protection did not confirm; it is
+#   maintainer-only and marker-wrapped so the release scrub strips it,
+#   leaving the shipped adopter resolver with the classic check alone.
 #
 #   Default branch: resolved from `origin/HEAD`, falling back to `main`.
 #   Repo slug: `$GITHUB_REPOSITORY` if set, else `gh repo view`.
@@ -508,7 +521,35 @@ required_check_confirmed() {
   local contexts
   contexts=$(gh api "repos/${repo}/branches/${default_branch}/protection/required_status_checks" \
     --jq '.contexts[]?' 2>/dev/null || true)
-  printf '%s\n' "$contexts" | grep -qx 'GAIA-Audit'
+  if printf '%s\n' "$contexts" | grep -qx 'GAIA-Audit'; then
+    return 0
+  fi
+
+  # gaia:maintainer-only:start
+  #
+  # Classic protection did not confirm -- either it 404d (a ruleset-
+  # protected repo, e.g. this one) or the context is simply absent there.
+  # Fall back to reading the repo's active branch rulesets:
+  # `GET repos/{owner}/{repo}/rules/branches/{branch}` returns the
+  # effective rules for the branch, including any ruleset-sourced
+  # `required_status_checks` rule as
+  # `.[] | select(.type == "required_status_checks") |
+  #   .parameters.required_status_checks[].context`.
+  #
+  # This read only CONFIRMS the check is registered; it never registers it.
+  # Registering `GAIA-Audit` on the live ruleset is a one-time,
+  # maintainer-run production step (ask-first cutover command; see the
+  # SPEC-034 task-enforcement-resolver notes / PROGRESS.md).
+  local ruleset_contexts
+  ruleset_contexts=$(gh api "repos/${repo}/rules/branches/${default_branch}" \
+    --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context' \
+    2>/dev/null || true)
+  if printf '%s\n' "$ruleset_contexts" | grep -qx 'GAIA-Audit'; then
+    return 0
+  fi
+  # gaia:maintainer-only:end
+
+  return 1
 }
 
 # --- Extract + normalize ------------------------------------------------------

@@ -690,6 +690,121 @@ audit_authors: \"stevensacks=local\""
 }
 
 # ===========================================================================
+# required_check_confirmed: classic branch protection + ruleset fallback
+# (UAT-007/008). Classic protection is unchanged; the ruleset branch is new
+# and is only consulted when classic protection does not confirm.
+# ===========================================================================
+
+# stub_gh_ruleset_confirms: classic protection is unconfirmable (simulates a
+# 404 on a ruleset-protected repo -- empty stdout, non-zero exit), but the
+# ruleset endpoint (`rules/branches/<branch>`) reports GAIA-Audit as a
+# required_status_checks context. Proves the fallback path (UAT-007).
+stub_gh_ruleset_confirms() {
+  mkdir -p "$SANDBOX/bin"
+  cat > "$SANDBOX/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+[ -n "${GH_LOG:-}" ] && echo "gh $*" >> "$GH_LOG"
+case "$1" in
+  repo) echo "owner/repo" ;;
+  api)
+    case "$2" in
+      */rules/branches/*) printf 'GAIA-Audit\n' ;;
+      *) exit 1 ;;
+    esac
+    ;;
+esac
+STUB
+  chmod +x "$SANDBOX/bin/gh"
+}
+
+# stub_gh_neither_confirms: classic protection unconfirmable AND the ruleset
+# endpoint reports a required_status_checks context set that does not
+# include GAIA-Audit (mirrors a real ruleset with sibling contexts but no
+# GAIA-Audit registration yet).
+stub_gh_neither_confirms() {
+  mkdir -p "$SANDBOX/bin"
+  cat > "$SANDBOX/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+[ -n "${GH_LOG:-}" ] && echo "gh $*" >> "$GH_LOG"
+case "$1" in
+  repo) echo "owner/repo" ;;
+  api)
+    case "$2" in
+      */rules/branches/*) printf 'code-review-audit\n' ;;
+      *) exit 1 ;;
+    esac
+    ;;
+esac
+STUB
+  chmod +x "$SANDBOX/bin/gh"
+}
+
+# --- 43. Classic protection confirms GAIA-Audit ------------------------------
+
+@test "resolve-author: classic branch protection confirming GAIA-Audit honors local" {
+  stub_gh_confirms
+  write_config "default_mode: local"
+  run resolve_in_sandbox STUB_PATH --resolve-author anyone
+  [ "$status" -eq 0 ]
+  grep -qF -- "fail-closed" <<<"$output" && return 1
+  grep -qF -- "resolved_mode=local" <<<"$output"
+}
+
+# --- 44. Classic unconfirmable, ruleset confirms GAIA-Audit (UAT-007) -------
+
+@test "resolve-author: classic protection unconfirmable, ruleset confirms GAIA-Audit honors local" {
+  stub_gh_ruleset_confirms
+  write_config "default_mode: local"
+  run resolve_in_sandbox STUB_PATH --resolve-author anyone
+  [ "$status" -eq 0 ]
+  grep -qF -- "fail-closed" <<<"$output" && return 1
+  grep -qF -- "resolved_mode=local" <<<"$output"
+}
+
+# --- 45. Neither model confirms GAIA-Audit -> fail-closed to ci -------------
+
+@test "resolve-author: neither classic nor ruleset confirms GAIA-Audit forces ci (fail-closed)" {
+  stub_gh_neither_confirms
+  write_config "default_mode: local"
+  run resolve_in_sandbox STUB_PATH --resolve-author anyone
+  [ "$status" -eq 0 ]
+  grep -qF -- "resolved_mode=ci" <<<"$output" || return 1
+  grep -qF -- "GAIA-Audit required check not confirmed" <<<"$output" || return 1
+  grep -qF -- "forcing ci (fail-closed)" <<<"$output"
+}
+
+# --- 46. Team-wide mode invariance: resolved_mode ignores dispatch (UAT-003,
+#          AUDIT COV-005) -----------------------------------------------------
+
+@test "resolve-author: resolved_mode is independent of which files changed / auditors dispatched (team-wide mode)" {
+  # Two repo states with entirely different changed surfaces (a frontend file
+  # vs a maintainer-shell file) resolve the SAME author to the SAME mode. This
+  # file's mode resolver reads only audit_authors/default_mode + the login --
+  # it has no diff/dispatch awareness at all. resolve-audit-members.sh (the
+  # dispatch resolver) is a fully separate script/contract; mode is
+  # team-wide, never per-member.
+  stub_gh_confirms
+  write_config "default_mode: ci
+audit_authors: \"alice=local\""
+
+  mkdir -p "$SANDBOX/app"
+  : > "$SANDBOX/app/Widget.tsx"
+  run resolve_in_sandbox STUB_PATH --resolve-author alice
+  [ "$status" -eq 0 ]
+  mode_a="$(printf '%s\n' "$output" | grep '^resolved_mode=')"
+
+  rm -f "$SANDBOX/app/Widget.tsx"
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  : > "$SANDBOX/.gaia/scripts/some-other-script.sh"
+  run resolve_in_sandbox STUB_PATH --resolve-author alice
+  [ "$status" -eq 0 ]
+  mode_b="$(printf '%s\n' "$output" | grep '^resolved_mode=')"
+
+  [ "$mode_a" = "$mode_b" ]
+  [ "$mode_a" = "resolved_mode=local" ]
+}
+
+# ===========================================================================
 # Write-side round-trip: prove the reader parses exactly what the setup
 # prompts write (default_mode/override_label via /setup-gaia; audit_authors
 # via /setup-gaia through the append-audit-author.sh helper).
