@@ -71,7 +71,7 @@ being updated, and nothing catches the divergence. The finding's
 `location` field MUST cite **both** files (see the exact format below).
 
 **2. Orchestrator not pinned to the session model.**
-`.gaia/cli/health/runbook.md:77` (the "## Model selection" table) reads:
+`.gaia/cli/health/runbook.md:79` (the "## Model selection" table) reads:
 
 ```
 | Orchestrator | main thread (session model) |
@@ -159,7 +159,7 @@ both files, e.g.:
 `.claude/commands/health-audit.md:16-56 and .gaia/cli/health/runbook.md:20-53`.
 
 For the mandatory model-pin finding (defect 2), `location` is
-`.gaia/cli/health/runbook.md:77` (add
+`.gaia/cli/health/runbook.md:79` (add
 `.gaia/cli/health/comprehensive/runbook.md:28` as a second cited location
 since the same gap recurs there).
 
