@@ -6,7 +6,7 @@ The ordering is a pure, source-checkable sort over the issues' severity labels a
 
 ## Execution model, READ FIRST
 
-Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the drain unit is chosen the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There is **one** interactive decision, the up-front candidate/batch pick, and only when the backlog holds two or more issues. After that the flow does not pause for confirmation. Pause only when input is genuinely needed (that candidate/batch pick) or something unexpected blocks the path (a security-class diversion, a rejected push, a gate that will not go green). Resolve **one drain unit** per invocation, a single issue or a user-confirmed related batch; the skill never auto-advances to an unrelated issue.
+Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the drain unit is chosen and isolated the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There are **up to two** up-front interactive decisions, in order: (1) the candidate/batch pick, only when the backlog holds two or more issues, and (2) the isolation-mode pick (`## Pre-flight isolation (branch vs worktree)` below), only when HEAD is on `main`/`master`, a silent forced worktree with no prompt on any other branch. After both, the flow does not pause for confirmation. Pause only when input is genuinely needed (those two picks) or something unexpected blocks the path (a security-class diversion, a rejected push, a gate that will not go green). Resolve **one drain unit** per invocation, a single issue or a user-confirmed related batch; the skill never auto-advances to an unrelated issue.
 
 The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same `code-audit-frontend` marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
 
@@ -104,12 +104,42 @@ This member-level screen is the **backstop** to the offer-time exclusion in "Rec
 
 A security-class issue's detail never reaches a public PR, the PR comment, or the Actions log.
 
+## Pre-flight isolation (branch vs worktree)
+
+This section runs once per drain, single issue or batch, after the security screen above and before the drain unit's branch or worktree exists. Ordering rationale: the security screen can divert and stop a security-class drain before any branch exists, so isolation runs after it and a diverted drain never creates a worktree.
+
+**Check the current branch.**
+
+**If HEAD is on `main`/`master`:** ask via `AskUserQuestion` (the one new interactive gate here; it fires every time HEAD is main/master, never silently defaults):
+
+- question: `"On main. How should this debt drain be isolated?"`
+- header: `"Branch mode"`
+- options (in this exact order):
+  1. `{ label: "Create a feature branch in place (Recommended)", description: "Default. Branch is cut from HEAD and the drain works in the current checkout. Simple, predictable, safe." }`
+  2. `{ label: "Create a git worktree", description: "Gives this drain its own separate working copy, cut from main under .claude/worktrees/. You can keep working on your current branch, or run another task, at the same time without the two colliding." }`
+
+If the user picks **Other** with custom text, surface a clarifying question rather than guessing; feature-branch and worktree are the two supported modes.
+
+**Branch naming.** Single-issue drain: `debt/<issue-number>-<slug>` (`<slug>` a 2-4 word kebab-case reduction of the issue title). Batch drain: `debt/<lowest-member-issue-number>-batch`. Whichever isolation mode runs, including the forced worktree below, the branch carries this name.
+
+**If HEAD is on any other branch:** do not offer feature-branch-in-place. Because you are already on a branch, this drain's work goes into its own git worktree cut from main so it does not tangle with the current branch. State that to the user in one line, then proceed straight into Worktree creation below. No `AskUserQuestion` fires here.
+
+### Worktree creation (worktree-mode drains only)
+
+When pre-flight selects worktree mode, chosen from main or forced on the not-on-main path, create the worktree with the runtime tool, passing the branch name above as the worktree name:
+
+    EnterWorktree({name: "<branch-name>"})
+
+The `WorktreeCreate` hook (`.gaia/scripts/create-worktree.sh`) cuts the branch fresh from the remote default branch and switches the session into `.claude/worktrees/<branch-name>/`, so run no manual `git checkout -b`. Every later step, implementing the fix(es), the Quality Gate, commit, push, `gh pr create`, the `code-audit-frontend` marker gate, and the merge, runs from inside the worktree.
+
+Feature-branch mode keeps today's behavior: cut the branch of the same name from the default branch and work in the current checkout.
+
 ## Resolve the selected unit
 
 The **drain unit** is the selected (non-diverted) member set: a single issue, or every surviving member of a confirmed batch after the security screen above peels any security-class member. It is still **one drain unit per invocation**.
 
 1. **Confirm the handler class for the unit.** Each member issue carries an advisory `Handler: prompt` or `Handler: plan`, or, for a fieldless human-filed issue, no line at all; classify it on selection the same way as today: `prompt` when confined to one file with no public-contract change and no cross-module ripple, `plan` otherwise. The unit's effective class is the **maximum** over members: `plan` if any member is `plan` (or any fix is cross-module / contract-changing), else `prompt`. A multi-issue batch is usually `plan`. State the honest class before implementing so the human knows the scope, exactly as today's single-issue rule does.
-2. **Cut a fresh branch** from the default branch. Name it `debt/<issue-number>-<slug>` for a single-issue drain (`<slug>` a 2-4 word kebab-case reduction of the issue title), or `debt/<lowest-member-issue-number>-batch` for a batch drain. Note: Phase 2 layers a branch-vs-worktree isolation choice ahead of this step; this step then assumes the drain is already on its isolation branch.
+2. **The unit is already isolated.** `## Pre-flight isolation (branch vs worktree)` above already cut the branch or created the worktree before this step, on the frozen name (`debt/<issue-number>-<slug>` single, `debt/<lowest-member-issue-number>-batch` batch). This step does no branch creation of its own.
 3. **Implement all fixes in the unit** on the one branch, following the project's normal conventions (TDD, surgical changes).
 4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) once for the combined diff, then commit and push.
 5. **Open one PR** with `gh pr create`. The PR body includes **one `Closes #N` line per member issue** (GitHub's auto-close keyword) so the single merge closes every issue in the unit natively. Security-class detail still never reaches a public PR: a security-class issue is either withheld from the offered batch or peeled and diverted by the screen above, so no security-class member ever reaches a public `Closes #N` PR.
@@ -137,9 +167,40 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
   <!-- gaia:maintainer-only:start -->
 - **Clear the CHANGELOG gate.** The workflow's maintainer-only CHANGELOG gate applies to debt PRs too: decide whether the fix needs an `## [Unreleased]` entry and, if so, land it on the branch before merging (re-confirm the marker still covers HEAD after the extra commit). Scrubbed from adopter bundles, so adopters never run this step.
   <!-- gaia:maintainer-only:end -->
-- **Merge, then verify before cleanup.** Run `gh pr merge <N> --squash --delete-branch`; if branch protection rejects with "base branch policy prohibits the merge", add `--auto` (never `--admin` without explicit permission) so GitHub queues the merge behind the remaining required checks (Tests, Chromatic). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes). On `MERGED`, run post-merge cleanup: `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. If it is still queued when the poll window closes, report "merge queued via --auto; completes when checks pass" and return **without** cleanup, deleting the local branch before `MERGED` strands it against an open PR.
+- **Merge, then verify before cleanup.** Run `gh pr merge <N> --squash --delete-branch`; if branch protection rejects with "base branch policy prohibits the merge", add `--auto` (never `--admin` without explicit permission) so GitHub queues the merge behind the remaining required checks (Tests, Chromatic). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes). If it is still queued when the poll window closes, report "merge queued via --auto; completes when checks pass" and return **without** cleanup: deleting the local branch, or discarding the worktree, before `MERGED` strands it against an open PR.
+
+  On `MERGED`, run post-merge cleanup by isolation mode:
+  - **Feature-branch mode:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`.
+  - **Worktree mode:** run Post-merge worktree cleanup below instead. Do not `git branch -D` a worktree-held branch.
 
 Each `Closes #N` line in the PR body auto-closes its issue on merge, so on a batch, the single merge closes every member issue and no separate close call is needed for any of them.
+
+### Post-merge worktree cleanup (worktree-mode drains only)
+
+1. Confirm merge via `gh pr view <N> --json state`; require `.state == "MERGED"`. If not merged, do not proceed; surface and stop.
+2. **Isolation-context check** (below). If running inside an isolated subagent context, emit the continuation prompt and stop; do not call `ExitWorktree`.
+3. Otherwise call `ExitWorktree({action: "remove", discard_changes: true})` directly. `discard_changes: true` is safe: the squash-merge absorbed every commit on the worktree branch, but those commits are not ancestors of `main`, so the runtime would otherwise refuse; the merged-state confirmation in step 1 proves the work is preserved.
+4. Report one line: `worktree discarded; PR #<N> squash-merged as <short-sha>`.
+
+Never call `ExitWorktree` first and treat its refusal as the discard trigger; the merged-state confirmation is the primary signal.
+
+### Isolation-context detection (worktree-mode drains only)
+
+The runtime refuses `ExitWorktree` from an agent dispatched with `isolation: "worktree"` or a `cwd` override (refusal text: `ExitWorktree cannot be called from a subagent with a cwd override`). `/gaia-debt` normally runs on the user's own main thread, so the direct in-session `ExitWorktree` path above is the common case; still detect the automation case:
+
+- **Primary signal:** the skill was invoked via `Agent(...)` with `isolation: "worktree"` (dispatch was a sub-agent task and cwd is a worktree path under `.claude/worktrees/`).
+- **Fallback:** if uncertain, attempt `ExitWorktree({action: "remove", discard_changes: true})`; if the response contains `cannot be called from a subagent`, treat it as never-issued (a refusal, not a destructive action), branch into the continuation-prompt path, and stop.
+
+When detected, emit this copy-paste continuation prompt to the user and stop:
+
+    The worktree at <ABSOLUTE-PATH-TO-WORKTREE> is ready to discard.
+    PR #<N> squash-merged as <short-sha>. From a shell at
+    <ABSOLUTE-PATH-TO-MAIN-CHECKOUT>, run:
+
+        git worktree remove --force <ABSOLUTE-PATH-TO-WORKTREE>
+        git branch -D <branch-name>   # only if the merge did not already delete it
+
+Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWorktree` only operates on a worktree created by `EnterWorktree` in the current session: from a fresh session it is a no-op on a prior-session worktree, and its schema requires `action` and rejects a `worktree` parameter. A plain `git worktree remove --force` is the correct session-independent cleanup. This deliberately diverges from `plan.md`'s Isolation-context detection block, whose `ExitWorktree({worktree: ...})` continuation form has the same defect; that upstream issue is tracked separately as its own tech-debt item and is not re-mirrored here.
 
 ## list subcommand
 
