@@ -182,9 +182,9 @@ Skip if `install-tools` is in `completed_steps`.
 Three external tools require per-machine setup. The Serena MCP entry needs `uv` (Astral's Python toolchain runner).
 
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
-  Installs the `react-doctor` skill for detected agents (Claude Code included). Scans for React-specific issues; auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
+  Installs the `react-doctor` skill for detected agents (Claude Code included). Scans for React-specific issues; auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-audit-frontend` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into husky's generated `.husky/_/pre-commit` because GAIA sets `core.hooksPath=.husky/_`), a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Copilot, Warp). GAIA triggers react-doctor via the Claude Code skill (auto-run after edits) and the `code-review-audit` agent (at `@latest`), so remove the rest, keeping only the Claude Code skill:
+  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into husky's generated `.husky/_/pre-commit` because GAIA sets `core.hooksPath=.husky/_`), a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Copilot, Warp). GAIA triggers react-doctor via the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent (at `@latest`), so remove the rest, keeping only the Claude Code skill:
 
   ```bash
   rm -f .github/workflows/react-doctor.yml
@@ -633,7 +633,7 @@ Branches:
 
 ### Audit-mode policy (solo or team)
 
-Reached on "Enable now" or in the reconfigure flow. This sets how `code-review-audit` runs at merge time, writing to the committed `.gaia/audit-ci.yml`: `default_mode` (the fallback), `override_label` (the sticky label that forces a CI run regardless of author), and, for a solo repo, the setup author's own `audit_authors` entry.
+Reached on "Enable now" or in the reconfigure flow. This sets how `code-audit-frontend` runs at merge time, writing to the committed `.gaia/audit-ci.yml`: `default_mode` (the fallback), `override_label` (the sticky label that forces a CI run regardless of author), and, for a solo repo, the setup author's own `audit_authors` entry.
 
 First print the docs link so the reader can read up on the modes before choosing:
 
@@ -658,12 +658,12 @@ login=$(gh api user --jq .login)
 Print:
 
 ```
-Solo setup: your code-review-audit runs locally at merge time. CI stays installed as a failsafe, run /setup-gaia --reconfigure to switch to CI audits if you add collaborators.
+Solo setup: your code-audit-frontend runs locally at merge time. CI stays installed as a failsafe, run /setup-gaia --reconfigure to switch to CI audits if you add collaborators.
 ```
 
 **A team.** AskUserQuestion with these two options in this exact order:
 
-> How should the code-review-audit run for your team?
+> How should the code-audit-frontend run for your team?
 >
 > - **Local (Recommended).** Each developer's audit runs on their machine at merge time (streaming, incremental) and CI stands down for them, the best day-to-day DX. The GAIA-Audit required check still guards the branch, and if a developer's local mode can't be confirmed the resolver fails closed to `ci`, so the branch is never left unguarded. Sets `default_mode: local`; each teammate confirms their own mode in the per-developer step.
 > - **CI.** Every PR's audit runs on CI as a shared failsafe; contributors wait for the GAIA-Audit check. Simplest to reason about for larger teams. Sets `default_mode: ci`.
@@ -784,7 +784,7 @@ No cron tools are configured for CI mode in .gaia/automation.json. The code-revi
 
 ### Register GAIA-Audit as the required check
 
-The audit gate is the `GAIA-Audit` COMMIT STATUS, not the `code-review-audit` job name. The audit job reaches a green terminal step on every path (including a local-mode stand-down where no audit ran), so requiring the job name would let an unaudited PR merge through the github.com button. Only the `GAIA-Audit` status is the gate, and the resolver honors `default_mode: local` only when this registration is confirmed present.
+The audit gate is the `GAIA-Audit` COMMIT STATUS, not the `code-audit-frontend` job name. The audit job reaches a green terminal step on every path (including a local-mode stand-down where no audit ran), so requiring the job name would let an unaudited PR merge through the github.com button. Only the `GAIA-Audit` status is the gate, and the resolver honors `default_mode: local` only when this registration is confirmed present.
 
 Register **after** the default-branch protection rule exists (Phase 3), so the `required_status_checks` PUT returns 2xx, not 404. **GET the current contexts, union `GAIA-Audit` into them, then PUT the union**. A static PUT REPLACES the array and would drop sibling contexts (e.g. `Tests`, `Chromatic`), letting unaudited code merge:
 
@@ -867,7 +867,7 @@ Because the **Claude GitHub App install** is gated just above, a run that fails 
 .gaia/cli/gaia setup-ci finalize
 ```
 
-The finalize commit is GAIA's own known-safe CI install: it adds the workflows and flips `setup_complete`, with nothing to audit. It lands **directly on the default branch**, no PR and no code-review-audit, so greenfield setup never waits on an audit run. This is the greenfield happy path; if the adopter pre-created a repo and applied branch protection before `/setup-gaia`, the finalize commit still goes through and the audit simply runs on it, that edge case is accepted.
+The finalize commit is GAIA's own known-safe CI install: it adds the workflows and flips `setup_complete`, with nothing to audit. It lands **directly on the default branch**, no PR and no code-audit-frontend, so greenfield setup never waits on an audit run. This is the greenfield happy path; if the adopter pre-created a repo and applied branch protection before `/setup-gaia`, the finalize commit still goes through and the audit simply runs on it, that edge case is accepted.
 
 Right after `gh repo create --push`, HEAD is on the default branch. When that branch is `main` or `master`, the `block-main-destructive-git.sh` PreToolUse hook denies every `git commit` and `git push` there (Git Workflow policy), so the standdown below is load-bearing only in that case: the hook does not recognize a custom default-branch name, so it never blocks one and the sentinel is inert (but harmless) there. Suspend that hook for this one commit+push with a machine-local sentinel. It **must be created in a separate, earlier Bash call** than the commit/push, the hook reads it *before* the command runs, so a `touch` bundled into the same call as `git commit` would not yet exist when the hook checks. The sentinel lives in `.gaia/local/` (gitignored), so it never reaches a teammate's clone:
 
@@ -957,7 +957,7 @@ Print the PR URL. Do NOT auto-merge; the adopter reviews and merges in their nor
 
 ## Phase 5: Per-developer audit-mode (needs `audit-ci.yml`)
 
-This step chooses who runs **your** `code-review-audit` at merge time, on CI or your local machine. It only applies once the project has CI wired up. The `audit-mode-decision` step is recorded in **every** branch below (absent-file, gh-unauthenticated, already-recorded, and post-choice); recording it unconditionally is load-bearing, a teammate clone that skips it reaches Phase 6 at 6/7 steps and `gaia setup finalize` hard-errors.
+This step chooses who runs **your** `code-audit-frontend` at merge time, on CI or your local machine. It only applies once the project has CI wired up. The `audit-mode-decision` step is recorded in **every** branch below (absent-file, gh-unauthenticated, already-recorded, and post-choice); recording it unconditionally is load-bearing, a teammate clone that skips it reaches Phase 6 at 6/7 steps and `gaia setup finalize` hard-errors.
 
 - If `.gaia/audit-ci.yml` does not exist (CI not configured yet), skip the choice silently and record the step:
 
@@ -992,7 +992,7 @@ Audit-gate modes (local vs CI): https://docs.gaiareact.com/maintenance/gaia-ci/#
 
 Then AskUserQuestion with these two options in this exact order:
 
-> Who runs your code-review-audit at merge time?
+> Who runs your code-audit-frontend at merge time?
 >
 > - **Local (Recommended).** Your audit runs at merge time when you ask Claude to merge, streaming and incremental. CI stands down for you.
 > - **CI.** CI audits your PRs; you wait for the GAIA-Audit check.

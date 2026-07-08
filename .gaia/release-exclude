@@ -21,11 +21,16 @@
 # must NOT be added here. preferred-base.sh is the maintainer's personal
 # statusline left-side renderer; adopters get the right-side-only
 # gaia-statusline.sh wrapper which delegates left-side rendering to the
-# user's own global statusline.
+# user's own global statusline. The two code-audit-maintainer-* agents are
+# the Code Audit Team's maintainer-only members (framework shell + framework
+# TypeScript lenses); adopters audit only their own app via
+# code-audit-frontend.
 .claude/commands/gaia-release.md
 .claude/commands/health-audit.md
 .claude/skills/release-notes
 .gaia/statusline/preferred-base.sh
+.claude/agents/code-audit-maintainer-shell.md
+.claude/agents/code-audit-maintainer-node.md
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that

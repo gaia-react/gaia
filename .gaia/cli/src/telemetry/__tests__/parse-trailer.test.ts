@@ -67,7 +67,7 @@ describe('parseTrailer: guard rails', () => {
   });
 });
 
-describe('parseTrailer: code-review-audit', () => {
+describe('parseTrailer: code-audit-frontend', () => {
   test('emits one invocation per finding', () => {
     const findings = JSON.stringify([
       {
@@ -81,7 +81,7 @@ describe('parseTrailer: code-review-audit', () => {
       },
     ]);
     const input = buildHookInput(
-      'code-review-audit',
+      'code-audit-frontend',
       trailer(`findings_json: ${findings}`, 'pr_number: 97')
     );
 
@@ -99,7 +99,7 @@ describe('parseTrailer: code-review-audit', () => {
         '--area-tags',
         'security,auth',
         '--auditor-type',
-        'code-review-audit',
+        'code-audit-frontend',
         '--agent-type',
         'Reviewer',
       ],
@@ -109,7 +109,7 @@ describe('parseTrailer: code-review-audit', () => {
     expect(invocations[1]?.args).toContain(
       'react-doctor/no-generic-handler-names'
     );
-    expect(invocations[1]?.args.at(-3)).toBe('code-review-audit');
+    expect(invocations[1]?.args.at(-3)).toBe('code-audit-frontend');
   });
 
   test('defaults pr_number to "0" when absent', () => {
@@ -117,7 +117,7 @@ describe('parseTrailer: code-review-audit', () => {
       {finding_class: 'axe/color-contrast', severity: 'warning'},
     ]);
     const input = buildHookInput(
-      'code-review-audit',
+      'code-audit-frontend',
       trailer(`findings_json: ${findings}`)
     );
 
@@ -133,7 +133,7 @@ describe('parseTrailer: code-review-audit', () => {
       {},
     ]);
     const input = buildHookInput(
-      'code-review-audit',
+      'code-audit-frontend',
       trailer(`findings_json: ${findings}`)
     );
 
@@ -150,7 +150,7 @@ describe('parseTrailer: code-review-audit', () => {
       {finding_class: 'just free text', severity: 'error'},
     ]);
     const input = buildHookInput(
-      'code-review-audit',
+      'code-audit-frontend',
       trailer(`findings_json: ${findings}`)
     );
 
@@ -164,7 +164,7 @@ describe('parseTrailer: code-review-audit', () => {
       {finding_class: 'type_hole', severity: 'error'},
     ]);
     const input = buildHookInput(
-      'code-review-audit',
+      'code-audit-frontend',
       trailer(`findings_json: ${findings}`)
     );
 
@@ -175,7 +175,7 @@ describe('parseTrailer: code-review-audit', () => {
 
   test('returns invalid_trailer_json when findings_json is not parseable', () => {
     const input = buildHookInput(
-      'code-review-audit',
+      'code-audit-frontend',
       trailer('findings_json: not-json-at-all')
     );
 
@@ -186,7 +186,7 @@ describe('parseTrailer: code-review-audit', () => {
 
   test('returns invalid_trailer_json when findings_json is not an array', () => {
     const input = buildHookInput(
-      'code-review-audit',
+      'code-audit-frontend',
       trailer('findings_json: {"finding_class":"x","severity":"high"}')
     );
 

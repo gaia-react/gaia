@@ -335,9 +335,9 @@ If any install step fails, print the command so the user can run it manually.
 GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`), they ship with the clone. Three external tools still need per-machine setup. The Serena MCP entry below requires `uv` (Astral's Python toolchain runner) on the host, GAIA precheck-installs it just like Step 0 precheck-installs pnpm.
 
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
-  Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-review-audit` agent pre-merge.
+  Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-audit-frontend` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (GitHub Copilot, Warp). There is no skill-only install flag, so install (above) then remove them. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-review-audit` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA CI. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
+  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (GitHub Copilot, Warp). There is no skill-only install flag, so install (above) then remove them. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA CI. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
 
   ```bash
   # 1. Drop the standalone workflow (GAIA CI is the only CI surface).
@@ -424,7 +424,7 @@ If any step fails, surface the error verbatim and halt, do not silently continue
 
 ### Configure CI integrations
 
-GAIA CI has two parts: a pre-merge **audit gate** (the `code-review-audit` agent run against every PR) and four optional **maintenance jobs** on a smart cron (wiki sync, `/update-deps`, `pnpm audit`, stale-branch cleanup).
+GAIA CI has two parts: a pre-merge **audit gate** (the `code-audit-frontend` agent run against every PR) and four optional **maintenance jobs** on a smart cron (wiki sync, `/update-deps`, `pnpm audit`, stale-branch cleanup).
 
 **No `.github/workflows/` files ship in this project.** They are generated and installed on demand by `/setup-gaia` after your first `git push origin main` (Phase B). This step (Phase A) is local-only: it records your CI intent so Step 9 can offer the right maintenance-tool modes, and it sets the local audit baseline. It does not create, move, or push any workflow file, and it touches nothing on GitHub.
 
@@ -443,7 +443,7 @@ Use AskUserQuestion (in the user's language; this configuration block stays in E
 
 Record the answer as the **Configure-CI decision** (`enabled` or `declined`); Step 9 reads it. This is held as init-state only; it neither probes nor writes any workflow file.
 
-Then set the audit baseline in `.gaia/audit-ci.yml` regardless of the answer. Until `/setup-gaia` wires CI, the local `code-review-audit` agent is the only producer of the `GAIA-Audit` stamp, so `local` is the only valid baseline. `/setup-gaia`'s team audit-mode step sets `default_mode: ci` later if you choose CI-audits-every-PR. Never set this to `off` or any other disabled value, the audit gate is non-negotiable.
+Then set the audit baseline in `.gaia/audit-ci.yml` regardless of the answer. Until `/setup-gaia` wires CI, the local `code-audit-frontend` agent is the only producer of the `GAIA-Audit` stamp, so `local` is the only valid baseline. `/setup-gaia`'s team audit-mode step sets `default_mode: ci` later if you choose CI-audits-every-PR. Never set this to `off` or any other disabled value, the audit gate is non-negotiable.
 
 ```bash
 # Idempotent: rewrite an existing default_mode line, or append the key if absent.

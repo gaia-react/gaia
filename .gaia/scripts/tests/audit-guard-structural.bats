@@ -24,7 +24,7 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
   PLAN_MD="$REPO_ROOT/.claude/skills/gaia/references/plan.md"
-  CRA_MD="$REPO_ROOT/.claude/agents/code-review-audit.md"
+  CRA_MD="$REPO_ROOT/.claude/agents/code-audit-frontend.md"
   HELPER="$REPO_ROOT/.gaia/scripts/audit-noop-detect.sh"
 
   # FC-3: the byte-identical guard-line substring, verbatim.
@@ -79,7 +79,7 @@ assert_predicate_retry_fallback() {
 # 0. The edited surfaces exist
 # ---------------------------------------------------------------------------
 
-@test "edited surfaces exist: spec.md, plan.md, code-review-audit.md, helper" {
+@test "edited surfaces exist: spec.md, plan.md, code-audit-frontend.md, helper" {
   [ -f "$SPEC_MD" ]
   [ -f "$PLAN_MD" ]
   [ -f "$CRA_MD" ]
@@ -120,15 +120,15 @@ assert_predicate_retry_fallback() {
   grep -qF -- "$GUARD_LINE" <<<"$content"
 }
 
-@test "guard line: code-review-audit.md specialist-subagent instructions template" {
+@test "guard line: code-audit-frontend.md specialist-subagent instructions template" {
   content="$(section_between "$CRA_MD" '^### Subagent instructions template' '^## Constraints')"
-  assert_section_nonempty "code-review-audit.md Subagent instructions template" "$content"
+  assert_section_nonempty "code-audit-frontend.md Subagent instructions template" "$content"
   grep -qF -- "$GUARD_LINE" <<<"$content"
 }
 
-@test "guard line: code-review-audit.md adversarial-refuter prompt" {
+@test "guard line: code-audit-frontend.md adversarial-refuter prompt" {
   content="$(section_between "$CRA_MD" '^## Finding Proof Gate' '^## Scope classification')"
-  assert_section_nonempty "code-review-audit.md Finding Proof Gate" "$content"
+  assert_section_nonempty "code-audit-frontend.md Finding Proof Gate" "$content"
   grep -qF -- "$GUARD_LINE" <<<"$content"
 }
 
@@ -181,15 +181,15 @@ assert_predicate_retry_fallback() {
   assert_predicate_retry_fallback "$content"
 }
 
-@test "wiring: code-review-audit.md specialist dispatch site" {
+@test "wiring: code-audit-frontend.md specialist dispatch site" {
   content="$(section_between "$CRA_MD" '^### How to run' '^### Knip findings')"
-  assert_section_nonempty "code-review-audit.md How to run" "$content"
+  assert_section_nonempty "code-audit-frontend.md How to run" "$content"
   assert_predicate_retry_fallback "$content"
 }
 
-@test "wiring: code-review-audit.md adversarial-refuter dispatch site" {
+@test "wiring: code-audit-frontend.md adversarial-refuter dispatch site" {
   content="$(section_between "$CRA_MD" '^## Finding Proof Gate' '^## Scope classification')"
-  assert_section_nonempty "code-review-audit.md Finding Proof Gate" "$content"
+  assert_section_nonempty "code-audit-frontend.md Finding Proof Gate" "$content"
   assert_predicate_retry_fallback "$content"
 }
 
@@ -205,7 +205,7 @@ assert_predicate_retry_fallback() {
   grep -qF -- "$RETRY_PREFIX" "$PLAN_MD"
 }
 
-@test "retry-prefix template embedded verbatim in code-review-audit.md" {
+@test "retry-prefix template embedded verbatim in code-audit-frontend.md" {
   grep -qF -- "$RETRY_PREFIX" "$CRA_MD"
 }
 
@@ -253,6 +253,6 @@ assert_predicate_retry_fallback() {
   grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$PLAN_MD"
 }
 
-@test "helper reference: code-review-audit.md calls the real audit-noop-detect.sh path" {
+@test "helper reference: code-audit-frontend.md calls the real audit-noop-detect.sh path" {
   grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$CRA_MD"
 }

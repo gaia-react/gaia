@@ -107,7 +107,7 @@ describe('schemas/cloud-projection', () => {
       expect(() =>
         CodeReviewAuditFindingCloudPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'axe/color-contrast',
           ip: '127.0.0.1',
           pr_number: 42,
@@ -120,7 +120,7 @@ describe('schemas/cloud-projection', () => {
       expect(() =>
         CodeReviewAuditFindingCloudPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'type_hole',
           pr_number: 42,
           severity: 'warning',
@@ -138,7 +138,7 @@ describe('schemas/cloud-projection', () => {
       expect(() =>
         CodeReviewAuditFindingCloudPayload.parse({
           area_tags: ['typescript'],
-          auditor_type: 'code-review-audit',
+          auditor_type: 'code-audit-frontend',
           finding_class: 'cve/1098765',
           pr_number: 42,
           severity: 'warning',

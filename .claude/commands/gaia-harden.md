@@ -1,6 +1,6 @@
 ---
 name: gaia-harden
-description: Judge-the-form, human-gated hardening. Reviews recurring code-review-audit findings and, with approval, drafts the lowest-context-weight form (deterministic check / skill / path-scoped prose rule) into the working tree. Pass `list` to see live candidates or `why <finding_class>` to explain one.
+description: Judge-the-form, human-gated hardening. Reviews recurring code-audit-frontend findings and, with approval, drafts the lowest-context-weight form (deterministic check / skill / path-scoped prose rule) into the working tree. Pass `list` to see live candidates or `why <finding_class>` to explain one.
 argument-hint: [review|list|why <finding_class>]
 ---
 

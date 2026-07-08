@@ -31,9 +31,16 @@
 # the change under test. merge-base(HEAD, main) resolves to the base commit, so
 # the bypass diffs only the feature's files. No remote is needed; the hook
 # falls back from `origin/main` to `main`.
+#
+# The real .gaia/scripts/resolve-audit-members.sh is copied into REPO
+# (untracked, so it never appears in the diffs under test) so every case below
+# exercises the hook exactly as it runs in the real repo, where the resolver
+# is always present. The one test that needs the resolver-absent fallback
+# removes this copy explicitly.
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
+  RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
   REPO=$(mktemp -d -t pr-merge-test-XXXXXX)
 
   git -C "$REPO" init --quiet --initial-branch=main
@@ -48,6 +55,10 @@ setup() {
   git -C "$REPO" commit --quiet -m "init"
 
   git -C "$REPO" checkout --quiet -b feature
+
+  mkdir -p "$REPO/.gaia/scripts"
+  cp "$RESOLVER_ABS" "$REPO/.gaia/scripts/resolve-audit-members.sh"
+  chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
 }
 
 teardown() {
@@ -73,6 +84,16 @@ run_merge_hook() {
   json=$(jq -n --arg c "$cmd" \
     '{tool_name: "Bash", tool_input: {command: $c}}')
   run bash -c "cd '$REPO' && printf '%s' '$json' | bash '$HOOK_ABS'"
+}
+
+# Write a Code Audit Team clearance marker for REPO's current HEAD.
+#   write_marker ""                              -> <sha>.ok (frontend/default)
+#   write_marker ".code-audit-maintainer-shell"   -> <sha>.code-audit-maintainer-shell.ok
+write_marker() {
+  local suffix="$1" sha
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{}' > "$REPO/.gaia/local/audit/${sha}${suffix}.ok"
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
@@ -203,4 +224,84 @@ run_merge_hook() {
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AND-aggregator (FC-5): the dispatched member set drives a per-member
+# clearance requirement instead of a single OR'd signal. SEC-001/UAT-002/018:
+# one cleared member can never satisfy the gate while a co-dispatched member
+# withholds. DP-001/CG-004: a zero-match diff falls through to the legacy
+# out-of-scope gate above, NOT an unconditional allow.
+# ---------------------------------------------------------------------------
+
+@test "AND-aggregator: app-only diff allows once the frontend marker is present (regression)" {
+  commit_files "app/x.ts" "export const x = 1"
+  write_marker ""
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
+}
+
+@test "AND-aggregator: mixed app/ + .gaia .sh diff denies while the maintainer-shell member withholds" {
+  commit_files \
+    "app/x.ts" "export const x = 1" \
+    ".gaia/scripts/example.sh" "#!/bin/bash"
+  write_marker ""
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+@test "AND-aggregator: mixed app/ + .gaia .sh diff allows once both dispatched members clear" {
+  commit_files \
+    "app/x.ts" "export const x = 1" \
+    ".gaia/scripts/example.sh" "#!/bin/bash"
+  write_marker ""
+  write_marker ".code-audit-maintainer-shell"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
+}
+
+@test "AND-aggregator: .gaia .sh-only diff denies without the maintainer-shell marker (sole clearance, no frontend marker needed)" {
+  commit_files ".gaia/scripts/example.sh" "#!/bin/bash"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+@test "AND-aggregator: .gaia .sh-only diff allows once the maintainer-shell marker is present" {
+  commit_files ".gaia/scripts/example.sh" "#!/bin/bash"
+  write_marker ".code-audit-maintainer-shell"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
+}
+
+@test "AND-aggregator: root Dockerfile-only diff denies without a marker (zero-match falls through to the legacy gate, not an auto-allow)" {
+  commit_files "Dockerfile" "FROM scratch"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+@test "AND-aggregator: root Dockerfile-only diff allows once the legacy marker is present" {
+  commit_files "Dockerfile" "FROM scratch"
+  write_marker ""
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
+}
+
+@test "AND-aggregator: resolver script absent falls back to the single-signal path (no crash, same branch as zero-match)" {
+  rm -f "$REPO/.gaia/scripts/resolve-audit-members.sh"
+  commit_files "app/z.ts" "export const z = 1"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
+
+  write_marker ""
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
 }

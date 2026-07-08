@@ -2,7 +2,7 @@
 #
 # Bats suite for .claude/hooks/token-tally-review.sh (SPEC-032 FC-3/FC-4).
 #
-# This hook is a thin trigger: it cheap-gates on a code-review-audit sidecar
+# This hook is a thin trigger: it cheap-gates on a code-audit-frontend sidecar
 # actually existing, resolves SPEC/PLAN association, and invokes
 # `token-tally.sh --action review` by its literal repo-relative path. The
 # real trigger -> row -> dedup effect is owned by task-integration-e2e; this
@@ -114,7 +114,7 @@ run_hook_stop() {
   [ ! -f "$CALLS_FILE" ]
 }
 
-@test "Stop payload with no code-review-audit sidecar: exit 0, tally not invoked" {
+@test "Stop payload with no code-audit-frontend sidecar: exit 0, tally not invoked" {
   build_repo
   cd "$REPO"
   PROOT="$REPO/projects-empty"
@@ -158,11 +158,11 @@ run_hook_stop() {
 
 # ---------- 2. Bash gh-pr-merge invocation: arg capture (acceptance 2, DP-004) ----------
 
-@test "gh pr merge with a code-review-audit session: invokes the tally with --session-id and no id flag (ad-hoc)" {
+@test "gh pr merge with a code-audit-frontend session: invokes the tally with --session-id and no id flag (ad-hoc)" {
   build_repo
   cd "$REPO"
   PROOT="$REPO/projects"
-  write_review_sidecar "$PROOT" "S1" "code-review-audit"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
   run_hook_bash "gh pr merge 7 --squash" "S1" "$PROOT"
   [ "$status" -eq 0 ]
@@ -187,7 +187,7 @@ run_hook_stop() {
   write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
 
   PROOT="$REPO/projects"
-  write_review_sidecar "$PROOT" "S1" "code-review-audit"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
   run_hook_bash "gh pr merge" "S1" "$PROOT"
   [ "$status" -eq 0 ]
@@ -206,7 +206,7 @@ run_hook_stop() {
   write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
 
   PROOT="$REPO/projects"
-  write_review_sidecar "$PROOT" "S1" "code-review-audit"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
   run_hook_bash "gh pr merge" "S1" "$PROOT"
   [ "$status" -eq 0 ]
@@ -226,7 +226,7 @@ run_hook_stop() {
   write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
 
   PROOT="$REPO/projects"
-  write_review_sidecar "$PROOT" "S1" "code-review-audit"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
   run_hook_bash "gh pr merge" "S1" "$PROOT"
   [ "$status" -eq 0 ]
@@ -239,7 +239,7 @@ run_hook_stop() {
   build_repo
   cd "$REPO"
   PROOT="$REPO/projects"
-  write_review_sidecar "$PROOT" "S1" "code-review-audit"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
   heredoc_cmd=$'cat <<EOF\nPlease remember to gh pr merge later.\nEOF'
   run_hook_bash "$heredoc_cmd" "S1" "$PROOT"
@@ -249,11 +249,11 @@ run_hook_stop() {
 
 # ---------- 3. Cheap negative gate: spurious guard (acceptance criterion 3) ----------
 
-@test "gh pr merge with NO code-review-audit sidecar meta: exit 0, tally not invoked" {
+@test "gh pr merge with NO code-audit-frontend sidecar meta: exit 0, tally not invoked" {
   build_repo
   cd "$REPO"
   PROOT="$REPO/projects"
-  # A sidecar exists, but it is not a code-review-audit run.
+  # A sidecar exists, but it is not a code-audit-frontend run.
   write_review_sidecar "$PROOT" "S1" "general-purpose"
 
   run_hook_bash "gh pr merge" "S1" "$PROOT"
@@ -273,11 +273,11 @@ run_hook_stop() {
 
 # ---------- 4. Stop path (acceptance criterion 2, Stop variant) ----------
 
-@test "Stop payload with a code-review-audit session: invokes the tally" {
+@test "Stop payload with a code-audit-frontend session: invokes the tally" {
   build_repo
   cd "$REPO"
   PROOT="$REPO/projects"
-  write_review_sidecar "$PROOT" "S1" "code-review-audit"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
   run_hook_stop "S1" "$PROOT"
   [ "$status" -eq 0 ]
@@ -290,7 +290,7 @@ run_hook_stop() {
   build_repo
   cd "$REPO"
   PROOT="$REPO/projects"
-  write_review_sidecar "$PROOT" "S1" "code-review-audit"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
   input=$(jq -n --arg sid "S1" '{session_id: $sid, transcript_path: "/tmp/t.jsonl", cwd: ".", hook_event_name: "Stop", stop_hook_active: true}')
   run env GAIA_TALLY_PROJECTS_ROOT="$PROOT" bash -c "echo '$input' | '$HOOK_ABS'"
@@ -304,7 +304,7 @@ run_hook_stop() {
   build_repo
   cd "$REPO"
   PROOT="$REPO/projects"
-  write_review_sidecar "$PROOT" "S1" "code-review-audit"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
   # A PATH-injected stub named token-tally.sh must NOT be the one invoked;
   # the hook calls `bash .gaia/scripts/token-tally.sh` by literal path.

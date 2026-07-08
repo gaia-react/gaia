@@ -16,6 +16,10 @@
 #   1. Marker present  → posts state=success context=GAIA-Audit "<version> <tree>"
 #      Marker absent   → no POST (declines)
 #   2. gh unauthenticated → marker untouched, no POST (fail-safe asymmetry)
+#   3. Member-aware gate (blocker COV-001): a mixed app/ + .gaia/**/*.sh diff
+#      declines ("members pending ...") while the maintainer-shell member's
+#      marker is absent, posts success once both markers are present, and
+#      (resolver absent) falls back to the single-marker POST unchanged.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -80,6 +84,29 @@ current_tree() {
   git -C "$SANDBOX" rev-parse "HEAD^{tree}"
 }
 
+# Copy the real resolver script into SANDBOX so a test can exercise the
+# member-aware gate. Untracked, so it never appears in a git diff itself.
+install_resolver() {
+  local resolver_abs
+  resolver_abs="$THIS_DIR/../../../.gaia/scripts/resolve-audit-members.sh"
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  cp "$resolver_abs" "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+  chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+}
+
+# Commit a mixed app/ + .gaia/**/*.sh change on a new `feature` branch off
+# SANDBOX's init commit, so the resolver's merge-base(HEAD, main) diff is
+# non-empty and dispatches both code-audit-frontend (app/) and
+# code-audit-maintainer-shell (.gaia/**/*.sh) against the built-in roster.
+commit_mixed_diff() {
+  git -C "$SANDBOX" checkout --quiet -b feature
+  mkdir -p "$SANDBOX/app" "$SANDBOX/.gaia/scripts"
+  echo "export const x = 1;" > "$SANDBOX/app/x.ts"
+  echo "#!/bin/bash" > "$SANDBOX/.gaia/scripts/example.sh"
+  git -C "$SANDBOX" add app/x.ts .gaia/scripts/example.sh
+  git -C "$SANDBOX" commit --quiet -m "mixed change"
+}
+
 # -----------------------------------------------------------------------------
 # 1. Marker-gated POST: posts on marker present, skips on marker absent
 # -----------------------------------------------------------------------------
@@ -130,4 +157,67 @@ current_tree() {
   # The marker the caller wrote is untouched; only the POST is skipped.
   [ -f "$SANDBOX/$marker" ]
   [ ! -f "$POST_LOG" ]
+}
+
+# -----------------------------------------------------------------------------
+# 3. Member-aware POST gate (Interface contract 2, blocker COV-001): a mixed
+#    diff requires every dispatched member's marker, not just the caller's own.
+# -----------------------------------------------------------------------------
+
+@test "member-aware POST: declines while a co-dispatched maintainer-shell member withholds" {
+  install_gh_mock ok
+  install_resolver
+  commit_mixed_diff
+
+  head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${head_sha}.ok"
+  printf '{}' > "$SANDBOX/$marker"
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-maintainer-shell" ]
+
+  # The button stays blocked: a decline never posts, and the caller's own
+  # marker (already validated present) is untouched.
+  [ ! -f "$POST_LOG" ]
+  [ -f "$SANDBOX/$marker" ]
+}
+
+@test "member-aware POST: posts success once every dispatched member has cleared" {
+  install_gh_mock ok
+  install_resolver
+  commit_mixed_diff
+
+  head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  tree=$(current_tree)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${head_sha}.ok"
+  printf '{}' > "$SANDBOX/$marker"
+  printf '{}' > "$SANDBOX/.gaia/local/audit/${head_sha}.code-audit-maintainer-shell.ok"
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "status: posted GAIA-Audit success "* ]]
+
+  [ -f "$POST_LOG" ]
+  grep -q "statuses/${head_sha}" "$POST_LOG"
+  grep -q "state=success" "$POST_LOG"
+  grep -q "description=1.2.3 ${tree}" "$POST_LOG"
+}
+
+@test "member-aware POST: resolver absent falls back to the single-marker POST on a mixed diff" {
+  install_gh_mock ok
+  commit_mixed_diff
+
+  head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${head_sha}.ok"
+  printf '{}' > "$SANDBOX/$marker"
+
+  # No resolver copied into SANDBOX: the member-aware gate is skipped and the
+  # frontend marker alone clears the POST, same as today.
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "status: posted GAIA-Audit success "* ]]
 }

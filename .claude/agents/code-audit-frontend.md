@@ -1,5 +1,5 @@
 ---
-name: code-review-audit
+name: code-audit-frontend
 description: 'Comprehensive code review, security audit, performance analysis, and architectural assessment. Goes beyond linting and type-checking to identify vulnerabilities, bottlenecks, code smells, anti-patterns, and refactoring opportunities. Mandatory before PR merge.'
 model: opus
 color: orange
@@ -15,7 +15,7 @@ Before starting the review, resolve the project root and load library-specific e
 PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 ```
 
-1. Glob `$PROJECT_ROOT/.claude/agents/code-review-audit/*.md`
+1. Glob `$PROJECT_ROOT/.claude/agents/code-audit-frontend/*.md`
 2. Read each matched file; skip any named exactly `README.md`
 3. Parse each file's `subagents:` frontmatter field (YAML list: `react-patterns`, `typescript`, and/or `translation`)
 4. Hold the content of each file, keyed by its `subagents:` list

@@ -2,7 +2,7 @@
 # PreToolUse Bash hook: DENY `gh pr merge` when the disposition-ledger sidecar
 # for the current HEAD claims a disposition that does not hold. This is the
 # DETERMINISTIC backstop for the audit's forced-disposition guarantee: the
-# code-review-audit agent's own verify-after-file re-query is the primary
+# code-audit-frontend agent's own verify-after-file re-query is the primary
 # enforcer, but that is agent behavior, not code. This hook re-reads the
 # disposition-ledger sidecar (.gaia/local/audit/<sha>.dispositions.json) and
 # fails the merge by
@@ -192,7 +192,7 @@ A marker for this HEAD asserts every out-of-scope finding has a real disposition
   - pending(definitive): the finding has no disposition (a definitive filing failure on a present, writable backend).
 
 To unblock:
-  1. Re-run the local code-review-audit agent on this HEAD so it re-files the
+  1. Re-run the local code-audit-frontend agent on this HEAD so it re-files the
      missing disposition (filing is idempotent; an already-filed key is not
      duplicated).
   2. Let it rewrite the disposition-ledger sidecar and the marker.

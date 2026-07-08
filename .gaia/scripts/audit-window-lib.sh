@@ -1,10 +1,10 @@
 # shellcheck shell=bash
 # GAIA shared audit-window lib (SPEC-032 FC-5, single-sourced).
 #
-# Sourced by token-tally.sh to bracket adversarial-audit and code-review-audit
+# Sourced by token-tally.sh to bracket adversarial-audit and code-audit-frontend
 # spend by TIME WINDOW rather than by agentType: a Deep spec audit spans
 # lenses + refuters + completeness + applier (all `general-purpose`), and a
-# code-review-audit run spawns other-typed sub-agents, so a single-agentType
+# code-audit-frontend run spawns other-typed sub-agents, so a single-agentType
 # filter would under-count both. Windows are computed over token-tally's
 # per-file record stream: one JSON object per line, each
 #   { usage: [ {id, u, m} ], tmin, tmax, file_agent, file_id }
@@ -183,7 +183,7 @@ gaia_audit_window_write() {
 
 # gaia_review_windows <records_file>
 # Echoes a JSON array, one entry per record with file_agent ==
-# "code-review-audit": [ { review_id, started_at, ended_at }, ... ].
+# "code-audit-frontend": [ { review_id, started_at, ended_at }, ... ].
 # review_id is the record's file_id. Echoes "[]" when none, and on any
 # malformed/empty/missing input.
 gaia_review_windows() {
@@ -195,7 +195,7 @@ gaia_review_windows() {
   fi
   local out
   out="$(jq -cs '
-    map(select((.file_agent // "") == "code-review-audit"))
+    map(select((.file_agent // "") == "code-audit-frontend"))
     | map({review_id: (.file_id // ""), started_at: .tmin, ended_at: .tmax})
   ' "$records_file" 2>/dev/null)"
   if [[ -n "$out" ]] && jq -e 'type == "array"' >/dev/null 2>&1 <<<"$out"; then
@@ -208,17 +208,17 @@ gaia_review_windows() {
 
 # gaia_exclude_review_windows <records_file>
 # Echoes the record stream (JSON lines) with every record whose [tmin, tmax]
-# is a subset of ANY code-review-audit window removed (including the
-# code-review-audit records themselves). Used by a phase tally to strip a
+# is a subset of ANY code-audit-frontend window removed (including the
+# code-audit-frontend records themselves). Used by a phase tally to strip a
 # review run's spend out of the phase buckets before aggregating (double-
-# count guard). A byte no-op when no code-review-audit record is present
+# count guard). A byte no-op when no code-audit-frontend record is present
 # (the file is `cat`, never re-serialized through jq). Degrades to the raw
 # input on any parse failure -- never blocks, never drops the stream.
 gaia_exclude_review_windows() {
   local records_file="${1:-}"
   [[ -z "$records_file" || ! -f "$records_file" ]] && return 0
   local review_count
-  review_count="$(jq -sc '[.[] | select((.file_agent // "") == "code-review-audit")] | length' "$records_file" 2>/dev/null)"
+  review_count="$(jq -sc '[.[] | select((.file_agent // "") == "code-audit-frontend")] | length' "$records_file" 2>/dev/null)"
   if ! [[ "$review_count" =~ ^[1-9][0-9]*$ ]]; then
     cat "$records_file" 2>/dev/null
     return 0
@@ -228,11 +228,11 @@ gaia_exclude_review_windows() {
     def contained($s; $e; $windows): $windows | any(.s <= $s and $e <= .e);
     . as $all
     | ( [ $all[]
-          | select((.file_agent // "") == "code-review-audit" and .tmin != null and .tmax != null)
+          | select((.file_agent // "") == "code-audit-frontend" and .tmin != null and .tmax != null)
           | {s: (.tmin | norm), e: (.tmax | norm)}
         ] ) as $windows
     | $all
-    | map(select((.file_agent // "") != "code-review-audit"))
+    | map(select((.file_agent // "") != "code-audit-frontend"))
     | map(select(
         (.tmin == null or .tmax == null)
         or ( (.tmin | norm) as $s | (.tmax | norm) as $e | (contained($s; $e; $windows) | not) )

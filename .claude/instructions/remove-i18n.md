@@ -220,7 +220,7 @@ rm -rf \
   .storybook/i18next.ts \
   .playwright/e2e/language-switch-a11y.spec.ts \
   .claude/rules/i18n.md \
-  .claude/agents/code-review-audit/react-i18next.md \
+  .claude/agents/code-audit-frontend/react-i18next.md \
   .claude/skills/react-code/references/translation-patterns.md \
   .claude/hooks/check-i18n-strings.sh \
   wiki/modules/i18n.md \
@@ -325,13 +325,13 @@ pnpm install
 
 ## Section F, `.claude/` skills, rules, hooks, agents
 
-### F1. `.claude/agents/code-review-audit.md`
+### F1. `.claude/agents/code-audit-frontend.md`
 
 Delete the entire `### Subagent 3: Translation Audit` section (and its body up to the next `###` or `##` heading).
 
 In the routing block (Step 3 / "Parse each file's `subagents:` frontmatter field"), drop `translation` from the list of legal values.
 
-### F2. `.claude/agents/code-review-audit/README.md`
+### F2. `.claude/agents/code-audit-frontend/README.md`
 
 Delete the row in the extension table that mentions `react-i18next.md` and `translation`.
 
@@ -393,7 +393,7 @@ Remove every key whose path matches any of:
 - `app/routes/actions+/set-language.ts`
 - `app/components/LanguageSelect/*`
 - `.claude/rules/i18n.md`
-- `.claude/agents/code-review-audit/react-i18next.md`
+- `.claude/agents/code-audit-frontend/react-i18next.md`
 - `.claude/skills/react-code/references/translation-patterns.md`
 - `.claude/hooks/check-i18n-strings.sh`
 - `.storybook/i18next.ts`
@@ -409,7 +409,7 @@ A bare edit is blocked by `.claude/hooks/block-manifest-write.sh`, so the remova
 GAIA_MANIFEST_WRITE=remove-i18n jq '
   .files |= with_entries(
     select(.key
-      | test("^app/languages/|^app/i18n\\.ts$|^app/middleware/i18next\\.ts$|^app/types/i18n/|^app/sessions\\.server/language\\.ts$|^app/routes/actions\\+/set-language\\.ts$|^app/components/LanguageSelect/|^\\.claude/rules/i18n\\.md$|^\\.claude/agents/code-review-audit/react-i18next\\.md$|^\\.claude/skills/react-code/references/translation-patterns\\.md$|^\\.claude/hooks/check-i18n-strings\\.sh$|^\\.storybook/i18next\\.ts$|^\\.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
+      | test("^app/languages/|^app/i18n\\.ts$|^app/middleware/i18next\\.ts$|^app/types/i18n/|^app/sessions\\.server/language\\.ts$|^app/routes/actions\\+/set-language\\.ts$|^app/components/LanguageSelect/|^\\.claude/rules/i18n\\.md$|^\\.claude/agents/code-audit-frontend/react-i18next\\.md$|^\\.claude/skills/react-code/references/translation-patterns\\.md$|^\\.claude/hooks/check-i18n-strings\\.sh$|^\\.storybook/i18next\\.ts$|^\\.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
       | not))
 ' .gaia/manifest.json > .gaia/manifest.json.tmp \
   && GAIA_MANIFEST_WRITE=remove-i18n mv .gaia/manifest.json.tmp .gaia/manifest.json

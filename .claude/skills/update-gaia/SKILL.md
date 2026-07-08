@@ -634,7 +634,7 @@ Tell the user:
 
 **Opt-in nudge (only when `had_default_mode_before_merge` is `false`).** Show this line only when the pre-Step-7 snapshot found no `default_mode` key in the installed `.gaia/audit-ci.yml`, i.e. the adopter's config predates the per-author audit mode. Gate on the snapshot, NOT the post-merge file state: the Step 7c merge may have just added the key, and gating on the current file would pre-silence the nudge on the very run that should surface it. Once the adopter's own config carries `default_mode` (a later run's snapshot finds it), the nudge no longer fires.
 
-> **New: per-author audit mode.** The code-review-audit can now run locally at merge time for developers who prefer it, falling back to CI per-author over a team default. Behavior is unchanged until you opt in. Run `/setup-gaia` to set the team policy; each developer's `/setup-gaia` run records their own preference.
+> **New: per-author audit mode.** The code-audit-frontend can now run locally at merge time for developers who prefer it, falling back to CI per-author over a team default. Behavior is unchanged until you opt in. Run `/setup-gaia` to set the team policy; each developer's `/setup-gaia` run records their own preference.
 
 Do **not** auto-commit on behalf of the user, they need to review the changes first.
 

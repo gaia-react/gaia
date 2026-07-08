@@ -52,7 +52,7 @@ jobs:
               # would not re-trigger on drift of the surfaces it guards.
               - '.claude/skills/gaia/references/spec.md'
               - '.claude/skills/gaia/references/plan.md'
-              - '.claude/agents/code-review-audit.md'
+              - '.claude/agents/code-audit-frontend.md'
               - '.gaia/tests/forensics/**'
               - '.gaia/tests/hooks/**'
               - '.gaia/tests/lib/**'
