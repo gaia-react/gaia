@@ -1,5 +1,6 @@
 ---
-type: audit-lens
+type: lens-brief
+lens: SELF
 status: active
 audience: maintainer
 ---
@@ -36,84 +37,33 @@ move on.
 
 ## What to look for
 
-Audit of `/health-audit`'s own machinery: command-vs-runbook duplication
-(single-source drift hazard — the command should be a thin pointer, not a
-restatement), scope-vs-name mismatch (does "health audit" actually mean
-what it claims), model pinning gaps (every dispatched role should have an
-explicit, deliberate model assignment), and surface weight (is the
-machinery proportionate to what it audits, and is it growing without
-bound).
+Audit of `/health-audit`'s own machinery. Hunt these defect classes; each
+is a class to look for, not a named defect to confirm — file what you
+actually find against the current repo, and an empty result is valid when
+the surface is genuinely clean:
 
-### Mandatory defects (SPEC UAT-010 — a SELF run reporting nothing FAILS)
-
-You MUST surface both of the following as findings. They are real,
-verified against the current repo; this is not a hypothetical prompt.
-
-**1. Command-versus-runbook loop/termination duplication.**
-`.claude/commands/health-audit.md` Step 2 (lines 14-56) restates the
-runbook's cycle-loop pseudocode and the oscillation-threshold definition
-almost verbatim, rather than pointing at it. Compare:
-
-- `.claude/commands/health-audit.md:16-46` — the fenced pseudocode block
-  (`mkdir -p .gaia/local/audit` ... `For cycle in 1..3:` ... clean-exit /
-  oscillation-check / Fixer-dispatch / escalate steps).
-- `.gaia/cli/health/runbook.md:20-43` — the "## Cycle loop" section, the
-  same sequence of steps in the same order, independently worded.
-- `.claude/commands/health-audit.md:48` ("**Oscillation threshold
-  (definition).**" paragraph) restates
-  `.gaia/cli/health/runbook.md:53` (the Oscillation bullet under
-  "## Termination").
-
-Two independently-maintained copies of the same control-flow logic is a
-drift hazard: an edit to one (e.g. a change to the archive-prune count, or
-to what counts as an oscillating fingerprint) can land without the other
-being updated, and nothing catches the divergence. The finding's
-`location` field MUST cite **both** files (see the exact format below).
-
-**2. Orchestrator not pinned to the session model.**
-`.gaia/cli/health/runbook.md:79` (the "## Model selection" table) reads:
-
-```
-| Orchestrator | main thread (session model) |
-```
-
-Every other dispatched role in the same table (Adjudicator, Bucket D,
-Bucket E judgment auditor, all four challenger lenses, all four Fixer
-lanes) carries an explicit model pin (Sonnet, or Haiku for the mechanical
-buckets). The Orchestrator alone inherits "session model" — whatever
-model the invoking session happens to be running under. Because the
-Orchestrator authors the final A-to-F verdict framing, drives the
-oscillation compare, and gates every circuit breaker, an unpinned
-Orchestrator means the audit's own judgment layer can vary in capability
-run to run depending on what model the maintainer happened to invoke
-`/health-audit` from, with no floor. `.gaia/cli/health/comprehensive/runbook.md`
-(the "## Topology" section, line 28) has the identical gap for the same
-Orchestrator role in the comprehensive phase: "the Orchestrator (main
-thread) is the only spawner" with no model pin stated there either.
-
-### Additional real targets
-
-**Surface weight.** At discovery time the health-audit-private surface
-(`.claude/commands/health-audit.md` + `.gaia/cli/health/runbook.md` +
-`.gaia/cli/health/taxonomy.md`) was ~741 lines (108 + 425 + 208). This
-comprehensive-audit phase itself now adds `.gaia/cli/health/comprehensive/`
-(gauge.sh + comprehensive/runbook.md + four lens briefs) on top of that
-base, so the SELF surface has grown past 1,100 lines and keeps growing:
-the audit auditing itself is not exempt from the weight concern it is
-meant to catch elsewhere. Verify the current total with
-`find .gaia/cli/health -type f -name '*.md' -o -name '*.sh' | xargs wc -l`
-and cite it precisely rather than repeating "~741" as if it still held.
-
-**Name vs scope.** The command is named `/health-audit` — "health" reads
-as covering the whole project. In practice it audits only the
-framework-boundary / CLI-distribution surface plus the shared
-Claude-integration fitness categories (`.claude`, `.gaia`, wiki, CLI
-release machinery). It never touches `app/**` (the product source) or its
-tests. A maintainer skimming the command list could reasonably expect
-`/health-audit` to say something about application code health and be
-wrong. This is a naming-clarity finding, not a functional bug: assess
-severity accordingly (most likely `low` or `medium`, not `high`/`blocker`
-absent evidence of a maintainer actually being misled by it).
+- **Command-versus-runbook duplication.** The command entry point should be
+  a thin pointer to the runbook, not a restatement of it. Two
+  independently-maintained copies of the same control-flow logic (the cycle
+  loop, the oscillation threshold, termination/escalation steps) are a
+  drift hazard: an edit to one can land without the other, and nothing
+  catches the divergence. When the defect is a duplicated contract, cite
+  **both** files in `location`.
+- **Model-pinning gaps.** Every dispatched role should carry an explicit,
+  deliberate model assignment. A role that inherits the bare "session
+  model" with no pin means that layer's capability varies run to run with
+  no floor — worth a finding for any role whose judgment gates the audit
+  (the Orchestrator, adjudicators, challenger lenses, Fixer lanes).
+- **Scope-versus-name mismatch.** Does "health audit" actually mean what
+  the command name implies? A naming-clarity gap — the name suggesting
+  broader coverage than the machinery delivers — is a finding; assess
+  severity soberly (usually `low`/`medium`, absent evidence a maintainer
+  was actually misled).
+- **Surface weight.** Is the machinery proportionate to what it audits, and
+  is it growing without bound? Measure the current total with
+  `find .gaia/cli/health -type f \( -name '*.md' -o -name '*.sh' \) | xargs wc -l`
+  and cite the number you observe; the audit auditing itself is not exempt
+  from the weight concern it catches elsewhere.
 
 ## Reads first
 
@@ -136,11 +86,10 @@ cross-reference to it is fine.
 
 Write full findings to
 `.gaia/local/audit/comprehensive/findings/SELF.json` against the FROZEN
-findings schema below, **even when the findings array is empty** (it will
-not be empty this run — the two mandatory defects above are real and
-verified). For any named sub-surface you judge genuinely clean (e.g.
-"taxonomy Decided/not-findings entries are self-consistent"), add its name
-to `clean_surfaces` rather than omitting it or inventing a zero-severity
+findings schema below, **even when the findings array is empty**. For any
+named sub-surface you judge genuinely clean (e.g. "taxonomy
+Decided/not-findings entries are self-consistent"), add its name to
+`clean_surfaces` rather than omitting it or inventing a zero-severity
 finding.
 
 **Findings schema (FROZEN):**
@@ -154,14 +103,10 @@ finding.
       "issue": "...", "evidence": "...", "recommendation": "..." } ] }
 ```
 
-For the mandatory duplication finding (defect 1), set `location` to cite
-both files, e.g.:
-`.claude/commands/health-audit.md:16-56 and .gaia/cli/health/runbook.md:20-53`.
-
-For the mandatory model-pin finding (defect 2), `location` is
-`.gaia/cli/health/runbook.md:79` (add
-`.gaia/cli/health/comprehensive/runbook.md:28` as a second cited location
-since the same gap recurs there).
+When a finding's defect is the *relationship* between two files (e.g.
+duplicated control-flow across the command and its runbook), set `location`
+to cite **both** files, e.g. `fileA:16-56 and fileB:20-53`. When the same
+gap recurs in a second file, cite both locations.
 
 ## Return
 
@@ -169,9 +114,7 @@ Return ONLY the thin digest: `{id, severity, title}` per finding — no
 `body`, `issue`, `evidence`, or `recommendation` field. **Every material
 (non-low: blocker/high/medium) finding MUST appear in the digest**; each
 is verified downstream by one refuter, so an omitted material finding goes
-unverified. Both mandatory defects above are material (at minimum
-`medium`; assess whether repo-observed impact pushes either to `high`) and
-MUST be in your returned digest. **Low** findings are capped at
+unverified. **Low** findings are capped at
 `LENS_DIGEST_CAP = 25` returned lines; beyond the cap emit a single
 `low: <n> more on disk` count line, with the excess low bodies staying on
 disk. The material set is never truncated.
@@ -185,8 +128,8 @@ disk. The material set is never truncated.
 
 ## Concreteness
 
-Present-tense. Every finding cites `file:line` (or, for the mandatory
-duplication finding, both files' line ranges). A fixer must be able to act
-by reading the file(s) named in `location` alone. No vague "could be
-cleaner" findings — if you cannot name a file and line, it is not a
-finding.
+Present-tense. Every finding cites `file:line` (or, when the defect is the
+relationship between two files, both files' line ranges). A fixer must be
+able to act by reading the file(s) named in `location` alone. No vague
+"could be cleaner" findings — if you cannot name a file and line, it is not
+a finding.
