@@ -1,6 +1,6 @@
 ---
 name: gaia-debt
-description: Drain the tech-debt backlog one issue at a time, highest severity then oldest first, on a fresh branch through the audit gate, closing the issue on merge. Pass `list` to see the ordered backlog or `why <issue-number>` to explain the recommendation.
+description: Drain the tech-debt backlog, a single issue or a recommended related batch, highest severity then oldest first, on a fresh feature branch or worktree through the audit gate, closing the issue(s) on merge. Pass `list` to see the ordered backlog or `why <issue-number>` to explain the recommendation.
 argument-hint: [drain|list|why <issue-number>]
 ---
 
