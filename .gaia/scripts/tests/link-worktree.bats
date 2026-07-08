@@ -54,18 +54,21 @@ run_in() {
   [ -L "$LINKED/.gaia/local/cache/shared" ]
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
+  [ -L "$LINKED/.gaia/local/debt" ]
 
   # Targets are absolute paths into MAIN.
   [ "$(readlink "$LINKED/.gaia/local/setup-state.json")" = "$MAIN/.gaia/local/setup-state.json" ]
   [ "$(readlink "$LINKED/.gaia/local/cache/shared")" = "$MAIN/.gaia/local/cache/shared" ]
   [ "$(readlink "$LINKED/.gaia/local/audit")" = "$MAIN/.gaia/local/audit" ]
   [ "$(readlink "$LINKED/.gaia/local/telemetry")" = "$MAIN/.gaia/local/telemetry" ]
+  [ "$(readlink "$LINKED/.gaia/local/debt")" = "$MAIN/.gaia/local/debt" ]
 
   # Each "linked:" log appears once on stderr.
   [[ "$output" == *"linked: $LINKED/.gaia/local/setup-state.json"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/local/cache/shared"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/local/audit"* ]]
   [[ "$output" == *"linked: $LINKED/.gaia/local/telemetry"* ]]
+  [[ "$output" == *"linked: $LINKED/.gaia/local/debt"* ]]
 }
 
 # ---------- 2. Already-linked worktree (idempotent) ----------
@@ -190,6 +193,7 @@ run_in() {
   [ -d "$MAIN/.gaia/local/audit" ]
   [ -d "$MAIN/.gaia/local/telemetry" ]
   [ -d "$MAIN/.gaia/local/cache/shared" ]
+  [ -d "$MAIN/.gaia/local/debt" ]
 
   # Symlinks resolve (no dangling).
   [ -L "$LINKED/.gaia/local/cache/shared" ]
@@ -198,6 +202,8 @@ run_in() {
   [ -d "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
   [ -d "$LINKED/.gaia/local/telemetry" ]
+  [ -L "$LINKED/.gaia/local/debt" ]
+  [ -d "$LINKED/.gaia/local/debt" ]
 }
 
 # ---------- 7. Symlink-permission failure (simulated) ----------
@@ -278,11 +284,12 @@ FAKE
   [ "$status" -eq 0 ]
   [ ! -L "$LINKED/.env" ]
 
-  # The five fixed symlinks still exist (no regression from the env addition).
+  # The six fixed symlinks still exist (no regression from the env addition).
   [ -L "$LINKED/.gaia/local/setup-state.json" ]
   [ -L "$LINKED/.gaia/local/cache/shared" ]
   [ -L "$LINKED/.gaia/local/audit" ]
   [ -L "$LINKED/.gaia/local/telemetry" ]
+  [ -L "$LINKED/.gaia/local/debt" ]
 }
 
 # ---------- 12. Idempotent re-run: env symlink logs "already-linked" ----------
