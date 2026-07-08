@@ -104,13 +104,15 @@ fi
 mkdir -p "$DEBT_DIR" 2>/dev/null
 
 # ---------- Recompute openCount ----------
-# Count open issues carrying the `tech-debt` label via gh. Guarded on gh
+# Count open issues carrying the `tech-debt` label via gh, excluding any that
+# also carry `debt:in-progress` (the /gaia-debt in-progress claim label) so a
+# claimed issue does not inflate the nudge for a peer session. Guarded on gh
 # presence + auth + network; on ANY failure keep the previous cached count
 # (never blank it).
 open_count="$prev_open_count"
 recompute_ok=false
 if command -v gh >/dev/null 2>&1; then
-  count_out=$(gh issue list --label tech-debt --state open --json number --jq 'length' --limit 1000 2>/dev/null)
+  count_out=$(gh issue list --label tech-debt --state open --json number,labels --jq '[.[] | select([.labels[].name] | index("debt:in-progress") | not)] | length' --limit 1000 2>/dev/null)
   case "$count_out" in
     ''|*[!0-9]*) ;;
     *) open_count="$count_out"; recompute_ok=true ;;
