@@ -114,15 +114,16 @@ skip it; do not raise it here.
    a subfolder-per-producer convention. Any new cache producer that doesn't
    pick a glob the janitor already recognizes leaks forever.
 
-6. **Manifest references two now-absent files.**
-   `.gaia/manifest.json:68` lists `.claude/rules/manifest.md` as `"owned"`
-   and `.gaia/manifest.json:238` lists
-   `.specify/extensions/gaia/lib/cost-consolidate.sh` as `"owned"`; neither
-   file exists on disk in the current tree. Note this from the tidiness
-   angle (stale bookkeeping in a workspace artifact); DIST separately notes
-   the same pair from the distribution-integrity angle — this is the one
-   deliberate, named exception to the no-overlap partition (per the plan
-   brief), not a bug in your scope boundary.
+6. **Manifest references now-absent files.** Cross-reference
+   `.gaia/manifest.json`'s `files` array against the working tree: some entries
+   marked `"owned"` have no file on disk. At time of writing two dangle — a
+   stale `.claude/rules/` doc and a retired helper under
+   `.specify/extensions/gaia/lib/` — but cite whichever manifest lines you
+   actually find. Note this from the tidiness angle (stale bookkeeping in a
+   workspace artifact); DIST separately notes the same pair from the
+   distribution-integrity angle — this is the one deliberate, named exception
+   to the no-overlap partition (per the plan brief), not a bug in your scope
+   boundary.
 
 Verify each target against the live repo before filing (paths/line numbers
 may drift as the repo evolves) — file what you actually find, using the

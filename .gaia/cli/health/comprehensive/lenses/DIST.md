@@ -117,14 +117,15 @@ array, on this surface):
    surfacing as a distribution/consent finding — it fires on every fresh
    `gaia init` unless the adopter already knows the flag exists.
 
-6. **The manifest references two now-absent files** (also a TIDY concern;
+6. **The manifest references now-absent files** (also a TIDY concern;
    note it here from the distribution-integrity angle — a manifest entry for
    a file that doesn't exist misrepresents what actually ships and what
-   `/update-gaia` will try to sync). Verified by cross-referencing every path
-   in `.gaia/manifest.json`'s `files` array against the working tree: two
-   entries have no file on disk —
-   - `.claude/rules/manifest.md`
-   - `.specify/extensions/gaia/lib/cost-consolidate.sh`
+   `/update-gaia` will try to sync). Derive this at audit time: cross-reference
+   every path in `.gaia/manifest.json`'s `files` array against the working tree
+   and report each entry that has no file on disk. At time of writing two
+   entries dangle — a stale `.claude/rules/` doc and a retired helper under
+   `.specify/extensions/gaia/lib/` — but cite the manifest paths and line
+   numbers you actually find; do not treat the set as fixed.
 
 7. **Recommend proving no unmarked maintainer-only leak with a scrub
    dry-run.** `gaia-maintainer release scrub <staging-dir>` (implemented in
