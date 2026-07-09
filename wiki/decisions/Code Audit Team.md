@@ -19,8 +19,6 @@ Each `auditors:` entry carries a `name`, a `globs` list, a `scope` (`adopter` or
 | Member | Globs | Scope | `push_fixes` |
 | --- | --- | --- | --- |
 | `code-audit-frontend` | `app/**`, `test/**`, `.storybook/**` | adopter | `true` |
-| `code-audit-maintainer-shell` | `.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh` | maintainer-only | `false` |
-| `code-audit-maintainer-node` | `.gaia/cli/src/**` | maintainer-only | `false` |
 
 ## Dispatch resolver
 
@@ -37,9 +35,16 @@ A zero-match dispatch (the resolver finds nothing, or is absent/unusable) falls 
 
 `.claude/hooks/post-audit-status.sh`, the hook a member's agent calls after writing its own marker to POST the `GAIA-Audit` commit status, mirrors the same aggregation: it posts success only once every dispatched member's marker is present, declining with `members pending <list>` otherwise. Because the check runs from whichever member's agent finishes last, the POST is order-independent, no member has to run first or last for the status to land correctly.
 
+<!-- gaia:maintainer-only:start -->
 ## Maintainer-only members
 
+| Member | Globs | Scope | `push_fixes` |
+| --- | --- | --- | --- |
+| `code-audit-maintainer-shell` | `.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh` | maintainer-only | `false` |
+| `code-audit-maintainer-node` | `.gaia/cli/src/**` | maintainer-only | `false` |
+
 `code-audit-maintainer-shell` and `code-audit-maintainer-node` review framework source the frontend auditor never scoped: `code-audit-maintainer-shell` covers the framework bash GAIA ships and runs (`.gaia/**/*.sh`, `.claude/hooks/**/*.sh`, `.specify/extensions/gaia/lib/*.sh`, `.github/**/*.sh`), with a hook-contract lens, `shellcheck` as a deterministic oracle, and bash 3.2 / BSD-vs-GNU portability review; `code-audit-maintainer-node` covers `.gaia/cli/src/**` (the CLI's own TypeScript), with correctness, error handling, filesystem/IO safety, Zod schema fitness, and shell/`gh` injection-safety review. Both are advisory-only, no self-heal: a maintainer member never pushes a fix commit, it reviews and reports. Both are release-excluded (their agent files, roster entries, and glob references are marker-wrapped and stripped from the adopter bundle), so an adopter clone's Code Audit Team never dispatches them.
+<!-- gaia:maintainer-only:end -->
 
 ## Ruleset-aware required-check confirmation
 

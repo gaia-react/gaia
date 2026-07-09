@@ -520,6 +520,7 @@
     "wiki/concepts/Wiki Sync.md": "wiki-owned",
     "wiki/decisions/Claude Integration Fitness.md": "wiki-owned",
     "wiki/decisions/Co-located Tests Folder.md": "wiki-owned",
+    "wiki/decisions/Code Audit Team.md": "wiki-owned",
     "wiki/decisions/composeStory Pattern.md": "wiki-owned",
     "wiki/decisions/Content Security Policy.md": "wiki-owned",
     "wiki/decisions/Dark Mode Modernization.md": "wiki-owned",
@@ -587,6 +588,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-09T05:05:04.974Z",
+  "generated": "2026-07-09T08:23:15.236Z",
   "version": "1.6.1"
 }
