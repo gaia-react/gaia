@@ -61,7 +61,7 @@ Read the diff. Decide what wiki page(s) need updating:
 
 - New service in `app/services/`: edit or create `wiki/services/<name>.md`
 - New hook in `app/hooks/`: edit or create `wiki/hooks/<name>.md`
-- New route group: edit `wiki/flows/Routes.md`
+- New route group: edit `wiki/decisions/Thin Routes.md` and/or `wiki/modules/Pages.md`
 - Dependency change: edit `wiki/dependencies/<name>.md` (create if needed)
 - Architectural pattern: edit relevant `wiki/concepts/<topic>.md`
 - ADR-worthy: create new `wiki/decisions/<title>.md` with frontmatter:
