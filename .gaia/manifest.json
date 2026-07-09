@@ -139,9 +139,7 @@
     ".editorconfig": "owned",
     ".env.example": "owned",
     ".gaia/audit-ci.yml": "shared",
-    ".gaia/cli/eslint.config.mjs": "owned",
     ".gaia/cli/gaia": "owned",
-    ".gaia/cli/prettier.config.mjs": "owned",
     ".gaia/cli/templates/.gitkeep": "owned",
     ".gaia/cli/templates/component/index.stories.tsx.tmpl": "owned",
     ".gaia/cli/templates/component/index.test.tsx.tmpl": "owned",
@@ -589,6 +587,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-09T02:09:59.416Z",
+  "generated": "2026-07-09T05:05:04.974Z",
   "version": "1.6.1"
 }

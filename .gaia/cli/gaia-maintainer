@@ -20634,8 +20634,11 @@ var UNEXPECTED_EXIT14 = 2;
 var SCAN_GLOBS = [
   ".gaia/statusline",
   ".gaia/cli/templates",
+  ".gaia/scripts",
   ".claude/hooks",
-  ".github/actions"
+  ".github/actions",
+  ".github/audit",
+  ".specify/extensions/gaia/lib"
 ];
 var ADOPTER_OWNED_SENTINELS2 = /* @__PURE__ */ new Set([
   ...ADOPTER_OWNED_SENTINELS,
@@ -20740,7 +20743,20 @@ var extractPathRefs = (filePath, source) => {
   }
   return refs;
 };
-var isShippedPath = (candidate, manifest) => {
+var computeShippedDirs = (manifest) => {
+  const dirs = /* @__PURE__ */ new Set();
+  for (const filePath of manifest) {
+    let dir = path25.dirname(filePath);
+    while (dir !== "." && !dirs.has(dir)) {
+      dirs.add(dir);
+      const parent = path25.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return dirs;
+};
+var isShippedPath = (candidate, manifest, shippedDirs) => {
   if (manifest.has(candidate)) return true;
   if (ADOPTER_OWNED_SENTINELS2.has(candidate)) return true;
   if (RUNTIME_MARKERS.has(candidate)) return true;
@@ -20749,6 +20765,7 @@ var isShippedPath = (candidate, manifest) => {
   )) {
     return true;
   }
+  if (shippedDirs.has(candidate)) return true;
   return false;
 };
 var walkSh = (root, dir) => {
@@ -20873,11 +20890,12 @@ var tryWalkScriptsOrReport = (root) => {
 };
 var collectLeaks = (root, scriptFiles, manifest) => {
   const leaks = [];
+  const shippedDirs = computeShippedDirs(manifest);
   for (const scriptPath of scriptFiles) {
     const source = readFileSync22(path25.join(root, scriptPath), "utf8");
     const refs = extractPathRefs(scriptPath, source);
     for (const ref of refs) {
-      const isLeak = ref.path !== scriptPath && !isShippedPath(ref.path, manifest);
+      const isLeak = ref.path !== scriptPath && !isShippedPath(ref.path, manifest, shippedDirs);
       if (isLeak) {
         leaks.push({ file: ref.filePath, line: ref.line, path: ref.path });
       }

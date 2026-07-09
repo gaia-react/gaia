@@ -164,6 +164,14 @@ transforms:
           - ".specify/extensions/gaia/lib/**"
           - ".specify/extensions/gaia/rules/**"
           - ".specify/extensions/gaia/templates/**"
+          # Shipped scripts under .gaia/scripts/** (e.g. lint-hook-array-guard.sh,
+          # summary-verify.sh) reference their sibling bats suite in header
+          # comments; that .gaia/scripts/tests/ mention must stay wrapped in
+          # maintainer-only markers rather than leak unwrapped.
+          - ".gaia/scripts/**"
+          # Shipped .github/audit/** scripts are exactly where a maintainer-only
+          # path reference (e.g. .gaia/cli/src/) would most plausibly leak.
+          - ".github/audit/**"
         path-allowlist:
           # Policy-documenting rule: its own body and Audit git-grep commands
           # cite the maintainer-only .gaia/tests/forensics/ path as the
@@ -217,10 +225,10 @@ transforms:
       # code-audit-maintainer-* member name (Phase 1's roster, Phase 1's
       # resolver built-in-default) in a shipped surface. Do NOT mirror the
       # maintainer-paths scope above verbatim: it does not cover
-      # .gaia/scripts/** or .gaia/audit-ci.yml, yet those are exactly where
-      # this leak would appear (resolve-audit-members.sh,
-      # read-audit-ci-config.sh, the roster itself), so this check adds them
-      # explicitly alongside the maintainer-paths surfaces.
+      # .gaia/audit-ci.yml, yet that is exactly where this leak would appear
+      # (resolve-audit-members.sh, read-audit-ci-config.sh, the roster
+      # itself), so this check adds it explicitly alongside the
+      # maintainer-paths surfaces.
       - id: maintainer-audit-members
         description: "code-audit-maintainer-* member names surviving the roster/resolver strip"
         pattern: "code-audit-maintainer-"
