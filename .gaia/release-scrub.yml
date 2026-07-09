@@ -155,15 +155,23 @@ transforms:
           # occurrence: tests.yml body comment cited maintainer paths
           # (98f7a62).
           - ".github/workflows/**"
+          # Adopter-shipped composite actions the workflows above invoke,
+          # including their lib/*.sh helpers.
+          - ".github/actions/**"
           # Adopter-shipped workflow templates rendered by `gaia automation
           # render-workflows`. Template comments must not reference
           # maintainer-only paths (.gaia/cli/src/) absent on adopter machines.
           - ".gaia/cli/templates/**"
+          # Adopter-shipped CI issue-body templates the composite actions render.
+          - ".gaia/templates/**"
           - ".specify/extensions/gaia/README.md"
           - ".specify/extensions/gaia/commands/**"
           - ".specify/extensions/gaia/lib/**"
           - ".specify/extensions/gaia/rules/**"
           - ".specify/extensions/gaia/templates/**"
+          # Adopter-shipped spec-kit preset (preset.yml plus its command and
+          # spec templates).
+          - ".specify/presets/gaia/**"
           # Shipped scripts under .gaia/scripts/** (e.g. lint-hook-array-guard.sh,
           # summary-verify.sh) reference their sibling bats suite in header
           # comments; that .gaia/scripts/tests/ mention must stay wrapped in
