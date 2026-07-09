@@ -215,7 +215,7 @@ Probe the issue backend once at the start of the disposition flow:
 - security-class on **PUBLIC or INTERNAL** → **divert**, never a public/internal issue:
   - **local run**: write a redacted operator surface to `.gaia/local/audit/security/<HEAD-sha>.md` (gitignored) and surface a redacted pointer, **count only, no detail**, in the report. Surface to the operator and wait; never auto-draft an advisory, never auto-disclose. Record disposition `diverted`.
   - **CI run**: a private advisory needs a privileged credential the default `GITHUB_TOKEN` lacks (mechanism deferred). For now emit a redacted **count-only** signal to the public PR comment (`N security-class findings diverted; maintainer must review`), never the detail. The marker still writes. Record `diverted`.
-- security-class on **confirmed PRIVATE** → file as a normal private `tech-debt` issue through the non-security pipeline (section E), fully dedupable/drainable. Record `filed`.
+- security-class on **confirmed PRIVATE** → file as a normal private `tech-debt` issue through the non-security pipeline (section E), fully dedupable/fixable. Record `filed`.
 - A **divert failure** (missing advisory credential or API error) reverts the finding to a redacted operator/maintainer surface, never a public issue, and the marker still writes. Record `diverted`.
 - A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, the Actions log, or `.gaia/local/audit/progress.log`. A diverted security finding contributes only to counts on those surfaces.
 

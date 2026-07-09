@@ -139,7 +139,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Task Orchestration]]
 - [[Code Review Audit Agent]]
 - [[Code Review Audit CI]]: pre-merge GitHub Actions gate; `GAIA-Audit:` trailer skip logic; adopter-tunable knobs at `.gaia/audit-ci.yml`.
-- [[Audit Disposition and Debt Drain]]: forced disposition of out-of-scope audit findings as deduped tech-debt issues; security-class divert; the /gaia-debt drain loop (single issue or recommended related batch, feature branch or worktree) and statusline nudge.
+- [[Audit Disposition and Debt Fix]]: forced disposition of out-of-scope audit findings as deduped tech-debt issues; security-class divert; the /gaia-debt fix loop (single issue or recommended related batch, feature branch or worktree) and statusline nudge.
 - [[Policy-Memory Loop]]: prune-first self-improvement; recurring finding_class -> statusline nudge -> `/gaia-harden` -> path-scoped rule -> `/gaia-audit` prunes only on obsolescence/redundancy/supersession/duplication.
 - [[Incremental CI Skipping]]: required checks skip when the delta since they last passed green has no relevant files; `resolve-check-base.sh` / `resolve-audit-base.sh`.
 - [[Claude Hooks]]

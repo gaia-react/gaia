@@ -56,4 +56,4 @@ The sweep is fail-safe: any inability to prove a thing is dead (no git, an unrea
 
 Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for a merged spec. The append-only ledgers (`red-ledger/observations.jsonl`, `audit/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`, `mentorship.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
 
-See [[Claude Hooks]] for the hook surface and [[Audit Disposition and Debt Drain]] for the marker lifecycle.
+See [[Claude Hooks]] for the hook surface and [[Audit Disposition and Debt Fix]] for the marker lifecycle.

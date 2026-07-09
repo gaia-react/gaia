@@ -1,24 +1,35 @@
 # /gaia-debt
 
-Drain the `tech-debt` backlog the audit files. `/gaia-debt` reads the open `tech-debt` issues, orders them deterministically (highest severity then oldest first, no model call), recommends the top candidate, and resolves **one drain unit** per invocation, a single issue or a user-approved related batch of issues, on a fresh branch through the same `code-audit-frontend` marker gate every feature PR passes, with one `Closes #N` per member issue in the PR body so the merge closes every issue in the unit natively.
+Fix the `tech-debt` backlog the audit files. `/gaia-debt` reads the open `tech-debt` issues, orders them deterministically (highest severity then oldest first, no model call), recommends the top candidate, and resolves **one fix unit** per invocation, a single issue or a user-approved related batch of issues, on a fresh branch through the same `code-audit-frontend` marker gate every feature PR passes, with one `Closes #N` per member issue in the PR body so the merge closes every issue in the unit natively.
 
-The ordering is a pure, source-checkable sort over the issues' severity labels and `createdAt` timestamps. It never calls a model to rank the backlog, and it never resolves more than one drain unit per run.
+The ordering is a pure, source-checkable sort over the issues' severity labels and `createdAt` timestamps. It never calls a model to rank the backlog, and it never resolves more than one fix unit per run.
 
 ## Execution model, READ FIRST
 
-Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the drain unit is chosen and isolated the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There are **up to two** up-front interactive decisions, in order: (1) the candidate/batch pick, only when the backlog holds two or more issues, and (2) the isolation-mode pick (`## Pre-flight isolation (branch vs worktree)` below), only when HEAD is on `main`/`master`, a silent forced worktree with no prompt on any other branch. After both, the flow does not pause for confirmation. Pause only when input is genuinely needed (those two picks) or something unexpected blocks the path (a security-class diversion, a rejected push, a gate that will not go green). Resolve **one drain unit** per invocation, a single issue or a user-confirmed related batch; the skill never auto-advances to an unrelated issue.
+Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the fix unit is chosen and isolated the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There are **up to two** up-front interactive decisions, in order: (1) the candidate/batch pick, only when the backlog holds two or more issues, and (2) the isolation-mode pick (`## Pre-flight isolation (branch vs worktree)` below), only when HEAD is on `main`/`master`, a silent forced worktree with no prompt on any other branch. After both, the flow does not pause for confirmation. Pause only when input is genuinely needed (those two picks) or something unexpected blocks the path (a security-class diversion, a rejected push, a gate that will not go green). Resolve **one fix unit** per invocation, a single issue or a user-confirmed related batch; the skill never auto-advances to an unrelated issue.
 
 The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same `code-audit-frontend` marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
 
 ## Argument parsing
 
-Tokenize the first whitespace-separated word of `$ARGUMENTS`:
+Tokenize the first whitespace-separated word of `$ARGUMENTS`. Accept an optional
+leading `#` on any issue-number argument below (`why`'s, `fix`'s, or the bare
+form) and strip it before parsing the remainder as an integer.
 
-- `drain` (or empty `$ARGUMENTS`) → the full interactive flow. This is the default the statusline nudge (`Run /gaia-debt (N issues)`) points at.
+- `fix` with no further token (or empty `$ARGUMENTS`) → the full interactive
+  flow, recommending the top-of-backlog candidate. This is the default the
+  statusline nudge (`Run /gaia-debt (N issues)`) points at.
 - `list` → print the ordered backlog and stop. No branch, no PR, no prompts.
-- `why` → the remainder of `$ARGUMENTS` is an issue number. Explain where that issue sits in the ordering, its recommended handler class, and the rationale, then stop. No authoring, no prompts.
+- `why <issue-number>` → explain where that issue sits in the ordering, its
+  recommended handler class, and the rationale, then stop. No authoring, no
+  prompts.
+- `fix <issue-number>`, or a bare `<issue-number>` / `#<issue-number>` with no
+  leading subcommand → fix that specific issue directly (see "## Fix a
+  specific issue (direct-number path)" below).
 
-If the first token is none of `drain` / `list` / `why` and `$ARGUMENTS` is non-empty, treat the whole string as a `why <issue-number>` target only when it parses as a single integer; otherwise default to `drain`.
+If the first token is none of `fix` / `list` / `why` and does not parse (after
+optional `#`-stripping) as a single integer, default to `fix` with no target,
+the normal top-of-backlog flow.
 
 ## Backend probe
 
@@ -32,9 +43,9 @@ Probe the issue backend before reading the backlog. Three outcomes:
 
 Read the open backlog and order it with a pure sort. No model call ranks the backlog; the order is reproducible from this source.
 
-### Reconcile stale claims (drain only)
+### Reconcile stale claims (fix only)
 
-This reconcile runs only in `drain`, never in `list`/`why`: it writes (it can strip a label), and those two subcommands never write. It runs **before** the backlog read below, so it recovers a claim leaked by a session that died ungracefully mid-drain before the ordering and clustering passes below ever see the backlog.
+This reconcile runs only in `fix`, never in `list`/`why`: it writes (it can strip a label), and those two subcommands never write. It runs **before** the backlog read below, so it recovers a claim leaked by a session that died ungracefully mid-fix before the ordering and clustering passes below ever see the backlog.
 
 Read the current claims with a self-contained pre-pass query:
 
@@ -44,7 +55,7 @@ gh issue list --label tech-debt --state open --json number,labels,updatedAt
 
 This query is self-contained: it runs before the backlog read below, so it does not consume that read's data, and it fetches `updatedAt`, which the backlog read's own `--json` set does not. For each returned issue carrying `debt:in-progress`, apply this liveness rule: the claim is **live** if (a) a `debt/…` branch names it (`git branch --list 'debt/*'`; the segment before a `-batch` suffix is dash-joined integers → those are all its members, else the leading integer after `debt/` is the member, so a batch branch names every member), OR (b) an open PR body contains `Closes #<n>` (`gh pr list`), OR (c) the issue's `updatedAt` is within roughly the last 30 minutes. Otherwise the claim is stale: strip it (`gh issue edit <n> --remove-label debt:in-progress`, best-effort) and touch the sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`).
 
-The age grace exists because the claim lands *first*, before any branch is cut (`## Claim the drain unit` below): a just-locked issue has no branch yet, so "no branch ⇒ dead" alone would false-strip a fresh lock. A recent `updatedAt` protects that fresh lock; the branch check protects every active drain once past branch-cut, regardless of age.
+The age grace exists because the claim lands *first*, before any branch is cut (`## Claim the fix unit` below): a just-locked issue has no branch yet, so "no branch ⇒ dead" alone would false-strip a fresh lock. A recent `updatedAt` protects that fresh lock; the branch check protects every active fix once past branch-cut, regardless of age.
 
 ```bash
 gh issue list --label tech-debt --state open \
@@ -66,9 +77,9 @@ How the sort works, and why it is deterministic:
 - **Severity descending.** Each issue's one severity label maps to a rank: `severity:critical → 3`, `severity:important → 2`, `severity:suggestion → 1`. An issue with **no** severity label falls through the `else` branch to rank `1`, the **suggestion** band, so a human-filed fieldless issue is a valid candidate and sorts with the suggestions.
 - **`createdAt` ascending within a band.** `sort_by([(-.sev), .createdAt])` sorts by negated rank first (highest severity first) then by `createdAt`. `gh` returns `createdAt` as a `Z`-normalized RFC 3339 string, so a lexicographic ascending sort is chronological ascending: of two equal-severity issues, the **older** one sorts first (FIFO within the band).
 
-The entire ordering is this one `--jq` expression over fields GitHub returns. There is no judgment step, so `list`, `why`, and `drain` all agree on the order and anyone can reproduce it by re-running the command.
+The entire ordering is this one `--jq` expression over fields GitHub returns. There is no judgment step, so `list`, `why`, and `fix` all agree on the order and anyone can reproduce it by re-running the command.
 
-After the sort, run a second deterministic pass that clusters the ordered backlog into related groups. No model call ranks or clusters the backlog: clustering is a pure function of parsed fields, exactly like the sort. It never changes the sort order, it only groups issues within it, so `list`, `why`, and `drain` all agree on the clusters too. The clustering **function** is identical across all three; only `drain`'s **input** differs, because it filters in-progress issues out of the backlog before clustering (below), so its offered clusters can legitimately differ from what `list`/`why` display over the unfiltered backlog.
+After the sort, run a second deterministic pass that clusters the ordered backlog into related groups. No model call ranks or clusters the backlog: clustering is a pure function of parsed fields, exactly like the sort. It never changes the sort order, it only groups issues within it, so `list`, `why`, and `fix` all agree on the clusters too. The clustering **function** is identical across all three; only `fix`'s **input** differs, because it filters in-progress issues out of the backlog before clustering (below), so its offered clusters can legitimately differ from what `list`/`why` display over the unfiltered backlog.
 
 Parse each issue's dedup key from its `body`, the `<!-- gaia-debt-key: v1 class=<finding_class> path=<repo-relative-posix-path> line=<integer> -->` comment defined by `.claude/skills/file-tech-debt/SKILL.md` step 1, into `class` and `path`. A keyless human-filed issue falls back to the same `<path>:<line>` body scan `file-tech-debt/SKILL.md` step 2.3 uses to recover a `path`; if no path is parseable at all, the issue does not cluster and stands alone.
 
@@ -77,40 +88,90 @@ Two issues belong to the same cluster when either holds, strongest signal first:
 1. **Same `path`.** Byte-identical dedup-key `path=` values. Fixing two defects in one file is the canonical case for fixing them together.
 2. **Same `class` and same directory.** Identical `class=` values whose `path` share the same `dirname` (immediate parent directory), the same root-cause pattern in one subsystem.
 
-A shared directory alone is too weak to cluster on (a whole `app/services/` directory is not one fix); only same-`path` or same-`class`-plus-same-dirname cluster. A **cluster is a batch candidate only when it has 2 or more members**; a singleton drains the normal one-issue way. Clustering is security-blind: it never looks at severity, security-classification, or repo visibility, those are handled where the batch is offered (below).
+A shared directory alone is too weak to cluster on (a whole `app/services/` directory is not one fix); only same-`path` or same-`class`-plus-same-dirname cluster. A **cluster is a batch candidate only when it has 2 or more members**; a singleton fixes the normal one-issue way. Clustering is security-blind: it never looks at severity, security-classification, or repo visibility, those are handled where the batch is offered (below).
 
-**In-progress exclusion (drain only).** `drain` derives an `inProgress` flag per issue from the `labels` field the ordering query above already fetches (true when the issue carries `debt:in-progress`) and excludes every in-progress issue from both the candidate pool and the clustering pass above: an in-progress issue neither offers itself as a candidate nor drags a sibling into a batch. `list` still shows in-progress issues and `why` still reports them (see below); only `drain`'s candidate set narrows.
+**In-progress exclusion (fix only).** `fix` derives an `inProgress` flag per issue from the `labels` field the ordering query above already fetches (true when the issue carries `debt:in-progress`) and excludes every in-progress issue from both the candidate pool and the clustering pass above: an in-progress issue neither offers itself as a candidate nor drags a sibling into a batch. `list` still shows in-progress issues and `why` still reports them (see below); only `fix`'s candidate set narrows.
 
-## Recommend and present (drain)
+## Fix a specific issue (direct-number path)
 
-The top candidate is the first in the sorted list. Before building the prompt, resolve which cluster, if any, anchors the recommendation.
+Runs only when Argument parsing above resolved a direct issue-number target:
+bare `<issue-number>`, `#<issue-number>`, or `fix <issue-number>`. It runs
+after the Backend probe and Read-and-order-the-backlog passes above (reconcile,
+ordering, and clustering already ran), and it replaces "## Recommend and
+present (fix)" below for this invocation, except on the two fall-through paths
+noted inline.
 
-**Offer-time security read.** Clustering itself is security-blind, but a security-class issue can never share a public `Closes #N` PR, so the offer is not. Before presenting, read repo visibility once: `gh repo view --json visibility`. On a **confirmed-PRIVATE** repo every cluster is public-batch-eligible as-is. On any **non-PRIVATE** repo, apply the same fail-safe security classification the Drain-time security screen (below) defines to every candidate issue in the backlog, and treat any security-class issue as not public-batch-eligible: it never appears inside a batch option, only as its own single candidate. Reuse this one read for the Drain-time security screen after selection; it never becomes a second prompt.
+**Validate the target.** Look up `<issue-number>` in the ordered, clustered
+backlog already fetched above. If present there, its `inProgress` flag is
+already derived from `labels`; skip to Eligible. If absent, disambiguate with
+a single targeted call, `gh issue view <issue-number> --json state,labels,title`
+(mirrors the claim-time re-check in "## Claim the fix unit" below), to tell
+apart: the issue doesn't exist, it's CLOSED, or it's open but not
+`tech-debt`-labeled.
+
+**Ineligible** (doesn't exist, closed, not `tech-debt`-labeled, or already
+carries `debt:in-progress`) → state the specific reason in one line (e.g.
+`"#<N> is already closed"`, `"#<N> doesn't carry the tech-debt label"`,
+`"#<N> is already being fixed by another session"`), then fall through to
+"## Recommend and present (fix)" below exactly as if no argument had been
+passed.
+
+**Eligible** (open, `tech-debt`-labeled, not in-progress) → resolve which
+cluster, if any, anchors it, reusing the same clustering pass and the same
+offer-time security read (`gh repo view --json visibility`) "## Recommend and
+present (fix)" defines below (one read, never a second prompt):
+
+- **Heads a public-batch-eligible cluster of 2 or more** → one `AskUserQuestion`
+  prompt (header `Debt item`, single-select), same shape as the batch offer
+  below, anchored on the passed issue:
+  1. `Batch #<N> #<B> #<C> (Recommended)` — shared signal, member count,
+     severity span, "one branch, one PR, all close on merge."
+  2. `#<N> only` — fix just the passed issue, one at a time.
+  3. `Next available highest-priority item(s) instead` — picking this falls
+     through to "## Recommend and present (fix)" below, over the full
+     backlog, exactly as if no argument had been passed.
+  - The built-in **Other** entry still lets the human type any open
+    `tech-debt` issue number to fix that one alone.
+- **Singleton (no cluster), or security-class on a non-PRIVATE repo** → no
+  prompt: proceed straight to fixing `#<N>` alone, the same
+  nothing-to-decide rule "## Recommend and present (fix)" applies to a lone
+  remaining candidate. The Fix-time security screen below still screens and,
+  if needed, diverts a security-class `#<N>` exactly as it would for any
+  other selected issue.
+
+Whatever this section resolves to, hand off to "## Claim the fix unit" below
+the same way "## Recommend and present (fix)" does.
+
+## Recommend and present (fix)
+
+Skipped when "## Fix a specific issue (direct-number path)" above already resolved the pick; runs otherwise. The top candidate is the first in the sorted list. Before building the prompt, resolve which cluster, if any, anchors the recommendation.
+
+**Offer-time security read.** Clustering itself is security-blind, but a security-class issue can never share a public `Closes #N` PR, so the offer is not. Before presenting, read repo visibility once: `gh repo view --json visibility`. On a **confirmed-PRIVATE** repo every cluster is public-batch-eligible as-is. On any **non-PRIVATE** repo, apply the same fail-safe security classification the Fix-time security screen (below) defines to every candidate issue in the backlog, and treat any security-class issue as not public-batch-eligible: it never appears inside a batch option, only as its own single candidate. Reuse this one read for the Fix-time security screen after selection; it never becomes a second prompt.
 
 The **recommended batch**, when one exists, is the top cluster all of whose members are public-batch-eligible: normally the cluster containing the top-ranked candidate, but a security-class top candidate is never public-batch-eligible on a non-PRIVATE repo, so it anchors no batch and is offered only as its own single candidate. An eligible batch may span severities, a `severity:suggestion` in the same file as a `severity:important` is a cheap add-on.
 
 How you present the choice depends on backlog size and cluster shape, counted over the **remaining candidates** (open issues after the in-progress exclusion above), not the raw open-issue count:
 
 - **Zero remaining candidates** (every open `tech-debt` issue already carries `debt:in-progress`) → do not prompt. State that all open debt is already in progress and stop.
-- **Exactly one remaining candidate** → do not prompt. State the issue (number, title, severity band, age derived from `createdAt`) and drain it directly. This is also the peer-session case: two open issues, one already claimed, drains the single remaining candidate with no prompt.
+- **Exactly one remaining candidate** → do not prompt. State the issue (number, title, severity band, age derived from `createdAt`) and fix it directly. This is also the peer-session case: two open issues, one already claimed, fixes the single remaining candidate with no prompt.
 - **Top candidate heads a public-batch-eligible cluster of 2 or more** → a batch is recommended. Offer it with a single `AskUserQuestion` prompt (header `Debt item`, single-select), phrased around the batch, for example: `"Top item #<A> is related to <N> other issue(s) (<shared signal>). Fix them together, or one at a time?"`. Options, top option carrying `(Recommended)`:
   1. `Batch #<A> #<B> #<C> (Recommended)`, description: the shared signal (e.g. "all in app/foo/index.ts"), the member count, the severity span, and "one branch, one PR, all close on merge."
-  2. `#<A> only`, description: drain just the top issue (its severity band, its age), one at a time.
+  2. `#<A> only`, description: fix just the top issue (its severity band, its age), one at a time.
   3. (optional) the next distinct candidate slot: a batch option when that candidate itself heads a >= 2 cluster, else a single option.
-  - The tool's built-in **Other** entry lets the human type any open `tech-debt` issue number to drain that one alone.
+  - The tool's built-in **Other** entry lets the human type any open `tech-debt` issue number to fix that one alone.
 - **Top candidate is a singleton (no cluster), or a security-class top candidate on a non-PRIVATE repo** → present exactly today's shape: the top three candidates as options (or both when only two exist), top candidate first and its label suffixed `(Recommended)`. Any shown candidate that itself heads a public-batch-eligible cluster of 2 or more is presented as a **batch** option rather than a single, which keeps one-at-a-time the default natural path.
 
 Cap the option set at **4** (plus the built-in Other), the `AskUserQuestion` maximum. When the backlog is deeper than the shown options, first print the full ordered backlog (per issue: number, title, severity band, age), now annotated with cluster membership (e.g. `[batch with #B #C]`), so numbers beyond the shown options are visible before choosing.
 
-**Opt-out guarantee.** One-at-a-time stays an explicit, always-available choice: the `#<A> only` option, the built-in Other (type any open issue number to drain it alone), and the unchanged singleton path together guarantee it. A batch is always a recommendation the human approves, never a default that skips the choice.
+**Opt-out guarantee.** One-at-a-time stays an explicit, always-available choice: the `#<A> only` option, the built-in Other (type any open issue number to fix it alone), and the unchanged singleton path together guarantee it. A batch is always a recommendation the human approves, never a default that skips the choice.
 
 **Security-class members never appear inside a public batch option.** On a non-PRIVATE repo the offer-time read above already withholds them, they surface only as single candidates. On a confirmed-PRIVATE repo they may appear as batch members.
 
-Honor whatever the human picks or types into **Other**. If a typed value is not an open `tech-debt` issue number in the backlog, say so and re-prompt; do not drain an off-list issue. The skill never auto-advances past the human's choice.
+Honor whatever the human picks or types into **Other**. If a typed value is not an open `tech-debt` issue number in the backlog, say so and re-prompt; do not fix an off-list issue. The skill never auto-advances past the human's choice.
 
-## Claim the drain unit
+## Claim the fix unit
 
-This runs in `drain` only, as the **first** step after the pick above, before the Drain-time security screen and before Pre-flight isolation (branch/worktree) below. Claiming immediately after the pick, ahead of either of those steps, minimizes the window in which a peer session also picks the same ticket.
+This runs in `fix` only, as the **first** step after the pick above, before the Fix-time security screen and before Pre-flight isolation (branch/worktree) below. Claiming immediately after the pick, ahead of either of those steps, minimizes the window in which a peer session also picks the same ticket.
 
 Ensure the label exists, idempotently:
 
@@ -123,7 +184,7 @@ The `debt:` namespace is load-bearing: a `debt:`-prefixed label is gaia-owned by
 Then, for a single issue or **every member of a confirmed batch**:
 
 1. **Re-read each member's labels** (`gh issue view <n> --json labels`) before claiming. If `debt:in-progress` is already present, a peer session won the race:
-   - **single issue** → report "issue #N was just claimed by another session" and re-present the refreshed backlog; do not drain it.
+   - **single issue** → report "issue #N was just claimed by another session" and re-present the refreshed backlog; do not fix it.
    - **batch** → drop that member and proceed with the surviving members if 1 or more remain; if none remain, report the whole batch was claimed and re-present the refreshed backlog.
 2. **Claim every surviving member**: `gh issue edit <n> --add-label debt:in-progress`. A confirmed batch claims all of its members, not just the top one.
 3. **Touch the sentinel** (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`) so a peer session's next statusline tick recomputes the open count and drops it. This in-flow touch is best-effort; the `gh issue edit` PostToolUse hook is the deterministic backstop.
@@ -132,13 +193,13 @@ The label spelling is the same shared contract `.gaia/scripts/debt-count-refresh
 
 Because the claim happens here, before the security screen below, any member that screen later peels and diverts already carries `debt:in-progress`; that screen strips it.
 
-## Drain-time security screen
+## Fix-time security screen
 
-Before opening any fix PR, screen **every member of the selected drain unit** (a single issue, or every issue in a confirmed batch). Apply the fail-safe security classification to each member's content (machine-filed or human-filed): a finding is security-class if it reads as a security concern, carries no stable `finding_class`, was a Critical, or is secret-shaped. When in doubt, treat it as security-class.
+Before opening any fix PR, screen **every member of the selected fix unit** (a single issue, or every issue in a confirmed batch). Apply the fail-safe security classification to each member's content (machine-filed or human-filed): a finding is security-class if it reads as a security concern, carries no stable `finding_class`, was a Critical, or is secret-shaped. When in doubt, treat it as security-class.
 
 Re-read `gh repo view --json visibility` immediately before acting (a repo can flip from PRIVATE to PUBLIC), reusing the offer-time read above when it already ran; do not add a second prompt:
 
-- **confirmed PRIVATE** → no member peels. The whole unit, single or batch, drains as one private PR; draining proceeds normally.
+- **confirmed PRIVATE** → no member peels. The whole unit, single or batch, fixes as one private PR; fixing proceeds normally.
 - **PUBLIC or INTERNAL** → any member that screens security-class is **peeled** from the unit and **diverted individually**: surface a count-only pointer to the operator and wait; never auto-disclose, never auto-draft an advisory, never open a public fix PR for it. Strip its claim (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel so it re-enters the open count and a peer session's offer. The remaining non-security members proceed as the (possibly smaller) unit, keeping their claims. If every member peels, there is nothing left to open a public PR for: strip every member's claim the same way, report the diverts, and stop. The label name is generic and non-disclosing, and security-class issues only exist in the backlog on confirmed-PRIVATE repos, so a brief label is not a disclosure concern. On a public repo, opening a `Closes #N` PR for a security issue completes a coordinated-disclosure failure, which this screen exists to prevent.
 
 This member-level screen is the **backstop** to the offer-time exclusion in "Recommend and present" above: on a non-PRIVATE repo a security-class issue is already withheld from the offered batch, so this screen mainly guarantees the invariant for a member reached via **Other**.
@@ -147,25 +208,25 @@ A security-class issue's detail never reaches a public PR, the PR comment, or th
 
 ## Pre-flight isolation (branch vs worktree)
 
-This section runs once per drain, single issue or batch, after the security screen above and before the drain unit's branch or worktree exists. Ordering rationale: the security screen can divert and stop a security-class drain before any branch exists, so isolation runs after it and a diverted drain never creates a worktree.
+This section runs once per fix, single issue or batch, after the security screen above and before the fix unit's branch or worktree exists. Ordering rationale: the security screen can divert and stop a security-class fix before any branch exists, so isolation runs after it and a diverted fix never creates a worktree.
 
 **Check the current branch.**
 
 **If HEAD is on `main`/`master`:** ask via `AskUserQuestion` (the one new interactive gate here; it fires every time HEAD is main/master, never silently defaults):
 
-- question: `"On main. How should this debt drain be isolated?"`
+- question: `"On main. How should this debt fix be isolated?"`
 - header: `"Branch mode"`
 - options (in this exact order):
-  1. `{ label: "Create a feature branch in place (Recommended)", description: "Default. Branch is cut from HEAD and the drain works in the current checkout. Simple, predictable, safe." }`
-  2. `{ label: "Create a git worktree", description: "Gives this drain its own separate working copy, cut from main under .claude/worktrees/. You can keep working on your current branch, or run another task, at the same time without the two colliding." }`
+  1. `{ label: "Create a feature branch in place (Recommended)", description: "Default. Branch is cut from HEAD and the fix works in the current checkout. Simple, predictable, safe." }`
+  2. `{ label: "Create a git worktree", description: "Gives this fix its own separate working copy, cut from main under .claude/worktrees/. You can keep working on your current branch, or run another task, at the same time without the two colliding." }`
 
 If the user picks **Other** with custom text, surface a clarifying question rather than guessing; feature-branch and worktree are the two supported modes.
 
-**Branch naming.** Single-issue drain: `debt/<issue-number>-<slug>` (`<slug>` a 2-4 word kebab-case reduction of the issue title). Batch drain: `debt/<members-joined-by-dash>-batch`, members ascending, e.g. `debt/42-45-47-batch`: naming every member lets `git branch --list` (in the reconcile above) protect non-lowest batch members past branch-cut without leaning on the age grace. Whichever isolation mode runs, including the forced worktree below, the branch carries this name.
+**Branch naming.** Single-issue fix: `debt/<issue-number>-<slug>` (`<slug>` a 2-4 word kebab-case reduction of the issue title). Batch fix: `debt/<members-joined-by-dash>-batch`, members ascending, e.g. `debt/42-45-47-batch`: naming every member lets `git branch --list` (in the reconcile above) protect non-lowest batch members past branch-cut without leaning on the age grace. Whichever isolation mode runs, including the forced worktree below, the branch carries this name.
 
-**If HEAD is on any other branch:** do not offer feature-branch-in-place. Because you are already on a branch, this drain's work goes into its own git worktree cut from main so it does not tangle with the current branch. State that to the user in one line, then proceed straight into Worktree creation below. No `AskUserQuestion` fires here.
+**If HEAD is on any other branch:** do not offer feature-branch-in-place. Because you are already on a branch, this fix's work goes into its own git worktree cut from main so it does not tangle with the current branch. State that to the user in one line, then proceed straight into Worktree creation below. No `AskUserQuestion` fires here.
 
-### Worktree creation (worktree-mode drains only)
+### Worktree creation (worktree-mode fixes only)
 
 When pre-flight selects worktree mode, chosen from main or forced on the not-on-main path, create the worktree with the runtime tool, passing the branch name above as the worktree name:
 
@@ -177,7 +238,7 @@ Feature-branch mode keeps today's behavior: cut the branch of the same name from
 
 ## Resolve the selected unit
 
-The **drain unit** is the selected (non-diverted) member set: a single issue, or every surviving member of a confirmed batch after the security screen above peels any security-class member. It is still **one drain unit per invocation**.
+The **fix unit** is the selected (non-diverted) member set: a single issue, or every surviving member of a confirmed batch after the security screen above peels any security-class member. It is still **one fix unit per invocation**.
 
 1. **Confirm the handler class for the unit.** Each member issue carries an advisory `Handler: prompt` or `Handler: plan`, or, for a fieldless human-filed issue, no line at all; classify it on selection the same way as today: `prompt` when confined to one file with no public-contract change and no cross-module ripple, `plan` otherwise. The unit's effective class is the **maximum** over members: `plan` if any member is `plan` (or any fix is cross-module / contract-changing), else `prompt`. A multi-issue batch is usually `plan`. State the honest class before implementing so the human knows the scope, exactly as today's single-issue rule does.
 2. **The unit is already isolated.** `## Pre-flight isolation (branch vs worktree)` above already cut the branch or created the worktree before this step, on the frozen name (`debt/<issue-number>-<slug>` single, `debt/<members-joined-by-dash>-batch` batch). This step does no branch creation of its own.
@@ -189,7 +250,7 @@ The PR is an ordinary in-scope source change: it passes the **same** `code-audit
 
 ## Touch the debt-count sentinel
 
-After opening the PR, set the staleness sentinel **once per drain** (not once per member issue in a batch) so the statusline recomputes the open count on the next tick:
+After opening the PR, set the staleness sentinel **once per fix** (not once per member issue in a batch) so the statusline recomputes the open count on the next tick:
 
 ```bash
 mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
@@ -199,7 +260,7 @@ mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
 
 ## Drive the PR to merge
 
-Once the PR is up, drive it straight to merge with no confirmation prompt: the drain unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, or a `--auto` merge still queued when the poll window closes; those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `debt:in-progress` from every claimed member (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel, so the freed issue re-enters the offer and the count. A `--auto` merge still queued when the poll window closes is not this case: it is still progressing toward merge, so its claim stays in place until it resolves (below).
+Once the PR is up, drive it straight to merge with no confirmation prompt: the fix unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, or a `--auto` merge still queued when the poll window closes; those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `debt:in-progress` from every claimed member (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel, so the freed issue re-enters the offer and the count. A `--auto` merge still queued when the poll window closes is not this case: it is still progressing toward merge, so its claim stays in place until it resolves (below).
 
 Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read it, don't merge from memory. Follow its marker handshake; do **not** substitute a bare `gh pr merge`:
 
@@ -210,7 +271,7 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
   <!-- gaia:maintainer-only:end -->
 - **Merge, then verify before cleanup.** Run `gh pr merge <N> --squash --delete-branch`; if branch protection rejects with "base branch policy prohibits the merge", add `--auto` (never `--admin` without explicit permission) so GitHub queues the merge behind the remaining required checks (Tests, Chromatic). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes). If it is still queued when the poll window closes, report "merge queued via --auto; completes when checks pass" and return **without** cleanup: deleting the local branch, or discarding the worktree, before `MERGED` strands it against an open PR.
 
-  On confirmed `MERGED`, each member's `Closes #N` already closed its issue, and a closed issue leaves the open backlog and the count on its own, so stripping `debt:in-progress` here is best-effort/cosmetic: `gh issue edit <n> --remove-label debt:in-progress` for each member, ignoring failure. A queued `--auto` merge that has not yet landed is still in progress: leave its claim in place; close-on-merge and the next drain's reconcile settle it once the merge completes.
+  On confirmed `MERGED`, each member's `Closes #N` already closed its issue, and a closed issue leaves the open backlog and the count on its own, so stripping `debt:in-progress` here is best-effort/cosmetic: `gh issue edit <n> --remove-label debt:in-progress` for each member, ignoring failure. A queued `--auto` merge that has not yet landed is still in progress: leave its claim in place; close-on-merge and the next fix's reconcile settle it once the merge completes.
 
   On `MERGED`, run post-merge cleanup by isolation mode:
   - **Feature-branch mode:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`.
@@ -218,7 +279,7 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
 
 Each `Closes #N` line in the PR body auto-closes its issue on merge, so on a batch, the single merge closes every member issue and no separate close call is needed for any of them.
 
-### Post-merge worktree cleanup (worktree-mode drains only)
+### Post-merge worktree cleanup (worktree-mode fixes only)
 
 1. Confirm merge via `gh pr view <N> --json state`; require `.state == "MERGED"`. If not merged, do not proceed; surface and stop.
 2. **Isolation-context check** (below). If running inside an isolated subagent context, emit the continuation prompt and stop; do not call `ExitWorktree`.
@@ -227,7 +288,7 @@ Each `Closes #N` line in the PR body auto-closes its issue on merge, so on a bat
 
 Never call `ExitWorktree` first and treat its refusal as the discard trigger; the merged-state confirmation is the primary signal.
 
-### Isolation-context detection (worktree-mode drains only)
+### Isolation-context detection (worktree-mode fixes only)
 
 The runtime refuses `ExitWorktree` from an agent dispatched with `isolation: "worktree"` or a `cwd` override (refusal text: `ExitWorktree cannot be called from a subagent with a cwd override`). `/gaia-debt` normally runs on the user's own main thread, so the direct in-session `ExitWorktree` path above is the common case; still detect the automation case:
 
@@ -255,10 +316,10 @@ Run the ordering command and the clustering pass, find the issue whose number ma
 
 ## Guardrails
 
-- **One drain unit per invocation.** A single issue, or a user-confirmed related batch; the skill never auto-advances to an unrelated issue and never batches unrelated issues. Batching is always a user-confirmed choice, with one-at-a-time preserved as the explicit opt-out. Security-class issues never join a public batch.
+- **One fix unit per invocation.** A single issue, or a user-confirmed related batch; the skill never auto-advances to an unrelated issue and never batches unrelated issues. Batching is always a user-confirmed choice, with one-at-a-time preserved as the explicit opt-out. Security-class issues never join a public batch.
 - **Deterministic ordering, never an LLM evaluator.** The order is the `--jq` sort above over severity labels and `createdAt`; no model ranks the backlog.
 - **Within-band FIFO, severity-first.** Highest severity first, oldest first within a band. Cross-band fairness / anti-starvation is out of scope.
 - **The skill drives the merge, never the gate.** The happy path runs start to finish with no merge-time confirmation: it resolves the fix PR to completion through the standard PR Merge Workflow's marker handshake, running `gh pr merge` only once a real marker exists for HEAD. Never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's gate.
-- **Security screen before any public PR.** A security-class selected issue diverts via the visibility gate on PUBLIC/INTERNAL; only a confirmed-PRIVATE repo drains it as a normal fix PR.
-- **Claim before contest.** `/gaia-debt drain` claims each selected member with the gaia-owned `debt:in-progress` label the instant a unit is picked, before the security screen and isolation, which excludes it from the open count and a peer session's offer. The claim releases on a controlled stop or a security divert, is best-effort cleared on merge, and is recovered by the drain-start reconcile after an ungraceful session death. The `debt:`-namespaced label is gaia-owned, so reconcile only ever strips `debt:in-progress`, never a human-set label.
+- **Security screen before any public PR.** A security-class selected issue diverts via the visibility gate on PUBLIC/INTERNAL; only a confirmed-PRIVATE repo fixes it as a normal fix PR.
+- **Claim before contest.** `/gaia-debt fix` claims each selected member with the gaia-owned `debt:in-progress` label the instant a unit is picked, before the security screen and isolation, which excludes it from the open count and a peer session's offer. The claim releases on a controlled stop or a security divert, is best-effort cleared on merge, and is recovered by the fix-start reconcile after an ungraceful session death. The `debt:`-namespaced label is gaia-owned, so reconcile only ever strips `debt:in-progress`, never a human-set label.
 - Use repo-relative paths only.

@@ -20,7 +20,7 @@
 # recompute itself is the refresher's job, run detached from the statusline; this
 # hook only touches a local marker file after a local read.
 #
-# See wiki/concepts/Audit Disposition and Debt Drain.md for the debt-count
+# See wiki/concepts/Audit Disposition and Debt Fix.md for the debt-count
 # sentinel contract.
 
 # -e is intentionally omitted; every step is guarded so this hook can never fail

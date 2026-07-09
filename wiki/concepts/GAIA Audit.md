@@ -30,7 +30,7 @@ A clean audit (Stage 1 finds 0 actions) skips the gate and auto-applies: there i
 
 ### Full flow: apply, file, publish
 
-Apply is the single up-front decision; from there the run drives to merge autonomously, the same shape `/update-deps` and `/gaia-debt` use (see [[Audit Disposition and Debt Drain]]). Two mechanical steps ride every finalizing path (gated Apply, 0-action auto-apply, `--apply`) and never the Decline path:
+Apply is the single up-front decision; from there the run drives to merge autonomously, the same shape `/update-deps` and `/gaia-debt` use (see [[Audit Disposition and Debt Fix]]). Two mechanical steps ride every finalizing path (gated Apply, 0-action auto-apply, `--apply`) and never the Decline path:
 
 - **Out-of-scope findings become `tech-debt` issues.** A real, durable problem the audit surfaces that none of its four action types can fix, wiki-internal redundancy or a broken link, a page-vs-page conflict, a doc whose correct fix is a rewrite rather than a delete, is recorded by Stage 1 and filed by Stage 2 as a `tech-debt` issue through the same disposition pipeline the [[Code Review Audit Agent]] uses (dedup key, severity label, `Handler:` line, security screen). The audit files, it never fixes. This gives an out-of-scope problem a durable home once the run auto-merges without a human reading the printed Summary. One audit-specific divergence: a classless finding is **not** treated as security-class (audit findings are doc hygiene and classless by construction), so only a genuinely security-sensitive finding diverts.
 - **The main conversation publishes.** After Stage 2 returns, the main conversation commits the in-repo edits, opens a PR, and merges it, mirroring the `/update-deps` publish phase. The diff touches only out-of-scope surfaces (`wiki/`, `.claude/`, root `CLAUDE.md`), so it clears the merge gate through the [[PR Merge Workflow]] out-of-scope bypass with no `code-review-audit` marker. A non-main-branch or CI run commits and pushes, leaving the PR to the branch owner. Publish no-ops when the run changed no in-repo file (a memory-only or 0-action run); machine-local memory edits live outside the repo and are never committed.
@@ -69,4 +69,4 @@ Guardrails and portability details live in `.claude/skills/gaia/references/audit
 - [[Claude Integration]]: registered alongside the other GAIA workflows as a discrete `/gaia-*` command
 - [[Quality Gate]]: code-correctness counterpart; knowledge audit is the same idea for docs
 - [[PR Merge Workflow]]: the publish step drives the audit PR to merge through it; the out-of-scope bypass clears it with no marker
-- [[Audit Disposition and Debt Drain]]: the `tech-debt` filing contract the audit reuses for its out-of-scope findings, and where `/gaia-debt` later drains them
+- [[Audit Disposition and Debt Fix]]: the `tech-debt` filing contract the audit reuses for its out-of-scope findings, and where `/gaia-debt` later fixes them
