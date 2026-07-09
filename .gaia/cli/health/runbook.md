@@ -137,11 +137,13 @@ Triage rules (per match; apply in order; first hit wins):
 - Allowlisted by `.gaia/release-scrub.yml` path-allowlist or line-allowlist → skip.
 - Allowlisted by `.gaia/cli/health/taxonomy.md` → skip.
 - **Path is absent from `.gaia/manifest.json` → skip.** The manifest is the authoritative list of files that ship to adopters (built from `.gaia/release-exclude`). "Absent from manifest" is the operative test for "release-excluded"; do not attempt to glob-match `.gaia/release-exclude` patterns by hand.
-- **Maintainer-path match (Grep 1) inside a _balanced_ `<!-- gaia:maintainer-only:start -->` / `<!-- gaia:maintainer-only:end -->` block, in a marker-strip-scoped markdown file (`wiki/**/*.md`, `.claude/**/*.md`, `.specify/extensions/gaia/**/*.md` per `.gaia/release-scrub.yml`) → skip.** The bundle-time scrub's `marker-strip` transform deletes the whole block from the staging tree before the tarball is built, so the reference does not ship even though its containing file does. The match must sit between a start marker and a following end marker (start before end, both present); an orphaned or unbalanced marker does not strip, so it stays a candidate. Bucket C (bundle simulation) is the marker-aware authority that proves the strip end-to-end; this rule lets Bucket B's marker-unaware grep stop re-flagging correctly wrapped refs as genuine.
+- **Maintainer-path match (Grep 1) inside a _balanced_ marker-strip block → skip.** `.gaia/release-scrub.yml` defines three `marker-strip` transforms, all in scope for this rule: (1) `<!-- gaia:maintainer-only:start -->` / `<!-- gaia:maintainer-only:end -->` over `wiki/**/*.md`, `.claude/**/*.md`, `.specify/extensions/gaia/**/*.md`; (2) `# gaia:maintainer-only:start` / `# gaia:maintainer-only:end` over `.prettierignore`; (3) the same `#`-comment pair over `.gaia/audit-ci.yml`, `**/*.sh`, `**/*.yml.tmpl`. A match inside any of the three is skipped, not only the HTML-comment/markdown case. The bundle-time scrub deletes the whole block from the staging tree before the tarball is built, so the reference does not ship even though its containing file does. The match must sit between a start marker and a following end marker (start before end, both present) to count as balanced; a marker pair may be indented, so check containment as a substring/pattern match, not a `^`-anchored line match. An orphaned or unbalanced marker does not strip, so it stays a candidate. Bucket C (bundle simulation) is the marker-aware authority that proves the strip end-to-end; this rule lets Bucket B's marker-unaware grep stop re-flagging correctly wrapped refs as genuine.
 - Gitignored (e.g. `.claude/settings.local.json`) → skip.
 - Otherwise → genuine finding.
 
 Triage decisions are written to `.gaia/local/audit/c<N>/bucket-b/triage.md`; one section per grep, listing each match and its disposition (skip / finding) with the rule that decided it.
+
+**Completeness gate.** Before reporting a verdict, `triage.md`'s total triaged-line count (every match disposed across both greps) must equal the raw grep output's total line count (`wc -l` across `grep-1.txt` and `grep-2.txt` combined). If it does not, the Auditor has not finished enumerating: it must keep triaging rather than report a verdict, and it must never default an un-enumerated line to a disposition (skip or finding).
 
 Reports: per-grep line (pattern, match count, triage breakdown). One-line verdict: "all matches accounted for" or "N genuine finding(s)". Under 400 words.
 
@@ -239,6 +241,8 @@ Crash-safety: read-only file reads; no scratch state. Phase 2 redirection to `bu
 
 Reads: `wiki/decisions/Claude Integration Fitness.md` (the protocol spec).
 
+Every category check is scoped to the current repo root (`git rev-parse --show-toplevel`); `CLAUDE.md` hygiene in particular means the repo-root `CLAUDE.md`, never a parent directory's.
+
 **This bucket runs the triage phase of the protocol defined in `wiki/decisions/Claude Integration Fitness.md` over the seven fitness categories.** Do not re-specify the check taxonomy, grading rubric, or Fixer lanes here; reference the page and run it. Any drift from the wiki page's spec is the failure mode this indirection prevents.
 
 The wiki page defines:
@@ -274,7 +278,7 @@ Crash-safety: Bucket E writes incrementally per category; a crash mid-run leaves
 | Lane               | Owns                                                                                                                            | Triggered by                                                                  |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **config-yaml-md** | `.gaia/release-scrub.yml`, `.gaia/cli/health/taxonomy.md`, `.gaia/cli/health/runbook.md`, `wiki/decisions/Bundle-time Scrub.md` | New scrub check: allowlist tightening; taxonomy class addition; runbook tweak |
-| **source-ts**      | `.gaia/cli/src/**`, `.github/workflows/release.yml`, `.gaia/cli/gaia` (rebundle)                                                | New CLI primitive: release.yml step; bundle regeneration                      |
+| **source-ts**      | `.gaia/cli/src/**`, `.gaia/scripts/**`, `.github/workflows/release.yml`, `.gaia/cli/gaia` (rebundle)                            | New CLI primitive: release.yml step; bundle regeneration                      |
 | **wiki-content**   | `wiki/**/*.md` (shipped pages only; exclude `hot.md`, `log.md`, anything release-excluded)                                      | Wiki-style or structural finding                                              |
 | **claude-surface** | `.claude/skills/**`, `.claude/commands/**`, `.claude/agents/**`, `.claude/hooks/**`, `CLAUDE.md`, `.claude/rules/**`            | Instruction-file leak: fitness findings from Bucket E                         |
 
