@@ -11,6 +11,22 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-07-09 663f4622 WORTHY - health-audit report-only invariant observable, refuter read-only guard; wiki/concepts/GAIA Spec.md Durability section updated in-commit
+- 2026-07-09 f45c8f78 WORTHY - health-audit distribution-boundary leak + manifest staleness fix; wiki/decisions/Bundle-time Scrub.md updated in-commit
+- 2026-07-09 37f6ca78 WORTHY - health-audit cycle 1-3 fixes, repairs code-review-audit to code-audit-frontend dead paths; wiki pages updated in-commit
+- 2026-07-09 fb3c5967 WORTHY - share .gaia/local/debt/ into linked worktrees; wiki/concepts/Local Working State.md updated in-commit
+- 2026-07-09 f0a0914a WORTHY - debt:in-progress claim label for concurrent drains; wiki/concepts/Audit Disposition and Debt Drain.md updated in-commit
+- 2026-07-09 1ee78087 SKIP - maintainer-only smoke-harness convention rule, release-excluded; wiki/concepts/Release Workflow.md already generically covers rules/maintainers
+- 2026-07-09 fb10d1d9 SKIP - gaia-plan worktree continuation prompt fix (session-independent cleanup), instruction-only, no wiki page carried the stale ExitWorktree claim
+- 2026-07-09 332001ba WORTHY - gaia-debt related-issue batching + branch-vs-worktree isolation; wiki/concepts/Audit Disposition and Debt Drain.md + wiki/index.md updated in-commit
+- 2026-07-09 2f7e5d04 WORTHY - terse one-line cost readout for /gaia-spec, /gaia-plan, closeout; corrected stale four-bucket-stdout claim in wiki/concepts/Token Cost Readout.md
+- 2026-07-09 03b019d6 SKIP - test-only drift guard for gaia-ci-*.yml.tmpl template refs, no adopter-facing behavior change
+- 2026-07-09 ea377a25 SKIP - workflow-distribution rule + rules/_internal to rules/maintainers rename; wiki/concepts/Release Workflow.md updated in-commit
+- 2026-07-09 34a66bca WORTHY - Code Audit Team (spec-034): config-driven auditor roster + dispatch resolver + AND-aggregator + two maintainer-only auditors; new wiki/decisions/Code Audit Team.md, pointers from Code Review Audit Agent.md/CI.md, index.md catalogued
+- 2026-07-09 1cf88d89 WORTHY - extracted tech-debt filing recipe into file-tech-debt skill; wiki/concepts/Audit Disposition and Debt Drain.md updated in-commit
+- 2026-07-09 b9951f8d SKIP - zsh $path/$PATH collision fix in audit-window-lib.sh (spec-032); internal bash-safety fix, no documented contract change
+- 2026-07-09 5af2ed3f SKIP - audit-window breadcrumb writer propagates failure instead of silent 0 (spec-032); Cost Data Contract's omit-on-absence contract for the audit field unchanged
+- 2026-07-09 c48dfe44 SKIP - prior wiki-sync/consolidate/lint maintenance commit through 45f001a, self-contained
 - 2026-07-08 45f001ac SKIP - CI workflow bug fix, upsert single PR status comment instead of appending; internal workflow-template detail, no prior wiki coverage to correct
 - 2026-07-08 ae4f8c9c SKIP - companion refactor of spec-033 lens briefs (repo-state seeds to defect classes); same self-contained instruction files, no wiki page to update
 - 2026-07-08 4e159043 SKIP - maintainer-only /health-audit comprehensive-audit phase (SPEC-033); self-contained in runbook.md + 4 lens briefs, no existing Health Audit wiki page to extend

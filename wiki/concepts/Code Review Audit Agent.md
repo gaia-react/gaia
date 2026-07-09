@@ -10,6 +10,8 @@ tags: [concept, claude, agent, review]
 
 Defined in `.claude/agents/code-audit-frontend.md`. Opus-class holistic reviewer for comprehensive code review beyond what ESLint and TypeScript catch; it dispatches cheaper Sonnet specialist subagents for line-level rule compliance.
 
+`code-audit-frontend` is the default, adopter-facing member of the [[Code Audit Team]] roster: the config-driven `auditors:` block that maps file globs to auditor members, with a dispatch resolver and an AND-aggregator requiring every dispatched member's clearance before a merge unblocks. This page covers `code-audit-frontend`'s own review dimensions and disposition contract; see [[Code Audit Team]] for the roster mechanism and the maintainer-only members layered on top of it.
+
 Full spec: `.claude/agents/code-audit-frontend.md`.
 
 Reviews security, performance, code smells, architecture, robustness, and maintainability. Output is tiered: Critical (must fix) → Important (should fix) → Suggestions → What's done well. After its own pass, spawns three specialist subagents in parallel (React Patterns & Accessibility, TypeScript & Architecture, Translation) plus `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` in a single tool call. Each subagent is gated on file scope so it doesn't spawn when there's nothing to review (e.g. no `.tsx` → skip Subagent 1).
