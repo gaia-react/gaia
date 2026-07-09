@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # lint-hook-array-guard.sh: flag unguarded bare "${arr[@]}" / "${arr[*]}"
 # expansions in hook bodies that run under `set -u`. Exit 1 with a file:line
-# report on any hit, exit 0 when clean.
+# report on any hit, exit 0 when clean. Run it directly from the repo root:
+# `bash .gaia/scripts/lint-hook-array-guard.sh`.
 #
+# gaia:maintainer-only:start
 # Enforced by the sibling bats suite
 # .gaia/scripts/tests/lint-hook-array-guard.bats, which the `bats (.github/audit)`
 # CI job runs on every push touching .claude/hooks/**. The suite fails when this
-# scan finds a hit and self-tests the detector against a known-bad fixture. Run
-# it directly from the repo root: `bash .gaia/scripts/lint-hook-array-guard.sh`
-# or `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
+# scan finds a hit and self-tests the detector against a known-bad fixture. Also
+# runnable directly: `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.
+# gaia:maintainer-only:end
 #
 # Why: on bash 3.2.57 (stock macOS /bin/bash) a bare "${arr[@]}" expansion of
 # an EMPTY array aborts with `arr[@]: unbound variable` under `set -u`; bash

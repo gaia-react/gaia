@@ -9,8 +9,10 @@
  * release-excluded.
  *
  * Walks shipped shell scripts under `.gaia/statusline/`,
- * `.gaia/cli/templates/`, `.claude/hooks/`, and `.github/actions/`
- * (recursing into nested directories), extracts repo-relative path
+ * `.gaia/cli/templates/`, `.gaia/scripts/`, `.claude/hooks/`,
+ * `.github/actions/`, `.github/audit/`, and
+ * `.specify/extensions/gaia/lib/` (recursing into nested directories),
+ * extracts repo-relative path
  * constants, and verifies each is either:
  *
  *   - present in `.gaia/manifest.json` (a shipped file), or
@@ -66,8 +68,11 @@ const UNEXPECTED_EXIT = 2;
 const SCAN_GLOBS = [
   '.gaia/statusline',
   '.gaia/cli/templates',
+  '.gaia/scripts',
   '.claude/hooks',
   '.github/actions',
+  '.github/audit',
+  '.specify/extensions/gaia/lib',
 ] as const;
 
 /**
@@ -144,8 +149,13 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     (installed on demand by `/setup-gaia`), and when absent on an adopter
  *     clone the path simply never appears in the diff, so the bypass returns
  *     the normal deny. A path constant, not a runtime dependency.
+ *   - `.claude/projects`: Claude Code's own global session-transcript
+ *     directory, `$HOME/.claude/projects`, referenced by
+ *     `token-tally-review.sh`. It lives outside the repo on every machine and
+ *     structurally can never have a manifest entry.
  */
 const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
+  '.claude/projects',
   '.github/workflows',
   '.github/workflows/code-review-audit.yml',
 ]);
@@ -324,9 +334,48 @@ export const extractPathRefs = (
   return refs;
 };
 
+/**
+ * Every ancestor directory of every manifest entry, e.g. the entry
+ * `.claude/hooks/wiki-session-start.sh` contributes `.claude/hooks` and
+ * `.claude`. Computed once per run (not per candidate) and used by
+ * `isShippedPath` to resolve bare directory tokens, the shape a `SCAN_GLOBS`
+ * directory decays to when a script references it via a glob
+ * (`.claude/hooks/*.sh`) rather than a specific file.
+ */
+const computeShippedDirs = (
+  manifest: ReadonlySet<string>
+): ReadonlySet<string> => {
+  const dirs = new Set<string>();
+
+  for (const filePath of manifest) {
+    let dir = path.dirname(filePath);
+
+    // Stop at an already-recorded ancestor: recording a directory records its
+    // whole ancestor chain in the same pass, so the rest is already present.
+    while (dir !== '.' && !dirs.has(dir)) {
+      dirs.add(dir);
+
+      const parent = path.dirname(dir);
+
+      // `path.dirname` is a fixed point at a filesystem root (`'/'` -> `'/'`),
+      // so an absolute key never drains to `'.'`. Manifest keys are
+      // repo-relative by construction, but `loadManifest` takes `Object.keys`
+      // off unvalidated JSON, so bound the walk explicitly here rather than
+      // spin forever on a corrupt manifest. This is the loop's termination
+      // guarantee; the `dirs.has` test above it is only an optimization.
+      if (parent === dir) break;
+
+      dir = parent;
+    }
+  }
+
+  return dirs;
+};
+
 const isShippedPath = (
   candidate: string,
-  manifest: ReadonlySet<string>
+  manifest: ReadonlySet<string>,
+  shippedDirs: ReadonlySet<string>
 ): boolean => {
   if (manifest.has(candidate)) return true;
   if (ADOPTER_OWNED_SENTINELS.has(candidate)) return true;
@@ -339,6 +388,14 @@ const isShippedPath = (
   ) {
     return true;
   }
+
+  // A bare directory ships when at least one manifest entry lives beneath
+  // it, that's the precise semantics of "this directory exists on an
+  // adopter machine." A directory with zero manifest entries beneath it
+  // (e.g. `.gaia/scripts/tests`, release-excluded; or `.gaia/cli/src`,
+  // maintainer-only source never shipped) correctly still fails this check
+  // and remains a leak.
+  if (shippedDirs.has(candidate)) return true;
 
   return false;
 };
@@ -550,6 +607,7 @@ const collectLeaks = (
   manifest: ReadonlySet<string>
 ): Leak[] => {
   const leaks: Leak[] = [];
+  const shippedDirs = computeShippedDirs(manifest);
 
   for (const scriptPath of scriptFiles) {
     const source = readFileSync(path.join(root, scriptPath), 'utf8');
@@ -558,7 +616,8 @@ const collectLeaks = (
     for (const ref of refs) {
       // Self-reference: a script citing its own path is fine.
       const isLeak =
-        ref.path !== scriptPath && !isShippedPath(ref.path, manifest);
+        ref.path !== scriptPath &&
+        !isShippedPath(ref.path, manifest, shippedDirs);
 
       if (isLeak) {
         leaks.push({file: ref.filePath, line: ref.line, path: ref.path});

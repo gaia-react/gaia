@@ -306,7 +306,7 @@ Add a project-specific check class by appending a new numbered section under [Ch
 <What it checks and how. Describe the model (Haiku or Sonnet) and what the auditor does.>
 ```
 
-`/gaia-fitness` runs whatever classes this page defines. `/update-gaia` three-way-merges the page so your additions survive GAIA upgrades. `/gaia-wiki` lints the page. The extension point is this page itself; edit it directly, the way the `code-review-audit` agent picks up extension files from `.claude/agents/code-review-audit/`.
+`/gaia-fitness` runs whatever classes this page defines. `/update-gaia` three-way-merges the page so your additions survive GAIA upgrades. `/gaia-wiki` lints the page. The extension point is this page itself; edit it directly, the way the `code-audit-frontend` agent picks up extension files from `.claude/agents/code-audit-frontend/`.
 
 ---
 

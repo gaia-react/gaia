@@ -287,6 +287,83 @@ describe('release runtime-deps CLI', () => {
     expect(exit).toBe(0);
   });
 
+  test('resolves a bare directory token as shipped when manifest entries exist beneath it', () => {
+    // Mirrors a shell array glob like `SCAN_GLOB=(.claude/hooks/*.sh)`: the
+    // extractor's path-body character class stops at `*`, yielding the bare
+    // directory token `.claude/hooks`. That token isn't itself a manifest
+    // entry, but files ship beneath it on a real adopter clone, so it must
+    // resolve as shipped rather than flag as a leak.
+    sandbox.writeManifest({
+      '.claude/hooks/wiki-session-start.sh': 'owned',
+    });
+    sandbox.writeFile(
+      '.gaia/scripts/lint-hook-array-guard.sh',
+      ['#!/usr/bin/env bash', 'SCAN_GLOB=(.claude/hooks/*.sh)', ''].join('\n')
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('runtime-dependency leaks: none');
+  });
+
+  test('still flags a bare directory token as a leak when no manifest entries exist beneath it', () => {
+    // `.gaia/scripts/tests` is release-excluded end-to-end: zero manifest
+    // entries live beneath it, so a bare-directory reference must still
+    // flag, guarding against the new directory rule over-rescuing a
+    // genuinely leaked directory.
+    sandbox.writeManifest({
+      '.gaia/cli/gaia': 'owned',
+    });
+    sandbox.writeFile(
+      '.gaia/scripts/run-tests.sh',
+      ['#!/usr/bin/env bash', 'SCAN_GLOB=(.gaia/scripts/tests/*.sh)', ''].join(
+        '\n'
+      )
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain('.gaia/scripts/tests');
+  });
+
+  test('does not rescue an unmanifested file merely because its directory ships other files', () => {
+    // The new directory rule must stay scoped to bare directory tokens. A
+    // specific file path that happens to sit under a shipped directory but
+    // isn't itself a manifest entry is still a genuine leak, unchanged from
+    // before the directory rule existed.
+    sandbox.writeManifest({
+      '.claude/hooks/wiki-session-start.sh': 'owned',
+    });
+    sandbox.writeFile(
+      '.gaia/statusline/foo.sh',
+      'bash .claude/hooks/not-a-real-hook.sh\n'
+    );
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain(
+      '.claude/hooks/not-a-real-hook.sh'
+    );
+  });
+
+  test('terminates on a manifest key that is an absolute path', () => {
+    // Guards the fixed-point break in `computeShippedDirs`'s ancestor walk.
+    // Manifest keys are repo-relative by construction and drain to `.`, but
+    // `loadManifest` reads `Object.keys` off unvalidated JSON, so a corrupt
+    // manifest can carry an absolute key. `path.dirname('/')` is `'/'`, so
+    // such a key never reaches `.` and the walk must be bounded explicitly.
+    // Removing that break turns this into a synchronous infinite loop, which
+    // hangs the release gate instead of failing it.
+    sandbox.writeManifest({
+      '.gaia/cli/gaia': 'owned',
+      '/absolute/path/oops.sh': 'owned',
+    });
+    sandbox.writeFile('.gaia/statusline/foo.sh', 'echo hi\n');
+
+    const exit = run([], {cwd: sandbox.rootDir});
+    expect(exit).toBe(0);
+  });
+
   test('scans nested scripts under .github/actions', () => {
     // The CI composite-action scripts live two directories deep
     // (.github/actions/<action>/lib/*.sh); the walk must recurse to reach

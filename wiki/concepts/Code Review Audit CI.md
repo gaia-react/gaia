@@ -191,7 +191,7 @@ A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, an
 
 ## Source-of-truth links
 
-- Agent definition: `.claude/agents/code-review-audit.md`
+- Agent definition: `.claude/agents/code-audit-frontend.md`
 - Workflow: `.github/workflows/code-review-audit.yml`
 - Workflow template (install source): bundled in the CLI binary; installed via `gaia automation install-audit-workflow`
 - Install primitive: `gaia automation install-audit-workflow`
@@ -206,6 +206,7 @@ A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, an
 
 - [[Incremental CI Skipping]]: the cross-workflow "since-last-green" mechanism this audit's no-auditable-delta skip is an instance of.
 - [[Code Review Audit Agent]]: the agent the workflow invokes.
+- [[Code Audit Team]]: the config-driven roster this workflow's `code-audit-frontend` job is one member of; the dispatch resolver and AND-aggregator that require every dispatched member's clearance at the local merge gate.
 - [[PR Merge Workflow]]: the local-side gate handshake (`.gaia/local/audit/<sha>.ok` marker file).
 - [[Quality Gate]]: the lint/typecheck/test/knip gate that still runs alongside this audit.
 - Forensics Triage Workflow: sibling autonomous CI workflow built on the same `claude-code-action` setup.

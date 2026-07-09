@@ -20879,6 +20879,16 @@ var classifyCapability = (input) => {
 import { existsSync as existsSync22, mkdirSync as mkdirSync14, readFileSync as readFileSync23 } from "node:fs";
 import path28 from "node:path";
 var MARKER_FILENAME = "sandbox.json";
+var CAPABILITIES = [
+  "needs-deps",
+  "ready",
+  "unsupported"
+];
+var OUTCOMES = [
+  "declined",
+  "enabled",
+  "incapable"
+];
 var resolveMarkerPath = (repoRoot) => path28.join(repoRoot, ".gaia", "local", MARKER_FILENAME);
 var readSandboxMarker = (repoRoot) => {
   const filePath = resolveMarkerPath(repoRoot);
@@ -20892,6 +20902,9 @@ var readSandboxMarker = (repoRoot) => {
   }
   if (typeof parsed.outcome !== "string" || typeof parsed.capability !== "string" || typeof parsed.resolved_at !== "string") {
     throw new TypeError("sandbox.json is missing required fields");
+  }
+  if (!OUTCOMES.includes(parsed.outcome) || !CAPABILITIES.includes(parsed.capability)) {
+    throw new TypeError("sandbox.json has an unknown outcome or capability");
   }
   return {
     capability: parsed.capability,
@@ -21007,7 +21020,7 @@ var buildFlags = (provided, specs) => {
 };
 var PLATFORMS = ["darwin", "linux", "win32"];
 var WSL_KINDS = ["none", "wsl1", "wsl2"];
-var CAPABILITIES = [
+var CAPABILITIES2 = [
   "ready",
   "needs-deps",
   "unsupported"
@@ -21156,7 +21169,7 @@ var APPLY_FLAG_SPECS = [
   },
   { flag: "--settings-path", key: "settingsPath", kind: "string" },
   {
-    allowed: CAPABILITIES,
+    allowed: CAPABILITIES2,
     flag: "--capability",
     key: "capability",
     kind: "enum"
@@ -21267,7 +21280,7 @@ var RECORD_FLAG_SPECS = [
     required: true
   },
   {
-    allowed: CAPABILITIES,
+    allowed: CAPABILITIES2,
     flag: "--capability",
     key: "capability",
     kind: "enum",
@@ -24385,6 +24398,7 @@ import {
   existsSync as existsSync30,
   lstatSync,
   mkdirSync as mkdirSync18,
+  readdirSync as readdirSync5,
   readlinkSync,
   realpathSync,
   renameSync as renameSync7,
@@ -24393,10 +24407,12 @@ import {
 import path39 from "node:path";
 var HELP_TEXT44 = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the five worktree shared-state symlinks pointing at
-  the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
-  No-op on a main checkout (not a linked worktree); exits 0 with a
-  one-line "not a linked worktree" message.
+  Idempotently create the six worktree shared-state symlinks pointing at
+  the main checkout. Also links gitignored checkout-root .env / .env.*
+  files (excluding .env.example) from the main checkout. Backs up
+  pre-existing plain files to <path>.bak.<ts>. No-op on a main checkout
+  (not a linked worktree); exits 0 with a one-line "not a linked worktree"
+  message.
 
   --json   Print a single JSON line describing the result instead of the
            human-readable summary.
@@ -24407,8 +24423,11 @@ var SHARED_PATHS = [
   { ensureTargetDir: false, relativePath: ".gaia/local/mentorship.json" },
   { ensureTargetDir: true, relativePath: ".gaia/local/cache/shared" },
   { ensureTargetDir: true, relativePath: ".gaia/local/audit" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/telemetry" }
+  { ensureTargetDir: true, relativePath: ".gaia/local/telemetry" },
+  { ensureTargetDir: true, relativePath: ".gaia/local/debt" }
 ];
+var ENV_BASENAME_RE = /^\.env(\.[A-Za-z0-9_-]+)*$/;
+var isShareableEnvironmentFile = (base) => ENV_BASENAME_RE.test(base) && base !== ".env.example";
 var formatTimestamp = (date5) => {
   const pad = (value) => String(value).padStart(2, "0");
   const yyyy = date5.getFullYear();
@@ -24481,53 +24500,64 @@ var ACTION_HUMAN_LABELS = {
   "linked-after-backup": "linked-after-backup",
   "skipped-no-target": "skipped-no-target"
 };
-var printHuman7 = (output) => {
-  if (!output.is_worktree) {
-    process.stdout.write("not a linked worktree\n");
-    return;
-  }
+var buildFixedSummaryLines = (output) => {
   const failed = output.actions.filter((action) => action.result === "failed");
   if (failed.length > 0) {
-    const lines = [
+    const lines2 = [
       `Failed to link ${String(failed.length)} of ${String(output.actions.length)} paths to ${String(output.main_root)}.`
     ];
     for (const action of output.actions) {
       const label = ACTION_HUMAN_LABELS[action.result];
       const suffix = action.result === "failed" && action.error !== void 0 ? `: ${action.error}` : "";
-      lines.push(`  ${label}: ${action.path}${suffix}`);
+      lines2.push(`  ${label}: ${action.path}${suffix}`);
     }
-    process.stdout.write(`${lines.join("\n")}
-`);
-    return;
+    return lines2;
   }
   const allAlreadyLinked = output.actions.every(
     (action) => action.result === "already-linked"
   );
   if (allAlreadyLinked) {
-    process.stdout.write(
-      `All ${String(output.actions.length)} paths already linked.
-`
-    );
-    return;
+    return [`All ${String(output.actions.length)} paths already linked.`];
   }
   const backedUp = output.actions.filter(
     (action) => action.result === "linked-after-backup"
   );
-  if (backedUp.length > 0) {
-    const lines = [
-      `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.`
-    ];
-    for (const action of backedUp) {
-      lines.push(`  Backed up: ${action.path} -> ${String(action.backup)}`);
-    }
-    process.stdout.write(`${lines.join("\n")}
-`);
+  const lines = [
+    `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.`
+  ];
+  for (const action of backedUp) {
+    lines.push(`  Backed up: ${action.path} -> ${String(action.backup)}`);
+  }
+  return lines;
+};
+var buildEnvironmentSummaryLines = (envActions) => {
+  if (envActions.length === 0) return [];
+  const allAlreadyLinked = envActions.every(
+    (action) => action.result === "already-linked"
+  );
+  if (allAlreadyLinked) {
+    return [`All ${String(envActions.length)} env file(s) already linked.`];
+  }
+  const lines = [
+    `Linked ${String(envActions.length)} env file(s): ${envActions.map((action) => `${action.path} (${action.result})`).join(", ")}.`
+  ];
+  const failed = envActions.filter((action) => action.result === "failed");
+  for (const action of failed) {
+    lines.push(`  failed: ${action.path}: ${String(action.error)}`);
+  }
+  return lines;
+};
+var printHuman7 = (output) => {
+  if (!output.is_worktree) {
+    process.stdout.write("not a linked worktree\n");
     return;
   }
-  process.stdout.write(
-    `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.
-`
-  );
+  const lines = [
+    ...buildFixedSummaryLines(output),
+    ...buildEnvironmentSummaryLines(output.env_actions)
+  ];
+  process.stdout.write(`${lines.join("\n")}
+`);
 };
 var resolveWorktreeRoots = (cwd) => {
   let canonicalCwd;
@@ -24588,6 +24618,7 @@ var run57 = (argv, options = {}) => {
   if (mainRoot === worktreeRoot) {
     const output2 = {
       actions: [],
+      env_actions: [],
       is_worktree: false,
       main_root: mainRoot,
       worktree_root: worktreeRoot
@@ -24606,8 +24637,13 @@ var run57 = (argv, options = {}) => {
   const actions = SHARED_PATHS.map(
     (spec) => linkOne({ mainRoot, spec, symlink, timestamp, worktreeRoot })
   );
+  const envSpecs = readdirSync5(mainRoot).filter((name) => isShareableEnvironmentFile(name)).toSorted((a, b) => a.localeCompare(b)).map((name) => ({ ensureTargetDir: false, relativePath: name }));
+  const envActions = envSpecs.map(
+    (spec) => linkOne({ mainRoot, spec, symlink, timestamp, worktreeRoot })
+  );
   const output = {
     actions,
+    env_actions: envActions,
     is_worktree: true,
     main_root: mainRoot,
     worktree_root: worktreeRoot
@@ -24618,7 +24654,9 @@ var run57 = (argv, options = {}) => {
   } else {
     printHuman7(output);
   }
-  const anyFailed = actions.some((action) => action.result === "failed");
+  const anyFailed = [...actions, ...envActions].some(
+    (action) => action.result === "failed"
+  );
   return anyFailed ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
 
@@ -24826,7 +24864,7 @@ var run60 = async (argv) => {
 };
 
 // src/analytics/generator.ts
-import { existsSync as existsSync31, readdirSync as readdirSync5, readFileSync as readFileSync31 } from "node:fs";
+import { existsSync as existsSync31, readdirSync as readdirSync6, readFileSync as readFileSync31 } from "node:fs";
 import path40 from "node:path";
 
 // src/analytics/audit-attest.ts
@@ -25025,7 +25063,7 @@ var readMentorshipEngagement = (roots, bounds) => {
   if (!existsSync31(roots.mentorshipDir)) return counts;
   let entries;
   try {
-    entries = readdirSync5(roots.mentorshipDir);
+    entries = readdirSync6(roots.mentorshipDir);
   } catch {
     return counts;
   }
@@ -26484,7 +26522,7 @@ var buildAuditFindingInvocation = (finding, prNumber) => {
       "--area-tags",
       areaTagsString(finding),
       "--auditor-type",
-      "code-review-audit",
+      "code-audit-frontend",
       "--agent-type",
       "Reviewer"
     ],
@@ -26620,7 +26658,7 @@ var parseTrailer = (rawHookInputJson) => {
   if (trailer === void 0 || trailer.trim().length === 0) {
     return { invocations: [], reason: "no_trailer" };
   }
-  if (subagentType === "code-review-audit") {
+  if (subagentType === "code-audit-frontend") {
     const invocations = buildAuditFindings(trailer);
     return invocations.length > 0 ? { invocations } : { invocations: [], reason: "invalid_trailer_json" };
   }
@@ -31383,7 +31421,7 @@ var run69 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync6, readFileSync as readFileSync38, statSync as statSync4 } from "node:fs";
+import { readdirSync as readdirSync7, readFileSync as readFileSync38, statSync as statSync4 } from "node:fs";
 import path50 from "node:path";
 var HELP_TEXT57 = `Usage: gaia wiki dead-paths [--json]
 
@@ -31422,7 +31460,7 @@ var isTrackedPath = (token) => {
 };
 var shouldSkipFile = (relPath) => SKIP_PATH_FRAGMENTS.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown = (root, dir) => {
-  const entries = readdirSync6(dir, { withFileTypes: true });
+  const entries = readdirSync7(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
     const full = path50.join(dir, entry.name);
@@ -31726,7 +31764,7 @@ var run71 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync39, statSync as statSync5 } from "node:fs";
+import { readdirSync as readdirSync8, readFileSync as readFileSync39, statSync as statSync5 } from "node:fs";
 import path51 from "node:path";
 
 // src/wiki/util/frontmatter.ts
@@ -31808,7 +31846,7 @@ var ATX_HEADING_PATTERN = /^ {0,3}(#{1,6})(?:\s|$)/u;
 var FENCE_PATTERN = /^\s*(?:```|~~~)/u;
 var shouldSkipFile2 = (relPath) => SKIP_PATHS.has(relPath) || SKIP_PATH_FRAGMENTS2.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown2 = (root, dir) => {
-  const entries = readdirSync7(dir, { withFileTypes: true });
+  const entries = readdirSync8(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
     const full = path51.join(dir, entry.name);
@@ -31924,7 +31962,7 @@ var run72 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync8, readFileSync as readFileSync40, statSync as statSync6 } from "node:fs";
+import { readdirSync as readdirSync9, readFileSync as readFileSync40, statSync as statSync6 } from "node:fs";
 import path52 from "node:path";
 var HELP_TEXT60 = `Usage: gaia wiki frontmatter [--json]
 
@@ -31938,7 +31976,7 @@ var REQUIRED_FIELDS = ["type", "status"];
 var SKIP_PATH_FRAGMENTS3 = ["wiki/meta/"];
 var shouldSkipFile3 = (relPath) => SKIP_PATH_FRAGMENTS3.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown3 = (root, dir) => {
-  const entries = readdirSync8(dir, { withFileTypes: true });
+  const entries = readdirSync9(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
     const full = path52.join(dir, entry.name);
@@ -32164,7 +32202,7 @@ var run74 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync37, readdirSync as readdirSync9, statSync as statSync7 } from "node:fs";
+import { existsSync as existsSync37, readdirSync as readdirSync10, statSync as statSync7 } from "node:fs";
 import path54 from "node:path";
 var HELP_TEXT62 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -32215,7 +32253,7 @@ var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS.flatMap((domain2) => {
   if (!existsSync37(domainDir) || !statSync7(domainDir).isDirectory()) {
     return [];
   }
-  const entries = readdirSync9(domainDir, { withFileTypes: true });
+  const entries = readdirSync10(domainDir, { withFileTypes: true });
   const slugs = entries.filter((entry) => isCollectibleSlugFile(entry)).map((entry) => entry.name.replace(/\.md$/u, "")).toSorted(
     (left, right) => left < right ? -1 : left > right ? 1 : 0
   );
@@ -32314,7 +32352,7 @@ var run75 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync38, readdirSync as readdirSync10, readFileSync as readFileSync42, statSync as statSync8 } from "node:fs";
+import { existsSync as existsSync38, readdirSync as readdirSync11, readFileSync as readFileSync42, statSync as statSync8 } from "node:fs";
 import path55 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -32399,7 +32437,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path55.join(wikiRoot, domain2);
   if (!existsSync38(domainDir) || !statSync8(domainDir).isDirectory()) return [];
-  const entries = readdirSync10(domainDir, { withFileTypes: true });
+  const entries = readdirSync11(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
@@ -32780,7 +32818,7 @@ var run79 = (argv, options = {}) => {
 };
 
 // src/wiki/state.ts
-import { existsSync as existsSync41, readdirSync as readdirSync11, readFileSync as readFileSync44, statSync as statSync9 } from "node:fs";
+import { existsSync as existsSync41, readdirSync as readdirSync12, readFileSync as readFileSync44, statSync as statSync9 } from "node:fs";
 import path58 from "node:path";
 var HELP_TEXT67 = `Usage: gaia wiki state [--json]
 `;
@@ -32808,7 +32846,7 @@ var countDomainPages = (wikiRoot) => {
     if (!existsSync41(domainDir) || !statSync9(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
-      const entries = readdirSync11(domainDir, { withFileTypes: true });
+      const entries = readdirSync12(domainDir, { withFileTypes: true });
       let count = 0;
       for (const entry of entries) {
         if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "_index.md") {

@@ -81,12 +81,13 @@ wiki/decisions/Forensics Triage Workflow.md
 # adopter bundle by construction.
 .gaia/cli/src
 .gaia/cli/test-fixtures
-.gaia/cli/__tests__
 .gaia/cli/package.json
 .gaia/cli/pnpm-lock.yaml
 .gaia/cli/pnpm-workspace.yaml
 .gaia/cli/tsconfig.json
 .gaia/cli/vitest.config.ts
+.gaia/cli/eslint.config.mjs
+.gaia/cli/prettier.config.mjs
 .gaia/cli/.gitignore
 .gaia/cli/node_modules
 .gaia/cli/dist
@@ -123,10 +124,8 @@ wiki/decisions/Forensics Triage Workflow.md
 
 # --- 8. Per-machine plan / handoff / agent state ---
 # Generated at runtime under the user's clone; not template content.
-.claude/handoff
 .claude/worktrees
 .claude/agent-memory
-.claude/audit
 
 # --- 9. Maintainer-only CI workflows ---
 # `release.yml` cuts releases of the GAIA template itself (triggered by

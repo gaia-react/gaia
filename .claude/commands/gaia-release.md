@@ -1,6 +1,7 @@
 ---
 name: gaia-release
 description: Cut a new GAIA release, bump version, graduate CHANGELOG, regenerate manifest, open release PR, then tag on merge. Maintainer-only.
+argument-hint: patch|minor|major
 ---
 
 Cut a new GAIA release. Thin orchestrator over the `.gaia/cli/gaia-maintainer release` CLI namespace, which owns every deterministic step (preflight checks, semver bump, CHANGELOG graduation, wiki scrub, manifest regen, commit + tag dance). This command sequences the CLI subcommands and surfaces user-facing prompts where human judgment is required.

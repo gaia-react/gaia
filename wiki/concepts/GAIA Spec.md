@@ -3,7 +3,7 @@ type: concept
 title: GAIA Spec
 status: active
 created: 2026-05-06
-updated: 2026-07-08
+updated: 2026-07-09
 tags: [concept, claude, skill, orchestration, spec-kit]
 ---
 
@@ -69,6 +69,18 @@ Two paths reach the reap:
 
 - **`spec-close`.** `/speckit-gaia-spec-close` runs consolidation once the implementing PR has merged (and after any deferred wiki-promote drain), then delegates to `lib/spec-archive-merged.sh --close` for the single-id reap, which bypasses only the age gate (early-reap-at-close); every other gate still applies.
 - **Auto-sweep.** `lib/spec-archive-merged.sh` runs on every `/gaia-spec`, right after `spec-reconcile.sh`, and again from the SessionStart janitor. It reaps any folder whose ledger row reads `merged`, that has no pending wiki-promote drain cache at `.gaia/local/cache/wiki-promote/<id>.json` (a pending cache means the wiki content has not promoted yet, so the close flow still owns it), whose `SUMMARY.md` is present and well-formed (a folder still holding `SPEC.md`/`AUDIT.md` with no consolidated `SUMMARY.md` is kept, consolidation never ran), whose `merged_at` has aged past the retention window (`GAIA_SPEC_RETENTION_DAYS`, default 30 days), and whose cost is fully represented in `cost.jsonl` via its `cost.json` sidecar (a fail-closed check: an unparseable or unrepresented sidecar blocks that folder's reap). A merged row with no active folder is skipped. This is the safety net for a PR merged out-of-band (the GitHub button, another session) or a close that never ran. The sweep is silent-but-logged: one stdout line and a `spec_closed` telemetry event (`disposition: delete`) per folder reaped.
+
+### Durability
+
+A `.gaia/local/specs/<ID>/` folder is working state, not the archival
+record: it is gitignored, machine-local, and, once merged, reaped by
+design after the retention window above. The durable source of truth is
+the implementing PR, plus anything the SPEC's content promotes into the
+wiki. Whether the folder is still present or already reaped says nothing
+about whether the SPEC's intent, decisions, or history are recoverable;
+consult the PR (and the wiki, where promoted) rather than the folder.
+Never mutate or delete a folder to probe a lifecycle script's behavior or
+gates; read the script instead. A folder's routine reap is not data loss.
 
 ## Pairs with
 

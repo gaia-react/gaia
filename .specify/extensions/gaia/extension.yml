@@ -46,6 +46,10 @@ provides:
       file: "commands/spec-close.md"
       description: "Close a SPEC after implementation+merge: optional drain of deferred wiki-promote, then archive/delete/keep prompt for the local SPEC artifact."
 
+    - name: "speckit.gaia.plan-close"
+      file: "commands/plan-close.md"
+      description: "Close a spec-less PLAN after implementation+merge: optional drain of deferred wiki-promote, wiki-promote offer, then cold-consolidate and reap the local plan folder."
+
     - name: "speckit.gaia.wiki-promote"
       file: "commands/wiki-promote.md"
       description: "Promote merged SPEC content into the GAIA wiki."

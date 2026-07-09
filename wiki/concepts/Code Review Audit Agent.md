@@ -8,9 +8,11 @@ tags: [concept, claude, agent, review]
 
 # Code Review Audit Agent
 
-Defined in `.claude/agents/code-review-audit.md`. Opus-class holistic reviewer for comprehensive code review beyond what ESLint and TypeScript catch; it dispatches cheaper Sonnet specialist subagents for line-level rule compliance.
+Defined in `.claude/agents/code-audit-frontend.md`. Opus-class holistic reviewer for comprehensive code review beyond what ESLint and TypeScript catch; it dispatches cheaper Sonnet specialist subagents for line-level rule compliance.
 
-Full spec: `.claude/agents/code-review-audit.md`.
+`code-audit-frontend` is the default, adopter-facing member of the [[Code Audit Team]] roster: the config-driven `auditors:` block that maps file globs to auditor members, with a dispatch resolver and an AND-aggregator requiring every dispatched member's clearance before a merge unblocks. This page covers `code-audit-frontend`'s own review dimensions and disposition contract; see [[Code Audit Team]] for the roster mechanism and the maintainer-only members layered on top of it.
+
+Full spec: `.claude/agents/code-audit-frontend.md`.
 
 Reviews security, performance, code smells, architecture, robustness, and maintainability. Output is tiered: Critical (must fix) → Important (should fix) → Suggestions → What's done well. After its own pass, spawns three specialist subagents in parallel (React Patterns & Accessibility, TypeScript & Architecture, Translation) plus `react-doctor`, `pnpm knip --reporter json`, and `pnpm audit --json` in a single tool call. Each subagent is gated on file scope so it doesn't spawn when there's nothing to review (e.g. no `.tsx` → skip Subagent 1).
 
@@ -68,7 +70,7 @@ The wiki (`wiki/`) is the source of truth for patterns, decisions, and conventio
 
 ## Extension mechanism
 
-Library-specific audit rules live in `.claude/agents/code-review-audit/*.md`. Each file targets one or more specialist subagents via YAML frontmatter (`subagents: [react-patterns, typescript, translation]`). The agent reads all extension files at startup and injects their rules into the relevant subagent prompts.
+Library-specific audit rules live in `.claude/agents/code-audit-frontend/*.md`. Each file targets one or more specialist subagents via YAML frontmatter (`subagents: [react-patterns, typescript, translation]`). The agent reads all extension files at startup and injects their rules into the relevant subagent prompts.
 
 The `subagents:` values (`react-patterns`, `typescript`, `translation`) are **rule-injection labels** - metadata that selects which specialist prompt receives this file's rules. They are not skill or command names. The agent dispatches each specialist via the **Agent (Task) tool** with an explicit `subagent_type`. Routing a specialist through the Skill tool misroutes it to a fuzzy-matched command (e.g. `/gaia-audit`), which rejects the args and aborts the audit before its marker is written.
 

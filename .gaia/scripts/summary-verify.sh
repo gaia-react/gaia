@@ -20,8 +20,11 @@
 # frontmatter missing either key, missing H1, or empty body. Violations
 # accumulate and are reported to stderr; no stdout noise.
 #
-# Deterministic and side-effect-free: no writes, no network, no git. Sibling
-# bats suite: .gaia/scripts/tests/summary-verify.bats.
+# Deterministic and side-effect-free: no writes, no network, no git.
+#
+# gaia:maintainer-only:start
+# Sibling bats suite: .gaia/scripts/tests/summary-verify.bats.
+# gaia:maintainer-only:end
 set -uo pipefail
 
 path="${1:-}"
