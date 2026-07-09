@@ -46,8 +46,8 @@ janitor and health-audit cleanup, so it does not grow unbounded. A stale
 
 Then capture two pre-phase baselines the Step 6 integrity check diffs
 against. They cover disjoint surfaces: `git status` sees tracked files but
-is blind to gitignored `.gaia/local/`; the inventory sees `.gaia/local/`
-but nothing outside it.
+is blind to gitignored `.gaia/local/`; the inventory sees `.gaia/local/`'s
+durable working-state directories but nothing outside them.
 
 Snapshot the tracked surface. Earlier cycles' Fixer lanes may have already
 left legitimate changes in the tree, so the invariant is "this phase adds
@@ -57,11 +57,20 @@ nothing", not "the tree is clean":
 git status --porcelain > .gaia/local/audit/comprehensive/git-status.pre.txt
 ```
 
-Snapshot the rest of `.gaia/local/`, everything outside this phase's own
-working directory:
+Snapshot the durable working-state directories under `.gaia/local/`:
+`specs/`, `plans/`, and `handoff/`, the artifact classes a destructive
+script can wipe out unnoticed (the incident this guard exists for: a
+refuter ran `spec-archive-merged.sh --close` to probe its gates and
+deleted `.gaia/local/specs/SPEC-031/`). `debt/`, `telemetry/`, `audit/`,
+`cache/`, and `red-ledger/` are deliberately excluded: each is rewritten
+or appended by a background process with no leaf involved (the
+statusline's debt-count refresher, the token tally, other audit runs'
+`<sha>.rerun.json` markers, the wiki-promote cache, and RED-phase test
+hooks), so including them would turn routine churn into a false integrity
+violation:
 
 ```bash
-find .gaia/local -type f ! -path '.gaia/local/audit/comprehensive/*' -print0 \
+find .gaia/local/specs .gaia/local/plans .gaia/local/handoff -type f -print0 2>/dev/null \
   | sort -z \
   | xargs -0 -r sh -c '(shasum -a 256 "$@" 2>/dev/null || sha256sum "$@")' _ \
   > .gaia/local/audit/comprehensive/local-inventory.pre.txt
@@ -310,8 +319,9 @@ recompute the integrity verdict math.
 **Verify the report-only invariant against both Step 0 baselines.**
 Neither alone is sufficient: `git status` sees tracked files but is
 structurally blind to `.gaia/local/`, which is gitignored and is exactly
-where a leaf can do unrecoverable harm; the inventory sees `.gaia/local/`
-but nothing outside it. Run both.
+where a leaf can do unrecoverable harm; the inventory sees
+`.gaia/local/`'s durable working-state directories but nothing outside
+them. Run both.
 
 First, the tracked surface. The phase must not add, remove, or modify any
 tracked file, so the post-phase status must equal the Step 0 snapshot:
@@ -321,23 +331,24 @@ git status --porcelain > .gaia/local/audit/comprehensive/git-status.post.txt
 diff .gaia/local/audit/comprehensive/git-status.pre.txt .gaia/local/audit/comprehensive/git-status.post.txt
 ```
 
-Second, the gitignored surface. Recompute the inventory captured in
-Step 0 and diff against that baseline:
+Second, the gitignored working state. Recompute the inventory captured in
+Step 0, `specs/`, `plans/`, and `handoff/` only, and diff against that
+baseline:
 
 ```bash
-find .gaia/local -type f ! -path '.gaia/local/audit/comprehensive/*' -print0 \
+find .gaia/local/specs .gaia/local/plans .gaia/local/handoff -type f -print0 2>/dev/null \
   | sort -z \
   | xargs -0 -r sh -c '(shasum -a 256 "$@" 2>/dev/null || sha256sum "$@")' _ \
   > .gaia/local/audit/comprehensive/local-inventory.post.txt
 diff .gaia/local/audit/comprehensive/local-inventory.pre.txt .gaia/local/audit/comprehensive/local-inventory.post.txt
 ```
 
-An empty diff (exit 0) confirms no lens, refuter, or writer touched
-`.gaia/local/` outside this phase's own working directory. A non-empty
-diff from either check is an integrity violation, not a report finding:
-stop before hand-back and surface exactly which paths were added,
-removed, or changed, so the maintainer investigates before trusting this
-run's report.
+An empty diff (exit 0) confirms no lens, refuter, or writer touched the
+durable working state under `.gaia/local/`. A non-empty diff from either
+check is an integrity violation, not a report finding: stop before
+hand-back and surface exactly which paths were added, removed, or
+changed, so the maintainer investigates before trusting this run's
+report.
 
 ## Pointers
 
