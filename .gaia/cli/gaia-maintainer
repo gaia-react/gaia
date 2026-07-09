@@ -19862,1237 +19862,6 @@ var run33 = (argv, options = {}) => {
   return runTagMode({ cwd, noPush: parsed.flags.noPush, runner, version: version2 });
 };
 
-// src/release/manifest.ts
-import { execFileSync as execFileSync2 } from "node:child_process";
-import { existsSync as existsSync21, readFileSync as readFileSync20 } from "node:fs";
-import path23 from "node:path";
-var HELP_TEXT23 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
-       gaia-maintainer release manifest --check [--json]
-
-  Regenerate .gaia/manifest.json. Walks git ls-files, subtracts
-  release-exclude patterns and adopter-owned sentinels, classifies the
-  remainder, and writes a sorted JSON manifest.
-
-  Flags:
-    --out <path>   Override output path (default: .gaia/manifest.json).
-    --stdout       Print manifest JSON to stdout instead of writing the file.
-    --check        Verify the committed manifest matches what the
-                   classifier would produce against the current source,
-                   and lint classifier sets against release-exclude for
-                   dead-code overlap. Exits non-zero on drift / overlap.
-    --json         (with --check) Emit a structured JSON drift report.
-
-  Exit codes:
-    0  success / check clean
-    1  user-correctable error / check found drift or overlap
-    2  unexpected (filesystem / git failure)
-`;
-var HELP_TOKENS23 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT12 = 2;
-var ADOPTER_OWNED_SENTINELS = /* @__PURE__ */ new Set([
-  ".gaia/manifest.json",
-  ".gaia/VERSION",
-  "wiki/hot.md",
-  "wiki/log.md"
-]);
-var SHARED = /* @__PURE__ */ new Set([
-  ".claude/settings.json",
-  ".gaia/audit-ci.yml",
-  ".github/FUNDING.yml",
-  "CLAUDE.md",
-  "package.json",
-  "pnpm-workspace.yaml",
-  "wiki/index.md"
-]);
-var SHARED_PREFIXES = [".github/workflows/"];
-var WIKI_OWNED_PREFIXES = [
-  "wiki/components/",
-  "wiki/concepts/",
-  "wiki/decisions/",
-  "wiki/dependencies/",
-  "wiki/flows/",
-  "wiki/modules/",
-  "wiki/sources/"
-];
-var WIKI_OWNED_EXACT = /* @__PURE__ */ new Set(["wiki/overview.md", "wiki/README.md"]);
-var escapeRegExp = (pattern) => pattern.replaceAll(".", String.raw`\.`).replaceAll("+", String.raw`\+`).replaceAll("?", String.raw`\?`).replaceAll("*", "[^/]*");
-var parseExcludeLines = (text) => text.split("\n").flatMap((line) => {
-  const trimmed = line.trim();
-  if (trimmed.length === 0 || trimmed.startsWith("#")) return [];
-  return [trimmed];
-});
-var parseExcludePatterns = (text) => parseExcludeLines(text).map(
-  (line) => new RegExp(`^${escapeRegExp(line)}(/|$)`)
-);
-var classifyPath = (relativePath) => {
-  if (ADOPTER_OWNED_SENTINELS.has(relativePath)) return null;
-  if (SHARED.has(relativePath)) return "shared";
-  if (SHARED_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
-    return "shared";
-  if (WIKI_OWNED_EXACT.has(relativePath)) return "wiki-owned";
-  if (WIKI_OWNED_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
-    return "wiki-owned";
-  return "owned";
-};
-var ManifestClassSchema = external_exports.literal([
-  "owned",
-  "shared",
-  "wiki-owned"
-]);
-var ManifestSchema = external_exports.object({
-  files: external_exports.record(external_exports.string(), ManifestClassSchema),
-  generated: external_exports.string(),
-  version: external_exports.string()
-});
-var resolveRepoRoot3 = (cwd) => execFileSync2("git", ["rev-parse", "--show-toplevel"], {
-  cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-}).trim();
-var listGitFiles = (cwd) => execFileSync2("git", ["ls-files"], {
-  cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-}).split("\n").filter((line) => line.length > 0);
-var buildManifest = (cwd, options = {}) => {
-  const repoRoot = options.repoRoot ?? resolveRepoRoot3(cwd);
-  const versionPath = path23.resolve(repoRoot, ".gaia/VERSION");
-  const excludePath = path23.resolve(repoRoot, ".gaia/release-exclude");
-  const version2 = readFileSync20(versionPath, "utf8").trim();
-  const excludePatterns = parseExcludePatterns(
-    readFileSync20(excludePath, "utf8")
-  );
-  const isExcluded = (candidate) => excludePatterns.some((pattern) => pattern.test(candidate));
-  const tracked = listGitFiles(repoRoot);
-  const entries = [];
-  for (const relativePath of tracked) {
-    if (!isExcluded(relativePath)) {
-      const klass = classifyPath(relativePath);
-      if (klass !== null) {
-        entries.push([relativePath, klass]);
-      }
-    }
-  }
-  entries.sort(([a], [b]) => a.localeCompare(b));
-  const files = Object.fromEntries(entries);
-  return {
-    files,
-    generated: options.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
-    version: version2
-  };
-};
-var serialize = (manifest) => `${JSON.stringify(manifest, null, 2)}
-`;
-var lintClassifierSets = (excludePatterns) => {
-  const overlaps = [];
-  const findOverlap = (entry, setName) => {
-    const matched = excludePatterns.find((pattern) => pattern.test(entry));
-    if (matched !== void 0) {
-      overlaps.push({ entry, excludePattern: matched.source, setName });
-    }
-  };
-  for (const entry of ADOPTER_OWNED_SENTINELS)
-    findOverlap(entry, "ADOPTER_OWNED_SENTINELS");
-  for (const entry of SHARED) findOverlap(entry, "SHARED");
-  for (const entry of WIKI_OWNED_EXACT) findOverlap(entry, "WIKI_OWNED_EXACT");
-  for (const prefix of SHARED_PREFIXES) {
-    findOverlap(prefix.replace(/\/$/, ""), "SHARED_PREFIXES");
-  }
-  for (const prefix of WIKI_OWNED_PREFIXES) {
-    findOverlap(prefix.replace(/\/$/, ""), "WIKI_OWNED_PREFIXES");
-  }
-  return overlaps;
-};
-var lookupClass = (files, file2) => files[file2];
-var computeDrift = (expected, actual, classifierOverlaps) => {
-  const missing = [];
-  const extra = [];
-  const drift = [];
-  for (const [file2, expectedClass] of Object.entries(expected.files)) {
-    const actualClass = lookupClass(actual.files, file2);
-    if (actualClass === void 0) {
-      missing.push({ expected: expectedClass, file: file2 });
-    } else if (actualClass !== expectedClass) {
-      drift.push({ actual: actualClass, expected: expectedClass, file: file2 });
-    }
-  }
-  for (const [file2, actualClass] of Object.entries(actual.files)) {
-    if (lookupClass(expected.files, file2) === void 0) {
-      extra.push({ actual: actualClass, file: file2 });
-    }
-  }
-  missing.sort((a, b) => a.file.localeCompare(b.file));
-  extra.sort((a, b) => a.file.localeCompare(b.file));
-  drift.sort((a, b) => a.file.localeCompare(b.file));
-  const versionDrift = expected.version === actual.version ? void 0 : { actual: actual.version, expected: expected.version };
-  return { classifierOverlaps, drift, extra, missing, versionDrift };
-};
-var renderVersionDriftLines = (result) => result.versionDrift === void 0 ? [] : [
-  "",
-  "version drift:",
-  `  manifest version: ${result.versionDrift.actual}`,
-  `  .gaia/VERSION:    ${result.versionDrift.expected}`
-];
-var renderMissingLines = (result) => result.missing.length === 0 ? [] : [
-  "",
-  `missing from manifest (${result.missing.length}):`,
-  ...result.missing.map(
-    (entry) => `  + ${entry.file}  [${entry.expected}]`
-  )
-];
-var renderExtraLines = (result) => result.extra.length === 0 ? [] : [
-  "",
-  `extra in manifest (${result.extra.length}):`,
-  ...result.extra.map((entry) => `  - ${entry.file}  [${entry.actual}]`)
-];
-var renderDriftLines = (result) => result.drift.length === 0 ? [] : [
-  "",
-  `class drift (${result.drift.length}):`,
-  ...result.drift.map(
-    (entry) => `  ~ ${entry.file}  ${entry.actual} \u2192 ${entry.expected}`
-  )
-];
-var renderOverlapLines = (result) => result.classifierOverlaps.length === 0 ? [] : [
-  "",
-  `classifier-set overlaps with release-exclude (${result.classifierOverlaps.length}):`,
-  ...result.classifierOverlaps.map(
-    (overlap) => `  ${overlap.setName}: ${overlap.entry} (matched by /${overlap.excludePattern}/)`
-  )
-];
-var renderCheckReport = (result, jsonMode) => {
-  if (jsonMode) return `${JSON.stringify(result, null, 2)}
-`;
-  const total = result.missing.length + result.extra.length + result.drift.length + result.classifierOverlaps.length + (result.versionDrift === void 0 ? 0 : 1);
-  if (total === 0) {
-    return "release manifest --check: clean (manifest fresh, classifier sets coherent)\n";
-  }
-  const out = [
-    `release manifest --check: ${total} issue(s)`,
-    ...renderVersionDriftLines(result),
-    ...renderMissingLines(result),
-    ...renderExtraLines(result),
-    ...renderDriftLines(result),
-    ...renderOverlapLines(result)
-  ];
-  return `${out.join("\n")}
-`;
-};
-var runCheck = (cwd, generatedAt, jsonMode) => {
-  let repoRoot;
-  let expected;
-  let excludePatterns;
-  try {
-    repoRoot = resolveRepoRoot3(cwd);
-    expected = buildManifest(cwd, { generatedAt, repoRoot });
-    excludePatterns = parseExcludePatterns(
-      readFileSync20(path23.resolve(repoRoot, ".gaia/release-exclude"), "utf8")
-    );
-  } catch (error51) {
-    structuredError({
-      code: "manifest_build_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release manifest"
-    });
-    return UNEXPECTED_EXIT12;
-  }
-  const manifestPath = path23.resolve(repoRoot, ".gaia/manifest.json");
-  if (!existsSync21(manifestPath)) {
-    structuredError({
-      code: "manifest_missing",
-      message: `committed manifest not found at ${manifestPath}; run \`gaia-maintainer release manifest\` to generate it`,
-      subcommand: "release manifest"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  let actual;
-  try {
-    const rawJson = JSON.parse(readFileSync20(manifestPath, "utf8"));
-    actual = ManifestSchema.parse(rawJson);
-  } catch (error51) {
-    const message = error51 instanceof external_exports.ZodError ? `committed manifest is malformed: ${external_exports.prettifyError(error51)}` : error51 instanceof Error ? error51.message : String(error51);
-    structuredError({
-      code: "manifest_parse_failed",
-      message,
-      path: manifestPath,
-      subcommand: "release manifest"
-    });
-    return UNEXPECTED_EXIT12;
-  }
-  const classifierOverlaps = lintClassifierSets(excludePatterns);
-  const result = computeDrift(expected, actual, classifierOverlaps);
-  process.stdout.write(renderCheckReport(result, jsonMode));
-  const hasIssue = result.missing.length > 0 || result.extra.length > 0 || result.drift.length > 0 || result.classifierOverlaps.length > 0 || result.versionDrift !== void 0;
-  return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
-};
-var takeValue8 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
-var parseFlags12 = (argv) => {
-  let check2 = false;
-  let json2 = false;
-  let outPath;
-  let stdout = false;
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === "--out") {
-      const taken = takeValue8(argv, index + 1, "--out");
-      if (!taken.ok) return taken;
-      outPath = taken.value;
-      index += 1;
-    } else if (token === "--stdout") {
-      stdout = true;
-    } else if (token === "--check") {
-      check2 = true;
-    } else if (token === "--json") {
-      json2 = true;
-    } else {
-      return { message: `unknown flag: ${token}`, ok: false };
-    }
-  }
-  if (check2 && (outPath !== void 0 || stdout)) {
-    return {
-      message: "--check is incompatible with --out / --stdout",
-      ok: false
-    };
-  }
-  if (!check2 && json2) {
-    return { message: "--json requires --check", ok: false };
-  }
-  return { flags: { check: check2, json: json2, outPath, stdout }, ok: true };
-};
-var tryBuildManifestOrReport = (cwd, generatedAt) => {
-  try {
-    const repoRoot = resolveRepoRoot3(cwd);
-    const manifest = buildManifest(cwd, { generatedAt, repoRoot });
-    return { manifest, repoRoot };
-  } catch (error51) {
-    structuredError({
-      code: "manifest_build_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release manifest"
-    });
-    return null;
-  }
-};
-var resolveOutputTarget = (cwd, repoRoot, outPath) => {
-  if (outPath === void 0) {
-    return path23.join(repoRoot, ".gaia", "manifest.json");
-  }
-  return path23.isAbsolute(outPath) ? outPath : path23.join(cwd, outPath);
-};
-var tryWriteManifestOrReport = (target, serialized) => {
-  try {
-    atomicWriteFileSync(target, serialized);
-    return true;
-  } catch (error51) {
-    structuredError({
-      code: "manifest_write_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release manifest"
-    });
-    return false;
-  }
-};
-var run34 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS23.has(argv[0])) {
-    process.stdout.write(HELP_TEXT23);
-    return EXIT_CODES.OK;
-  }
-  const parsed = parseFlags12(argv);
-  if (!parsed.ok) {
-    structuredError({
-      code: "invalid_arguments",
-      message: parsed.message,
-      subcommand: "release manifest"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const cwd = options.cwd ?? process.cwd();
-  if (parsed.flags.check) {
-    return runCheck(cwd, options.generatedAt, parsed.flags.json);
-  }
-  const built = tryBuildManifestOrReport(cwd, options.generatedAt);
-  if (built === null) return UNEXPECTED_EXIT12;
-  const { manifest, repoRoot } = built;
-  const serialized = serialize(manifest);
-  if (parsed.flags.stdout) {
-    process.stdout.write(serialized);
-    return EXIT_CODES.OK;
-  }
-  const target = resolveOutputTarget(cwd, repoRoot, parsed.flags.outPath);
-  if (!existsSync21(path23.dirname(target))) {
-    structuredError({
-      code: "output_dir_missing",
-      message: `output directory does not exist: ${path23.dirname(target)}`,
-      subcommand: "release manifest"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  if (!tryWriteManifestOrReport(target, serialized)) return UNEXPECTED_EXIT12;
-  const counts = {
-    owned: 0,
-    shared: 0,
-    "wiki-owned": 0
-  };
-  for (const klass of Object.values(manifest.files)) counts[klass] += 1;
-  const total = Object.keys(manifest.files).length;
-  process.stdout.write(
-    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path23.relative(cwd, target) || target}
-`
-  );
-  return EXIT_CODES.OK;
-};
-
-// src/release/preflight.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
-
-// src/wiki/state.ts
-import { existsSync as existsSync22, readdirSync as readdirSync4, readFileSync as readFileSync21, statSync as statSync2 } from "node:fs";
-import path24 from "node:path";
-var HELP_TEXT24 = `Usage: gaia wiki state [--json]
-`;
-var HELP_TOKENS24 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var classifySeverity = (commitCount) => {
-  if (commitCount <= 0) return "none";
-  if (commitCount <= 5) return "low";
-  if (commitCount <= 20) return "medium";
-  return "high";
-};
-var DOMAIN_DIRS = [
-  "components",
-  "concepts",
-  "decisions",
-  "dependencies",
-  "entities",
-  "flows",
-  "meta",
-  "modules"
-];
-var countDomainPages = (wikiRoot) => {
-  const counts = {};
-  for (const domain2 of DOMAIN_DIRS) {
-    const domainDir = path24.join(wikiRoot, domain2);
-    if (!existsSync22(domainDir) || !statSync2(domainDir).isDirectory()) {
-      counts[domain2] = 0;
-    } else {
-      const entries = readdirSync4(domainDir, { withFileTypes: true });
-      let count = 0;
-      for (const entry of entries) {
-        if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "_index.md") {
-          count += 1;
-        }
-      }
-      counts[domain2] = count;
-    }
-  }
-  return counts;
-};
-var readStateFile = (statePath) => {
-  if (!existsSync22(statePath)) return null;
-  const raw = readFileSync21(statePath, "utf8");
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-};
-var printHuman = (state, write) => {
-  const lines = [
-    "Wiki state",
-    `  HEAD:           ${state.head_short}`,
-    `  Last evaluated: ${state.state_sha}`,
-    `  Reachable:      ${state.reachable ? "yes" : "no"}`,
-    `  Drift:          ${state.commits_ahead} commits (${state.drift_severity})`
-  ];
-  if (state.suggested_base !== "") {
-    lines.push(`  Recovery base:  ${state.suggested_base}`);
-  }
-  if (state.recent_commits.length > 0) {
-    lines.push("  Recent unsynced:");
-    for (const commit2 of state.recent_commits) {
-      lines.push(`    - ${commit2.sha} ${commit2.subject}`);
-    }
-  }
-  lines.push("  Per-domain pages:");
-  for (const [domain2, count] of Object.entries(state.per_domain_page_counts)) {
-    lines.push(`    ${domain2}: ${count}`);
-  }
-  write(`${lines.join("\n")}
-`);
-};
-var parseStateArgs = (argv, write) => {
-  let json2 = false;
-  for (const token of argv) {
-    if (HELP_TOKENS24.has(token)) {
-      write(HELP_TEXT24);
-      return { exitCode: EXIT_CODES.OK, ok: false };
-    }
-    if (token === "--json") {
-      json2 = true;
-    } else {
-      structuredError({
-        code: "invalid_arguments",
-        message: `unknown flag: ${token}`,
-        subcommand: "wiki state"
-      });
-      return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND, ok: false };
-    }
-  }
-  return { json: json2, ok: true };
-};
-var run35 = (argv, options = {}) => {
-  const write = options.write ?? ((chunk) => {
-    process.stdout.write(chunk);
-  });
-  const parsed = parseStateArgs(argv, write);
-  if (!parsed.ok) {
-    return parsed.exitCode;
-  }
-  const { json: json2 } = parsed;
-  let repoRoot;
-  try {
-    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
-  } catch {
-    structuredError({
-      code: "not_a_git_repo",
-      message: "gaia wiki state must run inside a git repository",
-      subcommand: "wiki state"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const wikiRoot = path24.join(repoRoot, "wiki");
-  const statePath = path24.join(wikiRoot, ".state.json");
-  const stateFile = readStateFile(statePath);
-  const stateSha = stateFile?.last_evaluated_sha ?? "";
-  const stateAt = stateFile?.last_evaluated_at ?? "";
-  const head = headSha(repoRoot);
-  const headShort = shortSha(head, repoRoot);
-  const stateShort = stateSha === "" ? "" : shortSha(stateSha, repoRoot);
-  const reachable = stateSha !== "" && isReachable(stateSha, repoRoot);
-  const ahead = stateSha === "" || !reachable ? 0 : commitsAhead(stateSha, repoRoot);
-  const recent = stateSha === "" || !reachable ? [] : recentCommits(stateSha, repoRoot, 5);
-  const severity = classifySeverity(ahead);
-  const counts = countDomainPages(wikiRoot);
-  const suggestedFull = !reachable && stateAt !== "" ? ancestorBefore(stateAt, repoRoot) : "";
-  const suggestedBase = suggestedFull === "" ? "" : shortSha(suggestedFull, repoRoot);
-  const state = {
-    commits_ahead: ahead,
-    drift_severity: severity,
-    head_short: headShort,
-    per_domain_page_counts: counts,
-    reachable,
-    recent_commits: recent,
-    state_sha: stateShort,
-    suggested_base: suggestedBase
-  };
-  if (json2) {
-    write(`${JSON.stringify(state)}
-`);
-  } else {
-    printHuman(state, write);
-  }
-  return EXIT_CODES.OK;
-};
-
-// src/release/preflight.ts
-var HELP_TEXT25 = `Usage: gaia-maintainer release preflight [--branch <name>]
-
-  Verify branch state, working tree, and wiki sync before cutting a release.
-
-  Flags:
-    --branch <name>  Allowed release branch (default: main).
-
-  Exit codes:
-    0  preflight passed
-    1  user-correctable refusal (wrong branch, dirty tree, wiki drift)
-    2  unexpected (git failure)
-`;
-var HELP_TOKENS25 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT13 = 2;
-var DEFAULT_BRANCH = "main";
-var defaultRunner4 = (command, args, options) => spawnSync4(command, args, {
-  cwd: options.cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-});
-var takeValue9 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
-var parseFlags13 = (argv) => {
-  let allowedBranch = DEFAULT_BRANCH;
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === "--branch") {
-      const taken = takeValue9(argv, index + 1, "--branch");
-      if (!taken.ok) return taken;
-      allowedBranch = taken.value;
-      index += 1;
-    } else {
-      return { message: `unknown flag: ${token}`, ok: false };
-    }
-  }
-  return { flags: { allowedBranch }, ok: true };
-};
-var expectSuccess2 = (result, command, args) => {
-  if (result.error !== void 0) {
-    throw new Error(
-      `${command} ${args.join(" ")} failed: ${result.error.message}`
-    );
-  }
-  if ((result.status ?? -1) !== 0) {
-    const stderr = result.stderr.trim();
-    throw new Error(
-      `${command} ${args.join(" ")} exited ${result.status ?? -1}: ${stderr}`
-    );
-  }
-  return result.stdout;
-};
-var refuse = (message) => {
-  process.stderr.write(`${message}
-`);
-  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-};
-var runWikiStateJson = (cwd) => {
-  const chunks = [];
-  const exit = run35(["--json"], {
-    cwd,
-    write: (chunk) => {
-      chunks.push(chunk);
-    }
-  });
-  if (exit !== EXIT_CODES.OK) return null;
-  const raw = chunks.join("").trim();
-  try {
-    const parsed = JSON.parse(raw);
-    const {
-      commits_ahead: commitsAhead2,
-      reachable,
-      state_sha: stateSha,
-      suggested_base: suggestedBase
-    } = parsed;
-    if (typeof commitsAhead2 !== "number") return null;
-    return {
-      commits_ahead: commitsAhead2,
-      // Default reachable to true on a malformed payload so the orphaned-state
-      // recovery never fires off bad input; the gate falls back to today's
-      // `commits_ahead` reading.
-      reachable: typeof reachable === "boolean" ? reachable : true,
-      state_sha: typeof stateSha === "string" ? stateSha : "",
-      suggested_base: typeof suggestedBase === "string" ? suggestedBase : ""
-    };
-  } catch {
-    return null;
-  }
-};
-var resolveCommit = (runner, cwd, sha) => {
-  if (sha === "") return "";
-  const resolved = runner("git", ["rev-parse", "--verify", `${sha}^{commit}`], {
-    cwd
-  });
-  if (resolved.error !== void 0 || (resolved.status ?? -1) !== 0) return "";
-  return resolved.stdout.trim();
-};
-var readDriftSubjects = (runner, cwd, base) => {
-  const fullSha = resolveCommit(runner, cwd, base);
-  if (fullSha === "") return null;
-  const result = runner("git", ["log", "--format=%s", `${fullSha}..HEAD`], {
-    cwd
-  });
-  if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
-  return result.stdout.split("\n").flatMap((line) => {
-    const trimmed = line.trim();
-    return trimmed.length > 0 ? [trimmed] : [];
-  });
-};
-var countDriftCommits = (runner, cwd, base) => {
-  const fullSha = resolveCommit(runner, cwd, base);
-  if (fullSha === "") return null;
-  const result = runner("git", ["rev-list", "--count", `${fullSha}..HEAD`], {
-    cwd
-  });
-  if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
-  const parsed = Number.parseInt(result.stdout.trim(), 10);
-  return Number.isInteger(parsed) ? parsed : null;
-};
-var tryReadBranchState = (runner, cwd) => {
-  try {
-    const branch = expectSuccess2(
-      runner("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd }),
-      "git",
-      ["rev-parse", "--abbrev-ref", "HEAD"]
-    ).trim();
-    const status = expectSuccess2(
-      runner("git", ["status", "--porcelain=v1", "-uall"], { cwd }),
-      "git",
-      ["status", "--porcelain=v1", "-uall"]
-    );
-    return { branch, status };
-  } catch (error51) {
-    process.stderr.write(
-      `preflight: ${error51 instanceof Error ? error51.message : String(error51)}
-`
-    );
-    return null;
-  }
-};
-var resolveDriftWindow = (runner, cwd, wikiState) => {
-  if (wikiState.reachable || wikiState.suggested_base === "") {
-    return { base: wikiState.state_sha, count: wikiState.commits_ahead };
-  }
-  const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
-  if (recovered === null) return null;
-  return { base: wikiState.suggested_base, count: recovered };
-};
-var isDriftBenign = (runner, cwd, driftBase) => {
-  const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
-  return driftSubjects !== null && // Guards the vacuous-truth case: zero subjects with a nonzero drift count
-  // means the range count disagrees with `git log`, a broken state, not a
-  // benign one.
-  driftSubjects.length > 0 && driftSubjects.every((subject) => subject.startsWith("wiki:"));
-};
-var run36 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS25.has(argv[0])) {
-    process.stdout.write(HELP_TEXT25);
-    return EXIT_CODES.OK;
-  }
-  const parsed = parseFlags13(argv);
-  if (!parsed.ok) {
-    structuredError({
-      code: "invalid_arguments",
-      message: parsed.message,
-      subcommand: "release preflight"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const cwd = options.cwd ?? process.cwd();
-  const runner = options.runner ?? defaultRunner4;
-  const wikiStateProbe = options.wikiStateProbe ?? runWikiStateJson;
-  const branchState = tryReadBranchState(runner, cwd);
-  if (branchState === null) return UNEXPECTED_EXIT13;
-  if (branchState.branch !== parsed.flags.allowedBranch) {
-    return refuse(
-      `preflight: must be on ${parsed.flags.allowedBranch} (current: ${branchState.branch})`
-    );
-  }
-  if (branchState.status.trim().length > 0) {
-    return refuse("preflight: working tree is dirty; commit or stash first");
-  }
-  const wikiState = wikiStateProbe(cwd);
-  if (wikiState === null) {
-    return refuse(
-      "preflight: failed to read wiki state via `gaia wiki state --json`"
-    );
-  }
-  const driftWindow = resolveDriftWindow(runner, cwd, wikiState);
-  if (driftWindow === null) {
-    return refuse(
-      `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
-    );
-  }
-  if (driftWindow.count !== 0) {
-    if (!isDriftBenign(runner, cwd, driftWindow.base)) {
-      return refuse(
-        `preflight: wiki is ${driftWindow.count} commits behind HEAD; run /gaia-wiki sync first`
-      );
-    }
-    process.stderr.write(
-      `preflight: wiki drift is ${driftWindow.count} wiki-sync squash artifact(s); proceeding (content current)
-`
-    );
-  }
-  return EXIT_CODES.OK;
-};
-
-// src/release/runtime-deps.ts
-import { readdirSync as readdirSync5, readFileSync as readFileSync22, statSync as statSync3 } from "node:fs";
-import path25 from "node:path";
-var HELP_TEXT26 = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
-
-  Scan shipped shell scripts for runtime path references that resolve to
-  release-excluded files.
-
-  Flags:
-    --staging <dir>   Scan inside <dir> instead of process.cwd(). Used
-                      from release.yml to scan the post-scrub staging tree.
-    --manifest <path> Manifest file to verify against (default:
-                      .gaia/manifest.json under the staging or repo root).
-    --json            Emit a structured JSON report on stdout.
-
-  Exit codes:
-    0  no leaks
-    1  leaks detected, missing inputs, bad flags
-    2  unexpected (manifest parse failure, IO error)
-`;
-var HELP_TOKENS26 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT14 = 2;
-var SCAN_GLOBS = [
-  ".gaia/statusline",
-  ".gaia/cli/templates",
-  ".gaia/scripts",
-  ".claude/hooks",
-  ".github/actions",
-  ".github/audit",
-  ".specify/extensions/gaia/lib"
-];
-var ADOPTER_OWNED_SENTINELS2 = /* @__PURE__ */ new Set([
-  ...ADOPTER_OWNED_SENTINELS,
-  ".gaia/automation.json"
-]);
-var RUNTIME_PREFIXES = [
-  ".gaia/local",
-  ".claude/handoff",
-  ".claude/worktrees",
-  ".claude/agent-memory",
-  ".claude/audit"
-];
-var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
-  ".claude/i18n-strings-checked",
-  ".claude/wiki-drift-checked",
-  // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
-  // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
-  // it. Created on first compaction event; never a shipped dependency.
-  ".claude/wiki-recompact-pending",
-  ".claude/wiki-safety-checked"
-]);
-var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
-var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
-  ".claude/projects",
-  ".github/workflows",
-  ".github/workflows/code-review-audit.yml"
-]);
-var PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
-var stripCommentSuffix = (line) => {
-  if (/^\s*#/.test(line)) return "";
-  return line;
-};
-var expandPath = (line, start) => {
-  let end = start;
-  while (end < line.length && PATH_BODY_CHAR.test(line[end])) {
-    end += 1;
-  }
-  return line.slice(start, end);
-};
-var isVariableExpansionContext = (line, found) => {
-  let cursor = found - 1;
-  while (cursor >= 0) {
-    const ch = line[cursor];
-    if (ch === "$") return true;
-    if (!(ch === "/" || ch === "{" || ch === "}" || PATH_BODY_CHAR.test(ch))) {
-      return false;
-    }
-    cursor -= 1;
-  }
-  return false;
-};
-var trimTrailingDotsSlashes = (candidate) => {
-  let trimmed = candidate;
-  while (trimmed.length > 0 && (trimmed.endsWith(".") || trimmed.endsWith("/"))) {
-    trimmed = trimmed.slice(0, -1);
-  }
-  return trimmed;
-};
-var consumeStep = (args) => {
-  const { filePath, found, lineNumber, prefix, stripped } = args;
-  const leading = found === 0 ? "" : stripped[found - 1];
-  const isSubstring = leading.length > 0 && PATH_BODY_CHAR.test(leading) && !isVariableExpansionContext(stripped, found);
-  if (isSubstring) return { nextCursor: found + 1, ref: null };
-  const candidate = expandPath(stripped, found);
-  const nextCursor = found + candidate.length;
-  if (candidate.length <= prefix.length) return { nextCursor, ref: null };
-  const trimmed = trimTrailingDotsSlashes(candidate);
-  if (trimmed.length <= prefix.length || PROSE_PATH_ALLOWLIST.has(trimmed)) {
-    return { nextCursor, ref: null };
-  }
-  return { nextCursor, ref: { filePath, line: lineNumber, path: trimmed } };
-};
-var collectPrefixRefs = (args) => {
-  const { prefix, stripped } = args;
-  const refs = [];
-  let cursor = 0;
-  while (cursor <= stripped.length - prefix.length) {
-    const found = stripped.indexOf(prefix, cursor);
-    if (found === -1) break;
-    const { nextCursor, ref } = consumeStep({ ...args, found });
-    if (ref !== null) refs.push(ref);
-    cursor = nextCursor;
-  }
-  return refs;
-};
-var extractPathRefs = (filePath, source) => {
-  const refs = [];
-  for (const [index, line] of source.split("\n").entries()) {
-    const stripped = stripCommentSuffix(line);
-    if (stripped.length > 0) {
-      for (const prefix of PATH_PREFIXES) {
-        refs.push(
-          ...collectPrefixRefs({
-            filePath,
-            lineNumber: index + 1,
-            prefix,
-            stripped
-          })
-        );
-      }
-    }
-  }
-  return refs;
-};
-var computeShippedDirs = (manifest) => {
-  const dirs = /* @__PURE__ */ new Set();
-  for (const filePath of manifest) {
-    let dir = path25.dirname(filePath);
-    while (dir !== "." && !dirs.has(dir)) {
-      dirs.add(dir);
-      const parent = path25.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  return dirs;
-};
-var isShippedPath = (candidate, manifest, shippedDirs) => {
-  if (manifest.has(candidate)) return true;
-  if (ADOPTER_OWNED_SENTINELS2.has(candidate)) return true;
-  if (RUNTIME_MARKERS.has(candidate)) return true;
-  if (RUNTIME_PREFIXES.some(
-    (prefix) => candidate === prefix || candidate.startsWith(`${prefix}/`)
-  )) {
-    return true;
-  }
-  if (shippedDirs.has(candidate)) return true;
-  return false;
-};
-var walkSh = (root, dir) => {
-  const out = [];
-  for (const entry of readdirSync5(dir, { withFileTypes: true })) {
-    const full = path25.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...walkSh(root, full));
-    } else if (entry.isFile() && entry.name.endsWith(".sh")) {
-      out.push(path25.relative(root, full).split(path25.sep).join("/"));
-    }
-  }
-  return out;
-};
-var walkScripts = (root) => {
-  const out = [];
-  for (const sub of SCAN_GLOBS) {
-    const absolute = path25.join(root, sub);
-    let exists = true;
-    try {
-      statSync3(absolute);
-    } catch {
-      exists = false;
-    }
-    if (exists) {
-      out.push(...walkSh(root, absolute));
-    }
-  }
-  return out;
-};
-var loadManifest = (manifestPath) => {
-  const raw = readFileSync22(manifestPath, "utf8");
-  const parsed = JSON.parse(raw);
-  if (parsed.files === void 0) {
-    throw new Error(`manifest at ${manifestPath} has no "files" field`);
-  }
-  return new Set(Object.keys(parsed.files));
-};
-var takeValue10 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
-var parseFlags14 = (argv) => {
-  let json2 = false;
-  let manifestPath;
-  let stagingDir;
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === "--staging") {
-      const taken = takeValue10(argv, index + 1, "--staging");
-      if (!taken.ok) return taken;
-      stagingDir = taken.value;
-      index += 1;
-    } else if (token === "--manifest") {
-      const taken = takeValue10(argv, index + 1, "--manifest");
-      if (!taken.ok) return taken;
-      manifestPath = taken.value;
-      index += 1;
-    } else if (token === "--json") {
-      json2 = true;
-    } else {
-      return { message: `unknown flag: ${token}`, ok: false };
-    }
-  }
-  return { flags: { json: json2, manifestPath, stagingDir }, ok: true };
-};
-var renderReport = (report, jsonMode) => {
-  if (jsonMode) return `${JSON.stringify(report, null, 2)}
-`;
-  const out = [
-    `release runtime-deps: scanned ${report.scanned_files.length} script(s)`
-  ];
-  if (report.leaks.length > 0) {
-    out.push("", `runtime-dependency leaks (${report.leaks.length}):`);
-    for (const leak of report.leaks) {
-      out.push(`  ${leak.file}:${leak.line}  ${leak.path}`);
-    }
-  } else {
-    out.push("runtime-dependency leaks: none");
-  }
-  return `${out.join("\n")}
-`;
-};
-var resolvePathFlag = (cwd, fallback, flag) => {
-  if (flag === void 0) return fallback;
-  return path25.isAbsolute(flag) ? flag : path25.join(cwd, flag);
-};
-var tryVerifyRootExists = (root) => {
-  try {
-    statSync3(root);
-    return true;
-  } catch {
-    return false;
-  }
-};
-var tryLoadManifestOrReport = (manifestPath) => {
-  try {
-    return loadManifest(manifestPath);
-  } catch (error51) {
-    structuredError({
-      code: "manifest_load_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      path: manifestPath,
-      subcommand: "release runtime-deps"
-    });
-    return null;
-  }
-};
-var tryWalkScriptsOrReport = (root) => {
-  try {
-    return walkScripts(root);
-  } catch (error51) {
-    structuredError({
-      code: "walk_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release runtime-deps"
-    });
-    return null;
-  }
-};
-var collectLeaks = (root, scriptFiles, manifest) => {
-  const leaks = [];
-  const shippedDirs = computeShippedDirs(manifest);
-  for (const scriptPath of scriptFiles) {
-    const source = readFileSync22(path25.join(root, scriptPath), "utf8");
-    const refs = extractPathRefs(scriptPath, source);
-    for (const ref of refs) {
-      const isLeak = ref.path !== scriptPath && !isShippedPath(ref.path, manifest, shippedDirs);
-      if (isLeak) {
-        leaks.push({ file: ref.filePath, line: ref.line, path: ref.path });
-      }
-    }
-  }
-  return leaks;
-};
-var run37 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS26.has(argv[0])) {
-    process.stdout.write(HELP_TEXT26);
-    return EXIT_CODES.OK;
-  }
-  const parsed = parseFlags14(argv);
-  if (!parsed.ok) {
-    structuredError({
-      code: "invalid_arguments",
-      message: parsed.message,
-      subcommand: "release runtime-deps"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const cwd = options.cwd ?? process.cwd();
-  const root = resolvePathFlag(cwd, cwd, parsed.flags.stagingDir);
-  if (!tryVerifyRootExists(root)) {
-    structuredError({
-      code: "root_missing",
-      message: `scan root not found: ${root}`,
-      subcommand: "release runtime-deps"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const manifestPath = resolvePathFlag(
-    cwd,
-    path25.join(root, ".gaia", "manifest.json"),
-    parsed.flags.manifestPath
-  );
-  const manifest = tryLoadManifestOrReport(manifestPath);
-  if (manifest === null) return UNEXPECTED_EXIT14;
-  const scriptFiles = tryWalkScriptsOrReport(root);
-  if (scriptFiles === null) return UNEXPECTED_EXIT14;
-  const leaks = collectLeaks(root, scriptFiles, manifest);
-  const report = { leaks, scanned_files: scriptFiles };
-  process.stdout.write(renderReport(report, parsed.flags.json));
-  return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
-};
-
-// src/release/scrub-wiki.ts
-import { existsSync as existsSync23, mkdirSync as mkdirSync10, readFileSync as readFileSync23 } from "node:fs";
-import path26 from "node:path";
-var HELP_TEXT27 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>]
-
-  Overwrite wiki/hot.md and wiki/log.md with release-clean content
-  (Step 8 + Step 9 of the runbook).
-
-  Flags:
-    --version <X.Y.Z>     Override the new version (default: package.json).
-    --date <YYYY-MM-DD>   Override the release date (default: today UTC).
-
-  Exit codes:
-    0  success (no stdout)
-    1  user-correctable error
-    2  unexpected (filesystem failure)
-`;
-var HELP_TOKENS27 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var UNEXPECTED_EXIT15 = 2;
-var takeValue11 = (argv, index, flag) => {
-  const value = argv.at(index);
-  if (value === void 0)
-    return { message: `${flag} requires a value`, ok: false };
-  return { ok: true, value };
-};
-var parseFlags15 = (argv) => {
-  let date5;
-  let version2;
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === "--version") {
-      const taken = takeValue11(argv, index + 1, "--version");
-      if (!taken.ok) return taken;
-      version2 = taken.value;
-      index += 1;
-    } else if (token === "--date") {
-      const taken = takeValue11(argv, index + 1, "--date");
-      if (!taken.ok) return taken;
-      date5 = taken.value;
-      index += 1;
-    } else {
-      return { message: `unknown flag: ${token}`, ok: false };
-    }
-  }
-  return { flags: { date: date5, version: version2 }, ok: true };
-};
-var todayUtc2 = (now = /* @__PURE__ */ new Date()) => {
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(now.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-var readVersion3 = (cwd, override) => {
-  if (override !== void 0 && override.length > 0) return override;
-  const target = path26.join(cwd, "package.json");
-  if (!existsSync23(target)) {
-    throw new Error("package.json not found at repo root");
-  }
-  const parsed = JSON.parse(readFileSync23(target, "utf8"));
-  if (typeof parsed.version !== "string") {
-    throw new TypeError('package.json has no string "version"');
-  }
-  return parsed.version;
-};
-var renderHotMd = (version2, date5) => `---
-type: meta
-title: Hot Cache
-status: active
-created: ${date5}
-updated: ${date5}
-tags: [meta, cache]
----
-
-# Recent Context
-
-## Last Updated
-
-${date5}. Released as GAIA v${version2}. Fresh slate.
-
-## Active Threads
-
-- None.
-`;
-var renderLogMd = (version2, date5) => `---
-type: meta
-title: Log
-status: active
-created: ${date5}
-updated: ${date5}
-tags: [meta, log]
----
-
-# Log
-
-## [v${version2}] ${date5} | Released
-
-See CHANGELOG.md for details.
-`;
-var run38 = (argv, options = {}) => {
-  if (argv.length > 0 && HELP_TOKENS27.has(argv[0])) {
-    process.stdout.write(HELP_TEXT27);
-    return EXIT_CODES.OK;
-  }
-  const parsed = parseFlags15(argv);
-  if (!parsed.ok) {
-    structuredError({
-      code: "invalid_arguments",
-      message: parsed.message,
-      subcommand: "release scrub-wiki"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const cwd = options.cwd ?? process.cwd();
-  let version2;
-  try {
-    version2 = readVersion3(cwd, parsed.flags.version);
-  } catch (error51) {
-    structuredError({
-      code: "package_json_invalid",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release scrub-wiki"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const date5 = parsed.flags.date ?? options.today ?? todayUtc2();
-  const wikiDir = path26.join(cwd, "wiki");
-  if (!existsSync23(wikiDir)) {
-    structuredError({
-      code: "wiki_dir_missing",
-      message: `wiki/ directory not found at ${wikiDir}`,
-      subcommand: "release scrub-wiki"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const hotPath = path26.join(wikiDir, "hot.md");
-  const logPath = path26.join(wikiDir, "log.md");
-  try {
-    mkdirSync10(wikiDir, { recursive: true });
-    atomicWriteFileSync(hotPath, renderHotMd(version2, date5));
-    atomicWriteFileSync(logPath, renderLogMd(version2, date5));
-  } catch (error51) {
-    structuredError({
-      code: "scrub_write_failed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "release scrub-wiki"
-    });
-    return UNEXPECTED_EXIT15;
-  }
-  return EXIT_CODES.OK;
-};
-
 // node_modules/.pnpm/js-yaml@4.2.0/node_modules/js-yaml/dist/js-yaml.mjs
 var __create = Object.create;
 var __defProp2 = Object.defineProperty;
@@ -23454,6 +22223,1310 @@ var import_js_yaml = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((ex
 })))(), 1);
 var { Type, Schema, FAILSAFE_SCHEMA, JSON_SCHEMA, CORE_SCHEMA, DEFAULT_SCHEMA, load, loadAll, dump, YAMLException, types, safeLoad, safeLoadAll, safeDump } = import_js_yaml.default;
 var index_vite_proxy_tmp_default = import_js_yaml.default;
+
+// src/release/manifest.ts
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { existsSync as existsSync21, readFileSync as readFileSync20 } from "node:fs";
+import path23 from "node:path";
+
+// src/release/scan-globs.ts
+var SCAN_GLOBS = [
+  ".gaia/statusline",
+  ".gaia/cli/templates",
+  ".gaia/scripts",
+  ".claude/hooks",
+  ".github/actions",
+  ".github/audit",
+  ".specify/extensions/gaia/lib"
+];
+
+// src/release/manifest.ts
+var HELP_TEXT23 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
+       gaia-maintainer release manifest --check [--json]
+
+  Regenerate .gaia/manifest.json. Walks git ls-files, subtracts
+  release-exclude patterns and adopter-owned sentinels, classifies the
+  remainder, and writes a sorted JSON manifest.
+
+  Flags:
+    --out <path>   Override output path (default: .gaia/manifest.json).
+    --stdout       Print manifest JSON to stdout instead of writing the file.
+    --check        Verify the committed manifest matches what the
+                   classifier would produce against the current source,
+                   lint classifier sets against release-exclude for
+                   dead-code overlap, and lint every owned .sh-bearing
+                   directory against the scrub maintainer-paths scope and
+                   runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
+                   overlap, or a scan-scope gap.
+    --json         (with --check) Emit a structured JSON drift report.
+
+  Exit codes:
+    0  success / check clean
+    1  user-correctable error / check found drift or overlap
+    2  unexpected (filesystem / git failure)
+`;
+var HELP_TOKENS23 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT12 = 2;
+var ADOPTER_OWNED_SENTINELS = /* @__PURE__ */ new Set([
+  ".gaia/manifest.json",
+  ".gaia/VERSION",
+  "wiki/hot.md",
+  "wiki/log.md"
+]);
+var SHARED = /* @__PURE__ */ new Set([
+  ".claude/settings.json",
+  ".gaia/audit-ci.yml",
+  ".github/FUNDING.yml",
+  "CLAUDE.md",
+  "package.json",
+  "pnpm-workspace.yaml",
+  "wiki/index.md"
+]);
+var SHARED_PREFIXES = [".github/workflows/"];
+var WIKI_OWNED_PREFIXES = [
+  "wiki/components/",
+  "wiki/concepts/",
+  "wiki/decisions/",
+  "wiki/dependencies/",
+  "wiki/flows/",
+  "wiki/modules/",
+  "wiki/sources/"
+];
+var WIKI_OWNED_EXACT = /* @__PURE__ */ new Set(["wiki/overview.md", "wiki/README.md"]);
+var escapeRegExp = (pattern) => pattern.replaceAll(".", String.raw`\.`).replaceAll("+", String.raw`\+`).replaceAll("?", String.raw`\?`).replaceAll("*", "[^/]*");
+var parseExcludeLines = (text) => text.split("\n").flatMap((line) => {
+  const trimmed = line.trim();
+  if (trimmed.length === 0 || trimmed.startsWith("#")) return [];
+  return [trimmed];
+});
+var parseExcludePatterns = (text) => parseExcludeLines(text).map(
+  (line) => new RegExp(`^${escapeRegExp(line)}(/|$)`)
+);
+var classifyPath = (relativePath) => {
+  if (ADOPTER_OWNED_SENTINELS.has(relativePath)) return null;
+  if (SHARED.has(relativePath)) return "shared";
+  if (SHARED_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
+    return "shared";
+  if (WIKI_OWNED_EXACT.has(relativePath)) return "wiki-owned";
+  if (WIKI_OWNED_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
+    return "wiki-owned";
+  return "owned";
+};
+var ManifestClassSchema = external_exports.literal([
+  "owned",
+  "shared",
+  "wiki-owned"
+]);
+var ManifestSchema = external_exports.object({
+  files: external_exports.record(external_exports.string(), ManifestClassSchema),
+  generated: external_exports.string(),
+  version: external_exports.string()
+});
+var resolveRepoRoot3 = (cwd) => execFileSync2("git", ["rev-parse", "--show-toplevel"], {
+  cwd,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"]
+}).trim();
+var listGitFiles = (cwd) => execFileSync2("git", ["ls-files"], {
+  cwd,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"]
+}).split("\n").filter((line) => line.length > 0);
+var buildManifest = (cwd, options = {}) => {
+  const repoRoot = options.repoRoot ?? resolveRepoRoot3(cwd);
+  const versionPath = path23.resolve(repoRoot, ".gaia/VERSION");
+  const excludePath = path23.resolve(repoRoot, ".gaia/release-exclude");
+  const version2 = readFileSync20(versionPath, "utf8").trim();
+  const excludePatterns = parseExcludePatterns(
+    readFileSync20(excludePath, "utf8")
+  );
+  const isExcluded = (candidate) => excludePatterns.some((pattern) => pattern.test(candidate));
+  const tracked = listGitFiles(repoRoot);
+  const entries = [];
+  for (const relativePath of tracked) {
+    if (!isExcluded(relativePath)) {
+      const klass = classifyPath(relativePath);
+      if (klass !== null) {
+        entries.push([relativePath, klass]);
+      }
+    }
+  }
+  entries.sort(([a], [b]) => a.localeCompare(b));
+  const files = Object.fromEntries(entries);
+  return {
+    files,
+    generated: options.generatedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+    version: version2
+  };
+};
+var serialize = (manifest) => `${JSON.stringify(manifest, null, 2)}
+`;
+var lintClassifierSets = (excludePatterns) => {
+  const overlaps = [];
+  const findOverlap = (entry, setName) => {
+    const matched = excludePatterns.find((pattern) => pattern.test(entry));
+    if (matched !== void 0) {
+      overlaps.push({ entry, excludePattern: matched.source, setName });
+    }
+  };
+  for (const entry of ADOPTER_OWNED_SENTINELS)
+    findOverlap(entry, "ADOPTER_OWNED_SENTINELS");
+  for (const entry of SHARED) findOverlap(entry, "SHARED");
+  for (const entry of WIKI_OWNED_EXACT) findOverlap(entry, "WIKI_OWNED_EXACT");
+  for (const prefix of SHARED_PREFIXES) {
+    findOverlap(prefix.replace(/\/$/, ""), "SHARED_PREFIXES");
+  }
+  for (const prefix of WIKI_OWNED_PREFIXES) {
+    findOverlap(prefix.replace(/\/$/, ""), "WIKI_OWNED_PREFIXES");
+  }
+  return overlaps;
+};
+var RELEASE_SCRUB_PATH = ".gaia/release-scrub.yml";
+var MAINTAINER_PATHS_CHECK_ID = "maintainer-paths";
+var readMaintainerPathsScope = (repoRoot) => {
+  const scrubPath = path23.resolve(repoRoot, RELEASE_SCRUB_PATH);
+  if (!existsSync21(scrubPath)) return void 0;
+  const parsed = load(readFileSync20(scrubPath, "utf8"));
+  for (const transform2 of parsed.transforms ?? []) {
+    for (const check2 of transform2.checks ?? []) {
+      if (check2.id === MAINTAINER_PATHS_CHECK_ID) return check2.scope ?? [];
+    }
+  }
+  return [];
+};
+var matchesScopeGlob = (file2, glob) => {
+  if (glob === file2) return true;
+  if (!glob.endsWith("/**")) return false;
+  const prefix = glob.slice(0, -3);
+  return file2 === prefix || file2.startsWith(`${prefix}/`);
+};
+var inScanGlobs = (file2) => SCAN_GLOBS.some((glob) => file2 === glob || file2.startsWith(`${glob}/`));
+var computeMissingScopes = (file2, inMaintainerScope) => {
+  const missing = [];
+  if (!inMaintainerScope(file2)) missing.push("maintainer-paths scope");
+  if (!inScanGlobs(file2)) missing.push("runtime-deps SCAN_GLOBS");
+  return missing;
+};
+var recordGap = (gapsByDir, file2, missing) => {
+  const dir = path23.dirname(file2);
+  const existing = gapsByDir.get(dir) ?? /* @__PURE__ */ new Set();
+  for (const name of missing) existing.add(name);
+  gapsByDir.set(dir, existing);
+};
+var listOwnedShFiles = (manifestFiles) => Object.entries(manifestFiles).filter(([file2, klass]) => klass === "owned" && file2.endsWith(".sh")).map(([file2]) => file2);
+var lintScanScopes = (manifestFiles, maintainerPathsScope) => {
+  if (maintainerPathsScope === void 0) return [];
+  const inMaintainerScope = (file2) => maintainerPathsScope.some((glob) => matchesScopeGlob(file2, glob));
+  const gapsByDir = /* @__PURE__ */ new Map();
+  for (const file2 of listOwnedShFiles(manifestFiles)) {
+    const missing = computeMissingScopes(file2, inMaintainerScope);
+    if (missing.length > 0) recordGap(gapsByDir, file2, missing);
+  }
+  return [...gapsByDir.entries()].map(([dir, missingFrom]) => ({ dir, missingFrom: [...missingFrom] })).toSorted((a, b) => a.dir.localeCompare(b.dir));
+};
+var lookupClass = (files, file2) => files[file2];
+var computeDrift = (expected, actual, lints) => {
+  const { classifierOverlaps, scanScopeGaps } = lints;
+  const missing = [];
+  const extra = [];
+  const drift = [];
+  for (const [file2, expectedClass] of Object.entries(expected.files)) {
+    const actualClass = lookupClass(actual.files, file2);
+    if (actualClass === void 0) {
+      missing.push({ expected: expectedClass, file: file2 });
+    } else if (actualClass !== expectedClass) {
+      drift.push({ actual: actualClass, expected: expectedClass, file: file2 });
+    }
+  }
+  for (const [file2, actualClass] of Object.entries(actual.files)) {
+    if (lookupClass(expected.files, file2) === void 0) {
+      extra.push({ actual: actualClass, file: file2 });
+    }
+  }
+  missing.sort((a, b) => a.file.localeCompare(b.file));
+  extra.sort((a, b) => a.file.localeCompare(b.file));
+  drift.sort((a, b) => a.file.localeCompare(b.file));
+  const versionDrift = expected.version === actual.version ? void 0 : { actual: actual.version, expected: expected.version };
+  return {
+    classifierOverlaps,
+    drift,
+    extra,
+    missing,
+    scanScopeGaps,
+    versionDrift
+  };
+};
+var renderVersionDriftLines = (result) => result.versionDrift === void 0 ? [] : [
+  "",
+  "version drift:",
+  `  manifest version: ${result.versionDrift.actual}`,
+  `  .gaia/VERSION:    ${result.versionDrift.expected}`
+];
+var renderMissingLines = (result) => result.missing.length === 0 ? [] : [
+  "",
+  `missing from manifest (${result.missing.length}):`,
+  ...result.missing.map(
+    (entry) => `  + ${entry.file}  [${entry.expected}]`
+  )
+];
+var renderExtraLines = (result) => result.extra.length === 0 ? [] : [
+  "",
+  `extra in manifest (${result.extra.length}):`,
+  ...result.extra.map((entry) => `  - ${entry.file}  [${entry.actual}]`)
+];
+var renderDriftLines = (result) => result.drift.length === 0 ? [] : [
+  "",
+  `class drift (${result.drift.length}):`,
+  ...result.drift.map(
+    (entry) => `  ~ ${entry.file}  ${entry.actual} \u2192 ${entry.expected}`
+  )
+];
+var renderOverlapLines = (result) => result.classifierOverlaps.length === 0 ? [] : [
+  "",
+  `classifier-set overlaps with release-exclude (${result.classifierOverlaps.length}):`,
+  ...result.classifierOverlaps.map(
+    (overlap) => `  ${overlap.setName}: ${overlap.entry} (matched by /${overlap.excludePattern}/)`
+  )
+];
+var renderScanScopeLines = (result) => result.scanScopeGaps.length === 0 ? [] : [
+  "",
+  `.sh-bearing directories outside a leak-check scope (${result.scanScopeGaps.length}):`,
+  ...result.scanScopeGaps.map(
+    (gap) => `  ${gap.dir}  missing from: ${gap.missingFrom.join(", ")}`
+  )
+];
+var renderCheckReport = (result, jsonMode) => {
+  if (jsonMode) return `${JSON.stringify(result, null, 2)}
+`;
+  const total = result.missing.length + result.extra.length + result.drift.length + result.classifierOverlaps.length + result.scanScopeGaps.length + (result.versionDrift === void 0 ? 0 : 1);
+  if (total === 0) {
+    return "release manifest --check: clean (manifest fresh, classifier sets coherent)\n";
+  }
+  const out = [
+    `release manifest --check: ${total} issue(s)`,
+    ...renderVersionDriftLines(result),
+    ...renderMissingLines(result),
+    ...renderExtraLines(result),
+    ...renderDriftLines(result),
+    ...renderOverlapLines(result),
+    ...renderScanScopeLines(result)
+  ];
+  return `${out.join("\n")}
+`;
+};
+var runCheck = (cwd, generatedAt, jsonMode) => {
+  let repoRoot;
+  let expected;
+  let excludePatterns;
+  try {
+    repoRoot = resolveRepoRoot3(cwd);
+    expected = buildManifest(cwd, { generatedAt, repoRoot });
+    excludePatterns = parseExcludePatterns(
+      readFileSync20(path23.resolve(repoRoot, ".gaia/release-exclude"), "utf8")
+    );
+  } catch (error51) {
+    structuredError({
+      code: "manifest_build_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release manifest"
+    });
+    return UNEXPECTED_EXIT12;
+  }
+  const manifestPath = path23.resolve(repoRoot, ".gaia/manifest.json");
+  if (!existsSync21(manifestPath)) {
+    structuredError({
+      code: "manifest_missing",
+      message: `committed manifest not found at ${manifestPath}; run \`gaia-maintainer release manifest\` to generate it`,
+      subcommand: "release manifest"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  let actual;
+  try {
+    const rawJson = JSON.parse(readFileSync20(manifestPath, "utf8"));
+    actual = ManifestSchema.parse(rawJson);
+  } catch (error51) {
+    const message = error51 instanceof external_exports.ZodError ? `committed manifest is malformed: ${external_exports.prettifyError(error51)}` : error51 instanceof Error ? error51.message : String(error51);
+    structuredError({
+      code: "manifest_parse_failed",
+      message,
+      path: manifestPath,
+      subcommand: "release manifest"
+    });
+    return UNEXPECTED_EXIT12;
+  }
+  const classifierOverlaps = lintClassifierSets(excludePatterns);
+  const scanScopeGaps = lintScanScopes(
+    expected.files,
+    readMaintainerPathsScope(repoRoot)
+  );
+  const result = computeDrift(expected, actual, {
+    classifierOverlaps,
+    scanScopeGaps
+  });
+  process.stdout.write(renderCheckReport(result, jsonMode));
+  const hasIssue = result.missing.length > 0 || result.extra.length > 0 || result.drift.length > 0 || result.classifierOverlaps.length > 0 || result.scanScopeGaps.length > 0 || result.versionDrift !== void 0;
+  return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+};
+var takeValue8 = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0)
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var parseFlags12 = (argv) => {
+  let check2 = false;
+  let json2 = false;
+  let outPath;
+  let stdout = false;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--out") {
+      const taken = takeValue8(argv, index + 1, "--out");
+      if (!taken.ok) return taken;
+      outPath = taken.value;
+      index += 1;
+    } else if (token === "--stdout") {
+      stdout = true;
+    } else if (token === "--check") {
+      check2 = true;
+    } else if (token === "--json") {
+      json2 = true;
+    } else {
+      return { message: `unknown flag: ${token}`, ok: false };
+    }
+  }
+  if (check2 && (outPath !== void 0 || stdout)) {
+    return {
+      message: "--check is incompatible with --out / --stdout",
+      ok: false
+    };
+  }
+  if (!check2 && json2) {
+    return { message: "--json requires --check", ok: false };
+  }
+  return { flags: { check: check2, json: json2, outPath, stdout }, ok: true };
+};
+var tryBuildManifestOrReport = (cwd, generatedAt) => {
+  try {
+    const repoRoot = resolveRepoRoot3(cwd);
+    const manifest = buildManifest(cwd, { generatedAt, repoRoot });
+    return { manifest, repoRoot };
+  } catch (error51) {
+    structuredError({
+      code: "manifest_build_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release manifest"
+    });
+    return null;
+  }
+};
+var resolveOutputTarget = (cwd, repoRoot, outPath) => {
+  if (outPath === void 0) {
+    return path23.join(repoRoot, ".gaia", "manifest.json");
+  }
+  return path23.isAbsolute(outPath) ? outPath : path23.join(cwd, outPath);
+};
+var tryWriteManifestOrReport = (target, serialized) => {
+  try {
+    atomicWriteFileSync(target, serialized);
+    return true;
+  } catch (error51) {
+    structuredError({
+      code: "manifest_write_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release manifest"
+    });
+    return false;
+  }
+};
+var run34 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS23.has(argv[0])) {
+    process.stdout.write(HELP_TEXT23);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags12(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "release manifest"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  if (parsed.flags.check) {
+    return runCheck(cwd, options.generatedAt, parsed.flags.json);
+  }
+  const built = tryBuildManifestOrReport(cwd, options.generatedAt);
+  if (built === null) return UNEXPECTED_EXIT12;
+  const { manifest, repoRoot } = built;
+  const serialized = serialize(manifest);
+  if (parsed.flags.stdout) {
+    process.stdout.write(serialized);
+    return EXIT_CODES.OK;
+  }
+  const target = resolveOutputTarget(cwd, repoRoot, parsed.flags.outPath);
+  if (!existsSync21(path23.dirname(target))) {
+    structuredError({
+      code: "output_dir_missing",
+      message: `output directory does not exist: ${path23.dirname(target)}`,
+      subcommand: "release manifest"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  if (!tryWriteManifestOrReport(target, serialized)) return UNEXPECTED_EXIT12;
+  const counts = {
+    owned: 0,
+    shared: 0,
+    "wiki-owned": 0
+  };
+  for (const klass of Object.values(manifest.files)) counts[klass] += 1;
+  const total = Object.keys(manifest.files).length;
+  process.stdout.write(
+    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path23.relative(cwd, target) || target}
+`
+  );
+  return EXIT_CODES.OK;
+};
+
+// src/release/preflight.ts
+import { spawnSync as spawnSync4 } from "node:child_process";
+
+// src/wiki/state.ts
+import { existsSync as existsSync22, readdirSync as readdirSync4, readFileSync as readFileSync21, statSync as statSync2 } from "node:fs";
+import path24 from "node:path";
+var HELP_TEXT24 = `Usage: gaia wiki state [--json]
+`;
+var HELP_TOKENS24 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var classifySeverity = (commitCount) => {
+  if (commitCount <= 0) return "none";
+  if (commitCount <= 5) return "low";
+  if (commitCount <= 20) return "medium";
+  return "high";
+};
+var DOMAIN_DIRS = [
+  "components",
+  "concepts",
+  "decisions",
+  "dependencies",
+  "entities",
+  "flows",
+  "meta",
+  "modules"
+];
+var countDomainPages = (wikiRoot) => {
+  const counts = {};
+  for (const domain2 of DOMAIN_DIRS) {
+    const domainDir = path24.join(wikiRoot, domain2);
+    if (!existsSync22(domainDir) || !statSync2(domainDir).isDirectory()) {
+      counts[domain2] = 0;
+    } else {
+      const entries = readdirSync4(domainDir, { withFileTypes: true });
+      let count = 0;
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "_index.md") {
+          count += 1;
+        }
+      }
+      counts[domain2] = count;
+    }
+  }
+  return counts;
+};
+var readStateFile = (statePath) => {
+  if (!existsSync22(statePath)) return null;
+  const raw = readFileSync21(statePath, "utf8");
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+var printHuman = (state, write) => {
+  const lines = [
+    "Wiki state",
+    `  HEAD:           ${state.head_short}`,
+    `  Last evaluated: ${state.state_sha}`,
+    `  Reachable:      ${state.reachable ? "yes" : "no"}`,
+    `  Drift:          ${state.commits_ahead} commits (${state.drift_severity})`
+  ];
+  if (state.suggested_base !== "") {
+    lines.push(`  Recovery base:  ${state.suggested_base}`);
+  }
+  if (state.recent_commits.length > 0) {
+    lines.push("  Recent unsynced:");
+    for (const commit2 of state.recent_commits) {
+      lines.push(`    - ${commit2.sha} ${commit2.subject}`);
+    }
+  }
+  lines.push("  Per-domain pages:");
+  for (const [domain2, count] of Object.entries(state.per_domain_page_counts)) {
+    lines.push(`    ${domain2}: ${count}`);
+  }
+  write(`${lines.join("\n")}
+`);
+};
+var parseStateArgs = (argv, write) => {
+  let json2 = false;
+  for (const token of argv) {
+    if (HELP_TOKENS24.has(token)) {
+      write(HELP_TEXT24);
+      return { exitCode: EXIT_CODES.OK, ok: false };
+    }
+    if (token === "--json") {
+      json2 = true;
+    } else {
+      structuredError({
+        code: "invalid_arguments",
+        message: `unknown flag: ${token}`,
+        subcommand: "wiki state"
+      });
+      return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND, ok: false };
+    }
+  }
+  return { json: json2, ok: true };
+};
+var run35 = (argv, options = {}) => {
+  const write = options.write ?? ((chunk) => {
+    process.stdout.write(chunk);
+  });
+  const parsed = parseStateArgs(argv, write);
+  if (!parsed.ok) {
+    return parsed.exitCode;
+  }
+  const { json: json2 } = parsed;
+  let repoRoot;
+  try {
+    repoRoot = resolveRepoRoot2(options.cwd ?? process.cwd());
+  } catch {
+    structuredError({
+      code: "not_a_git_repo",
+      message: "gaia wiki state must run inside a git repository",
+      subcommand: "wiki state"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const wikiRoot = path24.join(repoRoot, "wiki");
+  const statePath = path24.join(wikiRoot, ".state.json");
+  const stateFile = readStateFile(statePath);
+  const stateSha = stateFile?.last_evaluated_sha ?? "";
+  const stateAt = stateFile?.last_evaluated_at ?? "";
+  const head = headSha(repoRoot);
+  const headShort = shortSha(head, repoRoot);
+  const stateShort = stateSha === "" ? "" : shortSha(stateSha, repoRoot);
+  const reachable = stateSha !== "" && isReachable(stateSha, repoRoot);
+  const ahead = stateSha === "" || !reachable ? 0 : commitsAhead(stateSha, repoRoot);
+  const recent = stateSha === "" || !reachable ? [] : recentCommits(stateSha, repoRoot, 5);
+  const severity = classifySeverity(ahead);
+  const counts = countDomainPages(wikiRoot);
+  const suggestedFull = !reachable && stateAt !== "" ? ancestorBefore(stateAt, repoRoot) : "";
+  const suggestedBase = suggestedFull === "" ? "" : shortSha(suggestedFull, repoRoot);
+  const state = {
+    commits_ahead: ahead,
+    drift_severity: severity,
+    head_short: headShort,
+    per_domain_page_counts: counts,
+    reachable,
+    recent_commits: recent,
+    state_sha: stateShort,
+    suggested_base: suggestedBase
+  };
+  if (json2) {
+    write(`${JSON.stringify(state)}
+`);
+  } else {
+    printHuman(state, write);
+  }
+  return EXIT_CODES.OK;
+};
+
+// src/release/preflight.ts
+var HELP_TEXT25 = `Usage: gaia-maintainer release preflight [--branch <name>]
+
+  Verify branch state, working tree, and wiki sync before cutting a release.
+
+  Flags:
+    --branch <name>  Allowed release branch (default: main).
+
+  Exit codes:
+    0  preflight passed
+    1  user-correctable refusal (wrong branch, dirty tree, wiki drift)
+    2  unexpected (git failure)
+`;
+var HELP_TOKENS25 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT13 = 2;
+var DEFAULT_BRANCH = "main";
+var defaultRunner4 = (command, args, options) => spawnSync4(command, args, {
+  cwd: options.cwd,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"]
+});
+var takeValue9 = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0)
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var parseFlags13 = (argv) => {
+  let allowedBranch = DEFAULT_BRANCH;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--branch") {
+      const taken = takeValue9(argv, index + 1, "--branch");
+      if (!taken.ok) return taken;
+      allowedBranch = taken.value;
+      index += 1;
+    } else {
+      return { message: `unknown flag: ${token}`, ok: false };
+    }
+  }
+  return { flags: { allowedBranch }, ok: true };
+};
+var expectSuccess2 = (result, command, args) => {
+  if (result.error !== void 0) {
+    throw new Error(
+      `${command} ${args.join(" ")} failed: ${result.error.message}`
+    );
+  }
+  if ((result.status ?? -1) !== 0) {
+    const stderr = result.stderr.trim();
+    throw new Error(
+      `${command} ${args.join(" ")} exited ${result.status ?? -1}: ${stderr}`
+    );
+  }
+  return result.stdout;
+};
+var refuse = (message) => {
+  process.stderr.write(`${message}
+`);
+  return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+};
+var runWikiStateJson = (cwd) => {
+  const chunks = [];
+  const exit = run35(["--json"], {
+    cwd,
+    write: (chunk) => {
+      chunks.push(chunk);
+    }
+  });
+  if (exit !== EXIT_CODES.OK) return null;
+  const raw = chunks.join("").trim();
+  try {
+    const parsed = JSON.parse(raw);
+    const {
+      commits_ahead: commitsAhead2,
+      reachable,
+      state_sha: stateSha,
+      suggested_base: suggestedBase
+    } = parsed;
+    if (typeof commitsAhead2 !== "number") return null;
+    return {
+      commits_ahead: commitsAhead2,
+      // Default reachable to true on a malformed payload so the orphaned-state
+      // recovery never fires off bad input; the gate falls back to today's
+      // `commits_ahead` reading.
+      reachable: typeof reachable === "boolean" ? reachable : true,
+      state_sha: typeof stateSha === "string" ? stateSha : "",
+      suggested_base: typeof suggestedBase === "string" ? suggestedBase : ""
+    };
+  } catch {
+    return null;
+  }
+};
+var resolveCommit = (runner, cwd, sha) => {
+  if (sha === "") return "";
+  const resolved = runner("git", ["rev-parse", "--verify", `${sha}^{commit}`], {
+    cwd
+  });
+  if (resolved.error !== void 0 || (resolved.status ?? -1) !== 0) return "";
+  return resolved.stdout.trim();
+};
+var readDriftSubjects = (runner, cwd, base) => {
+  const fullSha = resolveCommit(runner, cwd, base);
+  if (fullSha === "") return null;
+  const result = runner("git", ["log", "--format=%s", `${fullSha}..HEAD`], {
+    cwd
+  });
+  if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
+  return result.stdout.split("\n").flatMap((line) => {
+    const trimmed = line.trim();
+    return trimmed.length > 0 ? [trimmed] : [];
+  });
+};
+var countDriftCommits = (runner, cwd, base) => {
+  const fullSha = resolveCommit(runner, cwd, base);
+  if (fullSha === "") return null;
+  const result = runner("git", ["rev-list", "--count", `${fullSha}..HEAD`], {
+    cwd
+  });
+  if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
+  const parsed = Number.parseInt(result.stdout.trim(), 10);
+  return Number.isInteger(parsed) ? parsed : null;
+};
+var tryReadBranchState = (runner, cwd) => {
+  try {
+    const branch = expectSuccess2(
+      runner("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd }),
+      "git",
+      ["rev-parse", "--abbrev-ref", "HEAD"]
+    ).trim();
+    const status = expectSuccess2(
+      runner("git", ["status", "--porcelain=v1", "-uall"], { cwd }),
+      "git",
+      ["status", "--porcelain=v1", "-uall"]
+    );
+    return { branch, status };
+  } catch (error51) {
+    process.stderr.write(
+      `preflight: ${error51 instanceof Error ? error51.message : String(error51)}
+`
+    );
+    return null;
+  }
+};
+var resolveDriftWindow = (runner, cwd, wikiState) => {
+  if (wikiState.reachable || wikiState.suggested_base === "") {
+    return { base: wikiState.state_sha, count: wikiState.commits_ahead };
+  }
+  const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
+  if (recovered === null) return null;
+  return { base: wikiState.suggested_base, count: recovered };
+};
+var isDriftBenign = (runner, cwd, driftBase) => {
+  const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
+  return driftSubjects !== null && // Guards the vacuous-truth case: zero subjects with a nonzero drift count
+  // means the range count disagrees with `git log`, a broken state, not a
+  // benign one.
+  driftSubjects.length > 0 && driftSubjects.every((subject) => subject.startsWith("wiki:"));
+};
+var run36 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS25.has(argv[0])) {
+    process.stdout.write(HELP_TEXT25);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags13(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "release preflight"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const runner = options.runner ?? defaultRunner4;
+  const wikiStateProbe = options.wikiStateProbe ?? runWikiStateJson;
+  const branchState = tryReadBranchState(runner, cwd);
+  if (branchState === null) return UNEXPECTED_EXIT13;
+  if (branchState.branch !== parsed.flags.allowedBranch) {
+    return refuse(
+      `preflight: must be on ${parsed.flags.allowedBranch} (current: ${branchState.branch})`
+    );
+  }
+  if (branchState.status.trim().length > 0) {
+    return refuse("preflight: working tree is dirty; commit or stash first");
+  }
+  const wikiState = wikiStateProbe(cwd);
+  if (wikiState === null) {
+    return refuse(
+      "preflight: failed to read wiki state via `gaia wiki state --json`"
+    );
+  }
+  const driftWindow = resolveDriftWindow(runner, cwd, wikiState);
+  if (driftWindow === null) {
+    return refuse(
+      `preflight: cannot determine wiki drift from recovery base ${wikiState.suggested_base}; run /gaia-wiki sync first`
+    );
+  }
+  if (driftWindow.count !== 0) {
+    if (!isDriftBenign(runner, cwd, driftWindow.base)) {
+      return refuse(
+        `preflight: wiki is ${driftWindow.count} commits behind HEAD; run /gaia-wiki sync first`
+      );
+    }
+    process.stderr.write(
+      `preflight: wiki drift is ${driftWindow.count} wiki-sync squash artifact(s); proceeding (content current)
+`
+    );
+  }
+  return EXIT_CODES.OK;
+};
+
+// src/release/runtime-deps.ts
+import { readdirSync as readdirSync5, readFileSync as readFileSync22, statSync as statSync3 } from "node:fs";
+import path25 from "node:path";
+var HELP_TEXT26 = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
+
+  Scan shipped shell scripts for runtime path references that resolve to
+  release-excluded files.
+
+  Flags:
+    --staging <dir>   Scan inside <dir> instead of process.cwd(). Used
+                      from release.yml to scan the post-scrub staging tree.
+    --manifest <path> Manifest file to verify against (default:
+                      .gaia/manifest.json under the staging or repo root).
+    --json            Emit a structured JSON report on stdout.
+
+  Exit codes:
+    0  no leaks
+    1  leaks detected, missing inputs, bad flags
+    2  unexpected (manifest parse failure, IO error)
+`;
+var HELP_TOKENS26 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT14 = 2;
+var ADOPTER_OWNED_SENTINELS2 = /* @__PURE__ */ new Set([
+  ...ADOPTER_OWNED_SENTINELS,
+  ".gaia/automation.json"
+]);
+var RUNTIME_PREFIXES = [
+  ".gaia/local",
+  ".claude/handoff",
+  ".claude/worktrees",
+  ".claude/agent-memory",
+  ".claude/audit"
+];
+var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
+  ".claude/i18n-strings-checked",
+  ".claude/wiki-drift-checked",
+  // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
+  // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
+  // it. Created on first compaction event; never a shipped dependency.
+  ".claude/wiki-recompact-pending",
+  ".claude/wiki-safety-checked"
+]);
+var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
+var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
+  ".claude/projects",
+  ".github/workflows",
+  ".github/workflows/code-review-audit.yml"
+]);
+var PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
+var stripCommentSuffix = (line) => {
+  if (/^\s*#/.test(line)) return "";
+  return line;
+};
+var expandPath = (line, start) => {
+  let end = start;
+  while (end < line.length && PATH_BODY_CHAR.test(line[end])) {
+    end += 1;
+  }
+  return line.slice(start, end);
+};
+var isVariableExpansionContext = (line, found) => {
+  let cursor = found - 1;
+  while (cursor >= 0) {
+    const ch = line[cursor];
+    if (ch === "$") return true;
+    if (!(ch === "/" || ch === "{" || ch === "}" || PATH_BODY_CHAR.test(ch))) {
+      return false;
+    }
+    cursor -= 1;
+  }
+  return false;
+};
+var trimTrailingDotsSlashes = (candidate) => {
+  let trimmed = candidate;
+  while (trimmed.length > 0 && (trimmed.endsWith(".") || trimmed.endsWith("/"))) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed;
+};
+var consumeStep = (args) => {
+  const { filePath, found, lineNumber, prefix, stripped } = args;
+  const leading = found === 0 ? "" : stripped[found - 1];
+  const isSubstring = leading.length > 0 && PATH_BODY_CHAR.test(leading) && !isVariableExpansionContext(stripped, found);
+  if (isSubstring) return { nextCursor: found + 1, ref: null };
+  const candidate = expandPath(stripped, found);
+  const nextCursor = found + candidate.length;
+  if (candidate.length <= prefix.length) return { nextCursor, ref: null };
+  const trimmed = trimTrailingDotsSlashes(candidate);
+  if (trimmed.length <= prefix.length || PROSE_PATH_ALLOWLIST.has(trimmed)) {
+    return { nextCursor, ref: null };
+  }
+  return { nextCursor, ref: { filePath, line: lineNumber, path: trimmed } };
+};
+var collectPrefixRefs = (args) => {
+  const { prefix, stripped } = args;
+  const refs = [];
+  let cursor = 0;
+  while (cursor <= stripped.length - prefix.length) {
+    const found = stripped.indexOf(prefix, cursor);
+    if (found === -1) break;
+    const { nextCursor, ref } = consumeStep({ ...args, found });
+    if (ref !== null) refs.push(ref);
+    cursor = nextCursor;
+  }
+  return refs;
+};
+var extractPathRefs = (filePath, source) => {
+  const refs = [];
+  for (const [index, line] of source.split("\n").entries()) {
+    const stripped = stripCommentSuffix(line);
+    if (stripped.length > 0) {
+      for (const prefix of PATH_PREFIXES) {
+        refs.push(
+          ...collectPrefixRefs({
+            filePath,
+            lineNumber: index + 1,
+            prefix,
+            stripped
+          })
+        );
+      }
+    }
+  }
+  return refs;
+};
+var computeShippedDirs = (manifest) => {
+  const dirs = /* @__PURE__ */ new Set();
+  for (const filePath of manifest) {
+    let dir = path25.dirname(filePath);
+    while (dir !== "." && !dirs.has(dir)) {
+      dirs.add(dir);
+      const parent = path25.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return dirs;
+};
+var isShippedPath = (candidate, manifest, shippedDirs) => {
+  if (manifest.has(candidate)) return true;
+  if (ADOPTER_OWNED_SENTINELS2.has(candidate)) return true;
+  if (RUNTIME_MARKERS.has(candidate)) return true;
+  if (RUNTIME_PREFIXES.some(
+    (prefix) => candidate === prefix || candidate.startsWith(`${prefix}/`)
+  )) {
+    return true;
+  }
+  if (shippedDirs.has(candidate)) return true;
+  return false;
+};
+var walkSh = (root, dir) => {
+  const out = [];
+  for (const entry of readdirSync5(dir, { withFileTypes: true })) {
+    const full = path25.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...walkSh(root, full));
+    } else if (entry.isFile() && entry.name.endsWith(".sh")) {
+      out.push(path25.relative(root, full).split(path25.sep).join("/"));
+    }
+  }
+  return out;
+};
+var walkScripts = (root) => {
+  const out = [];
+  for (const sub of SCAN_GLOBS) {
+    const absolute = path25.join(root, sub);
+    let exists = true;
+    try {
+      statSync3(absolute);
+    } catch {
+      exists = false;
+    }
+    if (exists) {
+      out.push(...walkSh(root, absolute));
+    }
+  }
+  return out;
+};
+var loadManifest = (manifestPath) => {
+  const raw = readFileSync22(manifestPath, "utf8");
+  const parsed = JSON.parse(raw);
+  if (parsed.files === void 0) {
+    throw new Error(`manifest at ${manifestPath} has no "files" field`);
+  }
+  return new Set(Object.keys(parsed.files));
+};
+var takeValue10 = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0)
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var parseFlags14 = (argv) => {
+  let json2 = false;
+  let manifestPath;
+  let stagingDir;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--staging") {
+      const taken = takeValue10(argv, index + 1, "--staging");
+      if (!taken.ok) return taken;
+      stagingDir = taken.value;
+      index += 1;
+    } else if (token === "--manifest") {
+      const taken = takeValue10(argv, index + 1, "--manifest");
+      if (!taken.ok) return taken;
+      manifestPath = taken.value;
+      index += 1;
+    } else if (token === "--json") {
+      json2 = true;
+    } else {
+      return { message: `unknown flag: ${token}`, ok: false };
+    }
+  }
+  return { flags: { json: json2, manifestPath, stagingDir }, ok: true };
+};
+var renderReport = (report, jsonMode) => {
+  if (jsonMode) return `${JSON.stringify(report, null, 2)}
+`;
+  const out = [
+    `release runtime-deps: scanned ${report.scanned_files.length} script(s)`
+  ];
+  if (report.leaks.length > 0) {
+    out.push("", `runtime-dependency leaks (${report.leaks.length}):`);
+    for (const leak of report.leaks) {
+      out.push(`  ${leak.file}:${leak.line}  ${leak.path}`);
+    }
+  } else {
+    out.push("runtime-dependency leaks: none");
+  }
+  return `${out.join("\n")}
+`;
+};
+var resolvePathFlag = (cwd, fallback, flag) => {
+  if (flag === void 0) return fallback;
+  return path25.isAbsolute(flag) ? flag : path25.join(cwd, flag);
+};
+var tryVerifyRootExists = (root) => {
+  try {
+    statSync3(root);
+    return true;
+  } catch {
+    return false;
+  }
+};
+var tryLoadManifestOrReport = (manifestPath) => {
+  try {
+    return loadManifest(manifestPath);
+  } catch (error51) {
+    structuredError({
+      code: "manifest_load_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      path: manifestPath,
+      subcommand: "release runtime-deps"
+    });
+    return null;
+  }
+};
+var tryWalkScriptsOrReport = (root) => {
+  try {
+    return walkScripts(root);
+  } catch (error51) {
+    structuredError({
+      code: "walk_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release runtime-deps"
+    });
+    return null;
+  }
+};
+var collectLeaks = (root, scriptFiles, manifest) => {
+  const leaks = [];
+  const shippedDirs = computeShippedDirs(manifest);
+  for (const scriptPath of scriptFiles) {
+    const source = readFileSync22(path25.join(root, scriptPath), "utf8");
+    const refs = extractPathRefs(scriptPath, source);
+    for (const ref of refs) {
+      const isLeak = ref.path !== scriptPath && !isShippedPath(ref.path, manifest, shippedDirs);
+      if (isLeak) {
+        leaks.push({ file: ref.filePath, line: ref.line, path: ref.path });
+      }
+    }
+  }
+  return leaks;
+};
+var run37 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS26.has(argv[0])) {
+    process.stdout.write(HELP_TEXT26);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags14(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "release runtime-deps"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const root = resolvePathFlag(cwd, cwd, parsed.flags.stagingDir);
+  if (!tryVerifyRootExists(root)) {
+    structuredError({
+      code: "root_missing",
+      message: `scan root not found: ${root}`,
+      subcommand: "release runtime-deps"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const manifestPath = resolvePathFlag(
+    cwd,
+    path25.join(root, ".gaia", "manifest.json"),
+    parsed.flags.manifestPath
+  );
+  const manifest = tryLoadManifestOrReport(manifestPath);
+  if (manifest === null) return UNEXPECTED_EXIT14;
+  const scriptFiles = tryWalkScriptsOrReport(root);
+  if (scriptFiles === null) return UNEXPECTED_EXIT14;
+  const leaks = collectLeaks(root, scriptFiles, manifest);
+  const report = { leaks, scanned_files: scriptFiles };
+  process.stdout.write(renderReport(report, parsed.flags.json));
+  return leaks.length > 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
+};
+
+// src/release/scrub-wiki.ts
+import { existsSync as existsSync23, mkdirSync as mkdirSync10, readFileSync as readFileSync23 } from "node:fs";
+import path26 from "node:path";
+var HELP_TEXT27 = `Usage: gaia-maintainer release scrub-wiki [--version <X.Y.Z>] [--date <YYYY-MM-DD>]
+
+  Overwrite wiki/hot.md and wiki/log.md with release-clean content
+  (Step 8 + Step 9 of the runbook).
+
+  Flags:
+    --version <X.Y.Z>     Override the new version (default: package.json).
+    --date <YYYY-MM-DD>   Override the release date (default: today UTC).
+
+  Exit codes:
+    0  success (no stdout)
+    1  user-correctable error
+    2  unexpected (filesystem failure)
+`;
+var HELP_TOKENS27 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
+var UNEXPECTED_EXIT15 = 2;
+var takeValue11 = (argv, index, flag) => {
+  const value = argv.at(index);
+  if (value === void 0)
+    return { message: `${flag} requires a value`, ok: false };
+  return { ok: true, value };
+};
+var parseFlags15 = (argv) => {
+  let date5;
+  let version2;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--version") {
+      const taken = takeValue11(argv, index + 1, "--version");
+      if (!taken.ok) return taken;
+      version2 = taken.value;
+      index += 1;
+    } else if (token === "--date") {
+      const taken = takeValue11(argv, index + 1, "--date");
+      if (!taken.ok) return taken;
+      date5 = taken.value;
+      index += 1;
+    } else {
+      return { message: `unknown flag: ${token}`, ok: false };
+    }
+  }
+  return { flags: { date: date5, version: version2 }, ok: true };
+};
+var todayUtc2 = (now = /* @__PURE__ */ new Date()) => {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+var readVersion3 = (cwd, override) => {
+  if (override !== void 0 && override.length > 0) return override;
+  const target = path26.join(cwd, "package.json");
+  if (!existsSync23(target)) {
+    throw new Error("package.json not found at repo root");
+  }
+  const parsed = JSON.parse(readFileSync23(target, "utf8"));
+  if (typeof parsed.version !== "string") {
+    throw new TypeError('package.json has no string "version"');
+  }
+  return parsed.version;
+};
+var renderHotMd = (version2, date5) => `---
+type: meta
+title: Hot Cache
+status: active
+created: ${date5}
+updated: ${date5}
+tags: [meta, cache]
+---
+
+# Recent Context
+
+## Last Updated
+
+${date5}. Released as GAIA v${version2}. Fresh slate.
+
+## Active Threads
+
+- None.
+`;
+var renderLogMd = (version2, date5) => `---
+type: meta
+title: Log
+status: active
+created: ${date5}
+updated: ${date5}
+tags: [meta, log]
+---
+
+# Log
+
+## [v${version2}] ${date5} | Released
+
+See CHANGELOG.md for details.
+`;
+var run38 = (argv, options = {}) => {
+  if (argv.length > 0 && HELP_TOKENS27.has(argv[0])) {
+    process.stdout.write(HELP_TEXT27);
+    return EXIT_CODES.OK;
+  }
+  const parsed = parseFlags15(argv);
+  if (!parsed.ok) {
+    structuredError({
+      code: "invalid_arguments",
+      message: parsed.message,
+      subcommand: "release scrub-wiki"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const cwd = options.cwd ?? process.cwd();
+  let version2;
+  try {
+    version2 = readVersion3(cwd, parsed.flags.version);
+  } catch (error51) {
+    structuredError({
+      code: "package_json_invalid",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release scrub-wiki"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const date5 = parsed.flags.date ?? options.today ?? todayUtc2();
+  const wikiDir = path26.join(cwd, "wiki");
+  if (!existsSync23(wikiDir)) {
+    structuredError({
+      code: "wiki_dir_missing",
+      message: `wiki/ directory not found at ${wikiDir}`,
+      subcommand: "release scrub-wiki"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const hotPath = path26.join(wikiDir, "hot.md");
+  const logPath = path26.join(wikiDir, "log.md");
+  try {
+    mkdirSync10(wikiDir, { recursive: true });
+    atomicWriteFileSync(hotPath, renderHotMd(version2, date5));
+    atomicWriteFileSync(logPath, renderLogMd(version2, date5));
+  } catch (error51) {
+    structuredError({
+      code: "scrub_write_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release scrub-wiki"
+    });
+    return UNEXPECTED_EXIT15;
+  }
+  return EXIT_CODES.OK;
+};
 
 // src/release/scrub.ts
 import { existsSync as existsSync24, readdirSync as readdirSync6, readFileSync as readFileSync24, statSync as statSync4 } from "node:fs";

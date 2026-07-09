@@ -1,3 +1,4 @@
+import {load as parseYaml} from 'js-yaml';
 import {z} from 'zod';
 /**
  * `gaia-maintainer release manifest` handler.
@@ -15,8 +16,12 @@ import {z} from 'zod';
  * `--check` mode reads the committed manifest, regenerates an expected
  * manifest in memory, and exits non-zero on any drift. Also lints the
  * classifier sets for entries that are dead code because release-exclude
- * already masks them. Wired into `release.yml` so a stale committed
- * manifest fails the build at tag-time before any bundle work runs.
+ * already masks them, and lints every owned `.sh`-bearing directory
+ * against the scrub `maintainer-paths` scope and `runtime-deps`'s
+ * `SCAN_GLOBS` (`lintScanScopes`), so a shipped script tree can't fall
+ * outside both distribution-boundary leak checks at once. Wired into
+ * `release.yml` so a stale committed manifest fails the build at tag-time
+ * before any bundle work runs.
  */
 import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
@@ -24,6 +29,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {SCAN_GLOBS} from './scan-globs.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
        gaia-maintainer release manifest --check [--json]
@@ -37,8 +43,11 @@ const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>] [--std
     --stdout       Print manifest JSON to stdout instead of writing the file.
     --check        Verify the committed manifest matches what the
                    classifier would produce against the current source,
-                   and lint classifier sets against release-exclude for
-                   dead-code overlap. Exits non-zero on drift / overlap.
+                   lint classifier sets against release-exclude for
+                   dead-code overlap, and lint every owned .sh-bearing
+                   directory against the scrub maintainer-paths scope and
+                   runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
+                   overlap, or a scan-scope gap.
     --json         (with --check) Emit a structured JSON drift report.
 
   Exit codes:
@@ -270,6 +279,131 @@ export const lintClassifierSets = (
 };
 
 // ---------------------------------------------------------------------------
+// Scan-scope lint
+// ---------------------------------------------------------------------------
+
+const RELEASE_SCRUB_PATH = '.gaia/release-scrub.yml';
+const MAINTAINER_PATHS_CHECK_ID = 'maintainer-paths';
+
+export type ScanScopeGap = {
+  dir: string;
+  missingFrom: readonly ScanScopeName[];
+};
+
+type ScanScopeName = 'maintainer-paths scope' | 'runtime-deps SCAN_GLOBS';
+
+/**
+ * Read the `maintainer-paths` leak-check's `scope` list straight out of
+ * `.gaia/release-scrub.yml`. A light, unvalidated read (mirrors how
+ * `buildManifest` reads `.gaia/release-exclude` directly) rather than going
+ * through `scrub.ts`'s `loadConfig`, so this module never has to import
+ * `scrub.ts` for one field. Returns `undefined` when the file is absent, a
+ * minimal/sandboxed checkout (unit-test fixtures) has nothing to lint
+ * against, distinct from a present-but-empty scope, which is a real gap.
+ */
+const readMaintainerPathsScope = (
+  repoRoot: string
+): readonly string[] | undefined => {
+  const scrubPath = path.resolve(repoRoot, RELEASE_SCRUB_PATH);
+
+  if (!existsSync(scrubPath)) return undefined;
+
+  const parsed = parseYaml(readFileSync(scrubPath, 'utf8')) as {
+    transforms?: {checks?: {id?: string; scope?: string[]}[]}[];
+  };
+
+  for (const transform of parsed.transforms ?? []) {
+    for (const check of transform.checks ?? []) {
+      if (check.id === MAINTAINER_PATHS_CHECK_ID) return check.scope ?? [];
+    }
+  }
+
+  return [];
+};
+
+/**
+ * A scope glob covers `.gaia/scripts/**` or an exact literal; the
+ * `maintainer-paths` check's `scope` list uses only those two shapes (no
+ * bare `*` entries), so a minimal matcher suffices without pulling in
+ * `scrub.ts`'s general-purpose `globToRegex`.
+ */
+const matchesScopeGlob = (file: string, glob: string): boolean => {
+  if (glob === file) return true;
+  if (!glob.endsWith('/**')) return false;
+
+  const prefix = glob.slice(0, -3);
+
+  return file === prefix || file.startsWith(`${prefix}/`);
+};
+
+const inScanGlobs = (file: string): boolean =>
+  SCAN_GLOBS.some((glob) => file === glob || file.startsWith(`${glob}/`));
+
+const computeMissingScopes = (
+  file: string,
+  inMaintainerScope: (file: string) => boolean
+): ScanScopeName[] => {
+  const missing: ScanScopeName[] = [];
+
+  if (!inMaintainerScope(file)) missing.push('maintainer-paths scope');
+  if (!inScanGlobs(file)) missing.push('runtime-deps SCAN_GLOBS');
+
+  return missing;
+};
+
+const recordGap = (
+  gapsByDir: Map<string, Set<ScanScopeName>>,
+  file: string,
+  missing: readonly ScanScopeName[]
+): void => {
+  const dir = path.dirname(file);
+  const existing = gapsByDir.get(dir) ?? new Set<ScanScopeName>();
+  for (const name of missing) existing.add(name);
+  gapsByDir.set(dir, existing);
+};
+
+const listOwnedShFiles = (
+  manifestFiles: Readonly<Record<string, ManifestClass>>
+): string[] =>
+  Object.entries(manifestFiles)
+    .filter(([file, klass]) => klass === 'owned' && file.endsWith('.sh'))
+    .map(([file]) => file);
+
+/**
+ * Cross-check every owned, non-release-excluded `.sh`-bearing directory in
+ * the manifest against BOTH distribution-boundary leak-check scopes: the
+ * scrub `maintainer-paths` check's `scope` list and `runtime-deps`'s
+ * `SCAN_GLOBS`. A directory absent from either is invisible to that check
+ * for every `.sh` file beneath it, the shipped-`.sh`-scope-gap Issue Class
+ * (`.gaia/cli/health/taxonomy.md`).
+ *
+ * Matching runs per file (not per directory) since a `**`-suffixed scope
+ * glob is anchored to a full path and needs the file's trailing segment to
+ * match; the per-file misses are then grouped by directory for reporting.
+ */
+export const lintScanScopes = (
+  manifestFiles: Readonly<Record<string, ManifestClass>>,
+  maintainerPathsScope: readonly string[] | undefined
+): ScanScopeGap[] => {
+  if (maintainerPathsScope === undefined) return [];
+
+  const inMaintainerScope = (file: string): boolean =>
+    maintainerPathsScope.some((glob) => matchesScopeGlob(file, glob));
+
+  const gapsByDir = new Map<string, Set<ScanScopeName>>();
+
+  for (const file of listOwnedShFiles(manifestFiles)) {
+    const missing = computeMissingScopes(file, inMaintainerScope);
+
+    if (missing.length > 0) recordGap(gapsByDir, file, missing);
+  }
+
+  return [...gapsByDir.entries()]
+    .map(([dir, missingFrom]) => ({dir, missingFrom: [...missingFrom]}))
+    .toSorted((a, b) => a.dir.localeCompare(b.dir));
+};
+
+// ---------------------------------------------------------------------------
 // Check
 // ---------------------------------------------------------------------------
 
@@ -282,6 +416,7 @@ export type ManifestDrift = {
   }[];
   extra: readonly {actual: ManifestClass; file: string}[];
   missing: readonly {expected: ManifestClass; file: string}[];
+  scanScopeGaps: readonly ScanScopeGap[];
   versionDrift: undefined | {actual: string; expected: string};
 };
 
@@ -295,11 +430,17 @@ const lookupClass = (
 ): ManifestClass | undefined =>
   (files as Record<string, ManifestClass | undefined>)[file];
 
+type LintResults = {
+  classifierOverlaps: readonly ClassifierOverlap[];
+  scanScopeGaps: readonly ScanScopeGap[];
+};
+
 const computeDrift = (
   expected: ManifestShape,
   actual: ManifestShape,
-  classifierOverlaps: readonly ClassifierOverlap[]
+  lints: LintResults
 ): ManifestDrift => {
+  const {classifierOverlaps, scanScopeGaps} = lints;
   const missing: {expected: ManifestClass; file: string}[] = [];
   const extra: {actual: ManifestClass; file: string}[] = [];
   const drift: {
@@ -333,7 +474,14 @@ const computeDrift = (
       undefined
     : {actual: actual.version, expected: expected.version};
 
-  return {classifierOverlaps, drift, extra, missing, versionDrift};
+  return {
+    classifierOverlaps,
+    drift,
+    extra,
+    missing,
+    scanScopeGaps,
+    versionDrift,
+  };
 };
 
 // Each `renderXLines` helper below owns one report section (empty array when
@@ -393,6 +541,17 @@ const renderOverlapLines = (result: ManifestDrift): string[] =>
       ),
     ];
 
+const renderScanScopeLines = (result: ManifestDrift): string[] =>
+  result.scanScopeGaps.length === 0 ?
+    []
+  : [
+      '',
+      `.sh-bearing directories outside a leak-check scope (${result.scanScopeGaps.length}):`,
+      ...result.scanScopeGaps.map(
+        (gap) => `  ${gap.dir}  missing from: ${gap.missingFrom.join(', ')}`
+      ),
+    ];
+
 const renderCheckReport = (
   result: ManifestDrift,
   jsonMode: boolean
@@ -404,6 +563,7 @@ const renderCheckReport = (
     result.extra.length +
     result.drift.length +
     result.classifierOverlaps.length +
+    result.scanScopeGaps.length +
     (result.versionDrift === undefined ? 0 : 1);
 
   if (total === 0) {
@@ -417,6 +577,7 @@ const renderCheckReport = (
     ...renderExtraLines(result),
     ...renderDriftLines(result),
     ...renderOverlapLines(result),
+    ...renderScanScopeLines(result),
   ];
 
   return `${out.join('\n')}\n`;
@@ -481,7 +642,14 @@ const runCheck = (
   }
 
   const classifierOverlaps = lintClassifierSets(excludePatterns);
-  const result = computeDrift(expected, actual, classifierOverlaps);
+  const scanScopeGaps = lintScanScopes(
+    expected.files,
+    readMaintainerPathsScope(repoRoot)
+  );
+  const result = computeDrift(expected, actual, {
+    classifierOverlaps,
+    scanScopeGaps,
+  });
   process.stdout.write(renderCheckReport(result, jsonMode));
 
   const hasIssue =
@@ -489,6 +657,7 @@ const runCheck = (
     result.extra.length > 0 ||
     result.drift.length > 0 ||
     result.classifierOverlaps.length > 0 ||
+    result.scanScopeGaps.length > 0 ||
     result.versionDrift !== undefined;
 
   return hasIssue ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
