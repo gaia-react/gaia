@@ -21,6 +21,7 @@ import {
   buildManifest,
   classifyPath,
   lintClassifierSets,
+  lintScanScopes,
   parseExcludePatterns,
   run,
 } from './manifest.js';
@@ -337,6 +338,63 @@ describe('lintClassifierSets', () => {
   });
 });
 
+describe('lintScanScopes', () => {
+  test('returns empty when scope info is unavailable (no release-scrub.yml)', () => {
+    const files = {'.gaia/scripts/foo.sh': 'owned' as const};
+    expect(lintScanScopes(files, undefined)).toEqual([]);
+  });
+
+  test('ignores non-owned and non-.sh manifest entries', () => {
+    const files = {
+      'app/foo.ts': 'owned' as const,
+      'wiki/index.md': 'shared' as const,
+    };
+    expect(lintScanScopes(files, [])).toEqual([]);
+  });
+
+  test('returns empty when an owned .sh file is covered by both scopes', () => {
+    // .gaia/scripts is a real SCAN_GLOBS entry; '.gaia/scripts/**' covers it
+    // on the maintainer-paths side too.
+    const files = {'.gaia/scripts/foo.sh': 'owned' as const};
+    expect(lintScanScopes(files, ['.gaia/scripts/**'])).toEqual([]);
+  });
+
+  test('flags a directory missing from the maintainer-paths scope only', () => {
+    const files = {'.gaia/scripts/foo.sh': 'owned' as const};
+    const gaps = lintScanScopes(files, ['.claude/**']);
+    expect(gaps).toEqual([
+      {dir: '.gaia/scripts', missingFrom: ['maintainer-paths scope']},
+    ]);
+  });
+
+  test('flags a directory missing from SCAN_GLOBS only', () => {
+    // .gaia/new-tool is not one of the real SCAN_GLOBS entries.
+    const files = {'.gaia/new-tool/foo.sh': 'owned' as const};
+    const gaps = lintScanScopes(files, ['.gaia/new-tool/**']);
+    expect(gaps).toEqual([
+      {dir: '.gaia/new-tool', missingFrom: ['runtime-deps SCAN_GLOBS']},
+    ]);
+  });
+
+  test('flags a directory missing from both scopes, sorted by directory', () => {
+    const files = {
+      '.gaia/new-tool/bar.sh': 'owned' as const,
+      '.gaia/other-tool/foo.sh': 'owned' as const,
+    };
+    const gaps = lintScanScopes(files, []);
+    expect(gaps).toEqual([
+      {
+        dir: '.gaia/new-tool',
+        missingFrom: ['maintainer-paths scope', 'runtime-deps SCAN_GLOBS'],
+      },
+      {
+        dir: '.gaia/other-tool',
+        missingFrom: ['maintainer-paths scope', 'runtime-deps SCAN_GLOBS'],
+      },
+    ]);
+  });
+});
+
 describe('run --check', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -613,6 +671,80 @@ describe('run --check', () => {
     expect(out).toContain('classifier-set overlaps');
     expect(out).toContain('SHARED');
     expect(out).toContain('CLAUDE.md');
+  });
+
+  test('scan-scope gap: exits non-zero and names the uncovered directory', () => {
+    sandbox.commit('seed', {
+      '.gaia/release-exclude': '# none\n',
+      // .gaia/scripts is a real runtime-deps SCAN_GLOBS entry, but this
+      // maintainer-paths scope omits it, so it's covered on one side only.
+      '.gaia/release-scrub.yml': [
+        'transforms:',
+        '  - type: leak-check',
+        '    checks:',
+        '      - id: maintainer-paths',
+        '        description: test',
+        '        pattern: "test"',
+        '        scope:',
+        '          - "CLAUDE.md"',
+        '',
+      ].join('\n'),
+      '.gaia/scripts/foo.sh': '#!/bin/sh\n',
+      '.gaia/VERSION': '1.0.0\n',
+      'CLAUDE.md': '# CLAUDE\n',
+    });
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+    expect(exit).toBe(0);
+    stdio.outputs.length = 0;
+
+    const checkExit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(checkExit).toBe(1);
+    const out = stdio.outputs.join('');
+    expect(out).toContain('.sh-bearing directories outside a leak-check scope');
+    expect(out).toContain('.gaia/scripts');
+    expect(out).toContain('maintainer-paths scope');
+  });
+
+  test('scan-scope clean: covered .sh directory does not trip the check', () => {
+    sandbox.commit('seed', {
+      '.gaia/release-exclude': '# none\n',
+      '.gaia/release-scrub.yml': [
+        'transforms:',
+        '  - type: leak-check',
+        '    checks:',
+        '      - id: maintainer-paths',
+        '        description: test',
+        '        pattern: "test"',
+        '        scope:',
+        '          - ".gaia/scripts/**"',
+        '',
+      ].join('\n'),
+      '.gaia/scripts/foo.sh': '#!/bin/sh\n',
+      '.gaia/VERSION': '1.0.0\n',
+    });
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+    expect(exit).toBe(0);
+    stdio.outputs.length = 0;
+
+    const checkExit = run(['--check'], {
+      cwd: sandbox.root,
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(checkExit).toBe(0);
+    expect(stdio.outputs.join('')).toContain('clean');
   });
 });
 

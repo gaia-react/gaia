@@ -37,6 +37,7 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {ADOPTER_OWNED_SENTINELS as GIT_TRACKED_SENTINELS} from './manifest.js';
+import {SCAN_GLOBS} from './scan-globs.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>] [--manifest <path>] [--json]
 
@@ -58,22 +59,6 @@ const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const UNEXPECTED_EXIT = 2;
-
-// `walkSh` below collects `*.sh` only. `.gaia/cli/templates` currently has
-// zero `.sh` files (only `*.tmpl`); this entry future-proofs any future
-// `.sh` landing under templates. Template CONTENT leaks (`.tmpl`, any
-// extension) are a separate concern owned by the scrub `maintainer-paths`
-// check in `.gaia/release-scrub.yml`, whose scope includes
-// `.gaia/cli/templates/**` and scans file content regardless of extension.
-const SCAN_GLOBS = [
-  '.gaia/statusline',
-  '.gaia/cli/templates',
-  '.gaia/scripts',
-  '.claude/hooks',
-  '.github/actions',
-  '.github/audit',
-  '.specify/extensions/gaia/lib',
-] as const;
 
 /**
  * Sentinels that ship in the tarball but are intentionally absent from
