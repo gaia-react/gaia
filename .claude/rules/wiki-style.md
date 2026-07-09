@@ -2,6 +2,7 @@
 paths:
   - 'wiki/**/*.md'
   - 'app/**/*.{ts,tsx,js,jsx,css}'
+  - '.claude/instructions/**/*.md'
   - '.claude/skills/**/*.md'
   - '.claude/commands/**/*.md'
   - '.claude/agents/**/*.md'

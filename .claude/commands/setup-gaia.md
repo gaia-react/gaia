@@ -1,6 +1,7 @@
 ---
 name: setup-gaia
 description: Single post-init onboarding command; detects situation, runs only owed phases; safe to re-run. --reconfigure rotates token and re-selects tools.
+argument-hint: [--reconfigure]
 ---
 
 Run this once after `/gaia-init`, and re-run it any time. `/setup-gaia` is the single onboarding command for a GAIA project. It detects the situation and runs only the phases this clone actually owes:

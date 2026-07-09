@@ -191,7 +191,7 @@ A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, an
 
 ## Source-of-truth links
 
-- Agent definition: `.claude/agents/code-review-audit.md`
+- Agent definition: `.claude/agents/code-audit-frontend.md`
 - Workflow: `.github/workflows/code-review-audit.yml`
 - Workflow template (install source): bundled in the CLI binary; installed via `gaia automation install-audit-workflow`
 - Install primitive: `gaia automation install-audit-workflow`

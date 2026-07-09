@@ -102,7 +102,9 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 - `.gaia/statusline/gaia-statusline.sh`
 - `.gaia/scripts/debt-count-refresh.sh`
 - `.claude/hooks/debt-session-reconcile.sh`
+<!-- gaia:maintainer-only:start -->
 - Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`
+<!-- gaia:maintainer-only:end -->
 
 The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself.
 

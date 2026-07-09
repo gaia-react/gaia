@@ -20659,6 +20659,7 @@ var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
 ]);
 var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
 var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
+  ".claude/projects",
   ".github/workflows",
   ".github/workflows/code-review-audit.yml"
 ]);
@@ -25656,6 +25657,7 @@ import {
   existsSync as existsSync30,
   lstatSync,
   mkdirSync as mkdirSync13,
+  readdirSync as readdirSync7,
   readlinkSync,
   realpathSync,
   renameSync as renameSync5,
@@ -25664,10 +25666,12 @@ import {
 import path34 from "node:path";
 var HELP_TEXT35 = `Usage: gaia setup link-worktree [--json]
 
-  Idempotently create the five worktree shared-state symlinks pointing at
-  the main checkout. Backs up pre-existing plain files to <path>.bak.<ts>.
-  No-op on a main checkout (not a linked worktree); exits 0 with a
-  one-line "not a linked worktree" message.
+  Idempotently create the six worktree shared-state symlinks pointing at
+  the main checkout. Also links gitignored checkout-root .env / .env.*
+  files (excluding .env.example) from the main checkout. Backs up
+  pre-existing plain files to <path>.bak.<ts>. No-op on a main checkout
+  (not a linked worktree); exits 0 with a one-line "not a linked worktree"
+  message.
 
   --json   Print a single JSON line describing the result instead of the
            human-readable summary.
@@ -25678,8 +25682,11 @@ var SHARED_PATHS = [
   { ensureTargetDir: false, relativePath: ".gaia/local/mentorship.json" },
   { ensureTargetDir: true, relativePath: ".gaia/local/cache/shared" },
   { ensureTargetDir: true, relativePath: ".gaia/local/audit" },
-  { ensureTargetDir: true, relativePath: ".gaia/local/telemetry" }
+  { ensureTargetDir: true, relativePath: ".gaia/local/telemetry" },
+  { ensureTargetDir: true, relativePath: ".gaia/local/debt" }
 ];
+var ENV_BASENAME_RE = /^\.env(\.[A-Za-z0-9_-]+)*$/;
+var isShareableEnvironmentFile = (base) => ENV_BASENAME_RE.test(base) && base !== ".env.example";
 var formatTimestamp = (date5) => {
   const pad = (value) => String(value).padStart(2, "0");
   const yyyy = date5.getFullYear();
@@ -25752,53 +25759,64 @@ var ACTION_HUMAN_LABELS = {
   "linked-after-backup": "linked-after-backup",
   "skipped-no-target": "skipped-no-target"
 };
-var printHuman2 = (output) => {
-  if (!output.is_worktree) {
-    process.stdout.write("not a linked worktree\n");
-    return;
-  }
+var buildFixedSummaryLines = (output) => {
   const failed = output.actions.filter((action) => action.result === "failed");
   if (failed.length > 0) {
-    const lines = [
+    const lines2 = [
       `Failed to link ${String(failed.length)} of ${String(output.actions.length)} paths to ${String(output.main_root)}.`
     ];
     for (const action of output.actions) {
       const label = ACTION_HUMAN_LABELS[action.result];
       const suffix = action.result === "failed" && action.error !== void 0 ? `: ${action.error}` : "";
-      lines.push(`  ${label}: ${action.path}${suffix}`);
+      lines2.push(`  ${label}: ${action.path}${suffix}`);
     }
-    process.stdout.write(`${lines.join("\n")}
-`);
-    return;
+    return lines2;
   }
   const allAlreadyLinked = output.actions.every(
     (action) => action.result === "already-linked"
   );
   if (allAlreadyLinked) {
-    process.stdout.write(
-      `All ${String(output.actions.length)} paths already linked.
-`
-    );
-    return;
+    return [`All ${String(output.actions.length)} paths already linked.`];
   }
   const backedUp = output.actions.filter(
     (action) => action.result === "linked-after-backup"
   );
-  if (backedUp.length > 0) {
-    const lines = [
-      `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.`
-    ];
-    for (const action of backedUp) {
-      lines.push(`  Backed up: ${action.path} -> ${String(action.backup)}`);
-    }
-    process.stdout.write(`${lines.join("\n")}
-`);
+  const lines = [
+    `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.`
+  ];
+  for (const action of backedUp) {
+    lines.push(`  Backed up: ${action.path} -> ${String(action.backup)}`);
+  }
+  return lines;
+};
+var buildEnvironmentSummaryLines = (envActions) => {
+  if (envActions.length === 0) return [];
+  const allAlreadyLinked = envActions.every(
+    (action) => action.result === "already-linked"
+  );
+  if (allAlreadyLinked) {
+    return [`All ${String(envActions.length)} env file(s) already linked.`];
+  }
+  const lines = [
+    `Linked ${String(envActions.length)} env file(s): ${envActions.map((action) => `${action.path} (${action.result})`).join(", ")}.`
+  ];
+  const failed = envActions.filter((action) => action.result === "failed");
+  for (const action of failed) {
+    lines.push(`  failed: ${action.path}: ${String(action.error)}`);
+  }
+  return lines;
+};
+var printHuman2 = (output) => {
+  if (!output.is_worktree) {
+    process.stdout.write("not a linked worktree\n");
     return;
   }
-  process.stdout.write(
-    `Linked ${String(output.actions.length)} paths to ${String(output.main_root)}.
-`
-  );
+  const lines = [
+    ...buildFixedSummaryLines(output),
+    ...buildEnvironmentSummaryLines(output.env_actions)
+  ];
+  process.stdout.write(`${lines.join("\n")}
+`);
 };
 var resolveWorktreeRoots = (cwd) => {
   let canonicalCwd;
@@ -25859,6 +25877,7 @@ var run47 = (argv, options = {}) => {
   if (mainRoot === worktreeRoot) {
     const output2 = {
       actions: [],
+      env_actions: [],
       is_worktree: false,
       main_root: mainRoot,
       worktree_root: worktreeRoot
@@ -25877,8 +25896,13 @@ var run47 = (argv, options = {}) => {
   const actions = SHARED_PATHS.map(
     (spec) => linkOne({ mainRoot, spec, symlink, timestamp, worktreeRoot })
   );
+  const envSpecs = readdirSync7(mainRoot).filter((name) => isShareableEnvironmentFile(name)).toSorted((a, b) => a.localeCompare(b)).map((name) => ({ ensureTargetDir: false, relativePath: name }));
+  const envActions = envSpecs.map(
+    (spec) => linkOne({ mainRoot, spec, symlink, timestamp, worktreeRoot })
+  );
   const output = {
     actions,
+    env_actions: envActions,
     is_worktree: true,
     main_root: mainRoot,
     worktree_root: worktreeRoot
@@ -25889,7 +25913,9 @@ var run47 = (argv, options = {}) => {
   } else {
     printHuman2(output);
   }
-  const anyFailed = actions.some((action) => action.result === "failed");
+  const anyFailed = [...actions, ...envActions].some(
+    (action) => action.result === "failed"
+  );
   return anyFailed ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
 };
 
@@ -26097,7 +26123,7 @@ var run50 = async (argv) => {
 };
 
 // src/analytics/generator.ts
-import { existsSync as existsSync32, readdirSync as readdirSync7, readFileSync as readFileSync30 } from "node:fs";
+import { existsSync as existsSync32, readdirSync as readdirSync8, readFileSync as readFileSync30 } from "node:fs";
 import path36 from "node:path";
 
 // src/storage/project-id.ts
@@ -26332,7 +26358,7 @@ var readMentorshipEngagement = (roots, bounds) => {
   if (!existsSync32(roots.mentorshipDir)) return counts;
   let entries;
   try {
-    entries = readdirSync7(roots.mentorshipDir);
+    entries = readdirSync8(roots.mentorshipDir);
   } catch {
     return counts;
   }
@@ -27791,7 +27817,7 @@ var buildAuditFindingInvocation = (finding, prNumber) => {
       "--area-tags",
       areaTagsString(finding),
       "--auditor-type",
-      "code-review-audit",
+      "code-audit-frontend",
       "--agent-type",
       "Reviewer"
     ],
@@ -27927,7 +27953,7 @@ var parseTrailer = (rawHookInputJson) => {
   if (trailer === void 0 || trailer.trim().length === 0) {
     return { invocations: [], reason: "no_trailer" };
   }
-  if (subagentType === "code-review-audit") {
+  if (subagentType === "code-audit-frontend") {
     const invocations = buildAuditFindings(trailer);
     return invocations.length > 0 ? { invocations } : { invocations: [], reason: "invalid_trailer_json" };
   }
@@ -30328,7 +30354,7 @@ var run59 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readdirSync as readdirSync8, readFileSync as readFileSync37, statSync as statSync6 } from "node:fs";
+import { readdirSync as readdirSync9, readFileSync as readFileSync37, statSync as statSync6 } from "node:fs";
 import path46 from "node:path";
 var HELP_TEXT48 = `Usage: gaia wiki dead-paths [--json]
 
@@ -30367,7 +30393,7 @@ var isTrackedPath = (token) => {
 };
 var shouldSkipFile = (relPath) => SKIP_PATH_FRAGMENTS.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown = (root, dir) => {
-  const entries = readdirSync8(dir, { withFileTypes: true });
+  const entries = readdirSync9(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
     const full = path46.join(dir, entry.name);
@@ -30671,7 +30697,7 @@ var run61 = (argv, options = {}) => {
 };
 
 // src/wiki/empty-sections.ts
-import { readdirSync as readdirSync9, readFileSync as readFileSync38, statSync as statSync7 } from "node:fs";
+import { readdirSync as readdirSync10, readFileSync as readFileSync38, statSync as statSync7 } from "node:fs";
 import path47 from "node:path";
 
 // src/wiki/util/frontmatter.ts
@@ -30753,7 +30779,7 @@ var ATX_HEADING_PATTERN = /^ {0,3}(#{1,6})(?:\s|$)/u;
 var FENCE_PATTERN = /^\s*(?:```|~~~)/u;
 var shouldSkipFile2 = (relPath) => SKIP_PATHS.has(relPath) || SKIP_PATH_FRAGMENTS2.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown2 = (root, dir) => {
-  const entries = readdirSync9(dir, { withFileTypes: true });
+  const entries = readdirSync10(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
     const full = path47.join(dir, entry.name);
@@ -30869,7 +30895,7 @@ var run62 = (argv, options = {}) => {
 };
 
 // src/wiki/frontmatter.ts
-import { readdirSync as readdirSync10, readFileSync as readFileSync39, statSync as statSync8 } from "node:fs";
+import { readdirSync as readdirSync11, readFileSync as readFileSync39, statSync as statSync8 } from "node:fs";
 import path48 from "node:path";
 var HELP_TEXT51 = `Usage: gaia wiki frontmatter [--json]
 
@@ -30883,7 +30909,7 @@ var REQUIRED_FIELDS = ["type", "status"];
 var SKIP_PATH_FRAGMENTS3 = ["wiki/meta/"];
 var shouldSkipFile3 = (relPath) => SKIP_PATH_FRAGMENTS3.some((fragment) => relPath.startsWith(fragment));
 var walkMarkdown3 = (root, dir) => {
-  const entries = readdirSync10(dir, { withFileTypes: true });
+  const entries = readdirSync11(dir, { withFileTypes: true });
   const out = [];
   for (const entry of entries) {
     const full = path48.join(dir, entry.name);
@@ -31109,7 +31135,7 @@ var run64 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync38, readdirSync as readdirSync11, statSync as statSync9 } from "node:fs";
+import { existsSync as existsSync38, readdirSync as readdirSync12, statSync as statSync9 } from "node:fs";
 import path50 from "node:path";
 var HELP_TEXT53 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -31160,7 +31186,7 @@ var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => {
   if (!existsSync38(domainDir) || !statSync9(domainDir).isDirectory()) {
     return [];
   }
-  const entries = readdirSync11(domainDir, { withFileTypes: true });
+  const entries = readdirSync12(domainDir, { withFileTypes: true });
   const slugs = entries.filter((entry) => isCollectibleSlugFile(entry)).map((entry) => entry.name.replace(/\.md$/u, "")).toSorted(
     (left, right) => left < right ? -1 : left > right ? 1 : 0
   );
@@ -31259,7 +31285,7 @@ var run65 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync39, readdirSync as readdirSync12, readFileSync as readFileSync41, statSync as statSync10 } from "node:fs";
+import { existsSync as existsSync39, readdirSync as readdirSync13, readFileSync as readFileSync41, statSync as statSync10 } from "node:fs";
 import path51 from "node:path";
 var HELP_TEXT54 = `Usage: gaia wiki page-index [--json]
 
@@ -31325,7 +31351,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path51.join(wikiRoot, domain2);
   if (!existsSync39(domainDir) || !statSync10(domainDir).isDirectory()) return [];
-  const entries = readdirSync12(domainDir, { withFileTypes: true });
+  const entries = readdirSync13(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS3.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));

@@ -144,8 +144,13 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     (installed on demand by `/setup-gaia`), and when absent on an adopter
  *     clone the path simply never appears in the diff, so the bypass returns
  *     the normal deny. A path constant, not a runtime dependency.
+ *   - `.claude/projects`: Claude Code's own global session-transcript
+ *     directory, `$HOME/.claude/projects`, referenced by
+ *     `token-tally-review.sh`. It lives outside the repo on every machine and
+ *     structurally can never have a manifest entry.
  */
 const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
+  '.claude/projects',
   '.github/workflows',
   '.github/workflows/code-review-audit.yml',
 ]);

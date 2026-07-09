@@ -120,7 +120,7 @@ Steps (all mechanical):
 When adding an external service (Supabase, Firebase, Stripe, Auth0, etc.):
 
 - Add `.claude/rules/{service}.md` with `paths:` scoped to directories touching the service.
-- Optionally add `.claude/agents/code-review-audit/{service}.md` with `subagents:` frontmatter for specialist review hooks.
+- Optionally add `.claude/agents/code-audit-frontend/{service}.md` with `subagents:` frontmatter for specialist review hooks.
 - Document the service in `wiki/dependencies/{Service}.md`.
 
 ## 8. Per-stack quality gate
@@ -139,7 +139,7 @@ When replacing the default API layer (Ky + Zod) with Supabase, Firebase, GraphQL
 1. Delete or archive `.claude/rules/api-service.md` (GAIA's default Ky pattern).
 2. Delete `.claude/skills/new-service/` if it scaffolds the outgoing pattern.
 3. Add `.claude/rules/{new-service}.md` with `paths:` scoped to affected directories.
-4. Add `.claude/agents/code-review-audit/{new-service}.md` with `subagents: [react-patterns, typescript]`.
+4. Add `.claude/agents/code-audit-frontend/{new-service}.md` with `subagents: [react-patterns, typescript]`.
 5. Update `{CONTAINER}/{APP}/CLAUDE.md` (or root) with dev-server commands for the new service.
 6. Update `test/mocks/`: remove MSW handlers that shimmed the old layer if the new layer has its own test fakes.
 

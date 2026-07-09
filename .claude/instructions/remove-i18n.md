@@ -436,7 +436,7 @@ Edit each (skip any file that does not exist in this project):
 - `wiki/decisions/Quality Gate.md`, replace any "missing i18n keys" example with a generic "missing strings".
 - `wiki/concepts/Component Testing.md`, drop "Render with i18n provider configured" if present.
 - `wiki/dependencies/Storybook.md`, drop `storybook-react-i18next` from the addons list.
-- `wiki/dependencies/React Router 7.md`, drop `[[remix-i18next]]` from related-deps lists.
+- `wiki/dependencies/React Router.md`, drop `[[remix-i18next]]` from related-deps lists.
 
 Discovery sweep:
 
