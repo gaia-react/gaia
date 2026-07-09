@@ -32,7 +32,7 @@
 # touching the sentinel only schedules a recompute on the next tick, which is
 # cheap and always correct; over-touching is harmless.
 #
-# See wiki/concepts/Audit Disposition and Debt Drain.md for the debt-count sentinel contract.
+# See wiki/concepts/Audit Disposition and Debt Fix.md for the debt-count sentinel contract.
 
 # -e is intentionally omitted; all error-prone commands are individually
 # guarded (|| true, 2>/dev/null) so this hook can never fail a merge.

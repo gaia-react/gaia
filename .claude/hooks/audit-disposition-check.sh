@@ -17,7 +17,7 @@
 #   1. A `filed` sidecar entry whose dedup key has NO matching `tech-debt` issue
 #      (open OR closed) on a REACHABLE backend (the marker claims a filing that
 #      does not exist). A CLOSED match means the disposition was filed and later
-#      drained/closed by /gaia-debt (a fully honored disposition) -> satisfied,
+#      fixed/closed by /gaia-debt (a fully honored disposition) -> satisfied,
 #      so it is NOT an offender.
 #   2. A `pending` entry with pending_reason "definitive" (a present, writable
 #      backend with a genuinely-missing disposition; a marker should not exist,
@@ -39,7 +39,7 @@
 # would substring-match a sibling `line=42 -->` issue; the trailing ` -->`
 # prevents that digit-prefix false match.
 #
-# See wiki/concepts/Audit Disposition and Debt Drain.md and
+# See wiki/concepts/Audit Disposition and Debt Fix.md and
 # wiki/concepts/PR Merge Workflow.md for the full contract.
 
 # -e is intentionally omitted: we must not abort before writing the deny JSON.
@@ -123,7 +123,7 @@ if [ -n "$pending_keys" ]; then
 fi
 
 # (b) filed entries: each key must resolve to a tech-debt issue, OPEN or
-# CLOSED. A filed entry whose tech-debt issue was later drained/closed by
+# CLOSED. A filed entry whose tech-debt issue was later fixed/closed by
 # /gaia-debt (a fully honored disposition) is absent from the OPEN set; the
 # dedup procedure (its closed-issue step) is closed-aware, so this hook must be too, else
 # a satisfied disposition false-blocks the merge. Only query the backend when
@@ -159,7 +159,7 @@ if [ -n "$filed_keys" ]; then
       # Reconstruct the wrapper here: matching the bare inner key would
       # false-match a sibling issue whose line number has this key's line as a
       # digit prefix (`line=4` is a substring of `line=42 -->`). A match on a
-      # CLOSED issue means the disposition was filed (and likely drained) ->
+      # CLOSED issue means the disposition was filed (and likely fixed) ->
       # satisfied. Never whole-line equality.
       needle="<!-- gaia-debt-key: ${key} -->"
       present=$(printf '%s' "$issues_json" \
@@ -201,7 +201,7 @@ To unblock:
 This is a deterministic backstop for the audit's forced-disposition guarantee;
 it never blocks on a backend-absent or transient condition.
 
-See wiki/concepts/Audit Disposition and Debt Drain.md for the full contract."
+See wiki/concepts/Audit Disposition and Debt Fix.md for the full contract."
 
 # --arg safely escapes $reason; never interpolate dynamic values directly into
 # the JSON template string.
