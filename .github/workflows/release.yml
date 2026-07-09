@@ -53,6 +53,31 @@ jobs:
       - name: Verify manifest is fresh
         run: ./.gaia/cli/gaia-maintainer release manifest --check
 
+      - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - name: Install CLI dependencies
+        run: pnpm -C .gaia/cli install --frozen-lockfile
+
+      - name: Verify committed CLI binaries are rebuilt from src
+        run: |
+          cp .gaia/cli/gaia /tmp/gaia-committed
+          cp .gaia/cli/gaia-maintainer /tmp/gaia-maintainer-committed
+          pnpm -C .gaia/cli bundle
+          if ! cmp -s /tmp/gaia-committed .gaia/cli/gaia; then
+            echo "::error::.gaia/cli/gaia is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
+            exit 1
+          fi
+          if ! cmp -s /tmp/gaia-maintainer-committed .gaia/cli/gaia-maintainer; then
+            echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
+            exit 1
+          fi
+
       - name: Stage release tree
         run: |
           TAG="${{ steps.version.outputs.tag }}"
@@ -97,15 +122,8 @@ jobs:
       # If any scenario fails the release halts before the tarball is
       # uploaded and `gh release create` runs, so a broken release
       # cannot publish. ~3-4 min on ubuntu-latest, $0 on Claude Max via
-      # the org OAuth token.
-      - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6.0.5
-
-      - name: Setup Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-
+      # the org OAuth token. Node/pnpm are already set up above (needed
+      # earlier for the CLI binary rebuild-freshness check).
       - name: Distribution test gate (Layers 0+1+2)
         timeout-minutes: 15
         env:
