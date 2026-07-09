@@ -44,6 +44,32 @@ tree is gitignored (release-exclude category 7) and swept by the existing
 janitor and health-audit cleanup, so it does not grow unbounded. A stale
 `gauge.json` or `REPORT.md` at the top level is simply overwritten this run.
 
+Then capture two pre-phase baselines the Step 6 integrity check diffs
+against. They cover disjoint surfaces: `git status` sees tracked files but
+is blind to gitignored `.gaia/local/`; the inventory sees `.gaia/local/`
+but nothing outside it.
+
+Snapshot the tracked surface. Earlier cycles' Fixer lanes may have already
+left legitimate changes in the tree, so the invariant is "this phase adds
+nothing", not "the tree is clean":
+
+```bash
+git status --porcelain > .gaia/local/audit/comprehensive/git-status.pre.txt
+```
+
+Snapshot the rest of `.gaia/local/`, everything outside this phase's own
+working directory:
+
+```bash
+find .gaia/local -type f ! -path '.gaia/local/audit/comprehensive/*' -print0 \
+  | sort -z \
+  | xargs -0 -r sh -c '(shasum -a 256 "$@" 2>/dev/null || sha256sum "$@")' _ \
+  > .gaia/local/audit/comprehensive/local-inventory.pre.txt
+```
+
+`shasum -a 256` is present on macOS and most Linux; `sha256sum` is the
+coreutils fallback (same portability pattern as `token-tally.sh`).
+
 ## Step 1: Pre-flight gauge
 
 Run the gauge and read only its thin depth token:
@@ -179,6 +205,10 @@ Rules:
   findings is itself **surfaced in the report as suspect** (the writer
   computes and flags this; a threshold above 60% refuted across a run is
   flagged suspect).
+- A refuter is read-only against the repo: it may read files and run
+  read-only commands to gather evidence, but must never execute a
+  state-mutating script or command, even to probe what it does. The
+  prohibition is stated verbatim in the dispatch template below.
 
 Verbatim refuter dispatch template:
 
@@ -187,9 +217,17 @@ Verbatim refuter dispatch template:
 > `.gaia/local/audit/comprehensive/findings/<LENS>.json` and nothing else
 > from other findings. Your job is to find the ground-truth reason this
 > finding is FALSE or mis-severed, not to confirm it. Cite evidence as
-> `file:line` or a command you ran. Write your verdict to
-> `.gaia/local/audit/comprehensive/verdicts/<finding-id>.json` against the
-> pinned verdict schema. A `refuted` verdict MUST carry concrete
+> `file:line` or a command you ran. Gather evidence with read-only commands
+> only: reading a script's source to reason about its gates is fine, but you
+> MUST NOT execute a state-mutating script or command against this repo (any
+> command that writes, deletes, moves, archives, or otherwise changes repo
+> or `.gaia/local/` state) even to see what it does or to probe its gates.
+> If you need to know a script's behavior, read it; do not run it. A local
+> `.gaia/local/specs/<ID>/` folder is working state, not the durable
+> record; never mutate one, even one that looks merged or stale (see
+> `wiki/concepts/GAIA Spec.md` § "When a SPEC folder is deleted"). Write
+> your verdict to `.gaia/local/audit/comprehensive/verdicts/<finding-id>.json`
+> against the pinned verdict schema. A `refuted` verdict MUST carry concrete
 > contradicting evidence; absent that, return `confirmed`.
 
 Material = severity ∈ {blocker, high, medium}. Low findings are **not**
@@ -197,30 +235,48 @@ verified (listed informationally, not gated).
 
 ## Step 5: Report (delegated writer)
 
-A **named delegated writer** leaf composes the single report at
-`.gaia/local/audit/comprehensive/REPORT.md` from the on-disk `gauge.json`,
-`findings/*.json`, and `verdicts/*.json`. The Orchestrator dispatches the
-writer and then holds only the report path and top-line counts — it does
-not read the findings itself.
+A **named delegated writer** leaf composes the report content from the
+on-disk `gauge.json`, `findings/*.json`, and `verdicts/*.json`, and returns
+it **as text**, not as a file. Subagents are blocked at the harness level
+from writing report files, so the writer never touches
+`.gaia/local/audit/comprehensive/REPORT.md` directly; the **Orchestrator**
+(the main thread, not subject to that guard) writes the file from the
+returned text. This keeps the delegated-composition context savings (the
+writer, not the Orchestrator, loads every findings/verdicts file) while
+respecting the guard: only the disk write moves to the Orchestrator, not
+the composition. After writing the file verbatim from the returned text,
+the Orchestrator discards the text from its own working context and
+retains only the report path and top-line counts.
+
+A denied tool call is surfaced, never routed around. If the writer's
+dispatch, or any leaf's dispatch, hits a denied write (or any other denied
+tool call), it stops and reports the denial in its response; it does not
+retry the same operation through a different tool to work around a guard
+it cannot use directly.
 
 Verbatim writer dispatch template:
 
 > You are the GAIA Comprehensive Audit **report writer**. Read
 > `.gaia/local/audit/comprehensive/gauge.json`, every
 > `.gaia/local/audit/comprehensive/findings/*.json`, and every
-> `.gaia/local/audit/comprehensive/verdicts/*.json`. Compose a single
-> `.gaia/local/audit/comprehensive/REPORT.md` with the FROZEN greppable
-> anchors below. **Actionable-list gate (hard rule):** a material finding
-> enters the `## Priority index` **only if it carries a verdict file**
-> whose verdict is `confirmed` or `severity-corrected`; `refuted` findings
-> and any material finding **missing a verdict file** are excluded from the
-> actionable list. A material finding present on disk but lacking a
-> verdict must NOT silently vanish: list it under a `## Unverified` note so
-> the gap is visible. Low findings and each lens's `clean_surfaces` entries
-> are listed informationally under `## Findings by lens` and are never
-> gated. Give every confirmed finding a recommended `Disposition:` line.
-> Return only the report path and the top-line counts (total actionable,
-> per-severity, refuted count, unverified count, suspect-flag).
+> `.gaia/local/audit/comprehensive/verdicts/*.json`. Compose the single
+> report with the FROZEN greppable anchors below and return it **as text in
+> your response, in full**; do not write it to disk yourself. You do not
+> have write access to report files, and that restriction is not a bug to
+> route around: if a tool call you need is denied, stop and report the
+> denial in your response rather than retrying with a different tool.
+> **Actionable-list gate (hard rule):** a material finding enters the `##
+> Priority index` **only if it carries a verdict file** whose verdict is
+> `confirmed` or `severity-corrected`; `refuted` findings and any material
+> finding **missing a verdict file** are excluded from the actionable list.
+> A material finding present on disk but lacking a verdict must NOT
+> silently vanish: list it under a `## Unverified` note so the gap is
+> visible. Low findings and each lens's `clean_surfaces` entries are listed
+> informationally under `## Findings by lens` and are never gated. Give
+> every confirmed finding a recommended `Disposition:` line. Return the
+> full composed report text, followed on a separate line by the top-line
+> counts (total actionable, per-severity, refuted count, unverified count,
+> suspect-flag).
 
 **REPORT.md anchors (FROZEN):**
 - `## Depth` — the depth token, `source`, and `rationale` (must equal
@@ -249,8 +305,39 @@ The phase files nothing and edits nothing outside
 `.gaia/local/audit/comprehensive/`. The Orchestrator surfaces, in the
 final health-audit output: the REPORT.md path, its top-line counts, and
 any **confirmed blocker** as a prominent release-gate flag. It does not
-recompute the integrity verdict math. `git status` after the phase shows
-changes only under `.gaia/local/audit/comprehensive/`.
+recompute the integrity verdict math.
+
+**Verify the report-only invariant against both Step 0 baselines.**
+Neither alone is sufficient: `git status` sees tracked files but is
+structurally blind to `.gaia/local/`, which is gitignored and is exactly
+where a leaf can do unrecoverable harm; the inventory sees `.gaia/local/`
+but nothing outside it. Run both.
+
+First, the tracked surface. The phase must not add, remove, or modify any
+tracked file, so the post-phase status must equal the Step 0 snapshot:
+
+```bash
+git status --porcelain > .gaia/local/audit/comprehensive/git-status.post.txt
+diff .gaia/local/audit/comprehensive/git-status.pre.txt .gaia/local/audit/comprehensive/git-status.post.txt
+```
+
+Second, the gitignored surface. Recompute the inventory captured in
+Step 0 and diff against that baseline:
+
+```bash
+find .gaia/local -type f ! -path '.gaia/local/audit/comprehensive/*' -print0 \
+  | sort -z \
+  | xargs -0 -r sh -c '(shasum -a 256 "$@" 2>/dev/null || sha256sum "$@")' _ \
+  > .gaia/local/audit/comprehensive/local-inventory.post.txt
+diff .gaia/local/audit/comprehensive/local-inventory.pre.txt .gaia/local/audit/comprehensive/local-inventory.post.txt
+```
+
+An empty diff (exit 0) confirms no lens, refuter, or writer touched
+`.gaia/local/` outside this phase's own working directory. A non-empty
+diff from either check is an integrity violation, not a report finding:
+stop before hand-back and surface exactly which paths were added,
+removed, or changed, so the maintainer investigates before trusting this
+run's report.
 
 ## Pointers
 
