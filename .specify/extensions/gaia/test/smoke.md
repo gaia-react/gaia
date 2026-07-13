@@ -91,7 +91,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 6: Per-topic exhaustion checkpoint
 
-**Action.** Continue answering questions on a single topic until the PO runs out of natural follow-ups.
+**Action.** Drive a single topic to a Clear coverage mark (Rule 8), or continue until the coverage scan's prioritization ranks a different topic above it. Observe the checkpoint fire before the PO leaves the topic.
 
 **Expected outcome.**
 
@@ -130,15 +130,16 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ---
 
-## Step 9: `after_clarify` self-review
+## Step 9: Self-review
 
-**Action.** Allow the clarify loop to complete and the `after_clarify` hook to run.
+**Action.** Allow the clarify loop to settle on the coverage scan's stop condition. Observe step 6 of `references/spec.md` dispatch the self-review directly as a `general-purpose` Agent.
 
 **Expected outcome.**
 
-- The hook checks the draft against the gate-1 snapshot for placeholders, scope drift, internal inconsistency, and ambiguous UAT phrasing.
+- The self-review checks the draft against the gate-1 snapshot for placeholders, scope drift, internal inconsistency, and ambiguous UAT phrasing.
 - Issues are surfaced via `{"action": "prompt", ...}` and resolved before gate 2 presents.
 - The self-review is recorded in `clarifications.answered[]` as a confirmation step.
+- The session leaves behind `.gaia/local/cache/audit-SPEC-NNN/findings/self-review.json` and a `self_review_findings` row in `.gaia/local/telemetry/spec-pacing.jsonl`.
 
 **UATs covered.** UAT-016.
 
@@ -150,7 +151,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 **Expected outcome.**
 
-- For each pending item, `after_clarify` surfaces `AskUserQuestion`: `"Pending clarification: <item>. Answer now, or defer with rationale?"` with options (Answer now, Defer with rationale, Discuss this).
+- For each pending item, the self-review surfaces `AskUserQuestion`: `"Pending clarification: <item>. Answer now, or defer with rationale?"` with options (Answer now, Defer with rationale, Discuss this).
 - Save is blocked until each pending item is either answered (moved to `clarifications.answered[]`) or explicitly deferred with a recorded rationale.
 
 **UATs covered.** UAT-017.
@@ -159,7 +160,7 @@ Before starting, capture two snapshots so the post-run audits can diff cleanly:
 
 ## Step 11: Gate 2 (artifact confirmation)
 
-**Action.** After `after_clarify` clears, observe the gate-2 step.
+**Action.** After the self-review clears, observe the gate-2 step.
 
 **Expected outcome.**
 

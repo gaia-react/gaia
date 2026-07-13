@@ -88,6 +88,9 @@ export const TimeToResolvedSpecCloudPayload = z.strictObject({
   // identity-bearing, so it is safe to project to the cloud stream.
   auto: z.boolean().optional(),
   duration_seconds: z.number().int(),
+  // Optional ceiling-regime marker; see TimeToResolvedSpecPayload. Not
+  // identity-bearing, so it is safe to project to the cloud stream.
+  question_ceiling: z.number().int().optional(),
   question_count: z.number().int(),
   spec_id: z.string(),
 });

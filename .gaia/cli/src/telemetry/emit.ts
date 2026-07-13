@@ -80,6 +80,7 @@ type ParsedFlags = {
   localNamespace?: object;
   planId?: string;
   prNumber?: number;
+  questionCeiling?: number;
   questionCount?: number;
   revisionClass?: string;
   sessionHash?: string;
@@ -109,6 +110,7 @@ const FLAG_DEFINITIONS: Readonly<Partial<Record<string, FlagDefinition>>> = {
   '--local': {kind: 'json', target: 'localNamespace'},
   '--plan-id': {kind: 'string', target: 'planId'},
   '--pr-number': {kind: 'number', target: 'prNumber'},
+  '--question-ceiling': {kind: 'number', target: 'questionCeiling'},
   '--question-count': {kind: 'number', target: 'questionCount'},
   '--revision-class': {kind: 'string', target: 'revisionClass'},
   '--session-hash': {kind: 'string', target: 'sessionHash'},
@@ -247,6 +249,7 @@ const flagsToPayload = (
   assign('items_added', flags.itemsAdded);
   assign('items_removed', flags.itemsRemoved);
   assign('question_count', flags.questionCount);
+  assign('question_ceiling', flags.questionCeiling);
   assign('duration_seconds', flags.durationSeconds);
   assign('abandoned', flags.abandoned);
   assign('auto', flags.auto);

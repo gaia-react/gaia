@@ -22,8 +22,8 @@ Evidence:
 ## UAT-002: preset overrides applied at /specify time
 
 **Given** project with the GAIA preset installed.
-**When** `/gaia-spec` invokes `/speckit-specify` then `/speckit-clarify`.
-**Then** the artifact reflects GAIA preset overrides, coach-tone system prompt, AskUserQuestion-formatted Q&A copy, GAIA frontmatter fields.
+**When** `/gaia-spec` invokes `/speckit-specify` then runs GAIA's own Socratic clarify loop.
+**Then** the artifact reflects the GAIA preset override (the spec template, hence the GAIA frontmatter fields); the coach-tone system prompt and the AskUserQuestion-formatted Q&A copy are templates the wrapper lazy-loads directly.
 
 Evidence:
 
@@ -57,7 +57,7 @@ Evidence:
 
 ## UAT-005: per-topic exhaustion checkpoint
 
-**Given** the PO has run out of natural follow-ups.
+**Given** the PO is about to leave the current topic, whether because its coverage mark has reached Clear or because the coverage scan now ranks a different topic above it.
 **When** a topic transition is imminent.
 **Then** the PO announces via `AskUserQuestion`: `"Out of questions on <topic>. Move to <next>, or push deeper?"`.
 
@@ -179,10 +179,9 @@ Evidence:
 
 Evidence:
 
-- `.specify/extensions/gaia/extension.yml`: `hooks.after_clarify.command: speckit.gaia.self-review` (mandatory).
+- `references/spec.md` Step 6, wrapper dispatches the self-review directly as a `general-purpose` Agent, applies fixes for any drift/ambiguity/inconsistency findings before Gate 2 (Step 8) presents.
 - `.specify/extensions/gaia/commands/self-review.md`: checklist covers all five categories (placeholders, scope drift, inconsistency, ambiguity, pending). Reads gate-1 snapshot at `.gaia/local/cache/gate1-<spec_id>.json` for drift comparison.
-- `references/spec.md` Step 6, wrapper applies fixes for any drift/ambiguity/inconsistency findings before Gate 2 (Step 8) presents.
-- Sandbox transcript: `after_clarify` event renders `EXECUTE_COMMAND: speckit.gaia.self-review` directive automatically.
+- Observable artifacts: `.gaia/local/cache/audit-SPEC-NNN/findings/self-review.json` and a `self_review_findings` row in `.gaia/local/telemetry/spec-pacing.jsonl`.
 
 ## UAT-017: pending clarifications block-or-defer
 
