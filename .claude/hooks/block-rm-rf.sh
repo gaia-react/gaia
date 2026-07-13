@@ -165,6 +165,10 @@ while IFS= read -r rm_segment; do
       # the exact bug the quote-strip above fixes: the guard catching only the
       # casual spelling of the target and missing the deliberate one. Neighbours
       # like ${HOMEBREW_PREFIX} do not match, the arms are anchored, not prefixes.
+      # The backslash-escaped arms (\$HOME, \${HOME}) are unreachable now that the
+      # strip above removes backslashes before matching. They stay as belt-and-braces.
+      # Do not read them as proof the strip is redundant and delete the strip: the
+      # strip is what catches \/ and \.git, which have no arms of their own.
       '~'|'~/'|'~/'*|'$HOME'|'$HOME/'*|'\$HOME'|'\$HOME/'*|'${HOME}'|'${HOME}/'*|'\${HOME}'|'\${HOME}/'*)
         deny "BLOCKED: rm -rf of \$HOME / ~ is forbidden."
         ;;
