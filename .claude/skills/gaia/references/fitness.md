@@ -2,7 +2,7 @@
 
 `/gaia-fitness` is the Claude-integration health check + auto-heal. One invocation, no flag required, calling `/gaia-fitness` is the statement of intent to be fit. It runs three phases in sequence: triage → heal → verify.
 
-The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state harness layer described below. That harness layer, auto-branching, the unsafe-state guard, is `/gaia-fitness`-specific and is not part of the protocol in that page.
+The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protocol all live in `wiki/decisions/Claude Integration Fitness.md`. This file is the Orchestrator: it reads that page, runs its three phases, and owns the branch / repo-state / publish harness layer described below. That harness layer, auto-branching, the unsafe-state guard, and the post-report publish gate, is `/gaia-fitness`-specific and is not part of the protocol in that page.
 
 **Scope note:** the harness this file wraps around the protocol is minimal, no Orchestrator-above-Triager layer, no preserved per-cycle artifact directories, no escalation handoff. On loop exhaustion it reports the unresolved findings with the grade, period. The agent runs the checks the wiki page defines (greps / `jq` / `.gaia/cli/gaia wiki …` calls) inline; the only fitness-specific `gaia` subcommand it calls is `gaia fitness render-card`, which renders the final report card from the findings JSON (presentation only, it runs no checks).
 
@@ -149,7 +149,7 @@ Run inside the bounded heal loop. The cap and stop conditions below mirror `wiki
 
 **Too-invasive fixes:** a Fixer that judges a fix too invasive to apply without product context leaves it unapplied and surfaces it in the report with a recommended approach. Never force an invasive edit.
 
-**Never commit.** The working tree is left for the user to review.
+**Heal never commits.** Applied fixes stay in the working tree; the publish gate (Step 7) offers to commit, PR, and merge them.
 
 ---
 
@@ -199,13 +199,93 @@ Paste the command's stdout verbatim into your reply as a fenced code block.
 
 The `findings` array drives both the per-category note column and the grouped FINDINGS block. Unresolved / unfixable findings are included with their recommended approach in the `remediation`. On a clean run (zero adjudicated findings, overall A+), pass an empty `findings` array, the card omits the FINDINGS block.
 
-**Post-heal instructions.** The card carries no footer. After pasting it, print one post-heal line as prose below the card, by harness state (from Steps 2 and 4):
+**Post-heal routing.** The card carries no footer. After pasting it, route by harness state (from Steps 2 and 4):
 
-| State | Line |
+| State | Action |
 | --- | --- |
-| Branch created | Changes applied on branch `chore/gaia-fitness-<timestamp>`. Review with `git diff main`; discard with `git checkout main && git branch -D chore/gaia-fitness-<timestamp>`. |
-| In place on `CURRENT_BRANCH` | Changes applied on `<CURRENT_BRANCH>`. Review with `git diff`; discard with `git checkout -- .`. |
-| Triage-only (unsafe state) | Heal skipped, `<reason>`. Re-run `/gaia-fitness` after `<resolution steps>`. |
-| Zero findings (A+) | No findings. Overall A+. No changes made, no branch created. |
+| Branch created (fixes applied, main-branch run) | Proceed to Step 7 (publish gate). |
+| In place on `CURRENT_BRANCH` (fixes applied, non-default branch) | Proceed to Step 7 (publish gate). |
+| Triage-only (unsafe state) | Print `Heal skipped, <reason>. Re-run /gaia-fitness after <resolution steps>.` and STOP. No gate. |
+| Zero findings (A+) | Print `No findings. Overall A+. No changes made, no branch created.` and STOP. No gate. |
 
 Format, taxonomy, and grading rubric source of truth: `wiki/decisions/Claude Integration Fitness.md` (Chat Report Format, Grading Rubric, Severity Vocabulary).
+
+---
+
+## Step 7, Publish gate (reached only when Step 4 applied ≥1 fix)
+
+Skipped entirely on the triage-only and zero-findings paths, they printed their line and stopped in Step 6. Reached only when heal applied at least one fix, so a branch exists (`chore/gaia-fitness-<timestamp>`, main-branch run) or the changes sit in place on `CURRENT_BRANCH` (non-default branch).
+
+Ask once, via `AskUserQuestion`, after the card (the card is the information the user needs to decide):
+
+- **header:** `"Publish fixes?"`
+- **question (main-branch run):** `"Fitness healed {N} finding(s) on branch chore/gaia-fitness-<timestamp>. Commit, open a PR, and merge them?"`
+- **question (non-default branch):** `"Fitness healed {N} finding(s) on <CURRENT_BRANCH>. Commit and push them?"`
+- **options (this exact order):**
+  1. `{ label: "Publish", description (main-branch run): "Commit the healed changes, open a PR, and merge it.", description (non-default branch): "Commit and push the healed changes to <CURRENT_BRANCH>." }`
+  2. `{ label: "Keep for review", description: "Leave the healed changes in the working tree; commit nothing." }`
+
+- **Publish** → run Step 8.
+- **Keep for review** → print the working-tree review line and STOP:
+  - Branch created: `Changes applied on branch chore/gaia-fitness-<timestamp>. Review with git diff main; discard with git checkout main && git branch -D chore/gaia-fitness-<timestamp>.`
+  - In place: `Changes applied on <CURRENT_BRANCH>. Review with git diff; discard with git checkout -- .`
+
+**Non-interactive fallback.** In a context with no user to answer the gate (a headless or composed run), do not publish: leave the healed changes in the working tree, print the matching review line above, and stop. Publishing is the standalone, interactive `/gaia-fitness` harness; a composing audit harness owns its own publish (the branch / heal / publish harness layer is `/gaia-fitness`-specific, per the protocol page).
+
+---
+
+## Step 8, Publish (commit / PR / merge)
+
+Reached only on **Publish** from Step 7. It does for fitness's heal diff what `/gaia-audit`'s Publish and `/update-deps` Phase 8 do: commit the working-tree changes and drive the PR to merge on a main-branch run, or commit and push on any other branch. The diff touches only out-of-audit-scope surfaces (`.claude/**`, `CLAUDE.md`, `.gitignore`, `.gaia/manifest.json`, `.claude/settings.json`), so the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass with no `code-audit-frontend` marker.
+
+Run the Quality Gate (`.claude/rules/quality-gate.md`) first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a config/docs-only heal has nothing for it to check.
+
+### Main-branch run (branch already created in Step 4)
+
+Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH` from Step 4), so the changes are on it. Do not create a second branch.
+
+1. **Commit.** `.gaia/local/` is gitignored. Route the message through a file, never `-m`:
+
+   ```bash
+   git -C "$PROJECT_ROOT" add -A
+   git -C "$PROJECT_ROOT" commit -F <commit-message-file>
+   ```
+
+   Subject: `chore(fitness): <concise summary of the fixes applied>`.
+   <!-- gaia:maintainer-only:start -->
+   Then clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md`: a pure config/hygiene heal is usually an internal, no-entry change; land a `## [Unreleased]` entry only if the heal changed adopter-relevant behavior, and re-confirm any bypass/marker still covers the new HEAD. Scrubbed from adopter bundles.
+   <!-- gaia:maintainer-only:end -->
+
+2. **Open the PR and drive it to merge** through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory):
+
+   ```bash
+   git -C "$PROJECT_ROOT" push -u origin "$BRANCH"
+   gh pr create --title "<commit subject>" --body-file <pr-body-file>
+   gh pr merge <N> --squash --delete-branch --auto
+   ```
+
+   `--auto` queues the merge behind required checks (no marker owed via the bypass). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes):
+
+   - **`MERGED`** → clean up, then print the merged PR URL:
+
+     ```bash
+     git -C "$PROJECT_ROOT" checkout main && git -C "$PROJECT_ROOT" pull origin main
+     git -C "$PROJECT_ROOT" branch -D "$BRANCH"
+     git -C "$PROJECT_ROOT" fetch --prune origin
+     ```
+
+   - **still queued** → print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
+
+   Caveat: if the heal edited a nested `CLAUDE.md` under an in-scope path such as `app/`, the out-of-scope bypass no longer covers the diff; follow the PR Merge Workflow's marker handshake like any in-scope PR.
+
+### Any other branch (in-place heal)
+
+```bash
+git -C "$PROJECT_ROOT" add -A
+git -C "$PROJECT_ROOT" commit -F <commit-message-file>
+git -C "$PROJECT_ROOT" push
+```
+
+Do not open a PR and do not merge; the branch owner drives it from here.
+
+If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve.

@@ -12,7 +12,7 @@ tags: [decision, claude, fitness]
 
 The protocol is harness-agnostic: `/gaia-fitness` runs it standalone, and it is written so a larger audit harness can run the same protocol over the same seven categories as one bucket of a deeper loop.
 
-The `/gaia-fitness` skill's harness layer handles branch / repo-state: creating a `chore/gaia-fitness-<timestamp>` branch when HEAD is on the default branch and fixes are available, running triage-only when HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, and never committing. See the `/gaia-fitness` skill reference for the full branching algorithm. That harness layer is not part of the triage/heal protocol described here.
+The `/gaia-fitness` skill's harness layer handles branch / repo-state and publishing: creating a `chore/gaia-fitness-<timestamp>` branch when HEAD is on the default branch and fixes are available, running triage-only when HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, and, after the report, gating on a single publish confirmation that commits the healed changes and drives the PR to merge (commit and push only on a non-default branch). See the `/gaia-fitness` skill reference for the full branching and publish algorithm. That harness layer is not part of the triage/heal protocol described here.
 
 `/update-gaia` three-way-merges this page, so project-specific check classes you add here survive GAIA upgrades, and `/gaia-wiki` lints it. `/gaia-fitness` runs whatever classes the page defines alongside the shipped ones.
 
