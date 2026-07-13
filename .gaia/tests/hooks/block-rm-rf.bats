@@ -466,6 +466,36 @@ t'
   assert_denied_because 'dotfile glob'
 }
 
+# A `./` prefix is cosmetic and repeatable, and bash collapses `//`, so `././.*`
+# and `.//.*` reach the cwd exactly like `.*`. Stripping a single `./` would
+# close the accidental spelling and leave its evasion spellings open, which is
+# the half-fix this arm exists to avoid.
+
+@test "rm -rf ././.* (repeated ./ prefix) is denied" {
+  run_hook_bash 'rm -rf ././.*'
+  assert_denied_because 'dotfile glob'
+}
+
+@test "rm -rf .//.* (collapsed // prefix) is denied" {
+  run_hook_bash 'rm -rf .//.*'
+  assert_denied_because 'dotfile glob'
+}
+
+@test "rm -rf ././.git (repeated ./ prefix) is denied" {
+  run_hook_bash 'rm -rf ././.git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "rm -rf .///.git (repeated slashes) is denied" {
+  run_hook_bash 'rm -rf .///.git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "rm -rf .//node_modules is denied" {
+  run_hook_bash 'rm -rf .//node_modules'
+  assert_denied_because 'BLOCKED: rm -rf of node_modules is forbidden'
+}
+
 # --- denied: $PWD and ~user spellings of a target that already has an arm ---
 
 @test "rm -rf \$PWD/.git is denied" {
@@ -487,6 +517,18 @@ t'
 @test "rm -rf \$PWD/* denies via the unscoped-glob arm" {
   run_hook_bash 'rm -rf $PWD/*'
   assert_denied_because "BLOCKED: rm -rf of unscoped glob ('*') is forbidden."
+}
+
+@test "rm -rf \$PWD/ (trailing slash) denies via the cwd arm" {
+  # `$PWD/` is still the cwd. Rewriting the prefix must not leave an empty token
+  # that falls through to the catch-all.
+  run_hook_bash 'rm -rf $PWD/'
+  assert_denied_because "BLOCKED: rm -rf of cwd ('.') is forbidden."
+}
+
+@test "rm -rf \${PWD}/ (brace form, trailing slash) denies via the cwd arm" {
+  run_hook_bash 'rm -rf ${PWD}/'
+  assert_denied_because "BLOCKED: rm -rf of cwd ('.') is forbidden."
 }
 
 @test "rm -rf ~root (a named user's home) is denied" {

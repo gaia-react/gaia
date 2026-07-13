@@ -216,10 +216,31 @@ while IFS= read -r rm_segment; do
     # is why `$PWD/dist` stays on the dist whitelist while `$PWD/.git` reaches
     # the .git arm: denying every $PWD path would be the easy over-fix.
     case "$tok" in
-      '$PWD'|'${PWD}') tok='.' ;;
+      # `$PWD/` with nothing after it is still the cwd. It has to be caught here,
+      # ahead of the prefix strips below, or the strip yields an empty token that
+      # falls through to the catch-all and allows it.
+      '$PWD'|'${PWD}'|'$PWD/'|'${PWD}/') tok='.' ;;
       '$PWD/'*) tok=${tok#'$PWD/'} ;;
       '${PWD}/'*) tok=${tok#'${PWD}/'} ;;
     esac
+    [[ -n "$tok" ]] || continue
+
+    # Normalize the way bash reads the path, so every arm below sees one spelling
+    # of a target rather than an unbounded family of them. Bash collapses `//` to
+    # `/`, and a `./` prefix is cosmetic and repeatable, so `.*`, `./.*`,
+    # `././.*`, and `.//.*` are all the same cwd dotfile glob, and `.//.git` is
+    # `.git`. Stripping a single `./` would close only the spelling people reach
+    # for by accident and leave every evasion spelling of it open, which is the
+    # half-fix the arms below exist to avoid.
+    #
+    # `./` alone is left intact (the strip requires something after the slash),
+    # so the cwd arm still owns it rather than reducing it to an empty token.
+    while [[ "$tok" == *//* ]]; do
+      tok=${tok//\/\//\/}
+    done
+    while [[ "$tok" == ./?* ]]; do
+      tok=${tok#./}
+    done
 
     # Unscoped expansions in the FIRST path segment. These expand in the cwd, so
     # they sweep up `.git` and `.claude`.
@@ -234,9 +255,10 @@ while IFS= read -r rm_segment; do
     #
     # Only the first segment counts. A glob deeper in the path expands inside a
     # named directory, which is what makes the whitelisted `.gaia/local/plans/*`
-    # an ordinary cleanup rather than this.
-    first_seg=${tok#./}
-    first_seg=${first_seg%%/*}
+    # an ordinary cleanup rather than this. The normalization above already
+    # removed any `./` prefix, so the first segment is whatever precedes the
+    # first slash.
+    first_seg=${tok%%/*}
     if [[ "$first_seg" == .* && "$first_seg" == *[*?\[]* ]]; then
       deny "BLOCKED: rm -rf of a dotfile glob ('$tok') is forbidden, it removes .git and .claude."
     fi
