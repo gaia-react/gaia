@@ -5,10 +5,13 @@
 #   version-check.sh [<repo_root>]
 #
 # When <repo_root> is omitted, $PWD is used. Reads requires.speckit_version
-# from <repo_root>/.specify/extensions/gaia/extension.yml and compares it to
-# the runtime spec-kit version reported by `specify --version` (or `specify
-# version`). Caches the result for the calendar day at
-# .gaia/local/cache/version-check.lock to avoid re-running on every hook.
+# from <repo_root>/.specify/extensions/gaia/extension.yml and compares it to the
+# runtime spec-kit version, resolved from a PATH-resident `specify` when one
+# exists and otherwise from a uvx-mediated `specify` pinned at the pin floor,
+# which is the install route GAIA documents and one that never puts `specify` on
+# PATH. Caches the result for the calendar day at
+# .gaia/local/cache/version-check.lock so the uvx route resolves once a day
+# rather than on every hook.
 #
 # Behavior:
 #   - Match: exit 0, no stdout, refresh cache.
@@ -89,15 +92,40 @@ cache_dir="$repo_root/.gaia/local/cache"
 cache_file="$cache_dir/version-check.lock"
 today="$(date -u +%Y-%m-%d)"
 
+# Read one `"<key>":"<value>"` pair out of the cache. The cache is single-line
+# JSON, so every key is scoped by name here; a positional field index would
+# resolve each key to the same first value on that one line.
+cache_field() {
+  sed -n 's/.*"'"$1"'":"\([^"]*\)".*/\1/p' "$cache_file" 2>/dev/null | head -n 1
+}
+
 if [ -f "$cache_file" ]; then
-  cached_pin="$(awk -F'"' '/"pinned":/ {print $4; exit}' "$cache_file" 2>/dev/null || echo "")"
-  cached_day="$(awk -F'"' '/"day":/ {print $4; exit}' "$cache_file" 2>/dev/null || echo "")"
+  cached_pin="$(cache_field pinned || echo "")"
+  cached_day="$(cache_field day || echo "")"
   if [ "$cached_pin" = "$pinned_spec" ] && [ "$cached_day" = "$today" ]; then
     exit 0
   fi
 fi
 
 # --- Resolve runtime spec-kit version ---
+# Two routes, tried in order.
+#
+# A PATH-resident `specify` (a persistent install: `uv tool install`, pipx) is
+# authoritative. Its version is whatever the machine actually carries, so it can
+# genuinely drift from the pin, and that is the drift this check exists to catch.
+#
+# Otherwise fall back to the uvx route. That is the install route GAIA documents
+# (`/setup-gaia`, `/gaia-init`) and the only one present on most machines: it is
+# uvx-mediated and never puts `specify` on PATH, so without this fallback a
+# correctly installed, in-pin spec-kit resolves as <unresolved> and the
+# `before_specify` hook blocks /gaia-spec. Note what this route can and cannot
+# prove: it names the ref at call time, so the version it reports is the one
+# asked for. It confirms the documented route works end to end (uvx present,
+# pinned ref fetchable, its self-reported version inside the pin, which catches a
+# pin naming a bad ref) rather than detecting a drifting install, which cannot
+# happen when every invocation pins the ref.
+speckit_ref="git+https://github.com/github/spec-kit.git@v$floor"
+
 installed=""
 if command -v specify > /dev/null 2>&1; then
   installed="$(specify --version 2>/dev/null | head -n 1 | awk '{print $NF}' | tr -d '[:space:]' || true)"
@@ -106,12 +134,18 @@ if command -v specify > /dev/null 2>&1; then
   fi
 fi
 
+if [ -z "$installed" ] && command -v uvx > /dev/null 2>&1; then
+  installed="$(uvx --from "$speckit_ref" specify --version 2>/dev/null | head -n 1 | awk '{print $NF}' | tr -d '[:space:]' || true)"
+fi
+
 if [ -z "$installed" ]; then
   cat >&2 <<EOF
 spec-kit version check failed: could not determine installed version.
   Pinned:    $pinned_spec (from $extension_yml)
   Installed: <unresolved>
-  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor specify --help
+  Checked:   a PATH-resident \`specify\`, then \`uvx --from $speckit_ref specify\`
+  Install:   uvx --from $speckit_ref specify --help
+             (uvx ships with uv: https://docs.astral.sh/uv/)
 EOF
   exit 1
 fi
