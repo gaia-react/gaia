@@ -22774,7 +22774,7 @@ var applyReason = (state, value) => {
   state.pending.reason = value;
   return void 0;
 };
-var applyWithhold = (state, value) => {
+var openPendingWithhold = (state, value) => {
   const closeError = closeWithhold(state.pending, state.withholds);
   if (closeError !== void 0) return closeError;
   state.pending = { category: void 0, path: value, reason: void 0 };
@@ -22791,7 +22791,7 @@ var VALUE_FLAGS = {
     state.ships.push(value);
     return void 0;
   },
-  "--withhold": applyWithhold
+  "--withhold": openPendingWithhold
 };
 var BARE_FLAGS = {
   "--allow-undecided": (state) => {
@@ -22809,8 +22809,8 @@ var BARE_FLAGS = {
 };
 var validateFlagCombination = (state) => {
   const { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds } = state;
-  const answers = allowUndecided || ships.length > 0 || withholds.length > 0;
-  if (check2 && (outPath !== void 0 || stdout || answers)) {
+  const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0;
+  if (check2 && (outPath !== void 0 || stdout || hasAnswers)) {
     return {
       message: "--check is incompatible with --out / --stdout / --ship / --withhold / --allow-undecided",
       ok: false

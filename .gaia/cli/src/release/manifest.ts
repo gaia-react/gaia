@@ -863,7 +863,7 @@ const applyReason: ValueFlagHandler = (state, value) => {
   return undefined;
 };
 
-const applyWithhold: ValueFlagHandler = (state, value) => {
+const openPendingWithhold: ValueFlagHandler = (state, value) => {
   const closeError = closeWithhold(state.pending, state.withholds);
 
   if (closeError !== undefined) return closeError;
@@ -886,7 +886,7 @@ const VALUE_FLAGS: Readonly<Partial<Record<string, ValueFlagHandler>>> = {
 
     return undefined;
   },
-  '--withhold': applyWithhold,
+  '--withhold': openPendingWithhold,
 };
 
 const BARE_FLAGS: Readonly<
@@ -909,10 +909,10 @@ const BARE_FLAGS: Readonly<
 const validateFlagCombination = (state: ParseState): FlagParseResult => {
   const {allowUndecided, check, json, outPath, ships, stdout, withholds} =
     state;
-  const answers = allowUndecided || ships.length > 0 || withholds.length > 0;
+  const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0;
 
   // `--check` stays read-only: it answers nothing and writes nothing.
-  if (check && (outPath !== undefined || stdout || answers)) {
+  if (check && (outPath !== undefined || stdout || hasAnswers)) {
     return {
       message:
         '--check is incompatible with --out / --stdout / --ship / --withhold / --allow-undecided',
