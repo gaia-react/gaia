@@ -22229,6 +22229,148 @@ import { execFileSync as execFileSync2 } from "node:child_process";
 import { existsSync as existsSync21, readFileSync as readFileSync20 } from "node:fs";
 import path23 from "node:path";
 
+// src/release/manifest-answers.ts
+var CATEGORY_HEADER = /^# --- (\d+)\. (.+?) ---\s*$/;
+var REJECTED_PATH_CHARACTERS = [
+  "(",
+  ")",
+  "*",
+  "?",
+  "[",
+  "\\",
+  "]",
+  "^",
+  "{",
+  "|",
+  "}",
+  "$"
+];
+var ASCII_WHITESPACE = /[\t\n\v\f\r ]/;
+var uniqueSorted = (paths) => {
+  const unique = [...new Set(paths)];
+  return unique.toSorted((a, b) => a.localeCompare(b));
+};
+var findDuplicates = (paths) => {
+  const seen = /* @__PURE__ */ new Set();
+  const duplicates = /* @__PURE__ */ new Set();
+  for (const value of paths) {
+    if (seen.has(value)) duplicates.add(value);
+    seen.add(value);
+  }
+  return uniqueSorted([...duplicates]);
+};
+var isRejectedWithholdPath = (value) => value.length === 0 || value.startsWith("#") || value.startsWith("/") || value.endsWith("/") || ASCII_WHITESPACE.test(value) || REJECTED_PATH_CHARACTERS.some((character) => value.includes(character));
+var isRejectedReason = (reason) => reason.trim().length === 0 || reason.includes("\n") || reason.includes("\r");
+var parseCategoryLines = (lines) => lines.flatMap((line, headerLineIndex) => {
+  const match = CATEGORY_HEADER.exec(line);
+  if (match === null) return [];
+  return [{ headerLineIndex, number: Number(match[1]), title: match[2] }];
+});
+var parseExcludeCategories = (text) => parseCategoryLines(text.split("\n"));
+var validateAnswers = (answers, missing, categories) => {
+  const errors = [];
+  const withholdPaths = answers.withholds.map((withhold) => withhold.path);
+  const answered = [...answers.ships, ...withholdPaths];
+  const missingSet = new Set(missing);
+  const notMissing = uniqueSorted(
+    answered.filter((candidate) => !missingSet.has(candidate))
+  );
+  if (notMissing.length > 0) {
+    errors.push({
+      code: "answer_not_missing",
+      message: `answered path is not awaiting an answer: ${notMissing.join(", ")}`,
+      paths: notMissing
+    });
+  }
+  const duplicates = findDuplicates(answered);
+  if (duplicates.length > 0) {
+    errors.push({
+      code: "duplicate_answer",
+      message: `path answered more than once: ${duplicates.join(", ")}`,
+      paths: duplicates
+    });
+  }
+  const metacharacterPaths = uniqueSorted(
+    withholdPaths.filter((candidate) => isRejectedWithholdPath(candidate))
+  );
+  if (metacharacterPaths.length > 0) {
+    errors.push({
+      code: "withhold_metacharacter",
+      message: `withhold path carries a character that changes what the exclude line masks: ${metacharacterPaths.join(", ")}`,
+      paths: metacharacterPaths
+    });
+  }
+  const badReasonPaths = uniqueSorted(
+    answers.withholds.filter((withhold) => isRejectedReason(withhold.reason)).map((withhold) => withhold.path)
+  );
+  if (badReasonPaths.length > 0) {
+    errors.push({
+      code: "withhold_reason_invalid",
+      message: `withhold reason must be one non-empty line with no newline or carriage return: ${badReasonPaths.join(", ")}`,
+      paths: badReasonPaths
+    });
+  }
+  const knownCategories = new Set(
+    categories.map((category) => category.number)
+  );
+  const unknownCategoryPaths = uniqueSorted(
+    answers.withholds.filter((withhold) => !knownCategories.has(withhold.category)).map((withhold) => withhold.path)
+  );
+  if (unknownCategoryPaths.length > 0) {
+    errors.push({
+      code: "unknown_category",
+      message: `--category names no numbered release-exclude category: ${unknownCategoryPaths.join(", ")}`,
+      paths: unknownCategoryPaths
+    });
+  }
+  if (answers.allowUndecided) return errors;
+  const answeredSet = new Set(answered);
+  const unanswered = missing.filter((candidate) => !answeredSet.has(candidate));
+  if (unanswered.length > 0) {
+    errors.push({
+      code: "unanswered_paths",
+      message: `${unanswered.length} file(s) would newly ship with no explicit answer: ${unanswered.join(", ")}`,
+      paths: unanswered
+    });
+  }
+  return errors;
+};
+var findBlockEnd = (lines, category) => {
+  for (let index = category.headerLineIndex + 1; index < lines.length; index += 1) {
+    if (CATEGORY_HEADER.test(lines[index])) return index;
+  }
+  return lines.length;
+};
+var findLastNonBlankLine = (lines, start, end) => {
+  let last = start;
+  for (let index = start; index < end; index += 1) {
+    if (lines[index].trim().length > 0) last = index;
+  }
+  return last;
+};
+var applyWithholds = (excludeText, withholds) => {
+  const lines = excludeText.split("\n");
+  for (const withhold of withholds) {
+    const category = parseCategoryLines(lines).find(
+      (candidate) => candidate.number === withhold.category
+    );
+    if (category !== void 0) {
+      const insertAt = findLastNonBlankLine(
+        lines,
+        category.headerLineIndex,
+        findBlockEnd(lines, category)
+      );
+      lines.splice(
+        insertAt + 1,
+        0,
+        `# ${withhold.reason.trim()}`,
+        withhold.path
+      );
+    }
+  }
+  return lines.join("\n");
+};
+
 // src/release/scan-globs.ts
 var SCAN_GLOBS = [
   ".gaia/statusline",
@@ -22242,27 +22384,48 @@ var SCAN_GLOBS = [
 
 // src/release/manifest.ts
 var HELP_TEXT23 = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
+                                       [--ship <path>]...
+                                       [--withhold <path> --category <N> --reason <text>]...
+                                       [--allow-undecided]
        gaia-maintainer release manifest --check [--json]
 
   Regenerate .gaia/manifest.json. Walks git ls-files, subtracts
   release-exclude patterns and adopter-owned sentinels, classifies the
   remainder, and writes a sorted JSON manifest.
 
+  Refuses, in every output mode, to produce a manifest while any file that
+  would newly ship lacks an explicit answer. Answer each one with --ship or
+  --withhold, or waive the accounting with --allow-undecided.
+
   Flags:
-    --out <path>   Override output path (default: .gaia/manifest.json).
-    --stdout       Print manifest JSON to stdout instead of writing the file.
-    --check        Verify the committed manifest matches what the
-                   classifier would produce against the current source,
-                   lint classifier sets against release-exclude for
-                   dead-code overlap, and lint every owned .sh-bearing
-                   directory against the scrub maintainer-paths scope and
-                   runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
-                   overlap, or a scan-scope gap.
-    --json         (with --check) Emit a structured JSON drift report.
+    --ship <path>      Answer <path> as shipping. Repeatable.
+    --withhold <path>  Answer <path> as withheld: appends it to
+                       .gaia/release-exclude. Repeatable. Each --withhold
+                       must be closed by exactly one --category and exactly
+                       one --reason before the next one.
+    --category <N>     Numbered release-exclude category the open --withhold
+                       is filed under.
+    --reason <text>    One-line rationale, written as the comment directly
+                       above the withheld path.
+    --allow-undecided  Waive the answer requirement; every unanswered file
+                       ships. The escape hatch for bootstrapping a manifest
+                       and for unattended regeneration.
+    --out <path>       Override output path (default: .gaia/manifest.json).
+    --stdout           Print manifest JSON to stdout instead of writing the file.
+    --check            Verify the committed manifest matches what the
+                       classifier would produce against the current source,
+                       lint classifier sets against release-exclude for
+                       dead-code overlap, and lint every owned .sh-bearing
+                       directory against the scrub maintainer-paths scope and
+                       runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
+                       overlap, or a scan-scope gap. Read-only: incompatible
+                       with every flag above.
+    --json             (with --check) Emit a structured JSON drift report.
 
   Exit codes:
     0  success / check clean
-    1  user-correctable error / check found drift or overlap
+    1  unanswered or invalid answers / user-correctable error / check found
+       drift or overlap
     2  unexpected (filesystem / git failure)
 `;
 var HELP_TOKENS23 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -22327,6 +22490,8 @@ var resolveRepoRoot3 = (cwd) => execFileSync2("git", ["rev-parse", "--show-tople
   encoding: "utf8",
   stdio: ["ignore", "pipe", "pipe"]
 }).trim();
+var resolveExcludePath = (repoRoot) => path23.resolve(repoRoot, ".gaia/release-exclude");
+var resolveManifestPath = (repoRoot) => path23.resolve(repoRoot, ".gaia/manifest.json");
 var listGitFiles = (cwd) => execFileSync2("git", ["ls-files"], {
   cwd,
   encoding: "utf8",
@@ -22335,11 +22500,9 @@ var listGitFiles = (cwd) => execFileSync2("git", ["ls-files"], {
 var buildManifest = (cwd, options = {}) => {
   const repoRoot = options.repoRoot ?? resolveRepoRoot3(cwd);
   const versionPath = path23.resolve(repoRoot, ".gaia/VERSION");
-  const excludePath = path23.resolve(repoRoot, ".gaia/release-exclude");
   const version2 = readFileSync20(versionPath, "utf8").trim();
-  const excludePatterns = parseExcludePatterns(
-    readFileSync20(excludePath, "utf8")
-  );
+  const excludeText = options.excludeText ?? readFileSync20(resolveExcludePath(repoRoot), "utf8");
+  const excludePatterns = parseExcludePatterns(excludeText);
   const isExcluded = (candidate) => excludePatterns.some((pattern) => pattern.test(candidate));
   const tracked = listGitFiles(repoRoot);
   const entries = [];
@@ -22425,16 +22588,16 @@ var lintScanScopes = (manifestFiles, maintainerPathsScope) => {
   return [...gapsByDir.entries()].map(([dir, missingFrom]) => ({ dir, missingFrom: [...missingFrom] })).toSorted((a, b) => a.dir.localeCompare(b.dir));
 };
 var lookupClass = (files, file2) => files[file2];
+var computeMissingEntries = (expected, actual) => Object.entries(expected.files).filter(([file2]) => lookupClass(actual.files, file2) === void 0).map(([file2, expectedClass]) => ({ expected: expectedClass, file: file2 })).toSorted((a, b) => a.file.localeCompare(b.file));
+var computeMissing = (expected, actual) => computeMissingEntries(expected, actual).map((entry) => entry.file);
 var computeDrift = (expected, actual, lints) => {
   const { classifierOverlaps, scanScopeGaps } = lints;
-  const missing = [];
+  const missing = computeMissingEntries(expected, actual);
   const extra = [];
   const drift = [];
   for (const [file2, expectedClass] of Object.entries(expected.files)) {
     const actualClass = lookupClass(actual.files, file2);
-    if (actualClass === void 0) {
-      missing.push({ expected: expectedClass, file: file2 });
-    } else if (actualClass !== expectedClass) {
+    if (actualClass !== void 0 && actualClass !== expectedClass) {
       drift.push({ actual: actualClass, expected: expectedClass, file: file2 });
     }
   }
@@ -22443,7 +22606,6 @@ var computeDrift = (expected, actual, lints) => {
       extra.push({ actual: actualClass, file: file2 });
     }
   }
-  missing.sort((a, b) => a.file.localeCompare(b.file));
   extra.sort((a, b) => a.file.localeCompare(b.file));
   drift.sort((a, b) => a.file.localeCompare(b.file));
   const versionDrift = expected.version === actual.version ? void 0 : { actual: actual.version, expected: expected.version };
@@ -22514,6 +22676,16 @@ var renderCheckReport = (result, jsonMode) => {
   return `${out.join("\n")}
 `;
 };
+var readCommittedManifest = (manifestPath) => {
+  if (!existsSync21(manifestPath)) return { kind: "absent" };
+  try {
+    const rawJson = JSON.parse(readFileSync20(manifestPath, "utf8"));
+    return { kind: "ok", manifest: ManifestSchema.parse(rawJson) };
+  } catch (error51) {
+    const message = error51 instanceof external_exports.ZodError ? `committed manifest is malformed: ${external_exports.prettifyError(error51)}` : error51 instanceof Error ? error51.message : String(error51);
+    return { kind: "invalid", message };
+  }
+};
 var runCheck = (cwd, generatedAt, jsonMode) => {
   let repoRoot;
   let expected;
@@ -22522,7 +22694,7 @@ var runCheck = (cwd, generatedAt, jsonMode) => {
     repoRoot = resolveRepoRoot3(cwd);
     expected = buildManifest(cwd, { generatedAt, repoRoot });
     excludePatterns = parseExcludePatterns(
-      readFileSync20(path23.resolve(repoRoot, ".gaia/release-exclude"), "utf8")
+      readFileSync20(resolveExcludePath(repoRoot), "utf8")
     );
   } catch (error51) {
     structuredError({
@@ -22532,29 +22704,26 @@ var runCheck = (cwd, generatedAt, jsonMode) => {
     });
     return UNEXPECTED_EXIT12;
   }
-  const manifestPath = path23.resolve(repoRoot, ".gaia/manifest.json");
-  if (!existsSync21(manifestPath)) {
+  const manifestPath = resolveManifestPath(repoRoot);
+  const committed = readCommittedManifest(manifestPath);
+  if (committed.kind === "absent") {
     structuredError({
       code: "manifest_missing",
-      message: `committed manifest not found at ${manifestPath}; run \`gaia-maintainer release manifest\` to generate it`,
+      message: `committed manifest not found at ${manifestPath}; run \`gaia-maintainer release manifest --allow-undecided\` to bootstrap it`,
       subcommand: "release manifest"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  let actual;
-  try {
-    const rawJson = JSON.parse(readFileSync20(manifestPath, "utf8"));
-    actual = ManifestSchema.parse(rawJson);
-  } catch (error51) {
-    const message = error51 instanceof external_exports.ZodError ? `committed manifest is malformed: ${external_exports.prettifyError(error51)}` : error51 instanceof Error ? error51.message : String(error51);
+  if (committed.kind === "invalid") {
     structuredError({
       code: "manifest_parse_failed",
-      message,
+      message: committed.message,
       path: manifestPath,
       subcommand: "release manifest"
     });
     return UNEXPECTED_EXIT12;
   }
+  const actual = committed.manifest;
   const classifierOverlaps = lintClassifierSets(excludePatterns);
   const scanScopeGaps = lintScanScopes(
     expected.files,
@@ -22574,44 +22743,153 @@ var takeValue8 = (argv, index, flag) => {
     return { message: `${flag} requires a value`, ok: false };
   return { ok: true, value };
 };
-var parseFlags12 = (argv) => {
-  let check2 = false;
-  let json2 = false;
-  let outPath;
-  let stdout = false;
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === "--out") {
-      const taken = takeValue8(argv, index + 1, "--out");
-      if (!taken.ok) return taken;
-      outPath = taken.value;
-      index += 1;
-    } else if (token === "--stdout") {
-      stdout = true;
-    } else if (token === "--check") {
-      check2 = true;
-    } else if (token === "--json") {
-      json2 = true;
-    } else {
-      return { message: `unknown flag: ${token}`, ok: false };
-    }
+var closeWithhold = (pending, withholds) => {
+  if (pending === void 0) return void 0;
+  if (pending.category === void 0)
+    return `--withhold ${pending.path} requires a --category`;
+  if (pending.reason === void 0)
+    return `--withhold ${pending.path} requires a --reason`;
+  withholds.push({
+    category: pending.category,
+    path: pending.path,
+    reason: pending.reason
+  });
+  return void 0;
+};
+var applyCategory = (state, value) => {
+  if (state.pending === void 0)
+    return "--category requires a preceding --withhold";
+  if (state.pending.category !== void 0)
+    return `--withhold ${state.pending.path} carries more than one --category`;
+  if (!/^\d+$/.test(value) || Number(value) === 0)
+    return `--category must be a positive integer, got: ${value}`;
+  state.pending.category = Number(value);
+  return void 0;
+};
+var applyReason = (state, value) => {
+  if (state.pending === void 0)
+    return "--reason requires a preceding --withhold";
+  if (state.pending.reason !== void 0)
+    return `--withhold ${state.pending.path} carries more than one --reason`;
+  state.pending.reason = value;
+  return void 0;
+};
+var applyWithhold = (state, value) => {
+  const closeError = closeWithhold(state.pending, state.withholds);
+  if (closeError !== void 0) return closeError;
+  state.pending = { category: void 0, path: value, reason: void 0 };
+  return void 0;
+};
+var VALUE_FLAGS = {
+  "--category": applyCategory,
+  "--out": (state, value) => {
+    state.outPath = value;
+    return void 0;
+  },
+  "--reason": applyReason,
+  "--ship": (state, value) => {
+    state.ships.push(value);
+    return void 0;
+  },
+  "--withhold": applyWithhold
+};
+var BARE_FLAGS = {
+  "--allow-undecided": (state) => {
+    state.allowUndecided = true;
+  },
+  "--check": (state) => {
+    state.check = true;
+  },
+  "--json": (state) => {
+    state.json = true;
+  },
+  "--stdout": (state) => {
+    state.stdout = true;
   }
-  if (check2 && (outPath !== void 0 || stdout)) {
+};
+var validateFlagCombination = (state) => {
+  const { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds } = state;
+  const answers = allowUndecided || ships.length > 0 || withholds.length > 0;
+  if (check2 && (outPath !== void 0 || stdout || answers)) {
     return {
-      message: "--check is incompatible with --out / --stdout",
+      message: "--check is incompatible with --out / --stdout / --ship / --withhold / --allow-undecided",
       ok: false
     };
   }
   if (!check2 && json2) {
     return { message: "--json requires --check", ok: false };
   }
-  return { flags: { check: check2, json: json2, outPath, stdout }, ok: true };
+  return {
+    flags: { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds },
+    ok: true
+  };
 };
-var tryBuildManifestOrReport = (cwd, generatedAt) => {
+var parseFlags12 = (argv) => {
+  const state = {
+    allowUndecided: false,
+    check: false,
+    json: false,
+    outPath: void 0,
+    pending: void 0,
+    ships: [],
+    stdout: false,
+    withholds: []
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    const bare = BARE_FLAGS[token];
+    const valued = VALUE_FLAGS[token];
+    if (bare !== void 0) {
+      bare(state);
+    } else if (valued === void 0) {
+      return { message: `unknown flag: ${token}`, ok: false };
+    } else {
+      const taken = takeValue8(argv, index + 1, token);
+      if (!taken.ok) return taken;
+      const error51 = valued(state, taken.value);
+      if (error51 !== void 0) return { message: error51, ok: false };
+      index += 1;
+    }
+  }
+  const closeError = closeWithhold(state.pending, state.withholds);
+  if (closeError !== void 0) return { message: closeError, ok: false };
+  return validateFlagCombination(state);
+};
+var tryBuildManifestOrReport = (cwd, options) => {
+  try {
+    return buildManifest(cwd, options);
+  } catch (error51) {
+    structuredError({
+      code: "manifest_build_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release manifest"
+    });
+    return null;
+  }
+};
+var trySnapshotOrReport = (cwd, generatedAt) => {
   try {
     const repoRoot = resolveRepoRoot3(cwd);
-    const manifest = buildManifest(cwd, { generatedAt, repoRoot });
-    return { manifest, repoRoot };
+    const manifestPath = resolveManifestPath(repoRoot);
+    const excludeText = readFileSync20(resolveExcludePath(repoRoot), "utf8");
+    const expected = buildManifest(cwd, { excludeText, generatedAt, repoRoot });
+    const committed = readCommittedManifest(manifestPath);
+    if (committed.kind === "invalid") {
+      structuredError({
+        code: "manifest_parse_failed",
+        message: committed.message,
+        path: manifestPath,
+        subcommand: "release manifest"
+      });
+      return null;
+    }
+    const actual = committed.kind === "absent" ? { files: {}, generated: "", version: expected.version } : committed.manifest;
+    return {
+      excludeText,
+      expected,
+      missing: computeMissing(expected, actual),
+      repoRoot
+    };
   } catch (error51) {
     structuredError({
       code: "manifest_build_failed",
@@ -22640,6 +22918,65 @@ var tryWriteManifestOrReport = (target, serialized) => {
     return false;
   }
 };
+var tryWriteExcludeOrReport = (target, excludeText) => {
+  try {
+    atomicWriteFileSync(target, excludeText);
+    return true;
+  } catch (error51) {
+    structuredError({
+      code: "exclude_write_failed",
+      message: error51 instanceof Error ? error51.message : String(error51),
+      subcommand: "release manifest"
+    });
+    return false;
+  }
+};
+var reportSummary = (manifest, cwd, target) => {
+  const counts = {
+    owned: 0,
+    shared: 0,
+    "wiki-owned": 0
+  };
+  for (const klass of Object.values(manifest.files)) counts[klass] += 1;
+  const total = Object.keys(manifest.files).length;
+  process.stdout.write(
+    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path23.relative(cwd, target) || target}
+`
+  );
+};
+var reportAnswerErrors = (errors) => {
+  for (const error51 of errors) {
+    structuredError({
+      code: error51.code,
+      message: error51.message,
+      paths: error51.paths,
+      subcommand: "release manifest"
+    });
+  }
+};
+var applyAnswersAndEmit = (options) => {
+  const { cwd, generatedAt, snapshot, target, withholds } = options;
+  const { excludeText, expected, repoRoot } = snapshot;
+  const hasWithholds = withholds.length > 0;
+  const newExcludeText = hasWithholds ? applyWithholds(excludeText, withholds) : excludeText;
+  const manifest = hasWithholds ? tryBuildManifestOrReport(cwd, {
+    excludeText: newExcludeText,
+    generatedAt,
+    repoRoot
+  }) : expected;
+  if (manifest === null) return UNEXPECTED_EXIT12;
+  if (hasWithholds && !tryWriteExcludeOrReport(resolveExcludePath(repoRoot), newExcludeText)) {
+    return UNEXPECTED_EXIT12;
+  }
+  const serialized = serialize(manifest);
+  if (target === void 0) {
+    process.stdout.write(serialized);
+    return EXIT_CODES.OK;
+  }
+  if (!tryWriteManifestOrReport(target, serialized)) return UNEXPECTED_EXIT12;
+  reportSummary(manifest, cwd, target);
+  return EXIT_CODES.OK;
+};
 var run34 = (argv, options = {}) => {
   if (argv.length > 0 && HELP_TOKENS23.has(argv[0])) {
     process.stdout.write(HELP_TEXT23);
@@ -22655,19 +22992,21 @@ var run34 = (argv, options = {}) => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
   const cwd = options.cwd ?? process.cwd();
-  if (parsed.flags.check) {
-    return runCheck(cwd, options.generatedAt, parsed.flags.json);
+  const { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds } = parsed.flags;
+  if (check2) return runCheck(cwd, options.generatedAt, json2);
+  const snapshot = trySnapshotOrReport(cwd, options.generatedAt);
+  if (snapshot === null) return UNEXPECTED_EXIT12;
+  const errors = validateAnswers(
+    { allowUndecided, ships, withholds },
+    snapshot.missing,
+    parseExcludeCategories(snapshot.excludeText)
+  );
+  if (errors.length > 0) {
+    reportAnswerErrors(errors);
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const built = tryBuildManifestOrReport(cwd, options.generatedAt);
-  if (built === null) return UNEXPECTED_EXIT12;
-  const { manifest, repoRoot } = built;
-  const serialized = serialize(manifest);
-  if (parsed.flags.stdout) {
-    process.stdout.write(serialized);
-    return EXIT_CODES.OK;
-  }
-  const target = resolveOutputTarget(cwd, repoRoot, parsed.flags.outPath);
-  if (!existsSync21(path23.dirname(target))) {
+  const target = stdout ? void 0 : resolveOutputTarget(cwd, snapshot.repoRoot, outPath);
+  if (target !== void 0 && !existsSync21(path23.dirname(target))) {
     structuredError({
       code: "output_dir_missing",
       message: `output directory does not exist: ${path23.dirname(target)}`,
@@ -22675,19 +23014,13 @@ var run34 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (!tryWriteManifestOrReport(target, serialized)) return UNEXPECTED_EXIT12;
-  const counts = {
-    owned: 0,
-    shared: 0,
-    "wiki-owned": 0
-  };
-  for (const klass of Object.values(manifest.files)) counts[klass] += 1;
-  const total = Object.keys(manifest.files).length;
-  process.stdout.write(
-    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path23.relative(cwd, target) || target}
-`
-  );
-  return EXIT_CODES.OK;
+  return applyAnswersAndEmit({
+    cwd,
+    generatedAt: options.generatedAt,
+    snapshot,
+    target,
+    withholds
+  });
 };
 
 // src/release/preflight.ts
@@ -24115,7 +24448,9 @@ var HELP_TEXT29 = `Usage: gaia-maintainer release <subcommand> [args]
   bump [--auto]                               Conventional-commit semver bump.
   changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
   scrub-wiki [--version <X.Y.Z>] [--date <D>] Reset wiki/hot.md and wiki/log.md.
-  manifest [--out <path>] [--stdout]          Regenerate .gaia/manifest.json.
+  manifest [--ship <path>]... [--withhold <path> --category <N> --reason <text>]...
+                                              Regenerate .gaia/manifest.json. Refuses while any
+                                              newly-shipping file is unanswered; see manifest --help.
   manifest --check [--json]                   Verify committed manifest is fresh + lint classifier sets.
   scrub <staging-dir> [--config <path>] [--json]
                                               Apply bundle-time marker-strip + leak-check.
@@ -29275,12 +29610,12 @@ var takeValue14 = (argv, index, flag) => {
     return { message: `${flag} requires a value`, ok: false };
   return { ok: true, value };
 };
-var VALUE_FLAGS = {
+var VALUE_FLAGS2 = {
   "--baseline": "baseline",
   "--current": "current",
   "--latest": "latest"
 };
-var lookupValueFlag = (token) => VALUE_FLAGS[token];
+var lookupValueFlag = (token) => VALUE_FLAGS2[token];
 var parseFlags20 = (argv) => {
   const collected = {};
   let json2 = false;
@@ -29543,12 +29878,12 @@ var takeValue15 = (argv, index, flag) => {
     return { message: `${flag} requires a value`, ok: false };
   return { ok: true, value };
 };
-var VALUE_FLAGS2 = {
+var VALUE_FLAGS3 = {
   "--baseline": "baseline",
   "--current": "current",
   "--latest": "latest"
 };
-var lookupValueFlag2 = (token) => VALUE_FLAGS2[token];
+var lookupValueFlag2 = (token) => VALUE_FLAGS3[token];
 var parseFlags21 = (argv) => {
   const collected = {};
   let json2 = false;
