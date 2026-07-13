@@ -1,10 +1,10 @@
 ---
-description: 'GAIA after_clarify hook: pre-gate-2 self-review pass on the in-progress SPEC draft.'
+description: 'GAIA self-review: pre-gate-2 review pass on the in-progress SPEC draft.'
 ---
 
 # Self-review pass before gate 2
 
-Fired automatically by spec-kit on the `after_clarify` event (mandatory hook). Runs after the Socratic clarify loop and before the GAIA wrapper presents the rendered artifact for gate-2 confirmation.
+The `/gaia-spec` wrapper dispatches this directly at step 6 as a `general-purpose` Agent, after the Socratic clarify loop and before the GAIA wrapper presents the rendered artifact for gate-2 confirmation. The extension also declares it on spec-kit's `after_clarify` event, so a bare `/speckit-clarify` invocation fires it too.
 
 ## Inputs
 
@@ -79,7 +79,7 @@ self-review findings (gate 2 gate):
 
 If every section is clean:
 
-> `after_clarify` self-review clean: ready for gate 2.
+> Self-review clean: ready for gate 2.
 
 ## Notes
 
