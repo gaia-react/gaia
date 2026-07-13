@@ -135,7 +135,42 @@ if command -v specify > /dev/null 2>&1; then
 fi
 
 if [ -z "$installed" ] && command -v uvx > /dev/null 2>&1; then
+  # This is the one route that touches the network, and it runs inside the check
+  # gating the `before_specify` hook, so an unbounded call stalls /gaia-spec when
+  # a transfer hangs. Bound it without `timeout(1)`, which macOS does not ship,
+  # by setting both sides' own knobs:
+  #
+  #   - UV_HTTP_TIMEOUT bounds uv's HTTP reads (interpreter and PyPI downloads).
+  #   - GIT_HTTP_LOW_SPEED_* bounds the `git+https://` fetch, which uv performs
+  #     by shelling out to the system git, out of reach of uv's HTTP timeout.
+  #     git aborts a transfer that stays under LIMIT bytes/sec for TIME seconds.
+  #
+  # Neither is a hard wall-clock cap on the whole invocation: git's low-speed
+  # timer only starts once curl has connected, so a hung DNS resolve is still
+  # bounded by the OS resolver alone. Together they cap the stalled-transfer
+  # cases that actually strand this call. Operator-set values win.
+  export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-30}"
+  export GIT_HTTP_LOW_SPEED_LIMIT="${GIT_HTTP_LOW_SPEED_LIMIT:-1000}"
+  export GIT_HTTP_LOW_SPEED_TIME="${GIT_HTTP_LOW_SPEED_TIME:-30}"
+
   installed="$(uvx --from "$speckit_ref" specify --version 2>/dev/null | head -n 1 | awk '{print $NF}' | tr -d '[:space:]' || true)"
+
+  # Same second chance the PATH route takes above: a pinned spec-kit exposing
+  # only the bare `version` subcommand must resolve here too, not just for the
+  # rarer PATH-resident user.
+  #
+  # Exactly two paths reach here, and the tight bound is what keeps them apart.
+  # Either the ref fetched and the CLI rejected `--version` (the case this
+  # exists for: the ref is now warm, so this run needs no real transfer and
+  # returns in well under a second), or the fetch itself failed, in which case
+  # this run cannot succeed either and must not re-pay the stall the call above
+  # already paid. `uvx --offline` cannot make that distinction for us: uv
+  # re-contacts the remote to update a git ref even when it is cached, so
+  # `--offline` fails on a warm ref too and would make this branch dead code.
+  if [ -z "$installed" ]; then
+    installed="$(UV_HTTP_TIMEOUT=5 GIT_HTTP_LOW_SPEED_TIME=5 \
+      uvx --from "$speckit_ref" specify version 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  fi
 fi
 
 if [ -z "$installed" ]; then

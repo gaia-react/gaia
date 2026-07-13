@@ -48,6 +48,35 @@ EOF
   chmod +x "$BIN/$name"
 }
 
+# stub_uvx_env <exit-code> <stdout-line>: a uvx stub that logs the network
+# bounding env vars it was invoked with, so a test can assert the fetch is
+# bounded rather than merely that uvx ran.
+stub_uvx_env() {
+  cat > "$BIN/uvx" <<EOF
+#!/usr/bin/env bash
+echo "uvx \$*" >> "$CALLS"
+echo "env UV_HTTP_TIMEOUT=\${UV_HTTP_TIMEOUT:-unset} GIT_HTTP_LOW_SPEED_LIMIT=\${GIT_HTTP_LOW_SPEED_LIMIT:-unset} GIT_HTTP_LOW_SPEED_TIME=\${GIT_HTTP_LOW_SPEED_TIME:-unset}" >> "$CALLS"
+[ -n "$2" ] && echo "$2"
+exit $1
+EOF
+  chmod +x "$BIN/uvx"
+}
+
+# stub_uvx_no_dash_version <stdout-line>: a uvx whose `specify --version` yields
+# nothing and whose `specify version` prints the version, the shape of a future
+# spec-kit that exposes only the bare `version` subcommand.
+stub_uvx_no_dash_version() {
+  cat > "$BIN/uvx" <<EOF
+#!/usr/bin/env bash
+echo "uvx \$*" >> "$CALLS"
+for a in "\$@"; do
+  [ "\$a" = "--version" ] && exit 1
+done
+echo "$1"
+EOF
+  chmod +x "$BIN/uvx"
+}
+
 # no_stub <name>: guarantee <name> is absent from PATH for this test. A real
 # `uvx` (or `specify`) may live further down a developer's PATH, so drop the
 # stub and rebuild PATH from only the dirs that do not hold <name>.
@@ -109,6 +138,54 @@ run_check() { run bash "$SCRIPT" "$ROOT"; }
   run_check
   [ "$status" -eq 0 ]
   grep -qF -- "--from git+https://github.com/github/spec-kit.git@v0.8.5 specify --version" "$CALLS"
+}
+
+# The uvx route is the only one that touches the network, and it sits inside the
+# version check gating the before_specify hook. uv shells out to the system git
+# for a `git+https://` ref, so uv's own HTTP timeout does not reach that fetch:
+# both halves need bounding or a degraded network stalls /gaia-spec.
+@test "uvx fallback bounds uv's HTTP reads and git's fetch" {
+  no_stub specify
+  stub_uvx_env 0 "specify 0.8.5"
+  run_check
+  [ "$status" -eq 0 ]
+  # Every bound is a number, never `unset`. Asserted by shape, not by value, so
+  # retuning a default does not break the test that guards the fetch is bounded.
+  grep -qE "UV_HTTP_TIMEOUT=[0-9]+ GIT_HTTP_LOW_SPEED_LIMIT=[0-9]+ GIT_HTTP_LOW_SPEED_TIME=[0-9]+" "$CALLS"
+}
+
+# A failed fetch reaches the `specify version` second chance too, since both a
+# missing `--version` and an unfetchable ref leave the version empty. The retry
+# must fail fast there rather than re-paying the stall the first call already
+# paid, or the worst-case bound in the before_specify gate doubles.
+@test "uvx fallback bounds the retry tightly so a failed fetch is not paid twice" {
+  no_stub specify
+  stub_uvx_env 1 ""
+  run_check
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '^uvx ' "$CALLS")" -eq 2 ]
+  grep -qF "env UV_HTTP_TIMEOUT=5 GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=5" "$CALLS"
+}
+
+@test "uvx fallback honors an operator-set UV_HTTP_TIMEOUT" {
+  no_stub specify
+  stub_uvx_env 0 "specify 0.8.5"
+  UV_HTTP_TIMEOUT=90 run_check
+  [ "$status" -eq 0 ]
+  grep -qF "UV_HTTP_TIMEOUT=90" "$CALLS"
+}
+
+# Mirrors the PATH route's second chance: a future pinned spec-kit exposing only
+# `specify version` must not resolve for a PATH-resident user while leaving the
+# far more common uvx user at <unresolved> and blocked.
+@test "uvx fallback second-chances a bare 'specify version'" {
+  no_stub specify
+  stub_uvx_no_dash_version "0.8.5"
+  run_check
+  [ "$status" -eq 0 ]
+  grep -qF "Installed: <unresolved>" <<<"$output" && return 1
+  grep -qF -- "specify version" "$CALLS"
+  grep -qF '"installed":"0.8.5"' "$CACHE"
 }
 
 @test "uvx fallback still detects drift below the pin floor" {
