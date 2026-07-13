@@ -221,6 +221,8 @@ else
   DURATION=0
 fi
 # The ceiling in force for this session: 10 interactive, 5 in auto mode.
+# Substitute the literal string "true" on an auto-mode run, "false" otherwise.
+AUTO_MODE="<true on an auto-mode run, false otherwise>"
 if [[ "$AUTO_MODE" == "true" ]]; then
   Q_CEILING=5
   AUTO_FLAG=(--auto true)
@@ -928,7 +930,15 @@ if [[ -z "$AREA_TAGS" ]]; then
   AREA_TAGS="spec"
 fi
 # The ceiling in force for this session: 10 interactive, 5 in auto mode.
-Q_CEILING=10
+# Substitute the literal string "true" on an auto-mode run, "false" otherwise.
+AUTO_MODE="<true on an auto-mode run, false otherwise>"
+if [[ "$AUTO_MODE" == "true" ]]; then
+  Q_CEILING=5
+  AUTO_FLAG=(--auto true)
+else
+  Q_CEILING=10
+  AUTO_FLAG=()
+fi
 .gaia/cli/gaia telemetry emit time_to_resolved_spec \
   --spec-id "$SPEC_ID" \
   --question-count "$Q_COUNT" \
@@ -936,11 +946,12 @@ Q_CEILING=10
   --duration-seconds "$DURATION" \
   --area-tags "$AREA_TAGS" \
   --abandoned false \
+  "${AUTO_FLAG[@]}" \
   --agent-type human || true
 rm -f "$CACHE"
 ```
 
-**Auto-mode:** append `--auto true` to the emit above (keep `--agent-type human`) and set `Q_CEILING=5`, the auto ceiling. Never substitute `--agent-type auto`: the CLI rejects it (`arg_parse_error`) and the `|| true` guard would silently drop the emit. See Auto-mode rule 12.
+**Auto-mode:** the block above carries auto mode itself, through the `AUTO_MODE` substitution. It sets `Q_CEILING=5` and appends `--auto true` on an auto run, and keeps `--agent-type human` in both modes. Never substitute `--agent-type auto`: the CLI rejects it (`arg_parse_error`) and the `|| true` guard would silently drop the emit. See Auto-mode rule 12.
 
 The emit is the strongest signal for the intent-clarity-gap pattern; the `|| true` guard ensures emit failures never block the save. The cache file is deleted unconditionally after the emit attempt so a re-saved SPEC starts a fresh session window.
 

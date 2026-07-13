@@ -258,7 +258,7 @@ describe('schemas/mentorship-payloads', () => {
           area_tags: ['visual'],
           duration_seconds: 1850,
           question_ceiling: 10,
-          question_count: 12,
+          question_count: 8,
           spec_id: 'SPEC-014',
         })
       ).not.toThrow();

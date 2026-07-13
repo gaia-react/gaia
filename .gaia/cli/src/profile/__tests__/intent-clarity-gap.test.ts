@@ -1,5 +1,10 @@
-import {describe, expect, test} from 'vitest';
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {resolveStorageRoots} from '../../storage/paths.js';
 import {detectIntentClarityGap} from '../patterns/intent-clarity-gap.js';
+import {readMentorshipEvents} from '../reader.js';
 import type {MentorshipEvent} from '../reader.js';
 
 const buildSpecAmended = (specId: string, index: number): MentorshipEvent => ({
@@ -18,31 +23,29 @@ const buildSpecAmended = (specId: string, index: number): MentorshipEvent => ({
   timestamp: '2026-05-07T12:00:00.000Z',
 });
 
-type TimeToResolvedOptions = {
+type TimeToResolvedArgs = {
+  area: string;
   auto?: boolean;
+  index: number;
   questionCeiling?: number;
+  questionCount: number;
+  specId: string;
 };
 
-const buildTimeToResolved = (
-  specId: string,
-  area: string,
-  questionCount: number,
-  index: number,
-  options: TimeToResolvedOptions = {}
-): MentorshipEvent => ({
+const buildTimeToResolved = (args: TimeToResolvedArgs): MentorshipEvent => ({
   agent_type: 'human',
-  event_id: `01HZZZT${index.toString().padStart(19, '0')}`,
+  event_id: `01HZZZT${args.index.toString().padStart(19, '0')}`,
   event_type: 'time_to_resolved_spec',
   payload: {
     abandoned: false,
-    area_tags: [area],
-    ...(options.auto === undefined ? {} : {auto: options.auto}),
+    area_tags: [args.area],
+    ...(args.auto === undefined ? {} : {auto: args.auto}),
     duration_seconds: 1850,
-    ...(options.questionCeiling === undefined ?
+    ...(args.questionCeiling === undefined ?
       {}
-    : {question_ceiling: options.questionCeiling}),
-    question_count: questionCount,
-    spec_id: specId,
+    : {question_ceiling: args.questionCeiling}),
+    question_count: args.questionCount,
+    spec_id: args.specId,
   },
   project_id: 'a'.repeat(32),
   schema_version: 1,
@@ -55,12 +58,12 @@ const buildVisualBaseline = (): MentorshipEvent[] => {
 
   for (let index = 0; index < 10; index += 1) {
     events.push(
-      buildTimeToResolved(
-        `SPEC-${index.toString().padStart(3, '0')}`,
-        'visual',
-        2,
-        index
-      )
+      buildTimeToResolved({
+        area: 'visual',
+        index,
+        questionCount: 2,
+        specId: `SPEC-${index.toString().padStart(3, '0')}`,
+      })
     );
   }
 
@@ -80,13 +83,13 @@ const buildCeilingFiveCorpus = (): MentorshipEvent[] => {
 
   for (let index = 0; index < 10; index += 1) {
     events.push(
-      buildTimeToResolved(
-        `SPEC-${index.toString().padStart(3, '0')}`,
-        'visual',
-        4,
+      buildTimeToResolved({
+        area: 'visual',
         index,
-        {questionCeiling: 5}
-      )
+        questionCeiling: 5,
+        questionCount: 4,
+        specId: `SPEC-${index.toString().padStart(3, '0')}`,
+      })
     );
   }
 
@@ -97,8 +100,18 @@ describe('detectIntentClarityGap (unit)', () => {
   test('returns strength=null when total spec_amended + ttr count < 10', () => {
     const events: MentorshipEvent[] = [
       buildSpecAmended('SPEC-001', 1),
-      buildTimeToResolved('SPEC-001', 'visual', 8, 1),
-      buildTimeToResolved('SPEC-002', 'visual', 6, 2),
+      buildTimeToResolved({
+        area: 'visual',
+        index: 1,
+        questionCount: 8,
+        specId: 'SPEC-001',
+      }),
+      buildTimeToResolved({
+        area: 'visual',
+        index: 2,
+        questionCount: 6,
+        specId: 'SPEC-002',
+      }),
     ];
     const results = detectIntentClarityGap({events, windowDays: 30});
     const visual = results.find((entry) => entry.area_tag === 'visual');
@@ -113,7 +126,14 @@ describe('detectIntentClarityGap (unit)', () => {
     // Build 10 SPECs in `visual` with high question counts; amend 4 of them.
     for (let index = 0; index < 10; index += 1) {
       const specId = `SPEC-${index.toString().padStart(3, '0')}`;
-      events.push(buildTimeToResolved(specId, 'visual', 18, index));
+      events.push(
+        buildTimeToResolved({
+          area: 'visual',
+          index,
+          questionCount: 18,
+          specId,
+        })
+      );
     }
 
     for (let index = 0; index < 4; index += 1) {
@@ -138,7 +158,14 @@ describe('detectIntentClarityGap (unit)', () => {
     for (let index = 0; index < 10; index += 1) {
       const specId = `SPEC-${index.toString().padStart(3, '0')}`;
       // Low question count (3) and 0 amendments → near-zero strength.
-      events.push(buildTimeToResolved(specId, 'react', 3, index));
+      events.push(
+        buildTimeToResolved({
+          area: 'react',
+          index,
+          questionCount: 3,
+          specId,
+        })
+      );
     }
     const results = detectIntentClarityGap({events, windowDays: 30});
     const react = results.find((entry) => entry.area_tag === 'react');
@@ -169,12 +196,12 @@ describe('detectIntentClarityGap (unit)', () => {
     // 10 closed specs in `visual`.
     for (let index = 0; index < 10; index += 1) {
       events.push(
-        buildTimeToResolved(
-          `SPEC-${index.toString().padStart(3, '0')}`,
-          'visual',
-          5,
-          index
-        )
+        buildTimeToResolved({
+          area: 'visual',
+          index,
+          questionCount: 5,
+          specId: `SPEC-${index.toString().padStart(3, '0')}`,
+        })
       );
     }
 
@@ -202,7 +229,12 @@ describe('detectIntentClarityGap (unit)', () => {
     for (let index = 0; index < 10; index += 1) {
       const specId = `SPEC-${index.toString().padStart(3, '0')}`;
       events.push(
-        buildTimeToResolved(specId, 'visual', 5, index),
+        buildTimeToResolved({
+          area: 'visual',
+          index,
+          questionCount: 5,
+          specId,
+        }),
         buildSpecAmended(specId, 100 + index)
       );
     }
@@ -221,7 +253,12 @@ describe('detectIntentClarityGap (unit)', () => {
     // closed-spec denominator is 1, so the raw ratio is 2/1 = 2. The
     // `amended_rate` component value must be clamped to 1.
     const events: MentorshipEvent[] = [
-      buildTimeToResolved('SPEC-000', 'visual', 5, 0),
+      buildTimeToResolved({
+        area: 'visual',
+        index: 0,
+        questionCount: 5,
+        specId: 'SPEC-000',
+      }),
       buildSpecAmended('SPEC-000', 100),
       buildSpecAmended('SPEC-000', 101),
     ];
@@ -236,17 +273,22 @@ describe('detectIntentClarityGap (unit)', () => {
   });
 
   test('rejects negative, NaN, and Infinity question_count values', () => {
-    const negative = buildTimeToResolved('SPEC-NEG', 'visual', -5, 1);
+    const negative = buildTimeToResolved({
+      area: 'visual',
+      index: 1,
+      questionCount: -5,
+      specId: 'SPEC-NEG',
+    });
     const events: MentorshipEvent[] = [negative];
 
     for (let index = 0; index < 9; index += 1) {
       events.push(
-        buildTimeToResolved(
-          `SPEC-${index.toString().padStart(3, '0')}`,
-          'visual',
-          0,
-          index
-        )
+        buildTimeToResolved({
+          area: 'visual',
+          index,
+          questionCount: 0,
+          specId: `SPEC-${index.toString().padStart(3, '0')}`,
+        })
       );
     }
     (negative.payload as Record<string, unknown>).question_count = Number.NaN;
@@ -271,7 +313,13 @@ describe('detectIntentClarityGap (unit)', () => {
 
       const withAuto = [
         ...buildVisualBaseline(),
-        buildTimeToResolved('SPEC-AUTO', 'visual', 40, 100, {auto: true}),
+        buildTimeToResolved({
+          area: 'visual',
+          auto: true,
+          index: 100,
+          questionCount: 40,
+          specId: 'SPEC-AUTO',
+        }),
       ];
       const afterResults = detectIntentClarityGap({
         events: withAuto,
@@ -293,7 +341,13 @@ describe('detectIntentClarityGap (unit)', () => {
 
       const withAuto = [
         ...buildVisualBaseline(),
-        buildTimeToResolved('SPEC-AUTO', 'visual', 40, 100, {auto: true}),
+        buildTimeToResolved({
+          area: 'visual',
+          auto: true,
+          index: 100,
+          questionCount: 40,
+          specId: 'SPEC-AUTO',
+        }),
       ];
       const afterResults = detectIntentClarityGap({
         events: withAuto,
@@ -317,7 +371,13 @@ describe('detectIntentClarityGap (unit)', () => {
 
       const withAuto = [
         ...buildVisualBaseline(),
-        buildTimeToResolved('SPEC-AUTO', 'visual', 40, 100, {auto: true}),
+        buildTimeToResolved({
+          area: 'visual',
+          auto: true,
+          index: 100,
+          questionCount: 40,
+          specId: 'SPEC-AUTO',
+        }),
       ];
       const afterResults = detectIntentClarityGap({
         events: withAuto,
@@ -339,7 +399,13 @@ describe('detectIntentClarityGap (unit)', () => {
 
       const withAutoAmendment = [
         ...buildVisualBaseline(),
-        buildTimeToResolved('SPEC-900', 'visual', 40, 200, {auto: true}),
+        buildTimeToResolved({
+          area: 'visual',
+          auto: true,
+          index: 200,
+          questionCount: 40,
+          specId: 'SPEC-900',
+        }),
         buildSpecAmended('SPEC-900', 300),
       ];
       const results = detectIntentClarityGap({
@@ -376,8 +442,12 @@ describe('detectIntentClarityGap (unit)', () => {
       for (let index = 0; index < 10; index += 1) {
         const specId = `SPEC-A${index.toString().padStart(3, '0')}`;
         setA.push(
-          buildTimeToResolved(specId, 'visual', 4, index, {
+          buildTimeToResolved({
+            area: 'visual',
+            index,
             questionCeiling: 5,
+            questionCount: 4,
+            specId,
           })
         );
       }
@@ -385,8 +455,12 @@ describe('detectIntentClarityGap (unit)', () => {
       for (let index = 0; index < 10; index += 1) {
         const specId = `SPEC-B${index.toString().padStart(3, '0')}`;
         setB.push(
-          buildTimeToResolved(specId, 'visual', 8, index, {
+          buildTimeToResolved({
+            area: 'visual',
+            index,
             questionCeiling: 10,
+            questionCount: 8,
+            specId,
           })
         );
       }
@@ -410,21 +484,21 @@ describe('detectIntentClarityGap (unit)', () => {
 
       for (let index = 0; index < 10; index += 1) {
         noCeiling.push(
-          buildTimeToResolved(
-            `SPEC-N${index.toString().padStart(3, '0')}`,
-            'visual',
-            4,
-            index
-          )
+          buildTimeToResolved({
+            area: 'visual',
+            index,
+            questionCount: 4,
+            specId: `SPEC-N${index.toString().padStart(3, '0')}`,
+          })
         );
         explicitFive.push(
-          buildTimeToResolved(
-            `SPEC-F${index.toString().padStart(3, '0')}`,
-            'visual',
-            4,
+          buildTimeToResolved({
+            area: 'visual',
             index,
-            {questionCeiling: 5}
-          )
+            questionCeiling: 5,
+            questionCount: 4,
+            specId: `SPEC-F${index.toString().padStart(3, '0')}`,
+          })
         );
       }
 
@@ -467,5 +541,59 @@ describe('detectIntentClarityGap (unit)', () => {
         expect(visual?.strength).toBe(baselineVisual?.strength);
       }
     });
+  });
+});
+
+describe('question_ceiling survives the reader', () => {
+  let homeDirectory = '';
+  let repoRoot = '';
+
+  beforeEach(() => {
+    repoRoot = mkdtempSync(path.join(tmpdir(), 'gaia-ceiling-repo-'));
+    homeDirectory = mkdtempSync(path.join(tmpdir(), 'gaia-ceiling-home-'));
+  });
+
+  afterEach(() => {
+    rmSync(repoRoot, {force: true, recursive: true});
+    rmSync(homeDirectory, {force: true, recursive: true});
+  });
+
+  // The payload schema is a strip-mode z.object, so a question_ceiling that is
+  // not declared on it is silently dropped on read and the pattern falls back
+  // to the baseline ceiling. Every other test in this file constructs events
+  // in memory and never crosses that boundary, so without this one the field
+  // could stop being carried and the suite would stay green.
+  test('a row read off disk still carries question_ceiling', async () => {
+    const roots = resolveStorageRoots({homeDir: homeDirectory, repoRoot});
+    const now = new Date('2026-05-07T12:00:00.000Z');
+    const date = now.toISOString().slice(0, 10);
+
+    mkdirSync(roots.mentorshipDir, {recursive: true});
+    writeFileSync(
+      path.join(roots.mentorshipDir, `events-${date}.jsonl`),
+      `${JSON.stringify({
+        agent_type: 'human',
+        event_id: `01HZZZT${'0'.repeat(19)}`,
+        event_type: 'time_to_resolved_spec',
+        payload: {
+          abandoned: false,
+          area_tags: ['visual'],
+          duration_seconds: 1850,
+          question_ceiling: 10,
+          question_count: 8,
+          spec_id: 'SPEC-777',
+        },
+        project_id: 'a'.repeat(32),
+        schema_version: 1,
+        session_hash: 'b'.repeat(32),
+        timestamp: '2026-05-07T12:00:00.000Z',
+      })}\n`,
+      'utf8'
+    );
+
+    const events = await readMentorshipEvents({now, roots, windowDays: 1});
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload).toHaveProperty('question_ceiling', 10);
   });
 });

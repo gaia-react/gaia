@@ -264,14 +264,14 @@ const buildAreaResult = (area: string, stats: AreaStats): PatternResult => {
   const amendedRate =
     closedSpecs === 0 ? 0 : Math.min(1, stats.amendedCount / closedSpecs);
   const avgQ = mean(stats.questionCounts);
-  const avgNormalizedQ = mean(stats.normalizedQuestionCounts);
+  const averageNormalizedQuestions = mean(stats.normalizedQuestionCounts);
   const fires = sample >= MIN_SAMPLE_COUNT;
   const strength =
     fires ?
       Math.min(
         1,
         (amendedRate / AMENDED_RATE_TARGET) * 0.6 +
-          (avgNormalizedQ / QUESTION_COUNT_TARGET) * 0.4
+          (averageNormalizedQuestions / QUESTION_COUNT_TARGET) * 0.4
       )
     : null;
   const components = [
@@ -279,7 +279,10 @@ const buildAreaResult = (area: string, stats: AreaStats): PatternResult => {
     {metric: 'ttr_count', value: stats.ttrCount},
     {metric: 'amended_rate', value: amendedRate},
     {metric: 'avg_question_count', value: avgQ},
-    {metric: 'avg_normalized_question_count', value: avgNormalizedQ},
+    {
+      metric: 'avg_normalized_question_count',
+      value: averageNormalizedQuestions,
+    },
     ...(fires ?
       [{metric: 'strength_threshold', value: STRENGTH_THRESHOLD}]
     : []),
