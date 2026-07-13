@@ -628,6 +628,10 @@ jobs:
            steps.push-fixes.outputs.pushed == 'true')
         env:
           AUDIT_SHA: ${{ steps.push-fixes.outputs.audit_sha }}
+          # The FULL-PR base, not steps.base.outputs.base (the incremental audit
+          # base). Membership is a function of the whole PR diff; see
+          # .github/audit/gate-pending-members.sh "Full-PR scope".
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
           # Write a GAIA-Audit commit status on the SHA that already carries
@@ -639,6 +643,33 @@ jobs:
             echo "code-review-audit: no audit_sha to stamp; skipping status." >&2
             exit 0
           fi
+
+          # Member-aware gate: never stamp success on the frontend's clearance
+          # alone. .github/audit/gate-pending-members.sh carries the full
+          # rationale (CI runs one auditor; every co-dispatched member clears
+          # locally) and fails open, loudly, on an unusable resolver.
+          #
+          # Gate on the member SET, never on marker files keyed to $AUDIT_SHA: on
+          # this path the agent's marker is named for the trailer/self-heal HEAD,
+          # which is deliberately NOT $AUDIT_SHA (the marker commit is dropped,
+          # or HEAD~1 is stamped), so a marker-file lookup here would
+          # false-negative and block every clean self-heal.
+          pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
+          if [ -n "$pending" ]; then
+            echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
+            # GitHub caps a status description at 140 chars; truncate so a large
+            # roster cannot 422 the POST. Non-fatal either way: if this POST
+            # fails no status lands, the required check stays unfulfilled, and
+            # the button stays shut. Fail-safe in every direction.
+            desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${AUDIT_SHA}" \
+              --method POST \
+              --field state=pending \
+              --field context=GAIA-Audit \
+              --field description="${desc}" || true
+            exit 0
+          fi
+
           version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
           version="${version#"${version%%[![:space:]]*}"}"
           version="${version%"${version##*[![:space:]]}"}"
@@ -671,6 +702,10 @@ jobs:
           # during the run (an empty trailer marker, or a refused self-heal), and
           # POSTing a status to a sha GitHub does not have returns HTTP 422.
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The FULL-PR base, not steps.base.outputs.base (the incremental audit
+          # base). Membership is a function of the whole PR diff; see
+          # .github/audit/gate-pending-members.sh "Full-PR scope".
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
           # Genuinely-clean-but-no-commit path. A clean audit that makes no
@@ -718,6 +753,31 @@ jobs:
             echo "code-review-audit: clean marker ${marker} absent; audit not proven clean, not stamping." >&2
             exit 0
           fi
+
+          # Member-aware gate. The marker above proves only the FRONTEND member is
+          # clean -- it is code-audit-frontend's own marker, and CI runs no other
+          # auditor. .github/audit/gate-pending-members.sh names every
+          # co-dispatched member CI cannot clear; each clears locally instead.
+          #
+          # The pending description deliberately carries NO "<version> <tree-sha>"
+          # cleared shape, so even a state-blind reader cannot mistake it for
+          # cleared (same defense-in-depth as the local-mode stand-down).
+          pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
+          if [ -n "$pending" ]; then
+            echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
+            # GitHub caps a status description at 140 chars; truncate so a large
+            # roster cannot 422 the POST. Non-fatal either way: if this POST
+            # fails no status lands, the required check stays unfulfilled, and
+            # the button stays shut. Fail-safe in every direction.
+            desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+              --method POST \
+              --field state=pending \
+              --field context=GAIA-Audit \
+              --field description="${desc}" || true
+            exit 0
+          fi
+
           version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
           version="${version#"${version%%[![:space:]]*}"}"
           version="${version%"${version##*[![:space:]]}"}"
@@ -769,10 +829,16 @@ jobs:
             --field description="local-mode stand-down: audit pending"
 
       - name: Write GAIA-Audit commit status (out-of-scope skip)
+        id: oos-status
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.chore-deps.outputs.skip == 'false' &&
           steps.source-changes.outputs.has_source == 'false'
+        env:
+          # The FULL-PR base, not steps.base.outputs.base (the incremental audit
+          # base). Membership is a function of the whole PR diff; see
+          # .github/audit/gate-pending-members.sh "Full-PR scope".
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
           # Out-of-scope skip path: the un-audited delta touches no
@@ -786,6 +852,37 @@ jobs:
           # auto-stamps. The description carries HEAD's tree (the merge hook
           # checks tree equality against the content being merged), not a
           # base/audit-sha tree.
+
+          # Member-aware gate. "Out of scope" here means out of scope for the
+          # FRONTEND member: has_source mirrors that member's auditable-base set
+          # exactly. A SPECIALIZED member's globs sit outside that set, so a diff
+          # touching only, say, framework CLI source or framework bash yields
+          # has_source == 'false' while the resolver still dispatches a member
+          # that owns every changed file. Stamping success here would clear the
+          # required check -- and the github.com merge button -- for a diff a
+          # required auditor never read, which is the same AND-aggregator bypass
+          # the two stamp paths above close. Any dispatched member means this is
+          # NOT a free skip: post `pending` and let the local, member-aware
+          # producer clear it once every marker exists.
+          head_sha="$(git rev-parse HEAD)"
+          pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
+          # Publish the gate result so the terminal comment step reports the
+          # truth. Without this the author is told "the merge gate is satisfied
+          # with no local audit run" while the status is `pending` and the button
+          # is shut, which is the same class of misleading green the workflow
+          # already guards against elsewhere.
+          echo "members_pending=${pending}" >> "$GITHUB_OUTPUT"
+          if [ -n "$pending" ]; then
+            echo "code-review-audit: out-of-scope for the frontend member, but members pending ${pending}; posting pending, not success." >&2
+            desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              --method POST \
+              --field state=pending \
+              --field context=GAIA-Audit \
+              --field description="${desc}" || true
+            exit 0
+          fi
+
           version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
           version="${version#"${version%%[![:space:]]*}"}"
           version="${version%"${version##*[![:space:]]}"}"
@@ -793,7 +890,6 @@ jobs:
             echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
             exit 0
           fi
-          head_sha="$(git rev-parse HEAD)"
           tree_sha="$(git rev-parse "HEAD^{tree}")"
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
             --method POST \
@@ -1024,8 +1120,21 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'false'
+        env:
+          MEMBERS_PENDING: ${{ steps.oos-status.outputs.members_pending }}
         run: |
           set -eu
+          # "No source changes" is frontend-relative: has_source mirrors that
+          # member's auditable-base set. When a SPECIALIZED member still owns a
+          # changed file, the status step above posted `pending`, not `success`,
+          # so the merge gate is NOT satisfied and a local audit IS required.
+          # Report that instead of the free-skip message, which would otherwise
+          # tell the author the button is open while it is shut.
+          if [ -n "${MEMBERS_PENDING:-}" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+            exit 0
+          fi
           bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
             "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit); GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied with no local audit run"
 

@@ -214,6 +214,7 @@
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-merge.sh": "owned",
     ".github/actions/gaia-ci-stale-pr-skip/action.yml": "owned",
     ".github/audit/check-trailer.sh": "owned",
+    ".github/audit/gate-pending-members.sh": "owned",
     ".github/audit/resolve-audit-base.sh": "owned",
     ".github/audit/resolve-check-base.sh": "owned",
     ".github/FUNDING.yml": "shared",
@@ -589,6 +590,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-13T12:37:28.707Z",
+  "generated": "2026-07-13T14:35:37.544Z",
   "version": "1.6.1"
 }
