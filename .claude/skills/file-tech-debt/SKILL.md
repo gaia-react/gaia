@@ -41,15 +41,19 @@ If step 2 found a matching open issue, or a declined-closed one, stop, do not fi
 If no match exists:
 
 1. Create the labels idempotently first (step 6), a pre-existing label is not an error.
-2. Build the full issue body (step 5) in a gitignored body-file, not inline (for example `.gaia/local/audit/issue-body.md`).
+2. Build the full issue body (step 5) in a gitignored body-file, not inline. Give the file a per-run-unique name under `.gaia/local/audit/` (for example `.gaia/local/audit/issue-body-<something-unique>.md`). The name must be unique because step 4 deletes it: two runs sharing one fixed name (CI plus a local run, the same pair step 3 guards against) would race, and one run's cleanup would delete the other's in-flight body out from under it.
 3. Re-check the dedup query from step 2 immediately before creating, this shrinks the race window where a concurrent run (CI plus a local run, for instance) files the same finding twice. Prefer a search-or-update path over a blind create when your environment supports it.
-4. Create the issue with:
+4. Create the issue, then delete the body file:
 
 ```bash
-gh issue create --label tech-debt --label severity:<tier> --body-file <path>
+body_file=.gaia/local/audit/issue-body-<something-unique>.md
+gh issue create --label tech-debt --label severity:<tier> --body-file "$body_file"
+rm -f "$body_file"
 ```
 
 **Never** pass `--body <argv>` here. CI runs this command with `--verbose`, and `--verbose` echoes argv into the public Actions log, so an inline `--body` string leaks the finding (and anything sensitive quoted inside it) into a public log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
+
+The body-file is scratch, and this recipe is its only owner: nothing else reaps it, so a file left behind is permanent litter in the adopter's working tree. **Delete it unconditionally**, whether the create succeeded or failed, which is why the `rm -f` above is its own statement and not `&&`-chained onto the create. The body is fully reconstructible from step 5, so there is nothing worth keeping on a failed create, and `rm -f` cannot mask that failure: `gh`'s own output and exit status are what you report.
 
 ## 5. Issue body schema
 
