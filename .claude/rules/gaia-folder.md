@@ -18,3 +18,7 @@ Exception: `.gaia/local/` holds your specs, plans, handoffs, and other GAIA work
 ## Never register app files in the manifest
 
 `.gaia/manifest.json` is release-generated and lists only files GAIA ships. Feature work never adds to it; a path absent from the manifest is adopter-owned and invisible to `/update-gaia`, and its absence is not drift. A polluted manifest misleads the tools that read it — the `/gaia-fitness` drift check flags an adopter's own files as drift, and forensics capture ingests wrong data. The only legitimate writers are the release CLI, `/update-gaia`, `/remove-i18n`, and the `/gaia-fitness` `manifest` Fixer (the Bash writers use the `GAIA_MANIFEST_WRITE=` guard marker). See `wiki/concepts/Update Workflow.md`.
+
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: `/distribution-audit` is a fifth legitimate writer. It drives the release CLI's manifest regeneration after every newly-shipping file has an explicit ship-or-withhold answer, so the write is the CLI's, not the command's. It never hand-edits the manifest or the distribution boundary.
+<!-- gaia:maintainer-only:end -->

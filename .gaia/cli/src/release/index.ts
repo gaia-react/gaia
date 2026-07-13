@@ -25,7 +25,9 @@ const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
   bump [--auto]                               Conventional-commit semver bump.
   changelog [--draft] [--version <X.Y.Z>]     Render / graduate the CHANGELOG block.
   scrub-wiki [--version <X.Y.Z>] [--date <D>] Reset wiki/hot.md and wiki/log.md.
-  manifest [--out <path>] [--stdout]          Regenerate .gaia/manifest.json.
+  manifest [--ship <path>]... [--withhold <path> --category <N> --reason <text>]...
+                                              Regenerate .gaia/manifest.json. Refuses while any
+                                              newly-shipping file is unanswered; see manifest --help.
   manifest --check [--json]                   Verify committed manifest is fresh + lint classifier sets.
   scrub <staging-dir> [--config <path>] [--json]
                                               Apply bundle-time marker-strip + leak-check.

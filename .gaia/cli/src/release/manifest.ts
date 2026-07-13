@@ -29,30 +29,57 @@ import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {
+  applyWithholds,
+  parseExcludeCategories,
+  validateAnswers,
+} from './manifest-answers.js';
+import type {AnswerError, WithholdAnswer} from './manifest-answers.js';
 import {SCAN_GLOBS} from './scan-globs.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>] [--stdout]
+                                       [--ship <path>]...
+                                       [--withhold <path> --category <N> --reason <text>]...
+                                       [--allow-undecided]
        gaia-maintainer release manifest --check [--json]
 
   Regenerate .gaia/manifest.json. Walks git ls-files, subtracts
   release-exclude patterns and adopter-owned sentinels, classifies the
   remainder, and writes a sorted JSON manifest.
 
+  Refuses, in every output mode, to produce a manifest while any file that
+  would newly ship lacks an explicit answer. Answer each one with --ship or
+  --withhold, or waive the accounting with --allow-undecided.
+
   Flags:
-    --out <path>   Override output path (default: .gaia/manifest.json).
-    --stdout       Print manifest JSON to stdout instead of writing the file.
-    --check        Verify the committed manifest matches what the
-                   classifier would produce against the current source,
-                   lint classifier sets against release-exclude for
-                   dead-code overlap, and lint every owned .sh-bearing
-                   directory against the scrub maintainer-paths scope and
-                   runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
-                   overlap, or a scan-scope gap.
-    --json         (with --check) Emit a structured JSON drift report.
+    --ship <path>      Answer <path> as shipping. Repeatable.
+    --withhold <path>  Answer <path> as withheld: appends it to
+                       .gaia/release-exclude. Repeatable. Each --withhold
+                       must be closed by exactly one --category and exactly
+                       one --reason before the next one.
+    --category <N>     Numbered release-exclude category the open --withhold
+                       is filed under.
+    --reason <text>    One-line rationale, written as the comment directly
+                       above the withheld path.
+    --allow-undecided  Waive the answer requirement; every unanswered file
+                       ships. The escape hatch for bootstrapping a manifest
+                       and for unattended regeneration.
+    --out <path>       Override output path (default: .gaia/manifest.json).
+    --stdout           Print manifest JSON to stdout instead of writing the file.
+    --check            Verify the committed manifest matches what the
+                       classifier would produce against the current source,
+                       lint classifier sets against release-exclude for
+                       dead-code overlap, and lint every owned .sh-bearing
+                       directory against the scrub maintainer-paths scope and
+                       runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
+                       overlap, or a scan-scope gap. Read-only: incompatible
+                       with every flag above.
+    --json             (with --check) Emit a structured JSON drift report.
 
   Exit codes:
     0  success / check clean
-    1  user-correctable error / check found drift or overlap
+    1  unanswered or invalid answers / user-correctable error / check found
+       drift or overlap
     2  unexpected (filesystem / git failure)
 `;
 
@@ -167,6 +194,12 @@ const ManifestSchema = z.object({
 });
 
 type BuildOptions = {
+  /**
+   * Override `.gaia/release-exclude`'s content instead of reading it from
+   * disk. Lets `run()` compute the post-withhold manifest in memory, before
+   * either the boundary file or the manifest is written.
+   */
+  excludeText?: string;
   /** Override the timestamp for deterministic tests / snapshots. */
   generatedAt?: string;
   /** Override repo root resolution; default is `git rev-parse --show-toplevel`. */
@@ -181,6 +214,12 @@ const resolveRepoRoot = (cwd: string): string =>
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
+
+const resolveExcludePath = (repoRoot: string): string =>
+  path.resolve(repoRoot, '.gaia/release-exclude');
+
+const resolveManifestPath = (repoRoot: string): string =>
+  path.resolve(repoRoot, '.gaia/manifest.json');
 
 const listGitFiles = (cwd: string): string[] =>
   execFileSync('git', ['ls-files'], {
@@ -197,11 +236,10 @@ export const buildManifest = (
 ): ManifestShape => {
   const repoRoot = options.repoRoot ?? resolveRepoRoot(cwd);
   const versionPath = path.resolve(repoRoot, '.gaia/VERSION');
-  const excludePath = path.resolve(repoRoot, '.gaia/release-exclude');
   const version = readFileSync(versionPath, 'utf8').trim();
-  const excludePatterns = parseExcludePatterns(
-    readFileSync(excludePath, 'utf8')
-  );
+  const excludeText =
+    options.excludeText ?? readFileSync(resolveExcludePath(repoRoot), 'utf8');
+  const excludePatterns = parseExcludePatterns(excludeText);
   const isExcluded = (candidate: string): boolean =>
     excludePatterns.some((pattern) => pattern.test(candidate));
 
@@ -435,13 +473,34 @@ type LintResults = {
   scanScopeGaps: readonly ScanScopeGap[];
 };
 
+const computeMissingEntries = (
+  expected: ManifestShape,
+  actual: ManifestShape
+): {expected: ManifestClass; file: string}[] =>
+  Object.entries(expected.files)
+    .filter(([file]) => lookupClass(actual.files, file) === undefined)
+    .map(([file, expectedClass]) => ({expected: expectedClass, file}))
+    .toSorted((a, b) => a.file.localeCompare(b.file));
+
+/**
+ * The `missing` snapshot the answer gate validates against: every classified
+ * path the committed manifest has never acknowledged, as sorted path strings.
+ * Shared with `computeDrift` so the gate and the drift report can never
+ * disagree about which files are awaiting an answer.
+ */
+const computeMissing = (
+  expected: ManifestShape,
+  actual: ManifestShape
+): string[] =>
+  computeMissingEntries(expected, actual).map((entry) => entry.file);
+
 const computeDrift = (
   expected: ManifestShape,
   actual: ManifestShape,
   lints: LintResults
 ): ManifestDrift => {
   const {classifierOverlaps, scanScopeGaps} = lints;
-  const missing: {expected: ManifestClass; file: string}[] = [];
+  const missing = computeMissingEntries(expected, actual);
   const extra: {actual: ManifestClass; file: string}[] = [];
   const drift: {
     actual: ManifestClass;
@@ -452,9 +511,7 @@ const computeDrift = (
   for (const [file, expectedClass] of Object.entries(expected.files)) {
     const actualClass = lookupClass(actual.files, file);
 
-    if (actualClass === undefined) {
-      missing.push({expected: expectedClass, file});
-    } else if (actualClass !== expectedClass) {
+    if (actualClass !== undefined && actualClass !== expectedClass) {
       drift.push({actual: actualClass, expected: expectedClass, file});
     }
   }
@@ -465,7 +522,6 @@ const computeDrift = (
     }
   }
 
-  missing.sort((a, b) => a.file.localeCompare(b.file));
   extra.sort((a, b) => a.file.localeCompare(b.file));
   drift.sort((a, b) => a.file.localeCompare(b.file));
 
@@ -583,6 +639,36 @@ const renderCheckReport = (
   return `${out.join('\n')}\n`;
 };
 
+type CommittedManifest =
+  | {kind: 'absent'}
+  | {kind: 'invalid'; message: string}
+  | {kind: 'ok'; manifest: ManifestShape};
+
+/**
+ * The committed manifest is untrusted input (hand-edits, merge conflicts, a
+ * stale schema), so it is schema-validated before anything diffs against it.
+ * Absent is a distinct outcome from malformed: `--check` reports the first as
+ * a user-correctable `manifest_missing`, while the answer gate treats it as
+ * "nothing has been acknowledged yet".
+ */
+const readCommittedManifest = (manifestPath: string): CommittedManifest => {
+  if (!existsSync(manifestPath)) return {kind: 'absent'};
+
+  try {
+    const rawJson: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'));
+
+    return {kind: 'ok', manifest: ManifestSchema.parse(rawJson)};
+  } catch (error) {
+    const message =
+      error instanceof z.ZodError ?
+        `committed manifest is malformed: ${z.prettifyError(error)}`
+      : error instanceof Error ? error.message
+      : String(error);
+
+    return {kind: 'invalid', message};
+  }
+};
+
 const runCheck = (
   cwd: string,
   generatedAt: string | undefined,
@@ -596,7 +682,7 @@ const runCheck = (
     repoRoot = resolveRepoRoot(cwd);
     expected = buildManifest(cwd, {generatedAt, repoRoot});
     excludePatterns = parseExcludePatterns(
-      readFileSync(path.resolve(repoRoot, '.gaia/release-exclude'), 'utf8')
+      readFileSync(resolveExcludePath(repoRoot), 'utf8')
     );
   } catch (error) {
     structuredError({
@@ -608,32 +694,27 @@ const runCheck = (
     return UNEXPECTED_EXIT;
   }
 
-  const manifestPath = path.resolve(repoRoot, '.gaia/manifest.json');
+  const manifestPath = resolveManifestPath(repoRoot);
+  const committed = readCommittedManifest(manifestPath);
 
-  if (!existsSync(manifestPath)) {
+  if (committed.kind === 'absent') {
+    // Names the escape hatch, not the bare command: on any tree carrying a
+    // classified file, the bare command refuses until every newly-shipping
+    // file has an answer, so pointing there would send the reader into the
+    // refusal with no way out.
     structuredError({
       code: 'manifest_missing',
-      message: `committed manifest not found at ${manifestPath}; run \`gaia-maintainer release manifest\` to generate it`,
+      message: `committed manifest not found at ${manifestPath}; run \`gaia-maintainer release manifest --allow-undecided\` to bootstrap it`,
       subcommand: 'release manifest',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  let actual: ManifestShape;
-
-  try {
-    const rawJson: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    actual = ManifestSchema.parse(rawJson);
-  } catch (error) {
-    const message =
-      error instanceof z.ZodError ?
-        `committed manifest is malformed: ${z.prettifyError(error)}`
-      : error instanceof Error ? error.message
-      : String(error);
+  if (committed.kind === 'invalid') {
     structuredError({
       code: 'manifest_parse_failed',
-      message,
+      message: committed.message,
       path: manifestPath,
       subcommand: 'release manifest',
     });
@@ -641,6 +722,7 @@ const runCheck = (
     return UNEXPECTED_EXIT;
   }
 
+  const actual = committed.manifest;
   const classifierOverlaps = lintClassifierSets(excludePatterns);
   const scanScopeGaps = lintScanScopes(
     expected.files,
@@ -680,10 +762,23 @@ type FlagParseSuccess = {
 };
 
 type Flags = {
+  allowUndecided: boolean;
   check: boolean;
   json: boolean;
   outPath: string | undefined;
+  ships: string[];
   stdout: boolean;
+  withholds: WithholdAnswer[];
+};
+
+/**
+ * A `--withhold <path>` that has not yet been closed by its `--category` and
+ * `--reason`. The next `--withhold`, or the end of argv, closes it.
+ */
+type PendingWithhold = {
+  category: number | undefined;
+  path: string;
+  reason: string | undefined;
 };
 
 const takeValue = (
@@ -701,35 +796,126 @@ const takeValue = (
   return {ok: true, value};
 };
 
-const parseFlags = (argv: readonly string[]): FlagParseResult => {
-  let check = false;
-  let json = false;
-  let outPath: string | undefined;
-  let stdout = false;
+/** Returns an error message, or `undefined` once the record is banked. */
+const closeWithhold = (
+  pending: PendingWithhold | undefined,
+  withholds: WithholdAnswer[]
+): string | undefined => {
+  if (pending === undefined) return undefined;
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
+  if (pending.category === undefined)
+    return `--withhold ${pending.path} requires a --category`;
 
-    if (token === '--out') {
-      const taken = takeValue(argv, index + 1, '--out');
+  if (pending.reason === undefined)
+    return `--withhold ${pending.path} requires a --reason`;
 
-      if (!taken.ok) return taken;
-      outPath = taken.value;
-      index += 1;
-    } else if (token === '--stdout') {
-      stdout = true;
-    } else if (token === '--check') {
-      check = true;
-    } else if (token === '--json') {
-      json = true;
-    } else {
-      return {message: `unknown flag: ${token}`, ok: false};
-    }
-  }
+  withholds.push({
+    category: pending.category,
+    path: pending.path,
+    reason: pending.reason,
+  });
 
-  if (check && (outPath !== undefined || stdout)) {
+  return undefined;
+};
+
+/** Accumulator threaded through the flag handlers below. */
+type ParseState = {
+  allowUndecided: boolean;
+  check: boolean;
+  json: boolean;
+  outPath: string | undefined;
+  pending: PendingWithhold | undefined;
+  ships: string[];
+  stdout: boolean;
+  withholds: WithholdAnswer[];
+};
+
+/** Each returns an error message, or `undefined` on success. */
+type ValueFlagHandler = (
+  state: ParseState,
+  value: string
+) => string | undefined;
+
+const applyCategory: ValueFlagHandler = (state, value) => {
+  if (state.pending === undefined)
+    return '--category requires a preceding --withhold';
+
+  if (state.pending.category !== undefined)
+    return `--withhold ${state.pending.path} carries more than one --category`;
+
+  if (!/^\d+$/.test(value) || Number(value) === 0)
+    return `--category must be a positive integer, got: ${value}`;
+
+  state.pending.category = Number(value);
+
+  return undefined;
+};
+
+const applyReason: ValueFlagHandler = (state, value) => {
+  if (state.pending === undefined)
+    return '--reason requires a preceding --withhold';
+
+  if (state.pending.reason !== undefined)
+    return `--withhold ${state.pending.path} carries more than one --reason`;
+
+  state.pending.reason = value;
+
+  return undefined;
+};
+
+const applyWithhold: ValueFlagHandler = (state, value) => {
+  const closeError = closeWithhold(state.pending, state.withholds);
+
+  if (closeError !== undefined) return closeError;
+
+  state.pending = {category: undefined, path: value, reason: undefined};
+
+  return undefined;
+};
+
+const VALUE_FLAGS: Readonly<Partial<Record<string, ValueFlagHandler>>> = {
+  '--category': applyCategory,
+  '--out': (state, value) => {
+    state.outPath = value;
+
+    return undefined;
+  },
+  '--reason': applyReason,
+  '--ship': (state, value) => {
+    state.ships.push(value);
+
+    return undefined;
+  },
+  '--withhold': applyWithhold,
+};
+
+const BARE_FLAGS: Readonly<
+  Partial<Record<string, (state: ParseState) => void>>
+> = {
+  '--allow-undecided': (state) => {
+    state.allowUndecided = true;
+  },
+  '--check': (state) => {
+    state.check = true;
+  },
+  '--json': (state) => {
+    state.json = true;
+  },
+  '--stdout': (state) => {
+    state.stdout = true;
+  },
+};
+
+const validateFlagCombination = (state: ParseState): FlagParseResult => {
+  const {allowUndecided, check, json, outPath, ships, stdout, withholds} =
+    state;
+  const answers = allowUndecided || ships.length > 0 || withholds.length > 0;
+
+  // `--check` stays read-only: it answers nothing and writes nothing.
+  if (check && (outPath !== undefined || stdout || answers)) {
     return {
-      message: '--check is incompatible with --out / --stdout',
+      message:
+        '--check is incompatible with --out / --stdout / --ship / --withhold / --allow-undecided',
       ok: false,
     };
   }
@@ -738,7 +924,53 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     return {message: '--json requires --check', ok: false};
   }
 
-  return {flags: {check, json, outPath, stdout}, ok: true};
+  return {
+    flags: {allowUndecided, check, json, outPath, ships, stdout, withholds},
+    ok: true,
+  };
+};
+
+const parseFlags = (argv: readonly string[]): FlagParseResult => {
+  const state: ParseState = {
+    allowUndecided: false,
+    check: false,
+    json: false,
+    outPath: undefined,
+    pending: undefined,
+    ships: [],
+    stdout: false,
+    withholds: [],
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    const bare = BARE_FLAGS[token];
+    const valued = VALUE_FLAGS[token];
+
+    if (bare !== undefined) {
+      bare(state);
+    } else if (valued === undefined) {
+      return {message: `unknown flag: ${token}`, ok: false};
+    } else {
+      const taken = takeValue(argv, index + 1, token);
+
+      if (!taken.ok) return taken;
+
+      const error = valued(state, taken.value);
+
+      if (error !== undefined) return {message: error, ok: false};
+
+      index += 1;
+    }
+  }
+
+  // The last `--withhold` is closed by the end of argv rather than by a
+  // following one.
+  const closeError = closeWithhold(state.pending, state.withholds);
+
+  if (closeError !== undefined) return {message: closeError, ok: false};
+
+  return validateFlagCombination(state);
 };
 
 type RunOptions = {
@@ -748,14 +980,77 @@ type RunOptions = {
 
 const tryBuildManifestOrReport = (
   cwd: string,
+  options: BuildOptions
+): ManifestShape | null => {
+  try {
+    return buildManifest(cwd, options);
+  } catch (error) {
+    structuredError({
+      code: 'manifest_build_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release manifest',
+    });
+
+    return null;
+  }
+};
+
+/**
+ * Everything the answer gate needs, read once, before any write.
+ *
+ * `missing` is an oracle this command itself mutates: writing a withhold into
+ * `.gaia/release-exclude` shrinks it. Snapshotting it up front is what stops
+ * an early boundary write from making the remaining accounting trivially
+ * satisfiable.
+ */
+type ManifestSnapshot = {
+  excludeText: string;
+  expected: ManifestShape;
+  missing: string[];
+  repoRoot: string;
+};
+
+const trySnapshotOrReport = (
+  cwd: string,
   generatedAt: string | undefined
-): null | {manifest: ManifestShape; repoRoot: string} => {
+): ManifestSnapshot | null => {
   try {
     const repoRoot = resolveRepoRoot(cwd);
-    const manifest = buildManifest(cwd, {generatedAt, repoRoot});
+    const manifestPath = resolveManifestPath(repoRoot);
+    const excludeText = readFileSync(resolveExcludePath(repoRoot), 'utf8');
+    const expected = buildManifest(cwd, {excludeText, generatedAt, repoRoot});
+    const committed = readCommittedManifest(manifestPath);
 
-    return {manifest, repoRoot};
+    if (committed.kind === 'invalid') {
+      structuredError({
+        code: 'manifest_parse_failed',
+        message: committed.message,
+        path: manifestPath,
+        subcommand: 'release manifest',
+      });
+
+      return null;
+    }
+
+    // An absent manifest means nothing has been acknowledged: every classified
+    // path is unanswered, so bootstrapping one from nothing needs the escape
+    // hatch. That is correct and intended.
+    const actual =
+      committed.kind === 'absent' ?
+        {files: {}, generated: '', version: expected.version}
+      : committed.manifest;
+
+    return {
+      excludeText,
+      expected,
+      missing: computeMissing(expected, actual),
+      repoRoot,
+    };
   } catch (error) {
+    // The `.gaia/release-exclude` read lives inside this try (not at the top
+    // of `run`) so an absent or unreadable boundary file stays the exit-2
+    // `manifest_build_failed` the CLI has always reported, rather than an
+    // uncaught throw.
     structuredError({
       code: 'manifest_build_failed',
       message: error instanceof Error ? error.message : String(error),
@@ -797,6 +1092,111 @@ const tryWriteManifestOrReport = (
   }
 };
 
+const tryWriteExcludeOrReport = (
+  target: string,
+  excludeText: string
+): boolean => {
+  try {
+    atomicWriteFileSync(target, excludeText);
+
+    return true;
+  } catch (error) {
+    structuredError({
+      code: 'exclude_write_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'release manifest',
+    });
+
+    return false;
+  }
+};
+
+/** Brief stdout summary: file count + per-class breakdown. */
+const reportSummary = (
+  manifest: ManifestShape,
+  cwd: string,
+  target: string
+): void => {
+  const counts: Record<ManifestClass, number> = {
+    owned: 0,
+    shared: 0,
+    'wiki-owned': 0,
+  };
+
+  for (const klass of Object.values(manifest.files)) counts[klass] += 1;
+
+  const total = Object.keys(manifest.files).length;
+  process.stdout.write(
+    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts['wiki-owned']}) → ${path.relative(cwd, target) || target}\n`
+  );
+};
+
+const reportAnswerErrors = (errors: readonly AnswerError[]): void => {
+  for (const error of errors) {
+    structuredError({
+      code: error.code,
+      message: error.message,
+      paths: error.paths,
+      subcommand: 'release manifest',
+    });
+  }
+};
+
+type EmitOptions = {
+  cwd: string;
+  generatedAt: string | undefined;
+  snapshot: ManifestSnapshot;
+  /** `undefined` means `--stdout`: the manifest goes to stdout, not to a file. */
+  target: string | undefined;
+  withholds: readonly WithholdAnswer[];
+};
+
+/**
+ * Steps after the gate has passed: apply the answers, then emit. The boundary
+ * write happens in every output mode, because a withhold is an answer, not an
+ * output: `--stdout` changes where the manifest goes, never whether the
+ * boundary moves. The post-withhold manifest is built in memory first, so
+ * neither file is touched until both are known-good.
+ */
+const applyAnswersAndEmit = (options: EmitOptions): number => {
+  const {cwd, generatedAt, snapshot, target, withholds} = options;
+  const {excludeText, expected, repoRoot} = snapshot;
+  const hasWithholds = withholds.length > 0;
+  const newExcludeText =
+    hasWithholds ? applyWithholds(excludeText, withholds) : excludeText;
+  const manifest =
+    hasWithholds ?
+      tryBuildManifestOrReport(cwd, {
+        excludeText: newExcludeText,
+        generatedAt,
+        repoRoot,
+      })
+    : expected;
+
+  if (manifest === null) return UNEXPECTED_EXIT;
+
+  if (
+    hasWithholds &&
+    !tryWriteExcludeOrReport(resolveExcludePath(repoRoot), newExcludeText)
+  ) {
+    return UNEXPECTED_EXIT;
+  }
+
+  const serialized = serialize(manifest);
+
+  if (target === undefined) {
+    process.stdout.write(serialized);
+
+    return EXIT_CODES.OK;
+  }
+
+  if (!tryWriteManifestOrReport(target, serialized)) return UNEXPECTED_EXIT;
+
+  reportSummary(manifest, cwd, target);
+
+  return EXIT_CODES.OK;
+};
+
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -820,27 +1220,37 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
+  const {allowUndecided, check, json, outPath, ships, stdout, withholds} =
+    parsed.flags;
 
-  if (parsed.flags.check) {
-    return runCheck(cwd, options.generatedAt, parsed.flags.json);
+  if (check) return runCheck(cwd, options.generatedAt, json);
+
+  const snapshot = trySnapshotOrReport(cwd, options.generatedAt);
+
+  if (snapshot === null) return UNEXPECTED_EXIT;
+
+  const errors = validateAnswers(
+    {allowUndecided, ships, withholds},
+    snapshot.missing,
+    parseExcludeCategories(snapshot.excludeText)
+  );
+
+  // The gate sits on the PRODUCTION of manifest content, not on the write to
+  // `.gaia/manifest.json`: `--stdout` and `--out` are emitting paths too, and
+  // an unanswered file must not reach any of them. Nothing has been written at
+  // this point, so both files stay byte-identical.
+  if (errors.length > 0) {
+    reportAnswerErrors(errors);
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const built = tryBuildManifestOrReport(cwd, options.generatedAt);
+  const target =
+    stdout ? undefined : resolveOutputTarget(cwd, snapshot.repoRoot, outPath);
 
-  if (built === null) return UNEXPECTED_EXIT;
-
-  const {manifest, repoRoot} = built;
-  const serialized = serialize(manifest);
-
-  if (parsed.flags.stdout) {
-    process.stdout.write(serialized);
-
-    return EXIT_CODES.OK;
-  }
-
-  const target = resolveOutputTarget(cwd, repoRoot, parsed.flags.outPath);
-
-  if (!existsSync(path.dirname(target))) {
+  // Checked before either write, so a bad `--out` can't leave a withhold
+  // banked in the boundary file with no manifest to match it.
+  if (target !== undefined && !existsSync(path.dirname(target))) {
     structuredError({
       code: 'output_dir_missing',
       message: `output directory does not exist: ${path.dirname(target)}`,
@@ -850,21 +1260,11 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  if (!tryWriteManifestOrReport(target, serialized)) return UNEXPECTED_EXIT;
-
-  // Brief stdout summary: file count + per-class breakdown.
-  const counts: Record<ManifestClass, number> = {
-    owned: 0,
-    shared: 0,
-    'wiki-owned': 0,
-  };
-
-  for (const klass of Object.values(manifest.files)) counts[klass] += 1;
-
-  const total = Object.keys(manifest.files).length;
-  process.stdout.write(
-    `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts['wiki-owned']}) → ${path.relative(cwd, target) || target}\n`
-  );
-
-  return EXIT_CODES.OK;
+  return applyAnswersAndEmit({
+    cwd,
+    generatedAt: options.generatedAt,
+    snapshot,
+    target,
+    withholds,
+  });
 };
