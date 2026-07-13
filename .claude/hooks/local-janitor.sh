@@ -52,8 +52,12 @@
 #      tooling expects to find. Pruned with `rmdir`, so a non-empty dir can
 #      never be removed even if the logic is wrong.
 #   5. stale SPEC-workflow cache artifacts (gate1-*.json, draft-*.md,
-#      spec-session-*.json, audit-*/) and react-perf run dirs (<run>/renders.json)
-#      at the root of .gaia/local/cache, once older than 14 days. Age-gated
+#      spec-session-*.json, spec-chain-*.json, audit-*/) and react-perf run dirs
+#      (<run>/renders.json) at the root of .gaia/local/cache, once older than 14
+#      days. A spec-chain-*.json is the spec→plan chain guard's per-session
+#      sentinel (block-spec-plan-chain.sh); it is keyed on session_id, so an old
+#      one can never match a live session and is inert long before it is stale.
+#      Age-gated
 #      rather than reference-checked: a generous window survives a paused
 #      multi-day authoring session while still reaping abandoned drafts and
 #      forgotten profiling dumps that no other owner ever cleans up.
@@ -265,6 +269,7 @@ cache_dir="$local_dir/cache"
 if [ -d "$cache_dir" ]; then
   find "$cache_dir" -maxdepth 1 \( \
       -name 'gate1-*.json' -o -name 'draft-*.md' -o -name 'spec-session-*.json' \
+      -o -name 'spec-chain-*.json' \
     \) -type f -mtime +14 -delete 2>/dev/null
   find "$cache_dir" -maxdepth 1 -type d -name 'audit-*' -mtime +14 -exec rm -rf {} + 2>/dev/null
   # react-perf run dumps: a dir at cache root containing renders.json. `dirname`

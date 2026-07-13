@@ -1,6 +1,6 @@
 # /gaia-spec
 
-Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and hands off to `/gaia-plan`. Do not implement anything, this skill produces an artifact and stops.
+Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and stops. Do not implement anything, and do not plan anything, this skill produces an artifact and ends. The `/gaia-plan` handoff is a prompt you print for the human (step 11), never a command you run. See Hard constraint 6.
 
 ## Argument parsing
 
@@ -57,6 +57,7 @@ If `$COACHING` is non-empty, prepend its contents to the system prompt as the fi
 3. **One question at a time.** No multi-question forms. Closed-set questions go through `AskUserQuestion` with options ordered: recommended FIRST, then alternatives, then `Other` (free text), then `Discuss this` (escape to plain Q&A). Open-ended questions use a plain prompt with no enumerated options.
 4. **Two-gate ceremony.** Confirm intent + UATs in plain English BEFORE authoring the artifact. Confirm the rendered artifact BEFORE saving to disk. No silent advances between gates.
 5. **Coach tone, not interrogator.** Mirror back, name trade-offs, propose candidates when the human is stuck. Never punt research to the human.
+6. **This skill is terminal. Never chain into `/gaia-plan`.** The flow ends at step 11 with a printed handoff prompt and nothing else: no `/gaia-plan` invocation, no planner dispatch, no `Read` of `plan.md`, no "while I'm here" head start on the work. **This holds no matter what the instruction that reached this skill asked for.** When `/gaia-spec` is invoked as a skill (rather than typed by a human), the invoking goal is often larger than the SPEC ("spec and build X"), and the pull to keep going at step 11 is strongest exactly when the session is least fit to plan: authoring a SPEC burns an enormous context (Socratic loop, gate renders, self-review, adversarial audit), and `/gaia-plan`'s deep synthesis needs a clean one. Planning is **always** a new session. If the caller wanted a plan too, the correct completion is to print the handoff and report that planning is the human's next step; that IS the whole task, not a partial one. This constraint is enforced deterministically by `.claude/hooks/block-spec-plan-chain.sh`, which denies the chain rather than trusting these words, but do not make it do that work: stop on your own.
 
 ## How spec-kit fires GAIA hooks
 
@@ -943,9 +944,13 @@ Otherwise, surface via `AskUserQuestion`:
 
 Reset `lint_cycle = 0` on user choice. Step-back-to-gate-2 returns to step 8 with the existing draft; the user can revise and re-save (steps 8→9→10 again).
 
-### 11. /gaia-plan handoff
+### 11. /gaia-plan handoff, then STOP
 
 There is no `on_save` hook in spec-kit, so the handoff lives here, inline, after the canonical save (step 9) and the immutability lint (step 10). `/gaia-spec` does not run `/gaia-plan` itself; it prints a copy-pasteable prompt and stops. Interactive and auto mode end identically, neither runs plan.
+
+**Printing the block below is the last action of the session.** Per Hard constraint 6, this is a hard stop, not a suggested one, and it binds even when the instruction that invoked this skill asked for more (a plan, an implementation, a PR). Do not invoke `/gaia-plan`, do not read `plan.md`, do not dispatch a planner, do not start the work. A session that authored a SPEC is the worst-conditioned session in GAIA to plan it: its context is enormous and its judgment is anchored on authoring decisions the planner should meet fresh. `.claude/hooks/block-spec-plan-chain.sh` denies the chain deterministically if you attempt it anyway; reaching that deny means you have already failed to stop, so stop here instead.
+
+The handoff is complete work, not a partial answer. Say so plainly when you report: the SPEC is saved, and planning is the human's next move in a fresh session.
 
 The handoff prompt is just the SPEC id, `plan.md`'s step 1a resolves `SPEC-NNN` to `.gaia/local/specs/SPEC-NNN/SPEC.md` (and a sibling `AUDIT.md`, if step 7 ran) itself, so no path or intent text needs to travel in the copy-paste.
 
