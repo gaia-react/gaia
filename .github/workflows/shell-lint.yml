@@ -35,8 +35,15 @@ jobs:
     runs-on: ubuntu-latest
     # Read-only token: this job lints and reports, it never writes to the repo.
     # Bounds the blast radius of the third-party binary it installs below.
+    #
+    # `pull-requests: read` is load-bearing, not decoration. Naming any scope here
+    # sets every unlisted one to `none`, and dorny/paths-filter resolves a PR's
+    # changed files through the API, which needs it. Omitting it works only while
+    # this repo is public (the token can still read public PR data); the day it went
+    # private, every run would 403 with "Resource not accessible by integration".
     permissions:
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       # PRs that touch no shell script report this check green without
