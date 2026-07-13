@@ -32,9 +32,9 @@
 # /gaia-plan by any route, including the model's own natural-language dispatch.
 #
 # WHY NOT STAMP ON A Read OF spec.md. It is the other obvious chokepoint, but
-# .gaia/cli/health/runbook.md cites spec.md step 7 AND plan.md step 4.6 as the
-# canonical audit pattern, so a /health-audit session reads both references and
-# would deny itself. An allocator INVOCATION carries no such ambiguity: nothing
+# audit runbooks cite spec.md step 7 AND plan.md step 4.6 as the canonical
+# audit pattern, so an audit session reads both references and would deny
+# itself. An allocator INVOCATION carries no such ambiguity: nothing
 # allocates a SPEC id except a live authoring session. The distinction is the
 # whole point, and it is load-bearing in the other direction too, since a
 # maintainer session that greps or lints the allocator (a shell audit, a fitness

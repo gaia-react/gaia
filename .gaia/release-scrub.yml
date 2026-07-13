@@ -354,9 +354,21 @@ transforms:
       # Naming the protected event-file path or feedback-memory file in
       # shared surfaces is path-leakage that draws attention to the
       # artifact location.
+      #
+      # The protected artifact is the MENTORSHIP stream, so every alternation
+      # anchors on `mentorship`. A bare `events-*.jsonl` filename does not:
+      # the cloud stream (`telemetry/cloud/`) is a separate consented stream
+      # written by the same NDJSON writer and shares the `events-<date>.jsonl`
+      # convention by design, so a filename-only alternation cannot tell the
+      # two apart and flags the cloud reaper's own functional `find -name`
+      # glob in .claude/hooks/local-janitor.sh. The filename shape is shared
+      # convention, not the secret; the directory is the secret. Anchoring on
+      # `mentorship/` keeps the tripwire loud where it matters and is net
+      # TIGHTER on that axis: the path alternation is now `telemetry/mentorship`
+      # (any mention of the directory) rather than `telemetry/mentorship/events`.
       - id: obscurity-protected-path
         description: "Obscurity contract: mentorship event-file paths or feedback memory file named in shipped surfaces"
-        pattern: "telemetry/mentorship/events|events-[^/[:space:]]*\\.jsonl|feedback_mentorship_display\\.md"
+        pattern: "telemetry/mentorship|mentorship/events-[^/[:space:]]*\\.jsonl|feedback_mentorship_display\\.md"
         scope:
           - "CLAUDE.md"
           - ".claude/**"
