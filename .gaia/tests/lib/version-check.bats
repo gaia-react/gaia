@@ -154,6 +154,19 @@ run_check() { run bash "$SCRIPT" "$ROOT"; }
   grep -qE "UV_HTTP_TIMEOUT=[0-9]+ GIT_HTTP_LOW_SPEED_LIMIT=[0-9]+ GIT_HTTP_LOW_SPEED_TIME=[0-9]+" "$CALLS"
 }
 
+# A failed fetch reaches the `specify version` second chance too, since both a
+# missing `--version` and an unfetchable ref leave the version empty. The retry
+# must fail fast there rather than re-paying the stall the first call already
+# paid, or the worst-case bound in the before_specify gate doubles.
+@test "uvx fallback bounds the retry tightly so a failed fetch is not paid twice" {
+  no_stub specify
+  stub_uvx_env 1 ""
+  run_check
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '^uvx ' "$CALLS")" -eq 2 ]
+  grep -qF "env UV_HTTP_TIMEOUT=5 GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=5" "$CALLS"
+}
+
 @test "uvx fallback honors an operator-set UV_HTTP_TIMEOUT" {
   no_stub specify
   stub_uvx_env 0 "specify 0.8.5"
