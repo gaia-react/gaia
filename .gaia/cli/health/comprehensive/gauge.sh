@@ -102,10 +102,12 @@ elif [ "$churn_files" -gt "$COMPREHENSIVE_FULL_CHURN_FILES" ]; then
   depth=full; src=churn; lenses_json="$full_lenses"
   rationale="$churn_files framework files changed since $TAG (> $COMPREHENSIVE_FULL_CHURN_FILES threshold)"
 elif [ "$churn_files" -eq 0 ]; then
-  depth=skip; src=diff; lenses_json="[]"
+  # `src` is quoted here (unlike its bare siblings above) because `diff` is also a
+  # command name, which trips SC2209's "did you mean src=$(diff)" heuristic.
+  depth=skip; src="diff"; lenses_json="[]"
   rationale="no framework-facing changes since $TAG"
 else
-  depth=scoped; src=diff
+  depth=scoped; src="diff"
   lenses_json="$(jq -nc '$ARGS.positional' --args ${scoped_lenses[@]+"${scoped_lenses[@]}"})"
   lens_csv="$(IFS=,; echo "${scoped_lenses[*]}")"
   rationale="$churn_files framework file(s) changed since $TAG; scoped to $lens_csv"

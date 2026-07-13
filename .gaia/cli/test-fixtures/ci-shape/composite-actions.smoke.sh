@@ -78,7 +78,10 @@ ln -s "${REPO_ROOT}/.github/actions" "$TMP_WORKFLOW/.github/actions"
   actionlint .github/workflows/smoke-merge-watch.yml .github/workflows/smoke-stale-skip.yml
 )
 
-# shellcheck the library scripts.
+# Run shellcheck on the library scripts. Careful when rewording this comment: a
+# comment line whose first word is `shellcheck` is parsed as a directive, and a
+# malformed one (SC1072/SC1073) aborts the parse of this whole file, silently
+# leaving it unlinted.
 shellcheck "${LIB_DIR}"/*.sh
 
 # Ensure the action.yml files exist and have the expected top-level
