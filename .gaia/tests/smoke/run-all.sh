@@ -35,9 +35,19 @@ overall=0
 # Arrays are expanded with the offset-guard `${arr[@]+"${arr[@]}"}` throughout:
 # on bash 3.2.57 (stock macOS /bin/bash) a bare "${arr[@]}" of an EMPTY array
 # aborts under `set -u`. Neither lane is empty today, but emptying one (deleting
-# the sole advisory harness, say) must not turn this driver into an exit-127
-# abort that never reaches the blocking lane. See .claude/rules/ and
+# the sole advisory harness, say) must not abort this driver before it reaches
+# the blocking lane. That abort exits 1, indistinguishable from a harness that
+# ran and failed, and bash 4.4+ does not reproduce it, so it would read as a
+# real failure on macOS and pass clean on Linux CI. See
 # .gaia/scripts/lint-hook-array-guard.sh for the class.
+
+# A release gate with nothing in it is not a pass. Emptying the blocking lane
+# while the harnesses are also deleted would otherwise print an empty summary
+# and exit 0, verifying nothing.
+if [ "${#BLOCKING_LANE[@]}" -eq 0 ]; then
+  printf 'FAIL: BLOCKING_LANE is empty; this driver would gate on nothing.\n' >&2
+  exit 1
+fi
 
 missing_harness() {
   results+=("FAIL      $1/run.sh named by a lane but missing from the tree")
@@ -74,10 +84,12 @@ for name in ${BLOCKING_LANE[@]+"${BLOCKING_LANE[@]}"}; do
       results+=("PASS      $name/run.sh")
       ;;
     2)
-      # Harness pre-flight contract: exit 2 is a missing prerequisite (no
-      # node_modules/.bin/tsx, say), not a failed assertion. It still gates,
-      # since an unverified harness cannot clear a release, but a maintainer who
-      # skipped `pnpm install` should not read it as "telemetry is broken".
+      # The driver honors exit 2 as "missing prerequisite" rather than a failed
+      # assertion, so a maintainer who skipped `pnpm install` does not read it
+      # as "the feature is broken". telemetry-v1 is the harness implementing
+      # that convention today (no node_modules/.bin/tsx, no built .gaia/cli/gaia);
+      # the others exit 1 on their own pre-flight and land in the branch below.
+      # Either way it gates: an unverified harness cannot clear a release.
       results+=("FAIL      $name/run.sh prerequisite missing (exit 2; run pnpm install)")
       overall=1
       ;;

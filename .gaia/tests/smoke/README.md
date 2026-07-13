@@ -26,7 +26,7 @@ Two lanes:
 
 Every harness in this tree belongs to exactly one lane, and `run-all.sh`'s two lane lists are the whole of it, in both directions: a `smoke/<feature>/run.sh` that neither lane names fails the run until it is assigned to one, and a harness a lane names but that is missing from the tree fails the run too. A harness no lane runs guards nothing while still reading as coverage, so adding one is not finished until `run-all.sh` names it. Only an advisory harness's **result** is non-gating; its **absence** is a config error in `run-all.sh`, not an LLM coin-flip, so it fails like any other.
 
-A blocking harness that exits `2` reports as a missing prerequisite rather than a plain failure (the harnesses reserve exit `2` for pre-flight: no `node_modules/.bin/tsx`, no built `.gaia/cli/gaia`). It still gates, since an unverified harness cannot clear a release, but the summary line tells you to run `pnpm install` instead of implying the feature broke.
+The driver honors exit `2` from a blocking harness as "missing prerequisite" rather than a plain failure, so the summary line tells you to run `pnpm install` instead of implying the feature broke. `telemetry-v1` is the harness implementing that convention today (it exits `2` on a missing `node_modules/.bin/tsx` or an unbuilt `.gaia/cli/gaia`); the others exit `1` on their own pre-flight and report as an ordinary failure. Either way it gates: an unverified harness cannot clear a release.
 
 ## When to run
 
