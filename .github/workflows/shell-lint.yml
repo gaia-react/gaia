@@ -44,9 +44,22 @@ jobs:
             shell:
               - '**/*.sh'
               - '.github/workflows/shell-lint.yml'
+      # Install a pinned release binary rather than `apt-get install shellcheck`:
+      # Ubuntu ships 0.9.0 while a maintainer's Homebrew ships newer, and their
+      # directive parsers disagree, so an unpinned gate returns a different verdict
+      # depending on which machine ran it. Keep SHELLCHECK_VERSION in step with
+      # SHELLCHECK_PIN in .gaia/tests/shell-lint.sh, which warns on a local mismatch.
       - if: steps.filter.outputs.shell == 'true'
-        name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+        name: Install shellcheck (pinned)
+        env:
+          SHELLCHECK_VERSION: '0.11.0'
+        run: |
+          set -euo pipefail
+          url="https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl -fsSL "$url" | tar -xJ
+          sudo install -m 0755 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          rm -rf "shellcheck-v${SHELLCHECK_VERSION}"
+          shellcheck --version
       # The gate lints every tracked *.sh, not just the changed ones: shellcheck
       # is fast enough at this repo's size (~130 scripts, low seconds) that a
       # whole-tree run is simpler than a diff-scoped one and cannot drift out of

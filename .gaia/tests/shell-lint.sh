@@ -21,15 +21,29 @@
 # cannot resolve a dynamically sourced path), which would gate on noise. Run
 # `shellcheck -S style <file>` by hand to see those tiers.
 #
+# Never begin a comment line with the bare word `shellcheck`: a comment of that
+# shape is parsed as a directive, and a malformed one (SC1072/SC1073) aborts the
+# parse of the whole file, silently leaving it unlinted. Write "Run shellcheck
+# ..." or "The shellcheck binary ..." instead. Two lines in this very file tripped
+# that trap on the gate's first CI run.
+#
 # Prerequisites:
-#   shellcheck on PATH; install via:
+#   the shellcheck binary on PATH; install via:
 #     brew install shellcheck          (macOS)
-#     apt-get install -y shellcheck    (Debian/Ubuntu CI)
+#     https://github.com/koalaman/shellcheck/releases  (pinned tarball, as CI does)
 #
 # CI: .github/workflows/shell-lint.yml
 set -euo pipefail
 
 SEVERITY=warning
+
+# Pin the linter version so the gate's verdict cannot depend on which machine ran
+# it. Ubuntu's apt ships 0.9.0 while Homebrew ships newer, and their directive
+# parsers disagree: 0.9.0 flags a comment beginning with whitespace + the word
+# `shellcheck` and 0.11.0 does not, so this script passed locally and failed in CI
+# on its own first run. CI installs exactly this version; a local mismatch warns
+# rather than blocks, because CI is the authority.
+SHELLCHECK_PIN=0.11.0
 
 REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel)"
 
@@ -40,6 +54,12 @@ if ! command -v shellcheck >/dev/null 2>&1; then
   echo "  brew install shellcheck        (macOS)" >&2
   echo "  apt-get install -y shellcheck  (Debian/Ubuntu)" >&2
   exit 1
+fi
+
+have_version="$(shellcheck --version 2>/dev/null | awk '/^version:/ {print $2}')"
+if [ -n "$have_version" ] && [ "$have_version" != "$SHELLCHECK_PIN" ]; then
+  echo "WARN: local shellcheck is $have_version but CI pins $SHELLCHECK_PIN;" >&2
+  echo "      verdicts can differ between versions. CI is the authority." >&2
 fi
 
 # Tracked files only. Worktrees under .claude/worktrees/ are untracked checkouts
@@ -63,7 +83,7 @@ fi
 
 echo "--> shellcheck (severity=$SEVERITY): ${#scripts[@]} tracked scripts"
 
-# shellcheck runs from the repo root so the paths it prints are repo-relative.
+# Run from the repo root so the paths the linter prints are repo-relative.
 if ! (cd "$REPO_ROOT" && shellcheck --severity="$SEVERITY" "${scripts[@]}"); then
   echo "==> shell-lint FAILED" >&2
   exit 1
