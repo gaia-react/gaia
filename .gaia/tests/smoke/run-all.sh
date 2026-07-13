@@ -88,8 +88,9 @@ for name in ${BLOCKING_LANE[@]+"${BLOCKING_LANE[@]}"}; do
       # assertion, so a maintainer who skipped `pnpm install` does not read it
       # as "the feature is broken". telemetry-v1 is the harness implementing
       # that convention today (no node_modules/.bin/tsx, no built .gaia/cli/gaia);
-      # the others exit 1 on their own pre-flight and land in the branch below.
-      # Either way it gates: an unverified harness cannot clear a release.
+      # the others exit 1 (via pre-flight or their summary) and land in the
+      # branch below. Either way it gates: an unverified harness cannot clear a
+      # release.
       results+=("FAIL      $name/run.sh prerequisite missing (exit 2; run pnpm install)")
       overall=1
       ;;
