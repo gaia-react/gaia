@@ -9,7 +9,7 @@ tags: [concept, claude, skill, orchestration, spec-kit]
 
 # GAIA Spec
 
-`/gaia-spec [description]` is GAIA's Socratic discovery wrapper around [[spec-kit]]. It produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and hands off to [[GAIA Plan]]. The skill body lives at `.claude/skills/gaia/references/spec.md` (dispatched by the `/gaia-spec` command, which reads this reference).
+`/gaia-spec [description]` is GAIA's Socratic discovery wrapper around [[spec-kit]]. It produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and stops, printing a handoff prompt the human pastes into a fresh [[GAIA Plan]] session. The skill body lives at `.claude/skills/gaia/references/spec.md` (dispatched by the `/gaia-spec` command, which reads this reference).
 
 The wrapper is implemented as a spec-kit extension plus preset; the architectural rationale (why extension+preset, the `wrap` strategy, version-pin range, hook semantics) is in [[spec-kit Extension Strategy]].
 
@@ -35,7 +35,22 @@ The wrapper is implemented as a spec-kit extension plus preset; the architectura
 8. **Gate 2: artifact confirmation.** Render the full draft and present for review. Plain prompt, not `AskUserQuestion`. Revise to convergence, then proceed.
 9. **Save** to `.gaia/local/specs/SPEC-NNN/SPEC.md`. The folder is the archival unit. Sibling artifacts (reports, evidence) live beside `SPEC.md` in the same folder; a flat `SPEC-NNN-<rest>.md` file maps to `SPEC-NNN/<REST>.md` (remainder uppercased, hyphens kept). `lib/spec-folderize.sh` applies this mapping for any legacy flat files.
 10. **`after_specify` hook.** Spec-kit fires `/speckit-gaia-lint`, which runs `lib/lint.sh` (frontmatter, frozen UAT-NNN ids, no placeholders, write-allowlist audit). For mutations of an already-saved SPEC, the lint enforces the explicit reopen ceremony: `## Reopen rationale` and `## UAT diff` sections required.
-11. **`/gaia-plan` handoff.** No `on_save` hook exists in spec-kit, so the handoff lives inline at the end of the wrapper. After the canonical save, `/gaia-spec` prints a copy-pasteable `/gaia-plan SPEC-NNN` prompt (just the bare id), then stops; the human runs it in a fresh session. `/gaia-plan` resolves the id to `.gaia/local/specs/SPEC-NNN/SPEC.md` (and a sibling `AUDIT.md`, when the audit produced one) itself. See [[Task Orchestration#Topology]].
+11. **`/gaia-plan` handoff, then stop.** No `on_save` hook exists in spec-kit, so the handoff lives inline at the end of the wrapper. After the canonical save, `/gaia-spec` prints a copy-pasteable `/gaia-plan SPEC-NNN` prompt (just the bare id), then stops; the human runs it in a fresh session. `/gaia-plan` resolves the id to `.gaia/local/specs/SPEC-NNN/SPEC.md` (and a sibling `AUDIT.md`, when the audit produced one) itself. The stop is enforced, not advised: see [[#The spec-to-plan chain guard]]. See [[Task Orchestration#Topology]].
+
+## The spec-to-plan chain guard
+
+Planning is always a new session. Authoring a SPEC burns an enormous context (Socratic loop, gate renders, self-review, adversarial audit), and `/gaia-plan`'s deep synthesis needs a clean one, so the handoff is a prompt the human pastes into a fresh session rather than a chain the wrapper runs.
+
+Prose alone does not hold that boundary. When `/gaia-spec` is invoked as a skill rather than typed by a human, the driving agent carries an outer goal ("spec and build X") that outlives the skill body, and step 11's stop reads as a suggestion it can weigh against the goal. `.claude/hooks/block-spec-plan-chain.sh` makes it deterministic instead.
+
+Both commands are thin dispatchers whose body is "read the reference and follow it exactly", so every entry path funnels through tool calls a `PreToolUse` hook sees:
+
+- **Stamp** (a spec session is underway, never blocked): a `Skill` call resolving to `gaia-spec`, or a `Bash` call invoking `lib/spec-allocator.sh`. The allocator is the stamp of record, because a human-typed `/gaia-spec` expands at the prompt level and reaches no tool, while every `/gaia-spec` path (fresh, resume, auto) allocates a SPEC id.
+- **Deny** (while that stamp is live): a `Skill` call resolving to `gaia-plan`, or a `Read` of `.claude/skills/gaia/references/plan.md`. Denying the `Read` is what closes the real hole, an agent can plan without ever touching the `Skill` tool, by reading the reference and following it inline.
+
+The sentinel is keyed on `session_id` (`.gaia/local/cache/spec-chain-<session_id>.json`), so the guard is scoped to the session that authored the SPEC and is inert everywhere else: a fresh session reaches `/gaia-plan` by any route, including the model's own natural-language dispatch. `/clear` releases it (the guard's `SessionStart` arm); compaction deliberately does not, since a compacted spec session is the same session with the same momentum.
+
+The block is strict: at the `Read` chokepoint a human-typed `/gaia-plan` is indistinguishable from a model-initiated one, so it is denied too. That matches the policy rather than bending it, and the sanctioned path is one keystroke away, which the deny message names.
 
 ## UAT divergence contract
 

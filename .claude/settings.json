@@ -16,6 +16,15 @@
             "command": ".claude/hooks/debt-session-reconcile.sh"
           }
         ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-spec-plan-chain.sh"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -86,6 +95,16 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-spec-plan-chain.sh",
+            "statusMessage": "Checking spec→plan chain guard…"
+          }
+        ]
+      },
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
@@ -184,6 +203,11 @@
             "type": "command",
             "command": ".claude/hooks/block-env-read.sh",
             "statusMessage": "Checking .env read guard…"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-spec-plan-chain.sh",
+            "statusMessage": "Checking spec→plan chain guard…"
           }
         ]
       },
@@ -193,6 +217,11 @@
           {
             "type": "command",
             "command": ".claude/hooks/block-env-read.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-spec-plan-chain.sh",
+            "statusMessage": "Checking spec→plan chain guard…"
           }
         ]
       },

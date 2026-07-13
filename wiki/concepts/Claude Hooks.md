@@ -56,6 +56,10 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 
 - **`serena-code-search-guard.sh`** (PreToolUse, Grep deny): blocks a `Grep` call whose pattern is a bare identifier (≥ 3 chars, no spaces or regex metacharacters) scoped to `app/**` or `test/**` TS/TSX, and points it at Serena's `find_symbol` / `find_referencing_symbols` / `get_symbols_overview` instead. Re-running the identical grep within 2 minutes passes (block-once escape), for the rare string-literal or comment search that happens to be identifier-shaped. No-ops unless Serena is a registered MCP server and the repo has a `tsconfig.json`, so adopters without Serena never see it. Closes the gap left by `.claude/rules/code-search.md` being path-scoped to `app/**`/`test/**` *edits*: the rule is absent from context during exploration, which is when the grep-vs-Serena decision actually gets made. See [[Serena Integration]].
 
+### Workflow-boundary safeguard (Skill, Read, Bash, SessionStart)
+
+- **`block-spec-plan-chain.sh`** (PreToolUse deny + SessionStart release): stops a session that authored a SPEC from going on to plan it, because `/gaia-plan`'s deep synthesis needs a clean context and a spec session ends with an enormous one. It stamps a per-`session_id` sentinel when a spec session is underway (a `Skill` call resolving to `gaia-spec`, or a `Bash` call invoking `lib/spec-allocator.sh`, the SPEC-id allocation every `/gaia-spec` path runs), then denies both routes into planning while that stamp is live: a `Skill` call resolving to `gaia-plan`, and a `Read` of `.claude/skills/gaia/references/plan.md`. The `Read` arm is the load-bearing one, since an agent can plan without ever touching the `Skill` tool by reading the reference and following it inline. `/clear` releases the guard; compaction deliberately does not. Inert in any session that did not run `/gaia-spec`. See [[GAIA Spec#The spec-to-plan chain guard]].
+
 ### Advisory (Bash)
 
 - **`pr-merge-audit-check.sh`**: reminds to spawn `code-review-audit`, fix issues, and push fixes before merging. See [[PR Merge Workflow]].

@@ -1,6 +1,6 @@
 ---
 name: gaia-spec
-description: Author an immutable SPEC artifact through Socratic discovery (spec-kit wrapper), then hand off to /gaia-plan. Pass `auto <description>` for non-interactive mode that answers its own questions.
+description: Author an immutable SPEC artifact through Socratic discovery (spec-kit wrapper), then STOP. Terminal, never runs /gaia-plan; it prints a /gaia-plan prompt the human pastes into a fresh session. Pass `auto <description>` for non-interactive mode that answers its own questions.
 argument-hint: [auto] [description]
 ---
 
