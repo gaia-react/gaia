@@ -195,7 +195,11 @@ Because the claim happens here, before the security screen below, any member tha
 
 ## Fix-time security screen
 
-Before opening any fix PR, screen **every member of the selected fix unit** (a single issue, or every issue in a confirmed batch). Apply the fail-safe security classification to each member's content (machine-filed or human-filed): a finding is security-class if it reads as a security concern, carries no stable `finding_class`, was a Critical, or is secret-shaped. When in doubt, treat it as security-class.
+Before opening any fix PR, screen **every member of the selected fix unit** (a single issue, or every issue in a confirmed batch). Apply the fail-safe security classification `.claude/agents/code-audit-frontend.md` (section B) defines, screening each member's **content**, machine-filed or human-filed: an issue is security-class if its content reads as a security concern (an exploitable weakness), it was a Critical, or it is secret-shaped. When in doubt, treat it as security-class.
+
+**The screen reads content, never the dedup key's `class=` field.** `holistic/unclassified` is the expected class for most out-of-scope findings, not a security signal, so it is not a trigger; the agent definition's section B is the single source for that rule and this screen never restates a stricter one. A screen keyed on `class=holistic/unclassified` would peel the entire backlog on a public repo and leave `/gaia-debt` permanently unable to fix anything.
+
+Because the audit's own filing screen already ran, the set of issues this screen can actually peel is small and well-defined: on a PUBLIC or INTERNAL repo the audit **never files a security-class finding as an issue** in the first place, so every machine-filed issue in a public backlog is non-security by construction. This screen is therefore a backstop for exactly two cases: a **human-filed** issue that is security-sensitive, and a repo that **flipped PRIVATE → PUBLIC** while previously-filed security issues sat in its backlog. It is not a re-judgment of the machine-filed backlog.
 
 Re-read `gh repo view --json visibility` immediately before acting (a repo can flip from PRIVATE to PUBLIC), reusing the offer-time read above when it already ran; do not add a second prompt:
 

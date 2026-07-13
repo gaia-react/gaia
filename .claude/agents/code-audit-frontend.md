@@ -186,19 +186,22 @@ The disposition flow **never edits the reviewed PR's working tree** for an out-o
 
 For each out-of-scope finding, run **security classification before routing it to any filing path.** This ordering is load-bearing.
 
-A finding is **security-class** (fail-safe) if ANY of these hold, regardless of its `finding_class` tag:
+Screen on the finding's **content and severity, never on its `finding_class` field.** A finding is **security-class** (fail-safe) if ANY of these hold, regardless of its `finding_class` tag:
 
 - it came from the security review dimension, OR
+- its **content** reads as a security concern (an exploitable weakness: missing authn/authz, injection, secret exposure, SSRF, path traversal, unsafe deserialization, crypto misuse, and the like), OR
 - its severity is Critical, OR
-- it carries no stable `finding_class`, OR
-- it is secret-shaped.
+- it is secret-shaped, OR
+- its `finding_class` field is **absent or malformed**, neither a class the schema convention accepts nor the `holistic/unclassified` fallback. That is a broken finding record, and a broken record diverts rather than publishes.
 
 <!-- gaia:maintainer-only:start -->
 The authoritative `finding_class` vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`); reference it, do not re-list the security members here.
 <!-- gaia:maintainer-only:end -->
-Exact-string matching on seeded security classes alone is **insufficient**: severity is demotable, several security dimensions have no seeded class, and a finding can be classless. When in doubt, treat it as security-class.
+Exact-string matching on seeded security classes alone is **insufficient**: severity is demotable and several security dimensions have no seeded class. When in doubt, treat it as security-class.
 
-Consequence: an out-of-scope **Critical** is security-class (the "any Critical" trigger) and a **classless** finding is security-class (the "no stable `finding_class`" trigger). Both therefore enter the security-divert path (section D), not the public-filing path (section C). On a PUBLIC or INTERNAL repo they **divert** and are **never** filed to a public/internal issue; they file as a `tech-debt` issue **only on a confirmed PRIVATE repo**. Either way the finding gets *a* disposition, so the marker can still write (the gate treats `filed` and `diverted` identically). Do **not** file a Critical or classless finding to a public/internal issue to satisfy a literal reading of a requirement, that would breach the never-public guarantee.
+**`holistic/unclassified` is NOT a security-class trigger.** It is the deliberate "reviewed, maps to no seeded class" verdict, and the closed vocabulary is small by design, so it is the *expected* class for most out-of-scope findings, not a signal that a finding is unknown or dangerous. It is classless for **telemetry** (never emitted in `findings_json`) but carries no security signal whatsoever. Treating it as a trigger would divert every out-of-scope finding on a PUBLIC/INTERNAL repo and file nothing at all, which is not a gate but an off switch. Reserve the class-shaped trigger for the genuinely degenerate case above (absent or malformed field).
+
+Consequence: an out-of-scope **Critical** is security-class (the "any Critical" trigger), and so is any finding whose **content** reads as a security concern, whatever its class tag. Both therefore enter the security-divert path (section D), not the public-filing path (section C). On a PUBLIC or INTERNAL repo they **divert** and are **never** filed to a public/internal issue; they file as a `tech-debt` issue **only on a confirmed PRIVATE repo**. Either way the finding gets *a* disposition, so the marker can still write (the gate treats `filed` and `diverted` identically). Do **not** file a Critical or security-content finding to a public/internal issue to satisfy a literal reading of a requirement, that would breach the never-public guarantee.
 
 ### C. Backend probe (three outcomes)
 
@@ -219,7 +222,7 @@ Probe the issue backend once at the start of the disposition flow:
 - A **divert failure** (missing advisory credential or API error) reverts the finding to a redacted operator/maintainer surface, never a public issue, and the marker still writes. Record `diverted`.
 - A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, the Actions log, or `.gaia/local/audit/progress.log`. A diverted security finding contributes only to counts on those surfaces.
 
-Even when a classless finding diverts on PUBLIC/INTERNAL, build its dedup key with `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (the dedup key format defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) so the redacted operator surface and any future dedup are well-formed.
+When a diverting finding maps to no seeded class, build its dedup key with `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (the dedup key format defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) so the redacted operator surface and any future dedup are well-formed. The fallback class is what the key is *built with*; it is never what makes the finding divert (section B).
 
 ### E. Non-security disposition pipeline
 
@@ -357,7 +360,7 @@ The schema enforces this convention: an entry whose `finding_class` is free text
 <!-- gaia:maintainer-only:start -->
 The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `RULE_FINDING_CLASSES`, and the oracle prefixes); the lists above mirror it. That schema also defines `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`), the dedup-key fallback for a classless out-of-scope finding (see Scope classification and out-of-scope disposition).
 <!-- gaia:maintainer-only:end -->
-`holistic/unclassified` is the out-of-scope fallback for a classless finding (see Scope classification and out-of-scope disposition). It is **not** a member of the closed vocabulary and is **never** emitted in `findings_json`, it builds a `tech-debt` dedup key, not a telemetry class.
+`holistic/unclassified` is the out-of-scope fallback for a finding that maps to no seeded class (see Scope classification and out-of-scope disposition). It is **not** a member of the closed vocabulary and is **never** emitted in `findings_json`, it builds a `tech-debt` dedup key, not a telemetry class. Being outside the telemetry vocabulary is the *only* thing it means: it is not a security signal, and it never drives the security screen (section B).
 
 ## Progress breadcrumbs (CI observability)
 
