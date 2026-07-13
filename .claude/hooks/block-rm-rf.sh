@@ -123,10 +123,17 @@ neutralize_quoted_separators() {
   printf '%s' "$out"
 }
 
-# Only pay for the character walk when both ingredients are present. Most commands
-# carry one or the other, and the walk is O(n) bash on a string that is already in
-# memory, so this keeps the common path free.
-if [[ "$cmd" == *[\"\']* && "$cmd" == *[\;\&\|]* ]]; then
+# Only pay for the character walk when it could change an outcome. This hook runs
+# on EVERY Bash call, and the walk is O(n) bash over the command string, so a long
+# inline `git commit -m "…" && git push` would otherwise pay for nothing.
+#
+# All three ingredients are required, and gating on `rm` is equivalence-preserving
+# rather than a heuristic: the walk only ever rewrites `;`, `&`, and `|` to spaces,
+# so it can neither synthesize the letters of `rm` nor remove them. A command with
+# no `rm` substring therefore cannot pass the short-circuit grep below whether or
+# not it was walked, which makes skipping the walk for such a command a no-op by
+# construction, not a judgment call.
+if [[ "$cmd" == *rm* && "$cmd" == *[\"\']* && "$cmd" == *[\;\&\|]* ]]; then
   cmd=$(neutralize_quoted_separators "$cmd")
 fi
 
