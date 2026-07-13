@@ -235,6 +235,12 @@ run_step() {
   commit_mixed_diff
   run run_gate --base="$(base_sha)"
   [ "$status" -eq 0 ]
+  # The absence assertion is what pins the "stops" half of this test's name, and
+  # it is not redundant with the stderr grep below: `run` merges stdout+stderr,
+  # so a gate that warned "failing open" and then parsed on anyway -- emitting a
+  # member resolved over the WRONG base -- would satisfy the stderr grep alone.
+  # Mirrors the two sibling fail-open tests above.
+  grep -qF "code-audit-maintainer" <<<"$output" && return 1
   grep -qF "failing open" <<<"$output"
 }
 
