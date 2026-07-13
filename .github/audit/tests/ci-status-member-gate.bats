@@ -73,6 +73,11 @@ setup() {
 
   POST_LOG="$BATS_TEST_TMPDIR/gh-post.log"
   rm -f "$POST_LOG"
+  # A real $GITHUB_OUTPUT file, as in CI, so a step that publishes an output can
+  # be asserted on. Declared here, not in run_step: bats' `run` executes in a
+  # subshell, so an assignment made inside run_step would not survive back here.
+  STEP_OUTPUT="$BATS_TEST_TMPDIR/github-output"
+  : > "$STEP_OUTPUT"
   install_gh_mock
 }
 
@@ -149,11 +154,13 @@ write_frontend_marker() {
 
 run_gate() { ( cd "$SANDBOX" && bash .github/audit/gate-pending-members.sh "$@" ); }
 
-# Run an extracted step body in the sandbox with the CI env it reads.
+# Run an extracted step body in the sandbox with the CI env it reads, including a
+# real $GITHUB_OUTPUT (declared in setup, asserted on via $STEP_OUTPUT).
 run_step() {
   local body="$1" sha="$2"
   ( cd "$SANDBOX" \
     && GITHUB_REPOSITORY="gaia-react/gaia" \
+       GITHUB_OUTPUT="$STEP_OUTPUT" \
        HEAD_SHA="$sha" \
        AUDIT_SHA="$sha" \
        PR_BASE_SHA="$(base_sha)" \
@@ -197,6 +204,37 @@ run_step() {
   # Fails open: no members pending, so a broken resolver cannot brick the merge.
   grep -qF "code-audit-maintainer" <<<"$output" && return 1
   # But never silently: the operator can tell a disarmed gate from a clean one.
+  grep -qF "failing open" <<<"$output"
+}
+
+@test "gate: an unresolvable base fails open loudly, never silently" {
+  # The resolver exits 0 on every path by contract, so an unreachable base makes
+  # it emit an empty diff -- indistinguishable from a genuinely clean pass unless
+  # the gate says so. A shallow clone or a GC'd base must not silently disarm it.
+  commit_mixed_diff
+  run run_gate --base "0000000000000000000000000000000000000000"
+  [ "$status" -eq 0 ]
+  grep -qF "code-audit-maintainer" <<<"$output" && return 1
+  grep -qF "does not resolve" <<<"$output"
+  grep -qF "failing open" <<<"$output"
+}
+
+@test "gate: an empty --base fails open loudly instead of silently swapping the base" {
+  # An empty value must not alias to "no base given", which would let the
+  # resolver self-resolve a DIFFERENT base than the caller pinned.
+  commit_mixed_diff
+  run run_gate --base ""
+  [ "$status" -eq 0 ]
+  grep -qF "code-audit-maintainer" <<<"$output" && return 1
+  grep -qF "failing open" <<<"$output"
+}
+
+@test "gate: an unrecognized argument stops rather than resolving a different base" {
+  # The `--base=<sha>` equals form is NOT supported; parsing on would drop the
+  # base and silently resolve membership over the resolver's own merge-base.
+  commit_mixed_diff
+  run run_gate --base="$(base_sha)"
+  [ "$status" -eq 0 ]
   grep -qF "failing open" <<<"$output"
 }
 
@@ -352,6 +390,25 @@ run_step() {
   # ran: the merge button opens on wholly un-reviewed framework source.
   grep -qF "state=success" "$POST_LOG" && return 1
   return 0
+}
+
+@test "out-of-scope skip: publishes members_pending so the PR comment can tell the truth" {
+  # Without this output the terminal comment step tells the author "the merge
+  # gate is satisfied with no local audit run" while the status is `pending` and
+  # the button is shut -- a green-sounding message over a closed gate.
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  commit_maintainer_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  grep -qF "members_pending=code-audit-maintainer-node" "$STEP_OUTPUT"
+
+  # The comment step must consume it and drop the free-skip claim.
+  comment="$(extract_step_body 'Status - skipped (no source changes)')"
+  grep -qF 'MEMBERS_PENDING' "$comment"
+  grep -qF "GAIA-Audit is pending, not green" "$comment"
 }
 
 @test "out-of-scope skip: a genuinely unowned diff still posts success" {

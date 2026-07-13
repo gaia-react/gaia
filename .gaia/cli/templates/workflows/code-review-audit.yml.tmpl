@@ -829,6 +829,7 @@ jobs:
             --field description="local-mode stand-down: audit pending"
 
       - name: Write GAIA-Audit commit status (out-of-scope skip)
+        id: oos-status
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.chore-deps.outputs.skip == 'false' &&
@@ -863,11 +864,18 @@ jobs:
           # the two stamp paths above close. Any dispatched member means this is
           # NOT a free skip: post `pending` and let the local, member-aware
           # producer clear it once every marker exists.
+          head_sha="$(git rev-parse HEAD)"
           pending="$(bash .github/audit/gate-pending-members.sh --base "${PR_BASE_SHA}")"
+          # Publish the gate result so the terminal comment step reports the
+          # truth. Without this the author is told "the merge gate is satisfied
+          # with no local audit run" while the status is `pending` and the button
+          # is shut, which is the same class of misleading green the workflow
+          # already guards against elsewhere.
+          echo "members_pending=${pending}" >> "$GITHUB_OUTPUT"
           if [ -n "$pending" ]; then
             echo "code-review-audit: out-of-scope for the frontend member, but members pending ${pending}; posting pending, not success." >&2
             desc="$(printf 'members pending: %s' "$pending" | cut -c1-140)"
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/$(git rev-parse HEAD)" \
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
               --method POST \
               --field state=pending \
               --field context=GAIA-Audit \
@@ -882,7 +890,6 @@ jobs:
             echo "code-review-audit: .gaia/VERSION missing/empty; skipping status." >&2
             exit 0
           fi
-          head_sha="$(git rev-parse HEAD)"
           tree_sha="$(git rev-parse "HEAD^{tree}")"
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
             --method POST \
@@ -1113,8 +1120,21 @@ jobs:
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'false'
+        env:
+          MEMBERS_PENDING: ${{ steps.oos-status.outputs.members_pending }}
         run: |
           set -eu
+          # "No source changes" is frontend-relative: has_source mirrors that
+          # member's auditable-base set. When a SPECIALIZED member still owns a
+          # changed file, the status step above posted `pending`, not `success`,
+          # so the merge gate is NOT satisfied and a local audit IS required.
+          # Report that instead of the free-skip message, which would otherwise
+          # tell the author the button is open while it is shut.
+          if [ -n "${MEMBERS_PENDING:-}" ]; then
+            bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
+              "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+            exit 0
+          fi
           bash "$RUNNER_TEMP/cra-status-upsert.sh" "$PR_NUMBER" \
             "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit); GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied with no local audit run"
 

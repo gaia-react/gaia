@@ -63,6 +63,7 @@ set -euo pipefail
 CI_MEMBER="code-audit-frontend"
 
 BASE=""
+BASE_GIVEN=0
 
 print_usage() {
   cat <<'USAGE'
@@ -76,10 +77,11 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --base)
       if [ "$#" -lt 2 ]; then
-        echo "gate-pending-members: --base requires a <ref> argument" >&2
+        echo "gate-pending-members: --base requires a <ref> argument; failing open (no members pending)" >&2
         exit 0
       fi
       BASE="$2"
+      BASE_GIVEN=1
       shift 2
       ;;
     --help|-h)
@@ -87,15 +89,38 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      echo "gate-pending-members: unrecognized argument '$1'" >&2
-      shift
+      # Stop, do not parse on, mirroring resolve-audit-members.sh. Continuing
+      # would silently drop a misspelled base (notably the `--base=<sha>` equals
+      # form) and then resolve membership over a DIFFERENT base than the caller
+      # pinned, which is the one degradation this gate must never make quietly.
+      echo "gate-pending-members: unrecognized argument '$1'; failing open (no members pending)" >&2
+      exit 0
       ;;
   esac
 done
 
+# An explicitly-passed-but-empty base is unusable input, NOT "no base given".
+# Falling through to the resolver's own merge-base would silently swap the
+# load-bearing base the caller pinned; see "Full-PR scope" above.
+if [ "$BASE_GIVEN" -eq 1 ] && [ -z "$BASE" ]; then
+  echo "gate-pending-members: --base was passed empty; failing open (no members pending)" >&2
+  exit 0
+fi
+
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -z "$repo_root" ]; then
   echo "gate-pending-members: not in a git repo; failing open (no members pending)" >&2
+  exit 0
+fi
+
+# A base that does not resolve makes the resolver emit an empty diff, and the
+# resolver exits 0 on every path by contract -- so an unreachable base would be
+# byte-identical to a genuinely clean pass: empty stdout, empty stderr, gate
+# silently disarmed. Validate it here so a shallow clone, a GC'd or force-pushed
+# base, or a caller without `fetch-depth: 0` is LOUD instead.
+if [ "$BASE_GIVEN" -eq 1 ] \
+  && ! git -C "$repo_root" rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null 2>&1; then
+  echo "gate-pending-members: base '${BASE}' does not resolve; failing open (no members pending)" >&2
   exit 0
 fi
 
