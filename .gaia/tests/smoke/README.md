@@ -24,7 +24,9 @@ Two lanes:
 - **Blocking** (sets the exit code): the deterministic structural harnesses `wiki-promote/run.sh`, `uat-write/run.sh`, and `telemetry-v1/run.sh`.
 - **Advisory** (never gates): `wiki-sync/run.sh` (billable). It drives real `claude -p` sessions, so its assertions depend on free-form LLM output and cannot block a release on a coin-flip. It retries each scenario to absorb one-off variance and surfaces the captured session output on a final failure. Run it standalone with `bash .gaia/tests/smoke/wiki-sync/run.sh`. See `wiki-sync/README.md` for the rationale.
 
-Every harness in this tree belongs to exactly one lane, and `run-all.sh`'s two lane lists are the whole of it. A `smoke/<feature>/run.sh` that neither lane names fails the run until it is assigned to one, and a harness a lane names but that is missing from the tree fails the run too. A harness no lane runs guards nothing while still reading as coverage, so adding one is not finished until `run-all.sh` names it.
+Every harness in this tree belongs to exactly one lane, and `run-all.sh`'s two lane lists are the whole of it, in both directions: a `smoke/<feature>/run.sh` that neither lane names fails the run until it is assigned to one, and a harness a lane names but that is missing from the tree fails the run too. A harness no lane runs guards nothing while still reading as coverage, so adding one is not finished until `run-all.sh` names it. Only an advisory harness's **result** is non-gating; its **absence** is a config error in `run-all.sh`, not an LLM coin-flip, so it fails like any other.
+
+A blocking harness that exits `2` reports as a missing prerequisite rather than a plain failure (the harnesses reserve exit `2` for pre-flight: no `node_modules/.bin/tsx`, no built `.gaia/cli/gaia`). It still gates, since an unverified harness cannot clear a release, but the summary line tells you to run `pnpm install` instead of implying the feature broke.
 
 ## When to run
 

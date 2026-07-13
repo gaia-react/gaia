@@ -11,10 +11,13 @@
 # visibility and retries each scenario to absorb one-off variance, but its
 # result never sets this driver's exit code. See wiki-sync/README.md.
 #
-# Every harness under smoke/ belongs to exactly one lane, and the lane lists
-# below are the whole of it. The unclaimed-harness check at the bottom fails the
-# run when a smoke/<feature>/run.sh exists that neither lane names: a harness no
-# lane runs guards nothing while still looking like coverage.
+# The two lane lists below are the whole of the harness tree, in both
+# directions: a harness a lane names must exist, and a harness in the tree must
+# be named by a lane. Either half breaking fails the run. A harness no lane runs
+# guards nothing while still reading as coverage, and a lane naming a harness
+# that is gone has silently lost the coverage it claims. Note the asymmetry:
+# only an advisory harness's RESULT is non-gating; its ABSENCE is a config error
+# in this file, not a coin-flip, so it fails like any other.
 #
 # The observability/serena/ subtree (relocated from .gaia/tests/smoke/serena/
 # per SPEC-005 §Resolutions Q8) is intentionally NOT run from here
@@ -29,11 +32,23 @@ BLOCKING_LANE=(wiki-promote uat-write telemetry-v1)
 results=()
 overall=0
 
-# Advisory: LLM-nondeterministic; runs for visibility, never gates the release.
-for name in "${ADVISORY_LANE[@]}"; do
+# Arrays are expanded with the offset-guard `${arr[@]+"${arr[@]}"}` throughout:
+# on bash 3.2.57 (stock macOS /bin/bash) a bare "${arr[@]}" of an EMPTY array
+# aborts under `set -u`. Neither lane is empty today, but emptying one (deleting
+# the sole advisory harness, say) must not turn this driver into an exit-127
+# abort that never reaches the blocking lane. See .claude/rules/ and
+# .gaia/scripts/lint-hook-array-guard.sh for the class.
+
+missing_harness() {
+  results+=("FAIL      $1/run.sh named by a lane but missing from the tree")
+  overall=1
+}
+
+# Advisory: LLM-nondeterministic; its result never gates the release.
+for name in ${ADVISORY_LANE[@]+"${ADVISORY_LANE[@]}"}; do
   run="$SMOKE_DIR/$name/run.sh"
   if [ ! -f "$run" ]; then
-    results+=("ADVISORY  $name/run.sh missing (does not gate)")
+    missing_harness "$name"
     continue
   fi
   printf '\n=== %s/run.sh (ADVISORY, non-gating) ===\n' "$name"
@@ -44,31 +59,41 @@ for name in "${ADVISORY_LANE[@]}"; do
   fi
 done
 
-# Blocking: deterministic structural release-gate harnesses (PASS/FAIL). A
-# missing one is a failure, not a skip: silently dropping a harness from the
-# gate is the same lost coverage as never wiring it in.
-for name in "${BLOCKING_LANE[@]}"; do
+# Blocking: deterministic structural release-gate harnesses (PASS/FAIL).
+for name in ${BLOCKING_LANE[@]+"${BLOCKING_LANE[@]}"}; do
   run="$SMOKE_DIR/$name/run.sh"
   if [ ! -f "$run" ]; then
-    results+=("FAIL      $name/run.sh missing")
-    overall=1
+    missing_harness "$name"
     continue
   fi
   printf '\n=== %s/run.sh ===\n' "$name"
-  if bash "$run"; then
-    results+=("PASS      $name/run.sh")
-  else
-    results+=("FAIL      $name/run.sh")
-    overall=1
-  fi
+  rc=0
+  bash "$run" || rc=$?
+  case "$rc" in
+    0)
+      results+=("PASS      $name/run.sh")
+      ;;
+    2)
+      # Harness pre-flight contract: exit 2 is a missing prerequisite (no
+      # node_modules/.bin/tsx, say), not a failed assertion. It still gates,
+      # since an unverified harness cannot clear a release, but a maintainer who
+      # skipped `pnpm install` should not read it as "telemetry is broken".
+      results+=("FAIL      $name/run.sh prerequisite missing (exit 2; run pnpm install)")
+      overall=1
+      ;;
+    *)
+      results+=("FAIL      $name/run.sh")
+      overall=1
+      ;;
+  esac
 done
 
-# Unclaimed-harness check: every harness in the tree must be assigned to a lane.
+# Every harness in the tree must be named by a lane above.
 shopt -s nullglob
 for run in "$SMOKE_DIR"/*/run.sh; do
   name="$(basename "$(dirname "$run")")"
   claimed=0
-  for known in "${ADVISORY_LANE[@]}" "${BLOCKING_LANE[@]}"; do
+  for known in ${ADVISORY_LANE[@]+"${ADVISORY_LANE[@]}"} ${BLOCKING_LANE[@]+"${BLOCKING_LANE[@]}"}; do
     if [ "$name" = "$known" ]; then
       claimed=1
       break
@@ -82,7 +107,7 @@ done
 shopt -u nullglob
 
 printf '\n=== Summary ===\n'
-for r in "${results[@]}"; do
+for r in ${results[@]+"${results[@]}"}; do
   printf '%s\n' "$r"
 done
 
