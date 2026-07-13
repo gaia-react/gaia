@@ -58,7 +58,19 @@ export const HOLISTIC_FINDING_CLASSES = [
 
 export type HolisticFindingClass = (typeof HOLISTIC_FINDING_CLASSES)[number];
 
-/** Dedup-key fallback for an out-of-scope finding that maps to no seeded finding_class. */
+/**
+ * Dedup-key fallback for an out-of-scope finding that maps to no seeded
+ * finding_class.
+ *
+ * This sits outside the closed telemetry vocabulary on purpose, so
+ * `isValidFindingClass` rejects it and it never reaches the tally. That is the
+ * *only* thing it means. It is **not** a security signal: the audit's
+ * security screen keys on a finding's content and severity, never on this
+ * constant, and treating it as a "classless, therefore assume the worst"
+ * trigger would divert every out-of-scope finding on a public repo and file
+ * none of them. See the security-class fail-safe in
+ * `.claude/agents/code-audit-frontend.md` (section B).
+ */
 export const OUT_OF_SCOPE_FALLBACK_FINDING_CLASS = 'holistic/unclassified';
 
 /**
