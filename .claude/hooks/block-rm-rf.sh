@@ -31,12 +31,15 @@
 # arbitrary variable holding a dangerous path, a relative escape
 # (`rm -rf ../..`), and targets arriving via `xargs` all pass.
 #
-# Some *literally spelled* targets also pass. These are known holes, not design:
+# Some *literally spelled* targets also pass. These are known holes, not design,
+# and the list is NOT exhaustive, assume more exist:
 #   - `rm -rf .*` removes .git and .claude; the glob arm matches `*`, not `.*`.
 #   - a quoted `;`, `&`, or `|` in an operand truncates segment extraction, so
 #     every operand after it is never tokenized (`rm -rf ";" $HOME`).
-# Both are evasion- or accident-shaped rather than idiomatic, and both are
-# tracked as tech debt.
+#   - `$PWD/.git`, `~root`, `{.,}*` and friends match no arm.
+# Each new literal shape this guard learns to catch reveals another it does not.
+# Treat the deny list as a floor, never a ceiling. Known holes are tracked as
+# tech debt.
 #
 # `jq` is a hard dependency: without it the hook exits non-zero, which Claude
 # Code treats as a non-blocking error, so the command proceeds unguarded
@@ -139,6 +142,11 @@ while IFS= read -r rm_segment; do
     # here: the cost is a false deny, which fails safe.
     tok=${tok//\"/}
     tok=${tok//\'/}
+    # Backslash goes for the same reason, and it is the same defect: bash strips
+    # a backslash before an ordinary character, so `\/` reassembles into `/` and
+    # hands root to rm while matching no pattern here. Stripping quotes but not
+    # escapes would be half a fix.
+    tok=${tok//\\/}
     [[ -n "$tok" ]] || continue
 
     # SC2088 (tilde does not expand in quotes) is disabled for this whole case: the

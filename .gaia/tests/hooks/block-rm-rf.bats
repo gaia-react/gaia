@@ -323,6 +323,37 @@ t'
   assert_denied
 }
 
+# --- denied: backslash-escaped targets ---
+#
+# Bash strips a backslash before an ordinary character, so the escaped token
+# reassembles into the dangerous one and rm receives the real target. Stripping
+# quotes but not escapes would be half a fix.
+
+@test "rm -rf \\\\/ (escaped root) is denied" {
+  run_hook_bash 'rm -rf \/'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "rm -rf \\\\.git (escaped .git) is denied" {
+  run_hook_bash 'rm -rf \.git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "rm -rf .\\\\git (escape inside the token) is denied" {
+  run_hook_bash 'rm -rf .\git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "rm -rf \\\\node_modules (escaped node_modules) is denied" {
+  run_hook_bash 'rm -rf \node_modules'
+  assert_denied_because 'BLOCKED: rm -rf of node_modules is forbidden'
+}
+
+@test "rm -rf \\\\\$HOME (escaped \$HOME) is denied" {
+  run_hook_bash 'rm -rf \$HOME'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
 # --- denied: remaining flag-shape gaps ---
 
 @test "rm --no-preserve-root / (no recursive flag) is denied" {
