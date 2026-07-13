@@ -205,6 +205,27 @@ describe('handleEmit', () => {
     expect(mentorshipLine.payload?.auto).toBe(true);
   });
 
+  test('--question-ceiling 10 lands in both mentorship + cloud payloads (no drift)', async () => {
+    await enableMentorship(sandbox.roots);
+
+    const exit = await handleEmit(
+      [...timeToResolvedArgv('false'), '--question-ceiling', '10'],
+      {roots: sandbox.roots}
+    );
+
+    expect(exit).toBe(EXIT_CODES.OK);
+
+    const cloudLine = JSON.parse(
+      readLines(todayJsonl(sandbox.roots.cloudDir))[0] ?? '{}'
+    ) as {payload?: Record<string, unknown>};
+    const mentorshipLine = JSON.parse(
+      readLines(todayJsonl(sandbox.roots.mentorshipDir))[0] ?? '{}'
+    ) as {payload?: Record<string, unknown>};
+
+    expect(cloudLine.payload?.question_ceiling).toBe(10);
+    expect(mentorshipLine.payload?.question_ceiling).toBe(10);
+  });
+
   test('omitting --auto leaves the field absent (human-mode default)', async () => {
     await enableMentorship(sandbox.roots);
 

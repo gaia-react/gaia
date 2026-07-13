@@ -14786,6 +14786,12 @@ var TimeToResolvedSpecPayload = external_exports.object({
   // does not pollute the human baseline.
   auto: external_exports.boolean().optional(),
   duration_seconds: external_exports.number().int().min(0),
+  // The Socratic question ceiling in force for the session that produced this
+  // SPEC. Optional so rows written before the field existed stay valid; a
+  // consumer reads a missing value as the ceiling those rows ran under.
+  // Consumers normalize the question count by it, so a regime with a higher
+  // ceiling does not read as a higher-signal regime.
+  question_ceiling: external_exports.number().int().min(1).optional(),
   question_count: external_exports.number().int().min(0),
   spec_id: external_exports.string().regex(SPEC_ID_REGEX)
 });
@@ -25232,12 +25238,14 @@ var detectArticulationGap = (args) => {
 
 // src/profile/patterns/intent-clarity-gap.ts
 var UNKNOWN_AREA = "_unknown";
+var BASELINE_QUESTION_CEILING = 5;
 var ensureArea = (index, area) => {
   const existing = index.get(area);
   if (existing !== void 0) return existing;
   const fresh = {
     amendedCount: 0,
     closedSpecIds: /* @__PURE__ */ new Set(),
+    normalizedQuestionCounts: [],
     questionCounts: [],
     ttrCount: 0
   };
@@ -25254,6 +25262,17 @@ var numberField = (payload, key) => {
   const candidate = payload[key];
   return typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 ? candidate : 0;
 };
+var isAutoEvent = (payload) => {
+  if (payload === null || typeof payload !== "object") return false;
+  return payload.auto === true;
+};
+var questionCeilingField = (payload) => {
+  if (payload === null || typeof payload !== "object") {
+    return BASELINE_QUESTION_CEILING;
+  }
+  const candidate = payload.question_ceiling;
+  return typeof candidate === "number" && Number.isFinite(candidate) && candidate > 0 ? candidate : BASELINE_QUESTION_CEILING;
+};
 var arrayStringField = (payload, key) => {
   if (payload === null || typeof payload !== "object") return [];
   const candidate = payload[key];
@@ -25264,7 +25283,7 @@ var arrayStringField = (payload, key) => {
 var buildSpecAreaIndex = (events) => {
   const map2 = /* @__PURE__ */ new Map();
   const ttrEvents = events.filter(
-    (event) => event.event_type === "time_to_resolved_spec"
+    (event) => event.event_type === "time_to_resolved_spec" && !isAutoEvent(event.payload)
   );
   for (const event of ttrEvents) {
     const specId = stringFieldOrUndefined(event.payload, "spec_id");
@@ -25279,10 +25298,13 @@ var accumulateTimeToResolved = (event, stats) => {
   const specId = stringFieldOrUndefined(event.payload, "spec_id");
   const questionCount = numberField(event.payload, "question_count");
   const areaTags = arrayStringField(event.payload, "area_tags");
+  const ceiling = questionCeilingField(event.payload);
+  const normalizedCount = questionCount / ceiling * BASELINE_QUESTION_CEILING;
   for (const area of areaTags) {
     const entry = ensureArea(stats, area);
     entry.ttrCount += 1;
     entry.questionCounts.push(questionCount);
+    entry.normalizedQuestionCounts.push(normalizedCount);
     if (specId !== void 0) entry.closedSpecIds.add(specId);
   }
 };
@@ -25300,7 +25322,7 @@ var buildStats = (events) => {
   const stats = /* @__PURE__ */ new Map();
   for (const event of events) {
     if (event.event_type === "time_to_resolved_spec") {
-      accumulateTimeToResolved(event, stats);
+      if (!isAutoEvent(event.payload)) accumulateTimeToResolved(event, stats);
     } else if (event.event_type === "spec_amended") {
       accumulateSpecAmended(event, stats, specAreaIndex);
     }
@@ -25318,16 +25340,18 @@ var buildAreaResult = (area, stats) => {
   const closedSpecs = stats.closedSpecIds.size;
   const amendedRate = closedSpecs === 0 ? 0 : Math.min(1, stats.amendedCount / closedSpecs);
   const avgQ = mean(stats.questionCounts);
+  const avgNormalizedQ = mean(stats.normalizedQuestionCounts);
   const fires = sample >= MIN_SAMPLE_COUNT;
   const strength = fires ? Math.min(
     1,
-    amendedRate / AMENDED_RATE_TARGET * 0.6 + avgQ / QUESTION_COUNT_TARGET * 0.4
+    amendedRate / AMENDED_RATE_TARGET * 0.6 + avgNormalizedQ / QUESTION_COUNT_TARGET * 0.4
   ) : null;
   const components = [
     { metric: "amended_count", value: stats.amendedCount },
     { metric: "ttr_count", value: stats.ttrCount },
     { metric: "amended_rate", value: amendedRate },
     { metric: "avg_question_count", value: avgQ },
+    { metric: "avg_normalized_question_count", value: avgNormalizedQ },
     ...fires ? [{ metric: "strength_threshold", value: STRENGTH_THRESHOLD }] : []
   ];
   return buildResult({
@@ -25955,6 +25979,9 @@ var TimeToResolvedSpecCloudPayload = external_exports.strictObject({
   // identity-bearing, so it is safe to project to the cloud stream.
   auto: external_exports.boolean().optional(),
   duration_seconds: external_exports.number().int(),
+  // Optional ceiling-regime marker; see TimeToResolvedSpecPayload. Not
+  // identity-bearing, so it is safe to project to the cloud stream.
+  question_ceiling: external_exports.number().int().optional(),
   question_count: external_exports.number().int(),
   spec_id: external_exports.string()
 });
@@ -26113,6 +26140,7 @@ var FLAG_DEFINITIONS = {
   "--local": { kind: "json", target: "localNamespace" },
   "--plan-id": { kind: "string", target: "planId" },
   "--pr-number": { kind: "number", target: "prNumber" },
+  "--question-ceiling": { kind: "number", target: "questionCeiling" },
   "--question-count": { kind: "number", target: "questionCount" },
   "--revision-class": { kind: "string", target: "revisionClass" },
   "--session-hash": { kind: "string", target: "sessionHash" },
@@ -26217,6 +26245,7 @@ var flagsToPayload = (eventType, flags) => {
   assign("items_added", flags.itemsAdded);
   assign("items_removed", flags.itemsRemoved);
   assign("question_count", flags.questionCount);
+  assign("question_ceiling", flags.questionCeiling);
   assign("duration_seconds", flags.durationSeconds);
   assign("abandoned", flags.abandoned);
   assign("auto", flags.auto);

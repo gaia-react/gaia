@@ -250,6 +250,57 @@ describe('schemas/mentorship-payloads', () => {
         })
       ).toThrow(z.ZodError);
     });
+
+    test('accepts a payload carrying question_ceiling', () => {
+      expect(() =>
+        TimeToResolvedSpecPayload.parse({
+          abandoned: false,
+          area_tags: ['visual'],
+          duration_seconds: 1850,
+          question_ceiling: 10,
+          question_count: 12,
+          spec_id: 'SPEC-014',
+        })
+      ).not.toThrow();
+    });
+
+    test('accepts a payload omitting question_ceiling (back-compat)', () => {
+      expect(() =>
+        TimeToResolvedSpecPayload.parse({
+          abandoned: false,
+          area_tags: ['visual'],
+          duration_seconds: 1850,
+          question_count: 12,
+          spec_id: 'SPEC-014',
+        })
+      ).not.toThrow();
+    });
+
+    test('rejects a zero question_ceiling', () => {
+      expect(() =>
+        TimeToResolvedSpecPayload.parse({
+          abandoned: false,
+          area_tags: ['visual'],
+          duration_seconds: 1850,
+          question_ceiling: 0,
+          question_count: 12,
+          spec_id: 'SPEC-014',
+        })
+      ).toThrow(z.ZodError);
+    });
+
+    test('rejects a non-integer question_ceiling', () => {
+      expect(() =>
+        TimeToResolvedSpecPayload.parse({
+          abandoned: false,
+          area_tags: ['visual'],
+          duration_seconds: 1850,
+          question_ceiling: 1.5,
+          question_count: 12,
+          spec_id: 'SPEC-014',
+        })
+      ).toThrow(z.ZodError);
+    });
   });
 
   describe('CodeReviewAuditFindingPayload', () => {

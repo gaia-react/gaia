@@ -35,7 +35,8 @@ uvx --from "git+https://github.com/github/spec-kit.git@v0.8.5" specify preset ad
 ## When to use
 
 - `/gaia-spec`: Socratic discovery wrapper (see [[GAIA Spec]]). The user-facing entry point.
-- `/speckit.specify` / `/speckit.clarify`: invoked by the wrapper. Direct invocation also works in a GAIA project; the GAIA preset still produces GAIA-shaped artifacts.
+- `/speckit.specify`: invoked by the wrapper. Direct invocation also works in a GAIA project; the GAIA preset still produces GAIA-shaped artifacts.
+- `/speckit.clarify`: not invoked by the wrapper. `/gaia-spec` runs GAIA's own Socratic loop instead. A direct `/speckit.clarify` invocation still works but is not part of the `/gaia-spec` flow.
 
 ## Architecture
 
@@ -48,6 +49,7 @@ Full contract details: [[spec-kit Extension Strategy]].
 ## Limits
 
 - Hook events cover `before_specify`, `after_clarify`, `after_specify`, `before_implement`, and `after_implement`. There is no `on_save`, so the spec-to-plan handoff lives inline in the wrapper rather than in a hook.
+- `/gaia-spec` does not route its self-review through the `after_clarify` hook; it dispatches a `general-purpose` Agent directly, so the hook bus is exercised only on the specify and lint events.
 - Hooks fire as slash commands (`EXECUTE_COMMAND` directive), not shell scripts. Hook bodies are markdown skill files.
 - Default `strategy: replace` silently leaves `{CORE_TEMPLATE}` unsubstituted in command preset replacements. Use `strategy: wrap` when replacing a command preset.
 

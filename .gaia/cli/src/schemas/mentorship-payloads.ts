@@ -98,6 +98,12 @@ export const TimeToResolvedSpecPayload = z.object({
   // does not pollute the human baseline.
   auto: z.boolean().optional(),
   duration_seconds: z.number().int().min(0),
+  // The Socratic question ceiling in force for the session that produced this
+  // SPEC. Optional so rows written before the field existed stay valid; a
+  // consumer reads a missing value as the ceiling those rows ran under.
+  // Consumers normalize the question count by it, so a regime with a higher
+  // ceiling does not read as a higher-signal regime.
+  question_ceiling: z.number().int().min(1).optional(),
   question_count: z.number().int().min(0),
   spec_id: z.string().regex(SPEC_ID_REGEX),
 });

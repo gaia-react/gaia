@@ -18,11 +18,17 @@ const buildSpecAmended = (specId: string, index: number): MentorshipEvent => ({
   timestamp: '2026-05-07T12:00:00.000Z',
 });
 
+type TimeToResolvedOptions = {
+  auto?: boolean;
+  questionCeiling?: number;
+};
+
 const buildTimeToResolved = (
   specId: string,
   area: string,
   questionCount: number,
-  index: number
+  index: number,
+  options: TimeToResolvedOptions = {}
 ): MentorshipEvent => ({
   agent_type: 'human',
   event_id: `01HZZZT${index.toString().padStart(19, '0')}`,
@@ -30,7 +36,11 @@ const buildTimeToResolved = (
   payload: {
     abandoned: false,
     area_tags: [area],
+    ...(options.auto === undefined ? {} : {auto: options.auto}),
     duration_seconds: 1850,
+    ...(options.questionCeiling === undefined ?
+      {}
+    : {question_ceiling: options.questionCeiling}),
     question_count: questionCount,
     spec_id: specId,
   },
@@ -39,6 +49,49 @@ const buildTimeToResolved = (
   session_hash: 'b'.repeat(32),
   timestamp: '2026-05-07T12:00:00.000Z',
 });
+
+const buildVisualBaseline = (): MentorshipEvent[] => {
+  const events: MentorshipEvent[] = [];
+
+  for (let index = 0; index < 10; index += 1) {
+    events.push(
+      buildTimeToResolved(
+        `SPEC-${index.toString().padStart(3, '0')}`,
+        'visual',
+        2,
+        index
+      )
+    );
+  }
+
+  return events;
+};
+
+const findComponent = (
+  results: ReturnType<typeof detectIntentClarityGap>,
+  metric: string
+) =>
+  results
+    .find((entry) => entry.area_tag === 'visual')
+    ?.components.find((component) => component.metric === metric)?.value;
+
+const buildCeilingFiveCorpus = (): MentorshipEvent[] => {
+  const events: MentorshipEvent[] = [];
+
+  for (let index = 0; index < 10; index += 1) {
+    events.push(
+      buildTimeToResolved(
+        `SPEC-${index.toString().padStart(3, '0')}`,
+        'visual',
+        4,
+        index,
+        {questionCeiling: 5}
+      )
+    );
+  }
+
+  return events;
+};
 
 describe('detectIntentClarityGap (unit)', () => {
   test('returns strength=null when total spec_amended + ttr count < 10', () => {
@@ -206,5 +259,213 @@ describe('detectIntentClarityGap (unit)', () => {
 
     // A NaN question_count must coerce to 0, not poison the mean.
     expect(avgQ?.value).toBe(0);
+  });
+
+  describe('auto-mode partition (UAT-007)', () => {
+    test('an auto row with a high question_count does not move avg_q_count', () => {
+      const baselineResults = detectIntentClarityGap({
+        events: buildVisualBaseline(),
+        windowDays: 30,
+      });
+      const before = findComponent(baselineResults, 'avg_question_count');
+
+      const withAuto = [
+        ...buildVisualBaseline(),
+        buildTimeToResolved('SPEC-AUTO', 'visual', 40, 100, {auto: true}),
+      ];
+      const afterResults = detectIntentClarityGap({
+        events: withAuto,
+        windowDays: 30,
+      });
+      const after = findComponent(afterResults, 'avg_question_count');
+
+      expect(after).toBe(before);
+    });
+
+    test('an auto row does not move the pattern strength', () => {
+      const baselineResults = detectIntentClarityGap({
+        events: buildVisualBaseline(),
+        windowDays: 30,
+      });
+      const before = baselineResults.find(
+        (entry) => entry.area_tag === 'visual'
+      )?.strength;
+
+      const withAuto = [
+        ...buildVisualBaseline(),
+        buildTimeToResolved('SPEC-AUTO', 'visual', 40, 100, {auto: true}),
+      ];
+      const afterResults = detectIntentClarityGap({
+        events: withAuto,
+        windowDays: 30,
+      });
+      const after = afterResults.find(
+        (entry) => entry.area_tag === 'visual'
+      )?.strength;
+
+      // A partial exclusion (e.g. leaking into ttrCount or closedSpecIds)
+      // would move strength even when avg_q_count stays put.
+      expect(after).toBe(before);
+    });
+
+    test('an auto row does not enter the amended_rate denominator', () => {
+      const baselineResults = detectIntentClarityGap({
+        events: buildVisualBaseline(),
+        windowDays: 30,
+      });
+      const before = findComponent(baselineResults, 'amended_rate');
+
+      const withAuto = [
+        ...buildVisualBaseline(),
+        buildTimeToResolved('SPEC-AUTO', 'visual', 40, 100, {auto: true}),
+      ];
+      const afterResults = detectIntentClarityGap({
+        events: withAuto,
+        windowDays: 30,
+      });
+      const after = findComponent(afterResults, 'amended_rate');
+
+      expect(after).toBe(before);
+    });
+
+    test('an amendment to an auto-authored spec does not inflate a human area', () => {
+      const baselineResults = detectIntentClarityGap({
+        events: buildVisualBaseline(),
+        windowDays: 30,
+      });
+      const visualBaseline = baselineResults.find(
+        (entry) => entry.area_tag === 'visual'
+      );
+
+      const withAutoAmendment = [
+        ...buildVisualBaseline(),
+        buildTimeToResolved('SPEC-900', 'visual', 40, 200, {auto: true}),
+        buildSpecAmended('SPEC-900', 300),
+      ];
+      const results = detectIntentClarityGap({
+        events: withAutoAmendment,
+        windowDays: 30,
+      });
+      const visual = results.find((entry) => entry.area_tag === 'visual');
+      const amendedRate = visual?.components.find(
+        (component) => component.metric === 'amended_rate'
+      );
+      const baselineAmendedRate = visualBaseline?.components.find(
+        (component) => component.metric === 'amended_rate'
+      );
+
+      // SPEC-900's only ttr event is auto, so it never enters `visual`'s
+      // closedSpecIds; the amendment buckets to `_unknown` and is dropped.
+      expect(amendedRate?.value).toBe(baselineAmendedRate?.value);
+      expect(visual?.strength).toBe(visualBaseline?.strength);
+    });
+  });
+
+  describe('ceiling-aware normalization (SC7)', () => {
+    test('a higher ceiling with proportionally more questions does not raise strength', () => {
+      // Falsification note: under the old raw-count formula, set B (ceiling
+      // 10, 8 questions) scored (8 / 15) * 0.4 = 0.213 against set A's
+      // (ceiling 5, 4 questions) (4 / 15) * 0.4 = 0.107, a +0.107 swing from
+      // nothing but a raised ceiling, in a pattern whose remedy tells the
+      // loop to ask more questions. The ceiling normalization collapses that
+      // swing to zero: both sets represent 80% utilization of their own
+      // ceiling and must score identically.
+      const setA: MentorshipEvent[] = [];
+      const setB: MentorshipEvent[] = [];
+
+      for (let index = 0; index < 10; index += 1) {
+        const specId = `SPEC-A${index.toString().padStart(3, '0')}`;
+        setA.push(
+          buildTimeToResolved(specId, 'visual', 4, index, {
+            questionCeiling: 5,
+          })
+        );
+      }
+
+      for (let index = 0; index < 10; index += 1) {
+        const specId = `SPEC-B${index.toString().padStart(3, '0')}`;
+        setB.push(
+          buildTimeToResolved(specId, 'visual', 8, index, {
+            questionCeiling: 10,
+          })
+        );
+      }
+
+      const resultsA = detectIntentClarityGap({events: setA, windowDays: 30});
+      const resultsB = detectIntentClarityGap({events: setB, windowDays: 30});
+      const strengthA = resultsA.find(
+        (entry) => entry.area_tag === 'visual'
+      )?.strength;
+      const strengthB = resultsB.find(
+        (entry) => entry.area_tag === 'visual'
+      )?.strength;
+
+      expect(strengthB).not.toBeGreaterThan(strengthA ?? 0);
+      expect(strengthB).toBeCloseTo(strengthA ?? 0, 10);
+    });
+
+    test('a row with no question_ceiling is read as a 5-ceiling row', () => {
+      const noCeiling: MentorshipEvent[] = [];
+      const explicitFive: MentorshipEvent[] = [];
+
+      for (let index = 0; index < 10; index += 1) {
+        noCeiling.push(
+          buildTimeToResolved(
+            `SPEC-N${index.toString().padStart(3, '0')}`,
+            'visual',
+            4,
+            index
+          )
+        );
+        explicitFive.push(
+          buildTimeToResolved(
+            `SPEC-F${index.toString().padStart(3, '0')}`,
+            'visual',
+            4,
+            index,
+            {questionCeiling: 5}
+          )
+        );
+      }
+
+      const noCeilingResults = detectIntentClarityGap({
+        events: noCeiling,
+        windowDays: 30,
+      });
+      const explicitFiveResults = detectIntentClarityGap({
+        events: explicitFive,
+        windowDays: 30,
+      });
+
+      expect(
+        noCeilingResults.find((entry) => entry.area_tag === 'visual')?.strength
+      ).toBe(
+        explicitFiveResults.find((entry) => entry.area_tag === 'visual')
+          ?.strength
+      );
+    });
+
+    test('a malformed question_ceiling does not poison the mean', () => {
+      for (const malformed of [0, -1, Number.NaN]) {
+        const events = buildCeilingFiveCorpus();
+        const target = events[0];
+        (target.payload as Record<string, unknown>).question_ceiling =
+          malformed;
+
+        const results = detectIntentClarityGap({events, windowDays: 30});
+        const visual = results.find((entry) => entry.area_tag === 'visual');
+        const baselineResults = detectIntentClarityGap({
+          events: buildCeilingFiveCorpus(),
+          windowDays: 30,
+        });
+        const baselineVisual = baselineResults.find(
+          (entry) => entry.area_tag === 'visual'
+        );
+
+        expect(visual?.strength).not.toBeNull();
+        expect(Number.isFinite(visual?.strength)).toBe(true);
+        expect(visual?.strength).toBe(baselineVisual?.strength);
+      }
+    });
   });
 });

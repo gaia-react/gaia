@@ -24,7 +24,7 @@ provides:
   commands:
     - name: "speckit.gaia.spec"
       file: "commands/spec.md"
-      description: "GAIA Socratic discovery wrapper around /speckit.specify and /speckit.clarify."
+      description: "GAIA Socratic discovery wrapper: /speckit.specify for the initial draft, then GAIA's own Socratic clarify loop."
 
     - name: "speckit.gaia.constitution-check"
       file: "commands/constitution-check.md"

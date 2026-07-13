@@ -1,5 +1,5 @@
 ---
-description: 'GAIA Socratic discovery wrapper around /speckit-specify and /speckit-clarify.'
+description: 'GAIA Socratic discovery wrapper: /speckit-specify for the initial draft, then GAIA''s own Socratic clarify loop.'
 ---
 
 # /speckit-gaia-spec, thin redirect to the GAIA router
@@ -10,7 +10,7 @@ This command exists because spec-kit's extension manifest schema requires `provi
 
 Read `.claude/skills/gaia/references/spec.md` and follow it, treating `$ARGUMENTS` as the feature description.
 
-That reference is the single source of truth for the orchestration: pre-flight, `/speckit-specify`, gate 1, `/speckit-clarify`, the `after_clarify` self-review, gate 2, the `after_specify` lint, save, and the `/gaia-plan` handoff prompt.
+That reference is the single source of truth for the orchestration: pre-flight, `/speckit-specify`, gate 1, GAIA's Socratic clarify loop, the self-review, gate 2, the `after_specify` lint, save, and the `/gaia-plan` handoff prompt.
 
 ## Why this is one line
 
