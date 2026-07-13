@@ -64,7 +64,13 @@ export const run = async (argv: readonly string[]): Promise<number> => {
     return EXIT_CODES.OK;
   }
 
-  const handler = SUBCOMMAND_HANDLERS[subcommand];
+  // Own-property lookup. A bare `Record` index resolves every `Object.prototype`
+  // member, so `release toString` would otherwise be accepted as a valid
+  // subcommand and exit 0 without running anything.
+  const handler =
+    Object.hasOwn(SUBCOMMAND_HANDLERS, subcommand) ?
+      SUBCOMMAND_HANDLERS[subcommand]
+    : undefined;
 
   if (handler !== undefined) {
     const result = await handler(rest);

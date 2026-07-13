@@ -24482,7 +24482,7 @@ var run40 = async (argv) => {
     process.stdout.write(HELP_TEXT29);
     return EXIT_CODES.OK;
   }
-  const handler = SUBCOMMAND_HANDLERS5[subcommand];
+  const handler = Object.hasOwn(SUBCOMMAND_HANDLERS5, subcommand) ? SUBCOMMAND_HANDLERS5[subcommand] : void 0;
   if (handler !== void 0) {
     const result = await handler(rest);
     return typeof result === "number" ? result : EXIT_CODES.OK;
