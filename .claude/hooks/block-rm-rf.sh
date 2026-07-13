@@ -91,6 +91,14 @@ cmd=${cmd//\\$'\n'/}
 # filler would glue onto the token and break the anchored arms below: `rm -rf
 # "$HOME;"` must still reach the $HOME arm, and with a space it does.
 #
+# Substituting rather than DELETING is load-bearing, and not only for the reason
+# above. The gate below skips this walk entirely for a command whose raw text holds
+# no `rm`, which is sound only because a substitution preserves every character's
+# position and so can never *synthesize* an `rm` that the raw text lacked. Delete
+# the separators instead and `r;m -rf /` would walk into `rm -rf /`, which the gate
+# would already have skipped, turning that optimization into a live bypass. Do not
+# "simplify" this to a deletion without also removing the `*rm*` test below.
+#
 # This only ever WIDENS what gets inspected, so it can add denials and never
 # remove one.
 #
