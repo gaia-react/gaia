@@ -377,3 +377,150 @@ days_ago() {
   [ "$status" -eq 0 ]
   [ -d "$REPO/.gaia/local/plans/PLAN-071" ]
 }
+
+# --- Sweep #2: orphaned audit markers and re-run ledgers -------------------
+#
+# The sweep's liveness test is the same for every file it globs: the <sha> is
+# live iff it is HEAD or reachable from a local branch. It covers the merge
+# markers (<sha>.ok, <sha>.dispositions.json) and the re-run carry-forward
+# ledger (<sha>.rerun.json), which no other owner reaps on an abandoned branch:
+# code-audit-frontend deletes a ledger only on a clean audit pass, so a branch
+# abandoned before it reaches clean leaves its ledger behind for good.
+
+# seed_audit_file <name>: drops one file into the audit drop-zone.
+seed_audit_file() {
+  mkdir -p "$REPO/.gaia/local/audit"
+  echo '{}' > "$REPO/.gaia/local/audit/$1"
+}
+
+# orphan_sha: a real commit whose branch is deleted, so it is neither HEAD nor
+# reachable from any local branch (reflog-only) -- exactly a squash-merged or
+# abandoned branch tip.
+orphan_sha() {
+  git -C "$REPO" checkout -q -b throwaway
+  echo orphan > "$REPO/orphan"
+  git -C "$REPO" add orphan
+  git -C "$REPO" commit -q -m orphan
+  git -C "$REPO" rev-parse HEAD
+  git -C "$REPO" checkout -q main
+  git -C "$REPO" branch -q -D throwaway
+}
+
+@test "sweep 2: an orphaned <sha>.rerun.json is swept" {
+  make_repo
+  sha=$(orphan_sha)
+  seed_audit_file "$sha.rerun.json"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$sha.rerun.json" ]
+}
+
+@test "sweep 2: a <sha>.rerun.json for HEAD is kept" {
+  make_repo
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  seed_audit_file "$sha.rerun.json"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$sha.rerun.json" ]
+}
+
+@test "sweep 2: a <sha>.rerun.json reachable from a live local branch is kept" {
+  make_repo
+  git -C "$REPO" checkout -q -b feature-live
+  echo work > "$REPO/w"
+  git -C "$REPO" add w
+  git -C "$REPO" commit -q -m work
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  git -C "$REPO" checkout -q main
+  seed_audit_file "$sha.rerun.json"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$sha.rerun.json" ]
+}
+
+@test "sweep 2: a bogus-sha .rerun.json is swept (an unresolvable sha is dead)" {
+  make_repo
+  seed_audit_file "notasha.rerun.json"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/notasha.rerun.json" ]
+}
+
+@test "sweep 2: the .ok / .dispositions.json markers still sweep and keep by the same rule" {
+  make_repo
+  dead=$(orphan_sha)
+  head=$(git -C "$REPO" rev-parse HEAD)
+  seed_audit_file "$dead.ok"
+  seed_audit_file "$dead.dispositions.json"
+  seed_audit_file "$head.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead.dispositions.json" ]
+  [ -f "$REPO/.gaia/local/audit/$head.ok" ]
+}
+
+# --- Sweep #8: stale cloud telemetry events (age-gated) --------------------
+#
+# telemetry/cloud is a structural drop-zone, so sweep #4 keeps the directory
+# alive, but nothing reaps its contents: `gaia mentorship purge` documents that
+# it never touches the cloud stream. The janitor owns the retention, age-gated
+# on the same 14-day window sweep #5 uses for stale cache artifacts.
+
+# touch_days_ago <n> <file>: back-date a file n days, computed with jq (never
+# `date -d`/`date -j`, matching the project's cross-platform epoch rule).
+touch_days_ago() {
+  touch -t "$(jq -rn --argjson n "$1" '(now - ($n * 86400)) | strftime("%Y%m%d%H%M")')" "$2"
+}
+
+# seed_cloud_file <name> <days-old>: drops one back-dated file into the cloud
+# telemetry drop-zone.
+seed_cloud_file() {
+  mkdir -p "$REPO/.gaia/local/telemetry/cloud"
+  echo '{}' > "$REPO/.gaia/local/telemetry/cloud/$1"
+  touch_days_ago "$2" "$REPO/.gaia/local/telemetry/cloud/$1"
+}
+
+@test "sweep 8: a cloud events file past the window is reaped" {
+  make_repo
+  seed_cloud_file "events-2026-01-01.jsonl" 20
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/telemetry/cloud/events-2026-01-01.jsonl" ]
+}
+
+@test "sweep 8: a cloud events file within the window is kept" {
+  make_repo
+  seed_cloud_file "events-2026-06-01.jsonl" 2
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/telemetry/cloud/events-2026-06-01.jsonl" ]
+}
+
+@test "sweep 8: a non-events file in the cloud drop-zone is never touched, however old" {
+  make_repo
+  seed_cloud_file "config.json" 90
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/telemetry/cloud/config.json" ]
+}
+
+@test "sweep 8: the telemetry/cloud drop-zone survives an emptying reap" {
+  make_repo
+  seed_cloud_file "events-2026-01-02.jsonl" 20
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  # Second pass: the now-empty drop-zone must still not be rmdir'd by sweep #4.
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/telemetry/cloud" ]
+}

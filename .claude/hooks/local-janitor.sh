@@ -13,7 +13,7 @@
 # safe to run unconditionally every session. Before the sweeps below, it also
 # best-effort runs the one-time ledger-status-migrate.sh, so every sweep that
 # reads a ledger row's status sees the unified vocabulary. It then sweeps
-# exactly seven things:
+# exactly eight things:
 #
 #   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
 #      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
@@ -26,10 +26,14 @@
 #      is the provable-death signal (the normal per-branch PR-merge cleanup runs
 #      no `git branch -D` here because the landing is fire-and-forget). This
 #      sweep is git-scoped, so it runs before the .gaia/local guard below.
-#   2. audit/<sha>.ok and audit/<sha>.dispositions.json whose <sha> is neither
-#      HEAD nor reachable from any local branch. A marker gates `gh pr merge`
-#      only when its <sha> == HEAD; once the PR squash-merges to a new sha the
-#      audited branch tip is orphaned (reflog-only) and the marker is spent.
+#   2. audit/<sha>.ok, audit/<sha>.dispositions.json, and audit/<sha>.rerun.json
+#      whose <sha> is neither HEAD nor reachable from any local branch. A marker
+#      gates `gh pr merge` only when its <sha> == HEAD; once the PR squash-merges
+#      to a new sha the audited branch tip is orphaned (reflog-only) and the
+#      marker is spent. The .rerun.json carry-forward ledger dies by the same
+#      rule and needs the same backstop: code-audit-frontend deletes it only on
+#      a clean audit pass, so a branch abandoned before it reaches clean leaves
+#      its ledger behind with no other owner to reap it.
 #      A <sha> that is not a valid commit (bogus/garbage) is treated as dead.
 #   3. plans/<slug>/ and colocated specs/<SPEC-ID>/plan[-N]/ dirs whose RUNNING
 #      sentinel names a branch that no longer exists AND is not marked
@@ -61,6 +65,12 @@
 #      the same retention window AND whose cost is fully represented. A thin
 #      delegation to plan-archive-merged.sh, which owns both gates,
 #      symmetric with sweep #6's spec-folder delegation.
+#   8. telemetry/cloud/events-*.jsonl older than 14 days. The cloud stream has
+#      no other reaper: `gaia mentorship purge` deliberately leaves it alone
+#      (it purges mentorship data, and the cloud projection is a separate
+#      consented stream), and telemetry/cloud is a structural drop-zone, so
+#      sweep #4 keeps the directory alive without ever touching its contents.
+#      Age-gated on the same 14-day window as sweep #5.
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -110,10 +120,11 @@ migrate="$root/.gaia/scripts/ledger-status-migrate.sh"
 head_sha=$(git -C "$root" rev-parse HEAD 2>/dev/null || true)
 audit_dir="$local_dir/audit"
 if [ -d "$audit_dir" ]; then
-  for marker in "$audit_dir"/*.ok "$audit_dir"/*.dispositions.json; do
+  for marker in "$audit_dir"/*.ok "$audit_dir"/*.dispositions.json \
+    "$audit_dir"/*.rerun.json; do
     [ -e "$marker" ] || continue          # glob did not match
     base=${marker##*/}
-    sha=${base%.ok}; sha=${sha%.dispositions.json}
+    sha=${base%.ok}; sha=${sha%.dispositions.json}; sha=${sha%.rerun.json}
 
     keep=0
     # The one live marker is the one for the commit about to merge: HEAD.
@@ -251,6 +262,17 @@ fi
 archive_plan="$root/.specify/extensions/gaia/lib/plan-archive-merged.sh"
 if [ -x "$archive_plan" ] || [ -f "$archive_plan" ]; then
   bash "$archive_plan" "$root" >/dev/null 2>&1 || true
+fi
+
+# --- 8. Stale cloud telemetry events (age-gated, same window as sweep 5) ----
+# telemetry/cloud is a drop-zone (kept alive by sweep 4), but nothing reaps its
+# contents: `gaia mentorship purge` documents that it never touches the cloud
+# stream, so events-*.jsonl accumulates for the life of the checkout. The
+# janitor owns the rotation, on the same generous 14-day window sweep 5 uses.
+# Name-scoped to events-*.jsonl, so anything else in the drop-zone survives.
+cloud_dir="$local_dir/telemetry/cloud"
+if [ -d "$cloud_dir" ]; then
+  find "$cloud_dir" -maxdepth 1 -name 'events-*.jsonl' -type f -mtime +14 -delete 2>/dev/null
 fi
 
 exit 0
