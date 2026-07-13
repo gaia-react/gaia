@@ -173,6 +173,79 @@ assert_allowed() {
   assert_denied
 }
 
+# --- denied: the ${HOME} brace form ---
+#
+# `${HOME}` is, if anything, the more deliberate spelling of the expansion, so
+# omitting it reproduces the very bug this suite exists to lock down: the guard
+# catching the casual form and missing the careful one.
+
+@test "rm -rf \${HOME} (brace form) is denied" {
+  run_hook_bash 'rm -rf ${HOME}'
+  assert_denied
+}
+
+@test "rm -rf \"\${HOME}\" (quoted brace form) is denied" {
+  run_hook_bash 'rm -rf "${HOME}"'
+  assert_denied
+}
+
+@test "rm -rf \"\${HOME}/projects\" (quoted brace path) is denied" {
+  run_hook_bash 'rm -rf "${HOME}/projects"'
+  assert_denied
+}
+
+@test "rm -rf \${HOME}/.config (brace path) is denied" {
+  run_hook_bash 'rm -rf ${HOME}/.config'
+  assert_denied
+}
+
+# --- denied: a dangerous target in a non-first rm segment ---
+#
+# `rm -rf node_modules && rm -rf dist` is an ordinary cleanup chain, so a guard
+# that inspects only the first rm segment lets a dangerous target ride behind a
+# harmless one.
+
+@test "a dangerous target in the second rm segment (&&) is denied" {
+  run_hook_bash 'rm -rf dist && rm -rf /'
+  assert_denied
+}
+
+@test "a dangerous target in the second rm segment (;) is denied" {
+  run_hook_bash 'rm -rf dist ; rm -rf ~'
+  assert_denied
+}
+
+@test "a dangerous target in the second rm segment (||) is denied" {
+  run_hook_bash 'rm -rf dist || rm -rf .git'
+  assert_denied
+}
+
+@test "a dangerous target in the third rm segment is denied" {
+  run_hook_bash 'cd /tmp && rm -rf build && rm -rf $HOME'
+  assert_denied
+}
+
+# --- denied: operand-first flag order ---
+#
+# GNU getopt permutes argv, so `rm $HOME -rf` is exactly `rm -rf $HOME` and
+# deletes home on Linux. BSD/macOS rm does not permute, which is why this shape
+# looks harmless when hand-tested on a Mac and must be covered by the suite.
+
+@test "rm \$HOME -rf (operand before flags) is denied" {
+  run_hook_bash 'rm $HOME -rf'
+  assert_denied
+}
+
+@test "rm .git -rf (operand before flags) is denied" {
+  run_hook_bash 'rm .git -rf'
+  assert_denied
+}
+
+@test "rm ~ -rf (operand before flags) is denied" {
+  run_hook_bash 'rm ~ -rf'
+  assert_denied
+}
+
 # --- allowed: whitelisted scratch paths ---
 
 @test "rm -rf .gaia/local/plans/x is allowed" {
@@ -215,6 +288,29 @@ assert_allowed() {
 
 @test "rm -rf on an unrelated quoted variable is allowed" {
   run_hook_bash 'rm -rf "$SCRATCH_DIR"'
+  assert_allowed
+}
+
+@test "rm -rf \${HOMEBREW_PREFIX} (a \$HOME-prefixed neighbour) is allowed" {
+  # The brace arms must be anchored, not prefix matches: a variable whose name
+  # merely starts with HOME is not $HOME.
+  run_hook_bash 'rm -rf ${HOMEBREW_PREFIX}'
+  assert_allowed
+}
+
+@test "rm -rf \${PWD}/dist (an unrelated brace variable) is allowed" {
+  run_hook_bash 'rm -rf ${PWD}/dist'
+  assert_allowed
+}
+
+@test "a benign multi-segment rm chain is allowed" {
+  # Inspecting every segment must not turn an ordinary cleanup chain into a deny.
+  run_hook_bash 'rm -rf dist && rm -rf build/output'
+  assert_allowed
+}
+
+@test "rm -rf node_modules_backup (a node_modules-prefixed neighbour) is allowed" {
+  run_hook_bash 'rm -rf node_modules_backup'
   assert_allowed
 }
 
