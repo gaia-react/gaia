@@ -30,7 +30,10 @@ cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
 [[ -n "$cmd" ]] || exit 0
 
 # Short-circuit: only act on commands containing `rm` with `-rf`/`-fr`/`-r -f`/etc.
-if ! grep -Eq '(^|[^[:alnum:]_-])rm[[:space:]]+(-[a-zA-Z]*[rRfF]|-[rRfF][a-zA-Z]*|--recursive|--force)' <<<"$cmd"; then
+# `--no-preserve-root` is in the alternation because it can be written *before*
+# the recursive flag (`rm --no-preserve-root -rf /`). Without it the short-circuit
+# exits here and the unconditional --no-preserve-root deny below is never reached.
+if ! grep -Eq '(^|[^[:alnum:]_-])rm[[:space:]]+(-[a-zA-Z]*[rRfF]|-[rRfF][a-zA-Z]*|--recursive|--force|--no-preserve-root)' <<<"$cmd"; then
   exit 0
 fi
 
@@ -67,6 +70,19 @@ for tok in ${tokens[@]+"${tokens[@]}"}; do
   # Skip the literal `rm` word and flag tokens.
   [[ "$tok" == "rm" || "$tok" == rm ]] && continue
   [[ "$tok" == -* ]] && continue
+
+  # Drop every quote character before matching. `read -r -a` word-splits but
+  # does not remove quotes, so the token for `rm -rf "$HOME"` is the literal
+  # 7-character "$HOME" (quotes included) and matches none of the patterns
+  # below. Quoting the expansion is the *careful* way to write the command, so
+  # a quote-blind guard misses precisely the well-written form and catches only
+  # the sloppy one. Removing all quotes rather than just a surrounding pair also
+  # covers `rm -rf "$HOME"/projects`, where the quotes sit mid-token. A path
+  # whose real name contains a quote character is not a case worth protecting
+  # here: the cost is a false deny, which fails safe.
+  tok=${tok//\"/}
+  tok=${tok//\'/}
+  [[ -n "$tok" ]] || continue
 
   # SC2088 (tilde does not expand in quotes) is disabled for this whole case: the
   # `~` / `$HOME` patterns below are literal match targets, not paths to expand.
