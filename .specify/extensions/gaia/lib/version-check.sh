@@ -135,7 +135,30 @@ if command -v specify > /dev/null 2>&1; then
 fi
 
 if [ -z "$installed" ] && command -v uvx > /dev/null 2>&1; then
+  # This is the one route that touches the network, and it runs inside the check
+  # gating the `before_specify` hook, so an unbounded call stalls /gaia-spec on a
+  # degraded network (captive portal, slow DNS). Bound it without `timeout(1)`,
+  # which macOS does not ship, by setting both sides' own knobs:
+  #
+  #   - UV_HTTP_TIMEOUT bounds uv's HTTP reads (interpreter and PyPI downloads).
+  #   - GIT_HTTP_LOW_SPEED_* bounds the `git+https://` fetch, which uv performs
+  #     by shelling out to the system git, out of reach of uv's HTTP timeout.
+  #     git aborts a transfer that stays under LIMIT bytes/sec for TIME seconds.
+  #
+  # Neither is a hard wall-clock cap on the whole invocation; together they cap
+  # the stalls that actually strand this call. Operator-set values win.
+  export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-30}"
+  export GIT_HTTP_LOW_SPEED_LIMIT="${GIT_HTTP_LOW_SPEED_LIMIT:-1000}"
+  export GIT_HTTP_LOW_SPEED_TIME="${GIT_HTTP_LOW_SPEED_TIME:-30}"
+
   installed="$(uvx --from "$speckit_ref" specify --version 2>/dev/null | head -n 1 | awk '{print $NF}' | tr -d '[:space:]' || true)"
+  # Same second chance the PATH route takes above: a pinned spec-kit exposing
+  # only the bare `version` subcommand must resolve here too, not just for the
+  # rarer PATH-resident user. The ref is already fetched, so this costs a
+  # warm-cache uvx run, not a second network round trip.
+  if [ -z "$installed" ]; then
+    installed="$(uvx --from "$speckit_ref" specify version 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  fi
 fi
 
 if [ -z "$installed" ]; then
