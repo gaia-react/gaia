@@ -628,6 +628,7 @@ jobs:
            steps.push-fixes.outputs.pushed == 'true')
         env:
           AUDIT_SHA: ${{ steps.push-fixes.outputs.audit_sha }}
+          AUDIT_BASE: ${{ steps.base.outputs.base }}
         run: |
           set -eu
           # Write a GAIA-Audit commit status on the SHA that already carries
@@ -639,6 +640,46 @@ jobs:
             echo "code-review-audit: no audit_sha to stamp; skipping status." >&2
             exit 0
           fi
+
+          # Member-aware gate. CI runs exactly ONE auditor: the audit step's
+          # prompt dispatches code-audit-frontend. Every OTHER member the
+          # resolver dispatches for this diff is local-only here -- CI cannot run
+          # it, and its marker lives under gitignored .gaia/local/, so CI never
+          # sees a clearance for it. Posting success on the frontend's clearance
+          # alone would defeat the AND-aggregator at the workflow layer and
+          # unblock the github.com merge button for a diff a required auditor
+          # never read. Post `pending` instead and let the local, member-aware
+          # producer (.claude/hooks/post-audit-status.sh) post success once every
+          # dispatched member's marker exists. The Claude/gh merge path is
+          # already member-aware (pr-merge-audit-check.sh); this makes the web
+          # button agree with it instead of contradicting it.
+          #
+          # Gate on the member SET, never on marker files keyed to $AUDIT_SHA:
+          # on this path the agent's marker is named for the trailer/self-heal
+          # HEAD, which is deliberately NOT $AUDIT_SHA (the marker commit is
+          # dropped, or HEAD~1 is stamped), so a marker-file lookup here would
+          # false-negative and block every clean self-heal.
+          #
+          # Fail-open on an unusable resolver (empty output), matching the local
+          # producer's documented fallback: a broken resolver must not brick the
+          # merge path.
+          pending=""
+          if [ -x .gaia/scripts/resolve-audit-members.sh ]; then
+            pending="$(bash .gaia/scripts/resolve-audit-members.sh --base "${AUDIT_BASE}" \
+              | grep -v '^code-audit-frontend$' | tr '\n' ' ' | sed 's/ *$//')" || true
+          fi
+          if [ -n "$pending" ]; then
+            echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
+            # Non-fatal: if this POST fails, no status lands, the required check
+            # stays unfulfilled, and the button stays shut. Fail-safe either way.
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${AUDIT_SHA}" \
+              --method POST \
+              --field state=pending \
+              --field context=GAIA-Audit \
+              --field description="members pending: ${pending}" || true
+            exit 0
+          fi
+
           version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
           version="${version#"${version%%[![:space:]]*}"}"
           version="${version%"${version##*[![:space:]]}"}"
@@ -671,6 +712,7 @@ jobs:
           # during the run (an empty trailer marker, or a refused self-heal), and
           # POSTing a status to a sha GitHub does not have returns HTTP 422.
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUDIT_BASE: ${{ steps.base.outputs.base }}
         run: |
           set -eu
           # Genuinely-clean-but-no-commit path. A clean audit that makes no
@@ -718,6 +760,46 @@ jobs:
             echo "code-review-audit: clean marker ${marker} absent; audit not proven clean, not stamping." >&2
             exit 0
           fi
+
+          # Member-aware gate. The marker above proves only the FRONTEND member
+          # is clean -- it is code-audit-frontend's own marker. CI runs exactly
+          # ONE auditor (the audit step's prompt dispatches code-audit-frontend),
+          # so every OTHER member the resolver dispatches for this diff is
+          # local-only here: CI cannot run it, and its marker lives under
+          # gitignored .gaia/local/, so CI never sees a clearance for it.
+          # Stamping success on the frontend marker alone defeats the
+          # AND-aggregator and unblocks the github.com merge button for a diff a
+          # required auditor never read. Post `pending` instead and let the
+          # local, member-aware producer
+          # (.claude/hooks/post-audit-status.sh) post success once every
+          # dispatched member's marker exists. The Claude/gh merge path is
+          # already member-aware (pr-merge-audit-check.sh); this makes the web
+          # button agree with it instead of contradicting it.
+          #
+          # The description deliberately carries NO "<version> <tree-sha>"
+          # cleared shape, so even a state-blind reader cannot mistake it for
+          # cleared (same defense-in-depth as the local-mode stand-down).
+          #
+          # Fail-open on an unusable resolver (empty output), matching the local
+          # producer's documented fallback: a broken resolver must not brick the
+          # merge path.
+          pending=""
+          if [ -x .gaia/scripts/resolve-audit-members.sh ]; then
+            pending="$(bash .gaia/scripts/resolve-audit-members.sh --base "${AUDIT_BASE}" \
+              | grep -v '^code-audit-frontend$' | tr '\n' ' ' | sed 's/ *$//')" || true
+          fi
+          if [ -n "$pending" ]; then
+            echo "code-review-audit: members pending ${pending}; posting pending, not success." >&2
+            # Non-fatal: if this POST fails, no status lands, the required check
+            # stays unfulfilled, and the button stays shut. Fail-safe either way.
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+              --method POST \
+              --field state=pending \
+              --field context=GAIA-Audit \
+              --field description="members pending: ${pending}" || true
+            exit 0
+          fi
+
           version="$(tr -d '\r' < .gaia/VERSION | awk 'NF{print; exit}')"
           version="${version#"${version%%[![:space:]]*}"}"
           version="${version%"${version##*[![:space:]]}"}"
