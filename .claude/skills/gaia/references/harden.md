@@ -8,7 +8,7 @@ v1 owns prose-rule create/edit end to end. Skills and deterministic checks are r
 
 Execute the playbook yourself in the current conversation. This is an interactive, human-gated flow: each candidate's approve / decline / defer / redirect choice is the human's, never the agent's. Do not dispatch a subagent to make those calls and do not auto-advance past a candidate without a human answer.
 
-The agent never runs `git add`, `git commit`, or `git push` anywhere in this flow. Approved work lands in the working tree only; it ships through normal PR review. A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing.
+The agent never runs `git add`, `git commit`, or `git push` *during* the per-candidate flow: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) runs on a **main-branch run only**: if at least one approval produced a working-tree change, it branches, commits, pushes, and opens a PR so the human does not have to ask for it. It then merges only when the human approved *every* candidate this run and answers a merge prompt (never automatically); on any selective run it leaves the PR open for review. It does nothing on a non-default branch (the changes ride that branch's own PR). A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing.
 
 ## Argument parsing
 
@@ -103,7 +103,7 @@ For each candidate, present: the finding_class, its distinct-PR count and the PR
 
 Draft the rule file into the working tree using the template below. The rule is MANDATORILY path-scoped: a `paths:` frontmatter glob is always present, derived from the candidate's `area_tags`. When `area_tags` is empty or holds non-path strings (holistic classes often carry semantic tags, not path globs), fall back: derive the glob from the finding's bucket/surface (e.g. a `rule/*` React class scopes to `app/**/*`) or ask the human for the intended scope. Never write a frontmatter-less / always-loaded rule, and never emit an unscoped `**/*` glob, that defeats the path-scoping invariant that bounds per-task context weight. Immediately after the frontmatter, write the provenance marker verbatim (see the frozen marker below). Then write present-tense body prose describing the anti-pattern and the correct pattern.
 
-After writing, tell the engineer the rule is in the working tree and ships through normal PR review. NEVER `git add`, `git commit`, or `git push`.
+After writing, tell the engineer the rule is in the working tree. Do not commit or PR here; the end-of-run publish step handles that (`## Publish approved changes (end of run)`).
 
 ### approve, edit existing prose rule
 
@@ -112,7 +112,7 @@ Use this handler, not the new-file path above, when Axis 1 recommended EDITING a
 - **Append the new guidance to the existing rule file** Axis 1 named, under the most relevant existing `## …` section or a new `## …` heading in that same file. Body prose is present tense and follows `.claude/rules/wiki-style.md`.
 - **Append a provenance marker for the newly-approved `finding_class`.** The file already carries a marker, but it names the DIFFERENT class the rule was first promoted from; this candidate surfaced precisely because no marker for ITS class exists yet. Coverage keys per-class: `covered-classes.ts` scans every marker in the file (a whole-file `matchAll`) into a `Set` keyed on the captured class, and the tally drops a class only when a marker for that exact class is present. So the second marker is REQUIRED, not redundant, it is what suppresses the newly-covered class on the next tally and drops the candidate immediately, matching the prose-approval semantics. It does not double-count: the `Set` dedupes and each marker captures a distinct class. Write the same verbatim marker (see the frozen marker below) with `<class>` set to the newly-approved `finding_class`, placed adjacent to the appended guidance. The scan is whole-file, so the marker need not be the first line after the frontmatter, that first-line placement is the new-file template's convention, not a coverage requirement.
 - **Do NOT write a second frontmatter block.** Reconcile the existing `paths:` instead: union the candidate's derived glob (same derivation and empty/non-path fallback as the new-file handler, never `**/*`) into the existing frontmatter `paths:` list, adding a line only when the glob is not already covered by an entry there.
-- After editing, tell the engineer the rule change is in the working tree and ships through normal PR review. NEVER `git add`, `git commit`, or `git push`.
+- After editing, tell the engineer the rule change is in the working tree. Do not commit or PR here; the end-of-run publish step handles that (`## Publish approved changes (end of run)`).
 
 ### approve, deterministic check
 
@@ -124,7 +124,7 @@ Produce ONLY a skill scaffold; activate nothing and write no `.claude/rules/` fi
 
 ### approve, enforcement edit (oracle class)
 
-Make the existing deterministic check blocking or add it to the quality gate. This is an edit to existing enforcement wiring (the tool's rule file, the `code-audit-frontend` agent, the quality gate doc, or the CI workflow), not a new prose rule. Land the edit in the working tree only; never commit. Because this form writes no provenance marker, the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
+Make the existing deterministic check blocking or add it to the quality gate. This is an edit to existing enforcement wiring (the tool's rule file, the `code-audit-frontend` agent, the quality gate doc, or the CI workflow), not a new prose rule. Land the edit in the working tree; the end-of-run publish step commits and PRs it (`## Publish approved changes (end of run)`). Because this form writes no provenance marker, the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
 
 ### decline
 
@@ -186,6 +186,59 @@ The marker is this exact line, with `<class>` substituted:
 The `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)` from `.gaia/cli/src/harden/marker.ts` byte for byte. A wording change that misses any copy silently breaks one binder or the other, so the marker text lives once in `marker.ts` and every copy tracks it.
 <!-- gaia:maintainer-only:end -->
 
+## Publish approved changes (end of run)
+
+Runs once, in `review` mode only, after the last candidate is dispositioned. `list` and `why` never reach it (they author nothing). It exists so an engineer who approved at least one change does not then have to ask for a branch and PR by hand.
+
+**Precondition.** During the per-candidate loop, track whether any candidate was approved through a handler that writes to the working tree: **new prose rule**, **edit existing prose rule**, or **enforcement edit**. The scaffold-only handlers (deterministic-check sketch, skill scaffold) write no file and never count, and decline / defer produce no change. If no approval produced a working-tree change, there is nothing to publish: say so briefly and stop.
+
+**Also track an `all-approved` flag:** true when **every candidate this run was approved** (approve or redirect; a single decline or defer breaks it). It does not affect whether to publish, it gates only the merge prompt below.
+
+**Confirm there are real changes.** Before branching, verify the working tree actually carries the edits:
+
+```bash
+git status --porcelain
+```
+
+If it is empty, no-op (a redirect or an unapplied too-invasive edit can leave the approval count and the tree disagreeing); report that nothing landed and stop.
+
+**Repo-state safety.** Branching needs a safe state. If HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, do not branch: leave the approved changes in the working tree, tell the engineer they ship through normal PR review, and stop.
+
+**On the default branch (main/master):** create the branch (the uncommitted approved edits follow the checkout), commit, push, and open a PR.
+
+```bash
+TIMESTAMP=$(date +%Y-%m-%d-%H%M)
+BRANCH="chore/gaia-harden-$TIMESTAMP"
+git checkout -b "$BRANCH"
+git add -A
+git commit -F <commit-message-file>
+git push -u origin "$BRANCH"
+gh pr create --title "<commit subject>" --body-file <pr-body-file>
+```
+
+Route the commit message through a file, never `-m`. Subject: `chore(harden): <the approved forms, e.g. "promote use-effect-derived-state rule">`. The diff touches only `.claude/rules/**` and enforcement wiring, all out of `code-audit-frontend` scope, so the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass.
+
+<!-- gaia:maintainer-only:start -->
+Clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md` before `gh pr create`, so the PR carries it whether it merges now or after review: a promoted policy rule that changes how the agent works usually warrants a `## [Unreleased]` entry. Scrubbed from adopter bundles.
+<!-- gaia:maintainer-only:end -->
+
+**Merge decision.** Only when the `all-approved` flag from the precondition is true (every candidate this run was approved, no decline or defer), ask once via `AskUserQuestion` whether to merge:
+
+- **header:** `"Merge harden PR?"`
+- **question:** `"You approved every candidate. Merge PR #<N> now, or leave it open for review?"`
+- **options (this exact order):**
+  1. `{ label: "Merge", description: "Squash-merge PR #<N> now through the out-of-scope bypass." }`
+  2. `{ label: "Leave open", description: "Keep the PR open; you merge it after review." }`
+
+- **Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto` (`--auto` queues behind required checks; no marker owed via the bypass), bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes), and on `MERGED` clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if it is still queued when the poll window closes, print the PR URL, note the merge is queued, and leave the branch in place.
+- **Leave open** → report the PR URL and stop.
+
+**If the `all-approved` flag is false** (any candidate was declined or deferred), do not prompt: report the PR URL, note it is open for review, and stop. Never run `gh pr merge` on this path.
+
+**On any other branch:** do not branch, commit, or PR. Leave the approved changes in the working tree and tell the engineer they ride the current branch's own PR (today's behavior). The end-of-run automation targets only the main-branch case, where a branch has to be made.
+
+If any `git` or `gh` command above exits non-zero, print the error and STOP. Do not retry, force-push, or amend; a rejected push is the engineer's call to resolve.
+
 ## list subcommand
 
 Run `harden-tally`, then for each candidate print one line: `finding_class`, distinct-PR count, the PRs, and the recommended form (from judge-the-form, edit-vs-new + which-form). Author nothing and prompt for nothing.
@@ -197,7 +250,7 @@ Run `harden-tally`, find the candidate whose `finding_class` matches the argumen
 ## Guardrails
 
 - `/gaia-harden` is the only writer in this loop, and only under explicit human invocation. The background refresher and the audit emit never author.
-- Never `git add`, `git commit`, or `git push`. Approved work lands in the working tree for human review and ships through normal PR review.
+- Never `git add`, `git commit`, or `git push` during the per-candidate flow. The single end-of-run publish step is the only writer to git, and only on a main-branch run with at least one approved working-tree change: it branches, commits, pushes, and opens a PR. It merges only when every candidate this run was approved and the human answers the merge prompt (never automatically); on a selective run it leaves the PR open. On a non-default branch it does nothing (the changes ride that branch's PR).
 - Never auto-activate a skill or a deterministic check. v1 owns only prose-rule create/edit end to end; the other two forms are scaffold-only.
 - Every drafted prose rule is mandatorily path-scoped (`paths:` frontmatter), and carries the verbatim provenance marker.
 - A decline is machine-local only (gitignored ledger); it never vetoes the candidate for a teammate.
