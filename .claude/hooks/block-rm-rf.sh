@@ -5,8 +5,9 @@
 #   - any command using --no-preserve-root
 #   - rm -rf / (root)
 #   - rm -rf $HOME, ${HOME}, ~, ~/, $HOME/...
-#   - rm -rf .   (cwd)
+#   - rm -rf .   (cwd, incl. $PWD)
 #   - rm -rf *   (unscoped glob)
+#   - rm -rf .*  (dotfile glob, incl. the .[!.]* / ..?* / {.,}* spellings)
 #   - rm -rf .git
 #   - rm -rf node_modules (anywhere, must use pnpm clean / explicit path)
 #
@@ -32,14 +33,18 @@
 # (`rm -rf ../..`), and targets arriving via `xargs` all pass.
 #
 # Some *literally spelled* targets also pass. These are known holes, not design,
-# and the list is NOT exhaustive, assume more exist:
-#   - `rm -rf .*` removes .git and .claude; the glob arm matches `*`, not `.*`.
-#   - a quoted `;`, `&`, or `|` in an operand truncates segment extraction, so
-#     every operand after it is never tokenized (`rm -rf ";" $HOME`).
-#   - `$PWD/.git`, `~root`, `{.,}*` and friends match no arm.
-# Each new literal shape this guard learns to catch reveals another it does not.
-# Treat the deny list as a floor, never a ceiling. Known holes are tracked as
-# tech debt.
+# and the list is NOT exhaustive, assume more exist. Each new literal shape this
+# guard learns to catch reveals another it does not: treat the deny list as a
+# floor, never a ceiling. Known holes are tracked as tech debt.
+#
+# One direction is deliberately NOT repaired, and it looks like a bug. The guard
+# denies commands that merely *mention* a target in a quoted string, so
+# `git commit -m "fix: rm -rf $HOME bypass"` is a false deny. Making a quoted
+# `rm` not-a-command would fix that, and would also allow `bash -c "rm -rf /"`,
+# `ssh host "rm -rf /"`, and `eval "rm -rf /"`. A text matcher cannot tell a
+# quoted command from a quoted string; of the two failure directions the false
+# deny is the safe one, so it stays. Deliver such text via `--body-file` / `-F`,
+# or through a variable.
 #
 # `jq` is a hard dependency: without it the hook exits non-zero, which Claude
 # Code treats as a non-blocking error, so the command proceeds unguarded
@@ -68,6 +73,62 @@ cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
 # space that already precedes a normal continuation's backslash is what keeps
 # the token boundary in the idiomatic case, so nothing is lost here.
 cmd=${cmd//\\$'\n'/}
+
+# Neutralize `;`, `&`, and `|` INSIDE quoted spans, rewriting each to a space.
+#
+# Both the short-circuit grep and the segment extraction below stop a segment at
+# the first `;&|` byte, on the assumption that those bytes always terminate a
+# command. Inside quotes they do not: they are ordinary characters in an operand.
+# `rm -rf ";" $HOME` hands bash the argv [-rf] [;] [$HOME] and deletes home, while
+# the unrepaired guard extracts only `rm -rf "`, never tokenizes `$HOME`, and
+# allows it. This has to run before the short-circuit, not just before extraction:
+# `rm ";" -rf $HOME` puts the quoted separator between `rm` and its flags, so the
+# short-circuit misses too and the deny logic below never runs at all.
+#
+# A space is the right rewrite, not deletion and not a sentinel byte. The guard is
+# already quote-blind at the token level (it strips quotes, then word-splits), so
+# an extra token boundary inside a quoted string costs nothing, while any other
+# filler would glue onto the token and break the anchored arms below: `rm -rf
+# "$HOME;"` must still reach the $HOME arm, and with a space it does.
+#
+# This only ever WIDENS what gets inspected, so it can add denials and never
+# remove one.
+#
+# It deliberately does NOT skip an `rm` that is itself inside quotes, which looks
+# like the matching fix for this guard's false denies on prose that merely mentions
+# a command (`git commit -m "fix: stop rm -rf $HOME from bypassing the guard"` is
+# denied today, and that is annoying). Do not "fix" it: the same change allows
+# `bash -c "rm -rf /"`, `ssh host "rm -rf /"`, and `eval "rm -rf /"`, which are real
+# shapes this guard catches today. A text matcher cannot tell a quoted command from
+# a quoted string, and of the two failure directions the false deny is the safe one.
+# Work around it by delivering the text via `--body-file` / `-F`, or via a variable.
+#
+# Escaped quotes inside a quoted span are not tracked. The guard is a heuristic
+# matcher; mis-tracking there misplaces a space, which fails safe.
+neutralize_quoted_separators() {
+  local s=$1 out='' quote='' ch i len=${#1}
+  for ((i = 0; i < len; i++)); do
+    ch=${s:i:1}
+    if [[ -n "$quote" ]]; then
+      if [[ "$ch" == "$quote" ]]; then
+        quote=''
+      else
+        case "$ch" in ';'|'&'|'|') ch=' ' ;; esac
+      fi
+    else
+      case "$ch" in '"'|"'") quote=$ch ;; esac
+    fi
+    out+=$ch
+  done
+  printf '%s' "$out"
+}
+
+# Only pay for the character walk when both ingredients are present. Most commands
+# carry one or the other, and the walk is O(n) bash on a string that is already in
+# memory, so this keeps the common path free.
+if [[ "$cmd" == *[\"\']* && "$cmd" == *[\;\&\|]* ]]; then
+  cmd=$(neutralize_quoted_separators "$cmd")
+fi
 
 # Short-circuit: only act on commands containing `rm` with `-rf`/`-fr`/`-r -f`/etc.
 #
@@ -149,6 +210,47 @@ while IFS= read -r rm_segment; do
     tok=${tok//\\/}
     [[ -n "$tok" ]] || continue
 
+    # `$PWD` spells the cwd, so `$PWD/.git` IS `.git` and a bare `$PWD` IS `.`.
+    # Rewrite the prefix and let the arms below judge whatever is left, rather
+    # than growing a parallel set of $PWD arms that would drift from them. This
+    # is why `$PWD/dist` stays on the dist whitelist while `$PWD/.git` reaches
+    # the .git arm: denying every $PWD path would be the easy over-fix.
+    case "$tok" in
+      '$PWD'|'${PWD}') tok='.' ;;
+      '$PWD/'*) tok=${tok#'$PWD/'} ;;
+      '${PWD}/'*) tok=${tok#'${PWD}/'} ;;
+    esac
+
+    # Unscoped expansions in the FIRST path segment. These expand in the cwd, so
+    # they sweep up `.git` and `.claude`.
+    #
+    # `rm -rf .*` is the one hole here that is plausibly an ACCIDENT rather than
+    # evasion. It sits precisely between `rm -rf .` and `rm -rf *`, both denied,
+    # and anyone reaching for `.*` is trying to clear dotfiles, which is exactly
+    # when `.git` is the thing they least want to lose. `rm` refuses `.` and
+    # `..`, so everything else goes: the repo history and the whole `.claude`
+    # config. The `.[!.]*` and `..?*` idioms people reach for to skip `.` and
+    # `..` still match `.git`, so they are the same hole, not a safer spelling.
+    #
+    # Only the first segment counts. A glob deeper in the path expands inside a
+    # named directory, which is what makes the whitelisted `.gaia/local/plans/*`
+    # an ordinary cleanup rather than this.
+    first_seg=${tok#./}
+    first_seg=${first_seg%%/*}
+    if [[ "$first_seg" == .* && "$first_seg" == *[*?\[]* ]]; then
+      deny "BLOCKED: rm -rf of a dotfile glob ('$tok') is forbidden, it removes .git and .claude."
+    fi
+
+    # `{.,}*` expands to `.* *`, the dotfile glob and the unscoped glob at once,
+    # spelled so that neither arm below sees either one. A comma is what makes a
+    # brace group an expansion list: `${HOME}` has none, so the parameter-
+    # expansion arms below still own it. The `*` requirement keeps a scoped
+    # `dist/{a,b}` allowed, and anchoring on the first segment keeps the brace
+    # group that reaches the cwd distinct from one nested under a named dir.
+    if [[ "$first_seg" == *'{'*','*'}'* && "$tok" == *'*'* ]]; then
+      deny "BLOCKED: rm -rf of an unscoped brace glob ('$tok') is forbidden, it removes .git and .claude."
+    fi
+
     # SC2088 (tilde does not expand in quotes) is disabled for this whole case: the
     # `~` / `$HOME` patterns below are literal match targets, not paths to expand.
     # They are tested against the raw command string, where the user's unexpanded
@@ -169,7 +271,13 @@ while IFS= read -r rm_segment; do
       # strip above removes backslashes before matching. They stay as belt-and-braces.
       # Do not read them as proof the strip is redundant and delete the strip: the
       # strip is what catches \/ and \.git, which have no arms of their own.
-      '~'|'~/'|'~/'*|'$HOME'|'$HOME/'*|'\$HOME'|'\$HOME/'*|'${HOME}'|'${HOME}/'*|'\${HOME}'|'\${HOME}/'*)
+      #
+      # The tilde arm is a prefix match, not the three literals `~`, `~/`, `~/…`,
+      # because `~user` is a home directory too: `~root` names root's home and
+      # matched none of the literal arms. A `~foo` that is not a real user stays
+      # literal in bash and removes a directory named `~foo`, so denying it is a
+      # false deny, which fails safe.
+      '~'*|'$HOME'|'$HOME/'*|'\$HOME'|'\$HOME/'*|'${HOME}'|'${HOME}/'*|'\${HOME}'|'\${HOME}/'*)
         deny "BLOCKED: rm -rf of \$HOME / ~ is forbidden."
         ;;
       '.'|'./')

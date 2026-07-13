@@ -419,6 +419,129 @@ t'
   assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
 }
 
+# --- denied: the dotfile glob ---
+#
+# `rm -rf .*` sits precisely between `rm -rf .` and `rm -rf *`, both denied, and
+# it removes .git and .claude. It is the one hole in the glob arm that is
+# plausibly an ACCIDENT rather than evasion: the person reaching for `.*` is
+# trying to clear dotfiles, which is exactly when .git is what they least want
+# to lose.
+
+@test "rm -rf .* (dotfile glob) is denied" {
+  run_hook_bash 'rm -rf .*'
+  assert_denied_because 'dotfile glob'
+}
+
+@test "rm -rf ./.* (dotfile glob behind ./) is denied" {
+  run_hook_bash 'rm -rf ./.*'
+  assert_denied_because 'dotfile glob'
+}
+
+@test "rm -rf .[!.]* (the skip-dot-and-dotdot idiom) is denied" {
+  # The idiom people reach for to avoid `.` and `..` still matches `.git`, so it
+  # is the same hole, not a safer spelling of it.
+  run_hook_bash 'rm -rf .[!.]*'
+  assert_denied_because 'dotfile glob'
+}
+
+@test "rm -rf ..?* (the other skip-dotdot idiom) is denied" {
+  run_hook_bash 'rm -rf ..?*'
+  assert_denied_because 'dotfile glob'
+}
+
+@test "rm -rf {.,}* (brace form of the dotfile glob) is denied" {
+  # Expands to `.* *`: the dotfile glob and the unscoped glob at once, spelled
+  # so that neither arm sees it.
+  run_hook_bash 'rm -rf {.,}*'
+  assert_denied_because 'unscoped brace glob'
+}
+
+@test "rm -rf {,.}* (reversed brace form) is denied" {
+  run_hook_bash 'rm -rf {,.}*'
+  assert_denied_because 'unscoped brace glob'
+}
+
+@test "rm .* -rf (dotfile glob, operand first) is denied" {
+  run_hook_bash 'rm .* -rf'
+  assert_denied_because 'dotfile glob'
+}
+
+# --- denied: $PWD and ~user spellings of a target that already has an arm ---
+
+@test "rm -rf \$PWD/.git is denied" {
+  run_hook_bash 'rm -rf $PWD/.git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "rm -rf \${PWD}/.git (brace form) is denied" {
+  run_hook_bash 'rm -rf ${PWD}/.git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "rm -rf \$PWD (bare) denies via the cwd arm" {
+  # `$PWD` IS the cwd, so it must land on the same arm as a bare `.`.
+  run_hook_bash 'rm -rf $PWD'
+  assert_denied_because "BLOCKED: rm -rf of cwd ('.') is forbidden."
+}
+
+@test "rm -rf \$PWD/* denies via the unscoped-glob arm" {
+  run_hook_bash 'rm -rf $PWD/*'
+  assert_denied_because "BLOCKED: rm -rf of unscoped glob ('*') is forbidden."
+}
+
+@test "rm -rf ~root (a named user's home) is denied" {
+  run_hook_bash 'rm -rf ~root'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+# --- denied: a quoted ; & or | in an operand ---
+#
+# Segment extraction stops at the first `;`, `&`, or `|` byte, on the assumption
+# that those bytes always terminate a command. Inside quotes they do not: they
+# are ordinary characters in an operand. `rm -rf ";" $HOME` hands bash the argv
+# [-rf] [;] [$HOME] and deletes home, while an unrepaired guard extracts only
+# `rm -rf "`, never tokenizes $HOME, and allows it.
+
+@test "a quoted ; before the target does not hide it (\$HOME)" {
+  run_hook_bash 'rm -rf ";" $HOME'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "a quoted ; before the target does not hide it (root)" {
+  run_hook_bash 'rm -rf ";" /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "a quoted & before the target does not hide it" {
+  run_hook_bash 'rm -rf "a&b" .git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "a quoted | before the target does not hide it" {
+  run_hook_bash 'rm -rf "x|y" ~'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "a quoted ; between rm and its flags does not defeat the short-circuit" {
+  # The short-circuit grep is quote-blind the same way, and it runs first: if it
+  # exits here, none of the deny logic is ever reached. GNU getopt permutes argv,
+  # so this deletes home on Linux.
+  run_hook_bash 'rm ";" -rf $HOME'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "a trailing quoted ; inside the target still reaches the \$HOME arm" {
+  # Neutralizing the quoted separator must not glue a stray byte onto the token:
+  # the arms are anchored, so `$HOME;` would match none of them.
+  run_hook_bash 'rm -rf "$HOME;"'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "a dangerous rm after a command carrying a quoted ; is denied" {
+  run_hook_bash 'echo "a;b" && rm -rf /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
 # --- allowed: whitelisted scratch paths ---
 
 @test "rm -rf .gaia/local/plans/x is allowed" {
@@ -471,8 +594,54 @@ t'
   assert_allowed
 }
 
-@test "rm -rf \${PWD}/dist (an unrelated brace variable) is allowed" {
+@test "rm -rf \${PWD}/dist (a \$PWD-prefixed whitelist entry) is allowed" {
+  # `$PWD/x` IS `x`, so rewriting the prefix must land this on the dist
+  # whitelist. Denying every $PWD path would be the easy over-fix.
   run_hook_bash 'rm -rf ${PWD}/dist'
+  assert_allowed
+}
+
+@test "rm -rf \$PWD/.gaia/local/cache/x is allowed" {
+  run_hook_bash 'rm -rf $PWD/.gaia/local/cache/x'
+  assert_allowed
+}
+
+# --- allowed: globs and dots the dotfile-glob arm must not swallow ---
+#
+# The dotfile glob is dangerous because it expands in the CWD. A glob deeper in
+# the path expands inside a named directory, which is the ordinary cleanup shape
+# the whitelist exists for, so only the first path segment can trip the arm.
+
+@test "rm -rf .gaia/local/plans/* (a glob inside a whitelisted path) is allowed" {
+  run_hook_bash 'rm -rf .gaia/local/plans/*'
+  assert_allowed
+}
+
+@test "rm -rf .gaia/local/audit/*/findings is allowed" {
+  run_hook_bash 'rm -rf .gaia/local/audit/*/findings'
+  assert_allowed
+}
+
+@test "rm -rf .gitignore (a dotfile with no glob) is allowed" {
+  # Starting with a dot is not the hazard; expanding in the cwd is.
+  run_hook_bash 'rm -rf .gitignore'
+  assert_allowed
+}
+
+@test "rm -rf dist/{a,b} (a scoped brace list with no glob) is allowed" {
+  run_hook_bash 'rm -rf dist/{a,b}'
+  assert_allowed
+}
+
+# --- allowed: quoted separators must not manufacture a denial ---
+
+@test "a benign chain whose first command carries a quoted ; is allowed" {
+  run_hook_bash 'echo "a;b" && rm -rf dist'
+  assert_allowed
+}
+
+@test "a benign quoted chain is still split on its real separators" {
+  run_hook_bash 'rm -rf dist && rm -rf "build/output"'
   assert_allowed
 }
 
