@@ -21,7 +21,7 @@ How GAIA cuts a public release. Two surfaces (the template repo (`gaia-react/gai
 | `.gaia/VERSION`                          | Plain `X.Y.Z`. Single source of truth for the installed version. Survives `/gaia-init`.                       |
 | `.gaia/manifest.json`                    | Maps every GAIA-shipped file to a class (`owned` / `shared` / `wiki-owned`). Consumed by [[Update Workflow]]. |
 | `.gaia/release-exclude`                  | Tar-exclude format. Paths listed here are stripped from the release tarball.                                  |
-| `gaia-maintainer release manifest` (CLI) | Maintainer-only. Walks `git ls-files` + classifier globs; writes `.gaia/manifest.json`.                       |
+| `gaia-maintainer release manifest` (CLI) | Maintainer-only. Walks `git ls-files` + classifier globs; writes `.gaia/manifest.json` only once every newly-shipping file has an explicit ship-or-withhold answer, or when the caller passes `--allow-undecided`. |
 | `CHANGELOG.md`                           | Keep-a-Changelog format. `## [Unreleased]` at top; `/gaia-release` graduates it to a versioned section.       |
 | `.github/workflows/release.yml`          | Tag-triggered (`v*.*.*`). Builds scrubbed tarball, creates GitHub Release with CHANGELOG excerpt.             |
 
@@ -44,7 +44,7 @@ Run `/gaia-release` on a clean `main`. The command is a 15-step orchestrator:
 7. Auto-draft CHANGELOG from `git log` since last release; present for approval; graduate to `## [X.Y.Z] - YYYY-MM-DD` (no `v` prefix; `release.yml` extracts the section by the bare version) and seed a new empty `## [Unreleased]`. The graduator also keeps the Keep-a-Changelog reference-link block current: it repoints the `[Unreleased]` compare link at the new version and inserts a `[X.Y.Z]` release-tag definition, deriving the repo base URL from the existing `[Unreleased]` link.
 8. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
 9. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
-10. Regenerate `.gaia/manifest.json` via `gaia-maintainer release manifest`.
+10. Regenerate `.gaia/manifest.json` via `gaia-maintainer release manifest --allow-undecided`. The release path takes the escape hatch deliberately: a release cut from a tree containing a new file must not start failing.
 11. Commit on the release branch: `chore(release): vX.Y.Z`. The pre-commit dance updates `wiki/.state.json`'s `last_evaluated_sha` to the new commit's own SHA via amend, so adopters' state files match their release commit on first scaffold.
 12. Push branch, open PR via `gh`. The release PR is subject to the same CI gate (`Vitest and Playwright`, `Run Chromatic`) and `code-review-audit` merge handshake as any other PR; see [[PR Merge Workflow]]. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, and `--auto` lets GitHub complete the merge once checks pass.
 13. Once the PR shows `MERGED`, pull `main`, tag the merge commit (`v<NEW_VERSION>`), push the tag.

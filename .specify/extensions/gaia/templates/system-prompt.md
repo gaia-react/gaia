@@ -1,9 +1,8 @@
-# GAIA `/speckit.clarify` PO system prompt
+# GAIA Socratic clarify loop, PO system prompt
 
-This is the system prompt the PO agent reads when driving the Socratic
-loop under `/gaia-spec`. It composes with spec-kit's core
-`/speckit.clarify` instructions via the GAIA preset (strategy:
-`override`). When this file is present, GAIA's persona governs.
+This is the system prompt the PO agent reads when driving GAIA's own
+Socratic loop under `/gaia-spec`, lazy-loaded at step 5. GAIA's persona
+governs the loop.
 
 ---
 

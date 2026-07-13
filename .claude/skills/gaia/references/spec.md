@@ -13,7 +13,7 @@ Tokenize the first whitespace-separated word of `$ARGUMENTS`:
 
 ## Auto mode
 
-When `auto_mode = true` the agent answers the Socratic questions itself rather than asking the user. The flow is non-interactive end-to-end: no `AskUserQuestion` calls fire, no plain-prompt blocks wait for human reply. The agent makes best-judgment calls using the description, the draft state, and any research it dispatches.
+When `auto_mode = true` the agent answers the Socratic questions itself rather than asking the user. **The Socratic loop's ceiling in auto mode is 5 substantive questions** (see "The question ceiling" in operational primitives). The flow is non-interactive end-to-end: no `AskUserQuestion` calls fire, no plain-prompt blocks wait for human reply. The agent makes best-judgment calls using the description, the draft state, and any research it dispatches.
 
 Hard rules in auto mode:
 
@@ -28,7 +28,7 @@ Hard rules in auto mode:
 9. **Pending clarifications auto-defer.** Step 6c's per-item prompt always picks "Defer with rationale". The rationale is: `"Auto-mode session, defer for human review."` This unblocks save without forcing the agent to fabricate answers it does not have evidence for.
 10. **Lint thrash escalates to defer, not step-back.** Step 10's cycle-3 prompt auto-picks "Defer remaining findings" so the SPEC saves with the deferred-clarifications block populated. Step-back-to-gate-2 in auto mode would loop indefinitely.
 11. **`Save partial and resume later` escapes are unreachable.** No prompt fires that would offer them. The session always proceeds to step 9 unless the agent itself decides to abort (e.g. missing description, hard tool failure).
-12. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, `spec_saved`, and (when the audit runs) `audit_dispatched`/`audit_findings`/`audit_disposition`/`audit_coverage` event in an auto session includes `"auto": true` in its JSON record. The `time_to_resolved_spec` mentorship emit at step 9 keeps `--agent-type human` and adds `--auto true`: `AgentTypeSchema` has no `auto` role (`--agent-type auto` is rejected with `arg_parse_error`), so auto-mode is carried by the dedicated `--auto` flag, which lands as `auto: true` in the payload. Telemetry-derived metrics should be partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
+12. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, `spec_saved`, and (when the audit runs) `audit_dispatched`/`audit_findings`/`audit_disposition`/`audit_coverage` event in an auto session includes `"auto": true` in its JSON record. The `time_to_resolved_spec` mentorship emit keeps `--agent-type human` and adds `--auto true`, at **both** emit sites: the step-9 canonical save and the abandoned-exit branch. `AgentTypeSchema` has no `auto` role (`--agent-type auto` is rejected with `arg_parse_error`), so auto-mode is carried by the dedicated `--auto` flag, which lands as `auto: true` in the payload. The emit also carries `--question-ceiling 5` in auto mode and `--question-ceiling 10` in interactive mode, so rows are separable by the ceiling that was in force without guessing from timestamps, and so a consumer can normalize a session's question count against the budget it actually had. Telemetry-derived metrics are partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
 13. **Adversarial audit runs at the recommended intensity, non-interactively.** Auto mode does not prompt for the step-7 audit decision; per rule 4 it takes the Recommended option, which is always an intensity (never Skip). Gauge the draft's complexity, run the audit at the recommended tier (Standard or Deep), and apply its dispositions without prompting: auto-apply plan-time directives into `AUDIT.md`, auto-apply unambiguous SPEC-contract-defect fixes into the draft pre-save (no reopen ceremony, the draft is unsaved), and for any contract defect with more than one defensible repair, record it in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` rather than guessing. Never block save; never revert intentional clarify-loop evolution. Throughout the audit and fold phase auto mode reads **no finding body** (a finding's `issue`/`evidence`/`recommendation`, or a self-review finding's `suggested_fix`/`excerpt`); the transcript carries only ids, severities, titles, verdicts, and dispositions. The two bounded exceptions where a finding body reaches main (6b high self-review findings, 7c material spec-defect survivors) are interactive-only; auto mode surfaces neither. If the Agent fan-out is unavailable, take step 7's fallback (note the skip, rely on the step-6 self-review) and continue.
 
 The rest of the skill, write-surface allowlist, no-machine-local-memory rule, working-draft cache primitives, hooks firing, immutable SPEC shape, applies identically in auto mode.
@@ -73,6 +73,8 @@ The three GAIA hooks declared in `.specify/extensions/gaia/extension.yml`:
 
 Each hook fires automatically, the agent reads the directive and invokes the slash command without prompting. "Block" semantics live inside the hook command: a block is a refusal message that the wrapper agent reads and chooses not to proceed past. There is no machine-enforced halt.
 
+**`after_clarify` does not fire on the `/gaia-spec` path.** It is declared for a bare `/speckit-clarify` invocation, which this wrapper does not make (see step 5). GAIA's self-review is not a hook consumer: step 6 dispatches it directly as a `general-purpose` Agent, so it runs identically whether or not spec-kit core is installed.
+
 There is no `on_save` event. The `/gaia-plan` handoff lives inline at the end of this orchestration (Step 11), not in a hook.
 
 ## Operational primitives
@@ -98,7 +100,7 @@ Used for the `time_to_resolved_spec` mentorship emit at Gate-2 save and at aband
 Three operations:
 
 - **Init.** At step 2 (`spec_started` telemetry append, both fresh and resumed paths), write the file if it does not exist with `start_at` = current ISO-8601 UTC ms, `question_count` = 0. On resume, leave any existing file untouched, its `start_at` is the original session start (one continuous wall-clock duration across resumes is the correct semantic for `time_to_resolved_spec`).
-- **Increment.** At every site that appends a `clarify_question` telemetry event (steps 5a, 5b, 5c, 5d, and the per-topic revisit prompt), bump `question_count` by 1. Inline shell:
+- **Increment.** At every site that appends a `clarify_question` telemetry event (steps 5a, 5b, and 5c), bump `question_count` by 1. These are the substantive questions, and they are the only things that count against the ceiling. The loop's meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts, append their own telemetry events and never increment `question_count`. Inline shell:
 
       jq '.question_count += 1' .gaia/local/cache/spec-session-<spec_id>.json \
         > .gaia/local/cache/spec-session-<spec_id>.json.tmp \
@@ -218,12 +220,24 @@ if [[ -n "$START_AT" ]]; then
 else
   DURATION=0
 fi
+# The ceiling in force for this session: 10 interactive, 5 in auto mode.
+# Substitute the literal string "true" on an auto-mode run, "false" otherwise.
+AUTO_MODE="<true on an auto-mode run, false otherwise>"
+if [[ "$AUTO_MODE" == "true" ]]; then
+  Q_CEILING=5
+  AUTO_FLAG=(--auto true)
+else
+  Q_CEILING=10
+  AUTO_FLAG=()
+fi
 .gaia/cli/gaia telemetry emit time_to_resolved_spec \
   --spec-id "$SPEC_ID" \
   --question-count "$Q_COUNT" \
+  --question-ceiling "$Q_CEILING" \
   --duration-seconds "$DURATION" \
   --area-tags spec \
   --abandoned true \
+  "${AUTO_FLAG[@]}" \
   --agent-type human || true
 ```
 
@@ -232,6 +246,7 @@ Notes:
 - On the `Save partial and resume later` path, the cache file remains so a future resume continues against the same `start_at`. Only canonical save (step 9) and the explicit cache-discard branch in step 2 delete it. The abandoned emit is a snapshot, not a teardown.
 - `area-tags` is `spec` (v1.0.0 default) for abandoned exits, clusters can't be reliably extracted from a partial draft. Step 9 derives richer tags from the saved SPEC's UAT clusters.
 - Failure of the emit must never block the user's exit, note the trailing `|| true`.
+- An auto-mode session reaches this emit only on a hard abort (Auto-mode rule 11), never on the `Save partial and resume later` escape, which no auto session offers. It is still an auto session, so the emit carries `--auto true` and `--question-ceiling 5` like any other auto emit.
 
 ### Per-topic revisit counter
 
@@ -246,9 +261,21 @@ Track `push_deeper[<topic>] = <count>` in working memory. Increment on every "Pu
 
 Append a `topic_revisit` telemetry event with the count.
 
-### Spec-kit's 5-question cap
+### The question ceiling
 
-Spec-kit's `/clarify` primitive is hard-capped at **5 total questions per session** (see `.specify/extensions/gaia/templates/clarify-prompts.md` and spec-kit's own `clarify.md` Behavior rules: "Maximum of 5 total questions"). The wrapper inherits this cap, the GAIA Socratic loop runs at most 5 turns. The per-topic revisit counter and escape option above fit inside that 5-question budget; never invoke `/clarify` twice in one session to extend the budget.
+The interactive Socratic loop asks **at most 10 substantive questions**. Auto mode asks **at most 5**. Both numbers are GAIA's own. They are not inherited from, and not set by, spec-kit; this wrapper runs its own loop (step 5) and does not invoke spec-kit's clarify primitive.
+
+**Substantive** means a closed-set question (5a), a Discuss-this settlement (5b), or an open-ended question (5c), counted once on first surfacing. Nothing that merely re-surfaces or resolves an already-counted question spends a second unit, and the loop's own meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts, never count.
+
+There is exactly one counter and it needs no new storage: `question_count` in the session-shape cache (`.gaia/local/cache/spec-session-<spec_id>.json`, see above) already counts substantive questions and already survives a pause and resume. The ceiling is therefore enforced against the **total across all sittings** of a session; a resumed session does not get a fresh budget.
+
+**The ceiling is a bound, not a goal.** The loop's normal termination is the coverage scan in `.specify/extensions/gaia/templates/clarify-prompts.md` (Rule 8): ask until no topic is Partial or Missing, then stop. On a simple feature that fires after 2 to 4 questions and the ceiling is never felt. Do not pad toward it, and do not treat an unspent budget as work left undone.
+
+**When the ceiling is reached with coverage incomplete**, the loop stops asking. Every topic still marked Partial or Missing is written to `clarifications.deferred[]` with a rationale naming it as ceiling-truncated (for example: `"Ceiling-truncated: 10 substantive questions asked; <topic> remained Partial."`). The loop does not push past the ceiling, and it does not advance to gate 2 as though coverage were complete.
+
+The ceiling in force is recorded on the session's `time_to_resolved_spec` emit (`--question-ceiling`), so a consumer reads a session's question count against the budget it actually had rather than against a raw number that means different things under different ceilings.
+
+The per-topic revisit counter and the escape option above both fit inside this budget.
 
 ### Don't re-quote folded clarifications
 
@@ -397,19 +424,25 @@ If the user revises, fold revisions into the draft and re-present until they con
 
 On confirmation:
 
-1. **Cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The `after_clarify` hook (self-review) reads this cache to detect scope drift between gate 1 and gate 2. **Skip this write if the snapshot already exists for this `spec_id` (resumed session); its purpose is immutable drift detection.**
+1. **Cache the gate-1 snapshot** to `.gaia/local/cache/gate1-<spec_id>.json`. The snapshot must include: the confirmed `intent`, the confirmed UAT list (with stable `UAT-NNN` IDs), and a timestamp. The step-6 self-review reads this cache to detect scope drift between gate 1 and gate 2. **Skip this write if the snapshot already exists for this `spec_id` (resumed session); its purpose is immutable drift detection.**
 2. **Write the working-draft cache** per the operational primitive (`.gaia/local/cache/draft-<spec_id>.md`).
 3. **Append telemetry**: `gate1_confirmed` event with `intent_words` + `uat_count`.
 
 Only after gate-1 confirmation may you proceed to step 5.
 
-### 5. /speckit-clarify (Socratic loop)
+### 5. Socratic loop
 
-Invoke `/speckit-clarify`. Spec-kit's clarify primitive runs sequential, coverage-based questioning over the draft and is **hard-capped at 5 total questions** (see "Spec-kit's 5-question cap" in operational primitives). The GAIA tailoring (coach tone, AskUserQuestion mediation, exhaustion checkpoints, research dispatch) is enforced by the agent driving this skill, read the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load, see operational primitives).
+This is GAIA's own loop. It does not invoke spec-kit's clarify primitive, and no spec-kit-authored question budget reaches your context during it. Read the templates at `.specify/extensions/gaia/templates/clarify-prompts.md` and `system-prompt.md` only on entering this step (lazy-load, see operational primitives); they carry the coach-tone persona, the Q&A copy, the topic bank, and the coverage scan.
 
-**Auto-mode exception:** the 5-question cap still applies, but the agent answers each question itself rather than mediating to the user. Per Auto-mode rules 5–8: closed-set questions auto-pick the Recommended option; open-ended questions get the agent's best-judgment answer; per-topic exhaustion auto-advances; research subagents still dispatch but uncertain outcomes pick the most plausible candidate with a flagged note in `research_summary`. No `AskUserQuestion` calls fire in this step. Each agent-chosen answer is folded into `clarifications.answered[]` exactly as a human selection would be, and a `clarify_question` telemetry event is appended with `kind: "auto"`. Skip sub-steps 5a–5d's `AskUserQuestion` mechanics and 5b's Discuss-this branch entirely; sub-step 5e (research dispatch) runs unmodified except for the uncertain-outcome fallback.
+Run sequential, coverage-based questioning over the draft. One question per turn. The mechanics are 5a through 5e below: `AskUserQuestion` mediation for closed-set questions with the recommended option first, plain prompts for open-ended ones, the Discuss-this escape, the per-topic exhaustion checkpoint, and research-subagent dispatch.
 
-For every question asked, append a `clarify_question` telemetry event with `topic` and `kind` (`closed`, `open`, or `discuss`), and increment `question_count` in the session-shape cache per the operational primitive (`spec-session-<spec_id>.json`). The same per-question budget covers steps 5a, 5b, 5c, 5d, and the per-topic revisit prompt, every distinct user-facing prompt counts as one question for the `time_to_resolved_spec` emit.
+**The stop rule is the coverage scan, not the ceiling.** Maintain the scan defined in `.specify/extensions/gaia/templates/clarify-prompts.md` (Rule 8) over the topic bank: mark every topic Clear, Partial, or Missing, and prioritize what remains. Ask until no topic is Partial or Missing, then stop. That is the normal termination condition, and on a simple feature it fires after 2 to 4 questions.
+
+**The ceiling bounds the loop:** at most 10 substantive questions (see "The question ceiling" in operational primitives, which also defines what happens if the loop reaches it with topics still uncovered).
+
+**Auto-mode exception:** the ceiling in auto mode is **5 substantive questions**, and the agent answers each question itself rather than mediating to the user. Per Auto-mode rules 5 to 8: closed-set questions auto-pick the Recommended option; open-ended questions get the agent's best-judgment answer; per-topic exhaustion auto-advances; research subagents still dispatch but uncertain outcomes pick the most plausible candidate with a flagged note in `research_summary`. No `AskUserQuestion` calls fire in this step. Each agent-chosen answer is folded into `clarifications.answered[]` exactly as a human selection would be, and a `clarify_question` telemetry event is appended with `kind: "auto"`. Skip sub-steps 5a to 5d's `AskUserQuestion` mechanics and 5b's Discuss-this branch entirely; sub-step 5e (research dispatch) runs unmodified except for the uncertain-outcome fallback. The coverage scan still governs the stop.
+
+For every **substantive** question asked (5a, 5b, 5c), append a `clarify_question` telemetry event with `topic` and `kind` (`closed`, `open`, `discuss`, or `auto`), and increment `question_count` in the session-shape cache per the operational primitive (`spec-session-<spec_id>.json`). That counter is the ceiling counter. The loop's meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts, append their own telemetry and do not increment it.
 
 #### 5a. AskUserQuestion mediation (closed-set questions)
 
@@ -440,7 +473,7 @@ For genuinely open-ended questions (no clean discrete option set), use a plain p
 
 #### 5d. Per-topic exhaustion checkpoint
 
-When the natural well of follow-ups on a topic runs dry, announce explicitly via `AskUserQuestion`:
+When the loop is about to leave the current topic, whether because its coverage mark has reached **Clear** or because the coverage scan's prioritization now ranks a different topic above it (see the coverage scan, Rule 8, in `.specify/extensions/gaia/templates/clarify-prompts.md`), announce explicitly via `AskUserQuestion`:
 
 - question: `"Out of questions on <topic>. Move to <next topic>, or push deeper?"`
 - header: `"Topic"`
@@ -469,9 +502,11 @@ Append a `research_dispatched` telemetry event. Spawn a `general-purpose` Agent 
 
 If the user has selected `Discuss this` on a question that turns out to need research, dispatch the research subagent and surface findings in the discussion before requesting settlement.
 
-### 6. after_clarify hook (self-review)
+### 6. Self-review
 
-Spec-kit fires this hook automatically after `/speckit-clarify` completes. The agent receives an `EXECUTE_COMMAND: speckit.gaia.self-review` directive, but rather than running the audit in the wrapper's own context (which would re-load the full draft + gate-1 snapshot into wrapper memory), **dispatch the audit as a `general-purpose` Agent** so the heavy reads stay in fresh context and only structured findings flow back. This is the largest token saver in the spec flow.
+After the Socratic loop settles, run the GAIA self-review. Rather than running the audit in the wrapper's own context (which would re-load the full draft plus the gate-1 snapshot into wrapper memory), **dispatch it as a `general-purpose` Agent** so the heavy reads stay in fresh context and only structured findings flow back. This is the largest token saver in the spec flow.
+
+The self-review is dispatched here, by this step, and does not depend on any spec-kit hook firing. It runs identically on a project with spec-kit core installed and on one without.
 
 #### 6a. Dispatch the self-review agent
 
@@ -894,17 +929,29 @@ AREA_TAGS=$(awk '
 if [[ -z "$AREA_TAGS" ]]; then
   AREA_TAGS="spec"
 fi
+# The ceiling in force for this session: 10 interactive, 5 in auto mode.
+# Substitute the literal string "true" on an auto-mode run, "false" otherwise.
+AUTO_MODE="<true on an auto-mode run, false otherwise>"
+if [[ "$AUTO_MODE" == "true" ]]; then
+  Q_CEILING=5
+  AUTO_FLAG=(--auto true)
+else
+  Q_CEILING=10
+  AUTO_FLAG=()
+fi
 .gaia/cli/gaia telemetry emit time_to_resolved_spec \
   --spec-id "$SPEC_ID" \
   --question-count "$Q_COUNT" \
+  --question-ceiling "$Q_CEILING" \
   --duration-seconds "$DURATION" \
   --area-tags "$AREA_TAGS" \
   --abandoned false \
+  "${AUTO_FLAG[@]}" \
   --agent-type human || true
 rm -f "$CACHE"
 ```
 
-**Auto-mode:** append `--auto true` to the emit above (keep `--agent-type human`). Never substitute `--agent-type auto`: the CLI rejects it (`arg_parse_error`) and the `|| true` guard would silently drop the emit. See Auto-mode rule 12.
+**Auto-mode:** the block above carries auto mode itself, through the `AUTO_MODE` substitution. It sets `Q_CEILING=5` and appends `--auto true` on an auto run, and keeps `--agent-type human` in both modes. Never substitute `--agent-type auto`: the CLI rejects it (`arg_parse_error`) and the `|| true` guard would silently drop the emit. See Auto-mode rule 12.
 
 The emit is the strongest signal for the intent-clarity-gap pattern; the `|| true` guard ensures emit failures never block the save. The cache file is deleted unconditionally after the emit attempt so a re-saved SPEC starts a fresh session window.
 

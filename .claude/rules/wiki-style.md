@@ -74,7 +74,11 @@ grep -rEn "\bSPEC-[0-9]{3,}\b" \
   .specify/extensions/gaia/templates/
 
 # Historical-style phrasing in wiki body prose
-grep -rEn "\bchanged from|was changed|previously (did|was|stated|had|used|set)|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"
+# `set` is matched by its own `previously set` alternative rather than from
+# inside the group: the env-dump guard (.claude/hooks/block-env-read.sh) splits
+# a command on |&;() and evaluates each fragment, so a lone `set` between pipes
+# reads as a bare `set` command and the whole grep is denied.
+grep -rEn "\bchanged from|was changed|previously (did|was|stated|had|used)|previously set|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"
 ```
 
 Any non-empty match outside this rule's prose is a candidate for rewrite. The narrative-vs-structural triage for the `.claude/` / `.specify/` greps is a human read, the regex flags candidates; the Exceptions section above codifies what stays.
