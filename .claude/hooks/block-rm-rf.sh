@@ -28,14 +28,25 @@
 # here and is out of reach by design: command substitution (`rm -rf "$(git
 # rev-parse --show-toplevel)"`), an arbitrary variable holding a dangerous path,
 # a relative escape (`rm -rf ../..`), and targets arriving through `xargs` all
-# pass. This is heuristic defense-in-depth behind settings.json permissions, not
-# a sandbox, and it is the second layer rather than the first.
+# pass. `jq` is a hard dependency: without it the hook exits non-zero, which
+# Claude Code treats as a non-blocking error, so the command proceeds unguarded
+# (loudly, on stderr, never bricking the session). This is heuristic
+# defense-in-depth behind settings.json permissions, not a sandbox, and it is
+# the second layer rather than the first.
 set -euo pipefail
 
 payload=$(cat)
 cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
 
 [[ -n "$cmd" ]] || exit 0
+
+# Splice backslash-newline continuations before anything else looks at $cmd.
+# Both greps below are line-oriented, so a target on a continuation line carries
+# no `rm` token of its own, no segment is ever extracted for it, and it becomes
+# invisible to the guard, while the byte-identical one-line command is denied.
+# A multi-line `rm -rf \` is idiomatic, not contrived, and the target is a plain
+# literal token, exactly what this guard claims to match.
+cmd=${cmd//\\$'\n'/ }
 
 # Short-circuit: only act on commands containing `rm` with `-rf`/`-fr`/`-r -f`/etc.
 #
@@ -46,8 +57,12 @@ cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
 # hand-tested on a Mac. Requiring adjacency let both that shape and a leading
 # `--no-preserve-root` exit here, before the deny logic below ever ran.
 #
-# A looser short-circuit costs only wasted work, never a false deny: it decides
-# what to *inspect*, and the case arms below decide what to block.
+# A looser short-circuit is fail-safe, not free. It can only ADD denials, never
+# turn a previously-denied command into an allow, because it decides what to
+# *inspect* and the case arms below decide what to block. It does widen the
+# false-deny surface: `git rm --cached -r .` now denies (the canonical
+# `git rm -r --cached .` already did), which is annoying but safe. Widen this
+# regex only with that asymmetry in mind.
 if ! grep -Eq '(^|[^[:alnum:]_-])rm[[:space:]]+[^;&|]*(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)' <<<"$cmd"; then
   exit 0
 fi

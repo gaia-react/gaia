@@ -46,6 +46,15 @@ assert_allowed() {
   return 0
 }
 
+# Asserts the deny fired for the *stated* reason, not merely that some deny
+# fired. Without this, a target denied by the wrong case arm (say, `$HOME`
+# caught by the absolute-path arm) still reads as a pass.
+assert_denied_because() {
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+  grep -qF -- "$1" <<<"$output"
+}
+
 # --- denied: bare targets ---
 
 @test "rm -rf / is denied" {
@@ -244,6 +253,104 @@ assert_allowed() {
 @test "rm ~ -rf (operand before flags) is denied" {
   run_hook_bash 'rm ~ -rf'
   assert_denied
+}
+
+# --- denied: backslash-newline continuations ---
+#
+# Both greps in the hook are line-oriented, so a target parked on a continuation
+# line carries no `rm` token of its own and, unspliced, is never extracted. The
+# multi-line form is idiomatic and the target is a plain literal token, so it
+# must deny exactly like the one-liner it is equivalent to.
+
+@test "a continuation-line \$HOME target is denied" {
+  run_hook_bash 'rm -rf \
+  $HOME/.cache/foo'
+  assert_denied
+}
+
+@test "a continuation-line root target is denied" {
+  run_hook_bash 'rm -rf \
+  /'
+  assert_denied
+}
+
+@test "a continuation-line quoted brace target is denied" {
+  run_hook_bash 'rm -rf \
+  "${HOME}"'
+  assert_denied
+}
+
+@test "a continuation split between rm and its flags is denied" {
+  run_hook_bash 'rm \
+  -rf /'
+  assert_denied
+}
+
+@test "a benign continuation-line cleanup is allowed" {
+  # Splicing continuations must not turn an ordinary multi-line cleanup into a deny.
+  run_hook_bash 'rm -rf \
+  dist \
+  build/output'
+  assert_allowed
+}
+
+# --- denied: remaining flag-shape gaps ---
+
+@test "rm --no-preserve-root / (no recursive flag) is denied" {
+  # The bare form carries no -r/-f at all, so only the widened short-circuit
+  # reaches it. The -rf variant above does not cover this path.
+  run_hook_bash 'rm --no-preserve-root /'
+  assert_denied
+}
+
+@test "rm \${HOME} -rf (brace form, operand first) is denied" {
+  run_hook_bash 'rm ${HOME} -rf'
+  assert_denied
+}
+
+# --- denied: for the right reason ---
+#
+# assert_denied alone cannot tell a correct deny from a deny by the wrong arm.
+
+@test "\$HOME denies via the \$HOME arm, not the absolute-path arm" {
+  run_hook_bash 'rm -rf "$HOME"'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "\${HOME} denies via the \$HOME arm" {
+  run_hook_bash 'rm -rf "${HOME}"'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "/ denies via the absolute-path arm" {
+  run_hook_bash 'rm -rf /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test ". denies via the cwd arm" {
+  run_hook_bash 'rm -rf "."'
+  assert_denied_because "BLOCKED: rm -rf of cwd ('.') is forbidden."
+}
+
+@test ".git denies via the .git arm" {
+  run_hook_bash 'rm -rf ".git"'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "node_modules denies via the node_modules arm" {
+  run_hook_bash 'rm -rf "node_modules"'
+  assert_denied_because 'BLOCKED: rm -rf of node_modules is forbidden'
+}
+
+@test "--no-preserve-root denies via its own arm" {
+  run_hook_bash 'rm --no-preserve-root -rf /'
+  assert_denied_because 'BLOCKED: rm with --no-preserve-root is forbidden.'
+}
+
+@test "a chained dangerous segment denies via the target's own arm" {
+  # Proves the second segment is what fired, not an accidental match on the first.
+  run_hook_bash 'rm -rf dist && rm -rf .git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
 }
 
 # --- allowed: whitelisted scratch paths ---
