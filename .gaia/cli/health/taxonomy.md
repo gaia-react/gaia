@@ -66,7 +66,7 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 
 **Manifest stale relative to distributed file set.** Files added to the template don't auto-classify; manifest count diverges from `git ls-files | grep -v -f release-exclude`.
 
-- Detection: run `gaia-maintainer release manifest` and `git diff .gaia/manifest.json` should be empty
+- Detection: run `gaia-maintainer release manifest --allow-undecided` and `git diff .gaia/manifest.json` should be empty
 - Prior: 370 → 426 entry rebuild (ed94f49); 426 → 425 after `release.yml` excluded (98f7a62)
 
 **Maintainer-only files mis-classified as `shared` in manifest.** Files that don't ship should be in `release-exclude`, not in the manifest at all.
