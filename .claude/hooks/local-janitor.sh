@@ -13,7 +13,7 @@
 # safe to run unconditionally every session. Before the sweeps below, it also
 # best-effort runs the one-time ledger-status-migrate.sh, so every sweep that
 # reads a ledger row's status sees the unified vocabulary. It then sweeps
-# exactly seven things:
+# exactly eight things:
 #
 #   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
 #      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
@@ -26,11 +26,18 @@
 #      is the provable-death signal (the normal per-branch PR-merge cleanup runs
 #      no `git branch -D` here because the landing is fire-and-forget). This
 #      sweep is git-scoped, so it runs before the .gaia/local guard below.
-#   2. audit/<sha>.ok and audit/<sha>.dispositions.json whose <sha> is neither
-#      HEAD nor reachable from any local branch. A marker gates `gh pr merge`
-#      only when its <sha> == HEAD; once the PR squash-merges to a new sha the
-#      audited branch tip is orphaned (reflog-only) and the marker is spent.
-#      A <sha> that is not a valid commit (bogus/garbage) is treated as dead.
+#   2. audit/<sha>.ok, audit/<sha>.dispositions.json, and the per-member
+#      audit/<sha>.<member>.ok, whose <sha> is neither HEAD nor reachable from
+#      any local branch. A marker gates `gh pr merge` only when its <sha> ==
+#      HEAD; once the PR squash-merges to a new sha the audited branch tip is
+#      orphaned (reflog-only) and the marker is spent. A <sha> that is not a
+#      valid commit (bogus/garbage) is treated as dead.
+#      2b. audit/<sha>.rerun.json carry-forward ledgers, on a DIFFERENT signal.
+#      A ledger is keyed on the incremental base (a fork point), which is an
+#      ancestor of the default branch, so reachability can never prove it dead.
+#      It dies with the branch it records instead: code-audit-frontend deletes
+#      it on a clean pass, so a ledger outliving its branch belongs to a line
+#      abandoned before it ever reached clean, and nothing else reaps it.
 #   3. plans/<slug>/ and colocated specs/<SPEC-ID>/plan[-N]/ dirs whose RUNNING
 #      sentinel names a branch that no longer exists AND is not marked
 #      DEFERRED/PAUSED/PARKED. Branch-gone + not-parked alone is not enough to
@@ -61,6 +68,12 @@
 #      the same retention window AND whose cost is fully represented. A thin
 #      delegation to plan-archive-merged.sh, which owns both gates,
 #      symmetric with sweep #6's spec-folder delegation.
+#   8. telemetry/cloud/events-*.jsonl older than 14 days. The cloud stream has
+#      no other reaper: `gaia mentorship purge` deliberately leaves it alone
+#      (it purges mentorship data, and the cloud projection is a separate
+#      consented stream), and telemetry/cloud is a structural drop-zone, so
+#      sweep #4 keeps the directory alive without ever touching its contents.
+#      Age-gated on the same 14-day window as sweep #5.
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -113,7 +126,13 @@ if [ -d "$audit_dir" ]; then
   for marker in "$audit_dir"/*.ok "$audit_dir"/*.dispositions.json; do
     [ -e "$marker" ] || continue          # glob did not match
     base=${marker##*/}
-    sha=${base%.ok}; sha=${sha%.dispositions.json}
+    # A sha never contains a dot, so strip from the FIRST one. That resolves
+    # every suffix family uniformly: the plain <sha>.ok and
+    # <sha>.dispositions.json, and the per-member <sha>.<member>.ok the Code
+    # Audit Team writes. Peeling only the trailing .ok would leave
+    # "<sha>.<member>", which resolves to no commit, so a LIVE member marker at
+    # HEAD would read as dead and be deleted out from under the merge gate.
+    sha=${base%%.*}
 
     keep=0
     # The one live marker is the one for the commit about to merge: HEAD.
@@ -126,6 +145,26 @@ if [ -d "$audit_dir" ]; then
 
     [ "$keep" -eq 1 ] && continue
     rm -f -- "$marker"
+  done
+
+  # 2b. Re-run carry-forward ledgers. These need a DIFFERENT liveness test than
+  # the markers above: a ledger is keyed on the incremental base (the fork point
+  # `git merge-base "$BASE_REF" HEAD`), not a branch tip, and a fork point is an
+  # ancestor of the default branch by construction, so `branch --contains` always
+  # answers "reachable" and the reachability test above can never reap one. The
+  # ledger's real death signal is the branch it was audited for, which it records:
+  # code-audit-frontend deletes the ledger on a clean pass, so one that outlives
+  # its branch belongs to a line abandoned before it ever reached clean.
+  # Fail-safe: no jq, an unparseable ledger, or no recorded branch skips the file.
+  for ledger in "$audit_dir"/*.rerun.json; do
+    [ -e "$ledger" ] || continue          # glob did not match
+    command -v jq >/dev/null 2>&1 || break
+    ledger_branch=$(jq -r '.branch // empty' "$ledger" 2>/dev/null)
+    [ -n "$ledger_branch" ] || continue   # unparseable / no branch -> skip
+    # Branch still exists -> the audit line may be in-flight -> keep.
+    git -C "$root" rev-parse --verify --quiet "refs/heads/$ledger_branch" \
+      >/dev/null 2>&1 && continue
+    rm -f -- "$ledger"
   done
 fi
 
@@ -251,6 +290,17 @@ fi
 archive_plan="$root/.specify/extensions/gaia/lib/plan-archive-merged.sh"
 if [ -x "$archive_plan" ] || [ -f "$archive_plan" ]; then
   bash "$archive_plan" "$root" >/dev/null 2>&1 || true
+fi
+
+# --- 8. Stale cloud telemetry events (age-gated, same window as sweep 5) ----
+# telemetry/cloud is a drop-zone (kept alive by sweep 4), but nothing reaps its
+# contents: `gaia mentorship purge` documents that it never touches the cloud
+# stream, so events-*.jsonl accumulates for the life of the checkout. The
+# janitor owns the rotation, on the same generous 14-day window sweep 5 uses.
+# Name-scoped to events-*.jsonl, so anything else in the drop-zone survives.
+cloud_dir="$local_dir/telemetry/cloud"
+if [ -d "$cloud_dir" ]; then
+  find "$cloud_dir" -maxdepth 1 -name 'events-*.jsonl' -type f -mtime +14 -delete 2>/dev/null
 fi
 
 exit 0

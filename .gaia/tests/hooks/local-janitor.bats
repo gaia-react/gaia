@@ -377,3 +377,206 @@ days_ago() {
   [ "$status" -eq 0 ]
   [ -d "$REPO/.gaia/local/plans/PLAN-071" ]
 }
+
+# --- Sweep #2: orphaned audit markers --------------------------------------
+#
+# A marker (<sha>.ok, <sha>.dispositions.json, or the per-member
+# <sha>.<member>.ok the Code Audit Team writes) is live only while its <sha> is
+# HEAD or reachable from a local branch. The per-member markers matter here: the
+# sha-strip must peel the whole suffix, or a live <HEAD>.<member>.ok resolves to
+# no commit, reads as dead, and gets deleted out from under the merge gate.
+
+# seed_audit_file <name>: drops one file into the audit drop-zone.
+seed_audit_file() {
+  mkdir -p "$REPO/.gaia/local/audit"
+  echo '{}' > "$REPO/.gaia/local/audit/$1"
+}
+
+# orphan_sha: a real commit whose branch is deleted, so it is neither HEAD nor
+# reachable from any local branch (reflog-only) -- exactly a squash-merged or
+# abandoned branch tip.
+orphan_sha() {
+  git -C "$REPO" checkout -q -b throwaway
+  echo orphan > "$REPO/orphan"
+  git -C "$REPO" add orphan
+  git -C "$REPO" commit -q -m orphan
+  git -C "$REPO" rev-parse HEAD
+  git -C "$REPO" checkout -q main
+  git -C "$REPO" branch -q -D throwaway
+}
+
+@test "sweep 2: orphaned .ok / .dispositions.json markers are swept, HEAD's is kept" {
+  make_repo
+  dead=$(orphan_sha)
+  head=$(git -C "$REPO" rev-parse HEAD)
+  seed_audit_file "$dead.ok"
+  seed_audit_file "$dead.dispositions.json"
+  seed_audit_file "$head.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead.ok" ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead.dispositions.json" ]
+  [ -f "$REPO/.gaia/local/audit/$head.ok" ]
+}
+
+@test "sweep 2: a LIVE per-member <HEAD>.<member>.ok is never deleted" {
+  make_repo
+  head=$(git -C "$REPO" rev-parse HEAD)
+  seed_audit_file "$head.ok"
+  seed_audit_file "$head.code-audit-maintainer-shell.ok"
+  seed_audit_file "$head.code-audit-maintainer-node.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$head.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$head.code-audit-maintainer-shell.ok" ]
+  [ -f "$REPO/.gaia/local/audit/$head.code-audit-maintainer-node.ok" ]
+}
+
+@test "sweep 2: an orphaned per-member <sha>.<member>.ok is swept" {
+  make_repo
+  dead=$(orphan_sha)
+  seed_audit_file "$dead.code-audit-maintainer-shell.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead.code-audit-maintainer-shell.ok" ]
+}
+
+@test "sweep 2: a bogus-sha marker is swept (an unresolvable sha is dead)" {
+  make_repo
+  seed_audit_file "notasha.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/notasha.ok" ]
+}
+
+# --- Sweep #2b: orphaned re-run carry-forward ledgers ----------------------
+#
+# A ledger is keyed on the incremental BASE sha (the fork point
+# `git merge-base "$BASE_REF" HEAD`), NOT a branch tip. A fork point is an
+# ancestor of the default branch by construction, so the reachability test the
+# markers use always answers "live" for a ledger and can never reap one -- which
+# is exactly why the sweep needs its own rule. The ledger dies with the branch it
+# records: code-audit-frontend deletes it on a clean pass, so one that outlives
+# its branch belongs to a line abandoned before it ever reached clean.
+
+# seed_rerun_ledger <base-sha> <recorded-branch>: writes the ledger the way the
+# audit really names it -- keyed on the base sha, with the audited branch inside.
+# Pass an empty branch to write a ledger with no branch recorded.
+seed_rerun_ledger() {
+  mkdir -p "$REPO/.gaia/local/audit"
+  jq -cn --arg branch "$2" --arg base "$1" '
+    {schema: 1, round: 1, base_sha: $base, head_sha: $base,
+     remaining: [], fixed_last_round: [], notes: null}
+    | if $branch == "" then . else . + {branch: $branch} end
+  ' > "$REPO/.gaia/local/audit/$1.rerun.json"
+}
+
+@test "sweep 2b: a ledger whose audited branch is gone is swept, even though its base sha is on main" {
+  make_repo
+  # The real shape: the ledger is keyed on the fork point, which IS reachable
+  # from main. Only the recorded branch being gone proves it dead.
+  base=$(git -C "$REPO" rev-parse HEAD)
+  seed_rerun_ledger "$base" "abandoned-feature"
+  cd "$REPO"
+  # Guard the premise: this base sha really is reachable from a local branch, so
+  # a reachability-based rule would keep it forever.
+  [ -n "$(git -C "$REPO" branch --contains "$base")" ]
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$base.rerun.json" ]
+}
+
+@test "sweep 2b: a ledger whose audited branch still exists is kept" {
+  make_repo
+  base=$(git -C "$REPO" rev-parse HEAD)
+  git -C "$REPO" branch live-feature
+  seed_rerun_ledger "$base" "live-feature"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$base.rerun.json" ]
+}
+
+@test "sweep 2b: a ledger with no recorded branch is kept (fail-safe: death unprovable)" {
+  make_repo
+  base=$(git -C "$REPO" rev-parse HEAD)
+  seed_rerun_ledger "$base" ""
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$base.rerun.json" ]
+}
+
+@test "sweep 2b: an unparseable ledger is kept (fail-safe: death unprovable)" {
+  make_repo
+  seed_audit_file "deadbeef.rerun.json"
+  printf 'not json at all' > "$REPO/.gaia/local/audit/deadbeef.rerun.json"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/deadbeef.rerun.json" ]
+}
+
+# --- Sweep #8: stale cloud telemetry events (age-gated) --------------------
+#
+# telemetry/cloud is a structural drop-zone, so sweep #4 keeps the directory
+# alive, but nothing reaps its contents: `gaia mentorship purge` documents that
+# it never touches the cloud stream. The janitor owns the retention, age-gated
+# on the same 14-day window sweep #5 uses for stale cache artifacts.
+
+# touch_days_ago <n> <file>: back-date a file n days, computed with jq (never
+# `date -d`/`date -j`, matching the project's cross-platform epoch rule).
+touch_days_ago() {
+  touch -t "$(jq -rn --argjson n "$1" '(now - ($n * 86400)) | strftime("%Y%m%d%H%M")')" "$2"
+}
+
+# seed_cloud_file <name> <days-old>: drops one back-dated file into the cloud
+# telemetry drop-zone.
+seed_cloud_file() {
+  mkdir -p "$REPO/.gaia/local/telemetry/cloud"
+  echo '{}' > "$REPO/.gaia/local/telemetry/cloud/$1"
+  touch_days_ago "$2" "$REPO/.gaia/local/telemetry/cloud/$1"
+}
+
+@test "sweep 8: a cloud events file past the window is reaped" {
+  make_repo
+  seed_cloud_file "events-2026-01-01.jsonl" 20
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/telemetry/cloud/events-2026-01-01.jsonl" ]
+}
+
+@test "sweep 8: a cloud events file within the window is kept" {
+  make_repo
+  seed_cloud_file "events-2026-06-01.jsonl" 2
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/telemetry/cloud/events-2026-06-01.jsonl" ]
+}
+
+@test "sweep 8: a non-events file in the cloud drop-zone is never touched, however old" {
+  make_repo
+  seed_cloud_file "config.json" 90
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/telemetry/cloud/config.json" ]
+}
+
+@test "sweep 8: the telemetry/cloud drop-zone survives an emptying reap" {
+  make_repo
+  seed_cloud_file "events-2026-01-02.jsonl" 20
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  # Second pass: the now-empty drop-zone must still not be rmdir'd by sweep #4.
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/telemetry/cloud" ]
+}
