@@ -29,6 +29,7 @@
     ".claude/hooks/block-no-verify.sh": "owned",
     ".claude/hooks/block-rm-rf.sh": "owned",
     ".claude/hooks/block-secrets-write.sh": "owned",
+    ".claude/hooks/block-spec-plan-chain.sh": "owned",
     ".claude/hooks/block-vitest-globals-tsconfig.sh": "owned",
     ".claude/hooks/capture-red-observations.sh": "owned",
     ".claude/hooks/check-i18n-strings.sh": "owned",
@@ -213,6 +214,7 @@
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-merge.sh": "owned",
     ".github/actions/gaia-ci-stale-pr-skip/action.yml": "owned",
     ".github/audit/check-trailer.sh": "owned",
+    ".github/audit/gate-pending-members.sh": "owned",
     ".github/audit/resolve-audit-base.sh": "owned",
     ".github/audit/resolve-check-base.sh": "owned",
     ".github/FUNDING.yml": "shared",
@@ -588,6 +590,6 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-07-09T08:23:15.236Z",
+  "generated": "2026-07-13T13:46:09.897Z",
   "version": "1.6.1"
 }
