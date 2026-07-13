@@ -9,7 +9,10 @@ For symbol-level queries on code, prefer [Serena](https://github.com/oraios/sere
 
 ## Prefer Serena
 
-"Where is `X` defined?", "Find references to `X`", "What's the type of `X`?", "What calls `X` / what does `X` call?", "Show me everything in module `Y`."
+- Locate a definition or read a symbol's body ("Where is `X` defined?", "What's the type of `X`?") → `find_symbol`.
+- Find callers or references ("What calls `X` / what does `X` call?") → `find_referencing_symbols`.
+- See a file or module's structure ("Show me everything in module `Y`") → `get_symbols_overview`.
+- Rename a symbol across the repo → `rename_symbol`, not find-and-replace.
 
 ## Grep is still right
 
