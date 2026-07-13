@@ -17,9 +17,12 @@
 # path, human or model, funnels through tool calls this hook sees:
 #
 #   STAMP (a spec session is underway; allow, never block):
-#     - Skill        whose skill name resolves to gaia-spec
-#     - Bash         invoking lib/spec-allocator.sh (the SPEC-id allocation every
-#                    /gaia-spec path runs: fresh, resume, and auto)
+#     - Skill        whose skill NAME (never its arguments) resolves to gaia-spec
+#     - Bash         INVOKING lib/spec-allocator.sh, i.e. the path followed by one
+#                    of its own subcommands (the SPEC-id allocation every
+#                    /gaia-spec path runs: fresh, resume, and auto). Merely naming
+#                    the allocator (a grep, a shellcheck, a git log, this hook's
+#                    own tests) is not an invocation and must never stamp.
 #   DENY (that stamp is live for this session_id):
 #     - Skill        whose skill name resolves to gaia-plan
 #     - Read         of .claude/skills/gaia/references/plan.md
@@ -31,8 +34,13 @@
 # WHY NOT STAMP ON A Read OF spec.md. It is the other obvious chokepoint, but
 # .gaia/cli/health/runbook.md cites spec.md step 7 AND plan.md step 4.6 as the
 # canonical audit pattern, so a /health-audit session reads both references and
-# would deny itself. The allocator is unambiguous: nothing reads a SPEC id out
-# of the allocator except a live authoring session.
+# would deny itself. An allocator INVOCATION carries no such ambiguity: nothing
+# allocates a SPEC id except a live authoring session. The distinction is the
+# whole point, and it is load-bearing in the other direction too, since a
+# maintainer session that greps or lints the allocator (a shell audit, a fitness
+# run) must not be read as authoring and lose /gaia-plan for a SPEC it never
+# wrote. A false stamp is a false deny one step later, so the stamp arm is held
+# to the same fail-open standard as everything else here.
 #
 # STRICT BY DESIGN. A PreToolUse hook cannot distinguish a human-typed
 # /gaia-plan from a model-initiated one at the Read chokepoint (a typed slash
@@ -116,18 +124,18 @@ deny_msg() {
 }
 
 # Resolve the skill name across harness builds: the field has been .name and
-# .skill in different versions. Fall back to a word-boundary scan of every
-# string in tool_input so an unknown field name degrades to allow-or-deny on
-# content rather than silently missing the invocation.
+# .skill in different versions, so try an explicit candidate list. Deliberately
+# NOT a scan of every string in tool_input: the skill's ARGUMENTS are in there
+# too, so a scan reads a mention as an invocation (a `Skill(gaia-audit, args:
+# "review the gaia-spec flow")` would stamp) — the same mention-vs-invocation
+# error the Bash arm above must avoid. If none of the candidate fields exist,
+# this arm goes inert rather than guessing from content: the Read arm is the
+# load-bearing one and still holds the boundary on its own.
 skill_name() {
   local n
-  n=$(jq -r '.tool_input.name // .tool_input.skill // .tool_input.command // empty' \
-    <<<"$payload" 2>/dev/null) || return 1
+  n=$(jq -r '.tool_input.name // .tool_input.skill // .tool_input.skill_name
+             // .tool_input.command // empty' <<<"$payload" 2>/dev/null) || return 1
   printf '%s' "$n"
-}
-
-skill_blob() {
-  jq -r '[.tool_input | .. | strings] | join(" ")' <<<"$payload" 2>/dev/null || true
 }
 
 # Matches a bare `gaia-plan`, a leading-slash `/gaia-plan`, and a
@@ -140,23 +148,25 @@ is_skill() {
 case "$tool" in
   Skill)
     name=$(skill_name) || exit 0
-    if [ -n "$name" ]; then
-      is_skill gaia-spec "$name" && stamp
-      is_skill gaia-plan "$name" && [ -f "$sentinel" ] && deny "$(deny_msg)"
-      exit 0
-    fi
-    # Unknown field shape: fall back to a word-boundary content scan.
-    blob=$(skill_blob)
-    [[ "$blob" =~ (^|[^A-Za-z0-9_-])gaia-spec([^A-Za-z0-9_-]|$) ]] && stamp
-    if [[ "$blob" =~ (^|[^A-Za-z0-9_-])gaia-plan([^A-Za-z0-9_-]|$) ]] \
-       && [ -f "$sentinel" ]; then
-      deny "$(deny_msg)"
-    fi
+    [ -n "$name" ] || exit 0
+    is_skill gaia-spec "$name" && stamp
+    is_skill gaia-plan "$name" && [ -f "$sentinel" ] && deny "$(deny_msg)"
     ;;
   Bash)
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload" 2>/dev/null) || exit 0
-    # Any subcommand (next | in_progress) and any invocation form.
-    [[ "$cmd" == *spec-allocator.sh* ]] && stamp
+    # Anchor on an INVOCATION, never a mention. A bare substring match stamps on
+    # `grep -rn spec-allocator.sh`, `shellcheck <it>`, `git log -- <it>`, and this
+    # hook's own tests, and a session that merely READ ABOUT the allocator would
+    # then lose /gaia-plan with a deny that claims, falsely, that it authored a
+    # SPEC. That is the fail-closed direction this hook's contract forbids, and
+    # it is the same mention-vs-invocation objection that rules out a Bash deny
+    # arm (see RESIDUAL GAPS). Requiring the allocator's own subcommand
+    # vocabulary to follow the path makes naming it inert and running it a stamp.
+    # Narrowing accepted: an invocation indirected through a variable in the same
+    # command string no longer stamps. No call site writes it that way; spec.md
+    # runs `in_progress` and the specify preset runs `next`, both literal.
+    [[ "$cmd" =~ spec-allocator\.sh[[:space:]]+(next|highest|in_progress|reserve_pending)([[:space:]]|$) ]] \
+      && stamp
     ;;
   Read)
     path=$(jq -r '.tool_input.file_path // empty' <<<"$payload" 2>/dev/null) || exit 0

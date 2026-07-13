@@ -113,6 +113,69 @@ assert_allowed() {
   [ ! -f "$SENTINEL" ]
 }
 
+@test "naming the allocator is not invoking it" {
+  # The symmetric property to "grepping for gaia-plan is not planning", and the
+  # one the first cut of this hook got wrong: a substring match stamped on any
+  # command that merely CONTAINED the filename, so a maintainer session that
+  # inspected the allocator (a shell audit, /gaia-fitness, /health-audit, this
+  # very suite) silently lost /gaia-plan to a deny asserting it had authored a
+  # SPEC it never wrote. A false stamp is a false deny one step later.
+  run_bash_tool 'grep -rn "spec-allocator.sh" .specify/'
+  assert_allowed
+  [ ! -f "$SENTINEL" ]
+
+  run_bash_tool 'shellcheck .specify/extensions/gaia/lib/spec-allocator.sh'
+  assert_allowed
+  [ ! -f "$SENTINEL" ]
+
+  run_bash_tool 'git log --oneline -- .specify/extensions/gaia/lib/spec-allocator.sh'
+  assert_allowed
+  [ ! -f "$SENTINEL" ]
+
+  run_bash_tool 'cat .specify/extensions/gaia/lib/spec-allocator.sh'
+  assert_allowed
+  [ ! -f "$SENTINEL" ]
+}
+
+@test "every allocator subcommand stamps, and only a real one" {
+  # The allocator's own dispatch vocabulary. Anchoring the match on it is what
+  # separates an invocation from a mention.
+  local sub
+  for sub in next highest in_progress reserve_pending; do
+    rm -f "$SENTINEL"
+    run_bash_tool "bash .specify/extensions/gaia/lib/spec-allocator.sh $sub \"\$PWD\""
+    assert_allowed
+    [ -f "$SENTINEL" ] || { echo "subcommand '$sub' failed to stamp"; return 1; }
+  done
+
+  # A word that is not one of its subcommands is not an invocation.
+  rm -f "$SENTINEL"
+  run_bash_tool 'echo spec-allocator.sh is the allocator'
+  assert_allowed
+  [ ! -f "$SENTINEL" ]
+}
+
+@test "a Skill call that merely mentions gaia-spec in its arguments does not stamp" {
+  # The skill NAME is the signal; its arguments are free text. Reading them as a
+  # name is the same mention-vs-invocation error as the Bash arm's.
+  run_hook "$(jq -n --arg s "$SESSION" \
+    '{session_id: $s, hook_event_name: "PreToolUse", tool_name: "Skill",
+      tool_input: {name: "gaia-audit", arguments: "review the gaia-spec flow"}}')"
+  assert_allowed
+  [ ! -f "$SENTINEL" ]
+}
+
+@test "an unknown Skill field shape goes inert rather than guessing" {
+  # If the harness renames the field, this arm degrades to a no-op; the Read arm
+  # is load-bearing and still holds the boundary on its own. Guessing from
+  # content is what produces false stamps.
+  run_hook "$(jq -n --arg s "$SESSION" \
+    '{session_id: $s, hook_event_name: "PreToolUse", tool_name: "Skill",
+      tool_input: {unknown_field: "gaia-spec"}}')"
+  assert_allowed
+  [ ! -f "$SENTINEL" ]
+}
+
 # --- The deny ----------------------------------------------------------------
 
 @test "Skill(gaia-plan) is denied once the session has authored a SPEC" {

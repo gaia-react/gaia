@@ -57,7 +57,7 @@
 #      days. A spec-chain-*.json is the spec→plan chain guard's per-session
 #      sentinel (block-spec-plan-chain.sh); it is keyed on session_id, so an old
 #      one can never match a live session and is inert long before it is stale.
-#      Age-gated
+#      All of them are age-gated
 #      rather than reference-checked: a generous window survives a paused
 #      multi-day authoring session while still reaping abandoned drafts and
 #      forgotten profiling dumps that no other owner ever cleans up.
