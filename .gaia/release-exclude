@@ -145,7 +145,11 @@ wiki/decisions/Forensics Triage Workflow.md
 # only matter on the maintainer's clone. `code-review-audit.yml` installs
 # on demand via `/setup-gaia` (like the cron workflows) rather than
 # shipping by default, so adopters who have not enabled GAIA CI never carry
-# a credential-less audit that blocks every merge. All would be silent
+# a credential-less audit that blocks every merge. `shell-lint.yml` runs
+# shellcheck over GAIA's framework bash via the `.gaia/tests/shell-lint.sh`
+# harness (already excluded by the `.gaia/tests` entry in category 3); adopters
+# run that bash but never author it, so the linter guarding it has no adopter
+# surface. All would be silent
 # passengers at best and confusing CI failures at worst on adopter clones.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
@@ -153,6 +157,7 @@ wiki/decisions/Forensics Triage Workflow.md
 .github/workflows/distribution.yml
 .github/workflows/forensics-triage.yml
 .github/workflows/code-review-audit.yml
+.github/workflows/shell-lint.yml
 .github/forensics
 
 # --- 10. Maintainer-only health-audit infrastructure ---

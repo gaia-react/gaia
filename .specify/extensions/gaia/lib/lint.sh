@@ -60,10 +60,7 @@ add_finding() {
 fm=""
 body=""
 state="pre"
-fm_end_line=0
-line_no=0
 while IFS= read -r line; do
-  line_no=$((line_no + 1))
   case "$state" in
     pre)
       if [ "$line" = "---" ]; then
@@ -79,7 +76,6 @@ while IFS= read -r line; do
     in_fm)
       if [ "$line" = "---" ]; then
         state="post"
-        fm_end_line=$line_no
       else
         fm+="$line"$'\n'
       fi

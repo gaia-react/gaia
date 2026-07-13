@@ -68,6 +68,12 @@ for tok in ${tokens[@]+"${tokens[@]}"}; do
   [[ "$tok" == "rm" || "$tok" == rm ]] && continue
   [[ "$tok" == -* ]] && continue
 
+  # SC2088 (tilde does not expand in quotes) is disabled for this whole case: the
+  # `~` / `$HOME` patterns below are literal match targets, not paths to expand.
+  # They are tested against the raw command string, where the user's unexpanded
+  # token is exactly what must be caught; expanding here would break the guard.
+  # The directive has to sit in front of the `case` itself, not the branch (SC1124).
+  # shellcheck disable=SC2088
   case "$tok" in
     /|/*)
       # Allow specific safe absolute prefixes, currently none whitelisted absolutely.

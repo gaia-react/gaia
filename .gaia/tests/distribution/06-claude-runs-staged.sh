@@ -51,7 +51,7 @@ if ! docker_build_image; then
   # failed. The `fail; exit 1` below runs unconditionally; the diagnostic
   # build's exit code is intentionally ignored (`|| :`).
   log "docker build failed; rerunning with output for diagnosis:"
-  GAIA_DIST_IMAGE="$GAIA_DIST_IMAGE" docker build -t "$GAIA_DIST_IMAGE" - <<'DOCKERFILE' || :
+  docker build -t "$GAIA_DIST_IMAGE" - <<'DOCKERFILE' || :
 FROM node:22-bullseye-slim
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates git \
   && rm -rf /var/lib/apt/lists/*

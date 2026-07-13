@@ -46,6 +46,7 @@ VERSION_FILE="$GAIA_DIR/VERSION"
 # Source the Serena language-drift library (Phase 1). Guarded so a missing
 # library never breaks the refresher.
 SERENA_LIB="$GAIA_DIR/scripts/lib/serena-lang.sh"
+# shellcheck source=.gaia/scripts/lib/serena-lang.sh
 [ -f "$SERENA_LIB" ] && . "$SERENA_LIB"
 
 now=$(date +%s)
@@ -53,9 +54,7 @@ now=$(date +%s)
 # Read previous cache values (used as fallbacks on partial failure).
 prev_checked_at=0
 prev_outdated_count=0
-prev_gaia_current=""
 prev_gaia_latest=""
-prev_gaia_has_update=false
 prev_harden_count=0
 prev_audit_last_applied_at=0
 prev_audit_memory_count=0
@@ -63,9 +62,11 @@ prev_audit_memory_baseline=0
 if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_checked_at=$(jq -r '.checkedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
-  prev_gaia_current=$(jq -r '.gaiaCurrent // ""' "$CACHE_FILE" 2>/dev/null)
+  # No prev_ seed for gaiaCurrent or gaiaHasUpdate, unlike their siblings here:
+  # gaiaCurrent is read from the local .gaia/VERSION file (authoritative; a stale
+  # cached value would be worse than none), and gaiaHasUpdate is derived from
+  # gaia_current + gaia_latest, both of which already carry their own fallbacks.
   prev_gaia_latest=$(jq -r '.gaiaLatest // ""' "$CACHE_FILE" 2>/dev/null)
-  prev_gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
   prev_harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)

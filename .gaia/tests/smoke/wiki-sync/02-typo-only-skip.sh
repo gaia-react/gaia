@@ -12,6 +12,9 @@ GAIA_REPO="${GAIA_REPO:-$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP=$(mktemp -d -t gaia-smoke-02-XXXXXX)
 # On any non-zero exit, surface the captured claude session output before
 # cleanup so a failure is diagnosable instead of a silent blackhole.
+# shellcheck disable=SC2154 # `rc` IS assigned: by the `rc=$?` at the head of this
+# same trap string. shellcheck does not track assignments made inside a deferred
+# trap body, so it reads the reference as unassigned.
 trap 'rc=$?; if [ "$rc" -ne 0 ] && [ -f "$TMP/claude-sync.log" ]; then echo "----- claude sync session output (captured) -----"; cat "$TMP/claude-sync.log"; fi; rm -rf "$TMP"' EXIT
 
 cd "$TMP"

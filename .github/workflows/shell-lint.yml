@@ -1,0 +1,56 @@
+name: Shell Lint
+
+# Runs shellcheck over every tracked *.sh in the repo via
+# .gaia/tests/shell-lint.sh (severity floor: warning).
+#
+# Maintainer-only: adopters run GAIA's bash but never author it, so the linter
+# that guards the framework's own shell has no adopter surface. Release-excluded
+# alongside the other maintainer-only workflows; on an adopter clone this would
+# be a silent passenger at best and a confusing red check at worst.
+#
+# Complements rather than replaces the code-audit-maintainer-shell agent: that
+# agent already treats shellcheck as an authoritative oracle, but it is
+# model-dispatched and advisory-only, so nothing enforced a clean tree. The agent
+# keeps the lenses shellcheck cannot model (hook fail-open, stdin-JSON shape,
+# `jq -n` injection safety); this job keeps the mechanics from regressing.
+#
+# Pinned action SHAs match .github/workflows/audit-ci-tests.yml:
+#   actions/checkout    @ 93cb6efe18208431cddfb8368fd83d5badbf9bfd (v5.0.1)
+#   dorny/paths-filter  @ fbd0ab8f3e69293af611ebaee6363fc25e6d187d (v4.0.1)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell-lint:
+    name: shellcheck (tracked *.sh)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      # PRs that touch no shell script report this check green without
+      # installing or running anything.
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            shell:
+              - '**/*.sh'
+              - '.github/workflows/shell-lint.yml'
+      - if: steps.filter.outputs.shell == 'true'
+        name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      # The gate lints every tracked *.sh, not just the changed ones: shellcheck
+      # is fast enough at this repo's size (~130 scripts, low seconds) that a
+      # whole-tree run is simpler than a diff-scoped one and cannot drift out of
+      # sync with the paths filter above.
+      - if: steps.filter.outputs.shell == 'true'
+        name: Run shellcheck gate
+        run: bash .gaia/tests/shell-lint.sh
