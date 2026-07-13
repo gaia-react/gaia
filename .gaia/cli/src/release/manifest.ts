@@ -906,6 +906,19 @@ const BARE_FLAGS: Readonly<
   },
 };
 
+/**
+ * Own-property lookup. A bare `Record` index resolves every `Object.prototype`
+ * member (`toString`, `constructor`, `__proto__`, …) to a truthy value, so an
+ * argv token that happens to name one would slip past the unknown-flag guard:
+ * the six method names would be accepted and silently ignored, and `__proto__`
+ * would resolve to a non-callable and crash the parse.
+ */
+const lookUpFlagHandler = <Handler>(
+  table: Readonly<Partial<Record<string, Handler>>>,
+  token: string
+): Handler | undefined =>
+  Object.hasOwn(table, token) ? table[token] : undefined;
+
 const validateFlagCombination = (state: ParseState): FlagParseResult => {
   const {allowUndecided, check, json, outPath, ships, stdout, withholds} =
     state;
@@ -944,8 +957,8 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    const bare = BARE_FLAGS[token];
-    const valued = VALUE_FLAGS[token];
+    const bare = lookUpFlagHandler(BARE_FLAGS, token);
+    const valued = lookUpFlagHandler(VALUE_FLAGS, token);
 
     if (bare !== undefined) {
       bare(state);
@@ -1123,7 +1136,9 @@ const reportSummary = (
     'wiki-owned': 0,
   };
 
-  for (const klass of Object.values(manifest.files)) counts[klass] += 1;
+  for (const manifestClass of Object.values(manifest.files)) {
+    counts[manifestClass] += 1;
+  }
 
   const total = Object.keys(manifest.files).length;
   process.stdout.write(

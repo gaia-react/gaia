@@ -64,8 +64,8 @@ const gaiaFolderRulePath = path.join(
   'gaia-folder.md'
 );
 
-const commandExists = existsSync(commandPath);
-const commandText = commandExists ? readFileSync(commandPath, 'utf8') : '';
+const hasCommandFile = existsSync(commandPath);
+const commandText = hasCommandFile ? readFileSync(commandPath, 'utf8') : '';
 
 describe('distribution-audit command file, static guards', () => {
   test('the command file exists (git-tracking is proven downstream, not here)', () => {
@@ -76,7 +76,7 @@ describe('distribution-audit command file, static guards', () => {
     // `git ls-files`; a file that never reached the index never reaches
     // staging, so that harness plus assertion 8 below cover the wiring that
     // actually matters.
-    expect(commandExists).toBe(true);
+    expect(hasCommandFile).toBe(true);
   });
 
   test('never carries the undecided-escape token', () => {
@@ -103,13 +103,16 @@ describe('distribution-audit command file, static guards', () => {
     // targets the boundary file, and for `sed -i` / `tee` invoked against it
     // on the same line. Prose that forbids a vector must not trip this; only
     // an instruction to use one may.
-    const REDIRECT = /(^|\s)>>?\s*\S*release-exclude/;
-    const INPLACE = /\b(sed\s+-i|tee)\b[^\n]*release-exclude/;
+    const redirectToBoundaryPattern = /(^|\s)>>?\s*\S*release-exclude/;
+    const inPlaceEditPattern = /\b(sed\s+-i|tee)\b[^\n]*release-exclude/;
 
     const violations = commandText
       .split('\n')
       .filter((line) => line.includes('release-exclude'))
-      .filter((line) => REDIRECT.test(line) || INPLACE.test(line));
+      .filter(
+        (line) =>
+          redirectToBoundaryPattern.test(line) || inPlaceEditPattern.test(line)
+      );
 
     expect(violations).toEqual([]);
   });

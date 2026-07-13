@@ -22253,13 +22253,15 @@ var uniqueSorted = (paths) => {
 var findDuplicates = (paths) => {
   const seen = /* @__PURE__ */ new Set();
   const duplicates = /* @__PURE__ */ new Set();
-  for (const value of paths) {
-    if (seen.has(value)) duplicates.add(value);
-    seen.add(value);
+  for (const candidate of paths) {
+    if (seen.has(candidate)) duplicates.add(candidate);
+    seen.add(candidate);
   }
   return uniqueSorted([...duplicates]);
 };
-var isRejectedWithholdPath = (value) => value.length === 0 || value.startsWith("#") || value.startsWith("/") || value.endsWith("/") || ASCII_WHITESPACE.test(value) || REJECTED_PATH_CHARACTERS.some((character) => value.includes(character));
+var isRejectedWithholdPath = (withholdPath) => withholdPath.length === 0 || withholdPath.startsWith("#") || withholdPath.startsWith("/") || withholdPath.endsWith("/") || ASCII_WHITESPACE.test(withholdPath) || REJECTED_PATH_CHARACTERS.some(
+  (character) => withholdPath.includes(character)
+);
 var isRejectedReason = (reason) => reason.trim().length === 0 || reason.includes("\n") || reason.includes("\r");
 var parseCategoryLines = (lines) => lines.flatMap((line, headerLineIndex) => {
   const match = CATEGORY_HEADER.exec(line);
@@ -22807,6 +22809,7 @@ var BARE_FLAGS = {
     state.stdout = true;
   }
 };
+var lookUpFlagHandler = (table, token) => Object.hasOwn(table, token) ? table[token] : void 0;
 var validateFlagCombination = (state) => {
   const { allowUndecided, check: check2, json: json2, outPath, ships, stdout, withholds } = state;
   const hasAnswers = allowUndecided || ships.length > 0 || withholds.length > 0;
@@ -22837,8 +22840,8 @@ var parseFlags12 = (argv) => {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    const bare = BARE_FLAGS[token];
-    const valued = VALUE_FLAGS[token];
+    const bare = lookUpFlagHandler(BARE_FLAGS, token);
+    const valued = lookUpFlagHandler(VALUE_FLAGS, token);
     if (bare !== void 0) {
       bare(state);
     } else if (valued === void 0) {
@@ -22937,7 +22940,9 @@ var reportSummary = (manifest, cwd, target) => {
     shared: 0,
     "wiki-owned": 0
   };
-  for (const klass of Object.values(manifest.files)) counts[klass] += 1;
+  for (const manifestClass of Object.values(manifest.files)) {
+    counts[manifestClass] += 1;
+  }
   const total = Object.keys(manifest.files).length;
   process.stdout.write(
     `release manifest: wrote ${total} files (owned=${counts.owned}, shared=${counts.shared}, wiki-owned=${counts["wiki-owned"]}) \u2192 ${path23.relative(cwd, target) || target}

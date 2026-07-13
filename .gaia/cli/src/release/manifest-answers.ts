@@ -89,9 +89,9 @@ const findDuplicates = (paths: readonly string[]): string[] => {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
 
-  for (const value of paths) {
-    if (seen.has(value)) duplicates.add(value);
-    seen.add(value);
+  for (const candidate of paths) {
+    if (seen.has(candidate)) duplicates.add(candidate);
+    seen.add(candidate);
   }
 
   return uniqueSorted([...duplicates]);
@@ -106,13 +106,15 @@ const findDuplicates = (paths: readonly string[]): string[] => {
  * withheld — while `build-staging.sh` DOES escape brackets, so the manifest
  * and the staging pipeline disagree about which file was excluded.
  */
-const isRejectedWithholdPath = (value: string): boolean =>
-  value.length === 0 ||
-  value.startsWith('#') ||
-  value.startsWith('/') ||
-  value.endsWith('/') ||
-  ASCII_WHITESPACE.test(value) ||
-  REJECTED_PATH_CHARACTERS.some((character) => value.includes(character));
+const isRejectedWithholdPath = (withholdPath: string): boolean =>
+  withholdPath.length === 0 ||
+  withholdPath.startsWith('#') ||
+  withholdPath.startsWith('/') ||
+  withholdPath.endsWith('/') ||
+  ASCII_WHITESPACE.test(withholdPath) ||
+  REJECTED_PATH_CHARACTERS.some((character) =>
+    withholdPath.includes(character)
+  );
 
 /**
  * The reason is untrusted input the CLI renders into the boundary file as a

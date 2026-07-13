@@ -291,6 +291,23 @@ describe('run (CLI)', () => {
     expect(stdio.errors.join('')).toContain('unknown flag');
   });
 
+  test.each([
+    'toString',
+    'valueOf',
+    'constructor',
+    'hasOwnProperty',
+    '__proto__',
+  ])('rejects the prototype-member token %s as an unknown flag', (token) => {
+    sandbox.commit('seed', {
+      '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '0.0.1\n',
+    });
+
+    const exit = run([token], {cwd: sandbox.root});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('unknown flag');
+  });
+
   test('fails gracefully when VERSION is missing', () => {
     sandbox.commit('seed', {
       '.gaia/release-exclude': '# none\n',
@@ -809,7 +826,7 @@ describe('run (answer gate)', () => {
   const manifestPath = (): string =>
     path.join(sandbox.root, '.gaia/manifest.json');
 
-  const readBoth = (): {exclude: string; manifest: string} => ({
+  const readBoundaryAndManifest = (): {exclude: string; manifest: string} => ({
     exclude: readFileSync(excludePath(), 'utf8'),
     manifest: readFileSync(manifestPath(), 'utf8'),
   });
@@ -844,7 +861,7 @@ describe('run (answer gate)', () => {
     stdio.outputs.length = 0;
     stdio.errors.length = 0;
 
-    return readBoth();
+    return readBoundaryAndManifest();
   };
 
   test('refuses by default while a newly-shipping file is unanswered', () => {
@@ -853,7 +870,7 @@ describe('run (answer gate)', () => {
     });
 
     expect(runGate([])).toBe(1);
-    expect(readBoth()).toEqual(before);
+    expect(readBoundaryAndManifest()).toEqual(before);
 
     const errors = stdio.errors.join('');
     expect(errors).toContain('unanswered_paths');
@@ -916,7 +933,7 @@ describe('run (answer gate)', () => {
         'internal',
       ])
     ).not.toBe(0);
-    expect(readBoth()).toEqual(before);
+    expect(readBoundaryAndManifest()).toEqual(before);
     expect(stdio.errors.join('')).toContain('answer_not_missing');
   });
 
@@ -933,7 +950,7 @@ describe('run (answer gate)', () => {
         'x',
       ])
     ).not.toBe(0);
-    expect(readBoth()).toEqual(before);
+    expect(readBoundaryAndManifest()).toEqual(before);
     expect(stdio.errors.join('')).toContain('withhold_metacharacter');
   });
 
@@ -947,7 +964,7 @@ describe('run (answer gate)', () => {
     expect(runGate(['--out', outPath])).not.toBe(0);
     expect(existsSync(outPath)).toBe(false);
     expect(stdio.outputs.join('')).toBe('');
-    expect(readBoth()).toEqual(before);
+    expect(readBoundaryAndManifest()).toEqual(before);
   });
 
   test('one invocation mixes --ship and --withhold, leaving no drift', () => {
@@ -995,7 +1012,7 @@ describe('run (answer gate)', () => {
     expect(
       runGate(['--withhold', 'app/a.ts', '--category', '1', '--reason', 'r'])
     ).not.toBe(0);
-    expect(readBoth()).toEqual(before);
+    expect(readBoundaryAndManifest()).toEqual(before);
     expect(stdio.errors.join('')).toContain('unanswered_paths');
   });
 
@@ -1040,7 +1057,7 @@ describe('run (answer gate)', () => {
           reason,
         ])
       ).not.toBe(0);
-      expect(readBoth()).toEqual(before);
+      expect(readBoundaryAndManifest()).toEqual(before);
       // The smuggled second line would have been an uncommented, subtree-
       // masking exclude entry that membership never inspected, because
       // membership only ever looks at the withhold value.
