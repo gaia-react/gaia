@@ -294,6 +294,35 @@ assert_denied_because() {
   assert_allowed
 }
 
+# A continuation may split a token mid-word. Bash removes the backslash-newline
+# with nothing, so the fragments reassemble into one token and the command runs
+# against the reassembled target. The splice must join the same way: a space-join
+# would cut the token into fragments that match no pattern, which is a bypass.
+
+@test "a continuation splitting \$HOME mid-token is denied" {
+  run_hook_bash 'rm -rf $HOM\
+E'
+  assert_denied
+}
+
+@test "a continuation splitting a quoted \$HOME mid-token is denied" {
+  run_hook_bash 'rm -rf "$HO\
+ME"'
+  assert_denied
+}
+
+@test "a continuation splitting node_modules mid-token is denied" {
+  run_hook_bash 'rm -rf node_modul\
+es'
+  assert_denied
+}
+
+@test "a continuation splitting .git mid-token is denied" {
+  run_hook_bash 'rm -rf .gi\
+t'
+  assert_denied
+}
+
 # --- denied: remaining flag-shape gaps ---
 
 @test "rm --no-preserve-root / (no recursive flag) is denied" {

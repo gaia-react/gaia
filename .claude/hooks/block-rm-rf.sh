@@ -23,16 +23,27 @@
 # falls through (exit 0), this hook intentionally only blocks the well-known
 # footguns; broader policy lives in settings.json permissions.
 #
-# SCOPE, read before trusting this guard. It matches the *literal text* of each
-# target token. A target the shell computes rather than spells cannot be seen
-# here and is out of reach by design: command substitution (`rm -rf "$(git
-# rev-parse --show-toplevel)"`), an arbitrary variable holding a dangerous path,
-# a relative escape (`rm -rf ../..`), and targets arriving through `xargs` all
-# pass. `jq` is a hard dependency: without it the hook exits non-zero, which
-# Claude Code treats as a non-blocking error, so the command proceeds unguarded
-# (loudly, on stderr, never bricking the session). This is heuristic
-# defense-in-depth behind settings.json permissions, not a sandbox, and it is
-# the second layer rather than the first.
+# SCOPE, read before trusting this guard. It text-matches target tokens, so it
+# is porous by construction. Do not read the deny list above as a guarantee.
+#
+# A target the shell *computes* rather than spells is out of reach by design:
+# command substitution (`rm -rf "$(git rev-parse --show-toplevel)"`), an
+# arbitrary variable holding a dangerous path, a relative escape
+# (`rm -rf ../..`), and targets arriving via `xargs` all pass.
+#
+# Some *literally spelled* targets also pass. These are known holes, not design:
+#   - `rm -rf .*` removes .git and .claude; the glob arm matches `*`, not `.*`.
+#   - a quoted `;`, `&`, or `|` in an operand truncates segment extraction, so
+#     every operand after it is never tokenized (`rm -rf ";" $HOME`).
+# Both are evasion- or accident-shaped rather than idiomatic, and both are
+# tracked as tech debt.
+#
+# `jq` is a hard dependency: without it the hook exits non-zero, which Claude
+# Code treats as a non-blocking error, so the command proceeds unguarded
+# (loudly, on stderr, never bricking the session).
+#
+# This is heuristic defense-in-depth behind settings.json permissions, not a
+# sandbox. It is the second layer, never the first.
 set -euo pipefail
 
 payload=$(cat)
@@ -46,7 +57,14 @@ cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
 # invisible to the guard, while the byte-identical one-line command is denied.
 # A multi-line `rm -rf \` is idiomatic, not contrived, and the target is a plain
 # literal token, exactly what this guard claims to match.
-cmd=${cmd//\\$'\n'/ }
+#
+# Join with NOTHING, not a space: bash removes the backslash-newline entirely,
+# so a continuation splitting a token mid-word (`$HOM\` + newline + `E`)
+# reassembles into that one token. A space-join would instead cut it into two
+# fragments that match no pattern, which is the bypass rather than the fix. The
+# space that already precedes a normal continuation's backslash is what keeps
+# the token boundary in the idiomatic case, so nothing is lost here.
+cmd=${cmd//\\$'\n'/}
 
 # Short-circuit: only act on commands containing `rm` with `-rf`/`-fr`/`-r -f`/etc.
 #
