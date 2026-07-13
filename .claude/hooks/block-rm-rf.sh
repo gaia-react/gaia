@@ -91,13 +91,16 @@ cmd=${cmd//\\$'\n'/}
 # filler would glue onto the token and break the anchored arms below: `rm -rf
 # "$HOME;"` must still reach the $HOME arm, and with a space it does.
 #
-# Substituting rather than DELETING is load-bearing, and not only for the reason
-# above. The gate below skips this walk entirely for a command whose raw text holds
-# no `rm`, which is sound only because a substitution preserves every character's
-# position and so can never *synthesize* an `rm` that the raw text lacked. Delete
-# the separators instead and `r;m -rf /` would walk into `rm -rf /`, which the gate
-# would already have skipped, turning that optimization into a live bypass. Do not
-# "simplify" this to a deletion without also removing the `*rm*` test below.
+# Substituting rather than DELETING is also what lets the gate below skip this walk
+# for any command whose raw text holds no `rm`. That skip is provably a no-op only
+# because the walk writes each character back in its own position and the only byte
+# it ever writes is a space, so it cannot close a gap and manufacture an `rm` the
+# raw text did not already contain. A deletion could: a quoted `r;m` would close up
+# into `rm`. That particular one is a phantom (bash reads `"r;m"` as a command
+# literally named `r;m`, never as `rm`), so the divergence would surface as a false
+# deny rather than a bypass, but the gate's justification is an equivalence proof
+# and a deletion falsifies it. Do not switch this to a deletion without re-deriving
+# that proof, or dropping the gate with it.
 #
 # This only ever WIDENS what gets inspected, so it can add denials and never
 # remove one.
