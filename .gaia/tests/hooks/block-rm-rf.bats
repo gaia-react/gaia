@@ -703,6 +703,83 @@ t'
   assert_denied_because 'rm -rf of absolute path'
 }
 
+# --- the command word may be PATH-QUALIFIED ---
+#
+# `/bin/rm` and `/usr/bin/rm` are the command `rm`, spelled with a path. The
+# anchor's leading boundary byte is the `/` in front of the word, so segment
+# extraction begins at `/rm …` and the token `/rm` gets judged as though it were a
+# TARGET: it trips the absolute-path arm, denies a whitelisted target, and blames
+# `/rm`, a path the user never wrote.
+#
+# The word is skipped by POSITION (it is always the segment's first token), never by
+# spelling. A spelling test broad enough to cover `/rm` (say `*/[Rr][Mm]`) would
+# equally skip `/usr/bin/rm` when it is the TARGET, turning an absolute-path deny
+# into an allow. Both directions are pinned below.
+
+@test "/bin/rm -rf dist (path-qualified word, whitelisted target) is allowed" {
+  run_hook_bash '/bin/rm -rf dist'
+  assert_allowed
+}
+
+@test "/usr/bin/rm -rf dist (path-qualified word, whitelisted target) is allowed" {
+  run_hook_bash '/usr/bin/rm -rf dist'
+  assert_allowed
+}
+
+@test "/bin/RM -rf dist (path-qualified, uppercase word) is allowed" {
+  run_hook_bash '/bin/RM -rf dist'
+  assert_allowed
+}
+
+@test "/bin/rm -rf build/output (path-qualified word) is allowed" {
+  run_hook_bash '/bin/rm -rf build/output'
+  assert_allowed
+}
+
+@test "echo hi && /bin/rm -rf dist (path-qualified word in a later segment) is allowed" {
+  run_hook_bash 'echo hi && /bin/rm -rf dist'
+  assert_allowed
+}
+
+# The dangerous shapes must still deny, and must deny via the TARGET's own arm.
+# They deny today as well, but for the wrong reason: the `/rm` token is what trips
+# the absolute-path arm, not the operand. So a fix that merely stops `/rm` being
+# read as a target could silently turn these into allows. assert_denied_because is
+# what pins the right reason, and therefore the real fix.
+
+@test "/bin/rm -rf / denies via the target's own absolute-path arm" {
+  run_hook_bash '/bin/rm -rf /'
+  assert_denied_because "BLOCKED: rm -rf of absolute path '/' is forbidden."
+}
+
+@test "/bin/rm -rf \$HOME denies via the \$HOME arm" {
+  run_hook_bash '/bin/rm -rf $HOME'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "/bin/rm -rf .git denies via the .git arm" {
+  run_hook_bash '/bin/rm -rf .git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "/usr/bin/rm -rf .claude denies via the .claude arm" {
+  run_hook_bash '/usr/bin/rm -rf .claude'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+# The rm binary as the TARGET is an absolute path and stays denied. This is the
+# case that forbids recognizing the command word by spelling.
+
+@test "rm -rf /usr/bin/rm (the rm binary as the target) is denied" {
+  run_hook_bash 'rm -rf /usr/bin/rm'
+  assert_denied_because "BLOCKED: rm -rf of absolute path '/usr/bin/rm' is forbidden."
+}
+
+@test "rm -rf /bin/rm (the rm binary as the target) is denied" {
+  run_hook_bash 'rm -rf /bin/rm'
+  assert_denied_because "BLOCKED: rm -rf of absolute path '/bin/rm' is forbidden."
+}
+
 # --- allowed: whitelisted scratch paths ---
 
 @test "rm -rf .gaia/local/plans/x is allowed" {
@@ -874,7 +951,131 @@ t'
   assert_allowed
 }
 
+# --- the walk's position-preserving invariant, asserted directly ---
+#
+# The `*rm*` fast-path gate skips the quoted-separator walk for any command whose
+# raw text holds no `rm`. That skip is a no-op ONLY because the walk is
+# position-preserving: it writes every character back into its own slot and the
+# only byte it ever writes is a space, so it can never close a gap and manufacture
+# an `rm` the raw text lacked. A deletion could: a quoted `r;m` would close up into
+# `rm`.
+#
+# Nothing above can catch a regression here. Substitution-plus-gate and
+# deletion-plus-gate return identical verdicts on every command a caller could
+# actually send, so a contributor who "simplifies" `ch=' '` to a `continue` breaks
+# the gate's justification while all 130+ behavioral cases stay green. The invariant
+# is a property of the helper, so it is asserted on the helper, which is what the
+# hook's sourceable entry point exists for.
+
+source_hook() {
+  # The hook body sits behind a `main` that runs only when the file is executed, so
+  # sourcing defines the helpers and consumes no stdin.
+  # shellcheck source=/dev/null
+  source "$HOOK_ABS"
+}
+
+assert_position_preserving() {
+  local s=$1 out len i si oi
+  out=$(neutralize_quoted_separators "$s")
+
+  # 1. Length is preserved: the walk substitutes, it never inserts or deletes.
+  [ "${#out}" -eq "${#s}" ] || return 1
+
+  len=${#s}
+  for ((i = 0; i < len; i++)); do
+    si=${s:i:1}
+    oi=${out:i:1}
+    if [ "$si" != "$oi" ]; then
+      # 2. The only byte it ever writes is a space...
+      [ "$oi" = " " ] || return 1
+      # 3. ...and it only ever writes one over a `;`, `&`, or `|`.
+      case "$si" in
+        ';' | '&' | '|') ;;
+        *) return 1 ;;
+      esac
+    fi
+  done
+
+  # 4. The consequence the fast-path gate actually leans on: no `rm` appears at an
+  #    offset where the input held none. A deletion falsifies exactly this.
+  for ((i = 0; i + 2 <= len; i++)); do
+    if [ "${out:i:2}" = "rm" ] && [ "${s:i:2}" != "rm" ]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+@test "the walk substitutes rather than deletes: a quoted r;m never closes into rm" {
+  source_hook
+  local out
+  out=$(neutralize_quoted_separators '"r;m"')
+
+  # Substitution writes a space into the separator's slot, giving `"r m"`. A
+  # deletion would close the gap into `"rm"` and manufacture the very token the
+  # fast-path gate assumes the walk can never create. Both spellings produce the
+  # same end-to-end verdict (bash resolves `"r;m"` to a command literally named
+  # `r;m`, never to `rm`), which is precisely why only a direct assertion catches it.
+  [ "$out" = '"r m"' ] || return 1
+  grep -qF -- 'rm' <<<"$out" && return 1
+  return 0
+}
+
+@test "the walk is position-preserving across an adversarial corpus" {
+  source_hook
+  # Each string attacks the invariant: separators wedged between the letters of
+  # `rm`, quoted and unquoted separators, nested and unbalanced quotes.
+  local corpus=(
+    'r;m'
+    '"r;m"'
+    "'r;m'"
+    'r|m'
+    'r&m'
+    '"r|m" "r&m"'
+    'a"r;m"b'
+    '"r;;m"'
+    'r"";m'
+    'echo "r;m"'
+    'rm -rf ";" $HOME'
+    'echo "a;b" && rm -rf dist'
+    'git commit -m "fix: a;b|c&d"'
+    'rm -rf dist && rm -rf build/output'
+    'unbalanced " quote ; here'
+    'no separators or quotes at all'
+    ';&|'
+    '""'
+  )
+  local s
+  for s in "${corpus[@]}"; do
+    if ! assert_position_preserving "$s"; then
+      printf 'position-preserving invariant broken on: %s\n' "$s" >&2
+      return 1
+    fi
+  done
+}
+
 # --- structural ---
+
+@test "the hook is sourceable: sourcing defines the helpers and runs no body" {
+  # `payload=$(cat)` at the top level blocks on stdin, so a suite that sources the
+  # hook to reach an internal helper hangs instead of defining one. The `main`
+  # entry point is what makes the invariant cases above reachable at all: sourcing
+  # must define the helper, consume no stdin, and emit nothing.
+  run bash -c 'printf %s SENTINEL | { source "$1"; printf "helper=%s stdin=%s" "$(type -t neutralize_quoted_separators)" "$(cat)"; }' _ "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'helper=function' <<<"$output"
+  grep -qF -- 'stdin=SENTINEL' <<<"$output"
+}
+
+@test "sourcing the hook does not push its shell options onto the caller" {
+  # `set -euo pipefail` sits inside `main`, not at the top level, so a `source`
+  # cannot silently switch on errexit/nounset/pipefail in the sourcing shell. At
+  # the top level it would, and every caller that sources the hook to reach a
+  # helper would inherit them.
+  run bash -c 'source "$1"; o=""; [[ -o errexit ]] && o="${o}e"; [[ -o nounset ]] && o="${o}u"; [[ -o pipefail ]] && o="${o}p"; printf "leaked=[%s]" "$o"' _ "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'leaked=[]' <<<"$output"
+}
 
 @test "block-rm-rf.sh is executable" {
   [ -x "$HOOK_ABS" ]
