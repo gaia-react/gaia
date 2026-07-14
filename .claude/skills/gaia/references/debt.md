@@ -20,9 +20,10 @@ form) and strip it before parsing the remainder as an integer.
   flow, recommending the top-of-backlog candidate. This is the default the
   statusline nudge (`Run /gaia-debt (N issues)`) points at.
 - `list` → print the ordered backlog and stop. No branch, no PR, no prompts.
+  (Run ends here; see `## Cost record (run end)`.)
 - `why <issue-number>` → explain where that issue sits in the ordering, its
   recommended handler class, and the rationale, then stop. No authoring, no
-  prompts.
+  prompts. (Run ends here; see `## Cost record (run end)`.)
 - `fix <issue-number>`, or a bare `<issue-number>` / `#<issue-number>` with no
   leading subcommand → fix that specific issue directly (see "## Fix a
   specific issue (direct-number path)" below).
@@ -35,8 +36,8 @@ the normal top-of-backlog flow.
 
 Probe the issue backend before reading the backlog. Three outcomes:
 
-- **Definitive-absent** → report "no GitHub issues backend; /gaia-debt no-ops" and stop. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (`gh repo view --json hasIssuesEnabled` false **or** a structurally-failing issue-list probe, **never** `gh repo view` resolution alone), or the viewer lacks write permission.
-- **Transient/ambiguous** (timeout, rate-limit, 5xx) → surface the failure and stop without action. Retrying later is safe; nothing was authored.
+- **Definitive-absent** → report "no GitHub issues backend; /gaia-debt no-ops" and stop. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (`gh repo view --json hasIssuesEnabled` false **or** a structurally-failing issue-list probe, **never** `gh repo view` resolution alone), or the viewer lacks write permission. (Run ends here; see `## Cost record (run end)`.)
+- **Transient/ambiguous** (timeout, rate-limit, 5xx) → surface the failure and stop without action. Retrying later is safe; nothing was authored. (Run ends here; see `## Cost record (run end)`.)
 - **Present** → proceed.
 
 ## Read and order the backlog (deterministic, no LLM evaluator)
@@ -152,7 +153,7 @@ The **recommended batch**, when one exists, is the top cluster all of whose memb
 
 How you present the choice depends on backlog size and cluster shape, counted over the **remaining candidates** (open issues after the in-progress exclusion above), not the raw open-issue count:
 
-- **Zero remaining candidates** (every open `tech-debt` issue already carries `debt:in-progress`) → do not prompt. State that all open debt is already in progress and stop.
+- **Zero remaining candidates** (every open `tech-debt` issue already carries `debt:in-progress`) → do not prompt. State that all open debt is already in progress and stop. (Run ends here; see `## Cost record (run end)`.)
 - **Exactly one remaining candidate** → do not prompt. State the issue (number, title, severity band, age derived from `createdAt`) and fix it directly. This is also the peer-session case: two open issues, one already claimed, fixes the single remaining candidate with no prompt.
 - **Top candidate heads a public-batch-eligible cluster of 2 or more** → a batch is recommended. Offer it with a single `AskUserQuestion` prompt (header `Debt item`, single-select), phrased around the batch, for example: `"Top item #<A> is related to <N> other issue(s) (<shared signal>). Fix them together, or one at a time?"`. Options, top option carrying `(Recommended)`:
   1. `Batch #<A> #<B> #<C> (Recommended)`, description: the shared signal (e.g. "all in app/foo/index.ts"), the member count, the severity span, and "one branch, one PR, all close on merge."
@@ -184,8 +185,8 @@ The `debt:` namespace is load-bearing: a `debt:`-prefixed label is gaia-owned by
 Then, for a single issue or **every member of a confirmed batch**:
 
 1. **Re-read each member's labels** (`gh issue view <n> --json labels`) before claiming. If `debt:in-progress` is already present, a peer session won the race:
-   - **single issue** → report "issue #N was just claimed by another session" and re-present the refreshed backlog; do not fix it.
-   - **batch** → drop that member and proceed with the surviving members if 1 or more remain; if none remain, report the whole batch was claimed and re-present the refreshed backlog.
+   - **single issue** → report "issue #N was just claimed by another session" and re-present the refreshed backlog; do not fix it. (Run ends here; see `## Cost record (run end)`.)
+   - **batch** → drop that member and proceed with the surviving members if 1 or more remain; if none remain, report the whole batch was claimed and re-present the refreshed backlog. (The none-remain case ends the run here; see `## Cost record (run end)`.)
 2. **Claim every surviving member**: `gh issue edit <n> --add-label debt:in-progress`. A confirmed batch claims all of its members, not just the top one.
 3. **Touch the sentinel** (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`) so a peer session's next statusline tick recomputes the open count and drops it. This in-flow touch is best-effort; the `gh issue edit` PostToolUse hook is the deterministic backstop.
 
@@ -204,7 +205,7 @@ Because the audit's own filing screen already ran, the set of issues this screen
 Re-read `gh repo view --json visibility` immediately before acting (a repo can flip from PRIVATE to PUBLIC), reusing the offer-time read above when it already ran; do not add a second prompt:
 
 - **confirmed PRIVATE** → no member peels. The whole unit, single or batch, fixes as one private PR; fixing proceeds normally.
-- **PUBLIC or INTERNAL** → any member that screens security-class is **peeled** from the unit and **diverted individually**: surface a count-only pointer to the operator and wait; never auto-disclose, never auto-draft an advisory, never open a public fix PR for it. Strip its claim (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel so it re-enters the open count and a peer session's offer. The remaining non-security members proceed as the (possibly smaller) unit, keeping their claims. If every member peels, there is nothing left to open a public PR for: strip every member's claim the same way, report the diverts, and stop. The label name is generic and non-disclosing, and security-class issues only exist in the backlog on confirmed-PRIVATE repos, so a brief label is not a disclosure concern. On a public repo, opening a `Closes #N` PR for a security issue completes a coordinated-disclosure failure, which this screen exists to prevent.
+- **PUBLIC or INTERNAL** → any member that screens security-class is **peeled** from the unit and **diverted individually**: surface a count-only pointer to the operator and wait; never auto-disclose, never auto-draft an advisory, never open a public fix PR for it. Strip its claim (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel so it re-enters the open count and a peer session's offer. The remaining non-security members proceed as the (possibly smaller) unit, keeping their claims. If every member peels, there is nothing left to open a public PR for: strip every member's claim the same way, report the diverts, and stop. (Run ends here; see `## Cost record (run end)`.) The label name is generic and non-disclosing, and security-class issues only exist in the backlog on confirmed-PRIVATE repos, so a brief label is not a disclosure concern. On a public repo, opening a `Closes #N` PR for a security issue completes a coordinated-disclosure failure, which this screen exists to prevent.
 
 This member-level screen is the **backstop** to the offer-time exclusion in "Recommend and present" above: on a non-PRIVATE repo a security-class issue is already withheld from the offered batch, so this screen mainly guarantees the invariant for a member reached via **Other**.
 
@@ -264,7 +265,7 @@ mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
 
 ## Drive the PR to merge
 
-Once the PR is up, drive it straight to merge with no confirmation prompt: the fix unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, or a `--auto` merge still queued when the poll window closes; those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `debt:in-progress` from every claimed member (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel, so the freed issue re-enters the offer and the count. A `--auto` merge still queued when the poll window closes is not this case: it is still progressing toward merge, so its claim stays in place until it resolves (below).
+Once the PR is up, drive it straight to merge with no confirmation prompt: the fix unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, or a `--auto` merge still queued when the poll window closes; those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `debt:in-progress` from every claimed member (`gh issue edit <n> --remove-label debt:in-progress`) and touch the sentinel, so the freed issue re-enters the offer and the count. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if the PR was already opened before the stop.) A `--auto` merge still queued when the poll window closes is not this case: it is still progressing toward merge, so its claim stays in place until it resolves (below).
 
 Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read it, don't merge from memory. Follow its marker handshake; do **not** substitute a bare `gh pr merge`:
 
@@ -278,8 +279,10 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
   On confirmed `MERGED`, each member's `Closes #N` already closed its issue, and a closed issue leaves the open backlog and the count on its own, so stripping `debt:in-progress` here is best-effort/cosmetic: `gh issue edit <n> --remove-label debt:in-progress` for each member, ignoring failure. A queued `--auto` merge that has not yet landed is still in progress: leave its claim in place; close-on-merge and the next fix's reconcile settle it once the merge completes.
 
   On `MERGED`, run post-merge cleanup by isolation mode:
-  - **Feature-branch mode:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`.
+  - **Feature-branch mode:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. (Run ends here; see `## Cost record (run end)`.)
   - **Worktree mode:** run Post-merge worktree cleanup below instead. Do not `git branch -D` a worktree-held branch.
+
+  If it is still queued when the poll window closes, the run also ends there (the report above and the return without cleanup); see `## Cost record (run end)`.
 
 Each `Closes #N` line in the PR body auto-closes its issue on merge, so on a batch, the single merge closes every member issue and no separate close call is needed for any of them.
 
@@ -308,6 +311,8 @@ When detected, emit this copy-paste continuation prompt to the user and stop:
         git worktree remove --force <ABSOLUTE-PATH-TO-WORKTREE>
         git branch -D <branch-name>   # only if the merge did not already delete it
 
+(Run ends here; see `## Cost record (run end)`.)
+
 Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWorktree` only operates on a worktree created by `EnterWorktree` in the current session: from a fresh session it is a no-op on a prior-session worktree, and its schema requires `action` and rejects a `worktree` parameter. A plain `git worktree remove --force` is the correct session-independent cleanup. This matches `plan.md`'s Isolation-context detection block, whose continuation prompt emits the same session-independent shell cleanup.
 
 ## list subcommand
@@ -317,6 +322,38 @@ Run the ordering command above, then the clustering pass, and print the backlog 
 ## why subcommand
 
 Run the ordering command and the clustering pass, find the issue whose number matches the argument. Explain it: where it sits in the ordering (its severity band and its position among equal-severity issues by age), its recommended handler class (the issue's advisory `Handler:` line, or your on-the-fly classification for a fieldless issue), and the rationale. Also report whether it is part of a related cluster, which issue(s) it would batch with, and the shared signal (same `path`, or same `class` and dirname). Also report the issue's claim status: whether it currently carries `debt:in-progress` (in progress) or not; `why` does not reconcile stale claims. If no open `tech-debt` issue matches the number, say so and print the ordered backlog. Author nothing and prompt for nothing.
+
+## Cost record (run end)
+
+Every path that ends a `/gaia-debt` run appends exactly one cost record, the run-ending paths above:
+
+- `list` and `why` printing their result.
+- The backend probe's definitive-absent or transient/ambiguous stop.
+- Zero remaining candidates.
+- Claiming the fix unit losing the race to a peer session (single issue, or every batch member).
+- The security screen diverting every member.
+- Driving the PR to merge: `MERGED` cleanup, a still-queued `--auto` merge, or a controlled stop before merge.
+- Worktree mode's isolation-context continuation prompt.
+
+Standalone final step, one call:
+
+```bash
+bash .gaia/scripts/token-tally.sh --action command --command gaia-debt
+```
+
+**Artifact pass-through.** When this run opened a pull request and the URL `gh pr create` printed appeared in this run's own Bash tool result, append:
+
+```bash
+  --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+```
+
+Pass-through is mode-agnostic: worktree mode reads the same URL from the same tool result, nothing about the worktree changes the call.
+
+Never look the number up (`gh pr list`, `gh pr view`), never reuse a number from an earlier run, a different branch, or a `gh` command run outside this workflow, and never guess. If this run did not itself print a creation URL, pass no `--github-*` flags at all; the record correctly carries no artifact, and that is not an error.
+
+**Report the line verbatim.** The tally prints exactly one line on stdout, e.g. `Cost: ~5.2M tokens, $4.12, 6m39s`. Relay it as the last line of the run's report; do not reassemble, reformat, or re-derive it.
+
+The tally never blocks, never fails, and never turns a failed run into a successful one: it runs as a bare call with no exit-status ceremony around it. On a path that ends in an error (a rejected push, a blocked merge), record the cost, then report the failure exactly as before; recording the cost never implies success.
 
 ## Guardrails
 

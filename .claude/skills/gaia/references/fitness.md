@@ -159,6 +159,38 @@ After each heal cycle, re-dispatch the affected category checks as fresh subagen
 
 ---
 
+## Cost record (run end)
+
+Every path that ends the run appends exactly one cost record immediately before its final printed line, and relays the tally's `Cost:` line verbatim as the last line of the reply:
+
+```bash
+bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness
+```
+
+**Pass-through.** When this run opened a pull request and the agent read the URL `gh pr create` printed in its own Bash tool result, append the artifact:
+
+```bash
+bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
+  --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+```
+
+Never look the number up (`gh pr list`, `gh pr view`), never reuse one from an earlier run, a different branch, or a manually-run `gh`, and never guess. If this run did not itself print a creation URL, pass no `--github-*` flags; the record correctly omits `github`.
+
+The tally never blocks, never fails, and never turns a failed run into a successful one. On a failure STOP, record the cost, then report the failure exactly as before; do not report success.
+
+Every run-ending path records here:
+
+- Step 6, post-heal routing, triage-only (unsafe state) STOP.
+- Step 6, post-heal routing, zero findings (A+) STOP.
+- Step 7, publish gate, Keep for review STOP.
+- Step 7, publish gate, non-interactive fallback stop.
+- Step 8, in-place heal (any other branch): no pass-through, no PR.
+- Step 8, main-branch run, `MERGED`: pass-through.
+- Step 8, main-branch run, still queued: pass-through.
+- Step 8, publish failure STOP: pass-through only if `gh pr create` had already succeeded and printed its URL before the later command failed.
+
+---
+
 ## Step 6, Report
 
 Emit the report as a **single ASCII card** rendered by `gaia fitness render-card`, and paste the rendered card directly into your chat reply inside a fenced code block. Do not surface it as a tool result, the harness collapses long tool output; the card must be a first-class part of your message.
@@ -205,8 +237,8 @@ The `findings` array drives both the per-category note column and the grouped FI
 | --- | --- |
 | Branch created (fixes applied, main-branch run) | Proceed to Step 7 (publish gate). |
 | In place on `CURRENT_BRANCH` (fixes applied, non-default branch) | Proceed to Step 7 (publish gate). |
-| Triage-only (unsafe state) | Print `Heal skipped, <reason>. Re-run /gaia-fitness after <resolution steps>.` and STOP. No gate. |
-| Zero findings (A+) | Print `No findings. Overall A+. No changes made, no branch created.` and STOP. No gate. |
+| Triage-only (unsafe state) | Record cost (see **Cost record (run end)**, no pass-through), then print `Heal skipped, <reason>. Re-run /gaia-fitness after <resolution steps>.` and STOP. No gate. |
+| Zero findings (A+) | Record cost (see **Cost record (run end)**, no pass-through), then print `No findings. Overall A+. No changes made, no branch created.` and STOP. No gate. |
 
 Format, taxonomy, and grading rubric source of truth: `wiki/decisions/Claude Integration Fitness.md` (Chat Report Format, Grading Rubric, Severity Vocabulary).
 
@@ -226,11 +258,11 @@ Ask once, via `AskUserQuestion`, after the card (the card is the information the
   2. `{ label: "Keep for review", description: "Leave the healed changes in the working tree; commit nothing." }`
 
 - **Publish** → run Step 8.
-- **Keep for review** → print the working-tree review line and STOP:
+- **Keep for review** → record cost (see **Cost record (run end)**, no pass-through), then print the working-tree review line and STOP:
   - Branch created: `Changes applied on branch chore/gaia-fitness-<timestamp>. Review with git diff main; discard with git checkout main && git branch -D chore/gaia-fitness-<timestamp>.`
   - In place: `Changes applied on <CURRENT_BRANCH>. Review with git diff; discard with git checkout -- .`
 
-**Non-interactive fallback.** In a context with no user to answer the gate (a headless or composed run), do not publish: leave the healed changes in the working tree, print the matching review line above, and stop. Publishing is the standalone, interactive `/gaia-fitness` harness; a composing audit harness owns its own publish (the branch / heal / publish harness layer is `/gaia-fitness`-specific, per the protocol page).
+**Non-interactive fallback.** In a context with no user to answer the gate (a headless or composed run), do not publish: leave the healed changes in the working tree, record cost (see **Cost record (run end)**, no pass-through), print the matching review line above, and stop. Publishing is the standalone, interactive `/gaia-fitness` harness; a composing audit harness owns its own publish (the branch / heal / publish harness layer is `/gaia-fitness`-specific, per the protocol page).
 
 ---
 
@@ -272,15 +304,24 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
 
    `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes):
 
-   - **`MERGED`** → clean up, then print the merged PR URL:
+   - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL), then print the merged PR URL:
 
      ```bash
      git -C "$PROJECT_ROOT" checkout main && git -C "$PROJECT_ROOT" pull origin main
      git -C "$PROJECT_ROOT" branch -D "$BRANCH"
      git -C "$PROJECT_ROOT" fetch --prune origin
+     bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
+       --github-type pr --github-number <N> --github-repo '<owner>/<name>'
      ```
 
-   - **still queued** → print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
+     Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.
+
+   - **still queued** → record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
+
+     ```bash
+     bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
+       --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+     ```
 
    Caveat: the oracle check above already covers this. A heal edit to a nested `CLAUDE.md` under an in-scope path such as `app/` is exactly the kind of reached-an-audited-surface diff the oracle detects; if it named a member, the marker handshake ran before this PR was even opened.
 
@@ -290,8 +331,15 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
 git -C "$PROJECT_ROOT" add -A
 git -C "$PROJECT_ROOT" commit -F <commit-message-file>
 git -C "$PROJECT_ROOT" push
+bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness
 ```
 
-Do not open a PR and do not merge; the branch owner drives it from here.
+Relay the tally's `Cost:` line as the last line of the reply. Do not open a PR and do not merge; the branch owner drives it from here.
 
-If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve.
+If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, record cost, then print the command's error and STOP. Pass the pass-through flags only if `gh pr create` had already succeeded and printed its URL before the later command failed; otherwise pass none:
+
+```bash
+bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness
+```
+
+Do not retry, force-push, or amend, a rejected push or blocked merge is the user's call to resolve. The tally never blocks, never fails, and never turns this failed run into a successful one.

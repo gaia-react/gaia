@@ -56,6 +56,23 @@ GAIA CI manages /gaia-wiki for this repo. Running it locally now risks colliding
 with the next scheduled run. To override, re-invoke with --force.
 ```
 
+**On this abort, only when there is no sub-argument** (the full-chain
+invocation), record cost before exiting, no `--github-*` flags, the run opened
+nothing:
+
+```bash
+bash .gaia/scripts/token-tally.sh --action command --command gaia-wiki
+```
+
+A deferred `sync`, `consolidate`, or `lint` (a sub-argument is present) hits
+this same abort but records **nothing**: the no-sub-argument gate above is
+what keeps a standalone stage from writing a cost record it never should.
+
+This is the only cost record the router itself emits. The full chain's cost
+record comes from `gaia wiki chain finish` (`chain.ts`, every normal path:
+success, empty branch, in-place, any git/gh failure); do not add a second
+call here or anywhere else in this file.
+
 If `STATUS == "ci"` and `FORCE == "true"`, the chain runs as normal.
 
 If `STATUS != "ci"`, behave as before (no defer, no force).
