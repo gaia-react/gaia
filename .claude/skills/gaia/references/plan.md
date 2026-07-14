@@ -181,7 +181,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       The `WorktreeCreate` hook (`.gaia/scripts/create-worktree.sh`) owns creation: it cuts a new branch of that name fresh from the remote default branch (`main`), else local HEAD, lands it under `.claude/worktrees/<branch-name>/`, and switches the session into that worktree. The branch is already cut, so the orchestrator runs no manual `git checkout -b`. Every later step, task sub-agent edits, per-phase commits, `gh pr create`, and the pre-merge Code Audit Team audit, runs from inside the worktree.
 
-      **The plan folder stays in the main checkout.** The worktree shares only a fixed set of gitignored state with the main checkout by symlink (`.gaia/local/cache/shared/`, `.gaia/local/audit/`, `.gaia/local/telemetry/`, `setup-state.json`, `mentorship.json`); the plan folder is not among them, so `{PLAN_DIR}` exists only in the main checkout. Read the task docs and `README.md` from `{PLAN_DIR}` (its main-checkout absolute path) and write `PROGRESS.md` there, while each task edits the worktree's own copy of the tracked files it touches. Dispatch each task sub-agent with both: the worktree's absolute path for the file to edit, and `{PLAN_DIR}` for the docs to read. Run `plan-archive.sh {PLAN_DIR}` only after `ExitWorktree` returns the session to the main checkout, so the helper's repo-root guard resolves the main checkout rather than the worktree.
+      **The plan folder stays in the main checkout.** The worktree shares only a fixed set of gitignored state with the main checkout by symlink (`.gaia/local/cache/shared/`, `.gaia/local/audit/`, `.gaia/local/telemetry/`, `setup-state.json`); the plan folder is not among them, so `{PLAN_DIR}` exists only in the main checkout. Read the task docs and `README.md` from `{PLAN_DIR}` (its main-checkout absolute path) and write `PROGRESS.md` there, while each task edits the worktree's own copy of the tracked files it touches. Dispatch each task sub-agent with both: the worktree's absolute path for the file to edit, and `{PLAN_DIR}` for the docs to read. Run `plan-archive.sh {PLAN_DIR}` only after `ExitWorktree` returns the session to the main checkout, so the helper's repo-root guard resolves the main checkout rather than the worktree.
 
     - **RUNNING sentinel.** Immediately after the pre-flight branch policy above (the feature branch is cut, or the worktree is entered), write a sentinel file at `{PLAN_DIR}/RUNNING`. Content:
 
@@ -371,7 +371,7 @@ Present (recommended option FIRST, carrying the `(Recommended)` tag):
   - `{ label: "Run the audit (Recommended)", description: "Three parallel auditors verify decomposition soundness, contract grounding, and SPEC coverage against the real repo. A few agents, a couple of minutes." }`
   - `{ label: "Skip the audit", description: "Hand off the plan as written. Best reserved for trivial single-phase plans." }`
 
-`Skip` is never the recommended option for a non-trivial plan. On **Skip**, proceed to step 4.7. Skip does not run the audit, so no audit-window breadcrumb is written; its absence is the correct signal to the step-4.8 tally that no decomposition audit ran.
+`Skip` is never the recommended option for a non-trivial plan. On **Skip**, proceed to step 4.7. Skip does not run the audit, so no audit-window breadcrumb is written; its absence is the correct signal to the step-4.7 tally that no decomposition audit ran.
 
 **Auto-mode.** No prompt fires. When `/gaia-plan` runs non-interactively (a headless or automation context with no interactive user), gauge the plan, run the audit if it is non-trivial, and apply its dispositions non-interactively.
 
@@ -462,56 +462,7 @@ gaia_audit_window_write \
 
 Note the explicit empty 6th argument: plan audits have no intensity tier, so the writer omits the `intensity` key. Never key the spec-derived path on `$(basename "$PLAN_DIR")`, that basename is the literal `plan`/`plan-2` and is identical across every SPEC, so two SPECs planned concurrently would collide on one shared breadcrumb and mutually degrade. This call is best-effort (`|| true`) and never blocks the handoff.
 
-### 4.7. Telemetry: revision detection
-
-If the directory-collision suffix from step 3 is greater than 1 (i.e. `PLAN_DIR` ends with `-2`, `-3`, …) AND `SPEC_PATH` was set in step 1a, this plan is a revision of a prior plan. Emit a `plan_revised` mentorship event so the over-time pattern detector sees it.
-
-Derive the prior plan directory and item counts, then emit. Failure to emit must NEVER block the user's flow, wrap in `|| true`:
-
-```bash
-# Re-derive the suffix from PLAN_DIR (the same suffix used in step 3).
-PLAN_BASENAME="$(basename "$PLAN_DIR")"
-# This block only fires when SPEC_PATH is set, so PLAN_BASENAME is always the
-# colocated form: `plan-N` for N>=2 collisions, `plan` for the first.
-if [[ "$PLAN_BASENAME" =~ -([0-9]+)$ ]]; then
-  SUFFIX="${BASH_REMATCH[1]}"
-  if [[ "$SUFFIX" -gt 1 && -n "${SPEC_PATH:-}" ]]; then
-    SPEC_DIR="$(dirname "$SPEC_PATH")"
-    PRIOR_SUFFIX=$((SUFFIX - 1))
-    if [[ "$PRIOR_SUFFIX" -eq 1 ]]; then
-      PRIOR_DIR="${SPEC_DIR}/plan"
-    else
-      PRIOR_DIR="${SPEC_DIR}/plan-${PRIOR_SUFFIX}"
-    fi
-    NEW_TASKS=$(ls "$PLAN_DIR"/task-*.md 2>/dev/null | wc -l | tr -d ' ')
-    PRIOR_TASKS=$(ls "$PRIOR_DIR"/task-*.md 2>/dev/null | wc -l | tr -d ' ')
-    DIFF=$((NEW_TASKS - PRIOR_TASKS))
-    if [[ "$DIFF" -ge 0 ]]; then
-      ITEMS_ADDED=$DIFF
-      ITEMS_REMOVED=0
-    else
-      ITEMS_ADDED=0
-      ITEMS_REMOVED=$((-DIFF))
-    fi
-    SPEC_ID="$(basename "$SPEC_DIR")"   # -> SPEC-NNN (SPEC folder name)
-    .gaia/cli/gaia telemetry emit plan_revised \
-      --plan-id "$PLAN_BASENAME" \
-      --spec-id "$SPEC_ID" \
-      --revision-class scope_change \
-      --items-added "$ITEMS_ADDED" \
-      --items-removed "$ITEMS_REMOVED" \
-      --agent-type human || true
-  fi
-fi
-```
-
-Notes:
-
-- `revision-class` is hardcoded to `scope_change` in v1.0.0, the most common case. Future refinement may compute the class from the diff between prior and new task lists.
-- The emit fires only when `SPEC_PATH` is set, because `plan_revised` requires `--spec-id`. Plans authored without a SPEC reference do not currently emit revision events; that surface lands when consumer-driven cloud event payloads ship.
-- The emit is not gated on mentorship opt-in here; the CLI itself short-circuits for mentorship-disabled state and always emits the cloud projection.
-
-### 4.8. Token tally
+### 4.7. Token tally
 
 The plan folder is written and verified, so every planner/auditor sub-agent this action spawned has
 flushed its sidecar to disk. Tally the `/gaia-plan` session's ground-truth token cost before the
@@ -560,7 +511,7 @@ Output a short summary of what's in `$PLAN_DIR/`, then report the cost as exactl
 
 Cost line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`, where `<total>` is the token count abbreviated to millions with one decimal and a `~` prefix (e.g. `~2.4M`), `<dollars>` is `$X.XX`, and `<elapsed>` is the `<N>h<M>m<S>s` figure. Source the figures by whether the plan derives from a SPEC:
 
-- **Spec-derived** (`SPEC_PATH` set): the step-4.8 tally has already written the `plan` ledger row, so read the running spec+plan cycle from the roll-up reader, substituting the plan's `SPEC-NNN` id (the one derived in step 4.8):
+- **Spec-derived** (`SPEC_PATH` set): the step-4.7 tally has already written the `plan` ledger row, so read the running spec+plan cycle from the roll-up reader, substituting the plan's `SPEC-NNN` id (the one derived in step 4.7):
 
   ```bash
   if [ -x .gaia/scripts/token-rollup.sh ]; then
@@ -569,7 +520,7 @@ Cost line: `Cost: ~<total> tokens, $<dollars>, <elapsed>`, where `<total>` is th
   ```
 
   Take `<total>`, `<dollars>`, and `<elapsed>` from the reader's grand `Total` and `Est. cost (USD)` total lines, and append a stage breakdown `(spec $X.XX + plan $X.XX)` from its per-stage dollar rows.
-- **Spec-less** (`--plan-id` path): take total and elapsed from the step-4.8 printed tally and read `<dollars>` from the `dollars` field of the `plan` record in `$PLAN_DIR/cost.json`; emit the line with no breakdown.
+- **Spec-less** (`--plan-id` path): take total and elapsed from the step-4.7 printed tally and read `<dollars>` from the `dollars` field of the `plan` record in `$PLAN_DIR/cost.json`; emit the line with no breakdown.
 
 Never fabricate: if a dollar figure is null or unpriced write `cost unavailable` in its place; if elapsed is unavailable drop that term; if any figure is a partial lower bound append ` (partial: lower bound)`. This line reads identically to the `/gaia-spec` cost line (spec reference, step 9) and the orchestrator's full-cycle line; keep the three in sync.
 

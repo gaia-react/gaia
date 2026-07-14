@@ -261,15 +261,6 @@
             "command": ".claude/hooks/debt-sentinel-touch.sh"
           }
         ]
-      },
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/telemetry-task-postuse.sh"
-          }
-        ]
       }
     ]
   },

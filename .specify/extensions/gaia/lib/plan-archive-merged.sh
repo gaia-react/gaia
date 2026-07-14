@@ -9,8 +9,7 @@
 # PR can merge out-of-band (the github.com button, another session), so the
 # PLAN-NNN folder lingers in the active plans dir with nothing to sweep it.
 # This pass is that sweep, and the close command's own single-id delete
-# reuses it too, so the gate, telemetry, and compute-profile chain live in
-# one place.
+# reuses it too, so the gate and pacing append live in one place.
 #
 # Sweep criteria, per row: a .gaia/local/plans/ledger.json row is a delete
 # candidate when ALL hold:
@@ -62,10 +61,9 @@
 # gone.
 #
 # On a successful delete this appends a plan_closed telemetry event
-# (disposition: delete) and runs the mentorship compute-profile chain,
-# best-effort. There is no plan-scoped gate1-/draft- cache namespace to
-# purge today; only the wiki-promote drain cache exists, and it is never
-# purged here (guarded above).
+# (disposition: delete), best-effort. There is no plan-scoped gate1-/draft-
+# cache namespace to purge today; only the wiki-promote drain cache exists,
+# and it is never purged here (guarded above).
 #
 # Best-effort and fail-open by contract, exactly like spec-archive-merged.sh:
 # a missing jq / ledger, an unrepresented cost, or a telemetry-append failure
@@ -232,14 +230,5 @@ EOF
 
 count="$(printf '%s' "$deleted_list" | awk -F', ' '{print NF}')"
 printf 'Deleted %s merged plan folder(s): %s\n' "$count" "$deleted_list"
-
-# Best-effort profile recompute, mirroring spec-archive-merged.sh's own chain.
-# Guarded on the CLI existing (absent in hermetic tests and on minimal
-# clones); it self-short-circuits when mentorship is disabled. Never blocks
-# the sweep.
-gaia_cli="${repo_root}/.gaia/cli/gaia"
-if [ -x "$gaia_cli" ]; then
-  "$gaia_cli" telemetry compute-profile >/dev/null 2>&1 || true
-fi
 
 exit 0

@@ -71,6 +71,22 @@ run_in() {
   [[ "$output" == *"linked: $LINKED/.gaia/local/debt"* ]]
 }
 
+# ---------- 1b. UAT-008: no config for the removed feature ----------
+@test "fresh worktree: links no config for the removed feature" {
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+
+  # Exhaustive: exactly the five expected shared-state entries land under
+  # .gaia/local/. A sixth, retired file entry never appears, symlink or not.
+  entries="$(find "$LINKED/.gaia/local" -maxdepth 1 -mindepth 1 | sort)"
+  expected="$LINKED/.gaia/local/audit
+$LINKED/.gaia/local/cache
+$LINKED/.gaia/local/debt
+$LINKED/.gaia/local/setup-state.json
+$LINKED/.gaia/local/telemetry"
+  [ "$entries" = "$expected" ]
+}
+
 # ---------- 2. Already-linked worktree (idempotent) ----------
 @test "already-linked: re-running is a no-op with no backups" {
   run_in "$LINKED"

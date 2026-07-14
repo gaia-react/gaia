@@ -15,7 +15,7 @@
 # owns the shared .git dir -- so a run inside a linked worktree resolves the same
 # plan/spec folders (and, via the ledger lib, the same ledger) the main checkout
 # owns. A linked worktree symlinks only shared state (cache/shared, audit,
-# telemetry, setup-state.json, mentorship.json); .gaia/local/specs and
+# telemetry, setup-state.json); .gaia/local/specs and
 # .gaia/local/plans are NOT symlinked, so a RUNNING sentinel is visible only from
 # the main checkout. main_root = dirname(absolute(git rev-parse --git-common-dir)),
 # matching the ledger lib's derivation. Echoes nothing when git cannot resolve the

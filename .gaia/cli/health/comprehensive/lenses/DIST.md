@@ -48,8 +48,9 @@ Concretely, look for:
   `/update-gaia` would try to sync a phantom path) even though the same fact
   is also visible from TIDY's workspace-hygiene angle — note it from the
   distribution-integrity angle here.
-- Consent/telemetry posture on adopter machines: does anything phone home by
-  default, and is opting out documented and easy to find?
+- Network-egress posture on adopter machines: the adoption ping is the sole
+  thing that phones home by default; is its suppression switch
+  (`GAIA_TELEMETRY_PING_DISABLE`) documented and easy to find?
 - Pre-tag scrub verification: is there a documented, easy-to-run way to run
   the leak-check (marker-strip + json-strip) against a locally-built staging
   tree before a release tag is cut, or does the only run of it live behind

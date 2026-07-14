@@ -8,7 +8,7 @@
 # out-of-band (the github.com button, another session), so the SPEC folder
 # lingers in the active specs dir with nothing to sweep it. This pass is that
 # sweep, and the close command's own single-id delete reuses it too, so the
-# gate, cache purge, telemetry, and compute-profile chain live in one place.
+# gate, cache purge, and pacing append live in one place.
 #
 # Sweep criteria, per row: a .gaia/local/specs/ledger.json row is a delete
 # candidate when ALL hold:
@@ -54,8 +54,8 @@
 # is the identity record that survives once the folder is gone.
 #
 # On a successful delete this reaps the SPEC's cache keyset (gate1/draft/
-# session/audit), appends a spec_closed telemetry event (disposition: delete),
-# and runs the mentorship compute-profile chain, best-effort.
+# session/audit) and appends a spec_closed telemetry event (disposition:
+# delete), best-effort.
 #
 # Best-effort and fail-open by contract, exactly like spec-reconcile.sh: a
 # missing jq / ledger, an unrepresented cost, or a telemetry-append failure
@@ -230,14 +230,5 @@ EOF
 
 count="$(printf '%s' "$deleted_list" | awk -F', ' '{print NF}')"
 printf 'Deleted %s merged SPEC folder(s): %s\n' "$count" "$deleted_list"
-
-# Best-effort profile recompute, mirroring the close command's own chain.
-# Guarded on the CLI existing (absent in hermetic tests and on minimal
-# clones); it self-short-circuits when mentorship is disabled. Never blocks
-# the sweep.
-gaia_cli="${repo_root}/.gaia/cli/gaia"
-if [ -x "$gaia_cli" ]; then
-  "$gaia_cli" telemetry compute-profile >/dev/null 2>&1 || true
-fi
 
 exit 0

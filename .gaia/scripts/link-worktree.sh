@@ -2,13 +2,12 @@
 # GAIA worktree shared-state symlink hook (SPEC-005).
 #
 # Creates symlinks from the current linked worktree into the main checkout:
-# the six fixed .gaia/local/ shared-state paths (setup-state.json,
-# mentorship.json, cache/, audit/, telemetry/, debt/) plus any gitignored
-# checkout-root .env / .env.* files (excluding the committed .env.example),
-# so neither diverges per-worktree:
+# the five fixed .gaia/local/ shared-state paths (setup-state.json, cache/,
+# audit/, telemetry/, debt/) plus any gitignored checkout-root .env / .env.*
+# files (excluding the committed .env.example), so neither diverges
+# per-worktree:
 #
 #   <worktree>/.gaia/local/setup-state.json -> <main>/.gaia/local/setup-state.json
-#   <worktree>/.gaia/local/mentorship.json  -> <main>/.gaia/local/mentorship.json
 #   <worktree>/.gaia/local/cache/shared/      -> <main>/.gaia/local/cache/shared/
 #   <worktree>/.gaia/local/audit/            -> <main>/.gaia/local/audit/
 #   <worktree>/.gaia/local/telemetry/        -> <main>/.gaia/local/telemetry/
@@ -72,10 +71,10 @@ mkdir -p "$main_root/.gaia/local/audit" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/telemetry" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null
 mkdir -p "$main_root/.gaia/local/debt" 2>/dev/null
-# `setup-state.json` and `mentorship.json` are files: do NOT pre-create them.
-# If one doesn't exist on main, the symlink will dangle until the main checkout
-# writes it via the normal setup flow; that's fine. Readers gracefully treat
-# missing as "no setup state / no mentorship decision yet".
+# `setup-state.json` is a file: do NOT pre-create it. If it doesn't exist on
+# main, the symlink will dangle until the main checkout writes it via the
+# normal setup flow; that's fine. Readers gracefully treat missing as "no
+# setup state yet".
 
 # ---------- helper: link one path ----------
 # $1 - relative path (e.g. ".gaia/local/setup-state.json")
@@ -135,7 +134,6 @@ link_one() {
 }
 
 link_one ".gaia/local/setup-state.json" ".gaia/local"
-link_one ".gaia/local/mentorship.json"  ".gaia/local"
 link_one ".gaia/local/cache/shared"     ".gaia/local/cache"
 link_one ".gaia/local/audit"            ".gaia/local"
 link_one ".gaia/local/telemetry"        ".gaia/local"

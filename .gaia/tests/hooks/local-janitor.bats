@@ -623,62 +623,44 @@ seed_rerun_ledger() {
   [ -f "$REPO/.gaia/local/audit/deadbeef.rerun.json" ]
 }
 
-# --- Sweep #8: stale cloud telemetry events (age-gated) --------------------
+# --- Sweep #4: the telemetry drop-zone split --------------------------------
 #
-# telemetry/cloud is a structural drop-zone, so sweep #4 keeps the directory
-# alive, but nothing reaps its contents: `gaia mentorship purge` documents that
-# it never touches the cloud stream. The janitor owns the retention, age-gated
-# on the same 14-day window sweep #5 uses for stale cache artifacts.
+# The highest-consequence line in is_drop_zone. `telemetry` is a drop-zone and
+# `telemetry/cloud` is not, and the two halves pull in opposite directions:
+#
+#   telemetry/       holds the token/cost ledger (cost.jsonl) and the /gaia-spec
+#                    pacing log (spec-pacing.jsonl). Sweep #4 rmdirs any empty
+#                    dir under .gaia/local that is not a drop-zone, so dropping
+#                    `telemetry` from the arm would delete the directory those
+#                    two ledgers live in the moment it is momentarily empty.
+#   telemetry/cloud  is dead. Nothing writes it and nothing reads it, so an empty
+#                    one left on disk is exactly what sweep #4 exists to prune.
+#
+# Two janitor passes, because the guard only bites on the second: the first pass
+# sees `telemetry` as non-empty (it still contains `cloud`) and would keep it for
+# that reason alone, which proves nothing. Only once `cloud` is gone is
+# `telemetry` empty at find time, and the drop-zone arm is then the sole thing
+# standing between the ledgers' directory and `rmdir`.
 
-# touch_days_ago <n> <file>: back-date a file n days, computed with jq (never
-# `date -d`/`date -j`, matching the project's cross-platform epoch rule).
-touch_days_ago() {
-  touch -t "$(jq -rn --argjson n "$1" '(now - ($n * 86400)) | strftime("%Y%m%d%H%M")')" "$2"
-}
-
-# seed_cloud_file <name> <days-old>: drops one back-dated file into the cloud
-# telemetry drop-zone.
-seed_cloud_file() {
+@test "sweep 4: an empty telemetry/cloud is rmdir'd; the telemetry drop-zone survives even when empty" {
+  make_repo
   mkdir -p "$REPO/.gaia/local/telemetry/cloud"
-  echo '{}' > "$REPO/.gaia/local/telemetry/cloud/$1"
-  touch_days_ago "$2" "$REPO/.gaia/local/telemetry/cloud/$1"
+  cd "$REPO"
+
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -e "$REPO/.gaia/local/telemetry/cloud" ] && return 1
+  [ -d "$REPO/.gaia/local/telemetry" ]
+
+  # Second pass, with telemetry now empty at find time: the drop-zone arm is the
+  # only thing keeping the ledgers' directory alive.
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$REPO/.gaia/local/telemetry" ]
 }
 
-@test "sweep 8: a cloud events file past the window is reaped" {
-  make_repo
-  seed_cloud_file "events-2026-01-01.jsonl" 20
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ ! -e "$REPO/.gaia/local/telemetry/cloud/events-2026-01-01.jsonl" ]
-}
-
-@test "sweep 8: a cloud events file within the window is kept" {
-  make_repo
-  seed_cloud_file "events-2026-06-01.jsonl" 2
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/telemetry/cloud/events-2026-06-01.jsonl" ]
-}
-
-@test "sweep 8: a non-events file in the cloud drop-zone is never touched, however old" {
-  make_repo
-  seed_cloud_file "config.json" 90
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ -f "$REPO/.gaia/local/telemetry/cloud/config.json" ]
-}
-
-@test "sweep 8: the telemetry/cloud drop-zone survives an emptying reap" {
-  make_repo
-  seed_cloud_file "events-2026-01-02.jsonl" 20
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  # Second pass: the now-empty drop-zone must still not be rmdir'd by sweep #4.
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ -d "$REPO/.gaia/local/telemetry/cloud" ]
-}
+# The janitor's delegation to the one-time cleanup sweep is covered in that
+# sweep's own suite (.gaia/scripts/tests/), which drives the real janitor against
+# a fixture repo. It lives there rather than here because this file is inside the
+# repo-wide term grep for the retired subsystem's vocabulary, and a delegation
+# test cannot assert on what it is forbidden to name.

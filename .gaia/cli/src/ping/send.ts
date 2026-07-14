@@ -12,9 +12,9 @@
  * code is unaffected.
  *
  * `GAIA_TELEMETRY_PING_DISABLE=1` suppresses the ping (checked first): it is
- * documented in `gaia ping --help` and the Telemetry wiki page as the switch
- * that turns the ping off, and it doubles as the test/CI seam so automated
- * runs generate no real network traffic.
+ * documented in `gaia ping --help` as the switch that turns the ping off,
+ * and it doubles as the test/CI seam so automated runs generate no real
+ * network traffic.
  */
 import {readFileSync} from 'node:fs';
 import path from 'node:path';

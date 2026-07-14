@@ -195,11 +195,6 @@ transforms:
           # `.gaia/tests/smoke/` (release-gate harnesses); literal paths
           # are the rule's classification table, not stray references.
           - ".specify/extensions/gaia/rules/smoke.md"
-          # Telemetry concept page describes maintainer architecture
-          # (`.gaia/cli/src/` and the `.gaia/cli/gaia-maintainer` binary) by
-          # design; the framing line caveats it. Allowlisted by the audit
-          # taxonomy.
-          - "wiki/concepts/Telemetry.md"
           # Adopter-owned sentinels that ship in the tarball but contain
           # release-baseline content after `gaia-maintainer release scrub-wiki`
           # (Step 8 of `/gaia-release`). Local simulations against
@@ -332,69 +327,6 @@ transforms:
           # (/Users/testuser, /Users/alice) as the examples it governs; same
           # rationale as wiki-style.md.
           - ".claude/rules/repo-relative-paths.md"
-
-      # ---- Obscurity-rule contract: rule-name leakage ----
-      # The mentorship-display rule is projected into per-machine user
-      # memory precisely so Claude is told *what not to do* without
-      # signposting either the contract or the artifact location. Naming
-      # the rule on any shared / adopter-shipped surface defeats it.
-      # Tighter than the taxonomy's reference grep (`mentorship.*display`)
-      # to avoid the known false positive on the "displayable aggregates"
-      # phrasing in `wiki/concepts/Telemetry.md`.
-      - id: obscurity-rule-name
-        description: "Obscurity contract: mentorship-display rule named in shipped surfaces"
-        pattern: "mentorship[- ]display rule|raw mentorship|mentorship events?\\s+(file|path)|Claude must not display"
-        scope:
-          - "CLAUDE.md"
-          - ".claude/**"
-          - "wiki/**"
-          - ".gaia/statusline/**"
-        path-allowlist:
-          # Adopter-owned sentinels carry release-baseline content after
-          # `gaia-maintainer release scrub-wiki`; same carve-out as maintainer-paths.
-          - "wiki/hot.md"
-          - "wiki/log.md"
-
-      # ---- Obscurity-rule contract: protected-path leakage ----
-      # Naming the protected event-file path or feedback-memory file in
-      # shared surfaces is path-leakage that draws attention to the
-      # artifact location.
-      #
-      # The protected artifact is the MENTORSHIP stream, so every alternation
-      # anchors on `mentorship`. A bare `events-*.jsonl` filename does not:
-      # the cloud stream (`telemetry/cloud/`) is a separate consented stream
-      # written by the same NDJSON writer and shares the `events-<date>.jsonl`
-      # convention by design, so a filename-only alternation cannot tell the
-      # two apart and flags the cloud reaper's own functional `find -name`
-      # glob in .claude/hooks/local-janitor.sh. The filename shape is shared
-      # convention, not the secret; the directory is the secret. Anchoring on
-      # `mentorship/` keeps the tripwire loud where it matters and is net
-      # TIGHTER on that axis: the path alternation is now `telemetry/mentorship`
-      # (any mention of the directory) rather than `telemetry/mentorship/events`.
-      - id: obscurity-protected-path
-        description: "Obscurity contract: mentorship event-file paths or feedback memory file named in shipped surfaces"
-        pattern: "telemetry/mentorship|mentorship/events-[^/[:space:]]*\\.jsonl|feedback_mentorship_display\\.md"
-        scope:
-          - "CLAUDE.md"
-          - ".claude/**"
-          - "wiki/**"
-          - ".gaia/statusline/**"
-        path-allowlist:
-          - "wiki/hot.md"
-          - "wiki/log.md"
-
-      # ---- Obscurity-rule contract: CLI subcommand-name leakage ----
-      # The `_internal-assert-display-rule` subcommand was renamed to
-      # `_internal-assert-memory-rules` in the 10th audit precisely to
-      # remove the path/contract signposting. The old name must not
-      # reappear in shared surfaces. (The bundled `gaia` binary contains
-      # source strings verbatim; this is a different surface, exempt by
-      # the "Decided / not findings" entry.)
-      - id: obscurity-cli-subcommand
-        description: "Obscurity contract: deprecated CLI subcommand name in shipped surfaces"
-        pattern: "_internal-assert-display-rule"
-        scope:
-          - ".claude/**"
 
       # ---- Maintainer-only governance files at staging root ----
       # Release-exclude category 11 keeps these out of the staging tree.

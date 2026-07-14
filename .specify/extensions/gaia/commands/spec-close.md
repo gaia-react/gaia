@@ -79,7 +79,7 @@ If `folder_exists` is false (Step 3), set `disposition = "skipped"` and skip to 
 
 If a well-formed `SUMMARY.md` already exists (the common case, the warm orchestrator already consolidated at merge), skip straight to the reap delegation.
 
-**Reap.** Delegate to the single-id sweep with `--close` for early-reap (bypasses only the retention-window age gate; cost representation, the drain-cache check, and the consolidation gate still apply). It purges the SPEC's cache keyset, appends the `spec_closed` telemetry event, and runs the mentorship compute-profile chain, all in one place:
+**Reap.** Delegate to the single-id sweep with `--close` for early-reap (bypasses only the retention-window age gate; cost representation, the drain-cache check, and the consolidation gate still apply). It purges the SPEC's cache keyset and appends the `spec_closed` telemetry event, all in one place:
 
 ```bash
 bash .specify/extensions/gaia/lib/spec-archive-merged.sh "$PWD" "$SPEC_ID" --close || true

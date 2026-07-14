@@ -225,7 +225,7 @@ assert_predicate_retry_fallback() {
 }
 
 @test "audit_coverage: named in Auto-mode rule 12's auto-flagged event list" {
-  content="$(section_between "$SPEC_MD" '^## Auto mode' '^## Profile-driven coaching preamble')"
+  content="$(section_between "$SPEC_MD" '^## Auto mode' '^## Hard constraints')"
   assert_section_nonempty "spec.md Auto mode" "$content"
   rule12="$(grep -E '^12\.' <<<"$content")"
   [ -n "$rule12" ]

@@ -94,15 +94,13 @@ describe('gaia ping', () => {
     });
   });
 
-  test('setup event: sends all five setup fields', async () => {
+  test('setup event: sends all four setup fields', async () => {
     const exit = await run(
       [
         '--event',
         'setup',
         '--type',
         'clone',
-        '--mentorship',
-        'on',
         '--repo',
         'adopt',
         '--ci',
@@ -118,7 +116,6 @@ describe('gaia ping', () => {
       audit: 'local',
       ci: 'on',
       event: 'setup',
-      mentorship: 'on',
       repo: 'adopt',
       type: 'clone',
     });
@@ -132,7 +129,6 @@ describe('gaia ping', () => {
     expect(exit).toBe(0);
     const body = parsedBody();
     expect(body.type).toBe('init');
-    expect(body.mentorship).toBeUndefined();
     expect(body.repo).toBeUndefined();
     expect(body.ci).toBeUndefined();
     expect(body.audit).toBeUndefined();
@@ -231,23 +227,13 @@ describe('gaia ping', () => {
 
   test('setup event: --sandbox composes with the existing setup fields', async () => {
     const exit = await run(
-      [
-        '--event',
-        'setup',
-        '--sandbox',
-        'on',
-        '--type',
-        'clone',
-        '--mentorship',
-        'off',
-      ],
+      ['--event', 'setup', '--sandbox', 'on', '--type', 'clone'],
       {cwd: sandbox.root}
     );
 
     expect(exit).toBe(0);
     expect(parsedBody()).toMatchObject({
       event: 'setup',
-      mentorship: 'off',
       sandbox: 'on',
       type: 'clone',
     });
@@ -272,6 +258,38 @@ describe('gaia ping', () => {
 
     expect(exit).toBe(1);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('setup event: POSTs to PING_URL', async () => {
+    const exit = await run(['--event', 'setup', '--type', 'init'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://telemetry.gaiareact.com/ping');
+    expect(init.method).toBe('POST');
+  });
+
+  test('setup event: the payload carries no mentorship key', async () => {
+    const exit = await run(['--event', 'setup', '--type', 'init'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(0);
+    expect(Object.hasOwn(parsedBody(), 'mentorship')).toBe(false);
+  });
+
+  test('setup event: --mentorship is rejected as an unknown flag', async () => {
+    const exit = await run(['--event', 'setup', '--mentorship', 'on'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const error = stdio.errors.join('');
+    expect(error).toContain('unknown flag for event setup: --mentorship');
   });
 
   test('honors GAIA_TELEMETRY_PING_DISABLE=1: no fetch, exit 0', async () => {

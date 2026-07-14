@@ -28,22 +28,10 @@ Hard rules in auto mode:
 9. **Pending clarifications auto-defer.** Step 6c's per-item prompt always picks "Defer with rationale". The rationale is: `"Auto-mode session, defer for human review."` This unblocks save without forcing the agent to fabricate answers it does not have evidence for.
 10. **Lint thrash escalates to defer, not step-back.** Step 10's cycle-3 prompt auto-picks "Defer remaining findings" so the SPEC saves with the deferred-clarifications block populated. Step-back-to-gate-2 in auto mode would loop indefinitely.
 11. **`Save partial and resume later` escapes are unreachable.** No prompt fires that would offer them. The session always proceeds to step 9 unless the agent itself decides to abort (e.g. missing description, hard tool failure).
-12. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, `spec_saved`, and (when the audit runs) `audit_dispatched`/`audit_findings`/`audit_disposition`/`audit_coverage` event in an auto session includes `"auto": true` in its JSON record. The `time_to_resolved_spec` mentorship emit keeps `--agent-type human` and adds `--auto true`, at **both** emit sites: the step-9 canonical save and the abandoned-exit branch. `AgentTypeSchema` has no `auto` role (`--agent-type auto` is rejected with `arg_parse_error`), so auto-mode is carried by the dedicated `--auto` flag, which lands as `auto: true` in the payload. The emit also carries `--question-ceiling 5` in auto mode and `--question-ceiling 10` in interactive mode, so rows are separable by the ceiling that was in force without guessing from timestamps, and so a consumer can normalize a session's question count against the budget it actually had. Telemetry-derived metrics are partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
+12. **Telemetry distinguishes auto runs.** Every `clarify_question`, `gate1_confirmed`, `gate2_confirmed`, `spec_saved`, and (when the audit runs) `audit_dispatched`/`audit_findings`/`audit_disposition`/`audit_coverage` event in an auto session includes `"auto": true` in its JSON record. Telemetry-derived metrics are partitioned by `auto` so auto-mode runs do not pollute the human pacing baseline.
 13. **Adversarial audit runs at the recommended intensity, non-interactively.** Auto mode does not prompt for the step-7 audit decision; per rule 4 it takes the Recommended option, which is always an intensity (never Skip). Gauge the draft's complexity, run the audit at the recommended tier (Standard or Deep), and apply its dispositions without prompting: auto-apply plan-time directives into `AUDIT.md`, auto-apply unambiguous SPEC-contract-defect fixes into the draft pre-save (no reopen ceremony, the draft is unsaved), and for any contract defect with more than one defensible repair, record it in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` rather than guessing. Never block save; never revert intentional clarify-loop evolution. Throughout the audit and fold phase auto mode reads **no finding body** (a finding's `issue`/`evidence`/`recommendation`, or a self-review finding's `suggested_fix`/`excerpt`); the transcript carries only ids, severities, titles, verdicts, and dispositions. The two bounded exceptions where a finding body reaches main (6b high self-review findings, 7c material spec-defect survivors) are interactive-only; auto mode surfaces neither. If the Agent fan-out is unavailable, take step 7's fallback (note the skip, rely on the step-6 self-review) and continue.
 
 The rest of the skill, write-surface allowlist, no-machine-local-memory rule, working-draft cache primitives, hooks firing, immutable SPEC shape, applies identically in auto mode.
-
-## Profile-driven coaching preamble
-
-Before composing the system prompt for this skill's agent context, fetch any active coaching adaptation:
-
-```bash
-COACHING=$(.gaia/cli/gaia _internal-fetch-coaching --agent-type human --area-tags spec)
-```
-
-If `$COACHING` is non-empty, prepend its contents to the system prompt as the first section. If empty (the v1.0.0 default, pattern detection ships wired-but-inert), the prompt is byte-identical to the non-mentorship path. The fetcher always exits 0 on a valid `--agent-type`, never blocks the flow, and writes `.gaia/local/cache/shared/coaching-active.txt` only when a coaching block is actually returned (lights up the 🧭 statusline indicator).
-
-`--area-tags` is `spec` for the pre-Gate-2 phase; once the SPEC's UAT clusters are known, downstream callers can re-fetch with the richer tag set. v1 wires only this `/gaia-spec` PO path; Lead → Senior/Junior dispatch wiring lands with Sequel features.
 
 ## Hard constraints
 
@@ -89,7 +77,7 @@ Append via `printf '%s\n' '<json>' >> .gaia/local/telemetry/spec-pacing.jsonl`. 
 
 ### Session-shape cache (`spec-session-<spec_id>.json`)
 
-Used for the `time_to_resolved_spec` mentorship emit at Gate-2 save and at abandoned-exit branches. The file lives at `.gaia/local/cache/spec-session-<spec_id>.json` and is the only place where elapsed-time and Q&A-count state are tracked across the multi-step flow. Schema:
+Tracks `start_at` and `question_count` across the multi-step flow. `question_count` enforces the Socratic question ceiling across a pause and resume, the sole counter for that ceiling. The file lives at `.gaia/local/cache/spec-session-<spec_id>.json`. Schema:
 
     {
       "spec_id": "SPEC-NNN",
@@ -99,7 +87,7 @@ Used for the `time_to_resolved_spec` mentorship emit at Gate-2 save and at aband
 
 Three operations:
 
-- **Init.** At step 2 (`spec_started` telemetry append, both fresh and resumed paths), write the file if it does not exist with `start_at` = current ISO-8601 UTC ms, `question_count` = 0. On resume, leave any existing file untouched, its `start_at` is the original session start (one continuous wall-clock duration across resumes is the correct semantic for `time_to_resolved_spec`).
+- **Init.** At step 2 (`spec_started` telemetry append, both fresh and resumed paths), write the file if it does not exist with `start_at` = current ISO-8601 UTC ms, `question_count` = 0. On resume, leave any existing file untouched: its `start_at` is the original session start, preserved across resumes so a resumed session does not get a fresh question budget.
 - **Increment.** At every site that appends a `clarify_question` telemetry event (steps 5a, 5b, and 5c), bump `question_count` by 1. These are the substantive questions, and they are the only things that count against the ceiling. The loop's meta-prompts, 5d's exhaustion checkpoint, the 3-revisit settle prompt, and the research-outcome prompts, append their own telemetry events and never increment `question_count`. Inline shell:
 
       jq '.question_count += 1' .gaia/local/cache/spec-session-<spec_id>.json \
@@ -107,9 +95,9 @@ Three operations:
         && mv .gaia/local/cache/spec-session-<spec_id>.json.tmp \
            .gaia/local/cache/spec-session-<spec_id>.json || true
 
-- **Read & delete.** At step 9 (after canonical save) and at every abandoned-exit branch (the `Save partial and resume later` escape). Read both fields, compute `duration_seconds = floor((now_ms - start_at_ms) / 1000)`, fire the emit, then `rm -f .gaia/local/cache/spec-session-<spec_id>.json`.
+- **Delete.** At step 9 (after canonical save) and at every abandoned-exit branch other than the `Save partial and resume later` escape (see "Abandoned exit" below), `rm -f .gaia/local/cache/spec-session-<spec_id>.json`.
 
-Failure of any cache read/write must never block the flow, the emit gracefully degrades to absent metrics or a skipped emit.
+Failure of any cache read/write must never block the flow.
 
 Schema (one record per line, ISO-8601 UTC timestamps):
 
@@ -195,58 +183,17 @@ Closed-set `AskUserQuestion` calls during the clarify loop append a fifth option
 
     { label: "Save partial and resume later", description: "Write the draft to cache and stop; re-invoke /gaia-spec to continue." }
 
-Selection triggers: write draft cache (above), append `session_paused` telemetry, emit a `time_to_resolved_spec` mentorship event with `--abandoned true` per the abandoned-exit primitive below, print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia-spec to resume.`), and exit gracefully.
+Selection triggers: write draft cache (above), append `session_paused` telemetry, print one-line resume hint (`SPEC-NNN saved as draft. Re-invoke /gaia-spec to resume.`), and exit gracefully.
 
-The session-shape cache is NOT deleted on the `Save partial and resume later` path, a future resume reads it and continues counting questions against the same `start_at`. (Cache deletion happens only on canonical save at step 9, or on the `Discard SPEC-NNN draft cache` branch in step 2, see step 2 for the discard handler.)
+The session-shape cache is NOT deleted on the `Save partial and resume later` path, a future resume reads it and continues counting questions against the same `start_at`. (Cache deletion happens only on canonical save at step 9, or on the `Discard SPEC-NNN draft cache` branch in step 2, see step 2 for the discard handler, or on an abandoned-exit branch other than this one, see below.)
 
-#### Abandoned-exit emit
+#### Abandoned exit
 
-For the `Save partial and resume later` escape and any other branch that exits the wrapper without reaching step 9, fire a `time_to_resolved_spec` event with `--abandoned true`:
+For any branch that exits the wrapper without reaching step 9, other than the `Save partial and resume later` escape above (which keeps its cache for a future resume):
 
 ```bash
-CACHE=".gaia/local/cache/spec-session-${SPEC_ID}.json"
-if [[ -f "$CACHE" ]]; then
-  START_AT="$(jq -r '.start_at' "$CACHE" 2>/dev/null || echo "")"
-  Q_COUNT="$(jq -r '.question_count' "$CACHE" 2>/dev/null || echo 0)"
-else
-  START_AT=""
-  Q_COUNT=0
-fi
-if [[ -n "$START_AT" ]]; then
-  NOW_S=$(date -u +%s)
-  START_S=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "${START_AT%.*}" +%s 2>/dev/null \
-            || date -u -d "$START_AT" +%s 2>/dev/null || echo "$NOW_S")
-  DURATION=$((NOW_S - START_S))
-else
-  DURATION=0
-fi
-# The ceiling in force for this session: 10 interactive, 5 in auto mode.
-# Substitute the literal string "true" on an auto-mode run, "false" otherwise.
-AUTO_MODE="<true on an auto-mode run, false otherwise>"
-if [[ "$AUTO_MODE" == "true" ]]; then
-  Q_CEILING=5
-  AUTO_FLAG=(--auto true)
-else
-  Q_CEILING=10
-  AUTO_FLAG=()
-fi
-.gaia/cli/gaia telemetry emit time_to_resolved_spec \
-  --spec-id "$SPEC_ID" \
-  --question-count "$Q_COUNT" \
-  --question-ceiling "$Q_CEILING" \
-  --duration-seconds "$DURATION" \
-  --area-tags spec \
-  --abandoned true \
-  "${AUTO_FLAG[@]}" \
-  --agent-type human || true
+rm -f .gaia/local/cache/spec-session-${SPEC_ID}.json
 ```
-
-Notes:
-
-- On the `Save partial and resume later` path, the cache file remains so a future resume continues against the same `start_at`. Only canonical save (step 9) and the explicit cache-discard branch in step 2 delete it. The abandoned emit is a snapshot, not a teardown.
-- `area-tags` is `spec` (v1.0.0 default) for abandoned exits, clusters can't be reliably extracted from a partial draft. Step 9 derives richer tags from the saved SPEC's UAT clusters.
-- Failure of the emit must never block the user's exit, note the trailing `|| true`.
-- An auto-mode session reaches this emit only on a hard abort (Auto-mode rule 11), never on the `Save partial and resume later` escape, which no auto session offers. It is still an auto session, so the emit carries `--auto true` and `--question-ceiling 5` like any other auto emit.
 
 ### Per-topic revisit counter
 
@@ -272,8 +219,6 @@ There is exactly one counter and it needs no new storage: `question_count` in th
 **The ceiling is a bound, not a goal.** The loop's normal termination is the coverage scan in `.specify/extensions/gaia/templates/clarify-prompts.md` (Rule 8): ask until no topic is Partial or Missing, then stop. On a simple feature that fires after 2 to 4 questions and the ceiling is never felt. Do not pad toward it, and do not treat an unspent budget as work left undone.
 
 **When the ceiling is reached with coverage incomplete**, the loop stops asking. Every topic still marked Partial or Missing is written to `clarifications.deferred[]` with a rationale naming it as ceiling-truncated (for example: `"Ceiling-truncated: 10 substantive questions asked; <topic> remained Partial."`). The loop does not push past the ceiling, and it does not advance to gate 2 as though coverage were complete.
-
-The ceiling in force is recorded on the session's `time_to_resolved_spec` emit (`--question-ceiling`), so a consumer reads a session's question count against the budget it actually had rather than against a raw number that means different things under different ceilings.
 
 The per-topic revisit counter and the escape option above both fit inside this budget.
 
@@ -893,68 +838,7 @@ bash .specify/extensions/gaia/lib/ledger-update.sh "$PWD" "$SPEC_ID" "$PATCH" \
 ```
 
 3. **Append telemetry:** `spec_saved` event.
-4. **Emit `time_to_resolved_spec`:** read the session-shape cache, derive `area_tags` from the SPEC's UAT clusters, fire one mentorship event, then delete the cache. Failure to emit must NEVER block the save:
-
-```bash
-SPEC_PATH=".gaia/local/specs/${SPEC_ID}/SPEC.md"
-CACHE=".gaia/local/cache/spec-session-${SPEC_ID}.json"
-if [[ -f "$CACHE" ]]; then
-  START_AT="$(jq -r '.start_at' "$CACHE" 2>/dev/null || echo "")"
-  Q_COUNT="$(jq -r '.question_count' "$CACHE" 2>/dev/null || echo 0)"
-else
-  START_AT=""
-  Q_COUNT=0
-fi
-if [[ -n "$START_AT" ]]; then
-  NOW_S=$(date -u +%s)
-  START_S=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "${START_AT%.*}" +%s 2>/dev/null \
-            || date -u -d "$START_AT" +%s 2>/dev/null || echo "$NOW_S")
-  DURATION=$((NOW_S - START_S))
-else
-  DURATION=0
-fi
-# Derive area_tags from the SPEC YAML's per-UAT area_tags or required_skills,
-# deduped + comma-separated. Fall back to "spec" if nothing parses cleanly.
-AREA_TAGS=$(awk '
-  /^uats:/ {in_uats=1; next}
-  in_uats && /^[a-zA-Z_]+:/ {in_uats=0}
-  in_uats && /area_tags:|required_skills:/ {
-    sub(/.*:[[:space:]]*/, "")
-    gsub(/[][\047"]/, "")
-    gsub(/,/, " ")
-    print
-  }
-' "$SPEC_PATH" 2>/dev/null \
-  | tr ' ' '\n' | grep -v '^$' | sort -u | paste -sd, -)
-if [[ -z "$AREA_TAGS" ]]; then
-  AREA_TAGS="spec"
-fi
-# The ceiling in force for this session: 10 interactive, 5 in auto mode.
-# Substitute the literal string "true" on an auto-mode run, "false" otherwise.
-AUTO_MODE="<true on an auto-mode run, false otherwise>"
-if [[ "$AUTO_MODE" == "true" ]]; then
-  Q_CEILING=5
-  AUTO_FLAG=(--auto true)
-else
-  Q_CEILING=10
-  AUTO_FLAG=()
-fi
-.gaia/cli/gaia telemetry emit time_to_resolved_spec \
-  --spec-id "$SPEC_ID" \
-  --question-count "$Q_COUNT" \
-  --question-ceiling "$Q_CEILING" \
-  --duration-seconds "$DURATION" \
-  --area-tags "$AREA_TAGS" \
-  --abandoned false \
-  "${AUTO_FLAG[@]}" \
-  --agent-type human || true
-rm -f "$CACHE"
-```
-
-**Auto-mode:** the block above carries auto mode itself, through the `AUTO_MODE` substitution. It sets `Q_CEILING=5` and appends `--auto true` on an auto run, and keeps `--agent-type human` in both modes. Never substitute `--agent-type auto`: the CLI rejects it (`arg_parse_error`) and the `|| true` guard would silently drop the emit. See Auto-mode rule 12.
-
-The emit is the strongest signal for the intent-clarity-gap pattern; the `|| true` guard ensures emit failures never block the save. The cache file is deleted unconditionally after the emit attempt so a re-saved SPEC starts a fresh session window.
-
+4. **Delete the session-shape cache:** `rm -f .gaia/local/cache/spec-session-${SPEC_ID}.json`. The cache's job, tracking `question_count` against the ceiling across a pause and resume, ends once the SPEC is saved.
 5. **Token tally (never blocks):** tally the session's ground-truth token cost and record it. `${SPEC_ID}`'s folder already exists from the canonical save, so the `cost.json` sidecar (the `spec` record) lands beside `SPEC.md`. This call never blocks or fails the save; on unreadable input it degrades to a partial figure with a marker, never a fabricated number.
 
 ```bash

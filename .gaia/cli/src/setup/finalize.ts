@@ -8,10 +8,6 @@
  * Refuses if any required step is still pending, unless `--force` is
  * supplied (escape hatch for maintainers who initialized manually before
  * `/setup-gaia` existed).
- *
- * Does not require a mentorship decision artifact. The mentorship opt-in is
- * surfaced by `/setup-gaia`, whose Phase 2 asks when `.gaia/local/mentorship.json`
- * is absent or its `enabled` is still null.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
