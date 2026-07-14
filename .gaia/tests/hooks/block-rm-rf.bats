@@ -584,6 +584,125 @@ t'
   assert_denied_because 'rm -rf of absolute path'
 }
 
+# --- denied: .claude, the framework config ---
+#
+# `.git` and `.claude` are the same class of target: the one you least want to
+# lose, sitting in the cwd of every session. The dotfile-glob arm above already
+# denies the glob that sweeps up both, and names both in its message, so the
+# direct spelling of either has to deny too.
+
+@test "rm -rf .claude is denied" {
+  run_hook_bash 'rm -rf .claude'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+@test "rm -rf \".claude\" (quoted) is denied" {
+  run_hook_bash 'rm -rf ".claude"'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+@test "rm -rf ./.claude is denied" {
+  run_hook_bash 'rm -rf ./.claude'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+@test "rm -rf .claude/* is denied" {
+  run_hook_bash 'rm -rf .claude/*'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+@test "rm -rf .claude/hooks (a path inside .claude) is denied" {
+  run_hook_bash 'rm -rf .claude/hooks'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+@test "rm -rf \$PWD/.claude is denied" {
+  run_hook_bash 'rm -rf $PWD/.claude'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+@test "rm .claude -rf (operand before flags) is denied" {
+  run_hook_bash 'rm .claude -rf'
+  assert_denied_because 'BLOCKED: rm -rf of .claude is forbidden'
+}
+
+# --- denied: spellings of the rm command word ---
+#
+# Bash removes quote and backslash bytes from a word before resolving it, so
+# `r""m`, `"r"m`, and `r\m` are all the command `rm`, and macOS ships a
+# case-insensitive volume by default, so `/bin/RM` really is `/bin/rm`. The
+# guard's target matching already normalizes that way; its command-word matching
+# has to agree, or a spelling of the word carries every protected target out
+# through the short-circuit before a single deny arm is reachable.
+
+@test "RM -rf ~ (uppercase command word) is denied" {
+  run_hook_bash 'RM -rf ~'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "Rm -rf \$HOME (mixed-case command word) is denied" {
+  run_hook_bash 'Rm -rf $HOME'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "rM -rf / (mixed-case command word) is denied" {
+  run_hook_bash 'rM -rf /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "RM -rf .git (uppercase command word) is denied" {
+  run_hook_bash 'RM -rf .git'
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "r\"\"m -rf / (quote-split command word) is denied" {
+  run_hook_bash 'r""m -rf /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "\"r\"m -rf / (leading-quoted command word) is denied" {
+  run_hook_bash '"r"m -rf /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "r\"m\" -rf \$HOME (trailing-quoted command word) is denied" {
+  run_hook_bash 'r"m" -rf $HOME'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "'r'm -rf .git (single-quote-split command word) is denied" {
+  run_hook_bash "'r'm -rf .git"
+  assert_denied_because 'BLOCKED: rm -rf of .git is forbidden.'
+}
+
+@test "\"rm\" -rf / (fully quoted command word) is denied" {
+  run_hook_bash '"rm" -rf /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "r\\\\m -rf / (backslash-split command word) is denied" {
+  # Bash strips a backslash before an ordinary character, so `r\m` IS `rm`, the
+  # same defect as the quote-split spellings and the same fix.
+  run_hook_bash 'r\m -rf /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+# The command-word rule has to hold at all three `rm`-matching sites, not just
+# the two greps. The quoted-separator walk is gated on the command looking like
+# an `rm` at all, so a gate that only knows the literal lowercase spelling skips
+# the walk here, segment extraction then stops at the quoted `;`, and the target
+# behind it is never tokenized.
+
+@test "RM -rf \";\" \$HOME (uppercase word + quoted separator) is denied" {
+  run_hook_bash 'RM -rf ";" $HOME'
+  assert_denied_because 'BLOCKED: rm -rf of $HOME / ~ is forbidden.'
+}
+
+@test "r\"\"m -rf \";\" / (quote-split word + quoted separator) is denied" {
+  run_hook_bash 'r""m -rf ";" /'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
 # --- allowed: whitelisted scratch paths ---
 
 @test "rm -rf .gaia/local/plans/x is allowed" {
@@ -705,6 +824,53 @@ t'
 
 @test "a command with no rm at all is allowed" {
   run_hook_bash 'ls -la node_modules'
+  assert_allowed
+}
+
+# --- allowed: the .claude arm must not swallow its neighbours ---
+
+@test "rm -rf .claudia (a .claude-prefixed neighbour) is allowed" {
+  # The arm is anchored, not a prefix match: a directory whose name merely starts
+  # with `.claude` is not `.claude`.
+  run_hook_bash 'rm -rf .claudia'
+  assert_allowed
+}
+
+# --- allowed: the command-word rule must not manufacture a denial ---
+#
+# Matching the word the way bash resolves it widens what gets INSPECTED. The case
+# arms still decide what gets blocked, so a benign target stays benign no matter
+# how its command word is spelled.
+
+@test "RM file.txt (uppercase word, no -rf) is allowed" {
+  run_hook_bash 'RM file.txt'
+  assert_allowed
+}
+
+@test "r\"\"m file.txt (quote-split word, no -rf) is allowed" {
+  run_hook_bash 'r""m file.txt'
+  assert_allowed
+}
+
+@test "RM -rf dist (uppercase word, whitelisted target) is allowed" {
+  run_hook_bash 'RM -rf dist'
+  assert_allowed
+}
+
+@test "r\"\"m -rf build/output (quote-split word, whitelisted target) is allowed" {
+  run_hook_bash 'r""m -rf build/output'
+  assert_allowed
+}
+
+@test "charm -rf x (a word merely ENDING in rm) is allowed" {
+  # The leading boundary is what keeps the widened command-word match from firing
+  # on every word that happens to contain `rm`.
+  run_hook_bash 'charm -rf x'
+  assert_allowed
+}
+
+@test "git commit -m \"warm restart\" (rm inside a word) is allowed" {
+  run_hook_bash 'git commit -m "warm restart"'
   assert_allowed
 }
 
