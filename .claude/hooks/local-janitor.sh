@@ -183,8 +183,14 @@ if [ -d "$audit_dir" ]; then
     [ -n "$head_tree" ] && [ "$key" = "$head_tree" ] && keep=1
     # Tree-keyed: a tree still named by a local branch tip or another
     # worktree's HEAD (a still-open feature line, or a parallel audit).
+    #
+    # Match with a herestring, never `printf ... | grep -q`. Under `pipefail`,
+    # `grep -q` exits the instant it matches, `printf` then takes SIGPIPE, and
+    # the pipeline reports 141 -- so a MATCH would read as a miss and this
+    # reaps the live marker it just found. The herestring has no pipe, so
+    # grep's own status is the answer.
     if [ "$keep" -eq 0 ] && [ -n "$live_trees" ] \
-       && printf '%s\n' "$live_trees" | grep -qxF -- "$key"; then
+       && grep -qxF -- "$key" <<< "$live_trees"; then
       keep=1
     fi
     # Commit-keyed: the commit about to merge here.

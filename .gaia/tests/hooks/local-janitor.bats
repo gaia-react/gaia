@@ -499,6 +499,37 @@ head_tree() {
   [ -f "$REPO/.gaia/local/audit/$sibling_tree.ok" ]
 }
 
+# The other half of the live-tree set, and the one most likely to regress
+# silently: a linked worktree's HEAD. A detached worktree HEAD is named by no
+# branch, so the branch-tip scan alone cannot see its tree. The drop-zone is
+# shared across worktrees, so missing it means a sweep in one checkout deletes
+# the marker a parallel audit in another checkout is about to merge on.
+@test "sweep 2: a tree marker for a linked worktree's detached HEAD is kept" {
+  make_repo
+  # A commit reachable from no branch, checked out detached in a linked worktree.
+  git -C "$REPO" checkout -q -b throwaway
+  echo detached > "$REPO/detached"
+  git -C "$REPO" add detached
+  git -C "$REPO" commit -q -m detached
+  wt_sha=$(git -C "$REPO" rev-parse HEAD)
+  wt_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  git -C "$REPO" checkout -q main
+  # Inside $REPO so teardown reclaims it with the repo; a path in the shared tmp
+  # parent would outlive the test and collide on the next run.
+  git -C "$REPO" worktree add -q --detach "$REPO/.linked-wt" "$wt_sha"
+  git -C "$REPO" branch -q -D throwaway
+
+  # No branch names that tree now; only the linked worktree's HEAD does.
+  run bash -c "git -C '$REPO' for-each-ref --format='%(objectname)' refs/heads/ | while read -r c; do git -C '$REPO' rev-parse \"\${c}^{tree}\"; done"
+  grep -qxF "$wt_tree" <<< "$output" && return 1
+
+  seed_audit_file "$wt_tree.ok"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$wt_tree.ok" ]
+}
+
 # The disposition sidecar stays COMMIT-keyed: the marker-backstop hook resolves
 # `git rev-parse HEAD` at merge time to find it. It shares the sweep's glob, so
 # the liveness test must still accept a commit key.
