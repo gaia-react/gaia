@@ -4,14 +4,14 @@ title: Token Cost Readout
 status: active
 created: 2026-07-04
 updated: 2026-07-14
-tags: [concept, telemetry, cost, token-accounting]
+tags: [concept, cost, token-accounting]
 ---
 
 # Token Cost Readout
 
 GAIA prices the ground-truth token usage of each workflow action into a dollar estimate: `/gaia-spec`, `/gaia-plan`, KICKOFF plan execution, and each of the six maintenance commands (`/gaia-audit`, `/gaia-debt`, `/gaia-fitness`, `/gaia-forensics`, `/gaia-harden`, `/gaia-wiki`). Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and, for `/gaia-spec`, `/gaia-plan`, and plan execution, also prices a generation-time `dollars` figure into each `cost.json` sidecar record it writes, alongside the matching `cost.jsonl` row (the write half); `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
 
-The write half is documented alongside the rest of the tally in [[Telemetry]]'s storage model; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the committed rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-run dollar figure.
+The write half is documented in full in [[Cost Data Contract]]; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the committed rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-run dollar figure.
 
 ## The `by_model` ledger field
 
@@ -119,6 +119,5 @@ A reader who wants a human-facing description of a degrade, rather than a bare n
 ## Pairs with
 
 - [[Cost Data Contract]]: the full `cost.jsonl` record schema, the execute aggregation rule, and the retention rules for what survives merge.
-- [[Telemetry]]: the token tally's storage model and the `.gaia/local/telemetry/` streams the ledger lives beside.
 - [[PR Merge Workflow]]: the merge-time `PostToolUse` hook that renders the full-cycle roll-up.
 - [[Task Orchestration]]: KICKOFF plan execution, whose per-commit cost the ledger accumulates.

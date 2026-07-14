@@ -3,9 +3,9 @@
  *
  * Every clone needs to run a one-shot per-machine setup (install React
  * Doctor, Playwright CLI, Serena MCP, plugins, init spec-kit, chmod the
- * statusline, opt into mentorship). The slash command `/setup-gaia`
- * orchestrates the steps; this state file records progress so a partial
- * run can resume idempotently.
+ * statusline). The slash command `/setup-gaia` orchestrates the steps;
+ * this state file records progress so a partial run can resume
+ * idempotently.
  *
  * The file lives under `.gaia/local/` (gitignored); every developer on
  * a clone has their own state file. Maintainers in the upstream repo
@@ -74,9 +74,15 @@ export const SETUP_STEPS = [
   'init-speckit',
   'chmod-statusline',
   'bootstrap-env',
-  'mentorship-decision',
   'audit-mode-decision',
 ] as const;
+
+/**
+ * Step ids no longer in `SETUP_STEPS` that an existing `setup-state.json` may
+ * still carry. A retired id parses and is dropped from `completed_steps`; any
+ * other unrecognized id is corruption and still throws.
+ */
+export const RETIRED_SETUP_STEPS: readonly string[] = ['mentorship-decision'];
 
 export type SetupState = {
   completed_at: null | string;
@@ -89,6 +95,9 @@ export type SetupStep = (typeof SETUP_STEPS)[number];
 
 const isSetupStep = (value: string): value is SetupStep =>
   (SETUP_STEPS as readonly string[]).includes(value);
+
+const isRetiredSetupStep = (value: string): boolean =>
+  RETIRED_SETUP_STEPS.includes(value);
 
 export const resolveStateFilePath = (repoRoot: string): string =>
   path.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
@@ -108,12 +117,14 @@ export const readStateFile = (repoRoot: string): null | SetupState => {
   }
 
   const rawSteps = parsed.completed_steps ?? [];
-  const unknownSteps = rawSteps.filter((step) => !isSetupStep(step));
+  const unknownSteps = rawSteps.filter(
+    (step) => !isSetupStep(step) && !isRetiredSetupStep(step)
+  );
 
   if (unknownSteps.length > 0) {
-    // An unrecognized step is corruption (or a downgrade from a newer
-    // GAIA release). Silently dropping it would let `finalize` pass a
-    // gate it should not. Surface it instead.
+    // An unrecognized, non-retired step is corruption (or a downgrade
+    // from a newer GAIA release). Silently dropping it would let
+    // `finalize` pass a gate it should not. Surface it instead.
     throw new Error(
       `setup-state.json has unrecognized completed_steps: ${unknownSteps.join(
         ', '

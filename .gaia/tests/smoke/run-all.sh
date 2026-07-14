@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Run the release-gate smoke harnesses, report pass/fail.
 #
-# Blocking lane (gates the release; sets the exit code): wiki-promote/run.sh,
-# uat-write/run.sh, and telemetry-v1/run.sh. All three are deterministic
-# structural harnesses with PASS/FAIL semantics, so they belong in the gate.
+# Blocking lane (gates the release; sets the exit code): wiki-promote/run.sh
+# and uat-write/run.sh. Both are deterministic structural harnesses with
+# PASS/FAIL semantics, so they belong in the gate.
 #
 # Advisory lane (does NOT gate): wiki-sync/run.sh drives real `claude -p`
 # sessions whose assertions ride on free-form LLM output, so they are inherently
@@ -27,7 +27,7 @@ set -u
 SMOKE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ADVISORY_LANE=(wiki-sync)
-BLOCKING_LANE=(wiki-promote uat-write telemetry-v1)
+BLOCKING_LANE=(wiki-promote uat-write)
 
 results=()
 overall=0
@@ -86,9 +86,9 @@ for name in ${BLOCKING_LANE[@]+"${BLOCKING_LANE[@]}"}; do
     2)
       # The driver honors exit 2 as "missing prerequisite" rather than a failed
       # assertion, so a maintainer who skipped `pnpm install` does not read it
-      # as "the feature is broken". telemetry-v1 is the harness implementing
-      # that convention today (no node_modules/.bin/tsx, no built .gaia/cli/gaia);
-      # the others exit 1 (via pre-flight or their summary) and land in the
+      # as "the feature is broken". A harness exits 2 when a build artifact or
+      # dependency it needs (e.g. .gaia/cli/gaia, node_modules/.bin/tsx) is
+      # absent; others exit 1 (via pre-flight or their summary) and land in the
       # branch below. Either way it gates: an unverified harness cannot clear a
       # release.
       results+=("FAIL      $name/run.sh prerequisite missing (exit 2; run pnpm install)")

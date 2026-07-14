@@ -136,10 +136,6 @@ if [ "$is_worktree" -eq 0 ]; then
         audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
         serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
 
-        COACHING_FILE="$GAIA_DIR/local/cache/shared/coaching-active.txt"
-        if [ -f "$COACHING_FILE" ] && [ "$(cat "$COACHING_FILE" 2>/dev/null)" = "1" ]; then
-          segments+=("🧭")
-        fi
         if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
           segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
         fi

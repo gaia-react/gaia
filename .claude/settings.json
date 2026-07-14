@@ -265,15 +265,6 @@
             "command": ".claude/hooks/capture-gh-artifact.sh"
           }
         ]
-      },
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/telemetry-task-postuse.sh"
-          }
-        ]
       }
     ]
   },

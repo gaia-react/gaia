@@ -161,8 +161,8 @@ rm -rf .gaia-backup
 # .gaia/local/cache/shared/update-gaia/: keep the baseline tarball (v$BASELINE
 # is this run's baseline, reused by Step 5 instead of re-downloading). Delete
 # every other cached tag dir. The loop only ever touches tag dirs here,
-# update-check.json, coaching-active.txt, and serena-guard/ live one level up
-# at shared/, structurally outside this glob.
+# update-check.json and serena-guard/ live one level up at shared/,
+# structurally outside this glob.
 if [ -d .gaia/local/cache/shared/update-gaia ]; then
   for d in .gaia/local/cache/shared/update-gaia/*/; do
     [ -d "$d" ] || continue

@@ -76,7 +76,7 @@ sandbox_block_bounds() {
   grep -qF "jq -r '.${writer_key} // false'" "$DOC"
 }
 
-@test "COV-005: sandbox decision runs in the Phase-2 mentorship carve-out position, gated on gaia sandbox status" {
+@test "COV-005: sandbox decision runs in its Phase-2 carve-out position, gated on gaia sandbox status" {
   grep -qF '**Sandbox decision (runs even when `completed_at` is non-null).**' "$DOC"
   grep -qF 'gaia sandbox status' "$DOC"
 
@@ -120,4 +120,9 @@ sandbox_block_bounds() {
 @test "UAT-011: Phase 6 wires --sandbox \"\$SANDBOX\" into the ping invocation" {
   grep -qF -- 'SANDBOX="$(.gaia/cli/gaia sandbox status --json' "$DOC"
   grep -qF -- '--sandbox "$SANDBOX"' "$DOC"
+}
+
+@test "UAT-001: the setup document carries no mentorship or coaching opt-in" {
+  grep -niE 'mentorship|coaching|behavioral observ|telemetry' "$DOC" && return 1
+  return 0
 }

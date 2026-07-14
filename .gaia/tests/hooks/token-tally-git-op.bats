@@ -358,7 +358,7 @@ run_hook() {
 
 # ---------- 10. Worktree run: the plan folder lives ONLY in the main checkout ----------
 # create-worktree.sh symlinks only shared state (cache/shared, audit, telemetry,
-# setup-state.json, mentorship.json) into a linked worktree; it does NOT symlink
+# setup-state.json) into a linked worktree; it does NOT symlink
 # .gaia/local/specs or .gaia/local/plans. So the RUNNING sentinel exists only in
 # the main checkout and is invisible from a cwd-relative glob run in the worktree.
 # The hook must anchor its plan search to the main checkout, or a plan executed in

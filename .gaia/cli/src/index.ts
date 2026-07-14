@@ -9,7 +9,6 @@
  * bundle by construction.
  */
 /* eslint-disable unicorn/no-process-exit -- this IS a CLI binary */
-import {run as runFetchCoaching} from './adaptation/inject.js';
 import {run as runAutomation} from './automation/index.js';
 import {run as runCiRevert} from './ci/revert.js';
 import {run as runCiStaleCheck} from './ci/stale-check.js';
@@ -18,7 +17,6 @@ import {run as runFitness} from './fitness/index.js';
 import {run as runHardenLedger} from './harden/ledger.js';
 import {run as runHardenTally} from './harden/tally.js';
 import {run as runInit} from './init/index.js';
-import {run as runMentorship} from './mentorship/index.js';
 import {run as runPing} from './ping/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
 import {run as runSandbox} from './sandbox/index.js';
@@ -26,17 +24,12 @@ import {run as runScaffold} from './scaffold/index.js';
 import {run as runSetupCi} from './setup-ci/index.js';
 import {run as runSetup} from './setup/index.js';
 import {structuredError} from './stderr.js';
-import {run as runTelemetry} from './telemetry/index.js';
 import {run as runUpdateDeps} from './update-deps/index.js';
 import {run as runUpdate} from './update/index.js';
 import {run as runWiki} from './wiki/index.js';
 
 const HELP_TEXT = `Usage: gaia <subcommand> [args]
 
-  telemetry emit <event_type> [--field value ...]
-  telemetry compute-profile
-  mentorship enable|disable|purge|status
-  mentorship analytics enable|disable|dry-run
   scaffold component|hook|route|service
   react-perf reduce <raw.json> [--frame-budget-ms N]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|sync land
@@ -75,14 +68,12 @@ const SUBCOMMAND_HANDLERS: Readonly<
   'harden-ledger': runHardenLedger,
   'harden-tally': runHardenTally,
   init: runInit,
-  mentorship: runMentorship,
   ping: runPing,
   'react-perf': runReactPerf,
   sandbox: runSandbox,
   scaffold: runScaffold,
   setup: runSetup,
   'setup-ci': runSetupCi,
-  telemetry: runTelemetry,
   update: runUpdate,
   'update-deps': runUpdateDeps,
   wiki: runWiki,
@@ -99,16 +90,6 @@ const main = async (): Promise<number> => {
     printHelp();
 
     return EXIT_CODES.OK;
-  }
-
-  // Internal subcommand consumed by the `/gaia-spec` skill (and future
-  // dispatch-time callers) to fetch profile-driven coaching text. Wired
-  // top-level rather than under `mentorship` because it's an
-  // implementation detail consumed by skill scaffolding, not a
-  // user-facing surface; kept out of the help text to match the
-  // `mentorship _internal-*` precedent.
-  if (subcommand === '_internal-fetch-coaching') {
-    return runFetchCoaching(rest);
   }
 
   const handler = SUBCOMMAND_HANDLERS[subcommand];

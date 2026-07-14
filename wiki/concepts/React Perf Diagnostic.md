@@ -66,4 +66,4 @@ The surfacing and regression-gate work is reserved by the contracts but not buil
 
 - [[Playwright]]: the capture drives the target interaction through a Playwright page.
 - [[react-doctor]]: the static prevention layer this runtime tool cross-references.
-- [[Telemetry]]: the `.gaia/cli/gaia` bundled binary that hosts the `react-perf reduce` subcommand.
+- [[GAIA CLI]]: the `.gaia/cli/gaia` bundled binary that hosts the `react-perf reduce` subcommand.

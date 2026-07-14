@@ -5,7 +5,7 @@
 # folder still sits in the active specs dir (PR merged out-of-band, or a stale
 # session that never ran close) gets deleted on the next /gaia-spec run. The
 # SPEC close command's own single-id delete delegates to the same script, so
-# both entry points share one gate + telemetry + compute-profile chain.
+# both entry points share one gate + pacing-append chain.
 #
 # Deletion is gated on cost representation (cost_folder_represented, sourced
 # from .gaia/scripts/cost-represented.sh): a folder is only deleted once every

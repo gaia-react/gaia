@@ -23,9 +23,8 @@ const HELP_TEXT = String.raw`Usage: gaia ping --event <init|setup|update> [--fie
 
     init    --mode <interactive|automatic> --i18n <non-negative int> \
             --ci <ci|local|off|custom>
-    setup   --type <init|clone|reconfigure> --mentorship <on|off> \
-            --repo <create|adopt|manual> --ci <on|off|skip> \
-            --audit <local|ci> --sandbox <on|off>
+    setup   --type <init|clone|reconfigure> --repo <create|adopt|manual> \
+            --ci <on|off|skip> --audit <local|ci> --sandbox <on|off>
     update  --from <version> --to <version>
 
   All fields are individually optional; only provided fields are sent.
@@ -64,7 +63,6 @@ const FIELDS_BY_EVENT: Readonly<Record<PingEvent, readonly FieldSpec[]>> = {
       flag: '--type',
       key: 'type',
     },
-    {enumValues: ['on', 'off'], flag: '--mentorship', key: 'mentorship'},
     {
       enumValues: ['create', 'adopt', 'manual'],
       flag: '--repo',

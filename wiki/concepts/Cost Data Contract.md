@@ -4,7 +4,7 @@ title: Cost Data Contract
 status: active
 created: 2026-07-05
 updated: 2026-07-14
-tags: [concept, telemetry, cost, data-contract, audit]
+tags: [concept, cost, data-contract, audit]
 ---
 
 # Cost Data Contract
@@ -91,5 +91,4 @@ A vintage `cost.md` that predates this ledger and the sidecar gets one `source: 
 ## Pairs with
 
 - [[Token Cost Readout]]: the `by_model` pricing surfaces (rate table, shared pricing lib, tally-time vs roll-up-time dollar figures) built on top of this ledger.
-- [[Telemetry]]: the ledger's place among GAIA's other telemetry streams.
 - [[Task Orchestration]]: the merge-time reconcile and retention lifecycle that eventually removes the folder this ledger's rows outlive.

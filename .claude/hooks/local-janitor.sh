@@ -11,9 +11,10 @@
 # lifecycle (audit.md prunes its KNOWLEDGE reports; plan.md self-cleans on
 # merge). The janitor only removes residue whose death is PROVABLE, so it is
 # safe to run unconditionally every session. Before the sweeps below, it also
-# best-effort runs the one-time ledger-status-migrate.sh, so every sweep that
-# reads a ledger row's status sees the unified vocabulary. It then sweeps
-# exactly eight things:
+# best-effort runs two one-time, guarded cleanups: ledger-status-migrate.sh, so
+# every sweep that reads a ledger row's status sees the unified vocabulary, and
+# the residue sweep its own block further down documents. It then sweeps
+# exactly seven things:
 #
 #   1. local wiki-sync/<date>-<sha> branches whose upstream is [gone]. The wiki
 #      landing CLI (`gaia wiki chain finish` / `wiki sync land`) cuts a throwaway
@@ -73,12 +74,6 @@
 #      the same retention window AND whose cost is fully represented. A thin
 #      delegation to plan-archive-merged.sh, which owns both gates,
 #      symmetric with sweep #6's spec-folder delegation.
-#   8. telemetry/cloud/events-*.jsonl older than 14 days. The cloud stream has
-#      no other reaper: `gaia mentorship purge` deliberately leaves it alone
-#      (it purges mentorship data, and the cloud projection is a separate
-#      consented stream), and telemetry/cloud is a structural drop-zone, so
-#      sweep #4 keeps the directory alive without ever touching its contents.
-#      Age-gated on the same 14-day window as sweep #5.
 #
 # Fail-safe by construction: any inability to PROVE death (no git, unreadable
 # HEAD, unparseable sentinel) SKIPS that item. It never deletes live state, and
@@ -123,6 +118,15 @@ local_dir="$root/.gaia/local"
 # vocabulary (ready|merged|abandoned) instead of a retired status.
 migrate="$root/.gaia/scripts/ledger-status-migrate.sh"
 [ -f "$migrate" ] && bash "$migrate" "$root" >/dev/null 2>&1 || true
+
+# --- One-time mentorship-residue cleanup sweep -----------------------------
+# Sentinel-guarded, idempotent, silent, best-effort. Deletes the off-repo
+# mentorship store, the computed profile, the install id and the directory
+# holding it, the display-rule memory file and its MEMORY.md pointer line, the
+# in-repo opt-in config and its worktree symlink, the in-repo cloud stream, and
+# the in-repo analytics reports. Never blocks a session.
+sweep="$root/.gaia/scripts/mentorship-cleanup-sweep.sh"
+[ -f "$sweep" ] && bash "$sweep" "$root" >/dev/null 2>&1 || true
 
 # --- 2. Orphaned audit markers ---------------------------------------------
 #
@@ -301,7 +305,7 @@ is_drop_zone() {
   case "$1" in
     audit | audit/archived | cache | debt | forensics | handoff | plans \
       | plans/archived | red-ledger | red-ledger/.tmp | specs | specs/archived \
-      | telemetry | telemetry/cloud) return 0 ;;
+      | telemetry) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -351,17 +355,6 @@ fi
 archive_plan="$root/.specify/extensions/gaia/lib/plan-archive-merged.sh"
 if [ -x "$archive_plan" ] || [ -f "$archive_plan" ]; then
   bash "$archive_plan" "$root" >/dev/null 2>&1 || true
-fi
-
-# --- 8. Stale cloud telemetry events (age-gated, same window as sweep 5) ----
-# telemetry/cloud is a drop-zone (kept alive by sweep 4), but nothing reaps its
-# contents: `gaia mentorship purge` documents that it never touches the cloud
-# stream, so events-*.jsonl accumulates for the life of the checkout. The
-# janitor owns the rotation, on the same generous 14-day window sweep 5 uses.
-# Name-scoped to events-*.jsonl, so anything else in the drop-zone survives.
-cloud_dir="$local_dir/telemetry/cloud"
-if [ -d "$cloud_dir" ]; then
-  find "$cloud_dir" -maxdepth 1 -name 'events-*.jsonl' -type f -mtime +14 -delete 2>/dev/null
 fi
 
 exit 0

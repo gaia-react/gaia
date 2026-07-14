@@ -219,7 +219,7 @@ The authoritative `finding_class` vocabulary lives in `.gaia/cli/src/schemas/fin
 <!-- gaia:maintainer-only:end -->
 Exact-string matching on seeded security classes alone is **insufficient**: severity is demotable and several security dimensions have no seeded class. When in doubt, treat it as security-class.
 
-**`holistic/unclassified` is NOT a security-class trigger.** It is the deliberate "reviewed, maps to no seeded class" verdict, and the closed vocabulary is small by design, so it is the *expected* class for most out-of-scope findings, not a signal that a finding is unknown or dangerous. It is classless for **telemetry** (never emitted in `findings_json`) but carries no security signal whatsoever. Treating it as a trigger would divert every out-of-scope finding on a PUBLIC/INTERNAL repo and file nothing at all, which is not a gate but an off switch. Reserve the class-shaped trigger for the genuinely degenerate case above (absent or malformed field).
+**`holistic/unclassified` is NOT a security-class trigger.** It is the deliberate "reviewed, maps to no seeded class" verdict, and the closed vocabulary is small by design, so it is the *expected* class for most out-of-scope findings, not a signal that a finding is unknown or dangerous. It is not a member of the closed finding-class vocabulary but carries no security signal whatsoever. Treating it as a trigger would divert every out-of-scope finding on a PUBLIC/INTERNAL repo and file nothing at all, which is not a gate but an off switch. Reserve the class-shaped trigger for the genuinely degenerate case above (absent or malformed field).
 
 Consequence: an out-of-scope **Critical** is security-class (the "any Critical" trigger), and so is any finding whose **content** reads as a security concern, whatever its class tag. Both therefore enter the security-divert path (section D), not the public-filing path (section C). On a PUBLIC or INTERNAL repo they **divert** and are **never** filed to a public/internal issue; they file as a `tech-debt` issue **only on a confirmed PRIVATE repo**. Either way the finding gets *a* disposition, so the marker can still write (the gate treats `filed` and `diverted` identically). Do **not** file a Critical or security-content finding to a public/internal issue to satisfy a literal reading of a requirement, that would breach the never-public guarantee.
 
@@ -328,9 +328,9 @@ Include only when there are specific, concrete patterns worth reinforcing. Skip 
 
 ### Return contract (LOCAL terse return vs full report)
 
-The agent's **Task RETURN string**, its **PR comment + findings block**, and the **telemetry trailer** are three independent channels. This note governs only the LOCAL Task RETURN string; it does not touch the PR comment or the telemetry trailer.
+The agent's **Task RETURN string** and its **PR comment + findings block** are two independent channels. This note governs only the LOCAL Task RETURN string; it does not touch the PR comment.
 
-**When the re-run ledger write succeeded** (LOCAL run, non-empty `BASE_SHA`, successful write, see "Re-run carry-forward ledger"), the full per-finding detail lives in the ledger's `remaining[]`, so the RETURN goes terse: lead with the carry-forward block below, then the existing marker surface line, then the telemetry trailer (the final `---` block). The operator reads the ledger for full detail. This is what stops the main thread from absorbing ~10k-token reports across the loop.
+**When the re-run ledger write succeeded** (LOCAL run, non-empty `BASE_SHA`, successful write, see "Re-run carry-forward ledger"), the full per-finding detail lives in the ledger's `remaining[]`, so the RETURN goes terse: lead with the carry-forward block below, then the existing marker surface line. The operator reads the ledger for full detail. This is what stops the main thread from absorbing ~10k-token reports across the loop.
 
 ```
 Audit round <N> for base <short-base> -> HEAD <short-head>.
@@ -342,27 +342,11 @@ Ledger: .gaia/local/audit/<base-sha>.rerun.json  (removed on a clean pass)
 
 **When the ledger write was skipped or failed** (empty `BASE_SHA`, a best-effort write failure, or any CI run, where the ledger never writes), do NOT emit the terse block: return the **full report** (the Summary / Critical / Important / Suggestions sections above) as today, so the per-finding detail is never lost. This is what makes the reader contract's "behave as today" achievable: detail is in the ledger on a successful write, in the RETURN otherwise.
 
-Either way the **telemetry trailer stays in the RETURN** (the PostToolUse Task hook parses it locally), and the full report sections remain the structure you author internally to populate the ledger (local) and the PR comment (CI). The terse form changes only what the RETURN string carries when the detail safely landed in the ledger. It never makes the CI PR comment terse, CI wants the comment FULL, and CI skips the ledger so its RETURN always carries the full report.
+The full report sections remain the structure you author internally to populate the ledger (local) and the PR comment (CI). The terse form changes only what the RETURN string carries when the detail safely landed in the ledger. It never makes the CI PR comment terse, CI wants the comment FULL, and CI skips the ledger so its RETURN always carries the full report.
 
-## Finding emission (telemetry trailer)
+## Finding classification
 
-After the human-readable report, append a machine-readable telemetry trailer as the **last** fenced `---` block of your Task return. The PostToolUse Task hook parses this block to record each finding for the recurring-finding policy-memory loop, which raises a `/gaia-harden` nudge when the same `finding_class` recurs across distinct PRs. The human report and this trailer are independent channels: a finding can appear in the prose report without appearing here.
-
-Trailer shape (the closing `---` must be the final fence in your return):
-
-```
----
-findings_json: [{"finding_class":"react-doctor/no-generic-handler-names","severity":"warning","area_tags":["app/components"]}, {"finding_class":"holistic/missing-auth-check","severity":"error","area_tags":["app/routes"]}]
-pr_number: 1234
----
-```
-
-Rules for the block:
-
-- **One entry per eligible finding** you report. `findings_json` is a JSON array; emit `[]` when you classified nothing.
-- **Carry ONLY `finding_class`, `severity`, and `area_tags`** per entry. Never code, never file contents, never a path beyond a coarse area tag (`app/components`, `app/routes`). `pr_number` is a sibling scalar on the trailer, not on each entry.
-- **`severity`** is one of `error`, `warning`, `suggestion`, the same tiers as the report (`Critical`/`Important`/`Suggestion`).
-- **Assign `finding_class` by the per-bucket convention** below. A finding you cannot assign a stable class to is simply omitted from `findings_json`; it can still appear in the prose report. A finding with no stable class is not a countable finding.
+Assign each finding a `finding_class` by the per-bucket convention below. It is the class carried into the re-run carry-forward ledger's `finding_class` field and, for an out-of-scope finding, into the tech-debt dedup key (see "Key relationship"). A finding you cannot assign a stable class to is simply omitted from the ledger; it can still appear in the prose report. A finding with no stable class is not a countable finding.
 
 ### Per-bucket `finding_class` convention
 
@@ -371,7 +355,7 @@ Rules for the block:
   - axe (accessibility): the axe rule id, prefixed `axe/` (e.g. `axe/color-contrast`).
   - knip: the issue type, prefixed `knip/` (e.g. `knip/exports`, `knip/types`, `knip/dependencies`).
   - dependency-CVE (`pnpm audit`): the advisory id, prefixed `cve/` (e.g. `cve/1098765`).
-- **Holistic / rule-subagent buckets: a controlled vocabulary.** Use one of the seeded members below verbatim; do not invent new members. If a holistic or rule finding does not map to a seeded member, omit it from `findings_json`.
+- **Holistic / rule-subagent buckets: a controlled vocabulary.** Use one of the seeded members below verbatim; do not invent new members. If a holistic or rule finding does not map to a seeded member, omit it.
   - Holistic (your own cross-cutting findings): `holistic/missing-auth-check`, `holistic/secret-exposure`, `holistic/n-plus-one`, `holistic/unnecessary-rerender`, `holistic/unhandled-promise-rejection`, `holistic/swallowed-error`, `holistic/over-permissive-zod`, `holistic/business-logic-in-component`, `holistic/hardcoded-string`, `holistic/non-null-assertion`.
   - Rule (line-level subagent findings): `rule/use-effect-derived-state`, `rule/use-effect-state-reset`, `rule/unnecessary-use-callback`, `rule/missing-effect-cleanup`, `rule/generic-handler-name`, `rule/switch-statement`, `rule/interface-declaration`, `rule/z-enum`, `rule/array-generic-syntax`, `rule/thin-route-violation`.
 
@@ -380,7 +364,7 @@ The schema enforces this convention: an entry whose `finding_class` is free text
 <!-- gaia:maintainer-only:start -->
 The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `RULE_FINDING_CLASSES`, and the oracle prefixes); the lists above mirror it. That schema also defines `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (`holistic/unclassified`), the dedup-key fallback for a classless out-of-scope finding (see Scope classification and out-of-scope disposition).
 <!-- gaia:maintainer-only:end -->
-`holistic/unclassified` is the out-of-scope fallback for a finding that maps to no seeded class (see Scope classification and out-of-scope disposition). It is **not** a member of the closed vocabulary and is **never** emitted in `findings_json`, it builds a `tech-debt` dedup key, not a telemetry class. Being outside the telemetry vocabulary is the *only* thing it means: it is not a security signal, and it never drives the security screen (section B).
+`holistic/unclassified` is the out-of-scope fallback for a finding that maps to no seeded class (see Scope classification and out-of-scope disposition). It is **not** a member of the closed finding-class vocabulary, it builds a `tech-debt` dedup key. Being outside the closed vocabulary is the *only* thing it means: it is not a security signal, and it never drives the security screen (section B).
 
 ## Progress breadcrumbs (CI observability)
 

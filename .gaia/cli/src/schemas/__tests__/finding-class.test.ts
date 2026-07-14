@@ -80,7 +80,7 @@ describe('schemas/finding-class', () => {
       expect(OUT_OF_SCOPE_FALLBACK_FINDING_CLASS).toBe('holistic/unclassified');
     });
 
-    test('is NOT a valid telemetry finding_class (dedup-key fallback only)', () => {
+    test('is NOT a valid finding_class (dedup-key fallback only)', () => {
       expect(isValidFindingClass(OUT_OF_SCOPE_FALLBACK_FINDING_CLASS)).toBe(
         false
       );

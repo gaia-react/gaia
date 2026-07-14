@@ -60,7 +60,7 @@ The ledger fails open and never gates anything. An absent, corrupt, or stale led
 
 The ledger is read, written, and cleaned up only on local runs; the agent skips it entirely when `GITHUB_ACTIONS` (or `CI`) is set. Each CI audit is a fresh ephemeral job with no persistence of `.gaia/local/audit/`, so a ledger written in one run is never read by the next. CI instead carries cross-round state by git-native means that survive a fresh checkout: the cleared/incremental base rides the `GAIA-Audit` commit trailer and commit status read by `.github/audit/resolve-audit-base.sh`, and the remaining findings ride the PR-comment findings block (with out-of-scope debt in `tech-debt` issues). The ledger therefore has no reader and no role in CI.
 
-The terse Task return is the contract the local re-run orchestrator reads; it does not collapse the CI PR comment, which CI keeps full. The Task return and the PR-comment / findings-block / telemetry-trailer are separate channels, so making the local return terse leaves CI's comment surface untouched. See [[PR Merge Workflow]] for the fix → re-spawn loop that consumes the ledger.
+The terse Task return is the contract the local re-run orchestrator reads; it does not collapse the CI PR comment, which CI keeps full. The Task return and the PR-comment findings block are separate channels, so making the local return terse leaves CI's comment surface untouched. See [[PR Merge Workflow]] for the fix → re-spawn loop that consumes the ledger.
 
 ## Durable knowledge
 
@@ -85,11 +85,9 @@ To swap a library: remove its extension file, add one for the replacement. The m
 
 ## Finding emission
 
-After the human-readable report, the agent appends a machine-readable telemetry trailer as the last fenced `---` block of its Task return. The PostToolUse Task hook parses this block; `findings_json` carries one entry per eligible finding with `finding_class`, `severity`, and `area_tags`. The cross-machine tally in [[Policy-Memory Loop]] reads these findings (plus the identical CI findings block written to the PR comment) when computing recurring-finding candidates.
+`finding_class` follows a per-bucket convention: oracle buckets use the tool's own id prefixed (`react-doctor/...`, `axe/...`, `knip/...`, `cve/...`); holistic and rule-subagent buckets draw from a constrained vocabulary seeded in the agent definition. A finding with no stable class is omitted from the findings block but may still appear in the prose report.
 
-`finding_class` follows a per-bucket convention: oracle buckets use the tool's own id prefixed (`react-doctor/...`, `axe/...`, `knip/...`, `cve/...`); holistic and rule-subagent buckets draw from a constrained vocabulary seeded in the agent definition. A finding with no stable class is omitted from the trailer but may still appear in the prose report.
-
-The CI workflow appends the same structured findings as an HTML-comment block at the end of its PR comment (framed by `<!-- gaia-harden:findings:start -->` / `<!-- gaia-harden:findings:end -->` sentinel lines), so the tally can read findings from both local and CI runs via `gh`.
+The CI workflow appends structured findings as an HTML-comment block at the end of its PR comment (framed by `<!-- gaia-harden:findings:start -->` / `<!-- gaia-harden:findings:end -->` sentinel lines). The cross-machine tally in [[Policy-Memory Loop]] reads this block via `gh` when computing recurring-finding candidates.
 
 ## Trigger
 

@@ -260,7 +260,7 @@ describe('release runtime-deps CLI', () => {
       '.claude/hooks/wiki-session-start.sh',
       [
         '#!/usr/bin/env bash',
-        'rm -f .gaia/local/cache/shared/coaching-active.txt',
+        'rm -f .gaia/local/cache/shared/update-check.json',
         'STATE_FILE="$PROJECT_ROOT/.gaia/local/setup-state.json"',
         '',
       ].join('\n')

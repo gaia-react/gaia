@@ -5,8 +5,8 @@
  * Records how THIS machine resolved the sandbox-enablement prompt: enabled
  * (applied), declined (offered, said no), or incapable (detection said
  * unsupported). Gitignored via `.gaia/local/`. Atomic write (temp+rename),
- * mode 644, mirroring `mentorship/config.ts`. `repoRoot` is resolved by the
- * caller via `resolveMainWorktreeRoot` (`setup/util/state-file.ts`) so a
+ * mode 644. `repoRoot` is resolved by the caller via
+ * `resolveMainWorktreeRoot` (`setup/util/state-file.ts`) so a
  * linked worktree anchors to the same clone.
  */
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';

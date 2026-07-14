@@ -44,7 +44,7 @@ Before writing or filing anything, the skill runs a single redaction pass over t
 
 The skill writes to `.gaia/local/forensics/<timestamp>-<class>.md` using an ISO-8601 compact UTC timestamp (`YYYYMMDDTHHMMSSZ`). This path is gitignored by default, so reports stay local to the machine that generated them and never appear in git history.
 
-The skill's write-surface allowlist is exactly two directories: `.gaia/local/forensics/` (the report) and `.gaia/local/telemetry/` (optional, non-blocking emit calls). No other path is writable. The "read-only" framing means it never mutates GAIA state, the working tree, or anything under `app/` or `wiki/`; it does not extend to these two local-only sink directories.
+The skill's write-surface allowlist is exactly two directories: `.gaia/local/forensics/` (the report) and `.gaia/local/telemetry/` (GAIA's local cost and pacing ledger sink). No other path is writable. The "read-only" framing means it never mutates GAIA state, the working tree, or anything under `app/` or `wiki/`; it does not extend to these two local-only sink directories.
 
 The local file carries a small YAML frontmatter block (`class`, `gaia_version`, `created`, and optionally `gh_issue_url`). The report body that follows has four fixed sections: `## Symptom`, `## Classification`, `## Capture`, and `## Reproduction context`, in that order. The body schema is load-bearing: downstream tooling parses it without LLM fallback, so section names and order never drift.
 

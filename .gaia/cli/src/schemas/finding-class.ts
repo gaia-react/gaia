@@ -62,7 +62,7 @@ export type HolisticFindingClass = (typeof HOLISTIC_FINDING_CLASSES)[number];
  * Dedup-key fallback for an out-of-scope finding that maps to no seeded
  * finding_class.
  *
- * This sits outside the closed telemetry vocabulary on purpose, so
+ * This sits outside the closed finding_class vocabulary on purpose, so
  * `isValidFindingClass` rejects it and it never reaches the tally. That is the
  * *only* thing it means. It is **not** a security signal: the audit's
  * security screen keys on a finding's content and severity, never on this
