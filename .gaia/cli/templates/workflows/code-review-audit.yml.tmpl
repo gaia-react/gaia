@@ -434,11 +434,14 @@ jobs:
         run: |
           set +e
           tree_sha="$(git rev-parse HEAD^{tree} 2>/dev/null)"
-          progress=".gaia/local/audit/${tree_sha}.progress.log"
+          progress=""
+          [ -n "$tree_sha" ] && progress=".gaia/local/audit/${tree_sha}.progress.log"
           {
             echo "## code-review-audit progress"
             echo ""
-            if [ -s "$progress" ]; then
+            if [ -z "$tree_sha" ]; then
+              echo "_Progress unavailable: could not resolve HEAD's tree._"
+            elif [ -s "$progress" ]; then
               echo '```'
               cat "$progress"
               echo '```'
@@ -447,7 +450,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null
           # Mirror to the step log for log-only consumers.
-          if [ -s "$progress" ]; then
+          if [ -n "$progress" ] && [ -s "$progress" ]; then
             echo "code-review-audit progress:"
             cat "$progress"
           fi
