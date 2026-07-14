@@ -470,9 +470,12 @@ run_comment_step() {
   done
 
   # One HEAD_SHA event-payload binding for each of these two steps, the
-  # unrelated source-changes step, and the pre-existing clean-no-push stamp.
+  # unrelated source-changes step, the pre-existing clean-no-push stamp, and
+  # the progress-breadcrumb print step (resolves the tree the agent keyed its
+  # breadcrumb file to, for the same reason: a self-heal commit can move the
+  # runner's local HEAD before this step runs).
   run grep -cF 'HEAD_SHA: ${{ github.event.pull_request.head.sha }}' "$WORKFLOW"
-  [ "$output" -eq 4 ]
+  [ "$output" -eq 5 ]
 }
 
 # -----------------------------------------------------------------------------

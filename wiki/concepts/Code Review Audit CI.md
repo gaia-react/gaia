@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-07-03
+updated: 2026-07-14
 tags: [concept, ci, audit, claude]
 ---
 
@@ -75,9 +75,11 @@ This is the audit's instance of the cross-workflow mechanism in [[Incremental CI
 
 The agent's own SDK output is not surfaced in the public Actions log: `claude-code-action` does not echo tool results unless explicitly enabled, and the workflow leaves that off (it passes only `--max-turns`, `--allowedTools`, and `--verbose` in `claude_args`). This is deliberate: on a public repo the Actions log is world-readable, so echoing tool results that may contain secrets is unsafe.
 
-To provide a public-safe, post-hoc view of audit progress, the agent writes a curated per-phase breadcrumb line to `.gaia/local/audit/progress.log` (runner-local, gitignored; the same directory as the `<sha>.ok` clean marker) via its `Write`/`Edit` tool. Each line is a phase label plus integer counts only: no code, no file contents, no raw tool output, no secrets. These writes are best-effort: a write failure never blocks or fails the audit.
+To provide a public-safe, post-hoc view of audit progress, the agent writes a curated per-phase breadcrumb line to `.gaia/local/audit/<tree-sha>.progress.log` (runner-local, gitignored; the same directory as the `<tree-sha>.ok` clean marker, keyed to the tree captured at review start) via its `Write`/`Edit` tool. Each line is a phase label plus integer counts only: no code, no file contents, no raw tool output, no secrets. These writes are best-effort: a write failure never blocks or fails the audit.
 
-A trailing workflow step (`Print audit progress breadcrumbs`) reads that file after the agent step completes and prints it into `$GITHUB_STEP_SUMMARY`. Its gate mirrors the agent step's gate exactly (gate label present, source changes present, no workflow self-modification, no matching trailer), so breadcrumbs surface whenever the audit ran. Partial breadcrumbs appear even when the audit aborts due to max-turns or an SDK error. The step always exits successfully, so it never affects the required `code-review-audit` check status.
+`.gaia/local/audit/` is symlinked back to the main checkout from every linked worktree, so it is shared state across every concurrent GAIA session on a developer's machine; keying the breadcrumb file to the tree it describes, exactly like the marker, keeps one session's progress from being written over or misread as another's.
+
+A trailing workflow step (`Print audit progress breadcrumbs`) locates the same file after the agent step completes and prints it into `$GITHUB_STEP_SUMMARY`. It resolves the tree from the pushed PR head sha (`github.event.pull_request.head.sha`), never `git rev-parse HEAD`: a self-heal commit lands during the agent's own turn, before this step and before a later step pushes it, so the runner's local HEAD can already sit one tree ahead of the pushed head the breadcrumb file was keyed to. Its gate mirrors the agent step's gate exactly (gate label present, source changes present, no workflow self-modification, no matching trailer), so breadcrumbs surface whenever the audit ran. Partial breadcrumbs appear even when the audit aborts due to max-turns or an SDK error. The step always exits successfully, so it never affects the required `code-review-audit` check status.
 
 The agent itself cannot write directly to the runner log because its `Bash` tool is captured by the SDK and bare `echo`/`cat` commands are not in the workflow `allowedTools` globs. The progress file plus trailing print step is the split that makes runner-log output possible.
 
@@ -200,7 +202,7 @@ A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, an
 - Incremental-base helper (CI): `.github/audit/resolve-audit-base.sh`
 - Config reader: `.gaia/scripts/read-audit-ci-config.sh`
 - Default config: `.gaia/audit-ci.yml`
-- Progress breadcrumb file (runner-local, gitignored): `.gaia/local/audit/progress.log`
+- Progress breadcrumb file (runner-local, gitignored, tree-keyed): `.gaia/local/audit/<tree-sha>.progress.log`
 
 ## See also
 

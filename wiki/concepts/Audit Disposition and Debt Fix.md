@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-07-09
+updated: 2026-07-14
 tags: [concept, claude, review]
 ---
 
@@ -73,7 +73,7 @@ Because "any Critical" and "security-shaped content" are both security-class tri
   - **CI run**: a redacted count-only signal in the public PR comment (`N security-class findings diverted; maintainer must review`), never the detail.
 - security-class on **confirmed PRIVATE** → file as a normal private `tech-debt` issue, fully dedupable and fixable.
 
-A security-class finding's detail never reaches a public or internal issue, the PR comment, the Actions log, or `.gaia/local/audit/progress.log`; a diverted finding contributes only to counts on those surfaces. A diverting finding that maps to no seeded class still builds its dedup key with the fallback class, so the operator surface and any future dedup stay well-formed; the fallback is what the key is built with, never what makes the finding divert. Either disposition (`filed` or `diverted`) lets the marker write, so the never-public guarantee never deadlocks the merge.
+A security-class finding's detail never reaches a public or internal issue, the PR comment, the Actions log, or the progress breadcrumb file (`.gaia/local/audit/<tree-sha>.progress.log`); a diverted finding contributes only to counts on those surfaces. A diverting finding that maps to no seeded class still builds its dedup key with the fallback class, so the operator surface and any future dedup stay well-formed; the fallback is what the key is built with, never what makes the finding divert. Either disposition (`filed` or `diverted`) lets the marker write, so the never-public guarantee never deadlocks the merge.
 
 ## The disposition gate and the marker
 

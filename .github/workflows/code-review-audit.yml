@@ -418,24 +418,38 @@ jobs:
 
       - name: Print audit progress breadcrumbs
         # Public-safe observability. The agent (show_full_output:false hides its
-        # SDK output) writes curated per-phase breadcrumbs to a gitignored file
-        # via Write/Edit; this step surfaces them in the step summary AFTER the
+        # SDK output) writes curated per-phase breadcrumbs to a tree-keyed
+        # gitignored file via Write/Edit, keyed to the tree it started reviewing
+        # (AUDIT_TREE_SHA); this step surfaces it in the step summary AFTER the
         # agent runs. Gate MIRRORS the agent step exactly (not always(), not
         # success()) so partial breadcrumbs surface even on an aborted audit.
-        # Always exits 0: a missing/empty file must never fail the required check.
+        # Always exits 0: a missing/empty file must never fail the required
+        # check.
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'false' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
+        env:
+          # The PUSHED PR head sha, not `git rev-parse HEAD`. On a self-heal run
+          # the agent commits its fix during its own turn, before this step and
+          # before "Commit and push self-heal" pushes it, so the runner's local
+          # HEAD can already be one commit (one tree) ahead of what was pushed
+          # when the agent captured AUDIT_TREE_SHA and keyed its breadcrumb file.
+          # $HEAD_SHA is always the tree the agent started from.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set +e
-          progress=".gaia/local/audit/progress.log"
+          tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}" 2>/dev/null)"
+          progress=""
+          [ -n "$tree_sha" ] && progress=".gaia/local/audit/${tree_sha}.progress.log"
           {
             echo "## code-review-audit progress"
             echo ""
-            if [ -s "$progress" ]; then
+            if [ -z "$tree_sha" ]; then
+              echo "_Progress unavailable: could not resolve HEAD's tree._"
+            elif [ -s "$progress" ]; then
               echo '```'
               cat "$progress"
               echo '```'
@@ -444,7 +458,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null
           # Mirror to the step log for log-only consumers.
-          if [ -s "$progress" ]; then
+          if [ -n "$progress" ] && [ -s "$progress" ]; then
             echo "code-review-audit progress:"
             cat "$progress"
           fi
