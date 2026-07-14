@@ -247,8 +247,7 @@ while IFS= read -r rm_segment; do
   # array-guard lint stays a zero-exception gate: on bash 3.2 a bare "${tokens[@]}"
   # over an empty array aborts under `set -u`.
   for tok in ${tokens[@]+"${tokens[@]}"}; do
-    # Skip the literal `rm` word and flag tokens.
-    [[ "$tok" == "rm" ]] && continue
+    # Skip flag tokens.
     [[ "$tok" == -* ]] && continue
 
     # Drop every quote character before matching. `read -r -a` word-splits but
@@ -268,6 +267,18 @@ while IFS= read -r rm_segment; do
     # escapes would be half a fix.
     tok=${tok//\\/}
     [[ -n "$tok" ]] || continue
+
+    # Skip the command word itself, recognized the way the anchor above recognizes
+    # it: AFTER quote and backslash removal, and case-insensitively. Matching it
+    # here by its literal lowercase spelling would leave a fourth site reading the
+    # word as it is typed rather than as bash resolves it, so `RM` and `r""m` would
+    # fall through and be judged as if they were targets.
+    #
+    # That fall-through is harmless only for as long as the normalized word `rm`
+    # matches no deny arm and lands on the catch-all below, which is an invisible
+    # constraint to hang a guard on: it silently binds anyone who later adds an arm.
+    # Skipping the word as a word retires the constraint instead of relying on it.
+    [[ "$tok" == [Rr][Mm] ]] && continue
 
     # `$PWD` spells the cwd, so `$PWD/.git` IS `.git` and a bare `$PWD` IS `.`.
     # Rewrite the prefix and let the arms below judge whatever is left, rather
