@@ -22,7 +22,7 @@ Drift between code and knowledge is detected and resolved in the user's existing
 
 `wiki/.state.json` is the single source of truth for sync state. Two commands write to it: `/gaia-wiki sync` owns `last_evaluated_sha` and `last_evaluated_at`; `/gaia-wiki consolidate` owns `last_consolidated_sha` and `last_consolidated_at`. Each writer preserves the other's fields. The hooks are read-only.
 
-When the runtime-generated automation config (`automation.json` under `.gaia/`, created by `/gaia-init configure-automation`, not checked in) sets the `wiki` entry's mode to `ci`, the local hooks (drift-check, commit-nudge, Stop safety net) source `.claude/hooks/lib/gaia-ci-defer.sh` and stand down, so local triggers don't collide with a cron-managed wiki run. In `ci` mode the hooks silently do nothing.
+When the automation config (`automation.json` under `.gaia/`, created by `/gaia-init configure-automation` and committed once `/setup-gaia` finalizes; not manifest-managed, so `/update-gaia` leaves it alone) sets the `wiki` entry's mode to `ci`, the local hooks (drift-check, commit-nudge, Stop safety net) source `.claude/hooks/lib/gaia-ci-defer.sh` and stand down, so local triggers don't collide with a cron-managed wiki run. In `ci` mode the hooks silently do nothing.
 
 ## Convergence, not real-time
 

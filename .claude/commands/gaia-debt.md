@@ -1,6 +1,6 @@
 ---
 name: gaia-debt
-description: Fix the tech-debt backlog, a single issue or a recommended related batch, highest severity then oldest first, on a fresh feature branch or worktree through the audit gate, closing the issue(s) on merge. Pass `list` to see the ordered backlog, `why <issue-number>` to explain the recommendation, or a bare `<issue-number>` to fix that issue directly.
+description: Fix the tech-debt backlog, a single issue or a recommended related batch, highest severity then oldest first, on a fresh isolated branch through the audit gate, closing the issue(s) on merge. Pass `list` to see the ordered backlog, `why <issue-number>` to explain the recommendation, or a bare `<issue-number>` to fix that issue directly.
 argument-hint: [fix|list|why <issue-number>|<issue-number>]
 ---
 

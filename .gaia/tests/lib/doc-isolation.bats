@@ -44,10 +44,9 @@
 #
 # Policy-branch cases (added once the fragment's guarded policy read exists):
 # UAT-007 check (iii)'s full `\(recommended\) or a git worktree|fires every time
-# HEAD is` grep is the SPEC's Phase-5 acceptance gate (the first alternative still
-# matches a not-yet-corrected wiki sentence that Phase 5 owns), so only the
-# `fires every time HEAD is` half is asserted here, unchanged from the version
-# Phase 1 landed.
+# HEAD is` grep is the SPEC's binding acceptance gate. Phase 5 rewords the last
+# prose sites that carried the first alternative, so the combined pattern is
+# asserted below rather than just the `fires every time HEAD is` half.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -226,8 +225,8 @@ render_for_policy() {
   true
 }
 
-@test "negative space: no surface still claims the prompt fires on every main HEAD" {
-  run git -C "$REPO_ROOT" grep -n 'fires every time HEAD is' \
+@test "UAT-007 check (iii): no surface hardcodes a recommendation or claims the prompt fires unconditionally" {
+  run git -C "$REPO_ROOT" grep -inE '\(recommended\) or a git worktree|fires every time HEAD is' \
     -- ':!.gaia/tests/lib/doc-isolation.bats' \
        ':!.gaia/tests/lib/doc-setup-gaia-isolation.bats' \
        ':!.gaia/tests/lib/doc-gaia-init-isolation.bats'
