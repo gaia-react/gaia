@@ -76,14 +76,19 @@ setup() {
   # description="..."`, so quoting `state` by analogy is a natural mistake.
   #
   # The lock's BOUNDARY, stated so the next author knows what it does and does not
-  # promise: it assumes every writer posts the status via `gh api` with the state
-  # as a `--field`/`-f`/`-F`/`--raw-field` argument. A writer that passes a JSON
-  # body (`gh api --input -`), builds the value indirectly (`--field
-  # state="$st"`), or shells out to `curl` carries no literal `state=`, evades
-  # this pattern, and ships unseen. That is a deliberate frontier, not an
-  # oversight: closing it fully is a losing arms race against every way a string
-  # can be spelled, and all four real writers use the `--field` form, so a fifth
-  # would be copied from an adjacent one. Trust the lock exactly this far.
+  # promise. The pattern matches exactly one thing: the literal token `state=`, an
+  # optional opening quote, then `pending` -- anywhere on the line. It is flag- and
+  # tool-agnostic, so a bare `state=pending`, and even a `curl -d state=pending`,
+  # match just as the `--field`/`-f`/`-F`/`--raw-field` forms do. What evades it is
+  # a writer that never spells that whole token literally: a JSON body (`gh api
+  # --input -` carries `"state":"pending"`, no `state=` at all), or a value built
+  # indirectly (`--field state="$st"` -- note this DOES carry a literal `state=`
+  # and still evades, because the pattern needs the VALUE too, so "does my line
+  # contain `state=`?" is the wrong question to ask of it). Such a writer ships
+  # unseen. That is a deliberate frontier, not an oversight: closing it fully is a
+  # losing arms race against every way a string can be spelled, and all four real
+  # writers use the `--field` form, so a fifth would be copied from an adjacent
+  # one. Trust the lock exactly this far.
   PENDING_WRITER_RE="state=[\"']?pending"
   [ -f "$WORKFLOW" ] || skip "code-review-audit.yml not found"
   [ -f "$GATE" ] || skip "gate-pending-members.sh not found"
