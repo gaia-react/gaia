@@ -49,16 +49,57 @@ and do not prompt: this arm never asks the user anything. State the reason to th
 
 ### Policy read
 
-Reserved. The team's isolation policy is read here: after the forced-worktree arm above, so no policy value
-can reach an arm that is a correctness rule rather than a preference, and before the question below, so the
-policy can steer it. Nothing is read today, and the question below always runs when HEAD is on
-`main`/`master`.
+Read the team's isolation policy, once. This runs after the forced-worktree arm above, so no policy value
+can reach or relax that correctness rule, and before the arms below, so the policy can steer them:
+
+```bash
+POLICY="$(jq -r '.isolation_policy // "prefer-branch"' .gaia/automation.json 2>/dev/null || echo prefer-branch)"
+```
+
+The `2>/dev/null || echo prefer-branch` tail is load-bearing, not decoration. jq's `//` fires only on `null`
+or `false` from a document that PARSED. On a missing file, or an unreadable one (`chmod 000`), jq errors,
+exits non-zero, and prints nothing, so without the tail the command substitution would yield an EMPTY string,
+not the default.
+
+```bash
+case "$POLICY" in
+  always-worktree) ;;
+  prefer-worktree) ;;
+  prefer-branch)   ;;
+  *)
+    printf 'Unrecognized isolation_policy "%s": treating as prefer-branch.\n' "$POLICY" >&2
+    POLICY=prefer-branch
+    ;;
+esac
+```
+
+An absent key, an unreadable config, a missing file, and an unrecognized value all resolve to
+`prefer-branch`, identical to today's behavior below. The `*)` arm's message names the unrecognized value so
+a typo is discoverable: one line, no warning banner, no error.
+
+### `always-worktree`
+
+`POLICY` is `always-worktree`: skip the question entirely. Set `RESOLVED_MODE=worktree` and go straight to
+**Worktree creation** below.
+
+**Creation-failure fallback, the one exception to "never prompt under `always-worktree`".** Skipping the
+question also removes the escape hatch a collision would otherwise have, and a collision here is a
+by-construction steady state, not an edge case: branch names are deterministic, and a crashed session leaves
+its worktree behind. So when worktree creation fails under this policy:
+
+1. surface the failure in plain language: say what failed, and name the path or branch that collided;
+2. fall back to the branch-vs-worktree question below, presented in the `prefer-branch` order, so the user
+   still has an escape;
+3. never dead-end, and never silently proceed in the main checkout without saying so.
+
+Set `RESOLVED_MODE` from whichever answer the fallback question resolves to.
 
 ### The isolation question
 
-HEAD is on `main`/`master`, so the choice is genuinely open. Ask it with `AskUserQuestion`, using the
-literals below verbatim (after slot substitution). Do not silently default: the prompt is the decision
-point.
+HEAD is on `main`/`master`. This fires when `POLICY` is not `always-worktree`, and, as the one exception,
+when `POLICY` is `always-worktree` and its worktree creation just failed (the fallback above). Ask it with
+`AskUserQuestion`, using the literals below verbatim (after slot substitution). Do not silently default: the
+prompt is the decision point.
 
 If the user picks **Other** with custom text, treat it as a request for an alternative isolation mode and
 surface a clarifying question rather than guessing. Feature-branch and worktree are the two supported modes.
@@ -78,12 +119,20 @@ and set `RESOLVED_MODE=feature-branch`. On the worktree answer, set `RESOLVED_MO
 
 #### Option order and the recommendation marker
 
+Present the two options in the order the resolved `POLICY` names below (the `always-worktree` fallback uses
+the `prefer-branch` row). Append the marker ` (Recommended)` to the **lead** option's label, and to no other
+option's. This is the one and only site that applies the marker; it is never baked into a label literal, so
+which option leads can change without editing a literal.
+
+##### `prefer-branch` (also the default: absent key, unreadable config, missing file, unrecognized value)
+
 - order: `branch`, `worktree`
 - lead: `branch`
 
-Present the options in `order`. Append the marker ` (Recommended)` to the **lead** option's label, and to
-no other option's. This is the one and only site that applies the marker; it is never baked into a label
-literal, so which option leads can change without editing a literal.
+##### `prefer-worktree`
+
+- order: `worktree`, `branch`
+- lead: `worktree`
 
 ## Worktree creation
 

@@ -41,6 +41,13 @@
 # pass. The pathspec excludes this suite and its two siblings; a pathspec naming a
 # not-yet-existent path is a harmless no-op, and pre-declaring them keeps a later
 # phase from having to widen the grep.
+#
+# Policy-branch cases (added once the fragment's guarded policy read exists):
+# UAT-007 check (iii)'s full `\(recommended\) or a git worktree|fires every time
+# HEAD is` grep is the SPEC's Phase-5 acceptance gate (the first alternative still
+# matches a not-yet-corrected wiki sentence that Phase 5 owns), so only the
+# `fires every time HEAD is` half is asserted here, unchanged from the version
+# Phase 1 landed.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -75,6 +82,53 @@ render() {
   header="$(frag_line '^- header: ')"
   order="$(grep -m1 -E '^- order: ' "$FRAG" | sed -E 's/^- order: //; s/`//g; s/,/ /g')"
   lead="$(grep -m1 -E '^- lead: ' "$FRAG" | sed -E 's/^- lead: //; s/`//g; s/ //g')"
+
+  {
+    printf 'question: %s\n' "$question"
+    printf 'header: %s\n' "$header"
+    n=0
+    for key in $order; do
+      n=$((n + 1))
+      label="$(frag_line "^- option \`$key\`, label: ")"
+      desc="$(frag_line "^- option \`$key\`, description: ")"
+      if [ "$key" = "$lead" ]; then
+        label="$label (Recommended)"
+      fi
+      printf 'option%s: %s | %s\n' "$n" "$label" "$desc"
+    done
+  } | sed -e "s/{{SUBJECT}}/$subject/g" \
+          -e "s/{{WORKER}}/$worker/g" \
+          -e "s/{{OWNER}}/$owner/g" \
+          -e "s/{{SIBLING}}/$sibling/g"
+}
+
+# Same as render(), except order/lead come from ONE policy's own heading-bounded
+# block (`##### \`prefer-branch\`` or `##### \`prefer-worktree\``) instead of
+# grep -m1's first-match-in-file. This is what keeps the per-policy assertions
+# honest: a fragment that instructed leading with the wrong option under a given
+# policy would fail here even though the plain byte-identity tests above (which
+# only ever exercise the first order/lead pair, i.e. prefer-branch's) would not
+# catch it.
+render_for_policy() {
+  policy="$1"
+  subject="$2"
+  worker="$3"
+  owner="$4"
+  sibling="$5"
+
+  pb_start="$(frag_heading_line '##### `prefer-branch`')"
+  pw_start="$(frag_heading_line '##### `prefer-worktree`')"
+  creation="$(frag_heading_line '## Worktree creation')"
+
+  case "$policy" in
+    prefer-worktree) start="$pw_start"; end="$((creation - 1))" ;;
+    *)               start="$pb_start"; end="$((pw_start - 1))" ;;
+  esac
+
+  question="$(frag_line '^- question: ')"
+  header="$(frag_line '^- header: ')"
+  order="$(sed -n "${start},${end}p" "$FRAG" | grep -m1 -E '^- order: ' | sed -E 's/^- order: //; s/`//g; s/,/ /g')"
+  lead="$(sed -n "${start},${end}p" "$FRAG" | grep -m1 -E '^- lead: ' | sed -E 's/^- lead: //; s/`//g; s/ //g')"
 
   {
     printf 'question: %s\n' "$question"
@@ -231,4 +285,144 @@ render() {
   # debt.md has no sentinel, so it must not consume the export.
   grep -qF 'RESOLVED_MODE' "$DEBT_MD" && return 1
   true
+}
+
+@test "the policy read literal defaults to prefer-branch: no file, an unreadable file, and an empty object" {
+  policy_line="$(grep -m1 -F 'POLICY="$(jq -r' "$FRAG")"
+  [ -n "$policy_line" ]
+
+  # Write the fragment's real literal to a script, rather than re-typing it,
+  # so this test executes the artifact instead of a paraphrase of it.
+  script="$BATS_TEST_TMPDIR/policy-read.sh"
+  printf '%s\nprintf %%s "$POLICY"\n' "$policy_line" > "$script"
+
+  mkdir -p "$BATS_TEST_TMPDIR/case-absent"
+  run bash -c "cd '$BATS_TEST_TMPDIR/case-absent' && bash '$script'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "prefer-branch" ]
+
+  # Root reads through the mode bits, so chmod 000 proves nothing there.
+  if [ "$(id -u)" -ne 0 ]; then
+    mkdir -p "$BATS_TEST_TMPDIR/case-unreadable/.gaia"
+    printf '{"isolation_policy":"prefer-worktree"}' \
+      > "$BATS_TEST_TMPDIR/case-unreadable/.gaia/automation.json"
+    chmod 000 "$BATS_TEST_TMPDIR/case-unreadable/.gaia/automation.json"
+    run bash -c "cd '$BATS_TEST_TMPDIR/case-unreadable' && bash '$script'"
+    chmod 644 "$BATS_TEST_TMPDIR/case-unreadable/.gaia/automation.json"
+    [ "$status" -eq 0 ]
+    [ "$output" = "prefer-branch" ]
+  fi
+
+  mkdir -p "$BATS_TEST_TMPDIR/case-empty/.gaia"
+  printf '{}' > "$BATS_TEST_TMPDIR/case-empty/.gaia/automation.json"
+  run bash -c "cd '$BATS_TEST_TMPDIR/case-empty' && bash '$script'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "prefer-branch" ]
+}
+
+@test "UAT-013: an unrecognized isolation_policy degrades to prefer-branch and names the value in one line" {
+  policy_start="$(frag_heading_line '### Policy read')"
+  aw_start="$(frag_heading_line "### \`always-worktree\`")"
+  [ -n "$policy_start" ]
+  [ -n "$aw_start" ]
+
+  policy_block="$(sed -n "${policy_start},$((aw_start - 1))p" "$FRAG")"
+
+  case_open_rel="$(printf '%s\n' "$policy_block" | grep -n -F 'case "$POLICY" in' | head -1 | cut -d: -f1)"
+  case_close_rel="$(printf '%s\n' "$policy_block" | grep -n -F 'esac' | head -1 | cut -d: -f1)"
+  [ -n "$case_open_rel" ]
+  [ -n "$case_close_rel" ]
+
+  case_text="$(printf '%s\n' "$policy_block" | sed -n "${case_open_rel},${case_close_rel}p")"
+
+  # The `*)` default arm's own body: from its `*)` line to the case's `esac`.
+  star_rel="$(printf '%s\n' "$case_text" | grep -n -F '*)' | head -1 | cut -d: -f1)"
+  [ -n "$star_rel" ]
+  arm_body="$(printf '%s\n' "$case_text" | sed -n "${star_rel},\$p")"
+
+  # (a) carries an emit instruction, (b) interpolates the unrecognized value,
+  # rather than a generic message with no value in it.
+  printf '%s\n' "$arm_body" | grep -qE 'printf|echo' || return 1
+  printf '%s\n' "$arm_body" | grep -qF '"$POLICY"' || return 1
+  printf '%s\n' "$arm_body" | grep -qF 'POLICY=prefer-branch' || return 1
+
+  # End-to-end: run the real policy read + case against an unrecognized value.
+  policy_line="$(grep -m1 -F 'POLICY="$(jq -r' "$FRAG")"
+  script="$BATS_TEST_TMPDIR/policy-unrecognized.sh"
+  {
+    printf '%s\n' "$policy_line"
+    printf '%s\n' "$case_text"
+    printf 'printf %%s "$POLICY"\n'
+  } > "$script"
+
+  mkdir -p "$BATS_TEST_TMPDIR/case-bogus/.gaia"
+  printf '{"isolation_policy":"always-wortree"}' > "$BATS_TEST_TMPDIR/case-bogus/.gaia/automation.json"
+
+  # `run` captures stdout+stderr combined; the diagnostic (stderr, by design --
+  # see the block-body assertions above) must not contaminate the $POLICY value
+  # this checks, so capture stdout alone here and check stderr's content next.
+  stdout_only="$(bash -c "cd '$BATS_TEST_TMPDIR/case-bogus' && bash '$script' 2>'$BATS_TEST_TMPDIR/stderr.txt'")"
+  [ "$stdout_only" = "prefer-branch" ]
+  grep -qF 'always-wortree' "$BATS_TEST_TMPDIR/stderr.txt" || return 1
+}
+
+@test "UAT-003/UAT-006: the always-worktree branch never prompts and names its worktree-creation-failure fallback" {
+  aw_start="$(frag_heading_line "### \`always-worktree\`")"
+  question="$(frag_heading_line '### The isolation question')"
+  [ -n "$aw_start" ]
+  [ -n "$question" ]
+  [ "$aw_start" -lt "$question" ]
+
+  block="$(sed -n "${aw_start},$((question - 1))p" "$FRAG")"
+
+  asks="$(printf '%s\n' "$block" | grep -cF 'AskUserQuestion' || true)"
+  [ "$asks" -eq 0 ]
+
+  printf '%s\n' "$block" | grep -qF 'RESOLVED_MODE=worktree' || return 1
+  printf '%s\n' "$block" | grep -qiF 'fails' || return 1
+  printf '%s\n' "$block" | grep -qiF 'question below' || return 1
+}
+
+@test "UAT-023: the always-worktree arm and its creation-failure fallback both set RESOLVED_MODE" {
+  aw_start="$(frag_heading_line "### \`always-worktree\`")"
+  question="$(frag_heading_line '### The isolation question')"
+  [ -n "$aw_start" ]
+  [ -n "$question" ]
+
+  block="$(sed -n "${aw_start},$((question - 1))p" "$FRAG")"
+
+  # One for the direct success path, one for the fallback path: neither is left
+  # to write RESOLVED_MODE implicitly.
+  occurrences="$(printf '%s\n' "$block" | grep -cF 'RESOLVED_MODE')"
+  [ "$occurrences" -ge 2 ]
+}
+
+@test "UAT-004/UAT-005: each policy names its lead option first, and only one (Recommended) site exists" {
+  branch_rendered="$(render_for_policy "prefer-branch" "this plan's work" "the orchestrator" "this plan" "another plan")"
+  printf '%s\n' "$branch_rendered" | grep -qF 'option1: Create a feature branch in place (Recommended)' || return 1
+  printf '%s\n' "$branch_rendered" | grep -qF 'option2: Create a git worktree |' || return 1
+
+  worktree_rendered="$(render_for_policy "prefer-worktree" "this plan's work" "the orchestrator" "this plan" "another plan")"
+  printf '%s\n' "$worktree_rendered" | grep -qF 'option1: Create a git worktree (Recommended)' || return 1
+  printf '%s\n' "$worktree_rendered" | grep -qF 'option2: Create a feature branch in place |' || return 1
+
+  # Still exactly one append site fragment-wide, regardless of how many
+  # policy-branch order/lead pairs now exist.
+  count="$(grep -oF '(Recommended)' "$FRAG" | wc -l | tr -d ' ')"
+  [ "$count" = 1 ]
+}
+
+@test "UAT-016: already-inside-a-linked-worktree detection uses --git-common-dir + --show-toplevel and runs first" {
+  already="$(frag_heading_line '### Already inside a linked worktree')"
+  nomain="$(frag_heading_line '### HEAD is not on')"
+  policy="$(frag_heading_line '### Policy read')"
+  [ -n "$already" ]
+  [ -n "$nomain" ]
+  [ -n "$policy" ]
+
+  [ "$already" -lt "$nomain" ]
+  [ "$already" -lt "$policy" ]
+
+  grep -qF -- '--git-common-dir' "$FRAG" || return 1
+  grep -qF -- '--show-toplevel' "$FRAG" || return 1
 }
