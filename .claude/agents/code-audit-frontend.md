@@ -240,7 +240,7 @@ Probe the issue backend once at the start of the disposition flow:
   - **CI run**: a private advisory needs a privileged credential the default `GITHUB_TOKEN` lacks (mechanism deferred). For now emit a redacted **count-only** signal to the public PR comment (`N security-class findings diverted; maintainer must review`), never the detail. The marker still writes. Record `diverted`.
 - security-class on **confirmed PRIVATE** → file as a normal private `tech-debt` issue through the non-security pipeline (section E), fully dedupable/fixable. Record `filed`.
 - A **divert failure** (missing advisory credential or API error) reverts the finding to a redacted operator/maintainer surface, never a public issue, and the marker still writes. Record `diverted`.
-- A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, the Actions log, or `.gaia/local/audit/progress.log`. A diverted security finding contributes only to counts on those surfaces.
+- A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, the Actions log, or the progress breadcrumb file (`.gaia/local/audit/<tree-sha>.progress.log`, see Progress breadcrumbs). A diverted security finding contributes only to counts on those surfaces.
 
 When a diverting finding maps to no seeded class, build its dedup key with `OUT_OF_SCOPE_FALLBACK_FINDING_CLASS` (the dedup key format defined by the file-tech-debt skill, `.claude/skills/file-tech-debt/SKILL.md`) so the redacted operator surface and any future dedup are well-formed. The fallback class is what the key is *built with*; it is never what makes the finding divert (section B).
 
@@ -368,9 +368,9 @@ The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/fi
 
 ## Progress breadcrumbs (CI observability)
 
-The agent runs in CI with `show_full_output: false` (a deliberate public-repo safety choice). To give the CI step summary a post-hoc phase timeline, write ONE curated line per review phase to a fixed gitignored file using the `Write` or `Edit` tool (both are in the CI `allowedTools`).
+The agent runs in CI with `show_full_output: false` (a deliberate public-repo safety choice). To give the CI step summary a post-hoc phase timeline, write ONE curated line per review phase to a tree-keyed gitignored file using the `Write` or `Edit` tool (both are in the CI `allowedTools`).
 
-**File path (fixed, never sha-keyed):** `.gaia/local/audit/progress.log`
+**File path (tree-keyed, mirrors the marker):** `.gaia/local/audit/${AUDIT_TREE_SHA}.progress.log`, reusing `AUDIT_TREE_SHA` (see "Audit-run env", captured once at the very start of the review, before the first breadcrumb). `.gaia/local/audit/` is symlinked back to the main checkout from every linked worktree (`.gaia/scripts/link-worktree.sh`), so it is shared state across every concurrent GAIA session on the machine; a fixed filename lets one session's breadcrumbs clobber or be mistaken for another's. Keying to the tree, exactly like the `<tree-sha>.ok` marker, makes attribution structural instead of a matter of the reader's care. The CI print step (see the `code-review-audit.yml` workflow) locates the same file by independently resolving `git rev-parse HEAD^{tree}`, since HEAD has not moved by the time that step runs.
 
 **Line format:** `<phase label>, <counts>` -- phase label and integer counts only. Never include file contents, code, raw tool output, file paths beyond coarse counts, or anything secret-shaped. This is the public-safety crux: the workflow print step exposes this file in the GitHub Actions step summary.
 
@@ -742,7 +742,7 @@ If a candidate truly does not violate any listed rule, don't report it. If no vi
 
 ## Audit-run env (capture before any edits)
 
-At the very start of the review, before any rule-based subagents fire and before any self-heal edits, capture the tree the audit is about to review and initialize the self-heal flag. Both values are passed to the trailer-stamp helper at marker-write time.
+At the very start of the review, before any rule-based subagents fire and before any self-heal edits, capture the tree the audit is about to review and initialize the self-heal flag. `AUDIT_TREE_SHA` is passed to the trailer-stamp helper at marker-write time and also keys the progress breadcrumb file (see Progress breadcrumbs), so it must be captured before the first breadcrumb write, not just before the marker.
 
 ```bash
 AUDIT_TREE_SHA="$(git rev-parse HEAD^{tree})"
@@ -755,7 +755,7 @@ If, during the review, you make any fix-commit (a self-heal pass), set:
 AUDIT_SELF_HEALED="true"
 ```
 
-Both variables travel forward to the marker-write step below.
+`AUDIT_SELF_HEALED` travels forward to the marker-write step below.
 
 ## Audit marker (gate handshake)
 

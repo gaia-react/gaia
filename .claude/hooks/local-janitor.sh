@@ -27,13 +27,15 @@
 #      is the provable-death signal (the normal per-branch PR-merge cleanup runs
 #      no `git branch -D` here because the landing is fire-and-forget). This
 #      sweep is git-scoped, so it runs before the .gaia/local guard below.
-#   2. audit/<tree>.ok and the per-member audit/<tree>.<member>.ok, whose <tree>
-#      is no longer live (not HEAD's tree, and not the tree of any local branch
-#      tip or other worktree's HEAD); plus audit/<sha>.dispositions.json, whose
-#      <sha> is neither HEAD nor reachable from any local branch. A marker gates
-#      `gh pr merge` only when its <tree> == HEAD's tree; once the PR
-#      squash-merges, the audited tree is orphaned and the marker is spent. A key
-#      that resolves to no git object (bogus/garbage) is treated as dead.
+#   2. audit/<tree>.ok, the per-member audit/<tree>.<member>.ok, and
+#      audit/<tree>.progress.log, whose <tree> is no longer live (not HEAD's
+#      tree, and not the tree of any local branch tip or other worktree's
+#      HEAD); plus audit/<sha>.dispositions.json, whose <sha> is neither HEAD
+#      nor reachable from any local branch. A marker gates `gh pr merge` only
+#      when its <tree> == HEAD's tree; once the PR squash-merges, the audited
+#      tree is orphaned and the marker (and its progress breadcrumbs) are
+#      spent. A key that resolves to no git object (bogus/garbage) is treated
+#      as dead.
 #      2b. audit/<sha>.rerun.json carry-forward ledgers, on a DIFFERENT signal.
 #      A ledger is keyed on the incremental base (a fork point), which is an
 #      ancestor of the default branch, so reachability can never prove it dead.
@@ -133,8 +135,10 @@ sweep="$root/.gaia/scripts/mentorship-cleanup-sweep.sh"
 # Two key families share this sweep, each with its own liveness rule:
 #
 #   TREE-keyed  <tree>.ok / <tree>.<member>.ok, the Code Audit Team's clearance
-#     markers. A marker attests that a member audited a TREE, so it stays live
-#     while that tree is one that can still merge. Keying on the tree is what
+#     markers, and <tree>.progress.log, the same run's CI-observability
+#     breadcrumbs. A marker attests that a member audited a TREE, so it stays
+#     live while that tree is one that can still merge; a progress log
+#     describes the same TREE and dies with it. Keying on the tree is what
 #     lets a marker survive code-audit-frontend's GAIA-Audit trailer stamp: the
 #     stamp is an empty commit, so it advances HEAD while leaving the tree
 #     byte-identical, and a commit-keyed marker would be orphaned by content
@@ -170,16 +174,16 @@ live_trees=$(
 
 audit_dir="$local_dir/audit"
 if [ -d "$audit_dir" ]; then
-  for marker in "$audit_dir"/*.ok "$audit_dir"/*.dispositions.json; do
+  for marker in "$audit_dir"/*.ok "$audit_dir"/*.dispositions.json "$audit_dir"/*.progress.log; do
     [ -e "$marker" ] || continue          # glob did not match
     base=${marker##*/}
     # An object id never contains a dot, so strip from the FIRST one. That
     # resolves every suffix family uniformly: the plain <tree>.ok and
-    # <sha>.dispositions.json, and the per-member <tree>.<member>.ok the Code
-    # Audit Team writes. Peeling only the trailing .ok would leave
-    # "<tree>.<member>", which resolves to no object, so a LIVE member marker
-    # for HEAD's tree would read as dead and be deleted out from under the
-    # merge gate.
+    # <sha>.dispositions.json, the per-member <tree>.<member>.ok the Code
+    # Audit Team writes, and <tree>.progress.log. Peeling only the trailing
+    # .ok would leave "<tree>.<member>", which resolves to no object, so a
+    # LIVE member marker for HEAD's tree would read as dead and be deleted
+    # out from under the merge gate.
     key=${base%%.*}
 
     keep=0

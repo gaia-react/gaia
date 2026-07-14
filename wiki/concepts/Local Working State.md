@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-01
-updated: 2026-07-08
+updated: 2026-07-14
 tags: [concept, claude, hooks]
 ---
 
@@ -21,7 +21,7 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `.patched-statusline.sh`, `maintainer-statusline.sh` | statusline | live | regenerated |
 | `audit/<tree>.ok`, `audit/<tree>.<member>.ok` | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its tree is no longer live |
 | `audit/<sha>.dispositions.json` | [[Code Review Audit Agent]] merge gate | ephemeral | spent once orphaned |
-| `audit/progress.log` | audit gate | live | overwritten each run |
+| `audit/<tree>.progress.log` | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its tree is no longer live |
 | `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
 | `audit/worthiness.jsonl` | worthiness check | live | append-only |
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |

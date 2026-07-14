@@ -383,16 +383,17 @@ days_ago() {
 # The drop-zone holds two key families, and the sweep keeps each alive by its
 # own rule:
 #
-#   TREE-keyed  <tree>.ok and <tree>.<member>.ok -- the Code Audit Team's
-#     clearance markers. A marker attests that a member audited a TREE, so it
-#     is live while that tree is the one about to merge: HEAD's tree, or the
-#     tree of a local branch tip / another worktree's HEAD.
+#   TREE-keyed  <tree>.ok, <tree>.<member>.ok, and <tree>.progress.log -- the
+#     Code Audit Team's clearance markers and the same run's CI-observability
+#     breadcrumbs. A marker (or progress log) attests that a member audited a
+#     TREE, so it is live while that tree is the one about to merge: HEAD's
+#     tree, or the tree of a local branch tip / another worktree's HEAD.
 #
 #   COMMIT-keyed  <sha>.dispositions.json -- the disposition sidecar, keyed to
 #     the commit the marker-backstop hook resolves at merge time. It is live
 #     while its commit is HEAD or reachable from a local branch.
 #
-# Both families are swept by one glob, so the liveness test accepts either key.
+# All three are swept by one glob, so the liveness test accepts either key.
 # The per-member markers matter here: the key-strip must peel the whole suffix,
 # or a live <tree>.<member>.ok resolves to no object, reads as dead, and gets
 # deleted out from under the merge gate.
@@ -553,6 +554,37 @@ head_tree() {
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ ! -e "$REPO/.gaia/local/audit/notasha.ok" ]
+}
+
+# The progress log shares the marker's TREE-keyed liveness rule, so it must be
+# swept and kept by the exact same signal an .ok marker is.
+@test "sweep 2: an orphaned tree progress log is swept, HEAD's tree progress log is kept" {
+  make_repo
+  dead=$(orphan_sha)
+  dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
+  tree=$(head_tree)
+  seed_audit_file "$dead_tree.progress.log"
+  seed_audit_file "$tree.progress.log"
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/.gaia/local/audit/$dead_tree.progress.log" ]
+  [ -f "$REPO/.gaia/local/audit/$tree.progress.log" ]
+}
+
+# Same regression the marker test above guards: the GAIA-Audit trailer stamp is
+# an empty commit that moves HEAD but not the tree, so a tree-keyed progress
+# log must survive it exactly like the marker does.
+@test "sweep 2: a tree progress log survives the trailer stamp's empty commit" {
+  make_repo
+  tree=$(head_tree)
+  seed_audit_file "$tree.progress.log"
+  git -C "$REPO" commit -q --allow-empty -m "chore: code review audit passed"
+  [ "$(head_tree)" = "$tree" ]
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/audit/$tree.progress.log" ]
 }
 
 # --- Sweep #2b: orphaned re-run carry-forward ledgers ----------------------

@@ -418,11 +418,13 @@ jobs:
 
       - name: Print audit progress breadcrumbs
         # Public-safe observability. The agent (show_full_output:false hides its
-        # SDK output) writes curated per-phase breadcrumbs to a gitignored file
-        # via Write/Edit; this step surfaces them in the step summary AFTER the
-        # agent runs. Gate MIRRORS the agent step exactly (not always(), not
-        # success()) so partial breadcrumbs surface even on an aborted audit.
-        # Always exits 0: a missing/empty file must never fail the required check.
+        # SDK output) writes curated per-phase breadcrumbs to a tree-keyed
+        # gitignored file via Write/Edit; this step re-resolves the same tree sha
+        # (HEAD has not moved yet) to find it and surfaces it in the step summary
+        # AFTER the agent runs. Gate MIRRORS the agent step exactly (not
+        # always(), not success()) so partial breadcrumbs surface even on an
+        # aborted audit. Always exits 0: a missing/empty file must never fail
+        # the required check.
         if: |
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
@@ -431,7 +433,8 @@ jobs:
           steps.trailer.outputs.skip == 'false'
         run: |
           set +e
-          progress=".gaia/local/audit/progress.log"
+          tree_sha="$(git rev-parse HEAD^{tree} 2>/dev/null)"
+          progress=".gaia/local/audit/${tree_sha}.progress.log"
           {
             echo "## code-review-audit progress"
             echo ""
