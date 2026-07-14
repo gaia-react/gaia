@@ -12,7 +12,13 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
  */
 import {execFileSync} from 'node:child_process';
 import type {SpawnSyncReturns} from 'node:child_process';
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {run} from './sync-land.js';
@@ -138,6 +144,13 @@ const buildRunner =
     // that explicitly when they need non-empty status output.
     return okResult('');
   };
+
+const TALLY_SCRIPT = '.gaia/scripts/token-tally.sh';
+
+const tallyCalls = (recorded: RecordedCall[]): RecordedCall[] =>
+  recorded.filter(
+    (entry) => entry.command === 'bash' && entry.args[0] === TALLY_SCRIPT
+  );
 
 describe('wiki sync land', () => {
   let sandbox: Sandbox;
@@ -296,6 +309,64 @@ describe('wiki sync land', () => {
       const slice = observed.slice(0, prefix.length);
       expect(slice).toEqual([...prefix]);
     }
+  });
+
+  test('protected-branch landing makes zero tally calls and writes no breadcrumb', () => {
+    // `gaia wiki sync land` standalone (outside the `chain` command) never
+    // emits a cost record and never writes the gh-artifact breadcrumb, even
+    // on the path that opens its own PR: only `chain finish` emits for
+    // `/gaia-wiki`, and no six-command surface writes a breadcrumb at all.
+    sandbox = setupSandbox();
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
+        {
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {
+          argv: ['status', '--porcelain=v1', '-uall'],
+          result: okResult(' M wiki/log.md\n'),
+        },
+        {
+          argv: ['rev-parse', 'HEAD'],
+          result: okResult('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'),
+        },
+        {
+          argv: [
+            'pr',
+            'view',
+            'wiki-sync/2026-05-07-bbbbbbb',
+            '--json',
+            'state',
+            '--jq',
+            '.state',
+          ],
+          result: okResult('MERGED\n'),
+        },
+      ],
+      recorded
+    );
+
+    const exit = run(['--branch-aware'], {
+      cwd: sandbox.root,
+      runner,
+      sleep: () => undefined,
+      today: '2026-05-07',
+    });
+    expect(exit).toBe(0);
+    expect(tallyCalls(recorded)).toHaveLength(0);
+    expect(
+      existsSync(
+        path.join(
+          sandbox.root,
+          '.gaia',
+          'local',
+          'cache',
+          'gh-artifact-pr.json'
+        )
+      )
+    ).toBe(false);
   });
 
   test('on main with --branch-aware, merge does not land: auto-merge stays queued, cleanup deferred', () => {

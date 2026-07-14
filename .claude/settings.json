@@ -259,6 +259,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/debt-sentinel-touch.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/capture-gh-artifact.sh"
           }
         ]
       },

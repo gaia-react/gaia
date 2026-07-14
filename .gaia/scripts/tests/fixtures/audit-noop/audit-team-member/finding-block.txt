@@ -1,0 +1,5 @@
+### Critical Issues (Must Fix)
+
+- **Location**: `app/foo.ts:42`
+- **Issue**: a real finding, not a no-op.
+- **Fix**: do the thing.

@@ -103,6 +103,20 @@ The failure mode is only about wasted work. Dispatch all members at once and a m
 
 So when a self-heal is plausible (any diff `code-audit-frontend` owns, which is most in-scope diffs), **run `code-audit-frontend` first and alone, let the tree settle, then dispatch the remaining members in parallel against the settled tree.** When the frontend is not in the spawn set, or the diff is one it cannot self-heal (an instruction/convention surface such as `.claude/**`, `.specify/**`, or `wiki/**`, where it refuses by design), the plain parallel dispatch above applies with no sequencing.
 
+#### No-op detection and retry for each dispatched member
+
+A dispatched member can silently no-op: zero tool uses, a return that is just a harness-reminder-echo or output-style fragment instead of a real review. Nothing about the marker gate catches this on its own, fail-closed means no marker and no merge, but with no diagnosis of *why* the gate is stuck, just a stuck gate a human has to notice and investigate by hand. This mirrors, one layer up, the same deterministic classifier `code-audit-frontend` already runs on its own internal specialist and refuter fan-outs (`.claude/agents/code-audit-frontend.md`, "No-op detection and retry for each refuter").
+
+After each dispatched member's `Agent` call returns, write its returned text to a temp file and classify it:
+
+```bash
+bash .gaia/scripts/audit-noop-detect.sh --shape audit-team-member --path <tempfile> --marker <expected-marker-path>
+```
+
+`<expected-marker-path>` is `.gaia/local/audit/<tree-sha>.ok` for `code-audit-frontend`, `.gaia/local/audit/<tree-sha>.<member>.ok` for a specialized member, the same marker key each member's own gate handshake writes (see Signals below). Exit 0 = real, exit 1 = no-op. A dispatch that already wrote its marker, or whose return carries a backticked `` `path:line` `` finding location, or (for `code-audit-frontend`'s terse LOCAL return) the literal `Remaining in-scope:` preamble, is real; a return matching none of those, most often a bare harness-reminder / available-agent-types echo, is a no-op.
+
+On a no-op, re-dispatch that member **exactly one** time with the hardened retry prefix (`.claude/agents/code-audit-frontend.md`, "No-op detection and retry for each refuter"), substituting the concrete target with the member's original changed-file list. A second consecutive no-op does not re-dispatch a third time: stop and surface to the operator which member no-op'd twice, rather than looping or silently proceeding to a merge attempt. The marker gate stays fail-closed either way, no marker still means no merge, but a surfaced double no-op tells the operator why the gate is stuck instead of leaving them to notice an odd reply on their own.
+
 ### 2. Fix all issues
 
 The local fix loop reads the re-run carry-forward ledger (`.gaia/local/audit/<BASE_SHA>.rerun.json`) for a deterministic, lossless briefing rather than a main-thread-authored prompt summary: the fixer reads `remaining[]` for what to fix and `fixed_last_round[]` for what the previous round already cleared, and the next re-audit reads the same ledger. The filename keys on the incremental base, which is stable across fix rounds, so the path does not change as HEAD moves. Fail-open: when the ledger is absent, corrupt, or stale (a different branch or base), the loop falls back to the full report in the audit's return, which the agent emits whenever it could not write the ledger.
